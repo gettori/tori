@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import MessageList from "./MessageList";
@@ -29,12 +29,10 @@ import Button from "../../components/Button/Button";
 import { type SessionDetail } from "./SessionStats";
 import ConfirmDialog, { type ConfirmOpts, type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import {
-  clearComposer,
   draftFor,
   dropPending,
-  fileMentionBlocks,
-  imageBlocks,
-  offerToComposer,
+  handBackHeldSend,
+  hasAutoSend,
   hasSomethingToSend,
   historyFor,
   pendingFor,
@@ -45,6 +43,7 @@ import {
   takeAutoSend,
   takePending,
 } from "../../utils/chatCompose";
+import { composerAttachments } from "./composerAttachments";
 import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
 import {
@@ -119,6 +118,7 @@ import {
   selectEffort,
   selectMode,
   selectModel,
+  sendCapable,
   settleBackfill,
   steerable,
   steerProbe,
@@ -150,6 +150,18 @@ type SpawnResult = { ownership: ClaimOutcome; spawned: "started" | "rewired" | n
 
 /** One changed file as `checkpoint_turn_files` reports it. */
 type CheckpointFile = { path: string; shared_with?: string[]; unattributed?: boolean };
+
+/**
+ * How long a first message may be held for a session that has not opened.
+ *
+ * A ceiling, not an expectation, and armed only while a message is actually
+ * waiting. Every measured path answers far inside it (a claude handshake in
+ * ~1.6s, an ACP agent inside its own 30s handshake deadline) and a spawn that
+ * cannot start rejects at once, so what this catches is a child that started and
+ * then went silent - which the claude transport, declaring no deadline of its
+ * own, would otherwise wait on forever with the user's message inside it.
+ */
+const FIRST_SEND_DEADLINE_MS = 60_000;
 
 /**
  * One chat session: the transport's events folded into `chatStore`, rendered,
@@ -192,10 +204,42 @@ export default function ChatView(props: {
    *  history, stop at `promptTs`. Closes this tab: the rewind supersedes it, and
    *  leaving both open would leave two tabs claiming to be the same work. */
   onRewindFrom: (promptTs: number) => void;
+  /** This session never got far enough to take the first message being held for
+   *  it. Puts the tab back to a draft, holding `reason`, so the harness can be
+   *  re-picked and the message sent again. Called only when there was a held
+   *  message; an ordinary session's failures stay on this surface. */
+  onFirstSendFailed: (reason: string) => void;
 }) {
   const [state, setState] = createStore<ChatState>(initialChat(props.sessionId));
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+  // What the composer's contents are filed under. The **tab**, not the session:
+  // this tab may have held what the user typed before it had a session id at
+  // all, and a first send that never reaches one hands it straight back. See
+  // [[ComposerKey]] in `chatCompose.ts`.
+  const composerKey = () => props.tabId;
+
+  /** Whether this session can take a turn yet. The rule, and why it differs by
+   *  transport, lives with the rest of the store's decisions. */
+  const canSend = () => sendCapable(state, findAdapter(props.agentId).chat?.transport);
+
+  /**
+   * Hand a held first message back, and tell the tab its session never happened.
+   *
+   * Answers false when nothing was being held, which is the ordinary case: a
+   * resumed tab that is refused keeps its refusal banner and its two ways out.
+   * Only a tab whose *first* message is still waiting turns back into a draft,
+   * because only there is there something to hand back and a harness worth
+   * re-picking. The child, if one started, is ended by this surface's own
+   * unmount.
+   */
+  function failFirstSend(reason: string): boolean {
+    const held = takeAutoSend(composerKey());
+    if (held === null) return false;
+    handBackHeldSend(composerKey(), held);
+    props.onFirstSendFailed(reason);
+    return true;
+  }
   // The transcript and the diff are two readings of one session, so they are a
   // toggle rather than two places to be. The turn the reader was on is kept
   // across the switch: coming back to the bottom of a long session would lose
@@ -306,8 +350,8 @@ export default function ChatView(props: {
     // the turn the user actually wanted is that plus their instruction rather
     // than a turn spent on the announcement alone. Only into an empty composer:
     // a remount must not overwrite what they have since typed.
-    if (props.rewindTo && !draftFor(props.sessionId).trim()) {
-      setDraft(props.sessionId, rewindSeed());
+    if (props.rewindTo && !draftFor(composerKey()).trim()) {
+      setDraft(composerKey(), rewindSeed());
     }
 
     // The budget this tab is resuming, and how much of the session it can
@@ -417,6 +461,14 @@ export default function ChatView(props: {
     // into the transcript without the side effects a live one gets.
     function handleLive(ev: ChatEvent) {
       edit((s) => applyEvent(s, ev));
+      // A session that died before it could take the message being held for it.
+      // Handing the message back and turning the tab into a draft again is a
+      // better answer than a dead transcript with the user's words inside it:
+      // the harness is the thing that failed, and the draft is where a different
+      // one can be picked.
+      if (ev.type === "sessionError" && ev.fatal && !canSend()) {
+        failFirstSend(ev.message);
+      }
       // A real turn boundary, not one inferred from a re-read prompt count.
       // Fired on `turnStarted` so the snapshot is the tree *before* this turn's
       // edits, which is the only state reverting the turn can mean.
@@ -528,17 +580,20 @@ export default function ChatView(props: {
           if (res.ownership.type === "granted" && res.ownership.contested) {
             emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
           }
-          // A session opened by "send to a new chat" carries its first turn. Sent
-          // only once the claim came back granted: a refused claim has no child to
-          // send to, and the seed stays in the composer for the user to decide.
-          if (!opts.reconnect && res.ownership.type === "granted" && takeAutoSend(props.sessionId)) {
-            onSend(draftFor(props.sessionId));
+          // A refused claim has no child to send to, so a message held for this
+          // session's first turn goes back to the composer now rather than
+          // waiting on a session that is never coming. The held message is *not*
+          // sent here even when the claim is granted: granted says a child
+          // started, not that it can take a turn. See `sendCapable`.
+          if (res.ownership.type !== "granted") {
+            failFirstSend("that session is already open somewhere else, so nothing was sent.");
           }
         })
         .catch((e) => {
           edit((s) =>
             applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message: String(e), fatal: true }),
           );
+          failFirstSend(String(e));
         });
     }
 
@@ -551,16 +606,52 @@ export default function ChatView(props: {
     };
 
     connect({ reconnect: false });
+
+    // Nothing may hold a first message forever. The claude transport declares no
+    // handshake deadline at all, so a binary that spawns and then wedges would
+    // leave the message the user already pressed Enter on sitting in a tab that
+    // says "connecting" and never stops. A backstop rather than an expectation:
+    // a claude handshake is measured in seconds, an ACP agent fails its own
+    // 30s handshake deadline first, and a spawn that cannot start rejects
+    // immediately - so this fires only when something has genuinely hung.
+    if (hasAutoSend(composerKey())) {
+      const timer = setTimeout(() => {
+        if (canSend()) return;
+        failFirstSend("that agent did not get a session open in time, so nothing was sent.");
+      }, FIRST_SEND_DEADLINE_MS);
+      onCleanup(() => clearTimeout(timer));
+    }
   });
 
-  // A closed tab ends the child. `chat_close` is a no-op for a session that
-  // already ended, so this is safe on every unmount path.
+  // A message written before this session could take it: a draft tab's first
+  // send, or one handed over by "send to a new chat". Sent here rather than at
+  // spawn, because a spawned child is not yet a session that can answer.
+  createEffect(() => {
+    if (!canSend()) return;
+    // Only readiness is tracked. `onSend` reads half the store on its way
+    // through, and tracking that would re-run this on every turn boundary for
+    // the rest of the session.
+    untrack(() => {
+      const held = takeAutoSend(composerKey());
+      if (held === null) return;
+      // The composer showed it while it waited; the turn now appearing above is
+      // where it lives from here.
+      setDraft(composerKey(), "");
+      onSend(held);
+    });
+  });
+
+  // This surface ends the child. `chat_close` is a no-op for a session that
+  // already ended, so this is safe on every unmount path - including the one
+  // that is not a close at all: a first send replaces the tab record, which
+  // remounts this component, and the session it is leaving must not outlive it.
+  //
+  // The composer is deliberately *not* cleared here. It belongs to the tab now,
+  // and this unmount happens on a promotion and a revert as well as a close, so
+  // clearing would throw away the very message a first send is carrying. The tab
+  // clears it when the tab itself goes away.
   onCleanup(() => {
     dropLiveChat(props.sessionId);
-    // The composer's contents belong to the session that was showing them; a
-    // reopened tab must not inherit an attachment nobody can see the origin of
-    // any more, nor a draft written against a transcript that is gone.
-    clearComposer(props.sessionId);
     void invoke("chat_close", { sessionId: props.sessionId }).catch(() => {});
   });
 
@@ -704,11 +795,11 @@ export default function ChatView(props: {
   async function steer(text: string) {
     // Before the gate, not inside `write`: bailing after the gate has committed
     // would report "sent" for a message that was never composed.
-    if (!text && !pendingFor(props.sessionId).length) return;
+    if (!text && !pendingFor(composerKey()).length) return;
     const result = await sendWithProbeGate(text, {
       probe: async () => steerProbe(state),
       write: async (t) => {
-        const attached = takePending(props.sessionId);
+        const attached = takePending(composerKey());
         const blocks: ContentBlock[] = t ? [...attached, { type: "text", text: t }] : attached;
         // `chat_steer`, not `chat_send`: the latter also flushes a queued mode
         // or model switch, and a steer must leave that for the turn it was
@@ -727,7 +818,7 @@ export default function ChatView(props: {
       return null;
     });
     if (result?.kind === "sent") return;
-    restoreDraft(props.sessionId, text);
+    restoreDraft(composerKey(), text);
     if (result?.kind === "blocked") emitWith<ToastEvent>(TOAST, { message: BLOCKED_REASON, kind: "error" });
   }
 
@@ -739,7 +830,7 @@ export default function ChatView(props: {
   function onSend(text: string) {
     // Recorded on the way out whichever path it takes, since from the user's
     // side all three are "I sent that".
-    pushHistory(props.sessionId, text);
+    pushHistory(composerKey(), text);
     // The ceiling, enforced where Sway actually decides: the turn boundary. The
     // message is queued rather than refused, so raising the limit sends what was
     // already typed instead of asking for it again - and it is *said*, because a
@@ -769,7 +860,7 @@ export default function ChatView(props: {
       if (text) edit((s) => enqueue(s, text));
       return;
     }
-    const attached = takePending(props.sessionId);
+    const attached = takePending(composerKey());
     const blocks: ContentBlock[] = text ? [...attached, { type: "text", text }] : attached;
     if (!blocks.length) return;
     void sendBlocks(blocks);
@@ -1067,29 +1158,9 @@ export default function ChatView(props: {
     );
   }
 
-  // The project's file index, for `@` completion. Fetched on demand rather than
-  // on mount: it is a full walk of the tree, and a chat that never mentions a
-  // file should not pay for one. The composer asks once and caches.
-  function loadProjectFiles(): Promise<string[]> {
-    return invoke<string[]>("list_project_files", { projectPath: props.cwd }).catch(() => []);
-  }
-
-  // A completed `@` mention. The composer hands back the project-relative path
-  // it showed; resolving it against the session's cwd happens here, so exactly
-  // one place decides what a mention means.
-  function onAttachFile(relPath: string) {
-    offerToComposer(props.sessionId, fileMentionBlocks(`${props.cwd}/${relPath}`));
-  }
-
-  // A dragged path is a mention, not an upload: the agent has the filesystem, so
-  // sending the bytes would be sending it something it can already read.
-  function onAttachPaths(absPaths: string[]) {
-    for (const path of absPaths) offerToComposer(props.sessionId, fileMentionBlocks(path));
-  }
-
-  function onAttachImages(images: { mediaType: string; base64: string }[]) {
-    for (const img of images) offerToComposer(props.sessionId, imageBlocks(img.mediaType, img.base64));
-  }
+  // Shared with the draft surface, so what an `@` mention resolves to cannot
+  // differ between a chat and the draft it grew out of.
+  const attachments = composerAttachments(composerKey, () => props.cwd);
 
   // Move what is in the composer to a brand-new chat and let it open with that
   // turn. A send the user asked for, at a session that does not exist yet.
@@ -1097,11 +1168,11 @@ export default function ChatView(props: {
     // Asked before the fork, not after: opening the tab first would leave an
     // empty chat behind (and a spawned child, and a claimed session id) on a
     // click that turns out to have nothing to send.
-    if (!hasSomethingToSend(props.sessionId)) {
+    if (!hasSomethingToSend(composerKey())) {
       emitWith<ToastEvent>(TOAST, { message: "Type something first, or attach a file.", kind: "info" });
       return;
     }
-    seedForSend(props.sessionId, props.onForkSession());
+    seedForSend(composerKey(), props.onForkSession());
   }
 
   /**
@@ -1457,22 +1528,22 @@ export default function ChatView(props: {
         steering={canSteer()}
         steerCost={steerCostLabel(tier())}
         queue={state.queue}
-        attachments={pendingFor(props.sessionId)}
-        draft={draftFor(props.sessionId)}
-        onDraftChange={(t) => setDraft(props.sessionId, t)}
-        history={historyFor(props.sessionId)}
+        attachments={pendingFor(composerKey())}
+        draft={draftFor(composerKey())}
+        onDraftChange={(t) => setDraft(composerKey(), t)}
+        history={historyFor(composerKey())}
         commands={state.slashCommands}
-        loadFiles={loadProjectFiles}
+        loadFiles={attachments.loadProjectFiles}
         held={state.queueHeld}
         disabled={refused() || state.ended}
         onSend={onSend}
-        onAttachFile={onAttachFile}
-        onAttachPaths={onAttachPaths}
-        onAttachImages={onAttachImages}
+        onAttachFile={attachments.onAttachFile}
+        onAttachPaths={attachments.onAttachPaths}
+        onAttachImages={attachments.onAttachImages}
         onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
         onInterrupt={onInterrupt}
         onDropQueued={(id) => edit((s) => removeQueued(s, id))}
-        onDropAttachment={(id) => dropPending(props.sessionId, id)}
+        onDropAttachment={(id) => dropPending(composerKey(), id)}
         onSendQueued={() => edit((s) => releaseQueue(s))}
         onDiscardQueued={() => edit((s) => discardQueue(s))}
         // Everything the next turn will run under: the mode, the model and its

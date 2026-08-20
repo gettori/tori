@@ -1016,6 +1016,14 @@
   color: var(--attention-fg);
 }
 
+/* Where a draft's transcript will be. It holds the composer down at the bottom
+   of the panel so a chat does not visibly re-lay-out when its first send turns
+   the draft into a session. */
+.draftFill {
+  flex: 1;
+  min-height: 0;
+}
+
 .refusal {
   color: var(--fg-default);
 }

@@ -140,65 +140,82 @@ export function readAsBase64(file: Blob): Promise<string> {
  *  ambiguity when two references to the same file are pending. */
 export type PendingBlock = { id: string; block: ContentBlock };
 
-const [pending, setPending] = createSignal<Record<string, PendingBlock[]>>({});
+/**
+ * What a composer's contents are filed under: the **tab id**, not the session
+ * id.
+ *
+ * A chat tab starts as a draft with no session at all, and mints one per send
+ * attempt, so a session id is neither stable enough nor present early enough to
+ * key what someone typed. The tab is both: it exists before the session and
+ * outlives a failed attempt, which is what lets a first send that never got off
+ * the ground hand the text straight back.
+ *
+ * Anything holding a session id instead (the cross-panel senders) resolves it to
+ * the tab hosting that session before addressing a composer.
+ */
+export type ComposerKey = string;
+
+const [pending, setPending] = createSignal<Record<ComposerKey, PendingBlock[]>>({});
 
 let seq = 0;
 
 /** Offer blocks to a chat's composer. They are *not* sent: they become chips the
  *  user can remove, and they ride along with whatever is typed next. */
-export function offerToComposer(sessionId: string, blocks: readonly ContentBlock[]) {
+export function offerToComposer(key: ComposerKey, blocks: readonly ContentBlock[]) {
   if (!blocks.length) return;
   const added = blocks.map((block) => ({ id: `att-${++seq}`, block }));
-  setPending((prev) => ({ ...prev, [sessionId]: [...(prev[sessionId] ?? []), ...added] }));
+  setPending((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), ...added] }));
 }
 
-export function pendingFor(sessionId: string): PendingBlock[] {
-  return pending()[sessionId] ?? [];
+export function pendingFor(key: ComposerKey): PendingBlock[] {
+  return pending()[key] ?? [];
 }
 
-export function dropPending(sessionId: string, id: string) {
-  setPending((prev) => ({ ...prev, [sessionId]: (prev[sessionId] ?? []).filter((p) => p.id !== id) }));
+export function dropPending(key: ComposerKey, id: string) {
+  setPending((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((p) => p.id !== id) }));
 }
 
-/** Take everything pending for a session, clearing it. Called when the turn that
+/** Take everything pending for a composer, clearing it. Called when the turn that
  *  carries them is sent, and on the tab closing so a reopened chat does not
  *  inherit chips from a session that is gone. */
-export function takePending(sessionId: string): ContentBlock[] {
-  const held = pendingFor(sessionId);
-  if (held.length) clearPending(sessionId);
+export function takePending(key: ComposerKey): ContentBlock[] {
+  const held = pendingFor(key);
+  if (held.length) clearPending(key);
   return held.map((p) => p.block);
 }
 
-export function clearPending(sessionId: string) {
+export function clearPending(key: ComposerKey) {
   setPending((prev) => {
-    if (!(sessionId in prev)) return prev;
+    if (!(key in prev)) return prev;
     const next = { ...prev };
-    delete next[sessionId];
+    delete next[key];
     return next;
   });
 }
 
-// Per-session history of what was actually sent, for Up-arrow recall. Bounded,
+// Per-composer history of what was actually sent, for Up-arrow recall. Bounded,
 // because a long session's composer should not be a transcript of its own.
 const HISTORY_CAP = 50;
-const [histories, setHistories] = createSignal<Record<string, string[]>>({});
+const [histories, setHistories] = createSignal<Record<ComposerKey, string[]>>({});
 
 // The typed half of a composer's state, kept beside the attachment half so the
 // two are one thing: cleared together, moved together by send-to-new-session,
-// and addressable per session by anything that is not the composer.
+// and addressable per tab by anything that is not the composer.
 //
 // It does *not* by itself make the draft outlive the panel - `clearComposer`
-// runs on unmount, deliberately, so a closed tab leaves nothing behind. A draft
-// survives a tab switch because chat tabs stay mounted while hidden (Phase 5's
-// no-remount guarantee), which is a property of the tab bar.
-const [drafts, setDrafts] = createSignal<Record<string, string>>({});
+// runs when the **tab** closes, deliberately, so a closed tab leaves nothing
+// behind. It deliberately does *not* run on unmount any more: a draft's first
+// send remounts the surface (the tab record is replaced with the session it
+// minted), and clearing there would throw away the very text that send is
+// carrying.
+const [drafts, setDrafts] = createSignal<Record<ComposerKey, string>>({});
 
-export function draftFor(sessionId: string): string {
-  return drafts()[sessionId] ?? "";
+export function draftFor(key: ComposerKey): string {
+  return drafts()[key] ?? "";
 }
 
-export function setDraft(sessionId: string, text: string) {
-  setDrafts((prev) => (prev[sessionId] === text ? prev : { ...prev, [sessionId]: text }));
+export function setDraft(key: ComposerKey, text: string) {
+  setDrafts((prev) => (prev[key] === text ? prev : { ...prev, [key]: text }));
 }
 
 /**
@@ -216,9 +233,9 @@ export function setDraft(sessionId: string, text: string) {
  * to save the older one. In that case the recall history is the fallback, which
  * is why the send is recorded there whichever path it took.
  */
-export function restoreDraft(sessionId: string, text: string) {
-  if (!text || draftFor(sessionId)) return;
-  setDraft(sessionId, text);
+export function restoreDraft(key: ComposerKey, text: string) {
+  if (!text || draftFor(key)) return;
+  setDraft(key, text);
 }
 
 /** Everything a composer was holding, cleared together: chips, draft and recall
@@ -226,10 +243,11 @@ export function restoreDraft(sessionId: string, text: string) {
  *  leave any of the three for a session whose transcript is no longer on screen.
  *  One call, so a new piece of composer state cannot be forgotten in one of
  *  three teardowns. */
-export function clearComposer(sessionId: string) {
-  clearPending(sessionId);
-  setDrafts((prev) => dropKey(prev, sessionId));
-  setHistories((prev) => dropKey(prev, sessionId));
+export function clearComposer(key: ComposerKey) {
+  clearPending(key);
+  setDrafts((prev) => dropKey(prev, key));
+  setHistories((prev) => dropKey(prev, key));
+  setAutoSend((prev) => dropKey(prev, key));
 }
 
 function dropKey<T>(record: Record<string, T>, key: string): Record<string, T> {
@@ -239,63 +257,101 @@ function dropKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   return next;
 }
 
-export function historyFor(sessionId: string): readonly string[] {
-  return histories()[sessionId] ?? [];
+export function historyFor(key: ComposerKey): readonly string[] {
+  return histories()[key] ?? [];
 }
 
 /** Record a sent message. Newest first, so index 0 is the last thing sent.
  *  A repeat of the last entry is not recorded twice: pressing Up twice to
  *  resend something should not need two presses to walk back past it. */
-export function pushHistory(sessionId: string, text: string) {
+export function pushHistory(key: ComposerKey, text: string) {
   const trimmed = text.trim();
   if (!trimmed) return;
   setHistories((prev) => {
-    const current = prev[sessionId] ?? [];
+    const current = prev[key] ?? [];
     if (current[0] === trimmed) return prev;
-    return { ...prev, [sessionId]: [trimmed, ...current].slice(0, HISTORY_CAP) };
+    return { ...prev, [key]: [trimmed, ...current].slice(0, HISTORY_CAP) };
   });
 }
 
-// A session seeded to send its first turn as soon as its transport is up.
+// A composer seeded to send its first turn as soon as its session can take one.
 //
 // The only thing in this module that leads to a send, and only because the user
-// asked for one: "send this to a new chat" is a send, just at a session that
-// does not exist yet. The flag is consumed rather than read, so a remount of the
-// seeded tab cannot fire the turn a second time.
-const [autoSend, setAutoSend] = createSignal<Record<string, boolean>>({});
+// asked for one: both "send this to a new chat" and a draft tab's first send are
+// sends at a session that does not exist yet. The flag is consumed rather than
+// read, so a remount of the seeded tab cannot fire the turn a second time - and
+// a draft's first send *does* remount it.
+// The message itself rather than a flag: the composer clears its input the
+// moment `onSend` returns, so a draft's first send has to be held somewhere the
+// clear cannot reach. Holding it here is also what lets a first send that never
+// reached a session hand the text straight back.
+const [autoSend, setAutoSend] = createSignal<Record<ComposerKey, string>>({});
 
 /** Whether a composer holds anything worth sending. Asked *before* a session is
  *  opened for it, so an empty composer never costs a stray chat tab and the
  *  child process behind it. */
-export function hasSomethingToSend(sessionId: string): boolean {
-  return pendingFor(sessionId).length > 0 || draftFor(sessionId).trim().length > 0;
+export function hasSomethingToSend(key: ComposerKey): boolean {
+  return pendingFor(key).length > 0 || draftFor(key).trim().length > 0;
 }
 
-/** Move a composer's contents to another session and mark it to send on open.
- *  Reads the source's draft and chips out of this store rather than taking them
- *  as arguments, so what gets sent is exactly what was on screen. */
-export function seedForSend(fromSessionId: string, toSessionId: string) {
-  const blocks = takePending(fromSessionId);
-  const text = draftFor(fromSessionId).trim();
+/** Hold a message to send the moment this composer's session can take a turn.
+ *  Used where the text is already in the right composer and only the session is
+ *  missing, which is a draft tab's first send. */
+export function markAutoSend(key: ComposerKey, text: string) {
+  setAutoSend((prev) => ({ ...prev, [key]: text }));
+}
+
+/** Move a composer's contents to another tab's composer and mark it to send on
+ *  open. Reads the source's draft and chips out of this store rather than taking
+ *  them as arguments, so what gets sent is exactly what was on screen. */
+export function seedForSend(fromKey: ComposerKey, toKey: ComposerKey) {
+  const blocks = takePending(fromKey);
+  const text = draftFor(fromKey).trim();
   if (!blocks.length && !text) {
     // Put back what was taken: a caller that asked at the wrong moment must not
     // cost the user their chips.
-    offerToComposer(fromSessionId, blocks);
+    offerToComposer(fromKey, blocks);
     return false;
   }
-  offerToComposer(toSessionId, blocks);
-  setDraft(toSessionId, text);
-  setAutoSend((prev) => ({ ...prev, [toSessionId]: true }));
-  setDraft(fromSessionId, "");
+  offerToComposer(toKey, blocks);
+  // Shown as well as held, so the destination reads as the place that message
+  // went even in the window before its session can take it.
+  setDraft(toKey, text);
+  markAutoSend(toKey, text);
+  setDraft(fromKey, "");
   return true;
 }
 
-/** Whether this session was seeded to send on open. Consuming: asking twice
- *  answers false the second time. */
-export function takeAutoSend(sessionId: string): boolean {
-  if (!autoSend()[sessionId]) return false;
-  setAutoSend((prev) => dropKey(prev, sessionId));
-  return true;
+/**
+ * Give a held first message back to its composer, after a session that was going
+ * to take it never opened.
+ *
+ * Recorded **before** it is restored, because restoring is allowed to decline.
+ * The composer stays live while a first send is in flight, so the user may have
+ * typed something newer, and [[restoreDraft]] rightly refuses to overwrite that.
+ * Without the recall entry the held message would then be in no composer and no
+ * history: a message the user pressed Enter on, gone. Its own send never reached
+ * the point that records one, so nothing else has it.
+ */
+export function handBackHeldSend(key: ComposerKey, text: string) {
+  pushHistory(key, text);
+  restoreDraft(key, text);
+}
+
+/** Whether a message is being held for this composer's session. Non-consuming,
+ *  for the deadline that has to know there is something waiting without taking
+ *  it. */
+export function hasAutoSend(key: ComposerKey): boolean {
+  return autoSend()[key] !== undefined;
+}
+
+/** The message this composer was seeded to send, or null. Consuming: asking
+ *  twice answers null the second time, so a remount cannot fire the turn again. */
+export function takeAutoSend(key: ComposerKey): string | null {
+  const held = autoSend()[key];
+  if (held === undefined) return null;
+  setAutoSend((prev) => dropKey(prev, key));
+  return held;
 }
 
 /** How a pending block reads as a chip. */

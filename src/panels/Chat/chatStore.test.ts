@@ -24,6 +24,7 @@ import {
   pushUserTurn,
   toolCallsSeen,
   reasoningFor,
+  sendCapable,
   releaseQueue,
   removeQueued,
   resolveApproval,
@@ -1024,6 +1025,38 @@ describe("the answered handshake (sessionReady)", () => {
     applyEvent(s, sessionStarted({ models: [MODEL] }));
     expect(s.started).toBe(true);
     expect(connectionHealth(s)).toBe("connected");
+  });
+
+  // Claude opens its session *with* the first turn, so the answered handshake is
+  // as ready as it can get before one: waiting for `started` would wait for the
+  // very turn being asked about.
+  it("counts an answered handshake as able to take a turn on claude", () => {
+    const s = initialChat("s1");
+    expect(sendCapable(s, "claude_stream_json")).toBe(false);
+    applyEvent(s, ready());
+    expect(sendCapable(s, "claude_stream_json")).toBe(true);
+  });
+
+  // An ACP agent answers the handshake before it has opened a session, and
+  // refuses a turn sent into that window. The status strip calls it connected
+  // there, which is right for a strip and wrong for a send - so this is a
+  // separate question with a separate answer.
+  it("waits for the opened session on acp, where ready is not enough", () => {
+    const s = initialChat("s1");
+    applyEvent(s, ready());
+    expect(connectionHealth(s)).toBe("connected");
+    expect(sendCapable(s, "acp")).toBe(false);
+    applyEvent(s, sessionStarted({ models: [MODEL] }));
+    expect(sendCapable(s, "acp")).toBe(true);
+  });
+
+  // An adapter with no chat block at all reaches this the same way a claude one
+  // does; guessing the slower rule for it would hold a first message on a
+  // session that was ready for it.
+  it("treats an unstated transport as the handshake rule", () => {
+    const s = initialChat("s1");
+    applyEvent(s, ready());
+    expect(sendCapable(s, undefined)).toBe(true);
   });
 
   it("folds the account in and reads it back", () => {

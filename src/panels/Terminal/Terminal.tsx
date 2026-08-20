@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView from "./TerminalView";
 import ChatView from "../Chat/ChatView";
+import ChatDraft from "../Chat/ChatDraft";
 import Dropdown from "../../components/Menu/Dropdown";
 import Icon from "../../components/Icon/Icon";
 import TabMark from "./TabMark";
@@ -52,11 +53,13 @@ import { sessions } from "../../utils/sessionStore";
 import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
-import { offerToComposer, routeFor } from "../../utils/chatCompose";
+import { clearComposer, offerToComposer, routeFor } from "../../utils/chatCompose";
 import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
 import { routeSelection, restoreRoute } from "../../utils/sessionSurface";
 import { settings } from "../Settings/settingsStore";
 import {
+  canRevertToDraft,
+  isChatDraft,
   open,
   setOpen,
   setTabTitles,
@@ -508,6 +511,21 @@ export default function Terminal(props: {
     setPtyRefusals(ptyRefusals().filter((r) => r.tab.id !== tabId));
   }
 
+  // Why a chat tab's first send never reached a session, per tab, for the draft
+  // it just became. Held out here rather than on the tab record for the same
+  // reason a renamed tab's title is (gotcha #64): the record's identity is what
+  // mounts the surface, so writing a message onto it would remount the draft
+  // this message is meant to be read in.
+  const [draftErrors, setDraftErrors] = createSignal<Record<string, string>>({});
+  const draftError = (tabId: string) => draftErrors()[tabId];
+
+  function clearDraftError(tabId: string) {
+    if (!(tabId in draftErrors())) return;
+    const next = { ...draftErrors() };
+    delete next[tabId];
+    setDraftErrors(next);
+  }
+
   // The way out of every refusal, on both surfaces: a brand-new session id
   // cannot collide with the one that is already held.
   function forkFrom(tab: OpenTerm) {
@@ -848,9 +866,14 @@ export default function Terminal(props: {
     // which session is hosted where, and a caller guessing would have to be
     // told again every time the answer changed.
     if (routeFor(req.sessionId, liveChatIds()) === "chat") {
-      offerToComposer(req.sessionId, req.blocks ?? [{ type: "text", text }]);
+      // Addressed to the tab hosting that session, because that is what a
+      // composer is filed under: the caller knows a session, and this is the one
+      // place that can turn one into the other.
       const chat = liveChats().find((c) => c.sessionId === req.sessionId);
-      if (chat) focusTab(chat.folderPath, chat.tabId);
+      if (chat) {
+        offerToComposer(chat.tabId, req.blocks ?? [{ type: "text", text }]);
+        focusTab(chat.folderPath, chat.tabId);
+      }
       emitWith<SendToSessionResult>(SEND_TO_SESSION_RESULT, { requestId: req.requestId, result: "sent" });
       return;
     }
@@ -906,30 +929,20 @@ export default function Terminal(props: {
     });
   }
 
-  // A chat tab hosts no shell. It mints its own session id up front (the
-  // transport is spawned with `--session-id`), which is why - unlike an agent
-  // tab - it never needs the transcript-appears backfill to learn what it is.
-  // Returns the minted session id, so a caller that wants to seed the new chat
-  // (send-to-new-session) can address it before it mounts.
-  /**
-   * Open a chat tab on a **new** session id.
-   *
-   * `forkFrom` makes it a fork: the new session replays that one's history and
-   * the two diverge from there. Without it the chat starts empty. Either way the
-   * id is new, which is what makes this the safe answer to a refused claim -
-   * a new id cannot collide with the one already held.
-   */
-  function spawnChat(
+  // A chat tab hosts no shell. Every one of them is opened here, draft or not,
+  // and all of them return the **tab** id: the tab is what a caller can address
+  // before there is a session to address, and since the composer is filed under
+  // it, the tab is also what a seed has to be handed to.
+  function openChatTab(
     workspace: string,
     cwd: string,
     baseName: string,
-    agentId = "claude",
-    forkFrom?: string,
-    rewindTo?: number,
+    agentId: string,
+    session?: { sessionId: string; forkFrom?: string; rewindTo?: number },
   ): string {
-    const sessionId = crypto.randomUUID();
+    const id = `chat:${crypto.randomUUID()}`;
     openOrActivate({
-      id: `chat:${crypto.randomUUID()}`,
+      id,
       title: chatTabLabel(
         baseName,
         tabsIn(workspace)
@@ -941,11 +954,80 @@ export default function Terminal(props: {
       kind: "chat",
       program: agentId,
       args: [],
-      sessionId,
+      ...session,
+    });
+    return id;
+  }
+
+  /**
+   * Open a chat tab on a **new** session id, spawned as soon as it mounts.
+   *
+   * `forkFrom` makes it a fork: the new session replays that one's history and
+   * the two diverge from there. Without it the chat starts empty. Either way the
+   * id is new, which is what makes this the safe answer to a refused claim -
+   * a new id cannot collide with the one already held.
+   *
+   * A plain new chat does *not* come through here: it opens as a draft and
+   * mints its id when it is first sent to. This is for the openings that already
+   * know which session they are, which is every fork and every rewind.
+   */
+  function spawnChat(
+    workspace: string,
+    cwd: string,
+    baseName: string,
+    agentId = "claude",
+    forkFrom?: string,
+    rewindTo?: number,
+  ): string {
+    return openChatTab(workspace, cwd, baseName, agentId, {
+      sessionId: crypto.randomUUID(),
       forkFrom,
       rewindTo,
     });
-    return sessionId;
+  }
+
+  /**
+   * Open a chat tab with **no session at all**.
+   *
+   * Nothing is spawned, nothing is claimed and no id is minted: the tab is a
+   * draft until it is sent to, and a draft that is closed unused costs a tab
+   * record. This is what a new chat is now - see `startChatDraft` for the other
+   * half.
+   */
+  function openChatDraft(workspace: string, cwd: string, baseName: string, agentId = "claude"): string {
+    return openChatTab(workspace, cwd, baseName, agentId);
+  }
+
+  /**
+   * A draft's first send: mint the session it will run as, so the surface swaps
+   * to a real chat that spawns, claims and sends.
+   *
+   * Replacing the tab record rather than mutating it is the mechanism and not an
+   * accident: the stage is keyed by tab identity, so a replaced record is what
+   * unmounts the draft and mounts the chat in its place.
+   *
+   * The id is minted per attempt. A previous attempt's id is dead the moment it
+   * is handed back, so a retry after a failure can never re-offer an id an agent
+   * already wrote a record against.
+   */
+  function startChatDraft(tabId: string) {
+    clearDraftError(tabId);
+    setOpen(open().map((t) => (t.id === tabId ? { ...t, sessionId: crypto.randomUUID() } : t)));
+  }
+
+  /**
+   * Put a chat tab back to being a draft, holding why its session never opened.
+   *
+   * Only a tab that *was* a draft: a fork or a resume carries a lineage a draft
+   * cannot represent, so those keep their own error surface and their own ways
+   * out rather than silently becoming empty chats. The message itself is already
+   * back in the composer by the time this runs; this decides what the tab is.
+   */
+  function revertChatDraft(tabId: string, reason: string) {
+    const tab = open().find((t) => t.id === tabId);
+    if (!tab || !canRevertToDraft(tab)) return;
+    setDraftErrors({ ...draftErrors(), [tabId]: reason });
+    setOpen(open().map((t) => (t.id === tabId ? { ...t, sessionId: undefined } : t)));
   }
 
   /**
@@ -969,10 +1051,12 @@ export default function Terminal(props: {
     spawnChat(tab.workspace, tab.cwd, tab.workspace.split("/").pop() || "chat", tab.program, origin, promptTs);
   }
 
+  // A new chat is a draft: no process, no session id, no claim, until the first
+  // message decides there is going to be a conversation at all.
   function newChat(agentId = "claude") {
     const sel = props.selected;
     if (!sel) return;
-    spawnChat(sel.folderPath, sel.folderPath, sel.projectName, agentId);
+    openChatDraft(sel.folderPath, sel.folderPath, sel.projectName, agentId);
   }
 
   /**
@@ -1058,6 +1142,13 @@ export default function Terminal(props: {
     // Unmounting ChatView ends it; this only has to not kill the wrong thing.
     if (t?.kind !== "chat") invoke("pty_kill", { id }).catch(() => {});
     clearRefusal(id);
+    // The composer belongs to the tab, so it is emptied when the tab goes and
+    // not before: its surface unmounts on a first send and on a revert too, and
+    // clearing there would throw away the message those two are carrying.
+    if (t?.kind === "chat") {
+      clearComposer(id);
+      clearDraftError(id);
+    }
     // Closing the active tab hands the slot to its right neighbor, then the
     // left (plan phase 5's unified policy; the fallback used to be the first
     // tab). Recorded directly rather than through focusTab, so closing a tab
@@ -1209,6 +1300,24 @@ export default function Terminal(props: {
   const chatStage = (u: UnifiedTab) => {
     const t = asTerm(u);
     const active = createMemo(() => onScreen(t));
+    // No session id means nothing has been started here yet: this tab is a
+    // draft, and the draft surface is all of it. Decided here rather than inside
+    // the chat, which is what lets every session-shaped thing `ChatView` does
+    // keep assuming it has a session - because until this branch flips, it is
+    // not mounted at all.
+    if (isChatDraft(t)) {
+      return (
+        <ChatDraft
+          tabId={t.id}
+          cwd={t.cwd}
+          active={active()}
+          error={draftError(t.id)}
+          onStart={() => startChatDraft(t.id)}
+        />
+      );
+    }
+    // Past the branch above, so this tab has a session by construction: the two
+    // states are exactly "has a session id" and "does not".
     return (
       <ChatView
         sessionId={t.sessionId!}
@@ -1224,6 +1333,7 @@ export default function Terminal(props: {
           spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program, t.sessionId)
         }
         onRewindFrom={(promptTs) => rewindChat(t, promptTs)}
+        onFirstSendFailed={(reason) => revertChatDraft(t.id, reason)}
         forkFrom={t.forkFrom}
         rewindTo={t.rewindTo}
       />

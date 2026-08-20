@@ -7,8 +7,11 @@ import {
   clearComposer,
   draftFor,
   fileMentionBlocks,
+  handBackHeldSend,
+  hasAutoSend,
   historyFor,
   hunkCommentBlocks,
+  markAutoSend,
   pushHistory,
   restoreDraft,
   setDraft,
@@ -194,12 +197,61 @@ describe("send to a new session", () => {
     expect(pendingFor(SESSION)).toEqual([]);
   });
 
-  // Consuming, so a remount of the seeded tab cannot fire the turn again.
-  it("answers the auto-send flag exactly once", () => {
+  // Consuming, so a remount of the seeded tab cannot fire the turn again - and a
+  // seeded tab *is* remounted, since a first send replaces the tab record.
+  it("answers the held message exactly once", () => {
     setDraft(SESSION, "go");
     seedForSend(SESSION, TARGET);
-    expect(takeAutoSend(TARGET)).toBe(true);
-    expect(takeAutoSend(TARGET)).toBe(false);
+    expect(takeAutoSend(TARGET)).toBe("go");
+    expect(takeAutoSend(TARGET)).toBe(null);
+  });
+
+  // The message rather than a flag, because the composer empties itself the
+  // moment `onSend` returns: a draft's first send would have nothing left to
+  // read back if this only recorded that there had been one.
+  it("holds the message itself, so a clear cannot lose it", () => {
+    markAutoSend(TARGET, "the first thing");
+    setDraft(TARGET, "");
+    expect(takeAutoSend(TARGET)).toBe("the first thing");
+  });
+
+  // A message held for a session that never opened is handed back, so the
+  // deadline and the failure paths can ask without taking it.
+  it("reports a held message without consuming it", () => {
+    expect(hasAutoSend(TARGET)).toBe(false);
+    markAutoSend(TARGET, "go");
+    expect(hasAutoSend(TARGET)).toBe(true);
+    expect(hasAutoSend(TARGET)).toBe(true);
+    expect(takeAutoSend(TARGET)).toBe("go");
+    expect(hasAutoSend(TARGET)).toBe(false);
+  });
+
+  // An attachment-only send holds an empty string, which is a message: reading
+  // it as "nothing held" would strand the chips it was going to carry.
+  it("tells an empty held message apart from none", () => {
+    markAutoSend(TARGET, "");
+    expect(hasAutoSend(TARGET)).toBe(true);
+    expect(takeAutoSend(TARGET)).toBe("");
+  });
+
+  // The ordinary hand-back: the session never opened, the composer is untouched,
+  // and the message is simply there again.
+  it("puts a held message back into an untouched composer", () => {
+    handBackHeldSend(TARGET, "the first thing");
+    expect(draftFor(TARGET)).toBe("the first thing");
+  });
+
+  // The composer stays live for the second or so a first send is in flight, so
+  // the user can be mid-sentence when it fails. Overwriting that to save the
+  // older message would lose the newer one - but leaving the older one nowhere
+  // at all would lose a message the user pressed Enter on, and its own send
+  // never got as far as recording it. So it goes to recall.
+  it("leaves newer typing alone and keeps the held message recallable", () => {
+    setDraft(TARGET, "something else entirely");
+    handBackHeldSend(TARGET, "the first thing");
+
+    expect(draftFor(TARGET)).toBe("something else entirely");
+    expect(historyFor(TARGET)).toContain("the first thing");
   });
 
   // Asked before the tab is opened: a click with nothing to send must not cost
@@ -219,7 +271,7 @@ describe("send to a new session", () => {
 
   it("refuses to seed an empty composer rather than opening a blank chat", () => {
     expect(seedForSend(SESSION, TARGET)).toBe(false);
-    expect(takeAutoSend(TARGET)).toBe(false);
+    expect(takeAutoSend(TARGET)).toBe(null);
   });
 
   it("seeds on attachments alone, which is a real thing to send", () => {
