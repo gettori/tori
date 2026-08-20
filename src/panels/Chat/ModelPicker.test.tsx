@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import initializeCapture from "../../../dev/fixtures/claude/initialize.jsonl?raw";
-import { render } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 import ModelPicker from "./ModelPicker";
-import { pickableModels } from "../../utils/chatModels";
-import type { ChatConfig } from "../../utils/agents";
+import { lockedProvider } from "./agentPaletteData";
+import { pickableModels, type PickableModel } from "../../utils/chatModels";
+import type { Adapter, ChatConfig } from "../../utils/agents";
 import type { ChatModelInfo } from "../../utils/chatTypes";
 
 // This machine's real catalogue, read out of the same committed probe capture
@@ -32,7 +33,7 @@ function machineModels(): ChatModelInfo[] {
 
 // The adapter, which declares no models at all now. What a session that never
 // handshook falls back to is the probe cache, below.
-const adapter: ChatConfig = {
+const chat: ChatConfig = {
   transport: "claude_stream_json",
   program: "claude",
   base_args: [],
@@ -46,6 +47,19 @@ const adapter: ChatConfig = {
   modes: [],
   effort: [],
   acp: { serve_client_fs: false },
+};
+
+const claude: Adapter = {
+  id: "claude",
+  label: "Claude",
+  program: "claude",
+  base_args: [],
+  yolo_args: [],
+  resume_args: [],
+  parser_kind: null,
+  running_pattern: null,
+  pty_quiet_ms: 2000,
+  chat,
 };
 
 // What `catalog_probe` remembered the last time it asked. Same shape as a live
@@ -65,9 +79,12 @@ const cached = [
 function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
   const onSelectModel = vi.fn();
   const onSelectEffort = vi.fn();
+  const models: readonly PickableModel[] = over.models ?? pickableModels(machineModels(), [], chat);
   const result = render(() => (
     <ModelPicker
-      models={pickableModels(machineModels(), [], adapter)}
+      models={models}
+      providers={[lockedProvider(claude, models)]}
+      agentId="claude"
       value="sonnet"
       effort={null}
       modelPending={false}
@@ -78,15 +95,34 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
       {...over}
     />
   ));
-  // The pills are buttons in the container; their menus are portaled to the
-  // body, so rows are read off the document rather than off the render root.
   const pills = () => [...result.container.querySelectorAll("button")] as HTMLButtonElement[];
-  // `pointerClick`, not `fireEvent.click`: a Kobalte trigger opens on
-  // `pointerdown` and answers a bare click with nothing (src/test/menus.ts).
-  const open = (i: number) => {
-    pointerClick(pills()[i]);
-    // The last one: menus are portaled to the body, and a menu another render
-    // in this file left behind is still a match for the first selector.
+
+  // The model pill opens the palette, which is a dialog portaled to the body.
+  // The rows read off the document for that reason.
+  const openPalette = () => {
+    fireEvent.click(pills()[0]);
+    const lists = [...document.querySelectorAll('[role="listbox"][aria-label="Models"]')];
+    const list = lists[lists.length - 1];
+    if (!list) throw new Error("the model pill opened no palette");
+    return list as HTMLElement;
+  };
+  const modelNames = (list: HTMLElement) =>
+    [...list.querySelectorAll('[role="option"]')].map(
+      (row) => (row.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent,
+    );
+  const pickModel = (list: HTMLElement, name: string) => {
+    const row = [...list.querySelectorAll('[role="option"]')].find(
+      (r) => (r.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent === name,
+    );
+    if (!row) throw new Error(`no model row named ${name}`);
+    fireEvent.click(row as HTMLElement);
+  };
+
+  // The effort pill is still a menu. `pointerClick`, not `fireEvent.click`: a
+  // Kobalte trigger opens on `pointerdown` and answers a bare click with
+  // nothing (src/test/menus.ts).
+  const openEffort = () => {
+    pointerClick(pills()[1]);
     const menus = [...document.querySelectorAll('[role="menu"]')];
     const menu = menus[menus.length - 1];
     if (!menu) throw new Error("the pill opened no menu");
@@ -94,53 +130,46 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
   };
   const rowNames = (menu: HTMLElement) =>
     [...menu.children].map((row) => (row.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent);
-  const pick = (menu: HTMLElement, name: string) => {
-    const row = [...menu.children].find(
-      (r) => (r.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent === name,
-    );
-    if (!row) throw new Error(`no row named ${name}`);
-    pointerClick(row as HTMLElement);
-  };
-  return { ...result, pills, open, rowNames, pick, onSelectModel, onSelectEffort };
+
+  return { ...result, pills, openPalette, modelNames, pickModel, openEffort, rowNames, onSelectModel, onSelectEffort };
 }
 
 describe("ModelPicker", () => {
   it("lists this machine's real models by display name", () => {
-    const { open, rowNames } = setup();
-    const names = rowNames(open(0));
+    const { openPalette, modelNames } = setup();
+    const names = modelNames(openPalette());
     expect(names).toContain("Default (recommended)");
     expect(names).toContain("Sonnet");
     expect(names).toContain("Haiku");
-    // Five is under the flat limit, so the whole catalogue is on one page and
-    // there is no "More models" fold to click through.
+    // The whole catalogue, with no fold to click through: the palette scrolls
+    // and filters, so the page limit the menu needed is gone.
     expect(names).toHaveLength(5);
-    expect(names).not.toContain("More models");
   });
 
   it("carries each model's own description into its row", () => {
     // The reason to reach for one model over another is the sentence the
     // catalogue already ships; a list of bare names does not say which to pick.
-    const menu = setup().open(0);
-    expect(menu.textContent).toContain("Fastest for quick answers");
+    expect(setup().openPalette().textContent).toContain("Fastest for quick answers");
   });
 
-  it("ticks only the selected row", () => {
-    const menu = setup({ value: "haiku" }).open(0);
-    const ticked = [...menu.children].filter((r) => r.textContent?.includes("Haiku"));
-    expect(ticked).toHaveLength(1);
+  it("marks only the selected row", () => {
+    const list = setup({ value: "haiku" }).openPalette();
+    const marked = [...list.querySelectorAll('[role="option"][aria-selected="true"]')];
+    expect(marked).toHaveLength(1);
+    expect(marked[0].textContent).toContain("Haiku");
   });
 
   it("renders a usable picker from the probe cache when there was no handshake", () => {
-    const { pills, open, rowNames, pick, onSelectModel } = setup({
-      models: pickableModels([], cached, adapter),
+    const { pills, openPalette, modelNames, pickModel, onSelectModel } = setup({
+      models: pickableModels([], cached, chat),
       value: "sonnet",
     });
     expect(pills()[0].disabled).toBe(false);
-    const menu = open(0);
-    expect(rowNames(menu)).toEqual(["Sonnet 5"]);
+    const list = openPalette();
+    expect(modelNames(list)).toEqual(["Sonnet 5"]);
     // Usable means it can actually be picked, not just that it renders.
-    pick(menu, "Sonnet 5");
-    expect(onSelectModel).toHaveBeenCalledWith(expect.objectContaining({ value: "sonnet" }));
+    pickModel(list, "Sonnet 5");
+    expect(onSelectModel).toHaveBeenCalledWith("claude", expect.objectContaining({ value: "sonnet" }));
   });
 
   it("hides the effort control for a model declaring no levels, and shows all five for one that does", () => {
@@ -149,7 +178,7 @@ describe("ModelPicker", () => {
 
     const sonnet = setup({ value: "sonnet" });
     expect(sonnet.pills()).toHaveLength(2);
-    expect(sonnet.rowNames(sonnet.open(1))).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(sonnet.rowNames(sonnet.openEffort())).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
 
   it("says Default for an effort nothing has reported, without offering it as a level", () => {
@@ -158,7 +187,7 @@ describe("ModelPicker", () => {
     // would be a claim; offering "Default" as a pick would send a bad flag.
     const s = setup({ value: "sonnet", effort: null });
     expect(s.pills()[1].textContent).toContain("Default");
-    expect(s.rowNames(s.open(1))).not.toContain("Default");
+    expect(s.rowNames(s.openEffort())).not.toContain("Default");
   });
 
   // The context readout deliberately does not live here. It sits in the status
@@ -177,27 +206,28 @@ describe("ModelPicker", () => {
   });
 
   it("hands back the whole entry, so the caller has the resolved id a pick is confirmed by", () => {
-    const { open, pick, onSelectModel } = setup();
-    pick(open(0), "Haiku");
+    const { openPalette, pickModel, onSelectModel } = setup();
+    pickModel(openPalette(), "Haiku");
     expect(onSelectModel).toHaveBeenCalledWith(
+      "claude",
       expect.objectContaining({ value: "haiku", resolvedModel: "claude-haiku-4-5-20251001" }),
     );
   });
 
   it("says when the list is remembered rather than reported by this session", () => {
     expect(
-      setup({ models: pickableModels([], cached, adapter), value: "sonnet" }).getByText(/Last known list/),
+      setup({ models: pickableModels([], cached, chat), value: "sonnet" }).getByText(/Last known list/),
     ).toBeTruthy();
     expect(setup().queryByText(/Last known list/)).toBeNull();
   });
 
   // Nothing cached and no handshake is a real state now that the adapter table
-  // is gone, and it used to be unreachable: the table filled this gap with
-  // models the installed CLI was never asked about. The pill still renders, so
-  // the toolbar keeps its shape, but there is nothing behind it to pick.
-  it("offers nothing to pick when neither the session nor the cache has an answer", () => {
-    const { pills, rowNames, open } = setup({ models: pickableModels([], [], adapter), value: null });
-    expect(pills()[0].disabled).toBe(true);
-    expect(rowNames(open(0))).toEqual([]);
+  // is gone. The pill still opens: with the palette behind it, an empty list is
+  // a thing to look at rather than a reason to bar the door.
+  it("opens on nothing to pick, and says the list is empty rather than pretending", () => {
+    const { pills, openPalette } = setup({ models: pickableModels([], [], chat), value: null });
+    expect(pills()[0].disabled).toBe(false);
+    expect(openPalette().querySelectorAll('[role="option"]')).toHaveLength(0);
+    expect(screen.getAllByText("No models known yet").length).toBeGreaterThan(0);
   });
 });

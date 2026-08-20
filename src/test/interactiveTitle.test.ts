@@ -131,6 +131,13 @@ const KEPT = new Map<string, Kept>([
   ["components/ShortcutSheet/ShortcutSheet.tsx", { count: 1, reason: HEADING }],
   ["components/Tooltip/Tooltip.stories.tsx", { count: 1, reason: FIXTURE }],
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],
+  [
+    "panels/Chat/AgentPalette.tsx",
+    {
+      count: 1,
+      reason: `${HEADING}, and hidden at that: the panes name themselves, so the dialog's name is carried by \`titleHidden\``,
+    },
+  ],
   ["panels/Chat/ModelPicker.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Chat/ChatView.tsx", { count: 1, reason: HEADING }],
   ["panels/Chat/SessionDiffView.tsx", { count: 5, reason: TRUNCATION }],
@@ -410,8 +417,10 @@ const NAMED_BY_TEXT = new Set(["Tab"]);
  *  is why there is nothing further to assert here. `Toast.CloseButton` is
  *  Kobalte's, which always carries an `aria-label` (its own translation when
  *  the caller passes none) and forwards the rest to `as={Button}`, so the
- *  tooltip reaches an implementation the `as=` hides from this scan. */
-const NAMES_ITSELF = new Set(["Picker", "Toast.CloseButton"]);
+ *  tooltip reaches an implementation the `as=` hides from this scan.
+ *  `PickerButton` is the same pill for a control whose choices are a dialog
+ *  rather than a menu, and takes the same required `ariaLabel`. */
+const NAMES_ITSELF = new Set(["Picker", "PickerButton", "Toast.CloseButton"]);
 
 /** The attribute region of every JSX opening tag: `[start, end, tagName]`.
  *

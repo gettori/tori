@@ -1,0 +1,156 @@
+/* The model palette. Chrome only: the panel, the backdrop and the focus trap
+   are Dialog's, and the rows restate Combobox's `.item` recipe on purpose so a
+   list of things to pick reads the same wherever it appears. */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sway-space-3);
+  /* Bounded here rather than left to the content: a machine with eight agents
+     and forty models would otherwise grow the panel past the viewport. */
+  max-height: min(60vh, 520px);
+}
+
+.filter {
+  height: var(--control-height);
+  padding: 0 var(--sway-space-4);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--sway-text-lg);
+  outline: none;
+}
+
+.filter:focus-visible {
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.filter::placeholder {
+  color: var(--fg-subtle);
+}
+
+.panes {
+  display: grid;
+  /* The agent names are short and bounded; the models are neither, so the space
+     goes to the pane that needs it. */
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  gap: var(--sway-space-3);
+  min-height: 0;
+}
+
+.pane {
+  overflow-y: auto;
+  min-height: 0;
+  padding: var(--sway-space-1);
+  border: 1px solid var(--border-rail);
+  border-radius: var(--sway-radius-md);
+}
+
+/* Which pane the arrow keys are talking to. Focus never leaves the filter box,
+   so without this the highlight moves in a column with nothing saying why. */
+.paneActive {
+  border-color: var(--border-default);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-3);
+  padding: var(--sway-space-2) var(--sway-space-3);
+  border-radius: var(--sway-radius-md);
+  color: var(--fg-default);
+  font-size: var(--sway-text-md);
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--neutral-hover);
+}
+
+/* The active row of the *active* pane only: two highlights at once would be two
+   answers to what Enter does. */
+.paneActive .rowActive {
+  background: var(--neutral-subtle);
+}
+
+.rowInert {
+  cursor: default;
+  color: var(--fg-muted);
+}
+
+.rowInert:hover {
+  background: transparent;
+}
+
+.rowBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sway-space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowDesc {
+  font-size: var(--sway-text-sm);
+  color: var(--fg-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  font-size: var(--sway-text-sm);
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.fix {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sway-space-1);
+  padding: 0 var(--sway-space-2);
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--danger-fg);
+  font-family: inherit;
+  font-size: var(--sway-text-sm);
+  cursor: pointer;
+}
+
+.fix:hover {
+  background: var(--neutral-hover);
+}
+
+.empty {
+  padding: var(--sway-space-3) var(--sway-space-4);
+  font-size: var(--sway-text-md);
+  color: var(--fg-subtle);
+}
+
+.keys {
+  display: flex;
+  gap: var(--sway-space-4);
+  font-size: var(--sway-text-sm);
+  color: var(--fg-subtle);
+}
+
+.keys kbd {
+  padding: 0 var(--sway-space-1);
+  margin-right: var(--sway-space-1);
+  border: 1px solid var(--border-rail);
+  border-radius: var(--sway-radius-sm);
+  font-family: inherit;
+  font-size: inherit;
+}

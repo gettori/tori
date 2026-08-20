@@ -11,6 +11,8 @@ import StatusStrip from "./StatusStrip";
 import ModeSelector from "./ModeSelector";
 import ConfigMirror from "./ConfigMirror";
 import ModelPicker from "./ModelPicker";
+import { lockedProvider } from "./agentPaletteData";
+import { draftPick, hasPick, pickRidesArgv } from "../../utils/chatDraftPick";
 import FastModeStatus from "./FastModeStatus";
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { rateLimitMessage } from "../../utils/chatRateLimit";
@@ -222,6 +224,23 @@ export default function ChatView(props: {
   /** Whether this session can take a turn yet. The rule, and why it differs by
    *  transport, lives with the rest of the store's decisions. */
   const canSend = () => sendCapable(state, findAdapter(props.agentId).chat?.transport);
+
+  // What the draft this tab grew out of was set to run as, read once: it is what
+  // the session is *opened* on, and every change after that goes through the
+  // session's own controls. All-null for a fork, a rewind or a restore.
+  const opening = draftPick(props.tabId);
+
+  /** Whether the opening pick is in force, so the held first message may go.
+   *
+   *  True from the start for claude, whose pick rides the argv: the session that
+   *  answers the handshake is already running it. An ACP adapter declares no
+   *  `model_args` at all and refuses a model before its session exists, so there
+   *  the pick is a request made after the session opens and awaited before the
+   *  first message is sent on it. */
+  const [pickApplied, setPickApplied] = createSignal(
+    pickRidesArgv(findAdapter(props.agentId).chat?.transport) || !hasPick(opening),
+  );
+  let pickTried = false;
 
   /**
    * Hand a held first message back, and tell the tab its session never happened.
@@ -565,9 +584,12 @@ export default function ChatView(props: {
         // A reconnect is not a fork: the fork already happened, and asking for
         // one again would branch the session a second time.
         forkFrom: opts.reconnect ? null : (props.forkFrom ?? null),
-        model: null,
-        mode: null,
-        effort: null,
+        // The draft's pick, as argv. A reconnect re-attaches to a session that
+        // already has these in force, so re-asserting them would be Sway
+        // overriding whatever the conversation switched to since.
+        model: opts.reconnect ? null : opening.model,
+        mode: opts.reconnect ? null : opening.mode,
+        effort: opts.reconnect ? null : opening.effort,
         extraDirs: [],
         // Carried at spawn as well as reported by the effect below, because a
         // session restored into a background tab would otherwise stream at full
@@ -623,11 +645,49 @@ export default function ChatView(props: {
     }
   });
 
+  /**
+   * Put the draft's pick to an ACP session, now that it has one.
+   *
+   * Awaited before the held message goes: a stale cache row is only ever caught
+   * by the agent refusing the value, and sending on the wrong model is not
+   * something a later error can undo. A refusal therefore keeps the message
+   * held and says so - the session stays open and locked, so the model can be
+   * picked again and the send goes when a pick lands.
+   */
+  createEffect(() => {
+    if (pickApplied() || !canSend() || pickTried) return;
+    pickTried = true;
+    void untrack(async () => {
+      try {
+        if (opening.model !== null) {
+          await invoke("chat_set_model", {
+            sessionId: props.sessionId,
+            model: opening.model,
+            effort: opening.effort,
+          });
+        }
+        if (opening.mode !== null) {
+          await invoke("chat_set_mode", { sessionId: props.sessionId, mode: opening.mode });
+        }
+        setPickApplied(true);
+      } catch (e) {
+        edit((s) =>
+          applyEvent(s, {
+            type: "sessionError",
+            sessionId: props.sessionId,
+            message: `That model was refused, so nothing was sent: ${String(e)}`,
+            fatal: false,
+          }),
+        );
+      }
+    });
+  });
+
   // A message written before this session could take it: a draft tab's first
   // send, or one handed over by "send to a new chat". Sent here rather than at
   // spawn, because a spawned child is not yet a session that can answer.
   createEffect(() => {
-    if (!canSend()) return;
+    if (!canSend() || !pickApplied()) return;
     // Only readiness is tracked. `onSend` reads half the store on its way
     // through, and tracking that would re-run this on every turn boundary for
     // the rest of the session.
@@ -1097,7 +1157,9 @@ export default function ChatView(props: {
   const liveModes = () => pickableModes(state.modes, chatConfig());
   const offered = () => capabilitiesFor(shownModel(), chatConfig(), liveModes());
 
-  function onSelectModel(model: PickableModel) {
+  // The agent is ignored on purpose: a locked session is handed one provider,
+  // so the only agent the palette can name is this one.
+  function onSelectModel(_agentId: string, model: PickableModel) {
     edit((s) => selectModel(s, model));
     // Effort is sent with the model because that is how the command carries it:
     // a level the new model does not offer would be rejected, so it is dropped
@@ -1140,10 +1202,15 @@ export default function ChatView(props: {
    *  rather than a picker that silently shows a model the session never
    *  entered. */
   function applyModelChange(model: string, effort: string | null, revert: () => void) {
-    void invoke("chat_set_model", { sessionId: props.sessionId, model, effort }).catch((e) => {
-      revert();
-      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
-    });
+    void invoke("chat_set_model", { sessionId: props.sessionId, model, effort })
+      // A pick that lands is also the way out of a refused opening pick: the
+      // first message is still held, and this is the session finally being on a
+      // model it agreed to.
+      .then(() => setPickApplied(true))
+      .catch((e) => {
+        revert();
+        emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+      });
   }
 
   /** The one path to `chat_set_config_option`, for the mirrored controls.
@@ -1557,6 +1624,9 @@ export default function ChatView(props: {
                 and the mode - which no model constrains - sits at the end. */}
             <ModelPicker
               models={models()}
+              // One provider, which is the whole of the lock: the palette has
+              // no locked mode, it is simply handed a list of one.
+              providers={[lockedProvider(findAdapter(props.agentId), models())]}
               value={shownModel()?.value ?? null}
               agentId={props.agentId}
               effort={shownEffort(state)}

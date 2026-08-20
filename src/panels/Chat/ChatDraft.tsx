@@ -1,4 +1,5 @@
-// A chat tab before it has a session: the composer, and nothing behind it.
+// A chat tab before it has a session: the composer, its controls, and nothing
+// behind them.
 //
 // This is the whole of the draft state. No child process is spawned, no session
 // id is minted, no claim is taken and nothing is registered as live, so a tab
@@ -11,12 +12,21 @@
 // of that component's call sites are only meaningful with a session id, and
 // making them all narrow a nullable one would trade a small duplicate shell for
 // a large permanent lie. What the two genuinely share - what an `@` mention
-// means - is shared as code (`composerAttachments`), not by living together.
-import { createSignal } from "solid-js";
-import { Show } from "solid-js";
+// means, and the model palette - is shared as code, not by living together.
+import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import Composer from "./Composer";
+import ModelPicker from "./ModelPicker";
+import ModeSelector from "./ModeSelector";
 import { composerAttachments } from "./composerAttachments";
+import { paletteProviders } from "./agentPaletteData";
+import { probeAgent, probeOnHighlight } from "./draftProbe";
 import { dropPending, draftFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
+import { draftPick, resetDraftPick, setDraftPick } from "../../utils/chatDraftPick";
+import { openAgentCard } from "../../utils/agentCard";
+import { agentReady, agentSignedOut, ensureAgentHealthLoaded } from "../../utils/agentHealth";
+import { agents, ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
+import { capabilitiesFor, type PickableModel } from "../../utils/chatModels";
+import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../utils/modelCatalog";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import styles from "./Chat.module.css";
 
@@ -27,9 +37,14 @@ export default function ChatDraft(props: {
   tabId: string;
   cwd: string;
   active: boolean;
+  /** The agent this draft would start. Lives on the tab record rather than here,
+   *  so the tab bar and the palette cannot disagree about it. */
+  agentId: string;
   /** Why the last first-send attempt did not reach a session. Rendered above the
    *  composer, because it is the thing that decides what the user does next. */
   error?: string;
+  /** Point the draft at a different agent. */
+  onSelectAgent: (agentId: string) => void;
   /** Mint a session and spawn it. The held message rides along on the other
    *  side, so this takes nothing and returns nothing. */
   onStart: () => void;
@@ -43,8 +58,53 @@ export default function ChatDraft(props: {
     () => props.cwd,
   );
 
+  onMount(() => {
+    ensureAdaptersLoaded();
+    ensureAgentHealthLoaded();
+    // The cache, then one probe for the agent this draft would actually start.
+    // Opening a chat on claude is already going to launch claude, so asking it
+    // costs nothing new; asking every other agent on the machine would.
+    void ensureModelCatalogsLoaded().then(() => probeAgent(props.agentId));
+  });
+  onCleanup(() => probeOnHighlight.cancel());
+
+  const providers = createMemo(() =>
+    paletteProviders({
+      adapters: agents(),
+      catalogs: modelCatalogs(),
+      ready: agentReady,
+      signedOut: agentSignedOut,
+      probing: isProbing,
+    }),
+  );
+  const mine = () => providers().find((p) => p.agentId === props.agentId) ?? null;
+  const models = () => mine()?.models ?? [];
+  const pick = () => draftPick(props.tabId);
+  const model = () => models().find((m) => m.value === pick().model) ?? null;
+  const offered = () => capabilitiesFor(model(), findAdapter(props.agentId).chat ?? null);
+
+  /** Why this draft cannot be sent, or null. The agent stays selected either
+   *  way: a draft that silently switched away from a broken agent would be Sway
+   *  choosing for the user, and the pill is where the problem is legible. */
+  const blocked = () => {
+    const health = mine()?.health;
+    if (!health || health.kind !== "fix") return null;
+    return `${findAdapter(props.agentId).label}: ${health.reason.toLowerCase()}`;
+  };
+
+  function onPickModel(agentId: string, picked: PickableModel) {
+    if (agentId !== props.agentId) {
+      // Mode and effort name things the *old* agent published, so they go with
+      // it rather than being carried onto flags the new one never declared.
+      resetDraftPick(props.tabId, picked.value);
+      props.onSelectAgent(agentId);
+      return;
+    }
+    setDraftPick(props.tabId, { model: picked.value });
+  }
+
   function onSend(text: string) {
-    if (starting()) return;
+    if (starting() || blocked() !== null) return;
     const trimmed = text.trim();
     // Attachment-only is a valid thing to send, so the chips count too. Nothing
     // at all is not: an empty send would cost a process and a session id.
@@ -86,7 +146,7 @@ export default function ChatDraft(props: {
         // one would promise commands this chat may not have.
         commands={[]}
         held={false}
-        disabled={starting()}
+        disabled={starting() || blocked() !== null}
         loadFiles={attachments.loadProjectFiles}
         onSend={onSend}
         onAttachFile={attachments.onAttachFile}
@@ -100,6 +160,38 @@ export default function ChatDraft(props: {
         onDropQueued={() => {}}
         onSendQueued={() => {}}
         onDiscardQueued={() => {}}
+        controls={
+          <>
+            <ModelPicker
+              models={models()}
+              providers={providers()}
+              value={pick().model}
+              agentId={props.agentId}
+              effort={pick().effort}
+              // Nothing is in flight before there is a session, so no pick is
+              // ever waiting on a turn boundary here.
+              modelPending={false}
+              effortPending={false}
+              disabled={starting()}
+              onSelectModel={onPickModel}
+              onSelectEffort={(effort) => setDraftPick(props.tabId, { effort })}
+              onHighlightAgent={(agentId) => probeOnHighlight(agentId)}
+              onFixAgent={openAgentCard}
+            />
+            <Show when={offered().modes.length > 0}>
+              <ModeSelector
+                mode={pick().mode}
+                modes={offered().modes}
+                pending={false}
+                disabled={starting()}
+                onSelect={(mode) => setDraftPick(props.tabId, { mode })}
+              />
+            </Show>
+            <Show when={blocked()}>
+              {(reason) => <span class={styles.barNote}>{reason()}</span>}
+            </Show>
+          </>
+        }
       />
     </div>
   );
