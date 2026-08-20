@@ -6,7 +6,10 @@ import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
 import AgentGlyph from "../../../../components/Icon/AgentGlyph";
+// Aliased: this module already imports Solid's control-flow `Switch`.
+import Toggle from "../../../../components/Switch/Switch";
 import { findAdapter } from "../../../../utils/agents";
+import { agentChosen, enableBlockedReason, setAgentEnabled } from "../../../../utils/agentEnabled";
 import { copyText } from "../../../../utils/clipboard";
 import {
   chatTier,
@@ -281,6 +284,23 @@ export default function AgentDetail(props: {
           </div>
         </div>
         <span class={`${styles.statePill} ${verdict().cls}`}>{verdict().label}</span>
+        {/* Here as well as in the table, because this is the page a reader
+            lands on to install or sign in, and turning the agent on is the
+            next thing they want. No words beside it: the switch is the last
+            thing on a line that already names the agent and prints its verdict,
+            and a caption there would be a third label for one row. */}
+        <span class={styles.detailToggle}>
+          <Toggle
+            checked={agentChosen(a().id)}
+            disabled={enableBlockedReason(a().id) !== null && !agentChosen(a().id)}
+            aria-label={`Offer ${a().label} in Sway`}
+            tooltip={
+              enableBlockedReason(a().id) ??
+              (agentChosen(a().id) ? "Disable in Sway" : "Enable in Sway")
+            }
+            onChange={(next) => setAgentEnabled(a().id, next)}
+          />
+        </span>
       </div>
 
       {/* Drift is only worth a banner in one direction. A binary *newer* than

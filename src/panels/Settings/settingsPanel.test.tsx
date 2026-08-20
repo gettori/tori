@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) }));
 
 
-import Settings from "./Settings";
+import Settings, { FOCUSABLE } from "./Settings";
 import { DEFAULT_SETTINGS, loadWorkspaceSettings, setZoom, zoom, zoomIn } from "./settingsStore";
 import { blameOn, reloadBlamePref, writeBlamePref } from "../../utils/blamePref";
 import { reloadSideBySide, sideBySideOn, writeSideBySide } from "../../utils/sideBySide";
@@ -580,7 +580,7 @@ describe("the dialog shell", () => {
 
   it("wraps Tab at both ends rather than letting focus leave", () => {
     render(() => <Settings onClose={() => {}} />);
-    const stops = [...panel().querySelectorAll<HTMLElement>("button, input, select, textarea")].filter(
+    const stops = [...panel().querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
       (el) => !el.closest("[hidden]") && el.getAttribute("tabindex") !== "-1",
     );
     const first = stops[0];
@@ -605,7 +605,7 @@ describe("the dialog shell", () => {
       .flatMap((p) => [...p.querySelectorAll("input")])[0];
     expect(hiddenInput, "a hidden pane has controls to exclude").toBeTruthy();
 
-    const last = [...panel().querySelectorAll<HTMLElement>("button, input, select, textarea")].filter(
+    const last = [...panel().querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
       (el) => !el.closest("[hidden]") && el.getAttribute("tabindex") !== "-1",
     );
     expect(last).not.toContain(hiddenInput);

@@ -82,8 +82,13 @@ const SETTINGS_PATH = "~/.config/sway/settings.json";
 /** What the focus trap counts as a stop. `[hidden]` is not excluded by the
  *  selector, so the inactive panes are filtered out by ancestor below: they are
  *  in the DOM (which is what keeps a pane's scroll position across a category
- *  switch) but must not be reachable by Tab. */
-const FOCUSABLE =
+ *  switch) but must not be reachable by Tab.
+ *
+ *  Exported so the tests assert against the trap's own list rather than a
+ *  hand-copied one: a panel that grows a disabled control at either end - an
+ *  agent switch that will not move, say - would otherwise fail a test about
+ *  wrapping with a stop no browser makes. */
+export const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** How long the search box has to go quiet before the aggregate is announced.
