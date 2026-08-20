@@ -167,6 +167,16 @@ export function acquireWebgl(term: Terminal, host: HTMLElement): WebglSlot {
   };
 }
 
+/** The terminal whose xterm host sits inside `root`, or null. For the trace
+ *  recipe's scrollback check, which needs the `Terminal` object and can reach
+ *  no component closure: this module already holds every term/host pair, and a
+ *  second registry would be a second thing to keep true. Works on a detached
+ *  `root` too, which is the state a disposed pane leaves its surfaces in. */
+export function terminalIn(root: HTMLElement): Terminal | null {
+  for (const e of entries) if (root.contains(e.host)) return e.term;
+  return null;
+}
+
 export function __webglStatsForTests(): { created: number; disposed: number; live: number } {
   return { created, disposed, live: liveCount() };
 }

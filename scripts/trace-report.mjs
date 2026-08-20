@@ -156,6 +156,36 @@ for (const p of passes) {
   }
 }
 
+// Whether the run is usable at all, before any of its numbers are read. Two
+// signatures discard it: a switch that reported no paint, and a stall between
+// two consecutive switches, which leaves a plausible-looking recovery row after
+// it (an occluded window is the known cause, and the 124-second gap is what it
+// looked like). Nulls alone are not the whole test.
+//
+// Gaps are measured inside a pass and never across one, and the first switch of
+// each pass is skipped: the recipe's own scripted pauses between passes run to
+// seconds (a spawn loop, the stream settle), so a threshold tight enough to
+// mean anything would flag every pass boundary. STALL_MS sits above every
+// scripted intra-pass pause and far below the signature being rejected.
+const STALL_MS = 8000;
+const nulls = switches.filter((s) => s.paint == null);
+const gapByPass = new Map();
+for (let i = 1; i < switches.length; i++) {
+  const [prev, s] = [switches[i - 1], switches[i]];
+  if (s.pass !== prev.pass) continue;
+  const gap = s.start - prev.start;
+  if (gap > (gapByPass.get(s.pass)?.gap ?? 0)) gapByPass.set(s.pass, { gap, key: s.key });
+}
+const stalled = [...gapByPass].filter(([, g]) => g.gap > STALL_MS);
+console.log("\nvalidity");
+console.log(
+  `  null paints       ${nulls.length}${nulls.length ? ` (${nulls.map((s) => s.key).join(", ")})` : ""}`,
+);
+for (const [p, g] of gapByPass) {
+  console.log(`  max gap ${p.padEnd(18)} ${g.gap.toFixed(0)}ms before ${g.key}`);
+}
+console.log(`  verdict           ${!nulls.length && !stalled.length ? "valid" : "DISCARD"}`);
+
 const waits = [...backById.values()]
   .map((b) => (jsById.has(b.id) ? b.enter - jsById.get(b.id).call : null))
   .filter((n) => n != null);
