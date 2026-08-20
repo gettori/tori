@@ -491,6 +491,13 @@ pub struct Agent {
     pub path: Option<String>,
     #[serde(default)]
     pub paths: std::collections::BTreeMap<String, String>,
+    /// Which agents this install offers, keyed by adapter id. An id with no
+    /// entry has never been answered for and counts as off, so the surfaces
+    /// that pick an agent list what the user chose rather than everything the
+    /// registry ships. Stored rather than derived because it is a preference:
+    /// health says what *could* run, this says what the user wants offered.
+    #[serde(default)]
+    pub enabled: std::collections::BTreeMap<String, bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -758,6 +765,7 @@ mod tests {
             agent: Agent {
                 path: Some("/opt/claude".into()),
                 paths: [("codex".to_string(), "/opt/codex".to_string())].into(),
+                enabled: [("codex".to_string(), true)].into(),
             },
             ..Default::default()
         };
@@ -997,8 +1005,24 @@ mod tests {
         // Sway's own hook noise stays folded until asked for.
         assert!(!back.chat_defaults.show_sway_hooks);
         assert_eq!(back.agent.path, None);
+        // Nothing offered until something says so. Empty rather than "every
+        // agent", because the pickers read this map and a missing key has to
+        // mean the user has not chosen rather than has chosen everything.
+        assert!(back.agent.enabled.is_empty());
         // And the section it did carry is untouched.
         assert_eq!(back.appearance.theme, "sway-dark");
+    }
+
+    /// The enabled map survives a write and a read, keyed by adapter id.
+    #[test]
+    fn the_enabled_agents_round_trip() {
+        let p = tmp_file();
+        let mut s = Settings::default();
+        s.agent.enabled.insert("claude".into(), true);
+        save_to(&p, &s).unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.agent.enabled.get("claude"), Some(&true));
+        assert_eq!(back.agent.enabled.get("codex"), None);
     }
 
     /// The per-agent override wins over the legacy global path, and a blank
@@ -1012,6 +1036,7 @@ mod tests {
                 ("codex".to_string(), "  ".to_string()),
             ]
             .into(),
+            enabled: Default::default(),
         };
         assert_eq!(pick_override(&agent, "claude"), Some("/builds/claude-dev".into()));
         // Blank per-agent entry falls through to the global, not to nothing:
