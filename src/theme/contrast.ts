@@ -129,6 +129,12 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   "fg.default": text([...CANVASES, "neutral.hover", "brand.wash"]),
   "fg.muted": text([...CANVASES, "neutral.hover"]),
   "fg.subtle": muted(CANVASES),
+  // Not parked here after failing: it is designed to sit under every floor.
+  "fg.watermark": exempt(
+    "watermark text stands in for absent content (placeholders, ghost hints); it is meant to " +
+      "recede below the muted floor, and the real content it makes room for arrives at full " +
+      "contrast the moment it exists",
+  ),
   "fg.onEmphasis": text(["success.emphasis", "attention.emphasis", "danger.emphasis"]),
 
   "canvas.default": surface(),

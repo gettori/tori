@@ -79,7 +79,7 @@
     box-shadow var(--sway-duration-fast) ease;
 }
 .search::placeholder {
-  color: var(--fg-subtle);
+  color: var(--fg-watermark);
   opacity: 1;
 }
 .search:focus {
