@@ -15,8 +15,8 @@ import Combobox, {
 } from "../Combobox/Combobox";
 import Dialog from "../Dialog/Dialog";
 import { fuzzyScore } from "../../utils/fuzzy";
-import { agents } from "../../utils/agents";
-import { agentReady, ensureAgentHealthLoaded } from "../../utils/agentHealth";
+import { ensureAgentHealthLoaded } from "../../utils/agentHealth";
+import { enabledAgents } from "../../utils/agentEnabled";
 import { liveChats, stoppableChats } from "../../utils/chatSessions";
 import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
 import { editorState } from "../../utils/editorState";
@@ -365,13 +365,14 @@ export default function Omnibox(props: {
   const commandRows = createMemo((): Row[] => {
     const out: Row[] = [];
     const sel = props.selected;
-    // Only agents this machine can actually start. An unavailable one is
-    // absent rather than offered-and-failing: a row that spawns a missing
-    // binary reports the failure after the user has already committed to a
-    // session, which is a worse place to learn it than the Agents panel.
-    // `agentReady` treats unknown as ready, so a slow or failed probe leaves
-    // the picker full rather than empty.
-    for (const a of agents().filter((a) => agentReady(a.id))) {
+    // Only agents this install offers *and* this machine can start. An agent
+    // the user turned off is absent because they said so; an unavailable one
+    // is absent rather than offered-and-failing, since a row that spawns a
+    // missing binary reports the failure after the user has already committed
+    // to a session, which is a worse place to learn it than the Agents panel.
+    // `agentEnabled` folds in `agentReady`, which treats unknown as ready, so a
+    // slow or failed probe does not empty the list of what was chosen.
+    for (const a of enabledAgents()) {
       out.push({
         id: `new:${a.id}`,
         label: `New ${a.label} session`,

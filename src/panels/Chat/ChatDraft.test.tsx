@@ -23,10 +23,21 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...
 // under test, so only the one accessor is stood in for.
 const remembered = vi.hoisted(() => ({
   value: {} as { agent?: string | null; model?: string | null; effort?: string | null; mode?: string | null },
+  /** Which agents this install offers. The palette lists what is offered, so a
+   *  bench with nothing enabled has an empty left pane. */
+  enabled: { claude: true, codex: true } as Record<string, boolean>,
 }));
 vi.mock("../Settings/settingsStore", async (orig) => {
   const actual = await orig<typeof import("../Settings/settingsStore")>();
-  return { ...actual, chatPrefs: () => remembered.value };
+  return {
+    ...actual,
+    chatPrefs: () => remembered.value,
+    // A getter: this factory runs once, and the enabled map is per test.
+    get settings() {
+      return { ...actual.settings, agent: { enabled: remembered.enabled } };
+    },
+    settingsLoaded: () => true,
+  };
 });
 
 import ChatDraft from "./ChatDraft";
@@ -119,6 +130,7 @@ afterEach(() => {
   clearComposer(TAB);
   clearDraftPick(TAB);
   remembered.value = {};
+  remembered.enabled = { claude: true, codex: true };
   invoke.mockClear();
 });
 
@@ -282,7 +294,7 @@ describe("a chat draft's first send", () => {
 });
 
 describe("a chat draft's pick", () => {
-  it("offers every chat-capable agent, from the cache alone", async () => {
+  it("offers the agents this install can start, from the cache alone", async () => {
     const { openPalette } = setup();
     await settle();
     openPalette();
@@ -290,9 +302,24 @@ describe("a chat draft's pick", () => {
     // so "Claude" appears there too.
     const agents = within(screen.getByRole("listbox", { name: "Agents" }));
     expect(agents.getByText("Claude")).toBeTruthy();
-    expect(agents.getByText("Codex")).toBeTruthy();
+    // Codex is turned on and its binary is missing, so nothing offers it. The
+    // palette is a list of things a send can start, not of what exists.
+    expect(agents.queryByText("Codex")).toBeNull();
     expect(within(screen.getByRole("listbox", { name: "Models" })).getByText("Sonnet")).toBeTruthy();
     expect(chatCalls()).toEqual([]);
+  });
+
+  // With nothing to offer the palette says which setting to go and change,
+  // rather than the filter's "no agents match" about a list that was never
+  // going to have any.
+  it("names the setting when this install offers nothing", async () => {
+    remembered.enabled = {};
+    const { openPalette } = setup();
+    await settle();
+    openPalette();
+    const agents = within(screen.getByRole("listbox", { name: "Agents" }));
+    expect(agents.queryByText("Claude")).toBeNull();
+    expect(agents.getByText("No agents enabled. Turn one on in Settings.")).toBeTruthy();
   });
 
   it("records a model on the tab rather than sending it anywhere", async () => {
@@ -375,10 +402,13 @@ describe("a chat draft's pick", () => {
 
   // A broken default keeps its selection: switching away for the user would hide
   // the problem rather than solve it, and the pill is where it is legible.
+  // Codex is enabled here and its binary is missing, which is the one way a
+  // draft can still be pointed at an agent nothing offers: the tab outlived the
+  // install. The palette drops it; the composer is where it says why.
   it("cannot be sent on a broken agent, and says which one and why", async () => {
     const { input, onStart, container } = setup({ agentId: "codex" });
     await settle();
-    expect(container.textContent).toContain("Codex: not installed");
+    expect(container.textContent).toContain("Codex is not installed");
 
     fireEvent.input(input, { target: { value: "go" } });
     fireEvent.keyDown(input, { key: "Enter" });

@@ -217,7 +217,7 @@ import {
 import { folderActors } from "../../utils/folderActors";
 import { shouldPollAccumulatedDiff } from "../../utils/sessionActivity";
 import { askAgentToResolve } from "../../utils/conflictAsk";
-import { findAdapter } from "../../utils/agents";
+import { sendBlockedReason } from "../../utils/sendTarget";
 import type { SessionTarget } from "../../utils/safeSend";
 import type { RevertCandidate } from "../../utils/revertGuard";
 import { isSelfWrite, markSelfWrite } from "../../utils/selfWrites";
@@ -799,12 +799,9 @@ export default function Editor(props: {
     };
   }
 
-  function sendDisabledReason(): string | null {
-    const sel = props.selected;
-    if (!sel?.sessionId) return "Select a session first";
-    if (findAdapter(sel.agent ?? "claude").resume_args.length === 0) return "This agent's sessions can't be resumed";
-    return null;
-  }
+  // The shared gate rather than a fourth copy of it: it already asks the two
+  // questions this asked, plus whether the agent is one this install offers.
+  const sendDisabledReason = () => sendBlockedReason(props.selected ?? null);
 
   const [askingConflict, setAskingConflict] = createSignal(false);
 
