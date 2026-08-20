@@ -10,9 +10,16 @@
  * `SWAY_RECIPE=6x4x3`: visit six worktrees, spawn four terminals in each, then
  * flip between two of them three times.
  *
- * Four passes, in this order, because each one leaves the state the next one
+ * Five passes, in this order, because each one leaves the state the next one
  * needs: first visits (cold), terminals (the multiplier), warm A/B flips (the
- * number the plan's target is about), tab clicks. Then the counts, then quit.
+ * number the plan's target is about), tab clicks, the shape mismatch. Then the
+ * counts, then quit.
+ *
+ * The mismatch pass goes *before* the streaming rows and not after: `stream()`
+ * starts `while true` producers that nothing kills, so anything placed after it
+ * is measured under a load the same-shape rows it is compared against never
+ * saw. It restores the layout it changed and closes the file it opened, so the
+ * passes after it and the end census see the state they always did.
  *
  * Worktree switches go straight to the selection signal rather than through the
  * sidebar's `selectUnit`, so the recipe measures the switch and not the
@@ -27,9 +34,24 @@
  * switch times out and the report reads `paint: null` on rows that are fine.
  */
 
+import type { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { emitWith, OPEN_TERMINAL, type OpenTerminal } from "./events";
+import {
+  emit,
+  emitWith,
+  EDITOR_CLOSE_TAB,
+  MOVE_TAB_TO_PANE,
+  type MoveTabToPane,
+  OPEN_IN_EDITOR,
+  type OpenInEditor,
+  OPEN_TERMINAL,
+  type OpenTerminal,
+  SPLIT_PANE,
+  type SplitPane,
+} from "./events";
+import { terminalIn } from "../panels/Terminal/webglLru";
 import { nextSpan, traceFlush, traceNote, traceSwitchStart } from "./perfTrace";
 
 /** Only the fields the recipe reads. The full shapes live in LeftSidebar. */
@@ -37,10 +59,15 @@ type Unit = { label: string; folderPath: string; branch: string | null; kind: st
 type Config = {
   spaces: { name: string; projects: { name: string; path: string; branchUnits: Unit[] }[] }[];
 };
+type Target = { sel: Record<string, unknown>; unit: Unit };
 
-/** What the recipe needs from the app: somewhere to put the selection. App
- *  registers it on mount, because `setSelected` is not otherwise reachable. */
-export type RecipeHost = { select: (s: Record<string, unknown>) => void };
+/** What the recipe needs from the app: somewhere to put the selection, and the
+ *  selected workspace's pane count. App registers it on mount, because neither
+ *  `setSelected` nor the layout tree is otherwise reachable. */
+export type RecipeHost = {
+  select: (s: Record<string, unknown>) => void;
+  leaves: () => number;
+};
 
 let host: RecipeHost | null = null;
 let started = false;
@@ -107,6 +134,8 @@ export async function startRecipe(spec: string): Promise<void> {
   traceNote("pass", { name: "tab-clicks" });
   await clickTabs(rounds * 4);
 
+  await mismatchPass(units, rounds);
+
   // The degraded row: the same A/B flip with the pair's terminals all producing
   // output. A deterministic byte producer stands in for an agent, which would
   // make the run unreproducible; the switch pays for bytes, not their author.
@@ -138,7 +167,7 @@ function parse(spec: string): [number, number, number] {
   return [at(0, 6), at(1, 4), at(2, 3)];
 }
 
-async function enumerate(limit: number): Promise<{ sel: Record<string, unknown>; unit: Unit }[]> {
+async function enumerate(limit: number): Promise<Target[]> {
   let cfg: Config;
   try {
     cfg = await invoke<Config>("get_config");
@@ -146,7 +175,7 @@ async function enumerate(limit: number): Promise<{ sel: Record<string, unknown>;
     traceNote("recipe-abort", { why: `get_config failed: ${String(e)}` });
     return [];
   }
-  const out: { sel: Record<string, unknown>; unit: Unit }[] = [];
+  const out: Target[] = [];
   for (const space of cfg.spaces ?? []) {
     for (const project of space.projects ?? []) {
       for (const unit of project.branchUnits ?? []) {
@@ -168,7 +197,7 @@ async function enumerate(limit: number): Promise<{ sel: Record<string, unknown>;
   return out.slice(0, limit);
 }
 
-async function visit(u: { sel: Record<string, unknown>; unit: Unit }): Promise<void> {
+async function visit(u: Target): Promise<void> {
   // Armed before the trigger: a warm switch can settle inside the same task.
   const settled = nextSpan();
   // Re-selecting the worktree already shown opens no span, so there is nothing
@@ -220,6 +249,355 @@ async function clickTabs(count: number): Promise<void> {
     await painted;
     await sleep(300);
   }
+}
+
+// ---- Mismatch pass ---------------------------------------------------------
+//
+// Every switch the recipe measured before this one was between workspaces of
+// the same shape, so the path that disposes a pane subtree, reparents the
+// surfaces inside it and re-attaches WebGL had never run under instrumentation.
+// This pass makes one worktree two panes and A/Bs it against a one-pane one.
+//
+// Three things make a green run mean something rather than merely look green:
+//
+//   * A split with no tab carried into it is closed by App's empty-pane effect
+//     and collapsed by the layout layer, so it has to move a terminal across or
+//     there is no mismatch at all. `leaves` says which happened.
+//   * `reuseNode` exists to avoid disposal, so the positive control watches the
+//     *surfaces*: across a real mismatch the stage-host elements are the same
+//     objects (reparented) while the pane wrappers around them are different
+//     ones (disposed). Pane wrappers differ between a 2-pane and a 1-pane
+//     workspace by construction, so asserting on those alone proves nothing.
+//   * Geometry changes here by definition, so xterm reflows and CodeMirror
+//     re-measures. The scrollback check is therefore a named sentinel line, not
+//     a hash of the visible window.
+
+/** The line echoed into the measured terminal, and looked for either side. */
+const SENTINEL = "SWAY-MISMATCH-SENTINEL";
+
+/** One newline at the head of the opened file: the smallest edit that gives the
+ *  buffer a real undo history to survive the switch, and one this pass can undo
+ *  exactly, so the tab closes clean rather than into the dirty-buffer confirm. */
+const EDIT_MARK = "\n";
+
+/** Extensions the editor puts a CodeMirror view behind. Markdown, SVG and
+ *  images are deliberately absent: `editablePathOf` renders those rather than
+ *  editing them, so a pane showing one holds no view at all. A repo root is
+ *  mostly markdown, so without this the pass opens a README and measures an
+ *  empty document that reads zero on every field it compares. */
+const EDITABLE = /\.(ts|tsx|js|jsx|json|toml|rs|txt|css|ya?ml)$/i;
+
+type TermState = { found: boolean; length: number; viewportY: number; sentinel: string | null };
+type EditorReading = {
+  found: boolean;
+  scrollTop: number;
+  anchor: number;
+  head: number;
+  undo: number;
+};
+type Reading = {
+  termHost: HTMLElement | null;
+  editorHost: HTMLElement | null;
+  termPane: HTMLElement | null;
+  editorPane: HTMLElement | null;
+  term: TermState;
+  editor: EditorReading;
+};
+
+/** Resolved through the lazy edge rather than imported: `@codemirror/commands`
+ *  sits behind the editor's code split (src/test/lazyEditorBoundary.test.ts) and
+ *  a static edge from here, which App imports eagerly, would drag it into the
+ *  main chunk. By the time this is read the pass has already opened a file, so
+ *  the chunk is loaded and the import costs nothing. */
+let undoDepthOf: ((state: EditorState) => number) | null = null;
+
+const stageHosts = () => [...document.querySelectorAll<HTMLElement>("[data-stage-host]")];
+// By dataset rather than an attribute selector: a tab id is a file path, so it
+// carries separators a selector would have to be escaped for.
+const hostEl = (id: string) => stageHosts().find((el) => el.dataset.stageHost === id) ?? null;
+const editorHostEl = () =>
+  stageHosts().find((el) => el.dataset.stageHost?.startsWith("editor-stage")) ?? null;
+const editorView = () => {
+  const host = editorHostEl();
+  return host ? EditorView.findFromDOM(host) : null;
+};
+
+/** What the editor half of the pass is looking at, for the note it writes when
+ *  it cannot find a loaded view. Without this the abort says only that nothing
+ *  was found, which is the least useful half of the answer. */
+function editorCensus(): Record<string, unknown> {
+  return {
+    // Document-wide, not host-scoped: an empty view where the text was expected
+    // and a loaded one somewhere else are two different faults, and only a scan
+    // that can see both tells them apart.
+    views: [...document.querySelectorAll<HTMLElement>(".cm-editor")].map((e) => ({
+      doc: EditorView.findFromDOM(e)?.state.doc.length ?? -1,
+      host: e.closest<HTMLElement>("[data-stage-host]")?.dataset.stageHost ?? null,
+      pane: e.closest<HTMLElement>("[data-pane-id]")?.dataset.paneId ?? null,
+      box: [e.clientWidth, e.clientHeight],
+    })),
+    editorHosts: stageHosts()
+      .filter((el) => el.dataset.stageHost?.startsWith("editor-stage"))
+      .map((h) => h.dataset.stageHost),
+    tabsInStrip: [...document.querySelectorAll<HTMLElement>("[data-tab-id]")].map(
+      (el) => `${el.dataset.tabId}${el.getAttribute("aria-selected") === "true" ? "*" : ""}`,
+    ),
+  };
+}
+
+async function waitFor<T>(poll: () => T | null, ms: number): Promise<T | null> {
+  for (let i = 0; i * 100 < ms; i++) {
+    const v = poll();
+    if (v) return v;
+    await sleep(100);
+  }
+  return null;
+}
+
+/** Scrollback, reflow-tolerantly. `length` and `viewportY` are recorded because
+ *  they are the shape of the reflow, not because they are expected to hold: a
+ *  narrower pane rewraps and both move legitimately. The sentinel is the claim. */
+function termState(host: HTMLElement | null): TermState {
+  const term = host ? terminalIn(host) : null;
+  if (!term) return { found: false, length: -1, viewportY: -1, sentinel: null };
+  const buf = term.buffer.active;
+  let sentinel: string | null = null;
+  // From the end: `echo` puts the marker on the command line as well as in its
+  // output, and the output is the later of the two.
+  for (let i = buf.length - 1; i >= 0; i--) {
+    const line = buf.getLine(i)?.translateToString(true).trim() ?? "";
+    if (line.startsWith(SENTINEL)) {
+      sentinel = line;
+      break;
+    }
+  }
+  return { found: true, length: buf.length, viewportY: buf.viewportY, sentinel };
+}
+
+function editorState(host: HTMLElement | null): EditorReading {
+  const view = host ? EditorView.findFromDOM(host) : null;
+  if (!view) return { found: false, scrollTop: -1, anchor: -1, head: -1, undo: -1 };
+  const sel = view.state.selection.main;
+  return {
+    found: true,
+    scrollTop: Math.round(view.scrollDOM.scrollTop),
+    anchor: sel.anchor,
+    head: sel.head,
+    undo: undoDepthOf ? undoDepthOf(view.state) : -1,
+  };
+}
+
+function read(termId: string): Reading {
+  const termHost = hostEl(termId);
+  const editorHost = editorHostEl();
+  return {
+    termHost,
+    editorHost,
+    termPane: termHost?.closest<HTMLElement>("[data-pane-id]") ?? null,
+    editorPane: editorHost?.closest<HTMLElement>("[data-pane-id]") ?? null,
+    term: termState(termHost),
+    editor: editorState(editorHost),
+  };
+}
+
+/** A real file in the worktree root, picked the same way on every run so two
+ *  runs of one worktree open the same file. */
+async function pickFile(folderPath: string): Promise<string | null> {
+  type DirEntry = { name: string; path: string; is_dir: boolean };
+  let entries: DirEntry[];
+  try {
+    entries = await invoke<DirEntry[]>("fs_read_dir", { path: folderPath });
+  } catch (e) {
+    traceNote("mismatch-abort", { why: `fs_read_dir failed: ${String(e)}` });
+    return null;
+  }
+  // No fallback to "whatever was listed first": opening something the editor
+  // renders instead of edits would abort the pass a step later, with a worse
+  // message than the one this refusal carries.
+  const files = entries.filter((e) => !e.is_dir && !e.name.startsWith("."));
+  return files.find((f) => EDITABLE.test(f.name))?.path ?? null;
+}
+
+/** Named rather than inlined three times: `a` and `b` are the two worktrees
+ *  everywhere else in this pass, so a reading pair must not borrow them. */
+const bothViews = (before: Reading, after: Reading) => before.editor.found && after.editor.found;
+
+/** One A -> B -> A round trip, recorded either side. The comparison is on A's
+ *  own surfaces across the round trip rather than on one leg, so both
+ *  directions of the disposal are exercised by the thing that is checked. */
+async function roundTrip(a: Target, b: Target, termId: string, label: string, round: number) {
+  const before = read(termId);
+  const leavesBefore = host?.leaves() ?? -1;
+  await visit(b);
+  const leavesAway = host?.leaves() ?? -1;
+  await visit(a);
+  const after = read(termId);
+  traceNote("mismatch-round", {
+    label,
+    round,
+    leavesA: [leavesBefore, host?.leaves() ?? -1],
+    leavesB: leavesAway,
+    liveWebglContexts: liveWebglContexts(),
+    // The positive control: surfaces kept, wrappers rebuilt.
+    termHostSame: !!before.termHost && before.termHost === after.termHost,
+    editorHostSame: !!before.editorHost && before.editorHost === after.editorHost,
+    termPaneSame: !!before.termPane && before.termPane === after.termPane,
+    editorPaneSame: !!before.editorPane && before.editorPane === after.editorPane,
+    termFound: [before.term.found, after.term.found],
+    sentinelKept: !!before.term.sentinel && before.term.sentinel === after.term.sentinel,
+    sentinel: [before.term.sentinel, after.term.sentinel],
+    termLength: [before.term.length, after.term.length],
+    viewportY: [before.term.viewportY, after.term.viewportY],
+    // A view missing on either side fails these rather than passing them: a null
+    // reading is the loudest result this pass can produce, not an absence of one.
+    editorFound: [before.editor.found, after.editor.found],
+    editorSelKept:
+      bothViews(before, after) &&
+      before.editor.anchor === after.editor.anchor &&
+      before.editor.head === after.editor.head,
+    editorUndoKept: bothViews(before, after) && before.editor.undo === after.editor.undo,
+    editorScrollKept: bothViews(before, after) && before.editor.scrollTop === after.editor.scrollTop,
+    sel: [before.editor.anchor, before.editor.head, after.editor.anchor, after.editor.head],
+    undo: [before.editor.undo, after.editor.undo],
+    scrollTop: [before.editor.scrollTop, after.editor.scrollTop],
+  });
+}
+
+async function mismatchPass(units: Target[], rounds: number): Promise<void> {
+  // Two pass notes, not one: setting the pass up costs a file open and a pty
+  // write, and a switch sitting behind those would put a seconds-long gap
+  // inside the pass whose evenness is what says the run did not stall.
+  traceNote("pass", { name: "mismatch-setup" });
+  const a = units[0];
+  const b = units[Math.min(1, units.length - 1)];
+  if (a === b) {
+    traceNote("mismatch-abort", { why: "one worktree, nothing to A/B against" });
+    return;
+  }
+
+  await visit(a);
+  const termId = `recipe:${a.unit.folderPath}:0`;
+
+  // The recipe imports only OPEN_TERMINAL, so without this there is no editor
+  // view in the run at all and an editor check would measure nothing.
+  const file = await pickFile(a.unit.folderPath);
+  if (!file) {
+    traceNote("mismatch-abort", { why: `no editable file in ${a.unit.folderPath}` });
+    return;
+  }
+  emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: file });
+  // Opening the file is not enough to put it on screen. A pane's stored pick
+  // outranks a kind's claim (`activeIdInPane`), and the tab-clicks pass just
+  // stored a terminal in this pane, so the file lands in the strip behind it.
+  // Clicking its tab is what a user does and what writes the pane's pick.
+  const tab = await waitFor(
+    () =>
+      [...document.querySelectorAll<HTMLElement>(".unified-strip [data-tab-id]")].find(
+        (el) => el.dataset.tabId === file,
+      ) ?? null,
+    5000,
+  );
+  if (!tab) {
+    traceNote("mismatch-abort", { why: `no strip tab for ${file}`, ...editorCensus() });
+    return restoreMismatch(termId, null);
+  }
+  tab.click();
+  // A view appears before its text does, and a view over an empty document reads
+  // zero on every field this pass compares, which is a green that means nothing.
+  // So the wait is for the text, not for the view.
+  const view = await waitFor(() => {
+    const v = editorView();
+    return v && v.state.doc.length > 0 ? v : null;
+  }, 8000);
+  if (!view) {
+    traceNote("mismatch-abort", {
+      why: `no loaded editor view after opening ${file}`,
+      ...editorCensus(),
+    });
+    // The tab may still have opened, and a stray one would move the end census.
+    return restoreMismatch(termId, null);
+  }
+  undoDepthOf = (await import("@codemirror/commands")).undoDepth;
+  // Selection and scroll well away from the origin, and a document edit, so all
+  // three editor readings can tell a kept state from a rebuilt one. A rebuilt
+  // state would read zero on every one of them, which is why none of these may
+  // be left at zero.
+  const at = Math.floor(view.state.doc.length * 0.6);
+  view.dispatch({ changes: { from: 0, insert: EDIT_MARK } });
+  view.dispatch({
+    selection: { anchor: Math.max(0, at - 20), head: at },
+    effects: EditorView.scrollIntoView(at, { y: "center" }),
+  });
+  await sleep(500);
+  traceNote("mismatch-file", {
+    path: file,
+    docLength: view.state.doc.length,
+    ...editorState(editorHostEl()),
+  });
+
+  void invoke("pty_write", { id: termId, data: `echo ${SENTINEL}\n` }).catch(() => {});
+  traceNote("mismatch-sentinel", { tabId: termId, text: SENTINEL });
+  await sleep(GAP_MS);
+
+  // Same-shape control first, on the same surfaces the mismatch rounds measure,
+  // so one run says what "kept" and "rebuilt" look like side by side. Its own
+  // pass name, so the summary does not average the two shapes into one row.
+  traceNote("pass", { name: "mismatch-control" });
+  await roundTrip(a, b, termId, "control", 0);
+
+  const basePane = read(termId).termPane?.dataset.paneId ?? null;
+  emitWith<SplitPane>(SPLIT_PANE, { dir: "row", tabId: termId, kind: "task" });
+  await sleep(GAP_MS);
+  const split = host?.leaves() ?? -1;
+  // The editor read again here, not only either side of a switch: the split is
+  // itself a reparent, so a field that is already gone by this line was lost to
+  // the split rather than to the mismatch rounds that follow, and a round
+  // comparing zero against zero would otherwise report holding what it lost.
+  traceNote("mismatch-split", {
+    termId,
+    basePane,
+    leaves: split,
+    editor: editorState(editorHostEl()),
+    ...counts(),
+  });
+  if (split < 2) {
+    traceNote("mismatch-abort", { why: `split did not survive, leaves=${split}` });
+  } else {
+    traceNote("pass", { name: "mismatch", rounds });
+    for (let r = 0; r < rounds; r++) await roundTrip(a, b, termId, "mismatch", r);
+  }
+
+  await restoreMismatch(termId, basePane);
+  // Leave the selection where the passes before this one left it. The streaming
+  // pass opens by visiting A, and re-selecting the worktree already shown opens
+  // no span, so ending on A costs that pass one of its six samples. Its own pass
+  // name, so this tidying switch is not counted into the mismatch row.
+  traceNote("pass", { name: "mismatch-restore" });
+  await visit(b);
+}
+
+/** Put back what the pass changed, so the streaming rows and the end census see
+ *  the state every earlier run left them. The emptied pane is not closed here:
+ *  App's empty-pane effect collapses a pane that has held a tab and lost it, and
+ *  the leaf count below is what says it did. */
+async function restoreMismatch(termId: string, basePane: string | null): Promise<void> {
+  if (basePane) {
+    emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, { tabId: termId, kind: "task", paneId: basePane });
+    await sleep(GAP_MS);
+  }
+  // Undoing the edit by rewriting exactly what it inserted, rather than through
+  // the history: the buffer is dirty against disk until the text matches again,
+  // and a dirty tab closes into a confirm nothing in a scripted run can answer.
+  // Guarded on the text still being there, so a state that came back from disk
+  // is left alone rather than having its first character deleted.
+  const view = editorView();
+  if (view && view.state.doc.sliceString(0, EDIT_MARK.length) === EDIT_MARK) {
+    view.dispatch({ changes: { from: 0, to: EDIT_MARK.length, insert: "" } });
+  }
+  await sleep(300);
+  emit(EDITOR_CLOSE_TAB);
+  await sleep(GAP_MS);
+  traceNote("mismatch-restored", { leaves: host?.leaves() ?? -1, ...counts() });
 }
 
 /** The two multipliers the plan wants confirmed at runtime. Class names are
