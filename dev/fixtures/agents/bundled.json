@@ -70,6 +70,7 @@
           "fast_mode": true
         }
       ],
+      "split_model_names": false,
       "modes": [
         {
           "id": "default",
@@ -240,6 +241,7 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "split_model_names": false,
       "modes": [],
       "effort": [],
       "acp": {
@@ -293,6 +295,7 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "split_model_names": false,
       "modes": [],
       "effort": [],
       "acp": {
@@ -341,6 +344,7 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "split_model_names": false,
       "modes": [],
       "effort": [],
       "acp": {
@@ -378,6 +382,7 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "split_model_names": false,
       "modes": [],
       "effort": [],
       "acp": {
@@ -417,6 +422,7 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "split_model_names": true,
       "modes": [],
       "effort": [],
       "acp": {
@@ -468,6 +474,7 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "split_model_names": true,
       "modes": [],
       "effort": [],
       "acp": {

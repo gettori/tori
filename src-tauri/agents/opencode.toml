@@ -80,6 +80,12 @@ whoami_kind = "opencode_credentials"
 
 [chat]
 transport = "acp"
+
+# Its model names arrive as a "Provider/Name" path with the id repeating the
+# route in lowercase ("GitHub Copilot/Claude Sonnet 4.6" over
+# "github-copilot/claude-sonnet-4.6"; measured on opencode acp 1.18.3).
+# Lets the picker split them for display; the wire id is never rewritten.
+split_model_names = true
 # The whole launch. `opencode acp` speaks ACP over stdio, and Sway spawns the
 # child itself (transport::build_command, so PATH comes from a login shell)
 # rather than letting the SDK spawn it.

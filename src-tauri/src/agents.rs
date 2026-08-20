@@ -320,6 +320,12 @@ pub struct ChatConfig {
     /// What Sway knows about individual models, never what models exist. See
     /// [`ChatAnnotation`].
     pub annotations: Vec<ChatAnnotation>,
+    /// This agent's model names carry a `Provider/Name` path (measured on
+    /// opencode and pi), and the picker may unpick it for display. Opt-in per
+    /// adapter because it is a naming convention, not a protocol fact: applied
+    /// blindly, a `/` or `:` in an honest model name would be mangled. Display
+    /// only; the id on the wire is never rewritten.
+    pub split_model_names: bool,
     pub modes: Vec<ChatMode>,
     pub effort: Vec<ChatEffort>,
     /// How this agent departs from a spec-correct ACP client. Always present
@@ -669,6 +675,8 @@ struct ChatToml {
     #[serde(default)]
     annotations: Vec<ChatAnnotation>,
     #[serde(default)]
+    split_model_names: bool,
+    #[serde(default)]
     modes: Vec<ChatMode>,
     #[serde(default)]
     effort: Vec<ChatEffort>,
@@ -966,6 +974,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 mode_args: c.mode_args,
                 add_dir_args: c.add_dir_args,
                 annotations: c.annotations,
+                split_model_names: c.split_model_names,
                 modes: c.modes,
                 effort: c.effort,
                 acp: c.acp,
