@@ -10,10 +10,17 @@
 // Tab ids are NOT persisted: a restored tab gets a fresh PTY and therefore a
 // fresh id, so the active tab is recorded as an index into the stored order.
 
+import { hasPick, type DraftPick } from "./chatDraftPick";
+
 const LS_TABS = "sway.terminalTabs";
 // A workspace nobody has opened in this long is almost certainly finished work;
 // its stored tabs are dropped rather than offered forever.
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+// Longer than this and a draft comes back empty rather than truncated. This
+// store is one localStorage key for every workspace, so a pasted essay in one
+// draft would risk the quota and take every other workspace's tabs down with
+// it; and half a message handed back would read as whole.
+const MAX_DRAFT_TEXT = 16_000;
 
 // Command tabs (clone/bootstrap) are deliberately excluded: they are one-shot
 // progress views, and re-running a clone on relaunch would be destructive.
@@ -28,10 +35,17 @@ export type PersistedTab = {
   // Agent tabs that were resumed from a known session; absent for a fresh agent
   // tab whose transcript had not appeared yet, and for plain shells.
   //
-  // A chat tab always carries one: unlike an agent tab it mints its own session
-  // id up front (the transport is spawned with `--session-id`), so there is no
-  // window where a live chat has no id to restore against.
+  // A chat tab carries one unless it is a **draft**: a live chat mints its id up
+  // front (the transport is spawned with `--session-id`), and a draft has no
+  // session at all until its first send. So an absent id on a chat tab is not a
+  // gap, it is the thing to restore it as.
   sessionId?: string;
+  // A draft's unsent composer text, and what it was set to run as. Only drafts
+  // carry these: a live chat comes back by resuming, which brings its own
+  // transcript, and the tab id everything else is keyed by is minted fresh on
+  // restore so it cannot carry them.
+  text?: string;
+  pick?: DraftPick;
   // Chat tabs that were rewound: the checkpoint the worktree was put back to.
   // Kept across a relaunch so the tab still says the agent remembers turns that
   // were undone, which stays true for the life of the session. `forkFrom` is
@@ -61,6 +75,10 @@ export type OpenTabLike = {
   args: string[];
   sessionId?: string;
   rewindTo?: number;
+  /** A draft's composer text and pick. Both live in their own stores keyed by
+   *  tab id; the caller reads them there, so this module keeps its distance. */
+  text?: string;
+  pick?: DraftPick;
 };
 
 const isPersistable = (kind: string): kind is PersistedKind =>
@@ -79,6 +97,10 @@ export function toStore(
     if (!isPersistable(t.kind)) continue;
     const ws = (out[t.workspace] ??= { tabs: [], active: -1, savedAt: now });
     if (activeByWorkspace[t.workspace] === t.id) ws.active = ws.tabs.length;
+    // Only a draft: everything else comes back by respawning or resuming, and
+    // what was typed into a live chat belongs to a session that will replay its
+    // own transcript.
+    const draft = t.kind === "chat" && !t.sessionId;
     ws.tabs.push({
       title: t.title,
       cwd: t.cwd,
@@ -87,6 +109,8 @@ export function toStore(
       args: t.args,
       ...(t.sessionId ? { sessionId: t.sessionId } : {}),
       ...(t.rewindTo ? { rewindTo: t.rewindTo } : {}),
+      ...(draft && t.text && t.text.length <= MAX_DRAFT_TEXT ? { text: t.text } : {}),
+      ...(draft && t.pick && hasPick(t.pick) ? { pick: t.pick } : {}),
     });
   }
   return out;
@@ -117,6 +141,24 @@ export function pruneStale(store: TabStore, now: number, maxAgeMs = MAX_AGE_MS):
   return out;
 }
 
+/** A stored value that is not a string is not a pick; `null` is, and is what
+ *  every unset field of a `DraftPick` holds. */
+const pickField = (v: unknown): string | null => (typeof v === "string" ? v : null);
+
+/** A draft's two fields, normalised. Both are overwritten rather than merged, so
+ *  anything the file got wrong is dropped rather than passed on: the tab still
+ *  restores, just without that part. */
+function draftFields(t: PersistedTab): Pick<PersistedTab, "text" | "pick"> {
+  const p = t.pick as Partial<DraftPick> | undefined;
+  return {
+    text: typeof t.text === "string" && t.text.length <= MAX_DRAFT_TEXT ? t.text : undefined,
+    pick:
+      p && typeof p === "object"
+        ? { model: pickField(p.model), mode: pickField(p.mode), effort: pickField(p.effort) }
+        : undefined,
+  };
+}
+
 // Tolerant of anything already in storage: a shape that does not parse is
 // treated as "nothing stored" rather than throwing on startup.
 export function parseStore(raw: string | null): TabStore {
@@ -128,18 +170,20 @@ export function parseStore(raw: string | null): TabStore {
     for (const [ws, v] of Object.entries(parsed as Record<string, unknown>)) {
       const e = v as Partial<WorkspaceTabs> | null;
       if (!e || !Array.isArray(e.tabs) || typeof e.savedAt !== "number") continue;
-      const tabs = e.tabs.filter(
-        (t): t is PersistedTab =>
-          !!t &&
-          typeof t.title === "string" &&
-          typeof t.cwd === "string" &&
-          isPersistable(t.kind) &&
-          Array.isArray(t.args) &&
-          // A chat tab restores by resuming its session id, so one stored
-          // without an id has nothing to come back to: drop it here rather than
-          // producing a tab that can never spawn.
-          (t.kind !== "chat" || typeof t.sessionId === "string"),
-      );
+      const tabs = e.tabs
+        .filter(
+          (t): t is PersistedTab =>
+            !!t &&
+            typeof t.title === "string" &&
+            typeof t.cwd === "string" &&
+            isPersistable(t.kind) &&
+            Array.isArray(t.args),
+        )
+        // A chat tab with no session id is a draft, which is a thing to come
+        // back to now rather than a record with nothing behind it. Its two
+        // extras are checked here, since a hand-edited file reaches the
+        // composer and the palette through them.
+        .map((t) => (t.kind === "chat" && !t.sessionId ? { ...t, ...draftFields(t) } : t));
       if (tabs.length) out[ws] = { tabs, active: typeof e.active === "number" ? e.active : -1, savedAt: e.savedAt };
     }
     return out;

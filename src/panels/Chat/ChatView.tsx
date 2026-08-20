@@ -79,7 +79,7 @@ import {
 import { findAdapter } from "../../utils/agents";
 import { revealTarget } from "../../utils/agentLines";
 import { chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
-import { settings } from "../Settings/settingsStore";
+import { rememberChatPrefs, settings } from "../Settings/settingsStore";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
@@ -241,6 +241,9 @@ export default function ChatView(props: {
     pickRidesArgv(findAdapter(props.agentId).chat?.transport) || !hasPick(opening),
   );
   let pickTried = false;
+  /** Whether this session has already been written down as the project's
+   *  last-used one. Once per session, at the moment it can take a turn. */
+  let remembered = false;
 
   /**
    * Hand a held first message back, and tell the tab its session never happened.
@@ -683,6 +686,28 @@ export default function ChatView(props: {
     });
   });
 
+  /**
+   * Record what this project's next draft should open on.
+   *
+   * At send-capable rather than at spawn, because that is where the tab is
+   * genuinely locked to this agent: a spawn that never got a session open would
+   * otherwise leave the project defaulting to a harness that does not work here.
+   *
+   * The agent goes down for every session, a fork and a resume included - it is
+   * the last one actually used, whichever way the tab was opened. The picks only
+   * go down when this tab made them, since a resumed session's model is the one
+   * the conversation already had rather than a choice made now.
+   */
+  createEffect(() => {
+    if (remembered || !canSend()) return;
+    remembered = true;
+    rememberChatPrefs(props.workspace, {
+      agent: props.agentId,
+      ...(opening.model !== null ? { model: opening.model, effort: opening.effort } : {}),
+      ...(opening.mode !== null ? { mode: opening.mode } : {}),
+    });
+  });
+
   // A message written before this session could take it: a draft tab's first
   // send, or one handed over by "send to a new chat". Sent here rather than at
   // spawn, because a spawned child is not yet a session that can answer.
@@ -1052,14 +1077,16 @@ export default function ChatView(props: {
 
   function onSelectMode(mode: PermissionMode) {
     edit((s) => selectMode(s, mode));
-    void invoke("chat_set_mode", { sessionId: props.sessionId, mode }).catch((e) => {
-      // The request never left, so the control must stop promising a switch.
-      // Left set, it would show a mode the session will never enter.
-      edit((s) => {
-        if (s.pendingMode === mode) s.pendingMode = null;
+    void invoke("chat_set_mode", { sessionId: props.sessionId, mode })
+      .then(() => rememberChatPrefs(props.workspace, { mode }))
+      .catch((e) => {
+        // The request never left, so the control must stop promising a switch.
+        // Left set, it would show a mode the session will never enter.
+        edit((s) => {
+          if (s.pendingMode === mode) s.pendingMode = null;
+        });
+        emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
       });
-      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
-    });
   }
 
   // What the picker may offer: the session's own catalogue when the handshake
@@ -1206,7 +1233,12 @@ export default function ChatView(props: {
       // A pick that lands is also the way out of a refused opening pick: the
       // first message is still held, and this is the session finally being on a
       // model it agreed to.
-      .then(() => setPickApplied(true))
+      .then(() => {
+        setPickApplied(true);
+        // Recorded only once the agent has taken it, so the next draft here
+        // opens on a model that was accepted rather than one that was refused.
+        rememberChatPrefs(props.workspace, { model, effort });
+      })
       .catch((e) => {
         revert();
         emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
