@@ -197,6 +197,11 @@ impl Default for Github {
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatPrefs {
+    /// The adapter id the last chat here locked to, which is what a new draft
+    /// opens on. Absent from every file written before drafts existed, hence
+    /// `default` like the rest: an old file loads with no harness remembered.
+    #[serde(default)]
+    pub agent: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
@@ -1177,6 +1182,7 @@ mod tests {
         s.chat.insert(
             "/repo/a".into(),
             ChatPrefs {
+                agent: Some("codex".into()),
                 model: Some("sonnet".into()),
                 effort: Some("xhigh".into()),
                 mode: Some("plan".into()),
@@ -1193,11 +1199,20 @@ mod tests {
 
         let back = load_from(&p);
         // Per project, so one repo's choice never overwrites another's.
+        assert_eq!(back.chat["/repo/a"].agent.as_deref(), Some("codex"));
         assert_eq!(back.chat["/repo/a"].model.as_deref(), Some("sonnet"));
         assert_eq!(back.chat["/repo/a"].effort.as_deref(), Some("xhigh"));
         assert_eq!(back.chat["/repo/b"].model.as_deref(), Some("haiku"));
         assert_eq!(back.chat["/repo/b"].effort, None);
         assert!(!back.chat.contains_key("/repo/c"));
+
+        // A file written before drafts existed has picks but no harness: it
+        // loads with the picks intact and no agent remembered, rather than
+        // failing the whole `chat` map back to empty.
+        std::fs::write(&p, r#"{"chat":{"/repo/a":{"model":"opus","effort":"high"}}}"#).unwrap();
+        let old = load_from(&p);
+        assert_eq!(old.chat["/repo/a"].model.as_deref(), Some("opus"));
+        assert_eq!(old.chat["/repo/a"].agent, None);
 
         // A settings file predating this section loads rather than resetting
         // everything else to defaults.

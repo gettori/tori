@@ -13,7 +13,7 @@
 // making them all narrow a nullable one would trade a small duplicate shell for
 // a large permanent lie. What the two genuinely share - what an `@` mention
 // means, and the model palette - is shared as code, not by living together.
-import { Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import Composer from "./Composer";
 import ModelPicker from "./ModelPicker";
 import ModeSelector from "./ModeSelector";
@@ -21,12 +21,13 @@ import { composerAttachments } from "./composerAttachments";
 import { paletteProviders } from "./agentPaletteData";
 import { probeAgent, probeOnHighlight } from "./draftProbe";
 import { dropPending, draftFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
-import { draftPick, resetDraftPick, setDraftPick } from "../../utils/chatDraftPick";
+import { draftPick, hasPick, resetDraftPick, setDraftPick } from "../../utils/chatDraftPick";
 import { openAgentCard } from "../../utils/agentCard";
 import { agentReady, agentSignedOut, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { agents, ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
-import { capabilitiesFor, type PickableModel } from "../../utils/chatModels";
+import { capabilitiesFor, restoredPicks, type PickableModel } from "../../utils/chatModels";
 import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../utils/modelCatalog";
+import { chatPrefs } from "../Settings/settingsStore";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import styles from "./Chat.module.css";
 
@@ -36,6 +37,10 @@ export default function ChatDraft(props: {
    *  reverted attempt's id from ever being reused. */
   tabId: string;
   cwd: string;
+  /** The project this draft belongs to, which is what its remembered picks are
+   *  filed under. The branch-unit folder rather than `cwd`, so every tab in a
+   *  workspace agrees on the answer. */
+  workspace: string;
   active: boolean;
   /** The agent this draft would start. Lives on the tab record rather than here,
    *  so the tab bar and the palette cannot disagree about it. */
@@ -80,8 +85,34 @@ export default function ChatDraft(props: {
   const mine = () => providers().find((p) => p.agentId === props.agentId) ?? null;
   const models = () => mine()?.models ?? [];
   const pick = () => draftPick(props.tabId);
+
   const model = () => models().find((m) => m.value === pick().model) ?? null;
   const offered = () => capabilitiesFor(model(), findAdapter(props.agentId).chat ?? null);
+
+  /**
+   * Open on this project's last-used pick, once there is a catalogue to check
+   * it against.
+   *
+   * Checked rather than trusted: a stored value the agent no longer offers is
+   * dropped by `restoredPicks`, so the pill never shows a row a send would be
+   * refused for. Nothing is filed by agent here - the catalogue is the filter,
+   * and a pick that survives it is one this agent really does take.
+   *
+   * Runs once per draft, guarded on the pick being empty: a user who has chosen
+   * something (including by switching agents, which sets a model) has answered
+   * this question already.
+   */
+  createEffect(() => {
+    if (!models().length || hasPick(untrack(() => draftPick(props.tabId)))) return;
+    const chat = findAdapter(props.agentId).chat ?? null;
+    const restored = restoredPicks(models(), chatPrefs(props.workspace), chat);
+    if (!restored.model) return;
+    setDraftPick(props.tabId, {
+      model: restored.model.value,
+      effort: restored.effort,
+      mode: restored.mode,
+    });
+  });
 
   /** Why this draft cannot be sent, or null. The agent stays selected either
    *  way: a draft that silently switched away from a broken agent would be Sway

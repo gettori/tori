@@ -42,11 +42,20 @@ export type PanePins = { terminal: PinSide; chat: PinSide; file: PinSide };
  *  signing out also stops the traffic but costs the credential, so quieting a
  *  misbehaving poller would disable PR creation and the review surface too. */
 export type Github = { enabled: boolean };
-/** What a chat reopens with, remembered per project because the right model and
- *  effort are a property of the work rather than of the user. `model` is the
- *  `--model` **value**, never the resolved id the session reports back: the
- *  value is what the flag takes and what survives a re-resolution. */
-export type ChatPrefs = { model?: string | null; effort?: string | null; mode?: string | null };
+/** What a chat reopens with, remembered per project because the right harness,
+ *  model and effort are a property of the work rather than of the user. `model`
+ *  is the `--model` **value**, never the resolved id the session reports back:
+ *  the value is what the flag takes and what survives a re-resolution.
+ *
+ *  `agent` is the adapter id the last chat here was locked to, which is what a
+ *  new draft opens on. Absent in every settings file written before drafts
+ *  existed, so it is read through a fallback rather than assumed. */
+export type ChatPrefs = {
+  agent?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  mode?: string | null;
+};
 /** Which surface a single click on a sidebar session opens. Chat is the
  *  default; `agent` is the fallback restoring the pre-chat behaviour. */
 export type DefaultSurface = "chat" | "agent";

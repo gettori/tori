@@ -277,13 +277,18 @@ export const FALLBACK_ADAPTERS: Adapter[] = [
 const [agents, setAgents] = createSignal<Adapter[]>(FALLBACK_ADAPTERS);
 export { agents };
 
-let requested = false;
-export function ensureAdaptersLoaded() {
-  if (requested) return;
-  requested = true;
-  invoke<Adapter[]>("list_agents")
-    .then((list) => setAgents(list.length ? list : FALLBACK_ADAPTERS))
-    .catch(() => {});
+// The one in-flight load, kept so a caller who needs a *resolved* adapter (not
+// the fallback that paints first) can wait for it rather than race it.
+let loading: Promise<void> | null = null;
+export function ensureAdaptersLoaded(): Promise<void> {
+  if (!loading) {
+    loading = invoke<Adapter[]>("list_agents")
+      .then((list) => {
+        setAgents(list.length ? list : FALLBACK_ADAPTERS);
+      })
+      .catch(() => {});
+  }
+  return loading;
 }
 
 export function findAdapter(id: string): Adapter {

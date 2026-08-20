@@ -3,7 +3,7 @@
 // workspace's files come back silently. Both panels mount into one tree, the
 // shape the two-pane shell gives them.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -60,6 +60,11 @@ vi.mock("../panels/Terminal/TerminalView", () => ({
   default: (props: { id: string }) => <div data-testid="pty" data-id={props.id} />,
 }));
 vi.mock("../panels/Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }));
+vi.mock("../panels/Chat/ChatDraft", () => ({
+  default: (props: { tabId: string; agentId: string }) => (
+    <div data-testid="draft" data-tab={props.tabId} data-agent={props.agentId} />
+  ),
+}));
 vi.mock("../panels/Editor/CodeEditor", () => ({ default: () => null }));
 vi.mock("../panels/Editor/lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
 
@@ -68,6 +73,8 @@ const { default: PaneView } = await import("./PaneView");
 const { default: Editor } = await import("../panels/Editor/Editor");
 const { open } = await import("../panels/Terminal/terminalTabStore");
 const { emitWith, GIT_STAGE_ACTIVE } = await import("../utils/events");
+const { draftFor } = await import("../utils/chatCompose");
+const { draftPick } = await import("../utils/chatDraftPick");
 
 const selection = {
   spaceName: "space",
@@ -128,5 +135,50 @@ describe("restore, per pane", () => {
       expect(staged.length).toBe(1);
       expect(staged[0].args).toEqual({ projectPath: REPO, paths: ["src/a.ts"] });
     });
+  });
+
+  // A draft is the one tab with nothing behind it: no session to resume, no
+  // shell to respawn. What comes back is what was in it, under a fresh tab id -
+  // which is why the text and the pick travel in the stored record rather than
+  // staying in the stores they were typed into.
+  it("brings an unsent draft back with its text and its pick, still unstarted", async () => {
+    localStorage.setItem(
+      "sway.terminalTabs",
+      JSON.stringify({
+        [REPO]: {
+          tabs: [
+            {
+              title: "proj",
+              cwd: REPO,
+              kind: "chat",
+              program: "claude",
+              args: [],
+              text: "half a thought",
+              pick: { model: "sonnet", mode: "plan", effort: null },
+            },
+          ],
+          active: 0,
+          savedAt: Date.now(),
+        },
+      }),
+    );
+
+    render(() => (
+      <div>
+        <Terminal selected={selection as never} onOpenChange={() => {}} />
+        <PaneView pinKind="shell" />
+      </div>
+    ));
+
+    fireEvent.click(await screen.findByText("Restore"));
+
+    const draft = await screen.findByTestId("draft");
+    expect(draft.dataset.agent).toBe("claude");
+    expect(draftFor(draft.dataset.tab!)).toBe("half a thought");
+    expect(draftPick(draft.dataset.tab!)).toEqual({ model: "sonnet", mode: "plan", effort: null });
+    // Restored, not started: a draft that spawned on restore would be the eager
+    // path back, with a process and a claim nobody asked for.
+    expect(invokes.some((i) => i.cmd === "chat_spawn")).toBe(false);
+    expect(screen.queryByTestId("chat")).toBeNull();
   });
 });

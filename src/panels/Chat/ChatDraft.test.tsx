@@ -18,6 +18,17 @@ const invoke = vi.fn(async (cmd: string) => {
 });
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...(a as [string])) }));
 
+// What this project last chatted as. The store itself reads a settings file
+// through the backend, and what the draft does with the answer is the part
+// under test, so only the one accessor is stood in for.
+const remembered = vi.hoisted(() => ({
+  value: {} as { agent?: string | null; model?: string | null; effort?: string | null; mode?: string | null },
+}));
+vi.mock("../Settings/settingsStore", async (orig) => {
+  const actual = await orig<typeof import("../Settings/settingsStore")>();
+  return { ...actual, chatPrefs: () => remembered.value };
+});
+
 import ChatDraft from "./ChatDraft";
 import {
   clearComposer,
@@ -107,6 +118,7 @@ beforeEach(() => {
 afterEach(() => {
   clearComposer(TAB);
   clearDraftPick(TAB);
+  remembered.value = {};
   invoke.mockClear();
 });
 
@@ -117,6 +129,7 @@ function setup(over: Partial<Parameters<typeof ChatDraft>[0]> = {}) {
     <ChatDraft
       tabId={TAB}
       cwd="/work/repo"
+      workspace="/work/repo"
       active={true}
       agentId="claude"
       onSelectAgent={onSelectAgent}
@@ -288,6 +301,43 @@ describe("a chat draft's pick", () => {
 
     expect(draftPick(TAB).model).toBe("haiku");
     expect(chatCalls()).toEqual([]);
+  });
+
+  // The second draft in a project opens where the last one left off, which is
+  // the whole of what the remembered picks buy.
+  it("opens on the model and mode this project last used", async () => {
+    remembered.value = { agent: "claude", model: "haiku", mode: "plan" };
+    setup();
+    await settle();
+
+    expect(draftPick(TAB).model).toBe("haiku");
+    expect(draftPick(TAB).mode).toBe("plan");
+    // The pill reads the catalogue row, so a restored value that no row matches
+    // would leave it on its placeholder rather than showing a stored string.
+    expect(screen.getByText("Haiku")).toBeTruthy();
+    expect(chatCalls()).toEqual([]);
+  });
+
+  // A settings file outlives the catalogue it was written against: an agent can
+  // drop a model, and a project's stored pick can name another agent's model
+  // entirely (the harness is remembered beside it, but the file is old or the
+  // adapter has gone). Either way the draft opens on nothing rather than on a
+  // row the send would be refused for.
+  it("drops a remembered model this agent does not offer", async () => {
+    remembered.value = { model: "gpt-5" };
+    setup();
+    await settle();
+
+    expect(draftPick(TAB).model).toBeNull();
+  });
+
+  it("leaves a pick the user has already made alone", async () => {
+    remembered.value = { model: "haiku" };
+    setDraftPick(TAB, { model: "sonnet" });
+    setup();
+    await settle();
+
+    expect(draftPick(TAB).model).toBe("sonnet");
   });
 
   it("keeps mode and effort when only the model changes", async () => {

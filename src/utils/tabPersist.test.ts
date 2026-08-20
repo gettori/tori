@@ -78,6 +78,55 @@ describe("toStore", () => {
     expect(out["/w/a"].tabs[0].sessionId).toBe("c1");
   });
 
+  // A draft is the one tab whose whole content is unsent: no session to resume
+  // and no transcript to replay, so what was typed and what it would run as are
+  // the only things there are to bring back.
+  it("keeps a draft's text and pick, and round-trips both", () => {
+    const draft = tab({
+      id: "1",
+      kind: "chat",
+      title: "draft",
+      program: "codex",
+      text: "half a thought",
+      pick: { model: "gpt-5", mode: "plan", effort: null },
+    });
+    const out = toStore([draft], {}, 100);
+
+    expect(out["/w/a"].tabs[0].text).toBe("half a thought");
+    expect(parseStore(JSON.stringify(out))["/w/a"].tabs[0].pick).toEqual({
+      model: "gpt-5",
+      mode: "plan",
+      effort: null,
+    });
+  });
+
+  it("keeps neither for a chat that has a session, whose transcript is the record", () => {
+    const out = toStore(
+      [tab({ id: "1", kind: "chat", sessionId: "c1", text: "typed", pick: { model: "sonnet", mode: null, effort: null } })],
+      {},
+      100,
+    );
+    expect("text" in out["/w/a"].tabs[0]).toBe(false);
+    expect("pick" in out["/w/a"].tabs[0]).toBe(false);
+  });
+
+  // One localStorage key holds every workspace's tabs, so an essay pasted into
+  // one draft must not cost the rest their restore. Dropped whole rather than
+  // truncated: half a message handed back would read as the whole of it.
+  it("drops a draft's text past the size cap rather than truncating it", () => {
+    const out = toStore([tab({ id: "1", kind: "chat", text: "x".repeat(16_001) })], {}, 100);
+    expect("text" in out["/w/a"].tabs[0]).toBe(false);
+  });
+
+  it("stores no pick at all when nothing was picked", () => {
+    const out = toStore(
+      [tab({ id: "1", kind: "chat", pick: { model: null, mode: null, effort: null } })],
+      {},
+      100,
+    );
+    expect("pick" in out["/w/a"].tabs[0]).toBe(false);
+  });
+
   it("indexes the active tab against the filtered list, not the raw open set", () => {
     // A command tab ahead of the active one would shift the index if the filter
     // and the index were computed against different lists.
@@ -176,18 +225,47 @@ describe("parseStore", () => {
     expect(back["/w/a"].active).toBe(1);
   });
 
-  it("drops a chat tab stored without a session id, which could never respawn", () => {
+  // The rule this reverses: a session-less chat tab used to be dropped, because
+  // the only way back for a chat was to resume its id. A draft is the case that
+  // has none and needs none, so an absent id now says which surface to restore
+  // rather than that there is nothing to restore.
+  it("keeps a chat tab stored without a session id, which is a draft", () => {
     const raw = JSON.stringify({
       w: {
         tabs: [
-          { title: "chat", cwd: "/c", kind: "chat", program: "claude", args: [] },
+          { title: "draft", cwd: "/c", kind: "chat", program: "claude", args: [] },
           { title: "ok", cwd: "/c", kind: "chat", program: "claude", args: [], sessionId: "s" },
         ],
         active: 0,
         savedAt: 1,
       },
     });
-    expect(parseStore(raw).w.tabs.map((t) => t.sessionId)).toEqual(["s"]);
+    expect(parseStore(raw).w.tabs.map((t) => t.sessionId)).toEqual([undefined, "s"]);
+  });
+
+  // A hand-edited or half-written file reaches the composer and the palette
+  // through these two, so each field is checked rather than trusted.
+  it("normalises a draft's stored pick and refuses a text that is not one", () => {
+    const raw = JSON.stringify({
+      w: {
+        tabs: [
+          {
+            title: "draft",
+            cwd: "/c",
+            kind: "chat",
+            program: "claude",
+            args: [],
+            text: 42,
+            pick: { model: "sonnet", effort: 7 },
+          },
+        ],
+        active: 0,
+        savedAt: 1,
+      },
+    });
+    const back = parseStore(raw).w.tabs[0];
+    expect(back.text).toBeUndefined();
+    expect(back.pick).toEqual({ model: "sonnet", mode: null, effort: null });
   });
 
   it("drops entries whose tabs are malformed, keeping valid siblings", () => {
