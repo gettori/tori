@@ -36,13 +36,20 @@
     box-shadow var(--sway-duration-fast) ease;
 }
 
+/* Sway's own colour, not the link/selection blue: an on switch is the app
+   saying yes, which is the same thing the brand rail and the palette's check
+   mark say, and three different affirmatives in one panel read as three
+   different meanings. */
 .control[data-checked] {
-  background: var(--accent-fg);
+  background: var(--brand-default);
 }
 
-/* Focus lives on the hidden input, so the ring comes off the root's
-   focus-within. Same ring as Button.module.css. */
-.root:focus-within .control {
+/* Focus lives on the hidden input, so the ring comes off the root. Keyed on
+   `:focus-visible` rather than `:focus-within`: a click moves focus into the
+   input too, so the looser rule left a ring glowing on every switch anyone had
+   touched. Same ring as Button.module.css, for the keyboard arrivals it is
+   actually for. */
+.root:has(:focus-visible) .control {
   box-shadow: 0 0 0 3px var(--brand-ring);
 }
 

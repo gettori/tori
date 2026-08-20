@@ -95,6 +95,27 @@ describe("Switch", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  // The tooltip hangs off the visible track, not off the input: the input is
+  // hidden at 1px, so a popper anchored there would open nowhere near the
+  // switch. `data-closed` is Kobalte's own mark on a tooltip trigger, which is
+  // what says the machinery landed on that element and not on another.
+  it("puts a tooltip on the track, and leaves the switch's own name alone", () => {
+    const { container } = render(() => (
+      <Switch checked={false} onChange={() => {}} aria-label="Claude" tooltip="Enable in Sway" />
+    ));
+    const track = container.querySelector(`.${styles.control}`)!;
+    expect(track.hasAttribute("data-closed")).toBe(true);
+    // A description never replaces the name (see the Tooltip module comment),
+    // so the switch still answers to its `aria-label`.
+    expect(screen.getByRole("switch", { name: "Claude" })).toBeTruthy();
+  });
+
+  // The hundreds of switches that want no tooltip pay for none of it.
+  it("builds no tooltip machinery when nobody asked for one", () => {
+    const { container } = renderControlled();
+    expect(container.querySelector(`.${styles.control}`)!.hasAttribute("data-closed")).toBe(false);
+  });
+
   it("passes the axe gate", async () => {
     renderControlled();
     await expectNoAxeViolations(document.body);
