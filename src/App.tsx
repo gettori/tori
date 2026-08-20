@@ -403,10 +403,18 @@ function App() {
   // whatever ran before this (a checkout, say) is inside the measurement.
   createEffect(on(() => selected()?.folderPath ?? null, () => tracePaint(), { defer: true }));
 
-  // The selection signal is the one thing the scripted perf recipe cannot reach
-  // on its own. Registered unconditionally and consulted only by a run launched
-  // with SWAY_RECIPE, which is the only thing that loads the driver at all.
-  onMount(() => registerRecipeHost({ select: (s) => setSelected(s as Selection) }));
+  // The selection signal and the pane tree are what the scripted perf recipe
+  // cannot reach on its own. Registered unconditionally and consulted only by a
+  // run launched with SWAY_RECIPE, which is the only thing that loads the driver
+  // at all. `leaves` is read from the model rather than counted in the DOM: the
+  // mismatch pass has to prove the split it asked for survived, and a count of
+  // rendered panes would answer with what the renderer did instead.
+  onMount(() =>
+    registerRecipeHost({
+      select: (s) => setSelected(s as Selection),
+      leaves: () => paneLeaves().length,
+    }),
+  );
 
   function persistLayout() {
     try {
