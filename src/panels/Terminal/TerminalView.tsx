@@ -10,6 +10,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, REFIT_PANES, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
 import { dispatchHotkey } from "../../utils/hotkeys";
+import { traceMark } from "../../utils/perfTrace";
 import { findAdapter } from "../../utils/agents";
 import { refusalMessage, refusalOf, type ClaimOutcome, type Refusal } from "../../utils/chatOwnership";
 import { settings, terminalFontSize } from "../Settings/settingsStore";
@@ -161,9 +162,19 @@ export default function TerminalView(props: {
     if (showSearch()) queueMicrotask(() => searchInput?.focus());
   });
 
+  // Both fits on the reveal path stay (an observer tick can miss a display:none
+  // -> block flip). What goes is the round trip: `fit.fit()` already no-ops on
+  // an unchanged grid, but `pty_resize` went out anyway, twice per tab click.
   function fitNow() {
     if (!term || !fit || !props.active || host.offsetParent === null) return;
+    traceMark("term:fit");
+    const want = fit.proposeDimensions();
+    if (!want || (want.cols === term.cols && want.rows === term.rows)) {
+      traceMark("term:fit-same");
+      return;
+    }
     fit.fit();
+    traceMark("term:fitted");
     invoke("pty_resize", { id: props.id, cols: term.cols, rows: term.rows }).catch(
       () => {},
     );
@@ -369,10 +380,13 @@ export default function TerminalView(props: {
   // so both branches run on real edges only.
   createEffect(() => {
     if (props.active) {
+      traceMark("term:reveal");
       webgl?.reveal();
+      traceMark("term:revealed");
       queueMicrotask(() => {
         fitNow();
         term?.focus();
+        traceMark("term:focused");
       });
     } else {
       webgl?.conceal();
