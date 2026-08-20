@@ -1,5 +1,6 @@
 import { Show, type JSX } from "solid-js";
 import { Switch as Primitive } from "../../lib/switch";
+import Tooltip from "../Tooltip/Tooltip";
 import styles from "./Switch.module.css";
 
 /**
@@ -24,6 +25,20 @@ export default function Switch(props: {
   onChange: (checked: boolean) => void;
   /** The visible label. Omit it only when `aria-label` names the control. */
   label?: JSX.Element;
+  /**
+   * A hover description, on the track.
+   *
+   * The track rather than the input, which is the trigger `Tooltip` would
+   * rather have: the input is visually hidden at 1px, so a popper anchored on
+   * it lands nowhere near the switch. That trade costs the keyboard path, so
+   * this is a mouse affordance only and a call site passing it still has to
+   * name the control with `aria-label` - which is the rule for a tooltip
+   * anywhere in Sway, since a tooltip is a description and never a name.
+   *
+   * Absent renders the bare track with none of Kobalte's tooltip machinery
+   * around it, so the switches that want no tooltip pay for none.
+   */
+  tooltip?: JSX.Element;
   disabled?: boolean;
   class?: string;
   "aria-label"?: string;
@@ -41,9 +56,9 @@ export default function Switch(props: {
         aria-label={props["aria-label"]}
         aria-describedby={props["aria-describedby"]}
       />
-      <Primitive.Control class={styles.control}>
+      <Tooltip as={Primitive.Control} class={styles.control} label={props.tooltip}>
         <Primitive.Thumb class={styles.thumb} />
-      </Primitive.Control>
+      </Tooltip>
       <Show when={props.label !== undefined}>
         <Primitive.Label class={styles.label}>{props.label}</Primitive.Label>
       </Show>
