@@ -102,11 +102,31 @@ export function refreshAgentHealth(): Promise<AgentHealth[] | null> {
  *  is not a no. Told apart from `agentReady` because the two failures need
  *  different words - a missing binary is installed, a missing login is not. */
 export function agentSignedOut(id: string): boolean {
-  return agentHealth()?.find((h) => h.id === id)?.signIn === "signedOut";
+  return rows()?.find((h) => h.id === id)?.signIn === "signedOut";
+}
+
+/** The sweep as a list, or null while there is none.
+ *
+ *  Guarded rather than trusted: `agent_health` is an IPC reply, and one that is
+ *  not a list has to read as "nothing answered" rather than throw through every
+ *  caller of these three. The Agents table already guards its own copy the same
+ *  way, for the same reason. */
+function rows(): AgentHealth[] | null {
+  const all = agentHealth();
+  return Array.isArray(all) ? all : null;
+}
+
+/** This agent's row from the sweep, or null while nothing has answered for it.
+ *
+ *  Null is ignorance, not a verdict, and the two callers that need to tell them
+ *  apart read this rather than one of the booleans below - those fold "nobody
+ *  asked" into their answer on purpose. */
+export function agentHealthFor(id: string): AgentHealth | null {
+  return rows()?.find((h) => h.id === id) ?? null;
 }
 
 export function agentReady(id: string): boolean {
-  const all = agentHealth();
+  const all = rows();
   if (!all) return true;
   const row = all.find((h) => h.id === id);
   // An adapter with no health row is one the sweep did not cover, which is
@@ -117,5 +137,5 @@ export function agentReady(id: string): boolean {
 
 /** The binary's version as the sweep measured it, or null while nothing has. */
 export function agentVersion(id: string): string | null {
-  return agentHealth()?.find((h) => h.id === id)?.version ?? null;
+  return rows()?.find((h) => h.id === id)?.version ?? null;
 }
