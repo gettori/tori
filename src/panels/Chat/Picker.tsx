@@ -105,11 +105,12 @@ function PillBody(props: {
 }
 
 /**
- * The same pill, for a control whose choices are a dialog rather than a menu.
+ * The same pill, for a control whose choices are a panel rather than a menu.
  *
- * The model palette is a surface of its own, so there is no menu to anchor and
- * nothing here to hold open: the pill reports what is in force and hands the
- * click on.
+ * The model palette is a surface of its own, mounted by the caller, so there is
+ * no menu here to hold open. What this does hand back is the button element:
+ * the panel hangs off it, and a press on it is this control's own to interpret
+ * rather than an outside dismissal.
  */
 export function PickerButton(props: {
   icon: Component<{ size?: number | string }>;
@@ -120,21 +121,27 @@ export function PickerButton(props: {
   disabled?: boolean;
   pending?: boolean;
   attention?: boolean;
+  /** Whether the caller's panel is on screen, for the pill's own open state. */
+  open?: boolean;
+  ref?: (el: HTMLButtonElement) => void;
   onOpen: () => void;
 }) {
   return (
     <Tooltip
       as="button"
       type="button"
+      ref={props.ref}
       class={styles.pill}
       classList={{
         [styles.pillPending]: !!props.pending,
         [styles.pillAttention]: !!props.attention,
+        [styles.pillOpen]: !!props.open,
       }}
       aria-label={props.ariaLabel}
       label={props.tooltip}
       disabled={props.disabled}
       aria-haspopup="dialog"
+      aria-expanded={props.open}
       onClick={() => props.onOpen()}
     >
       <PillBody icon={props.icon} prefix={props.prefix} value={props.value} />

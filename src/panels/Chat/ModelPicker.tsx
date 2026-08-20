@@ -19,9 +19,9 @@ import styles from "./Chat.module.css";
  * next turn boundary, so until one passes, the pick is a promise - the same
  * rule `ModeSelector` follows, and for the same measured reason.
  *
- * The model pill opens `AgentPalette` rather than a menu of its own. Same
- * surface for a draft and for a live session: what changes is how many agents
- * it is handed.
+ * The model pill opens `AgentPalette` rather than a menu of its own, anchored to
+ * the pill the same way those menus are. Same surface for a draft and for a live
+ * session: what changes is how many agents it is handed.
  */
 
 export default function ModelPicker(props: {
@@ -49,8 +49,15 @@ export default function ModelPicker(props: {
   onHighlightAgent?: (agentId: string) => void;
   /** A "Fix" row was activated. */
   onFixAgent?: (agentId: string) => void;
+  /** Ask an agent for its models again. Absent hides the control; see
+   *  `AgentPalette`'s own `onRecheck`. */
+  onRecheckAgent?: (agentId: string) => void;
 }) {
   const [open, setOpen] = createSignal(false);
+  // The pill the palette hangs off. A signal rather than a bare `let`, because
+  // the panel mounts in the same update as the ref is read and a plain variable
+  // would hand it `undefined` on that first render.
+  const [pill, setPill] = createSignal<HTMLButtonElement>();
   const current = () => props.models.find((m) => m.value === props.value) ?? null;
   const levels = () => current()?.effortLevels ?? [];
   // A cached list is the agent's own answer from the last time anything asked,
@@ -61,17 +68,20 @@ export default function ModelPicker(props: {
   return (
     <>
       <PickerButton
+        ref={setPill}
         icon={providerIcon(current()?.resolvedModel || props.value, props.agentId)}
         value={current()?.label ?? (props.models.length === 0 ? "No models" : "Default")}
         ariaLabel="Model"
         tooltip={current()?.description || "Model"}
         disabled={props.disabled}
         pending={props.modelPending}
-        onOpen={() => setOpen(true)}
+        open={open()}
+        onOpen={() => setOpen(!open())}
       />
 
       <Show when={open()}>
         <AgentPalette
+          anchorEl={pill()}
           providers={props.providers}
           agentId={props.agentId}
           value={props.value}
@@ -80,6 +90,7 @@ export default function ModelPicker(props: {
             props.onSelectModel(agentId, model);
           }}
           onHighlight={props.onHighlightAgent}
+          onRecheck={props.onRecheckAgent}
           onFix={(agentId) => {
             setOpen(false);
             props.onFixAgent?.(agentId);
