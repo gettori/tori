@@ -179,7 +179,18 @@ export function traceSwitchStart(kind: SwitchKind, key: string): boolean {
     done: false,
   };
   current = span;
-  if (kind === "tab") afterPaint(() => tracePainted(span));
+  // Marked rather than `afterPaint`, because for a tab switch the two frames
+  // *are* the measurement: paint is armed at the click, so a row reads as one
+  // number where it is really "the handler" plus "whatever the frames cost".
+  if (kind === "tab") {
+    requestAnimationFrame(() => {
+      markOn(span, "raf1");
+      requestAnimationFrame(() => {
+        markOn(span, "raf2");
+        tracePainted(span);
+      });
+    });
+  }
   return true;
 }
 
@@ -254,7 +265,13 @@ export function nextSpan(timeoutMs = 8000): Promise<void> {
  *  Outside a switch this costs one comparison and drops the mark. */
 export function traceMark(name: string): void {
   if (!on || !current) return;
-  current.marks.push({ name, at: round(wall() - current.start) });
+  markOn(current, name);
+}
+
+/** Stamp a named span rather than whichever one is open: a callback that lands
+ *  after the next switch started would otherwise mark the wrong row. */
+function markOn(span: Span, name: string): void {
+  span.marks.push({ name, at: round(wall() - span.start) });
 }
 
 /** A free-form line, for what the recipe counted and which pass it was in. */
