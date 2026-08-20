@@ -35,7 +35,12 @@ export type OpenTerm = {
   env?: Record<string, string>;
   // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
   // shell tab id. Used to focus/resume in place (Phase 2), not for spawning.
-  // Chat tabs always carry one, minted up front rather than adopted later.
+  //
+  // A chat tab carries one from the moment it has a session, which for a fork, a
+  // rewind and a resume is the moment it opens. A new chat opens *without* one:
+  // it is a draft until its first message, and the id is minted then, per
+  // attempt. So on a chat tab, this field is what says whether anything has been
+  // started here at all - see `isChatDraft`.
   sessionId?: string;
   // Chat tabs: is this session already on disk (a restore), or brand new?
   resume?: boolean;
@@ -52,6 +57,27 @@ export type OpenTerm = {
   // `backfillFreshSessions`).
   spawnedAt?: number;
 };
+
+/**
+ * A chat tab with nothing started behind it: no child process, no claimed
+ * session id, nothing registered as live. The composer is the whole of it, and
+ * the first message is what turns it into a chat.
+ *
+ * Asked structurally rather than carried as a flag, because there is exactly one
+ * thing that makes a chat real and this is it.
+ */
+export const isChatDraft = (t: OpenTerm) => t.kind === "chat" && !t.sessionId;
+
+/**
+ * Whether this chat tab can go **back** to being a draft after a first send that
+ * never reached a session.
+ *
+ * Only a tab that was one to begin with. A fork and a rewind replay a history a
+ * draft cannot represent, and a resume is a conversation that already exists on
+ * disk; turning either into an empty draft would quietly drop the lineage that
+ * was the reason for opening it. Those keep their own error surface instead.
+ */
+export const canRevertToDraft = (t: OpenTerm) => t.kind === "chat" && !t.forkFrom && !t.resume;
 
 const [open, setOpen] = createSignal<OpenTerm[]>([]);
 // Live tab labels that can change after a tab is created (a session rename),

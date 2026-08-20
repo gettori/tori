@@ -44,6 +44,7 @@ import type {
   SlashCommand,
   Usage,
 } from "../../utils/chatTypes";
+import type { ChatTransport } from "../../utils/agents";
 import { chatPlugins, stringList, type ChatPlugin } from "../../utils/chatCapabilities";
 import { reportedWindows } from "../../utils/chatModels";
 import { rateLimitFrom, type RateLimitState } from "../../utils/chatRateLimit";
@@ -1120,6 +1121,28 @@ export type ConnectionHealth = "connecting" | "connected" | "disconnected";
 export function connectionHealth(s: ChatState): ConnectionHealth {
   if (s.ended) return "disconnected";
   return s.started || s.ready ? "connected" : "connecting";
+}
+
+/**
+ * Whether this session can take a turn, which is **not** the same as having a
+ * child, and is not the same question per transport.
+ *
+ * Claude answers the `initialize` control request before any session exists and
+ * opens one with the first turn, so the answered handshake is the readiness that
+ * counts and waiting for `started` would wait for the very turn being asked
+ * about. An ACP agent answers the handshake first and opens its session in a
+ * second round trip, and a turn sent in between is refused for a reason the user
+ * did nothing to cause - so there it is `session/new` having returned, which is
+ * what `SessionStarted` reports.
+ *
+ * Asked by anything holding a message for a session that is still opening: a
+ * draft tab's first send, and "send this to a new chat". `connectionHealth`
+ * deliberately answers a *different* question - whether there is anything to
+ * talk to - and calls an ACP session connected while it is still opening, which
+ * is right for a status strip and wrong for a send.
+ */
+export function sendCapable(s: ChatState, transport: ChatTransport | undefined): boolean {
+  return transport === "acp" ? s.started : s.ready;
 }
 
 /**
