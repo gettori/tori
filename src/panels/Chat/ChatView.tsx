@@ -77,6 +77,7 @@ import {
   type CatalogModel,
 } from "../../utils/modelCatalog";
 import { findAdapter } from "../../utils/agents";
+import { agentVersion } from "../../utils/agentHealth";
 import { revealTarget } from "../../utils/agentLines";
 import { chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
 import { rememberChatPrefs, settings } from "../Settings/settingsStore";
@@ -1658,7 +1659,11 @@ export default function ChatView(props: {
               models={models()}
               // One provider, which is the whole of the lock: the palette has
               // no locked mode, it is simply handed a list of one.
-              providers={[lockedProvider(findAdapter(props.agentId), models())]}
+              providers={[
+                lockedProvider(findAdapter(props.agentId), models(), {
+                  version: agentVersion(props.agentId),
+                }),
+              ]}
               value={shownModel()?.value ?? null}
               agentId={props.agentId}
               effort={shownEffort(state)}

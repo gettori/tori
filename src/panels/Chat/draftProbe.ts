@@ -5,7 +5,7 @@
 // is debounced (only where the cursor came to rest) and every probe is chained
 // behind the last (never two binaries at once).
 import { debounce } from "../../utils/debounce";
-import { refreshCatalogIfDue } from "../../utils/modelCatalog";
+import { refreshCatalog, refreshCatalogIfDue } from "../../utils/modelCatalog";
 
 const HIGHLIGHT_MS = 250;
 
@@ -19,6 +19,17 @@ let chain: Promise<unknown> = Promise.resolve();
  *  Sway cannot probe at all. */
 export function probeAgent(agentId: string) {
   chain = chain.then(() => refreshCatalogIfDue(agentId)).catch(() => null);
+}
+
+/** Ask again because a human pressed the button, not because anything is due.
+ *
+ *  `refreshCatalog` rather than `refreshCatalogIfDue`: the button exists for the
+ *  case where Sway believes the answer is current and the reader knows better -
+ *  a model added to the account since the last probe, a login that happened in
+ *  another window. Chained like every other probe, so pressing it while one is
+ *  in flight queues rather than running a second binary. */
+export function recheckAgent(agentId: string) {
+  chain = chain.then(() => refreshCatalog(agentId)).catch(() => null);
 }
 
 /** Ask once the cursor stops moving. */

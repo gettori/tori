@@ -106,6 +106,8 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
     if (!list) throw new Error("the model pill opened no palette");
     return list as HTMLElement;
   };
+  // A model row stacks its text: the first child is the text block, whose own
+  // first child is the name, over the description or id.
   const modelNames = (list: HTMLElement) =>
     [...list.querySelectorAll('[role="option"]')].map(
       (row) => (row.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent,
@@ -229,5 +231,23 @@ describe("ModelPicker", () => {
     expect(pills()[0].disabled).toBe(false);
     expect(openPalette().querySelectorAll('[role="option"]')).toHaveLength(0);
     expect(screen.getAllByText("No models known yet").length).toBeGreaterThan(0);
+  });
+
+  // The palette hangs off this pill now rather than covering the pane, so the
+  // pill owns its open state: it says so, and a second press closes what the
+  // first opened. Popover excludes the anchor's press from its own dismissal
+  // precisely so this click is the only thing deciding.
+  it("says whether the palette is open, and closes it on a second press", () => {
+    const { pills } = setup();
+    const pill = pills()[0];
+    expect(pill.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(pill);
+    expect(pill.getAttribute("aria-expanded")).toBe("true");
+    expect(document.querySelector('[role="listbox"][aria-label="Models"]')).toBeTruthy();
+
+    fireEvent.click(pill);
+    expect(pill.getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector('[role="listbox"][aria-label="Models"]')).toBeNull();
   });
 });

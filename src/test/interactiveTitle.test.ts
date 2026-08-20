@@ -131,13 +131,6 @@ const KEPT = new Map<string, Kept>([
   ["components/ShortcutSheet/ShortcutSheet.tsx", { count: 1, reason: HEADING }],
   ["components/Tooltip/Tooltip.stories.tsx", { count: 1, reason: FIXTURE }],
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],
-  [
-    "panels/Chat/AgentPalette.tsx",
-    {
-      count: 1,
-      reason: `${HEADING}, and hidden at that: the panes name themselves, so the dialog's name is carried by \`titleHidden\``,
-    },
-  ],
   ["panels/Chat/ModelPicker.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Chat/ChatView.tsx", { count: 1, reason: HEADING }],
   ["panels/Chat/SessionDiffView.tsx", { count: 5, reason: TRUNCATION }],

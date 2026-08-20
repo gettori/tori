@@ -114,3 +114,8 @@ export function agentReady(id: string): boolean {
   if (!row) return true;
   return row.status !== "notFound" && row.signIn !== "signedOut";
 }
+
+/** The binary's version as the sweep measured it, or null while nothing has. */
+export function agentVersion(id: string): string | null {
+  return agentHealth()?.find((h) => h.id === id)?.version ?? null;
+}

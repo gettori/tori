@@ -1,79 +1,235 @@
-/* The model palette. Chrome only: the panel, the backdrop and the focus trap
-   are Dialog's, and the rows restate Combobox's `.item` recipe on purpose so a
-   list of things to pick reads the same wherever it appears. */
+/* The model palette. Layout only: the surface itself (background, border,
+   shadow, z-index) is Popover's, and the rows restate Combobox's `.item` recipe
+   on purpose so a list of things to pick reads the same wherever it appears. */
 
 .panel {
   display: flex;
   flex-direction: column;
-  gap: var(--sway-space-3);
-  /* Bounded here rather than left to the content: a machine with eight agents
-     and forty models would otherwise grow the panel past the viewport. */
-  max-height: min(60vh, 520px);
-}
-
-.filter {
-  height: var(--control-height);
-  padding: 0 var(--sway-space-4);
-  background: var(--canvas-input);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  color: var(--fg-default);
-  font-family: inherit;
-  font-size: var(--sway-text-lg);
-  outline: none;
-}
-
-.filter:focus-visible {
-  border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
-}
-
-.filter::placeholder {
-  color: var(--fg-subtle);
+  padding: 0;
+  width: min(calc(520px * var(--ui-scale)), calc(100vw - calc(32px * var(--ui-scale))));
+  height: min(calc(420px * var(--ui-scale)), 60vh);
 }
 
 .panes {
   display: grid;
-  /* The agent names are short and bounded; the models are neither, so the space
-     goes to the pane that needs it. */
-  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
-  gap: var(--sway-space-3);
+  grid-template-columns: minmax(0, 11rem) minmax(0, 1fr);
+  flex: 1;
   min-height: 0;
 }
 
-.pane {
-  overflow-y: auto;
+/* The one rule between the lists, drawn on the left column so it reaches the
+   footer without a divider element of its own. */
+.agents {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
+  padding: var(--sway-space-3);
+  border-right: 1px solid var(--border-rail);
+}
+
+.models {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--sway-space-3);
+}
+
+/* The scrolling half of each column. `OverlayScroll` draws its own bar over the
+   content, so a list that overflows costs no gutter and the rows below stay
+   where the eye left them. */
+.scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The agent whose models are on the right, in the Settings rail's own recipe
+   (`Settings.module.css`, `.railItemActive`). The left column is a nav list
+   doing what that rail does - naming what the pane beside it is *of* - so it
+   stays marked whichever pane the keyboard is in, rather than blinking off as
+   soon as the arrows move to the models. */
+.agents .rowActive {
+  background: var(--brand-wash);
+  color: var(--fg-default);
+  font-weight: 500;
+}
+
+/* A bar, not a dot: these rows are already wearing state dots. Unconditional,
+   like the rail's own: it is part of what "selected" looks like here, and a bar
+   that came and went as the arrows crossed to the other column would read as
+   the selection itself moving. Which pane the keys are in is said by the models
+   list, whose highlight is only drawn while they are in it. */
+.agents .rowActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--sway-border-thick);
+  height: calc(15px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  background: var(--brand-bar);
+}
+
+/* The right-hand highlight is the arrow cursor rather than a selection, so it
+   is neutral and it belongs to the pane the keys are driving: two lit rows at
+   once would be two answers to what Enter does. */
+.models.paneActive .rowActive {
+  background: var(--neutral-hover);
+}
+
+/* What the right-hand list is: the agent as itself (mark, name, version), then
+   whose answer the list is and how much of one. Sentence case; the shouting
+   mono treatment made a label read louder than the list it labelled. */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+  padding: var(--sway-space-2) var(--sway-space-4) var(--sway-space-4);
+}
+
+.headAgent {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-4);
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-lg);
+  font-weight: 500;
+}
+
+.headName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headVersion {
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  font-weight: 400;
+}
+
+.headTitle {
+  flex: none;
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.headRule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-default);
+}
+
+.headFact {
+  flex: none;
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  color: var(--fg-subtle);
+}
+
+/* Ask this agent again. Sits at the end of the heading rather than in the
+   footer: it acts on the list right below it, not on the panel. */
+.recheck {
+  display: inline-flex;
+  flex: none;
   padding: var(--sway-space-1);
-  border: 1px solid var(--border-rail);
-  border-radius: var(--sway-radius-md);
+  margin: calc(-1 * var(--sway-space-1));
+  background: none;
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-subtle);
+  cursor: pointer;
 }
 
-/* Which pane the arrow keys are talking to. Focus never leaves the filter box,
-   so without this the highlight moves in a column with nothing saying why. */
-.paneActive {
-  border-color: var(--border-default);
+.recheck:hover:not(:disabled) {
+  color: var(--fg-default);
+  background: var(--neutral-hover);
 }
 
-.row {
+.recheck:disabled {
+  cursor: default;
+}
+
+/* The turn is the only thing saying a probe is running here, so it lives in the
+   keyframes alone: under reduced motion the icon simply holds still, and the
+   count beside it still reads "probing". */
+.recheckBusy {
+  animation: paletteRecheckSpin 1s linear infinite;
+}
+
+@keyframes paletteRecheckSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A separator drawn rather than typed, so no glyph has to survive a font
+   fallback to keep two labels apart. */
+.sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--fg-subtle);
+  opacity: 0.6;
+  flex: none;
+}
+
+/* The filter, a full-width bar over both panes. The glyph and the esc hint are
+   the bar's furniture, muted so the typed query is the only thing in it at
+   full strength. */
+.filterBar {
   display: flex;
   align-items: center;
   gap: var(--sway-space-3);
-  padding: var(--sway-space-2) var(--sway-space-3);
+  padding: var(--sway-space-4) var(--sway-space-4);
+  border-bottom: 1px solid var(--border-rail);
+  color: var(--fg-subtle);
+}
+
+.filterInput {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--sway-text-lg);
+}
+
+.filterInput::placeholder {
+  color: var(--fg-watermark);
+}
+
+.escKey {
+  padding: 0 var(--sway-space-1);
+  border: 1px solid var(--border-rail);
+  border-radius: var(--sway-radius-sm);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+.row {
+  /* For the selection bar, which hangs off the row's own left edge. */
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-4);
+  padding: var(--sway-space-4) var(--sway-space-4);
   border-radius: var(--sway-radius-md);
   color: var(--fg-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--sway-text-lg);
   cursor: pointer;
 }
 
 .row:hover {
   background: var(--neutral-hover);
-}
-
-/* The active row of the *active* pane only: two highlights at once would be two
-   answers to what Enter does. */
-.paneActive .rowActive {
-  background: var(--neutral-subtle);
 }
 
 .rowInert {
@@ -85,28 +241,145 @@
   background: transparent;
 }
 
-.rowBody {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sway-space-1);
+/* A model row is two lines: the name, then what the provider says about it
+   (its description, or its id when that is all the catalogue sent). Tighter
+   vertical padding than the agent rows, since the second line already spends
+   the height. */
+.modelRow {
+  gap: var(--sway-space-2);
+  padding-block: var(--sway-space-3);
+  font-size: var(--sway-text-lg);
+}
+
+.rowText {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+}
+
+/* The model in force, in the agent list's own selection recipe minus the bar:
+   one selection colour across the panel, and the bar stays the left pane's
+   because only one row per panel should carry it. The check beside the name is
+   what says "running" rather than "hovered". */
+.rowCurrent {
+  background: var(--brand-wash);
+  color: var(--fg-default);
+}
+
+.rowCurrent .rowName {
+  font-weight: 500;
+}
+
+/* The name line: the title, and the check when this is the model in force. */
+.rowTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-4);
+  min-width: 0;
+}
+
+/* The same ink as the selection bar in the agent list. */
+.check {
+  display: inline-flex;
+  flex: none;
+  color: var(--brand-bar);
 }
 
 .rowName {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.agents .rowName {
+  flex: 1;
+}
+
+.rowId {
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-md);
+}
+
 .rowDesc {
-  font-size: var(--sway-text-sm);
-  color: var(--fg-subtle);
+  min-width: 0;
+  font-size: var(--sway-text-md);
+  color: var(--fg-watermark);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The second line when it is an id rather than prose: mono, like every other
+   id in the panel, so a description and an identifier never read as the same
+   kind of thing. */
+.rowDescId {
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+/* A split name's route: the provider chain, then the bare id, separated by the
+   same drawn dot the headings use. Only the id may give way; the chain names
+   are short and losing them would unmoor the id from where it lives. */
+.rowRoute {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+}
+
+.rowRoute > span {
+  white-space: nowrap;
+}
+
+.rowRoute > .rowDescId {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The agent's mark, wearing its state as a badge. Same arrangement the Settings
+   pane uses for the same pair, so an agent looks like itself in both places. */
+.glyph {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.glyph .dot {
+  position: absolute;
+  right: calc(-2px * var(--ui-scale));
+  bottom: calc(-2px * var(--ui-scale));
+  /* Ringed in the surface behind it, so the dot reads as a badge sitting on the
+     mark rather than as a shape touching it. */
+  outline: calc(2px * var(--ui-scale)) solid var(--canvas-card);
+}
+
+/* The state itself. Restates the Settings pane's recipe tone for tone
+   (`Settings.module.css`), so one agent cannot read as healthy in one surface
+   and broken in the other. */
+.dot {
+  width: calc(7px * var(--ui-scale));
+  height: calc(7px * var(--ui-scale));
+  border-radius: 50%;
+  flex: none;
+}
+
+.dotOk {
+  background: var(--success-fg);
+  box-shadow: 0 0 0 calc(3px * var(--ui-scale)) color-mix(in srgb, var(--success-fg) 16%, transparent);
+}
+
+.dotWait {
+  background: var(--attention-fg);
+  box-shadow: 0 0 0 calc(3px * var(--ui-scale)) color-mix(in srgb, var(--attention-fg) 16%, transparent);
+}
+
+/* Not installed is absence, not failure: an outline, not a red light. */
+.dotOff {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--fg-muted);
 }
 
 .rowMeta {
@@ -139,16 +412,49 @@
   color: var(--fg-subtle);
 }
 
-.keys {
+/* The strip under both lists: what the keys do, and the one place to go when
+   the answer is not in either list. */
+.footer {
   display: flex;
-  gap: var(--sway-space-4);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sway-space-3);
+  padding: var(--sway-space-2) var(--sway-space-3);
+  border-top: 1px solid var(--border-rail);
+}
+
+.keys,
+.settings {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-2);
+  font-family: var(--sway-font-mono);
   font-size: var(--sway-text-sm);
   color: var(--fg-subtle);
 }
 
-.keys kbd {
+.settings {
+  padding: var(--sway-space-1) var(--sway-space-2);
+  background: none;
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  cursor: pointer;
+}
+
+.settings:hover {
+  color: var(--fg-default);
+  background: var(--neutral-hover);
+}
+
+.keys span {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-1);
+}
+
+.keys kbd,
+.settings kbd {
   padding: 0 var(--sway-space-1);
-  margin-right: var(--sway-space-1);
   border: 1px solid var(--border-rail);
   border-radius: var(--sway-radius-sm);
   font-family: inherit;

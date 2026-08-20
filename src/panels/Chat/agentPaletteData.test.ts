@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { filterProviders, fixReason, lockedProvider, paletteProviders } from "./agentPaletteData";
+import {
+  filterProviders,
+  fixReason,
+  lockedProvider,
+  paletteProviders,
+  splitModelDisplay,
+} from "./agentPaletteData";
 import type { Adapter, ChatConfig } from "../../utils/agents";
 import type { CatalogModel, ModelCatalog } from "../../utils/modelCatalog";
 
@@ -172,5 +178,70 @@ describe("filterProviders", () => {
   it("matches the value as well as the label", () => {
     const out = filterProviders(providers, "gpt");
     expect(out[0].models.map((m) => m.value)).toEqual(["gpt-5"]);
+  });
+});
+
+// The two measured shapes, verbatim: opencode's provider/name pair and pi's
+// vendor-qualified triple. Everything else must come back null, because this
+// runs only on adapters that declared the convention and even they can name a
+// model plainly.
+describe("splitModelDisplay", () => {
+  it("splits opencode's provider/name pair", () => {
+    expect(splitModelDisplay("GitHub Copilot/Claude Sonnet 4.6", "github-copilot/claude-sonnet-4.6")).toEqual({
+      name: "Claude Sonnet 4.6",
+      segments: ["GitHub Copilot", "claude-sonnet-4.6"],
+    });
+  });
+
+  it("peels pi's vendor prefix into the chain, and capitalises a bare id segment", () => {
+    expect(splitModelDisplay("openrouter/Amazon: Nova 2 Lite", "openrouter/amazon/nova-2-lite-v1")).toEqual({
+      name: "Nova 2 Lite",
+      segments: ["Openrouter", "Amazon", "nova-2-lite-v1"],
+    });
+  });
+
+  it("keeps a mixed-case chain segment as sent", () => {
+    expect(splitModelDisplay("OpenCode Zen/Big Pickle", "opencode/big-pickle")).toEqual({
+      name: "Big Pickle",
+      segments: ["OpenCode Zen", "big-pickle"],
+    });
+  });
+
+  it("declines a label with no path", () => {
+    expect(splitModelDisplay("Sonnet", "sonnet")).toBeNull();
+    expect(splitModelDisplay("", "")).toBeNull();
+  });
+
+  it("declines a label whose path leads nowhere", () => {
+    expect(splitModelDisplay("openrouter/Amazon: ", "openrouter/amazon/x")).toBeNull();
+  });
+
+  it("carries the sweep's version, else the probe's own vintage", () => {
+    const cat = catalog("claude", [model("sonnet", "claude-sonnet-5", "Sonnet")]);
+    const input = {
+      adapters: [adapter("claude", "Claude")],
+      catalogs: [cat],
+      ready: allReady,
+      signedOut: noneSignedOut,
+      probing: noneProbing,
+    };
+    expect(paletteProviders({ ...input, version: () => "2.0.0" })[0].version).toBe("2.0.0");
+    // No sweep: the version the probe recorded is the list's own vintage.
+    expect(paletteProviders(input)[0].version).toBe("1");
+  });
+
+  it("carries the flag from the adapter, not the strings", () => {
+    const withFlag = adapter("opencode", "OpenCode");
+    withFlag.chat = { ...chat, split_model_names: true };
+    expect(lockedProvider(withFlag, []).splitModels).toBe(true);
+    expect(lockedProvider(adapter("claude", "Claude"), []).splitModels).toBe(false);
+    const rows = paletteProviders({
+      adapters: [withFlag],
+      catalogs: null,
+      ready: allReady,
+      signedOut: noneSignedOut,
+      probing: noneProbing,
+    });
+    expect(rows[0].splitModels).toBe(true);
   });
 });

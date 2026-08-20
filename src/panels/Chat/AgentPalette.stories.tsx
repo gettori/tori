@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import AgentPalette from "./AgentPalette";
 import { lockedProvider, type PaletteProvider } from "./agentPaletteData";
@@ -57,10 +58,28 @@ const PROBING: PaletteProvider = {
   health: { kind: "probing" },
 };
 
+/** The palette hangs off the model pill, so the story provides one: without an
+ *  anchor floating-ui has nothing to place it against and it opens in the corner
+ *  of the frame, which is not what any call site looks like. Pushed down the
+ *  frame because the real pill sits in the composer bar at the bottom and the
+ *  panel opens upward from there. */
+function Anchored(args: Parameters<typeof AgentPalette>[0]) {
+  const [pill, setPill] = createSignal<HTMLButtonElement>();
+  return (
+    <div style={{ padding: "60vh 0 0 2rem" }}>
+      <button ref={setPill} type="button">
+        Model: Sonnet
+      </button>
+      <AgentPalette {...args} anchorEl={pill()} />
+    </div>
+  );
+}
+
 const meta: Meta<typeof AgentPalette> = {
   title: "Chat/AgentPalette",
   component: AgentPalette,
   parameters: { layout: "fullscreen" },
+  render: (args) => <Anchored {...args} />,
 };
 export default meta;
 type Story = StoryObj<typeof AgentPalette>;
