@@ -98,6 +98,13 @@ export function refreshAgentHealth(): Promise<AgentHealth[] | null> {
  * anyway produces a tab that asks for a login the chat surface cannot give. Only
  * a definite `signedOut` counts; `unknown` stays ready like everything else.
  */
+/** The agent's own answer that nobody is signed in, and only that: `unknown`
+ *  is not a no. Told apart from `agentReady` because the two failures need
+ *  different words - a missing binary is installed, a missing login is not. */
+export function agentSignedOut(id: string): boolean {
+  return agentHealth()?.find((h) => h.id === id)?.signIn === "signedOut";
+}
+
 export function agentReady(id: string): boolean {
   const all = agentHealth();
   if (!all) return true;

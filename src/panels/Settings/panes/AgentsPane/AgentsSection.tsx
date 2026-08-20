@@ -1,4 +1,4 @@
-import { For, Show, Switch, Match, createMemo, createResource, createSignal, onMount } from "solid-js";
+import { For, Show, Switch, Match, createEffect, createMemo, createResource, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { RefreshCw } from "lucide-solid";
 import Icon from "../../../../components/Icon/Icon";
@@ -24,6 +24,7 @@ import {
   type AgentHealth,
   type BinaryStatus,
 } from "../../../../utils/agentHealth";
+import { clearWantedAgentCard, wantedAgentCard } from "../../../../utils/agentCard";
 import { behindVerified } from "../../../../utils/versions";
 import AgentDetail from "./AgentDetail";
 import styles from "../../Settings.module.css";
@@ -339,6 +340,16 @@ export default function AgentsSection() {
     // must not launch every agent binary on the machine, which is why the read
     // and the refreshes are separate commands at all.
     ensureModelCatalogsLoaded();
+  });
+
+  // Somewhere else sent the reader here to fix one agent (the chat palette's
+  // "Fix" row). An effect rather than a mount read, so an already-open panel
+  // answers too; consumed, or it would re-open the card the user just closed.
+  createEffect(() => {
+    const id = wantedAgentCard();
+    if (id === null) return;
+    clearWantedAgentCard();
+    setOpenId(id);
   });
 
   /** Ask every agent that has never answered or whose binary changed.

@@ -10,6 +10,7 @@ import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 import styles from "../../Settings.module.css";
+import { askForAgentCard, wantedAgentCard } from "../../../../utils/agentCard";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "/home/me" }));
@@ -180,5 +181,24 @@ describe("the agents table", () => {
     await waitFor(() =>
       expect(invoked.mock.calls.some((c) => c[0] === "refresh_agent_health")).toBe(true),
     );
+  });
+
+  // The chat palette's "Fix" row sends the reader here. The ask survives the
+  // gap between the click and this pane existing, which is why it is a value
+  // rather than an event: nothing is listening at the moment of the click.
+  it("opens the card somebody asked for, and consumes the ask", async () => {
+    askForAgentCard("copilot");
+    const r = mount();
+    // The detail page in place of the list: its own back control is what says
+    // the reader is on a card rather than looking at rows.
+    await waitFor(() => expect(r.container.querySelector(`.${styles.detailBack}`)).not.toBeNull());
+    expect(r.container.querySelector('[data-agent="copilot"]')).toBeNull();
+    expect(wantedAgentCard()).toBeNull();
+  });
+
+  it("opens no card when nobody asked", async () => {
+    const r = mount();
+    await r.findByText("Ready");
+    expect(r.container.querySelector('[data-agent="copilot"]')).not.toBeNull();
   });
 });

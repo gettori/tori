@@ -106,6 +106,17 @@ describe("SessionStats", () => {
     expect(contextWindowFor( "qwen3-6-plus", {})).toBe(1_000_000);
     expect(invoked).toHaveBeenCalledWith("model_context_caps");
   });
+
+  // The store is read from a render path, so a reply that is not a map has to
+  // cost the caps rather than throw through everything reading it. It used to
+  // land in the signal unchecked, and the next lookup died on `Object.entries`.
+  it("survives a caps reply that is not a map", async () => {
+    invoked.mockResolvedValueOnce(null as never);
+    expect(contextWindowFor("qwen3-6-plus", {})).toBe(1_000_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(contextWindowFor("qwen3-6-plus", {})).toBe(1_000_000);
+  });
 });
 
 describe("one model, one denominator", () => {

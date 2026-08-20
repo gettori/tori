@@ -54,6 +54,7 @@ import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist"
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
 import { clearComposer, offerToComposer, routeFor } from "../../utils/chatCompose";
+import { clearDraftPick } from "../../utils/chatDraftPick";
 import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
 import { routeSelection, restoreRoute } from "../../utils/sessionSurface";
 import { settings } from "../Settings/settingsStore";
@@ -1010,6 +1011,19 @@ export default function Terminal(props: {
    * is handed back, so a retry after a failure can never re-offer an id an agent
    * already wrote a record against.
    */
+  /**
+   * Point a draft at a different agent.
+   *
+   * Only a draft: `program` is what a live chat's session was started under, so
+   * changing it there would leave the tab claiming an agent that is not the one
+   * on the other end of the socket.
+   */
+  function setChatDraftAgent(tabId: string, agentId: string) {
+    const tab = open().find((t) => t.id === tabId);
+    if (!tab || !isChatDraft(tab)) return;
+    setOpen(open().map((t) => (t.id === tabId ? { ...t, program: agentId } : t)));
+  }
+
   function startChatDraft(tabId: string) {
     clearDraftError(tabId);
     setOpen(open().map((t) => (t.id === tabId ? { ...t, sessionId: crypto.randomUUID() } : t)));
@@ -1148,6 +1162,7 @@ export default function Terminal(props: {
     if (t?.kind === "chat") {
       clearComposer(id);
       clearDraftError(id);
+      clearDraftPick(id);
     }
     // Closing the active tab hands the slot to its right neighbor, then the
     // left (plan phase 5's unified policy; the fallback used to be the first
@@ -1311,7 +1326,9 @@ export default function Terminal(props: {
           tabId={t.id}
           cwd={t.cwd}
           active={active()}
+          agentId={t.program}
           error={draftError(t.id)}
+          onSelectAgent={(agentId) => setChatDraftAgent(t.id, agentId)}
           onStart={() => startChatDraft(t.id)}
         />
       );

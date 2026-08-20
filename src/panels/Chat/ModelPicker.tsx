@@ -1,7 +1,9 @@
-import { For, Show, createMemo, createSignal } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
 import { ChartNoAxesColumn } from "lucide-solid";
 import { providerIcon } from "../../components/Icon/ProviderIcon";
-import Picker, { PickerMore, PickerOption } from "./Picker";
+import AgentPalette from "./AgentPalette";
+import Picker, { PickerButton, PickerOption } from "./Picker";
+import type { PaletteProvider } from "./agentPaletteData";
 import type { PickableModel } from "../../utils/chatModels";
 import styles from "./Chat.module.css";
 
@@ -16,32 +18,39 @@ import styles from "./Chat.module.css";
  * Neither control claims an immediate effect. The CLI applies a switch at the
  * next turn boundary, so until one passes, the pick is a promise - the same
  * rule `ModeSelector` follows, and for the same measured reason.
+ *
+ * The model pill opens `AgentPalette` rather than a menu of its own. Same
+ * surface for a draft and for a live session: what changes is how many agents
+ * it is handed.
  */
 
-/** How many models the menu shows before the rest move to a second page. Set
- *  above the size of a real catalogue (this machine's Claude offers five) so the
- *  common case is one flat list: a "More models" row hiding a single entry is
- *  a fold that costs a click and saves nothing. */
-const FLAT_LIMIT = 7;
-
 export default function ModelPicker(props: {
+  /** The selected model's own row lives here: the pill's label, and the effort
+   *  levels it offers. Separate from `providers`, which is what the palette
+   *  lists, because a draft's pill names a model no session has confirmed. */
   models: readonly PickableModel[];
+  /** What the palette shows. One entry is a locked session; every chat-capable
+   *  agent is a draft. */
+  providers: readonly PaletteProvider[];
   /** The `--model` value shown as selected, or null when nothing is known. The
    *  caller resolves this: `ChatView` is where the pick, the id `system/init`
    *  reported, and the transcript's own model all meet. */
   value: string | null;
   /** The adapter driving this session, so the pill can still show a provider
-   *  mark before any model id has been reported. Optional: a caller that does
-   *  not name one gets the generic glyph rather than a guessed vendor. */
-  agentId?: string;
+   *  mark before any model id has been reported. */
+  agentId: string;
   effort: string | null;
   modelPending: boolean;
   effortPending: boolean;
   disabled: boolean;
-  onSelectModel: (model: PickableModel) => void;
+  onSelectModel: (agentId: string, model: PickableModel) => void;
   onSelectEffort: (effort: string) => void;
+  /** An agent row moved under the cursor, for a caller that probes on highlight. */
+  onHighlightAgent?: (agentId: string) => void;
+  /** A "Fix" row was activated. */
+  onFixAgent?: (agentId: string) => void;
 }) {
-  const [showAll, setShowAll] = createSignal(false);
+  const [open, setOpen] = createSignal(false);
   const current = () => props.models.find((m) => m.value === props.value) ?? null;
   const levels = () => current()?.effortLevels ?? [];
   // A cached list is the agent's own answer from the last time anything asked,
@@ -49,43 +58,35 @@ export default function ModelPicker(props: {
   // saying so rather than presenting a remembered answer as a current one.
   const stale = () => props.models.length > 0 && !props.models[0].live;
 
-  // The selected model is always on the first page even when it sorts past the
-  // limit: a menu whose checkmark is on a page you have to go looking for reads
-  // as though nothing is selected.
-  const firstPage = createMemo(() => {
-    if (props.models.length <= FLAT_LIMIT) return props.models;
-    const head = props.models.slice(0, FLAT_LIMIT);
-    const sel = current();
-    return sel && !head.includes(sel) ? [...head.slice(0, FLAT_LIMIT - 1), sel] : head;
-  });
-  const hasMore = () => props.models.length > firstPage().length;
-
   return (
     <>
-      <Picker
+      <PickerButton
         icon={providerIcon(current()?.resolvedModel || props.value, props.agentId)}
         value={current()?.label ?? (props.models.length === 0 ? "No models" : "Default")}
         ariaLabel="Model"
         tooltip={current()?.description || "Model"}
-        disabled={props.disabled || props.models.length === 0}
+        disabled={props.disabled}
         pending={props.modelPending}
-        onClose={() => setShowAll(false)}
-      >
-        <For each={showAll() ? props.models : firstPage()}>
-          {(m) => (
-            <PickerOption
-              label={m.label}
-              description={m.description}
-              selected={m.value === props.value}
-              onSelect={() => props.onSelectModel(m)}
-            />
-          )}
-        </For>
-        <Show when={hasMore() && !showAll()}>
-          <div class={styles.pickSep} />
-          <PickerMore label="More models" onOpen={() => setShowAll(true)} />
-        </Show>
-      </Picker>
+        onOpen={() => setOpen(true)}
+      />
+
+      <Show when={open()}>
+        <AgentPalette
+          providers={props.providers}
+          agentId={props.agentId}
+          value={props.value}
+          onSelect={(agentId, model) => {
+            setOpen(false);
+            props.onSelectModel(agentId, model);
+          }}
+          onHighlight={props.onHighlightAgent}
+          onFix={(agentId) => {
+            setOpen(false);
+            props.onFixAgent?.(agentId);
+          }}
+          onClose={() => setOpen(false)}
+        />
+      </Show>
 
       {/* Hidden, not disabled: a model with no effort levels has no control to
           offer, and an inert one reads as a broken control. */}
