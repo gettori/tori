@@ -34,6 +34,13 @@ hooks = false
 
 [chat]
 transport = "acp"
+
+# Its model names arrive as a "Provider/Name" path, sometimes with a vendor
+# prefix on the name itself ("openrouter/Amazon: Nova 2 Lite" over
+# "openrouter/amazon/nova-2-lite-v1"; observed, not pinned: see the missing
+# verified_against above).
+# Lets the picker split them for display; the wire id is never rewritten.
+split_model_names = true
 # Like Codex, the chat binary is not the launch binary: `pi` has no ACP mode
 # of its own, so chat goes through `pi-acp`, a bridge that spawns the
 # **installed** `pi --mode rpc` from PATH and reuses pi's own sessions
