@@ -21,7 +21,17 @@ import {
   createUniqueId,
   type JSX,
 } from 'solid-js';
-import { Check, RefreshCw, Search, Wrench } from 'lucide-solid';
+import {
+  ArrowDown,
+  ArrowRightToLine,
+  ArrowUp,
+  Check,
+  Command,
+  CornerDownLeft,
+  RefreshCw,
+  Search,
+  Wrench,
+} from 'lucide-solid';
 import AgentGlyph from '../../components/Icon/AgentGlyph';
 import OverlayScroll from '../../components/Scrollbar/OverlayScroll';
 import Popover from '../../components/Popover/Popover';
@@ -438,18 +448,32 @@ export default function AgentPalette(props: {
       </div>
 
       <div class={styles.footer}>
+        {/* The keys as their own glyphs. A keycap reads as a key at a glance
+            where its name has to be read as a word first, and the row is short
+            enough that the label beside each one carries the meaning. */}
         <div class={styles.keys} aria-hidden="true">
           <span>
-            <kbd>up</kbd>
-            <kbd>down</kbd> move
+            <kbd>
+              <Icon icon={ArrowUp} size={12} />
+            </kbd>
+            <kbd>
+              <Icon icon={ArrowDown} size={12} />
+            </kbd>{' '}
+            move
           </span>
           <span class={styles.sep} />
           <span>
-            <kbd>tab</kbd> switch provider
+            <kbd>
+              <Icon icon={ArrowRightToLine} size={12} />
+            </kbd>{' '}
+            switch provider
           </span>
           <span class={styles.sep} />
           <span>
-            <kbd>enter</kbd> select
+            <kbd>
+              <Icon icon={CornerDownLeft} size={12} />
+            </kbd>{' '}
+            select
           </span>
         </div>
         <button
@@ -461,7 +485,9 @@ export default function AgentPalette(props: {
           }}
         >
           agent settings
-          <kbd>cmd</kbd>
+          <kbd>
+            <Icon icon={Command} size={12} />
+          </kbd>
           <kbd>,</kbd>
         </button>
       </div>

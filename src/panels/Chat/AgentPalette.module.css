@@ -419,7 +419,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sway-space-3);
-  padding: var(--sway-space-2) var(--sway-space-3);
+  padding: var(--sway-space-3) var(--sway-space-3);
   border-top: 1px solid var(--border-rail);
 }
 
@@ -427,7 +427,7 @@
 .settings {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-2);
+  gap: var(--sway-space-3);
   font-family: var(--sway-font-mono);
   font-size: var(--sway-text-sm);
   color: var(--fg-subtle);
@@ -452,8 +452,16 @@
   gap: var(--sway-space-1);
 }
 
+/* A keycap holds a glyph now rather than a word, so it is sized as a square and
+   centres what is in it. The one exception is the comma, which stays typed: it
+   is the key's own character, and a picture of a comma is a comma. */
 .keys kbd,
 .settings kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
   padding: 0 var(--sway-space-1);
   border: 1px solid var(--border-rail);
   border-radius: var(--sway-radius-sm);
