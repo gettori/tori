@@ -92,7 +92,9 @@ export default function ModelPicker(props: {
   effortPending: boolean;
   disabled: boolean;
   onSelectModel: (agentId: string, model: PickableModel) => void;
-  onSelectEffort: (effort: string) => void;
+  /** `null` picks the CLI's own default, which is a choice rather than the
+   *  absence of one: it is what runs when Sway sends no level at all. */
+  onSelectEffort: (effort: string | null) => void;
   /** An agent row moved under the cursor, for a caller that probes on highlight. */
   onHighlightAgent?: (agentId: string) => void;
   /** A "Fix" row was activated. */
@@ -168,6 +170,24 @@ export default function ModelPicker(props: {
           disabled={props.disabled}
           pending={props.effortPending}
         >
+          {/* **The state the pill has always shown, finally pickable.**
+              Nothing on the wire reports effort back and no catalogue names a
+              default level, so "no level sent, whatever the CLI runs" is a real
+              state Sway can be in - and it is the state every new chat starts
+              in. Without a row for it the menu had nothing ticked while the
+              pill read "Default", which reads as a broken control rather than
+              as an honest one, and there was no way back to it after a pick.
+
+              A row rather than guessing which level is the default: the handshake
+              publishes `supportedEffortLevels` and no default among them, so
+              naming one would be Sway asserting something it was never told. */}
+          <PickerOption
+            label="Default"
+            description="Whatever this CLI runs when Sway sends no level"
+            selected={props.effort === null}
+            onSelect={() => props.onSelectEffort(null)}
+          />
+
           {/* Keyed by the level, not the row object: the catalogue is replaced
               wholesale whenever the agent answers, and keying on identity would
               rebuild the row the user is standing on. Same fix `ConfigMirror`

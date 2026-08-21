@@ -244,9 +244,16 @@ export type ChatState = {
   pendingModel: { value: string; resolvedModel: string } | null;
   /** The effort level in force, and one picked but not yet applied. Unlike the
    *  model and the mode, **nothing on the wire reports effort back**, so the
-   *  applied value is what was last sent rather than what was confirmed. */
+   *  applied value is what was last sent rather than what was confirmed.
+   *
+   *  `null` on either is a real state and not an absence: it is the level Sway
+   *  has never sent, so whatever the CLI itself runs. That is why the pending
+   *  slot has **three** states rather than two - `undefined` for "nothing
+   *  picked", `null` for "picked: back to the CLI's own default", a string for
+   *  a level. Overloading `null` as both left the default unpickable, and left
+   *  the menu with no row to tick while the pill read "Default". */
   effort: string | null;
-  pendingEffort: string | null;
+  pendingEffort: string | null | undefined;
   /** The live model catalogue from the handshake. Empty means "fall back to the
    *  adapter table", not "no models". */
   models: ChatModelInfo[];
@@ -359,7 +366,7 @@ export function initialChat(sessionId: string): ChatState {
     modelValue: null,
     pendingModel: null,
     effort: null,
-    pendingEffort: null,
+    pendingEffort: undefined,
     models: [],
     modes: [],
     configOptions: [],
@@ -474,9 +481,9 @@ function touchTurn(s: ChatState, turnId: string) {
   // Here rather than in the `turnStarted` arm because a boundary is whatever
   // first reveals a turn id this session has not seen, which is sometimes a
   // delta that overtook its own `turnStarted`.
-  if (s.pendingEffort !== null) {
+  if (s.pendingEffort !== undefined) {
     s.effort = s.pendingEffort;
-    s.pendingEffort = null;
+    s.pendingEffort = undefined;
   }
 }
 
@@ -1057,22 +1064,22 @@ export function revertModelPick(s: ChatState, value: string) {
   if (s.pendingModel?.value === value) s.pendingModel = null;
 }
 
-export function revertEffortPick(s: ChatState, effort: string) {
-  if (s.pendingEffort === effort) s.pendingEffort = null;
+export function revertEffortPick(s: ChatState, effort: string | null) {
+  if (s.pendingEffort === effort) s.pendingEffort = undefined;
 }
 
 /** Record an effort pick. Nothing reports effort back, so there is no confirmed
  *  value to compare against beyond the last one sent. */
-export function selectEffort(s: ChatState, effort: string) {
-  s.pendingEffort = effort === s.effort ? null : effort;
+export function selectEffort(s: ChatState, effort: string | null) {
+  s.pendingEffort = effort === s.effort ? undefined : effort;
 }
 
 export function shownEffort(s: ChatState): string | null {
-  return s.pendingEffort ?? s.effort;
+  return s.pendingEffort !== undefined ? s.pendingEffort : s.effort;
 }
 
 export function effortPending(s: ChatState): boolean {
-  return s.pendingEffort !== null;
+  return s.pendingEffort !== undefined;
 }
 
 /** Every card still blocked on the user. */
