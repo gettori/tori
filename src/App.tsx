@@ -1,21 +1,31 @@
-import { createSignal, createEffect, createMemo, on, onMount, onCleanup, lazy, Suspense, Show } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
-import LeftSidebar, { type Selection } from "./panels/LeftSidebar/LeftSidebar";
-import Terminal from "./panels/Terminal/Terminal";
-import Editor from "./panels/Editor/Editor";
-import { stageHost } from "./tabs/stageHost";
-import { traceMark, tracePaint } from "./utils/perfTrace";
-import { registerRecipeHost } from "./utils/perfRecipe";
-import Toolbar from "./components/Toolbar/Toolbar";
-import WindowControls from "./components/WindowControls/WindowControls";
-import Resizer from "./components/Resizer/Resizer";
-import AskpassDialog from "./components/Dialogs/AskpassDialog";
-import ToastRegion from "./components/Toasts/Toasts";
-import Settings from "./panels/Settings/Settings";
-import UpdatePill from "./components/UpdatePill/UpdatePill";
-import Button from "./components/Button/Button";
-import Icon from "./components/Icon/Icon";
-import { Settings as SettingsIcon } from "lucide-solid";
+import {
+  createSignal,
+  createEffect,
+  createMemo,
+  on,
+  onMount,
+  onCleanup,
+  lazy,
+  Suspense,
+  Show,
+} from 'solid-js';
+import { invoke } from '@tauri-apps/api/core';
+import LeftSidebar, { type Selection } from './panels/LeftSidebar/LeftSidebar';
+import Terminal from './panels/Terminal/Terminal';
+import Editor from './panels/Editor/Editor';
+import { stageHost } from './tabs/stageHost';
+import { traceMark, tracePaint } from './utils/perfTrace';
+import { registerRecipeHost } from './utils/perfRecipe';
+import Toolbar from './components/Toolbar/Toolbar';
+import WindowControls from './components/WindowControls/WindowControls';
+import Resizer from './components/Resizer/Resizer';
+import AskpassDialog from './components/Dialogs/AskpassDialog';
+import ToastRegion from './components/Toasts/Toasts';
+import Settings from './panels/Settings/Settings';
+import UpdatePill from './components/UpdatePill/UpdatePill';
+import Button from './components/Button/Button';
+import Icon from './components/Icon/Icon';
+import { Settings as SettingsIcon } from 'lucide-solid';
 import {
   on as onEvent,
   onWith as onEventWith,
@@ -51,8 +61,8 @@ import {
   OPEN_SETTINGS,
   type OpenSettings,
   type LiveTab,
-} from "./utils/events";
-import { dispatchWindowHotkey } from "./utils/hotkeys";
+} from './utils/events';
+import { dispatchWindowHotkey } from './utils/hotkeys';
 import {
   MAX_PANES,
   closePane,
@@ -68,7 +78,7 @@ import {
   visibleLeaves,
   type PaneLeaf,
   type PaneNode,
-} from "./layout/paneLayout";
+} from './layout/paneLayout';
 import {
   ensureEnvelope,
   envelopeFor,
@@ -80,8 +90,8 @@ import {
   setFocusedPane,
   tabFocusStamp,
   updateLayout,
-} from "./layout/layoutStore";
-import PaneTree, { type PaneRoles } from "./layout/PaneTree";
+} from './layout/layoutStore';
+import PaneTree, { type PaneRoles } from './layout/PaneTree';
 import {
   forgetPane,
   homePane,
@@ -93,15 +103,20 @@ import {
   pinRulesFor,
   resetTabPlacement,
   type TabRef,
-} from "./layout/tabPlacement";
-import { installPaneTabsMemo, paneActiveId, paneTabs, reorderPane } from "./tabs/paneTabs";
-import { maybeKindEntry } from "./tabs/registry";
-import { installUnifiedTabsMemo, unifiedTabs } from "./tabs/unifiedTabs";
-import { chatToStop, liveChats, stoppableChats } from "./utils/chatSessions";
-import { rerunLast } from "./utils/runTask";
-import Omnibox from "./components/Omnibox/Omnibox";
-import ShortcutSheet from "./components/ShortcutSheet/ShortcutSheet";
-import { setPinSides } from "./layout/pinRules";
+} from './layout/tabPlacement';
+import {
+  installPaneTabsMemo,
+  paneActiveId,
+  paneTabs,
+  reorderPane,
+} from './tabs/paneTabs';
+import { maybeKindEntry } from './tabs/registry';
+import { installUnifiedTabsMemo, unifiedTabs } from './tabs/unifiedTabs';
+import { chatToStop, liveChats, stoppableChats } from './utils/chatSessions';
+import { rerunLast } from './utils/runTask';
+import Omnibox from './components/Omnibox/Omnibox';
+import ShortcutSheet from './components/ShortcutSheet/ShortcutSheet';
+import { setPinSides } from './layout/pinRules';
 import {
   chromeScale,
   initSettings,
@@ -110,17 +125,17 @@ import {
   zoomIn,
   zoomOut,
   resetZoom,
-} from "./panels/Settings/settingsStore";
-import "./styles/reset.css";
-import "./styles/tokens.css";
-import "./styles/base.css";
-import "./App.css";
+} from './panels/Settings/settingsStore';
+import './styles/reset.css';
+import './styles/tokens.css';
+import './styles/base.css';
+import './App.css';
 
 // Dev-only styleguide, code-split so it never ships in the production bundle.
-const Styleguide = lazy(() => import("./dev/Styleguide"));
+const Styleguide = lazy(() => import('./dev/Styleguide'));
 
-const LS_LAYOUT = "sway.layout.v1";
-const LS_SELECTION = "sway.selection.v1";
+const LS_LAYOUT = 'sway.layout.v1';
+const LS_SELECTION = 'sway.selection.v1';
 
 type Layout = {
   sidebar: number;
@@ -196,7 +211,8 @@ function loadSelection(): Selection | null {
       // Backfill the folder anchor for selections persisted before Phase 3.
       if (s && !s.folderPath) s.folderPath = s.projectPath;
       // Backfill the space name for selections persisted under the old `groupName` key.
-      if (s && !s.spaceName) s.spaceName = (s as unknown as { groupName?: string }).groupName ?? "";
+      if (s && !s.spaceName)
+        s.spaceName = (s as unknown as { groupName?: string }).groupName ?? '';
       return s;
     }
   } catch {
@@ -209,7 +225,7 @@ function App() {
   // Dev-only QA surface, gated by an env flag + a #styleguide hash (NOT a route).
   // Rendered standalone so the app's settings/theme init never fights its
   // scale/theme controls.
-  if (import.meta.env.DEV && window.location.hash === "#styleguide") {
+  if (import.meta.env.DEV && window.location.hash === '#styleguide') {
     return (
       <Suspense>
         <Styleguide />
@@ -259,21 +275,17 @@ function App() {
     ),
   );
 
-  // ---- Pane layout (plan phase 5) ----------------------------------------
-  // The work-split renders from the per-workspace pane envelope. A workspace
-  // starts as one pane holding every kind (phase 12); the legacy
-  // sway.layout.v1 fields still describe the sidebar and the chrome, and are
-  // still written below so an older build reads a sane layout back.
-  const wsKey = () => selected()?.folderPath ?? "";
+  const wsKey = () => selected()?.folderPath ?? '';
   const seedEnvelope = () => seedOnePane();
   const env = () => envelopeFor(wsKey(), seedEnvelope);
   createEffect(() => ensureEnvelope(wsKey(), seedEnvelope));
   const paneLeaves = () => leaves(env().layout);
   // Where each kind opens, so the shell knows which pane is the editor (chrome
   // and role) and which the terminal, wherever a move has since put them.
-  const filePane = () => homePane(wsKey(), "file", env().layout);
-  const termPane = () => homePane(wsKey(), "shell", env().layout);
-  const tabRefs = (): TabRef[] => unifiedTabs().filter((t) => t.workspace === wsKey());
+  const filePane = () => homePane(wsKey(), 'file', env().layout);
+  const termPane = () => homePane(wsKey(), 'shell', env().layout);
+  const tabRefs = (): TabRef[] =>
+    unifiedTabs().filter((t) => t.workspace === wsKey());
   // The topbar toggles and the legacy layout key still speak of "the terminal"
   // and "the editor": they mean the pane each kind opens into, wherever a move
   // has since put it.
@@ -295,7 +307,9 @@ function App() {
   const [bodyW, setBodyW] = createSignal(window.innerWidth);
   onMount(() => {
     if (!bodyEl) return;
-    const ro = new ResizeObserver(([entry]) => setBodyW(entry.contentRect.width));
+    const ro = new ResizeObserver(([entry]) =>
+      setBodyW(entry.contentRect.width),
+    );
     ro.observe(bodyEl);
     onCleanup(() => ro.disconnect());
   });
@@ -319,7 +333,10 @@ function App() {
       shared() - (showTerminal() && showEditor() ? editor() : 0) - fillerMin(),
     );
   const editorMax = () =>
-    Math.max(px(EDITOR_MIN), shared() - (showSidebar() ? sidebar() : 0) - px(CHAT_MIN));
+    Math.max(
+      px(EDITOR_MIN),
+      shared() - (showSidebar() ? sidebar() : 0) - px(CHAT_MIN),
+    );
 
   // The editor pane's width, from its stored share of the split. Clamped at
   // render rather than in the model: the stored share is what the user chose,
@@ -329,27 +346,37 @@ function App() {
     const id = filePane();
     const r = id ? findPane(env().layout, id) : null;
     if (!r || paneLeaves().length < 2) return 0;
-    return Math.min(Math.max((r.size / 100) * shared(), px(EDITOR_MIN)), editorMax());
+    return Math.min(
+      Math.max((r.size / 100) * shared(), px(EDITOR_MIN)),
+      editorMax(),
+    );
   };
   // The tree's own dividers write straight to the model (PaneTree measures each
   // split itself); the legacy px width above is only still computed so an older
   // build reading sway.layout.v1 finds a sane one.
   function resizePaneTo(paneId: string, percent: number) {
-    updateLayout(wsKey(), (t) => resizePane(t, paneId, percent), { persist: false });
+    updateLayout(wsKey(), (t) => resizePane(t, paneId, percent), {
+      persist: false,
+    });
   }
 
   // What the sidebar renders at. Same deal as the editor pane above: the stored
   // width is the user's choice and nothing but a drag rewrites it, so a narrower
   // window squeezes the sidebar for now and widening it hands the choice back.
-  const sidebarW = () => Math.min(Math.max(sidebar(), px(SIDEBAR_MIN)), sidebarMax());
+  const sidebarW = () =>
+    Math.min(Math.max(sidebar(), px(SIDEBAR_MIN)), sidebarMax());
 
-  const [selected, setSelected] = createSignal<Selection | null>(loadSelection());
+  const [selected, setSelected] = createSignal<Selection | null>(
+    loadSelection(),
+  );
   // The tree the shell renders. Two same-shape worktrees are two envelope
   // objects and PaneTree keys children by reference, so a switch between them
   // would dispose live subtrees; handing the drawn nodes back makes it a no-op.
   // Created here, not beside `env`: a memo runs on the spot, so `selected` must
   // already exist.
-  const renderedLayout = createMemo<PaneNode>((prev) => reuseNode(prev, env().layout));
+  const renderedLayout = createMemo<PaneNode>((prev) =>
+    reuseNode(prev, env().layout),
+  );
   // Width the topbar rail collapses to when the sidebar is hidden, so the
   // breadcrumb never slides under the traffic lights. Measured from the real
   // WindowControls cluster on mount (falls back to ~88px).
@@ -367,13 +394,16 @@ function App() {
   // `equals: false` because the panel may already be open: running the same row
   // twice writes the same string, and a signal that swallowed it would leave the
   // filter wherever the user had since typed.
-  const [settingsQuery, setSettingsQuery] = createSignal("", { equals: false });
+  const [settingsQuery, setSettingsQuery] = createSignal('', { equals: false });
   // The catalogue id the command pointed at, which the panel scrolls to, focuses
   // and flashes. `equals: false` for `settingsQuery`'s reason: running the same
   // row twice must re-reveal the row, not be swallowed as "no change".
-  const [settingsEntry, setSettingsEntry] = createSignal<string | undefined>(undefined, {
-    equals: false,
-  });
+  const [settingsEntry, setSettingsEntry] = createSignal<string | undefined>(
+    undefined,
+    {
+      equals: false,
+    },
+  );
   // The omnibox's opening prefix, and `null` for "not open". One signal where
   // there were two, because there is one overlay: an open flag per shortcut is
   // what let ⌘P and ⌘K be two boxes in the first place. A fresh object per open
@@ -405,7 +435,7 @@ function App() {
     on(
       () => selected()?.folderPath ?? null,
       () => {
-        traceMark("ws:flip");
+        traceMark('ws:flip');
         tracePaint();
       },
       { defer: true },
@@ -431,10 +461,6 @@ function App() {
         LS_LAYOUT,
         JSON.stringify({
           sidebar: sidebar(),
-          // One pane has no editor width to describe, and the bound above wants
-          // that zero. What gets written keeps the last real one instead: an
-          // older build reads this key as a pane's width, and would take the
-          // zero for a pane squeezed shut (phase 12).
           editor: editor() || initial.editor,
           showSidebar: showSidebar(),
           showTerminal: showTerminal(),
@@ -456,16 +482,12 @@ function App() {
   }
 
   function toggleSidebar() {
-    if (showSidebar()) blurIfInside(".pane.sidebar");
+    if (showSidebar()) blurIfInside('.pane.sidebar');
     setShowSidebar((v) => !v);
     persistLayout();
   }
-  // Cmd+Alt+J/E act on the pane holding the most recently focused tab of
-  // their kind, falling back to the kind's pin pane when no such tab is open
-  // (plan phase 5). Hiding the last visible pane is refused by the layout
-  // layer: an empty work-card has no button left to undo itself with (the
-  // topbar toggle is also disabled then).
-  const TERMINAL_KINDS = ["shell", "agent", "command", "chat", "task"];
+
+  const TERMINAL_KINDS = ['shell', 'agent', 'command', 'chat', 'task'];
   function togglePaneFor(kinds: string[], pinKind: string) {
     const ws = wsKey();
     ensureEnvelope(ws, seedEnvelope);
@@ -473,7 +495,7 @@ function App() {
     const matches = unifiedTabs()
       .filter((t) => t.workspace === ws && kinds.includes(t.kind))
       .map((t) => ({
-        paneId: resolvePinPane(root, t.kind, pinRulesFor(ws, t.kind))?.id ?? "",
+        paneId: resolvePinPane(root, t.kind, pinRulesFor(ws, t.kind))?.id ?? '',
         stamp: tabFocusStamp(t.id),
       }));
     const target = resolveTogglePane(root, matches, pinKind);
@@ -502,20 +524,24 @@ function App() {
   function showKindIn(ws: string, paneId: string, kinds: string[]) {
     const here = paneTabs(ws, paneId).filter((t) => kinds.includes(t.kind));
     if (here.length === 0) return;
-    const pick = here.reduce((a, b) => (tabFocusStamp(b.id) > tabFocusStamp(a.id) ? b : a));
+    const pick = here.reduce((a, b) =>
+      tabFocusStamp(b.id) > tabFocusStamp(a.id) ? b : a,
+    );
     setPaneActive(ws, paneId, pick.id);
     maybeKindEntry(pick.kind)?.activate(pick);
   }
 
   function toggleTerminal() {
-    togglePaneFor(TERMINAL_KINDS, "chat");
+    togglePaneFor(TERMINAL_KINDS, 'chat');
   }
   function toggleEditor() {
-    togglePaneFor(["file"], "file");
+    togglePaneFor(['file'], 'file');
   }
   // ---- Splits and tab moves (plan phase 8) --------------------------------
-  const say = (message: string) => emitWith<ToastEvent>(TOAST, { message, kind: "info" });
-  const activePane = () => focusedPaneId(wsKey()) ?? visibleLeaves(env().layout)[0]?.id ?? null;
+  const say = (message: string) =>
+    emitWith<ToastEvent>(TOAST, { message, kind: 'info' });
+  const activePane = () =>
+    focusedPaneId(wsKey()) ?? visibleLeaves(env().layout)[0]?.id ?? null;
 
   // Ids the tree owns forever (a pane's id is what keeps its tabs and its DOM),
   // so a new one only has to be unused in this workspace's tree.
@@ -533,12 +559,17 @@ function App() {
     ensureEnvelope(ws, seedEnvelope);
     const from = p.paneId ?? activePane();
     if (!from) return;
-    const leaf: PaneLeaf = { type: "pane", id: mintPaneId(), size: 50, hidden: false };
+    const leaf: PaneLeaf = {
+      type: 'pane',
+      id: mintPaneId(),
+      size: 50,
+      hidden: false,
+    };
     if (!updateLayout(ws, (r) => splitPane(r, from, p.dir, leaf, p.pos))) {
       say(
         paneLeaves().length >= MAX_PANES
           ? `${MAX_PANES} panes is as many as fit.`
-          : "That pane is already nested as deep as it goes.",
+          : 'That pane is already nested as deep as it goes.',
       );
       return;
     }
@@ -557,7 +588,7 @@ function App() {
     const root = env().layout;
     const to = neighborPane(root, paneId);
     if (!to) {
-      say("This is the last pane.");
+      say('This is the last pane.');
       return;
     }
     mergePaneInto({ ws, from: paneId, to, root, tabsInWs: tabRefs() });
@@ -567,12 +598,13 @@ function App() {
   }
 
   /** The pane a "move it over" step lands in: the next visible one, wrapping. */
-  function stepPane(from: string, direction: "next" | "prev"): string | null {
+  function stepPane(from: string, direction: 'next' | 'prev'): string | null {
     const vis = visibleLeaves(env().layout);
     if (vis.length < 2) return null;
     const i = vis.findIndex((l) => l.id === from);
     if (i < 0) return null;
-    return vis[(i + (direction === "prev" ? vis.length - 1 : 1)) % vis.length].id;
+    return vis[(i + (direction === 'prev' ? vis.length - 1 : 1)) % vis.length]
+      .id;
   }
 
   function moveTab(p: MoveTabToPane) {
@@ -584,18 +616,25 @@ function App() {
       ? tabs.find((t) => t.id === p.tabId)
       : tabs.find((t) => pane && t.id === paneActiveId(ws, pane));
     if (!tab) {
-      say("No tab to move.");
+      say('No tab to move.');
       return;
     }
     const from = paneOfTab(ws, tab, root);
-    const target = p.paneId ?? (from ? stepPane(from, p.direction ?? "next") : null);
+    const target =
+      p.paneId ?? (from ? stepPane(from, p.direction ?? 'next') : null);
     if (!target) {
-      say("There is only one pane. Split it first.");
+      say('There is only one pane. Split it first.');
       return;
     }
     // The placement guard's refusal is a sentence, not a silence (phase 8's
     // interim single-pane rule for files says so here).
-    const refusal = moveTabToPane({ ws, tab, targetPaneId: target, root, tabsInWs: tabs });
+    const refusal = moveTabToPane({
+      ws,
+      tab,
+      targetPaneId: target,
+      root,
+      tabsInWs: tabs,
+    });
     if (refusal) {
       say(refusal);
       return;
@@ -616,12 +655,6 @@ function App() {
     persistLayout();
   }
 
-  // A pane that has held a tab and is now empty collapses into its neighbor.
-  // A pane that has never held one is a fresh split waiting for its first, and
-  // the last pane standing stays whatever it holds: the pin rule resolves
-  // spatially at call time, so whatever is left is where the next tab lands.
-  // Keyed by workspace too: pane ids repeat across workspaces, and a fresh
-  // split named after one that held tabs elsewhere would collapse on sight.
   const held = new Set<string>();
   createEffect(() => {
     const ws = wsKey();
@@ -644,8 +677,9 @@ function App() {
   // the divider writes land.
   const paneRoles = (): PaneRoles => ({
     ws: wsKey(),
-    pinKindOf: (id) => (id === filePane() ? "file" : "shell"),
-    roleOf: (id) => (id === filePane() ? "editor" : id === termPane() ? "terminal" : "split"),
+    pinKindOf: (id) => (id === filePane() ? 'file' : 'shell'),
+    roleOf: (id) =>
+      id === filePane() ? 'editor' : id === termPane() ? 'terminal' : 'split',
     px,
     onResize: resizePaneTo,
     onCommit: () => {
@@ -658,33 +692,27 @@ function App() {
     const r = filePane();
     if (r) updateLayout(wsKey(), (t) => setPaneHidden(t, r, false));
   }
-  // Showing the file tree implies showing the editor it is nested in.
+
   function toggleFiletree() {
     const next = !showFiletree();
     setShowFiletree(next);
     if (next) revealEditorPane();
     persistLayout();
   }
-  // User-initiated commands aimed at content inside the right panel (palette
-  // "Show X", Cmd+Shift+F search) reveal both the editor and the file tree.
-  // Passive triggers (the diagnostics auto-switch to Problems) never call this,
-  // so they update the mode without popping a collapsed panel open.
+
   function revealRightPanel() {
     revealEditorPane();
     setShowFiletree(true);
     persistLayout();
   }
 
-  // Refit on a reveal or a structural edit, after layout (the rAF).
-  //
-  // Remembered per workspace, since every input is a read of the *selected*
-  // one: one shared set of previous values compares two workspaces' answers
-  // across a switch and calls every switch a reveal.
-  //
-  // A workspace seen for the first time records and emits nothing (PaneView
-  // refits on adoption), and so does a switch back to panes left as they were:
-  // the activation edge and CodeMirror's hidden-pane effect cover the reveal.
-  type PaneGeometry = { s: boolean; t: boolean; e: boolean; f: boolean; layout: PaneNode };
+  type PaneGeometry = {
+    s: boolean;
+    t: boolean;
+    e: boolean;
+    f: boolean;
+    layout: PaneNode;
+  };
   const lastGeometry = new Map<string, PaneGeometry>();
   createEffect(() => {
     const ws = wsKey();
@@ -699,14 +727,14 @@ function App() {
     lastGeometry.set(ws, now);
     if (!was) return;
     const revealed =
-      (now.s && !was.s) || (now.t && !was.t) || (now.e && !was.e) || (now.f && !was.f);
-    if (revealed || now.layout !== was.layout) requestAnimationFrame(() => emit(REFIT_PANES));
+      (now.s && !was.s) ||
+      (now.t && !was.t) ||
+      (now.e && !was.e) ||
+      (now.f && !was.f);
+    if (revealed || now.layout !== was.layout)
+      requestAnimationFrame(() => emit(REFIT_PANES));
   });
 
-  // Every binding now comes from the canonical table in utils/hotkeys.ts,
-  // including Cmd+P: the table marks it `window` scope so it still does not
-  // fire while a terminal has focus, which is what the old special case here
-  // achieved by living outside dispatchHotkey.
   function onKeyDown(e: KeyboardEvent) {
     if (dispatchWindowHotkey(e)) e.preventDefault();
   }
@@ -733,18 +761,22 @@ function App() {
   let offRunLastTask: (() => void) | undefined;
   let offFocusIn: (() => void) | undefined;
   onMount(() => {
-    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener('keydown', onKeyDown);
     // Which pane holds focus, for the per-workspace envelope. focusin bubbles
     // where focus does not, so one window listener sees every surface.
     const onFocusIn = (e: FocusEvent) => {
       const el = e.target instanceof HTMLElement ? e.target : null;
-      const pane = el?.closest<HTMLElement>("[data-pane-id]");
+      const pane = el?.closest<HTMLElement>('[data-pane-id]');
       if (pane?.dataset.paneId) setFocusedPane(wsKey(), pane.dataset.paneId);
     };
-    window.addEventListener("focusin", onFocusIn);
-    offFocusIn = () => window.removeEventListener("focusin", onFocusIn);
-    offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ prefix }) => setOmnibox({ prefix }));
-    offShortcuts = onEvent(TOGGLE_SHORTCUTS, () => setShortcutsOpen((open) => !open));
+    window.addEventListener('focusin', onFocusIn);
+    offFocusIn = () => window.removeEventListener('focusin', onFocusIn);
+    offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ prefix }) =>
+      setOmnibox({ prefix }),
+    );
+    offShortcuts = onEvent(TOGGLE_SHORTCUTS, () =>
+      setShortcutsOpen((open) => !open),
+    );
     offZoomIn = onEvent(ZOOM_IN, zoomIn);
     offZoomOut = onEvent(ZOOM_OUT, zoomOut);
     offZoomReset = onEvent(ZOOM_RESET, resetZoom);
@@ -775,12 +807,17 @@ function App() {
     // Settings panel because the whole point is that they work with the panel
     // shut: the store is global, and a toggle that first had to open a modal
     // would be slower than the modal.
-    offPrefsToggle = onEventWith<PrefsToggle>(PREFS_TOGGLE, ({ key }) => toggleEditorDefault(key));
-    offOpenSettings = onEventWith<OpenSettings>(OPEN_SETTINGS, ({ query, entry }) => {
-      setSettingsQuery(query ?? "");
-      setSettingsEntry(entry);
-      setSettingsOpen(true);
-    });
+    offPrefsToggle = onEventWith<PrefsToggle>(PREFS_TOGGLE, ({ key }) =>
+      toggleEditorDefault(key),
+    );
+    offOpenSettings = onEventWith<OpenSettings>(
+      OPEN_SETTINGS,
+      ({ query, entry }) => {
+        setSettingsQuery(query ?? '');
+        setSettingsEntry(entry);
+        setSettingsOpen(true);
+      },
+    );
     // Stop, from Cmd+. or from a named palette row. Handled here rather than in
     // the chat panel because the whole point is that it works while something
     // else has focus - and `chat_interrupt` needs nothing from the panel but a
@@ -795,13 +832,13 @@ function App() {
         emitWith<ToastEvent>(TOAST, {
           message: running.length
             ? `${running.length} chats are running. Pick one from the command palette (⌘K) or stop it from its own tab.`
-            : "Nothing is running.",
-          kind: "info",
+            : 'Nothing is running.',
+          kind: 'info',
         });
         return;
       }
-      invoke("chat_interrupt", { sessionId: target }).catch((e) =>
-        emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }),
+      invoke('chat_interrupt', { sessionId: target }).catch((e) =>
+        emitWith<ToastEvent>(TOAST, { message: String(e), kind: 'error' }),
       );
     });
     // Rerun the last task, from ⌘⇧B or its palette row. Handled here because the
@@ -810,13 +847,13 @@ function App() {
     // worked while its own panel was open would not be a shortcut past it.
     offRunLastTask = onEvent(RUN_LAST_TASK, () => {
       const outcome = rerunLast(selected()?.folderPath ?? null);
-      if (outcome === "ran") return;
+      if (outcome === 'ran') return;
       emitWith<ToastEvent>(TOAST, {
         message:
-          outcome === "no-workspace"
-            ? "Select a branch first."
-            : "No task has been run here yet. Pick one from the Tasks panel.",
-        kind: "info",
+          outcome === 'no-workspace'
+            ? 'Select a branch first.'
+            : 'No task has been run here yet. Pick one from the Tasks panel.',
+        kind: 'info',
       });
     });
     // Collapse the rail to the intrinsic width of the top-left cluster (lights
@@ -830,7 +867,9 @@ function App() {
       const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
       const gap = parseFloat(cs.columnGap) || 0;
       const kids = Array.from(wc.children) as HTMLElement[];
-      const content = kids.reduce((s, c) => s + c.offsetWidth, 0) + gap * Math.max(0, kids.length - 1);
+      const content =
+        kids.reduce((s, c) => s + c.offsetWidth, 0) +
+        gap * Math.max(0, kids.length - 1);
       setRailFallback(Math.ceil(content + padX));
     }
     initSettings();
@@ -839,12 +878,12 @@ function App() {
     // than letting the user discover their theme changed on its own. The
     // backend owns the once-ness (a state.json flag), so a repeated call is a
     // no-op and this never becomes a launch nag.
-    invoke<string | null>("take_theme_import_notice")
+    invoke<string | null>('take_theme_import_notice')
       .then((path) => {
         if (!path) return;
         emitWith<ToastEvent>(TOAST, {
           message: `Imported VS Code themes are no longer supported, so ${path} was dropped. Sway now ships named themes; pick one in Settings.`,
-          kind: "info",
+          kind: 'info',
         });
       })
       .catch(() => {
@@ -853,19 +892,19 @@ function App() {
     // Mark shown on display, not on dismiss: a user who quits mid-welcome has
     // still seen it, and showing it again every launch would be the nag this
     // flag exists to prevent.
-    invoke<boolean>("onboarding_should_show")
+    invoke<boolean>('onboarding_should_show')
       .then((show) => {
         if (!show) return;
         setWelcome(true);
         setSettingsOpen(true);
-        return invoke("onboarding_mark_shown");
+        return invoke('onboarding_mark_shown');
       })
       .catch(() => {
         // A failed check just means no onboarding; never block startup on it.
       });
   });
   onCleanup(() => {
-    window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener('keydown', onKeyDown);
     offOmnibox?.();
     offShortcuts?.();
     offZoomIn?.();
@@ -887,7 +926,7 @@ function App() {
     offOpenSettings?.();
     offRunLastTask?.();
     offFocusIn?.();
-    document.body.classList.remove("dragging");
+    document.body.classList.remove('dragging');
   });
 
   return (
@@ -919,7 +958,11 @@ function App() {
           style={{ width: `${sidebarW()}px` }}
         >
           <div class="pane-body tree-body">
-            <LeftSidebar selected={selected()} onSelect={setSelected} liveTabs={liveTabs()} />
+            <LeftSidebar
+              selected={selected()}
+              onSelect={setSelected}
+              liveTabs={liveTabs()}
+            />
           </div>
         </aside>
 
@@ -934,11 +977,12 @@ function App() {
           />
         </Show>
 
-        <div class="workspace" classList={{ "no-sidebar": !showSidebar() }}>
-          {/* Both panels are service hosts (phase 7): they render surfaces into
-              stage hosts and no visible DOM of their own, so they sit beside
-              the tree rather than in a pane of it. */}
-          <Terminal selected={selected()} onOpenChange={setLiveTabs} onboarding={welcome()} />
+        <div class="workspace" classList={{ 'no-sidebar': !showSidebar() }}>
+          <Terminal
+            selected={selected()}
+            onOpenChange={setLiveTabs}
+            onboarding={welcome()}
+          />
           <Editor
             selected={selected()}
             liveTabs={liveTabs()}
@@ -947,10 +991,10 @@ function App() {
           />
           <div class="work-split">
             <PaneTree node={renderedLayout()} roles={paneRoles()} />
-            {/* Workspace chrome, not a pane's (phase 12): the file tree and the
-                right panel belong to the workspace the way the sidebar does, so
-                they stay put through every split, move and close. */}
-            <div class="chrome-slot" ref={(el) => el.appendChild(stageHost("editor-chrome"))} />
+            <div
+              class="chrome-slot"
+              ref={(el) => el.appendChild(stageHost('editor-chrome'))}
+            />
           </div>
         </div>
       </div>
@@ -974,7 +1018,7 @@ function App() {
           onClose={() => (
             setSettingsOpen(false),
             setWelcome(false),
-            setSettingsQuery(""),
+            setSettingsQuery(''),
             setSettingsEntry(undefined)
           )}
         />
