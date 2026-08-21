@@ -89,6 +89,11 @@ export type OpenTabLike = {
   args: string[];
   sessionId?: string;
   rewindTo?: number;
+  /** Chat tabs: whether a child is attached right now. A restored chat opened
+   *  only to read its transcript has a session id and no child, and holds
+   *  unsent text exactly as a draft does. Absent reads as no child, which is
+   *  the direction that keeps text rather than the one that drops it. */
+  live?: boolean;
   /** A draft's composer text and pick. Both live in their own stores keyed by
    *  tab id; the caller reads them there, so this module keeps its distance. */
   text?: string;
@@ -114,10 +119,12 @@ export function toStore(
       ws.active = ws.tabs.length;
       ws.activeId = t.id;
     }
-    // Only a draft: everything else comes back by respawning or resuming, and
-    // what was typed into a live chat belongs to a session that will replay its
-    // own transcript.
-    const draft = t.kind === "chat" && !t.sessionId;
+    // A chat with no child, which is a draft and also a restored chat that has
+    // been opened to read. Both hold what was typed at a conversation nothing is
+    // driving, and neither has anywhere else for it to survive. What was typed
+    // into a *live* chat is not kept: that session replays its own transcript,
+    // and the composer is the one place the text was already going.
+    const draft = t.kind === "chat" && !t.live;
     ws.tabs.push({
       id: t.id,
       title: t.title,

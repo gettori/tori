@@ -159,14 +159,28 @@ describe("toStore", () => {
     expect(parseStore(raw)["/w/a"].tabs[0].pick?.optionValues).toEqual({ web_search: false });
   });
 
-  it("keeps neither for a chat that has a session, whose transcript is the record", () => {
+  it("keeps neither for a chat with a live child, whose transcript is the record", () => {
     const out = toStore(
-      [tab({ id: "1", kind: "chat", sessionId: "c1", text: "typed", pick: { model: "sonnet", mode: null, effort: null, optionValues: {} } })],
+      [tab({ id: "1", kind: "chat", sessionId: "c1", live: true, text: "typed", pick: { model: "sonnet", mode: null, effort: null, optionValues: {} } })],
       {},
       100,
     );
     expect("text" in out["/w/a"].tabs[0]).toBe(false);
     expect("pick" in out["/w/a"].tabs[0]).toBe(false);
+  });
+
+  // The test the line above used to make was "has a session id", which a
+  // restored chat opened only to read also passes. Nothing is driving that
+  // conversation, so what was typed at it has nowhere else to survive a quit -
+  // exactly a draft's problem, and answered the same way.
+  it("keeps what was typed at a chat that has a session but no child", () => {
+    const out = toStore(
+      [tab({ id: "1", kind: "chat", sessionId: "c1", live: false, text: "typed" })],
+      {},
+      100,
+    );
+    expect(out["/w/a"].tabs[0].text).toBe("typed");
+    expect(out["/w/a"].tabs[0].sessionId).toBe("c1");
   });
 
   // One localStorage key holds every workspace's tabs, so an essay pasted into

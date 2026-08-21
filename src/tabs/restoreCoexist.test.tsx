@@ -73,7 +73,21 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 vi.mock("../panels/Terminal/TerminalView", () => ({
   default: (props: { id: string }) => <div data-testid="pty" data-id={props.id} />,
 }));
-vi.mock("../panels/Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }));
+// `started` is the whole of what a restored chat is being tested for here, so
+// the stand-in publishes it and offers the send that flips it. A chat surface
+// mounts either way now; whether a child is behind it is the question.
+vi.mock("../panels/Chat/ChatView", () => ({
+  default: (props: { tabId: string; started: boolean; resume: boolean; onStart: () => void }) => (
+    <div
+      data-testid="chat"
+      data-tab={props.tabId}
+      data-started={String(props.started)}
+      data-resume={String(props.resume)}
+    >
+      <button onClick={() => props.onStart()}>send</button>
+    </div>
+  ),
+}));
 vi.mock("../panels/Chat/ChatDraft", () => ({
   default: (props: { tabId: string; agentId: string }) => (
     <div data-testid="draft" data-tab={props.tabId} data-agent={props.agentId} />
@@ -240,6 +254,27 @@ describe("restore, per pane", () => {
     expect(invokes.some((i) => i.cmd === "chat_spawn")).toBe(false);
     expect(screen.queryByTestId("chat")).toBeNull();
   });
+
+  // A chat that has been opened to read holds unsent text the same way a draft
+  // does: no child is carrying it, so the store is the only place it can wait.
+  it("brings back what was typed at a restored chat that was never started", async () => {
+    const t = chatTab(1);
+    storeTabs([{ ...t, text: "where were we" }]);
+
+    await restore();
+
+    const chat = await screen.findByTestId("chat");
+    expect(chat.dataset.started).toBe("false");
+    expect(draftFor("chat:1")).toBe("where were we");
+    // And is still stored after this run saves over it. The save is what a quit
+    // lands on, and the tab is a chat with a session id now - the shape the old
+    // rule dropped the text for.
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0].text).toBe(
+        "where were we",
+      ),
+    );
+  });
 });
 
 // A restored tab comes back as *itself*, under the id it was stored with. That
@@ -336,16 +371,19 @@ describe("a restored tab is inert until it is reached for", () => {
     expect(screen.getByTestId("pty").dataset.id).toBe("sh:3");
   });
 
-  it("mounts nothing at all when the active tab is a chat", async () => {
+  it("spawns nothing when the active tab is a chat, which opens to read", async () => {
     storeTabs([0, 1, 2, 3, 4, 5].map(chatTab), { activeId: "chat:2" });
 
     await restore();
 
     await waitFor(() => expect(open()).toHaveLength(6));
-    // The active chat opens, which is a surface with no session behind it.
-    await screen.findByTestId("chat-unstarted");
+    // One chat surface, the active one, and it is unstarted: the transcript is
+    // read from disk and no child is behind it.
+    const chats = await screen.findAllByTestId("chat");
+    expect(chats).toHaveLength(1);
+    expect(chats[0]!.dataset.tab).toBe("chat:2");
+    expect(chats[0]!.dataset.started).toBe("false");
     expect(screen.queryAllByTestId("pty")).toHaveLength(0);
-    expect(screen.queryAllByTestId("chat")).toHaveLength(0);
     expect(invokes.some((i) => i.cmd === "chat_spawn")).toBe(false);
   });
 
@@ -403,14 +441,14 @@ describe("a restored tab is inert until it is reached for", () => {
   // cannot be counted - so ten of them under a cap of three say nothing. This
   // is a regression check on that chain, not new behaviour: what it pins is
   // that restore still mounts no `ChatView` it was not asked to.
-  it("mounts no ChatView for ten restored chats, so none can reach the cap", async () => {
+  it("starts no chat child for ten restored chats, so none can reach the cap", async () => {
     storeTabs([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(chatTab), { activeId: "chat:0" });
 
     await restore();
 
     await waitFor(() => expect(open()).toHaveLength(10));
-    await screen.findByTestId("chat-unstarted");
-    expect(screen.queryAllByTestId("chat")).toHaveLength(0);
+    const chats = await screen.findAllByTestId("chat");
+    expect(chats.map((el) => el.dataset.started)).toEqual(["false"]);
   });
 
   // `backfillFreshSessions` attributes a session that appeared after a fresh
@@ -459,15 +497,22 @@ describe("a restored tab is inert until it is reached for", () => {
     await waitFor(() => expect(agentTabSession()).toBe("s-stranger"));
   });
 
-  it("starts an opened chat only when its own control is pressed", async () => {
+  // The transition Phase 3 is for: a restored chat opens to read, and the first
+  // send is what starts it - on the session id it already has, never a fresh
+  // one, or the conversation on screen would not be the one the child resumes.
+  it("starts an opened chat on its own session, and only on a first send", async () => {
     storeTabs([chatTab(1)]);
 
     await restore();
-    await screen.findByTestId("chat-unstarted");
+    const chat = await screen.findByTestId("chat");
+    expect(chat.dataset.started).toBe("false");
+    expect(chat.dataset.resume).toBe("true");
 
-    fireEvent.click(screen.getByText("Resume it"));
+    fireEvent.click(screen.getByText("send"));
 
-    await screen.findByTestId("chat");
-    expect(screen.queryByTestId("chat-unstarted")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("chat").dataset.started).toBe("true"));
+    // Same tab, so the same session id: a mint would have replaced the record.
+    expect(screen.getByTestId("chat").dataset.tab).toBe("chat:1");
+    expect(open().find((t) => t.id === "chat:1")?.sessionId).toBe("s-1");
   });
 });
