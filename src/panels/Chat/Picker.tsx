@@ -106,11 +106,11 @@ function PillBody(props: {
 }) {
   return (
     <>
-      <Icon icon={props.icon} size={13} class={styles.pillIcon} />
+      <Icon icon={props.icon} size={15} class={styles.pillIcon} />
       <Show when={props.prefix}>{(p) => <span class={styles.pillPrefix}>{p()}</span>}</Show>
       <span class={styles.pillValue}>{props.value}</span>
       <span class={styles.pillCaret} aria-hidden="true">
-        <Icon icon={ChevronDown} size={13} />
+        <Icon icon={ChevronDown} size={15} />
       </span>
     </>
   );
@@ -218,7 +218,7 @@ export function PickerOption(props: {
       {/* Held whatever the state, so rows do not shift sideways as the
           selection moves down the list. */}
       <span class={styles.pickCheck} classList={{ [styles.pickCheckOn]: props.selected }} aria-hidden="true">
-        <Icon icon={Check} size={14} />
+        <Icon icon={Check} size={15} />
       </span>
     </MenuRow>
   );
@@ -279,7 +279,7 @@ export function PillToggle(props: {
       aria-pressed={props.on}
       onClick={() => !props.ariaDisabled && props.onChange(!props.on)}
     >
-      <Icon icon={props.on ? props.icon : props.iconOff} size={13} class={styles.pillIcon} />
+      <Icon icon={props.on ? props.icon : props.iconOff} size={15} class={styles.pillIcon} />
       <Show when={props.label}>{(text) => <span class={styles.pillValue}>{text()}</span>}</Show>
     </Tooltip>
   );
@@ -293,7 +293,7 @@ export function PickerMore(props: { label: string; onOpen: () => void }) {
         <span class={styles.pickName}>{props.label}</span>
       </span>
       <span class={styles.pickInto} aria-hidden="true">
-        <Icon icon={ChevronRight} size={14} />
+        <Icon icon={ChevronRight} size={15} />
       </span>
     </MenuRow>
   );
