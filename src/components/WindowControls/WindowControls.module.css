@@ -8,13 +8,8 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  /* Left padding clears the native traffic lights rather than laying anything
-     out: they live in the window's own titlebar view, not in this DOM. It is
-     unscaled on purpose, because their inset is unscaled too - `x: 16` in
-     tauri.conf.json, three buttons at the system's fixed 20px pitch, so the
-     cluster ends near 70px. `.topbar`'s fixed height is the vertical half of the
-     same bargain: both numbers have to stay put while the UI scale moves. */
-  padding: 0 calc(8px * var(--ui-scale)) 0 78px;
+  gap: 4px;
+  padding: 0 4px 0 86px;
   -webkit-app-region: drag;
 }
 
@@ -32,6 +27,6 @@
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: calc(2px * var(--ui-scale));
+  gap: 4px;
   -webkit-app-region: no-drag;
 }
