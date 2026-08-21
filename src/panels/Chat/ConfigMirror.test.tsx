@@ -242,6 +242,47 @@ describe("the agent's own options in the composer bar", () => {
     expect(onSet).toHaveBeenCalledWith("collaboration_mode", "plan");
   });
 
+  it("says what pressing a toggle does, in the agent's own choice labels", () => {
+    const two = live({
+      id: "collaboration_mode",
+      name: "Collaboration mode",
+      description: "How codex collaborates on a task",
+      category: "",
+      kind: "select",
+      current: "default",
+      choices: [
+        { value: "default", label: "Default", description: "" },
+        { value: "plan", label: "Plan", description: "" },
+      ],
+    }) as ChatConfigOption;
+
+    const { getByLabelText } = setup([two]);
+    focusTrigger(getByLabelText("Collaboration mode: Default"));
+
+    const tip = screen.getByRole("tooltip");
+    expect(tip.textContent).toBe("Switch to Plan");
+    expect(tip.textContent).not.toContain("How codex collaborates");
+  });
+
+  it("turns the action round once the toggle is on", () => {
+    const two = live({
+      id: "collaboration_mode",
+      name: "Collaboration mode",
+      description: "",
+      category: "",
+      kind: "select",
+      current: "plan",
+      choices: [
+        { value: "default", label: "Default", description: "" },
+        { value: "plan", label: "Plan", description: "" },
+      ],
+    }) as ChatConfigOption;
+
+    const { getByLabelText } = setup([two]);
+    focusTrigger(getByLabelText("Collaboration mode: Plan"));
+    expect(screen.getByRole("tooltip").textContent).toBe("Switch to Default");
+  });
+
   it("shows the second choice as pressed when it is the one in force", () => {
     const two = live({
       id: "collaboration_mode",
