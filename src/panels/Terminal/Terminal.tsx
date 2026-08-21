@@ -350,6 +350,10 @@ export default function Terminal(props: {
         },
         false,
       );
+        // What was typed at this conversation while nothing was driving it. No
+        // pick rides along: the session already has a model, and the stored one
+        // was a draft's opening choice rather than a request to switch.
+        if (d.text) setDraft(id, d.text);
         producedId[i] = id;
         continue;
       }
@@ -499,11 +503,19 @@ export default function Terminal(props: {
   // erased by going empty, which is what lets current truth overwrite a
   // declined restore offer.
   const touched = new Set<string>();
+  // Whether a chat tab has a child on the other end. The persist rule is "a chat
+  // with no live child keeps what was typed at it", which covers a draft and a
+  // restored chat opened only to read: neither has a session to carry the text.
+  const chatIsLive = (t: OpenTerm) => t.kind === "chat" && tabState(t) === "live";
   // A draft's unsent text and its pick live in stores of their own, keyed by tab
   // id. Read here rather than inside `tabPersist`, which stays a pure fold over
   // whatever it is handed.
   const withDrafts = (tabs: readonly OpenTerm[]) =>
-    tabs.map((t) => (isChatDraft(t) ? { ...t, text: draftFor(t.id), pick: draftPick(t.id) } : t));
+    tabs.map((t) => {
+      if (t.kind !== "chat") return t;
+      if (chatIsLive(t)) return { ...t, live: true };
+      return { ...t, live: false, text: draftFor(t.id), pick: draftPick(t.id) };
+    });
 
   function saveTabStore(tabs: readonly OpenTerm[], active: Record<string, string>) {
     const live = toStore(untrack(() => withDrafts(tabs)), active, Date.now());
@@ -523,7 +535,7 @@ export default function Terminal(props: {
     for (const t of open()) {
       // Read for the subscription, not for the value: touching each draft's two
       // stores is the whole of what makes a keystroke arm the timer below.
-      if (!isChatDraft(t)) continue;
+      if (t.kind !== "chat" || chatIsLive(t)) continue;
       draftFor(t.id);
       draftPick(t.id);
     }
@@ -1195,6 +1207,12 @@ export default function Terminal(props: {
 
   function startChatDraft(tabId: string) {
     clearDraftError(tabId);
+    const tab = open().find((t) => t.id === tabId);
+    // A draft sits at `open` until here. Advanced before the record swap so the
+    // chat that mounts in its place is already started: read as `open`, it would
+    // render as a transcript-only tab and wait for a first send that has just
+    // happened.
+    if (tab) advanceTabState(tab, "live");
     setOpen(open().map((t) => (t.id === tabId ? { ...t, sessionId: crypto.randomUUID() } : t)));
   }
 
@@ -1596,45 +1614,12 @@ export default function Terminal(props: {
       />
     );
   };
-  /**
-   * A restored chat that has been opened but never started.
-   *
-   * The placeholder Phase 3 replaces with the session's own transcript, read
-   * off disk. It exists so Phase 2 ships something rather than an empty pane:
-   * the tab says what it is, and starting it is one press away.
-   */
-  const UnstartedChat = (p: { onStart: () => void }) => (
-    <div class={styles.termUnstarted} data-testid="chat-unstarted">
-      <span>This session is not running.</span>
-      <Button variant="primary" size="sm" onClick={p.onStart}>
-        Resume it
-      </Button>
-    </div>
-  );
-
   const chatStage = (u: UnifiedTab) => {
     const t = asTerm(u);
     const active = createMemo(() => onScreen(t));
     const woken = wokenMemo(t);
     wakeOnScreen(t, active);
-    // A chat that has been reached for but not started: it holds a session id
-    // from a previous run, and nothing is driving it. Phase 3 replaces this
-    // with the session's own transcript, read from disk; for now it is the
-    // sentence and the control that starts it, so the state is shippable.
-    //
-    // A draft is deliberately not this: it has no session at all, and
-    // `ChatDraft` below is already exactly "not started, with the control".
-    const unstarted = () => tabState(t) === "open" && !isChatDraft(t);
-    // Nested rather than a `Switch`, so the inner gate only ever opens *after*
-    // the outer one: a chat is never built before it has been reached for, and
-    // `ChatView` is never built before it has been started.
-    return (
-      <Show when={woken()}>
-        <Show when={!unstarted()} fallback={<UnstartedChat onStart={() => advanceTabState(t, "live")} />}>
-          {chatSurface(t, active)}
-        </Show>
-      </Show>
-    );
+    return <Show when={woken()}>{chatSurface(t, active)}</Show>;
   };
   const chatSurface = (t: OpenTerm, active: () => boolean) => {
     // No session id means nothing has been started here yet: this tab is a
@@ -1667,6 +1652,12 @@ export default function Terminal(props: {
         workspace={t.workspace}
         title={tabTitle(t)}
         resume={!!t.resume}
+        // A chat that has been reached for but not started renders its
+        // transcript from disk and spawns nothing. `resume` above is what its
+        // first send then starts it on, so the child comes back to this
+        // session rather than to a fresh one.
+        started={tabState(t) === "live"}
+        onStart={() => advanceTabState(t, "live")}
         active={active()}
         onForkSession={() => spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program)}
         onForkFrom={() =>
