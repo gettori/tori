@@ -4,6 +4,9 @@
 // shape the two-pane shell gives them.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+// The strip seeds its visible count from an empty item list and corrects it in a
+// frame, so without this every lookup by tab role races that correction.
+import { installAnimationFrame } from "../test/frames";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -11,9 +14,17 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
+installAnimationFrame();
+
 const REPO = "/space/proj/main";
 
 const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
+// What `list_sessions` finds on disk. A restored chat names a stored session,
+// and a session the scan cannot see is skipped as deleted rather than restored.
+let storedSessions: { id: string; agent: string; cwd: string; path: string }[] = [];
+// Tauri event listeners, so a test can fire `sessions://changed` and drive the
+// backfill that runs on it.
+const handlers: Record<string, (e: { payload: unknown }) => void> = {};
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
@@ -32,7 +43,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "fs_read_dir":
         return Promise.resolve([]);
       case "list_sessions":
-        return Promise.resolve([]);
+        return Promise.resolve(storedSessions);
       case "session_running":
         return Promise.resolve(false);
       case "chat_orphans":
@@ -43,7 +54,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: () => Promise.resolve(() => {}),
+  listen: (name: string, fn: (e: { payload: unknown }) => void) => {
+    handlers[name] = fn;
+    return Promise.resolve(() => {});
+  },
   emit: () => Promise.resolve(),
 }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: () => Promise.resolve("/home/me") }));
@@ -76,8 +90,9 @@ const { emitWith, GIT_STAGE_ACTIVE } = await import("../utils/events");
 const { draftFor } = await import("../utils/chatCompose");
 const { draftPick } = await import("../utils/chatDraftPick");
 const { envelopeFor, resetPaneLayoutModel, seedTwoPane } = await import("../layout/layoutStore");
-const { paneOfTab, resetTabPlacement } = await import("../layout/tabPlacement");
-const { visibleId } = await import("../panels/Terminal/terminalTabStore");
+const { paneOfTab, resetTabPlacement, flushTabPlacement } = await import("../layout/tabPlacement");
+const { visibleId, focusTab } = await import("../panels/Terminal/terminalTabStore");
+const { closeOf } = await import("../test/tabs");
 
 const selection = {
   spaceName: "space",
@@ -91,9 +106,16 @@ const selection = {
 beforeEach(() => {
   localStorage.clear();
   invokes.length = 0;
+  storedSessions = [];
   resetPaneLayoutModel();
   resetTabPlacement();
 });
+
+/** A stored chat tab, and the on-disk session it names. */
+const chatTab = (n: number) => {
+  storedSessions.push({ id: `s-${n}`, agent: "claude", cwd: REPO, path: `/t/s-${n}.jsonl` });
+  return { title: `chat ${n}`, cwd: REPO, kind: "chat", program: "claude", args: [], id: `chat:${n}`, sessionId: `s-${n}` };
+};
 
 /** A stored workspace, saved just now so nothing prunes it. */
 const storeTabs = (tabs: unknown[], over: Record<string, unknown> = {}) =>
@@ -251,8 +273,11 @@ describe("restore reuses the stored tab id", () => {
 
     await restore();
 
-    await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(2));
-    const ids = screen.getAllByTestId("pty").map((el) => el.dataset.id);
+    // Read off the tab model, not the mounted surfaces: since lazy restore only
+    // the tab in front has a surface, and what is under test here is that two
+    // entries produced two distinct tabs.
+    await waitFor(() => expect(open()).toHaveLength(2));
+    const ids = open().map((t) => t.id);
     expect(new Set(ids).size).toBe(2);
     expect(ids).toContain("sh:same");
   });
@@ -290,5 +315,159 @@ describe("restore reuses the stored tab id", () => {
     await restore();
 
     await waitFor(() => expect(visibleId()).toBe("sh:b"));
+  });
+});
+
+// The lazy half (plan phase 2): a restored tab is a strip entry until it is
+// reached for. `TerminalView` is mocked here, so a mounted `pty` host stands in
+// for the `pty_spawn` it would issue - the surface existing at all is the thing
+// under test.
+describe("a restored tab is inert until it is reached for", () => {
+  const sixShells = () => [0, 1, 2, 3, 4, 5].map((n) => shell({ id: `sh:${n}`, title: `sh ${n}` }));
+
+  it("mounts one surface for the active tab and none for the rest", async () => {
+    storeTabs(sixShells(), { activeId: "sh:3" });
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(6));
+    // Six entries in the strip, one surface: the other five are records.
+    await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(1));
+    expect(screen.getByTestId("pty").dataset.id).toBe("sh:3");
+  });
+
+  it("mounts nothing at all when the active tab is a chat", async () => {
+    storeTabs([0, 1, 2, 3, 4, 5].map(chatTab), { activeId: "chat:2" });
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(6));
+    // The active chat opens, which is a surface with no session behind it.
+    await screen.findByTestId("chat-unstarted");
+    expect(screen.queryAllByTestId("pty")).toHaveLength(0);
+    expect(screen.queryAllByTestId("chat")).toHaveLength(0);
+    expect(invokes.some((i) => i.cmd === "chat_spawn")).toBe(false);
+  });
+
+  it("wakes a tab exactly one step when it is reached for, and no further", async () => {
+    storeTabs(sixShells(), { activeId: "sh:0" });
+
+    await restore();
+    await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(1));
+
+    focusTab(REPO, "sh:4");
+
+    await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(2));
+    // The first one is not torn down by looking away from it: that would be the
+    // destroy gate a lazy surface must never become.
+    expect(screen.getAllByTestId("pty").map((el) => el.dataset.id).sort()).toEqual(["sh:0", "sh:4"]);
+  });
+
+  // Nothing was ever spawned, so there is nothing to kill. Issuing `pty_kill`
+  // anyway would be harmless today and a real bug the moment an id is reused,
+  // which restore now does.
+  it("kills nothing when an inert tab is closed, and forgets where it sat", async () => {
+    localStorage.setItem("sway.tabpanes.v1", JSON.stringify({ [REPO]: { tabs: { "sh:1": "right" } } }));
+    resetTabPlacement();
+    storeTabs([shell({ id: "sh:0", title: "front" }), shell({ id: "sh:1", title: "spare" })], { activeId: "sh:0" });
+
+    await restore();
+    await waitFor(() => expect(open()).toHaveLength(2));
+    invokes.length = 0;
+
+    fireEvent.click(await waitFor(() => closeOf("spare")));
+
+    await waitFor(() => expect(open().map((t) => t.id)).toEqual(["sh:0"]));
+    expect(invokes.filter((i) => i.cmd === "pty_kill")).toEqual([]);
+    expect(invokes.filter((i) => i.cmd === "chat_close")).toEqual([]);
+    flushTabPlacement();
+    expect(JSON.parse(localStorage.getItem("sway.tabpanes.v1")!)[REPO].tabs["sh:1"]).toBeUndefined();
+  });
+
+  // The live tab is the control: the same close on a tab that was reached for
+  // must still kill its PTY, or this stops being laziness and starts being a leak.
+  it("still kills the PTY of a tab that was reached for", async () => {
+    storeTabs([shell({ id: "sh:0", title: "front" })], { activeId: "sh:0" });
+
+    await restore();
+    await screen.findByTestId("pty");
+    invokes.length = 0;
+
+    fireEvent.click(await waitFor(() => closeOf("front")));
+
+    await waitFor(() => expect(invokes.filter((i) => i.cmd === "pty_kill")).toHaveLength(1));
+  });
+
+  // The concurrent-chat cap counts `liveChats()`, which only `ChatView` writes
+  // to, from inside itself. A restored chat that never mounts one therefore
+  // cannot be counted - so ten of them under a cap of three say nothing. This
+  // is a regression check on that chain, not new behaviour: what it pins is
+  // that restore still mounts no `ChatView` it was not asked to.
+  it("mounts no ChatView for ten restored chats, so none can reach the cap", async () => {
+    storeTabs([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(chatTab), { activeId: "chat:0" });
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(10));
+    await screen.findByTestId("chat-unstarted");
+    expect(screen.queryAllByTestId("chat")).toHaveLength(0);
+  });
+
+  // `backfillFreshSessions` attributes a session that appeared after a fresh
+  // agent tab spawned. An inert tab spawned nothing, and carries no
+  // `spawnedAt` - so its `?? 0` floor would make *every* unclaimed session in
+  // the folder younger than it, and the tab would take the first one.
+  //
+  // The two halves run the same fixture with the agent tab inert and then
+  // reached for, so the second is the proof that the first is not passing for
+  // some unrelated reason.
+  const backfillFixture = (activeId: string) => {
+    // `created_at` matters: the backfill compares it against the tab's
+    // `spawnedAt`, and a session with none would be refused for that reason
+    // instead of the one under test.
+    storedSessions = [{ id: "s-stranger", agent: "claude", cwd: REPO, path: "/t/s.jsonl", created_at: 1 } as never];
+    storeTabs(
+      [
+        { title: "claude", cwd: REPO, kind: "agent", program: "claude", args: [], id: "sh:agent" },
+        shell({ id: "sh:x", title: "front" }),
+      ],
+      { activeId },
+    );
+  };
+  const agentTabSession = () => open().find((t) => t.id === "sh:agent")?.sessionId;
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it("does not let an inert agent tab claim an unrelated session", async () => {
+    backfillFixture("sh:x");
+
+    await restore();
+    await waitFor(() => expect(open()).toHaveLength(2));
+    handlers["sessions://changed"]!({ payload: null });
+    await settle();
+    await settle();
+
+    expect(agentTabSession()).toBeUndefined();
+  });
+
+  it("still lets a reached-for agent tab claim it, so the case above is real", async () => {
+    backfillFixture("sh:agent");
+
+    await restore();
+    await waitFor(() => expect(open()).toHaveLength(2));
+    handlers["sessions://changed"]!({ payload: null });
+
+    await waitFor(() => expect(agentTabSession()).toBe("s-stranger"));
+  });
+
+  it("starts an opened chat only when its own control is pressed", async () => {
+    storeTabs([chatTab(1)]);
+
+    await restore();
+    await screen.findByTestId("chat-unstarted");
+
+    fireEvent.click(screen.getByText("Resume it"));
+
+    await screen.findByTestId("chat");
+    expect(screen.queryByTestId("chat-unstarted")).toBeNull();
   });
 });

@@ -69,7 +69,7 @@ const LISTINGS: Record<string, ReturnType<typeof session>[]> = {
 };
 
 const liveTabs = [
-  { id: "tab-1", workspace: MAIN, kind: "agent" as const, sessionId: "live-1", agent: "claude" as const },
+  { id: "tab-1", workspace: MAIN, kind: "agent" as const, sessionId: "live-1", agent: "claude" as const, state: "live" as const },
 ];
 
 const bridge = vi.hoisted(() => ({
@@ -161,6 +161,26 @@ describe("what the sidebar can see without being expanded", () => {
     await waitFor(() => expect(pickedIds()).toContain("live-1"));
 
     expect(listedFolders()).not.toContain(SOLO); // the active space only
+  });
+
+  // The undercount lazy restore opened up. The sweep skips every session a tab
+  // already names, so an *inert* tab - a restored strip entry with nothing
+  // behind it - would hide its own session from the only pass that would have
+  // found it running outside Sway.
+  it("probes a session an inert tab merely names, since nothing is driving it", async () => {
+    const inert = liveTabs.map((t) => ({ ...t, state: "inert" as const }));
+    render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={inert} />);
+
+    await waitFor(() => expect(probedIds()).toContain("live-1"));
+  });
+
+  // The control: a tab that is genuinely driving the session still suppresses
+  // the probe, which is the whole point of the dedup.
+  it("does not probe a session a live tab is driving", async () => {
+    render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs} />);
+
+    await waitFor(() => expect(probedIds()).toContain("detached-1"));
+    expect(probedIds()).not.toContain("live-1");
   });
 
   it("lists every branch-unit in the active space with the whole tree collapsed", async () => {

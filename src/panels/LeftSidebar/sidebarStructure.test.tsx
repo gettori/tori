@@ -93,7 +93,7 @@ const tab = (id: string, workspace: string, sessionId: string) => ({
   workspace,
   kind: "agent" as const,
   sessionId,
-  agent: "claude" as const,
+  agent: "claude" as const, state: "live" as const,
 });
 
 const liveTabs = [tab("tab-1", `${REPO}/feat`, onFeat.id), tab("tab-2", NOTES, inNotes.id)];
