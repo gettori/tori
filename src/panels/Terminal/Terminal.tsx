@@ -58,7 +58,7 @@ import { type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
 import { liveSessionStatuses, sessionStatus } from "../../utils/sessionActivity";
 import { sessions } from "../../utils/sessionStore";
-import { loadTabs, saveTabs, toStore, mergeStore } from "../../utils/tabPersist";
+import { loadTabs, saveTabs, toStore, mergeStore, restoreId, activeIndex } from "../../utils/tabPersist";
 import { debounce } from "../../utils/debounce";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
@@ -137,6 +137,11 @@ const DRAFT_SAVE_MS = 500;
 // one shell can host successive agents, and the uuid is a soft attribute.
 function shellId(): string {
   return `sh:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// The same for a chat tab, which hosts no shell and so has no PTY to name it.
+function chatId(): string {
+  return `chat:${crypto.randomUUID()}`;
 }
 
 // The command an agent tab types into its shell once (e.g. "claude --resume x\n").
@@ -253,6 +258,12 @@ export default function Terminal(props: {
     // the stored active index still resolves to the right tab (or to nothing)
     // instead of being read positionally against a shorter live list.
     const producedId: (string | undefined)[] = [];
+    // The id a stored entry comes back under, refusing one anything open
+    // already holds. Read live rather than from a snapshot taken up front: this
+    // loop awaits, and `openOrActivate` lands its tab synchronously, so `open()`
+    // is the only thing that stays true across both.
+    const idFor = (stored: string | undefined, fresh: () => string) =>
+      restoreId(stored, new Set(open().map((t) => t.id)), fresh);
 
     for (const [i, d] of entry.tabs.entries()) {
       // Restore is routed on the stored kind alone, never on the default-surface
@@ -264,7 +275,14 @@ export default function Terminal(props: {
         // comes back as the same unstarted tab, holding what was typed into it
         // and what it was set to run as. Still no process and no claim - a
         // restored draft costs exactly what an opened one does.
-        const id = openChatTab(ws, await cwdFor(d.cwd), d.title, storedChatAgent(d.program));
+        const id = openChatTab(
+          ws,
+          await cwdFor(d.cwd),
+          d.title,
+          storedChatAgent(d.program),
+          undefined,
+          idFor(d.id, chatId),
+        );
         if (d.text) setDraft(id, d.text);
         if (d.pick) setDraftPick(id, d.pick);
         producedId[i] = id;
@@ -277,7 +295,7 @@ export default function Terminal(props: {
           missingSessions++;
           continue;
         }
-        const id = `chat:${crypto.randomUUID()}`;
+        const id = idFor(d.id, chatId);
         openOrActivate({
           id,
           title: d.title,
@@ -323,7 +341,7 @@ export default function Terminal(props: {
       // A plain shell, or an agent tab whose session was never attributed: come
       // back as the same shell-hosted tab, seeded again if it had an init.
       const cwd = await cwdFor(d.cwd);
-      const id = shellId();
+      const id = idFor(d.id, shellId);
       openOrActivate({
         id,
         title: d.title,
@@ -337,10 +355,12 @@ export default function Terminal(props: {
       producedId[i] = id;
     }
 
-    // Refocus whatever the stored active index actually produced. Restoring in
+    // Refocus whatever the stored active entry actually produced. Restoring in
     // order leaves the last tab focused otherwise, which is rarely the one that
-    // was in front.
-    const targetId = producedId[entry.active];
+    // was in front. Resolved through `producedId` either way, so a skipped
+    // session leaves the focus alone rather than handing it to a neighbour.
+    const activeAt = activeIndex(entry);
+    const targetId = activeAt >= 0 ? producedId[activeAt] : undefined;
     if (targetId) focusTab(ws, targetId);
 
     const notices: string[] = [];
@@ -1002,8 +1022,10 @@ export default function Terminal(props: {
     baseName: string,
     agentId: string,
     session?: { sessionId: string; forkFrom?: string; rewindTo?: number },
+    // Restore hands its stored id in so the tab comes back as itself; every
+    // other caller is opening a tab that has never existed.
+    id: string = chatId(),
   ): string {
-    const id = `chat:${crypto.randomUUID()}`;
     openOrActivate({
       id,
       title: chatTabLabel(

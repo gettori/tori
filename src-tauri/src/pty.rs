@@ -44,6 +44,17 @@ const COALESCE_MAX_BYTES: usize = 64 * 1024;
 #[derive(Default)]
 pub struct PtyState(pub Mutex<HashMap<String, Session>>);
 
+impl PtyState {
+    /// Every live tab id, sorted. Keyed by **frontend tab id**, unlike
+    /// `ChatHost::live_ids`, which answers in session ids.
+    pub fn live_ids(&self) -> Result<Vec<String>, String> {
+        let guard = self.0.lock().map_err(|e| e.to_string())?;
+        let mut ids: Vec<String> = guard.keys().cloned().collect();
+        ids.sort();
+        Ok(ids)
+    }
+}
+
 /// Where a session's raw PTY output is streamed. Swappable so a remount/
 /// re-subscribe (an idempotent pty_spawn) can rewire output to a fresh channel
 /// without restarting the process.
@@ -494,6 +505,16 @@ pub fn pty_kill(
     Ok(())
 }
 
+/// Every PTY session this process still holds, by **frontend tab id**, sorted.
+///
+/// The counterpart to `chat_live_sessions`, which answers in session ids. A
+/// reload loses the tabs but not the processes, so a restore matches its stored
+/// tab ids against this to know which ones only need rewiring.
+#[tauri::command]
+pub fn pty_live_ids(state: State<PtyState>) -> Result<Vec<String>, String> {
+    state.live_ids()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -519,6 +540,50 @@ mod tests {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let writer: SharedWriter = Arc::new(Mutex::new(Box::new(Recorder(seen.clone()))));
         (writer, seen)
+    }
+
+    /// A real PTY running `sleep`, so the state holds a session shaped exactly
+    /// like a spawned one. `pty_spawn` itself needs an `AppHandle` and a
+    /// `Channel`, neither of which exists in a unit test.
+    fn live_session(claimed_session: Option<&str>) -> Session {
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .expect("openpty");
+        let mut cmd = CommandBuilder::new("sleep");
+        cmd.arg("30");
+        let child = pair.slave.spawn_command(cmd).expect("spawn");
+        let writer: Box<dyn Write + Send> = pair.master.take_writer().expect("writer");
+        Session {
+            master: pair.master,
+            writer: Arc::new(Mutex::new(writer)),
+            child,
+            sink: Arc::new(Mutex::new(None)),
+            claimed_session: claimed_session.map(str::to_string),
+        }
+    }
+
+    /// The listing a restore matches terminal tabs against answers in **tab
+    /// ids**, never the session id a tab happens to have claimed. Chat answers
+    /// the other half in session ids (`ChatHost::live_ids`), so the two sets
+    /// stay disjoint and a restore can match each surface by its own key.
+    #[test]
+    fn live_ids_are_tab_ids_not_the_sessions_those_tabs_claimed() {
+        let state = PtyState::default();
+        {
+            let mut guard = state.0.lock().unwrap();
+            guard.insert("tab-shell".into(), live_session(None));
+            guard.insert("tab-agent".into(), live_session(Some("s-claimed")));
+        }
+
+        let ids = state.live_ids().unwrap();
+        // Killed before the asserts, so a failing one does not leave the
+        // children running for the rest of the suite.
+        for mut session in state.0.lock().unwrap().drain().map(|(_, s)| s) {
+            let _ = session.child.kill();
+        }
+
+        assert_eq!(ids, vec!["tab-agent", "tab-shell"], "sorted tab ids");
+        assert!(!ids.iter().any(|id| id == "s-claimed"), "a claimed session id must not appear in the tab listing");
     }
 
     /// "remounting a running task's tab re-subscribes without re-typing the

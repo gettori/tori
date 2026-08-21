@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { toStore, pruneStale, parseStore, mergeStore, type TabStore, type OpenTabLike } from "./tabPersist";
+import {
+  toStore,
+  pruneStale,
+  parseStore,
+  mergeStore,
+  restoreId,
+  activeIndex,
+  type TabStore,
+  type OpenTabLike,
+} from "./tabPersist";
 import { chatTabLabel } from "./chatConcurrency";
 
 const tab = (over: Partial<OpenTabLike> = {}): OpenTabLike => ({
@@ -27,6 +36,19 @@ describe("toStore", () => {
   it("records the active tab as an index into the stored order", () => {
     const out = toStore([tab({ id: "1" }), tab({ id: "2" })], { "/w/a": "2" }, 100);
     expect(out["/w/a"].active).toBe(1);
+  });
+
+  // Both, not one: the id is what this build restores by, and the index is what
+  // a build older than this one reads, so a rollback still lands on the same tab.
+  it("records the active tab as an id alongside the index", () => {
+    const out = toStore([tab({ id: "1" }), tab({ id: "2" })], { "/w/a": "2" }, 100);
+    expect(out["/w/a"].activeId).toBe("2");
+    expect(out["/w/a"].active).toBe(1);
+  });
+
+  it("keeps each tab's own id, so a restored tab can come back as itself", () => {
+    const out = toStore([tab({ id: "sh:1" }), tab({ id: "chat:2", kind: "chat" })], {}, 100);
+    expect(out["/w/a"].tabs.map((t) => t.id)).toEqual(["sh:1", "chat:2"]);
   });
 
   it("uses -1 when the workspace has no recorded active tab", () => {
@@ -195,6 +217,65 @@ describe("mergeStore", () => {
   });
 });
 
+describe("activeIndex", () => {
+  const entry = (over: Partial<TabStore[string]>): TabStore[string] => ({
+    tabs: [
+      { id: "sh:1", title: "a", cwd: "/c", kind: "shell", program: "", args: [] },
+      { id: "sh:2", title: "b", cwd: "/c", kind: "shell", program: "", args: [] },
+    ],
+    active: -1,
+    savedAt: 1,
+    ...over,
+  });
+
+  it("resolves by id when the store carries one", () => {
+    expect(activeIndex(entry({ activeId: "sh:2", active: 1 }))).toBe(1);
+  });
+
+  // The id is authoritative: an order that changed since the index was written
+  // must not focus whatever now sits in that slot.
+  it("prefers the id over a disagreeing index", () => {
+    expect(activeIndex(entry({ activeId: "sh:1", active: 1 }))).toBe(0);
+  });
+
+  // A store written by a build older than this one. It has no ids at all, so
+  // the index is the only answer there is.
+  it("falls back to the index for a store carrying no ids", () => {
+    const old = entry({ active: 1, tabs: [{ title: "a", cwd: "/c", kind: "shell", program: "", args: [] }] });
+    expect(activeIndex(old)).toBe(1);
+  });
+
+  it("reports none when the stored active id matches no tab", () => {
+    expect(activeIndex(entry({ activeId: "sh:gone", active: 0 }))).toBe(-1);
+  });
+});
+
+describe("restoreId", () => {
+  const fresh = () => "fresh";
+
+  it("reuses the stored id, so placement and the backend still recognise the tab", () => {
+    expect(restoreId("sh:1", new Set(), fresh)).toBe("sh:1");
+  });
+
+  it("mints a fresh id when nothing was stored", () => {
+    expect(restoreId(undefined, new Set(), fresh)).toBe("fresh");
+  });
+
+  // `pty_spawn` delivers a tab's `init` exactly once per id, so a second tab on
+  // a live one would be seeded nothing and come back an empty shell.
+  it("refuses an id a live tab already holds", () => {
+    expect(restoreId("sh:1", new Set(["sh:1"]), fresh)).toBe("fresh");
+  });
+
+  it("gives two entries naming one id two distinct tabs", () => {
+    const taken = new Set<string>();
+    const first = restoreId("sh:1", taken, fresh);
+    taken.add(first);
+    const second = restoreId("sh:1", taken, () => "fresh-2");
+    expect([first, second]).toEqual(["sh:1", "fresh-2"]);
+  });
+});
+
 describe("pruneStale", () => {
   const store: TabStore = {
     fresh: { tabs: [], active: -1, savedAt: 1000 },
@@ -303,6 +384,40 @@ describe("parseStore", () => {
     const back = parseStore(raw).w.tabs[0];
     expect(back.text).toBeUndefined();
     expect(back.pick).toEqual({ model: "sonnet", mode: null, effort: null, optionValues: {} });
+  });
+
+  it("round-trips tab ids and the active id together with the index", () => {
+    const written = toStore([tab({ id: "sh:1" }), tab({ id: "sh:2" })], { "/w/a": "sh:2" }, 100);
+    const back = parseStore(JSON.stringify(written));
+    expect(back).toEqual(written);
+    expect(back["/w/a"].tabs.map((t) => t.id)).toEqual(["sh:1", "sh:2"]);
+    expect(back["/w/a"].activeId).toBe("sh:2");
+    expect(back["/w/a"].active).toBe(1);
+  });
+
+  // A hand-edited file, or one from a build that wrote ids before this shape
+  // settled. Dropped rather than carried: restore mints a fresh id, exactly as
+  // it does for a store that has none.
+  it("drops a stored id that is not a non-empty string", () => {
+    const raw = JSON.stringify({
+      w: {
+        tabs: [
+          { id: 42, title: "a", cwd: "/c", kind: "shell", program: "", args: [] },
+          { id: "", title: "b", cwd: "/c", kind: "shell", program: "", args: [] },
+        ],
+        active: 0,
+        savedAt: 1,
+      },
+    });
+    expect(parseStore(raw).w.tabs.map((t) => t.id)).toEqual([undefined, undefined]);
+  });
+
+  it("drops an activeId that is not a non-empty string, keeping the index", () => {
+    const raw = JSON.stringify({
+      w: { tabs: [{ title: "a", cwd: "/c", kind: "shell", program: "", args: [] }], active: 0, activeId: 7, savedAt: 1 },
+    });
+    expect(parseStore(raw).w.activeId).toBeUndefined();
+    expect(parseStore(raw).w.active).toBe(0);
   });
 
   it("drops entries whose tabs are malformed, keeping valid siblings", () => {

@@ -396,11 +396,10 @@ impl ChatHost {
         true
     }
 
-    /// Test-only: the live set, sorted. The product reads `is_live` for one id;
-    /// nothing needs the whole list yet, and exposing it unused would be exactly
-    /// the dead code Phase 1's removed `allow(dead_code)` was hiding.
-    #[cfg(test)]
-    fn live_ids(&self) -> Vec<String> {
+    /// Every live session id, sorted. Keyed by **session** id, unlike
+    /// `PtyState`, which is keyed by frontend tab id: a restore matches chat
+    /// tabs against this list and terminal tabs against `pty_live_ids`.
+    pub fn live_ids(&self) -> Vec<String> {
         let mut ids: Vec<String> = lock(&self.sessions).keys().cloned().collect();
         ids.sort();
         ids
@@ -663,6 +662,25 @@ mod tests {
         let host = ChatHost::at(temp_store());
         let err = host.interrupt("nope").unwrap_err();
         assert!(err.contains("nope"), "the error should name the session: {err}");
+    }
+
+    /// The listing a restore matches chat tabs against answers in **session
+    /// ids**, never the tab that hosts them. `PtyState::live_ids` answers the
+    /// other half in tab ids, so the two sets stay disjoint.
+    #[test]
+    fn live_ids_are_session_ids_not_the_tabs_hosting_them() {
+        let host = ChatHost::at(temp_store());
+        for (id, tab) in [("s1", "tab-a"), ("s2", "tab-b")] {
+            host.spawn(id, tab, Box::new(|_| {}), spec(id), || {
+                Box::new(Puppet { sink_out: None, closed: Arc::new(AtomicU32::new(0)) })
+            })
+            .unwrap();
+        }
+
+        let ids = host.live_ids();
+
+        assert_eq!(ids, vec!["s1", "s2"], "sorted session ids");
+        assert!(!ids.iter().any(|id| id.starts_with("tab-")), "a hosting tab id must not appear in the session listing");
     }
 
     /// App exit: every child killed, every claim released. A surviving `claude`

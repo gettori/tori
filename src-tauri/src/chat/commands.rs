@@ -819,6 +819,17 @@ fn take_interrupted_turn(session_id: &str) -> Option<OpenTurn> {
     serde_json::from_str::<OpenTurn>(&text).ok()
 }
 
+/// Every chat session this process still holds, by **session** id.
+///
+/// A webview reload keeps the backend but loses every tab, so a restore has to
+/// ask what survived rather than assume. Chat and terminal answer separately
+/// because they are keyed differently: this returns session ids, `pty_live_ids`
+/// returns frontend tab ids, and the two sets never overlap.
+#[tauri::command]
+pub async fn chat_live_sessions(state: State<'_, ChatState>) -> Result<Vec<String>, String> {
+    Ok(state.0.live_ids())
+}
+
 /// What the startup reap found, delivered once, when the frontend is ready to
 /// show it.
 ///
