@@ -84,6 +84,10 @@ export default function Picker(props: {
         }}
         aria-label={props.ariaLabel}
         label={props.tooltip}
+        // The menu is the better answer to "what is this pill", and it is
+        // covering the pill anyway: a tooltip arriving on top of an open menu is
+        // the same sentence twice, over the rows being read.
+        suppressed={open()}
         disabled={props.disabled}
         aria-disabled={props.ariaDisabled || undefined}
         aria-describedby={props.describedBy}
@@ -151,6 +155,9 @@ export function PickerButton(props: {
       }}
       aria-label={props.ariaLabel}
       label={props.tooltip}
+      // Same rule as `Picker`: the palette this opens is a whole surface, and a
+      // tooltip over it says nothing the panel does not.
+      suppressed={props.open}
       disabled={props.disabled}
       aria-haspopup="dialog"
       aria-expanded={props.open}
@@ -198,7 +205,16 @@ export function PickerOption(props: {
       onClick={props.onSelect}
     >
       <span class={styles.pickBody} classList={{ [styles.pickRefusing]: !!props.refusing }}>
-        <Tooltip<HTMLSpanElement> as="span" class={styles.pickName} label={props.description}>
+        {/* Beside the row, never above it. A menu's own rows are what is above,
+            so the default `top` lands the tooltip on the choices the user is
+            reading past. Kobalte's popper flips on overflow by default, so a
+            menu near the right edge gets it on the left with nothing extra. */}
+        <Tooltip<HTMLSpanElement>
+          as="span"
+          class={styles.pickName}
+          label={props.description}
+          placement="right"
+        >
           {props.label}
         </Tooltip>
         {/* Announced as well as hovered. The tooltip is `aria-describedby` on a

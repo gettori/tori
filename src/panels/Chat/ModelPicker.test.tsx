@@ -207,6 +207,22 @@ describe("ModelPicker", () => {
     expect(screen.getByRole("tooltip").textContent).toContain("Default (recommended)");
   });
 
+  /** The menu is the better answer to "what is this pill", and it is covering
+   *  the pill anyway. The case that bites is a tooltip that was *already* open:
+   *  the pointer rests long enough to raise it, then clicks, and it ends up
+   *  sitting over the rows. */
+  it("puts the tooltip away while the pill's own menu is open", () => {
+    const s = setup({ value: "sonnet" });
+    const pill = s.pills()[1];
+
+    pill.focus();
+    fireEvent.focus(pill);
+    expect(screen.queryByRole("tooltip")).not.toBeNull();
+
+    s.openEffort();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
   it("hides the effort control for a model declaring no levels, and shows all five for one that does", () => {
     // Measured: haiku omits the effort keys entirely.
     expect(setup({ value: "haiku" }).pills()).toHaveLength(1);

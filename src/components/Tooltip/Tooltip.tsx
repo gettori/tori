@@ -72,6 +72,26 @@ export type TooltipProps<
    *  `tooltip` prop straight through instead of carrying two render paths and
    *  the drift between them. */
   label?: JSX.Element;
+  /** Hold the tooltip shut while something else is speaking for this control.
+   *
+   *  For a trigger that also opens a menu or a panel: the surface it opened is
+   *  the answer to "what is this", and a tooltip sitting over it is the same
+   *  sentence twice, on top of the thing the user is reading. The usual case is
+   *  not a tooltip arriving late but one **already up** - the pointer rested
+   *  long enough to open it, and the click that opens the menu comes after.
+   *
+   *  Not `label={undefined}`: that path renders the bare control with none of
+   *  Kobalte's context around it, so toggling it would unmount and rebuild the
+   *  trigger at the moment it is being clicked.
+   *
+   *  Not Kobalte's `disabled` alone either, which only gates *opening*
+   *  (`isDisabled()` is read by the trigger before it calls `openTooltip`) and
+   *  leaves an open one open. Passing this at all therefore moves the tooltip
+   *  onto the controlled path below, the same one `whenDisabled` uses, and
+   *  costs the same thing: a controlled tooltip does not take part in Kobalte's
+   *  module-global warm-up grouping. Worth it on a pill, which is not one of a
+   *  row of icons being swept past. */
+  suppressed?: boolean;
   placement?: TooltipPlacement;
   openDelay?: number;
   closeDelay?: number;
@@ -189,6 +209,7 @@ export default function Tooltip<
 >(props: TooltipProps<T, P>) {
   const [local, trigger] = splitProps(props, [
     "label",
+    "suppressed",
     "placement",
     "openDelay",
     "closeDelay",
@@ -202,11 +223,17 @@ export default function Tooltip<
   const dialogSurface = useDialogSurface();
   const mount = () => local.mount ?? dialogSurface();
 
-  // Only read when `whenDisabled` is set. Kobalte's own open/close requests are
-  // routed through `onOpenChange` into this same signal, so the two paths agree
-  // rather than fighting: the span drives it while the control is disabled, and
-  // focus/click/Escape drive it while the control is not.
+  // Only read on the controlled path. Kobalte's own open/close requests are
+  // routed through `onOpenChange` into this same signal, so the paths agree
+  // rather than fighting: the span drives it while the control is disabled,
+  // `suppressed` forces it shut, and focus/click/Escape drive it otherwise.
   const [open, setOpen] = createSignal(false);
+
+  // `whenDisabled` needs the signal to drive the tooltip from a hover surface;
+  // `suppressed` needs it so a *close* can be forced, which Kobalte's own
+  // `disabled` cannot do. Either one takes the tooltip off the uncontrolled
+  // default and its grouped warm-up timer.
+  const controlled = () => !!local.whenDisabled || local.suppressed !== undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const clearTimer = () => {
     if (timer !== undefined) clearTimeout(timer);
@@ -244,6 +271,10 @@ export default function Tooltip<
     >
       <Primitive.Root
         placement={local.placement ?? "top"}
+        // Stops it opening; `open` below is what shuts one already open. Both,
+        // because the second alone would still let a hover re-open it under the
+        // menu the moment the pointer crossed the pill again.
+        disabled={local.suppressed}
         gutter={GUTTER}
         openDelay={openDelay()}
         closeDelay={closeDelay()}
@@ -251,8 +282,13 @@ export default function Tooltip<
         // `undefined` is how Kobalte is told this is uncontrolled, so the
         // default path keeps the grouped warm-up timer rather than this
         // component's.
-        open={local.whenDisabled ? open() : undefined}
-        onOpenChange={local.whenDisabled ? setOpen : undefined}
+        //
+        // `false` while suppressed, and the signal still receives Kobalte's own
+        // closes underneath: the trigger blurs as the menu takes focus, that
+        // lands in `setOpen(false)`, and the tooltip is therefore already shut
+        // when suppression lifts rather than springing back.
+        open={controlled() ? (local.suppressed ? false : open()) : undefined}
+        onOpenChange={controlled() ? setOpen : undefined}
       >
         {local.whenDisabled ? (
           <span
