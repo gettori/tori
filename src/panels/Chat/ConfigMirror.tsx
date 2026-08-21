@@ -111,22 +111,30 @@ function asToggle(o: ChatConfigOption):
       onLabel: string;
       /** What a pill draws when its glyph says nothing on its own. */
       shortLabel: string;
+      action: string | null;
     }
   | undefined {
   if (o.kind === "boolean") {
-    return { on: o.value, turnOn: true, turnOff: false, onLabel: o.name, shortLabel: o.name };
+    return {
+      on: o.value,
+      turnOn: true,
+      turnOff: false,
+      onLabel: o.name,
+      shortLabel: o.name,
+      action: null,
+    };
   }
   if (o.kind === "select" && o.choices.length === 2) {
     const [off, on] = o.choices;
     const showing = o.current === on.value ? on : off;
+    const next = o.current === on.value ? off : on;
     return {
       on: o.current === on.value,
       turnOn: on.value,
       turnOff: off.value,
-      // "Collaboration mode" alone never says which of the two it is on, and an
-      // icon-only pill has nothing else to say it with.
       onLabel: `${o.name}: ${showing.label}`,
       shortLabel: showing.label,
+      action: `Switch to ${next.label}`,
     };
   }
   return undefined;
@@ -136,30 +144,16 @@ function asToggle(o: ChatConfigOption):
  *  lever's kind swaps the widget instead of leaving the old one behind. */
 function MirrorRow(props: {
   option: ChatConfigOption;
-  /** The whole bar is out of action (a refused session, a draft mid-send).
-   *  Not the same as the agent refusing this one lever, which has a reason. */
   barDisabled: boolean;
   onSet: (configId: string, value: ChatConfigValue) => void;
 }) {
   const refused = () => props.option.disabled;
   const note = () => (refused() ? props.option.note : "");
-  /**
-   * Everything this control has to say, in one string, for its tooltip.
-   *
-   * These used to be two things: the agent's description in the tooltip and the
-   * refusal drawn beside the pill as body text, on the argument that a reason
-   * only a screen reader can hear leaves everyone else with a dead control. The
-   * argument was right about the reason and wrong about where to put it. Drawn,
-   * it is a full sentence of prose sitting permanently in a bar of one-word
-   * pills - two of them at once on Claude - and the composer's rule is that
-   * plumbing shows when something has failed, not while it is merely unavailable.
-   *
-   * The pill still says it is refusing, in its own styling and in
-   * `aria-disabled`. The tooltip is where the sentence explaining that lives,
-   * and it reaches hover and keyboard focus alike.
-   */
   const tooltip = () =>
     [props.option.description, note()].filter(Boolean).join(" ") || undefined;
+
+  const toggleTooltip = (action: string | null) =>
+    [action ?? props.option.description, note()].filter(Boolean).join(" ") || undefined;
 
   return (
     <>
@@ -168,9 +162,6 @@ function MirrorRow(props: {
           <Picker
             icon={Settings2}
             prefix={`${props.option.name}:`}
-            // The agent's label for the value it reports, falling back to the id
-            // itself: a current value missing from its own list is a real
-            // possibility, and the raw id says more than an empty pill.
             value={
               select().choices.find((c) => c.value === select().current)?.label ?? select().current
             }
@@ -201,7 +192,7 @@ function MirrorRow(props: {
             on={toggle().on}
             label={needsWords(props.option.id) ? toggle().shortLabel : undefined}
             ariaLabel={toggle().onLabel}
-            tooltip={tooltip()}
+            tooltip={toggleTooltip(toggle().action)}
             disabled={props.barDisabled}
             // Refused here rather than by `disabled`, which would take the pill
             // out of the tab order and the tooltip carrying its reason with it.
