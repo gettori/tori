@@ -2,11 +2,12 @@
 // last run's terminal tabs (never spawning them unasked) while the same
 // workspace's files come back silently. Both panels mount into one tree, the
 // shape the two-pane shell gives them.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 // The strip seeds its visible count from an empty item list and corrects it in a
 // frame, so without this every lookup by tab role races that correction.
 import { installAnimationFrame } from "../test/frames";
+import { pointerClick } from "../test/menus";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -25,6 +26,12 @@ let storedSessions: { id: string; agent: string; cwd: string; path: string }[] =
 // Tauri event listeners, so a test can fire `sessions://changed` and drive the
 // backfill that runs on it.
 const handlers: Record<string, (e: { payload: unknown }) => void> = {};
+// What the backend is still holding, in each host's own key: chat by session
+// id, PTY by frontend tab id. Both empty is a cold relaunch, where every stored
+// tab comes back inert; populated is a webview reload, where the tabs they name
+// come back live and re-subscribe.
+let liveChats: string[] = [];
+let livePtys: string[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
@@ -48,6 +55,10 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(false);
       case "chat_orphans":
         return Promise.resolve([]);
+      case "chat_live_sessions":
+        return Promise.resolve(liveChats);
+      case "pty_live_ids":
+        return Promise.resolve(livePtys);
       default:
         return Promise.resolve(null);
     }
@@ -100,7 +111,7 @@ const { default: Terminal } = await import("../panels/Terminal/Terminal");
 const { default: PaneView } = await import("./PaneView");
 const { default: Editor } = await import("../panels/Editor/Editor");
 const { open } = await import("../panels/Terminal/terminalTabStore");
-const { emitWith, GIT_STAGE_ACTIVE } = await import("../utils/events");
+const { emitWith, onWith, GIT_STAGE_ACTIVE, TOAST } = await import("../utils/events");
 const { draftFor } = await import("../utils/chatCompose");
 const { draftPick } = await import("../utils/chatDraftPick");
 const { envelopeFor, resetPaneLayoutModel, seedTwoPane } = await import("../layout/layoutStore");
@@ -121,6 +132,8 @@ beforeEach(() => {
   localStorage.clear();
   invokes.length = 0;
   storedSessions = [];
+  liveChats = [];
+  livePtys = [];
   resetPaneLayoutModel();
   resetTabPlacement();
 });
@@ -154,11 +167,14 @@ const restore = async () => {
       <PaneView pinKind="shell" />
     </div>
   ));
-  fireEvent.click(await screen.findByText("Restore"));
+  // Nothing to press: restore runs on first visit to the workspace. It awaits
+  // the backend liveness listing, so the tabs land a microtask or two after the
+  // render rather than inside it.
+  await waitFor(() => expect(open().length).toBeGreaterThan(0));
 };
 
 describe("restore, per pane", () => {
-  it("offers last run's terminals and restores last run's files silently", async () => {
+  it("restores last run's terminals and last run's files, both without asking", async () => {
     const now = Date.now();
     localStorage.setItem(
       "sway.terminalTabs",
@@ -189,9 +205,12 @@ describe("restore, per pane", () => {
       </div>
     ));
 
-    // The terminal pane offers; nothing spawned until the user answers.
-    await screen.findByText("2 terminal tabs from last time");
-    expect(open()).toHaveLength(0);
+    // The terminal pane restores on its own, with no banner in the way. One
+    // tab, not two: this fixture's `list_sessions` finds nothing, so the stored
+    // agent tab is skipped as a session that no longer exists. What the strip
+    // then costs is covered by the one-step tests further down.
+    await waitFor(() => expect(open()).toHaveLength(1));
+    expect(screen.queryByText(/from last time/)).toBeNull();
 
     // The file pane restored on its own: no banner, the stored file is open
     // and active (read through staging, which names the active tab).
@@ -237,8 +256,6 @@ describe("restore, per pane", () => {
         <PaneView pinKind="shell" />
       </div>
     ));
-
-    fireEvent.click(await screen.findByText("Restore"));
 
     const draft = await screen.findByTestId("draft");
     expect(draft.dataset.agent).toBe("claude");
@@ -514,5 +531,173 @@ describe("a restored tab is inert until it is reached for", () => {
     // Same tab, so the same session id: a mint would have replaced the record.
     expect(screen.getByTestId("chat").dataset.tab).toBe("chat:1");
     expect(open().find((t) => t.id === "chat:1")?.sessionId).toBe("s-1");
+  });
+});
+
+// Phase 4: the two listings from phase 1 turn a reload into a reattach. A cold
+// relaunch answers both empty and everything comes back inert; a reload names
+// what it is still holding, and those tabs come back live.
+describe("reload reattach", () => {
+  // A mounted surface is the reattach: `pty_spawn` and `chat_spawn` both rewire
+  // an id the backend already holds, so what has to happen on this side is that
+  // the surface exists to do the asking. Both are stubbed here, so the mount is
+  // what this suite can see and the rewire is the backend's own contract.
+  const mountedPtys = () => screen.queryAllByTestId("pty").map((el) => el.dataset.id);
+  const startedChats = () =>
+    screen.queryAllByTestId("chat").filter((el) => el.dataset.started === "true").map((el) => el.dataset.tab);
+
+  // A detached PTY's output is dropped rather than buffered, so a tab that
+  // waited to be clicked would come back missing whatever ran meanwhile. The
+  // shell here is not the active tab, and it comes up anyway.
+  it("mounts every tab the backend still holds, clicked or not", async () => {
+    storeTabs([chatTab(1), chatTab(2), shell({ id: "sh:1" })], { activeId: "chat:1" });
+    liveChats = ["s-1", "s-2"];
+    livePtys = ["sh:1"];
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(3));
+    // Three surfaces for one tab on screen. Both chats are started, so each
+    // asks for its own session rather than opening to read.
+    await waitFor(() => expect(startedChats().sort()).toEqual(["chat:1", "chat:2"]));
+    expect(mountedPtys()).toEqual(["sh:1"]);
+  });
+
+  // The control: same store, backend holding nothing. This is the cold relaunch
+  // phases 2 and 3 built, and the reattach must not have broken it.
+  it("leaves every tab inert when the backend holds nothing", async () => {
+    storeTabs([chatTab(1), chatTab(2), shell({ id: "sh:1" })], { activeId: "chat:1" });
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(3));
+    expect(mountedPtys()).toEqual([]);
+    expect(startedChats()).toEqual([]);
+    // One surface, the active tab's, and it opened to read rather than started.
+    expect(screen.getAllByTestId("chat").map((el) => el.dataset.started)).toEqual(["false"]);
+  });
+
+  // A terminal is keyed by the tab id itself, so an id the backend never heard
+  // of is a spawn and must stay inert until it is asked for.
+  // A workspace is restored on first visit, which can be long after startup.
+  // Reading the listing then, rather than reusing a startup answer, is what
+  // stops a PTY that exited in between from being treated as held: that tab
+  // would come back live, mount, find nothing to rewire and spawn a fresh one.
+  it("asks again per restore, so a listing cannot go stale under it", async () => {
+    storeTabs([shell({ id: "sh:0" }), shell({ id: "sh:1", title: "second" })], { activeId: "sh:0" });
+    livePtys = ["sh:0", "sh:1"];
+
+    render(() => (
+      <div>
+        <Terminal selected={selection as never} onOpenChange={() => {}} />
+        <PaneView pinKind="shell" />
+      </div>
+    ));
+    // The listing is read once per restore, so the reads outnumber the single
+    // startup read `reportStranded` makes.
+    await waitFor(() => expect(invokes.filter((i) => i.cmd === "pty_live_ids").length).toBeGreaterThan(1));
+  });
+
+  it("matches a terminal by tab id, so an unlisted one stays an entry", async () => {
+    storeTabs(
+      [shell({ id: "sh:active" }), shell({ id: "sh:kept", title: "kept" }), shell({ id: "sh:gone", title: "gone" })],
+      { activeId: "sh:active" },
+    );
+    livePtys = ["sh:kept"];
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(3));
+    // `sh:active` mounts because it is the tab on screen taking its one step,
+    // `sh:kept` because the backend named it. `sh:gone` is neither.
+    await waitFor(() => expect(mountedPtys().sort()).toEqual(["sh:active", "sh:kept"]));
+  });
+});
+
+// Stranded: what the backend holds that no stored tab anywhere can reach.
+describe("stranded processes", () => {
+  const OTHER = "/space/proj/other";
+  let said: string[] = [];
+  let offToast: (() => void) | undefined;
+
+  beforeEach(() => {
+    said = [];
+    offToast = onWith<{ message: string }>(TOAST, (e) => said.push(e.message));
+  });
+  afterEach(() => offToast?.());
+
+  /** Two workspaces' tabs stored, only one of them ever visited. */
+  const twoWorkspaces = () =>
+    localStorage.setItem(
+      "sway.terminalTabs",
+      JSON.stringify({
+        [REPO]: { tabs: [shell({ id: "sh:here" })], active: 0, savedAt: Date.now() },
+        [OTHER]: { tabs: [shell({ id: "sh:there" })], active: 0, savedAt: Date.now() },
+      }),
+    );
+
+  // The bug this is measured against: scoping the check to the workspace being
+  // restored would call every other workspace's live session stranded, when
+  // those come back the moment their workspace is looked at.
+  it("says nothing about a live process whose workspace has not been visited", async () => {
+    twoWorkspaces();
+    livePtys = ["sh:here", "sh:there"];
+
+    await restore();
+    await waitFor(() => expect(open()).toHaveLength(1));
+
+    expect(said.filter((m) => /still running/.test(m))).toEqual([]);
+  });
+
+  it("reports exactly the one whose stored record is gone", async () => {
+    twoWorkspaces();
+    // `sh:there` is live and stored; `sh:lost` is live and named by nothing.
+    livePtys = ["sh:here", "sh:there", "sh:lost"];
+
+    await restore();
+
+    await waitFor(() => expect(said.filter((m) => /still running/.test(m))).toHaveLength(1));
+    expect(said.find((m) => /still running/.test(m))).toMatch(/^1 process is still running/);
+  });
+});
+
+// The action that replaces the banner's bulk decline. Said after the strip is
+// there rather than as an answer to a question asked before it.
+describe("closing every tab that was never started", () => {
+  /** Open the launch menu and pick one of its rows by name. Every pane's strip
+   *  draws its own, so the first is this test's. */
+  const menuItem = async (name: string) => {
+    pointerClick(screen.getAllByLabelText("Launch an agent session")[0]!);
+    pointerClick(await screen.findByRole("menuitem", { name }));
+  };
+
+  it("leaves exactly the tabs that were reached for, and kills nothing", async () => {
+    const twelve = [...Array(12).keys()].map((n) => shell({ id: `sh:${n}`, title: `shell ${n}` }));
+    storeTabs(twelve, { activeId: "sh:0" });
+
+    await restore();
+    await waitFor(() => expect(open()).toHaveLength(12));
+    // Two reached for: the stored active one, and one clicked.
+    focusTab(REPO, "sh:5");
+    await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(2));
+
+    await menuItem("Close 10 tabs not started");
+
+    await waitFor(() => expect(open().map((t) => t.id).sort()).toEqual(["sh:0", "sh:5"]));
+    // Nothing was started in the ten, so there was nothing to end.
+    expect(invokes.filter((i) => i.cmd === "pty_kill")).toEqual([]);
+    expect(invokes.filter((i) => i.cmd === "chat_close")).toEqual([]);
+  });
+
+  // A row that would do nothing is worse than no row.
+  it("offers nothing once every tab has been started", async () => {
+    storeTabs([shell({ id: "sh:0" })], { activeId: "sh:0" });
+
+    await restore();
+    await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(1));
+
+    pointerClick(screen.getAllByLabelText("Launch an agent session")[0]!);
+    await screen.findByRole("menuitem", { name: "Terminal" });
+    expect(screen.queryByRole("menuitem", { name: /not started/ })).toBeNull();
   });
 });

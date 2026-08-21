@@ -188,9 +188,33 @@ export default function Terminal(props: {
   // empty at startup, and would otherwise erase last run's tabs before anyone
   // could be offered them.
   const restorable = loadTabs(Date.now());
-  // Workspaces already offered a restore this run, so the offer is one-shot per
-  // workspace whether it was accepted or declined.
-  const [offered, setOffered] = createSignal<Set<string>>(new Set());
+  // Workspaces this run has already restored, so a switch away and back does not
+  // run it a second time. A workspace with nothing stored counts as restored the
+  // moment it is looked at: there is no second answer to give.
+  const [restored, setRestored] = createSignal<Set<string>>(new Set());
+
+  /**
+   * What the backend is holding right now.
+   *
+   * Two listings in two key spaces: `chat_live_sessions` answers in **session**
+   * ids and `pty_live_ids` in **frontend tab** ids, because that is what each
+   * host is keyed by. A restored tab is matched against its own one.
+   *
+   * Asked per restore rather than cached for the run. A workspace is restored
+   * on first visit, which can be an hour after startup, and a cached answer
+   * would still name a PTY that exited in between - so the tab would come back
+   * `live`, mount its surface, find nothing to rewire and **spawn**, which is
+   * the eager path this whole ticket exists to remove.
+   *
+   * A listing that fails answers empty, which restores everything inert. That
+   * is the safe direction: an inert tab spawns nothing and can still be reached
+   * for, where a wrong `live` spawns.
+   */
+  const backendLive = () =>
+    Promise.all([
+      invoke<string[]>("chat_live_sessions").catch(() => [] as string[]),
+      invoke<string[]>("pty_live_ids").catch(() => [] as string[]),
+    ]).then(([chat, pty]) => ({ chat: new Set(chat), pty: new Set(pty) }));
 
   const workspaceTabs = (): OpenTerm[] => {
     const ws = activeWorkspace();
@@ -212,48 +236,80 @@ export default function Terminal(props: {
     });
   }
 
-  // Restore offer: per workspace, on first visit each run. Never automatic, so a
-  // relaunch never silently spawns agent processes. Suppressed while first-run
-  // onboarding is open (and re-evaluated when it closes, since the effect reads
-  // the flag), so someone meeting Sway is not handed a restore prompt first.
-  // Derived, not accumulated: every path assigns, so the banner belongs to the
-  // workspace on screen and disappears with it. An early `return` here would
-  // leave the previous workspace's banner up while you look at another one.
-  const restoreOffer = createMemo((): { ws: string; count: number } | null => {
-    if (props.onboarding) return null;
-    const ws = activeWorkspace();
-    if (!ws || offered().has(ws)) return null;
-    // Only offer into an empty group: if this workspace already has live tabs,
-    // the stored set is about to be overwritten by current truth anyway.
-    if (tabsIn(ws).length) return null;
-    const entry = restorable[ws];
-    return entry?.tabs.length ? { ws, count: entry.tabs.length } : null;
-  });
-
-  // Both answers close the offer for the rest of the run (the memo above reads
-  // `offered`, so marking the workspace is what dismisses the banner). Declining
-  // deliberately leaves the stored tabs alone: they survive until this
-  // workspace's open set next changes, at which point the persist effect
-  // overwrites them.
-  function markOffered(ws: string) {
-    setOffered(new Set(offered()).add(ws));
-  }
-
   // How many restores are in flight. A count rather than a flag because a
   // workspace switch can start a second one while the first is still awaiting,
   // and the first to finish must not un-suppress the other.
   const [restoring, setRestoring] = createSignal(0);
 
-  async function acceptRestore(ws: string) {
-    markOffered(ws);
+  /**
+   * Restore this workspace's strip, once per run.
+   *
+   * Automatic since the tabs it brings back cost nothing: a restored tab is an
+   * entry until it is reached for. The banner it replaces existed to stop a
+   * relaunch from silently spawning agent processes, and that is now a property
+   * of what a restored tab *is* rather than of a question asked first.
+   *
+   * The workspace is marked before the first `await`, so the effect below can
+   * re-run freely while this is still in flight.
+   */
+  async function restoreWorkspace(ws: string) {
+    setRestored(new Set(restored()).add(ws));
     const entry = restorable[ws];
-    if (!entry) return;
+    if (!entry?.tabs.length) return;
     setRestoring(restoring() + 1);
     try {
       await restoreInto(ws, entry);
     } finally {
       setRestoring(restoring() - 1);
     }
+  }
+
+  // On first visit, per workspace. Suppressed while first-run onboarding is open
+  // (and re-evaluated when it closes, since this reads the flag), so someone
+  // meeting Sway does not get last run's tabs drawn behind the welcome.
+  createEffect(() => {
+    if (props.onboarding) return;
+    const ws = activeWorkspace();
+    if (!ws || restored().has(ws)) return;
+    // Only into an empty group: a workspace that already has tabs open is about
+    // to have its stored set overwritten by current truth anyway.
+    if (tabsIn(ws).length) return;
+    void restoreWorkspace(ws);
+  });
+
+  /**
+   * Say what the backend is holding that no stored tab can reach.
+   *
+   * Measured against the **whole** `sway.terminalTabs` store, not the workspace
+   * being restored. Only one workspace is visited on a reload, so a check
+   * scoped to the restored subset would call every other workspace's live
+   * session stranded - which is the opposite of true: those come back the
+   * moment their workspace is looked at.
+   *
+   * What is left really is unreachable. A PTY whose tab record is gone has no
+   * id anything will ever ask for again, and a chat session no tab names is one
+   * only the session list can still find.
+   */
+  async function reportStranded() {
+    const live = await backendLive();
+    const storedTabs = new Set<string>();
+    const storedSessions = new Set<string>();
+    for (const entry of Object.values(restorable)) {
+      for (const t of entry.tabs) {
+        if (t.id) storedTabs.add(t.id);
+        if (t.sessionId) storedSessions.add(t.sessionId);
+      }
+    }
+    const ptys = [...live.pty].filter((id) => !storedTabs.has(id)).length;
+    const chats = [...live.chat].filter((id) => !storedSessions.has(id)).length;
+    const total = ptys + chats;
+    if (!total) return;
+    emitWith<ToastEvent>(TOAST, {
+      message: `${total} process${total > 1 ? "es" : ""} ${
+        total > 1 ? "are" : "is"
+      } still running with no tab left to reach ${total > 1 ? "them" : "it"}.`,
+      kind: "info",
+    });
   }
 
   async function restoreInto(ws: string, entry: WorkspaceTabs) {
@@ -294,11 +350,25 @@ export default function Terminal(props: {
     // restore lazy. Seeded before the tab exists, so a restored tab never mounts
     // a surface or spawns a process, not even for the frame between opening it
     // and recording what it is.
-    const inertId = (stored: string | undefined, fresh: () => string) => {
+    //
+    // Unless the backend is still holding this one, which is a webview reload
+    // rather than a relaunch. Then the seed is skipped and `defaultState` reads
+    // the tab as `live`, so its surface mounts at once and re-subscribes: a
+    // detached PTY's output is dropped rather than buffered, so a tab that
+    // waited to be clicked would come back missing whatever ran meanwhile.
+    //
+    // `hosts` is asked in the surface's own key. A chat ignores the id it comes
+    // back under, because the host is keyed by session and rewires whichever tab
+    // subscribes; a terminal cannot, because the id **is** the key, and a
+    // collision hands back a fresh one that names nothing.
+    const live = await backendLive();
+    const restoredId = (stored: string | undefined, fresh: () => string, hosts: (id: string) => boolean) => {
       const id = restoreId(stored, new Set(open().map((t) => t.id)), fresh);
-      seedInert(id);
+      if (!hosts(id)) seedInert(id);
       return id;
     };
+    /** A draft has no child to be holding, on either key. */
+    const never = () => false;
 
     for (const [i, d] of entry.tabs.entries()) {
       // Restore is routed on the stored kind alone, never on the default-surface
@@ -316,7 +386,7 @@ export default function Terminal(props: {
           d.title,
           storedChatAgent(d.program),
           undefined,
-          inertId(d.id, chatId),
+          restoredId(d.id, chatId, never),
           false,
         );
         if (d.text) setDraft(id, d.text);
@@ -331,7 +401,7 @@ export default function Terminal(props: {
           missingSessions++;
           continue;
         }
-        const id = inertId(d.id, chatId);
+        const id = restoredId(d.id, chatId, () => live.chat.has(d.sessionId!));
         openOrActivate({
           id,
           title: d.title,
@@ -369,7 +439,7 @@ export default function Terminal(props: {
         const agentId = s.agent ?? "claude";
         // focusOrResume already focuses an existing tab rather than spawning a
         // second one, so an already-live session never double-spawns.
-        const id = inertId(d.id, shellId);
+        const id = restoredId(d.id, shellId, (id) => live.pty.has(id));
         await focusOrResume(
           {
             sessionId: s.id,
@@ -393,7 +463,7 @@ export default function Terminal(props: {
       // A plain shell, or an agent tab whose session was never attributed: come
       // back as the same shell-hosted tab, seeded again if it had an init.
       const cwd = await cwdFor(d.cwd);
-      const id = inertId(d.id, shellId);
+      const id = restoredId(d.id, shellId, (id) => live.pty.has(id));
       openOrActivate({
         id,
         title: d.title,
@@ -753,6 +823,10 @@ export default function Terminal(props: {
     // The backend parks the result; this is the frontend saying it is ready.
     const reaped = await invoke<Reaped[]>("chat_orphans").catch(() => [] as Reaped[]);
     setOrphans(reaped.filter((o): o is ChatOrphan => o.type === "orphan"));
+    // The same startup pass the listing itself belongs to, and after the reap:
+    // an orphan the backend has just ended is not something to report as
+    // stranded. Not awaited, so a slow listing does not hold up the rest.
+    void reportStranded();
     // Sway used to decide tool calls from a rule store of its own. It does not,
     // the store is gone, and this is the once the user is told. Pulled here for
     // the same reason as the reap above: the sweep answers `null` on every run
@@ -1393,6 +1467,20 @@ export default function Terminal(props: {
     });
   }
 
+  /**
+   * Every tab in this workspace that was restored and never reached for.
+   *
+   * What the banner's Dismiss used to do, as an action rather than an answer to
+   * a question: the strip is already there, so this is "I do not want these"
+   * said afterwards instead of before. Nothing is killed and nothing is
+   * unclaimed, because nothing was ever started - which is what `inert` means.
+   */
+  const inertTabs = () => workspaceTabs().filter((t) => tabState(t) === "inert");
+
+  function closeInert() {
+    for (const t of inertTabs()) closeId(t.id);
+  }
+
   function closeId(id: string) {
     const t = open().find((o) => o.id === id);
     // A chat tab hosts no PTY: `pty_kill` on its id would find nothing, and the
@@ -1760,6 +1848,17 @@ export default function Terminal(props: {
               // The shell the main half used to open, still one click away. No
               // agent behind it, so nothing gates it.
               { label: "Terminal", onClick: newShell },
+              // Absent when there is nothing to close, since a row that would
+              // do nothing is worse than no row. Counted in the label: the
+              // whole point is knowing how much of the strip this clears.
+              ...(inertTabs().length
+                ? [
+                    {
+                      label: `Close ${inertTabs().length} tab${inertTabs().length > 1 ? "s" : ""} not started`,
+                      onClick: closeInert,
+                    },
+                  ]
+                : []),
               // Only for a session selection, since there is nothing to
               // continue from a bare branch. The session need not have been
               // started in chat: every surface writes the transcript this
@@ -1914,19 +2013,6 @@ export default function Terminal(props: {
           </Button>
           <Button size="sm" onClick={() => setOrphans([])}>
             Leave running
-          </Button>
-        </div>
-      </Show>
-      <Show when={restoreOffer()}>
-        <div class={styles.termRestore}>
-          <span class={styles.termRestoreText}>
-            {restoreOffer()!.count} terminal tab{restoreOffer()!.count > 1 ? "s" : ""} from last time
-          </span>
-          <Button variant="primary" size="sm" onClick={() => void acceptRestore(restoreOffer()!.ws)}>
-            Restore
-          </Button>
-          <Button size="sm" onClick={() => markOffered(restoreOffer()!.ws)}>
-            Dismiss
           </Button>
         </div>
       </Show>
