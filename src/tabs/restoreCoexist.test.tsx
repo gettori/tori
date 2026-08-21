@@ -75,6 +75,9 @@ const { open } = await import("../panels/Terminal/terminalTabStore");
 const { emitWith, GIT_STAGE_ACTIVE } = await import("../utils/events");
 const { draftFor } = await import("../utils/chatCompose");
 const { draftPick } = await import("../utils/chatDraftPick");
+const { envelopeFor, resetPaneLayoutModel, seedTwoPane } = await import("../layout/layoutStore");
+const { paneOfTab, resetTabPlacement } = await import("../layout/tabPlacement");
+const { visibleId } = await import("../panels/Terminal/terminalTabStore");
 
 const selection = {
   spaceName: "space",
@@ -88,7 +91,35 @@ const selection = {
 beforeEach(() => {
   localStorage.clear();
   invokes.length = 0;
+  resetPaneLayoutModel();
+  resetTabPlacement();
 });
+
+/** A stored workspace, saved just now so nothing prunes it. */
+const storeTabs = (tabs: unknown[], over: Record<string, unknown> = {}) =>
+  localStorage.setItem(
+    "sway.terminalTabs",
+    JSON.stringify({ [REPO]: { tabs, active: 0, savedAt: Date.now(), ...over } }),
+  );
+
+const shell = (over: Record<string, unknown> = {}) => ({
+  title: "shell",
+  cwd: REPO,
+  kind: "shell",
+  program: "",
+  args: [],
+  ...over,
+});
+
+const restore = async () => {
+  render(() => (
+    <div>
+      <Terminal selected={selection as never} onOpenChange={() => {}} />
+      <PaneView pinKind="shell" />
+    </div>
+  ));
+  fireEvent.click(await screen.findByText("Restore"));
+};
 
 describe("restore, per pane", () => {
   it("offers last run's terminals and restores last run's files silently", async () => {
@@ -138,9 +169,10 @@ describe("restore, per pane", () => {
   });
 
   // A draft is the one tab with nothing behind it: no session to resume, no
-  // shell to respawn. What comes back is what was in it, under a fresh tab id -
-  // which is why the text and the pick travel in the stored record rather than
-  // staying in the stores they were typed into.
+  // shell to respawn. What comes back is what was in it, and the text and the
+  // pick travel in the stored record rather than staying in the stores they
+  // were typed into, since a restore that had to mint a fresh id could not
+  // reach them there.
   it("brings an unsent draft back with its text and its pick, still unstarted", async () => {
     localStorage.setItem(
       "sway.terminalTabs",
@@ -185,5 +217,78 @@ describe("restore, per pane", () => {
     // path back, with a process and a claim nobody asked for.
     expect(invokes.some((i) => i.cmd === "chat_spawn")).toBe(false);
     expect(screen.queryByTestId("chat")).toBeNull();
+  });
+});
+
+// A restored tab comes back as *itself*, under the id it was stored with. That
+// id is what `sway.tabpanes.v1` keys placement on and what the backend's
+// liveness listing answers in, so minting a fresh one on every restore threw
+// both away.
+describe("restore reuses the stored tab id", () => {
+  it("brings a shell back under its own id rather than a fresh one", async () => {
+    storeTabs([shell({ id: "sh:stored" })]);
+
+    await restore();
+
+    const pty = await screen.findByTestId("pty");
+    expect(pty.dataset.id).toBe("sh:stored");
+  });
+
+  it("mints a fresh id for a store written before ids were kept", async () => {
+    storeTabs([shell()]);
+
+    await restore();
+
+    const pty = await screen.findByTestId("pty");
+    expect(pty.dataset.id).toMatch(/^sh:/);
+  });
+
+  // A store naming one id twice must still produce two tabs. `pty_spawn`
+  // delivers a tab's `init` exactly once per id, so a second tab sharing one
+  // would be seeded nothing and come back an empty shell.
+  it("refuses a duplicate id within one restore, giving each entry its own tab", async () => {
+    storeTabs([shell({ id: "sh:same", title: "one" }), shell({ id: "sh:same", title: "two" })]);
+
+    await restore();
+
+    await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(2));
+    const ids = screen.getAllByTestId("pty").map((el) => el.dataset.id);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids).toContain("sh:same");
+  });
+
+  // Placement is keyed by tab id and nothing prunes it, so reusing the id is
+  // the whole of what puts a hand-moved tab back in the pane it was moved to.
+  it("puts a hand-moved tab back in the pane it was moved to", async () => {
+    localStorage.setItem("sway.tabpanes.v1", JSON.stringify({ [REPO]: { tabs: { "sh:moved": "right" } } }));
+    resetTabPlacement();
+    storeTabs([shell({ id: "sh:moved" })]);
+
+    await restore();
+
+    const pty = await screen.findByTestId("pty");
+    const root = envelopeFor(REPO, () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true })).layout;
+    expect(paneOfTab(REPO, { id: pty.dataset.id!, kind: "shell" }, root)).toBe("right");
+    // The pin rule sends a shell leftmost, so "right" is only reachable through
+    // the stored entry: a fresh id would have gone home.
+    expect(paneOfTab(REPO, { id: "sh:fresh", kind: "shell" }, root)).toBe("left");
+  });
+
+  it("refocuses by the stored active id, not by its position in the stored order", async () => {
+    // The index deliberately disagrees: it is what an older build reads, and
+    // the id has to win where both are present.
+    storeTabs([shell({ id: "sh:a" }), shell({ id: "sh:b" })], { active: 0, activeId: "sh:b" });
+
+    await restore();
+
+    await waitFor(() => expect(visibleId()).toBe("sh:b"));
+  });
+
+  it("refocuses by the index for a store carrying no active id", async () => {
+    storeTabs([shell({ id: "sh:a" }), shell({ id: "sh:b" })], { active: 1 });
+
+    await restore();
+
+    await waitFor(() => expect(visibleId()).toBe("sh:b"));
   });
 });
