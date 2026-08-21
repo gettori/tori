@@ -12,6 +12,7 @@
    is the shell backdrop behind the sidebar, and a pane on it reads a shade
    darker than its neighbours. */
 .chat {
+  --chat-measure: 786px;
   position: absolute;
   inset: 0;
   display: none;
@@ -114,7 +115,7 @@
 }
 
 .stripMenuButton:hover,
-.stripMenuButton[aria-expanded="true"] {
+.stripMenuButton[aria-expanded='true'] {
   background: var(--neutral-hover);
   color: var(--fg-default);
 }
@@ -200,13 +201,19 @@
 .list {
   flex: 1;
   min-height: 0;
+  /* A measure, not a container: long prose is unreadable at pane width, so the
+     transcript and the composer share one centred column while the status strip
+     above them stays edge to edge. */
+  width: 100%;
+  max-width: var(--chat-measure);
+  margin-inline: auto;
   overflow-y: auto;
   overscroll-behavior: contain;
   /* Asymmetric on purpose: assistant prose starts at the left edge and wants the
      wider margin, while the right side holds the prompt bubbles and the
      scrollbar, which read better tucked in tighter. */
-  padding: calc(12px * var(--ui-scale)) calc(12px * var(--ui-scale)) calc(12px * var(--ui-scale))
-    calc(24px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) calc(12px * var(--ui-scale))
+    calc(12px * var(--ui-scale)) calc(24px * var(--ui-scale));
   display: flex;
   flex-direction: column;
   gap: calc(12px * var(--ui-scale));
@@ -929,11 +936,11 @@
 }
 
 .noticeDetails > summary::before {
-  content: "▸ ";
+  content: '▸ ';
 }
 
 .noticeDetails[open] > summary::before {
-  content: "▾ ";
+  content: '▾ ';
 }
 
 /* Wraps and stays readable at length: the summary is prose, not a status line,
@@ -1122,6 +1129,9 @@
 
 .composer {
   flex: none;
+  width: 100%;
+  max-width: var(--chat-measure);
+  margin-inline: auto;
   padding: calc(16px * var(--ui-scale));
 }
 
