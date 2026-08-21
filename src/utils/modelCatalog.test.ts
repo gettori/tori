@@ -6,10 +6,13 @@
 // version-less binary is two of the four agents Sway ships adapters for.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import probeSource from "../../src-tauri/src/catalog_probe.rs?raw";
 import { refreshAgentHealth } from "./agentHealth";
 import {
   __resetModelCatalogsForTests,
+  CACHE_SHAPE,
   cachedModels,
+  cachedOptions,
   catalogFor,
   distinctModelCount,
   ensureModelCatalogsLoaded,
@@ -84,6 +87,42 @@ describe("whether a remembered answer still describes the binary", () => {
 
   it("says fresh for a agent that never answered, which has nothing to be stale", () => {
     expect(isStale(undefined, "2.1.231")).toBe(false);
+  });
+
+  // The second comparison, and the one no version can stand in for: a cache
+  // missing a field this build reads describes an older *Sway*, and the binary
+  // on disk need not have moved at all.
+  describe("and whether it still describes what this Sway reads", () => {
+    it("reads an unstamped catalogue as the shape from before the stamp", () => {
+      // Which is what makes introducing the mechanism invalidate nothing: every
+      // catalogue on every machine is unstamped the day this ships.
+      expect(withModels([]).catalogue?.shape).toBeUndefined();
+      expect(isStale(withModels([]), "2.1.231")).toBe(false);
+    });
+
+    it("is stale when the cache is stamped below the shape this build wants", () => {
+      const old = withModels([]);
+      expect(isStale({ ...old, catalogue: { ...old.catalogue!, shape: CACHE_SHAPE - 1 } }, "2.1.231")).toBe(
+        true,
+      );
+    });
+
+    // A cache from a *newer* Sway carries every field this one reads, so there
+    // is nothing to re-probe for. A downgrade is not a reason to spawn a binary.
+    it("leaves a catalogue stamped above this build alone", () => {
+      const newer = withModels([]);
+      expect(
+        isStale({ ...newer, catalogue: { ...newer.catalogue!, shape: CACHE_SHAPE + 1 } }, "2.1.231"),
+      ).toBe(false);
+    });
+
+    // Written in Rust, judged here, so the number lives twice. Pinned rather
+    // than trusted: a bump that lands in one language only would leave every
+    // machine either re-probing forever or never.
+    it("agrees with the constant the probe stamps", () => {
+      const stamped = probeSource.match(/pub const CACHE_SHAPE: u32 = (\d+);/);
+      expect(stamped?.[1]).toBe(String(CACHE_SHAPE));
+    });
   });
 
   // A measurement is scoped to the binary it names, and a cached row decided
@@ -192,5 +231,77 @@ describe("the shared store", () => {
 
     await refreshCatalogIfDue("opencode");
     expect(invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog")).toHaveLength(1);
+  });
+
+  // The point of stamping the shape at all: the binary is unchanged, so nothing
+  // a version comparison can see has moved, and the answer still has to be
+  // re-asked because this Sway reads a field that cache does not carry.
+  it("re-asks a agent whose cache is the right binary in the wrong shape", async () => {
+    invoked.mockImplementation(async (cmd: string) => {
+      if (cmd === "model_catalogs") {
+        const old = opencode();
+        return [{ ...old, catalogue: { ...old.catalogue!, shape: CACHE_SHAPE - 1 } }];
+      }
+      if (cmd === "refresh_agent_health") return [{ id: "opencode", version: "1.18.3" }];
+      if (cmd === "refresh_model_catalog") return opencode();
+      return [];
+    });
+    await refreshAgentHealth();
+    await refreshCatalogIfDue("opencode");
+    expect(invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog")).toHaveLength(1);
+  });
+});
+
+// Two agents, two sources, and the bug was that one shadowed the other:
+// claude's levers are a function of the model and live on the row, an ACP
+// agent's are a function of the session and live on the catalogue.
+describe("the levers a draft can read before it has a session", () => {
+  const acp = (): ModelCatalog => ({
+    agentId: "codex",
+    state: "probed",
+    catalogue: {
+      version: "1.2.0",
+      probedAtMs: 0,
+      // Empty **by design**, not by omission: `acp_catalogue` writes
+      // `options: Vec::new()` on every row because the set belongs to the
+      // session. `??` stopped here and handed back nothing.
+      models: [{ ...model("gpt-5", "gpt-5"), options: [] }],
+      modes: [],
+      options: [
+        {
+          id: "collaboration_mode",
+          name: "Collaboration mode",
+          description: "",
+          category: "",
+          disabled: false,
+          note: "",
+          kind: "select",
+          current: "default",
+          choices: [{ value: "default", label: "Default", description: "" }],
+        },
+      ],
+      account: null,
+    },
+    lastFailure: null,
+  });
+
+  it("falls through an ACP row's empty list to the session's own set", () => {
+    expect(cachedOptions(acp(), "gpt-5").map((o) => o.id)).toEqual(["collaboration_mode"]);
+  });
+
+  it("still lets a row that carries its own answer win", () => {
+    const claude = withModels([
+      {
+        ...model("haiku", "claude-haiku-4-5"),
+        options: [
+          { id: "fast_mode", name: "Fast mode", description: "", category: "", disabled: true, note: "", kind: "boolean", value: false },
+        ],
+      },
+    ]);
+    expect(cachedOptions(claude, "haiku").map((o) => o.id)).toEqual(["fast_mode"]);
+  });
+
+  it("answers nothing for a agent nobody has probed", () => {
+    expect(cachedOptions(undefined, "gpt-5")).toEqual([]);
   });
 });

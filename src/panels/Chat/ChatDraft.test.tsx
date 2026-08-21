@@ -74,14 +74,23 @@ const chat = {
   mode_args: [],
   add_dir_args: [],
   annotations: [],
-  modes: [{ id: "plan", label: "Plan", hint: "Read only", args: [] }],
+  modes: [
+    { id: "plan", label: "Plan", hint: "Read only", args: [] },
+    // Gated: measured on claude 2.1.220, `--permission-mode auto` on a model
+    // without the flag exits 0 and silently runs `default`, so the row is
+    // offered only to a model that declares it.
+    { id: "auto", label: "Auto", hint: "", args: [], requires: "supportsAutoMode" },
+  ],
   effort: [],
   acp: { serve_client_fs: false },
 };
 
 const ADAPTERS = [
   { id: "claude", label: "Claude", program: "claude", base_args: [], yolo_args: [], resume_args: [], parser_kind: null, running_pattern: null, pty_quiet_ms: 2000, chat },
-  { id: "codex", label: "Codex", program: "codex", base_args: [], yolo_args: [], resume_args: [], parser_kind: null, running_pattern: null, pty_quiet_ms: 2000, chat: { ...chat, program: "codex" } },
+  // An ACP adapter declares no modes at all, on purpose: they are the agent's
+  // own answer and arrive with a session. That empty table is what left the
+  // draft reading "this agent has no modes" for every one of them.
+  { id: "codex", label: "Codex", program: "codex", base_args: [], yolo_args: [], resume_args: [], parser_kind: null, running_pattern: null, pty_quiet_ms: 2000, chat: { ...chat, program: "codex", modes: [] } },
 ];
 
 const HEALTH = [
@@ -115,6 +124,26 @@ const OPTIONS = [
     ],
   },
   { id: "web_search", name: "Web search", description: "", category: "", kind: "boolean", value: false },
+  // The mode selector's own row. Categorized, so the mirror leaves it to the
+  // bespoke control, and it is where the mode a session opens in comes from.
+  {
+    id: "approval_policy",
+    name: "Mode",
+    description: "",
+    category: "mode",
+    kind: "select",
+    current: "agent",
+    choices: [
+      { value: "read-only", label: "Read Only", description: "" },
+      { value: "agent", label: "Agent", description: "" },
+    ],
+  },
+];
+
+/** The modes Codex publishes on `session/new`, as the probe cached them. */
+const ACP_MODES = [
+  { id: "read-only", label: "Read Only", hint: "Ask before writing" },
+  { id: "agent", label: "Agent", hint: "" },
 ];
 
 /** Claude publishes no options at all, so Sway assembles them per model row.
@@ -138,7 +167,11 @@ const CATALOGS = [
     catalogue: {
       version: "1",
       probedAtMs: 0,
-      models: [{ ...row("sonnet", "Sonnet"), options: [] }, { ...row("haiku", "Haiku"), options: [FAST_MODE] }],
+      models: [
+        { ...row("sonnet", "Sonnet"), options: [] },
+        { ...row("haiku", "Haiku"), options: [FAST_MODE] },
+        { ...row("opus", "Opus"), supportsAutoMode: true, options: [] },
+      ],
       modes: [],
       account: null,
     },
@@ -147,7 +180,7 @@ const CATALOGS = [
   {
     agentId: "codex",
     state: "probed",
-    catalogue: { version: "1", probedAtMs: 0, models: [row("gpt-5", "GPT-5")], modes: [], options: OPTIONS, account: null },
+    catalogue: { version: "1", probedAtMs: 0, models: [{ ...row("gpt-5", "GPT-5"), options: [] }], modes: ACP_MODES, options: OPTIONS, account: null },
     lastFailure: null,
   },
 ];
@@ -481,6 +514,58 @@ describe("a chat draft's pick", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// The mode selector before there is a session to ask. Its rows and the mode it
+// shows come from two different halves of the cache depending on the agent,
+// which is the whole reason one resolver owns the question.
+describe("a chat draft's mode", () => {
+  const modePill = () => screen.getByLabelText("Permission mode");
+
+  // The bug this closes: `capabilitiesFor` was called without its live list, so
+  // an ACP agent's empty `[[chat.modes]]` was the only source and the selector
+  // never rendered at all.
+  it("offers an ACP agent its own modes and names the one it opens in", async () => {
+    setup({ agentId: "codex" });
+    await settle();
+
+    expect(modePill().textContent).toContain("Agent");
+    expect(modePill().textContent).not.toContain("Mode");
+  });
+
+  // Claude publishes no modes on the wire, so both halves come off the adapter.
+  // Either way the pill describes a mode rather than reading "Mode".
+  it("shows a declared-mode agent its adapter's default", async () => {
+    setup();
+    await settle();
+
+    expect(modePill().textContent).toContain("Plan");
+    expect(modePill().textContent).not.toContain("Mode");
+  });
+
+  it("renders no selector at all for an agent with neither", async () => {
+    setup({ agentId: "codex" });
+    // Before the catalogue lands there is nothing cached and codex declares
+    // none, which is the same state an unprobed agent stays in.
+    expect(screen.queryByLabelText("Permission mode")).toBeNull();
+  });
+
+  // The gate is only worth anything if the model control cannot walk around it:
+  // a mode gated on a capability stays picked when the row disappears, and the
+  // CLI accepts it, exits 0, and silently runs something else.
+  it("drops a mode the newly picked model does not support", async () => {
+    setDraftPick(TAB, { model: "opus", mode: "auto" });
+    const { openPalette } = setup();
+    await settle();
+    const filter = openPalette();
+    fireEvent.input(filter, { target: { value: "haiku" } });
+    fireEvent.keyDown(filter, { key: "Enter" });
+
+    expect(draftPick(TAB).model).toBe("haiku");
+    // The default among what is still offered, rather than the adapter's
+    // outright: a gated default would put the draft straight back here.
+    expect(draftPick(TAB).mode).toBe("plan");
   });
 });
 
