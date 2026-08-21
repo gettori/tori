@@ -1328,6 +1328,18 @@
   cursor: default;
 }
 
+/* Reads as out of action, but keeps its focus ring: the reason beside it is
+   only reachable while the control still takes focus. Doubled up because
+   `.pill:hover:not(:disabled)` above outranks a single class. */
+.pillRefusing {
+  color: var(--fg-subtle);
+  cursor: default;
+}
+
+.pill.pillRefusing:hover {
+  background: var(--neutral-subtle);
+}
+
 .pillIcon {
   flex: none;
   color: var(--fg-subtle);

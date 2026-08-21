@@ -34,6 +34,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
+use crate::agents::ChatAnnotation;
+
 use super::claude::ClaudeMapper;
 use super::model::{
     ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope,
@@ -198,6 +200,9 @@ pub struct ClaudeTransport {
     /// pretending otherwise would show a mode the session is not in.
     pending_mode: Option<PermissionMode>,
     pending_model: Option<(String, Option<Effort>)>,
+    /// The adapter's model annotations, handed to the mapper so the session can
+    /// publish claude's own levers for whichever model it reports.
+    annotations: Vec<ChatAnnotation>,
 }
 
 impl ClaudeTransport {
@@ -216,7 +221,15 @@ impl ClaudeTransport {
             request_seq: AtomicU64::new(0),
             pending_mode: None,
             pending_model: None,
+            annotations: Vec::new(),
         }
+    }
+
+    /// Hand it what its adapter knows about claude's models. Absent is a
+    /// transport that publishes no options, never one that invents any.
+    pub fn with_annotations(mut self, annotations: Vec<ChatAnnotation>) -> Self {
+        self.annotations = annotations;
+        self
     }
 
     fn next_request_id(&self) -> String {
@@ -459,7 +472,8 @@ impl AgentTransport for ClaudeTransport {
         {
             let shared = self.shared.clone();
             let sink = sink.clone();
-            let mut mapper = ClaudeMapper::new(shared.session_id.clone());
+            let mut mapper =
+                ClaudeMapper::new(shared.session_id.clone()).with_annotations(self.annotations.clone());
             thread::spawn(move || {
                 for line in BufReader::new(stdout).lines() {
                     let Ok(line) = line else { break };
@@ -624,15 +638,15 @@ impl AgentTransport for ClaudeTransport {
         Ok(())
     }
 
-    /// Claude publishes no configuration options of its own: its model, effort
-    /// and permission mode are flags, and each already has a control. So there
-    /// is nothing for a mirror to show here and nothing this could forward.
+    /// Claude's own levers are all published refused, so a set can only ever be
+    /// a mistake. Named rather than swallowed: nothing reaches here without a
+    /// control to click, so a quiet `Ok(())` would hide a routing bug.
     fn set_config_option(
         &mut self,
-        _config_id: &str,
+        config_id: &str,
         _value: &ChatConfigValue,
     ) -> Result<(), String> {
-        Err("this agent publishes no session options to switch".to_string())
+        Err(format!("this agent cannot switch `{config_id}` from a session"))
     }
 
     fn close(&mut self) -> Result<(), String> {
@@ -685,6 +699,18 @@ pub mod tests {
             settled: Condvar::new(),
             granted_rules: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Claude's levers are all published refused, so a set can only be a bug in
+    /// the routing above. It says which lever rather than answering `Ok(())`,
+    /// which would leave a control that looks like it worked.
+    #[test]
+    fn a_set_on_a_lever_this_transport_cannot_switch_names_it() {
+        let mut t = ClaudeTransport::new("s1");
+        let err = t
+            .set_config_option("fast_mode", &ChatConfigValue::Flag(true))
+            .expect_err("claude switches none of its own options");
+        assert!(err.contains("fast_mode"), "the refusal must name the option: {err}");
     }
 
     /// Task 4's envelope, pinned rather than described. These field names are a

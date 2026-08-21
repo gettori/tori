@@ -844,7 +844,7 @@ const SCENARIOS = {
     if (changed.length) {
       throw new Error(
         `fast_mode_state moved to ${JSON.stringify(changed[0].fast_mode_state)} - the SDK is now opted in and ` +
-          `FastModeStatus should become a toggle; re-read this scenario's note`,
+          `the mirror's fast_mode row should stop being published refused; re-read this scenario's note`,
       );
     }
     if (!/not available in the Agent SDK/i.test(String(toggled.result ?? ""))) {

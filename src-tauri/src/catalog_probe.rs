@@ -43,10 +43,10 @@ use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode}
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::agents::{AgentAdapter, ChatTransport};
+use crate::agents::{AgentAdapter, ChatAnnotation, ChatTransport};
 use crate::chat::acp;
 use crate::chat::acp_transport::{initialize_request, new_session_request};
-use crate::chat::claude::ClaudeMapper;
+use crate::chat::claude::{self, ClaudeMapper};
 use crate::chat::model::{ChatAccount, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo};
 use crate::chat::transport::{build_command, StartSpec};
 
@@ -161,6 +161,13 @@ pub struct CatalogModel {
     /// user-configured row into one.
     #[serde(default)]
     pub user_configured: bool,
+    /// The levers this agent has **for this model**, when they depend on it.
+    ///
+    /// Claude's do: the CLI publishes no options at all, so Sway assembles them
+    /// per model row. An ACP agent's are per session rather than per model and
+    /// live on the catalogue itself, so its rows leave this empty.
+    #[serde(default)]
+    pub options: Vec<ChatConfigOption>,
 }
 
 /// What one agent said when it was asked.
@@ -381,7 +388,12 @@ impl StderrTail {
 /// Stdin is held open until the answer lands, for the reason
 /// `claude_transport.rs` documents at length: closing it is what makes the CLI
 /// exit, and an exit before the response would look like a failed probe.
-fn probe_claude(spec: &StartSpec, version: Option<String>, deadline: Duration) -> Result<Catalogue, ProbeFailure> {
+fn probe_claude(
+    spec: &StartSpec,
+    version: Option<String>,
+    deadline: Duration,
+    annotations: &[ChatAnnotation],
+) -> Result<Catalogue, ProbeFailure> {
     let mut child = build_command(spec)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -441,8 +453,19 @@ fn probe_claude(spec: &StartSpec, version: Option<String>, deadline: Duration) -
         Ok(Some((models, modes, account))) => Ok(Catalogue {
             version,
             probed_at_ms: now_ms(),
-            models: models.into_iter().map(|info| CatalogModel { info, user_configured: false }).collect(),
+            models: models
+                .into_iter()
+                .map(|info| CatalogModel {
+                    // The same function the live session emits from, so a draft
+                    // and the chat it becomes cannot disagree about this model.
+                    options: claude::config_options(&info, annotations),
+                    info,
+                    user_configured: false,
+                })
+                .collect(),
             modes,
+            // Claude's are per model, on the rows above. This is the per-session
+            // set an ACP handshake publishes, which claude has none of.
             options: Vec::new(),
             account,
         }),
@@ -515,7 +538,8 @@ fn acp_catalogue(version: Option<String>, options: Vec<SessionConfigOption>) -> 
         probed_at_ms: now_ms(),
         models: acp::model_catalogue(&options)
             .into_iter()
-            .map(|info| CatalogModel { info, user_configured: false })
+            // An ACP agent's options are per session, on the catalogue below.
+            .map(|info| CatalogModel { info, user_configured: false, options: Vec::new() })
             .collect(),
         modes: acp::mode_catalogue(&options),
         options: acp::config_options(&options),
@@ -717,7 +741,7 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
     // Exhaustive, so a new transport is a compile error here rather than a
     // agent that silently never gets a catalogue.
     let outcome = match chat.transport {
-        ChatTransport::ClaudeStreamJson => probe_claude(&spec, version, deadline).map(|mut c| {
+        ChatTransport::ClaudeStreamJson => probe_claude(&spec, version, deadline, &chat.annotations).map(|mut c| {
             let extras = user_configured_models(&claude_settings_path(), &c.models);
             c.models.extend(extras);
             c
@@ -827,6 +851,9 @@ fn user_configured_models(path: &Path, known: &[CatalogModel]) -> Vec<CatalogMod
                 supports_auto_mode: false,
             },
             user_configured: true,
+            // An annotation decorates a model the agent named, and this row is
+            // one the agent was never asked about.
+            options: Vec::new(),
         });
     }
     extras
@@ -936,6 +963,7 @@ mod tests {
                     supports_auto_mode: true,
                 },
                 user_configured: false,
+                options: Vec::new(),
             }],
             modes: Vec::new(),
             options: Vec::new(),
@@ -1147,7 +1175,7 @@ mod tests {
     #[test]
     fn a_silent_child_times_out_rather_than_wedging() {
         let started = std::time::Instant::now();
-        let failure = probe_claude(&sh("sleep 30"), None, Duration::from_millis(300))
+        let failure = probe_claude(&sh("sleep 30"), None, Duration::from_millis(300), &[])
             .expect_err("a child that never answers cannot produce a catalogue");
 
         assert_eq!(failure.reason, FailureReason::TimedOut);
@@ -1158,14 +1186,14 @@ mod tests {
     /// that hung, and the surface says so.
     #[test]
     fn a_child_that_exits_without_answering_is_no_answer() {
-        let failure = probe_claude(&sh("exit 0"), None, PROBE_DEADLINE).expect_err("nothing was answered");
+        let failure = probe_claude(&sh("exit 0"), None, PROBE_DEADLINE, &[]).expect_err("nothing was answered");
         assert_eq!(failure.reason, FailureReason::NoAnswer);
     }
 
     /// And it quotes the agent rather than paraphrasing it.
     #[test]
     fn a_failure_carries_the_agents_own_stderr() {
-        let failure = probe_claude(&sh("echo 'credit balance too low' >&2; exit 1"), None, PROBE_DEADLINE)
+        let failure = probe_claude(&sh("echo 'credit balance too low' >&2; exit 1"), None, PROBE_DEADLINE, &[])
             .expect_err("nothing was answered");
         assert_eq!(failure.detail, "credit balance too low");
     }
@@ -1181,7 +1209,7 @@ mod tests {
         let noise = STDERR_TAIL * 2 / 40;
         let script = format!("for i in $(seq {noise}); do echo 'noisy line of agent output' >&2; done; echo LAST >&2");
 
-        let failure = probe_claude(&sh(&script), None, PROBE_DEADLINE).expect_err("nothing was answered");
+        let failure = probe_claude(&sh(&script), None, PROBE_DEADLINE, &[]).expect_err("nothing was answered");
 
         assert!(failure.detail.ends_with("LAST"), "the tail keeps the end, which is where the reason is");
         assert!(failure.detail.len() <= STDERR_TAIL, "and stays bounded: {} bytes", failure.detail.len());
@@ -1196,7 +1224,7 @@ mod tests {
             args: Vec::new(),
             env: HashMap::new(),
         };
-        let failure = probe_claude(&spec, None, PROBE_DEADLINE).expect_err("nothing to spawn");
+        let failure = probe_claude(&spec, None, PROBE_DEADLINE, &[]).expect_err("nothing to spawn");
         assert_eq!(failure.reason, FailureReason::SpawnFailed);
     }
 
@@ -1223,7 +1251,8 @@ mod tests {
         // answers once, then holds the pipe open the way the real CLI does.
         let script = format!("read -r _line; printf '%s\\n' '{response}'; sleep 5");
 
-        let catalogue = probe_claude(&sh(&script), Some("2.1.231".into()), Duration::from_secs(10))
+        let annotations = vec![ChatAnnotation { id: "claude-opus-5".into(), fast_mode: true }];
+        let catalogue = probe_claude(&sh(&script), Some("2.1.231".into()), Duration::from_secs(10), &annotations)
             .expect("the stand-in answered the handshake");
 
         assert_eq!(catalogue.version.as_deref(), Some("2.1.231"));
@@ -1232,6 +1261,18 @@ mod tests {
         assert_eq!(catalogue.models[0].info.supported_effort_levels, ["low", "high"]);
         assert!(!catalogue.models[0].user_configured);
         assert_eq!(catalogue.account.unwrap().subscription_type, "Claude Max");
+
+        // The cached row carries what a live session on this model would
+        // publish, from the same function, so a draft and the chat it becomes
+        // cannot disagree about claude's own levers.
+        assert_eq!(
+            catalogue.models[0].options,
+            claude::config_options(&catalogue.models[0].info, &annotations)
+        );
+        assert_eq!(catalogue.models[0].options.len(), 1);
+        assert!(catalogue.models[0].options[0].disabled);
+        // Claude has no per-session set at all: its levers are per model.
+        assert!(catalogue.options.is_empty());
     }
 
     // --- the ACP probe ---

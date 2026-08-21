@@ -15,19 +15,27 @@
 // means, and the model palette - is shared as code, not by living together.
 import { Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import Composer from "./Composer";
+import ConfigMirror from "./ConfigMirror";
 import ModelPicker from "./ModelPicker";
 import ModeSelector from "./ModeSelector";
 import { composerAttachments } from "./composerAttachments";
 import { paletteProviders } from "./agentPaletteData";
 import { probeAgent, probeOnHighlight, recheckAgent } from "./draftProbe";
 import { dropPending, draftFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
-import { draftPick, hasPick, resetDraftPick, setDraftPick } from "../../utils/chatDraftPick";
+import { draftPick, hasPick, resetDraftPick, setDraftOption, setDraftPick } from "../../utils/chatDraftPick";
 import { openAgentCard } from "../../utils/agentCard";
 import { agentReady, agentSignedOut, agentVersion, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
 import { agentOffReason, enabledChatAgents } from "../../utils/agentEnabled";
 import { capabilitiesFor, restoredPicks, type PickableModel } from "../../utils/chatModels";
-import { ensureModelCatalogsLoaded, isProbing, modelCatalogs } from "../../utils/modelCatalog";
+import { keptOptionValues, overlaidOptions } from "../../utils/chatTypes";
+import {
+  cachedOptions,
+  catalogFor,
+  ensureModelCatalogsLoaded,
+  isProbing,
+  modelCatalogs,
+} from "../../utils/modelCatalog";
 import { chatPrefs } from "../Settings/settingsStore";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import styles from "./Chat.module.css";
@@ -90,6 +98,11 @@ export default function ChatDraft(props: {
   const mine = () => providers().find((p) => p.agentId === props.agentId) ?? null;
   const models = () => mine()?.models ?? [];
   const pick = () => draftPick(props.tabId);
+  // The palette drops the options on its way to `PickableModel`, so the mirror
+  // reads the catalogue itself. Keyed on the pick because claude's levers are a
+  // function of the model, which is why switching model re-cuts the set.
+  const catalog = () => catalogFor(props.agentId);
+  const options = () => cachedOptions(catalog(), pick().model);
 
   const model = () => models().find((m) => m.value === pick().model) ?? null;
   const offered = () => capabilitiesFor(model(), findAdapter(props.agentId).chat ?? null);
@@ -125,6 +138,18 @@ export default function ChatDraft(props: {
       effort: restored.effort,
       mode: restored.mode,
     });
+  });
+
+  /** Drop picked values this catalogue no longer recognises, the check
+   *  `restoredPicks` makes for a remembered model. Guarded on a catalogue
+   *  existing: an unprobed agent publishes none, which is not a withdrawal. */
+  createEffect(() => {
+    if (!catalog()?.catalogue) return;
+    const values = untrack(() => draftPick(props.tabId)).optionValues;
+    const kept = keptOptionValues(options(), values);
+    if (Object.keys(kept).length !== Object.keys(values).length) {
+      setDraftPick(props.tabId, { optionValues: kept });
+    }
   });
 
   /** Why this draft cannot be sent, or null. The agent stays selected either
@@ -237,6 +262,13 @@ export default function ChatDraft(props: {
                 onSelect={(mode) => setDraftPick(props.tabId, { mode })}
               />
             </Show>
+            {/* Overlaid rather than shown as published: nothing echoes a switch
+                back here, so a flip would otherwise move nothing on screen. */}
+            <ConfigMirror
+              options={overlaidOptions(options(), pick().optionValues)}
+              disabled={starting()}
+              onSet={(configId, value) => setDraftOption(props.tabId, configId, value)}
+            />
             <Show when={blocked()}>
               {(reason) => <span class={styles.barNote}>{reason()}</span>}
             </Show>

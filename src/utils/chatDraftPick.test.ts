@@ -2,9 +2,11 @@ import { describe, expect, it, afterEach } from "vitest";
 import {
   clearDraftPick,
   draftPick,
+  hasOptionPick,
   hasPick,
   pickRidesArgv,
   resetDraftPick,
+  setDraftOption,
   setDraftPick,
 } from "./chatDraftPick";
 
@@ -14,23 +16,40 @@ afterEach(() => clearDraftPick(TAB));
 
 describe("a draft's pick", () => {
   it("is the CLI's own defaults until something is picked", () => {
-    expect(draftPick(TAB)).toEqual({ model: null, mode: null, effort: null });
+    expect(draftPick(TAB)).toEqual({ model: null, mode: null, effort: null, optionValues: {} });
     expect(hasPick(draftPick(TAB))).toBe(false);
   });
 
   it("patches one field without disturbing the rest", () => {
     setDraftPick(TAB, { model: "sonnet" });
     setDraftPick(TAB, { effort: "high" });
-    expect(draftPick(TAB)).toEqual({ model: "sonnet", mode: null, effort: "high" });
+    expect(draftPick(TAB)).toEqual({ model: "sonnet", mode: null, effort: "high", optionValues: {} });
     expect(hasPick(draftPick(TAB))).toBe(true);
   });
 
-  // Mode and effort name things the old agent published, so carrying them across
-  // would spawn the new one with flags it never declared.
-  it("drops mode and effort when the agent changes", () => {
+  // Mode, effort and every option id name things the old agent published, so
+  // carrying them across would spawn the new one with what it never declared.
+  it("drops mode, effort and the agent's own levers when the agent changes", () => {
     setDraftPick(TAB, { model: "sonnet", mode: "plan", effort: "high" });
+    setDraftOption(TAB, "web_search", true);
     resetDraftPick(TAB, "gpt-5");
-    expect(draftPick(TAB)).toEqual({ model: "gpt-5", mode: null, effort: null });
+    expect(draftPick(TAB)).toEqual({ model: "gpt-5", mode: null, effort: null, optionValues: {} });
+  });
+
+  // One flip is a merge: the record is replaced only where a whole set is meant
+  // to be, which is what a prune does and what a switch must not.
+  it("flips one lever without disturbing the others", () => {
+    setDraftOption(TAB, "web_search", true);
+    setDraftOption(TAB, "collaboration_mode", "pair");
+    expect(draftPick(TAB).optionValues).toEqual({ web_search: true, collaboration_mode: "pair" });
+  });
+
+  // Kept apart from `hasPick`: those three hold the first message, an option
+  // does not, so counting it there would make a flipped switch block a send.
+  it("counts a lever as a pick of its own, not as one of the three", () => {
+    setDraftOption(TAB, "web_search", true);
+    expect(hasOptionPick(draftPick(TAB))).toBe(true);
+    expect(hasPick(draftPick(TAB))).toBe(false);
   });
 
   it("is forgotten when the tab is", () => {

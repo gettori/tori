@@ -264,6 +264,8 @@ describe("the model list on a agent page", () => {
             name: "Model",
             description: "",
             category: "model",
+            disabled: false,
+            note: "",
             kind: "select",
             current: "sonnet",
             choices: [],
@@ -273,6 +275,8 @@ describe("the model list on a agent page", () => {
             name: "Web search",
             description: "Let the agent search the web",
             category: "",
+            disabled: false,
+            note: "",
             kind: "boolean",
             value: true,
           },
@@ -290,6 +294,31 @@ describe("the model list on a agent page", () => {
     const lists = container.querySelectorAll("ul");
     expect(lists).toHaveLength(2);
     expect(lists[1].children).toHaveLength(1);
+  });
+
+  /** A lever the agent has and will not take reads the same here as in a chat:
+   *  shown with its reason, rather than left off the list to be wondered at. */
+  it("previews a refused lever with the reason it was refused", async () => {
+    const r = mount({}, [
+      probed("claude", [model("sonnet", "claude-sonnet-5")], {
+        options: [
+          {
+            id: "fast_mode",
+            name: "Fast mode",
+            description: "",
+            category: "",
+            disabled: true,
+            note: "Fast mode is not available in the Agent SDK",
+            kind: "boolean",
+            value: false,
+          },
+        ],
+      }),
+    ]);
+    const { container } = await open(r, /Claude/);
+
+    expect(container.textContent).toContain("Fast mode");
+    expect(container.textContent).toContain("Fast mode is not available in the Agent SDK");
   });
 
   /** Padding rows that no test query matches ("snt", "xhigh", "zzz" all need

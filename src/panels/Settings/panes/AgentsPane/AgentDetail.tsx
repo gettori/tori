@@ -588,6 +588,11 @@ export default function AgentDetail(props: {
                           <code class={styles.modelId}>
                             {o.kind === "select" ? o.current : o.value ? "on" : "off"}
                           </code>
+                          {/* A lever the agent has and will not take reads the
+                              same here as in a chat: shown, with its reason. */}
+                          <Show when={o.disabled && o.note}>
+                            {(note) => <span class={styles.modelNote}>{note()}</span>}
+                          </Show>
                           <Show when={o.description}>
                             <span class={styles.modelEffort}>{o.description}</span>
                           </Show>

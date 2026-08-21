@@ -7,6 +7,7 @@
 // the tab bar and the palette agree without a second copy.
 import { createSignal } from "solid-js";
 import type { ChatTransport } from "./agents";
+import type { ChatConfigValue } from "./chatTypes";
 
 export type DraftPick = {
   /** The `--model` value, never the resolved id: a stale cache row is caught by
@@ -14,9 +15,12 @@ export type DraftPick = {
   model: string | null;
   mode: string | null;
   effort: string | null;
+  /** The agent's own levers, keyed by the id it published. Empty is the agent's
+   *  own defaults rather than an assertion of them, like the three above. */
+  optionValues: Record<string, ChatConfigValue>;
 };
 
-const EMPTY: DraftPick = { model: null, mode: null, effort: null };
+const EMPTY: DraftPick = { model: null, mode: null, effort: null, optionValues: {} };
 
 const [picks, setPicks] = createSignal<Record<string, DraftPick>>({});
 
@@ -30,11 +34,20 @@ export function setDraftPick(tabId: string, patch: Partial<DraftPick>) {
   setPicks((prev) => ({ ...prev, [tabId]: { ...(prev[tabId] ?? EMPTY), ...patch } }));
 }
 
-/** Switch the agent's picks out. Model, mode and effort all name things the
- *  *old* agent published, so carrying any of them across would spawn the new one
- *  with flags it never declared. */
+/** Flip one of the agent's own levers. Merged rather than replaced, which is
+ *  what `setDraftPick` does to the whole record and what one flip must not. */
+export function setDraftOption(tabId: string, configId: string, value: ChatConfigValue) {
+  setPicks((prev) => {
+    const cur = prev[tabId] ?? EMPTY;
+    return { ...prev, [tabId]: { ...cur, optionValues: { ...cur.optionValues, [configId]: value } } };
+  });
+}
+
+/** Switch the agent's picks out. Mode, effort and every option id name things
+ *  the *old* agent published, so carrying any of them across would spawn the new
+ *  one with flags and levers it never declared. */
 export function resetDraftPick(tabId: string, model: string | null) {
-  setPicks((prev) => ({ ...prev, [tabId]: { model, mode: null, effort: null } }));
+  setPicks((prev) => ({ ...prev, [tabId]: { model, mode: null, effort: null, optionValues: {} } }));
 }
 
 /**
@@ -55,6 +68,13 @@ export function pickRidesArgv(transport: ChatTransport | undefined): boolean {
  *  a session opening on those has nothing to apply and nothing to await. */
 export function hasPick(pick: DraftPick): boolean {
   return pick.model !== null || pick.mode !== null || pick.effort !== null;
+}
+
+/** Whether any of the agent's own levers were set. Kept apart from `hasPick`:
+ *  those three ride the spawn and hold the first message, an option rides
+ *  neither, so counting it there would make a flipped switch block a send. */
+export function hasOptionPick(pick: DraftPick): boolean {
+  return Object.keys(pick.optionValues).length > 0;
 }
 
 /** Forget this tab. Called when the tab closes, alongside the composer's own

@@ -911,6 +911,11 @@
     font-size: var(--sway-text-2xs);
     color: var(--fg-subtle);
   }
+  /* Why a lever the agent published cannot be taken. Beside the row's own
+     description rather than instead of it, which is still true. */
+  .modelNote {
+    color: var(--fg-subtle);
+  }
 
   /* Struck through rather than omitted, so a gap reads at a glance instead of
      having to be inferred from the length of the list. */

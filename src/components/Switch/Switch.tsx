@@ -40,6 +40,10 @@ export default function Switch(props: {
    */
   tooltip?: JSX.Element;
   disabled?: boolean;
+  /** Refusing, but still focusable. `disabled` takes the input out of the tab
+   *  order, and with it any `aria-describedby` reason for the refusal, so a
+   *  caller that has one to give uses this and rejects the change itself. */
+  "aria-disabled"?: boolean;
   class?: string;
   "aria-label"?: string;
   "aria-describedby"?: string;
@@ -55,6 +59,7 @@ export default function Switch(props: {
         class={styles.input}
         aria-label={props["aria-label"]}
         aria-describedby={props["aria-describedby"]}
+        aria-disabled={props["aria-disabled"] || undefined}
       />
       <Tooltip as={Primitive.Control} class={styles.control} label={props.tooltip}>
         <Primitive.Thumb class={styles.thumb} />

@@ -10,7 +10,8 @@
 // Tab ids are NOT persisted: a restored tab gets a fresh PTY and therefore a
 // fresh id, so the active tab is recorded as an index into the stored order.
 
-import { hasPick, type DraftPick } from "./chatDraftPick";
+import { hasOptionPick, hasPick, type DraftPick } from "./chatDraftPick";
+import type { ChatConfigValue } from "./chatTypes";
 
 const LS_TABS = "sway.terminalTabs";
 // A workspace nobody has opened in this long is almost certainly finished work;
@@ -110,7 +111,7 @@ export function toStore(
       ...(t.sessionId ? { sessionId: t.sessionId } : {}),
       ...(t.rewindTo ? { rewindTo: t.rewindTo } : {}),
       ...(draft && t.text && t.text.length <= MAX_DRAFT_TEXT ? { text: t.text } : {}),
-      ...(draft && t.pick && hasPick(t.pick) ? { pick: t.pick } : {}),
+      ...(draft && t.pick && (hasPick(t.pick) || hasOptionPick(t.pick)) ? { pick: t.pick } : {}),
     });
   }
   return out;
@@ -145,6 +146,18 @@ export function pruneStale(store: TabStore, now: number, maxAgeMs = MAX_AGE_MS):
  *  every unset field of a `DraftPick` holds. */
 const pickField = (v: unknown): string | null => (typeof v === "string" ? v : null);
 
+/** Stored option values, minus anything no switch could ever send. Shape only:
+ *  whether the agent still publishes the id is the draft's check, since the
+ *  option set is known there and not here. */
+const optionValuesField = (v: unknown): Record<string, ChatConfigValue> => {
+  const out: Record<string, ChatConfigValue> = {};
+  if (!v || typeof v !== "object") return out;
+  for (const [id, value] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof value === "string" || typeof value === "boolean") out[id] = value;
+  }
+  return out;
+};
+
 /** A draft's two fields, normalised. Both are overwritten rather than merged, so
  *  anything the file got wrong is dropped rather than passed on: the tab still
  *  restores, just without that part. */
@@ -154,7 +167,12 @@ function draftFields(t: PersistedTab): Pick<PersistedTab, "text" | "pick"> {
     text: typeof t.text === "string" && t.text.length <= MAX_DRAFT_TEXT ? t.text : undefined,
     pick:
       p && typeof p === "object"
-        ? { model: pickField(p.model), mode: pickField(p.mode), effort: pickField(p.effort) }
+        ? {
+            model: pickField(p.model),
+            mode: pickField(p.mode),
+            effort: pickField(p.effort),
+            optionValues: optionValuesField(p.optionValues),
+          }
         : undefined,
   };
 }

@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 use tauri::State;
 
-use crate::agents::{self, ChatConfig, ChatTransport};
+use crate::agents::{self, ChatAnnotation, ChatConfig, ChatTransport};
 
 use super::acp::AcpOverrides;
 use super::acp_transport::AcpTransport;
@@ -39,9 +39,15 @@ fn make_transport(
     session_id: &str,
     agent_id: &str,
     acp: AcpOverrides,
+    annotations: Vec<ChatAnnotation>,
 ) -> Box<dyn AgentTransport> {
     match transport {
-        ChatTransport::ClaudeStreamJson => Box::new(ClaudeTransport::new(session_id)),
+        // The annotations ride along because claude publishes no options of its
+        // own: the levers it does have are assembled from them and the model
+        // the session reports. An ACP agent publishes its own and takes none.
+        ChatTransport::ClaudeStreamJson => {
+            Box::new(ClaudeTransport::new(session_id).with_annotations(annotations))
+        }
         // Every ACP agent reaches Sway through this one arm. Which agent it is
         // comes from the adapter's `[chat]` table, not from here, which is what
         // makes a new ACP agent a TOML file rather than a Rust change. The
@@ -247,6 +253,7 @@ pub async fn chat_spawn(
 
     let transport = chat.transport;
     let acp_overrides = chat.acp.clone();
+    let annotations = chat.annotations.clone();
     let id_for_factory = session_id.clone();
     let agent_for_factory = agent_id.clone();
     let spawned = host.spawn(
@@ -256,7 +263,15 @@ pub async fn chat_spawn(
             let _ = on_event.send(event);
         }),
         spec,
-        move || make_transport(transport, &id_for_factory, &agent_for_factory, acp_overrides.clone()),
+        move || {
+            make_transport(
+                transport,
+                &id_for_factory,
+                &agent_for_factory,
+                acp_overrides.clone(),
+                annotations.clone(),
+            )
+        },
     );
     let spawned = match spawned {
         Ok(s) => s,
@@ -1102,7 +1117,7 @@ mod tests {
             build_args(chat, "s", false, None, Some("github-copilot/claude-sonnet-4.6"), None, None, &[]);
         assert_eq!(with_model, vec!["acp"]);
 
-        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone());
+        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone(), Vec::new());
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
 
@@ -1110,7 +1125,7 @@ mod tests {
     fn the_claude_transport_is_what_the_factory_builds_for_the_bundled_adapter() {
         let chat = claude_chat();
         assert_eq!(chat.transport, ChatTransport::ClaudeStreamJson);
-        let t = make_transport(chat.transport, "s1", "claude", Default::default());
+        let t = make_transport(chat.transport, "s1", "claude", Default::default(), chat.annotations.clone());
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
 }

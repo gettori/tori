@@ -28,10 +28,49 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
+use crate::agents::ChatAnnotation;
+
 use super::model::{
-    ChatAccount, ChatEvent, ChatModelInfo, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode,
-    PermissionSuggestion, SlashCommand, SuggestedRule, ToolStatus, TurnOutcome, Usage,
+    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEvent, ChatModelInfo, Extra, HookPhase, McpServer,
+    PermissionDenial, PermissionMode, PermissionSuggestion, SlashCommand, SuggestedRule, ToolStatus,
+    TurnOutcome, Usage,
 };
+
+/// The agent's own sentence when fast mode is asked for, quoted rather than
+/// paraphrased. Measured on claude 2.1.231 and identical on sonnet, so the
+/// refusal is this transport's rather than the model's (`fast-mode.jsonl`).
+const FAST_MODE_REFUSAL: &str = "Fast mode is not available in the Agent SDK";
+
+/// The levers claude has for one model, in the shape the mirror renders.
+///
+/// **The CLI publishes no config options at all**, so unlike an ACP agent's
+/// these are assembled: the catalogue row says which model is running and
+/// `[[chat.annotations]]` carries the one thing the CLI never says, which model
+/// has a fast mode to toggle.
+///
+/// One function for two callers. The probe caches this against each model row
+/// and the live session emits it as the reported model moves, so for a given
+/// resolved id a draft and the chat it becomes answer the same.
+pub fn config_options(model: &ChatModelInfo, annotations: &[ChatAnnotation]) -> Vec<ChatConfigOption> {
+    let mut out = Vec::new();
+    // Matched on the resolved id, the same rule the picker's own annotation
+    // lookup uses: an annotation decorates a model the agent named.
+    if annotations.iter().any(|a| a.id == model.resolved_model && a.fast_mode) {
+        out.push(ChatConfigOption {
+            id: "fast_mode".into(),
+            name: "Fast mode".into(),
+            description: String::new(),
+            category: String::new(),
+            // Shown refused rather than hidden. A model that has a fast mode
+            // and a transport that will not reach it are two different facts,
+            // and an absent control states neither.
+            disabled: true,
+            note: FAST_MODE_REFUSAL.into(),
+            kind: ChatConfigKind::Boolean { value: false },
+        });
+    }
+    out
+}
 
 /// What kind of content an open block at a given index holds. Recorded at
 /// `content_block_start` so the deltas that follow can be routed.
@@ -87,6 +126,14 @@ pub struct ClaudeMapper {
     /// bound as `sway_hook_ids`: the result frame arrives with nothing but a
     /// `tool_use_id` on it.
     read_only_calls: std::collections::HashSet<String>,
+    /// The adapter's model annotations, which is where the one thing the CLI
+    /// never says about a model lives. Empty is a mapper nobody gave any, which
+    /// synthesizes no options rather than guessing at some.
+    annotations: Vec<ChatAnnotation>,
+    /// The model the session last reported running. Empty before the first
+    /// `system/init`, and what makes a model change detectable at all: the
+    /// switch is reported here whether Sway asked for it or `/model` did.
+    reported_model: String,
 }
 
 impl ClaudeMapper {
@@ -97,8 +144,41 @@ impl ClaudeMapper {
         }
     }
 
+    /// Hand the mapper what its adapter knows about claude's models, which is
+    /// what lets it publish options for the one the session reports.
+    pub fn with_annotations(mut self, annotations: Vec<ChatAnnotation>) -> Self {
+        self.annotations = annotations;
+        self
+    }
+
     fn turn_id(&self) -> String {
         format!("turn-{}", self.turn_seq)
+    }
+
+    /// The lever set for the model this init reports, when it is not the set
+    /// already published.
+    ///
+    /// Driven by what the session says it is running, not by Sway's own set
+    /// path, so a `/model` slash command refreshes the mirror exactly as
+    /// `chat_set_model` does: both are confirmed by the next `system/init`.
+    fn model_options(&mut self, model: &str) -> Option<ChatEvent> {
+        if self.reported_model == model {
+            return None;
+        }
+        self.reported_model = model.to_string();
+        // The session's own report beats the catalogue, so a model the
+        // handshake did not list (or spelled differently) still gets its
+        // levers: what is running is the id init just named.
+        let row = self
+            .model_catalogue
+            .iter()
+            .find(|m| m.resolved_model == model)
+            .cloned()
+            .unwrap_or_else(|| ChatModelInfo { resolved_model: model.to_string(), ..Default::default() });
+        Some(ChatEvent::ConfigOptions {
+            session_id: self.session_id.clone(),
+            options: config_options(&row, &self.annotations),
+        })
     }
 
     /// Absorb the `initialize` control response, the only place command
@@ -348,6 +428,9 @@ impl ClaudeMapper {
     fn map_init(&mut self, frame: &Value) -> Vec<ChatEvent> {
         let model = frame["model"].as_str().unwrap_or_default().to_string();
         let mode = permission_mode(frame["permissionMode"].as_str());
+        // Taken before either branch returns, because an init is both the first
+        // report of the model and every later one.
+        let options = self.model_options(&model);
 
         // The measured quirk this whole state machine exists for: the *first*
         // init opens the session, every later one starts a turn.
@@ -383,7 +466,7 @@ impl ClaudeMapper {
 
             self.turn_seq = 1;
             self.turn_open = true;
-            return vec![
+            let mut out = vec![
                 ChatEvent::SessionStarted {
                     session_id: self.session_id.clone(),
                     cwd: frame["cwd"].as_str().unwrap_or_default().to_string(),
@@ -411,19 +494,25 @@ impl ClaudeMapper {
                     extra: Extra::new(),
                 },
             ];
+            // Last, and outside the lifecycle: the options move whenever the
+            // agent says so, which is not a step in the open sequence.
+            out.extend(options);
+            return out;
         }
 
         self.turn_seq += 1;
         self.turn_open = true;
         self.open_blocks.clear();
         self.partial_tool_input.clear();
-        vec![ChatEvent::TurnStarted {
+        let mut out = vec![ChatEvent::TurnStarted {
             session_id: self.session_id.clone(),
             turn_id: self.turn_id(),
             model,
             permission_mode: mode,
             extra: Extra::new(),
-        }]
+        }];
+        out.extend(options);
+        out
     }
 
     fn map_stream_event(&mut self, frame: &Value) -> Vec<ChatEvent> {
@@ -1522,6 +1611,75 @@ mod tests {
         };
         assert_eq!(fallback.len(), 1);
         assert_eq!(fallback[0].name, "review");
+    }
+
+    fn opus_annotation() -> Vec<ChatAnnotation> {
+        vec![ChatAnnotation { id: "claude-opus-5".into(), fast_mode: true }]
+    }
+
+    fn an_init(model: &str) -> Value {
+        serde_json::json!({
+            "type": "system", "subtype": "init", "model": model,
+            "permissionMode": "default", "cwd": "/w", "tools": [],
+            "slash_commands": [], "mcp_servers": []
+        })
+    }
+
+    fn options_of(events: &[ChatEvent]) -> Option<Vec<ChatConfigOption>> {
+        events.iter().find_map(|e| match e {
+            ChatEvent::ConfigOptions { options, .. } => Some(options.clone()),
+            _ => None,
+        })
+    }
+
+    /// Claude publishes no options of its own, so the levers it does have are
+    /// assembled per model. The set follows what the **session** says it is
+    /// running, which is how a `/model` slash command refreshes it: Sway is not
+    /// on that path, and `system/init` reports the switch either way.
+    #[test]
+    fn the_option_set_follows_the_model_the_session_reports() {
+        let mut m = ClaudeMapper::new("s1").with_annotations(opus_annotation());
+        m.map(&fixture("initialize")[0]);
+
+        // An unannotated model has nothing to say, which is a published empty
+        // set rather than no answer: the mirror has to clear.
+        let opened = m.map(&an_init("claude-sonnet-5"));
+        assert_eq!(options_of(&opened), Some(Vec::new()));
+
+        // The same turn's model reported again moves nothing.
+        assert_eq!(options_of(&m.map(&an_init("claude-sonnet-5"))), None);
+
+        let switched = options_of(&m.map(&an_init("claude-opus-5"))).expect("the switch republished");
+        assert_eq!(switched.len(), 1);
+        assert_eq!(switched[0].id, "fast_mode");
+        assert!(switched[0].disabled, "a lever this transport cannot reach is published refused");
+        assert_eq!(switched[0].note, FAST_MODE_REFUSAL);
+
+        // And back, so the row is not a one-way addition to the set.
+        assert_eq!(options_of(&m.map(&an_init("claude-sonnet-5"))), Some(Vec::new()));
+    }
+
+    /// A mapper given no annotations publishes an empty set rather than
+    /// inventing one, which is what a session on an agent Sway measured nothing
+    /// about must do.
+    #[test]
+    fn no_annotation_means_no_lever() {
+        let mut m = ClaudeMapper::new("s1");
+        m.map(&fixture("initialize")[0]);
+        assert_eq!(options_of(&m.map(&an_init("claude-opus-5"))), Some(Vec::new()));
+    }
+
+    /// The session's own report beats the catalogue: a model the handshake did
+    /// not list still gets its levers, because what is running is the id init
+    /// named rather than a row Sway managed to look up.
+    #[test]
+    fn a_model_the_catalogue_never_listed_still_gets_its_levers() {
+        let mut m = ClaudeMapper::new("s1").with_annotations(opus_annotation());
+        let opened = m.map(&an_init("claude-opus-5"));
+        assert_eq!(
+            options_of(&opened).map(|o| o.iter().map(|x| x.id.clone()).collect::<Vec<_>>()),
+            Some(vec!["fast_mode".to_string()])
+        );
     }
 
     /// The model catalogue rides the same control response as the commands and
