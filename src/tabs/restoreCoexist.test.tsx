@@ -32,6 +32,9 @@ const handlers: Record<string, (e: { payload: unknown }) => void> = {};
 // come back live and re-subscribe.
 let liveChats: string[] = [];
 let livePtys: string[] = [];
+// Folders that are gone since last run. A stored tab pointing at one is opened
+// at home instead, so a deleted worktree never yields a tab whose spawn fails.
+const missingPaths = new Set<string>();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
@@ -46,7 +49,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "get_docs_root":
         return Promise.reject("no docs root");
       case "file_exists":
-        return Promise.resolve(true);
+        return Promise.resolve(!missingPaths.has(String(args.path)));
       case "fs_read_dir":
         return Promise.resolve([]);
       case "list_sessions":
@@ -116,7 +119,7 @@ const { draftFor } = await import("../utils/chatCompose");
 const { draftPick } = await import("../utils/chatDraftPick");
 const { envelopeFor, resetPaneLayoutModel, seedTwoPane } = await import("../layout/layoutStore");
 const { paneOfTab, resetTabPlacement, flushTabPlacement } = await import("../layout/tabPlacement");
-const { visibleId, focusTab } = await import("../panels/Terminal/terminalTabStore");
+const { visibleId, focusTab, setTabTitles } = await import("../panels/Terminal/terminalTabStore");
 const { closeOf } = await import("../test/tabs");
 
 const selection = {
@@ -134,6 +137,7 @@ beforeEach(() => {
   storedSessions = [];
   liveChats = [];
   livePtys = [];
+  missingPaths.clear();
   resetPaneLayoutModel();
   resetTabPlacement();
 });
@@ -661,6 +665,76 @@ describe("stranded processes", () => {
   });
 });
 
+// The two prunes a restore has always made, kept through four phases of change
+// to what a restored tab is. Nothing here is new; it is here because an
+// automatic restore is the one that most needs to say what it dropped, and
+// neither prune had a test of its own before.
+describe("what a restore drops, and what it says about it", () => {
+  let said: string[] = [];
+  let offToast: (() => void) | undefined;
+
+  beforeEach(() => {
+    said = [];
+    offToast = onWith<{ message: string }>(TOAST, (e) => said.push(e.message));
+  });
+  afterEach(() => offToast?.());
+
+  const restoreNotice = () => said.find((m) => m.startsWith("Restored tabs:"));
+
+  it("brings back the rest when one stored session is gone, and counts it", async () => {
+    // `chatTab(2)` is the only one whose session the scan finds: the first is
+    // stored but was deleted since last run.
+    const gone = { ...chatTab(1), sessionId: "s-deleted" };
+    storeTabs([gone, chatTab(2)], { activeId: "chat:2" });
+
+    await restore();
+
+    await waitFor(() => expect(open().map((t) => t.id)).toEqual(["chat:2"]));
+    await waitFor(() => expect(restoreNotice()).toBeTruthy());
+    expect(restoreNotice()).toContain("1 session no longer exist");
+  });
+
+  it("opens a tab whose folder is gone at home, and counts that too", async () => {
+    missingPaths.add(REPO);
+    storeTabs([shell({ id: "sh:0" })], { activeId: "sh:0" });
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(1));
+    // The tab still belongs to its workspace; only where it opens changed, so a
+    // deleted worktree yields a usable shell rather than a dead pane.
+    expect(open()[0]!.cwd).toBe("/home/me");
+    expect(open()[0]!.workspace).toBe(REPO);
+    await waitFor(() => expect(restoreNotice()).toBeTruthy());
+    expect(restoreNotice()).toContain("1 folder missing, opened in your home directory");
+  });
+
+  // A restore is not a naming. `openChatTab` labels a *new* chat, so routing a
+  // stored draft through it ran the title it had already been given back
+  // through the label maker: "proj chat" came back as "proj chat chat", and
+  // again on every launch. Invisible while restore was a button nobody pressed.
+  it("brings a draft back under the name it already had, launch after launch", async () => {
+    storeTabs([
+      { title: "proj chat", cwd: REPO, kind: "chat", program: "claude", args: [], id: "chat:1" },
+      { title: "proj chat 2", cwd: REPO, kind: "chat", program: "claude", args: [], id: "chat:2" },
+    ]);
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(2));
+    expect(open().map((t) => t.title)).toEqual(["proj chat", "proj chat 2"]);
+  });
+
+  it("says nothing when a restore drops nothing", async () => {
+    storeTabs([shell({ id: "sh:0" })], { activeId: "sh:0" });
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(1));
+    expect(restoreNotice()).toBeUndefined();
+  });
+});
+
 // The action that replaces the banner's bulk decline. Said after the strip is
 // there rather than as an answer to a question asked before it.
 describe("closing every tab that was never started", () => {
@@ -699,5 +773,106 @@ describe("closing every tab that was never started", () => {
     pointerClick(screen.getAllByLabelText("Launch an agent session")[0]!);
     await screen.findByRole("menuitem", { name: "Terminal" });
     expect(screen.queryByRole("menuitem", { name: /not started/ })).toBeNull();
+  });
+});
+
+// The launch race that grew the strip by one tab per reload.
+//
+// Restore is automatic and asynchronous, and the sidebar's saved selection is
+// delivered on the same tick. So "does a tab already host this session?" was
+// asked against a strip that was still empty and about to hold exactly that
+// tab, and the answer opened a second one. The duplicate persists, so the next
+// launch starts from two.
+describe("a session selection delivered while the strip is still restoring", () => {
+  const withSession = { ...selection, sessionId: "s-1", agent: "claude" };
+
+  it("focuses the restored tab rather than opening a second one for it", async () => {
+    storeTabs([chatTab(1)], { activeId: "chat:1" });
+
+    render(() => (
+      <div>
+        <Terminal selected={withSession as never} onOpenChange={() => {}} />
+        <PaneView pinKind="shell" />
+      </div>
+    ));
+
+    await waitFor(() => expect(open().length).toBeGreaterThan(0));
+    // Let the selection's own async routing finish before counting.
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(open().map((t) => t.id)).toEqual(["chat:1"]);
+    expect(open().filter((t) => t.sessionId === "s-1")).toHaveLength(1);
+  });
+});
+
+
+// A chat tab has two titles: `t.title`, captured when the tab was made, and the
+// `tabTitles` override that `syncTabTitles` and a rename write, which is what
+// the strip actually renders. Persisting the first stored the label the chat was
+// born with, "<session> chat" straight out of `chatTabLabel`, and dropped the
+// session's real name on every save.
+//
+// It stayed invisible because the override lands a moment after the tab opens,
+// so the wrong title was on screen for a frame and only the store kept it.
+// Restore running on its own is what put it back on screen.
+describe("the title a chat tab is saved under", () => {
+  it("takes the session's current name, not the label the tab was born with", async () => {
+    storedSessions.push({ id: "s-9", agent: "claude", cwd: REPO, path: "/t/s-9.jsonl", name: "Hello" } as never);
+    storeTabs([
+      { title: "Hello chat", cwd: REPO, kind: "chat", program: "claude", args: [], id: "chat:9", sessionId: "s-9" },
+    ]);
+
+    await restore();
+
+    await waitFor(() => expect(open()).toHaveLength(1));
+    // Healed on the way in, from the session restore was already looking up.
+    expect(open()[0]!.title).toBe("Hello");
+    // And saved that way, so the next launch starts from the right name.
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0].title).toBe("Hello"),
+    );
+  });
+
+  it("keeps a live rename instead of writing the creation label back", async () => {
+    storedSessions.push({ id: "s-8", agent: "claude", cwd: REPO, path: "/t/s-8.jsonl", name: "First" } as never);
+    storeTabs([
+      { title: "First", cwd: REPO, kind: "chat", program: "claude", args: [], id: "chat:8", sessionId: "s-8" },
+    ]);
+
+    await restore();
+    await waitFor(() => expect(open()).toHaveLength(1));
+
+    // A rename writes the override, never the tab record.
+    setTabTitles((m) => ({ ...m, "chat:8": "Renamed" }));
+
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0].title).toBe("Renamed"),
+    );
+  });
+});
+
+// Continuing a session from the history list. The tab is named from the session
+// itself, so what it says on the first frame is what it says a minute later.
+// `chatTabLabel` used to run over it, appending " chat" until `syncTabTitles`
+// arrived and took it back off.
+describe("continuing a session from history", () => {
+  const fromHistory = { ...selection, sessionId: "s-7", agent: "claude", sessionTitle: "Hello" };
+
+  it("opens the tab under the session's own name, with nothing appended", async () => {
+    storedSessions.push({ id: "s-7", agent: "claude", cwd: REPO, path: "/t/s-7.jsonl", name: "Hello" } as never);
+
+    render(() => (
+      <div>
+        <Terminal selected={fromHistory as never} onOpenChange={() => {}} />
+        <PaneView pinKind="shell" />
+      </div>
+    ));
+
+    await waitFor(() => expect(open()).toHaveLength(1));
+    // Read off the tab record, so this is the title from the very first frame
+    // rather than whatever a later sync settled on.
+    expect(open()[0]!.title).toBe("Hello");
+    expect(open()[0]!.sessionId).toBe("s-7");
   });
 });
