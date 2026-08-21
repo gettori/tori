@@ -60,10 +60,6 @@ export default function ModelPicker(props: {
   const [pill, setPill] = createSignal<HTMLButtonElement>();
   const current = () => props.models.find((m) => m.value === props.value) ?? null;
   const levels = () => current()?.effortLevels ?? [];
-  // A cached list is the agent's own answer from the last time anything asked,
-  // which is a different claim from what this session reports right now. Worth
-  // saying so rather than presenting a remembered answer as a current one.
-  const stale = () => props.models.length > 0 && !props.models[0].live;
 
   return (
     <>
@@ -126,14 +122,15 @@ export default function ModelPicker(props: {
         </Picker>
       </Show>
 
+      {/* Nothing here says where the list came from. A cached list is the
+          agent's own answer from the last time anything asked, and it is right
+          almost always; standing in the bar to say so made the provenance a
+          permanent fixture of a surface that is supposed to show its plumbing
+          only when something has actually gone wrong. A row the agent has since
+          dropped fails the send, with a sentence, which is the moment it
+          matters. */}
       <Show when={props.modelPending || props.effortPending}>
         <span class={`${styles.barNote} ${styles.barNotePending}`}>Applies from the next turn.</span>
-      </Show>
-
-      <Show when={stale()}>
-        <span class={styles.barNote} title="This session did not report its own model list.">
-          Last known list: this session has not reported its own yet.
-        </span>
       </Show>
     </>
   );

@@ -7,6 +7,7 @@ import { lockedProvider } from "./agentPaletteData";
 import { pickableModels, type PickableModel } from "../../utils/chatModels";
 import type { Adapter, ChatConfig } from "../../utils/agents";
 import type { ChatModelInfo } from "../../utils/chatTypes";
+import styles from "./Chat.module.css";
 
 // This machine's real catalogue, read out of the same committed probe capture
 // the Rust mapper test asserts against. Hand-writing a model list here would
@@ -216,11 +217,15 @@ describe("ModelPicker", () => {
     );
   });
 
-  it("says when the list is remembered rather than reported by this session", () => {
-    expect(
-      setup({ models: pickableModels([], cached, chat), value: "sonnet" }).getByText(/Last known list/),
-    ).toBeTruthy();
-    expect(setup().queryByText(/Last known list/)).toBeNull();
+  // The bar used to carry a standing note whenever the list came from the probe
+  // cache. It said the same thing on every draft ever opened, which made the
+  // provenance a permanent fixture of a surface that shows its plumbing only
+  // when something has gone wrong. A cached row the agent has since dropped
+  // fails the send, and that is where it gets explained.
+  it("says nothing about where the list came from", () => {
+    const r = setup({ models: pickableModels([], cached, chat), value: "sonnet" });
+    expect(r.queryByText(/Last known list/)).toBeNull();
+    expect(r.container.querySelector(`.${styles.barNote}`)).toBeNull();
   });
 
   // Nothing cached and no handshake is a real state now that the adapter table
