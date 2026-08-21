@@ -1220,7 +1220,7 @@ export default function ChatView(props: {
     if (next !== null) onSelectMode(next);
   }
 
-  function onSelectEffort(effort: string) {
+  function onSelectEffort(effort: string | null) {
     // A model value is required by the command, so an effort-only change re-sends
     // the model the picker is already showing. Without one there is nothing to
     // attach the level to, and the CLI has no effort-only control.

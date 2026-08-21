@@ -1373,9 +1373,13 @@
 
 /* On, and worth noticing that it is. The icon carries the accent rather than
    the whole pill: a filled chip beside three outlined ones reads as selected in
-   a set, and this is not one of a set. */
+   a set, and this is not one of a set.
+
+   The brand gold, like every other "this is in force" mark in the composer.
+   `--accent-fg` is the link and text-selection blue, which is a different kind
+   of statement. */
 .pillToggleOn .pillIcon {
-  color: var(--accent-fg);
+  color: var(--brand-bar);
 }
 
 /* A pick that has not landed is a promise about the next turn, not a fact
@@ -1444,8 +1448,12 @@
   opacity: 0;
 }
 
+/* `--brand-bar`, the same gold the model palette ticks its current row with,
+   not `--accent-fg`. That token is the blue used for links and text selection,
+   and it read as a different kind of statement sitting on the brand-wash fill
+   the row now carries. */
 .pickCheckOn {
-  color: var(--accent-fg);
+  color: var(--brand-bar);
   opacity: 1;
 }
 
