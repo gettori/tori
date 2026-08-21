@@ -126,6 +126,8 @@ function mount() {
       title="chat"
       active={true}
       resume={false}
+      started={true}
+      onStart={() => {}}
       onForkSession={() => "chat:fork"}
       onForkFrom={() => "chat:fork"}
       onRewindFrom={() => {}}

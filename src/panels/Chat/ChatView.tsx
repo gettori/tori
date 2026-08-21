@@ -36,6 +36,7 @@ import {
   hasAutoSend,
   hasSomethingToSend,
   historyFor,
+  markAutoSend,
   pendingFor,
   restoreDraft,
   seedForSend,
@@ -185,6 +186,16 @@ export default function ChatView(props: {
   title: string;
   /** A tab restored from a previous run, whose session already has a transcript. */
   resume: boolean;
+  /** Whether this tab's child has been started.
+   *
+   *  False only for a restored chat that has been opened to read: the transcript
+   *  is replayed from disk, nothing is spawned, nothing claims the session and
+   *  nothing reports it as live. The first send is what starts it. */
+  started: boolean;
+  /** Start this tab's child. Called by a first send on a chat that was opened to
+   *  read; the message rides along in the auto-send store, the way a draft's
+   *  does. */
+  onStart: () => void;
   /** The session this one was forked from, when it is a fork. Its history is
    *  replayed here and the two diverge from that point; new turns never reach
    *  the original. */
@@ -630,22 +641,42 @@ export default function ChatView(props: {
       connect({ reconnect: true });
     };
 
-    connect({ reconnect: false });
+    // The spawn, and only the spawn, waits on the tab being started. Everything
+    // above - the backfill, the parking, the event pipeline - is set up either
+    // way, so a chat opened to read is a full transcript with nothing behind it
+    // and the first send has only the child left to add.
+    //
+    // `props.started` is the only thing tracked. `connect` reads `props.active`
+    // on its way past, so a plain effect would re-run on every switch to and
+    // from this tab - and the re-run would dispose the deadline timer below
+    // while the message it is the backstop for is still being held.
+    let spawned = false;
+    createEffect(() => {
+      if (!props.started || spawned) return;
+      spawned = true;
+      untrack(() => {
+        connect({ reconnect: false });
 
-    // Nothing may hold a first message forever. The claude transport declares no
-    // handshake deadline at all, so a binary that spawns and then wedges would
-    // leave the message the user already pressed Enter on sitting in a tab that
-    // says "connecting" and never stops. A backstop rather than an expectation:
-    // a claude handshake is measured in seconds, an ACP agent fails its own
-    // 30s handshake deadline first, and a spawn that cannot start rejects
-    // immediately - so this fires only when something has genuinely hung.
-    if (hasAutoSend(composerKey())) {
-      const timer = setTimeout(() => {
-        if (canSend()) return;
-        failFirstSend("that agent did not get a session open in time, so nothing was sent.");
-      }, FIRST_SEND_DEADLINE_MS);
-      onCleanup(() => clearTimeout(timer));
-    }
+        // Nothing may hold a first message forever. The claude transport
+        // declares no handshake deadline at all, so a binary that spawns and
+        // then wedges would leave the message the user already pressed Enter on
+        // sitting in a tab that says "connecting" and never stops. A backstop
+        // rather than an expectation: a claude handshake is measured in seconds,
+        // an ACP agent fails its own 30s handshake deadline first, and a spawn
+        // that cannot start rejects immediately - so this fires only when
+        // something has genuinely hung.
+        //
+        // Read here rather than at mount: an opened chat marks its held message
+        // at the moment it starts, which is after mount and before this runs.
+        if (hasAutoSend(composerKey())) {
+          const timer = setTimeout(() => {
+            if (canSend()) return;
+            failFirstSend("that agent did not get a session open in time, so nothing was sent.");
+          }, FIRST_SEND_DEADLINE_MS);
+          onCleanup(() => clearTimeout(timer));
+        }
+      });
+    });
   });
 
   /**
@@ -747,8 +778,13 @@ export default function ChatView(props: {
   // and this unmount happens on a promotion and a revert as well as a close, so
   // clearing would throw away the very message a first send is carrying. The tab
   // clears it when the tab itself goes away.
+  //
+  // Gated on this tab having started one. A chat opened only to read mounts
+  // over a session id it never claimed, and that id can be live in another tab:
+  // closing the reader would end somebody else's child.
   onCleanup(() => {
     dropLiveChat(props.sessionId);
+    if (!props.started) return;
     void invoke("chat_close", { sessionId: props.sessionId }).catch(() => {});
   });
 
@@ -776,8 +812,12 @@ export default function ChatView(props: {
   // refusal therefore has to un-register: left behind, a chat that never
   // started would report as a live session forever, adding a phantom blocker to
   // the revert guard and a phantom sibling to the multi-chat count.
+  //
+  // A chat opened only to read its transcript is the same phantom by another
+  // route: it has a session id but no child, so it registers nothing until it
+  // starts. Twelve of them must count as zero.
   createEffect(() => {
-    if (refused()) {
+    if (!props.started || refused()) {
       dropLiveChat(props.sessionId);
       return;
     }
@@ -799,6 +839,8 @@ export default function ChatView(props: {
     on(
       () => props.active,
       (active) => {
+        // Nothing to coalesce for a session with no child on the other end.
+        if (!props.started) return;
         void invoke("chat_set_visible", { sessionId: props.sessionId, visible: active }).catch(() => {});
       },
       { defer: true },
@@ -928,6 +970,16 @@ export default function ChatView(props: {
     // Recorded on the way out whichever path it takes, since from the user's
     // side all three are "I sent that".
     pushHistory(composerKey(), text);
+    // A chat that was opened to read has no child yet. The message is held the
+    // way a draft's first send holds one and the tab is told to start, which
+    // resumes **this** session id rather than minting a fresh one; the effect
+    // above sends it as soon as the transport can take a turn.
+    if (!props.started) {
+      if (!text && !pendingFor(composerKey()).length) return;
+      markAutoSend(composerKey(), text);
+      props.onStart();
+      return;
+    }
     // The ceiling, enforced where Sway actually decides: the turn boundary. The
     // message is queued rather than refused, so raising the limit sends what was
     // already typed instead of asking for it again - and it is *said*, because a
@@ -1534,8 +1586,12 @@ export default function ChatView(props: {
           health would sit on "connecting" forever - a claim about a process
           that is never coming - and a Reconnect button would offer to take a
           session another tab holds. The refusal banner above already says
-          what happened and offers the two real ways out. */}
-      <Show when={!refused()}>
+          what happened and offers the two real ways out.
+
+          Nor for a chat that has not been started: there is no connection to
+          report the health of, and Reconnect would spawn the very child the tab
+          is deliberately doing without. */}
+      <Show when={props.started && !refused()}>
         <StatusStrip
           health={connectionHealth(state)}
           running={running()}
