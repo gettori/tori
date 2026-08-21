@@ -131,7 +131,6 @@ const KEPT = new Map<string, Kept>([
   ["components/ShortcutSheet/ShortcutSheet.tsx", { count: 1, reason: HEADING }],
   ["components/Tooltip/Tooltip.stories.tsx", { count: 1, reason: FIXTURE }],
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],
-  ["panels/Chat/ModelPicker.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Chat/ChatView.tsx", { count: 1, reason: HEADING }],
   ["panels/Chat/SessionDiffView.tsx", { count: 5, reason: TRUNCATION }],
   ["panels/Chat/SessionStats.tsx", { count: 6, reason: TRUNCATION }],
@@ -238,8 +237,11 @@ const KEPT = new Map<string, Kept>([
  *  the agent detail page explains each capability chip with hover text on a
  *  `span` nothing can focus. It is the established chip pattern rather than a
  *  new idea, so it is pinned here rather than blocked, and the `code` entry
- *  went with the card layout that carried it. */
-const RAW_ELEMENT_TITLES = 62;
+ *  went with the card layout that carried it.
+ *
+ *  **One back down** with the composer bar's standing note about a remembered
+ *  model list, which is gone and took its title with it. */
+const RAW_ELEMENT_TITLES = 61;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. Down one from
  *  ten for the same reason as above, and the row itself is unchanged. */
@@ -339,9 +341,11 @@ describe("the title= guard", () => {
     // Down one span since: Editor's touched-dot title now has one source site
     // (the shared fileDots helper) where the strip and its overflow row each
     // had a copy.
+    // Down one more: the composer bar's standing note about a remembered model
+    // list is gone, and its title with it.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 15,
-      span: 47,
+      span: 46,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
