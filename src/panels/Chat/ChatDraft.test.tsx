@@ -326,10 +326,9 @@ describe("a chat draft's pick", () => {
     const { openPalette } = setup();
     await settle();
     const filter = openPalette();
-    // Twice: a draft has named no model, so the first press only reveals the
-    // cursor on the first row. The second row is the point, since committing
-    // the first would pass whether or not the pick was read.
-    fireEvent.keyDown(filter, { key: "ArrowDown" });
+    // One press: a draft opens already naming the agent's first row, so the
+    // cursor starts there and steps to the second. The second row is the point,
+    // since committing the first would pass whether or not the pick was read.
     fireEvent.keyDown(filter, { key: "ArrowDown" });
     fireEvent.keyDown(filter, { key: "Enter" });
 
@@ -357,12 +356,22 @@ describe("a chat draft's pick", () => {
   // entirely (the harness is remembered beside it, but the file is old or the
   // adapter has gone). Either way the draft opens on nothing rather than on a
   // row the send would be refused for.
-  it("drops a remembered model this agent does not offer", async () => {
+  // Dropped, not sent: the stored id belongs to another agent's catalogue. What
+  // takes its place is this agent's own first row rather than nothing, so the
+  // pill names a model the draft would really start on.
+  it("falls to the agent's default when the remembered model is not offered", async () => {
     remembered.value = { model: "gpt-5" };
     setup();
     await settle();
 
-    expect(draftPick(TAB).model).toBeNull();
+    expect(draftPick(TAB).model).toBe("sonnet");
+  });
+
+  it("opens on the agent's default when nothing was remembered at all", async () => {
+    setup();
+    await settle();
+
+    expect(draftPick(TAB).model).toBe("sonnet");
   });
 
   it("leaves a pick the user has already made alone", async () => {
