@@ -17,7 +17,7 @@
   border-radius: var(--sway-radius-md);
   padding: 0 calc(12px * var(--ui-scale));
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--sway-text-md);
   line-height: 1.4;
   cursor: pointer;
   transition:

@@ -49,10 +49,10 @@
 .pill:has([data-selected])::before {
   content: "";
   position: absolute;
-  top: 0;
-  left: var(--tab-pad);
-  right: var(--tab-pad);
-  height: var(--sway-border-thick);
+  left: 0;
+  top: var(--tab-pad);
+  bottom: var(--tab-pad);
+  width: var(--sway-border-thick);
   border-radius: var(--sway-radius-sm);
   background: var(--brand-bar);
 }
