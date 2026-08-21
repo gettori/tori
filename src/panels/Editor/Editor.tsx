@@ -250,10 +250,10 @@ import { noteTabFocus, kindPaneFocused } from "../../layout/layoutStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { unifiedTabs, type FileUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind } from "../../tabs/registry";
-import { isKindHome, kindHomePane, paneActiveId, panesWithKind } from "../../tabs/paneTabs";
+import { isKindHome, kindHomePane, paneActiveId, paneTabs, panesWithKind } from "../../tabs/paneTabs";
 import { focusedPaneId } from "../../layout/layoutStore";
 import { paneMenuItems } from "../../tabs/paneTabs";
-import { forgetTab } from "../../layout/tabPlacement";
+import { forgetTab, setPaneActive } from "../../layout/tabPlacement";
 import { editorStageId, stageHost } from "../../tabs/stageHost";
 import styles from "./Editor.module.css";
 
@@ -399,6 +399,16 @@ export default function Editor(props: {
   // focused pane's, so the git store, the breadcrumb and every command's
   // enablement follow pane focus rather than one workspace-wide pick.
   const activeId = () => paneFileId(focusedEditorPane()) ?? activeByWs()[ws()] ?? null;
+  /**
+   * The file actually **on screen**, or null when the pane is showing something
+   * else - a chat, a terminal.
+   *
+   * `activeId` deliberately falls back to the workspace's last file pick so a
+   * command still has a target, and that fallback is right for a command and
+   * wrong for anything that draws. A tree row highlighted as "the open file"
+   * while a chat fills the pane is pointing at something the user cannot see.
+   */
+  const shownFileId = () => paneFileId(focusedEditorPane());
   function setTabs(next: FileTab[] | ((prev: FileTab[]) => FileTab[])) {
     const key = ws();
     setTabsByWs((prev) => ({
@@ -1113,7 +1123,22 @@ export default function Editor(props: {
       setTabs([...tabs(), { path, name: isSyntheticId(path) ? syntheticTabName(path) : basename(path) }]);
     }
     setActiveId(path);
+    // And the **pane's** stored pick, not only this kind's claim. A pane holds
+    // file tabs and terminal tabs at once and `activeIdInPane` resolves the two:
+    // the stored pick wins when its kind still claims it, and otherwise the
+    // first claim in display order does - which is always a terminal tab, since
+    // `unifiedTabs` emits those first and `visibleId()` falls back to `tabs[0]`
+    // so that claim is never quiet. Writing only the claim therefore left the
+    // file behind whatever chat the pane was showing. Clicking the tab worked
+    // because `PaneView`'s `onActivate` writes both.
+    const pane = paneHoldingFile(path) ?? focusedEditorPane();
+    if (pane && pane !== SOLO_PANE) setPaneActive(ws(), pane, path);
   }
+
+  /** The pane a file tab is already in, which is not always its kind's home:
+   *  a hand-moved tab has to be revealed where it actually sits. */
+  const paneHoldingFile = (id: string) =>
+    panesWithKind(ws(), "file").find((p) => paneTabs(ws(), p).some((t) => t.id === id));
 
   /**
    * Open a new untitled buffer (Cmd+N).
@@ -2342,7 +2367,7 @@ export default function Editor(props: {
               root={root()}
               editable
               noun="project folder"
-              activePath={activeId()}
+              activePath={shownFileId()}
               askText={askText}
               askConfirm={askConfirm}
             />
