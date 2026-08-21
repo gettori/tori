@@ -19,7 +19,6 @@ const chat: ChatConfig = {
   effort_args: [],
   mode_args: [],
   add_dir_args: [],
-  annotations: [],
   modes: [],
   effort_extras: [],
   acp: { serve_client_fs: false },
@@ -49,6 +48,8 @@ function model(value: string, resolved: string, displayName: string): CatalogMod
     supportsEffort: false,
     supportedEffortLevels: [],
     supportsAutoMode: false,
+    supportsFastMode: false,
+    supportsAdaptiveThinking: false,
   };
 }
 

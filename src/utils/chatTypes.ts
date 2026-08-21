@@ -118,6 +118,13 @@ export type ChatModelInfo = {
   /// without it accepts the flag, exits 0, and silently runs `default`, so
   /// nothing at runtime would contradict an ungated row.
   supportsAutoMode: boolean;
+  /// Whether this model has a fast mode to toggle, **as the CLI publishes it**.
+  /// Sway used to restate the same fact in an adapter table keyed on a spelling
+  /// the catalogue does not use, so the lookup never matched anything.
+  supportsFastMode: boolean;
+  /// Whether this model has an adaptive-thinking lever. Absent on Haiku, which
+  /// declares none of the model-scoped capabilities.
+  supportsAdaptiveThinking: boolean;
 };
 
 /// One mode the live agent says it can run.

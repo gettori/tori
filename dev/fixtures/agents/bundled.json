@@ -64,18 +64,12 @@
         "--add-dir",
         "{dir}"
       ],
-      "annotations": [
-        {
-          "id": "claude-opus-5",
-          "fast_mode": true
-        }
-      ],
       "effort_extras": [
         {
           "id": "ultracode",
           "label": "Ultracode",
           "state": "working",
-          "measured_on": "2.1.237 (Claude Code)",
+          "measured_on": "2.1.238 (Claude Code)",
           "note": ""
         }
       ],
@@ -207,7 +201,6 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
-      "annotations": [],
       "effort_extras": [],
       "split_model_names": false,
       "modes": [],
@@ -261,7 +254,6 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
-      "annotations": [],
       "effort_extras": [],
       "split_model_names": false,
       "modes": [],
@@ -310,7 +302,6 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
-      "annotations": [],
       "effort_extras": [],
       "split_model_names": false,
       "modes": [],
@@ -348,7 +339,6 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
-      "annotations": [],
       "effort_extras": [],
       "split_model_names": false,
       "modes": [],
@@ -388,7 +378,6 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
-      "annotations": [],
       "effort_extras": [],
       "split_model_names": true,
       "modes": [],
@@ -440,7 +429,6 @@
       "effort_args": [],
       "mode_args": [],
       "add_dir_args": [],
-      "annotations": [],
       "effort_extras": [],
       "split_model_names": true,
       "modes": [],

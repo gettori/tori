@@ -52,7 +52,9 @@
             "note": "Measured on another version of this CLI"
           }
         ],
-        "supportsAutoMode": true
+        "supportsAutoMode": true,
+        "supportsFastMode": true,
+        "supportsAdaptiveThinking": true
       }
     ],
     "modes": [
@@ -111,7 +113,9 @@
             "note": "Measured on another version of this CLI"
           }
         ],
-        "supportsAutoMode": true
+        "supportsAutoMode": true,
+        "supportsFastMode": true,
+        "supportsAdaptiveThinking": true
       }
     ],
     "modes": [

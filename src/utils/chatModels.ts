@@ -59,8 +59,9 @@ export type PickableModel = {
    *  one the agent published. It carries an empty `resolvedModel`, since Sway
    *  passes the configured string to the CLI unresolved. */
   userConfigured: boolean;
-  /** Whether this model has a fast mode to toggle. Sway's own annotation,
-   *  looked up by `resolvedModel`, because no catalogue carries such a flag. */
+  /** Whether this model has a fast mode to toggle, as the catalogue publishes
+   *  it. This was Sway's own annotation, looked up by `resolvedModel` against a
+   *  hand-keyed table, and the table's spelling never matched the catalogue's. */
   fastMode: boolean;
   /** Whether this model honours `--permission-mode auto`. From the live
    *  catalogue, which omits the key entirely for a model that lacks it. */
@@ -194,18 +195,6 @@ function warnOnce(key: string, message: string) {
 }
 
 /**
- * Whether Sway claims a fast mode for a resolved model id.
- *
- * The one thing still read out of the adapter, and the one thing that has to be:
- * no catalogue carries a fast-mode flag. It is an **annotation**, so it can only
- * decorate a model that reached here from a catalogue in the first place. An
- * annotated id no catalogue named produces no row and therefore no toggle.
- */
-export function fastModeFor(chat: ChatConfig | null, resolvedModel: string): boolean {
-  return chat?.annotations.find((a) => a.id === resolvedModel)?.fast_mode ?? false;
-}
-
-/**
  * A model's effort rows, as the backend filled them in.
  *
  * **The synthesis lives on the backend**, in `claude::effort_levels`: it is
@@ -237,11 +226,15 @@ function effortRows(model: ChatModelInfo): ChatEffortLevel[] {
  * Nothing is the third answer and a real one. A agent whose cache is empty and
  * whose session never handshook offers no models, rather than four the CLI was
  * never asked about.
+ *
+ * **The adapter is not a parameter any more.** It was, for one reader: a
+ * fast-mode annotation looked up by resolved id. The catalogue publishes that
+ * flag itself now, so nothing on this path comes from the adapter at all and a
+ * row is entirely the agent's own answer about itself.
  */
 export function pickableModels(
   live: readonly ChatModelInfo[],
   cached: readonly CatalogModel[],
-  chat: ChatConfig | null,
   /** Windows the running session reported, from `reportedWindows`. Empty before
    *  the first turn completes, and nothing stands in for it until then. */
   reported: Readonly<Record<string, number>> = {},
@@ -261,7 +254,7 @@ export function pickableModels(
     contextWindow: contextWindowFor(m.resolvedModel, reported),
     live: live.length > 0,
     userConfigured: m.userConfigured ?? false,
-    fastMode: fastModeFor(chat, m.resolvedModel),
+    fastMode: m.supportsFastMode,
     supportsAutoMode: m.supportsAutoMode,
   }));
 }

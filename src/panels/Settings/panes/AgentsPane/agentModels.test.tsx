@@ -64,7 +64,6 @@ const adapter = (id: string) => ({
     effort_args: [],
     mode_args: [],
     add_dir_args: [],
-    annotations: [],
     modes: [],
     effort: [],
     acp: { serve_client_fs: false },
@@ -82,6 +81,8 @@ const model = (value: string, resolved: string, over: Partial<CatalogModel> = {}
   supportsEffort: false,
   supportedEffortLevels: [],
   supportsAutoMode: false,
+  supportsFastMode: false,
+  supportsAdaptiveThinking: false,
   ...over,
 });
 

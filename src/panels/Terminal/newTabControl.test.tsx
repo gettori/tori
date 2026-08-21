@@ -26,7 +26,6 @@ const chat = {
   effort_args: [],
   mode_args: [],
   add_dir_args: [],
-  annotations: [],
   modes: [],
   effort: [],
   acp: { serve_client_fs: false },

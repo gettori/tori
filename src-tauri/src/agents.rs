@@ -187,35 +187,6 @@ pub enum Discovery {
     File { dir: PathBuf, filename_regex: Regex },
 }
 
-/// Something Sway knows about a model, keyed by the id the agent names it by.
-///
-/// **Not a model list, and the distinction is the whole point.** An adapter used
-/// to declare `[[chat.models]]`: a hand-maintained table that was the picker's
-/// fallback and the context meter's pre-first-turn denominator. It was wrong in
-/// both jobs. Sonnet 5 and Opus 5 both said 200k while the agent reported 1M
-/// for each, and a session that never handshook offered four models the CLI had
-/// no say in. A model Sway names is a claim Sway cannot back.
-///
-/// So an annotation only ever **decorates a model the agent itself named**. It
-/// contributes nothing to any list: an entry whose id no catalogue mentions
-/// renders nothing at all, and there is deliberately no code path that turns one
-/// of these into a picker row.
-///
-/// One field, because there is exactly one thing in this category. Everything
-/// else the old table carried (label, window, effort levels, thinking, images)
-/// is something the agent says better, and now does.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ChatAnnotation {
-    pub id: String,
-    /// Whether this model has a fast mode to toggle.
-    ///
-    /// Sway's own claim, and the one thing here that has to be: the live
-    /// catalogue carries no flag for it, and the only signal the CLI gives is
-    /// the `/fast` command describing itself as "Toggle fast mode (Opus 5)".
-    #[serde(default)]
-    pub fast_mode: bool,
-}
-
 /// What a requested mode resolved to, and what it displaced if anything.
 ///
 /// `downgraded_from` is `Some` exactly when the session is not running the mode
@@ -287,12 +258,12 @@ pub enum EffortExtraState {
 
 /// A level `--effort` accepts that the agent's own catalogue never lists.
 ///
-/// The effort counterpart of [`ChatAnnotation`] and deliberately **not** a field
-/// on it: a fast mode is a property of one model, an accepted flag value is a
-/// property of the binary. Measured on 2.1.237, `--effort ultracode` is taken on
-/// every model that has effort at all, so keying it by model id would mean
-/// re-listing every model on every release to keep one CLI-wide fact true. That
-/// is the hand-maintained manifest `[[chat.models]]` was retired for.
+/// Keyed by nothing, because an accepted flag value is a property of the binary
+/// rather than of one model. Measured on 2.1.237 and again on 2.1.238,
+/// `--effort ultracode` is taken on every model that has effort at all, so
+/// keying it by model id would mean re-listing every model on every release to
+/// keep one CLI-wide fact true. That is the hand-maintained manifest
+/// `[[chat.models]]` was retired for.
 ///
 /// It adds a **level, never a model**: a row renders only on a model whose own
 /// catalogue entry already publishes effort levels, so this contributes nothing
@@ -347,9 +318,6 @@ pub struct ChatConfig {
     pub mode_args: Vec<String>,
     /// `{dir}` template, applied once per extra directory.
     pub add_dir_args: Vec<String>,
-    /// What Sway knows about individual models, never what models exist. See
-    /// [`ChatAnnotation`].
-    pub annotations: Vec<ChatAnnotation>,
     /// Effort levels Sway measured that this agent never advertises. See
     /// [`ChatEffortExtra`]. Empty for every agent nobody has measured, which is
     /// all of them but claude.
@@ -718,8 +686,6 @@ struct ChatToml {
     #[serde(default)]
     add_dir_args: Vec<String>,
     #[serde(default)]
-    annotations: Vec<ChatAnnotation>,
-    #[serde(default)]
     effort_extras: Vec<ChatEffortExtra>,
     #[serde(default)]
     split_model_names: bool,
@@ -1015,7 +981,6 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 effort_args: c.effort_args,
                 mode_args: c.mode_args,
                 add_dir_args: c.add_dir_args,
-                annotations: c.annotations,
                 effort_extras: c.effort_extras,
                 split_model_names: c.split_model_names,
                 modes: c.modes,
@@ -1486,7 +1451,6 @@ mod tests {
         assert_eq!(chat.program, "npx");
         assert_eq!(chat.base_args, vec!["-y", "@agentclientprotocol/codex-acp@1.2.0"]);
         // Everything else comes off the handshake, so there is nothing to declare.
-        assert!(chat.annotations.is_empty(), "nothing to annotate on a agent Sway has not measured");
         assert!(chat.modes.is_empty());
         assert!(chat.effort_extras.is_empty(), "nothing measured on a agent nobody has probed");
     }
@@ -1623,10 +1587,6 @@ model_args = ["--model", "{model}"]
 effort_args = ["--effort", "{effort}"]
 mode_args = ["--permission-mode", "{mode}"]
 add_dir_args = ["--add-dir", "{dir}"]
-
-[[chat.annotations]]
-id = "m1"
-fast_mode = true
 
 [[chat.modes]]
 id = "plan"
@@ -2010,19 +1970,16 @@ supports_isolation = true
         assert_eq!(chat.transport, ChatTransport::ClaudeStreamJson);
         assert_eq!(claude.verified_against.as_deref(), Some("claude 2.1.231"));
 
-        // The annotation table is not a model list and must never grow into one.
-        // Its predecessor `[[chat.models]]` declared four models with labels,
-        // windows and effort levels, and was measurably wrong: Opus 5 and Sonnet
-        // 5 both said 200000 while the agent reports 1000000 for each on
-        // `result.modelUsage` (dev/fixtures/claude/plain-turn.jsonl,
-        // fast-mode.jsonl), and Fable's figure was inferred from a `[1m]` suffix
-        // by a build that had never run a Fable turn.
-        assert_eq!(
-            chat.annotations.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
-            ["claude-opus-5"],
-            "only the one model Sway has something to say about"
-        );
-        assert!(chat.annotations.iter().all(|a| a.fast_mode), "an annotation carrying nothing is just a model list");
+        // Nothing here names a model, and there is no longer a table that
+        // could. `[[chat.models]]` declared four with labels, windows and effort
+        // levels, and was measurably wrong: Opus 5 and Sonnet 5 both said 200000
+        // while the agent reports 1000000 for each on `result.modelUsage`
+        // (dev/fixtures/claude/plain-turn.jsonl, fast-mode.jsonl), and Fable's
+        // figure was inferred from a `[1m]` suffix by a build that had never run
+        // a Fable turn. `[[chat.annotations]]` was the survivor, carrying one
+        // model's fast mode, and it went the same way: the handshake publishes
+        // `supportsFastMode` per model, so the table restated the CLI in a
+        // spelling the CLI does not use and matched nothing.
 
         // The six modes --permission-mode both accepts *and honours*, spelled
         // exactly as it takes them. `manual` is deliberately absent: the CLI

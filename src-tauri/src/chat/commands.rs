@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 use tauri::State;
 
-use crate::agents::{self, ChatAnnotation, ChatConfig, ChatEffortExtra, ChatTransport};
+use crate::agents::{self, ChatConfig, ChatEffortExtra, ChatTransport};
 
 use super::acp::AcpOverrides;
 use super::acp_transport::AcpTransport;
@@ -39,17 +39,17 @@ fn make_transport(
     session_id: &str,
     agent_id: &str,
     acp: AcpOverrides,
-    annotations: Vec<ChatAnnotation>,
     effort_extras: Vec<ChatEffortExtra>,
 ) -> Box<dyn AgentTransport> {
     match transport {
-        // Both tables ride along because claude publishes no options of its own
-        // and advertises fewer effort levels than it accepts: the levers and the
-        // extra levels are assembled from these and the model the session
-        // reports. An ACP agent publishes its own and takes neither.
-        ChatTransport::ClaudeStreamJson => Box::new(
-            ClaudeTransport::new(session_id).with_annotations(annotations).with_effort_extras(effort_extras),
-        ),
+        // The extras ride along because claude advertises fewer effort levels
+        // than it accepts, so the extra levels are assembled from this table and
+        // the model the session reports. An ACP agent publishes its own and
+        // takes none. Claude's *levers* need no table any more: the handshake
+        // publishes `supportsFastMode` per model.
+        ChatTransport::ClaudeStreamJson => {
+            Box::new(ClaudeTransport::new(session_id).with_effort_extras(effort_extras))
+        }
         // Every ACP agent reaches Sway through this one arm. Which agent it is
         // comes from the adapter's `[chat]` table, not from here, which is what
         // makes a new ACP agent a TOML file rather than a Rust change. The
@@ -255,7 +255,6 @@ pub async fn chat_spawn(
 
     let transport = chat.transport;
     let acp_overrides = chat.acp.clone();
-    let annotations = chat.annotations.clone();
     let effort_extras = chat.effort_extras.clone();
     let id_for_factory = session_id.clone();
     let agent_for_factory = agent_id.clone();
@@ -272,7 +271,6 @@ pub async fn chat_spawn(
                 &id_for_factory,
                 &agent_for_factory,
                 acp_overrides.clone(),
-                annotations.clone(),
                 effort_extras.clone(),
             )
         },
@@ -1121,7 +1119,7 @@ mod tests {
             build_args(chat, "s", false, None, Some("github-copilot/claude-sonnet-4.6"), None, None, &[]);
         assert_eq!(with_model, vec!["acp"]);
 
-        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone(), Vec::new(), Vec::new());
+        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone(), Vec::new());
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
 
@@ -1134,7 +1132,6 @@ mod tests {
             "s1",
             "claude",
             Default::default(),
-            chat.annotations.clone(),
             chat.effort_extras.clone(),
         );
         assert!(t.child_pid().is_none(), "a transport is inert until started");
