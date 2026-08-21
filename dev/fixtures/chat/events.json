@@ -307,6 +307,8 @@
         "name": "Web search",
         "description": "Let the agent search the web",
         "category": "",
+        "disabled": false,
+        "note": "",
         "kind": "boolean",
         "value": true
       },
@@ -315,6 +317,8 @@
         "name": "Verbosity",
         "description": "",
         "category": "model_config",
+        "disabled": true,
+        "note": "Not available on this model",
         "kind": "select",
         "current": "concise",
         "choices": [

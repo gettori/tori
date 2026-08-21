@@ -40,6 +40,7 @@ vi.mock("../Settings/settingsStore", async (orig) => {
   };
 });
 
+import { pointerClick } from "../../test/menus";
 import ChatDraft from "./ChatDraft";
 import {
   clearComposer,
@@ -51,7 +52,7 @@ import {
   setDraft,
   takeAutoSend,
 } from "../../utils/chatCompose";
-import { clearDraftPick, draftPick, setDraftPick } from "../../utils/chatDraftPick";
+import { clearDraftPick, draftPick, setDraftOption, setDraftPick } from "../../utils/chatDraftPick";
 import { __resetModelCatalogsForTests } from "../../utils/modelCatalog";
 
 // The draft is the state a chat is in before it costs anything: no child, no
@@ -98,17 +99,55 @@ const row = (value: string, displayName: string) => ({
   supportsAutoMode: false,
 });
 
+/** The two rows a mirror exists for: a select and a toggle no bespoke control
+ *  claims. Cached from a probe, which is the only place a draft can read them. */
+const OPTIONS = [
+  {
+    id: "collaboration_mode",
+    name: "Collaboration mode",
+    description: "How much it checks in",
+    category: "",
+    kind: "select",
+    current: "solo",
+    choices: [
+      { value: "solo", label: "Solo", description: "" },
+      { value: "pair", label: "Pair", description: "" },
+    ],
+  },
+  { id: "web_search", name: "Web search", description: "", category: "", kind: "boolean", value: false },
+];
+
+/** Claude publishes no options at all, so Sway assembles them per model row.
+ *  Only the annotated one has anything to say, which is what makes a model
+ *  switch re-cut the set rather than leave it. */
+const FAST_MODE = {
+  id: "fast_mode",
+  name: "Fast mode",
+  description: "",
+  category: "",
+  disabled: true,
+  note: "Fast mode is not available in the Agent SDK",
+  kind: "boolean",
+  value: false,
+};
+
 const CATALOGS = [
   {
     agentId: "claude",
     state: "probed",
-    catalogue: { version: "1", probedAtMs: 0, models: [row("sonnet", "Sonnet"), row("haiku", "Haiku")], modes: [], account: null },
+    catalogue: {
+      version: "1",
+      probedAtMs: 0,
+      models: [{ ...row("sonnet", "Sonnet"), options: [] }, { ...row("haiku", "Haiku"), options: [FAST_MODE] }],
+      modes: [],
+      account: null,
+    },
     lastFailure: null,
   },
   {
     agentId: "codex",
     state: "probed",
-    catalogue: { version: "1", probedAtMs: 0, models: [row("gpt-5", "GPT-5")], modes: [], account: null },
+    catalogue: { version: "1", probedAtMs: 0, models: [row("gpt-5", "GPT-5")], modes: [], options: OPTIONS, account: null },
     lastFailure: null,
   },
 ];
@@ -391,7 +430,7 @@ describe("a chat draft's pick", () => {
     fireEvent.input(filter, { target: { value: "haiku" } });
     fireEvent.keyDown(filter, { key: "Enter" });
 
-    expect(draftPick(TAB)).toEqual({ model: "haiku", mode: "plan", effort: "high" });
+    expect(draftPick(TAB)).toEqual({ model: "haiku", mode: "plan", effort: "high", optionValues: {} });
   });
 
   // Mode and effort name things the *old* agent published, so they leave with
@@ -406,7 +445,7 @@ describe("a chat draft's pick", () => {
     fireEvent.keyDown(filter, { key: "Enter" });
 
     expect(onSelectAgent).toHaveBeenCalledWith("claude");
-    expect(draftPick(TAB)).toEqual({ model: "haiku", mode: null, effort: null });
+    expect(draftPick(TAB)).toEqual({ model: "haiku", mode: null, effort: null, optionValues: {} });
   });
 
   // A broken default keeps its selection: switching away for the user would hide
@@ -442,5 +481,114 @@ describe("a chat draft's pick", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// The levers the agent published that Sway has no control of its own for. A
+// draft reads them from the probe cache, since there is no session to ask.
+describe("a chat draft's mirrored options", () => {
+  const openMenu = (pill: HTMLElement) => {
+    pointerClick(pill);
+    const menus = [...document.querySelectorAll('[role="menu"]')];
+    const menu = menus[menus.length - 1];
+    if (!menu) throw new Error("the pill opened no menu");
+    return menu as HTMLElement;
+  };
+  const pickRow = (menu: HTMLElement, label: string) => {
+    const row = [...menu.children].find(
+      (r) => (r.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent === label,
+    );
+    if (!row) throw new Error(`no row named ${label}`);
+    pointerClick(row as HTMLElement);
+  };
+
+  it("shows the agent's own levers from the cache, with nothing spawned", async () => {
+    const { container } = setup({ agentId: "codex" });
+    await settle();
+
+    expect(container.textContent).toContain("Collaboration mode");
+    expect(chatCalls()).toEqual([]);
+  });
+
+  it("renders nothing at all for a catalogue that publishes none", async () => {
+    const { container, queryAllByRole } = setup();
+    await settle();
+
+    expect(container.textContent).not.toContain("Collaboration mode");
+    expect(queryAllByRole("switch")).toHaveLength(0);
+  });
+
+  // Nothing echoes a switch back before there is a session, so the flip has to
+  // be shown from the pick itself or the control moves nothing on screen.
+  it("shows a flipped switch flipped, and records it on the tab", async () => {
+    const { getByRole } = setup({ agentId: "codex" });
+    await settle();
+    fireEvent.click(getByRole("switch"));
+
+    expect(getByRole("switch").getAttribute("aria-checked")).toBe("true");
+    expect(draftPick(TAB).optionValues).toEqual({ web_search: true });
+    expect(chatCalls()).toEqual([]);
+  });
+
+  it("shows a picked choice on the pill, not the agent's own current one", async () => {
+    const { getByLabelText } = setup({ agentId: "codex" });
+    await settle();
+    pickRow(openMenu(getByLabelText("Collaboration mode")), "Pair");
+
+    expect(getByLabelText("Collaboration mode").textContent).toContain("Pair");
+    expect(draftPick(TAB).optionValues).toEqual({ collaboration_mode: "pair" });
+  });
+
+  // A restored draft outlives the catalogue it was picked against, the same way
+  // a remembered model does. Dropped rather than shown as a control over nothing.
+  it("drops a stored value for a lever this agent no longer publishes", async () => {
+    setDraftPick(TAB, { optionValues: { gone: true, web_search: true } });
+    setup({ agentId: "codex" });
+    await settle();
+
+    expect(draftPick(TAB).optionValues).toEqual({ web_search: true });
+  });
+
+  // Shape, not just id: a select whose choice was withdrawn is as dead as an
+  // option that was, and sending it would be answered by silence.
+  it("drops a stored choice the agent has since withdrawn", async () => {
+    setDraftPick(TAB, { optionValues: { collaboration_mode: "swarm" } });
+    setup({ agentId: "codex" });
+    await settle();
+
+    expect(draftPick(TAB).optionValues).toEqual({});
+  });
+
+  // Claude's levers are a function of the model, so the set has to be re-cut
+  // when the pick moves rather than left showing the last model's.
+  it("follows the picked model when the levers depend on it", async () => {
+    setDraftPick(TAB, { model: "sonnet" });
+    const { container, openPalette } = setup();
+    await settle();
+    expect(container.textContent).not.toContain("Fast mode");
+
+    const filter = openPalette();
+    fireEvent.input(filter, { target: { value: "haiku" } });
+    fireEvent.keyDown(filter, { key: "Enter" });
+
+    expect(container.textContent).toContain("Fast mode");
+    expect(container.textContent).toContain("Fast mode is not available in the Agent SDK");
+  });
+
+  // A value picked against one model is not a claim about the next one.
+  it("drops a picked value the newly picked model does not publish", async () => {
+    setDraftPick(TAB, { model: "haiku" });
+    const { openPalette, getByRole } = setup();
+    await settle();
+    // Enabled here only because the fixture's row is; the point is the drop.
+    setDraftOption(TAB, "fast_mode", true);
+    expect(getByRole("switch")).toBeTruthy();
+
+    const filter = openPalette();
+    fireEvent.input(filter, { target: { value: "sonnet" } });
+    fireEvent.keyDown(filter, { key: "Enter" });
+    await settle();
+
+    expect(draftPick(TAB).optionValues).toEqual({});
   });
 });

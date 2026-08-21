@@ -13,7 +13,6 @@ import ConfigMirror from "./ConfigMirror";
 import ModelPicker from "./ModelPicker";
 import { lockedProvider } from "./agentPaletteData";
 import { draftPick, hasPick, pickRidesArgv } from "../../utils/chatDraftPick";
-import FastModeStatus from "./FastModeStatus";
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { rateLimitMessage } from "../../utils/chatRateLimit";
 import {
@@ -685,6 +684,18 @@ export default function ChatView(props: {
         );
       }
     });
+  });
+
+  let optionsTried = false;
+  /** The draft's option picks, once there is a session. Apart from the pick
+   *  above because an option rides no argv on any transport, and a refused one
+   *  toasts rather than holding the message: it cannot change the answer. */
+  createEffect(() => {
+    if (optionsTried || !canSend()) return;
+    optionsTried = true;
+    for (const [configId, value] of Object.entries(opening.optionValues)) {
+      applyConfigOption(configId, value);
+    }
   });
 
   /**
@@ -1567,7 +1578,6 @@ export default function ChatView(props: {
                 </Show>
               </div>
               <UsageReadout summary={usageSummary({ ...state, promptsInTranscript: promptCount() })} />
-              <FastModeStatus state={state.fastModeState} reason={state.fastModeDisabledReason} />
               <SessionInfo
                 mcpServers={state.mcpServers}
                 skills={state.skills}

@@ -88,7 +88,7 @@ describe("toStore", () => {
       title: "draft",
       program: "codex",
       text: "half a thought",
-      pick: { model: "gpt-5", mode: "plan", effort: null },
+      pick: { model: "gpt-5", mode: "plan", effort: null, optionValues: { web_search: true } },
     });
     const out = toStore([draft], {}, 100);
 
@@ -97,12 +97,49 @@ describe("toStore", () => {
       model: "gpt-5",
       mode: "plan",
       effort: null,
+      optionValues: { web_search: true },
     });
+  });
+
+  // A flipped switch is a pick like any other, and a draft carrying only that
+  // one would come back blank if the store counted the other three alone.
+  it("keeps a draft whose only pick is one of the agent's own levers", () => {
+    const draft = tab({
+      id: "1",
+      kind: "chat",
+      pick: { model: null, mode: null, effort: null, optionValues: { collaboration_mode: "pair" } },
+    });
+    const out = parseStore(JSON.stringify(toStore([draft], {}, 100)));
+
+    expect(out["/w/a"].tabs[0].pick?.optionValues).toEqual({ collaboration_mode: "pair" });
+  });
+
+  // Neither a value id nor a toggle state, so no switch could send it. Dropped
+  // rather than restored, the same way a mistyped model field is.
+  it("drops a stored option value that is not a shape a switch sends", () => {
+    const raw = JSON.stringify({
+      "/w/a": {
+        savedAt: 100,
+        active: 0,
+        tabs: [
+          {
+            title: "draft",
+            cwd: "/w/a",
+            kind: "chat",
+            program: "codex",
+            args: [],
+            pick: { model: null, mode: null, effort: null, optionValues: { depth: { deep: true }, web_search: false } },
+          },
+        ],
+      },
+    });
+
+    expect(parseStore(raw)["/w/a"].tabs[0].pick?.optionValues).toEqual({ web_search: false });
   });
 
   it("keeps neither for a chat that has a session, whose transcript is the record", () => {
     const out = toStore(
-      [tab({ id: "1", kind: "chat", sessionId: "c1", text: "typed", pick: { model: "sonnet", mode: null, effort: null } })],
+      [tab({ id: "1", kind: "chat", sessionId: "c1", text: "typed", pick: { model: "sonnet", mode: null, effort: null, optionValues: {} } })],
       {},
       100,
     );
@@ -120,7 +157,7 @@ describe("toStore", () => {
 
   it("stores no pick at all when nothing was picked", () => {
     const out = toStore(
-      [tab({ id: "1", kind: "chat", pick: { model: null, mode: null, effort: null } })],
+      [tab({ id: "1", kind: "chat", pick: { model: null, mode: null, effort: null, optionValues: {} } })],
       {},
       100,
     );
@@ -265,7 +302,7 @@ describe("parseStore", () => {
     });
     const back = parseStore(raw).w.tabs[0];
     expect(back.text).toBeUndefined();
-    expect(back.pick).toEqual({ model: "sonnet", mode: null, effort: null });
+    expect(back.pick).toEqual({ model: "sonnet", mode: null, effort: null, optionValues: {} });
   });
 
   it("drops entries whose tabs are malformed, keeping valid siblings", () => {

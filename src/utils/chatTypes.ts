@@ -130,6 +130,11 @@ export type ChatConfigOption = {
   name: string;
   description: string;
   category: string;
+  /// A lever the agent has but cannot currently take, rendered rather than
+  /// hidden: a control that is absent says nothing about why.
+  disabled: boolean;
+  /// Why it is disabled, in the agent's own words. Empty when nothing is.
+  note: string;
 } & (
   | { kind: "select"; current: string; choices: ChatConfigChoice[] }
   | { kind: "boolean"; value: boolean }
@@ -589,6 +594,49 @@ const BESPOKE_CATEGORIES = new Set(["model", "mode", "thought_level"]);
 /// page's preview need the same answer and a second copy would drift.
 export function mirroredOptions(options: readonly ChatConfigOption[]): ChatConfigOption[] {
   return options.filter((o) => !BESPOKE_CATEGORIES.has(o.category));
+}
+
+/// Whether this option can take this value at all. A withdrawn choice and a
+/// lever that changed shape both read as no, because sending the wrong shape is
+/// the one thing an agent answers by doing nothing at all.
+function optionTakes(option: ChatConfigOption, value: ChatConfigValue): boolean {
+  return option.kind === "select"
+    ? typeof value === "string" && option.choices.some((c) => c.value === value)
+    : typeof value === "boolean";
+}
+
+/// The picked values this option set still recognises, minus the rest.
+///
+/// The rule `restoredPicks` applies to a remembered model: a stored value is not
+/// a command, and one naming a lever the agent no longer publishes is dropped
+/// rather than sent and refused.
+export function keptOptionValues(
+  options: readonly ChatConfigOption[],
+  values: Readonly<Record<string, ChatConfigValue>>,
+): Record<string, ChatConfigValue> {
+  const out: Record<string, ChatConfigValue> = {};
+  for (const option of options) {
+    const value = values[option.id];
+    if (value !== undefined && optionTakes(option, value)) out[option.id] = value;
+  }
+  return out;
+}
+
+/// The option set with what was picked standing in for what the agent reports.
+///
+/// Only a draft needs this: there is no agent to echo a switch back, so nothing
+/// would move when one is flipped. A live session's answering set replaces it
+/// outright, which is why the overlay lives at the surface and not in the store.
+export function overlaidOptions(
+  options: readonly ChatConfigOption[],
+  values: Readonly<Record<string, ChatConfigValue>>,
+): ChatConfigOption[] {
+  const kept = keptOptionValues(options, values);
+  return options.map((option) => {
+    const value = kept[option.id];
+    if (option.kind === "select") return typeof value === "string" ? { ...option, current: value } : option;
+    return typeof value === "boolean" ? { ...option, value } : option;
+  });
 }
 
 /// True when this event belongs to a turn (and therefore carries a `turnId`).
