@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import { ToggleGroup } from "../../lib/toggle-group";
 import Dialog from "../Dialog/Dialog";
@@ -91,6 +92,42 @@ describe("Tooltip", () => {
 
     expect(screen.queryByRole("tooltip")).toBeNull();
     expect(trigger.getAttribute("aria-describedby")).toBeNull();
+  });
+
+  /**
+   * **A trigger that opens something else speaks for itself while it is open.**
+   *
+   * The composer's pills open a menu under the pointer, so the tooltip is
+   * usually already up when the click lands and then sits on top of the rows
+   * being read. `suppressed` closes it and holds it shut.
+   *
+   * Deliberately not `label={undefined}`: that path renders the bare control
+   * with none of Kobalte's context, so toggling it would rebuild the trigger at
+   * the moment it is being clicked.
+   */
+  it("holds the tooltip shut while the trigger's own surface is open", () => {
+    const [open, setOpen] = createSignal(false);
+    render(() => (
+      <Tooltip label="Run the file" as="button" suppressed={open()}>
+        Run
+      </Tooltip>
+    ));
+
+    const trigger = screen.getByRole("button", { name: "Run" });
+    focusTrigger(trigger);
+    expect(screen.getByRole("tooltip")).toBeTruthy();
+
+    // Closes one already open, not merely refusing to open the next.
+    setOpen(true);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    // And the trigger is the same element throughout, so nothing it was in the
+    // middle of (a click, a focus) was thrown away to get here.
+    expect(screen.getByRole("button", { name: "Run" })).toBe(trigger);
+
+    setOpen(false);
+    focusTrigger(trigger);
+    expect(screen.getByRole("tooltip")).toBeTruthy();
   });
 
   it("keeps the trigger's own handlers, rather than replacing them", () => {
