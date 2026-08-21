@@ -12,6 +12,12 @@ const bridge = vi.hoisted(() => ({
   running: [] as string[],
   tail: "done" as string,
   surface: "chat" as "chat" | "agent",
+  // Sessions with a live process of any kind, and the subset of those whose
+  // driver is not this Sway. They are separate answers because a chat child
+  // outlives the webview that opened it: after a reload the first is true and
+  // the second is false, which is the case the routing gate gets wrong.
+  liveHere: [] as string[],
+  elsewhere: [] as string[],
 }));
 
 // The default surface decides whether a session selection opens a chat tab or a
@@ -35,7 +41,9 @@ vi.mock("@tauri-apps/api/core", () => ({
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "list_sessions") return Promise.resolve(bridge.listing);
     if (cmd === "sessions_running") return Promise.resolve(bridge.running);
-    if (cmd === "session_running") return Promise.resolve(false);
+    if (cmd === "session_running") return Promise.resolve(bridge.liveHere.includes(String(args?.id)));
+    if (cmd === "session_running_elsewhere")
+      return Promise.resolve(bridge.elsewhere.includes(String(args?.id)));
     if (cmd === "session_tail_state") return Promise.resolve(bridge.tail);
     if (cmd === "chat_orphans") return Promise.resolve([]);
     if (cmd === "agent_hook_launch_args") return Promise.resolve([]);
@@ -123,6 +131,8 @@ describe("the History button on the tab bar", () => {
     bridge.running = [];
     bridge.tail = "done";
     bridge.surface = "chat";
+    bridge.liveHere = [];
+    bridge.elsewhere = [];
     localStorage.clear();
   });
 
@@ -179,6 +189,33 @@ describe("the History button on the tab bar", () => {
       expect(screen.queryByTitle("1 session running here with no tab open")).toBeNull(),
     );
   });
+
+  // What a webview reload leaves: the chat child is still running, so the
+  // session's process is alive, but it is *ours* - the frontend lost the tab,
+  // not the session. Routing on bare liveness sent it to the PTY surface, where
+  // the chat claim this same Sway holds refused it with "this session is already
+  // open in a chat" and named a tab the reload had destroyed.
+  it("reopens a session whose only live process is Sway's own chat child, as a chat", async () => {
+    bridge.listing = [session("s1")];
+    bridge.liveHere = ["s1"];
+    bridge.elsewhere = [];
+    mount({
+      ...branchSelection,
+      sessionId: "s1",
+      agent: "claude",
+      sessionFile: `${REPO}/.t/s1.jsonl`,
+      sessionCwd: REPO,
+    });
+    await trackFolders([REPO]);
+
+    // A chat tab, which `chat_spawn` rewires onto the live session. An agent tab
+    // here is the bug: it drives the same transcript from a second surface.
+    await waitFor(() => expect(screen.getByTestId("chat")).toBeTruthy());
+    expect(screen.queryByTestId("pty")).toBeNull();
+    // And the route asked the question it means, not the one that is merely
+    // easier to answer.
+    expect(bridge.calls.some((c) => c.cmd === "session_running")).toBe(false);
+  });
 });
 
 describe("the mark a PTY agent tab wears", () => {
@@ -189,6 +226,8 @@ describe("the mark a PTY agent tab wears", () => {
     bridge.listing = [session("s1")];
     bridge.running = ["s1"];
     bridge.tail = "done";
+    bridge.liveHere = ["s1"];
+    bridge.elsewhere = [];
     localStorage.clear();
     // The PTY route, so the selection opens an agent tab rather than a chat: the
     // inferred tier is the only one that can starve, and it is the one this is

@@ -25,12 +25,18 @@ export type RouteInputs = {
   /** Is a tab in this window already hosting this session id? */
   hostedHere: boolean;
   /**
-   * Is the session's process alive outside Sway (the `session_running` pgrep)?
+   * Is the session's process alive outside Sway (`session_running_elsewhere`)?
    *
    * Load-bearing: a chat tab drives the session by *resuming* it, and resuming
    * a session someone else is already running is the exact operation measured
    * to corrupt the transcript. The PTY route does not resume it - it retypes
    * into a shell, or leaves a live agent alone - so it stays safe.
+   *
+   * **Outside Sway, not merely alive.** A chat child outlives a webview reload
+   * while its tab does not, so a bare liveness probe reports Sway's own process
+   * as a stranger and sends the session to the PTY surface - where the chat
+   * claim this same Sway is holding refuses it, with a message naming a tab the
+   * reload destroyed.
    */
   runningElsewhere: boolean;
 };

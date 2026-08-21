@@ -204,6 +204,12 @@ impl ChatHost {
             if let Some(entry) = guard.get_mut(session_id) {
                 *lock(&entry.listener) = Some(self.wrap(session_id, emit));
                 entry.generation += 1;
+                // The tab driving this session is whichever one just
+                // subscribed. Same id on a remount, a brand-new one after a
+                // webview reload - and the claim has to follow, or it names a
+                // tab that no longer exists and `close` releases nothing.
+                entry.tab_id = tab_id.to_string();
+                self.registry.retag(session_id, tab_id);
                 return Ok(Spawned::Rewired);
             }
         }
