@@ -515,7 +515,13 @@ fn probe_claude(
                     info.effort_levels =
                         claude::effort_levels(&info, effort_extras, version.as_deref().unwrap_or_default());
                     CatalogModel {
-                        options: claude::config_options(&info),
+                        // `None`: a probe reads the `initialize` control response,
+                        // which arrives before any session exists and carries no
+                        // `fast_mode_disabled_reason`. So a draft's lever states
+                        // the transport's own reason and the live chat replaces it
+                        // with the account's, which is the one thing the two
+                        // callers are entitled to differ on.
+                        options: claude::config_options(&info, None),
                         info,
                         user_configured: false,
                     }
@@ -1448,7 +1454,7 @@ mod tests {
         // cannot disagree about claude's own levers.
         assert_eq!(
             catalogue.models[0].options,
-            claude::config_options(&catalogue.models[0].info)
+            claude::config_options(&catalogue.models[0].info, None)
         );
         assert_eq!(catalogue.models[0].options.len(), 1);
         assert!(catalogue.models[0].options[0].disabled);

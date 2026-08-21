@@ -37,9 +37,6 @@ use super::model::{
     TurnOutcome, Usage,
 };
 
-/// The agent's own sentence when fast mode is asked for, quoted rather than
-/// paraphrased. Measured on claude 2.1.231 and identical on sonnet, so the
-/// refusal is this transport's rather than the model's (`fast-mode.jsonl`).
 /// Why fast mode cannot be flipped from here, whatever the account says about
 /// whether it could serve.
 ///
@@ -55,6 +52,54 @@ use super::model::{
 /// reason the session is no longer giving is worse than having none: it reads as
 /// measured and is not.
 const FAST_MODE_REFUSAL: &str = "Set when the chat starts; there is no mid-session switch";
+
+/// The CLI's own sentence for each `fast_mode_disabled_reason`, quoted.
+///
+/// **Why a table of another program's vocabulary is right here.** The session
+/// answers `system/init` with a reason *code* (`extra_usage_disabled`), and a
+/// code is not something to put in front of a user. The CLI carries the
+/// sentences and does not send them, so the choice is between quoting them and
+/// inventing worse ones.
+///
+/// Every line below is read out of the 2.1.238 binary rather than paraphrased -
+/// `q0d` for the first five, `Jvb` for the rest - so the wording a user sees
+/// here is the wording they would see running `claude` themselves.
+///
+/// A code with no entry falls through to [`FAST_MODE_REFUSAL`], which stays
+/// true whatever the account says, so a reason this build has never heard of
+/// degrades to a weaker sentence rather than to a raw enum token.
+///
+/// Two are deliberately absent. `free` is the one reason whose sentence depends
+/// on how the user authenticated (`oauth` vs an API key) and `system/init` does
+/// not say which, so quoting either half would be a guess; `pending` is not a
+/// refusal at all but the check still running.
+const FAST_MODE_REASONS: [(&str, &str); 8] = [
+    ("preference", "Fast mode has been disabled by your organization"),
+    ("extra_usage_disabled", "Fast mode requires usage credits · /usage-credits to turn them on"),
+    ("network_error", "Fast mode unavailable due to network connectivity issues"),
+    ("unknown", "Fast mode is currently unavailable"),
+    ("not_first_party", "Fast mode is only available when using the Anthropic API directly"),
+    ("disabled_by_env", "Fast mode is not available"),
+    ("model_not_allowed", "This model is not in your organization's allowed models"),
+    // Kept even though `claude.toml` now passes the opt-in, because the flag is
+    // a *setting* and a policy or project settings file outranks it. A user
+    // whose org pins `fastMode: false` lands back here.
+    ("sdk_opt_in_required", "Fast mode is not available in this mode"),
+];
+
+/// Why the session says fast mode will not serve, in words, or the transport's
+/// own reason when it says nothing this build recognises.
+fn fast_mode_note(reason: Option<&str>) -> String {
+    let account = reason
+        .and_then(|r| FAST_MODE_REASONS.iter().find(|(code, _)| *code == r))
+        .map(|(_, sentence)| *sentence);
+    match account {
+        // Both are true and only one is actionable: "top up your credits" is
+        // something the user can do, "there is no mid-session switch" is not.
+        Some(sentence) => format!("{sentence}. {FAST_MODE_REFUSAL}"),
+        None => FAST_MODE_REFUSAL.to_string(),
+    }
+}
 
 /// The values `--thinking` takes, in the CLI's own order.
 ///
@@ -99,7 +144,14 @@ const THINKING_MODES: [&str; 3] = ["enabled", "adaptive", "disabled"];
 /// One function for two callers. The probe caches this against each model row
 /// and the live session emits it as the reported model moves, so for a given
 /// resolved id a draft and the chat it becomes answer the same.
-pub fn config_options(model: &ChatModelInfo) -> Vec<ChatConfigOption> {
+///
+/// `fast_mode_reason` is the session's own `fast_mode_disabled_reason`, and the
+/// one thing the two callers legitimately differ on: a live chat has been told
+/// why this *account* cannot run fast mode, and the probe has no session to have
+/// been told by. `None` therefore means "not asked", never "nothing wrong", so
+/// the draft falls back to the transport's own reason rather than promising a
+/// lever that would be refused for a second reason it has not heard yet.
+pub fn config_options(model: &ChatModelInfo, fast_mode_reason: Option<&str>) -> Vec<ChatConfigOption> {
     let mut out = Vec::new();
     if model.supports_fast_mode {
         out.push(ChatConfigOption {
@@ -111,7 +163,7 @@ pub fn config_options(model: &ChatModelInfo) -> Vec<ChatConfigOption> {
             // and a transport that will not reach it are two different facts,
             // and an absent control states neither.
             disabled: true,
-            note: FAST_MODE_REFUSAL.into(),
+            note: fast_mode_note(fast_mode_reason),
             kind: ChatConfigKind::Boolean { value: false },
         });
     }
@@ -260,6 +312,11 @@ pub struct ClaudeMapper {
     /// `system/init`, and what makes a model change detectable at all: the
     /// switch is reported here whether Sway asked for it or `/model` did.
     reported_model: String,
+    /// Why the session says fast mode will not serve, from `system/init`'s
+    /// `fast_mode_disabled_reason`. An account fact rather than a model one, so
+    /// it is held on the mapper and re-read on every model switch: the reason
+    /// does not change when the model does, but the option set is rebuilt.
+    fast_mode_reason: Option<String>,
 }
 
 impl ClaudeMapper {
@@ -320,7 +377,7 @@ impl ClaudeMapper {
             .unwrap_or_else(|| ChatModelInfo { resolved_model: model.to_string(), ..Default::default() });
         Some(ChatEvent::ConfigOptions {
             session_id: self.session_id.clone(),
-            options: config_options(&row),
+            options: config_options(&row, self.fast_mode_reason.as_deref()),
         })
     }
 
@@ -583,6 +640,11 @@ impl ClaudeMapper {
         if let Some(v) = frame["claude_code_version"].as_str() {
             self.cli_version = v.to_string();
         }
+        // Before `model_options`, which reads it: this is where the account's
+        // own reason arrives, and it has to be in hand by the time the lever
+        // that quotes it is built. Re-read on every init rather than latched on
+        // the first, since an account can run out of credits mid session.
+        self.fast_mode_reason = frame["fast_mode_disabled_reason"].as_str().map(str::to_string);
         // Taken before either branch returns, because an init is both the first
         // report of the model and every later one.
         let options = self.model_options(&model);
@@ -617,7 +679,7 @@ impl ClaudeMapper {
                 }
             }
             let fast_mode_state = frame["fast_mode_state"].as_str().map(str::to_string);
-            let fast_mode_disabled_reason = frame["fast_mode_disabled_reason"].as_str().map(str::to_string);
+            let fast_mode_disabled_reason = self.fast_mode_reason.clone();
 
             self.turn_seq = 1;
             self.turn_open = true;
@@ -1820,6 +1882,54 @@ mod tests {
         assert_eq!(ids(&m.map(&an_init("claude-sonnet-5"))), Some(Vec::new()));
     }
 
+    /// **The account's own reason beats the transport's, and is quoted.**
+    ///
+    /// `system/init` carries `fast_mode_disabled_reason`, and it is the only
+    /// place anyone is told why *this* account cannot run fast mode. Sway used
+    /// to read it into the store and show none of it, so the lever said "no
+    /// mid-session switch" to a user whose real problem was usage credits - true
+    /// and useless, since one of those is fixable.
+    ///
+    /// The code is not shown; the CLI's own sentence for it is. A code is not
+    /// something to put in front of a user, and the binary carries the wording
+    /// without ever sending it.
+    #[test]
+    fn a_refused_fast_mode_quotes_the_reason_the_session_gave() {
+        let with_reason = |reason: &str| {
+            let mut m = ClaudeMapper::new("s1");
+            m.map(&fixture("initialize")[0]);
+            let mut frame = an_init("claude-opus-5[1m]");
+            frame["fast_mode_disabled_reason"] = serde_json::json!(reason);
+            options_of(&m.map(&frame)).unwrap().remove(0).note
+        };
+
+        // The reason this account actually gives, and the one thing about it a
+        // user can act on.
+        let credits = with_reason("extra_usage_disabled");
+        assert!(credits.contains("/usage-credits"), "{credits}");
+        // Both facts, because both are true and only the first is actionable.
+        assert!(credits.contains(FAST_MODE_REFUSAL), "{credits}");
+
+        assert!(with_reason("preference").contains("disabled by your organization"));
+
+        // A code this build has never heard of degrades to the transport's own
+        // reason rather than to a raw enum token on screen.
+        assert_eq!(with_reason("some_future_reason"), FAST_MODE_REFUSAL);
+        assert!(!with_reason("some_future_reason").contains("some_future_reason"));
+    }
+
+    /// A session that says nothing about fast mode is not a session saying it
+    /// works. The probe is the same case: it reads `initialize`, which arrives
+    /// before any session and carries no reason at all.
+    #[test]
+    fn no_reason_reported_falls_back_rather_than_promising() {
+        let mut m = ClaudeMapper::new("s1");
+        m.map(&fixture("initialize")[0]);
+        let fast = options_of(&m.map(&an_init("claude-opus-5[1m]"))).unwrap().remove(0);
+        assert!(fast.disabled);
+        assert_eq!(fast.note, FAST_MODE_REFUSAL);
+    }
+
     /// **The claim the retired annotation table used to make, checked against
     /// the CLI's own answer.**
     ///
@@ -1835,7 +1945,7 @@ mod tests {
         let with_lever: Vec<&str> = m
             .model_catalogue
             .iter()
-            .filter(|row| config_options(row).iter().any(|o| o.id == "fast_mode"))
+            .filter(|row| config_options(row, None).iter().any(|o| o.id == "fast_mode"))
             .map(|row| row.value.as_str())
             .collect();
         assert_eq!(with_lever, ["default", "opus[1m]"], "{:?}", m.model_catalogue);
@@ -1845,7 +1955,7 @@ mod tests {
         assert_eq!(m.model_catalogue.len(), 5);
         // Nothing is invented for a row that declares none.
         let haiku = m.model_catalogue.iter().find(|r| r.value == "haiku").expect("haiku is listed");
-        assert!(config_options(haiku).is_empty());
+        assert!(config_options(haiku, None).is_empty());
     }
 
     /// **Adaptive thinking is measured and deliberately has no control.**
@@ -1870,7 +1980,7 @@ mod tests {
         // Sonnet declares the capability and still gets no lever, which is the
         // whole claim: the flag is read, the control is not drawn.
         assert!(row("sonnet").supports_adaptive_thinking);
-        assert!(config_options(row("sonnet")).is_empty());
+        assert!(config_options(row("sonnet"), None).is_empty());
 
         // The values the CLI validated, kept as a measurement so a future
         // launch-flags surface has them without re-probing.
@@ -1880,12 +1990,12 @@ mod tests {
         // for a different reason - which is why the assertion above is not
         // enough on its own.
         assert!(!row("haiku").supports_adaptive_thinking);
-        assert!(config_options(row("haiku")).is_empty());
+        assert!(config_options(row("haiku"), None).is_empty());
 
         // Fable has thinking and no fast mode, so it is the row that would
         // regress silently if thinking ever came back as an option.
         assert!(row("claude-fable-5[1m]").supports_adaptive_thinking);
-        assert!(config_options(row("claude-fable-5[1m]")).is_empty());
+        assert!(config_options(row("claude-fable-5[1m]"), None).is_empty());
     }
 
     /// A mapper that never saw a catalogue publishes an empty set rather than
