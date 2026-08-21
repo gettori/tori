@@ -1442,6 +1442,14 @@ mod tests {
             assert!(a.discovery.is_none(), "{id} has no on-disk discovery");
             assert!(a.parser_kind.is_none(), "{id} has no transcript to parse");
             assert!(a.running_pattern.is_none(), "{id} names no session on its command line");
+            // A mode is a request made *on* a session, and at spawn there is no
+            // session to name one against. So a draft's mode cannot ride the
+            // argv here the way it does for claude; it goes out over the wire
+            // once the session opens. See `AcpTransport::set_mode`.
+            assert!(
+                a.chat.as_ref().is_some_and(|c| c.mode_args.is_empty()),
+                "{id} spells no mode as an argument"
+            );
         }
     }
 
