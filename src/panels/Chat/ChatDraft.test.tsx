@@ -40,7 +40,6 @@ vi.mock("../Settings/settingsStore", async (orig) => {
   };
 });
 
-import { pointerClick } from "../../test/menus";
 import ChatDraft from "./ChatDraft";
 import {
   clearComposer,
@@ -591,45 +590,32 @@ describe("a chat draft's mode", () => {
 // The levers the agent published that Sway has no control of its own for. A
 // draft reads them from the probe cache, since there is no session to ask.
 describe("a chat draft's mirrored options", () => {
-  const openMenu = (pill: HTMLElement) => {
-    pointerClick(pill);
-    const menus = [...document.querySelectorAll('[role="menu"]')];
-    const menu = menus[menus.length - 1];
-    if (!menu) throw new Error("the pill opened no menu");
-    return menu as HTMLElement;
-  };
-  const pickRow = (menu: HTMLElement, label: string) => {
-    const row = [...menu.children].find(
-      (r) => (r.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent === label,
-    );
-    if (!row) throw new Error(`no row named ${label}`);
-    pointerClick(row as HTMLElement);
-  };
-
   it("shows the agent's own levers from the cache, with nothing spawned", async () => {
-    const { container } = setup({ agentId: "codex" });
+    const { queryAllByLabelText } = setup({ agentId: "codex" });
     await settle();
 
-    expect(container.textContent).toContain("Collaboration mode");
+    // A two-choice select is a toggle, and an icon-only one carries its name
+    // in `aria-label` rather than on screen.
+    expect(queryAllByLabelText(/^Collaboration mode/)).toHaveLength(1);
     expect(chatCalls()).toEqual([]);
   });
 
   it("renders nothing at all for a catalogue that publishes none", async () => {
-    const { container, queryAllByRole } = setup();
+    const { container, queryAllByLabelText } = setup();
     await settle();
 
-    expect(container.textContent).not.toContain("Collaboration mode");
-    expect(queryAllByRole("switch")).toHaveLength(0);
+    expect(container.textContent).not.toContain("Web search");
+    expect(queryAllByLabelText(/^Collaboration mode/)).toHaveLength(0);
   });
 
   // Nothing echoes a switch back before there is a session, so the flip has to
   // be shown from the pick itself or the control moves nothing on screen.
-  it("shows a flipped switch flipped, and records it on the tab", async () => {
-    const { getByRole } = setup({ agentId: "codex" });
+  it("shows a flipped toggle flipped, and records it on the tab", async () => {
+    const { getByLabelText } = setup({ agentId: "codex" });
     await settle();
-    fireEvent.click(getByRole("switch"));
+    fireEvent.click(getByLabelText("Web search"));
 
-    expect(getByRole("switch").getAttribute("aria-checked")).toBe("true");
+    expect(getByLabelText("Web search").getAttribute("aria-pressed")).toBe("true");
     expect(draftPick(TAB).optionValues).toEqual({ web_search: true });
     expect(chatCalls()).toEqual([]);
   });
@@ -637,9 +623,11 @@ describe("a chat draft's mirrored options", () => {
   it("shows a picked choice on the pill, not the agent's own current one", async () => {
     const { getByLabelText } = setup({ agentId: "codex" });
     await settle();
-    pickRow(openMenu(getByLabelText("Collaboration mode")), "Pair");
+    // Two choices, so it is a toggle and the pick is the flip. The agent's own
+    // current value is `solo`; what the control has to show is `pair`.
+    fireEvent.click(getByLabelText("Collaboration mode: Solo"));
 
-    expect(getByLabelText("Collaboration mode").textContent).toContain("Pair");
+    expect(getByLabelText("Collaboration mode: Pair").getAttribute("aria-pressed")).toBe("true");
     expect(draftPick(TAB).optionValues).toEqual({ collaboration_mode: "pair" });
   });
 
@@ -667,16 +655,15 @@ describe("a chat draft's mirrored options", () => {
   // when the pick moves rather than left showing the last model's.
   it("follows the picked model when the levers depend on it", async () => {
     setDraftPick(TAB, { model: "sonnet" });
-    const { container, openPalette } = setup();
+    const { queryByLabelText, openPalette } = setup();
     await settle();
-    expect(container.textContent).not.toContain("Fast mode");
+    expect(queryByLabelText("Fast mode")).toBeNull();
 
     const filter = openPalette();
     fireEvent.input(filter, { target: { value: "haiku" } });
     fireEvent.keyDown(filter, { key: "Enter" });
 
-    expect(container.textContent).toContain("Fast mode");
-    expect(container.textContent).toContain("Fast mode is not available in the Agent SDK");
+    expect(queryByLabelText("Fast mode")).not.toBeNull();
   });
 
   // The ACP half of the same rule. An agent's options used to be per session
@@ -685,26 +672,26 @@ describe("a chat draft's mirrored options", () => {
   // each row now carries its own and the mirror has something to re-cut to.
   it("follows the picked model for an ACP agent too", async () => {
     setDraftPick(TAB, { model: "gpt-5" });
-    const { container, queryAllByRole } = setup({ agentId: "codex" });
+    const { queryAllByLabelText } = setup({ agentId: "codex" });
     await settle();
-    expect(queryAllByRole("switch")).toHaveLength(1);
-    expect(container.textContent).toContain("Collaboration mode");
+    expect(queryAllByLabelText("Web search")).toHaveLength(1);
+    expect(queryAllByLabelText(/^Collaboration mode/)).toHaveLength(1);
 
     setDraftPick(TAB, { model: "gpt-5-mini" });
     await settle();
 
-    expect(queryAllByRole("switch")).toHaveLength(0);
+    expect(queryAllByLabelText("Web search")).toHaveLength(0);
     // The lever both rows publish stays, so this is a re-cut rather than a clear.
-    expect(container.textContent).toContain("Collaboration mode");
+    expect(queryAllByLabelText(/^Collaboration mode/)).toHaveLength(1);
   });
 
   // And a value picked against the first row goes with the lever that carried
   // it, on the same rule `keptOptionValues` already applies to a stale cache.
   it("drops a picked value the newly picked ACP model no longer publishes", async () => {
     setDraftPick(TAB, { model: "gpt-5" });
-    const { getByRole } = setup({ agentId: "codex" });
+    const { getByLabelText } = setup({ agentId: "codex" });
     await settle();
-    fireEvent.click(getByRole("switch"));
+    fireEvent.click(getByLabelText("Web search"));
     expect(draftPick(TAB).optionValues).toEqual({ web_search: true });
 
     setDraftPick(TAB, { model: "gpt-5-mini" });
@@ -716,11 +703,11 @@ describe("a chat draft's mirrored options", () => {
   // A value picked against one model is not a claim about the next one.
   it("drops a picked value the newly picked model does not publish", async () => {
     setDraftPick(TAB, { model: "haiku" });
-    const { openPalette, getByRole } = setup();
+    const { openPalette, getByLabelText } = setup();
     await settle();
     // Enabled here only because the fixture's row is; the point is the drop.
     setDraftOption(TAB, "fast_mode", true);
-    expect(getByRole("switch")).toBeTruthy();
+    expect(getByLabelText("Fast mode")).toBeTruthy();
 
     const filter = openPalette();
     fireEvent.input(filter, { target: { value: "sonnet" } });

@@ -1,5 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
-import { ChartNoAxesColumn } from "lucide-solid";
+import { Brain } from "lucide-solid";
 import { providerIcon } from "../../components/Icon/ProviderIcon";
 import AgentPalette from "./AgentPalette";
 import Picker, { PickerButton, PickerOption } from "./Picker";
@@ -23,6 +23,54 @@ import styles from "./Chat.module.css";
  * the pill the same way those menus are. Same surface for a draft and for a live
  * session: what changes is how many agents it is handed.
  */
+
+/**
+ * An effort level for reading, not for sending. Agents spell these `low`,
+ * `xhigh`, `max`, and a bar of lowercase words beside capitalised model and mode
+ * labels reads as unfinished.
+ *
+ * **Display only, and only the first letter.** The value that travels is
+ * untouched (`onSelectEffort` still sends `level`), and the rest of the word is
+ * left exactly as the agent wrote it, so `xhigh` becomes `Xhigh` rather than
+ * Sway's guess at `XHigh`. Rewriting more than the first character would be
+ * Sway restyling another program's vocabulary, which is what
+ * `concept_acp_config_options` says not to do.
+ */
+function titleCase(value: string | null): string | null {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/** A display name with its trailing aside removed: "Opus (1M context)" is a
+ *  label written for a menu, and the pill has room for the name and not the
+ *  footnote. The full string stays on the row and in the pill's tooltip. */
+const withoutAside = (label: string) => label.replace(/\s*\([^()]*\)\s*$/, "").trim() || label;
+
+/**
+ * What the pill calls the selected model.
+ *
+ * **Two rows can be one model, and the pill should not say otherwise.** claude
+ * publishes `default` and `opus[1m]` as separate rows, with separate labels
+ * ("Default (recommended)", "Opus (1M context)"), and both carry the same
+ * `resolvedModel`. Picking either runs the same thing, so a pill reading
+ * "Default" for one and "Opus" for the other names the row the user clicked
+ * rather than the model that will answer.
+ *
+ * So a row that shares its resolved id with others borrows the name of the
+ * first sibling that is not the catalogue's `default` entry. No id is parsed to
+ * get there: `resolvedModel` is the agent's own statement that two rows are one
+ * model, and `default` is a protocol word rather than a vendor's, which is why
+ * it is the one value this may look at. Stripping the `[1m]` suffix to compare
+ * ids would be the dependency `contextWindowFor` refuses to take on.
+ */
+function pillLabel(models: readonly PickableModel[], current: PickableModel): string {
+  const resolved = current.resolvedModel;
+  const named =
+    resolved && current.value === "default"
+      ? models.find((m) => m.resolvedModel === resolved && m.value !== "default")
+      : undefined;
+  return withoutAside((named ?? current).label);
+}
 
 export default function ModelPicker(props: {
   /** The selected model's own row lives here: the pill's label, and the effort
@@ -66,9 +114,17 @@ export default function ModelPicker(props: {
       <PickerButton
         ref={setPill}
         icon={providerIcon(current()?.resolvedModel || props.value, props.agentId)}
-        value={current()?.label ?? (props.models.length === 0 ? "No models" : "Default")}
+        value={
+          current()
+            ? pillLabel(props.models, current()!)
+            : props.models.length === 0
+              ? "No models"
+              : "Default"
+        }
         ariaLabel="Model"
-        tooltip={current()?.description || "Model"}
+        // The row's own full label leads, since the pill may be showing a
+        // sibling's shorter name; the description follows it.
+        tooltip={[current()?.label, current()?.description].filter(Boolean).join(" · ") || "Model"}
         disabled={props.disabled}
         pending={props.modelPending}
         open={open()}
@@ -99,12 +155,14 @@ export default function ModelPicker(props: {
           offer, and an inert one reads as a broken control. */}
       <Show when={levels().length > 0}>
         <Picker
-          icon={ChartNoAxesColumn}
-          prefix="Thinking:"
+          icon={Brain}
+          /* No "Thinking:" lead-in. The glyph says what the value is a value of,
+             which is the whole reason a pill has one, and the words were a
+             third of the bar's width spent restating an icon. */
           /* Nothing on the wire reports effort back, so before a pick the level
              in force is the CLI's own default and Sway does not know which it
              is. Saying "Default" is honest; naming a level would not be. */
-          value={props.effort ?? "Default"}
+          value={titleCase(props.effort) ?? "Default"}
           ariaLabel="Thinking effort"
           tooltip="Thinking effort"
           disabled={props.disabled}
@@ -119,7 +177,7 @@ export default function ModelPicker(props: {
               <Show when={levels().find((l) => l.level === level)}>
                 {(row) => (
                   <PickerOption
-                    label={row().label || level}
+                    label={titleCase(row().label || level)!}
                     selected={level === props.effort}
                     refusing={row().disabled}
                     note={row().note}

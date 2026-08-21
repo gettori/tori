@@ -45,6 +45,10 @@ export function MenuRow(props: {
    *  keyboard user's reach; this keeps the row navigable and simply does not
    *  act. Use it when the row says *why*, and `disabled` when it does not. */
   refusing?: boolean;
+  /** An element whose text describes this row, announced after its label. For a
+   *  row whose explanation is drawn somewhere the keyboard cannot reach - a
+   *  tooltip, which hangs off a child span rather than off the item. */
+  describedBy?: string;
   danger?: boolean;
   warn?: boolean;
   /** For a row that leads somewhere *inside* the menu (a second page of
@@ -67,6 +71,7 @@ export function MenuRow(props: {
       // be able to do the last of those.
       disabled={props.disabled}
       aria-disabled={props.refusing || undefined}
+      aria-describedby={props.describedBy}
       // A refused row must not close the menu on its way to doing nothing.
       closeOnSelect={props.refusing ? false : props.closeOnSelect}
       onSelect={() => !props.refusing && props.onClick?.()}

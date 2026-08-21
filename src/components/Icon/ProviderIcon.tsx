@@ -19,16 +19,45 @@ import { agentMark, type MarkProps } from "./agentMarks";
 
 export type { MarkProps };
 
-/** Model families that are certainly *not* Anthropic's. Only needed to stop a
- *  Claude-adapter session that is pointed at a router from wearing the Claude
- *  mark over someone else's model; an id this misses just falls back to the
- *  brain, which claims nothing. */
-const OTHER_VENDOR = /gpt|openai|^o\d|gemini|llama|mistral|qwen|deepseek|grok|kimi|glm|command-r/;
+/** Which vendor a model id names, for the ids that name one at all.
+ *
+ *  Families only, never a full id: this answers "whose model is this" and
+ *  nothing finer, so a version bump or a new size never touches it. An id no
+ *  pattern matches is a model whose vendor Sway cannot name, which is a
+ *  different answer from a wrong one. */
+const MODEL_VENDORS: [RegExp, string][] = [
+  [/claude|anthropic/, "anthropic"],
+  [/gpt|openai|^o\d/, "openai"],
+  [/gemini|palm|bison/, "google"],
+  [/kimi|moonshot/, "moonshot"],
+  [/llama|mistral|qwen|deepseek|grok|glm|command-r/, "other"],
+];
 
-/** Which mark a model id names, for the ids that name one at all. Separate from
- *  the adapter's own icon: this is the witness on the wire. */
+/** Which vendor an *agent's* mark is a claim about.
+ *
+ *  Only the marks that are a vendor's logo are here. `opencode`, `pi` and the
+ *  rest are a tool's own brand and claim nothing about who answers, so a model
+ *  id can never contradict them and they are always safe to fall back to. */
+const MARK_VENDORS: Record<string, string> = {
+  claude: "anthropic",
+  codex: "openai",
+  gemini: "google",
+  kimi: "moonshot",
+};
+
+function vendorOfModel(id: string): string | undefined {
+  return MODEL_VENDORS.find(([pattern]) => pattern.test(id))?.[1];
+}
+
+/** Which mark a model id names on its own, with no agent to help.
+ *
+ *  Anthropic only, and not from `MARK_VENDORS`: the marks this build has for the
+ *  other vendors are *product* logos, not company ones. Codex's mark is Codex's,
+ *  so wearing it over a `gpt-*` model that some other agent is running would
+ *  name the wrong program. Anthropic's is the company's, so it is the one mark
+ *  a bare model id can earn. */
 function markForModel(id: string): Component<MarkProps> | undefined {
-  if (/claude|anthropic/.test(id)) return agentMark("claude");
+  if (vendorOfModel(id) === "anthropic") return agentMark("claude");
   return undefined;
 }
 
@@ -55,9 +84,19 @@ export function providerIcon(
   const id = (model ?? "").toLowerCase();
   const byModel = markForModel(id);
   if (byModel) return byModel;
-  // A model that names a vendor we have no mark for keeps the brain, and must
-  // not fall through to the adapter's: a Claude session on a GPT router would
-  // otherwise wear Anthropic's logo over OpenAI's model.
-  if (OTHER_VENDOR.test(id)) return Brain;
+  // The agent's mark, unless the model on the wire *contradicts* it.
+  //
+  // This used to be "any model naming a vendor other than Anthropic keeps the
+  // brain", which was wrong for the ordinary case: Codex runs `gpt-*` by
+  // definition, so every Codex session matched and lost the Codex mark to a
+  // generic brain. The guard was firing on the one pairing it was never about.
+  //
+  // Contradiction needs two vendor claims, not one. A mark that is a tool's own
+  // brand (`opencode`, `pi`) claims nothing about who answers, so no model id
+  // can disagree with it; only `claude` over a GPT id, or `codex` over a Claude
+  // one, is the router mismatch this exists to catch.
+  const declared = agentId ? MARK_VENDORS[agentId] : undefined;
+  const running = vendorOfModel(id);
+  if (declared && running && declared !== running) return Brain;
   return agentMark(agentId) ?? Brain;
 }

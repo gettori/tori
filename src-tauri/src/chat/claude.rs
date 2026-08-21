@@ -31,7 +31,7 @@ use serde_json::Value;
 use crate::agents::{ChatEffortExtra, EffortExtraState};
 
 use super::model::{
-    ChatAccount, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent,
+    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent,
     ChatModelInfo, Extra, HookPhase,
     McpServer, PermissionDenial, PermissionMode, PermissionSuggestion, SlashCommand, SuggestedRule, ToolStatus,
     TurnOutcome, Usage,
@@ -40,7 +40,21 @@ use super::model::{
 /// The agent's own sentence when fast mode is asked for, quoted rather than
 /// paraphrased. Measured on claude 2.1.231 and identical on sonnet, so the
 /// refusal is this transport's rather than the model's (`fast-mode.jsonl`).
-const FAST_MODE_REFUSAL: &str = "Fast mode is not available in the Agent SDK";
+/// Why fast mode cannot be flipped from here, whatever the account says about
+/// whether it could serve.
+///
+/// **Measured against 2.1.238, and it is a fact about the wire, not the plan.**
+/// The CLI's control protocol takes seventeen request subtypes and exactly one
+/// of them touches `flagSettings`, where `fastMode` lives: `apply_flag_settings`,
+/// which validates its keys and answers `unsupported_key` for anything that is
+/// not `effortLevel` or `ultracode`. So there is no mid-session switch to send.
+///
+/// This replaced "Fast mode is not available in the Agent SDK", which was the
+/// CLI's own sentence for `sdk_opt_in_required` and stopped being true the
+/// moment Sway took the opt-in (see `claude.toml`'s `--settings`). Quoting a
+/// reason the session is no longer giving is worse than having none: it reads as
+/// measured and is not.
+const FAST_MODE_REFUSAL: &str = "Set when the chat starts; there is no mid-session switch";
 
 /// The values `--thinking` takes, in the CLI's own order.
 ///
@@ -54,17 +68,22 @@ const FAST_MODE_REFUSAL: &str = "Fast mode is not available in the Agent SDK";
 /// `dev/effort-probe.mjs` rests on: this CLI **ignores an unknown flag
 /// entirely** (`--definitely-not-a-flag xyz --version` exits 0 and prints the
 /// version), so acceptance proves nothing and only a validated choice set does.
-const THINKING_MODES: [&str; 3] = ["enabled", "adaptive", "disabled"];
-
-/// Why the adaptive-thinking control is published refused.
+/// **A measurement without a control, deliberately.** It was published as a
+/// refused option for one release and has been withdrawn. `--thinking` is argv,
+/// so it is fixed when the child is spawned, and there is no mid-session verb
+/// for it: `apply_flag_settings` is the only control request that reaches launch
+/// settings and it answers `unsupported_key` for everything but `effortLevel`
+/// and `ultracode`. Nothing on the wire reports which mode is running, either.
 ///
-/// Not the agent's words, because the agent never refuses: it is Sway that has
-/// no route. `--thinking` is an **argv flag**, so it is fixed when the child is
-/// spawned, and this transport has no mid-session verb for it - there is no
-/// control-protocol request, `/effort` and `/fast` are slash commands rather
-/// than options, and `ClaudeTransport::set_config_option` refuses by design.
-const ADAPTIVE_THINKING_NOTE: &str =
-    "Set with --thinking when the session starts; there is no mid-session switch";
+/// A pill that can never move is permanent plumbing in a bar whose rule is that
+/// plumbing shows when something has failed, not while it is merely fixed. This
+/// one also landed beside the effort picker wearing the same word, so a Claude
+/// composer carried two controls labelled "Thinking", one of them showing the
+/// literal string `--thinking` as its value.
+///
+/// Kept here with its test so the measurement outlives the control it did not
+/// justify. Whatever surface eventually offers launch flags is where it belongs.
+const THINKING_MODES: [&str; 3] = ["enabled", "adaptive", "disabled"];
 
 /// The levers claude has for one model, in the shape the mirror renders.
 ///
@@ -94,37 +113,6 @@ pub fn config_options(model: &ChatModelInfo) -> Vec<ChatConfigOption> {
             disabled: true,
             note: FAST_MODE_REFUSAL.into(),
             kind: ChatConfigKind::Boolean { value: false },
-        });
-    }
-    if model.supports_adaptive_thinking {
-        out.push(ChatConfigOption {
-            id: "thinking".into(),
-            name: "Thinking".into(),
-            description: String::new(),
-            category: String::new(),
-            disabled: true,
-            note: ADAPTIVE_THINKING_NOTE.into(),
-            // A select rather than the toggle fast mode is, because the lever
-            // really has three values. A boolean would have to pick one of them
-            // to mean "on" and would assert a state as well.
-            kind: ChatConfigKind::Select {
-                // **The flag, not a state.** Nothing on the wire reports which
-                // mode is running - `system/init` carries `fast_mode_state` and
-                // no thinking counterpart - so naming one of the three would be
-                // a guess rendered as a measurement. An empty current renders an
-                // empty pill, which says less than nothing; the mirror falls
-                // back to the raw current when it matches no choice, so this
-                // names the flag the user would actually go and set.
-                current: "--thinking".into(),
-                choices: THINKING_MODES
-                    .iter()
-                    .map(|mode| ChatConfigChoice {
-                        value: (*mode).to_string(),
-                        label: (*mode).to_string(),
-                        description: String::new(),
-                    })
-                    .collect(),
-            },
         });
     }
     out
@@ -1813,25 +1801,23 @@ mod tests {
             options_of(events).map(|o| o.iter().map(|x| x.id.clone()).collect::<Vec<_>>())
         };
 
-        // Sonnet declares adaptive thinking and no fast mode.
+        // Sonnet has no fast mode, and adaptive thinking is not a lever, so it
+        // opens with an empty set. Empty rather than absent: the event still
+        // fires, which is what clears a previous model's levers.
         let opened = m.map(&an_init("claude-sonnet-5"));
-        assert_eq!(ids(&opened), Some(vec!["thinking".to_string()]));
+        assert_eq!(ids(&opened), Some(Vec::new()));
 
         // The same turn's model reported again moves nothing.
         assert_eq!(options_of(&m.map(&an_init("claude-sonnet-5"))), None);
 
         let switched = m.map(&an_init("claude-opus-5[1m]"));
-        assert_eq!(
-            ids(&switched),
-            Some(vec!["fast_mode".to_string(), "thinking".to_string()]),
-            "the Opus row declares both"
-        );
+        assert_eq!(ids(&switched), Some(vec!["fast_mode".to_string()]), "the Opus row declares it");
         let fast = options_of(&switched).unwrap().remove(0);
         assert!(fast.disabled, "a lever this transport cannot reach is published refused");
         assert_eq!(fast.note, FAST_MODE_REFUSAL);
 
         // And back, so a row is not a one-way addition to the set.
-        assert_eq!(ids(&m.map(&an_init("claude-sonnet-5"))), Some(vec!["thinking".to_string()]));
+        assert_eq!(ids(&m.map(&an_init("claude-sonnet-5"))), Some(Vec::new()));
     }
 
     /// **The claim the retired annotation table used to make, checked against
@@ -1862,52 +1848,44 @@ mod tests {
         assert!(config_options(haiku).is_empty());
     }
 
-    /// **The adaptive-thinking control, published from what was measured.**
+    /// **Adaptive thinking is measured and deliberately has no control.**
     ///
-    /// Reachable, but only at spawn: `--thinking` takes `enabled|adaptive|
-    /// disabled` and there is no mid-session verb for it, so the row is offered
-    /// refused with the reason rather than as a toggle that would do nothing.
-    /// The same answer fast mode gets, arrived at from a different measurement.
+    /// It had one for a release: a select published refused, carrying
+    /// `--thinking` as its own value because nothing reports which mode is
+    /// running. On screen that was a second pill labelled "Thinking" next to the
+    /// effort picker, reading `Thinking: --thinking`, which could never move.
     ///
-    /// And offered **only where the catalogue publishes the capability**:
-    /// `initialize.jsonl` declares `supportsAdaptiveThinking` on four of five
-    /// rows and omits it on Haiku, which declares none of the model-scoped
-    /// flags at all.
+    /// So `config_options` offers nothing for it, and the capability flag is
+    /// still read off the handshake (it is what the model row carries) so the
+    /// day a mid-session verb appears there is something to hang it on. This
+    /// pins the absence, because "no control" and "we forgot" look identical.
     #[test]
-    fn adaptive_thinking_is_published_refused_and_only_where_it_exists() {
+    fn adaptive_thinking_is_measured_and_offers_no_lever() {
         let mut m = ClaudeMapper::new("s1");
         m.map(&fixture("initialize")[0]);
         let row = |value: &str| {
             m.model_catalogue.iter().find(|r| r.value == value).unwrap_or_else(|| panic!("{value} is listed"))
         };
 
-        let thinking = config_options(row("sonnet"))
-            .into_iter()
-            .find(|o| o.id == "thinking")
-            .expect("sonnet declares adaptive thinking");
-        assert!(thinking.disabled, "no mid-session switch exists, so the row says so");
-        assert_eq!(thinking.note, ADAPTIVE_THINKING_NOTE);
-        // The values the CLI validated, not a shape Sway chose: a boolean would
-        // have to pick one of the three to mean "on".
-        match thinking.kind {
-            ChatConfigKind::Select { ref current, ref choices } => {
-                assert_eq!(
-                    choices.iter().map(|c| c.value.as_str()).collect::<Vec<_>>(),
-                    THINKING_MODES
-                );
-                // Not one of the three: nothing reports which is running, so
-                // the pill names the flag that sets it rather than a state.
-                assert_eq!(current, "--thinking");
-                assert!(!choices.iter().any(|c| c.value == *current));
-            }
-            ref other => panic!("a three-valued flag is a select: {other:?}"),
-        }
+        // Sonnet declares the capability and still gets no lever, which is the
+        // whole claim: the flag is read, the control is not drawn.
+        assert!(row("sonnet").supports_adaptive_thinking);
+        assert!(config_options(row("sonnet")).is_empty());
 
-        // Haiku publishes neither capability, so it gets no levers at all.
+        // The values the CLI validated, kept as a measurement so a future
+        // launch-flags surface has them without re-probing.
+        assert_eq!(THINKING_MODES, ["enabled", "adaptive", "disabled"]);
+
+        // Haiku publishes neither capability, so it gets no levers either, and
+        // for a different reason - which is why the assertion above is not
+        // enough on its own.
+        assert!(!row("haiku").supports_adaptive_thinking);
         assert!(config_options(row("haiku")).is_empty());
-        // And the two are independent: Fable has thinking and no fast mode.
-        let fable = config_options(row("claude-fable-5[1m]"));
-        assert_eq!(fable.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(), ["thinking"]);
+
+        // Fable has thinking and no fast mode, so it is the row that would
+        // regress silently if thinking ever came back as an option.
+        assert!(row("claude-fable-5[1m]").supports_adaptive_thinking);
+        assert!(config_options(row("claude-fable-5[1m]")).is_empty());
     }
 
     /// A mapper that never saw a catalogue publishes an empty set rather than

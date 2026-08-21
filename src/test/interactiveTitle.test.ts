@@ -417,8 +417,10 @@ const NAMED_BY_TEXT = new Set(["Tab"]);
  *  the caller passes none) and forwards the rest to `as={Button}`, so the
  *  tooltip reaches an implementation the `as=` hides from this scan.
  *  `PickerButton` is the same pill for a control whose choices are a dialog
- *  rather than a menu, and takes the same required `ariaLabel`. */
-const NAMES_ITSELF = new Set(["Picker", "PickerButton", "Toast.CloseButton"]);
+ *  rather than a menu, and takes the same required `ariaLabel`. `PillToggle` is
+ *  the two-state one, and has no visible text at all, so its required
+ *  `ariaLabel` is the only name it will ever have. */
+const NAMES_ITSELF = new Set(["Picker", "PickerButton", "PillToggle", "Toast.CloseButton"]);
 /** Components that accept `tooltip` and are named by a `label` or an
  *  `aria-label` the type does not force, so the naming is checked below rather
  *  than trusted. `Toggle` is in here as well as `Switch` because the two files

@@ -151,12 +151,12 @@ describe("a draft's option picks, once it has a session", () => {
   });
 
   it("asks for nothing when the draft picked nothing", async () => {
-    const { findByRole } = mount();
+    const { findByLabelText } = mount();
     await waitFor(() => expect(channel).not.toBeNull());
     goLive();
     // The mirror drawing the agent's own lever is the session being live: an
     // apply that was going to happen would have happened by then.
-    await findByRole("switch");
+    await findByLabelText("Web search");
 
     expect(sets()).toEqual([]);
   });
@@ -168,13 +168,13 @@ describe("a draft's option picks, once it has a session", () => {
     const toasts: string[] = [];
     const off = onWith<{ message: string }>(TOAST, (d) => toasts.push(d.message));
     setDraftOption(TAB, "web_search", true);
-    const { getByRole } = mount();
+    const { getByLabelText } = mount();
     await waitFor(() => expect(channel).not.toBeNull());
     goLive();
 
     await waitFor(() => expect(toasts).toHaveLength(1));
     expect(toasts[0]).toContain("no such option");
-    expect(getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    expect(getByLabelText("Web search").getAttribute("aria-pressed")).toBe("false");
     off();
   });
 });
