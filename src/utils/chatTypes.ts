@@ -85,6 +85,18 @@ export type HookPhase = "started" | "finished";
 /// back. Several values resolve to one `resolvedModel`, so init alone can never
 /// say which was picked - comparing a picked value against init's model is the
 /// trap these two separate fields exist to prevent.
+/// One row of the effort picker: a level, and whether it can be taken.
+///
+/// `disabled`/`note` rather than a state word, the same pair `ChatConfigOption`
+/// carries, because "a lever the agent has but cannot currently take" is one
+/// idea and effort should not get a second vocabulary for it.
+export type ChatEffortLevel = {
+  level: string;
+  label: string;
+  disabled: boolean;
+  note: string;
+};
+
 export type ChatModelInfo = {
   value: string;
   resolvedModel: string;
@@ -94,6 +106,14 @@ export type ChatModelInfo = {
   /// Empty for a model with no effort control, which hides the control rather
   /// than rendering an inert one.
   supportedEffortLevels: string[];
+  /// The same levels as picker rows, plus any level Sway measured that this
+  /// agent never advertises.
+  ///
+  /// Optional, unlike everything else here, because this type is also the shape
+  /// of a **cached** catalogue on disk and one written before this field existed
+  /// genuinely does not carry it. Absent is read as "nobody filled this in" and
+  /// falls back to `supportedEffortLevels`, which is what that cache recorded.
+  effortLevels?: ChatEffortLevel[];
   /// Whether this model honours `--permission-mode auto`. Measured: a model
   /// without it accepts the flag, exits 0, and silently runs `default`, so
   /// nothing at runtime would contradict an ungated row.

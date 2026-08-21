@@ -34,11 +34,11 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
-use crate::agents::ChatAnnotation;
+use crate::agents::{ChatAnnotation, ChatEffortExtra};
 
 use super::claude::ClaudeMapper;
 use super::model::{
-    ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope,
+    ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
     PermissionSuggestion,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
@@ -199,10 +199,13 @@ pub struct ClaudeTransport {
     /// applied when that turn is submitted. The CLI has no mid-turn switch, and
     /// pretending otherwise would show a mode the session is not in.
     pending_mode: Option<PermissionMode>,
-    pending_model: Option<(String, Option<Effort>)>,
+    pending_model: Option<(String, Option<String>)>,
     /// The adapter's model annotations, handed to the mapper so the session can
     /// publish claude's own levers for whichever model it reports.
     annotations: Vec<ChatAnnotation>,
+    /// The adapter's measured effort levels, handed to the mapper for the same
+    /// reason: they decorate the catalogue the session reports.
+    effort_extras: Vec<ChatEffortExtra>,
 }
 
 impl ClaudeTransport {
@@ -222,6 +225,7 @@ impl ClaudeTransport {
             pending_mode: None,
             pending_model: None,
             annotations: Vec::new(),
+            effort_extras: Vec::new(),
         }
     }
 
@@ -229,6 +233,12 @@ impl ClaudeTransport {
     /// transport that publishes no options, never one that invents any.
     pub fn with_annotations(mut self, annotations: Vec<ChatAnnotation>) -> Self {
         self.annotations = annotations;
+        self
+    }
+
+    /// Hand it the levels Sway measured that this CLI never advertises.
+    pub fn with_effort_extras(mut self, extras: Vec<ChatEffortExtra>) -> Self {
+        self.effort_extras = extras;
         self
     }
 
@@ -473,7 +483,9 @@ impl AgentTransport for ClaudeTransport {
             let shared = self.shared.clone();
             let sink = sink.clone();
             let mut mapper =
-                ClaudeMapper::new(shared.session_id.clone()).with_annotations(self.annotations.clone());
+                ClaudeMapper::new(shared.session_id.clone())
+                    .with_annotations(self.annotations.clone())
+                    .with_effort_extras(self.effort_extras.clone());
             thread::spawn(move || {
                 for line in BufReader::new(stdout).lines() {
                     let Ok(line) = line else { break };
@@ -566,7 +578,7 @@ impl AgentTransport for ClaudeTransport {
             let request_id = self.next_request_id();
             let mut request = json!({ "subtype": "set_model", "model": model });
             if let Some(effort) = effort {
-                request["effort"] = json!(effort_wire(effort));
+                request["effort"] = json!(effort);
             }
             let _ = self.write_frame(&json!({
                 "type": "control_request",
@@ -633,7 +645,7 @@ impl AgentTransport for ClaudeTransport {
         Ok(())
     }
 
-    fn set_model(&mut self, model: &str, effort: Option<Effort>) -> Result<(), String> {
+    fn set_model(&mut self, model: &str, effort: Option<String>) -> Result<(), String> {
         self.pending_model = Some((model.to_string(), effort));
         Ok(())
     }
@@ -672,12 +684,6 @@ impl AgentTransport for ClaudeTransport {
     fn child_pid(&self) -> Option<u32> {
         self.child.as_ref().map(|c| c.id())
     }
-}
-
-/// Both agents spell these the same, so the mapping lives on the enum and
-/// this is the name the call site reads by.
-fn effort_wire(effort: Effort) -> &'static str {
-    effort.as_str()
 }
 
 #[cfg(test)]
@@ -972,9 +978,9 @@ pub mod tests {
     fn mode_and_model_are_queued_for_the_next_turn() {
         let mut t = ClaudeTransport::new("s1");
         t.set_mode(PermissionMode::new("plan")).unwrap();
-        t.set_model("claude-opus-5", Some(Effort::High)).unwrap();
+        t.set_model("claude-opus-5", Some("high".to_string())).unwrap();
         assert_eq!(t.pending_mode, Some(PermissionMode::new("plan")));
-        assert_eq!(t.pending_model, Some(("claude-opus-5".to_string(), Some(Effort::High))));
+        assert_eq!(t.pending_model, Some(("claude-opus-5".to_string(), Some("high".to_string()))));
     }
 
     /// A steer runs inside the current turn, so it must leave a queued switch
@@ -989,14 +995,14 @@ pub mod tests {
     fn a_steer_leaves_a_queued_mode_or_model_switch_for_the_next_turn() {
         let mut t = ClaudeTransport::new("s1");
         t.set_mode(PermissionMode::new("plan")).unwrap();
-        t.set_model("claude-opus-5", Some(Effort::High)).unwrap();
+        t.set_model("claude-opus-5", Some("high".to_string())).unwrap();
 
         let blocks = [ContentBlock::Text { text: "stop reading, just summarise".to_string() }];
         assert!(t.steer(&blocks).is_err(), "no child, so the write itself cannot succeed");
         assert_eq!(t.pending_mode, Some(PermissionMode::new("plan")), "the steer must not spend the mode switch");
         assert_eq!(
             t.pending_model,
-            Some(("claude-opus-5".to_string(), Some(Effort::High))),
+            Some(("claude-opus-5".to_string(), Some("high".to_string()))),
             "nor the model switch"
         );
 

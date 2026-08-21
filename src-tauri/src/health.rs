@@ -109,7 +109,7 @@ pub struct AgentHealth {
 /// scraped off whichever line happened to hold digits first. `None` becomes
 /// `VersionUnknown`, which renders neutral, so being wrong here would turn a
 /// working install into a false drift warning.
-fn parse_version(output: &str) -> Option<String> {
+pub(crate) fn parse_version(output: &str) -> Option<String> {
     let mut lines = output.lines().map(str::trim).filter(|l| !l.is_empty());
     let line = lines.next()?;
     if lines.next().is_some() {

@@ -48,7 +48,7 @@ use futures::StreamExt;
 use super::acp::{self, AcpOverrides};
 use super::acp_sessions::{self, AcpSession, ListedSession};
 use super::model::{
-    ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision,
+    ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision,
     PermissionMode, PermissionScope,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
@@ -576,7 +576,7 @@ impl AgentTransport for AcpTransport {
     /// Two requests rather than one because they are two options: an agent may
     /// accept the model and refuse the level, and folding them would report one
     /// outcome for two answers.
-    fn set_model(&mut self, model: &str, effort: Option<Effort>) -> Result<(), String> {
+    fn set_model(&mut self, model: &str, effort: Option<String>) -> Result<(), String> {
         let config_id = match &*self.shared.model_switch.lock().unwrap_or_else(|e| e.into_inner()) {
             Switch::Available(config_id) => config_id.clone(),
             Switch::Unsupported => {

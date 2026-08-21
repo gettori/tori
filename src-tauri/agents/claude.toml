@@ -254,28 +254,34 @@ args = ["--permission-mode", "bypassPermissions"]
 # `dontAsk` denies rather than runs.
 permissive = true
 
-# The five levels `--effort` accepts, confirmed present on this CLI.
-[[chat.effort]]
-id = "low"
-label = "Low"
-args = ["--effort", "low"]
-
-[[chat.effort]]
-id = "medium"
-label = "Medium"
-args = ["--effort", "medium"]
-
-[[chat.effort]]
-id = "high"
-label = "High"
-args = ["--effort", "high"]
-
-[[chat.effort]]
-id = "xhigh"
-label = "Extra high"
-args = ["--effort", "xhigh"]
-
-[[chat.effort]]
-id = "max"
-label = "Max"
-args = ["--effort", "max"]
+# No [[chat.effort]] either, and for the same reason [[chat.models]] went. It
+# listed the five levels `--effort` accepts, which is a list the agent already
+# publishes per model (`supportedEffortLevels`) and publishes better: haiku has
+# none, and the table offered it all five. `effort_args` above says how to spell
+# a level, for whichever levels the catalogue turns out to name.
+#
+# What is left is the opposite kind of claim: a level the CLI accepts and never
+# mentions. `--effort --help` advertises low/medium/high/xhigh/max, and the
+# validator quietly takes one more.
+#
+# Measured by dev/effort-probe.mjs on 2.1.237. The observable is the CLI's own
+# validator: `--effort ultracode --version` writes no "Unknown --effort value"
+# warning, where `off`, `ultra`, `ultrathink`, `none`, `minimal` and `auto` all
+# do. That is this CLI asserting the word is one of its own, which is a
+# different thing from the `--permission-mode auto` trap, where a flag is
+# accepted on a model that ignores it and nothing anywhere says so.
+#
+# A behavioural second observable was built and measured and does not work: the
+# thinking-token count is the model's discretion, and paired runs gave `off`
+# 466/0/0 against `ultracode` 0/0/1633. The probe's header carries the numbers
+# and the reasoning; the short version is that a check flipping on model mood is
+# a check nobody reads.
+#
+# `measured_on` is what keeps this honest. It is a claim about a binary, so it
+# holds for that binary and degrades to a disabled row naming both versions on
+# any other, rather than silently outliving the measurement.
+[[chat.effort_extras]]
+id = "ultracode"
+label = "Ultracode"
+state = "working"
+measured_on = "2.1.237 (Claude Code)"

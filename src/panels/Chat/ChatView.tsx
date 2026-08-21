@@ -1203,7 +1203,9 @@ export default function ChatView(props: {
     // Effort is sent with the model because that is how the command carries it:
     // a level the new model does not offer would be rejected, so it is dropped
     // rather than sent and blamed on the model switch.
-    const effort = model.effortLevels.includes(shownEffort(state) ?? "") ? shownEffort(state) : null;
+    const carried = shownEffort(state) ?? "";
+    const takeable = model.effortLevels.some((l) => l.level === carried && !l.disabled);
+    const effort = takeable ? shownEffort(state) : null;
     applyModelChange(model.value, effort, () => edit((s) => revertModelPick(s, model.value)));
 
     // A mode the new model does not offer is dropped on the same rule, but it

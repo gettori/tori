@@ -6,6 +6,7 @@
 // version-less binary is two of the four agents Sway ships adapters for.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
+import { refreshAgentHealth } from "./agentHealth";
 import {
   __resetModelCatalogsForTests,
   cachedModels,
@@ -83,6 +84,54 @@ describe("whether a remembered answer still describes the binary", () => {
 
   it("says fresh for a agent that never answered, which has nothing to be stale", () => {
     expect(isStale(undefined, "2.1.231")).toBe(false);
+  });
+
+  // A measurement is scoped to the binary it names, and a cached row decided
+  // `disabled` against the version the probe recorded. On a binary that has
+  // since changed, the rows Sway added come back off and the agent's own
+  // published list is what is left. Otherwise a draft opened on an upgraded CLI
+  // offers a level nothing measured for the one probe round it takes a fresh
+  // answer to land.
+  describe("Sway's own measured effort levels on a stale cache", () => {
+    const sonnet = (): CatalogModel => ({
+      ...model("sonnet", "claude-sonnet-5"),
+      supportsEffort: true,
+      supportedEffortLevels: ["low", "max"],
+      effortLevels: [
+        { level: "low", label: "low", disabled: false, note: "" },
+        { level: "max", label: "max", disabled: false, note: "" },
+        { level: "ultracode", label: "Ultracode", disabled: false, note: "" },
+      ],
+    });
+
+    beforeEach(() => {
+      invoked.mockReset();
+      __resetModelCatalogsForTests();
+    });
+
+    const levelsAfterProbe = async (installed: string) => {
+      invoked.mockImplementation(async (cmd: string) => {
+        if (cmd === "refresh_agent_health") return [{ id: "claude", version: installed }];
+        if (cmd === "model_catalogs") {
+          return [{ ...withModels([sonnet()], "2.1.237"), agentId: "claude" }];
+        }
+        return [];
+      });
+      await refreshAgentHealth();
+      await ensureModelCatalogsLoaded();
+      return cachedModels(catalogFor("claude"))[0].effortLevels?.map((l) => l.level);
+    };
+
+    it("keeps them while the binary is the one they were measured against", async () => {
+      expect(await levelsAfterProbe("2.1.237")).toEqual(["low", "max", "ultracode"]);
+    });
+
+    // Told apart by `supportedEffortLevels` rather than by re-running the
+    // version comparison: a level the agent published is in that list and one
+    // Sway measured is not.
+    it("takes them off once the binary has changed under the cache", async () => {
+      expect(await levelsAfterProbe("2.1.240")).toEqual(["low", "max"]);
+    });
   });
 });
 

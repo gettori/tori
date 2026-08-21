@@ -171,13 +171,25 @@ export function PickerOption(props: {
   label: string;
   description?: string;
   selected: boolean;
+  /** A choice this agent has but cannot currently take. Refusing rather than
+   *  `disabled`, so the row keeps its place in arrow navigation and the `note`
+   *  beside it stays reachable: a row a screen reader skips is a row whose
+   *  reason nobody hears. */
+  refusing?: boolean;
+  /** Why it is refused, in words the user can act on. Drawn as well as
+   *  announced, since a reason only AT can reach leaves everyone else with a
+   *  row that silently does nothing. */
+  note?: string;
   onSelect: () => void;
 }) {
   return (
-    <MenuRow onClick={props.onSelect}>
-      <span class={styles.pickBody}>
+    <MenuRow refusing={props.refusing} onClick={props.onSelect}>
+      <span class={styles.pickBody} classList={{ [styles.pickRefusing]: !!props.refusing }}>
         <span class={styles.pickName}>{props.label}</span>
         <Show when={props.description}>{(d) => <span class={styles.pickDesc}>{d()}</span>}</Show>
+        <Show when={props.refusing && props.note}>
+          {(note) => <span class={styles.pickNote}>{note()}</span>}
+        </Show>
       </span>
       {/* Held whatever the state, so rows do not shift sideways as the
           selection moves down the list. */}

@@ -28,11 +28,11 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::agents::ChatAnnotation;
+use crate::agents::{ChatAnnotation, ChatEffortExtra, EffortExtraState};
 
 use super::model::{
-    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEvent, ChatModelInfo, Extra, HookPhase, McpServer,
-    PermissionDenial, PermissionMode, PermissionSuggestion, SlashCommand, SuggestedRule, ToolStatus,
+    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo, Extra, HookPhase,
+    McpServer, PermissionDenial, PermissionMode, PermissionSuggestion, SlashCommand, SuggestedRule, ToolStatus,
     TurnOutcome, Usage,
 };
 
@@ -67,6 +67,83 @@ pub fn config_options(model: &ChatModelInfo, annotations: &[ChatAnnotation]) -> 
             disabled: true,
             note: FAST_MODE_REFUSAL.into(),
             kind: ChatConfigKind::Boolean { value: false },
+        });
+    }
+    out
+}
+
+/// The effort levels for one model, as picker rows: everything the catalogue
+/// published, plus whatever `[[chat.effort_extras]]` measured.
+///
+/// One function for two callers, the same arrangement `config_options` has and
+/// for the same reason: a draft reads the probe's cached rows and the live chat
+/// reads the handshake's, and for one resolved model they have to answer the
+/// same.
+///
+/// **A model that publishes no levels gets none.** An extra adds a level to a
+/// control that already exists; it never brings the control into being, so an
+/// agent (or a model, like haiku) with no effort control still has none.
+///
+/// `cli_version` is the gate, and it is why an unadvertised level is safe to
+/// offer at all. An extra was measured against one binary, so it renders as a
+/// level only while that is the binary answering, and against any other it
+/// renders **disabled naming both versions** rather than silently carrying a
+/// claim nobody has re-checked. Degraded rather than dropped: a level that
+/// vanishes on a CLI upgrade tells the user nothing, and a row that says why
+/// tells them to re-run the probe.
+pub fn effort_levels(
+    model: &ChatModelInfo,
+    extras: &[ChatEffortExtra],
+    cli_version: &str,
+) -> Vec<ChatEffortLevel> {
+    if model.supported_effort_levels.is_empty() {
+        return Vec::new();
+    }
+    let mut out: Vec<ChatEffortLevel> = model
+        .supported_effort_levels
+        .iter()
+        .map(|level| ChatEffortLevel {
+            level: level.clone(),
+            label: level.clone(),
+            disabled: false,
+            note: String::new(),
+        })
+        .collect();
+    // Both sides normalized, so a `measured_on` written as the CLI prints it
+    // ("2.1.237 (Claude Code)") compares equal to the bare number `system/init`
+    // reports. Comparing the raw strings would make every row stale forever.
+    let running = crate::health::parse_version(cli_version);
+    // No version, no extras. A binary Sway cannot name is one no measurement
+    // can be scoped to, so the picker shows exactly what the agent published
+    // rather than a disabled row explaining a claim Sway never got to make.
+    let Some(running) = running else { return out };
+    for extra in extras {
+        // A level the agent already named is the agent's, not Sway's. An extra
+        // that collides with one adds nothing and must not re-state it as a
+        // second row the picker cannot tell apart.
+        if out.iter().any(|l| l.level == extra.id) {
+            continue;
+        }
+        let stale = crate::health::parse_version(&extra.measured_on).as_ref() != Some(&running);
+        let refused = extra.state == EffortExtraState::Refused;
+        out.push(ChatEffortLevel {
+            level: extra.id.clone(),
+            label: extra.label.clone(),
+            disabled: stale || refused,
+            // Stale wins over refused, and the order is the point: a refusal is
+            // a sentence about the binary it was heard from, so on any other one
+            // it is exactly as unre-checked as a working measurement would be.
+            // Quoting it there would be this gate's own failure, one row over.
+            note: if stale {
+                format!(
+                    "Measured on {}, and this is {running}. Re-run dev/effort-probe.mjs to offer it again.",
+                    extra.measured_on,
+                )
+            } else if refused {
+                extra.note.clone()
+            } else {
+                String::new()
+            },
         });
     }
     out
@@ -130,6 +207,13 @@ pub struct ClaudeMapper {
     /// never says about a model lives. Empty is a mapper nobody gave any, which
     /// synthesizes no options rather than guessing at some.
     annotations: Vec<ChatAnnotation>,
+    /// The adapter's measured effort levels, for the same reason and with the
+    /// same emptiness rule as `annotations`.
+    effort_extras: Vec<ChatEffortExtra>,
+    /// The binary that answered, from `system/init`. Empty until the first one,
+    /// which is what keeps a measured extra out of the handshake's catalogue:
+    /// the claim is scoped to a version, and nothing has named one yet.
+    cli_version: String,
     /// The model the session last reported running. Empty before the first
     /// `system/init`, and what makes a model change detectable at all: the
     /// switch is reported here whether Sway asked for it or `/model` did.
@@ -151,8 +235,32 @@ impl ClaudeMapper {
         self
     }
 
+    /// Hand the mapper the levels Sway measured that this CLI never advertises,
+    /// so the live catalogue offers the same set the probe cached.
+    pub fn with_effort_extras(mut self, extras: Vec<ChatEffortExtra>) -> Self {
+        self.effort_extras = extras;
+        self
+    }
+
     fn turn_id(&self) -> String {
         format!("turn-{}", self.turn_seq)
+    }
+
+    /// The handshake's model catalogue with each row's effort picker filled in.
+    ///
+    /// One method for the two events the catalogue leaves on, so the handshake
+    /// report and the session start cannot offer different levels for the same
+    /// model. Decorated on the way out rather than when the response is
+    /// absorbed, because the `initialize` response never names a version and
+    /// `system/init` does.
+    fn decorated_catalogue(&self) -> Vec<ChatModelInfo> {
+        self.model_catalogue
+            .iter()
+            .map(|m| ChatModelInfo {
+                effort_levels: effort_levels(m, &self.effort_extras, &self.cli_version),
+                ..m.clone()
+            })
+            .collect()
     }
 
     /// The lever set for the model this init reports, when it is not the set
@@ -222,6 +330,8 @@ impl ClaudeMapper {
                             .as_array()
                             .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
                             .unwrap_or_default(),
+                        // Filled on the way out, where the version is known.
+                        effort_levels: Vec::new(),
                         supports_auto_mode: m["supportsAutoMode"].as_bool().unwrap_or(false),
                     })
                 })
@@ -339,7 +449,7 @@ impl ClaudeMapper {
         vec![ChatEvent::SessionReady {
             session_id: self.session_id.clone(),
             slash_commands: self.command_catalogue.clone(),
-            models: self.model_catalogue.clone(),
+            models: self.decorated_catalogue(),
             // Claude's modes are declared in `claude.toml` and checked against
             // the real CLI by `modes_the_cli_accepts`, so there is nothing live
             // to carry. Empty means "use the adapter's table", which is where
@@ -428,6 +538,12 @@ impl ClaudeMapper {
     fn map_init(&mut self, frame: &Value) -> Vec<ChatEvent> {
         let model = frame["model"].as_str().unwrap_or_default().to_string();
         let mode = permission_mode(frame["permissionMode"].as_str());
+        // Before anything reads the catalogue below: this is the first frame
+        // that names the binary answering, and a measured extra level is only
+        // offered while its measurement names that same one.
+        if let Some(v) = frame["claude_code_version"].as_str() {
+            self.cli_version = v.to_string();
+        }
         // Taken before either branch returns, because an init is both the first
         // report of the model and every later one.
         let options = self.model_options(&model);
@@ -478,7 +594,7 @@ impl ClaudeMapper {
                         .unwrap_or_default(),
                     slash_commands,
                     mcp_servers: mcp_servers(&frame["mcp_servers"]),
-                    models: self.model_catalogue.clone(),
+                    models: self.decorated_catalogue(),
                     // Declared in the adapter, not reported by the CLI.
                     modes: Vec::new(),
                     fast_mode_state,
@@ -1680,6 +1796,150 @@ mod tests {
             options_of(&opened).map(|o| o.iter().map(|x| x.id.clone()).collect::<Vec<_>>()),
             Some(vec!["fast_mode".to_string()])
         );
+    }
+
+    fn a_model(levels: &[&str]) -> ChatModelInfo {
+        ChatModelInfo {
+            resolved_model: "claude-sonnet-5".into(),
+            supports_effort: !levels.is_empty(),
+            supported_effort_levels: levels.iter().map(|l| (*l).to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    fn ultracode(state: EffortExtraState, measured_on: &str) -> Vec<ChatEffortExtra> {
+        vec![ChatEffortExtra {
+            id: "ultracode".into(),
+            label: "Ultracode".into(),
+            state,
+            measured_on: measured_on.into(),
+            note: "the CLI said no".into(),
+        }]
+    }
+
+    fn rows(levels: &[ChatEffortLevel]) -> Vec<(&str, bool)> {
+        levels.iter().map(|l| (l.level.as_str(), l.disabled)).collect()
+    }
+
+    /// A measured extra joins the levels the agent published, and everything the
+    /// agent published is takeable.
+    #[test]
+    fn a_measured_level_joins_the_ones_the_agent_published() {
+        let extras = ultracode(EffortExtraState::Working, "2.1.237");
+        let levels = effort_levels(&a_model(&["low", "high"]), &extras, "2.1.237");
+        assert_eq!(rows(&levels), vec![("low", false), ("high", false), ("ultracode", false)]);
+        assert!(levels.iter().all(|l| l.note.is_empty()));
+    }
+
+    /// **An extra adds a level, never a control.** A model with no effort of its
+    /// own stays without one: the annotation decorates what the agent named and
+    /// brings nothing into being.
+    #[test]
+    fn a_model_with_no_effort_gains_none_from_a_measurement() {
+        let levels = effort_levels(&a_model(&[]), &ultracode(EffortExtraState::Working, "2.1.237"), "2.1.237");
+        assert!(levels.is_empty(), "{levels:?}");
+    }
+
+    /// The version gate, and the whole reason an unadvertised level is safe to
+    /// ship: the measurement names a binary, so on any other one the row says so
+    /// rather than quietly carrying a claim nobody re-checked.
+    #[test]
+    fn a_measurement_does_not_outlive_the_version_it_names() {
+        let levels = effort_levels(&a_model(&["low"]), &ultracode(EffortExtraState::Working, "2.1.237"), "2.1.240");
+        assert_eq!(rows(&levels), vec![("low", false), ("ultracode", true)]);
+        let note = &levels[1].note;
+        assert!(note.contains("2.1.237") && note.contains("2.1.240"), "{note}");
+    }
+
+    /// Both sides normalized, so a `measured_on` written the way the CLI prints
+    /// it compares equal to the bare number `system/init` reports. Without this
+    /// every row would read as stale forever.
+    #[test]
+    fn the_version_comparison_ignores_how_the_cli_dresses_it_up() {
+        let extras = ultracode(EffortExtraState::Working, "2.1.237 (Claude Code)");
+        let levels = effort_levels(&a_model(&["low"]), &extras, "2.1.237");
+        assert_eq!(rows(&levels), vec![("low", false), ("ultracode", false)]);
+    }
+
+    /// A binary Sway cannot name is one no measurement can be scoped to, so the
+    /// picker offers exactly what the agent published and nothing of Sway's.
+    #[test]
+    fn an_unnamed_binary_gets_no_measured_levels() {
+        let levels = effort_levels(&a_model(&["low"]), &ultracode(EffortExtraState::Working, "2.1.237"), "");
+        assert_eq!(rows(&levels), vec![("low", false)]);
+    }
+
+    /// A level the CLI refuses renders as a row that says so, in the CLI's own
+    /// words, rather than as a level that silently is not there.
+    #[test]
+    fn a_refused_level_renders_disabled_carrying_its_reason() {
+        let levels = effort_levels(&a_model(&["low"]), &ultracode(EffortExtraState::Refused, "2.1.237"), "2.1.237");
+        assert_eq!(rows(&levels), vec![("low", false), ("ultracode", true)]);
+        assert_eq!(levels[1].note, "the CLI said no");
+    }
+
+    /// A refusal heard from one binary says nothing about another, so on a
+    /// version mismatch the row stops quoting it and says the measurement is the
+    /// thing that no longer applies.
+    #[test]
+    fn a_refusal_measured_elsewhere_is_not_quoted_as_this_binarys_answer() {
+        let levels = effort_levels(&a_model(&["low"]), &ultracode(EffortExtraState::Refused, "2.1.237"), "2.1.240");
+        assert_eq!(rows(&levels), vec![("low", false), ("ultracode", true)]);
+        assert!(levels[1].note.contains("2.1.240"), "{}", levels[1].note);
+        assert!(!levels[1].note.contains("the CLI said no"), "{}", levels[1].note);
+    }
+
+    /// An extra that collides with a level the agent already named is the
+    /// agent's, not Sway's: one row, and no second copy the picker's own
+    /// selection could not tell apart.
+    #[test]
+    fn a_measurement_never_duplicates_a_published_level() {
+        let extras = vec![ChatEffortExtra {
+            id: "high".into(),
+            label: "High".into(),
+            state: EffortExtraState::Working,
+            measured_on: "2.1.237".into(),
+            note: String::new(),
+        }];
+        let levels = effort_levels(&a_model(&["low", "high"]), &extras, "2.1.237");
+        assert_eq!(rows(&levels), vec![("low", false), ("high", false)]);
+    }
+
+    /// The handshake report carries no measured extra, because no frame has
+    /// named the binary yet; the first `system/init` names it and the catalogue
+    /// it carries has the level.
+    #[test]
+    fn a_measured_level_waits_for_the_init_that_names_the_binary() {
+        let mut m = ClaudeMapper::new("s1").with_effort_extras(ultracode(EffortExtraState::Working, "2.1.237"));
+        let ready = m.map(&fixture("initialize")[0]);
+        let sonnet = |events: &[ChatEvent]| -> Vec<ChatEffortLevel> {
+            events
+                .iter()
+                .find_map(|e| match e {
+                    ChatEvent::SessionReady { models, .. } | ChatEvent::SessionStarted { models, .. } => Some(
+                        models
+                            .iter()
+                            .find(|m| m.resolved_model == "claude-sonnet-5")
+                            .expect("sonnet")
+                            .effort_levels
+                            .clone(),
+                    ),
+                    _ => None,
+                })
+                .expect("a catalogue")
+        };
+        assert_eq!(rows(&sonnet(&ready)), vec![
+            ("low", false),
+            ("medium", false),
+            ("high", false),
+            ("xhigh", false),
+            ("max", false)
+        ]);
+
+        let mut init = an_init("claude-sonnet-5");
+        init["claude_code_version"] = serde_json::json!("2.1.237");
+        let started = m.map(&init);
+        assert_eq!(sonnet(&started).last().map(|l| l.level.clone()), Some("ultracode".to_string()));
     }
 
     /// The model catalogue rides the same control response as the commands and

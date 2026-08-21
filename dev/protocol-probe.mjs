@@ -52,6 +52,10 @@
 // so "optional" can never quietly hollow the corpus out into a check that
 // passes on an empty stream.
 //
+// NOT THE ONLY MEASUREMENT OF THIS CLI. `dev/effort-probe.mjs` pins what
+// `--effort` accepts, which is a flag's vocabulary rather than a wire format and
+// so has no stream to record here. A version bump wants both re-run.
+//
 // Isolation: the probe passes `--setting-sources ''` so the operator's own
 // hooks and permissions cannot leak into a committed fixture and make it
 // machine-specific. That flag is a PROBE-ONLY choice and must never reach the

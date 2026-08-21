@@ -40,6 +40,11 @@ export type MenuItem =
 export function MenuRow(props: {
   onClick?: () => void;
   disabled?: boolean;
+  /** Refusing, but still reachable. Kobalte's `disabled` skips the row in arrow
+   *  navigation and typeahead, which takes any reason written on it out of a
+   *  keyboard user's reach; this keeps the row navigable and simply does not
+   *  act. Use it when the row says *why*, and `disabled` when it does not. */
+  refusing?: boolean;
   danger?: boolean;
   warn?: boolean;
   /** For a row that leads somewhere *inside* the menu (a second page of
@@ -54,14 +59,17 @@ export function MenuRow(props: {
       classList={{
         [styles.danger]: !!props.danger,
         [styles.warn]: !!props.warn,
+        [styles.refusing]: !!props.refusing,
       }}
       // Disabled is the primitive's own state, not a class: Kobalte blocks
       // activation, skips the row in arrow navigation and typeahead, and stamps
       // `data-disabled`, which is what the stylesheet paints. A class would only
       // be able to do the last of those.
       disabled={props.disabled}
-      closeOnSelect={props.closeOnSelect}
-      onSelect={() => props.onClick?.()}
+      aria-disabled={props.refusing || undefined}
+      // A refused row must not close the menu on its way to doing nothing.
+      closeOnSelect={props.refusing ? false : props.closeOnSelect}
+      onSelect={() => !props.refusing && props.onClick?.()}
     >
       {props.children}
     </Primitive.Item>
