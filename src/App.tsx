@@ -136,7 +136,7 @@ type Layout = {
 // fit the same content). No pane has a maximum: a divider travels until the pane
 // that absorbs the slack would drop below its floor, so on a wide display every
 // pane can take almost the whole window.
-const SIDEBAR_MIN = 180;
+const SIDEBAR_MIN = 240;
 const EDITOR_MIN = 180;
 // Chat has no width of its own (`.pane.terminal` is the flex filler, App.css), so
 // this floor is enforced as the *ceiling* of the two dividers beside it. Without
@@ -149,7 +149,7 @@ const GUTTER = 8;
 const WORKSPACE_PAD = 10;
 
 const DEFAULT_LAYOUT: Layout = {
-  sidebar: 280,
+  sidebar: 320,
   editor: 640,
   showSidebar: true,
   showTerminal: true,
