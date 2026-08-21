@@ -141,6 +141,11 @@ const OPTIONS = [
   },
 ];
 
+/** What a *second* ACP model answers with. Measured: both agents re-cut their
+ *  options per model, so the probe now switches to each one and caches its own
+ *  set. This row has withdrawn the toggle the first row publishes. */
+const NARROWER = OPTIONS.filter((o) => o.id !== "web_search");
+
 /** The modes Codex publishes on `session/new`, as the probe cached them. */
 const ACP_MODES = [
   { id: "read-only", label: "Read Only", hint: "Ask before writing" },
@@ -181,7 +186,20 @@ const CATALOGS = [
   {
     agentId: "codex",
     state: "probed",
-    catalogue: { version: "1", probedAtMs: 0, models: [{ ...row("gpt-5", "GPT-5"), options: [] }], modes: ACP_MODES, options: OPTIONS, account: null },
+    catalogue: {
+      version: "1",
+      probedAtMs: 0,
+      // Two rows carrying **different** sets, which is what the probe writes now
+      // that it switches model per row rather than copying one session's answer
+      // onto all of them.
+      models: [
+        { ...row("gpt-5", "GPT-5"), options: OPTIONS },
+        { ...row("gpt-5-mini", "GPT-5 mini"), options: NARROWER },
+      ],
+      modes: ACP_MODES,
+      options: OPTIONS,
+      account: null,
+    },
     lastFailure: null,
   },
 ];
@@ -659,6 +677,40 @@ describe("a chat draft's mirrored options", () => {
 
     expect(container.textContent).toContain("Fast mode");
     expect(container.textContent).toContain("Fast mode is not available in the Agent SDK");
+  });
+
+  // The ACP half of the same rule. An agent's options used to be per session
+  // and shared by every row, so a draft showed one model's set whatever was
+  // picked. Measured 2026-08-21: both agents re-cut their options per model, so
+  // each row now carries its own and the mirror has something to re-cut to.
+  it("follows the picked model for an ACP agent too", async () => {
+    setDraftPick(TAB, { model: "gpt-5" });
+    const { container, queryAllByRole } = setup({ agentId: "codex" });
+    await settle();
+    expect(queryAllByRole("switch")).toHaveLength(1);
+    expect(container.textContent).toContain("Collaboration mode");
+
+    setDraftPick(TAB, { model: "gpt-5-mini" });
+    await settle();
+
+    expect(queryAllByRole("switch")).toHaveLength(0);
+    // The lever both rows publish stays, so this is a re-cut rather than a clear.
+    expect(container.textContent).toContain("Collaboration mode");
+  });
+
+  // And a value picked against the first row goes with the lever that carried
+  // it, on the same rule `keptOptionValues` already applies to a stale cache.
+  it("drops a picked value the newly picked ACP model no longer publishes", async () => {
+    setDraftPick(TAB, { model: "gpt-5" });
+    const { getByRole } = setup({ agentId: "codex" });
+    await settle();
+    fireEvent.click(getByRole("switch"));
+    expect(draftPick(TAB).optionValues).toEqual({ web_search: true });
+
+    setDraftPick(TAB, { model: "gpt-5-mini" });
+    await settle();
+
+    expect(draftPick(TAB).optionValues).toEqual({});
   });
 
   // A value picked against one model is not a claim about the next one.

@@ -5,6 +5,22 @@
 //   node dev/acp-probe.mjs                     # every known agent that is installed
 //   node dev/acp-probe.mjs --agent opencode    # one agent
 //   node dev/acp-probe.mjs --json              # machine-readable, for a fixture
+//   node dev/acp-probe.mjs --per-model         # does the option set follow the model?
+//
+// THE --per-model QUESTION, and why it needs measuring rather than assuming
+//
+// An ACP agent publishes its options once, on `session/new`. A *draft* has no
+// session, so it holds one cached set and shows it whatever model is picked. If
+// an agent re-cuts its options per model (a plausible thing to do: picking a
+// model can withdraw a thinking level) then that single cached set is wrong for
+// every model but one, and the cache would have to key options per model row
+// the way claude's already does.
+//
+// So this switches model *inside one session* and diffs the option set the
+// agent answers with. `session/set_config_option` returns the whole set every
+// time, which is what makes the diff possible without opening a session per
+// model. Build the per-model cache only if the diff is non-empty; see
+// [[lesson_probe_the_capability_before_building_its_control]].
 //
 // This is a *different job* from dev/protocol-probe.mjs. That one pins a
 // committed corpus of Claude's stream-json wire format and fails when the CLI
@@ -47,6 +63,11 @@ const AGENTS = {
 const args = process.argv.slice(2);
 const ONLY = args.includes("--agent") ? args[args.indexOf("--agent") + 1] : null;
 const AS_JSON = args.includes("--json");
+const PER_MODEL = args.includes("--per-model");
+// How many models one run switches through. A cap, because a catalogue can be
+// 15 rows and each switch is a round trip; whatever it skips is printed rather
+// than silently dropped, so a "no variation" finding says how much it looked at.
+const MODEL_CAP = 8;
 // Long enough for an `npx` cold start to download a package, since one of the
 // agents here is launched that way.
 const TIMEOUT_MS = 60_000;
@@ -132,6 +153,10 @@ async function probe(name, spec, cwd) {
     out.sessionId = session.sessionId ? "(present)" : "(absent)";
     out.configOptions = (session.configOptions ?? []).map(describeOption);
     out.notifications = [...new Set(notifications)];
+
+    if (PER_MODEL) {
+      out.perModel = await measurePerModel(call, session);
+    }
   } catch (e) {
     out.error = String(e.message ?? e);
     if (stderr.length) out.stderr = stderr.join("").slice(0, 600);
@@ -141,10 +166,100 @@ async function probe(name, spec, cwd) {
   return out;
 }
 
+/**
+ * Switch model inside one session and diff the option set that comes back.
+ *
+ * Found by **category**, never by id: `category` is the spec's word for what an
+ * option is, and Codex calls its effort selector `reasoning_effort`. The same
+ * rule `acp.rs` matches by.
+ *
+ * The agent answers `session/set_config_option` with its whole set, so one
+ * session measures every model. A refusal is recorded rather than thrown: an
+ * agent that will not take one of its own listed models is itself a finding.
+ */
+async function measurePerModel(call, session) {
+  const options = session.configOptions ?? [];
+  const selector = options.find((o) => o.category === "model" && o.type === "select");
+  if (!selector) return { skipped: "this agent published no model selector" };
+  const configId = selector.id ?? selector.configId;
+
+  const flat = [];
+  for (const entry of selector.options ?? []) {
+    if (entry?.options) for (const sub of entry.options) flat.push(sub);
+    else flat.push(entry);
+  }
+  const ids = flat.map((v) => v.id ?? v.value).filter(Boolean);
+  const tried = ids.slice(0, MODEL_CAP);
+
+  const sets = [];
+  for (const model of tried) {
+    try {
+      // A bare string, not a tagged `{ type: "value", valueId }`. Measured:
+      // OpenCode 1.18.3 answers the tagged form with `expected string, received
+      // object`, which is the v1 request shape asserting itself.
+      const answer = await call("session/set_config_option", {
+        sessionId: session.sessionId,
+        configId,
+        value: model,
+      });
+      sets.push({ model, options: (answer?.configOptions ?? []).map(describeOption) });
+    } catch (e) {
+      sets.push({ model, error: String(e.message ?? e) });
+    }
+  }
+
+  return {
+    configId,
+    total: ids.length,
+    tried: tried.length,
+    skipped: ids.slice(MODEL_CAP),
+    sets,
+    diffs: diffAgainstFirst(sets),
+  };
+}
+
+/**
+ * What moved between the first answering set and each later one.
+ *
+ * The model selector itself is excluded from the comparison: its `currentValue`
+ * moves on every switch by definition, and reporting that as variation would
+ * make every agent look like it re-cuts its options.
+ */
+function diffAgainstFirst(sets) {
+  const answered = sets.filter((s) => s.options);
+  if (answered.length < 2) return null;
+  const key = (o) => `${o.configId}[${o.category ?? "none"}/${o.type}]`;
+  const shape = (set) => {
+    const out = new Map();
+    for (const o of set.options) {
+      if (o.category === "model") continue;
+      out.set(key(o), o.type === "select" ? (o.ids ?? []).join(",") : String(o.value));
+    }
+    return out;
+  };
+
+  const base = shape(answered[0]);
+  const diffs = [];
+  for (const set of answered.slice(1)) {
+    const mine = shape(set);
+    const moved = [];
+    for (const [k, v] of base) {
+      if (!mine.has(k)) moved.push(`${k}: gone`);
+      else if (mine.get(k) !== v) moved.push(`${k}: ${v} -> ${mine.get(k)}`);
+    }
+    for (const k of mine.keys()) if (!base.has(k)) moved.push(`${k}: new`);
+    if (moved.length) diffs.push({ from: answered[0].model, to: set.model, moved });
+  }
+  return diffs;
+}
+
 /** One config option, reduced to what a tier or a model picker needs. */
 function describeOption(o) {
   const d = {
-    configId: o.configId,
+    // **The v1 schema is asymmetric.** An option announcement carries `id`, its
+    // entries carry `value`, and only the *request* uses `configId`. Reading
+    // `configId` here printed `undefined` for every option OpenCode sent.
+    configId: o.id ?? o.configId,
     name: o.name,
     category: o.category ?? null,
     type: o.type,
@@ -174,6 +289,34 @@ function cliModelCount(spec) {
   if (r.status !== 0) return null;
   const lines = r.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
   return { count: lines.length, sample: lines.slice(0, 3) };
+}
+
+/** The per-model finding, in the words a plan can be decided from. */
+function perModelReport(pm) {
+  const lines = ["  per-model option sets:"];
+  if (pm.skipped && !Array.isArray(pm.skipped)) {
+    lines.push(`    ${pm.skipped}`);
+    return lines;
+  }
+  lines.push(`    switching \`${pm.configId}\` through ${pm.tried} of ${pm.total} models`);
+  if (pm.skipped.length) lines.push(`    not switched to: ${pm.skipped.join(", ")}`);
+  for (const s of pm.sets) {
+    if (s.error) lines.push(`    ${s.model}: REFUSED ${s.error}`);
+  }
+  if (pm.diffs === null) {
+    // Nothing answered, so nothing was compared. Reporting "does not vary" here
+    // would read a probe failure as a measurement.
+    lines.push(`    INCONCLUSIVE: fewer than two switches answered, nothing to diff`);
+  } else if (!pm.diffs.length) {
+    lines.push(`    DOES NOT VARY: every model answered the same set (model selector aside)`);
+  } else {
+    lines.push(`    VARIES:`);
+    for (const d of pm.diffs) {
+      lines.push(`      ${d.from} -> ${d.to}`);
+      for (const m of d.moved) lines.push(`        ${m}`);
+    }
+  }
+  return lines;
 }
 
 function installed(program) {
@@ -215,6 +358,7 @@ function report(r, cli) {
       lines.push(`${head}: ${JSON.stringify(o.value)}`);
     }
   }
+  if (r.perModel) lines.push(...perModelReport(r.perModel));
   if (cli) {
     const models = r.configOptions.filter((o) => o.category === "model" && o.type === "select");
     const overProtocol = models.reduce((n, o) => n + o.count, 0);

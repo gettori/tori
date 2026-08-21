@@ -38,7 +38,10 @@ use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use agent_client_protocol::schema::v1::{CloseSessionRequest, SessionConfigOption};
+use agent_client_protocol::schema::v1::{
+    CloseSessionRequest, SessionConfigId, SessionConfigOption, SessionConfigOptionValue,
+    SessionConfigValueId, SetSessionConfigOptionRequest,
+};
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -186,7 +189,19 @@ pub struct CatalogModel {
 /// - **2**: `supports_fast_mode` and `supports_adaptive_thinking` on every model
 ///   row. A cache written at 1 carries neither, and both default to false, so a
 ///   model with a fast mode would read as one without until something re-asked.
-pub const CACHE_SHAPE: u32 = 2;
+/// - **3**: an ACP model row carries its **own** option set and its own effort
+///   levels. A cache written at 2 has `options: []` on every ACP row and the
+///   probe session's levels copied onto all of them, so a draft would offer a
+///   level the picked model refuses.
+pub const CACHE_SHAPE: u32 = 3;
+
+/// How many models one probe switches through to read their own option sets.
+///
+/// Sized against the two measured catalogues (OpenCode 15, Codex 4) so both are
+/// swept whole, with room to spare inside [`PROBE_DEADLINE`]: the OpenCode sweep
+/// measured ~4.5s including spawn. It is a backstop against a catalogue nobody
+/// has seen, not a limit anything real is expected to hit.
+const PER_MODEL_SWEEP_CAP: usize = 24;
 
 /// What a catalogue carrying no stamp is: the shape from before the field
 /// existed.
@@ -561,6 +576,76 @@ pub fn probe_cwd_spellings() -> Vec<String> {
     spellings
 }
 
+/// Each model's own option set, by switching to it inside the probe's session.
+///
+/// **Built because it was measured, not because it was plausible.**
+/// `dev/acp-probe.mjs --per-model` switched model inside one session on both
+/// agents and diffed the answer. Both vary, and both vary in the same place:
+/// the `thought_level` selector's choices. Measured 2026-08-21 on
+/// `opencode acp` 1.18.3, `claude-opus-4.5` offers `max, high` where
+/// `claude-opus-4.7` offers `low, medium, high, xhigh, max`; on
+/// `@agentclientprotocol/codex-acp`, `gpt-5.6-terra` offers six levels
+/// including `ultra` where `gpt-5.4-mini` offers four.
+///
+/// So the session's opening set describes **one** model, and a catalogue that
+/// copied it onto every row would claim `ultra` for a model that refuses it -
+/// the picker-that-appears-to-switch failure `[[chat.models]]` was retired for.
+///
+/// **Here rather than when the user picks a model**, and the measurement is what
+/// decides it: the sweep is free. Timed on OpenCode, handshake plus
+/// `session/new` alone is 4.4s and the same probe plus eight model switches is
+/// 4.3s, because the whole cost is spawning the agent and opening the session
+/// and a switch is one round trip down a pipe that is already open.
+///
+/// Asking on selection would mean asking an agent with no session, and an ACP
+/// agent publishes its options only as part of `session/new`. So that path is
+/// spawn, open, switch, tear down, per pick, paid while the user waits, and it
+/// is the shape `probeOnHighlight`'s debounce already exists to prevent. A
+/// *live* chat does ask on selection and needs none of this: the agent answers
+/// every switch with its whole set and the mirror replaces wholesale. This cache
+/// is only ever the stand-in for the one surface that cannot ask.
+///
+/// One session for the whole sweep, because `session/set_config_option` answers
+/// with the agent's **whole** option set. No turn is submitted, so
+/// [`concept_no_turn_probe`]'s promise is unchanged.
+///
+/// A model whose switch is refused is simply absent from the map, and the
+/// caller falls back to the opening set for it: a refusal degrades one row
+/// rather than failing the probe.
+///
+/// Capped at [`PER_MODEL_SWEEP_CAP`] for the same reason. The sweep is one round
+/// trip per model, and a catalogue large enough to overrun [`PROBE_DEADLINE`]
+/// would turn a working agent into an error card. Past the cap a row falls back
+/// to the opening set, which is exactly what every row did before this existed:
+/// the worst case degrades to the old behaviour instead of to a failure.
+async fn per_model_options(
+    conn: &ConnectionTo<Agent>,
+    session_id: &agent_client_protocol::schema::v1::SessionId,
+    options: &[SessionConfigOption],
+) -> HashMap<String, Vec<SessionConfigOption>> {
+    let mut out = HashMap::new();
+    // By category, never by id: `category` is the spec's word for what an option
+    // is, and Codex calls its effort selector `reasoning_effort`.
+    let Some(config_id) = acp::model_config_id(options) else { return out };
+    let models: Vec<String> = acp::model_catalogue(options)
+        .into_iter()
+        .map(|m| m.value)
+        .take(PER_MODEL_SWEEP_CAP)
+        .collect();
+
+    for model in models {
+        let request = SetSessionConfigOptionRequest::new(
+            session_id.clone(),
+            SessionConfigId::new(config_id.as_str()),
+            SessionConfigOptionValue::ValueId { value: SessionConfigValueId::new(model.as_str()) },
+        );
+        if let Ok(answer) = conn.send_request(request).block_task().await {
+            out.insert(model, answer.config_options);
+        }
+    }
+    out
+}
+
 /// What one ACP agent's `session/new` answer means as a catalogue.
 ///
 /// Pure, and separated from the process work so the shape of the answer is
@@ -571,16 +656,45 @@ pub fn probe_cwd_spellings() -> Vec<String> {
 /// agent's full set is kept beside them, including categories this build has no
 /// control for. Filtering to the three known categories at the cache boundary
 /// would make the cache the place a new option gets lost.
-fn acp_catalogue(version: Option<String>, options: Vec<SessionConfigOption>) -> Catalogue {
+///
+/// **Per model as well as per session**, because [`per_model_options`] measured
+/// that the two agents re-cut their options when the model changes. Each row
+/// carries the set the agent answered *for that model*, so its effort levels
+/// are its own rather than whichever model the probe's session opened on. The
+/// catalogue-level set stays, and is what a row with no measurement of its own
+/// falls back to; it is also still what the mirror reads for an agent with no
+/// model selector at all.
+fn acp_catalogue(
+    version: Option<String>,
+    options: Vec<SessionConfigOption>,
+    per_model: HashMap<String, Vec<SessionConfigOption>>,
+) -> Catalogue {
+    let models = acp::model_catalogue(&options)
+        .into_iter()
+        .map(|info| {
+            // The row's own answer where there is one, the session's opening set
+            // where the switch was refused. Never nothing: a row with no options
+            // reads as an agent that publishes none.
+            let mine = per_model.get(&info.value).unwrap_or(&options);
+            // The whole row re-read from this model's own answer, rather than
+            // the opening row with its levels patched: `model_catalogue` already
+            // knows how to turn one option set into rows, and reaching in to fix
+            // up two fields would be a second copy of that mapping. Falls back
+            // to the opening row if the agent's answer stopped listing this
+            // model, which is a contradiction Sway has no better reply to.
+            let row = acp::model_catalogue(mine)
+                .into_iter()
+                .find(|m| m.value == info.value)
+                .unwrap_or(info);
+            CatalogModel { info: row, user_configured: false, options: acp::config_options(mine) }
+        })
+        .collect();
+
     Catalogue {
         version,
         shape: CACHE_SHAPE,
         probed_at_ms: now_ms(),
-        models: acp::model_catalogue(&options)
-            .into_iter()
-            // An ACP agent's options are per session, on the catalogue below.
-            .map(|info| CatalogModel { info, user_configured: false, options: Vec::new() })
-            .collect(),
+        models,
         modes: acp::mode_catalogue(&options),
         options: acp::config_options(&options),
         // ACP publishes no account on the handshake. Empty rather than guessed,
@@ -670,6 +784,13 @@ fn probe_acp(
             async move |conn: ConnectionTo<Agent>| {
                 let init = conn.send_request(init_request).block_task().await?;
                 let opened = conn.send_request(session_request).block_task().await?;
+                let options = opened.config_options.unwrap_or_default();
+
+                // **Measured, not assumed**: both agents re-cut their options per
+                // model, so one session's set describes one model. See
+                // `per_model_options` for what this costs and why it is worth it.
+                let per_model = per_model_options(&conn, &opened.session_id, &options).await;
+
                 // Best effort, and gated on the advertisement so an agent that
                 // does not serve it is never sent a method it would answer with
                 // `method not found`. Its failure is not the probe's failure:
@@ -681,7 +802,7 @@ fn probe_acp(
                         .block_task()
                         .await;
                 }
-                Ok(opened.config_options.unwrap_or_default())
+                Ok((options, per_model))
             },
         );
         futures::pin_mut!(work);
@@ -698,7 +819,7 @@ fn probe_acp(
     abandon_group(&mut child);
 
     let failed = match answer {
-        Some(Ok(options)) => return Ok(acp_catalogue(version, options)),
+        Some(Ok((options, per_model))) => return Ok(acp_catalogue(version, options, per_model)),
         // `None` is the deadline, `Some(Err(_))` is the agent's own refusal.
         other => other,
     };
@@ -1396,12 +1517,94 @@ mod tests {
             select_option("reasoning-depth", None, &[("shallow", "Shallow")]),
         ];
 
-        let catalogue = acp_catalogue(Some("1.18.3".into()), options);
+        // No per-model measurement, which is the refused-switch path: every row
+        // falls back to the session's opening set.
+        let catalogue = acp_catalogue(Some("1.18.3".into()), options, HashMap::new());
 
         assert_eq!(catalogue.models.len(), 1, "the model selector still becomes the model list");
         assert_eq!(catalogue.models[0].info.value, "sonnet");
         let ids: Vec<&str> = catalogue.options.iter().map(|o| o.id.as_str()).collect();
         assert_eq!(ids, ["model", "reasoning-depth"], "and the uncategorized one survives beside it");
+    }
+
+    /// **An ACP row carries its own levers, because the agents re-cut them.**
+    ///
+    /// Measured 2026-08-21 by `dev/acp-probe.mjs --per-model`: switching model
+    /// inside one session changes the `thought_level` selector's choices on both
+    /// agents. On `@agentclientprotocol/codex-acp`, `gpt-5.6-terra` publishes
+    /// six levels including `ultra` where `gpt-5.4-mini` publishes four; on
+    /// `opencode acp` 1.18.3, `claude-opus-4.5` publishes two where
+    /// `claude-opus-4.7` publishes five.
+    ///
+    /// So the session's opening set describes one model. Copying it onto every
+    /// row put `ultra` on a picker for a model that refuses it, which is the
+    /// offer-what-cannot-be-sent failure the whole catalogue work exists to end.
+    #[test]
+    fn each_acp_model_row_keeps_the_levels_its_own_answer_named() {
+        let opening = vec![
+            select_option("model", Some(Category::Model), &[("terra", "Terra"), ("mini", "Mini")]),
+            select_option(
+                "reasoning_effort",
+                Some(Category::ThoughtLevel),
+                &[("low", "low"), ("high", "high"), ("ultra", "ultra")],
+            ),
+        ];
+        // What the agent answered when each model was switched to. Mini drops
+        // `ultra`, which is the whole variation this exists for.
+        let per_model = HashMap::from([
+            ("terra".to_string(), opening.clone()),
+            (
+                "mini".to_string(),
+                vec![
+                    select_option("model", Some(Category::Model), &[("mini", "Mini"), ("terra", "Terra")]),
+                    select_option(
+                        "reasoning_effort",
+                        Some(Category::ThoughtLevel),
+                        &[("low", "low"), ("high", "high")],
+                    ),
+                ],
+            ),
+        ]);
+
+        let catalogue = acp_catalogue(Some("1.2.0".into()), opening, per_model);
+        let levels = |value: &str| {
+            catalogue
+                .models
+                .iter()
+                .find(|m| m.info.value == value)
+                .unwrap_or_else(|| panic!("{value} is listed"))
+                .info
+                .supported_effort_levels
+                .clone()
+        };
+        assert_eq!(levels("terra"), ["low", "high", "ultra"]);
+        assert_eq!(levels("mini"), ["low", "high"], "a level this model refuses is not offered for it");
+
+        // And the row's whole option set is cached beside the levels, so a
+        // mirrored option that varies is right per model too.
+        let mini = catalogue.models.iter().find(|m| m.info.value == "mini").expect("mini is listed");
+        assert_eq!(
+            mini.options.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(),
+            ["model", "reasoning_effort"]
+        );
+    }
+
+    /// A model whose switch the agent refused keeps the session's opening set
+    /// rather than losing its levers: a refusal degrades one row, and an empty
+    /// one would read as a model with no effort control at all.
+    #[test]
+    fn a_model_the_agent_would_not_switch_to_falls_back_to_the_opening_set() {
+        let opening = vec![
+            select_option("model", Some(Category::Model), &[("terra", "Terra"), ("mini", "Mini")]),
+            select_option("reasoning_effort", Some(Category::ThoughtLevel), &[("low", "low")]),
+        ];
+        // Only terra answered.
+        let per_model = HashMap::from([("terra".to_string(), opening.clone())]);
+
+        let catalogue = acp_catalogue(Some("1.2.0".into()), opening, per_model);
+        let mini = catalogue.models.iter().find(|m| m.info.value == "mini").expect("mini is listed");
+        assert_eq!(mini.info.supported_effort_levels, ["low"]);
+        assert!(!mini.options.is_empty(), "a refused switch is not an agent that publishes nothing");
     }
 
     /// And it survives the round trip to disk, which is what Phase 4's settings
@@ -1413,6 +1616,7 @@ mod tests {
         written.absorb(Ok(acp_catalogue(
             Some("1.18.3".into()),
             vec![select_option("web-search", None, &[("on", "On"), ("off", "Off")])],
+            HashMap::new(),
         )));
         save_to(&root, &written).expect("the file should write");
 
@@ -1518,7 +1722,8 @@ mod tests {
     ///
     ///   * `model`, four models, each with a description,
     ///   * `mode`, three (read-only, agent, agent-full-access),
-    ///   * `reasoning_effort`, **categorized `thought_level`**, six levels,
+    ///   * `reasoning_effort`, **categorized `thought_level`**, six levels on
+    ///     the model the session opens on and fewer on the others,
     ///   * `collaboration_mode` (default, plan), categorized as itself.
     ///
     /// That last one is the whole of Phase 5's case, live: Sway has no control
@@ -1534,6 +1739,14 @@ mod tests {
     /// Asserted structurally rather than by exact ids: the model list is per
     /// account (signed out, the native app-server offers seven), so pinning the
     /// four would make somebody else's entitlement a test failure.
+    ///
+    /// **The levels are per model and the counts differ**, which is what the
+    /// probe now switches model to measure. Live on 2026-08-21: `gpt-5.6-terra`
+    /// 6 (including `ultra`), `gpt-5.6-luna` 5, `gpt-5.5` and `gpt-5.4-mini` 4.
+    /// This used to assert every model carried exactly five, which was two
+    /// claims that had both stopped being true: `ultra` is no longer dropped
+    /// (8d67733), and the opening session's list was being copied onto rows that
+    /// refuse half of it.
     #[test]
     #[ignore = "drives the real `codex` binary"]
     fn the_real_codex_answers_a_catalogue_from_one_session() {
@@ -1544,8 +1757,22 @@ mod tests {
 
         assert!(!catalogue.models.is_empty(), "the handshake names this account's models");
         assert!(
-            catalogue.models.iter().all(|m| m.info.supported_effort_levels.len() == 5),
-            "every model carries the five levels Sway can send, and not the sixth: {:?}",
+            catalogue.models.iter().all(|m| !m.info.supported_effort_levels.is_empty()),
+            "every model publishes its own levels: {:?}",
+            catalogue.models
+        );
+        // Structural rather than by count: whether this account's models happen
+        // to disagree today is its entitlement, and the claim worth pinning is
+        // that each row carries *its own* answer rather than one copied set.
+        let per_row: Vec<&Vec<String>> =
+            catalogue.models.iter().map(|m| &m.info.supported_effort_levels).collect();
+        assert!(
+            per_row.iter().any(|l| *l != per_row[0]) || catalogue.models.len() == 1,
+            "the levels are read per model, so a catalogue whose models differ shows it: {per_row:?}"
+        );
+        assert!(
+            catalogue.models.iter().all(|m| !m.options.is_empty()),
+            "and each row caches the option set the agent answered for it: {:?}",
             catalogue.models
         );
         assert_eq!(catalogue.modes.len(), 3, "read-only, agent, agent-full-access");
