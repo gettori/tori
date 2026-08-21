@@ -7,8 +7,12 @@
 // (branch-unit folder), matching how the tab strip already groups tabs, so the
 // restore offer can be made per workspace on first visit.
 //
-// Tab ids are NOT persisted: a restored tab gets a fresh PTY and therefore a
-// fresh id, so the active tab is recorded as an index into the stored order.
+// Tab ids ARE persisted, so a restored tab can come back as *itself*: its pane
+// placement (`sway.tabpanes.v1`) is keyed by tab id, and a reload matches its
+// tabs against what the backend still holds. The focused tab is recorded twice,
+// as an id and as an index into the stored order. The index is not redundant:
+// it is what a build older than this one reads, so a rollback still lands on
+// the right tab.
 
 import { hasOptionPick, hasPick, type DraftPick } from "./chatDraftPick";
 import type { ChatConfigValue } from "./chatTypes";
@@ -28,6 +32,10 @@ const MAX_DRAFT_TEXT = 16_000;
 export type PersistedKind = "shell" | "agent" | "chat";
 
 export type PersistedTab = {
+  // The frontend tab id this entry was written from. Absent on anything a build
+  // older than this one wrote, so every reader treats it as a bonus rather than
+  // a key: restore falls back to minting a fresh id.
+  id?: string;
   title: string;
   cwd: string;
   kind: PersistedKind;
@@ -58,8 +66,13 @@ export type PersistedTab = {
 
 export type WorkspaceTabs = {
   tabs: PersistedTab[];
-  // Index into `tabs` of the tab that was focused, or -1 for none.
+  // Index into `tabs` of the tab that was focused, or -1 for none. Written
+  // alongside `activeId` rather than replaced by it, so an older build reading
+  // this store still refocuses the right tab.
   active: number;
+  // The focused tab's id, absent for none. What this build reads; the index is
+  // the fallback for a store written before ids were kept.
+  activeId?: string;
   savedAt: number;
 };
 
@@ -97,12 +110,16 @@ export function toStore(
   for (const t of open) {
     if (!isPersistable(t.kind)) continue;
     const ws = (out[t.workspace] ??= { tabs: [], active: -1, savedAt: now });
-    if (activeByWorkspace[t.workspace] === t.id) ws.active = ws.tabs.length;
+    if (activeByWorkspace[t.workspace] === t.id) {
+      ws.active = ws.tabs.length;
+      ws.activeId = t.id;
+    }
     // Only a draft: everything else comes back by respawning or resuming, and
     // what was typed into a live chat belongs to a session that will replay its
     // own transcript.
     const draft = t.kind === "chat" && !t.sessionId;
     ws.tabs.push({
+      id: t.id,
       title: t.title,
       cwd: t.cwd,
       kind: t.kind,
@@ -201,13 +218,48 @@ export function parseStore(raw: string | null): TabStore {
         // back to now rather than a record with nothing behind it. Its two
         // extras are checked here, since a hand-edited file reaches the
         // composer and the palette through them.
-        .map((t) => (t.kind === "chat" && !t.sessionId ? { ...t, ...draftFields(t) } : t));
-      if (tabs.length) out[ws] = { tabs, active: typeof e.active === "number" ? e.active : -1, savedAt: e.savedAt };
+        .map((t) => {
+          // An id that is not a non-empty string is dropped rather than carried:
+          // restore mints a fresh one, which is exactly what an older store gets.
+          const base = typeof t.id === "string" && t.id ? t : { ...t, id: undefined };
+          return base.kind === "chat" && !base.sessionId ? { ...base, ...draftFields(base) } : base;
+        });
+      if (tabs.length) {
+        out[ws] = {
+          tabs,
+          active: typeof e.active === "number" ? e.active : -1,
+          ...(typeof e.activeId === "string" && e.activeId ? { activeId: e.activeId } : {}),
+          savedAt: e.savedAt,
+        };
+      }
     }
     return out;
   } catch {
     return {};
   }
+}
+
+/**
+ * The id a stored tab comes back under.
+ *
+ * Its own, so its pane placement still points at it and a reload can recognise
+ * it. A fresh one when nothing was stored, or when something live already holds
+ * that id: `pty_spawn` delivers a tab's `init` exactly once per id, so a second
+ * tab sharing one would be seeded nothing and come back an empty shell.
+ *
+ * `taken` is every id open anywhere, not just this workspace's - ids are global
+ * - and the caller adds each answer to it, so a store naming one id twice still
+ * produces two distinct tabs.
+ */
+export function restoreId(stored: string | undefined, taken: ReadonlySet<string>, fresh: () => string): string {
+  return stored && !taken.has(stored) ? stored : fresh();
+}
+
+/** Which stored entry was focused: by id, falling back to the index a store
+ *  written before ids were kept carries. -1 for none. */
+export function activeIndex(entry: WorkspaceTabs): number {
+  if (entry.activeId) return entry.tabs.findIndex((t) => t.id === entry.activeId);
+  return entry.active;
 }
 
 export function loadTabs(now: number): TabStore {
