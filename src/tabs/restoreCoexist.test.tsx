@@ -175,7 +175,12 @@ describe("restore, per pane", () => {
     const draft = await screen.findByTestId("draft");
     expect(draft.dataset.agent).toBe("claude");
     expect(draftFor(draft.dataset.tab!)).toBe("half a thought");
-    expect(draftPick(draft.dataset.tab!)).toEqual({ model: "sonnet", mode: "plan", effort: null });
+    expect(draftPick(draft.dataset.tab!)).toEqual({
+      model: "sonnet",
+      mode: "plan",
+      effort: null,
+      optionValues: {},
+    });
     // Restored, not started: a draft that spawned on restore would be the eager
     // path back, with a process and a claim nobody asked for.
     expect(invokes.some((i) => i.cmd === "chat_spawn")).toBe(false);

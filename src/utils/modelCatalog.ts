@@ -35,6 +35,10 @@ export type CatalogModel = ChatModelInfo & {
   // that field has to fall back to `value`, or every user-configured row
   // collapses into one.
   userConfigured?: boolean;
+  // The levers this agent has **for this model**, when they depend on it.
+  // Claude's do, because the CLI publishes no options at all and Sway assembles
+  // them per row. An ACP agent's are per session and live on the catalogue.
+  options?: ChatConfigOption[];
 };
 
 export type Catalogue = {
@@ -71,6 +75,21 @@ export type ModelCatalog = {
  *  separate fields. */
 export function cachedModels(catalog: ModelCatalog | undefined): CatalogModel[] {
   return catalog?.catalogue?.models ?? [];
+}
+
+/** The cached levers for one agent on one model, in the shape a live session
+ *  publishes them.
+ *
+ *  Two sources because the agents genuinely differ: claude's options are a
+ *  function of the model, ACP's are a function of the session. A row that
+ *  carries its own answer wins; empty covers "publishes none" and "never
+ *  asked" alike. */
+export function cachedOptions(
+  catalog: ModelCatalog | undefined,
+  model: string | null,
+): ChatConfigOption[] {
+  const row = model === null ? undefined : cachedModels(catalog).find((m) => m.value === model);
+  return row?.options ?? catalog?.catalogue?.options ?? [];
 }
 
 /** How many *distinct* models a catalogue offers.

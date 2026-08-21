@@ -317,6 +317,10 @@ pub fn config_options(options: &[SessionConfigOption]) -> Vec<ChatConfigOption> 
                 name: option.name.clone(),
                 description: option.description.clone().unwrap_or_default(),
                 category: category_word(option.category.as_ref()),
+                // The protocol has no way to publish a lever it will refuse, so
+                // everything an ACP agent lists is one it says it can take.
+                disabled: false,
+                note: String::new(),
                 kind,
             })
         })

@@ -30,6 +30,12 @@ export default function Picker(props: {
    *  `title` never reaches the keyboard (issue 102). */
   tooltip?: string;
   disabled?: boolean;
+  /** Refusing, but still focusable. A bare `disabled` takes the pill out of the
+   *  tab order and its `describedBy` reason with it, which is the one thing a
+   *  control the agent has turned down must not do. */
+  ariaDisabled?: boolean;
+  /** An element whose text describes this pill, announced on focus. */
+  describedBy?: string;
   /** The shown value is a pick that has not reached a turn boundary yet. */
   pending?: boolean;
   /** The shown value is one the user should keep noticing, for as long as it is
@@ -53,6 +59,9 @@ export default function Picker(props: {
       class={styles.pillMenu}
       open={open()}
       onOpenChange={(next) => {
+        // Refused rather than unreachable: the pill still takes focus and still
+        // says why, it just has no menu to offer.
+        if (next && props.ariaDisabled) return;
         setOpen(next);
         if (!next) props.onClose?.();
       }}
@@ -71,10 +80,13 @@ export default function Picker(props: {
           [styles.pillPending]: !!props.pending,
           [styles.pillAttention]: !!props.attention,
           [styles.pillOpen]: open(),
+          [styles.pillRefusing]: !!props.ariaDisabled,
         }}
         aria-label={props.ariaLabel}
         label={props.tooltip}
         disabled={props.disabled}
+        aria-disabled={props.ariaDisabled || undefined}
+        aria-describedby={props.describedBy}
         // Kobalte writes these on the trigger, which is the wrapper, and they
         // cannot be taken off it (`wrapper` removes its `role` and tab stop, not
         // its ARIA). The pill is what the keyboard reaches, so it says this too.

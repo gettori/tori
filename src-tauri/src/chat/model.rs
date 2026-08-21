@@ -280,6 +280,14 @@ pub struct ChatConfigOption {
     /// wrote, or empty for one it left uncategorized.
     #[serde(default)]
     pub category: String,
+    /// A lever this agent has but cannot currently take. Rendered rather than
+    /// hidden, because a control that is absent says nothing about why.
+    #[serde(default)]
+    pub disabled: bool,
+    /// Why it is disabled, in the agent's own words. Empty when nothing is
+    /// disabled; a disabled row without one is a dead control with no reason.
+    #[serde(default)]
+    pub note: String,
     #[serde(flatten)]
     pub kind: ChatConfigKind,
 }
@@ -343,7 +351,7 @@ impl ChatConfigValue {
 /// for its own selection, while `resolved_model` (`claude-sonnet-5`) is what
 /// `system/init.model` reports back. Several distinct `value`s resolve to one
 /// `resolved_model`, so init alone can never say which was picked.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatModelInfo {
     pub value: String,
@@ -1191,13 +1199,19 @@ mod tests {
                         name: "Web search".into(),
                         description: "Let the agent search the web".into(),
                         category: String::new(),
+                        disabled: false,
+                        note: String::new(),
                         kind: ChatConfigKind::Boolean { value: true },
                     },
+                    // One disabled row, so the mirror's two extra fields cross
+                    // the wire in the fixture rather than only as defaults.
                     ChatConfigOption {
                         id: "verbosity".into(),
                         name: "Verbosity".into(),
                         description: String::new(),
                         category: "model_config".into(),
+                        disabled: true,
+                        note: "Not available on this model".into(),
                         kind: ChatConfigKind::Select {
                             current: "concise".into(),
                             choices: vec![ChatConfigChoice {
