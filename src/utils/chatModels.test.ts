@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  cachedModes,
   capabilitiesFor,
   contextPercent,
   contextTokens,
@@ -14,7 +15,7 @@ import {
   selectedModel,
 } from "./chatModels";
 import type { ChatConfig, ChatMode } from "./agents";
-import type { CatalogModel } from "./modelCatalog";
+import type { CatalogModel, ModelCatalog } from "./modelCatalog";
 import type { ChatModeInfo, ChatModelInfo } from "./chatTypes";
 
 // The shape of the real thing, trimmed to what these functions read. Written by
@@ -346,6 +347,24 @@ describe("restoredPicks", () => {
     const models = pickableModels(live(), [], chat);
     expect(restoredPicks(models, { model: "sonnet", mode: "bypassPermissions" }, chat).mode).toBeNull();
   });
+
+  // The read-back half of the missing `live` argument. Every ACP adapter
+  // declares an empty `[[chat.modes]]` on purpose, so checking a remembered
+  // mode against the table alone throws away every mode those agents have.
+  it("restores a mode the agent published even though its adapter declares none", () => {
+    const chat = adapter();
+    chat.modes = [];
+    const agentModes = pickableModes([{ id: "plan", label: "Plan", hint: "" }], chat);
+    const models = pickableModels(live(), [], chat);
+    expect(restoredPicks(models, { model: "sonnet", mode: "plan" }, chat, agentModes).mode).toBe(
+      "plan",
+    );
+    // And the drop still happens for a mode nothing on offer names, which is
+    // what keeps this a check rather than a passthrough.
+    expect(
+      restoredPicks(models, { model: "sonnet", mode: "read-only" }, chat, agentModes).mode,
+    ).toBeNull();
+  });
 });
 
 describe("pickableModes", () => {
@@ -410,6 +429,81 @@ describe("pickableModes", () => {
     expect(modeAfterModelSwitch(model, chat, "read-only", pickableModes(liveModes(), chat))).toBe(
       null,
     );
+  });
+});
+
+// What a draft can say about modes with no session to ask. The two agents
+// answer from different halves of the cache, which is exactly why one function
+// has to own the question.
+describe("cachedModes", () => {
+  const probed = (modes: ChatModeInfo[], current: string | null): ModelCatalog => ({
+    agentId: "codex",
+    state: "probed",
+    catalogue: {
+      version: "1.2.0",
+      probedAtMs: 0,
+      models: [],
+      modes,
+      options:
+        current === null
+          ? []
+          : [
+              {
+                // Found by category, never by this id: `acp.rs` matches that
+                // way because `category` is the spec's word for what an option
+                // is, and an agent's ids are its own vocabulary.
+                id: "collaboration_mode",
+                name: "Mode",
+                description: "",
+                category: "mode",
+                disabled: false,
+                note: "",
+                kind: "select",
+                current,
+                choices: modes.map((m) => ({ value: m.id, label: m.label, description: "" })),
+              },
+            ],
+      account: null,
+    },
+    lastFailure: null,
+  });
+
+  // The three `@agentclientprotocol/codex-acp` 1.2.0 publishes, cached from a
+  // probe rather than from a session.
+  const codexModes = (): ChatModeInfo[] => [
+    { id: "read-only", label: "Read Only", hint: "Ask before writing" },
+    { id: "agent", label: "Agent", hint: "" },
+    { id: "agent-full-access", label: "Agent (full access)", hint: "" },
+  ];
+
+  it("gives an ACP agent its own rows and the mode its session opened in", () => {
+    const chat = adapter();
+    chat.modes = [];
+    const answer = cachedModes(probed(codexModes(), "agent"), chat);
+    expect(answer.modes.map((m) => m.id)).toEqual(["read-only", "agent", "agent-full-access"]);
+    expect(answer.current).toBe("agent");
+  });
+
+  // Claude publishes neither: no modes on the wire and no options at all, so
+  // both halves come off the adapter and `defaultMode` is what names the one a
+  // session would open in.
+  it("gives a declared-mode agent the adapter's rows and its declared default", () => {
+    const chat = adapter();
+    chat.modes = [
+      { id: "default", label: "Ask", hint: "", args: [], default: true },
+      { id: "plan", label: "Plan", hint: "", args: [] },
+    ];
+    const answer = cachedModes(probed([], null), chat);
+    expect(answer.modes.map((m) => m.id)).toEqual(["default", "plan"]);
+    expect(answer.current).toBe("default");
+  });
+
+  // Nothing cached and nothing declared is an answer, not a gap: the draft
+  // renders no selector rather than an empty menu.
+  it("answers nothing at all for an unprobed agent that declares no modes", () => {
+    const chat = adapter();
+    chat.modes = [];
+    expect(cachedModes(undefined, chat)).toEqual({ modes: [], current: null });
   });
 });
 

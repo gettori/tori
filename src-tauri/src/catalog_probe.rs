@@ -170,6 +170,29 @@ pub struct CatalogModel {
     pub options: Vec<ChatConfigOption>,
 }
 
+/// The cache shape a probe writes now.
+///
+/// Bumped when a field a surface reads is **added** to the cache, so a
+/// catalogue written before that field existed is re-probed rather than
+/// rendering as an agent that publishes nothing. Nothing on the wire carries
+/// it: it describes what Sway asked for and kept, not what the agent said.
+///
+/// **Written here and compared only in `modelCatalog.ts::isStale`**, the split
+/// [`Catalogue::version`] already lives under. Two staleness rules in two
+/// languages that can disagree is the failure that moved the first one out of
+/// Rust, and a shape stamp is the same kind of rule.
+pub const CACHE_SHAPE: u32 = 1;
+
+/// What a catalogue carrying no stamp is: the shape from before the field
+/// existed.
+///
+/// A constant of its own rather than [`CACHE_SHAPE`], which moves. Reading an
+/// unstamped cache as "whatever is current" would make every future bump miss
+/// exactly the caches it exists to catch.
+fn shape_before_the_stamp() -> u32 {
+    1
+}
+
 /// What one agent said when it was asked.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -179,6 +202,9 @@ pub struct Catalogue {
     /// un-invalidatable except by an explicit re-check; see
     /// [`ModelCatalog::is_stale`].
     pub version: Option<String>,
+    /// Which shape of cache this is; see [`CACHE_SHAPE`].
+    #[serde(default = "shape_before_the_stamp")]
+    pub shape: u32,
     pub probed_at_ms: u64,
     pub models: Vec<CatalogModel>,
     /// Empty for a agent whose modes are declared in its adapter TOML rather
@@ -470,6 +496,7 @@ fn probe_claude(
                 })
                 .collect(),
             version,
+            shape: CACHE_SHAPE,
             probed_at_ms: now_ms(),
             modes,
             // Claude's are per model, on the rows above. This is the per-session
@@ -543,6 +570,7 @@ pub fn probe_cwd_spellings() -> Vec<String> {
 fn acp_catalogue(version: Option<String>, options: Vec<SessionConfigOption>) -> Catalogue {
     Catalogue {
         version,
+        shape: CACHE_SHAPE,
         probed_at_ms: now_ms(),
         models: acp::model_catalogue(&options)
             .into_iter()
@@ -962,6 +990,7 @@ mod tests {
     fn a_catalogue(version: Option<&str>) -> Catalogue {
         Catalogue {
             version: version.map(str::to_string),
+            shape: CACHE_SHAPE,
             probed_at_ms: 1_700_000_000_000,
             models: vec![CatalogModel {
                 info: ChatModelInfo {

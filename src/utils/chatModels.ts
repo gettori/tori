@@ -29,8 +29,8 @@
 // nothing stands in for it before then. See `contextWindowFor`.
 import { foreignWindow } from "./modelCaps";
 import type { ChatConfig, ChatMode } from "./agents";
-import type { CatalogModel } from "./modelCatalog";
-import type { ChatEffortLevel, ChatModeInfo, ChatModelInfo, Usage } from "./chatTypes";
+import type { CatalogModel, ModelCatalog } from "./modelCatalog";
+import type { ChatConfigOption, ChatEffortLevel, ChatModeInfo, ChatModelInfo, Usage } from "./chatTypes";
 
 export type PickableModel = {
   /** What `--model` takes, and the authority for the picker's own selection:
@@ -329,6 +329,11 @@ export function restoredPicks(
   models: readonly PickableModel[],
   prefs: { model?: string | null; effort?: string | null; mode?: string | null },
   chat: ChatConfig | null = null,
+  /** The agent's own modes, when it published some, from [`cachedModes`].
+   *  Without them every ACP agent is checked against its adapter's empty table,
+   *  so a remembered mode the agent really does offer is dropped on read - the
+   *  same missing argument that left the draft with no mode selector at all. */
+  live: readonly ChatMode[] = [],
 ): { model: PickableModel | null; effort: string | null; mode: string | null } {
   const model = models.find((m) => m.value === prefs.model) ?? null;
   // A stored level has to still be *takeable*, not merely still listed: a
@@ -338,7 +343,7 @@ export function restoredPicks(
     model && prefs.effort && model.effortLevels.some((l) => l.level === prefs.effort && !l.disabled)
       ? prefs.effort
       : null;
-  const modes = capabilitiesFor(model, chat).modes;
+  const modes = capabilitiesFor(model, chat, live).modes;
   const mode = prefs.mode && modes.some((m) => m.id === prefs.mode) ? prefs.mode : null;
   return { model, effort, mode };
 }
@@ -423,6 +428,47 @@ export function pickableModes(
     return live.map((m) => ({ id: m.id, label: m.label || m.id, hint: m.hint, args: [] }));
   }
   return chat?.modes ?? [];
+}
+
+/**
+ * The modes a draft may offer and the one a session opened now would be in,
+ * from the cache rather than from a session that does not exist yet.
+ *
+ * The pre-session half of what [`pickableModes`] and `ChatView`'s
+ * `shownModeValue` do together, and it has to answer for both kinds of agent:
+ *
+ *   - An **ACP** agent publishes its modes on `session/new`, so the probe cached
+ *     them, and the mode it is *in* rides the same answer - the `mode`-category
+ *     option's `current`. Found by category and never by id, for the reason
+ *     `acp.rs` matches that way: `category` is the spec's word for what an
+ *     option is, and Codex calls its effort selector `reasoning_effort`.
+ *   - A **declared-mode** agent (claude) publishes none, so its rows are the
+ *     adapter's table and the mode it opens in is [`defaultMode`]'s.
+ *
+ * The probe's answer describes the probe's own directory, not this project's
+ * ([[concept_no_turn_probe]]), so an agent whose default mode varies by cwd is
+ * described here by a cwd that is nobody's project. Accepted rather than papered
+ * over: the live session corrects it on start, and it is strictly better than a
+ * pill reading "Mode".
+ *
+ * No rows and no current for an agent nobody has probed that declares none
+ * either, which is the honest answer rather than an empty menu.
+ */
+export function cachedModes(
+  catalog: ModelCatalog | undefined,
+  chat: ChatConfig | null,
+): { modes: ChatMode[]; current: string | null } {
+  const cached = catalog?.catalogue;
+  return {
+    modes: pickableModes(cached?.modes ?? [], chat),
+    current: currentModeOf(cached?.options ?? []) ?? defaultMode(chat)?.id ?? null,
+  };
+}
+
+/** The mode an ACP catalogue says the session it was probed from was in. */
+function currentModeOf(options: readonly ChatConfigOption[]): string | null {
+  const mode = options.find((o) => o.category === "mode");
+  return mode?.kind === "select" ? mode.current : null;
 }
 
 /**

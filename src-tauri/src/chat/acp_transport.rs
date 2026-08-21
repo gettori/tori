@@ -1577,6 +1577,43 @@ mod tests {
         assert!(transport.steer(&[ContentBlock::Text { text: "hi".into() }]).is_err());
     }
 
+    /// The route a mode picked in a **draft** takes once its session opens.
+    ///
+    /// A draft has no session, so there is nothing to name a mode against until
+    /// one exists - which is why every ACP adapter declares `mode_args = []`
+    /// (pinned in `agents.rs`) and why the pick has nowhere to go but the wire.
+    ///
+    /// Both halves of the ordering matter. Staging alone must send nothing, or a
+    /// mode would land mid-turn and change the rules under a tool call already
+    /// in flight. And it must go out *before* the first message rather than
+    /// after it, because the mode is what decides whether the agent asks before
+    /// it writes, and the turn it governs is exactly the first one.
+    #[test]
+    fn a_drafts_mode_reaches_the_agent_with_its_first_prompt_and_never_as_argv() {
+        let mut transport = AcpTransport::new("s1", "codex", AcpOverrides::default());
+        let (tx, mut rx) = mpsc::unbounded();
+        transport.commands = Some(tx);
+        *transport.shared.mode_switch.lock().unwrap() = Switch::Available("approval_policy".into());
+
+        transport.set_mode(PermissionMode::new("read-only")).expect("staging a mode the agent offered");
+        assert!(rx.try_recv().is_err(), "staging alone puts nothing on the wire");
+
+        transport.send(&[ContentBlock::Text { text: "go".into() }]).expect("a prompt goes out");
+
+        assert!(
+            matches!(
+                rx.try_recv().ok(),
+                Some(Command::SetConfigOption { ref config_id, what: ConfigOption::Mode, .. })
+                    if config_id == "approval_policy"
+            ),
+            "the mode travels as the agent's own config option, before anything else"
+        );
+        assert!(
+            matches!(rx.try_recv().ok(), Some(Command::Prompt(_))),
+            "and the message follows it rather than the other way round"
+        );
+    }
+
     /// The gate the listing task asks for: an agent that never advertises
     /// `session/list` is never sent it, because a method it does not implement
     /// comes back as a protocol error the user would see as a broken chat.

@@ -45,6 +45,10 @@ export type Catalogue = {
   // The binary version at the moment of the probe. Null is the version-unknown
   // case, which is re-checked only when the user asks.
   version: string | null;
+  // Which shape of cache this is; see `CACHE_SHAPE`. Optional because a
+  // catalogue written before the stamp existed genuinely carries none, and that
+  // absence reads as 1 rather than as the current number.
+  shape?: number;
   probedAtMs: number;
   models: CatalogModel[];
   modes: ChatModeInfo[];
@@ -103,13 +107,20 @@ function withoutMeasuredLevels(model: CatalogModel): CatalogModel {
  *  Two sources because the agents genuinely differ: claude's options are a
  *  function of the model, ACP's are a function of the session. A row that
  *  carries its own answer wins; empty covers "publishes none" and "never
- *  asked" alike. */
+ *  asked" alike.
+ *
+ *  **An empty row list falls through rather than winning.** `??` would stop
+ *  there, and an ACP model row carries `options: []` by design - the agent's
+ *  levers are per session, on the catalogue - so nullish-coalescing shadowed
+ *  the whole ACP set the moment a row was found, which since the draft opens on
+ *  a model is always. Nothing is lost by falling through: a claude row with no
+ *  options falls into a catalogue set that is empty for claude anyway. */
 export function cachedOptions(
   catalog: ModelCatalog | undefined,
   model: string | null,
 ): ChatConfigOption[] {
   const row = model === null ? undefined : cachedModels(catalog).find((m) => m.value === model);
-  return row?.options ?? catalog?.catalogue?.options ?? [];
+  return row?.options?.length ? row.options : (catalog?.catalogue?.options ?? []);
 }
 
 /** How many *distinct* models a catalogue offers.
@@ -127,17 +138,37 @@ export function distinctModelCount(catalog: ModelCatalog | undefined): number {
   return new Set(cachedModels(catalog).map((m) => m.resolvedModel || m.value)).size;
 }
 
-/** Whether what is remembered no longer describes the binary on disk.
+/** The cache shape `catalog_probe.rs` writes now, mirrored from `CACHE_SHAPE`
+ *  there and compared only here.
  *
- *  The same rule as `ModelCatalog::is_stale`, and deliberately the same
- *  shape: version comparison only, never a TTL, and **both unknown-version
- *  cases answer false**. Neither is evidence that anything changed, and
- *  treating absence of evidence as staleness would re-probe a version-less
- *  binary on every read. Such a agent comes back through Check again. */
+ *  Two numbers rather than one because a stamp has to be *written* where the
+ *  probe runs and *judged* where the fields are read, and the alternative -
+ *  Rust deciding staleness too - is the second implementation of one rule that
+ *  `isStale` was moved out of Rust to prevent. A test pins the two equal, so a
+ *  bump that lands in one language fails rather than half-applying.
+ *
+ *  Exported for that test alone; nothing else has any business comparing it. */
+export const CACHE_SHAPE = 1;
+
+/** Whether what is remembered no longer describes what this Sway reads.
+ *
+ *  Two comparisons, never a TTL. **The binary**, on the same rule as
+ *  `ModelCatalog::is_stale` and with **both unknown-version cases answering
+ *  false**: neither is evidence that anything changed, and treating absence of
+ *  evidence as staleness would re-probe a version-less binary on every read.
+ *  Such a agent comes back through Check again.
+ *
+ *  And **the cache's own shape**, which no version comparison can see: a
+ *  catalogue missing a field this build reads describes an older Sway, and the
+ *  binary on disk need not have moved at all. An unstamped catalogue reads as
+ *  shape 1, so introducing the stamp invalidates nothing; bumping the constant
+ *  is the one action that makes anybody re-probe. */
 export function isStale(catalog: ModelCatalog | undefined, currentVersion: string | null): boolean {
-  const recorded = catalog?.catalogue?.version;
-  if (!recorded || !currentVersion) return false;
-  return recorded !== currentVersion;
+  const cached = catalog?.catalogue;
+  if (!cached) return false;
+  if ((cached.shape ?? 1) < CACHE_SHAPE) return true;
+  if (!cached.version || !currentVersion) return false;
+  return cached.version !== currentVersion;
 }
 
 // --- the shared store ---

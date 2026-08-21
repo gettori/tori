@@ -27,7 +27,13 @@ import { openAgentCard } from "../../utils/agentCard";
 import { agentReady, agentSignedOut, agentVersion, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
 import { agentOffReason, enabledChatAgents } from "../../utils/agentEnabled";
-import { capabilitiesFor, restoredPicks, type PickableModel } from "../../utils/chatModels";
+import {
+  cachedModes,
+  capabilitiesFor,
+  modeAfterModelSwitch,
+  restoredPicks,
+  type PickableModel,
+} from "../../utils/chatModels";
 import { keptOptionValues, overlaidOptions } from "../../utils/chatTypes";
 import {
   cachedOptions,
@@ -105,7 +111,17 @@ export default function ChatDraft(props: {
   const options = () => cachedOptions(catalog(), pick().model);
 
   const model = () => models().find((m) => m.value === pick().model) ?? null;
-  const offered = () => capabilitiesFor(model(), findAdapter(props.agentId).chat ?? null);
+  const chatConfig = () => findAdapter(props.agentId).chat ?? null;
+  // One accessor for the agent's own modes, beside `chatConfig` and for the same
+  // reason: the selector, the restore and the model-switch guard must not each
+  // decide separately whether the agent's list or the adapter's table is in
+  // charge. `ChatView` splits the same question the same way.
+  const agentModes = () => cachedModes(catalog(), chatConfig());
+  const offered = () => capabilitiesFor(model(), chatConfig(), agentModes().modes);
+  // What the pill says, on `ChatView`'s rule: the pick, else the mode a session
+  // opened now would be in. A display fallback rather than a pick, so a draft
+  // nobody touched sends nothing and holds its first message on nothing.
+  const shownMode = () => pick().mode ?? agentModes().current;
 
   /**
    * Open on this project's last-used pick, once there is a catalogue to check
@@ -129,8 +145,12 @@ export default function ChatDraft(props: {
    */
   createEffect(() => {
     if (!models().length || hasPick(untrack(() => draftPick(props.tabId)))) return;
-    const chat = findAdapter(props.agentId).chat ?? null;
-    const restored = restoredPicks(models(), chatPrefs(props.workspace), chat);
+    const restored = restoredPicks(
+      models(),
+      chatPrefs(props.workspace),
+      chatConfig(),
+      agentModes().modes,
+    );
     const model = restored.model ?? models()[0];
     if (!model) return;
     setDraftPick(props.tabId, {
@@ -174,7 +194,18 @@ export default function ChatDraft(props: {
       props.onSelectAgent(agentId);
       return;
     }
-    setDraftPick(props.tabId, { model: picked.value });
+    // A mode the new model does not offer is dropped here rather than left to
+    // the menu hiding its row, which is the same walk-around `ChatView` closes:
+    // picking `auto` on a model that has it and then switching to one that does
+    // not leaves the draft still asking for `auto`, which the CLI accepts, exits
+    // 0 on, and silently runs as something else.
+    const mode = modeAfterModelSwitch(
+      picked,
+      findAdapter(props.agentId).chat ?? null,
+      shownMode(),
+      agentModes().modes,
+    );
+    setDraftPick(props.tabId, { model: picked.value, ...(mode !== null ? { mode } : {}) });
   }
 
   function onSend(text: string) {
@@ -255,7 +286,7 @@ export default function ChatDraft(props: {
             />
             <Show when={offered().modes.length > 0}>
               <ModeSelector
-                mode={pick().mode}
+                mode={shownMode()}
                 modes={offered().modes}
                 pending={false}
                 disabled={starting()}
