@@ -907,6 +907,33 @@ pub fn session_running(
     Ok(running_by_pattern(&agent, &id))
 }
 
+/// Is a live `agent` process resuming session `id` that **this Sway is not
+/// driving**?
+///
+/// The question the two routing gates actually ask, and the one
+/// [`session_running`] answers wrongly for them. A chat session's child belongs
+/// to this process, not to the webview: reload the frontend and every tab is
+/// gone while the child is still there, still carrying the session id on its
+/// command line. The pgrep then finds Sway's own child and reports the session
+/// as somebody else's, which routed a reopen onto the PTY surface and got it
+/// refused by the chat claim this same process holds.
+///
+/// A session the chat host still has is not elsewhere: `chat_spawn` rewires it
+/// instead of resuming it, so no second driver is ever created.
+///
+/// **False for ACP**, through [`running_by_pattern`] and not by omission: an ACP
+/// agent's command line names no session, so no process can be attributed to one
+/// - and the only ACP children we could name are our own, which is the case this
+/// answers `false` for anyway.
+#[tauri::command(async)]
+pub fn session_running_elsewhere(
+    state: State<'_, crate::chat::host::ChatState>,
+    id: String,
+    agent: String,
+) -> Result<bool, String> {
+    Ok(running_by_pattern(&agent, &id) && !state.0.is_live(&id))
+}
+
 /// The process-table half of [`session_running`], and the whole of the answer
 /// the ownership registry can use.
 ///

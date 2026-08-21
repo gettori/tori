@@ -4,10 +4,6 @@
   align-items: center;
   display: inline-flex;
   flex: none;
-  margin-right: calc(5px * var(--ui-scale));
-  /* At rest the mark is furniture: it says which agent this is, not that
-     anything is happening. Quieter than the label so a strip of idle tabs reads
-     as one row of titles rather than a row of glyphs. */
   color: var(--fg-subtle);
   position: relative;
 }

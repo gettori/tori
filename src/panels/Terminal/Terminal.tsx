@@ -818,9 +818,14 @@ export default function Terminal(props: {
    * A session selection, routed to whichever surface the user has made default
    * (chat since Phase 12, PTY agent behind the fallback setting).
    *
-   * The `session_running` probe is taken up front rather than inside the PTY
-   * branch, because the route itself depends on it: chat drives a session by
-   * resuming it, which is unsafe against one already running outside Sway.
+   * The liveness probe is taken up front rather than inside the PTY branch,
+   * because the route itself depends on it: chat drives a session by resuming
+   * it, which is unsafe against one already running outside Sway.
+   *
+   * `session_running_elsewhere`, never `session_running`: a chat child outlives
+   * a webview reload while its tab does not, so the plain probe finds Sway's own
+   * process and routes the session onto the PTY surface, where the chat claim
+   * this same Sway holds then refuses it.
    */
   async function openSelectedSession(sel: ResumeTarget) {
     const sessionId = sel.sessionId!;
@@ -832,7 +837,9 @@ export default function Terminal(props: {
     const runningElsewhere =
       hostedHere || settings.chatDefaults.defaultSurface === "agent"
         ? false
-        : await invoke<boolean>("session_running", { id: sessionId, agent: agentId }).catch(() => true);
+        : await invoke<boolean>("session_running_elsewhere", { id: sessionId, agent: agentId }).catch(
+            () => true,
+          );
     const route = routeSelection({
       preference: settings.chatDefaults.defaultSurface,
       hostedHere,
@@ -1205,9 +1212,15 @@ export default function Terminal(props: {
     // refuses correctly on its own, but only after a tab has been opened -
     // checking first means the user is told instead of shown an empty tab
     // wearing a refusal banner.
-    const running = await invoke<boolean>("session_running", { id: sessionId, agent: agentId }).catch(
-      () => false,
-    );
+    //
+    // "Elsewhere" is the whole of the question: one of *our* live chat children
+    // is what a reload leaves behind, and `chat_spawn` rewires that rather than
+    // resuming it. Asking the plain liveness probe here turned every reopen
+    // after a reload into "already running somewhere else".
+    const running = await invoke<boolean>("session_running_elsewhere", {
+      id: sessionId,
+      agent: agentId,
+    }).catch(() => false);
     if (running) {
       emitWith<ToastEvent>(TOAST, {
         message: "That session is already running somewhere else. Close it there first, or fork it.",

@@ -163,6 +163,25 @@ pub fn record(claims: &mut HashMap<String, Claim>, session_id: &str, want: Claim
     claims.insert(session_id.to_string(), want);
 }
 
+/// Point an existing claim at the tab now driving the session.
+///
+/// A remount within one run re-subscribes under the same tab id and needs
+/// nothing; a **webview reload** does not. The child survives it, the tab does
+/// not, and the tab that picks the session back up is a new id. Left alone, the
+/// claim would go on naming a tab nobody can focus - which is the one thing the
+/// tab id is recorded for.
+///
+/// Only ever moves a claim that exists. A rewire is not a claim.
+pub fn retag(claims: &mut HashMap<String, Claim>, session_id: &str, tab_id: &str) -> bool {
+    match claims.get_mut(session_id) {
+        Some(held) => {
+            held.tab_id = tab_id.to_string();
+            true
+        }
+        None => false,
+    }
+}
+
 /// Release a claim, but only if `tab_id` is the tab that holds it.
 ///
 /// The guard matters: a stale close from a tab that already lost the claim would
@@ -476,6 +495,18 @@ impl Registry {
         held_by(&guard, agent, pid_alive)
     }
 
+    /// Move an existing claim onto the tab that has just taken the session over.
+    /// See [`retag`] for why a rewire has to do this at all.
+    pub fn retag(&self, session_id: &str, tab_id: &str) {
+        let mut guard = match self.claims.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        if retag(&mut guard, session_id, tab_id) {
+            let _ = save_claims_to(&self.path, &guard);
+        }
+    }
+
     pub fn release(&self, session_id: &str, tab_id: &str) -> bool {
         let mut guard = match self.claims.lock() {
             Ok(g) => g,
@@ -671,6 +702,33 @@ mod tests {
             decide(&claims, "s1", &claim(Surface::PtyAgent, "tab-b"), clear()),
             ClaimOutcome::Granted { contested: false }
         );
+    }
+
+    /// A webview reload keeps the child and destroys the tab, so the tab that
+    /// picks the session back up has a new id. The claim has to follow it: a
+    /// claim naming a tab nobody can focus is a refusal with no way out.
+    #[test]
+    fn a_rewire_moves_the_claim_onto_the_tab_now_driving_the_session() {
+        let mut claims = HashMap::new();
+        record(&mut claims, "s1", claim(Surface::Chat, "tab-before-reload"));
+        assert!(retag(&mut claims, "s1", "tab-after-reload"));
+        assert_eq!(claims["s1"].tab_id, "tab-after-reload");
+        // And the claim is still the same claim: retag moves a holder, it does
+        // not hand the session to a different surface.
+        assert_eq!(claims["s1"].surface, Surface::Chat);
+        assert_eq!(
+            decide(&claims, "s1", &claim(Surface::Chat, "tab-third"), live()),
+            ClaimOutcome::AlreadyMineFocus { tab_id: "tab-after-reload".to_string() }
+        );
+    }
+
+    /// A rewire is not a claim. Retagging an id nobody holds would mint one
+    /// behind the claim path's back, with no probe run and no refusal possible.
+    #[test]
+    fn retagging_an_unheld_session_records_nothing() {
+        let mut claims = HashMap::new();
+        assert!(!retag(&mut claims, "s1", "tab-a"));
+        assert!(claims.is_empty());
     }
 
     /// A late close from a tab that no longer holds the claim must not release
