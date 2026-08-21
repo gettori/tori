@@ -140,20 +140,23 @@ base_args = [
   # measurement of a working but unlisted flag, which is exactly the kind of
   # thing `verified_against` above exists to re-check on a version bump.
   "--permission-prompt-tool", "stdio",
-  # The fast-mode opt-in, and nothing more than the opt-in.
+  # NOT `--settings {"fastMode":true}`, and the reason is worth keeping.
   #
-  # Measured on 2.1.238: the CLI gates fast mode on
-  # `pn("flagSettings")?.fastMode === true`, and without it a `-p` session
-  # reports `fast_mode_disabled_reason: "sdk_opt_in_required"` - which is what
-  # Sway used to quote back at the user as a permanent refusal. `--settings` is
-  # the source that fills `flagSettings`, and passing it moves the reason on to
-  # whatever the *account* actually says (here `extra_usage_disabled`, meaning
-  # usage credits are off).
+  # It was here for one commit, on the reading that the flag was an *opt-in*:
+  # without it a `-p` session reports `fast_mode_disabled_reason:
+  # "sdk_opt_in_required"`, and passing it moves the reason on to whatever the
+  # account says. That much is measured and true. What it is not is inert. The
+  # CLI's own settings schema reads "When true, fast mode is enabled. When
+  # absent or false, fast mode is off", so on any account that *can* serve fast
+  # mode, this turned it on for every chat Sway opened.
   #
-  # This enables nothing on its own. `fast_mode_state` stays `off`; the flag only
-  # decides whether the lever exists to be reached at all, so the account keeps
-  # every say it had over whether fast mode ever serves.
-  "--settings", "{\"fastMode\":true}",
+  # It looked harmless only because the machine it was measured on has usage
+  # credits disabled, so `fast_mode_state` stayed `off` and the flag appeared to
+  # do nothing. A measurement that agrees with a wrong reading is the most
+  # expensive kind.
+  #
+  # Fast mode is a thing the user turns on, and it costs them credits, so it
+  # belongs on a control rather than in the args every chat is spawned with.
 ]
 session_id_args = ["--session-id", "{id}"]
 resume_args = ["--resume", "{id}"]
