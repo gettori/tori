@@ -103,6 +103,13 @@ export default function ChatDraft(props: {
    * refused for. Nothing is filed by agent here - the catalogue is the filter,
    * and a pick that survives it is one this agent really does take.
    *
+   * With nothing remembered, or nothing remembered that survives the check, it
+   * opens on the agent's own first row instead of on no model at all. That row
+   * is the agent's default - claude publishes it under the name - so naming it
+   * sends what the CLI would have run anyway, and the pill and the effort
+   * control get something to describe rather than standing there saying
+   * "Default" about a model nothing has picked.
+   *
    * Runs once per draft, guarded on the pick being empty: a user who has chosen
    * something (including by switching agents, which sets a model) has answered
    * this question already.
@@ -111,9 +118,10 @@ export default function ChatDraft(props: {
     if (!models().length || hasPick(untrack(() => draftPick(props.tabId)))) return;
     const chat = findAdapter(props.agentId).chat ?? null;
     const restored = restoredPicks(models(), chatPrefs(props.workspace), chat);
-    if (!restored.model) return;
+    const model = restored.model ?? models()[0];
+    if (!model) return;
     setDraftPick(props.tabId, {
-      model: restored.model.value,
+      model: model.value,
       effort: restored.effort,
       mode: restored.mode,
     });
