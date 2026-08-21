@@ -313,7 +313,10 @@ const sessionHomes = createMemo(() => {
 });
 
 function sessionDotInputs(id: string): SessionDotInputs {
-  const tab = liveTabs().find((t) => t.sessionId === id);
+  // A tab short of `live` hosts nothing, so it is not the "live tab" the dot
+  // rules mean: an inert tab would otherwise turn a dead session's dot solid
+  // and suppress the hollow one that says "running, with nothing driving it".
+  const tab = liveTabs().find((t) => t.sessionId === id && t.state === "live");
   const chat = liveChats().find((c) => c.sessionId === id);
   const home = sessionHomes().get(id);
   return {

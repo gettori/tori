@@ -58,7 +58,15 @@ import { type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
 import { liveSessionStatuses, sessionStatus } from "../../utils/sessionActivity";
 import { sessions } from "../../utils/sessionStore";
-import { loadTabs, saveTabs, toStore, mergeStore, restoreId, activeIndex } from "../../utils/tabPersist";
+import {
+  loadTabs,
+  saveTabs,
+  toStore,
+  mergeStore,
+  restoreId,
+  activeIndex,
+  type WorkspaceTabs,
+} from "../../utils/tabPersist";
 import { debounce } from "../../utils/debounce";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
@@ -68,11 +76,16 @@ import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwners
 import { routeSelection, restoreRoute } from "../../utils/sessionSurface";
 import { chatPrefs, settings } from "../Settings/settingsStore";
 import {
+  advanceTabState,
   canRevertToDraft,
+  dropTabState,
   isChatDraft,
   open,
+  seedInert,
   setOpen,
   setTabTitles,
+  stateOnActivate,
+  tabState,
   tabTitle,
   activeWorkspace,
   setActiveWorkspace,
@@ -226,10 +239,24 @@ export default function Terminal(props: {
     setOffered(new Set(offered()).add(ws));
   }
 
+  // How many restores are in flight. A count rather than a flag because a
+  // workspace switch can start a second one while the first is still awaiting,
+  // and the first to finish must not un-suppress the other.
+  const [restoring, setRestoring] = createSignal(0);
+
   async function acceptRestore(ws: string) {
     markOffered(ws);
     const entry = restorable[ws];
     if (!entry) return;
+    setRestoring(restoring() + 1);
+    try {
+      await restoreInto(ws, entry);
+    } finally {
+      setRestoring(restoring() - 1);
+    }
+  }
+
+  async function restoreInto(ws: string, entry: WorkspaceTabs) {
     // Waited for rather than assumed: a stored draft names its harness, and
     // checking that name against a list that has not arrived would answer "no
     // such agent" for every one of them and restore the lot onto claude.
@@ -262,8 +289,16 @@ export default function Terminal(props: {
     // already holds. Read live rather than from a snapshot taken up front: this
     // loop awaits, and `openOrActivate` lands its tab synchronously, so `open()`
     // is the only thing that stays true across both.
-    const idFor = (stored: string | undefined, fresh: () => string) =>
-      restoreId(stored, new Set(open().map((t) => t.id)), fresh);
+    //
+    // Named for the seeding, not the id: the write is the whole of what makes a
+    // restore lazy. Seeded before the tab exists, so a restored tab never mounts
+    // a surface or spawns a process, not even for the frame between opening it
+    // and recording what it is.
+    const inertId = (stored: string | undefined, fresh: () => string) => {
+      const id = restoreId(stored, new Set(open().map((t) => t.id)), fresh);
+      seedInert(id);
+      return id;
+    };
 
     for (const [i, d] of entry.tabs.entries()) {
       // Restore is routed on the stored kind alone, never on the default-surface
@@ -281,7 +316,8 @@ export default function Terminal(props: {
           d.title,
           storedChatAgent(d.program),
           undefined,
-          idFor(d.id, chatId),
+          inertId(d.id, chatId),
+          false,
         );
         if (d.text) setDraft(id, d.text);
         if (d.pick) setDraftPick(id, d.pick);
@@ -295,7 +331,7 @@ export default function Terminal(props: {
           missingSessions++;
           continue;
         }
-        const id = idFor(d.id, chatId);
+        const id = inertId(d.id, chatId);
         openOrActivate({
           id,
           title: d.title,
@@ -311,7 +347,9 @@ export default function Terminal(props: {
           // rides along only so the tab keeps saying the agent remembers turns
           // that were undone, which is still true.
           rewindTo: d.rewindTo,
-        });
+        },
+        false,
+      );
         producedId[i] = id;
         continue;
       }
@@ -327,21 +365,31 @@ export default function Terminal(props: {
         const agentId = s.agent ?? "claude";
         // focusOrResume already focuses an existing tab rather than spawning a
         // second one, so an already-live session never double-spawns.
-        await focusOrResume({
-          sessionId: s.id,
-          agent: agentId,
-          sessionFile: s.path,
-          sessionTitle: s.name || s.title,
-          sessionCwd: s.cwd,
-          folderPath: ws,
-        });
-        producedId[i] = open().find((t) => t.sessionId === s.id)?.id;
+        const id = inertId(d.id, shellId);
+        await focusOrResume(
+          {
+            sessionId: s.id,
+            agent: agentId,
+            sessionFile: s.path,
+            sessionTitle: s.name || s.title,
+            sessionCwd: s.cwd,
+            folderPath: ws,
+          },
+          id,
+          false,
+        );
+        const landed = open().find((t) => t.sessionId === s.id)?.id;
+        producedId[i] = landed;
+        // A tab already hosting this session is focused rather than opened, so
+        // the id seeded above was never taken up; leaving its record behind
+        // would sit there inert for a tab that does not exist.
+        if (landed !== id) dropTabState(id);
         continue;
       }
       // A plain shell, or an agent tab whose session was never attributed: come
       // back as the same shell-hosted tab, seeded again if it had an init.
       const cwd = await cwdFor(d.cwd);
-      const id = idFor(d.id, shellId);
+      const id = inertId(d.id, shellId);
       openOrActivate({
         id,
         title: d.title,
@@ -350,8 +398,10 @@ export default function Terminal(props: {
         kind: d.kind,
         program: d.program,
         args: d.args,
-        ...(d.kind === "agent" && d.program ? { init: agentInit(d.program, d.args) } : {}),
-      });
+          ...(d.kind === "agent" && d.program ? { init: agentInit(d.program, d.args) } : {}),
+        },
+        false,
+      );
       producedId[i] = id;
     }
 
@@ -399,7 +449,10 @@ export default function Terminal(props: {
   const detachedLive = createMemo(() => {
     const ws = activeWorkspace();
     if (!ws) return 0;
-    const hosted = new Set(open().map((t) => t.sessionId));
+    // Only a live tab hosts its session. A restored tab nobody reached for
+    // names a session it is not driving, and counting it as hosted would hide
+    // exactly the case this button is about: running here, with no tab on it.
+    const hosted = new Set(open().filter((t) => tabState(t) === "live").map((t) => t.sessionId));
     return (sessions()[ws] ?? []).filter(
       (s) => !hosted.has(s.id) && sessionStatus(s.id) !== "none",
     ).length;
@@ -414,9 +467,13 @@ export default function Terminal(props: {
     return ws.split("/").filter(Boolean).slice(-2);
   };
 
-  // Surface the live tabs (id + workspace + kind + soft sessionId + agent) so
-  // the sidebar can count what's running for its confirms and probe the right
-  // per-agent pgrep pattern for the status dot.
+  // Surface the live tabs (id + workspace + kind + soft sessionId + agent +
+  // state) so the sidebar can count what's running for its confirms and probe
+  // the right per-agent pgrep pattern for the status dot.
+  //
+  // `state` rides along because since lazy restore a tab is no longer proof
+  // that anything is running; every consumer reads it rather than the tab's
+  // mere existence.
   createEffect(() =>
     props.onOpenChange?.(
       open().map((o) => ({
@@ -425,6 +482,7 @@ export default function Terminal(props: {
         kind: o.kind,
         sessionId: o.sessionId,
         agent: o.kind === "agent" || o.kind === "chat" ? agentIdForProgram(o.program) : undefined,
+        state: tabState(o),
       })),
     ),
   );
@@ -722,11 +780,15 @@ export default function Terminal(props: {
     unlistenSessions?.();
   });
 
-  function openOrActivate(t: OpenTerm) {
+  // `focus` is false for a restore, which brings a whole strip back at once and
+  // then focuses the one tab that was in front. Focusing each in turn would
+  // *wake* each in turn - a tab on screen is not inert - so a lazy restore
+  // would spawn the very processes it exists to avoid.
+  function openOrActivate(t: OpenTerm, focus = true) {
     if (!open().some((o) => o.id === t.id)) {
       setOpen([...open(), t]);
     }
-    focusTab(t.workspace, t.id);
+    if (focus) focusTab(t.workspace, t.id);
   }
 
   // A fresh `+Claude` tab carries no sessionId until its transcript
@@ -741,7 +803,12 @@ export default function Terminal(props: {
     const claimed = new Set(open().map((t) => t.sessionId).filter((x): x is string => !!x));
     const byWorkspace = new Map<string, OpenTerm[]>();
     for (const t of open()) {
-      if (t.kind !== "agent" || t.sessionId) continue;
+      // A tab short of `live` hosts nothing, so no session can have appeared
+      // because of it. It also carries no `spawnedAt`, and the `?? 0` floor
+      // below would then make every unclaimed session in the folder a
+      // candidate - so an inert tab would not merely fail to match, it would
+      // match the wrong session.
+      if (t.kind !== "agent" || t.sessionId || tabState(t) !== "live") continue;
       byWorkspace.set(t.workspace, [...(byWorkspace.get(t.workspace) ?? []), t]);
     }
     for (const [workspace, tabs] of byWorkspace) {
@@ -850,7 +917,12 @@ export default function Terminal(props: {
   async function openSelectedSession(sel: ResumeTarget) {
     const sessionId = sel.sessionId!;
     const agentId = agents().some((a) => a.id === sel.agent) ? sel.agent! : "claude";
-    const hostedHere = open().some((t) => t.sessionId === sessionId);
+    // Hosting means *driving*, so a tab short of `live` does not count. It also
+    // must not: `hostedHere` short-circuits the probe below to false, so an
+    // inert tab naming this session would send a session that is genuinely
+    // running elsewhere to the chat surface, which drives it by resuming it -
+    // the one operation measured to corrupt a transcript.
+    const hostedHere = open().some((t) => t.sessionId === sessionId && tabState(t) === "live");
     // Only worth asking when the answer can change the route. A tab of ours
     // already hosting it short-circuits to `focus` either way, and the PTY
     // branch runs its own probe for the retype decision.
@@ -872,13 +944,20 @@ export default function Terminal(props: {
     await focusOrResume(sel);
   }
 
-  async function focusOrResume(sel: ResumeTarget) {
+  // `id` is handed in by a restore, which seeds it inert before calling so the
+  // resumed tab comes back as a strip entry rather than a spawned shell. Every
+  // other caller is opening a tab that has never existed.
+  //
+  // A restore also asks for no focus: it brings a whole strip back and focuses
+  // the one tab that was in front afterwards, and focusing here would wake this
+  // one on the way past.
+  async function focusOrResume(sel: ResumeTarget, id: string = shellId(), focus = true) {
     const sessionId = sel.sessionId!;
     const agentId = agents().some((a) => a.id === sel.agent) ? sel.agent! : "claude";
     const a = findAdapter(agentId);
     const existing = open().find((t) => t.sessionId === sessionId);
     if (existing) {
-      focusTab(existing.workspace, existing.id);
+      if (focus) focusTab(existing.workspace, existing.id);
       // A chat tab already drives this session over stream-json. It hosts no
       // PTY, so there is nothing to retype into, and a second driver would
       // corrupt the transcript anyway.
@@ -902,16 +981,18 @@ export default function Terminal(props: {
       ...(await hookArgs(agentId)),
     ];
     openOrActivate({
-      id: shellId(),
+      id,
       title: sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
       cwd: sel.sessionCwd || sel.folderPath,
       workspace: sel.folderPath,
       kind: "agent",
       program: a.program,
       args,
-      init: agentInit(a.program, args),
-      sessionId,
-    });
+        init: agentInit(a.program, args),
+        sessionId,
+      },
+      focus,
+    );
   }
 
   // Liveness for the safe-send probe-gate: not-ready until the AGENT process
@@ -1022,9 +1103,11 @@ export default function Terminal(props: {
     baseName: string,
     agentId: string,
     session?: { sessionId: string; forkFrom?: string; rewindTo?: number },
-    // Restore hands its stored id in so the tab comes back as itself; every
-    // other caller is opening a tab that has never existed.
+    // Restore hands its stored id in so the tab comes back as itself, and takes
+    // the focus itself once the whole strip is back; every other caller is
+    // opening a tab that has never existed and wants to be looking at it.
     id: string = chatId(),
+    focus = true,
   ): string {
     openOrActivate({
       id,
@@ -1037,10 +1120,12 @@ export default function Terminal(props: {
       cwd,
       workspace,
       kind: "chat",
-      program: agentId,
-      args: [],
-      ...session,
-    });
+        program: agentId,
+        args: [],
+        ...session,
+      },
+      focus,
+    );
     return id;
   }
 
@@ -1295,7 +1380,11 @@ export default function Terminal(props: {
     // A chat tab hosts no PTY: `pty_kill` on its id would find nothing, and the
     // stream-json child would keep running (and keep its session id claimed).
     // Unmounting ChatView ends it; this only has to not kill the wrong thing.
-    if (t?.kind !== "chat") invoke("pty_kill", { id }).catch(() => {});
+    //
+    // A tab short of `live` has nothing behind it either - no PTY was ever
+    // spawned - so the same reasoning applies to a restored tab nobody reached
+    // for, whatever its kind.
+    if (t && t.kind !== "chat" && tabState(t) === "live") invoke("pty_kill", { id }).catch(() => {});
     clearRefusal(id);
     // The composer belongs to the tab, so it is emptied when the tab goes and
     // not before: its surface unmounts on a first send and on a revert too, and
@@ -1320,6 +1409,7 @@ export default function Terminal(props: {
     }
     setOpen(open().filter((o) => o.id !== id));
     if (t) forgetTab(t.workspace, id);
+    dropTabState(id);
     dropStageHost(id);
   }
 
@@ -1382,6 +1472,11 @@ export default function Terminal(props: {
    *  render the resting mark rather than nothing, so the strip does not twitch
    *  as a session starts. */
   function tabStatus(t: OpenTerm): SessionStatus | null {
+    // A tab short of `live` is driving nothing, whatever its session id says.
+    // "none" rather than null: null is "not known yet" and renders the resting
+    // mark, which is the right answer for a session that is starting and the
+    // wrong one for a restored tab that has not been reached for.
+    if (tabState(t) !== "live") return "none";
     if (t.kind === "chat") return chatStatus(t);
     return t.sessionId ? sessionStatus(t.sessionId) : null;
   }
@@ -1435,9 +1530,57 @@ export default function Terminal(props: {
   // A memo, not a bare call: `active` feeds fit/focus effects and the
   // `chat_set_visible` flip, and a getter prop re-runs them whenever anything
   // behind onScreen changes. The memo makes them fire on real edges only.
+  /**
+   * Has this tab been reached for yet, and can it ever be un-reached?
+   *
+   * Latched: once true it stays true for the life of the row, so the surface it
+   * gates is mounted once and never gated off again. `advanceTabState` already
+   * refuses every backward move, but a `Show` that *can* close is a destroy
+   * gate for a live PTY ([[lesson_a_mount_gate_is_a_destroy_gate]]), and this
+   * makes that structurally impossible rather than a property of another file.
+   */
+  const wokenMemo = (t: OpenTerm) => createMemo<boolean>((was) => was || tabState(t) !== "inert", false);
+
+  /**
+   * A tab that is on screen is not inert: being looked at is the whole of what
+   * "reached for" means.
+   *
+   * An effect rather than a branch inside `selectTab`, so every path that can
+   * put a tab on screen wakes it the same way - a click, a restore's refocus,
+   * a pane becoming visible, the `tabs[0]` fallback when nothing is recorded.
+   * Re-running is free: `advanceTabState` refuses anything that is not a step
+   * forward, and `stateOnActivate` hands it the tab's own state once it is past
+   * inert.
+   */
+  const wakeOnScreen = (t: OpenTerm, active: () => boolean) =>
+    createEffect(() => {
+      // A restore brings a whole strip back one tab at a time, and `visibleId`
+      // falls back to the first tab whenever the workspace has no recorded
+      // active one - so mid-restore, whichever tab was created first reads as
+      // on screen and would wake. Nothing in a restore has been reached for
+      // until it settles and the stored active tab is focused.
+      //
+      // A signal, so clearing it re-runs this effect: the tab that is genuinely
+      // in front then wakes, and no wake is lost.
+      if (restoring()) return;
+      if (active()) advanceTabState(t, stateOnActivate(t));
+    });
+
   const ptyStage = (u: UnifiedTab) => {
     const term = asTerm(u) as PtyTab;
     const active = createMemo(() => onScreen(term));
+    const woken = wokenMemo(term);
+    wakeOnScreen(term, active);
+    // No fallback: an inert tab is a strip entry and nothing else, so there is
+    // no PTY to spawn and nothing to draw. A terminal kind has no readable
+    // middle state - a shell with no process has nothing to show.
+    //
+    // `Show` defers its children until the condition holds, which is what keeps
+    // `TerminalView` (and its `pty_spawn`) from being built for a tab nobody has
+    // reached for. Pinned by the restore suite, not by reading the compiler.
+    return <Show when={woken()}>{ptySurface(term, active)}</Show>;
+  };
+  const ptySurface = (term: PtyTab, active: () => boolean) => {
     return (
       <TerminalView
         id={term.id}
@@ -1453,9 +1596,47 @@ export default function Terminal(props: {
       />
     );
   };
+  /**
+   * A restored chat that has been opened but never started.
+   *
+   * The placeholder Phase 3 replaces with the session's own transcript, read
+   * off disk. It exists so Phase 2 ships something rather than an empty pane:
+   * the tab says what it is, and starting it is one press away.
+   */
+  const UnstartedChat = (p: { onStart: () => void }) => (
+    <div class={styles.termUnstarted} data-testid="chat-unstarted">
+      <span>This session is not running.</span>
+      <Button variant="primary" size="sm" onClick={p.onStart}>
+        Resume it
+      </Button>
+    </div>
+  );
+
   const chatStage = (u: UnifiedTab) => {
     const t = asTerm(u);
     const active = createMemo(() => onScreen(t));
+    const woken = wokenMemo(t);
+    wakeOnScreen(t, active);
+    // A chat that has been reached for but not started: it holds a session id
+    // from a previous run, and nothing is driving it. Phase 3 replaces this
+    // with the session's own transcript, read from disk; for now it is the
+    // sentence and the control that starts it, so the state is shippable.
+    //
+    // A draft is deliberately not this: it has no session at all, and
+    // `ChatDraft` below is already exactly "not started, with the control".
+    const unstarted = () => tabState(t) === "open" && !isChatDraft(t);
+    // Nested rather than a `Switch`, so the inner gate only ever opens *after*
+    // the outer one: a chat is never built before it has been reached for, and
+    // `ChatView` is never built before it has been started.
+    return (
+      <Show when={woken()}>
+        <Show when={!unstarted()} fallback={<UnstartedChat onStart={() => advanceTabState(t, "live")} />}>
+          {chatSurface(t, active)}
+        </Show>
+      </Show>
+    );
+  };
+  const chatSurface = (t: OpenTerm, active: () => boolean) => {
     // No session id means nothing has been started here yet: this tab is a
     // draft, and the draft surface is all of it. Decided here rather than inside
     // the chat, which is what lets every session-shaped thing `ChatView` does
@@ -1660,6 +1841,10 @@ export default function Terminal(props: {
     title: (u) => tabTitle(asTerm(u)),
     tooltip: (u) => {
       const t = asTerm(u);
+      // An inert tab looks like every other entry in the strip, so the hover
+      // text is where it says it is only an entry. Without it a restored strip
+      // reads as a dozen running things.
+      if (tabState(t) === "inert") return `${t.cwd} - not started, open it to load it`;
       return blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd;
     },
     renderMenuItem: termMenuItem,

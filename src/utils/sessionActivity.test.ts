@@ -39,6 +39,7 @@ const {
   probeBatch,
   refreshTailStates,
   sessionStatus,
+  sessionDot,
   sessionCertainty,
   liveSessionDots,
   liveSessionStatuses,
@@ -72,7 +73,7 @@ const tab = (id: string, sessionId: string) => ({
   workspace: FOLDER,
   kind: "agent" as const,
   sessionId,
-  agent: "claude" as const,
+  agent: "claude" as const, state: "live" as const,
 });
 
 // Fill the session store the way a real scan would, so the memos below see the
@@ -91,6 +92,27 @@ describe("the status a PTY agent tab composes to", () => {
     bridge.calls.length = 0;
     bridge.running = [];
     bridge.tail = null;
+  });
+
+  // An inert tab is a restored strip entry with nothing behind it. Reading it
+  // as a live tab would turn a running session's dot solid ("we are driving
+  // this") and suppress the hollow one that means "running, nobody on it".
+  it("does not read an inert tab as a live one", async () => {
+    await seedSessions([meta("s1", "main")]);
+    noteLiveTabs([{ ...tab("t1", "s1"), state: "inert" as const }]);
+    bridge.running = ["s1"];
+    await probeBatch([{ id: "s1", agent: "claude" }]);
+
+    expect(sessionDot("s1")).toBe("hollow");
+  });
+
+  it("reads a live tab as one, which is what makes the same session solid", async () => {
+    await seedSessions([meta("s1", "main")]);
+    noteLiveTabs([tab("t1", "s1")]);
+    bridge.running = ["s1"];
+    await probeBatch([{ id: "s1", agent: "claude" }]);
+
+    expect(sessionDot("s1")).not.toBe("hollow");
   });
 
   it("moves with each of the three measurements in turn", async () => {
@@ -177,7 +199,7 @@ describe("the two tiers in one list", () => {
   // loops if the PTY half did not require an agent tab.
   it("does not also count a chat as a PTY tab", async () => {
     await seedSessions([meta("c1", "main")]);
-    noteLiveTabs([{ id: "chat:1", workspace: FOLDER, kind: "chat", sessionId: "c1" }]);
+    noteLiveTabs([{ id: "chat:1", workspace: FOLDER, kind: "chat", sessionId: "c1", state: "live" }]);
     setLiveChat({
       sessionId: "c1",
       sessionName: "the chat",

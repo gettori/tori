@@ -54,7 +54,7 @@ const ptySession = {
 };
 
 const liveTabs = [
-  { id: "tab-1", workspace: MAIN, kind: "agent" as const, sessionId: "pty-1", agent: "claude" as const },
+  { id: "tab-1", workspace: MAIN, kind: "agent" as const, sessionId: "pty-1", agent: "claude" as const, state: "live" as const },
 ];
 
 const bridge = vi.hoisted(() => ({

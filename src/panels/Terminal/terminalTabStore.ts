@@ -79,6 +79,97 @@ export const isChatDraft = (t: OpenTerm) => t.kind === "chat" && !t.sessionId;
  */
 export const canRevertToDraft = (t: OpenTerm) => t.kind === "chat" && !t.forkFrom && !t.resume;
 
+/**
+ * How much of a tab exists yet.
+ *
+ * - `inert`: a strip entry and nothing else. No surface mounted, no process, no
+ *   claim. A restored tab starts here, and reaching for it is what builds it.
+ * - `open`: the surface is mounted and can be read, but nothing is running.
+ * - `live`: a PTY, or a chat child, is attached.
+ *
+ * Monotonic. Nothing walks a tab back: every step forward spawns or mounts
+ * something a step back would have to tear down, and tearing down is what
+ * closing a tab is for.
+ */
+export type TabState = "inert" | "open" | "live";
+
+const RANK: Record<TabState, number> = { inert: 0, open: 1, live: 2 };
+
+/**
+ * The states this kind passes through, in order.
+ *
+ * Only chat has `open`. A PTY with no process has nothing to render, so there
+ * is no readable middle for a terminal kind to sit in - the first reach for one
+ * spawns it.
+ */
+export const statesFor = (kind: TabKind): TabState[] =>
+  kind === "chat" ? ["inert", "open", "live"] : ["inert", "live"];
+
+/**
+ * Where a tab nothing has recorded a state for sits.
+ *
+ * Every tab opened by a user gesture is already as far along as it goes: a
+ * shell spawns its PTY on mount, a fork or a resume opens with its session, and
+ * a new chat is `open` until its first send mints one. Only a restore has a tab
+ * that is less than that, and it says so explicitly.
+ */
+const defaultState = (t: OpenTerm): TabState => (isChatDraft(t) ? "open" : "live");
+
+// Keyed by tab id, in a signal rather than a field on `OpenTerm`, for the
+// reason `tabTitles` below is: the strip keys tabs by identity (gotcha #64) and
+// never re-renders a still-mounted tab, so a plain-property read would not
+// repaint when a tab wakes up. A signal read does.
+const [tabStates, setTabStates] = createSignal<Record<string, TabState>>({});
+
+export const tabState = (t: OpenTerm): TabState => tabStates()[t.id] ?? defaultState(t);
+
+/**
+ * Move a tab forward, or refuse.
+ *
+ * Monotonic by construction: a state this kind does not have, or one at or
+ * behind where the tab already is, is refused rather than clamped, so a caller
+ * that meant to go back finds out here instead of appearing to work.
+ */
+export function advanceTabState(t: OpenTerm, next: TabState): boolean {
+  if (!statesFor(t.kind).includes(next)) return false;
+  if (RANK[next] <= RANK[tabState(t)]) return false;
+  setTabStates({ ...tabStates(), [t.id]: next });
+  return true;
+}
+
+/**
+ * Start a tab at `inert`.
+ *
+ * The one write that does not move forward, which is why it is not
+ * `advanceTabState`: it says where a tab *begins*, before there is a tab. Only
+ * a restore has anything to say here. Seeding an id that already carries a
+ * state is refused, since that would be the backward move the model exists to
+ * prevent.
+ */
+export function seedInert(id: string): void {
+  if (id in tabStates()) return;
+  setTabStates({ ...tabStates(), [id]: "inert" });
+}
+
+/**
+ * The one step activating this tab takes.
+ *
+ * An inert tab wakes up; anything further along stays exactly where it is, so
+ * clicking a tab twice is not two steps, and clicking an already-open draft is
+ * not a spawn.
+ */
+export const stateOnActivate = (t: OpenTerm): TabState =>
+  tabState(t) === "inert" ? statesFor(t.kind)[1] : tabState(t);
+
+/** A closed tab leaves no state behind, or a future tab reusing the id would
+ *  inherit it (restore reuses stored ids since Phase 1). */
+export function dropTabState(id: string): void {
+  if (!(id in tabStates())) return;
+  const next = { ...tabStates() };
+  delete next[id];
+  setTabStates(next);
+}
+
 const [open, setOpen] = createSignal<OpenTerm[]>([]);
 // Live tab labels that can change after a tab is created (a session rename),
 // keyed by tab id and overriding OpenTerm.title when present. Kept in a signal
@@ -132,6 +223,7 @@ export {
 export function resetTerminalTabModel() {
   setOpen([]);
   setTabTitles({});
+  setTabStates({});
   setActiveWorkspace(null);
   setActiveByWorkspace({});
 }

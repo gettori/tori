@@ -59,7 +59,7 @@ const liveTabs = [
     workspace: folderOf(HIDDEN_LABEL),
     kind: "agent" as const,
     sessionId: onHidden.id,
-    agent: "claude" as const,
+    agent: "claude" as const, state: "live" as const,
   },
 ];
 
