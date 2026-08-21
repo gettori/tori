@@ -324,7 +324,7 @@ describe("what a History row can do", () => {
   it("keeps its shape between idle and executing, and badges only a request", async () => {
     bridge.running = ["s1"];
     noteLiveTabs([
-      { id: "tab-1", workspace: REPO, kind: "agent", sessionId: "s1", agent: "claude" },
+      { id: "tab-1", workspace: REPO, kind: "agent", sessionId: "s1", agent: "claude", state: "live" },
     ]);
     await probeBatch([{ id: "s1", agent: "claude" }]);
     await open();

@@ -19,6 +19,15 @@ export type LiveTab = {
   // Agent program for a resumed/spawned agent tab; lets a session-row probe
   // (session_running) pick the right per-agent pgrep pattern.
   agent?: AgentId;
+  // How much of the tab exists (see `TabState` in terminalTabStore). Since
+  // lazy restore, a tab is no longer proof that anything is running: a
+  // restored strip is full of entries with no process behind them, and every
+  // consumer that read "has a tab" as "is running" has to read this instead.
+  //
+  // The dangerous direction is the undercount. A destructive confirm probes
+  // only the sessions its tabs do *not* already name, so an inert tab holding
+  // a session id would mask a session that genuinely is running.
+  state: "inert" | "open" | "live";
 };
 
 export const FOCUS_SEARCH = "sway:focus-search";

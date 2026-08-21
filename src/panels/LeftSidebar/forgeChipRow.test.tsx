@@ -320,7 +320,7 @@ describe("a failing check reaching the session that owns the branch", () => {
     agent: "claude",
   };
   const liveTabs = [
-    { id: "t1", workspace: BROKEN, kind: "agent" as const, sessionId: "s-broken", agent: "claude" as const },
+    { id: "t1", workspace: BROKEN, kind: "agent" as const, sessionId: "s-broken", agent: "claude" as const, state: "live" as const },
   ];
 
   beforeEach(() => {

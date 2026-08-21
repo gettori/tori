@@ -472,9 +472,14 @@ export default function LeftSidebar(props: {
 
   // Live shell/agent tabs grouped under a folder (prefix match on the tab's
   // workspace). Command tabs (clone/bootstrap) are transient, so they don't count.
+  //
+  // `state === "live"` is the whole of "live" now. Since lazy restore a tab is
+  // no longer proof that anything is running: a restored strip is full of
+  // entries with nothing behind them, and counting those would tell the user
+  // twelve things are running in a folder where nothing is.
   function liveTabsUnder(path: string): LiveTab[] {
     return (props.liveTabs ?? []).filter(
-      (t) => t.kind !== "command" && isUnderPath(t.workspace, path),
+      (t) => t.kind !== "command" && t.state === "live" && isUnderPath(t.workspace, path),
     );
   }
 
@@ -482,6 +487,11 @@ export default function LeftSidebar(props: {
   // plus any pgrep-matched session that no live tab already represents (dedup by
   // the tab's soft sessionId). Live tabs catch shell + fresh-agent tabs that pgrep
   // can't see; the pgrep pass still catches a detached resumed session with no tab.
+  //
+  // The dedup is the sharp half. It suppresses the probe for every session a tab
+  // already names, so before `liveTabsUnder` filtered on state an *inert* tab
+  // holding a stored session id hid that session from the probe entirely - and
+  // this count is what destructive confirms are worded from.
   async function countRunningAgents(path: string): Promise<number> {
     const tabs = liveTabsUnder(path);
     const tabSessions = new Set(tabs.map((t) => t.sessionId).filter((x): x is string => !!x));
@@ -1897,7 +1907,10 @@ export default function LeftSidebar(props: {
   // until someone clicks its row, because nothing else ever probes it.
   function sweepDetached(scans: readonly FolderScan[]) {
     const hosted = new Set<string>(liveChatIds());
-    for (const t of props.liveTabs ?? []) if (t.sessionId) hosted.add(t.sessionId);
+    // Only a live tab hosts anything. An inert tab naming a session would keep
+    // this sweep from ever probing it, which is exactly the session the sweep
+    // exists to find: one running with nothing in Sway driving it.
+    for (const t of props.liveTabs ?? []) if (t.sessionId && t.state === "live") hosted.add(t.sessionId);
     const want: { id: string; agent: string }[] = [];
     const seen = new Set<string>();
     for (const { list } of scans) {
