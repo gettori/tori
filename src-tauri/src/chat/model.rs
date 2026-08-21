@@ -391,6 +391,26 @@ pub struct ChatModelInfo {
     /// same shape `supported_effort_levels` already relies on.
     #[serde(default)]
     pub supports_auto_mode: bool,
+    /// Whether this model has a fast mode to toggle.
+    ///
+    /// **The CLI publishes this and Sway used to restate it.** `[[chat.annotations]]`
+    /// carried a hand-keyed table saying the same thing, and it was already
+    /// wrong: it named `claude-opus-5` while the catalogue resolves both Opus
+    /// rows to `claude-opus-5[1m]`, so the lookup never matched. Reading the
+    /// handshake is the same correction `[[chat.models]]` already got.
+    ///
+    /// Measured on 2.1.238: present on `default` and `opus[1m]`, absent on
+    /// Fable, Sonnet and Haiku.
+    #[serde(default)]
+    pub supports_fast_mode: bool,
+    /// Whether this model has an adaptive-thinking lever.
+    ///
+    /// Absent on Haiku alone, which declares none of the model-scoped
+    /// capabilities. Carried for the same reason as the flag above: whether a
+    /// control has any business existing is the catalogue's answer, and whether
+    /// this transport can reach it is a separate question `claude.rs` decides.
+    #[serde(default)]
+    pub supports_adaptive_thinking: bool,
 }
 
 /// What a agent said it can do, read off its own handshake.
@@ -1018,6 +1038,11 @@ mod tests {
                         },
                     ],
                     supports_auto_mode: true,
+                    // True rather than defaulted, so a mirror that dropped
+                    // either flag fails on the sample instead of agreeing with
+                    // it by accident.
+                    supports_fast_mode: true,
+                    supports_adaptive_thinking: true,
                 }],
                 modes: vec![ChatModeInfo {
                     id: "read-only".into(),
@@ -1065,6 +1090,11 @@ mod tests {
                         },
                     ],
                     supports_auto_mode: true,
+                    // True rather than defaulted, so a mirror that dropped
+                    // either flag fails on the sample instead of agreeing with
+                    // it by accident.
+                    supports_fast_mode: true,
+                    supports_adaptive_thinking: true,
                 }],
                 modes: vec![ChatModeInfo {
                     id: "read-only".into(),

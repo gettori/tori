@@ -4,7 +4,6 @@ import { invoke } from "@tauri-apps/api/core";
 import SessionStats, { type SessionDetail } from "./SessionStats";
 import { __resetModelCapsForTests } from "../../utils/modelCaps";
 import { contextWindowFor, pickableModels } from "../../utils/chatModels";
-import type { ChatConfig } from "../../utils/agents";
 import type { ChatModelInfo } from "../../utils/chatTypes";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => ({})) }));
@@ -22,24 +21,6 @@ const detail = (over: Partial<SessionDetail> = {}): SessionDetail => ({
   touched_count: 0,
   ...over,
 });
-
-function adapter(): ChatConfig {
-  return {
-    transport: "claude_stream_json",
-    program: "claude",
-    base_args: [],
-    session_id_args: [],
-    resume_args: [],
-    model_args: [],
-    effort_args: [],
-    mode_args: [],
-    add_dir_args: [],
-    annotations: [],
-    modes: [],
-    effort_extras: [],
-    acp: { serve_client_fs: false },
-  };
-}
 
 describe("SessionStats", () => {
   beforeEach(() => {
@@ -134,10 +115,12 @@ describe("one model, one denominator", () => {
         supportsEffort: false,
         supportedEffortLevels: [],
         supportsAutoMode: true,
+        supportsFastMode: false,
+        supportsAdaptiveThinking: false,
       },
     ];
     const reported = { "claude-sonnet-5": 1_000_000 };
-    const composer = pickableModels(live, [], adapter(), reported)[0].contextWindow;
+    const composer = pickableModels(live, [], reported)[0].contextWindow;
     const strip = contextWindowFor( "claude-sonnet-5", reported);
 
     expect(composer).toBe(1_000_000);

@@ -806,6 +806,8 @@ describe("model and effort switching", () => {
             supportsEffort: false,
             supportedEffortLevels: [],
             supportsAutoMode: false,
+            supportsFastMode: false,
+            supportsAdaptiveThinking: false,
           },
         ],
         fastModeState: "off",
@@ -980,6 +982,8 @@ describe("the answered handshake (sessionReady)", () => {
     supportsEffort: true,
     supportedEffortLevels: ["low", "high"],
     supportsAutoMode: true,
+    supportsFastMode: false,
+    supportsAdaptiveThinking: false,
   };
   const ACCOUNT = { subscriptionType: "Claude Pro", organization: "Acme", apiProvider: "firstParty" };
   const ready = (over: Partial<Extract<ChatEvent, { type: "sessionReady" }>> = {}): ChatEvent => ({

@@ -171,24 +171,10 @@ add_dir_args = ["--add-dir", "{dir}"]
 # context window from a completed turn's `result.modelUsage`. Nothing renders
 # before one of those has spoken, which is the point.
 #
-# What survives is below, and it is a different kind of thing.
-
-# Annotations decorate a model the agent named. They never add one.
-#
-# An id here that no catalogue mentions renders nothing at all. This is the one
-# category of thing Sway knows and the CLI does not say, so it is Sway's claim
-# and is presented as such.
-[[chat.annotations]]
-id = "claude-opus-5"
-# The only signal the CLI gives is the `/fast` command describing itself as
-# "Toggle fast mode (Opus 5)". Probed since: the model claim holds and is moot
-# here, because fast mode cannot be reached over stream-json at all. `/fast on`
-# on this very model answers "Fast mode is not available in the Agent SDK" and
-# `fast_mode_state` never leaves "off" (dev/fixtures/claude/fast-mode.jsonl). So
-# nothing renders from this today; it is the model-scope half of the answer,
-# kept for the day the SDK is opted in, at which point that fixture's scenario
-# fails and says so.
-fast_mode = true
+# `[[chat.annotations]]` used to survive here, carrying one model's fast mode.
+# It is gone too: the handshake publishes `supportsFastMode` per model, so the
+# table was restating the CLI in a spelling the CLI does not use
+# (`claude-opus-5` against a resolved `claude-opus-5[1m]`) and matched nothing.
 
 # The six permission modes `--permission-mode` accepts and honours, and they now
 # mean what they say: Sway's hook no longer decides anything, so nothing runs
@@ -264,9 +250,10 @@ permissive = true
 # mentions. `--effort --help` advertises low/medium/high/xhigh/max, and the
 # validator quietly takes one more.
 #
-# Measured by dev/effort-probe.mjs on 2.1.237. The observable is the CLI's own
-# validator: `--effort ultracode --version` writes no "Unknown --effort value"
-# warning, where `off`, `ultra`, `ultrathink`, `none`, `minimal` and `auto` all
+# Measured by dev/effort-probe.mjs, first on 2.1.237 and re-taken unchanged on
+# 2.1.238, which is the version the row below names. The observable is the CLI's
+# own validator: `--effort ultracode --version` writes no "Unknown --effort
+# value" warning, where `off`, `ultra`, `ultrathink`, `none`, `minimal` and `auto` all
 # do. That is this CLI asserting the word is one of its own, which is a
 # different thing from the `--permission-mode auto` trap, where a flag is
 # accepted on a model that ignores it and nothing anywhere says so.
@@ -284,4 +271,4 @@ permissive = true
 id = "ultracode"
 label = "Ultracode"
 state = "working"
-measured_on = "2.1.237 (Claude Code)"
+measured_on = "2.1.238 (Claude Code)"
