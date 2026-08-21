@@ -193,7 +193,14 @@ pub struct CatalogModel {
 ///   levels. A cache written at 2 has `options: []` on every ACP row and the
 ///   probe session's levels copied onto all of them, so a draft would offer a
 ///   level the picked model refuses.
-pub const CACHE_SHAPE: u32 = 3;
+/// - **4**: claude's `thinking` option was withdrawn. A cache written at 3 still
+///   carries the row, and a **draft** reads its levers from here rather than
+///   from a session, so it would keep drawing a pill this build no longer
+///   publishes - a control that cannot be reached by any code path, on a lever
+///   that was never switchable. The first bump for a field *removed* rather than
+///   added, which is the same rule read the other way: the cache describes a
+///   shape this Sway no longer reads.
+pub const CACHE_SHAPE: u32 = 4;
 
 /// How many models one probe switches through to read their own option sets.
 ///
