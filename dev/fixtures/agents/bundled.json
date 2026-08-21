@@ -70,6 +70,15 @@
           "fast_mode": true
         }
       ],
+      "effort_extras": [
+        {
+          "id": "ultracode",
+          "label": "Ultracode",
+          "state": "working",
+          "measured_on": "2.1.237 (Claude Code)",
+          "note": ""
+        }
+      ],
       "split_model_names": false,
       "modes": [
         {
@@ -145,48 +154,6 @@
           "default": false
         }
       ],
-      "effort": [
-        {
-          "id": "low",
-          "label": "Low",
-          "args": [
-            "--effort",
-            "low"
-          ]
-        },
-        {
-          "id": "medium",
-          "label": "Medium",
-          "args": [
-            "--effort",
-            "medium"
-          ]
-        },
-        {
-          "id": "high",
-          "label": "High",
-          "args": [
-            "--effort",
-            "high"
-          ]
-        },
-        {
-          "id": "xhigh",
-          "label": "Extra high",
-          "args": [
-            "--effort",
-            "xhigh"
-          ]
-        },
-        {
-          "id": "max",
-          "label": "Max",
-          "args": [
-            "--effort",
-            "max"
-          ]
-        }
-      ],
       "acp": {
         "serve_client_fs": false
       }
@@ -241,9 +208,9 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "effort_extras": [],
       "split_model_names": false,
       "modes": [],
-      "effort": [],
       "acp": {
         "serve_client_fs": false
       }
@@ -295,9 +262,9 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "effort_extras": [],
       "split_model_names": false,
       "modes": [],
-      "effort": [],
       "acp": {
         "serve_client_fs": false
       }
@@ -344,9 +311,9 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "effort_extras": [],
       "split_model_names": false,
       "modes": [],
-      "effort": [],
       "acp": {
         "serve_client_fs": false
       }
@@ -382,9 +349,9 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "effort_extras": [],
       "split_model_names": false,
       "modes": [],
-      "effort": [],
       "acp": {
         "serve_client_fs": false
       }
@@ -422,9 +389,9 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "effort_extras": [],
       "split_model_names": true,
       "modes": [],
-      "effort": [],
       "acp": {
         "serve_client_fs": false
       }
@@ -474,9 +441,9 @@
       "mode_args": [],
       "add_dir_args": [],
       "annotations": [],
+      "effort_extras": [],
       "split_model_names": true,
       "modes": [],
-      "effort": [],
       "acp": {
         "serve_client_fs": false
       }

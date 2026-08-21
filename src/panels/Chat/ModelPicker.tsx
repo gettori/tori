@@ -110,13 +110,23 @@ export default function ModelPicker(props: {
           disabled={props.disabled}
           pending={props.effortPending}
         >
-          <For each={levels()}>
+          {/* Keyed by the level, not the row object: the catalogue is replaced
+              wholesale whenever the agent answers, and keying on identity would
+              rebuild the row the user is standing on. Same fix `ConfigMirror`
+              took. */}
+          <For each={levels().map((l) => l.level)}>
             {(level) => (
-              <PickerOption
-                label={level}
-                selected={level === props.effort}
-                onSelect={() => props.onSelectEffort(level)}
-              />
+              <Show when={levels().find((l) => l.level === level)}>
+                {(row) => (
+                  <PickerOption
+                    label={row().label || level}
+                    selected={level === props.effort}
+                    refusing={row().disabled}
+                    note={row().note}
+                    onSelect={() => props.onSelectEffort(level)}
+                  />
+                )}
+              </Show>
             )}
           </For>
         </Picker>

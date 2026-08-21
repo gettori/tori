@@ -23,8 +23,8 @@ use agent_client_protocol::schema::v1::{
 };
 
 use super::model::{
-    ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEvent, ChatModeInfo,
-    ChatModelInfo, ContentBlock, Effort, FileEditKind, PermissionSuggestion, PlanItem,
+    ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent,
+    ChatModeInfo, ChatModelInfo, ContentBlock, FileEditKind, PermissionSuggestion, PlanItem,
     PlanItemStatus, ToolStatus, TurnOutcome, Usage,
 };
 use super::snapshot;
@@ -141,6 +141,18 @@ pub fn model_catalogue(options: &[SessionConfigOption]) -> Vec<ChatModelInfo> {
             description: entry.description.clone().unwrap_or_default(),
             supports_effort: !levels.is_empty(),
             supported_effort_levels: levels.clone(),
+            // Every one of them enabled: an ACP agent's levels are its own
+            // answer about itself, so there is nothing here for Sway to
+            // annotate and nothing to refuse.
+            effort_levels: levels
+                .iter()
+                .map(|level| ChatEffortLevel {
+                    level: level.clone(),
+                    label: level.clone(),
+                    disabled: false,
+                    note: String::new(),
+                })
+                .collect(),
             supports_auto_mode: false,
         })
         .collect()
@@ -211,30 +223,25 @@ pub fn mode_config_id(options: &[SessionConfigOption]) -> Option<String> {
     Some(option.id.0.to_string())
 }
 
-/// The reasoning-effort levels an agent offered, **narrowed to the ones Sway can
-/// actually send**.
+/// The reasoning-effort levels an agent offered, every one of them.
 ///
 /// ACP does have a notion of one, contrary to what this module said until
 /// Phase 8: `SessionConfigOptionCategory::ThoughtLevel` is a category of its
 /// own, and `@agentclientprotocol/codex-acp` 1.2.0 publishes six levels under
 /// it - `low, medium, high, xhigh, max, ultra`.
 ///
-/// Five of those are [`Effort`] variants and `ultra` is not, so `ultra` is
-/// **dropped rather than offered**. Publishing it would put a level in the
-/// control that `set_model` cannot carry, which is a picker that appears to
-/// switch and does not - the exact failure the model switch is built to refuse.
-/// Widening `Effort` for it would move one agent's vocabulary into a type two
-/// agents share; see the note on `Effort` for when that trade flips.
+/// **`ultra` used to be dropped here and no longer is.** The narrowing existed
+/// because a level travelled as an `Effort` variant and there was no variant for
+/// it, so offering the sixth would have been a picker row `set_model` could not
+/// carry. A level is a plain string now, so the level goes out exactly as the
+/// agent spelled it and the drop has nothing left to protect against: filtering
+/// a published level against a list Sway keeps would be Sway deciding which of
+/// the agent's own words it approves of.
 pub fn effort_levels(options: &[SessionConfigOption]) -> Vec<String> {
     let Some((_, select)) = select_of(options, SessionConfigOptionCategory::ThoughtLevel) else {
         return Vec::new();
     };
-    let sendable: Vec<&str> = Effort::ALL.iter().map(|e| e.as_str()).collect();
-    select_entries(select)
-        .into_iter()
-        .map(|entry| entry.value.0.to_string())
-        .filter(|value| sendable.contains(&value.as_str()))
-        .collect()
+    select_entries(select).into_iter().map(|entry| entry.value.0.to_string()).collect()
 }
 
 /// The level this session is running right now, as the agent reports it.
@@ -923,9 +930,7 @@ mod tests {
         };
         assert_eq!(current, "medium");
         // **All six, including `ultra`.** The mirror reports what the agent
-        // published; the narrowing to what `Effort` can send belongs to the
-        // bespoke effort control, and doing it twice would make the generic
-        // path lie about the agent.
+        // published, and now so does the effort control beside it.
         assert_eq!(choices.len(), 6);
         assert_eq!(choices[0].value, "low");
         assert_eq!(choices[0].label, "Low");
@@ -955,26 +960,25 @@ mod tests {
         // Every model gets the same list: ACP publishes one selector for the
         // session where Claude's catalogue names them per model.
         for model in &models {
-            assert_eq!(model.supported_effort_levels, vec!["low", "medium", "high", "xhigh", "max"]);
+            assert_eq!(model.supported_effort_levels, vec!["low", "medium", "high", "xhigh", "max", "ultra"]);
+            // Rows too, and every one of them takeable: these are the agent's
+            // own answer about itself, so there is nothing to refuse.
+            let rows: Vec<&str> = model.effort_levels.iter().map(|l| l.level.as_str()).collect();
+            assert_eq!(rows, model.supported_effort_levels);
+            assert!(model.effort_levels.iter().all(|l| !l.disabled && l.note.is_empty()));
         }
         assert_eq!(current_effort(&codex_options()).as_deref(), Some("medium"));
         assert_eq!(effort_config_id(&codex_options()).as_deref(), Some("thought_level"));
     }
 
-    /// **`ultra` is dropped, and dropping it is the point.** The agent offers
-    /// six levels and `Effort` can carry five, so offering the sixth would put a
-    /// row in the control that `set_model` has no way to send - a picker that
-    /// appears to switch and does not, which is the failure the model switch
-    /// exists to refuse.
+    /// **`ultra` came back, and that is the finding.** It was dropped while a
+    /// level travelled as an `Effort` variant and there was no variant for it.
+    /// A level is a string now, so the sixth goes out exactly as codex spelled
+    /// it and nothing here decides which of the agent's words Sway approves of.
     #[test]
-    fn a_level_sway_cannot_send_is_not_offered() {
+    fn every_level_the_agent_published_is_offered() {
         let levels = effort_levels(&codex_options());
-        assert!(!levels.contains(&"ultra".to_string()), "{levels:?}");
-        assert_eq!(levels.len(), 5);
-        // And what is offered is exactly what `Effort` can spell, so the two
-        // cannot drift.
-        let sendable: Vec<String> = Effort::ALL.iter().map(|e| e.as_str().to_string()).collect();
-        assert!(levels.iter().all(|l| sendable.contains(l)));
+        assert_eq!(levels, vec!["low", "medium", "high", "xhigh", "max", "ultra"]);
     }
 
     /// An agent with no thought-level selector claims none, which is what keeps

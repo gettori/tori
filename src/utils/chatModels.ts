@@ -30,7 +30,7 @@
 import { foreignWindow } from "./modelCaps";
 import type { ChatConfig, ChatMode } from "./agents";
 import type { CatalogModel } from "./modelCatalog";
-import type { ChatModeInfo, ChatModelInfo, Usage } from "./chatTypes";
+import type { ChatEffortLevel, ChatModeInfo, ChatModelInfo, Usage } from "./chatTypes";
 
 export type PickableModel = {
   /** What `--model` takes, and the authority for the picker's own selection:
@@ -43,8 +43,12 @@ export type PickableModel = {
   description: string;
   /** Empty for a model with no effort control, which hides the control rather
    *  than rendering an inert one. Measured: haiku omits the effort keys
-   *  entirely rather than declaring them empty. */
-  effortLevels: string[];
+   *  entirely rather than declaring them empty.
+   *
+   *  Rows rather than bare strings since a level can be offered and refused:
+   *  Sway's own measured extras carry a note when the binary answering is not
+   *  the one they were measured against. */
+  effortLevels: ChatEffortLevel[];
   /** Null until a completed turn reports one, which is what keeps the meter
    *  from rendering a denominator it invented. */
   contextWindow: number | null;
@@ -202,6 +206,25 @@ export function fastModeFor(chat: ChatConfig | null, resolvedModel: string): boo
 }
 
 /**
+ * A model's effort rows, as the backend filled them in.
+ *
+ * **The synthesis lives on the backend**, in `claude::effort_levels`: it is
+ * where the probed CLI version is known, and a measured extra level is only
+ * offered while the binary answering is the one it was measured against. Doing
+ * it again here would be a second copy of that rule, reading a version this side
+ * does not have.
+ *
+ * The fallback is for a catalogue cached before the field existed. An empty
+ * `effortLevels` beside a non-empty `supportedEffortLevels` is not a model with
+ * no levels; it is one nobody has re-probed, and what that cache recorded is
+ * exactly the published list with nothing measured on top.
+ */
+function effortRows(model: ChatModelInfo): ChatEffortLevel[] {
+  if (model.effortLevels?.length) return model.effortLevels;
+  return model.supportedEffortLevels.map((level) => ({ level, label: level, disabled: false, note: "" }));
+}
+
+/**
  * Everything the picker may offer: the live catalogue, else the cached one,
  * else nothing at all.
  *
@@ -234,7 +257,7 @@ export function pickableModels(
     description: m.description,
     // `supportsEffort` and the level list can disagree only by being absent;
     // the levels are what the control renders, so they are what decides.
-    effortLevels: m.supportsEffort ? m.supportedEffortLevels : [],
+    effortLevels: m.supportsEffort ? effortRows(m) : [],
     contextWindow: contextWindowFor(m.resolvedModel, reported),
     live: live.length > 0,
     userConfigured: m.userConfigured ?? false,
@@ -308,7 +331,13 @@ export function restoredPicks(
   chat: ChatConfig | null = null,
 ): { model: PickableModel | null; effort: string | null; mode: string | null } {
   const model = models.find((m) => m.value === prefs.model) ?? null;
-  const effort = model && prefs.effort && model.effortLevels.includes(prefs.effort) ? prefs.effort : null;
+  // A stored level has to still be *takeable*, not merely still listed: a
+  // measured extra whose measurement no longer applies is a row that says why,
+  // and restoring it would put the pill on a level nothing can send.
+  const effort =
+    model && prefs.effort && model.effortLevels.some((l) => l.level === prefs.effort && !l.disabled)
+      ? prefs.effort
+      : null;
   const modes = capabilitiesFor(model, chat).modes;
   const mode = prefs.mode && modes.some((m) => m.id === prefs.mode) ? prefs.mode : null;
   return { model, effort, mode };
@@ -316,8 +345,10 @@ export function restoredPicks(
 
 /** What a session may be switched to, once the model has had its say. */
 export type Capabilities = {
-  /** Empty hides the thinking control rather than rendering an inert one. */
-  effortLevels: string[];
+  // No effort here. It used to restate `PickableModel.effortLevels` and nothing
+  // ever read the copy: the control renders from the model's own rows, which is
+  // the one place a level can be offered or refused. A second list would be a
+  // second thing to keep in step for no reader's benefit.
   /** The modes on offer, as the adapter declares them. Never a literal list. */
   modes: ChatMode[];
   /** Whether a fast-mode control has any business existing for this model. */
@@ -348,7 +379,6 @@ export function capabilitiesFor(
   live: readonly ChatMode[] = [],
 ): Capabilities {
   return {
-    effortLevels: model?.effortLevels ?? [],
     // A mode declaring `requires` is offered only to a model that declares that
     // capability. This is the half that has to be a filter rather than a
     // passthrough: measured on claude 2.1.220, `--permission-mode auto` on a

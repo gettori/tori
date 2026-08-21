@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use super::approval::{self, CaptureServer};
-use super::model::{ChatCommand, ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
+use super::model::{ChatCommand, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope};
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::snapshot::SnapshotCache;
@@ -298,7 +298,7 @@ impl ChatHost {
                 t.respond_permission(tool_use_id, request_id, *decision, *scope, reason.as_deref()).map(|_| ())
             }
             ChatCommand::SetMode { mode, .. } => t.set_mode(mode.clone()),
-            ChatCommand::SetModel { model, effort, .. } => t.set_model(model, *effort),
+            ChatCommand::SetModel { model, effort, .. } => t.set_model(model, effort.clone()),
             ChatCommand::SetConfigOption { config_id, value, .. } => {
                 t.set_config_option(config_id, value)
             }
@@ -327,7 +327,7 @@ impl ChatHost {
         self.dispatch(&ChatCommand::SetMode { session_id: session_id.to_string(), mode })
     }
 
-    pub fn set_model(&self, session_id: &str, model: &str, effort: Option<Effort>) -> Result<(), String> {
+    pub fn set_model(&self, session_id: &str, model: &str, effort: Option<String>) -> Result<(), String> {
         self.dispatch(&ChatCommand::SetModel { session_id: session_id.to_string(), model: model.to_string(), effort })
     }
 
@@ -467,7 +467,7 @@ mod tests {
         fn set_mode(&mut self, _mode: PermissionMode) -> Result<(), String> {
             Ok(())
         }
-        fn set_model(&mut self, _model: &str, _effort: Option<Effort>) -> Result<(), String> {
+        fn set_model(&mut self, _model: &str, _effort: Option<String>) -> Result<(), String> {
             Ok(())
         }
         fn set_config_option(&mut self, _id: &str, _v: &ChatConfigValue) -> Result<(), String> {
@@ -726,7 +726,7 @@ mod tests {
             fn set_mode(&mut self, _m: PermissionMode) -> Result<(), String> {
                 Ok(())
             }
-            fn set_model(&mut self, _m: &str, _e: Option<Effort>) -> Result<(), String> {
+            fn set_model(&mut self, _m: &str, _e: Option<String>) -> Result<(), String> {
                 Ok(())
             }
             fn set_config_option(&mut self, _i: &str, _v: &ChatConfigValue) -> Result<(), String> {
@@ -953,7 +953,7 @@ mod tests {
         host.send("s1", vec![ContentBlock::Text { text: "hello".into() }]).unwrap();
         host.interrupt("s1").unwrap();
         host.set_mode("s1", PermissionMode::new("plan")).unwrap();
-        host.set_model("s1", "claude-opus-5", Some(Effort::High)).unwrap();
+        host.set_model("s1", "claude-opus-5", Some("high".to_string())).unwrap();
         host.set_config_option("s1", "web_search", ChatConfigValue::Flag(true)).unwrap();
 
         // Close goes through the host's own teardown, not straight to the

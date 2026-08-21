@@ -21,7 +21,7 @@ const chat: ChatConfig = {
   add_dir_args: [],
   annotations: [],
   modes: [],
-  effort: [],
+  effort_extras: [],
   acp: { serve_client_fs: false },
 };
 

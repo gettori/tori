@@ -95,6 +95,15 @@
   background: transparent;
 }
 
+/* Reads the same as disabled, but the row is still arrow-navigable: it carries
+   the reason it is refusing, and Kobalte's `disabled` would take that out of a
+   keyboard user's reach. A class rather than an attribute selector because
+   `aria-disabled` is what this state *is*, not what the primitive stamped. */
+.item.refusing {
+  color: var(--fg-muted);
+  cursor: default;
+}
+
 /* A row that opens a level rather than committing a choice. It keeps its
    highlight for as long as its flyout is open, because the pointer has left it
    by then and `data-highlighted` alone would leave the trail back up the tree

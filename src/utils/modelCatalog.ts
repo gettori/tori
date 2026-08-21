@@ -7,7 +7,7 @@
 // session exists" a swap of source rather than a swap of shape.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { agentHealth } from "./agentHealth";
+import { agentVersion } from "./agentHealth";
 import type { ChatAccount, ChatConfigOption, ChatModeInfo, ChatModelInfo } from "./chatTypes";
 
 // Which of the three things a agent's catalogue currently is.
@@ -74,7 +74,27 @@ export type ModelCatalog = {
  *  probe succeeded, which is the whole reason the failure and the catalogue are
  *  separate fields. */
 export function cachedModels(catalog: ModelCatalog | undefined): CatalogModel[] {
-  return catalog?.catalogue?.models ?? [];
+  const models = catalog?.catalogue?.models ?? [];
+  const installed = catalog ? agentVersion(catalog.agentId) : null;
+  return isStale(catalog, installed) ? models.map(withoutMeasuredLevels) : models;
+}
+
+/** One cached row with Sway's own measured effort levels taken back off it.
+ *
+ *  **A measurement is scoped to the binary it names**, and `claude::effort_levels`
+ *  applied that scope against the version the probe recorded. On a binary that
+ *  has since changed, its answer is about something else, so the rows it added
+ *  come off and the agent's own published list is what is left. A draft opened
+ *  on an upgraded CLI otherwise offered a level nothing had measured for the one
+ *  probe round it takes `refreshCatalogIfDue` to land a fresh answer.
+ *
+ *  Told apart by `supportedEffortLevels` rather than by re-running the version
+ *  comparison: a level the agent published is in that list and one Sway measured
+ *  is not, so this needs no second copy of the rule that put them there. */
+function withoutMeasuredLevels(model: CatalogModel): CatalogModel {
+  if (!model.effortLevels?.length) return model;
+  const published = model.effortLevels.filter((l) => model.supportedEffortLevels.includes(l.level));
+  return published.length === model.effortLevels.length ? model : { ...model, effortLevels: published };
 }
 
 /** The cached levers for one agent on one model, in the shape a live session
@@ -278,6 +298,5 @@ export async function refreshCatalogIfDue(agentId: string): Promise<unknown> {
 function isDue(catalog: ModelCatalog): boolean {
   if (isProbing(catalog.agentId)) return false;
   if (catalog.lastFailure) return catalog.lastFailure.reason !== "unsupported";
-  const version = agentHealth()?.find((h) => h.id === catalog.agentId)?.version ?? null;
-  return catalog.state === "neverProbed" || isStale(catalog, version);
+  return catalog.state === "neverProbed" || isStale(catalog, agentVersion(catalog.agentId));
 }

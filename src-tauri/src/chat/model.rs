@@ -75,43 +75,19 @@ impl PermissionMode {
     }
 }
 
-/// The five measured effort levels accepted by `--effort`.
-///
-/// Still a closed enum, unlike [`PermissionMode`], and the difference is worth
-/// stating because a second agent now has levels too. Measured on
-/// `@agentclientprotocol/codex-acp` 1.2.0, its `thought_level` selector offers
-/// six: these five and `ultra`. Adding `Ultra` here would put one agent's
-/// vocabulary into the shared type for the benefit of one agent - the trap
-/// `PermissionMode` records - so instead the ACP transport publishes only the
-/// levels this enum can carry and names `ultra` as what it drops. The day a
-/// third agent disagrees again is the day this becomes a string.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Effort {
-    Low,
-    Medium,
-    High,
-    Xhigh,
-    Max,
-}
-
-impl Effort {
-    /// Every level, so a transport can publish the set it is able to send
-    /// rather than restating it and drifting.
-    pub const ALL: [Effort; 5] =
-        [Effort::Low, Effort::Medium, Effort::High, Effort::Xhigh, Effort::Max];
-
-    /// The level as both agents spell it on the wire.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Effort::Low => "low",
-            Effort::Medium => "medium",
-            Effort::High => "high",
-            Effort::Xhigh => "xhigh",
-            Effort::Max => "max",
-        }
-    }
-}
+// An effort level is a plain `String`, the way a mode id already is.
+//
+// It was a five-variant enum until the day its own note named: "the day a third
+// agent disagrees again is the day this becomes a string." Two agents disagree
+// now. `@agentclientprotocol/codex-acp` 1.2.0 publishes six levels and the sixth
+// (`ultra`) was dropped on the floor because the enum could not carry it, and
+// `claude` 2.1.237 takes a seventh word (`ultracode`) that its own `--help` does
+// not list. A closed type would have had to grow both, which is two agents'
+// vocabularies in one shared name for the benefit of neither.
+//
+// What replaces it is not "no validation". A level is only ever offered because
+// a model's catalogue named it or a measured `[[chat.effort_extras]]` row did,
+// which is a stronger check than a hardcoded list of five could ever be.
 
 /// How a turn ended.
 ///
@@ -341,6 +317,33 @@ impl ChatConfigValue {
     }
 }
 
+/// One row of the effort picker: a level, and whether it can be taken.
+///
+/// `disabled`/`note` rather than a state word, the same pair
+/// [`ChatConfigOption`] carries and for the same reason: "a lever the agent has
+/// but cannot currently take" is one idea, and giving effort its own vocabulary
+/// for it would mean two rules to keep in step.
+///
+/// A level the agent published is always enabled. The only disabled rows are
+/// Sway's own measured extras whose measurement no longer applies, which is a
+/// row that says why rather than a level that quietly vanished.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatEffortLevel {
+    pub level: String,
+    /// What the picker row reads, which is the level itself for anything the
+    /// agent named: it published a word, not a label, and inventing one would
+    /// describe a level by Sway's guess at it.
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub disabled: bool,
+    /// Why it cannot be taken, in words the user can act on. Empty when nothing
+    /// is refusing it.
+    #[serde(default)]
+    pub note: String,
+}
+
 /// One model the live agent says it can run, as the picker needs it.
 ///
 /// Measured: this catalogue exists **only** in the `initialize` control
@@ -366,6 +369,16 @@ pub struct ChatModelInfo {
     /// control rather than rendering an inert one.
     #[serde(default)]
     pub supported_effort_levels: Vec<String>,
+    /// The same levels as rows a picker can render, plus any level Sway measured
+    /// that this agent never advertises. See [`ChatEffortLevel`].
+    ///
+    /// Additive rather than a replacement, because a catalogue cached before
+    /// this field existed still deserializes and still has to work: an empty
+    /// list there means "nobody filled this in", and the reader falls back to
+    /// `supported_effort_levels` with every row enabled, which is what that
+    /// cache actually recorded.
+    #[serde(default)]
+    pub effort_levels: Vec<ChatEffortLevel>,
     /// Whether this model honours `--permission-mode auto`.
     ///
     /// Carried because the CLI will not say so at runtime: measured on 2.1.220,
@@ -933,7 +946,7 @@ pub enum ChatCommand {
         session_id: String,
         model: String,
         #[serde(default)]
-        effort: Option<Effort>,
+        effort: Option<String>,
     },
     /// Set one of the agent's own configuration options, named by the id the
     /// agent gave it. The generic counterpart of [`Self::SetModel`] and
@@ -988,6 +1001,22 @@ mod tests {
                     description: "Balanced".into(),
                     supports_effort: true,
                     supported_effort_levels: vec!["low".into(), "high".into()],
+                    // One enabled row and one refused, so both halves of the
+                    // shape cross the wire as values rather than as defaults.
+                    effort_levels: vec![
+                        ChatEffortLevel {
+                            level: "low".into(),
+                            label: "low".into(),
+                            disabled: false,
+                            note: String::new(),
+                        },
+                        ChatEffortLevel {
+                            level: "ultracode".into(),
+                            label: "Ultracode".into(),
+                            disabled: true,
+                            note: "Measured on another version of this CLI".into(),
+                        },
+                    ],
                     supports_auto_mode: true,
                 }],
                 modes: vec![ChatModeInfo {
@@ -1019,6 +1048,22 @@ mod tests {
                     description: "Balanced".into(),
                     supports_effort: true,
                     supported_effort_levels: vec!["low".into(), "high".into()],
+                    // One enabled row and one refused, so both halves of the
+                    // shape cross the wire as values rather than as defaults.
+                    effort_levels: vec![
+                        ChatEffortLevel {
+                            level: "low".into(),
+                            label: "low".into(),
+                            disabled: false,
+                            note: String::new(),
+                        },
+                        ChatEffortLevel {
+                            level: "ultracode".into(),
+                            label: "Ultracode".into(),
+                            disabled: true,
+                            note: "Measured on another version of this CLI".into(),
+                        },
+                    ],
                     supports_auto_mode: true,
                 }],
                 modes: vec![ChatModeInfo {
@@ -1264,7 +1309,7 @@ mod tests {
             ChatCommand::SetModel {
                 session_id: "s1".into(),
                 model: "claude-opus-5".into(),
-                effort: Some(Effort::Xhigh),
+                effort: Some("xhigh".into()),
             },
             ChatCommand::SetConfigOption {
                 session_id: "s1".into(),
@@ -1283,6 +1328,26 @@ mod tests {
                 serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize {json}: {e}"));
             assert_eq!(ev, back, "round trip changed the value: {json}");
         }
+    }
+
+    /// A catalogue cached before `effortLevels` existed still reads back, and
+    /// reads back as **absent** rather than as a model with no levels. This
+    /// shape is what is on the user's disk, so an additive field that was not
+    /// actually additive would empty every cached picker on upgrade.
+    #[test]
+    fn a_model_row_stored_before_the_effort_rows_existed_still_reads() {
+        let stored = r#"{
+            "value": "sonnet",
+            "resolvedModel": "claude-sonnet-5",
+            "displayName": "Sonnet 5",
+            "description": "Balanced",
+            "supportsEffort": true,
+            "supportedEffortLevels": ["low", "high"],
+            "supportsAutoMode": true
+        }"#;
+        let model: ChatModelInfo = serde_json::from_str(stored).expect("an older cache still deserializes");
+        assert_eq!(model.supported_effort_levels, ["low", "high"]);
+        assert!(model.effort_levels.is_empty(), "absent, so the reader falls back to the published list");
     }
 
     #[test]

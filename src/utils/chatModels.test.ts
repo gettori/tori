@@ -35,7 +35,7 @@ function adapter(): ChatConfig {
     // named; it can never put one on the list.
     annotations: [{ id: "claude-sonnet-5", fast_mode: true }],
     modes: [],
-    effort: [],
+    effort_extras: [],
     acp: { serve_client_fs: false },
   };
 }
@@ -169,10 +169,58 @@ describe("pickableModels", () => {
     expect(models.map((m) => m.resolvedModel)).not.toContain("claude-opus-5");
   });
 
+  // **The synthesis is the backend's**, in `claude::effort_levels`, where the
+  // probed CLI version is known and a measured extra can be scoped to it.
+  // What is pinned here is that the three answers it can send arrive intact.
+  describe("effort rows", () => {
+    const sonnetRows = (rows: ChatModelInfo["effortLevels"]) => {
+      const models = live();
+      models[1].effortLevels = rows;
+      return pickableModels(models, [], adapter()).find((m) => m.value === "sonnet")!.effortLevels;
+    };
+
+    it("offers exactly the levels the agent published when nothing was measured", () => {
+      const rows = sonnetRows([
+        { level: "low", label: "low", disabled: false, note: "" },
+        { level: "max", label: "max", disabled: false, note: "" },
+      ]);
+      expect(rows.map((l) => l.level)).toEqual(["low", "max"]);
+      expect(rows.every((l) => !l.disabled)).toBe(true);
+    });
+
+    it("carries a measured extra through as a level of its own", () => {
+      const rows = sonnetRows([
+        { level: "low", label: "low", disabled: false, note: "" },
+        { level: "ultracode", label: "Ultracode", disabled: false, note: "" },
+      ]);
+      expect(rows.map((l) => l.level)).toEqual(["low", "ultracode"]);
+      expect(rows[1].label).toBe("Ultracode");
+    });
+
+    it("carries a refused extra through with its reason rather than dropping it", () => {
+      const rows = sonnetRows([
+        { level: "low", label: "low", disabled: false, note: "" },
+        { level: "ultracode", label: "Ultracode", disabled: true, note: "Measured on 2.1.237." },
+      ]);
+      expect(rows[1]).toMatchObject({ disabled: true, note: "Measured on 2.1.237." });
+    });
+
+    // A catalogue cached before the field existed is not a model with no
+    // levels, it is one nobody re-probed. What it recorded is the published
+    // list with nothing measured on top, which is what it falls back to.
+    it("falls back to the published list for a catalogue cached before the field existed", () => {
+      const models = live();
+      delete models[1].effortLevels;
+      const rows = pickableModels(models, [], adapter()).find((m) => m.value === "sonnet")!.effortLevels;
+      expect(rows.map((l) => l.level)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+      expect(rows.every((l) => !l.disabled)).toBe(true);
+    });
+  });
+
   it("hides effort for a model that declares none", () => {
     const models = pickableModels(live(), [], adapter());
     expect(models.find((m) => m.value === "haiku")?.effortLevels).toEqual([]);
-    expect(models.find((m) => m.value === "sonnet")?.effortLevels).toContain("xhigh");
+    expect(models.find((m) => m.value === "sonnet")?.effortLevels.map((l) => l.level)).toContain("xhigh");
   });
 });
 
@@ -374,8 +422,10 @@ describe("capabilitiesFor", () => {
     const models = pickableModels(live(), [], chat);
     const haiku = models.find((m) => m.value === "haiku")!;
 
+    // Effort is the model's own, read off its rows rather than restated here.
+    expect(haiku.effortLevels).toEqual([]);
+
     const caps = capabilitiesFor(haiku, chat);
-    expect(caps.effortLevels).toEqual([]);
     expect(caps.fastMode).toBe(false);
     // Modes are a property of the agent, not of the model, so they survive.
     expect(caps.modes.map((m) => m.id)).toEqual(["plan"]);
@@ -387,8 +437,12 @@ describe("capabilitiesFor", () => {
     const models = pickableModels(live(), [], chat);
     const sonnet = models.find((m) => m.value === "sonnet")!;
 
+    // Effort is not among them: the control reads the model's own rows, which
+    // is the one place a level can be offered or refused.
+    expect(sonnet.effortLevels.map((l) => l.level)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(sonnet.effortLevels.every((l) => !l.disabled)).toBe(true);
+
     const caps = capabilitiesFor(sonnet, chat);
-    expect(caps.effortLevels).toEqual(["low", "medium", "high", "xhigh", "max"]);
     expect(caps.fastMode).toBe(true);
     expect(caps.modes.map((m) => m.id)).toEqual(["plan"]);
   });
@@ -397,7 +451,6 @@ describe("capabilitiesFor", () => {
     const chat = adapter();
     chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
     const caps = capabilitiesFor(null, chat);
-    expect(caps.effortLevels).toEqual([]);
     expect(caps.fastMode).toBe(false);
     expect(caps.modes.map((m) => m.id)).toEqual(["plan"]);
   });

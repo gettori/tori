@@ -57,10 +57,16 @@ export type ChatMode = {
   default?: boolean;
 };
 
-export type ChatEffort = {
+// A level `--effort` accepts that the agent's own catalogue never lists. Not a
+// field on ChatAnnotation: a fast mode belongs to one model, an accepted flag
+// value belongs to the binary. `measured_on` is what stops the claim outliving
+// the measurement; see `dev/effort-probe.mjs`.
+export type ChatEffortExtra = {
   id: string;
   label: string;
-  args: string[];
+  state: "working" | "refused";
+  measured_on: string;
+  note?: string;
 };
 
 // Schema v2's `[chat]` table: how to drive this agent as a structured chat
@@ -80,12 +86,14 @@ export type ChatConfig = {
   add_dir_args: string[];
   // What Sway knows about individual models, never what models exist.
   annotations: ChatAnnotation[];
+  // Effort levels Sway measured that this agent never advertises. Empty for
+  // every agent nobody has measured, which is all of them but claude.
+  effort_extras: ChatEffortExtra[];
   // This agent's model names carry a "Provider/Name" path the picker may split
   // for display. Optional in the mirror (like fork_args) so a test literal
   // need not spell it; the backend always sends it.
   split_model_names?: boolean;
   modes: ChatMode[];
-  effort: ChatEffort[];
   // `[chat.acp]`: how this agent departs from a spec-correct ACP client. Present
   // and at its defaults for every transport, inert for the ones that are not ACP.
   acp: AcpOverrides;
@@ -346,10 +354,13 @@ export function modeArgsFor(chat: ChatConfig, modeId: string): string[] | null {
   return mode.args.length > 0 ? mode.args : fillTemplate(chat.mode_args, "mode", modeId);
 }
 
+// Effort joined the model side of that line: any level fills the template,
+// because the levels come from the agent's catalogue and there is no declared
+// list left for one to be unknown to. Null is an adapter with no template at
+// all, whose levels are session options set after open rather than argv.
 export function effortArgsFor(chat: ChatConfig, effortId: string): string[] | null {
-  const level = chat.effort.find((e) => e.id === effortId);
-  if (!level) return null;
-  return level.args.length > 0 ? level.args : fillTemplate(chat.effort_args, "effort", effortId);
+  if (chat.effort_args.length === 0) return null;
+  return fillTemplate(chat.effort_args, "effort", effortId);
 }
 
 // Unlike the two above, any id fills the template: there is no declared model

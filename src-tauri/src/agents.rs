@@ -275,13 +275,43 @@ pub struct ChatMode {
     pub is_default: bool,
 }
 
-/// An effort level and the args that select it.
+/// What a measurement of an unadvertised effort level found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EffortExtraState {
+    /// An observable moved for it. Renders as a pickable level.
+    Working,
+    /// The CLI said no, in its own words. Renders disabled, carrying the note.
+    Refused,
+}
+
+/// A level `--effort` accepts that the agent's own catalogue never lists.
+///
+/// The effort counterpart of [`ChatAnnotation`] and deliberately **not** a field
+/// on it: a fast mode is a property of one model, an accepted flag value is a
+/// property of the binary. Measured on 2.1.237, `--effort ultracode` is taken on
+/// every model that has effort at all, so keying it by model id would mean
+/// re-listing every model on every release to keep one CLI-wide fact true. That
+/// is the hand-maintained manifest `[[chat.models]]` was retired for.
+///
+/// It adds a **level, never a model**: a row renders only on a model whose own
+/// catalogue entry already publishes effort levels, so this contributes nothing
+/// to any list an agent did not already have.
+///
+/// `measured_on` is what makes shipping a claim the CLI does not advertise
+/// survivable. The claim is scoped to the binary it was measured against and
+/// degrades to disabled-with-note against any other, rather than quietly staying
+/// true. `dev/effort-probe.mjs` re-takes the measurement.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ChatEffort {
+pub struct ChatEffortExtra {
     pub id: String,
     pub label: String,
+    pub state: EffortExtraState,
+    /// The `--version` string the measurement was taken against, verbatim.
+    pub measured_on: String,
+    /// Why it is refused, in the agent's own words. Empty for a working level.
     #[serde(default)]
-    pub args: Vec<String>,
+    pub note: String,
 }
 
 /// The resolved `[chat]` table: everything needed to start and steer a
@@ -309,7 +339,7 @@ pub struct ChatConfig {
     pub fork_args: Vec<String>,
     /// `{model}` template.
     pub model_args: Vec<String>,
-    /// `{effort}` template, the **default** for every `[[chat.effort]]` entry.
+    /// `{effort}` template, filled with whatever level the catalogue named.
     /// See `ChatConfig::effort_args_for`.
     pub effort_args: Vec<String>,
     /// `{mode}` template, the **default** for every `[[chat.modes]]` entry.
@@ -320,6 +350,10 @@ pub struct ChatConfig {
     /// What Sway knows about individual models, never what models exist. See
     /// [`ChatAnnotation`].
     pub annotations: Vec<ChatAnnotation>,
+    /// Effort levels Sway measured that this agent never advertises. See
+    /// [`ChatEffortExtra`]. Empty for every agent nobody has measured, which is
+    /// all of them but claude.
+    pub effort_extras: Vec<ChatEffortExtra>,
     /// This agent's model names carry a `Provider/Name` path (measured on
     /// opencode and pi), and the picker may unpick it for display. Opt-in per
     /// adapter because it is a naming convention, not a protocol fact: applied
@@ -327,7 +361,6 @@ pub struct ChatConfig {
     /// only; the id on the wire is never rewritten.
     pub split_model_names: bool,
     pub modes: Vec<ChatMode>,
-    pub effort: Vec<ChatEffort>,
     /// How this agent departs from a spec-correct ACP client. Always present
     /// and at its defaults for a transport that is not ACP, where it is inert:
     /// a per-transport option table would make the common case pay for the
@@ -392,11 +425,23 @@ impl ChatConfig {
         })
     }
 
-    /// The args that select `effort_id`. Same precedence as `mode_args_for`.
+    /// The args that select `effort_id`, or `None` for an adapter that does not
+    /// spell effort as args at all.
+    ///
+    /// **Any level fills the template**, which is the whole point and the same
+    /// correction `model_args_for` already took. This used to require the id to
+    /// appear in a `[[chat.effort]]` table of five, so a level the agent named
+    /// and the table had not caught up with produced no `--effort` flag: the
+    /// session ran at the CLI's default while the pill displayed the level that
+    /// had been picked, with nothing anywhere to contradict it. The catalogue the
+    /// level came from is the check, exactly as it is for a model.
+    ///
+    /// `None` is an adapter with no template, which is not a dropped flag: an
+    /// ACP agent's levels are a session option it publishes and Sway sets after
+    /// open, so there is no argv for them to ride in the first place.
     pub fn effort_args_for(&self, effort_id: &str) -> Option<Vec<String>> {
-        let level = self.effort.iter().find(|e| e.id == effort_id)?;
-        if !level.args.is_empty() {
-            return Some(level.args.clone());
+        if self.effort_args.is_empty() {
+            return None;
         }
         Some(apply_chat_template(&self.effort_args, &[("effort", effort_id)]))
     }
@@ -675,11 +720,11 @@ struct ChatToml {
     #[serde(default)]
     annotations: Vec<ChatAnnotation>,
     #[serde(default)]
+    effort_extras: Vec<ChatEffortExtra>,
+    #[serde(default)]
     split_model_names: bool,
     #[serde(default)]
     modes: Vec<ChatMode>,
-    #[serde(default)]
-    effort: Vec<ChatEffort>,
     /// `[chat.acp]`, the per-agent departures from a spec-correct ACP client.
     #[serde(default)]
     acp: crate::chat::acp::AcpOverrides,
@@ -956,12 +1001,9 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                     known.join(", ")
                 )
             })?;
-            // The effort levels a declared model listed used to be checked
-            // against `[[chat.effort]]` here. There is no declared model left to
-            // check: a model's levels come from the agent's own catalogue
-            // (`supportedEffortLevels`), and `[[chat.effort]]` now says only how
-            // to *spell* a level as args, for whichever levels the catalogue
-            // turns out to name.
+            // Nothing here checks a level against a list any more. A model's
+            // levels come from the agent's own catalogue and `effort_args` says
+            // only how to spell one, for whichever levels that catalogue names.
             Ok(ChatConfig {
                 transport,
                 program: c.program.unwrap_or_else(|| raw.launch.program.clone()),
@@ -974,9 +1016,9 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 mode_args: c.mode_args,
                 add_dir_args: c.add_dir_args,
                 annotations: c.annotations,
+                effort_extras: c.effort_extras,
                 split_model_names: c.split_model_names,
                 modes: c.modes,
-                effort: c.effort,
                 acp: c.acp,
             })
         })
@@ -1438,7 +1480,7 @@ mod tests {
         // Everything else comes off the handshake, so there is nothing to declare.
         assert!(chat.annotations.is_empty(), "nothing to annotate on a agent Sway has not measured");
         assert!(chat.modes.is_empty());
-        assert!(chat.effort.is_empty());
+        assert!(chat.effort_extras.is_empty(), "nothing measured on a agent nobody has probed");
     }
 
     #[test]
@@ -2015,10 +2057,29 @@ supports_isolation = true
         let permissive: Vec<&str> = chat.modes.iter().filter(|m| m.permissive).map(|m| m.id.as_str()).collect();
         assert_eq!(permissive, vec!["bypassPermissions"]);
 
-        // The five measured effort levels.
-        let levels: Vec<&str> = chat.effort.iter().map(|e| e.id.as_str()).collect();
-        assert_eq!(levels, vec!["low", "medium", "high", "xhigh", "max"]);
-        assert!(chat.effort.iter().all(|e| !e.args.is_empty()), "an effort level must carry args");
+        // No effort table any more: the levels are the agent's per model, and
+        // `effort_args` says only how to spell whichever ones it names.
+        assert_eq!(chat.effort_args, vec!["--effort", "{effort}"]);
+
+        // What is declared is the opposite kind of claim: a level this CLI
+        // accepts and never advertises. Every one of them carries the version it
+        // was measured against, which is what stops it outliving the
+        // measurement, and none of them may be a level `--help` already lists.
+        let advertised = ["low", "medium", "high", "xhigh", "max"];
+        for extra in &chat.effort_extras {
+            assert!(
+                !extra.measured_on.is_empty(),
+                "effort extra `{}` claims a level with no version behind it",
+                extra.id
+            );
+            assert!(
+                !advertised.contains(&extra.id.as_str()),
+                "effort extra `{}` restates a level the CLI already advertises",
+                extra.id
+            );
+        }
+        let extras: Vec<&str> = chat.effort_extras.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(extras, vec!["ultracode"], "see dev/effort-probe.mjs for what is measured");
     }
 
     /// Emit the resolved bundled adapters for `src/utils/agents.test.ts`.
@@ -2058,8 +2119,7 @@ supports_isolation = true
         assert!(ChatTransport::from_str("made_up_transport").is_none());
     }
 
-    /// An adapter can express a mode or effort level two ways, so the
-    /// precedence has to be pinned or Phase 6 and Phase 9 will each pick one.
+    /// A mode can be expressed two ways, so the precedence has to be pinned.
     #[test]
     fn an_entrys_own_args_win_over_the_table_template() {
         let a = load_adapter_str(&v2_with_chat(CHAT_TABLE), "test").expect("parses");
@@ -2069,14 +2129,16 @@ supports_isolation = true
             chat.mode_args_for("plan"),
             Some(vec!["--permission-mode".to_string(), "plan".to_string()])
         );
-        assert_eq!(
-            chat.effort_args_for("low"),
-            Some(vec!["--effort".to_string(), "low".to_string()])
-        );
         // An unknown id resolves to nothing rather than sending a filled
         // template for a mode the adapter never declared.
         assert_eq!(chat.mode_args_for("not_a_mode"), None);
-        assert_eq!(chat.effort_args_for("not_a_level"), None);
+        // Effort levels moved to the model side of that line and joined the
+        // exception below: there is no declared list of them left to be unknown
+        // to, so any level the catalogue named fills the template.
+        assert_eq!(
+            chat.effort_args_for("a-level-no-toml-mentions"),
+            Some(vec!["--effort".to_string(), "a-level-no-toml-mentions".to_string()])
+        );
         // Models are the exception, and deliberately so: there is no declared
         // list to be unknown to. The adapter says how to *spell* a model as
         // args; the catalogue the id came from says which models exist. Gating
@@ -2279,13 +2341,15 @@ default = true
                 m.id
             );
         }
-        for e in &chat.effort {
-            assert_eq!(
-                chat.effort_args_for(&e.id),
-                Some(apply_chat_template(&chat.effort_args, &[("effort", e.id.as_str())])),
-                "effort level `{}` states args that differ from the table template",
-                e.id
-            );
+        // **Every level spells out, including ones this build has never heard
+        // of.** The picker's levels come from the agent's own catalogue and from
+        // `[[chat.effort_extras]]`, neither of which this table gets a say in,
+        // so a level that resolved to nothing here would spawn the session
+        // flagless with the pill still displaying it - the silent-flag failure
+        // `resolve_mode` was written to end, one control over.
+        for level in ["low", "max", "ultracode", "a-level-no-build-has-seen"] {
+            let args = chat.effort_args_for(level).unwrap_or_default();
+            assert_eq!(args, vec!["--effort", level], "`{level}` did not reach argv");
         }
     }
 

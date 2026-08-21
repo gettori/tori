@@ -21,7 +21,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use super::model::{ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
+use super::model::{ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope};
 
 /// Delivers one event to whoever is currently listening to a session.
 pub type Emit = Box<dyn Fn(ChatEvent) + Send + Sync>;
@@ -129,7 +129,7 @@ pub trait AgentTransport: Send {
     fn set_mode(&mut self, mode: PermissionMode) -> Result<(), String>;
 
     /// Same next-turn semantics as [`Self::set_mode`].
-    fn set_model(&mut self, model: &str, effort: Option<Effort>) -> Result<(), String>;
+    fn set_model(&mut self, model: &str, effort: Option<String>) -> Result<(), String>;
 
     /// Set one of the agent's **own** configuration options, by the id it
     /// published for it.
@@ -208,7 +208,7 @@ pub(crate) mod mock {
         fn set_mode(&mut self, _mode: PermissionMode) -> Result<(), String> {
             Ok(())
         }
-        fn set_model(&mut self, _model: &str, _effort: Option<Effort>) -> Result<(), String> {
+        fn set_model(&mut self, _model: &str, _effort: Option<String>) -> Result<(), String> {
             Ok(())
         }
         fn set_config_option(
