@@ -45,6 +45,10 @@ export function MenuRow(props: {
    *  keyboard user's reach; this keeps the row navigable and simply does not
    *  act. Use it when the row says *why*, and `disabled` when it does not. */
   refusing?: boolean;
+  /** The choice currently in force, painted rather than only ticked. A tick
+   *  alone is a mark the eye has to go looking for down the right-hand edge;
+   *  the fill is what the model palette already uses to say the same thing. */
+  selected?: boolean;
   /** An element whose text describes this row, announced after its label. For a
    *  row whose explanation is drawn somewhere the keyboard cannot reach - a
    *  tooltip, which hangs off a child span rather than off the item. */
@@ -64,6 +68,7 @@ export function MenuRow(props: {
         [styles.danger]: !!props.danger,
         [styles.warn]: !!props.warn,
         [styles.refusing]: !!props.refusing,
+        [styles.selected]: !!props.selected,
       }}
       // Disabled is the primitive's own state, not a class: Kobalte blocks
       // activation, skips the row in arrow navigation and typeahead, and stamps

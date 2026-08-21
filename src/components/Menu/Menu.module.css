@@ -47,6 +47,20 @@
   transition: background var(--sway-duration-fast) ease;
 }
 
+/* The row in force. The same wash the model palette paints its current row
+   with, so "this is the one running" looks the same wherever it is said, and
+   the tick beside it is no longer the only thing saying it.
+
+   **Above the highlight rule on purpose.** The two have equal specificity, so
+   source order decides, and the highlight has to win: it is where the pointer
+   or the arrows are *now*, and it must stay readable while crossing the
+   selected row rather than being swallowed by it. Two different questions, and
+   the transient one is the one you are steering with. */
+.item.selected {
+  background: var(--brand-wash);
+  color: var(--fg-default);
+}
+
 /* Pointer and keyboard reach the same state. Kobalte stamps `data-highlighted`
    on whichever row the arrows, Home/End or typeahead landed on, and it also
    stamps it on hover, so the two never disagree about which row is live.

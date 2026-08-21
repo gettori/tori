@@ -201,6 +201,7 @@ export function PickerOption(props: {
   return (
     <MenuRow
       refusing={props.refusing}
+      selected={props.selected}
       describedBy={props.description ? descId : undefined}
       onClick={props.onSelect}
     >

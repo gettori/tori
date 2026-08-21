@@ -231,7 +231,14 @@ describe("ModelPicker", () => {
     expect(sonnet.pills()).toHaveLength(2);
     // Capitalised for the menu, not on the wire: `onSelectEffort` still sends
     // the agent's own spelling, which the send test below pins.
-    expect(sonnet.rowNames(sonnet.openEffort())).toEqual(["Low", "Medium", "High", "Xhigh", "Max"]);
+    expect(sonnet.rowNames(sonnet.openEffort())).toEqual([
+      "Default",
+      "Low",
+      "Medium",
+      "High",
+      "Xhigh",
+      "Max",
+    ]);
   });
 
   /** The capitalisation is display only, and this is the assertion that keeps it
@@ -260,7 +267,15 @@ describe("ModelPicker", () => {
     };
     const s = setup({ models: [withExtra], value: "sonnet" });
     const menu = s.openEffort();
-    expect(s.rowNames(menu)).toEqual(["Low", "Medium", "High", "Xhigh", "Max", "Ultracode"]);
+    expect(s.rowNames(menu)).toEqual([
+      "Default",
+      "Low",
+      "Medium",
+      "High",
+      "Xhigh",
+      "Max",
+      "Ultracode",
+    ]);
 
     const refused = [...menu.children].find((r) => r.textContent?.includes("Ultracode"))!;
     // Announced as refused, and still a row keyboard navigation can reach: a
@@ -275,13 +290,34 @@ describe("ModelPicker", () => {
     await expectNoAxeViolations(menu);
   });
 
-  it("says Default for an effort nothing has reported, without offering it as a level", () => {
-    // Nothing on the wire reports effort back, so before a pick the level in
-    // force is the CLI's own and Sway does not know which it is. Naming one
-    // would be a claim; offering "Default" as a pick would send a bad flag.
+  /**
+   * **"No level sent" is a state, and it is the one every chat starts in.**
+   *
+   * Nothing on the wire reports effort back and no catalogue names a default
+   * among its levels, so Sway cannot say which one the CLI runs. What it can
+   * say is that it has sent none, which is exactly what the pill has always
+   * read. The menu used to have no row for it, so nothing was ticked while the
+   * pill said "Default" - and once a level was picked there was no way back.
+   *
+   * The row sends `null`, which is what `chat_set_model` already takes for "no
+   * `--effort` flag". Naming a level as the default instead would be Sway
+   * asserting something the handshake never told it.
+   */
+  it("offers the CLI's own default as a row, ticked until a level is picked", () => {
     const s = setup({ value: "sonnet", effort: null });
     expect(s.pills()[1].textContent).toContain("Default");
-    expect(s.rowNames(s.openEffort())).not.toContain("Default");
+
+    const menu = s.openEffort();
+    const row = [...menu.children].find((r) => r.textContent?.startsWith("Default"))!;
+    expect(row.getAttribute("aria-selected") ?? row.querySelector("[class*=pickCheckOn]")).toBeTruthy();
+  });
+
+  it("sends null when the default row is picked, not a level and not a flag", () => {
+    const s = setup({ value: "sonnet", effort: "high" });
+    const menu = s.openEffort();
+    const row = [...menu.children].find((r) => r.textContent?.startsWith("Default"))!;
+    pointerClick(row as HTMLElement);
+    expect(s.onSelectEffort).toHaveBeenCalledWith(null);
   });
 
   // The context readout deliberately does not live here. It sits in the status
