@@ -17,10 +17,8 @@ import type { SlashCommand } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
-/** How tall the composer grows before it scrolls instead. Nine lines is enough
- *  to hold a paragraph-length prompt in view while leaving most of the pane to
- *  the conversation it is about. */
 const MAX_ROWS = 9;
+const MIN_ROWS = 2;
 
 /**
  * The input.
@@ -133,11 +131,11 @@ export default function Composer(props: {
     const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
     if (!Number.isFinite(line) || line <= 0) return;
     const lines = Math.round((input.scrollHeight - padding) / line);
-    input.rows = Math.min(MAX_ROWS, Math.max(1, lines));
+    input.rows = Math.min(MAX_ROWS, Math.max(MIN_ROWS, lines));
   }
 
   // A draft restored when the tab comes back can be many lines long, and it
-  // would otherwise paint as the one row `rows="1"` asks for.
+  // would otherwise paint at the resting height the `rows` attribute asks for.
   onMount(() => {
     if (text()) fit();
   });
@@ -470,7 +468,7 @@ export default function Composer(props: {
         <textarea
           ref={input}
           class={styles.input}
-          rows="1"
+          rows={MIN_ROWS}
           // Says what Enter will actually do, and quotes the measured delivery
           // rather than letting a steer read as instant. The figure comes from
           // the declared tier, so it cannot drift from what was measured; the
