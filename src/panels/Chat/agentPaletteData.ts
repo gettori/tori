@@ -126,7 +126,7 @@ export function paletteProviders(input: {
       selectable: reason === null,
       splitModels: adapter.chat?.split_model_names ?? false,
       version: input.version?.(adapter.id) ?? catalog?.catalogue?.version ?? null,
-      models: pickableModels([], cachedModels(catalog), adapter.chat ?? null),
+      models: pickableModels([], cachedModels(catalog)),
     };
   });
 }

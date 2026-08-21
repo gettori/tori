@@ -73,7 +73,6 @@ const chat = {
   effort_args: [],
   mode_args: [],
   add_dir_args: [],
-  annotations: [],
   modes: [
     { id: "plan", label: "Plan", hint: "Read only", args: [] },
     // Gated: measured on claude 2.1.220, `--permission-mode auto` on a model
@@ -106,6 +105,8 @@ const row = (value: string, displayName: string) => ({
   supportsEffort: false,
   supportedEffortLevels: [],
   supportsAutoMode: false,
+  supportsFastMode: false,
+  supportsAdaptiveThinking: false,
 });
 
 /** The two rows a mirror exists for: a select and a toggle no bespoke control

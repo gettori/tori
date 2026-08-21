@@ -28,10 +28,11 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::agents::{ChatAnnotation, ChatEffortExtra, EffortExtraState};
+use crate::agents::{ChatEffortExtra, EffortExtraState};
 
 use super::model::{
-    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo, Extra, HookPhase,
+    ChatAccount, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent,
+    ChatModelInfo, Extra, HookPhase,
     McpServer, PermissionDenial, PermissionMode, PermissionSuggestion, SlashCommand, SuggestedRule, ToolStatus,
     TurnOutcome, Usage,
 };
@@ -41,21 +42,47 @@ use super::model::{
 /// refusal is this transport's rather than the model's (`fast-mode.jsonl`).
 const FAST_MODE_REFUSAL: &str = "Fast mode is not available in the Agent SDK";
 
+/// The values `--thinking` takes, in the CLI's own order.
+///
+/// **Measured on 2.1.238, and the flag is undocumented**: `--help` lists no
+/// thinking option at all, but `--thinking bogus --version` answers
+/// `option '--thinking <mode>' argument 'bogus' is invalid. Allowed choices are
+/// enabled, adaptive, disabled.` and exits 1, while each of the three passes
+/// silently.
+///
+/// That rejection is the whole evidence, and it is the same observable
+/// `dev/effort-probe.mjs` rests on: this CLI **ignores an unknown flag
+/// entirely** (`--definitely-not-a-flag xyz --version` exits 0 and prints the
+/// version), so acceptance proves nothing and only a validated choice set does.
+const THINKING_MODES: [&str; 3] = ["enabled", "adaptive", "disabled"];
+
+/// Why the adaptive-thinking control is published refused.
+///
+/// Not the agent's words, because the agent never refuses: it is Sway that has
+/// no route. `--thinking` is an **argv flag**, so it is fixed when the child is
+/// spawned, and this transport has no mid-session verb for it - there is no
+/// control-protocol request, `/effort` and `/fast` are slash commands rather
+/// than options, and `ClaudeTransport::set_config_option` refuses by design.
+const ADAPTIVE_THINKING_NOTE: &str =
+    "Set with --thinking when the session starts; there is no mid-session switch";
+
 /// The levers claude has for one model, in the shape the mirror renders.
 ///
 /// **The CLI publishes no config options at all**, so unlike an ACP agent's
-/// these are assembled: the catalogue row says which model is running and
-/// `[[chat.annotations]]` carries the one thing the CLI never says, which model
-/// has a fast mode to toggle.
+/// these are assembled from the catalogue row's own capability flags.
+///
+/// **This used to read `[[chat.annotations]]` and no longer does.** The
+/// handshake publishes `supportsFastMode` per model, so a Sway-side table
+/// restating it was the `[[chat.models]]` trap again: hand-maintained, keyed on
+/// a spelling the catalogue does not use (`claude-opus-5` against a resolved
+/// `claude-opus-5[1m]`), and therefore already matching nothing.
 ///
 /// One function for two callers. The probe caches this against each model row
 /// and the live session emits it as the reported model moves, so for a given
 /// resolved id a draft and the chat it becomes answer the same.
-pub fn config_options(model: &ChatModelInfo, annotations: &[ChatAnnotation]) -> Vec<ChatConfigOption> {
+pub fn config_options(model: &ChatModelInfo) -> Vec<ChatConfigOption> {
     let mut out = Vec::new();
-    // Matched on the resolved id, the same rule the picker's own annotation
-    // lookup uses: an annotation decorates a model the agent named.
-    if annotations.iter().any(|a| a.id == model.resolved_model && a.fast_mode) {
+    if model.supports_fast_mode {
         out.push(ChatConfigOption {
             id: "fast_mode".into(),
             name: "Fast mode".into(),
@@ -67,6 +94,37 @@ pub fn config_options(model: &ChatModelInfo, annotations: &[ChatAnnotation]) -> 
             disabled: true,
             note: FAST_MODE_REFUSAL.into(),
             kind: ChatConfigKind::Boolean { value: false },
+        });
+    }
+    if model.supports_adaptive_thinking {
+        out.push(ChatConfigOption {
+            id: "thinking".into(),
+            name: "Thinking".into(),
+            description: String::new(),
+            category: String::new(),
+            disabled: true,
+            note: ADAPTIVE_THINKING_NOTE.into(),
+            // A select rather than the toggle fast mode is, because the lever
+            // really has three values. A boolean would have to pick one of them
+            // to mean "on" and would assert a state as well.
+            kind: ChatConfigKind::Select {
+                // **The flag, not a state.** Nothing on the wire reports which
+                // mode is running - `system/init` carries `fast_mode_state` and
+                // no thinking counterpart - so naming one of the three would be
+                // a guess rendered as a measurement. An empty current renders an
+                // empty pill, which says less than nothing; the mirror falls
+                // back to the raw current when it matches no choice, so this
+                // names the flag the user would actually go and set.
+                current: "--thinking".into(),
+                choices: THINKING_MODES
+                    .iter()
+                    .map(|mode| ChatConfigChoice {
+                        value: (*mode).to_string(),
+                        label: (*mode).to_string(),
+                        description: String::new(),
+                    })
+                    .collect(),
+            },
         });
     }
     out
@@ -203,12 +261,8 @@ pub struct ClaudeMapper {
     /// bound as `sway_hook_ids`: the result frame arrives with nothing but a
     /// `tool_use_id` on it.
     read_only_calls: std::collections::HashSet<String>,
-    /// The adapter's model annotations, which is where the one thing the CLI
-    /// never says about a model lives. Empty is a mapper nobody gave any, which
-    /// synthesizes no options rather than guessing at some.
-    annotations: Vec<ChatAnnotation>,
-    /// The adapter's measured effort levels, for the same reason and with the
-    /// same emptiness rule as `annotations`.
+    /// The adapter's measured effort levels. Empty is a mapper nobody gave any,
+    /// which offers the catalogue's own list rather than guessing at more.
     effort_extras: Vec<ChatEffortExtra>,
     /// The binary that answered, from `system/init`. Empty until the first one,
     /// which is what keeps a measured extra out of the handshake's catalogue:
@@ -226,13 +280,6 @@ impl ClaudeMapper {
             session_id: session_id.into(),
             ..Default::default()
         }
-    }
-
-    /// Hand the mapper what its adapter knows about claude's models, which is
-    /// what lets it publish options for the one the session reports.
-    pub fn with_annotations(mut self, annotations: Vec<ChatAnnotation>) -> Self {
-        self.annotations = annotations;
-        self
     }
 
     /// Hand the mapper the levels Sway measured that this CLI never advertises,
@@ -285,7 +332,7 @@ impl ClaudeMapper {
             .unwrap_or_else(|| ChatModelInfo { resolved_model: model.to_string(), ..Default::default() });
         Some(ChatEvent::ConfigOptions {
             session_id: self.session_id.clone(),
-            options: config_options(&row, &self.annotations),
+            options: config_options(&row),
         })
     }
 
@@ -333,6 +380,10 @@ impl ClaudeMapper {
                         // Filled on the way out, where the version is known.
                         effort_levels: Vec::new(),
                         supports_auto_mode: m["supportsAutoMode"].as_bool().unwrap_or(false),
+                        supports_fast_mode: m["supportsFastMode"].as_bool().unwrap_or(false),
+                        supports_adaptive_thinking: m["supportsAdaptiveThinking"]
+                            .as_bool()
+                            .unwrap_or(false),
                     })
                 })
                 .collect();
@@ -1729,10 +1780,6 @@ mod tests {
         assert_eq!(fallback[0].name, "review");
     }
 
-    fn opus_annotation() -> Vec<ChatAnnotation> {
-        vec![ChatAnnotation { id: "claude-opus-5".into(), fast_mode: true }]
-    }
-
     fn an_init(model: &str) -> Value {
         serde_json::json!({
             "type": "system", "subtype": "init", "model": model,
@@ -1749,52 +1796,150 @@ mod tests {
     }
 
     /// Claude publishes no options of its own, so the levers it does have are
-    /// assembled per model. The set follows what the **session** says it is
-    /// running, which is how a `/model` slash command refreshes it: Sway is not
-    /// on that path, and `system/init` reports the switch either way.
+    /// assembled per model, **from that model's own catalogue row**. The set
+    /// follows what the **session** says it is running, which is how a `/model`
+    /// slash command refreshes it: Sway is not on that path, and `system/init`
+    /// reports the switch either way.
+    ///
+    /// The ids here are the fixture's, not invented: `initialize.jsonl`
+    /// publishes `supportsFastMode` on both Opus 5 rows (resolving to
+    /// `claude-opus-5[1m]`) and on none of Fable, Sonnet or Haiku.
     #[test]
     fn the_option_set_follows_the_model_the_session_reports() {
-        let mut m = ClaudeMapper::new("s1").with_annotations(opus_annotation());
+        let mut m = ClaudeMapper::new("s1");
         m.map(&fixture("initialize")[0]);
 
-        // An unannotated model has nothing to say, which is a published empty
-        // set rather than no answer: the mirror has to clear.
+        let ids = |events: &[ChatEvent]| {
+            options_of(events).map(|o| o.iter().map(|x| x.id.clone()).collect::<Vec<_>>())
+        };
+
+        // Sonnet declares adaptive thinking and no fast mode.
         let opened = m.map(&an_init("claude-sonnet-5"));
-        assert_eq!(options_of(&opened), Some(Vec::new()));
+        assert_eq!(ids(&opened), Some(vec!["thinking".to_string()]));
 
         // The same turn's model reported again moves nothing.
         assert_eq!(options_of(&m.map(&an_init("claude-sonnet-5"))), None);
 
-        let switched = options_of(&m.map(&an_init("claude-opus-5"))).expect("the switch republished");
-        assert_eq!(switched.len(), 1);
-        assert_eq!(switched[0].id, "fast_mode");
-        assert!(switched[0].disabled, "a lever this transport cannot reach is published refused");
-        assert_eq!(switched[0].note, FAST_MODE_REFUSAL);
+        let switched = m.map(&an_init("claude-opus-5[1m]"));
+        assert_eq!(
+            ids(&switched),
+            Some(vec!["fast_mode".to_string(), "thinking".to_string()]),
+            "the Opus row declares both"
+        );
+        let fast = options_of(&switched).unwrap().remove(0);
+        assert!(fast.disabled, "a lever this transport cannot reach is published refused");
+        assert_eq!(fast.note, FAST_MODE_REFUSAL);
 
-        // And back, so the row is not a one-way addition to the set.
-        assert_eq!(options_of(&m.map(&an_init("claude-sonnet-5"))), Some(Vec::new()));
+        // And back, so a row is not a one-way addition to the set.
+        assert_eq!(ids(&m.map(&an_init("claude-sonnet-5"))), Some(vec!["thinking".to_string()]));
     }
 
-    /// A mapper given no annotations publishes an empty set rather than
-    /// inventing one, which is what a session on an agent Sway measured nothing
-    /// about must do.
+    /// **The claim the retired annotation table used to make, checked against
+    /// the CLI's own answer.**
+    ///
+    /// Every row `initialize.jsonl` publishes, through `config_options` with no
+    /// table of any kind behind it. Two Opus rows carry a fast mode and the
+    /// other three do not, which is the CLI's own per-model answer: the table
+    /// said the same thing keyed on `claude-opus-5`, which is a spelling neither
+    /// Opus row resolves to, so it decorated nothing.
     #[test]
-    fn no_annotation_means_no_lever() {
+    fn fast_mode_comes_off_each_models_own_row() {
         let mut m = ClaudeMapper::new("s1");
         m.map(&fixture("initialize")[0]);
-        assert_eq!(options_of(&m.map(&an_init("claude-opus-5"))), Some(Vec::new()));
+        let with_lever: Vec<&str> = m
+            .model_catalogue
+            .iter()
+            .filter(|row| config_options(row).iter().any(|o| o.id == "fast_mode"))
+            .map(|row| row.value.as_str())
+            .collect();
+        assert_eq!(with_lever, ["default", "opus[1m]"], "{:?}", m.model_catalogue);
+
+        // And the whole catalogue really is five rows, so the two above are a
+        // selection rather than everything the fixture had.
+        assert_eq!(m.model_catalogue.len(), 5);
+        // Nothing is invented for a row that declares none.
+        let haiku = m.model_catalogue.iter().find(|r| r.value == "haiku").expect("haiku is listed");
+        assert!(config_options(haiku).is_empty());
     }
 
-    /// The session's own report beats the catalogue: a model the handshake did
-    /// not list still gets its levers, because what is running is the id init
-    /// named rather than a row Sway managed to look up.
+    /// **The adaptive-thinking control, published from what was measured.**
+    ///
+    /// Reachable, but only at spawn: `--thinking` takes `enabled|adaptive|
+    /// disabled` and there is no mid-session verb for it, so the row is offered
+    /// refused with the reason rather than as a toggle that would do nothing.
+    /// The same answer fast mode gets, arrived at from a different measurement.
+    ///
+    /// And offered **only where the catalogue publishes the capability**:
+    /// `initialize.jsonl` declares `supportsAdaptiveThinking` on four of five
+    /// rows and omits it on Haiku, which declares none of the model-scoped
+    /// flags at all.
     #[test]
-    fn a_model_the_catalogue_never_listed_still_gets_its_levers() {
-        let mut m = ClaudeMapper::new("s1").with_annotations(opus_annotation());
-        let opened = m.map(&an_init("claude-opus-5"));
+    fn adaptive_thinking_is_published_refused_and_only_where_it_exists() {
+        let mut m = ClaudeMapper::new("s1");
+        m.map(&fixture("initialize")[0]);
+        let row = |value: &str| {
+            m.model_catalogue.iter().find(|r| r.value == value).unwrap_or_else(|| panic!("{value} is listed"))
+        };
+
+        let thinking = config_options(row("sonnet"))
+            .into_iter()
+            .find(|o| o.id == "thinking")
+            .expect("sonnet declares adaptive thinking");
+        assert!(thinking.disabled, "no mid-session switch exists, so the row says so");
+        assert_eq!(thinking.note, ADAPTIVE_THINKING_NOTE);
+        // The values the CLI validated, not a shape Sway chose: a boolean would
+        // have to pick one of the three to mean "on".
+        match thinking.kind {
+            ChatConfigKind::Select { ref current, ref choices } => {
+                assert_eq!(
+                    choices.iter().map(|c| c.value.as_str()).collect::<Vec<_>>(),
+                    THINKING_MODES
+                );
+                // Not one of the three: nothing reports which is running, so
+                // the pill names the flag that sets it rather than a state.
+                assert_eq!(current, "--thinking");
+                assert!(!choices.iter().any(|c| c.value == *current));
+            }
+            ref other => panic!("a three-valued flag is a select: {other:?}"),
+        }
+
+        // Haiku publishes neither capability, so it gets no levers at all.
+        assert!(config_options(row("haiku")).is_empty());
+        // And the two are independent: Fable has thinking and no fast mode.
+        let fable = config_options(row("claude-fable-5[1m]"));
+        assert_eq!(fable.iter().map(|o| o.id.as_str()).collect::<Vec<_>>(), ["thinking"]);
+    }
+
+    /// A mapper that never saw a catalogue publishes an empty set rather than
+    /// inventing one. Nothing has said this model has either lever, and "not
+    /// known to have one" is the same answer as "does not".
+    #[test]
+    fn a_model_nothing_has_described_gets_no_lever() {
+        let mut m = ClaudeMapper::new("s1");
+        assert_eq!(options_of(&m.map(&an_init("claude-opus-5[1m]"))), Some(Vec::new()));
+    }
+
+    /// **The one spelling that does not line up, pinned rather than papered
+    /// over.** The lookup is `resolved_model == the id init reported`, and
+    /// measured across every captured fixture init reports `claude-opus-5[1m]`,
+    /// which matches. `fast-mode.jsonl` is the exception: it reports the bare
+    /// `claude-opus-5`, so no row is found and the session shows no fast-mode
+    /// control for a model that has one.
+    ///
+    /// Not fixed by stripping the suffix. `[1m]` is the vendor's naming
+    /// convention, and parsing an id for meaning is the dependency
+    /// `contextWindowFor` already refuses to take on for the same suffix. The
+    /// honest fix is the session's own `fast_mode_state`, which rides this very
+    /// frame; whether a model *without* a fast mode omits that key is unmeasured
+    /// (every captured init is an Opus one), so nothing is built on it yet.
+    #[test]
+    fn a_model_the_catalogue_spells_differently_gets_no_lever() {
+        let mut m = ClaudeMapper::new("s1");
+        m.map(&fixture("initialize")[0]);
         assert_eq!(
-            options_of(&opened).map(|o| o.iter().map(|x| x.id.clone()).collect::<Vec<_>>()),
-            Some(vec!["fast_mode".to_string()])
+            options_of(&m.map(&an_init("claude-opus-5"))),
+            Some(Vec::new()),
+            "the catalogue calls this row claude-opus-5[1m], so nothing is found"
         );
     }
 

@@ -154,6 +154,11 @@ pub fn model_catalogue(options: &[SessionConfigOption]) -> Vec<ChatModelInfo> {
                 })
                 .collect(),
             supports_auto_mode: false,
+            // Both are claude's own words on its own handshake. ACP publishes
+            // whatever levers it has as config options, so an ACP agent with
+            // something of the sort reaches the mirror rather than these flags.
+            supports_fast_mode: false,
+            supports_adaptive_thinking: false,
         })
         .collect()
 }

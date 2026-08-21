@@ -1113,7 +1113,7 @@ export default function ChatView(props: {
   // a session exists. Live wins the moment the handshake lands, so this is the
   // pre-session list and not a merge; see `pickableModels`.
   const cached = (): CatalogModel[] => cachedModels(catalogFor(props.agentId));
-  const models = () => pickableModels(state.models, cached(), chatConfig(), state.contextWindows);
+  const models = () => pickableModels(state.models, cached(), state.contextWindows);
 
   // The entry the picker shows as selected. Resolved through the catalogue
   // rather than read straight off the store, because before the first pick the

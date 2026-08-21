@@ -29,6 +29,8 @@ function machineModels(): ChatModelInfo[] {
       supportsEffort: (m.supportsEffort as boolean) ?? false,
       supportedEffortLevels: (m.supportedEffortLevels as string[]) ?? [],
       supportsAutoMode: false,
+      supportsFastMode: false,
+      supportsAdaptiveThinking: false,
     }),
   );
 }
@@ -45,7 +47,6 @@ const chat: ChatConfig = {
   effort_args: [],
   mode_args: [],
   add_dir_args: [],
-  annotations: [],
   modes: [],
   effort_extras: [],
   acp: { serve_client_fs: false },
@@ -75,13 +76,15 @@ const cached = [
     supportsEffort: false,
     supportedEffortLevels: [],
     supportsAutoMode: false,
+    supportsFastMode: false,
+    supportsAdaptiveThinking: false,
   },
 ];
 
 function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
   const onSelectModel = vi.fn();
   const onSelectEffort = vi.fn();
-  const models: readonly PickableModel[] = over.models ?? pickableModels(machineModels(), [], chat);
+  const models: readonly PickableModel[] = over.models ?? pickableModels(machineModels(), []);
   const result = render(() => (
     <ModelPicker
       models={models}
@@ -165,7 +168,7 @@ describe("ModelPicker", () => {
 
   it("renders a usable picker from the probe cache when there was no handshake", () => {
     const { pills, openPalette, modelNames, pickModel, onSelectModel } = setup({
-      models: pickableModels([], cached, chat),
+      models: pickableModels([], cached),
       value: "sonnet",
     });
     expect(pills()[0].disabled).toBe(false);
@@ -189,7 +192,7 @@ describe("ModelPicker", () => {
   // rather than vanishing, because a level that quietly disappears on a CLI
   // upgrade tells nobody anything, and a row that says why says what to do.
   it("offers a refused level as a row that says why, and refuses to send it", async () => {
-    const sonnet = pickableModels(machineModels(), [], chat).find((m) => m.value === "sonnet")!;
+    const sonnet = pickableModels(machineModels(), []).find((m) => m.value === "sonnet")!;
     const withExtra: PickableModel = {
       ...sonnet,
       effortLevels: [
@@ -253,7 +256,7 @@ describe("ModelPicker", () => {
   // when something has gone wrong. A cached row the agent has since dropped
   // fails the send, and that is where it gets explained.
   it("says nothing about where the list came from", () => {
-    const r = setup({ models: pickableModels([], cached, chat), value: "sonnet" });
+    const r = setup({ models: pickableModels([], cached), value: "sonnet" });
     expect(r.queryByText(/Last known list/)).toBeNull();
     expect(r.container.querySelector(`.${styles.barNote}`)).toBeNull();
   });
@@ -262,7 +265,7 @@ describe("ModelPicker", () => {
   // is gone. The pill still opens: with the palette behind it, an empty list is
   // a thing to look at rather than a reason to bar the door.
   it("opens on nothing to pick, and says the list is empty rather than pretending", () => {
-    const { pills, openPalette } = setup({ models: pickableModels([], [], chat), value: null });
+    const { pills, openPalette } = setup({ models: pickableModels([], []), value: null });
     expect(pills()[0].disabled).toBe(false);
     expect(openPalette().querySelectorAll('[role="option"]')).toHaveLength(0);
     expect(screen.getAllByText("No models known yet").length).toBeGreaterThan(0);

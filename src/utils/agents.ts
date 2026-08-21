@@ -22,19 +22,6 @@ export type ChatTransport = "claude_stream_json" | "acp";
 
 // Something Sway knows about a model, keyed by the id the agent names it by.
 //
-// **Not a model list.** An annotation only ever decorates a model the agent
-// itself named; an id here that no catalogue mentions renders nothing at all,
-// and nothing turns one of these into a picker row. Its predecessor
-// `[[chat.models]]` was a list, and was wrong twice over: it offered four models
-// to a session that never handshook, and its windows said 200k for models the
-// agent reported 1M for.
-export type ChatAnnotation = {
-  id: string;
-  // Whether this model has a fast mode to toggle. Sway's own claim, and the one
-  // thing here that has to be: the live catalogue carries no flag for it.
-  fast_mode?: boolean;
-};
-
 export type ChatMode = {
   id: string;
   label: string;
@@ -57,10 +44,10 @@ export type ChatMode = {
   default?: boolean;
 };
 
-// A level `--effort` accepts that the agent's own catalogue never lists. Not a
-// field on ChatAnnotation: a fast mode belongs to one model, an accepted flag
-// value belongs to the binary. `measured_on` is what stops the claim outliving
-// the measurement; see `dev/effort-probe.mjs`.
+// A level `--effort` accepts that the agent's own catalogue never lists. Keyed
+// by nothing, because an accepted flag value belongs to the binary rather than
+// to one model. `measured_on` is what stops the claim outliving the
+// measurement; see `dev/effort-probe.mjs`.
 export type ChatEffortExtra = {
   id: string;
   label: string;
@@ -84,8 +71,6 @@ export type ChatConfig = {
   effort_args: string[];
   mode_args: string[];
   add_dir_args: string[];
-  // What Sway knows about individual models, never what models exist.
-  annotations: ChatAnnotation[];
   // Effort levels Sway measured that this agent never advertises. Empty for
   // every agent nobody has measured, which is all of them but claude.
   effort_extras: ChatEffortExtra[];

@@ -263,10 +263,12 @@ describe("the adapter declares no models", () => {
   const claude = (bundled as unknown as Adapter[]).find((a) => a.id === "claude")!;
   const chat = claude.chat as ChatConfig;
 
-  it("annotates one model and lists none", () => {
-    expect(chat.annotations.map((a) => a.id)).toEqual(["claude-opus-5"]);
-    expect(chat.annotations.every((a) => a.fast_mode)).toBe(true);
+  it("names no model at all, and no longer annotates one either", () => {
     expect(chat).not.toHaveProperty("models");
+    // `[[chat.annotations]]` went the same way and for the same reason: the
+    // handshake publishes `supportsFastMode` per model, so the table was
+    // restating the CLI in a spelling the CLI does not use.
+    expect(chat).not.toHaveProperty("annotations");
   });
 });
 

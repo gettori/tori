@@ -43,7 +43,7 @@ use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode}
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::agents::{AgentAdapter, ChatAnnotation, ChatEffortExtra, ChatTransport};
+use crate::agents::{AgentAdapter, ChatEffortExtra, ChatTransport};
 use crate::chat::acp;
 use crate::chat::acp_transport::{initialize_request, new_session_request};
 use crate::chat::claude::{self, ClaudeMapper};
@@ -181,7 +181,12 @@ pub struct CatalogModel {
 /// [`Catalogue::version`] already lives under. Two staleness rules in two
 /// languages that can disagree is the failure that moved the first one out of
 /// Rust, and a shape stamp is the same kind of rule.
-pub const CACHE_SHAPE: u32 = 1;
+///
+/// - **1**: the shape at the moment the stamp was introduced.
+/// - **2**: `supports_fast_mode` and `supports_adaptive_thinking` on every model
+///   row. A cache written at 1 carries neither, and both default to false, so a
+///   model with a fast mode would read as one without until something re-asked.
+pub const CACHE_SHAPE: u32 = 2;
 
 /// What a catalogue carrying no stamp is: the shape from before the field
 /// existed.
@@ -418,7 +423,6 @@ fn probe_claude(
     spec: &StartSpec,
     version: Option<String>,
     deadline: Duration,
-    annotations: &[ChatAnnotation],
     effort_extras: &[ChatEffortExtra],
 ) -> Result<Catalogue, ProbeFailure> {
     let mut child = build_command(spec)
@@ -489,7 +493,7 @@ fn probe_claude(
                     info.effort_levels =
                         claude::effort_levels(&info, effort_extras, version.as_deref().unwrap_or_default());
                     CatalogModel {
-                        options: claude::config_options(&info, annotations),
+                        options: claude::config_options(&info),
                         info,
                         user_configured: false,
                     }
@@ -778,7 +782,7 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
     // agent that silently never gets a catalogue.
     let outcome = match chat.transport {
         ChatTransport::ClaudeStreamJson => {
-            probe_claude(&spec, version, deadline, &chat.annotations, &chat.effort_extras).map(|mut c| {
+            probe_claude(&spec, version, deadline, &chat.effort_extras).map(|mut c| {
                 let extras = user_configured_models(&claude_settings_path(), &c.models);
                 c.models.extend(extras);
                 c
@@ -888,6 +892,10 @@ fn user_configured_models(path: &Path, known: &[CatalogModel]) -> Vec<CatalogMod
                 supported_effort_levels: Vec::new(),
                 effort_levels: Vec::new(),
                 supports_auto_mode: false,
+                // A configured string is passed to the CLI unresolved, so no
+                // catalogue row backs it and no capability can be claimed for it.
+                supports_fast_mode: false,
+                supports_adaptive_thinking: false,
             },
             user_configured: true,
             // An annotation decorates a model the agent named, and this row is
@@ -1002,6 +1010,8 @@ mod tests {
                     supported_effort_levels: vec!["low".into(), "high".into()],
                     effort_levels: Vec::new(),
                     supports_auto_mode: true,
+                    supports_fast_mode: false,
+                    supports_adaptive_thinking: false,
                 },
                 user_configured: false,
                 options: Vec::new(),
@@ -1216,7 +1226,7 @@ mod tests {
     #[test]
     fn a_silent_child_times_out_rather_than_wedging() {
         let started = std::time::Instant::now();
-        let failure = probe_claude(&sh("sleep 30"), None, Duration::from_millis(300), &[], &[])
+        let failure = probe_claude(&sh("sleep 30"), None, Duration::from_millis(300), &[])
             .expect_err("a child that never answers cannot produce a catalogue");
 
         assert_eq!(failure.reason, FailureReason::TimedOut);
@@ -1227,14 +1237,14 @@ mod tests {
     /// that hung, and the surface says so.
     #[test]
     fn a_child_that_exits_without_answering_is_no_answer() {
-        let failure = probe_claude(&sh("exit 0"), None, PROBE_DEADLINE, &[], &[]).expect_err("nothing was answered");
+        let failure = probe_claude(&sh("exit 0"), None, PROBE_DEADLINE, &[]).expect_err("nothing was answered");
         assert_eq!(failure.reason, FailureReason::NoAnswer);
     }
 
     /// And it quotes the agent rather than paraphrasing it.
     #[test]
     fn a_failure_carries_the_agents_own_stderr() {
-        let failure = probe_claude(&sh("echo 'credit balance too low' >&2; exit 1"), None, PROBE_DEADLINE, &[], &[])
+        let failure = probe_claude(&sh("echo 'credit balance too low' >&2; exit 1"), None, PROBE_DEADLINE, &[])
             .expect_err("nothing was answered");
         assert_eq!(failure.detail, "credit balance too low");
     }
@@ -1250,7 +1260,7 @@ mod tests {
         let noise = STDERR_TAIL * 2 / 40;
         let script = format!("for i in $(seq {noise}); do echo 'noisy line of agent output' >&2; done; echo LAST >&2");
 
-        let failure = probe_claude(&sh(&script), None, PROBE_DEADLINE, &[], &[]).expect_err("nothing was answered");
+        let failure = probe_claude(&sh(&script), None, PROBE_DEADLINE, &[]).expect_err("nothing was answered");
 
         assert!(failure.detail.ends_with("LAST"), "the tail keeps the end, which is where the reason is");
         assert!(failure.detail.len() <= STDERR_TAIL, "and stays bounded: {} bytes", failure.detail.len());
@@ -1265,7 +1275,7 @@ mod tests {
             args: Vec::new(),
             env: HashMap::new(),
         };
-        let failure = probe_claude(&spec, None, PROBE_DEADLINE, &[], &[]).expect_err("nothing to spawn");
+        let failure = probe_claude(&spec, None, PROBE_DEADLINE, &[]).expect_err("nothing to spawn");
         assert_eq!(failure.reason, FailureReason::SpawnFailed);
     }
 
@@ -1283,6 +1293,9 @@ mod tests {
                     "displayName": "Opus 5",
                     "supportsEffort": true,
                     "supportedEffortLevels": ["low", "high"],
+                    // The lever the cached row is expected to carry, published
+                    // by the handshake rather than restated in an adapter table.
+                    "supportsFastMode": true,
                 }],
                 "account": { "subscriptionType": "Claude Max", "apiProvider": "firstParty" },
             }},
@@ -1292,8 +1305,7 @@ mod tests {
         // answers once, then holds the pipe open the way the real CLI does.
         let script = format!("read -r _line; printf '%s\\n' '{response}'; sleep 5");
 
-        let annotations = vec![ChatAnnotation { id: "claude-opus-5".into(), fast_mode: true }];
-        let catalogue = probe_claude(&sh(&script), Some("2.1.231".into()), Duration::from_secs(10), &annotations, &[])
+        let catalogue = probe_claude(&sh(&script), Some("2.1.231".into()), Duration::from_secs(10), &[])
             .expect("the stand-in answered the handshake");
 
         assert_eq!(catalogue.version.as_deref(), Some("2.1.231"));
@@ -1308,7 +1320,7 @@ mod tests {
         // cannot disagree about claude's own levers.
         assert_eq!(
             catalogue.models[0].options,
-            claude::config_options(&catalogue.models[0].info, &annotations)
+            claude::config_options(&catalogue.models[0].info)
         );
         assert_eq!(catalogue.models[0].options.len(), 1);
         assert!(catalogue.models[0].options[0].disabled);

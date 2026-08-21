@@ -34,7 +34,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
-use crate::agents::{ChatAnnotation, ChatEffortExtra};
+use crate::agents::ChatEffortExtra;
 
 use super::claude::ClaudeMapper;
 use super::model::{
@@ -200,11 +200,8 @@ pub struct ClaudeTransport {
     /// pretending otherwise would show a mode the session is not in.
     pending_mode: Option<PermissionMode>,
     pending_model: Option<(String, Option<String>)>,
-    /// The adapter's model annotations, handed to the mapper so the session can
-    /// publish claude's own levers for whichever model it reports.
-    annotations: Vec<ChatAnnotation>,
-    /// The adapter's measured effort levels, handed to the mapper for the same
-    /// reason: they decorate the catalogue the session reports.
+    /// The adapter's measured effort levels, handed to the mapper: they
+    /// decorate the catalogue the session reports.
     effort_extras: Vec<ChatEffortExtra>,
 }
 
@@ -224,16 +221,8 @@ impl ClaudeTransport {
             request_seq: AtomicU64::new(0),
             pending_mode: None,
             pending_model: None,
-            annotations: Vec::new(),
             effort_extras: Vec::new(),
         }
-    }
-
-    /// Hand it what its adapter knows about claude's models. Absent is a
-    /// transport that publishes no options, never one that invents any.
-    pub fn with_annotations(mut self, annotations: Vec<ChatAnnotation>) -> Self {
-        self.annotations = annotations;
-        self
     }
 
     /// Hand it the levels Sway measured that this CLI never advertises.
@@ -484,8 +473,7 @@ impl AgentTransport for ClaudeTransport {
             let sink = sink.clone();
             let mut mapper =
                 ClaudeMapper::new(shared.session_id.clone())
-                    .with_annotations(self.annotations.clone())
-                    .with_effort_extras(self.effort_extras.clone());
+                                        .with_effort_extras(self.effort_extras.clone());
             thread::spawn(move || {
                 for line in BufReader::new(stdout).lines() {
                     let Ok(line) = line else { break };

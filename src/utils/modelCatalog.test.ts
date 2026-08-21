@@ -33,12 +33,14 @@ const model = (value: string, resolvedModel: string): CatalogModel => ({
   supportsEffort: false,
   supportedEffortLevels: [],
   supportsAutoMode: false,
+  supportsFastMode: false,
+  supportsAdaptiveThinking: false,
 });
 
 const withModels = (models: CatalogModel[], version: string | null = "2.1.231"): ModelCatalog => ({
   agentId: "claude",
   state: "probed",
-  catalogue: { version, probedAtMs: 0, models, modes: [], account: null },
+  catalogue: { version, shape: CACHE_SHAPE, probedAtMs: 0, models, modes: [], account: null },
   lastFailure: null,
 });
 
@@ -93,11 +95,19 @@ describe("whether a remembered answer still describes the binary", () => {
   // missing a field this build reads describes an older *Sway*, and the binary
   // on disk need not have moved at all.
   describe("and whether it still describes what this Sway reads", () => {
-    it("reads an unstamped catalogue as the shape from before the stamp", () => {
-      // Which is what makes introducing the mechanism invalidate nothing: every
-      // catalogue on every machine is unstamped the day this ships.
-      expect(withModels([]).catalogue?.shape).toBeUndefined();
-      expect(isStale(withModels([]), "2.1.231")).toBe(false);
+    // An unstamped catalogue reads as **1**, not as whatever is current, and
+    // that is the whole design: the stamp landed at 1 so the mechanism
+    // invalidated nothing the day it shipped, and shape 2 (the model rows'
+    // capability flags) is the first bump, so the same cache now re-probes.
+    // Reading it as current would have made every bump miss exactly the caches
+    // it exists to catch.
+    it("re-probes a catalogue written before the stamp existed", () => {
+      const unstamped = withModels([]);
+      delete unstamped.catalogue!.shape;
+      expect(isStale(unstamped, "2.1.231")).toBe(true);
+      // And it still deserializes: nothing here throws on the missing key, so a
+      // user's cache is re-asked rather than read as an agent offering nothing.
+      expect(cachedModels(unstamped)).toEqual([]);
     });
 
     it("is stale when the cache is stamped below the shape this build wants", () => {
@@ -183,6 +193,7 @@ describe("the shared store", () => {
     state: "probed",
     catalogue: {
       version: "1.18.3",
+      shape: CACHE_SHAPE,
       probedAtMs: 0,
       models: [model("anthropic/claude-sonnet-4.6", "anthropic/claude-sonnet-4.6")],
       modes: [],
@@ -261,6 +272,7 @@ describe("the levers a draft can read before it has a session", () => {
     state: "probed",
     catalogue: {
       version: "1.2.0",
+      shape: CACHE_SHAPE,
       probedAtMs: 0,
       // Empty **by design**, not by omission: `acp_catalogue` writes
       // `options: Vec::new()` on every row because the set belongs to the
