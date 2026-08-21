@@ -179,13 +179,55 @@ describe("ModelPicker", () => {
     expect(onSelectModel).toHaveBeenCalledWith("claude", expect.objectContaining({ value: "sonnet" }));
   });
 
+  /**
+   * **Two rows, one model, one name on the pill.**
+   *
+   * The catalogue publishes `default` and `opus[1m]` as separate rows with
+   * separate labels, and both carry `claude-opus-5[1m]`. Picking either runs the
+   * same thing, so a pill reading "Default" for one and "Opus" for the other is
+   * naming the row that was clicked rather than the model that will answer.
+   *
+   * The aside comes off too: "(1M context)" is written for a menu row, and the
+   * pill has room for the name and not the footnote. Both survive in the
+   * tooltip, which is the one place the full row label still appears.
+   */
+  it("names the model rather than the row when two rows are one model", () => {
+    expect(setup({ value: "default" }).pills()[0].textContent).toContain("Opus");
+    expect(setup({ value: "opus[1m]" }).pills()[0].textContent).toContain("Opus");
+    expect(setup({ value: "default" }).pills()[0].textContent).not.toContain("Default");
+
+    // A row that is nobody's sibling keeps its own name, minus the aside.
+    expect(setup({ value: "sonnet" }).pills()[0].textContent).toContain("Sonnet");
+  });
+
+  it("keeps the row's own full label in the tooltip", () => {
+    const pill = setup({ value: "default" }).pills()[0];
+    pill.focus();
+    fireEvent.focus(pill);
+    expect(screen.getByRole("tooltip").textContent).toContain("Default (recommended)");
+  });
+
   it("hides the effort control for a model declaring no levels, and shows all five for one that does", () => {
     // Measured: haiku omits the effort keys entirely.
     expect(setup({ value: "haiku" }).pills()).toHaveLength(1);
 
     const sonnet = setup({ value: "sonnet" });
     expect(sonnet.pills()).toHaveLength(2);
-    expect(sonnet.rowNames(sonnet.openEffort())).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    // Capitalised for the menu, not on the wire: `onSelectEffort` still sends
+    // the agent's own spelling, which the send test below pins.
+    expect(sonnet.rowNames(sonnet.openEffort())).toEqual(["Low", "Medium", "High", "Xhigh", "Max"]);
+  });
+
+  /** The capitalisation is display only, and this is the assertion that keeps it
+   *  that way: an agent's own spelling is what a switch has to send, and only
+   *  the first letter is touched, so `xhigh` reads `Xhigh` rather than Sway's
+   *  guess at `XHigh`. */
+  it("capitalises a level for the menu and sends the agent's own spelling", () => {
+    const s = setup({ value: "sonnet" });
+    const menu = s.openEffort();
+    const row = [...menu.children].find((r) => r.textContent?.startsWith("Xhigh"))!;
+    pointerClick(row as HTMLElement);
+    expect(s.onSelectEffort).toHaveBeenCalledWith("xhigh");
   });
 
   // A level Sway measured but this binary was not measured against. It renders
@@ -202,7 +244,7 @@ describe("ModelPicker", () => {
     };
     const s = setup({ models: [withExtra], value: "sonnet" });
     const menu = s.openEffort();
-    expect(s.rowNames(menu)).toEqual(["low", "medium", "high", "xhigh", "max", "Ultracode"]);
+    expect(s.rowNames(menu)).toEqual(["Low", "Medium", "High", "Xhigh", "Max", "Ultracode"]);
 
     const refused = [...menu.children].find((r) => r.textContent?.includes("Ultracode"))!;
     // Announced as refused, and still a row keyboard navigation can reach: a

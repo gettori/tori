@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render, fireEvent, screen } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { expectNoAxeViolations } from "../../test/axe";
 import { pointerClick } from "../../test/menus";
@@ -12,6 +12,14 @@ import type { ChatConfigOption } from "../../utils/chatTypes";
 /** Every option is one the agent says it can take unless a test says otherwise,
  *  which is what an ACP agent publishes: the protocol cannot say "refused". */
 const live = <T extends object>(o: T) => ({ disabled: false, note: "", ...o });
+
+/** Open a tooltip the way a keyboard user does. Kobalte opens on focus with no
+ *  delay, so unlike the hover path this needs no timers - but it needs the real
+ *  focus as well as the event. */
+function focusTrigger(trigger: HTMLElement) {
+  trigger.focus();
+  fireEvent.focus(trigger);
+}
 
 const OPTIONS: ChatConfigOption[] = [
   live({
@@ -56,9 +64,12 @@ const OPTIONS: ChatConfigOption[] = [
     category: "",
     kind: "select",
     current: "concise",
+    // Three, not two. A two-choice select is a toggle now (see the toggle
+    // describe below), so the menu path needs a select that stays one.
     choices: [
       { value: "concise", label: "Concise", description: "Short answers" },
       { value: "detailed", label: "Detailed", description: "" },
+      { value: "exhaustive", label: "Exhaustive", description: "" },
     ],
   }),
 ];
@@ -111,10 +122,18 @@ describe("the agent's own options in the composer bar", () => {
     expect(onSet).toHaveBeenCalledWith("verbosity", "detailed");
   });
 
-  it("sends a boolean as a boolean when the switch flips", () => {
-    const { getByRole, onSet } = setup();
-    fireEvent.click(getByRole("switch"));
+  it("sends a boolean as a boolean when the toggle flips", () => {
+    const { getByLabelText, onSet } = setup();
+    fireEvent.click(getByLabelText("Web search"));
     expect(onSet).toHaveBeenCalledWith("web_search", true);
+  });
+
+  /** A lever Sway has no glyph for keeps its name on screen. The icon-only pill
+   *  is for the handful whose picture already says it; a generic toggle glyph
+   *  with no words is a control the user cannot identify at all. */
+  it("draws the name of a toggle whose glyph means nothing", () => {
+    const { getByLabelText } = setup();
+    expect(getByLabelText("Web search").textContent).toContain("Web search");
   });
 
   /** The verify for "unknown option kinds are skipped, never crash the mirror".
@@ -143,6 +162,7 @@ describe("the agent's own options in the composer bar", () => {
         choices: [
           { value: "detailed", label: "Detailed", description: "" },
           { value: "exhaustive", label: "Exhaustive", description: "" },
+          { value: "terse", label: "Terse", description: "" },
         ],
       }),
     ]);
@@ -158,18 +178,18 @@ describe("the agent's own options in the composer bar", () => {
    *  set is replaced on every answer, so identity keying rebuilds the control
    *  the user is standing on and takes their focus with it. */
   it("keeps focus on a control while its own value moves under it", () => {
-    const { getByRole, setLive } = setup();
-    const sw = getByRole("switch") as HTMLElement;
-    sw.focus();
+    const { getByLabelText, setLive } = setup();
+    const toggle = getByLabelText("Web search") as HTMLElement;
+    toggle.focus();
     setLive(OPTIONS.map((o) => (o.id === "web_search" ? { ...o, kind: "boolean", value: true } : o)));
 
-    expect(getByRole("switch").getAttribute("aria-checked")).toBe("true");
-    expect(document.activeElement).toBe(getByRole("switch"));
+    expect(getByLabelText("Web search").getAttribute("aria-pressed")).toBe("true");
+    expect(document.activeElement).toBe(getByLabelText("Web search"));
   });
 
   it("swaps the widget when the agent changes a lever's shape", () => {
-    const { getByRole, queryByRole, setLive } = setup();
-    expect(queryByRole("switch")).not.toBeNull();
+    const { getByLabelText, setLive } = setup();
+    expect(getByLabelText("Web search").getAttribute("aria-pressed")).toBe("false");
     setLive([
       live({
         id: "web_search",
@@ -178,12 +198,69 @@ describe("the agent's own options in the composer bar", () => {
         category: "",
         kind: "select",
         current: "off",
-        choices: [{ value: "off", label: "Off", description: "" }],
+        choices: [
+          { value: "off", label: "Off", description: "" },
+          { value: "fast", label: "Fast", description: "" },
+          { value: "deep", label: "Deep", description: "" },
+        ],
       }),
     ]);
 
-    expect(queryByRole("switch")).toBeNull();
-    expect(getByRole("button", { name: "Web search" })).toBeTruthy();
+    // A menu pill now: no pressed state, and a caret it can be opened by.
+    const pill = getByLabelText("Web search");
+    expect(pill.getAttribute("aria-pressed")).toBeNull();
+    expect(pill.getAttribute("aria-haspopup")).toBe("menu");
+  });
+
+  /**
+   * A select with exactly two choices is a two-state lever, whatever the agent
+   * called it, so it renders as one control rather than as a menu that opens to
+   * offer a bit. **The second choice is "on"**: a select carries no polarity, so
+   * the only thing to go on is the order the agent listed them in, and agents
+   * list the default first.
+   */
+  it("renders a two-choice select as a toggle, second choice on", () => {
+    const two = live({
+      id: "collaboration_mode",
+      name: "Collaboration mode",
+      description: "",
+      category: "",
+      kind: "select",
+      current: "default",
+      choices: [
+        { value: "default", label: "Default", description: "" },
+        { value: "plan", label: "Plan", description: "" },
+      ],
+    }) as ChatConfigOption;
+
+    const { getByLabelText, onSet } = setup([two]);
+    const pill = getByLabelText("Collaboration mode: Default");
+    expect(pill.getAttribute("aria-pressed")).toBe("false");
+    // It commits with the agent's own value id, not a boolean: sending the
+    // wrong shape is the one thing an agent answers by doing nothing.
+    fireEvent.click(pill);
+    expect(onSet).toHaveBeenCalledWith("collaboration_mode", "plan");
+  });
+
+  it("shows the second choice as pressed when it is the one in force", () => {
+    const two = live({
+      id: "collaboration_mode",
+      name: "Collaboration mode",
+      description: "",
+      category: "",
+      kind: "select",
+      current: "plan",
+      choices: [
+        { value: "default", label: "Default", description: "" },
+        { value: "plan", label: "Plan", description: "" },
+      ],
+    }) as ChatConfigOption;
+
+    const { getByLabelText, onSet } = setup([two]);
+    const pill = getByLabelText("Collaboration mode: Plan");
+    expect(pill.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(pill);
+    expect(onSet).toHaveBeenCalledWith("collaboration_mode", "default");
   });
 
   /** And the store is what feeds it, so the same rule holds end to end. */
@@ -225,32 +302,49 @@ describe("a lever the agent published and refuses", () => {
     choices: [{ value: "concise", label: "Concise", description: "" }],
   };
 
-  it("says why in text anyone can see, not only on hover", () => {
-    const { container } = setup([REFUSED_TOGGLE]);
-    expect(container.textContent).toContain("Fast mode is not available in the Agent SDK");
+  /**
+   * **The reason is a tooltip, not a line in the bar.**
+   *
+   * It used to be drawn beside the pill, on the argument that a reason only a
+   * screen reader can hear leaves everyone else with a dead control. Right about
+   * the reason, wrong about where: a full sentence of prose parked permanently
+   * in a row of one-word pills is the composer explaining its plumbing while
+   * nothing has failed. The pill still shows that it is refusing; the sentence
+   * moved one hover away, and `aria-disabled` is what makes it findable.
+   */
+  it("carries its reason in the tooltip rather than as a line in the bar", () => {
+    const { container, getByLabelText } = setup([REFUSED_TOGGLE]);
+    expect(container.textContent).not.toContain(REFUSED_TOGGLE.note);
+    expect(getByLabelText("Fast mode").getAttribute("aria-disabled")).toBe("true");
   });
 
-  // The note is only reachable while the control still takes focus, which a
-  // bare `disabled` attribute would end.
-  it("keeps the control focusable and points it at its own reason", () => {
-    const { getByRole } = setup([REFUSED_TOGGLE]);
-    const sw = getByRole("switch") as HTMLInputElement;
+  it("says why on hover, in the agent's own words after its description", () => {
+    const { getByLabelText } = setup([REFUSED_TOGGLE]);
+    focusTrigger(getByLabelText("Fast mode"));
 
-    expect(sw.disabled).toBe(false);
-    expect(sw.getAttribute("aria-disabled")).toBe("true");
-    const described = (sw.getAttribute("aria-describedby") ?? "")
-      .split(" ")
-      .map((id) => document.getElementById(id)?.textContent)
-      .join(" ");
-    expect(described).toContain("Fast mode is not available in the Agent SDK");
+    // `screen`, not the render result: a tooltip portals onto the body, which
+    // is outside the container the query helpers are scoped to.
+    const tip = screen.getByRole("tooltip");
+    expect(tip.textContent).toContain("Answer faster");
+    expect(tip.textContent).toContain(REFUSED_TOGGLE.note);
+  });
+
+  // Refusing, not disabled: a bare `disabled` takes the control out of the tab
+  // order and the tooltip carrying its reason out of reach with it.
+  it("keeps the control focusable", () => {
+    const { getByLabelText } = setup([REFUSED_TOGGLE]);
+    const pill = getByLabelText("Fast mode") as HTMLButtonElement;
+
+    expect(pill.disabled).toBe(false);
+    expect(pill.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("refuses the flip rather than moving and being corrected", () => {
-    const { getByRole, onSet } = setup([REFUSED_TOGGLE]);
-    fireEvent.click(getByRole("switch"));
+    const { getByLabelText, onSet } = setup([REFUSED_TOGGLE]);
+    fireEvent.click(getByLabelText("Fast mode"));
 
     expect(onSet).not.toHaveBeenCalled();
-    expect(getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    expect(getByLabelText("Fast mode").getAttribute("aria-pressed")).toBe("false");
   });
 
   it("passes the accessibility gate with both shapes refused", async () => {
@@ -259,13 +353,15 @@ describe("a lever the agent published and refuses", () => {
   });
 
   it("opens no menu on a refused pill, and still names its reason", () => {
-    const { getByLabelText, container } = setup([REFUSED_SELECT]);
+    const { getByLabelText } = setup([REFUSED_SELECT]);
     const pill = getByLabelText("Verbosity");
     pointerClick(pill);
 
     expect(document.querySelectorAll('[role="menu"]')).toHaveLength(0);
     expect(pill.getAttribute("aria-disabled")).toBe("true");
     expect((pill as HTMLButtonElement).disabled).toBe(false);
-    expect(container.textContent).toContain("Not available on this model");
+
+    focusTrigger(pill);
+    expect(screen.getByRole("tooltip").textContent).toContain("Not available on this model");
   });
 });

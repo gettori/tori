@@ -31,7 +31,9 @@
         "--include-partial-messages",
         "--include-hook-events",
         "--permission-prompt-tool",
-        "stdio"
+        "stdio",
+        "--settings",
+        "{\"fastMode\":true}"
       ],
       "session_id_args": [
         "--session-id",

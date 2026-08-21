@@ -1,4 +1,4 @@
-import { Show, createSignal, type Component, type JSX } from "solid-js";
+import { Show, createSignal, createUniqueId, type Component, type JSX } from "solid-js";
 import { Check, ChevronDown, ChevronRight } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Dropdown from "../../components/Menu/Dropdown";
@@ -162,13 +162,21 @@ export function PickerButton(props: {
 }
 
 /**
- * A menu row offering one choice: what it is, what it is for, and whether it is
- * the one in force. The description earns its line - "Opus" and "Sonnet" do not
- * tell anyone which to reach for, and the catalogue already carries the sentence
- * that does.
+ * A menu row offering one choice: what it is, and whether it is the one in
+ * force. The description used to have its own line under the label. It reads
+ * badly in the composer's own menus, which are short lists of one-word values
+ * (`low`, `high`, `Agent`, `Plan`) whose sentence is a footnote rather than the
+ * thing being chosen between - four two-line rows to pick a word. So it moved
+ * into the label's tooltip, still one hover away and no longer setting the
+ * height of every row.
+ *
+ * The model palette is the case this rule was written for, and it is not this
+ * component: `AgentPalette` draws its own rows, where "Opus" and "Sonnet" really
+ * do need the sentence beside them.
  */
 export function PickerOption(props: {
   label: string;
+  /** Shown on hover and focus of the label, not as a line of its own. */
   description?: string;
   selected: boolean;
   /** A choice this agent has but cannot currently take. Refusing rather than
@@ -182,11 +190,27 @@ export function PickerOption(props: {
   note?: string;
   onSelect: () => void;
 }) {
+  const descId = createUniqueId();
   return (
-    <MenuRow refusing={props.refusing} onClick={props.onSelect}>
+    <MenuRow
+      refusing={props.refusing}
+      describedBy={props.description ? descId : undefined}
+      onClick={props.onSelect}
+    >
       <span class={styles.pickBody} classList={{ [styles.pickRefusing]: !!props.refusing }}>
-        <span class={styles.pickName}>{props.label}</span>
-        <Show when={props.description}>{(d) => <span class={styles.pickDesc}>{d()}</span>}</Show>
+        <Tooltip<HTMLSpanElement> as="span" class={styles.pickName} label={props.description}>
+          {props.label}
+        </Tooltip>
+        {/* Announced as well as hovered. The tooltip is `aria-describedby` on a
+            span, and a span inside a menu item is not focusable, so on its own
+            the sentence would reach a pointer and nobody else. */}
+        <Show when={props.description}>
+          {(d) => (
+            <span id={descId} class={styles.srOnly}>
+              {d()}
+            </span>
+          )}
+        </Show>
         <Show when={props.refusing && props.note}>
           {(note) => <span class={styles.pickNote}>{note()}</span>}
         </Show>
@@ -197,6 +221,67 @@ export function PickerOption(props: {
         <Icon icon={Check} size={14} />
       </span>
     </MenuRow>
+  );
+}
+
+/**
+ * A lever with two states, as one icon that swaps rather than a switch.
+ *
+ * The composer bar is a row of pills, and a track-and-knob switch beside them
+ * reads as a settings control that wandered in: it needs its own label to say
+ * what it is of, which is a second piece of text in a bar whose whole job is to
+ * stay out of the way. An icon that changes glyph says both things in the space
+ * of one pill.
+ *
+ * **The glyph carries the state, and so does the colour.** A pair that differ
+ * only by a slash is a poor signal at 13px, so the on state also takes the
+ * accent. Neither alone is the signal; `aria-pressed` is what a screen reader
+ * reads, and it is the only one of the three that cannot be missed.
+ */
+export function PillToggle(props: {
+  /** Shown when on, and when off. Two glyphs, not one rotated: a `zap` and a
+   *  `zap-off` say more to a glance than any amount of styling one of them. */
+  icon: Component<{ size?: number | string }>;
+  iconOff: Component<{ size?: number | string }>;
+  on: boolean;
+  /** Drawn beside the glyph, for a lever whose picture does not say what it is.
+   *
+   *  A `zap` is fast mode to anyone who has seen it once; a generic toggle
+   *  glyph on an option Sway has never heard of is a control with no name on
+   *  screen at all. So the text is not a style choice - it is what a caller
+   *  falls back to when it has no glyph that means anything. */
+  label?: string;
+  /** The lever's name. The button's only name when there is no `label`. */
+  ariaLabel: string;
+  /** Hover and focus text. Where the agent's own sentence about this lever goes,
+   *  and where its reason goes when it is refusing. */
+  tooltip?: string;
+  disabled?: boolean;
+  /** Refusing rather than `disabled`, so the pill keeps its focus ring and the
+   *  tooltip carrying the reason stays reachable from the keyboard. */
+  ariaDisabled?: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <Tooltip
+      as="button"
+      type="button"
+      class={styles.pill}
+      classList={{
+        [styles.pillToggle]: !props.label,
+        [styles.pillToggleOn]: props.on && !props.ariaDisabled,
+        [styles.pillRefusing]: !!props.ariaDisabled,
+      }}
+      aria-label={props.ariaLabel}
+      label={props.tooltip}
+      disabled={props.disabled}
+      aria-disabled={props.ariaDisabled || undefined}
+      aria-pressed={props.on}
+      onClick={() => !props.ariaDisabled && props.onChange(!props.on)}
+    >
+      <Icon icon={props.on ? props.icon : props.iconOff} size={13} class={styles.pillIcon} />
+      <Show when={props.label}>{(text) => <span class={styles.pillValue}>{text()}</span>}</Show>
+    </Tooltip>
   );
 }
 
