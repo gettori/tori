@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { SlidersHorizontal } from "lucide-solid";
+import { ShieldCheck } from "lucide-solid";
 import Picker, { PickerOption } from "./Picker";
 import type { ChatMode } from "../../utils/agents";
 import type { PermissionMode } from "../../utils/chatTypes";
@@ -61,7 +61,10 @@ export default function ModeSelector(props: {
   return (
     <>
       <Picker
-        icon={SlidersHorizontal}
+        // A shield rather than sliders. Sliders say "settings", which is every
+        // pill in this bar; what this one actually chooses is how much the agent
+        // is allowed to do without asking.
+        icon={ShieldCheck}
         value={label()}
         ariaLabel="Permission mode"
         tooltip={title()}

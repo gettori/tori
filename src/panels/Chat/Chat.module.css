@@ -1365,6 +1365,19 @@
   color: var(--fg-subtle);
 }
 
+/* An icon-only pill: square rather than lozenge, since there is no text for the
+   wider side padding to balance. */
+.pillToggle {
+  padding: 0 calc(8px * var(--ui-scale));
+}
+
+/* On, and worth noticing that it is. The icon carries the accent rather than
+   the whole pill: a filled chip beside three outlined ones reads as selected in
+   a set, and this is not one of a set. */
+.pillToggleOn .pillIcon {
+  color: var(--accent-fg);
+}
+
 /* A pick that has not landed is a promise about the next turn, not a fact
    about this one; the chip says so until the boundary passes. */
 .pillPending {

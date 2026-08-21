@@ -1,9 +1,37 @@
-import { For, Show, createMemo, createUniqueId } from "solid-js";
-import { Settings2 } from "lucide-solid";
-import Picker, { PickerOption } from "./Picker";
-import Switch from "../../components/Switch/Switch";
+import { For, Show, createMemo, type Component } from "solid-js";
+import { ListCheck, ListX, Settings2, ToggleLeft, ToggleRight, Zap, ZapOff } from "lucide-solid";
+import Picker, { PickerOption, PillToggle } from "./Picker";
 import { mirroredOptions, type ChatConfigOption, type ChatConfigValue } from "../../utils/chatTypes";
-import styles from "./Chat.module.css";
+
+/**
+ * The glyphs a toggle wears, for the levers whose meaning a shape cannot reach.
+ *
+ * **Decoration, keyed by the agent's own option id.** This is the shape of table
+ * `[[chat.annotations]]` was retired for, so the difference matters: that one
+ * decided whether a *control existed*, and a key that matched nothing produced
+ * no control and said nothing about it. This one only picks a picture. A key
+ * that goes stale falls through to the generic pair below, which is a duller
+ * toggle rather than a missing one, and the lever still works.
+ *
+ * Ids are the agent's vocabulary and two agents may spell one idea differently,
+ * so an entry here is never a promise that a lever exists - only that if one
+ * turns up under this name, this is what it looks like.
+ */
+const TOGGLE_GLYPHS: Record<string, [Component<{ size?: number | string }>, Component<{ size?: number | string }>]> = {
+  fast_mode: [Zap, ZapOff],
+  collaboration_mode: [ListCheck, ListX],
+};
+
+const GENERIC_TOGGLE: [Component<{ size?: number | string }>, Component<{ size?: number | string }>] = [
+  ToggleRight,
+  ToggleLeft,
+];
+
+const glyphsFor = (id: string) => TOGGLE_GLYPHS[id] ?? GENERIC_TOGGLE;
+
+/** A lever whose glyph means something needs no words; one falling back to the
+ *  generic pair does, or it is a nameless switch on a bar of named pills. */
+const needsWords = (id: string) => !(id in TOGGLE_GLYPHS);
 
 /**
  * Every lever the agent published that Sway has no control of its own for.
@@ -54,8 +82,55 @@ export default function ConfigMirror(props: {
   );
 }
 
-const asSelect = (o: ChatConfigOption) => (o.kind === "select" ? o : undefined);
-const asToggle = (o: ChatConfigOption) => (o.kind === "boolean" ? o : undefined);
+/** A select with more values than a toggle can carry, which is the menu case. */
+const asSelect = (o: ChatConfigOption) =>
+  o.kind === "select" && o.choices.length !== 2 ? o : undefined;
+
+/**
+ * The two-state levers, whatever shape the agent published them in.
+ *
+ * A boolean is one. So is a select with exactly two choices, and folding the
+ * second into the first is still a rule about *shape*: nothing here reads the
+ * option's name to decide. A menu that opens to offer two rows, one of which is
+ * already selected, is a click and a decision to show a single bit.
+ *
+ * **Which of the two counts as "on" is the agent's own ordering**, second
+ * choice wins. There is nothing else to go on: a select carries no polarity, so
+ * either Sway reads the labels for words like "off" - guessing at another
+ * program's vocabulary in a component whose whole rule is not to - or it takes
+ * the order the agent listed them in. Agents list the default first, and "on" is
+ * the one you turn *to*, so the two agree in the case that exists
+ * (`collaboration_mode`: `default`, then `plan`).
+ */
+function asToggle(o: ChatConfigOption):
+  | {
+      on: boolean;
+      turnOn: ChatConfigValue;
+      turnOff: ChatConfigValue;
+      /** The accessible name, which has to carry the value as well as the lever. */
+      onLabel: string;
+      /** What a pill draws when its glyph says nothing on its own. */
+      shortLabel: string;
+    }
+  | undefined {
+  if (o.kind === "boolean") {
+    return { on: o.value, turnOn: true, turnOff: false, onLabel: o.name, shortLabel: o.name };
+  }
+  if (o.kind === "select" && o.choices.length === 2) {
+    const [off, on] = o.choices;
+    const showing = o.current === on.value ? on : off;
+    return {
+      on: o.current === on.value,
+      turnOn: on.value,
+      turnOff: off.value,
+      // "Collaboration mode" alone never says which of the two it is on, and an
+      // icon-only pill has nothing else to say it with.
+      onLabel: `${o.name}: ${showing.label}`,
+      shortLabel: showing.label,
+    };
+  }
+  return undefined;
+}
 
 /** One lever. Both shapes hang off `props.option`, so an agent that changes a
  *  lever's kind swaps the widget instead of leaving the old one behind. */
@@ -66,14 +141,25 @@ function MirrorRow(props: {
   barDisabled: boolean;
   onSet: (configId: string, value: ChatConfigValue) => void;
 }) {
-  // Not the agent's id: two chats can be mounted at once, both publishing an
-  // option called `web_search`, and `aria-describedby` would then point at
-  // whichever rendered first.
-  const hintId = createUniqueId();
-  const noteId = createUniqueId();
   const refused = () => props.option.disabled;
   const note = () => (refused() ? props.option.note : "");
-  const describes = (ids: (string | false)[]) => ids.filter(Boolean).join(" ") || undefined;
+  /**
+   * Everything this control has to say, in one string, for its tooltip.
+   *
+   * These used to be two things: the agent's description in the tooltip and the
+   * refusal drawn beside the pill as body text, on the argument that a reason
+   * only a screen reader can hear leaves everyone else with a dead control. The
+   * argument was right about the reason and wrong about where to put it. Drawn,
+   * it is a full sentence of prose sitting permanently in a bar of one-word
+   * pills - two of them at once on Claude - and the composer's rule is that
+   * plumbing shows when something has failed, not while it is merely unavailable.
+   *
+   * The pill still says it is refusing, in its own styling and in
+   * `aria-disabled`. The tooltip is where the sentence explaining that lives,
+   * and it reaches hover and keyboard focus alike.
+   */
+  const tooltip = () =>
+    [props.option.description, note()].filter(Boolean).join(" ") || undefined;
 
   return (
     <>
@@ -89,10 +175,9 @@ function MirrorRow(props: {
               select().choices.find((c) => c.value === select().current)?.label ?? select().current
             }
             ariaLabel={props.option.name}
-            tooltip={props.option.description}
+            tooltip={tooltip()}
             disabled={props.barDisabled}
             ariaDisabled={refused()}
-            describedBy={describes([!!note() && noteId])}
           >
             <For each={select().choices}>
               {(choice) => (
@@ -110,36 +195,19 @@ function MirrorRow(props: {
 
       <Show when={asToggle(props.option)}>
         {(toggle) => (
-          <span class={styles.barToggle}>
-            <Switch
-              checked={toggle().value}
-              // Refused here rather than by `disabled`, which would take the
-              // switch out of the tab order and its reason with it.
-              onChange={(on) => !refused() && props.onSet(props.option.id, on)}
-              disabled={props.barDisabled}
-              aria-disabled={refused()}
-              label={props.option.name}
-              aria-describedby={describes([!!props.option.description && hintId, !!note() && noteId])}
-            />
-            {/* Announced, never drawn: the agent's own sentence about what this
-                toggle does, which the pill controls have room for in a tooltip
-                and a switch does not. */}
-            <Show when={props.option.description}>
-              <span id={hintId} class={styles.srOnly}>
-                {props.option.description}
-              </span>
-            </Show>
-          </span>
-        )}
-      </Show>
-
-      {/* Drawn as well as announced. A refusal only a screen reader can hear
-          leaves everyone else with a control that silently does nothing. */}
-      <Show when={note()}>
-        {(reason) => (
-          <span id={noteId} class={styles.barNote}>
-            {reason()}
-          </span>
+          <PillToggle
+            icon={glyphsFor(props.option.id)[0]}
+            iconOff={glyphsFor(props.option.id)[1]}
+            on={toggle().on}
+            label={needsWords(props.option.id) ? toggle().shortLabel : undefined}
+            ariaLabel={toggle().onLabel}
+            tooltip={tooltip()}
+            disabled={props.barDisabled}
+            // Refused here rather than by `disabled`, which would take the pill
+            // out of the tab order and the tooltip carrying its reason with it.
+            ariaDisabled={refused()}
+            onChange={(on) => props.onSet(props.option.id, on ? toggle().turnOn : toggle().turnOff)}
+          />
         )}
       </Show>
     </>

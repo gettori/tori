@@ -43,4 +43,34 @@ describe("providerIcon", () => {
     expect(isBrandMark("sonnet-4.6", "claude")).toBe(true);
     expect(isBrandMark("gpt-5-codex", "claude")).toBe(false);
   });
+
+  /**
+   * **The case the vendor guard used to get backwards.**
+   *
+   * It read "any model naming a vendor other than Anthropic keeps the generic
+   * glyph", so a Codex session - which runs `gpt-*` by definition - lost the
+   * Codex mark on every model it has. The guard fired on the one pairing it was
+   * never written about.
+   *
+   * Contradiction takes two vendor claims. `codex` is OpenAI's, so a `gpt` id
+   * agrees with it and the mark stands; `claude` is Anthropic's, so the same id
+   * disagrees and the mark goes (the test above).
+   */
+  it("keeps an agent's mark for a model of the vendor that agent is", () => {
+    expect(isBrandMark("gpt-5.6-terra", "codex")).toBe(true);
+    expect(isBrandMark("gpt-5.4-mini", "codex")).toBe(true);
+    expect(isBrandMark("gemini-3-pro", "gemini")).toBe(true);
+
+    // And the mismatch still loses its mark, from the other direction.
+    expect(isBrandMark("claude-opus-5", "codex")).toBe(true); // Anthropic's own mark wins
+    expect(isBrandMark("gemini-3-pro", "codex")).toBe(false);
+  });
+
+  /** A mark that is a tool's brand rather than a vendor's claims nothing about
+   *  who answers, so no model id can contradict it. OpenCode runs whatever the
+   *  user authenticated, and the pill should still say OpenCode. */
+  it("keeps a tool's own mark whatever model it is running", () => {
+    expect(isBrandMark("gpt-5.6", "opencode")).toBe(true);
+    expect(isBrandMark("qwen/qwen3.6-plus", "opencode")).toBe(true);
+  });
 });
