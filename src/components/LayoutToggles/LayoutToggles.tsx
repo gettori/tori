@@ -35,7 +35,7 @@ export default function LayoutToggles(props: { showSidebar: boolean }) {
       <ToggleGroup.Item
         as={IconButton}
         value="sidebar"
-        size="sm"
+        size="md"
         class={styles.item}
         icon={<Icon icon={PanelLeft} />}
         tooltip="Show or hide the sidebar (⌘B)"
