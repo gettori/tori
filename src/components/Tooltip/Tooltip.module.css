@@ -19,7 +19,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
   box-shadow: var(--shadow-md);
-  font-size: var(--sway-text-lg);
+  font-size: var(--sway-text-md);
   line-height: var(--sway-line-normal);
   /* Kobalte writes this as an inline style on the content, pointing at whichever
      corner the popper actually resolved to, so the zoom below grows out of the
