@@ -257,11 +257,40 @@ export default function Terminal(props: {
     const entry = restorable[ws];
     if (!entry?.tabs.length) return;
     setRestoring(restoring() + 1);
-    try {
-      await restoreInto(ws, entry);
-    } finally {
+    const done = restoreInto(ws, entry).finally(() => {
       setRestoring(restoring() - 1);
-    }
+      inFlight.delete(ws);
+    });
+    inFlight.set(ws, done);
+    await done;
+  }
+
+  /**
+   * This workspace's strip, brought back if it has not been already.
+   *
+   * Anything that decides whether to *open* a tab has to go through here first.
+   * Restore is both automatic and asynchronous now, so a decision made from
+   * `open()` at launch is made against an empty strip that is about to be
+   * filled: "no tab hosts this session" is answered wrong, and a second tab is
+   * opened for a session the restore was already bringing back. The duplicate
+   * is persisted, so the next launch starts from two and the strip grows by one
+   * every time.
+   *
+   * Waiting on an in-flight restore is not enough on its own. The effect above
+   * only starts one once `activeWorkspace` is set, and it is the **selection**
+   * that sets it - so at launch the selection runs first, with nothing yet in
+   * flight to wait for. So this starts the restore rather than only joining it,
+   * and `restoreWorkspace` marks the workspace before its first `await`, which
+   * is what keeps the effect from running a second one.
+   *
+   * A plain map rather than a signal: nothing renders from it, and every caller
+   * is already async.
+   */
+  const inFlight = new Map<string, Promise<void>>();
+  async function stripReady(ws: string) {
+    const running = inFlight.get(ws);
+    if (running) return running;
+    if (!restored().has(ws)) await restoreWorkspace(ws);
   }
 
   // On first visit, per workspace. Suppressed while first-run onboarding is open
@@ -380,13 +409,23 @@ export default function Terminal(props: {
         // comes back as the same unstarted tab, holding what was typed into it
         // and what it was set to run as. Still no process and no claim - a
         // restored draft costs exactly what an opened one does.
-        const id = openChatTab(
-          ws,
-          await cwdFor(d.cwd),
-          d.title,
-          storedChatAgent(d.program),
-          undefined,
-          restoredId(d.id, chatId, never),
+        //
+        // Opened directly rather than through `openChatTab`, which exists to
+        // *name* a new chat and would run the stored title back through
+        // `chatTabLabel`. That is a relabel, not a restore: "Hello chat" comes
+        // back as "Hello chat chat", and again every launch. The stored title
+        // is already the answer that function gave when the tab was made.
+        const id = restoredId(d.id, chatId, never);
+        openOrActivate(
+          {
+            id,
+            title: d.title,
+            cwd: await cwdFor(d.cwd),
+            workspace: ws,
+            kind: "chat",
+            program: storedChatAgent(d.program),
+            args: [],
+          },
           false,
         );
         if (d.text) setDraft(id, d.text);
@@ -402,9 +441,15 @@ export default function Terminal(props: {
           continue;
         }
         const id = restoredId(d.id, chatId, () => live.chat.has(d.sessionId!));
+        const s = byId.get(d.sessionId)!;
         openOrActivate({
           id,
-          title: d.title,
+          // The session's own name wins over the stored one, on the same rule
+          // `syncTabTitles` and `focusOrResume` already use: a rename lands on
+          // the session, so that is where the current name is. It also heals a
+          // store written before the title was persisted through `tabTitle`,
+          // which is every store that has a chat in it today.
+          title: (s.name || s.title || d.title).slice(0, 28),
           cwd: await cwdFor(d.cwd),
           workspace: ws,
           kind: "chat",
@@ -580,11 +625,21 @@ export default function Terminal(props: {
   // A draft's unsent text and its pick live in stores of their own, keyed by tab
   // id. Read here rather than inside `tabPersist`, which stays a pure fold over
   // whatever it is handed.
+  //
+  // The **title** is read the same way, and for the same reason. `t.title` is
+  // captured when the tab is made and never changes; what the strip actually
+  // renders is `tabTitle`, the override `syncTabTitles` and a rename write. So
+  // persisting `t.title` stored the label a chat was born with - "<session>
+  // chat", straight out of `chatTabLabel` - and threw away the session's real
+  // name every save. Nothing showed it until restore ran on its own: the
+  // override lands a moment after the tab opens, so the wrong title was only
+  // ever on screen for a frame, and only the store kept it.
   const withDrafts = (tabs: readonly OpenTerm[]) =>
     tabs.map((t) => {
-      if (t.kind !== "chat") return t;
-      if (chatIsLive(t)) return { ...t, live: true };
-      return { ...t, live: false, text: draftFor(t.id), pick: draftPick(t.id) };
+      const named = { ...t, title: tabTitle(t) };
+      if (named.kind !== "chat") return named;
+      if (chatIsLive(named)) return { ...named, live: true };
+      return { ...named, live: false, text: draftFor(t.id), pick: draftPick(t.id) };
     });
 
   function saveTabStore(tabs: readonly OpenTerm[], active: Record<string, string>) {
@@ -1001,6 +1056,11 @@ export default function Terminal(props: {
    * this same Sway holds then refuses it.
    */
   async function openSelectedSession(sel: ResumeTarget) {
+    // Before anything reads `open()`. At launch the selection is delivered
+    // before this workspace has been restored, so every question below would be
+    // answered against an empty strip. Restore never reaches this function, so
+    // there is nothing here to wait on itself.
+    await stripReady(sel.folderPath);
     const sessionId = sel.sessionId!;
     const agentId = agents().some((a) => a.id === sel.agent) ? sel.agent! : "claude";
     // Hosting means *driving*, so a tab short of `live` does not count. It also
@@ -1429,12 +1489,14 @@ export default function Terminal(props: {
     }
     openOrActivate({
       id: `chat:${crypto.randomUUID()}`,
-      title: chatTabLabel(
-        sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
-        tabsIn(sel.folderPath)
-          .filter((t) => t.kind === "chat")
-          .map(tabTitle),
-      ),
+      // The session's own name, not a label built from it. `chatTabLabel` is
+      // for a chat that has no name yet - a draft named after its project, a
+      // fork named after its folder - and appending " chat" to a session that
+      // is already called something is a rename nobody asked for. It also only
+      // held until `syncTabTitles` ran, which is why the suffix used to appear
+      // for a few seconds and then vanish. Same derivation as `focusOrResume`
+      // and `syncTabTitles`, so all three agree from the first frame.
+      title: (sel.sessionTitle || sessionId).slice(0, 28),
       cwd: sel.sessionCwd || sel.folderPath,
       workspace: sel.folderPath,
       kind: "chat",
