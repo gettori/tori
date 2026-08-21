@@ -344,6 +344,7 @@ pub fn run() {
             sessions::set_session_name,
             sessions::delete_session,
             sessions::session_running,
+            sessions::session_running_elsewhere,
             sessions::sessions_running,
             sessions::adopt_path,
             sessions::seed_adopted,
