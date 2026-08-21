@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 use tauri::State;
 
-use crate::agents::{self, ChatAnnotation, ChatConfig, ChatTransport};
+use crate::agents::{self, ChatAnnotation, ChatConfig, ChatEffortExtra, ChatTransport};
 
 use super::acp::AcpOverrides;
 use super::acp_transport::AcpTransport;
@@ -21,7 +21,7 @@ use super::claude_transport::ClaudeTransport;
 use super::host::{ChatState, SessionBridge, Spawned};
 use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
-use super::model::{ChatConfigValue, ChatEvent, ContentBlock, Effort, PermissionDecision, PermissionMode, PermissionScope};
+use super::model::{ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope};
 use super::ownership::{Claim, ClaimOutcome, Orphans, Reaped, Surface};
 use super::transport::{AgentTransport, StartSpec};
 
@@ -40,14 +40,16 @@ fn make_transport(
     agent_id: &str,
     acp: AcpOverrides,
     annotations: Vec<ChatAnnotation>,
+    effort_extras: Vec<ChatEffortExtra>,
 ) -> Box<dyn AgentTransport> {
     match transport {
-        // The annotations ride along because claude publishes no options of its
-        // own: the levers it does have are assembled from them and the model
-        // the session reports. An ACP agent publishes its own and takes none.
-        ChatTransport::ClaudeStreamJson => {
-            Box::new(ClaudeTransport::new(session_id).with_annotations(annotations))
-        }
+        // Both tables ride along because claude publishes no options of its own
+        // and advertises fewer effort levels than it accepts: the levers and the
+        // extra levels are assembled from these and the model the session
+        // reports. An ACP agent publishes its own and takes neither.
+        ChatTransport::ClaudeStreamJson => Box::new(
+            ClaudeTransport::new(session_id).with_annotations(annotations).with_effort_extras(effort_extras),
+        ),
         // Every ACP agent reaches Sway through this one arm. Which agent it is
         // comes from the adapter's `[chat]` table, not from here, which is what
         // makes a new ACP agent a TOML file rather than a Rust change. The
@@ -254,6 +256,7 @@ pub async fn chat_spawn(
     let transport = chat.transport;
     let acp_overrides = chat.acp.clone();
     let annotations = chat.annotations.clone();
+    let effort_extras = chat.effort_extras.clone();
     let id_for_factory = session_id.clone();
     let agent_for_factory = agent_id.clone();
     let spawned = host.spawn(
@@ -270,6 +273,7 @@ pub async fn chat_spawn(
                 &agent_for_factory,
                 acp_overrides.clone(),
                 annotations.clone(),
+                effort_extras.clone(),
             )
         },
     );
@@ -509,7 +513,7 @@ pub async fn chat_set_model(
     state: State<'_, ChatState>,
     session_id: String,
     model: String,
-    effort: Option<Effort>,
+    effort: Option<String>,
 ) -> Result<(), String> {
     state.0.set_model(&session_id, &model, effort)
 }
@@ -1117,7 +1121,7 @@ mod tests {
             build_args(chat, "s", false, None, Some("github-copilot/claude-sonnet-4.6"), None, None, &[]);
         assert_eq!(with_model, vec!["acp"]);
 
-        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone(), Vec::new());
+        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone(), Vec::new(), Vec::new());
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
 
@@ -1125,7 +1129,14 @@ mod tests {
     fn the_claude_transport_is_what_the_factory_builds_for_the_bundled_adapter() {
         let chat = claude_chat();
         assert_eq!(chat.transport, ChatTransport::ClaudeStreamJson);
-        let t = make_transport(chat.transport, "s1", "claude", Default::default(), chat.annotations.clone());
+        let t = make_transport(
+            chat.transport,
+            "s1",
+            "claude",
+            Default::default(),
+            chat.annotations.clone(),
+            chat.effort_extras.clone(),
+        );
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
 }

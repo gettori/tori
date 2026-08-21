@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import initializeCapture from "../../../dev/fixtures/claude/initialize.jsonl?raw";
 import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
+import { expectNoAxeViolations } from "../../test/axe";
 import ModelPicker from "./ModelPicker";
 import { lockedProvider } from "./agentPaletteData";
 import { pickableModels, type PickableModel } from "../../utils/chatModels";
@@ -46,7 +47,7 @@ const chat: ChatConfig = {
   add_dir_args: [],
   annotations: [],
   modes: [],
-  effort: [],
+  effort_extras: [],
   acp: { serve_client_fs: false },
 };
 
@@ -182,6 +183,35 @@ describe("ModelPicker", () => {
     const sonnet = setup({ value: "sonnet" });
     expect(sonnet.pills()).toHaveLength(2);
     expect(sonnet.rowNames(sonnet.openEffort())).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
+  // A level Sway measured but this binary was not measured against. It renders
+  // rather than vanishing, because a level that quietly disappears on a CLI
+  // upgrade tells nobody anything, and a row that says why says what to do.
+  it("offers a refused level as a row that says why, and refuses to send it", async () => {
+    const sonnet = pickableModels(machineModels(), [], chat).find((m) => m.value === "sonnet")!;
+    const withExtra: PickableModel = {
+      ...sonnet,
+      effortLevels: [
+        ...sonnet.effortLevels,
+        { level: "ultracode", label: "Ultracode", disabled: true, note: "Measured on 2.1.237, and this is 2.1.240." },
+      ],
+    };
+    const s = setup({ models: [withExtra], value: "sonnet" });
+    const menu = s.openEffort();
+    expect(s.rowNames(menu)).toEqual(["low", "medium", "high", "xhigh", "max", "Ultracode"]);
+
+    const refused = [...menu.children].find((r) => r.textContent?.includes("Ultracode"))!;
+    // Announced as refused, and still a row keyboard navigation can reach: a
+    // row Kobalte's `disabled` skipped would take its reason with it.
+    expect(refused.getAttribute("aria-disabled")).toBe("true");
+    expect(refused.getAttribute("data-disabled")).toBeNull();
+    // Drawn as well as announced, so it is not screen-reader-only.
+    expect(refused.textContent).toContain("Measured on 2.1.237, and this is 2.1.240.");
+
+    fireEvent.click(refused as HTMLElement);
+    expect(s.onSelectEffort).not.toHaveBeenCalled();
+    await expectNoAxeViolations(menu);
   });
 
   it("says Default for an effort nothing has reported, without offering it as a level", () => {

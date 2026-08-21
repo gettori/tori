@@ -43,7 +43,7 @@ use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode}
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::agents::{AgentAdapter, ChatAnnotation, ChatTransport};
+use crate::agents::{AgentAdapter, ChatAnnotation, ChatEffortExtra, ChatTransport};
 use crate::chat::acp;
 use crate::chat::acp_transport::{initialize_request, new_session_request};
 use crate::chat::claude::{self, ClaudeMapper};
@@ -393,6 +393,7 @@ fn probe_claude(
     version: Option<String>,
     deadline: Duration,
     annotations: &[ChatAnnotation],
+    effort_extras: &[ChatEffortExtra],
 ) -> Result<Catalogue, ProbeFailure> {
     let mut child = build_command(spec)
         .stdin(Stdio::piped())
@@ -451,18 +452,25 @@ fn probe_claude(
 
     match answer {
         Ok(Some((models, modes, account))) => Ok(Catalogue {
-            version,
-            probed_at_ms: now_ms(),
             models: models
                 .into_iter()
-                .map(|info| CatalogModel {
-                    // The same function the live session emits from, so a draft
-                    // and the chat it becomes cannot disagree about this model.
-                    options: claude::config_options(&info, annotations),
-                    info,
-                    user_configured: false,
+                .map(|mut info| {
+                    // Both from the same functions the live session emits from,
+                    // so a draft and the chat it becomes cannot disagree about
+                    // this model. The mapper had no version to scope an extra
+                    // level to; here the probe does, and this is the version the
+                    // catalogue is stored against.
+                    info.effort_levels =
+                        claude::effort_levels(&info, effort_extras, version.as_deref().unwrap_or_default());
+                    CatalogModel {
+                        options: claude::config_options(&info, annotations),
+                        info,
+                        user_configured: false,
+                    }
                 })
                 .collect(),
+            version,
+            probed_at_ms: now_ms(),
             modes,
             // Claude's are per model, on the rows above. This is the per-session
             // set an ACP handshake publishes, which claude has none of.
@@ -741,11 +749,13 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
     // Exhaustive, so a new transport is a compile error here rather than a
     // agent that silently never gets a catalogue.
     let outcome = match chat.transport {
-        ChatTransport::ClaudeStreamJson => probe_claude(&spec, version, deadline, &chat.annotations).map(|mut c| {
-            let extras = user_configured_models(&claude_settings_path(), &c.models);
-            c.models.extend(extras);
-            c
-        }),
+        ChatTransport::ClaudeStreamJson => {
+            probe_claude(&spec, version, deadline, &chat.annotations, &chat.effort_extras).map(|mut c| {
+                let extras = user_configured_models(&claude_settings_path(), &c.models);
+                c.models.extend(extras);
+                c
+            })
+        }
         ChatTransport::Acp => match probe_cwd_ready() {
             Ok(cwd) => {
                 spec.cwd = cwd;
@@ -848,6 +858,7 @@ fn user_configured_models(path: &Path, known: &[CatalogModel]) -> Vec<CatalogMod
                 description: format!("Configured in {source}"),
                 supports_effort: false,
                 supported_effort_levels: Vec::new(),
+                effort_levels: Vec::new(),
                 supports_auto_mode: false,
             },
             user_configured: true,
@@ -960,6 +971,7 @@ mod tests {
                     description: String::new(),
                     supports_effort: true,
                     supported_effort_levels: vec!["low".into(), "high".into()],
+                    effort_levels: Vec::new(),
                     supports_auto_mode: true,
                 },
                 user_configured: false,
@@ -1175,7 +1187,7 @@ mod tests {
     #[test]
     fn a_silent_child_times_out_rather_than_wedging() {
         let started = std::time::Instant::now();
-        let failure = probe_claude(&sh("sleep 30"), None, Duration::from_millis(300), &[])
+        let failure = probe_claude(&sh("sleep 30"), None, Duration::from_millis(300), &[], &[])
             .expect_err("a child that never answers cannot produce a catalogue");
 
         assert_eq!(failure.reason, FailureReason::TimedOut);
@@ -1186,14 +1198,14 @@ mod tests {
     /// that hung, and the surface says so.
     #[test]
     fn a_child_that_exits_without_answering_is_no_answer() {
-        let failure = probe_claude(&sh("exit 0"), None, PROBE_DEADLINE, &[]).expect_err("nothing was answered");
+        let failure = probe_claude(&sh("exit 0"), None, PROBE_DEADLINE, &[], &[]).expect_err("nothing was answered");
         assert_eq!(failure.reason, FailureReason::NoAnswer);
     }
 
     /// And it quotes the agent rather than paraphrasing it.
     #[test]
     fn a_failure_carries_the_agents_own_stderr() {
-        let failure = probe_claude(&sh("echo 'credit balance too low' >&2; exit 1"), None, PROBE_DEADLINE, &[])
+        let failure = probe_claude(&sh("echo 'credit balance too low' >&2; exit 1"), None, PROBE_DEADLINE, &[], &[])
             .expect_err("nothing was answered");
         assert_eq!(failure.detail, "credit balance too low");
     }
@@ -1209,7 +1221,7 @@ mod tests {
         let noise = STDERR_TAIL * 2 / 40;
         let script = format!("for i in $(seq {noise}); do echo 'noisy line of agent output' >&2; done; echo LAST >&2");
 
-        let failure = probe_claude(&sh(&script), None, PROBE_DEADLINE, &[]).expect_err("nothing was answered");
+        let failure = probe_claude(&sh(&script), None, PROBE_DEADLINE, &[], &[]).expect_err("nothing was answered");
 
         assert!(failure.detail.ends_with("LAST"), "the tail keeps the end, which is where the reason is");
         assert!(failure.detail.len() <= STDERR_TAIL, "and stays bounded: {} bytes", failure.detail.len());
@@ -1224,7 +1236,7 @@ mod tests {
             args: Vec::new(),
             env: HashMap::new(),
         };
-        let failure = probe_claude(&spec, None, PROBE_DEADLINE, &[]).expect_err("nothing to spawn");
+        let failure = probe_claude(&spec, None, PROBE_DEADLINE, &[], &[]).expect_err("nothing to spawn");
         assert_eq!(failure.reason, FailureReason::SpawnFailed);
     }
 
@@ -1252,7 +1264,7 @@ mod tests {
         let script = format!("read -r _line; printf '%s\\n' '{response}'; sleep 5");
 
         let annotations = vec![ChatAnnotation { id: "claude-opus-5".into(), fast_mode: true }];
-        let catalogue = probe_claude(&sh(&script), Some("2.1.231".into()), Duration::from_secs(10), &annotations)
+        let catalogue = probe_claude(&sh(&script), Some("2.1.231".into()), Duration::from_secs(10), &annotations, &[])
             .expect("the stand-in answered the handshake");
 
         assert_eq!(catalogue.version.as_deref(), Some("2.1.231"));

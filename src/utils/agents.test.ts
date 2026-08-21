@@ -224,7 +224,11 @@ describe("the bundled chat tables", () => {
       "dontAsk",
       "bypassPermissions",
     ]);
-    expect(chat.effort.map((e) => e.id)).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    // No effort table left: the levels are the agent's, per model. What the
+    // adapter declares is the opposite claim, a level the CLI takes and never
+    // advertises, and every one of them names the version it was measured on.
+    expect(chat.effort_extras.map((e) => e.id)).toEqual(["ultracode"]);
+    expect(chat.effort_extras.every((e) => e.measured_on.length > 0)).toBe(true);
   });
 
   // The menu renders these, so a mode without one is a row that does not say
@@ -281,10 +285,16 @@ describe("mode/effort/model arg resolution", () => {
     const bare: ChatConfig = {
       ...chat,
       modes: [{ id: "plan", label: "Plan", hint: "", args: [] }],
-      effort: [{ id: "low", label: "Low", args: [] }],
     };
     expect(modeArgsFor(bare, "plan")).toEqual(["--permission-mode", "plan"]);
-    expect(effortArgsFor(bare, "low")).toEqual(["--effort", "low"]);
+    // Effort has only the template now, so any level fills it, including one
+    // no build has heard of. That is the point: the levels come from the
+    // agent's catalogue, and a level that resolved to nothing here would spawn
+    // the session flagless with the pill still showing it.
+    expect(effortArgsFor(bare, "a-level-no-toml-mentions")).toEqual([
+      "--effort",
+      "a-level-no-toml-mentions",
+    ]);
   });
 
   it("resolves a model from the template", () => {
@@ -293,9 +303,11 @@ describe("mode/effort/model arg resolution", () => {
 
   // Null, not a filled template: sending args for a mode the adapter never
   // declared would be inventing a capability.
-  it("is null for an id the adapter never declared", () => {
+  it("is null for a mode the adapter never declared", () => {
     expect(modeArgsFor(chat, "not_a_mode")).toBeNull();
-    expect(effortArgsFor(chat, "not_a_level")).toBeNull();
+    // Effort is null only for an adapter with no template at all, whose levels
+    // are session options set after open rather than argv.
+    expect(effortArgsFor({ ...chat, effort_args: [] }, "low")).toBeNull();
   });
 
   // Models are the exception, and deliberately: there is no declared list to be
@@ -314,8 +326,8 @@ describe("mode/effort/model arg resolution", () => {
     for (const m of chat.modes) {
       expect(modeArgsFor(chat, m.id), `mode ${m.id}`).toEqual(["--permission-mode", m.id]);
     }
-    for (const e of chat.effort) {
-      expect(effortArgsFor(chat, e.id), `effort ${e.id}`).toEqual(["--effort", e.id]);
+    for (const level of ["low", "max", "ultracode", "a-level-no-build-has-seen"]) {
+      expect(effortArgsFor(chat, level), `effort ${level}`).toEqual(["--effort", level]);
     }
   });
 });

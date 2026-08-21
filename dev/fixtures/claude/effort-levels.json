@@ -1,0 +1,54 @@
+{
+  "verifiedAgainst": "2.1.237 (Claude Code)",
+  "advertised": [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+  ],
+  "candidates": [
+    {
+      "level": "ultracode",
+      "observable": "validator",
+      "validator": "accepted",
+      "state": "working"
+    },
+    {
+      "level": "ultra",
+      "observable": "validator",
+      "validator": "rejected",
+      "state": "refused"
+    },
+    {
+      "level": "ultrathink",
+      "observable": "validator",
+      "validator": "rejected",
+      "state": "refused"
+    },
+    {
+      "level": "off",
+      "observable": "validator",
+      "validator": "rejected",
+      "state": "refused"
+    },
+    {
+      "level": "none",
+      "observable": "validator",
+      "validator": "rejected",
+      "state": "refused"
+    },
+    {
+      "level": "minimal",
+      "observable": "validator",
+      "validator": "rejected",
+      "state": "refused"
+    },
+    {
+      "level": "auto",
+      "observable": "validator",
+      "validator": "rejected",
+      "state": "refused"
+    }
+  ]
+}

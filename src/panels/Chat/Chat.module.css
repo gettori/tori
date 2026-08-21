@@ -1405,6 +1405,22 @@
   line-height: 1.35;
 }
 
+/* The row's own reason for refusing, drawn under the label. Wraps, unlike
+   `.barNote`: this one is a sentence in a menu that has width for it, not a
+   fragment beside a pill in the composer. */
+.pickNote {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+  line-height: 1.35;
+}
+
+/* The refusal is painted from here rather than from the menu's own
+   `.item.refusing`: `.pickName` sets its own colour, and one module's class
+   cannot reach into another's to override it. */
+.pickRefusing .pickName {
+  color: var(--fg-muted);
+}
+
 /* Holds its box whether or not it is showing a tick, so rows do not shift
    sideways as the selection moves down the list. */
 .pickCheck {
