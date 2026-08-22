@@ -18,7 +18,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use super::approval::{self, CaptureServer};
-use super::model::{ChatCommand, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope};
+use super::model::{
+    ChatCommand, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode,
+    PermissionScope, QuestionAnswer,
+};
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::snapshot::SnapshotCache;
@@ -178,6 +181,25 @@ impl ChatHost {
         Ok(())
     }
 
+    /// Deliver a question's answers to whichever transport is blocked on it.
+    ///
+    /// **Returns the routing answer rather than swallowing it**, unlike
+    /// [`Self::answer_permission`]. A permission that nobody owns is a stale
+    /// button and routine; a question that nobody owns means a form was filled
+    /// in and went nowhere, which the caller has to be able to see.
+    pub fn answer_question(
+        &self,
+        session_id: &str,
+        tool_use_id: &str,
+        request_id: &str,
+        answers: &[QuestionAnswer],
+    ) -> Result<bool, String> {
+        let transport = lock(&self.sessions).get(session_id).map(|e| e.transport.clone());
+        let Some(transport) = transport else { return Err(format!("no live session {session_id}")) };
+        let mut t = lock(&transport);
+        t.respond_question(tool_use_id, request_id, answers)
+    }
+
     /// Tear a session's bridge down.
     fn drop_bridge(&self, session_id: &str) {
         if let Some(bridge) = lock(&self.bridges).remove(session_id) {
@@ -284,6 +306,7 @@ impl ChatHost {
             | ChatCommand::Steer { session_id, .. }
             | ChatCommand::Interrupt { session_id }
             | ChatCommand::RespondPermission { session_id, .. }
+            | ChatCommand::RespondQuestion { session_id, .. }
             | ChatCommand::SetMode { session_id, .. }
             | ChatCommand::SetModel { session_id, .. }
             | ChatCommand::SetConfigOption { session_id, .. }
@@ -302,6 +325,12 @@ impl ChatHost {
                 // for `answer_permission`, which is the caller that acts on it;
                 // a bare dispatch has no second route to fall back to.
                 t.respond_permission(tool_use_id, request_id, *decision, *scope, reason.as_deref()).map(|_| ())
+            }
+            ChatCommand::RespondQuestion { tool_use_id, request_id, answers, .. } => {
+                // Same reason the arm above drops its bool: which route owned
+                // the request is `answer_question`'s business, not a bare
+                // dispatch's.
+                t.respond_question(tool_use_id, request_id, answers).map(|_| ())
             }
             ChatCommand::SetMode { mode, .. } => t.set_mode(mode.clone()),
             ChatCommand::SetModel { model, effort, .. } => t.set_model(model, effort.clone()),
@@ -466,6 +495,14 @@ mod tests {
             _d: PermissionDecision,
             _s: PermissionScope,
             _reason: Option<&str>,
+        ) -> Result<bool, String> {
+            Ok(false)
+        }
+        fn respond_question(
+            &mut self,
+            _t: &str,
+            _r: &str,
+            _a: &[QuestionAnswer],
         ) -> Result<bool, String> {
             Ok(false)
         }
@@ -747,6 +784,14 @@ mod tests {
             ) -> Result<bool, String> {
                 Ok(false)
             }
+            fn respond_question(
+                &mut self,
+                _t: &str,
+                _r: &str,
+                _a: &[QuestionAnswer],
+            ) -> Result<bool, String> {
+                Ok(false)
+            }
             fn set_mode(&mut self, _m: PermissionMode) -> Result<(), String> {
                 Ok(())
             }
@@ -984,5 +1029,41 @@ mod tests {
         // transport, so the map entry and the claim go with it.
         host.dispatch(&ChatCommand::Close { session_id: "s1".into() }).unwrap();
         assert!(!host.is_live("s1"));
+    }
+
+    /// A filled-in form has to reach the transport that is blocked on it, and
+    /// the caller has to learn whether it did.
+    ///
+    /// The bool is the assertion that matters. A question nobody owns means an
+    /// answer went nowhere, which is why `answer_question` returns it where
+    /// `answer_permission` drops its own: a stale Allow click is routine, a
+    /// stale form is a hole in the conversation.
+    #[test]
+    fn a_question_is_answered_at_the_transport_that_asked_it() {
+        let host = ChatHost::at(temp_store());
+        host.spawn("s-q", "tab-a", Box::new(|_| {}), spec("s-q"), || Box::<MockTransport>::default())
+            .unwrap();
+
+        let answers = vec![QuestionAnswer {
+            question: "Which answer channel?".into(),
+            picks: vec!["In protocol".into()],
+            free_text: None,
+        }];
+        assert!(
+            host.answer_question("s-q", "toolu_4", "op-10", &answers).unwrap(),
+            "the mock owns the request, so the answer landed"
+        );
+        host.dispatch(&ChatCommand::RespondQuestion {
+            session_id: "s-q".into(),
+            tool_use_id: "toolu_4".into(),
+            request_id: "op-10".into(),
+            answers,
+        })
+        .unwrap();
+
+        let err = host.answer_question("s-gone", "toolu_4", "op-10", &[]).unwrap_err();
+        assert!(err.contains("no live session"), "{err}");
+
+        host.dispatch(&ChatCommand::Close { session_id: "s-q".into() }).unwrap();
     }
 }

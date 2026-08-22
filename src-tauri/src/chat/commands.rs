@@ -21,7 +21,10 @@ use super::claude_transport::ClaudeTransport;
 use super::host::{ChatState, SessionBridge, Spawned};
 use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
-use super::model::{ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope};
+use super::model::{
+    ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
+    QuestionAnswer,
+};
 use super::ownership::{Claim, ClaimOutcome, Orphans, Reaped, Surface};
 use super::transport::{AgentTransport, StartSpec};
 
@@ -370,6 +373,24 @@ pub async fn chat_respond_permission(
     reason: Option<String>,
 ) -> Result<(), String> {
     state.0.answer_permission(&session_id, &tool_use_id, &request_id, decision, scope, reason.as_deref())
+}
+
+/// Answer a question the agent asked the user.
+///
+/// **Returns whether anything was still waiting on it.** A form filled in after
+/// the question was cancelled has nowhere to land, and the surface has to be
+/// able to say so rather than clear itself as though the agent had read it.
+/// This is the one place the transport's routing bool is worth carrying all the
+/// way out, which is why it is not a `()` like `chat_respond_permission`.
+#[tauri::command]
+pub async fn chat_answer_question(
+    state: State<'_, ChatState>,
+    session_id: String,
+    request_id: String,
+    tool_use_id: String,
+    answers: Vec<QuestionAnswer>,
+) -> Result<bool, String> {
+    state.0.answer_question(&session_id, &tool_use_id, &request_id, &answers)
 }
 
 // --- spend ceilings --------------------------------------------------------

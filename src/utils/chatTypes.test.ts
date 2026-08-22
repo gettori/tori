@@ -6,6 +6,7 @@ import {
   CHAT_COMMAND_TYPES,
   CHAT_EVENT_KEYS,
   CHAT_EVENT_TYPES,
+  CHAT_NESTED_KEYS,
   isTurnScoped,
   parseChatEvent,
   type ChatCommand,
@@ -162,6 +163,14 @@ describe("chatTypes mirrors the Rust chat model", () => {
         case "permissionRequest":
           expect(ev.requestId).toBeTruthy();
           break;
+        case "questionRequest":
+          // The sample is the widest measured shape: four questions is the cap
+          // and four options is the cap, with one multi-select and one preview
+          // so neither is only exercised by the nested-key test below.
+          expect(ev.questions).toHaveLength(4);
+          expect(ev.questions.some((q) => q.multiSelect)).toBe(true);
+          expect(ev.questions[0]?.options[0]?.preview).toBeTruthy();
+          break;
         case "planUpdate":
           expect(ev.items[0]?.status).toBe("inProgress");
           break;
@@ -222,6 +231,13 @@ describe("chatTypes mirrors the Rust chat model", () => {
           expect(cmd.decision).toBe("deny");
           expect(cmd.scope).toBe("once");
           break;
+        case "respondQuestion":
+          // The three answer shapes: one pick, several picks, and free text
+          // with no pick at all. `picks` and `freeText` are not exclusive, so
+          // an empty `picks` is a real answer rather than a missing one.
+          expect(cmd.answers.map((a) => a.picks.length)).toEqual([1, 2, 0]);
+          expect(cmd.answers[2]?.freeText).toBeTruthy();
+          break;
         case "setMode":
           expect(cmd.mode).toBe("plan");
           break;
@@ -255,8 +271,43 @@ describe("chatTypes mirrors the Rust chat model", () => {
     expect(isTurnScoped(byType.get("turnCompleted")!)).toBe(true);
     // A permission prompt arrives on its own socket, outside any turn frame.
     expect(isTurnScoped(byType.get("permissionRequest")!)).toBe(false);
+    // A question blocks a tool call, not a turn frame, so it carries no turnId
+    // for the same reason a permission prompt does not.
+    expect(isTurnScoped(byType.get("questionRequest")!)).toBe(false);
     expect(isTurnScoped(byType.get("sessionStarted")!)).toBe(false);
     expect(isTurnScoped(byType.get("rateLimit")!)).toBe(false);
+  });
+
+  // The nested half of the field-name check.
+  //
+  // The test above compares an event's own top-level keys, so renaming a field
+  // *inside* `ChatQuestion` passes it untouched: the event still carries
+  // `questions`, and nothing looks at what is in one. This walks the nested
+  // objects in Rust's own samples and compares them against `CHAT_NESTED_KEYS`,
+  // which `keysOf` pins to the TypeScript types. So a rename fails here from
+  // Rust, and fails `tsc` from TypeScript.
+  it("agrees with Rust on every field name nested inside a question", () => {
+    const sorted = (o: object) => Object.keys(o).sort();
+    const request = (goldenEvents as ChatEvent[]).find((e) => e.type === "questionRequest");
+    expect(request?.type).toBe("questionRequest");
+    if (request?.type !== "questionRequest") return;
+
+    expect(request.questions.length).toBeGreaterThan(0);
+    for (const question of request.questions) {
+      expect(sorted(question)).toEqual([...CHAT_NESTED_KEYS.question].sort());
+      expect(question.options.length).toBeGreaterThan(0);
+      for (const option of question.options) {
+        expect(sorted(option)).toEqual([...CHAT_NESTED_KEYS.questionOption].sort());
+      }
+    }
+
+    const answer = (goldenCommands as ChatCommand[]).find((c) => c.type === "respondQuestion");
+    expect(answer?.type).toBe("respondQuestion");
+    if (answer?.type !== "respondQuestion") return;
+    expect(answer.answers.length).toBeGreaterThan(0);
+    for (const one of answer.answers) {
+      expect(sorted(one)).toEqual([...CHAT_NESTED_KEYS.questionAnswer].sort());
+    }
   });
 
   it("rejects junk rather than throwing", () => {

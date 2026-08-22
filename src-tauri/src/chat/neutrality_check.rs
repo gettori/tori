@@ -391,6 +391,10 @@ pub fn codex_support(command: &ChatCommand) -> Support {
         ChatCommand::Steer { .. } => Support::Refuses,
         ChatCommand::Interrupt { .. } => Support::Native,
         ChatCommand::RespondPermission { .. } => Support::Native,
+        // `app-server` asks for permission and for nothing else: there is no
+        // verb in the captured protocol that puts a form in front of the user,
+        // so an answer would have nowhere to go.
+        ChatCommand::RespondQuestion { .. } => Support::Refuses,
         ChatCommand::SetMode { .. } => Support::Native,
         ChatCommand::SetModel { .. } => Support::Native,
         // `app-server` has no generic option-setting verb: each lever it
@@ -408,6 +412,11 @@ pub fn acp_support(command: &ChatCommand) -> Support {
         ChatCommand::Steer { .. } => Support::Refuses,
         ChatCommand::Interrupt { .. } => Support::Native,
         ChatCommand::RespondPermission { .. } => Support::Native,
+        // `elicitation/create` is the wire form this would answer, and it is
+        // gated behind the `unstable_elicitation` cargo feature. Probed on
+        // codex-acp 1.2.0 and pi-acp 0.0.33: both accept the client capability
+        // and neither ever sends one. Refused until an agent actually asks.
+        ChatCommand::RespondQuestion { .. } => Support::Refuses,
         // No model or effort switch mid-session in the captured protocol; the
         // mode update is an event ACP *sends*, not one it takes.
         ChatCommand::SetMode { .. } => Support::Refuses,
@@ -445,6 +454,7 @@ mod tests {
             ChatEvent::ToolCallCompleted { .. } => "toolCallCompleted",
             ChatEvent::FileEdit { .. } => "fileEdit",
             ChatEvent::PermissionRequest { .. } => "permissionRequest",
+            ChatEvent::QuestionRequest { .. } => "questionRequest",
             ChatEvent::PlanUpdate { .. } => "planUpdate",
             ChatEvent::Usage { .. } => "usage",
             ChatEvent::RateLimit { .. } => "rateLimit",

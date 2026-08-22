@@ -49,7 +49,7 @@ use super::acp::{self, AcpOverrides};
 use super::acp_sessions::{self, AcpSession, ListedSession};
 use super::model::{
     ChatConfigKind, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision,
-    PermissionMode, PermissionScope,
+    PermissionMode, PermissionScope, QuestionAnswer,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
@@ -539,6 +539,21 @@ impl AgentTransport for AcpTransport {
         // the agent's to offer, not Sway's to synthesize from a scope the
         // protocol cannot carry.
         self.shared.answer(request_id, decision, reason)
+    }
+
+    /// Refused, not swallowed. ACP's `elicitation/create` is the wire form a
+    /// question would arrive on, and it sits behind the `unstable_elicitation`
+    /// cargo feature: probed on codex-acp 1.2.0 and pi-acp 0.0.33, both accept
+    /// the client capability on the handshake and neither ever sends one. So
+    /// nothing here can be blocked on a question, and an `Ok` would claim an
+    /// answer reached an agent that never asked.
+    fn respond_question(
+        &mut self,
+        _tool_use_id: &str,
+        _request_id: &str,
+        _answers: &[QuestionAnswer],
+    ) -> Result<bool, String> {
+        Err("this agent cannot be asked a question".to_string())
     }
 
     /// A mode switch takes the same route a model switch does when the agent
@@ -1692,6 +1707,29 @@ mod tests {
         );
         assert!(!message.contains("sign in"), "{message}");
         assert!(message.contains("would not open a session"), "{message}");
+    }
+
+    /// An agent that cannot be asked a question must say so, not report an
+    /// answer it never delivered.
+    ///
+    /// `Ok(true)` is the dangerous return here, not `Err`: it is the one the
+    /// caller cannot tell apart from the form having landed, so the user would
+    /// watch their answer disappear into an agent that was never blocked.
+    #[test]
+    fn a_question_cannot_be_answered_at_an_agent_that_cannot_ask_one() {
+        let mut transport = AcpTransport::new("s-no-questions", "opencode", AcpOverrides::default());
+        let err = transport
+            .respond_question(
+                "toolu_4",
+                "op-10",
+                &[QuestionAnswer {
+                    question: "Which answer channel?".to_string(),
+                    picks: vec!["In protocol".to_string()],
+                    free_text: None,
+                }],
+            )
+            .expect_err("an answer must not report success at an agent that never asked");
+        assert!(err.contains("cannot be asked a question"), "{err}");
     }
 
     /// **The wire value, pinned, because a phase was planned around getting it

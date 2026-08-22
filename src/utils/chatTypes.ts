@@ -55,6 +55,33 @@ export type PermissionSuggestion =
   | { type: "addDirectories"; directories: string[]; destination: string }
   | { type: "setMode"; mode: PermissionMode; destination: string };
 
+/// One offered answer to a question.
+///
+/// `preview` is a worked example of what the option means, present on a
+/// minority of options and echoed back inside the answer when it is the one
+/// chosen, so a surface that dropped it would send the agent less than it
+/// offered.
+export type ChatQuestionOption = { label: string; description: string; preview: string | null };
+
+/// One question the agent wants answered before it goes on.
+///
+/// `question` is the prose and `header` is the short chip above it. The answer
+/// the agent reads back quotes the prose, so the two are not interchangeable.
+export type ChatQuestion = {
+  question: string;
+  header: string;
+  multiSelect: boolean;
+  options: ChatQuestionOption[];
+};
+
+/// What the user chose for one question.
+///
+/// `picks` holds option *labels*, never descriptions and never previews: the
+/// label is the only part of an option the agent can match against what it
+/// offered. The two fields are not exclusive, since a multi-select question can
+/// be answered with picks and an addition.
+export type QuestionAnswer = { question: string; picks: string[]; freeText: string | null };
+
 export type PlanItemStatus = "pending" | "inProgress" | "completed";
 
 /// Free-form agent-specific data. Deliberately unknown-valued: a renderer
@@ -406,6 +433,22 @@ export type ChatEvent =
       /// Actions the agent itself offered. Absent when it offered none.
       suggestions?: PermissionSuggestion[];
     }
+  /// The agent asking the *user* something rather than asking permission to
+  /// act. Its own variant because a permission is allow or deny and this is a
+  /// form, and because a question is answered in the agent's own vocabulary,
+  /// which the surface never sees.
+  ///
+  /// No deadline field: measured, the CLI imposes none on this transport and
+  /// Sway arms none, so an unanswered question ends only by being cancelled.
+  | {
+      type: "questionRequest";
+      sessionId: string;
+      toolUseId: string;
+      requestId: string;
+      /// The subagent that asked, or null for the main agent.
+      agentId: string | null;
+      questions: ChatQuestion[];
+    }
   | { type: "planUpdate"; sessionId: string; turnId: string; items: PlanItem[] }
   | { type: "usage"; sessionId: string; turnId: string; usage: Usage; extra?: Extra }
   | {
@@ -450,6 +493,7 @@ export const CHAT_EVENT_TYPES = [
   "toolCallCompleted",
   "fileEdit",
   "permissionRequest",
+  "questionRequest",
   "planUpdate",
   "usage",
   "rateLimit",
@@ -477,6 +521,16 @@ export type ChatCommand =
       scope: PermissionScope;
       reason: string | null;
     }
+  /// Answer a blocked `questionRequest`, one entry per question. Every
+  /// question must appear: no agent measured so far has a grammar for a partial
+  /// answer, so a dropped one reads to the agent as a silent hole in the form.
+  | {
+      type: "respondQuestion";
+      sessionId: string;
+      toolUseId: string;
+      requestId: string;
+      answers: QuestionAnswer[];
+    }
   /// Applies from the *next* turn, not the running one.
   | { type: "setMode"; sessionId: string; mode: PermissionMode }
   | { type: "setModel"; sessionId: string; model: string; effort: Effort | null }
@@ -493,6 +547,7 @@ export const CHAT_COMMAND_TYPES = [
   "steer",
   "interrupt",
   "respondPermission",
+  "respondQuestion",
   "setMode",
   "setModel",
   "setConfigOption",
@@ -565,6 +620,9 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     // `PreToolUse` bridge raises, which has no suggestions to offer.
     optional: ["suggestions"],
   },
+  questionRequest: {
+    required: ["sessionId", "toolUseId", "requestId", "agentId", "questions"],
+  },
   planUpdate: { required: ["sessionId", "turnId", "items"] },
   usage: { required: ["sessionId", "turnId", "usage"], optional: ["extra"] },
   rateLimit: { required: ["sessionId", "status", "resetsAt", "limitType"] },
@@ -577,6 +635,33 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   configOptions: { required: ["sessionId", "options"] },
 };
 
+/// The field names of a type, declared as data.
+///
+/// `Record<keyof T, true>` is the whole trick: naming a key that is not on `T`,
+/// or leaving one out, fails `tsc`. So the returned list cannot drift from the
+/// type it describes.
+function keysOf<T>(shape: Record<keyof T, true>): string[] {
+  return Object.keys(shape);
+}
+
+/// The wire field names of the types nested *inside* an event or command.
+///
+/// `CHAT_EVENT_KEYS` compares an event's own top-level keys and nothing deeper,
+/// so a rename inside `ChatQuestion` would pass it untouched. `sessionStarted`
+/// covers the same blind spot for `ChatAccount` by reading every field by hand
+/// in the test, which works and has to be remembered; this is the enumerated
+/// version, so a field added to one of these types is a compile error here
+/// rather than an untested field.
+///
+/// Both directions are covered: a rename on this side fails `tsc` through
+/// `keysOf`, and a rename on the Rust side fails the fixture compare in
+/// chatTypes.test.ts.
+export const CHAT_NESTED_KEYS = {
+  question: keysOf<ChatQuestion>({ question: true, header: true, multiSelect: true, options: true }),
+  questionOption: keysOf<ChatQuestionOption>({ label: true, description: true, preview: true }),
+  questionAnswer: keysOf<QuestionAnswer>({ question: true, picks: true, freeText: true }),
+} as const;
+
 export const CHAT_COMMAND_KEYS: Record<ChatCommandType, { required: string[]; optional?: string[] }> = {
   sendTurn: { required: ["sessionId", "blocks"] },
   steer: { required: ["sessionId", "blocks"] },
@@ -584,6 +669,7 @@ export const CHAT_COMMAND_KEYS: Record<ChatCommandType, { required: string[]; op
   respondPermission: {
     required: ["sessionId", "toolUseId", "requestId", "decision", "scope", "reason"],
   },
+  respondQuestion: { required: ["sessionId", "toolUseId", "requestId", "answers"] },
   setMode: { required: ["sessionId", "mode"] },
   setModel: { required: ["sessionId", "model", "effort"] },
   setConfigOption: { required: ["sessionId", "configId", "value"] },

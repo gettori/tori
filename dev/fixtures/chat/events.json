@@ -250,6 +250,93 @@
     ]
   },
   {
+    "type": "questionRequest",
+    "sessionId": "s1",
+    "toolUseId": "toolu_4",
+    "requestId": "op-10",
+    "agentId": "affdd797eddcfa753",
+    "questions": [
+      {
+        "question": "Which answer channel should the card use?",
+        "header": "Channel",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "In protocol",
+            "description": "Answer the question the agent already asked.",
+            "preview": "{\"behavior\":\"deny\",\"message\":\"...\"}"
+          },
+          {
+            "label": "A dedicated hook",
+            "description": "Intercept the call before the agent decides.",
+            "preview": null
+          }
+        ]
+      },
+      {
+        "question": "Which surfaces should the blocking tier cover?",
+        "header": "Surfaces",
+        "multiSelect": true,
+        "options": [
+          {
+            "label": "Permission prompt",
+            "description": "The allow or deny card.",
+            "preview": null
+          },
+          {
+            "label": "Question card",
+            "description": "The form this event opens.",
+            "preview": null
+          },
+          {
+            "label": "Hook rows",
+            "description": "The ambient rows, which are not blocking.",
+            "preview": null
+          },
+          {
+            "label": "Notices",
+            "description": "Session errors and endings.",
+            "preview": null
+          }
+        ]
+      },
+      {
+        "question": "Should the card stay inline?",
+        "header": "Placement",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Inline",
+            "description": "In the transcript, under the call.",
+            "preview": null
+          },
+          {
+            "label": "Modal",
+            "description": "Over the transcript that explains it.",
+            "preview": null
+          }
+        ]
+      },
+      {
+        "question": "How should an unanswered question end?",
+        "header": "Cancel",
+        "multiSelect": false,
+        "options": [
+          {
+            "label": "Tab close, session end, interrupt",
+            "description": "The three explicit exits.",
+            "preview": null
+          },
+          {
+            "label": "A timer",
+            "description": "Measured absent on this transport.",
+            "preview": null
+          }
+        ]
+      }
+    ]
+  },
+  {
     "type": "planUpdate",
     "sessionId": "s1",
     "turnId": "t1",

@@ -45,6 +45,34 @@
     "reason": "not on this tree"
   },
   {
+    "type": "respondQuestion",
+    "sessionId": "s1",
+    "toolUseId": "toolu_4",
+    "requestId": "op-10",
+    "answers": [
+      {
+        "question": "Which answer channel should the card use?",
+        "picks": [
+          "In protocol"
+        ],
+        "freeText": null
+      },
+      {
+        "question": "Which surfaces should the blocking tier cover?",
+        "picks": [
+          "Permission prompt",
+          "Question card"
+        ],
+        "freeText": null
+      },
+      {
+        "question": "Should the card stay inline?",
+        "picks": [],
+        "freeText": "inline, but collapse it once answered"
+      }
+    ]
+  },
+  {
     "type": "setMode",
     "sessionId": "s1",
     "mode": "plan"
