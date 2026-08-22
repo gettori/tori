@@ -155,7 +155,7 @@ describe("QuestionCard", () => {
     expect(onAnswer).toHaveBeenCalledTimes(1);
   });
 
-  it("renders a replayed question read only, with the record and never the input JSON", () => {
+  it("renders a replayed question read only, confirming the record into a selection", () => {
     const record =
       'Your questions have been answered: "Which answer channel should the card use?"="In protocol". ' +
       "You can now continue with these answers in mind.";
@@ -163,13 +163,103 @@ describe("QuestionCard", () => {
       <QuestionCard item={item({ requestId: null, result: record })} onAnswer={() => {}} />
     ));
     expect(screen.getByText("Which answer channel should the card use?")).toBeTruthy();
-    expect(screen.getByText(record)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /send answers/i }), "nothing to send").toBeNull();
+    expect(radio("In protocol").checked).toBe(true);
     expect(radio("In protocol").disabled).toBe(true);
-    expect(other().disabled).toBe(true);
+    // Confirmed into a selection, so quoting the sentence would say it twice.
+    expect(screen.queryByText(record)).toBeNull();
+    expect(screen.queryByRole("button", { name: /send answers/i }), "nothing to send").toBeNull();
+    // An empty disabled box says nothing, so a settled card drops it.
+    expect(screen.queryByLabelText("Other")).toBeNull();
     // The raw arguments are what the old tool card showed. A question row that
     // fell back to them would be the failure this whole item exists to fix.
     expect(document.body.textContent).not.toContain("multiSelect");
+  });
+
+  it("quotes a replayed record it cannot confirm, and selects nothing", () => {
+    const record =
+      'Your questions have been answered: "Which answer channel should the card use?"="neither, batch them". ' +
+      "You can now continue with these answers in mind.";
+    render(() => <QuestionCard item={item({ requestId: null, result: record })} />);
+    expect(screen.getByText(record)).toBeTruthy();
+    expect(radio("In protocol").checked).toBe(false);
+    expect(radio("A dedicated hook").checked).toBe(false);
+  });
+
+  it("confirms a replayed multi-select join back into its checkboxes", () => {
+    const record =
+      'Your questions have been answered: "Which should I address?"="The title copy, The keyframe coupling". ' +
+      "You can now continue with these answers in mind.";
+    render(() => <QuestionCard item={item({ requestId: null, questions: [SCOPE], result: record })} />);
+    expect(box("The title copy").checked).toBe(true);
+    expect(box("The keyframe coupling").checked).toBe(true);
+    expect(screen.queryByText(record)).toBeNull();
+  });
+
+  it("still confirms a record that carries a preview tail", () => {
+    const record =
+      'Your questions have been answered: "Which answer channel should the card use?"="In protocol" ' +
+      "selected preview:\nbehavior: deny";
+    render(() => <QuestionCard item={item({ requestId: null, result: record })} />);
+    expect(radio("In protocol").checked).toBe(true);
+    // The card re-renders the option's own preview instead of the quoted tail.
+    expect(document.body.textContent).not.toContain("selected preview");
+  });
+
+  it("shows the sent picks selected instead of quoting the record", () => {
+    const record =
+      'Your questions have been answered: "Which answer channel should the card use?"="In protocol". ' +
+      "You can now continue with these answers in mind.";
+    render(() => (
+      <QuestionCard
+        item={item({
+          submitted: [{ question: CHANNEL.question, picks: ["In protocol"], freeText: null }],
+          result: record,
+        })}
+        onAnswer={() => {}}
+      />
+    ));
+    expect(radio("In protocol").checked).toBe(true);
+    expect(radio("In protocol").disabled).toBe(true);
+    expect(screen.getByText("Answered")).toBeTruthy();
+    // The record would only repeat what the selected radio already says.
+    expect(screen.queryByText(record)).toBeNull();
+    expect(screen.queryByLabelText("Other"), "no free text was sent").toBeNull();
+    expect(screen.queryByRole("button", { name: /send answers/i })).toBeNull();
+  });
+
+  it("shows sent picks on checkboxes too", () => {
+    render(() => (
+      <QuestionCard
+        item={item({
+          questions: [SCOPE],
+          submitted: [{ question: SCOPE.question, picks: ["The title copy"], freeText: null }],
+        })}
+      />
+    ));
+    expect(box("The title copy").checked).toBe(true);
+    expect(box("The keyframe coupling").checked).toBe(false);
+  });
+
+  it("keeps the free-text box on an answered card only when the answer used it", () => {
+    render(() => (
+      <QuestionCard
+        item={item({ submitted: [{ question: CHANNEL.question, picks: [], freeText: "neither, batch them" }] })}
+      />
+    ));
+    expect(other().value).toBe("neither, batch them");
+    expect(other().disabled).toBe(true);
+  });
+
+  it("marks a question that closed without an answer", () => {
+    render(() => <QuestionCard item={item({ requestId: null })} />);
+    expect(screen.getByText("Not answered")).toBeTruthy();
+    expect(screen.queryByLabelText("Other")).toBeNull();
+  });
+
+  it("wears no state chip while it can still be answered", () => {
+    render(() => <QuestionCard item={item()} onAnswer={() => {}} />);
+    expect(screen.queryByText("Answered")).toBeNull();
+    expect(screen.queryByText("Not answered")).toBeNull();
   });
 
   it("reads as read only when the caller can send nothing", () => {
