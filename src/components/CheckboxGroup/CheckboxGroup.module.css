@@ -40,10 +40,11 @@
 
 /* Indented to the label's edge, not the box's: the description belongs to the
    words, and hanging it under the tick would read as a second option. The
-   arithmetic is the checkbox's own 14px control plus its 6px gap, both scaled
-   the same way Checkbox.module.css scales them. */
+   arithmetic is the checkbox's own control plus its gap, and it reads the gap
+   token rather than restating 8px, so a change to Checkbox's rhythm drags this
+   with it instead of leaving the indent a step behind. */
 .description {
-  margin-left: calc((14px + 6px) * var(--ui-scale));
+  margin-left: calc(16px * var(--ui-scale) + var(--sway-space-4));
   color: var(--fg-muted);
   font-size: var(--sway-text-sm);
   line-height: var(--sway-line-normal);

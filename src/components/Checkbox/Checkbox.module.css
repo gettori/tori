@@ -4,7 +4,13 @@
 .root {
   display: inline-flex;
   align-items: center;
-  gap: calc(6px * var(--ui-scale));
+  gap: var(--sway-space-4);
+}
+
+/* The whole row, so the reason a click does nothing is visible before the
+   click. Kobalte puts `data-disabled` on the root as well as on the control. */
+.root[data-disabled] {
+  cursor: not-allowed;
 }
 
 /* Visually hidden, never removed: the native input is what Space toggles, what
@@ -28,33 +34,32 @@
   align-items: center;
   justify-content: center;
   flex: none;
-  width: calc(14px * var(--ui-scale));
-  height: calc(14px * var(--ui-scale));
-  border: 1px solid var(--border-strong);
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+  border: 1px solid var(--fg-muted);
   border-radius: var(--sway-radius-sm);
   background: var(--canvas-input);
   color: var(--fg-on-emphasis);
   transition:
     border-color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+    background var(--sway-duration-fast) ease;
 }
 
 .control[data-checked] {
-  border-color: var(--accent-fg);
-  background: var(--accent-fg);
-}
-
-/* The ring is drawn on the box, but the focus lives on the hidden input, so the
-   selector has to come off the root's own focus-within. Same ring as
-   Button.module.css: one focus idiom for every control. */
-.root:focus-within .control {
   border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
+  background: var(--brand-default);
+  color: var(--brand-on);
 }
 
 .control[data-disabled] {
-  opacity: 0.5;
+  border-color: var(--fg-subtle);
+  background: var(--canvas-input);
+}
+
+.control[data-checked][data-disabled] {
+  border-color: var(--fg-subtle);
+  background: var(--fg-subtle);
+  color: var(--fg-on-emphasis);
 }
 
 /* Kobalte mounts the indicator only while checked, so this needs no hidden
