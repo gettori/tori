@@ -158,6 +158,11 @@ export const ROLES: Role[] = [
   { id: "brand.ring", cssVar: "--brand-ring", group: "brand" },
   { id: "brand.on", cssVar: "--brand-on", group: "brand" },
 
+  { id: "blocking.surface", cssVar: "--blocking-surface", group: "blocking" },
+  { id: "blocking.border", cssVar: "--blocking-border", group: "blocking" },
+  { id: "blocking.fg", cssVar: "--blocking-fg", group: "blocking" },
+  { id: "blocking.accent", cssVar: "--blocking-accent", group: "blocking" },
+
   { id: "ansi.cursor", cssVar: "--ansi-cursor", group: "ansi" },
   { id: "ansi.selection", cssVar: "--ansi-selection", group: "ansi" },
   { id: "ansi.black", cssVar: "--ansi-black", group: "ansi" },
@@ -337,6 +342,35 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     // reads if you already know where focus is.
     "brand.ring": alpha(p.brandTint, v({ dark: 0.6, light: 0.77 })),
     "brand.on": p.brandOn,
+
+    // The blocking tier: the one look for a surface that has stopped the turn
+    // and is waiting on the user. Two of them exist (the permission prompt and
+    // the question card) and they were separately spelled `brand-default` over
+    // `canvas-card`, so nothing stopped them drifting and neither could be
+    // restyled without moving the brand everywhere else too.
+    //
+    // The fill is a warmer step ABOVE the chat pane, which is itself `card`, so
+    // until now a blocking card was identified by a gold hairline and nothing
+    // else. Mixed and opaque for the reason `brand.wash` documents: it has to
+    // read as a surface with elevation, and an alpha fill doubles wherever two
+    // of them touch.
+    //
+    // The amounts are a CEILING the palettes set, not a look that was chosen.
+    // Every step off `card` moves the surface toward the text drawn on it, and
+    // the card is full of recessive labels (a hint, a preview, "from a
+    // subagent"). Measured across all five bundled palettes: past 0.04 dark,
+    // `fg.subtle` falls under its 3.0 floor on Sway Dark, and past 0.07 light,
+    // `fg.muted` falls under 4.5 on Rose Pine Dawn. So the fill yields and the
+    // hierarchy inside the card stays. The gate holds the line from here:
+    // `fg.default`, `fg.muted` and `fg.subtle` all name this surface now, which
+    // they did not while it was `canvas.card` under another name.
+    "blocking.surface": mix(p.card, p.brandTint, v({ dark: 0.04, light: 0.07 })),
+    "blocking.border": p.brand,
+    "blocking.fg": p.text,
+    // The one coloured word inside: inline code in the prompt's question, the
+    // card's own emphasis. `brand.strong`, not `brand.default`, because it is
+    // read as text on a lifted surface rather than as a frame around one.
+    "blocking.accent": p.brandStrong,
 
     "ansi.cursor": p.ansiCursor,
     "ansi.selection": alpha(p.ansiSelectionTint, v({ dark: 0.4, light: 0.25 })),

@@ -410,17 +410,24 @@
   max-width: 100%;
 }
 
+/* On `--fg-muted`, not `--fg-subtle`. Subtle is the recessive tier, held to the
+   graphic floor rather than to 4.5, and it is the right tier for a timestamp or
+   a hint. A row you are meant to be able to READ, and then open, is not that:
+   it was sitting a whole tier under the prose it belongs to. */
 .thinkingToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sway-space-3);
   background: transparent;
   border: none;
   padding: 0;
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
   font-size: var(--sway-text-md);
   cursor: pointer;
 }
 
 .thinkingToggle:hover {
-  color: var(--fg-muted);
+  color: var(--fg-default);
 }
 
 .thinkingBody {
@@ -801,7 +808,14 @@
 
 /* ---- the approval prompt ----
    The mock's card: a gold-bordered rounded container, the question as a
-   sentence, the primary action in the brand gold. */
+   sentence, the primary action in the brand gold.
+
+   On the blocking tier (`--blocking-*`), which it shares with `.question`.
+   Those roles carried `--brand-default` over `--canvas-card` until Phase 5, and
+   `--canvas-card` is what the chat pane itself paints, so a card that had
+   stopped the turn was identified by a hairline and nothing else. The tier
+   lifts the fill off the pane and gives both blocking surfaces one name to be
+   restyled by. */
 
 .prompt {
   display: flex;
@@ -809,13 +823,13 @@
   gap: calc(10px * var(--ui-scale));
   margin-top: calc(8px * var(--ui-scale));
   padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
-  border: 1px solid var(--brand-default);
+  border: 1px solid var(--blocking-border);
   border-radius: var(--sway-radius-lg);
-  background: var(--canvas-card);
+  background: var(--blocking-surface);
 }
 
 .promptQuestion {
-  color: var(--fg-default);
+  color: var(--blocking-fg);
   font-size: var(--sway-text-lg);
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -824,7 +838,7 @@
 .promptQuestion code {
   font-family: var(--sway-font-mono);
   font-size: 0.9em;
-  color: var(--brand-strong);
+  color: var(--blocking-accent);
   background: var(--neutral-subtle);
   border-radius: var(--sway-radius-sm);
   padding: 0.1em 0.35em;
@@ -877,17 +891,18 @@
 
 /* ---- the question card ---- */
 
-/* Same blocking chrome as `.prompt`: both stop the turn to ask the user
-   something, and two different shapes for that would read as two different
-   kinds of interruption. Phase 5 gives the pair one declared tier. */
+/* The blocking tier again, byte for byte the frame and fill `.prompt` carries:
+   both stop the turn to ask the user something, and two different shapes for
+   that would read as two different kinds of interruption. Sharing the roles
+   rather than the values is what keeps them from drifting apart later. */
 .question {
   display: flex;
   flex-direction: column;
   gap: calc(12px * var(--ui-scale));
   padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
-  border: 1px solid var(--brand-default);
+  border: 1px solid var(--blocking-border);
   border-radius: var(--sway-radius-lg);
-  background: var(--canvas-card);
+  background: var(--blocking-surface);
 }
 
 .questionHead {
@@ -897,7 +912,7 @@
 }
 
 .questionTitle {
-  color: var(--fg-default);
+  color: var(--blocking-fg);
   font-size: var(--sway-text-lg);
   font-weight: 500;
   line-height: 1.5;
@@ -1026,10 +1041,27 @@
 
 /* ---- notices and banners ---- */
 
+/* `--fg-muted` for the same reason as `.thinkingToggle`: a notice is news about
+   the session (a compaction, a refusal, an error), and news held below the text
+   floor is news nobody reads. */
 .notice {
   align-self: center;
-  color: var(--fg-subtle);
+  color: var(--fg-muted);
   font-size: var(--sway-text-md);
+}
+
+/* The glyph and the line it labels. Top aligned rather than centred, so a
+   notice that wraps to three lines keeps its icon beside the first one instead
+   of floating in the middle of the block. */
+.noticeLine {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sway-space-3);
+}
+
+.noticeIcon {
+  flex: none;
+  margin-top: 0.15em;
 }
 
 .noticeError {
