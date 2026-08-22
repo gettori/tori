@@ -15,13 +15,16 @@ const ENTRY = "../index.tsx";
 
 // The CM core trio (view/state/merge) is deliberately allowed: the conflict
 // surface has always pulled it eagerly. The split's payload is CodeEditor plus
-// the grammars, so the fence sits on @lezer and the lazy-only modules.
-const FORBIDDEN_SPECIFIER = /^(@codemirror\/(?!view$|state$|merge$)|codemirror$|@lezer\/)/;
+// the grammars, so the fence sits on @lezer and the lazy-only modules. Shiki
+// sits behind the same fence: the chat's highlighter reaches it only through
+// highlight.ts's dynamic import.
+const FORBIDDEN_SPECIFIER = /^(@codemirror\/(?!view$|state$|merge$)|codemirror$|@lezer\/|shiki$|shiki\/|@shikijs\/)/;
 const FORBIDDEN_MODULES = [
   "../panels/Editor/CodeEditor",
   "../panels/Editor/SearchResultsBuffer",
   "../panels/Editor/lspClient",
   "../panels/Editor/diffGutter",
+  "../panels/Chat/shikiEngine",
 ];
 
 // Static edges only: `import ... from "x"`, `import "x"`, `export ... from "x"`.
