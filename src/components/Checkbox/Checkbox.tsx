@@ -48,7 +48,7 @@ export default function Checkbox(props: {
       />
       <Primitive.Control class={styles.control}>
         <Primitive.Indicator class={styles.indicator}>
-          <Icon icon={Check} size={12} strokeWidth={2.5} />
+          <Icon icon={Check} size={15} strokeWidth={3} />
         </Primitive.Indicator>
       </Primitive.Control>
       <Show when={props.label !== undefined}>

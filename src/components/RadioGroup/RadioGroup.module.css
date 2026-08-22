@@ -40,7 +40,13 @@
 .item {
   display: flex;
   align-items: flex-start;
-  gap: calc(6px * var(--ui-scale));
+  gap: var(--sway-space-4);
+}
+
+/* On the whole option, so the reason a click does nothing is visible before the
+   click. */
+.item[data-disabled] {
+  cursor: not-allowed;
 }
 
 /* Visually hidden, never removed: the native input is what the arrow keys move
@@ -61,51 +67,61 @@
 }
 
 /* A circle rather than the checkbox's rounded square, which is the whole visual
-   difference between "one of these" and "any of these". */
+   difference between "one of these" and "any of these".
+ 
+   16px on a high-contrast outline, from solid-ui's `aspect-square size-4
+   rounded-full border border-primary`. `--fg-muted` translates `border-primary`
+   (shadcn's high-contrast neutral, not a hue); the `--border-strong` it replaces
+   measured 1.21 to 1.39 against this fill, under WCAG 1.4.11's 3.0 for the one
+   stroke that identifies an unchecked radio. See Checkbox.module.css, which
+   carries the same change for the same reason. */
 .control {
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: calc(14px * var(--ui-scale));
-  height: calc(14px * var(--ui-scale));
-  /* Nudged down to sit on the first line's baseline, since the item aligns to
-     flex-start so a wrapped description does not drag the dot to the middle. */
-  margin-top: calc(2px * var(--ui-scale));
-  border: 1px solid var(--border-strong);
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+  margin-top: calc((1em * var(--sway-line-normal) - 16px * var(--ui-scale)) / 2);
+  border: 1px solid var(--fg-muted);
   border-radius: var(--sway-radius-pill);
   background: var(--canvas-input);
   transition:
     border-color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+    background var(--sway-duration-fast) ease;
 }
 
+/* The ring and the dot take the brand; the fill does not. solid-ui keeps the
+   radio's control transparent (`text-primary` plus a `fill-current` dot) and
+   fills only the checkbox, and the distinction earns its keep: two filled
+   shapes differing by 4px of corner radius is a weaker signal than one filled
+   and one ringed.
+
+   Gold rather than `--accent-fg`, matching Checkbox: selection is gold
+   everywhere else in this app, and `--accent-fg` is the blue link role. */
 .control[data-checked] {
-  border-color: var(--accent-fg);
-  background: var(--accent-fg);
-}
-
-/* The ring is drawn on the circle, but the focus lives on the hidden input, so
-   the selector comes off the item's own focus-within. Same ring as
-   Button.module.css: one focus idiom for every control. */
-.item:focus-within .control {
   border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
+/* Named colours rather than `opacity: 0.5`, which took the outline to 1.76 and
+   made a disabled radio effectively invisible. One tier down, still legible.
+   See the same note in Checkbox.module.css. */
 .control[data-disabled] {
-  opacity: 0.5;
+  border-color: var(--fg-subtle);
 }
 
 /* Kobalte mounts the indicator only while checked, so this needs no hidden
    state of its own. A drawn dot rather than an icon: at 6px a Lucide glyph is
    mush, and the shape carries no meaning a circle does not. */
 .indicator {
-  width: calc(6px * var(--ui-scale));
-  height: calc(6px * var(--ui-scale));
+  width: calc(8px * var(--ui-scale));
+  height: calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-pill);
-  background: var(--fg-on-emphasis);
+  background: var(--brand-default);
+}
+
+.item[data-disabled] .indicator {
+  background: var(--fg-subtle);
 }
 
 .text {

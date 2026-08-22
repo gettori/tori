@@ -971,8 +971,8 @@
 }
 
 .questionOther:focus {
-  border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
+  outline: 1px solid var(--fg-default);
+  outline-offset: 1px;
 }
 
 .questionOther:disabled {
@@ -1035,8 +1035,8 @@
 }
 
 .promptReason:focus {
-  border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
+  outline: 1px solid var(--fg-default);
+  outline-offset: 1px;
 }
 
 /* ---- notices and banners ---- */

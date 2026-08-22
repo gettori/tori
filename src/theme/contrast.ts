@@ -199,8 +199,13 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   // row, and that pairing is where it has historically been weakest: gold-600
   // measured 2.95 on the panel head and 2.76 on the selection, which is why the
   // brand moved to gold-700.
+  // `canvas.input` joined the list when the checkbox and radio moved their
+  // checked state onto the brand: the control's own fill is the input surface,
+  // so the ring, the dot and the filled box are all drawn there. Measured 5.95
+  // to 7.13 across the bundled palettes, but it was unmeasured until declared,
+  // which is [[lesson_a_new_surface_leaves_its_text_unmeasured]] a second time.
   "brand.default": {
-    fg: { tier: "text", on: ["canvas.default", "canvas.card", "canvas.head", "accent.subtle"] },
+    fg: { tier: "text", on: ["canvas.default", "canvas.card", "canvas.head", "canvas.input", "accent.subtle"] },
     surface: true,
   },
   "brand.strong": text(["canvas.default", "canvas.card", "canvas.head"]),
