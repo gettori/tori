@@ -3,6 +3,7 @@ import events from "../../../dev/fixtures/chat/events.json";
 import { parseChatEvent, type ChatEvent } from "../../utils/chatTypes";
 import { BLOCKED_REASON, sendWithProbeGate } from "../../utils/safeSend";
 import {
+  answerable,
   applyEvent,
   beginReconnect,
   chatStatus,
@@ -20,6 +21,8 @@ import {
   pendingApprovals,
   pendingFlush,
   promptsSent,
+  parseQuestions,
+  pushQuestionAnswers,
   pushSteer,
   pushUserTurn,
   toolCallsSeen,
@@ -43,6 +46,7 @@ import {
   visibleItems,
   windowed,
   type ChatItem,
+  type QuestionItem,
   type ChatState,
   type ToolItem,
   type UserItem,
@@ -134,8 +138,9 @@ describe("replaying the captured fixture", () => {
     const s = replay(FIXTURE);
     // the replayed user turn, the compaction notice, text, thinking, then a
     // card each for toolu_1 (started), toolu_2 (fileEdit) and toolu_3
-    // (permissionRequest), then the error and end notices, and last the hook
-    // frame (the fixture lists it after the lifecycle events).
+    // (permissionRequest), then toolu_4's question, then the error and end
+    // notices, and last the hook frame (the fixture lists it after the
+    // lifecycle events).
     expect(kinds(s)).toEqual([
       "user",
       "notice",
@@ -144,6 +149,7 @@ describe("replaying the captured fixture", () => {
       "tool",
       "tool",
       "tool",
+      "question",
       "notice",
       "notice",
       "hook",
@@ -1224,5 +1230,237 @@ describe("settleBackfill", () => {
     // A genuinely live turn re-opens through its own id space.
     applyEvent(s, turnStarted("turn-1"));
     expect(isRunning(s)).toBe(true);
+  });
+});
+
+describe("a question the agent asked", () => {
+  const FORM = {
+    questions: [
+      {
+        question: "Which answer channel?",
+        header: "Channel",
+        multiSelect: false,
+        options: [
+          { label: "In protocol", description: "Answer what the agent asked.", preview: "behavior: deny" },
+          { label: "A dedicated hook", description: "Intercept the call first.", preview: null },
+        ],
+      },
+      {
+        question: "Which should I address?",
+        header: "Scope",
+        multiSelect: true,
+        options: [
+          { label: "One", description: "", preview: null },
+          { label: "Two", description: "", preview: null },
+        ],
+      },
+    ],
+  };
+
+  const asked = (toolUseId = "toolu_q", requestId = "req-q", agentId: string | null = null): ChatEvent => ({
+    type: "questionRequest",
+    sessionId: "s1",
+    toolUseId,
+    requestId,
+    agentId,
+    questions: FORM.questions,
+  });
+  const startedQuestion = (toolUseId = "toolu_q", turnId = "turn-1"): ChatEvent => ({
+    type: "toolCallStarted",
+    sessionId: "s1",
+    turnId,
+    toolUseId,
+    name: "AskUserQuestion",
+    input: FORM,
+  });
+  const completedQuestion = (toolUseId = "toolu_q", output: string, turnId = "turn-1"): ChatEvent => ({
+    type: "toolCallCompleted",
+    sessionId: "s1",
+    turnId,
+    toolUseId,
+    status: "error",
+    output,
+    files: [],
+    durationMs: 3,
+  });
+  const question = (s: ChatState): QuestionItem =>
+    s.items.find((i): i is QuestionItem => i.kind === "question")!;
+
+  const ANSWER =
+    'Your questions have been answered: "Which answer channel?"="In protocol" selected preview:\nbehavior: deny. ' +
+    "You can now continue with these answers in mind.";
+
+  it("folds a questionRequest into one question item", () => {
+    const s = initialChat("s1");
+    applyEvent(s, turnStarted("turn-1"));
+    applyEvent(s, asked());
+    expect(kinds(s)).toEqual(["question"]);
+    const q = question(s);
+    expect(q.requestId).toBe("req-q");
+    expect(q.questions.map((x) => x.question)).toEqual(["Which answer channel?", "Which should I address?"]);
+    expect(answerable(q)).toBe(true);
+  });
+
+  it("makes no tool card for the call, at either end", () => {
+    const s = initialChat("s1");
+    applyEvent(s, turnStarted("turn-1"));
+    applyEvent(s, startedQuestion());
+    applyEvent(s, asked());
+    applyEvent(s, completedQuestion("toolu_q", ANSWER));
+    // The whole point of the suppression: `ensureTool` creates on miss, so a
+    // completion alone would resurrect the card the declaration refused to
+    // make, carrying the answer string as a denied call.
+    expect(kinds(s)).toEqual(["question"]);
+    expect(s.toolIndex["toolu_q"]).toBeUndefined();
+    const q = question(s);
+    expect(q.result).toBe(ANSWER);
+    expect(answerable(q)).toBe(false);
+  });
+
+  it("takes the form from whichever frame lands first, and does not let the other overwrite it", () => {
+    // The control request and the assistant frame race on the wire, so both
+    // orders have to end in the same place.
+    for (const order of [[startedQuestion(), asked()], [asked(), startedQuestion()]]) {
+      const s = initialChat("s1");
+      applyEvent(s, turnStarted("turn-1"));
+      for (const e of order) applyEvent(s, e);
+      expect(kinds(s)).toEqual(["question"]);
+      expect(question(s).questions).toHaveLength(2);
+      expect(question(s).requestId).toBe("req-q");
+      expect(question(s).turnId).toBe("turn-1");
+    }
+  });
+
+  it("rebuilds a replayed question from the tool call alone, read only", () => {
+    // What `history.rs` actually emits: no questionRequest at all, so the form
+    // comes from the call's own input and the answer from its result.
+    const s = initialChat("s1");
+    applyEvent(s, startedQuestion());
+    applyEvent(s, completedQuestion("toolu_q", ANSWER));
+    const q = question(s);
+    expect(q.questions.map((x) => x.question)).toEqual(["Which answer channel?", "Which should I address?"]);
+    expect(q.result).toBe(ANSWER);
+    // Null `requestId` is what makes it read only, rather than a second flag
+    // that could disagree with it.
+    expect(q.requestId).toBeNull();
+    expect(answerable(q)).toBe(false);
+  });
+
+  it("attributes a subagent's question to the subagent, not the parent", () => {
+    const s = initialChat("s1");
+    applyEvent(s, asked("toolu_q", "req-q", "affdd797eddcfa753"));
+    expect(question(s).agentId).toBe("affdd797eddcfa753");
+    const parent = initialChat("s1");
+    applyEvent(parent, asked());
+    expect(question(parent).agentId).toBeNull();
+  });
+
+  it("settles the form the moment answers are sent, before the agent replies", () => {
+    const s = initialChat("s1");
+    applyEvent(s, asked());
+    pushQuestionAnswers(s, "toolu_q", [{ question: "Which answer channel?", picks: ["In protocol"], freeText: null }]);
+    expect(answerable(question(s))).toBe(false);
+    // A second send must not overwrite the first: the request behind it takes
+    // exactly one answer.
+    pushQuestionAnswers(s, "toolu_q", [{ question: "Which answer channel?", picks: ["A dedicated hook"], freeText: null }]);
+    expect(question(s).submitted?.[0]?.picks).toEqual(["In protocol"]);
+  });
+
+  it("leaves an answered question alone when a stale request arrives after it", () => {
+    const s = initialChat("s1");
+    applyEvent(s, startedQuestion());
+    applyEvent(s, completedQuestion("toolu_q", ANSWER));
+    applyEvent(s, asked());
+    expect(question(s).requestId).toBeNull();
+    expect(answerable(question(s))).toBe(false);
+  });
+
+  it("renders the old tool card when the setting is off", () => {
+    const s = initialChat("s1", false);
+    applyEvent(s, turnStarted("turn-1"));
+    applyEvent(s, startedQuestion());
+    applyEvent(s, completedQuestion("toolu_q", ANSWER));
+    expect(kinds(s)).toEqual(["tool"]);
+    expect(tool(s, "toolu_q").name).toBe("AskUserQuestion");
+  });
+
+  it("still honours a question the backend sent, even with the setting off", () => {
+    // The backend decides what it sends. If the preference was flipped after
+    // this session spawned, a request already in flight must not be orphaned
+    // into a card nobody can answer.
+    const s = initialChat("s1", false);
+    applyEvent(s, asked());
+    applyEvent(s, startedQuestion());
+    expect(kinds(s)).toEqual(["question"]);
+    expect(s.toolIndex["toolu_q"]).toBeUndefined();
+  });
+
+  it("falls back to a tool card when the input is not a form it can read", () => {
+    // All or nothing, the same rule the Rust mapper applies: a form one row
+    // short would show fewer questions than the agent asked.
+    const broken: unknown[] = [
+      { questions: [] },
+      { questions: [{ header: "no prose", options: [{ label: "A" }] }] },
+      { questions: [{ question: "Q", options: [] }] },
+      { questions: [{ question: "Q", options: [{ description: "no label" }] }] },
+      { questions: [{ question: "ok", options: [{ label: "A" }] }, { question: "no options" }] },
+      { prompt: "not the shape" },
+      null,
+      "a string",
+    ];
+    for (const input of broken) {
+      expect(parseQuestions(input), JSON.stringify(input)).toBeNull();
+      const s = initialChat("s1");
+      applyEvent(s, { ...(startedQuestion() as object), input } as ChatEvent);
+      expect(kinds(s), JSON.stringify(input)).toEqual(["tool"]);
+    }
+  });
+
+  it("takes over a card already made for the call rather than rendering both", () => {
+    // The one window where this happens: the backend reads the preference when
+    // it spawns and the store reads it when it mounts, so a remount after the
+    // setting was flipped leaves a store that suppresses nothing talking to a
+    // child that still asks.
+    const s = initialChat("s1", false);
+    applyEvent(s, turnStarted("turn-1"));
+    applyEvent(s, startedQuestion());
+    expect(kinds(s)).toEqual(["tool"]);
+
+    applyEvent(s, asked());
+    expect(kinds(s), "one call, one row").toEqual(["question"]);
+    const q = question(s);
+    expect(q.requestId).toBe("req-q");
+    expect(q.turnId).toBe("turn-1");
+    // The form survives the takeover: it came off the card's own input.
+    expect(q.questions.map((x) => x.question)).toEqual(["Which answer channel?", "Which should I address?"]);
+    // And the card's index is gone, or a tool lookup would hand back a question
+    // wearing a card's name.
+    expect(s.toolIndex["toolu_q"]).toBeUndefined();
+
+    applyEvent(s, completedQuestion("toolu_q", ANSWER));
+    expect(kinds(s)).toEqual(["question"]);
+    expect(question(s).result).toBe(ANSWER);
+  });
+
+  it("carries a result the adopted card had already recorded", () => {
+    const s = initialChat("s1", false);
+    applyEvent(s, startedQuestion());
+    applyEvent(s, completedQuestion("toolu_q", ANSWER));
+    applyEvent(s, asked());
+    expect(kinds(s)).toEqual(["question"]);
+    // Adopted after the fact, so the answer must not be lost with the card.
+    expect(question(s).result).toBe(ANSWER);
+    expect(answerable(question(s)), "already settled, so still not answerable").toBe(false);
+  });
+
+  it("reads the option keys the answer string depends on", () => {
+    const parsed = parseQuestions(FORM)!;
+    expect(parsed[0].options[0].preview).toBe("behavior: deny");
+    expect(parsed[0].options[1].preview).toBeNull();
+    expect(parsed[0].options[0].description).toBe("Answer what the agent asked.");
+    expect(parsed[0].multiSelect).toBe(false);
+    expect(parsed[1].multiSelect).toBe(true);
+    // Absent rather than false on the wire is single-select, matching the tool.
+    expect(parseQuestions({ questions: [{ question: "Q", options: [{ label: "A" }] }] })![0].multiSelect).toBe(false);
   });
 });
