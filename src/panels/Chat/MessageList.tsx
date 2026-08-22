@@ -1,7 +1,5 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import { Brain, Info, TriangleAlert, Webhook } from "lucide-solid";
-import { marked } from "marked";
-import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";
 import type { ContentBlock, PermissionMode, QuestionAnswer } from "../../utils/chatTypes";
 import Button from "../../components/Button/Button";
@@ -11,14 +9,7 @@ import QuestionCard from "./QuestionCard";
 import type { Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
-
-// Assistant text is model output, so it is untrusted as far as script execution
-// goes and the webview it lands in can call backend commands. Same treatment as
-// a local markdown file: render locally with `marked`, then strip
-// script-execution vectors before it goes anywhere near innerHTML.
-function renderMarkdown(text: string): string {
-  return sanitizeHtml(marked.parse(text) as string);
-}
+import Markdown from "./Markdown";
 
 function blockText(blocks: readonly ContentBlock[]): string {
   return blocks.map((b) => (b.type === "text" ? b.text : b.type === "fileRef" ? `@${b.path}` : "[image]")).join("\n");
@@ -330,7 +321,9 @@ export default function MessageList(props: {
               {(it) => (
                 <>
                   <TurnAnchor itemId={it().id} />
-                  <div class={styles.assistant} innerHTML={renderMarkdown(it().text)} />
+                  <div class={styles.assistant}>
+                    <Markdown text={it().text} />
+                  </div>
                 </>
               )}
             </Match>
