@@ -192,6 +192,61 @@ pub enum PermissionSuggestion {
     },
 }
 
+/// One question the agent wants answered before it goes on.
+///
+/// **`question` is the prose, `header` is the two-word chip above it**, and the
+/// two are not interchangeable: the answer string the agent reads back quotes
+/// the prose, so a surface that echoed the header would send the model text it
+/// never wrote.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatQuestion {
+    pub question: String,
+    pub header: String,
+    /// Whether several options may be picked at once. Measured 20 of 550
+    /// questions, so one answer is the overwhelming case and the multi form is
+    /// the exception a surface still has to render.
+    #[serde(default)]
+    pub multi_select: bool,
+    pub options: Vec<ChatQuestionOption>,
+}
+
+/// One offered answer.
+///
+/// A free-text answer is always available too and is never an option here: it
+/// is the absence of a pick, which is why [`QuestionAnswer`] carries both.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatQuestionOption {
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    /// A worked example of what this option means, shown with the option and
+    /// echoed back inside the answer when this is the one chosen. Absent on
+    /// most options; measured on 43 of 411 answered calls.
+    #[serde(default)]
+    pub preview: Option<String>,
+}
+
+/// What the user chose for one question.
+///
+/// `picks` holds option labels, never descriptions and never previews, because
+/// the label is the only part of an option the agent can match against what it
+/// offered. `free_text` is the user's own words, and the two are not exclusive:
+/// a multi-select question can be answered with picks *and* an addition.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuestionAnswer {
+    /// The question's own prose, matching [`ChatQuestion::question`]. Carried
+    /// rather than an index so a late answer cannot land on a renumbered
+    /// question.
+    pub question: String,
+    #[serde(default)]
+    pub picks: Vec<String>,
+    #[serde(default)]
+    pub free_text: Option<String>,
+}
+
 /// A slash command as the composer's completion menu needs it.
 ///
 /// Measured: `system/init` reports only bare command *names*, so the
@@ -867,6 +922,32 @@ pub enum ChatEvent {
         suggestions: Vec<PermissionSuggestion>,
     },
 
+    /// The agent is blocked asking the *user* something, rather than asking
+    /// permission to act.
+    ///
+    /// Its own variant and not a [`Self::PermissionRequest`] because the two
+    /// answer differently: a permission is allow or deny, and this is a form.
+    /// Keeping them apart is also what stops the answering agent's own wording
+    /// leaking above its adapter, since a question is answered in the agent's
+    /// vocabulary and the surface never sees that string.
+    ///
+    /// There is no deadline field. Measured 2026-08-22 on claude 2.1.239: the
+    /// CLI imposes none (417s held, zero frames after the ask), and Sway arms
+    /// none either, so an unanswered question ends only by being cancelled.
+    QuestionRequest {
+        session_id: String,
+        tool_use_id: String,
+        /// Correlates the answer back to whatever the agent is waiting on.
+        request_id: String,
+        /// The subagent that asked, when a subagent asked. Same reason as
+        /// [`Self::PermissionRequest`]'s: without it a subagent's question
+        /// attaches to the parent.
+        #[serde(default)]
+        agent_id: Option<String>,
+        /// Measured maximum 4, and never empty.
+        questions: Vec<ChatQuestion>,
+    },
+
     PlanUpdate {
         session_id: String,
         turn_id: String,
@@ -954,6 +1035,17 @@ pub enum ChatCommand {
         scope: PermissionScope,
         #[serde(default)]
         reason: Option<String>,
+    },
+    /// Answer a blocked [`ChatEvent::QuestionRequest`], one entry per question.
+    ///
+    /// Every question the request carried must appear here: the agents measured
+    /// so far have no grammar for a partial answer, so a surface that dropped
+    /// one would leave the agent reading a form with a silent hole in it.
+    RespondQuestion {
+        session_id: String,
+        tool_use_id: String,
+        request_id: String,
+        answers: Vec<QuestionAnswer>,
     },
     /// Applies from the **next** turn, not the running one. The UI says so
     /// rather than claiming immediate effect, and the next turn's re-emitted
@@ -1198,6 +1290,96 @@ mod tests {
                     },
                 ],
             },
+            // The widest shape measured: four questions is the cap, four options
+            // is the cap, and one of each of `multi_select`, a `preview` and a
+            // set `agent_id` so the mirror is checked against all three rather
+            // than against whichever happened to be sampled.
+            ChatEvent::QuestionRequest {
+                session_id: "s1".into(),
+                tool_use_id: "toolu_4".into(),
+                request_id: "op-10".into(),
+                agent_id: Some("affdd797eddcfa753".into()),
+                questions: vec![
+                    ChatQuestion {
+                        question: "Which answer channel should the card use?".into(),
+                        header: "Channel".into(),
+                        multi_select: false,
+                        options: vec![
+                            ChatQuestionOption {
+                                label: "In protocol".into(),
+                                description: "Answer the question the agent already asked.".into(),
+                                preview: Some("{\"behavior\":\"deny\",\"message\":\"...\"}".into()),
+                            },
+                            ChatQuestionOption {
+                                label: "A dedicated hook".into(),
+                                description: "Intercept the call before the agent decides.".into(),
+                                preview: None,
+                            },
+                        ],
+                    },
+                    ChatQuestion {
+                        question: "Which surfaces should the blocking tier cover?".into(),
+                        header: "Surfaces".into(),
+                        multi_select: true,
+                        options: vec![
+                            ChatQuestionOption {
+                                label: "Permission prompt".into(),
+                                description: "The allow or deny card.".into(),
+                                preview: None,
+                            },
+                            ChatQuestionOption {
+                                label: "Question card".into(),
+                                description: "The form this event opens.".into(),
+                                preview: None,
+                            },
+                            ChatQuestionOption {
+                                label: "Hook rows".into(),
+                                description: "The ambient rows, which are not blocking.".into(),
+                                preview: None,
+                            },
+                            ChatQuestionOption {
+                                label: "Notices".into(),
+                                description: "Session errors and endings.".into(),
+                                preview: None,
+                            },
+                        ],
+                    },
+                    ChatQuestion {
+                        question: "Should the card stay inline?".into(),
+                        header: "Placement".into(),
+                        multi_select: false,
+                        options: vec![
+                            ChatQuestionOption {
+                                label: "Inline".into(),
+                                description: "In the transcript, under the call.".into(),
+                                preview: None,
+                            },
+                            ChatQuestionOption {
+                                label: "Modal".into(),
+                                description: "Over the transcript that explains it.".into(),
+                                preview: None,
+                            },
+                        ],
+                    },
+                    ChatQuestion {
+                        question: "How should an unanswered question end?".into(),
+                        header: "Cancel".into(),
+                        multi_select: false,
+                        options: vec![
+                            ChatQuestionOption {
+                                label: "Tab close, session end, interrupt".into(),
+                                description: "The three explicit exits.".into(),
+                                preview: None,
+                            },
+                            ChatQuestionOption {
+                                label: "A timer".into(),
+                                description: "Measured absent on this transport.".into(),
+                                preview: None,
+                            },
+                        ],
+                    },
+                ],
+            },
             ChatEvent::PlanUpdate {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
@@ -1332,6 +1514,30 @@ mod tests {
                 scope: PermissionScope::Once,
                 reason: Some("not on this tree".into()),
             },
+            // One picked answer, one multi-pick, and one that is free text with
+            // no pick at all: the three shapes the answer string is built from.
+            ChatCommand::RespondQuestion {
+                session_id: "s1".into(),
+                tool_use_id: "toolu_4".into(),
+                request_id: "op-10".into(),
+                answers: vec![
+                    QuestionAnswer {
+                        question: "Which answer channel should the card use?".into(),
+                        picks: vec!["In protocol".into()],
+                        free_text: None,
+                    },
+                    QuestionAnswer {
+                        question: "Which surfaces should the blocking tier cover?".into(),
+                        picks: vec!["Permission prompt".into(), "Question card".into()],
+                        free_text: None,
+                    },
+                    QuestionAnswer {
+                        question: "Should the card stay inline?".into(),
+                        picks: vec![],
+                        free_text: Some("inline, but collapse it once answered".into()),
+                    },
+                ],
+            },
             ChatCommand::SetMode {
                 session_id: "s1".into(),
                 mode: PermissionMode::new("plan"),
@@ -1412,6 +1618,7 @@ mod tests {
                 ChatEvent::ToolCallCompleted { .. } => "toolCallCompleted",
                 ChatEvent::FileEdit { .. } => "fileEdit",
                 ChatEvent::PermissionRequest { .. } => "permissionRequest",
+                ChatEvent::QuestionRequest { .. } => "questionRequest",
                 ChatEvent::PlanUpdate { .. } => "planUpdate",
                 ChatEvent::Usage { .. } => "usage",
                 ChatEvent::RateLimit { .. } => "rateLimit",
@@ -1421,8 +1628,8 @@ mod tests {
                 ChatEvent::ConfigOptions { .. } => "configOptions",
             };
         }
-        // 20 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 20, "every_event() must hold exactly one sample per variant");
+        // 21 variants; a mismatch means a sample is missing or duplicated.
+        assert_eq!(events.len(), 21, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]
@@ -1434,13 +1641,14 @@ mod tests {
                 ChatCommand::Steer { .. } => "steer",
                 ChatCommand::Interrupt { .. } => "interrupt",
                 ChatCommand::RespondPermission { .. } => "respondPermission",
+                ChatCommand::RespondQuestion { .. } => "respondQuestion",
                 ChatCommand::SetMode { .. } => "setMode",
                 ChatCommand::SetModel { .. } => "setModel",
                 ChatCommand::SetConfigOption { .. } => "setConfigOption",
                 ChatCommand::Close { .. } => "close",
             };
         }
-        assert_eq!(cmds.len(), 8, "every_command() must hold exactly one sample per variant");
+        assert_eq!(cmds.len(), 9, "every_command() must hold exactly one sample per variant");
     }
 
     /// The wire shape the TypeScript mirror is written against: tagged on

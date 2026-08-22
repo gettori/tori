@@ -39,7 +39,7 @@ use crate::agents::ChatEffortExtra;
 use super::claude::ClaudeMapper;
 use super::model::{
     ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
-    PermissionSuggestion,
+    PermissionSuggestion, QuestionAnswer,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
@@ -626,6 +626,18 @@ impl AgentTransport for ClaudeTransport {
         reason: Option<&str>,
     ) -> Result<bool, String> {
         self.shared.answer_decision(request_id, decision, scope, reason)
+    }
+
+    /// Nothing raises a [`ChatEvent::QuestionRequest`] on this transport yet, so
+    /// no `request_id` reaching here can be a question's and the honest answer
+    /// is the trait's "not mine". Real once `AskUserQuestion` is recognised.
+    fn respond_question(
+        &mut self,
+        _tool_use_id: &str,
+        _request_id: &str,
+        _answers: &[QuestionAnswer],
+    ) -> Result<bool, String> {
+        Ok(false)
     }
 
     fn set_mode(&mut self, mode: PermissionMode) -> Result<(), String> {

@@ -21,7 +21,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use super::model::{ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope};
+use super::model::{
+    ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
+    QuestionAnswer,
+};
 
 /// Delivers one event to whoever is currently listening to a session.
 pub type Emit = Box<dyn Fn(ChatEvent) + Send + Sync>;
@@ -125,6 +128,24 @@ pub trait AgentTransport: Send {
         reason: Option<&str>,
     ) -> Result<bool, String>;
 
+    /// Answer a blocked question, if this transport is what is blocked on it.
+    ///
+    /// **Returns whether the request was ours**, exactly as
+    /// [`Self::respond_permission`] does and for the same reason: `Ok(false)`
+    /// means "not mine", and it is how a stale answer stays a no-op instead of
+    /// resolving something it does not own.
+    ///
+    /// An agent with no wire form for a question must return an error rather
+    /// than `Ok(true)`. A silent success is the one answer the caller cannot
+    /// tell apart from the form having landed, which would leave the agent
+    /// blocked with the user believing they replied.
+    fn respond_question(
+        &mut self,
+        tool_use_id: &str,
+        request_id: &str,
+        answers: &[QuestionAnswer],
+    ) -> Result<bool, String>;
+
     /// Applies from the **next** turn, never the running one.
     fn set_mode(&mut self, mode: PermissionMode) -> Result<(), String>;
 
@@ -173,6 +194,9 @@ pub(crate) mod mock {
         /// Every mirrored switch, so a test can assert the id and value that
         /// actually left rather than that something was called.
         pub config_switches: Vec<(String, ChatConfigValue)>,
+        /// The answers `respond_question` was handed, so a test can assert the
+        /// form arrived intact rather than that a call happened.
+        pub answered: Vec<Vec<QuestionAnswer>>,
         pub closed: bool,
         sink: Option<Sink>,
     }
@@ -204,6 +228,15 @@ pub(crate) mod mock {
             _reason: Option<&str>,
         ) -> Result<bool, String> {
             Ok(false)
+        }
+        fn respond_question(
+            &mut self,
+            _tool_use_id: &str,
+            _request_id: &str,
+            answers: &[QuestionAnswer],
+        ) -> Result<bool, String> {
+            self.answered.push(answers.to_vec());
+            Ok(true)
         }
         fn set_mode(&mut self, _mode: PermissionMode) -> Result<(), String> {
             Ok(())
@@ -269,6 +302,18 @@ mod tests {
         t.send(&[ContentBlock::Text { text: "hi".to_string() }]).unwrap();
         t.interrupt().unwrap();
         t.close().unwrap();
+
+        // Read off a concrete mock rather than the boxed one: through
+        // `Box<dyn AgentTransport>` there is no way back to the type, which is
+        // the whole reason the boxed half above can only prove object safety.
+        let answers = vec![QuestionAnswer {
+            question: "Which answer channel?".to_string(),
+            picks: vec!["In protocol".to_string()],
+            free_text: None,
+        }];
+        let mut mock = MockTransport::default();
+        assert!(mock.respond_question("toolu_4", "op-10", &answers).unwrap());
+        assert_eq!(mock.answered, vec![answers], "the form must arrive intact, not merely arrive");
     }
 
     /// A sink with no listener must drop events rather than panic or block: the
