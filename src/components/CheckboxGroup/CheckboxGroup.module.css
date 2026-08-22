@@ -1,0 +1,51 @@
+/* The group, its label and its options. Deliberately the same rhythm as
+   RadioGroup.module.css: the two render side by side in one question form, and
+   a group that changed its spacing depending on how many answers it takes
+   would read as two different controls. */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+}
+
+/* Typography inherited, weight set. Same reasoning as RadioGroup's: the words
+   belong to the surface the caller built, but a group label that did not read
+   as a heading would leave the options looking like an unrelated list. */
+.groupLabel {
+  color: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  line-height: var(--sway-line-normal);
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Deliberately no rule for the box itself. An `align-items` here to top-align
+   a wrapped label would tie with Checkbox.module.css's own `.root` at 0,1,0 on
+   the same element, so which one won would be decided by the order the two CSS
+   modules land in the bundle rather than by the cascade, and jsdom stubs CSS
+   imports to "" so no test here could tell either way. See
+   gotchas#same-specificity-hover-and-active-declare-active-last. Checkbox
+   centres its box against its label everywhere else in the app, and one
+   wrapped label is not worth diverging from that on a coin flip. */
+
+/* Indented to the label's edge, not the box's: the description belongs to the
+   words, and hanging it under the tick would read as a second option. The
+   arithmetic is the checkbox's own 14px control plus its 6px gap, both scaled
+   the same way Checkbox.module.css scales them. */
+.description {
+  margin-left: calc((14px + 6px) * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+  line-height: var(--sway-line-normal);
+  cursor: default;
+}
