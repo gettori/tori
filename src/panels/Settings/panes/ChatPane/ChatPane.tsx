@@ -28,7 +28,14 @@ import Switch from "../../../../components/Switch/Switch";
  * catalogue entry reaches exactly one row on screen, which is what would catch
  * one being dropped from all three lists.
  */
-const SESSIONS = ["default-surface", "streaming", "transcript-density", "tool-output-lines", "show-hooks"];
+const SESSIONS = [
+  "default-surface",
+  "streaming",
+  "transcript-density",
+  "tool-output-lines",
+  "show-hooks",
+  "answer-questions",
+];
 
 /** The two option lists, module-level so they are not rebuilt per render. The
  *  values are the store's own unions, so a typo here is a type error at the
@@ -114,6 +121,19 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.chatDefaults.showSwayHooks}
             onChange={(showSwayHooks) => setChatDefaults({ showSwayHooks })}
             aria-label="Show every hook event"
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="answer-questions"
+          label="Answer the agent's questions here"
+          hint="On, a question the agent asks becomes a form in the transcript. Off restores the permission card it used to be, where the only answers are allow and deny, and allowing lets the agent record that nobody answered."
+        >
+          <Switch
+            checked={settings.chatDefaults.answerQuestionsInline}
+            onChange={(answerQuestionsInline) => setChatDefaults({ answerQuestionsInline })}
+            aria-label="Answer the agent's questions here"
           />
         </Row>
       </Group>

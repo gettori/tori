@@ -24,7 +24,7 @@
 //!   * **stderr says something.** Kept as a bounded tail and attached to the
 //!     death message, so "exited with status 1" comes with the reason.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -39,7 +39,7 @@ use crate::agents::ChatEffortExtra;
 use super::claude::ClaudeMapper;
 use super::model::{
     ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
-    PermissionSuggestion, QuestionAnswer,
+    ChatQuestion, PermissionSuggestion, QuestionAnswer,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
@@ -71,12 +71,16 @@ struct Shared {
     /// three writers need it and two of them are not on the command path: the
     /// auto-deny timer and the teardown that denies whatever is still pending.
     stdin: Mutex<Option<ChildStdin>>,
-    /// `request_id`s of permission questions the child is blocked on.
+    /// Everything the child is blocked on, and which kind each one is.
     ///
-    /// A request leaves this set exactly once, whoever gets there first: the
+    /// A request leaves this map exactly once, whoever gets there first: the
     /// user, the deadline, or a teardown. That is what makes "answered twice"
     /// impossible and, more importantly, makes "never answered" impossible too.
-    pending: Mutex<HashSet<String>>,
+    ///
+    /// The kind is carried because the two expire differently. A permission has
+    /// a deadline that will resolve it whatever happens; a question has none, so
+    /// an interrupt has to withdraw one or it outlives the turn that asked it.
+    pending: Mutex<HashMap<String, Parked>>,
     /// Signalled whenever a question leaves `pending`, so an armed timer stops
     /// waiting the moment its question is settled instead of sleeping out its
     /// full deadline. Without it, a chat where the user answers promptly still
@@ -87,6 +91,18 @@ struct Shared {
     /// than compose one. Keyed by `request_id` and dropped when answered, so it
     /// is bounded by the number of *outstanding* prompts, not by the session.
     granted_rules: Mutex<HashMap<String, Value>>,
+    /// The form each outstanding question asked, kept so the answer can quote
+    /// the question's own prose and echo the picked option's preview back.
+    /// Keyed and dropped exactly like `granted_rules`, so it is bounded by the
+    /// number of *outstanding* questions rather than by the session.
+    parked_questions: Mutex<HashMap<String, Vec<ChatQuestion>>>,
+}
+
+/// What the child is blocked on. See [`Shared::pending`] for why it is kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Parked {
+    Permission,
+    Question,
 }
 
 impl Shared {
@@ -105,9 +121,10 @@ impl Shared {
     /// settles requests too, and it has no rule to write, so a removal left to
     /// the user-answer path would leak an entry for every prompt that timed out.
     fn claim(&self, request_id: &str) -> bool {
-        let claimed = guarded(&self.pending).remove(request_id);
+        let claimed = guarded(&self.pending).remove(request_id).is_some();
         if claimed {
             guarded(&self.granted_rules).remove(request_id);
+            guarded(&self.parked_questions).remove(request_id);
             // Wake every armed timer so the one that owned this question can
             // retire. Notifying under no lock at all would be a lost wakeup.
             self.settled.notify_all();
@@ -173,8 +190,9 @@ impl Shared {
     /// a closed tab or an ended session must not leave the child blocked on a
     /// question nobody is left to answer.
     fn deny_all_pending(&self, reason: &str) {
-        let outstanding: Vec<String> = guarded(&self.pending).drain().collect();
+        let outstanding: Vec<String> = guarded(&self.pending).drain().map(|(id, _)| id).collect();
         guarded(&self.granted_rules).clear();
+        guarded(&self.parked_questions).clear();
         self.settled.notify_all();
         for request_id in outstanding {
             let _ = self.write_frame(&json!({
@@ -186,6 +204,69 @@ impl Shared {
                 },
             }));
         }
+    }
+
+    /// Withdraw every outstanding *question*, leaving permissions alone.
+    ///
+    /// The asymmetry is the point. A permission carries a deadline that settles
+    /// it whatever the user does, so an interrupt can leave one to expire. A
+    /// question has none by design, so an interrupt that ignored it would leave
+    /// the child blocked on a form belonging to a turn that no longer exists.
+    fn withdraw_questions(&self, reason: &str) {
+        let outstanding: Vec<String> = {
+            let mut pending = guarded(&self.pending);
+            let ids: Vec<String> = pending
+                .iter()
+                .filter(|(_, kind)| **kind == Parked::Question)
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in &ids {
+                pending.remove(id);
+            }
+            ids
+        };
+        if outstanding.is_empty() {
+            return;
+        }
+        let mut questions = guarded(&self.parked_questions);
+        for id in &outstanding {
+            questions.remove(id);
+        }
+        drop(questions);
+        self.settled.notify_all();
+        for request_id in outstanding {
+            let _ = self.write_frame(&json!({
+                "type": "control_response",
+                "response": {
+                    "subtype": "success",
+                    "request_id": request_id,
+                    "response": { "behavior": "deny", "message": reason },
+                },
+            }));
+        }
+    }
+
+    /// Keep the form a question asked, so its answer can quote it back.
+    fn remember_questions(&self, request_id: &str, questions: &[ChatQuestion]) {
+        guarded(&self.parked_questions).insert(request_id.to_string(), questions.to_vec());
+    }
+
+    /// Send the user's answers as the tool result the model reads.
+    ///
+    /// **A denial is the only channel that carries text.** `permission_response`
+    /// puts `message` in front of the model verbatim on a deny, and an allow is
+    /// a bare `{"behavior":"allow"}` with nowhere to put a string; allowing was
+    /// measured to make the CLI self-answer within ~5ms with "The user did not
+    /// answer the questions", because it runs the call against an interactive
+    /// client that is not there. So the answer arrives `is_error: true`, which
+    /// 20 of 20 runs across Opus and Sonnet acted on without re-asking.
+    ///
+    /// The form is read before `answer` claims the request, because claiming is
+    /// what drops it.
+    fn answer_question(&self, request_id: &str, answers: &[QuestionAnswer]) -> Result<bool, String> {
+        let questions = guarded(&self.parked_questions).get(request_id).cloned().unwrap_or_default();
+        let message = super::claude::answer_message(&questions, answers);
+        self.answer(request_id, json!({ "behavior": "deny", "message": message }))
     }
 }
 
@@ -203,6 +284,9 @@ pub struct ClaudeTransport {
     /// The adapter's measured effort levels, handed to the mapper: they
     /// decorate the catalogue the session reports.
     effort_extras: Vec<ChatEffortExtra>,
+    /// The kill switch, carried to the mapper at `start`. See
+    /// [`ClaudeMapper::with_questions_as_permissions`].
+    questions_as_permissions: bool,
 }
 
 impl ClaudeTransport {
@@ -213,7 +297,8 @@ impl ClaudeTransport {
                 finished: AtomicBool::new(false),
                 stderr_tail: Mutex::new(String::new()),
                 stdin: Mutex::new(None),
-                pending: Mutex::new(HashSet::new()),
+                pending: Mutex::new(HashMap::new()),
+                parked_questions: Mutex::new(HashMap::new()),
                 settled: Condvar::new(),
                 granted_rules: Mutex::new(HashMap::new()),
             }),
@@ -222,12 +307,20 @@ impl ClaudeTransport {
             pending_mode: None,
             pending_model: None,
             effort_extras: Vec::new(),
+            questions_as_permissions: false,
         }
     }
 
     /// Hand it the levels Sway measured that this CLI never advertises.
     pub fn with_effort_extras(mut self, extras: Vec<ChatEffortExtra>) -> Self {
         self.effort_extras = extras;
+        self
+    }
+
+    /// Send `AskUserQuestion` back down the permission path, as it was before
+    /// the question card existed.
+    pub fn with_questions_as_permissions(mut self, on: bool) -> Self {
+        self.questions_as_permissions = on;
         self
     }
 
@@ -295,27 +388,36 @@ pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
 /// process with nobody holding it, which is exactly the orphan the ownership
 /// registry exists to detect - manufactured by the code meant to prevent it.
 /// The `wait` is not optional either; without it the dead child stays a zombie.
-/// Register a permission question as outstanding and start the clock on it.
+/// Register something the child is blocked on, and optionally start a clock.
 ///
 /// Returns the wall-clock instant Sway will deny at, which rides out on the
 /// event so the prompt can show a countdown that matches what actually happens
-/// rather than one the UI invented.
+/// rather than one the UI invented. **`None` for `after` means no clock at all**
+/// and returns `None`: nothing is spawned, so nothing can expire, and the only
+/// things that can end that wait are the user and an explicit withdrawal.
+///
+/// A question takes that route. Measured 2026-08-22 on claude 2.1.239, the CLI
+/// imposes no deadline of its own either: an unanswered question stayed
+/// outstanding for 417s with zero frames after the ask. So there is no ceiling
+/// to fit inside and nothing a countdown could honestly count down to, and a
+/// question Sway denied on a timer would answer for the user.
 ///
 /// The timer waits on the `settled` condvar rather than sleeping, so answering a
 /// prompt retires its thread at once instead of leaving it parked for the rest
 /// of the deadline. It still only *tries* to answer on expiry: `Shared::claim`
-/// remains the single place that decides whether a question is outstanding, so a
+/// remains the single place that decides whether a request is outstanding, so a
 /// user clicking at 109.9s wins and the timer's write is dropped. The wait is a
 /// loop because a condvar may wake spuriously and because `notify_all` wakes
-/// every armed timer, not only the one whose question was settled.
-fn arm_auto_deny(shared: &Arc<Shared>, request_id: String) -> u64 {
-    guarded(&shared.pending).insert(request_id.clone());
-    let deadline = now_ms() + DECIDE_TIMEOUT_SECS * 1000;
+/// every armed timer, not only the one whose request was settled.
+fn park(shared: &Arc<Shared>, request_id: String, kind: Parked, after: Option<Duration>) -> Option<u64> {
+    guarded(&shared.pending).insert(request_id.clone(), kind);
+    let after = after?;
+    let deadline = now_ms() + after.as_millis() as u64;
     let shared = shared.clone();
     thread::spawn(move || {
-        let expires_at = Instant::now() + Duration::from_secs(DECIDE_TIMEOUT_SECS);
+        let expires_at = Instant::now() + after;
         let mut pending = guarded(&shared.pending);
-        while pending.contains(&request_id) {
+        while pending.contains_key(&request_id) {
             let Some(left) = expires_at.checked_duration_since(Instant::now()) else { break };
             if left.is_zero() {
                 break;
@@ -325,7 +427,7 @@ fn arm_auto_deny(shared: &Arc<Shared>, request_id: String) -> u64 {
                 Err(e) => e.into_inner().0,
             };
         }
-        let expired = pending.contains(&request_id);
+        let expired = pending.contains_key(&request_id);
         // Never hold the pending lock across the write: `answer` takes it again
         // through `claim`, and takes stdin after it.
         drop(pending);
@@ -335,14 +437,15 @@ fn arm_auto_deny(shared: &Arc<Shared>, request_id: String) -> u64 {
                 json!({
                     "behavior": "deny",
                     "message": format!(
-                        "Sway denied this automatically: nobody answered within {DECIDE_TIMEOUT_SECS} seconds. \
-                         Ask again if you still need it."
+                        "Sway denied this automatically: nobody answered within {} seconds. \
+                         Ask again if you still need it.",
+                        after.as_secs()
                     ),
                 }),
             );
         }
     });
-    deadline
+    Some(deadline)
 }
 
 /// A mutex guard that survives a poisoned lock.
@@ -473,7 +576,8 @@ impl AgentTransport for ClaudeTransport {
             let sink = sink.clone();
             let mut mapper =
                 ClaudeMapper::new(shared.session_id.clone())
-                                        .with_effort_extras(self.effort_extras.clone());
+                    .with_effort_extras(self.effort_extras.clone())
+                    .with_questions_as_permissions(self.questions_as_permissions);
             thread::spawn(move || {
                 for line in BufReader::new(stdout).lines() {
                     let Ok(line) = line else { break };
@@ -487,12 +591,24 @@ impl AgentTransport for ClaudeTransport {
                                 // The mapper turns the frame into an event; the
                                 // deadline is armed here, because the transport
                                 // is the half that can actually answer.
-                                if let ChatEvent::PermissionRequest {
-                                    request_id, auto_deny_at_ms, suggestions, ..
-                                } = &mut event
-                                {
-                                    shared.remember_grant(request_id, suggestions);
-                                    *auto_deny_at_ms = Some(arm_auto_deny(&shared, request_id.clone()));
+                                match &mut event {
+                                    ChatEvent::PermissionRequest {
+                                        request_id, auto_deny_at_ms, suggestions, ..
+                                    } => {
+                                        shared.remember_grant(request_id, suggestions);
+                                        *auto_deny_at_ms = park(
+                                            &shared,
+                                            request_id.clone(),
+                                            Parked::Permission,
+                                            Some(Duration::from_secs(DECIDE_TIMEOUT_SECS)),
+                                        );
+                                    }
+                                    // Parked with no clock. See `park`.
+                                    ChatEvent::QuestionRequest { request_id, questions, .. } => {
+                                        shared.remember_questions(request_id, questions);
+                                        park(&shared, request_id.clone(), Parked::Question, None);
+                                    }
+                                    _ => {}
                                 }
                                 emit(&sink, event);
                             }
@@ -518,6 +634,9 @@ impl AgentTransport for ClaudeTransport {
                 }
                 if let Ok(mut rules) = shared.granted_rules.lock() {
                     rules.clear();
+                }
+                if let Ok(mut questions) = shared.parked_questions.lock() {
+                    questions.clear();
                 }
                 // EOF on stdout means the child is going away. Report it exactly
                 // once: a `close()` that already ended the session has nothing
@@ -592,7 +711,15 @@ impl AgentTransport for ClaudeTransport {
         self.write_frame(&turn_frame(blocks))
     }
 
+    /// Abandon the running turn, withdrawing any question it left open.
+    ///
+    /// The withdrawal goes first, and only questions are withdrawn. A permission
+    /// still has its deadline to settle it, but a question has none, so an
+    /// interrupt that left one parked would block the child on a form belonging
+    /// to a turn the user just abandoned.
     fn interrupt(&mut self) -> Result<(), String> {
+        self.shared
+            .withdraw_questions("Sway withdrew this: the user interrupted the turn before answering.");
         let request_id = self.next_request_id();
         self.write_frame(&json!({
             "type": "control_request",
@@ -628,16 +755,16 @@ impl AgentTransport for ClaudeTransport {
         self.shared.answer_decision(request_id, decision, scope, reason)
     }
 
-    /// Nothing raises a [`ChatEvent::QuestionRequest`] on this transport yet, so
-    /// no `request_id` reaching here can be a question's and the honest answer
-    /// is the trait's "not mine". Real once `AskUserQuestion` is recognised.
+    /// Answer a question by denying the call with the answer as the message,
+    /// which is the only field that carries text to the model. See
+    /// [`Shared::answer_question`].
     fn respond_question(
         &mut self,
         _tool_use_id: &str,
-        _request_id: &str,
-        _answers: &[QuestionAnswer],
+        request_id: &str,
+        answers: &[QuestionAnswer],
     ) -> Result<bool, String> {
-        Ok(false)
+        self.shared.answer_question(request_id, answers)
     }
 
     fn set_mode(&mut self, mode: PermissionMode) -> Result<(), String> {
@@ -689,6 +816,7 @@ impl AgentTransport for ClaudeTransport {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::chat::model::ChatQuestionOption;
     use crate::chat::transport::new_sink;
     use std::collections::HashMap;
 
@@ -701,9 +829,10 @@ pub mod tests {
             // tests want. They are about *which* questions get answered and how
             // many times, not about the bytes reaching a pipe.
             stdin: Mutex::new(None),
-            pending: Mutex::new(HashSet::new()),
+            pending: Mutex::new(HashMap::new()),
             settled: Condvar::new(),
             granted_rules: Mutex::new(HashMap::new()),
+            parked_questions: Mutex::new(HashMap::new()),
         })
     }
 
@@ -788,7 +917,7 @@ pub mod tests {
     #[test]
     fn a_question_can_only_be_answered_once() {
         let shared = shared();
-        shared.pending.lock().unwrap().insert("req-1".into());
+        shared.pending.lock().unwrap().insert("req-1".into(), Parked::Permission);
 
         assert!(shared.claim("req-1"), "the first answer should win");
         assert!(!shared.claim("req-1"), "a second answer must not be sent");
@@ -803,8 +932,8 @@ pub mod tests {
         let shared = shared();
         {
             let mut pending = shared.pending.lock().unwrap();
-            pending.insert("req-1".into());
-            pending.insert("req-2".into());
+            pending.insert("req-1".into(), Parked::Permission);
+            pending.insert("req-2".into(), Parked::Permission);
         }
         shared.granted_rules.lock().unwrap().insert("req-1".into(), json!([]));
 
@@ -822,7 +951,7 @@ pub mod tests {
     #[test]
     fn a_settled_question_drops_its_remembered_grant() {
         let shared = shared();
-        shared.pending.lock().unwrap().insert("req-1".into());
+        shared.pending.lock().unwrap().insert("req-1".into(), Parked::Permission);
         shared.granted_rules.lock().unwrap().insert("req-1".into(), json!([{ "toolName": "Bash" }]));
 
         assert!(shared.claim("req-1"));
@@ -836,11 +965,175 @@ pub mod tests {
     fn arming_a_deadline_registers_the_question_and_returns_when_it_expires() {
         let shared = shared();
         let before = now_ms();
-        let deadline = arm_auto_deny(&shared, "req-1".into());
+        let deadline = park(
+            &shared,
+            "req-1".into(),
+            Parked::Permission,
+            Some(Duration::from_secs(DECIDE_TIMEOUT_SECS)),
+        )
+        .expect("a permission is parked with a clock");
 
-        assert!(shared.pending.lock().unwrap().contains("req-1"), "an armed question must be pending");
+        assert!(shared.pending.lock().unwrap().contains_key("req-1"), "an armed question must be pending");
         assert!(deadline >= before + DECIDE_TIMEOUT_SECS * 1000);
         assert!(DECIDE_TIMEOUT_SECS < super::super::approval::HOOK_TIMEOUT_SECS);
+    }
+
+    /// **A question is parked with no clock at all.**
+    ///
+    /// The literal claim, "the child stays blocked past `DECIDE_TIMEOUT_SECS`",
+    /// was measured in the Phase 0 spike rather than waited out here: an
+    /// unanswered question held for 417s against claude 2.1.239 with zero frames
+    /// after the ask. What a unit test can prove, and what this proves, is that
+    /// Sway arms nothing, by running the same `park` with a deadline short
+    /// enough to observe and then with none. A 110s sleep would prove the same
+    /// thing 2000 times slower and would still not reach 417s.
+    #[test]
+    fn a_question_is_parked_with_no_deadline_and_a_permission_is_not() {
+        let shared = shared();
+
+        // The control: with a clock, the same call expires and denies itself.
+        assert!(park(&shared, "with-clock".into(), Parked::Permission, Some(Duration::from_millis(40)))
+            .is_some());
+        thread::sleep(Duration::from_millis(300));
+        assert!(
+            !guarded(&shared.pending).contains_key("with-clock"),
+            "a parked permission must expire on its own"
+        );
+
+        // The subject: no clock, nothing spawned, nothing to expire.
+        assert_eq!(park(&shared, "no-clock".into(), Parked::Question, None), None, "no deadline to report");
+        thread::sleep(Duration::from_millis(300));
+        assert_eq!(
+            guarded(&shared.pending).get("no-clock"),
+            Some(&Parked::Question),
+            "a question outlives any deadline a permission would have had"
+        );
+        assert!(shared.claim("no-clock"), "and it is still the user's to answer");
+    }
+
+    /// Interrupting a turn withdraws its question and leaves permissions alone.
+    ///
+    /// The asymmetry is deliberate and is what the deadline removal created: a
+    /// permission still has a clock that will settle it, a question has none, so
+    /// an interrupt is the only thing standing between an abandoned turn and a
+    /// child blocked forever.
+    #[test]
+    fn an_interrupt_withdraws_the_question_and_leaves_the_permission_parked() {
+        let shared = shared();
+        park(&shared, "perm".into(), Parked::Permission, None);
+        park(&shared, "quest".into(), Parked::Question, None);
+        shared.remember_questions("quest", &[ChatQuestion {
+            question: "Which?".into(),
+            header: "H".into(),
+            multi_select: false,
+            options: vec![ChatQuestionOption {
+                label: "A".into(),
+                description: String::new(),
+                preview: None,
+            }],
+        }]);
+
+        shared.withdraw_questions("the user interrupted");
+
+        assert!(!guarded(&shared.pending).contains_key("quest"), "the question is withdrawn");
+        assert!(
+            guarded(&shared.parked_questions).is_empty(),
+            "and its remembered form goes with it, or the map grows for the session"
+        );
+        assert_eq!(
+            guarded(&shared.pending).get("perm"),
+            Some(&Parked::Permission),
+            "a permission has its own deadline and is not the interrupt's business"
+        );
+        assert!(!shared.claim("quest"), "a late answer after a withdrawal is a no-op");
+    }
+
+    /// The three ways an unanswered question ends, asserted together because
+    /// what matters is that *none* of them leaves an id parked. A question has
+    /// no deadline, so anything these three miss is blocked for the life of the
+    /// child.
+    #[test]
+    fn no_exit_path_leaves_a_question_parked() {
+        // Tab close and session end are one path: both reach `deny_all_pending`.
+        let shared = shared();
+        park(&shared, "q1".into(), Parked::Question, None);
+        shared.remember_questions("q1", &[]);
+        shared.deny_all_pending("the chat was closed");
+        assert!(guarded(&shared.pending).is_empty(), "teardown leaves nothing parked");
+        assert!(guarded(&shared.parked_questions).is_empty(), "and nothing remembered");
+
+        // Interrupt is the third, on a fresh session so the two cannot mask
+        // each other by leaving the map already empty.
+        drop(shared);
+        let shared = super::tests::shared();
+        park(&shared, "q2".into(), Parked::Question, None);
+        shared.remember_questions("q2", &[]);
+        shared.withdraw_questions("the user interrupted");
+        assert!(guarded(&shared.pending).is_empty(), "an interrupt leaves nothing parked");
+        assert!(guarded(&shared.parked_questions).is_empty());
+    }
+
+    /// The answer reaches the model as a **denial**, because that is the only
+    /// field on the response that carries text: an allow is a bare
+    /// `{"behavior":"allow"}`, and measured, allowing makes the CLI answer for
+    /// the user within milliseconds.
+    #[test]
+    fn a_question_is_answered_by_denying_the_call_with_the_answer_as_the_message() {
+        let shared = shared();
+        let questions = vec![ChatQuestion {
+            question: "Which colour do you want?".into(),
+            header: "Colour".into(),
+            multi_select: false,
+            options: vec![ChatQuestionOption {
+                label: "Red".into(),
+                description: "Choose red.".into(),
+                preview: Some("#ff0000".into()),
+            }],
+        }];
+        park(&shared, "q".into(), Parked::Question, None);
+        shared.remember_questions("q", &questions);
+
+        // No child, so the write fails after the claim. What is under test is
+        // the claim and the message, and `answer` claims before it writes.
+        let _ = shared.answer_question("q", &[QuestionAnswer {
+            question: "Which colour do you want?".into(),
+            picks: vec!["Red".into()],
+            free_text: None,
+        }]);
+        assert!(!guarded(&shared.pending).contains_key("q"), "answering settles it");
+        assert!(
+            !shared
+                .answer_question(
+                    "q",
+                    &[QuestionAnswer { question: "Which colour do you want?".into(), picks: vec![], free_text: None }]
+                )
+                .expect("a second answer is a no-op, not an error"),
+            "one question, one answer"
+        );
+    }
+
+    /// A question whose form was forgotten still answers, without the preview.
+    ///
+    /// Reachable in one race: the reader thread forgets every parked form when
+    /// the child dies, so a click landing in that window finds nothing.
+    /// Answering with a form-less string beats refusing, since the request is
+    /// about to be moot either way and an error toast for a dead child helps
+    /// nobody. Writing this test is what caught the forgetting *not* happening:
+    /// the comment claimed a cleanup that only covered `pending` and the grants.
+    #[test]
+    fn an_answer_with_no_remembered_form_still_names_the_questions() {
+        let shared = shared();
+        park(&shared, "q".into(), Parked::Question, None);
+        let message = super::super::claude::answer_message(
+            &[],
+            &[QuestionAnswer {
+                question: "Which colour do you want?".into(),
+                picks: vec!["Red".into()],
+                free_text: None,
+            }],
+        );
+        assert!(message.contains("\"Which colour do you want?\"=\"Red\""), "{message}");
+        assert!(!message.contains("selected preview"), "no form, so no preview to echo: {message}");
     }
 
     /// The timer must retire when its question is answered, not sleep out the
@@ -849,14 +1142,14 @@ pub mod tests {
     #[test]
     fn answering_retires_the_armed_timer_immediately() {
         let shared = shared();
-        guarded(&shared.pending).insert("req-1".into());
+        guarded(&shared.pending).insert("req-1".into(), Parked::Permission);
 
         let waiter = {
             let shared = shared.clone();
             thread::spawn(move || {
                 let expires_at = Instant::now() + Duration::from_secs(DECIDE_TIMEOUT_SECS);
                 let mut pending = guarded(&shared.pending);
-                while pending.contains("req-1") {
+                while pending.contains_key("req-1") {
                     let Some(left) = expires_at.checked_duration_since(Instant::now()) else { break };
                     pending = shared.settled.wait_timeout(pending, left).map(|(g, _)| g).unwrap();
                 }

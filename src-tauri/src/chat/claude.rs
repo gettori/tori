@@ -32,10 +32,18 @@ use crate::agents::{ChatEffortExtra, EffortExtraState};
 
 use super::model::{
     ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent,
-    ChatModelInfo, Extra, HookPhase,
-    McpServer, PermissionDenial, PermissionMode, PermissionSuggestion, SlashCommand, SuggestedRule, ToolStatus,
-    TurnOutcome, Usage,
+    ChatModelInfo, ChatQuestion, ChatQuestionOption, Extra, HookPhase,
+    McpServer, PermissionDenial, PermissionMode, PermissionSuggestion, QuestionAnswer, SlashCommand, SuggestedRule,
+    ToolStatus, TurnOutcome, Usage,
 };
+
+/// The one tool whose `can_use_tool` is a question rather than a request to act.
+///
+/// Measured 2026-08-22 on claude 2.1.239: it raises `can_use_tool` in all four
+/// permission modes, `bypassPermissions` included, which no other tool does.
+/// The CLI has no interactive client on this transport, so rather than deciding
+/// the question itself it hands it out.
+pub(super) const ASK_USER_QUESTION: &str = "AskUserQuestion";
 
 /// Why fast mode cannot be flipped from here, whatever the account says about
 /// whether it could serve.
@@ -304,6 +312,11 @@ pub struct ClaudeMapper {
     /// The adapter's measured effort levels. Empty is a mapper nobody gave any,
     /// which offers the catalogue's own list rather than guessing at more.
     effort_extras: Vec<ChatEffortExtra>,
+    /// The kill switch, stored in the negative so the derived `Default` is the
+    /// live behaviour rather than the disabled one. True restores what shipped
+    /// before the question card: `AskUserQuestion` becomes a permission prompt
+    /// like any other tool, answerable only allow or deny.
+    questions_as_permissions: bool,
     /// The binary that answered, from `system/init`. Empty until the first one,
     /// which is what keeps a measured extra out of the handshake's catalogue:
     /// the claim is scoped to a version, and nothing has named one yet.
@@ -331,6 +344,13 @@ impl ClaudeMapper {
     /// so the live catalogue offers the same set the probe cached.
     pub fn with_effort_extras(mut self, extras: Vec<ChatEffortExtra>) -> Self {
         self.effort_extras = extras;
+        self
+    }
+
+    /// Send `AskUserQuestion` back down the permission path, as it was before
+    /// the question card existed.
+    pub fn with_questions_as_permissions(mut self, on: bool) -> Self {
+        self.questions_as_permissions = on;
         self
     }
 
@@ -519,6 +539,21 @@ impl ClaudeMapper {
         else {
             return Vec::new();
         };
+        // The one tool that asks rather than acts. It falls through to a
+        // permission prompt when the form cannot be parsed, which is the honest
+        // degrade: a half-read form would send the agent an answer to a
+        // question the user was never shown.
+        if !self.questions_as_permissions && request["tool_name"].as_str() == Some(ASK_USER_QUESTION) {
+            if let Some(questions) = parse_questions(&request["input"]) {
+                return vec![ChatEvent::QuestionRequest {
+                    session_id: self.session_id.clone(),
+                    tool_use_id: tool_use_id.to_string(),
+                    request_id: request_id.to_string(),
+                    agent_id: request["agent_id"].as_str().map(str::to_string),
+                    questions,
+                }];
+            }
+        }
         vec![ChatEvent::PermissionRequest {
             session_id: self.session_id.clone(),
             tool_use_id: tool_use_id.to_string(),
@@ -1011,6 +1046,121 @@ fn usage_from(raw: &Value) -> Usage {
         cache_write_tokens: raw["cache_creation_input_tokens"].as_u64().unwrap_or(0),
         thinking_tokens: raw["output_tokens_details"]["thinking_tokens"].as_u64().unwrap_or(0),
     }
+}
+
+/// One `AskUserQuestion` input, as a form Sway can render.
+///
+/// **All or nothing.** A question the parser cannot read drops the whole form
+/// back to a permission prompt rather than rendering the rest, because the
+/// answer string names every question it was given: a form silently short one
+/// row would send the agent an answer to a question the user never saw.
+///
+/// `header` and `description` degrade to empty where the wire omits them, since
+/// neither reaches the agent. `question` and `label` do not: the answer quotes
+/// the question's prose and echoes the chosen option's label back, so a missing
+/// one has no honest substitute.
+fn parse_questions(input: &Value) -> Option<Vec<ChatQuestion>> {
+    let raw = input["questions"].as_array()?;
+    if raw.is_empty() {
+        return None;
+    }
+    let questions: Vec<ChatQuestion> = raw
+        .iter()
+        .filter_map(|q| {
+            let offered = q["options"].as_array()?;
+            let options: Vec<ChatQuestionOption> = offered
+                .iter()
+                .filter_map(|o| {
+                    Some(ChatQuestionOption {
+                        label: o["label"].as_str()?.to_string(),
+                        description: o["description"].as_str().unwrap_or_default().to_string(),
+                        preview: o["preview"].as_str().map(str::to_string),
+                    })
+                })
+                .collect();
+            if options.len() != offered.len() || options.is_empty() {
+                return None;
+            }
+            Some(ChatQuestion {
+                question: q["question"].as_str()?.to_string(),
+                header: q["header"].as_str().unwrap_or_default().to_string(),
+                multi_select: q["multiSelect"].as_bool().unwrap_or(false),
+                options,
+            })
+        })
+        .collect();
+    (questions.len() == raw.len()).then_some(questions)
+}
+
+/// The answer string the model reads, in the CLI's own wording.
+///
+/// **These literals are measured, not composed**, from 411 real tool results
+/// plus live probes against claude 2.1.239, and they are the one place in this
+/// repo where a non-ASCII character is load bearing: the two `\u{2014}` below
+/// are em dashes, and the corpus has them where a transcription of it had
+/// hyphens. Written as escapes so the source file stays ASCII and the byte on
+/// the wire does not.
+///
+/// **Which head is used turns on free text and on nothing else.** Measured
+/// decisively: 0 of 17 "The user answered" results had all-label values and 17
+/// of 17 carried a value matching no declared label, while 7 multi-pick results
+/// used the other head. So several picks in one question stay the first form,
+/// joined with `, ` inside a single quoted value; one free-text answer moves the
+/// whole call to the second, including its label-only entries.
+pub(super) fn answer_message(questions: &[ChatQuestion], answers: &[QuestionAnswer]) -> String {
+    let entries: Vec<String> = answers.iter().map(|a| entry(questions, a)).collect();
+    let entries = entries.join(", ");
+    if answers.iter().any(|a| free_text(a).is_some()) {
+        format!(
+            "The user answered: {entries}. Read the answers carefully \u{2014} they may request \
+             clarification, changes, or that you not proceed \u{2014} and follow what they \
+             actually say."
+        )
+    } else {
+        format!("Your questions have been answered: {entries}. You can now continue with these answers in mind.")
+    }
+}
+
+/// The user's own words, or `None` when they only picked.
+///
+/// Blank is not free text. A surface that leaves an empty Other field behind
+/// would otherwise move the whole call onto the wrong head and tell the agent
+/// to read a clarification nobody wrote.
+fn free_text(answer: &QuestionAnswer) -> Option<&str> {
+    answer.free_text.as_deref().map(str::trim).filter(|t| !t.is_empty())
+}
+
+/// One `"<question>"="<value>"` pair, with the chosen option's preview after it.
+///
+/// Picks and free text are joined into one value rather than kept apart. The
+/// measured grammar has no entry carrying both, because the CLI's own client
+/// cannot produce one; Sway's can, since a multi-select question offers Other
+/// alongside its boxes. Joining is the only shape that fits a grammar of one
+/// value per question, and it is the same `, ` a multi-pick already uses.
+fn entry(questions: &[ChatQuestion], answer: &QuestionAnswer) -> String {
+    let mut parts: Vec<&str> = answer.picks.iter().map(String::as_str).collect();
+    parts.extend(free_text(answer));
+    let mut out = format!("\"{}\"=\"{}\"", answer.question, parts.join(", "));
+    if let Some(preview) = preview_for(questions, answer) {
+        out.push_str(&format!(" selected preview:\n{preview}"));
+    }
+    out
+}
+
+/// The preview declared by the option this answer picked, if it declared one.
+///
+/// First match rather than all of them, and the two cannot differ: the tool
+/// offers a preview only on a single-select question, so an answer carrying a
+/// preview carries exactly one pick.
+fn preview_for<'a>(questions: &'a [ChatQuestion], answer: &QuestionAnswer) -> Option<&'a str> {
+    let question = questions.iter().find(|q| q.question == answer.question)?;
+    answer.picks.iter().find_map(|pick| {
+        question
+            .options
+            .iter()
+            .find(|o| &o.label == pick)
+            .and_then(|o| o.preview.as_deref())
+    })
 }
 
 /// The actions a `can_use_tool` request offered, as the CLI wrote them.
@@ -1673,6 +1823,308 @@ mod tests {
             request["agent_id"] = serde_json::json!(id);
         }
         serde_json::json!({ "type": "control_request", "request_id": "req-1", "request": request })
+    }
+
+    /// An `AskUserQuestion` frame, shaped like the captured one in
+    /// `dev/fixtures/claude/ask-user-question.jsonl` and widened to the corpus
+    /// maximum: four questions, four options, one `multiSelect`, one `preview`.
+    ///
+    /// `requires_user_interaction` is on the real frame and is deliberately
+    /// *not* what the mapper branches on. The tool name is, because the flag
+    /// appears on nothing else measured and a mapper keyed to it would be
+    /// guessing that it means the same thing on a tool that has not been seen.
+    fn ask_user_question() -> serde_json::Value {
+        serde_json::json!({
+            "type": "control_request",
+            "request_id": "req-q",
+            "request": {
+                "subtype": "can_use_tool",
+                "tool_name": "AskUserQuestion",
+                "display_name": "AskUserQuestion",
+                "tool_use_id": "toolu_q",
+                "requires_user_interaction": true,
+                "input": { "questions": [
+                    {
+                        "question": "Which colour do you want?",
+                        "header": "Colour",
+                        "multiSelect": false,
+                        "options": [
+                            { "label": "Red", "description": "Choose red.", "preview": "#ff0000" },
+                            { "label": "Blue", "description": "Choose blue." }
+                        ]
+                    },
+                    {
+                        "question": "Which should I address?",
+                        "header": "Scope",
+                        "multiSelect": true,
+                        "options": [
+                            { "label": "Add check 9 for the title copy", "description": "One." },
+                            { "label": "Comment the keyframe coupling", "description": "Two." },
+                            { "label": "Neither", "description": "Three." },
+                            { "label": "Both plus the tests", "description": "Four." }
+                        ]
+                    },
+                    {
+                        "question": "Where should it render?",
+                        "header": "Placement",
+                        "options": [
+                            { "label": "Inline", "description": "In the transcript." },
+                            { "label": "Modal", "description": "Over it." }
+                        ]
+                    },
+                    {
+                        "question": "Anything else?",
+                        "header": "Extra",
+                        "multiSelect": false,
+                        "options": [
+                            { "label": "No", "description": "Carry on." },
+                            { "label": "Yes", "description": "Wait." }
+                        ]
+                    }
+                ] }
+            }
+        })
+    }
+
+    /// The exception to every other tool: this `can_use_tool` is a question, so
+    /// it becomes a form and never a prompt with two buttons.
+    #[test]
+    fn an_ask_user_question_becomes_a_question_request_and_never_a_permission() {
+        let mut m = ClaudeMapper::new("s1");
+        let events = m.map(&ask_user_question());
+        assert!(
+            !events.iter().any(|e| matches!(e, ChatEvent::PermissionRequest { .. })),
+            "an allow or deny cannot answer a form: {events:?}"
+        );
+        match events.as_slice() {
+            [ChatEvent::QuestionRequest { session_id, tool_use_id, request_id, agent_id, questions }] => {
+                assert_eq!(session_id, "s1");
+                assert_eq!(tool_use_id, "toolu_q");
+                assert_eq!(request_id, "req-q");
+                assert_eq!(*agent_id, None, "the main agent asked, so nothing to attribute");
+                assert_eq!(questions.len(), 4);
+                assert_eq!(questions[0].question, "Which colour do you want?");
+                assert_eq!(questions[0].header, "Colour");
+                assert_eq!(questions[0].options[0].preview.as_deref(), Some("#ff0000"));
+                assert_eq!(questions[0].options[1].preview, None);
+                assert_eq!(questions[0].options[1].description, "Choose blue.");
+                assert!(questions[1].multi_select, "the one multi-select survives the crossing");
+                assert_eq!(questions[1].options.len(), 4, "four is the measured maximum");
+                // Absent rather than false on the wire, and the tool treats that
+                // as single-select, so the mapper must too.
+                assert!(!questions[2].multi_select);
+            }
+            other => panic!("expected one QuestionRequest, got {other:?}"),
+        }
+    }
+
+    /// A subagent's question attaches to the subagent, the same routing a
+    /// subagent's permission prompt already gets.
+    #[test]
+    fn a_subagents_question_carries_the_agent_that_asked_it() {
+        let mut m = ClaudeMapper::new("s1");
+        let mut frame = ask_user_question();
+        frame["request"]["agent_id"] = serde_json::json!("affdd797eddcfa753");
+        match m.map(&frame).as_slice() {
+            [ChatEvent::QuestionRequest { agent_id, .. }] => {
+                assert_eq!(agent_id.as_deref(), Some("affdd797eddcfa753"));
+            }
+            other => panic!("expected a QuestionRequest, got {other:?}"),
+        }
+    }
+
+    /// **A form that cannot be fully read degrades to the old card, not to
+    /// nothing and not to a partial form.**
+    ///
+    /// The answer string names every question it was given, so a form silently
+    /// one row short would put an answer in front of the agent for a question
+    /// the user never saw. A permission prompt at least says honestly that Sway
+    /// could not read this and lets the user deny it.
+    #[test]
+    fn a_question_that_cannot_be_read_falls_back_to_the_permission_prompt() {
+        let broken = [
+            // No `question` prose, which is what the answer quotes back.
+            serde_json::json!({ "questions": [{ "header": "H", "options": [{ "label": "A" }] }] }),
+            // An option with no label, which is what a pick reports.
+            serde_json::json!({ "questions": [{ "question": "Q", "options": [{ "description": "d" }] }] }),
+            // A question with no options at all.
+            serde_json::json!({ "questions": [{ "question": "Q", "options": [] }] }),
+            // Nothing to ask.
+            serde_json::json!({ "questions": [] }),
+            // Not the shape at all.
+            serde_json::json!({ "prompt": "pick one" }),
+        ];
+        for input in broken {
+            let mut m = ClaudeMapper::new("s1");
+            let mut frame = ask_user_question();
+            frame["request"]["input"] = input.clone();
+            match m.map(&frame).as_slice() {
+                [ChatEvent::PermissionRequest { tool_name, .. }] => {
+                    assert_eq!(tool_name, "AskUserQuestion");
+                }
+                other => panic!("expected a fallback PermissionRequest for {input}, got {other:?}"),
+            }
+        }
+    }
+
+    /// A partly-readable form is still a broken form. One unreadable question
+    /// out of two drops both, for the same reason as above.
+    #[test]
+    fn one_unreadable_question_drops_the_whole_form() {
+        let mut m = ClaudeMapper::new("s1");
+        let mut frame = ask_user_question();
+        frame["request"]["input"] = serde_json::json!({ "questions": [
+            { "question": "Readable?", "options": [{ "label": "Yes" }] },
+            { "header": "no prose here", "options": [{ "label": "Yes" }] },
+        ] });
+        assert!(
+            matches!(m.map(&frame).as_slice(), [ChatEvent::PermissionRequest { .. }]),
+            "half a form is not a form"
+        );
+    }
+
+    /// The kill switch: with it on, the mapper does exactly what it did before
+    /// the question card existed.
+    #[test]
+    fn the_kill_switch_puts_the_question_back_on_the_permission_path() {
+        let mut m = ClaudeMapper::new("s1").with_questions_as_permissions(true);
+        match m.map(&ask_user_question()).as_slice() {
+            [ChatEvent::PermissionRequest { tool_name, tool_use_id, request_id, input, .. }] => {
+                assert_eq!(tool_name, "AskUserQuestion");
+                assert_eq!(tool_use_id, "toolu_q");
+                assert_eq!(request_id, "req-q");
+                // The input rides through untouched, which is what lets the old
+                // card render the raw JSON it always did.
+                assert!(input["questions"].is_array());
+            }
+            other => panic!("expected the old permission prompt, got {other:?}"),
+        }
+    }
+
+    // ---- the answer string ----------------------------------------------
+    //
+    // Byte for byte against the measured corpus. These are the CLI's own words,
+    // and a paraphrase reaching the model is a silent behaviour change with
+    // nothing to catch it, so the expectations below are written out in full
+    // rather than assembled from the same helpers the code uses.
+
+    fn form() -> Vec<ChatQuestion> {
+        let mut m = ClaudeMapper::new("s1");
+        match m.map(&ask_user_question()).as_slice() {
+            [ChatEvent::QuestionRequest { questions, .. }] => questions.clone(),
+            other => panic!("expected a QuestionRequest, got {other:?}"),
+        }
+    }
+
+    fn answered(question: &str, picks: &[&str], free_text: Option<&str>) -> QuestionAnswer {
+        QuestionAnswer {
+            question: question.to_string(),
+            picks: picks.iter().map(|p| p.to_string()).collect(),
+            free_text: free_text.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn every_answer_made_of_labels_uses_the_first_head() {
+        let answers = [
+            answered("Which should I address?", &["Neither"], None),
+            answered("Where should it render?", &["Inline"], None),
+        ];
+        assert_eq!(
+            answer_message(&form(), &answers),
+            "Your questions have been answered: \"Which should I address?\"=\"Neither\", \
+             \"Where should it render?\"=\"Inline\". You can now continue with these answers in mind."
+        );
+    }
+
+    /// **A multi-pick stays on the first head**, joined with `, ` inside one
+    /// quoted value. Measured: 7 multi-pick results used it, and 0 of 17
+    /// second-head results had all-label values.
+    #[test]
+    fn several_picks_join_inside_one_value_and_do_not_change_the_head() {
+        let answers = [answered(
+            "Which should I address?",
+            &["Add check 9 for the title copy", "Comment the keyframe coupling"],
+            None,
+        )];
+        assert_eq!(
+            answer_message(&form(), &answers),
+            "Your questions have been answered: \"Which should I address?\"=\"Add check 9 for the \
+             title copy, Comment the keyframe coupling\". You can now continue with these answers in mind."
+        );
+    }
+
+    /// One free-text answer moves the whole call to the second head, including
+    /// the label-only entries beside it. The two dashes are U+2014 EM DASH, not
+    /// hyphens; a transcription of the corpus had hyphens and would have shipped.
+    #[test]
+    fn one_free_text_answer_moves_the_whole_call_to_the_second_head() {
+        let answers = [
+            answered("Where should it render?", &["Inline"], None),
+            answered("Anything else?", &[], Some("ask me again after the diff")),
+        ];
+        let message = answer_message(&form(), &answers);
+        assert_eq!(
+            message,
+            "The user answered: \"Where should it render?\"=\"Inline\", \"Anything else?\"=\"ask me \
+             again after the diff\". Read the answers carefully \u{2014} they may request \
+             clarification, changes, or that you not proceed \u{2014} and follow what they actually say."
+        );
+        assert_eq!(message.matches('\u{2014}').count(), 2, "em dashes, not hyphens");
+        assert!(!message.contains(" - "), "a hyphen here is the transcription bug this pins");
+    }
+
+    /// The picked option's preview rides back with it, after the entry.
+    #[test]
+    fn a_picked_option_carrying_a_preview_echoes_it_back() {
+        let answers = [answered("Which colour do you want?", &["Red"], None)];
+        assert_eq!(
+            answer_message(&form(), &answers),
+            "Your questions have been answered: \"Which colour do you want?\"=\"Red\" selected \
+             preview:\n#ff0000. You can now continue with these answers in mind."
+        );
+        // The option without one adds no suffix, so the marker is not boilerplate.
+        let plain = answer_message(&form(), &[answered("Which colour do you want?", &["Blue"], None)]);
+        assert!(!plain.contains("selected preview"), "{plain}");
+    }
+
+    /// Picks and free text in one answer join into a single value.
+    ///
+    /// The measured grammar has no entry carrying both, because the CLI's own
+    /// client cannot produce one. Sway's can: a multi-select question offers
+    /// Other beside its boxes. Pinned so the shape is a decision on the record
+    /// rather than whatever the code happened to do.
+    #[test]
+    fn picks_and_free_text_share_one_value() {
+        let answers = [answered(
+            "Which should I address?",
+            &["Neither"],
+            Some("hold until the review lands"),
+        )];
+        assert_eq!(
+            answer_message(&form(), &answers),
+            "The user answered: \"Which should I address?\"=\"Neither, hold until the review lands\". \
+             Read the answers carefully \u{2014} they may request clarification, changes, or that you \
+             not proceed \u{2014} and follow what they actually say."
+        );
+    }
+
+    /// A blank Other box is not an answer.
+    ///
+    /// Without this a surface that leaves an empty field behind would move the
+    /// call onto the second head and tell the agent to read a clarification
+    /// nobody wrote.
+    #[test]
+    fn a_blank_free_text_box_is_not_free_text() {
+        for blank in ["", "   ", "\n"] {
+            let answers = [answered("Where should it render?", &["Inline"], Some(blank))];
+            let message = answer_message(&form(), &answers);
+            assert!(
+                message.starts_with("Your questions have been answered: "),
+                "blank {blank:?} must not change the head: {message}"
+            );
+            assert!(message.contains("\"Where should it render?\"=\"Inline\""), "{message}");
+        }
     }
 
     #[test]

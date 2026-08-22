@@ -261,6 +261,17 @@ pub struct ChatDefaults {
     /// to the write tools.)
     #[serde(default)]
     pub show_sway_hooks: bool,
+    /// Render `AskUserQuestion` as an answerable form in the transcript.
+    ///
+    /// Off restores what shipped before it: the call becomes a permission
+    /// prompt like any other tool's, so the only answers are allow and deny, and
+    /// allowing was measured to make the CLI self-answer "The user did not
+    /// answer the questions" against an interactive client that is not there.
+    /// Here because the form is the one place Sway puts a control of its own in
+    /// the middle of the agent's turn, and a user who dislikes that should be
+    /// able to have the old card back without leaving the app.
+    #[serde(default = "yes")]
+    pub answer_questions_inline: bool,
     /// How many live chats before Sway says the cost is adding up. **Zero means
     /// no cap.**
     ///
@@ -306,6 +317,7 @@ impl Default for ChatDefaults {
             density: TranscriptDensity::default(),
             tool_output_lines: default_tool_output_lines(),
             show_sway_hooks: false,
+            answer_questions_inline: true,
             max_concurrent_chats: default_max_concurrent_chats(),
         }
     }
@@ -642,6 +654,17 @@ pub fn agent_override(adapter_id: &str) -> Option<String> {
     pick_override(&agent, adapter_id)
 }
 
+/// Whether a chat renders `AskUserQuestion` as a form.
+///
+/// Read from disk at each call, the same way `agent_override` is, and read once
+/// when a session spawns rather than watched: this decides the shape of a
+/// surface the user is already looking at, and a live chat swapping its
+/// question card for a permission prompt mid-turn would be worse than waiting
+/// for the next one.
+pub fn answer_questions_inline() -> bool {
+    load_from(&settings_path()).chat_defaults.answer_questions_inline
+}
+
 /// The resolution `agent_override` applies, off-disk so it can be tested.
 fn pick_override(agent: &Agent, adapter_id: &str) -> Option<String> {
     let non_empty = |s: &str| {
@@ -760,6 +783,7 @@ mod tests {
                 density: TranscriptDensity::Compact,
                 tool_output_lines: 5,
                 show_sway_hooks: true,
+                answer_questions_inline: false,
                 max_concurrent_chats: 9,
             },
             agent: Agent {
@@ -782,6 +806,10 @@ mod tests {
         // zero, which is the value that means "never warn".
         std::fs::write(&p, r#"{"chatDefaults":{"streaming":false}}"#).unwrap();
         assert_eq!(load_from(&p).chat_defaults.max_concurrent_chats, default_max_concurrent_chats());
+        // And a file predating the question card reads as on rather than as
+        // `false`, which is what a bare `#[serde(default)]` on a bool would
+        // give and would silently disable the feature for every existing user.
+        assert!(load_from(&p).chat_defaults.answer_questions_inline, "absent means on");
         let _ = std::fs::remove_file(&p);
     }
 
