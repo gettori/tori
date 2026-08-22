@@ -441,6 +441,92 @@
   color: var(--accent-fg);
 }
 
+/* Block-split markdown: each prose run and code fence is its own wrapper, so a
+   streaming delta re-renders only the tail. Margins collapse through the prose
+   wrappers, so the first/last trim has to reach one level deeper. */
+.assistant > .mdProse:first-child > :global(:first-child) {
+  margin-top: 0;
+}
+
+.assistant > .mdProse:last-child > :global(:last-child) {
+  margin-bottom: 0;
+}
+
+/* A fenced block wears the frame `.assistant pre` defines; the wrapper takes
+   over the margin so the controls can anchor to the frame's corner. */
+.codeBlock {
+  position: relative;
+  margin: calc(8px * var(--ui-scale)) 0;
+}
+
+.codeBlock :global(pre) {
+  margin: 0;
+}
+
+.codeControls {
+  position: absolute;
+  top: calc(6px * var(--ui-scale));
+  right: calc(8px * var(--ui-scale));
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+}
+
+/* The corner label carries the fence's info string. It sits on the frame's own
+   fill so a long first line passes under it, not through it. */
+.codeLang {
+  font-family: var(--sway-font-mono);
+  font-size: calc(10px * var(--ui-scale));
+  line-height: 1;
+  color: var(--fg-muted);
+  background: var(--neutral-subtle);
+  border-radius: var(--sway-radius-sm);
+  padding: calc(3px * var(--ui-scale)) calc(5px * var(--ui-scale));
+}
+
+/* Hidden until the block is hovered or the button is reached by keyboard: the
+   label is information, the buttons are chrome. */
+.codeBtn {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: var(--neutral-subtle);
+  color: var(--fg-muted);
+  border-radius: var(--sway-radius-sm);
+  padding: calc(3px * var(--ui-scale));
+  cursor: pointer;
+  opacity: 0;
+}
+
+.codeBlock:hover .codeBtn,
+.codeBtn:focus-visible {
+  opacity: 1;
+}
+
+.codeBtn:hover,
+.codeBtn:focus-visible {
+  color: var(--fg-default);
+  background: var(--neutral-hover);
+}
+
+/* The rendered face of an `md` fence: the same frame as the source it
+   replaces, so the toggle swaps content, not shape. */
+.codePreview {
+  margin: 0;
+  padding: calc(12px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  background: var(--neutral-subtle);
+}
+
+.codePreview > :global(:first-child) {
+  margin-top: 0;
+}
+
+.codePreview > :global(:last-child) {
+  margin-bottom: 0;
+}
+
 /* The streaming caret: a block that sits under the last delta, so a turn that
    is thinking silently still looks alive. */
 .cursor {
