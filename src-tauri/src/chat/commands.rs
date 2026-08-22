@@ -43,6 +43,7 @@ fn make_transport(
     agent_id: &str,
     acp: AcpOverrides,
     effort_extras: Vec<ChatEffortExtra>,
+    questions_as_permissions: bool,
 ) -> Box<dyn AgentTransport> {
     match transport {
         // The extras ride along because claude advertises fewer effort levels
@@ -50,9 +51,11 @@ fn make_transport(
         // the model the session reports. An ACP agent publishes its own and
         // takes none. Claude's *levers* need no table any more: the handshake
         // publishes `supportsFastMode` per model.
-        ChatTransport::ClaudeStreamJson => {
-            Box::new(ClaudeTransport::new(session_id).with_effort_extras(effort_extras))
-        }
+        ChatTransport::ClaudeStreamJson => Box::new(
+            ClaudeTransport::new(session_id)
+                .with_effort_extras(effort_extras)
+                .with_questions_as_permissions(questions_as_permissions),
+        ),
         // Every ACP agent reaches Sway through this one arm. Which agent it is
         // comes from the adapter's `[chat]` table, not from here, which is what
         // makes a new ACP agent a TOML file rather than a Rust change. The
@@ -259,6 +262,7 @@ pub async fn chat_spawn(
     let transport = chat.transport;
     let acp_overrides = chat.acp.clone();
     let effort_extras = chat.effort_extras.clone();
+    let questions_as_permissions = !crate::settings::answer_questions_inline();
     let id_for_factory = session_id.clone();
     let agent_for_factory = agent_id.clone();
     let spawned = host.spawn(
@@ -275,6 +279,7 @@ pub async fn chat_spawn(
                 &agent_for_factory,
                 acp_overrides.clone(),
                 effort_extras.clone(),
+                questions_as_permissions,
             )
         },
     );
@@ -1151,7 +1156,7 @@ mod tests {
             build_args(chat, "s", false, None, Some("github-copilot/claude-sonnet-4.6"), None, None, &[]);
         assert_eq!(with_model, vec!["acp"]);
 
-        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone(), Vec::new());
+        let t = make_transport(chat.transport, "s1", "opencode", chat.acp.clone(), Vec::new(), false);
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
 
@@ -1165,6 +1170,7 @@ mod tests {
             "claude",
             Default::default(),
             chat.effort_extras.clone(),
+            false,
         );
         assert!(t.child_pid().is_none(), "a transport is inert until started");
     }
