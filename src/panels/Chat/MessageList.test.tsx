@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import { Show, createSignal } from "solid-js";
+import { expectNoAxeViolations } from "../../test/axe";
 import MessageList from "./MessageList";
 import type { ChatItem, QuestionItem } from "./chatStore";
 import type { QuestionAnswer } from "../../utils/chatTypes";
@@ -258,5 +259,63 @@ describe("a question in the transcript", () => {
   it("reads as read only in a list that cannot send an answer", () => {
     list();
     expect(screen.queryByRole("button", { name: /send answers/i })).toBeNull();
+  });
+});
+
+// Everything that is not the reply used to be one undifferentiated grey line at
+// `--fg-subtle`: a thought, a hook frame and an error all read the same, and all
+// read a tier below the prose they sit among. The glyph says which kind a row is
+// before the words are read; the tier change is what makes the words readable at
+// all (see the notes on `.notice` and `.thinkingToggle` in Chat.module.css).
+describe("the ambient rows say what kind they are", () => {
+  const AMBIENT: ChatItem[] = [
+    { kind: "thinking", id: "th1", turnId: "turn-1", text: "weighing the two channels" },
+    {
+      kind: "hook",
+      id: "h1",
+      hookId: "hook-1",
+      name: "PreToolUse:Write",
+      event: "PreToolUse",
+      phase: "finished",
+      swayOwned: false,
+      outcome: "allow",
+      exitCode: 0,
+      output: null,
+      stderr: null,
+    },
+    { kind: "notice", id: "n1", text: "Session ended.", level: "info" },
+    { kind: "notice", id: "n2", text: "The agent exited.", level: "error" },
+  ];
+
+  /** The glyph a row draws, identified by the markup rather than by the icon's
+   *  name: the point of the assertion is that the four rows differ. */
+  const glyphs = (container: HTMLElement) =>
+    [...container.querySelectorAll("svg")].map((svg) => svg.outerHTML);
+
+  it("draws a different glyph for a thought, a hook and each level of notice", () => {
+    const { container } = render(() => list({ items: AMBIENT }));
+    const drawn = glyphs(container);
+    expect(drawn).toHaveLength(4);
+    expect(new Set(drawn).size, "two rows draw the same glyph").toBe(4);
+  });
+
+  it("hides every glyph from assistive tech, because the label beside it already says it", () => {
+    const { container } = render(() => list({ items: AMBIENT }));
+    for (const svg of container.querySelectorAll("svg")) {
+      expect(svg.getAttribute("aria-hidden")).toBe("true");
+    }
+  });
+
+  // The thinking row is a disclosure, so its glyph must not have joined its
+  // accessible name: "Brain Thinking" is what a decorative icon inside a button
+  // reads as when nobody hides it.
+  it("leaves the thinking toggle named by its own word", () => {
+    render(() => list({ items: AMBIENT }));
+    expect(screen.getByRole("button", { name: "Thinking" })).toBeTruthy();
+  });
+
+  it("stays clean with all of them on screen", async () => {
+    const { container } = render(() => list({ items: AMBIENT }));
+    await expectNoAxeViolations(container);
   });
 });

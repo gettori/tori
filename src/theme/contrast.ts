@@ -126,9 +126,14 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   // sets `fg.default` on it. Nothing else is drawn there: the rewind button is
   // positioned outside the bubble and sits on the transcript, and inline code
   // brings its own `neutral.hover` fill, both of which are measured already.
-  "fg.default": text([...CANVASES, "neutral.hover", "brand.wash"]),
-  "fg.muted": text([...CANVASES, "neutral.hover"]),
-  "fg.subtle": muted(CANVASES),
+  // `blocking.surface` is on all three lists because the two cards that wear it
+  // are full of ordinary text: the prompt's question and its disclosure, the
+  // card's title, the Other label, the hint, the subagent badge. It is a step
+  // off `canvas.card` rather than an alias of it, so a pair measured only
+  // against the canvases would go unmeasured the moment the tier lifted.
+  "fg.default": text([...CANVASES, "neutral.hover", "brand.wash", "blocking.surface"]),
+  "fg.muted": text([...CANVASES, "neutral.hover", "blocking.surface"]),
+  "fg.subtle": muted([...CANVASES, "blocking.surface"]),
   // Not parked here after failing: it is designed to sit under every floor.
   "fg.watermark": exempt(
     "watermark text stands in for absent content (placeholders, ghost hints); it is meant to " +
@@ -204,6 +209,15 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
   "brand.bar": graphic(["canvas.default", "canvas.card", "canvas.head"]),
   "brand.ring": graphic(["canvas.default", "canvas.card", "canvas.input"]),
   "brand.on": text(["brand.default"]),
+
+  // The blocking tier sits ON the chat pane, which is `canvas.card`, and carries
+  // its own text. The border is measured against both sides it separates: the
+  // outer edge is what identifies the card against the transcript, the inner one
+  // is what keeps the frame visible against its own fill.
+  "blocking.surface": surface(),
+  "blocking.border": graphic(["canvas.card", "blocking.surface"]),
+  "blocking.fg": text(["blocking.surface"]),
+  "blocking.accent": text(["blocking.surface"]),
 
   "ansi.cursor": graphic(CODE_SURFACE),
   "ansi.selection": surface(),
