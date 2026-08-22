@@ -1131,18 +1131,33 @@
   font-size: var(--sway-text-md);
 }
 
-.questionAnswered {
-  display: flex;
-  flex-direction: column;
-  gap: calc(4px * var(--ui-scale));
+/* Settled cards hand the gold back: only a question still waiting wears the
+   blocking border, so a scan down the transcript finds it by color alone. */
+.questionDone,
+.questionClosed {
+  border-color: var(--border-default);
+  background: transparent;
 }
 
-.questionAnsweredLabel {
+.questionDone .questionTitle,
+.questionClosed .questionTitle {
+  color: var(--fg-default);
+}
+
+/* Asked and never answered: dimmed as one block, still legible. */
+.questionClosed {
+  opacity: 0.85;
+}
+
+/* Which settled life it is, in words: the frame shift alone is too quiet. */
+.questionState {
+  margin-left: auto;
   color: var(--fg-subtle);
   font-size: var(--sway-text-md);
 }
 
-/* The agent's own record, quoted rather than re-rendered. */
+/* The agent's own record, quoted rather than re-rendered. Replayed cards
+   only, where the structured answer never survived to select the picks. */
 .questionRecord {
   margin: 0;
   padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));

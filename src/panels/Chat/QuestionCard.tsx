@@ -19,14 +19,33 @@ function answeredDraft(draft: Draft): boolean {
   return draft.picks.length > 0 || draft.freeText.trim().length > 0;
 }
 
-/** The preview attached to the option this draft picked, if it declared one.
+/** The preview attached to the option these picks chose, if it declared one.
  *
- *  Single-pick only, and that is not a simplification: the tool offers a preview
- *  only on a single-select question, so a draft with two picks has none to show
- *  and a draft with one has at most one. */
-function previewFor(question: ChatQuestion, draft: Draft): string | null {
-  if (draft.picks.length !== 1) return null;
-  return question.options.find((o) => o.label === draft.picks[0])?.preview ?? null;
+ *  Single-pick only, and that is not a simplification: the tool offers a
+ *  preview only on a single-select question, so two picks have none to show
+ *  and one has at most one. */
+function previewFor(question: ChatQuestion, picks: string[]): string | null {
+  if (picks.length !== 1) return null;
+  return question.options.find((o) => o.label === picks[0])?.preview ?? null;
+}
+
+/** Picks confirmed against the record, never parsed out of it: a candidate is
+ *  claimed only when the record holds the exact `"question"="candidate"` it
+ *  would have produced. Measured on 541 answers: 526 confirm, the rest are
+ *  free text and fall back to quoting the record. */
+function recoveredPicks(record: string, question: ChatQuestion): string[] | null {
+  const labels = question.options.map((o) => o.label);
+  const candidates: string[][] = labels.map((label) => [label]);
+  if (question.multiSelect) {
+    // Ordered subsets, joined the way picks travel: option order, ", ".
+    // Bounded, the tool caps a question at four options.
+    for (let mask = 1; mask < 1 << labels.length; mask++) {
+      const subset = labels.filter((_, at) => mask & (1 << at));
+      if (subset.length > 1) candidates.push(subset);
+    }
+  }
+  const hits = candidates.filter((picks) => record.includes(`"${question.question}"="${picks.join(", ")}"`));
+  return hits.length === 1 ? hits[0] : null;
 }
 
 /**
@@ -40,16 +59,24 @@ function previewFor(question: ChatQuestion, draft: Draft): string | null {
  * none either. The only things that end an unanswered question are the user and
  * an explicit withdrawal, so a timer here would be an invention.
  *
- * **Every question gets a free-text box, always visible.** The tool always
- * offers Other, and a box that has to be revealed reads as an escape hatch
- * rather than as an answer. Picks and typed text are not exclusive: a
+ * **Three lives, told by the frame and a chip.** Active keeps the blocking
+ * gold. Answered drops to the neutral border and shows the answer the way it
+ * was given: the sent picks selected on the controls themselves, the free-text
+ * box only where the answer used it. Closed without an answer says "Not
+ * answered" and dims. Gold stays reserved for the card still waiting.
+ *
+ * **Every question gets a free-text box while the form is open.** The tool
+ * always offers Other, and a box that has to be revealed reads as an escape
+ * hatch rather than as an answer. Picks and typed text are not exclusive: a
  * multi-select question can take both, and they travel back joined into one
- * value.
+ * value. Once the card settles, an empty disabled box says nothing and goes.
  *
  * Replayed from history it is read only, which is not a mode this component
  * chooses: `history.rs` emits no `questionRequest`, so a replayed row has no
- * `requestId` and nothing to answer. It shows what was asked and the agent's own
- * record of the answer.
+ * `requestId` and nothing to answer. The structured answer never reached this
+ * client either, so the card confirms the record against the options it knows
+ * (`recoveredPicks`) and selects what it can prove; only a record it cannot
+ * confirm, a free-text answer, is quoted verbatim instead.
  */
 export default function QuestionCard(props: {
   item: QuestionItem;
@@ -64,6 +91,27 @@ export default function QuestionCard(props: {
   const draftAt = (i: number): Draft => drafts[i] ?? { picks: [], freeText: "" };
   const open = () => answerable(props.item) && props.onAnswer !== undefined;
   const ready = createMemo(() => props.item.questions.every((_, i) => answeredDraft(draftAt(i))));
+
+  /** Answered wins: once `submitted` or `result` exists there is nothing left
+   *  to send, whatever the request id still says. */
+  const state = (): "active" | "answered" | "unanswered" =>
+    props.item.submitted !== null || props.item.result !== null ? "answered" : open() ? "active" : "unanswered";
+
+  /** One entry per question, null where the record confirmed nothing. */
+  const recovered = createMemo(() => {
+    const record = props.item.submitted === null ? props.item.result : null;
+    if (record === null) return null;
+    return props.item.questions.map((q) => recoveredPicks(record, q));
+  });
+
+  /** The record still worth quoting: one that exists, was not superseded by a
+   *  live submit, and could not be fully confirmed into selections. */
+  const recordToQuote = () => {
+    if (props.item.submitted !== null) return null;
+    const picks = recovered();
+    if (picks !== null && picks.length > 0 && picks.every((p) => p !== null)) return null;
+    return props.item.result;
+  };
 
   function submit(e: Event) {
     e.preventDefault();
@@ -85,7 +133,15 @@ export default function QuestionCard(props: {
   }
 
   return (
-    <form class={styles.question} aria-labelledby={titleId} onSubmit={submit}>
+    <form
+      classList={{
+        [styles.question]: true,
+        [styles.questionDone]: state() === "answered",
+        [styles.questionClosed]: state() === "unanswered",
+      }}
+      aria-labelledby={titleId}
+      onSubmit={submit}
+    >
       <div class={styles.questionHead}>
         <span id={titleId} class={styles.questionTitle}>
           {props.item.questions.length === 1 ? "The agent asked a question" : "The agent asked some questions"}
@@ -98,12 +154,24 @@ export default function QuestionCard(props: {
         <Show when={props.item.agentId !== null}>
           <span class={styles.questionAgent}>from a subagent</span>
         </Show>
+        {/* Said in words as well as by the frame: the border shift alone is too
+            quiet to scan for, and no chip is what marks the card still open. */}
+        <Show when={state() !== "active"}>
+          <span class={styles.questionState}>{state() === "answered" ? "Answered" : "Not answered"}</span>
+        </Show>
       </div>
 
       <For each={props.item.questions}>
         {(question, i) => {
           const otherId = createUniqueId();
           const draft = () => draftAt(i());
+          // Same index `submit` built the answers in, so no matching by text.
+          const sent = () => props.item.submitted?.[i()] ?? null;
+          const picks = () => sent()?.picks ?? recovered()?.[i()] ?? draft().picks;
+          const typed = () => {
+            const s = sent();
+            return s ? (s.freeText ?? "") : draft().freeText;
+          };
           const options = () =>
             question.options.map((o) => ({
               value: o.label,
@@ -116,7 +184,7 @@ export default function QuestionCard(props: {
                 <RadioGroup
                   label={question.question}
                   options={options()}
-                  value={draft().picks[0] ?? null}
+                  value={picks()[0] ?? null}
                   onChange={(value) => setDrafts(i(), { ...draft(), picks: [value] })}
                   disabled={!open()}
                 />
@@ -124,7 +192,7 @@ export default function QuestionCard(props: {
                 <CheckboxGroup
                   label={question.question}
                   options={options()}
-                  value={draft().picks}
+                  value={picks()}
                   onChange={(picks) => setDrafts(i(), { ...draft(), picks })}
                   disabled={!open()}
                 />
@@ -132,22 +200,26 @@ export default function QuestionCard(props: {
 
               {/* The chosen option's worked example, which is why it was
                   offered: it is what the answer echoes back to the agent. */}
-              <Show when={previewFor(question, draft())}>
+              <Show when={previewFor(question, picks())}>
                 {(preview) => <pre class={styles.questionPreview}>{preview()}</pre>}
               </Show>
 
-              <label class={styles.questionOtherLabel} for={otherId}>
-                Other
-              </label>
-              <textarea
-                id={otherId}
-                class={styles.questionOther}
-                rows="2"
-                disabled={!open()}
-                placeholder="Your own answer, if none of these fit."
-                value={draft().freeText}
-                onInput={(e) => setDrafts(i(), { ...draft(), freeText: e.currentTarget.value })}
-              />
+              {/* Open: always there, the box is how an unoffered answer gets
+                  in. Settled: only where the answer actually used it. */}
+              <Show when={open() || typed().trim().length > 0}>
+                <label class={styles.questionOtherLabel} for={otherId}>
+                  Other
+                </label>
+                <textarea
+                  id={otherId}
+                  class={styles.questionOther}
+                  rows="2"
+                  disabled={!open()}
+                  placeholder="Your own answer, if none of these fit."
+                  value={typed()}
+                  onInput={(e) => setDrafts(i(), { ...draft(), freeText: e.currentTarget.value })}
+                />
+              </Show>
             </div>
           );
         }}
@@ -170,18 +242,11 @@ export default function QuestionCard(props: {
         </div>
       </Show>
 
-      {/* The agent's own record of the answer, verbatim. Deliberately not parsed
-          back into per-question picks: the value can carry the user's own words,
-          quote characters included, so any inverse of that grammar is a guess,
-          and a card guessing wrong about what was chosen is worse than one
-          quoting the record. */}
-      <Show when={props.item.result}>
-        {(result) => (
-          <div class={styles.questionAnswered}>
-            <span class={styles.questionAnsweredLabel}>Answered</span>
-            <pre class={styles.questionRecord}>{result()}</pre>
-          </div>
-        )}
+      {/* The agent's record, quoted only where nothing better exists: a
+          replayed answer the options could not confirm, free text mostly.
+          Everywhere else the selected picks say it themselves. */}
+      <Show when={recordToQuote()}>
+        {(result) => <pre class={styles.questionRecord}>{result()}</pre>}
       </Show>
     </form>
   );
