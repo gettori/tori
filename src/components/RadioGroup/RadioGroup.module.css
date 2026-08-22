@@ -1,0 +1,139 @@
+/* The group, its label and its options. Everything scales with --ui-scale like
+   every other control, so a radio group inside a card keeps its proportions at
+   any UI font size. */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+}
+
+/* The group's own label. Typography is inherited for the same reason
+   Checkbox.module.css inherits its label's: the words belong to the surface the
+   caller built, and those surfaces disagree on purpose. Only the weight is set
+   here, because a group label that did not read as a heading would leave the
+   options looking like an unrelated list. */
+.groupLabel {
+  color: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  line-height: var(--sway-line-normal);
+}
+
+.items {
+  display: flex;
+  gap: calc(4px * var(--ui-scale));
+}
+
+.items[data-orientation="vertical"] {
+  flex-direction: column;
+}
+
+/* Horizontal groups wrap rather than overflow: the option labels are the
+   agent's words, so their width is not something this component gets to
+   assume. */
+.items[data-orientation="horizontal"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  column-gap: var(--sway-space-4);
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(6px * var(--ui-scale));
+}
+
+/* Visually hidden, never removed: the native input is what the arrow keys move
+   between, what the label points at, and what `getByRole("radio")` finds.
+   `display: none` or `visibility: hidden` would take all three away. Kobalte
+   positions it over the control, so a pointer press lands on the input itself.
+   Same idiom as Checkbox.module.css. */
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A circle rather than the checkbox's rounded square, which is the whole visual
+   difference between "one of these" and "any of these". */
+.control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+  /* Nudged down to sit on the first line's baseline, since the item aligns to
+     flex-start so a wrapped description does not drag the dot to the middle. */
+  margin-top: calc(2px * var(--ui-scale));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--sway-radius-pill);
+  background: var(--canvas-input);
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    background var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+
+.control[data-checked] {
+  border-color: var(--accent-fg);
+  background: var(--accent-fg);
+}
+
+/* The ring is drawn on the circle, but the focus lives on the hidden input, so
+   the selector comes off the item's own focus-within. Same ring as
+   Button.module.css: one focus idiom for every control. */
+.item:focus-within .control {
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.control[data-disabled] {
+  opacity: 0.5;
+}
+
+/* Kobalte mounts the indicator only while checked, so this needs no hidden
+   state of its own. A drawn dot rather than an icon: at 6px a Lucide glyph is
+   mush, and the shape carries no meaning a circle does not. */
+.indicator {
+  width: calc(6px * var(--ui-scale));
+  height: calc(6px * var(--ui-scale));
+  border-radius: var(--sway-radius-pill);
+  background: var(--fg-on-emphasis);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+  min-width: 0;
+}
+
+/* Inherited typography, same reasoning as .groupLabel. */
+.label {
+  color: inherit;
+  font-size: inherit;
+  line-height: var(--sway-line-normal);
+  cursor: default;
+}
+
+/* The description is part of the choice, so it is quieter than the label but
+   not hidden. It sets a size where the label inherits one, because a second
+   line at the label's size stops reading as subordinate to it. */
+.description {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+  line-height: var(--sway-line-normal);
+  cursor: default;
+}
+
+.item[data-disabled] .label,
+.item[data-disabled] .description {
+  color: var(--fg-muted);
+}
