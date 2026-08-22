@@ -54,6 +54,7 @@ import {
   type ChatEvent,
   type ContentBlock,
   type PermissionMode,
+  type QuestionAnswer,
 } from "../../utils/chatTypes";
 import { dropLiveChat, chatsInFolder, liveChats, setLiveChat } from "../../utils/chatSessions";
 import { checkpointChatTurn } from "../../utils/checkpoints";
@@ -129,11 +130,13 @@ import {
   turnModel,
   shownMode,
   shownModelValue,
+  pushQuestionAnswers,
   takeForSend,
   toolCallsSeen,
   visibleItems,
   type ChatState,
   type QueuedInput,
+  type QuestionItem,
   type ToolItem,
 } from "./chatStore";
 import {
@@ -223,7 +226,13 @@ export default function ChatView(props: {
    *  message; an ordinary session's failures stay on this surface. */
   onFirstSendFailed: (reason: string) => void;
 }) {
-  const [state, setState] = createStore<ChatState>(initialChat(props.sessionId));
+  // The preference is read once, at store creation, and not tracked: a live
+  // chat swapping its question cards for permission prompts mid-turn would be
+  // worse than waiting for the next session. Same rule the backend applies when
+  // it spawns.
+  const [state, setState] = createStore<ChatState>(
+    initialChat(props.sessionId, settings.chatDefaults.answerQuestionsInline),
+  );
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
   // What the composer's contents are filed under. The **tab**, not the session:
@@ -1034,6 +1043,35 @@ export default function ChatView(props: {
     }).catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
 
+  /** Send a question's answers, and settle the card without waiting.
+   *
+   *  The local settle is the same move `onAnswer` makes above and for the same
+   *  reason: the form must stop being answerable the moment Submit is pressed,
+   *  since the request behind it can only take one answer. The agent's own
+   *  record arrives separately as the tool result.
+   *
+   *  A `false` return means nothing was waiting on that id any more, which is
+   *  the one case worth a toast: the answer the user just wrote went nowhere. */
+  function onAnswerQuestion(item: QuestionItem, answers: QuestionAnswer[]) {
+    if (!item.requestId) return;
+    edit((s) => pushQuestionAnswers(s, item.toolUseId, answers));
+    void invoke<boolean>("chat_answer_question", {
+      sessionId: props.sessionId,
+      requestId: item.requestId,
+      toolUseId: item.toolUseId,
+      answers,
+    })
+      .then((landed) => {
+        if (!landed) {
+          emitWith<ToastEvent>(TOAST, {
+            message: "That question was already closed, so the answer was not sent.",
+            kind: "error",
+          });
+        }
+      })
+      .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
+  }
+
   /** What this chat has spent, in the three currencies a ceiling can name. */
   function spend(): Spend {
     const totals = spent();
@@ -1678,6 +1716,7 @@ export default function ChatView(props: {
           return models().find((m) => m.resolvedModel === resolved)?.label ?? resolved;
         }}
         onAnswer={onAnswer}
+        onAnswerQuestion={onAnswerQuestion}
         onSetMode={onSelectMode}
         onRevertHunk={onRevertHunk}
         // Gated on the declaration, not on the checkpoint alone: a agent that

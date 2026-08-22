@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import { Show, createSignal } from "solid-js";
 import MessageList from "./MessageList";
-import type { ChatItem } from "./chatStore";
+import type { ChatItem, QuestionItem } from "./chatStore";
+import type { QuestionAnswer } from "../../utils/chatTypes";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 
@@ -198,5 +199,64 @@ describe("a compaction shows its line and folds the summary", () => {
     const { container } = render(() => list({ items }));
     expect(container.textContent).toContain("Session ended.");
     expect(container.querySelector("details")).toBeNull();
+  });
+});
+
+describe("a question in the transcript", () => {
+  const QUESTION: QuestionItem = {
+    kind: "question",
+    id: "q1",
+    toolUseId: "toolu_q",
+    turnId: "turn-1",
+    requestId: "req-q",
+    agentId: null,
+    questions: [
+      {
+        question: "Which colour do you want?",
+        header: "Colour",
+        multiSelect: false,
+        options: [
+          { label: "Red", description: "", preview: null },
+          { label: "Blue", description: "", preview: null },
+        ],
+      },
+    ],
+    submitted: null,
+    result: null,
+  };
+
+  function list(onAnswerQuestion?: (item: QuestionItem, answers: QuestionAnswer[]) => void) {
+    return render(() => (
+      <MessageList
+        items={[...turn(1), QUESTION]}
+        streaming={false}
+        sessionId="s1"
+        cwd="/tmp"
+        modelLabelFor={() => null}
+        onAnswer={() => {}}
+        onSetMode={() => {}}
+        onRevertHunk={async () => true}
+        onAnswerQuestion={onAnswerQuestion}
+      />
+    ));
+  }
+
+  it("renders the form and hands the answers back with the item that asked", () => {
+    const onAnswerQuestion = vi.fn();
+    list(onAnswerQuestion);
+    fireEvent.click(screen.getByRole("radio", { name: /Red/ }));
+    fireEvent.click(screen.getByRole("button", { name: /send answers/i }));
+    expect(onAnswerQuestion).toHaveBeenCalledTimes(1);
+    // The item travels with the answers: the caller needs its `toolUseId` and
+    // `requestId` to address the request, and neither is on the answers.
+    expect(onAnswerQuestion.mock.calls[0][0].toolUseId).toBe("toolu_q");
+    expect(onAnswerQuestion.mock.calls[0][1]).toEqual([
+      { question: "Which colour do you want?", picks: ["Red"], freeText: null },
+    ]);
+  });
+
+  it("reads as read only in a list that cannot send an answer", () => {
+    list();
+    expect(screen.queryByRole("button", { name: /send answers/i })).toBeNull();
   });
 });

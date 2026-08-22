@@ -1,10 +1,11 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
-import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type ToolItem } from "./chatStore";
-import type { ContentBlock, PermissionMode } from "../../utils/chatTypes";
+import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";
+import type { ContentBlock, PermissionMode, QuestionAnswer } from "../../utils/chatTypes";
 import Button from "../../components/Button/Button";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
+import QuestionCard from "./QuestionCard";
 import type { Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -91,6 +92,10 @@ export default function MessageList(props: {
   onAnswer: (card: ToolItem, answer: Answer) => void;
   onSetMode: (mode: PermissionMode) => void;
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
+  /** Send the answers to a question. Absent where nothing can be sent, which
+   *  renders every question read only rather than offering a Submit that would
+   *  go nowhere. */
+  onAnswerQuestion?: (item: QuestionItem, answers: QuestionAnswer[]) => void;
   /** The turn to open at, so returning from another view lands where the reader
    *  left rather than at the bottom. Null means the usual pin-to-bottom. */
   anchorTurnId?: string | null;
@@ -114,7 +119,9 @@ export default function MessageList(props: {
   const shown = createMemo(() => windowed(props.items, limit()));
 
   const turnIdOf = (it: ChatItem) =>
-    it.kind === "text" || it.kind === "thinking" || it.kind === "tool" ? it.turnId : null;
+    it.kind === "text" || it.kind === "thinking" || it.kind === "tool" || it.kind === "question"
+      ? it.turnId
+      : null;
 
   // The item ids that open their turn. There is no visible byline any more - a
   // reply is obviously the reply, and repeating "Claude" above every tool call
@@ -342,6 +349,19 @@ export default function MessageList(props: {
               )}
             </Match>
             <Match when={item.kind === "hook" && item}>{(it) => <HookRow item={it()} />}</Match>
+            <Match when={item.kind === "question" && item}>
+              {(it) => (
+                <>
+                  <TurnAnchor itemId={it().id} />
+                  <QuestionCard
+                    item={it()}
+                    onAnswer={
+                      props.onAnswerQuestion ? (answers) => props.onAnswerQuestion?.(it(), answers) : undefined
+                    }
+                  />
+                </>
+              )}
+            </Match>
             <Match when={item.kind === "tool" && item}>
               {(it) => (
                 <>

@@ -875,6 +875,131 @@
   gap: calc(8px * var(--ui-scale));
 }
 
+/* ---- the question card ---- */
+
+/* Same blocking chrome as `.prompt`: both stop the turn to ask the user
+   something, and two different shapes for that would read as two different
+   kinds of interruption. Phase 5 gives the pair one declared tier. */
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--ui-scale));
+  padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  border: 1px solid var(--brand-default);
+  border-radius: var(--sway-radius-lg);
+  background: var(--canvas-card);
+}
+
+.questionHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sway-space-2);
+}
+
+.questionTitle {
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.questionAgent {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+}
+
+.questionRow {
+  display: flex;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+}
+
+/* The picked option's worked example. Wrapped rather than scrolled, the same
+   call `.assistant pre` makes: a preview is prose about a choice, not a diff
+   whose columns carry meaning. */
+.questionPreview {
+  margin: 0;
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  background: var(--neutral-subtle);
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-md);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.questionOtherLabel {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+/* The shared input recipe again, on the free-text box. */
+.questionOther {
+  resize: none;
+  display: block;
+  width: 100%;
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  color: var(--fg-default);
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  font-family: inherit;
+  font-size: var(--sway-text-lg);
+  line-height: 1.4;
+  outline: none;
+  transition:
+    border-color var(--sway-duration-fast) ease,
+    box-shadow var(--sway-duration-fast) ease;
+}
+
+.questionOther:focus {
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+.questionOther:disabled {
+  opacity: 0.6;
+}
+
+.questionActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.questionHint {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+}
+
+.questionAnswered {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+}
+
+.questionAnsweredLabel {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+}
+
+/* The agent's own record, quoted rather than re-rendered. */
+.questionRecord {
+  margin: 0;
+  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-radius: var(--sway-radius-md);
+  background: var(--neutral-subtle);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* The shared input recipe (patterns.module.css), on the prompt's textarea. */
 .promptReason {
   resize: none;

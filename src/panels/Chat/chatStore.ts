@@ -34,6 +34,7 @@ import type {
   ChatConfigOption,
   ChatModeInfo,
   ChatModelInfo,
+  ChatQuestion,
   ContentBlock,
   FileEditKind,
   HookPhase,
@@ -41,6 +42,7 @@ import type {
   PermissionMode,
   PermissionSuggestion,
   PlanItem,
+  QuestionAnswer,
   SlashCommand,
   Usage,
 } from "../../utils/chatTypes";
@@ -129,7 +131,59 @@ export type HookItem = {
   stderr: string | null;
 };
 
-export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeItem | HookItem;
+/** A question the agent asked, as a transcript row.
+ *
+ *  **Its own item rather than a tool card**, because the two are answered
+ *  differently: a tool card's prompt is allow or deny, and this is a form. It
+ *  also means the vendor's answer string never surfaces as a denied call, which
+ *  is what it literally is on the wire.
+ *
+ *  Assembled from two sources that do not both exist. Live, `questionRequest`
+ *  brings the form and the `requestId` that makes it answerable. Replayed,
+ *  `history.rs` emits neither, so the row is rebuilt from the tool call's own
+ *  input and its result, and `requestId` stays null. **Null is what makes a
+ *  replayed question read only**, rather than a separate flag that could
+ *  disagree with it.
+ *
+ *  There is no deadline field. Measured: neither the CLI nor Sway arms one, so
+ *  the only things that end an unanswered question are the user and an explicit
+ *  withdrawal. */
+export type QuestionItem = {
+  kind: "question";
+  id: string;
+  toolUseId: string;
+  /** Null until a frame that knows the turn arrives, exactly like `ToolItem`'s:
+   *  the request is session-scoped on the wire and can land first. */
+  turnId: string | null;
+  /** Null on a replayed question, which is what makes it read only. */
+  requestId: string | null;
+  /** The subagent that asked, or null for the main agent. Rendered, so a
+   *  question about work the user did not ask for directly says so. */
+  agentId: string | null;
+  questions: ChatQuestion[];
+  /** What the user sent, held from the moment they send it so the form settles
+   *  immediately rather than waiting for the round trip. */
+  submitted: QuestionAnswer[] | null;
+  /** The tool result once the call settled: the agent's own record of the
+   *  answer. Present from the first render on a replayed question. */
+  result: string | null;
+};
+
+export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeItem | HookItem | QuestionItem;
+
+/** The tool whose call is a question. Named here as well as in the Rust mapper
+ *  because a replayed session carries no `questionRequest` to recognise: the
+ *  name on the tool call is the only signal history preserves. */
+export const ASK_USER_QUESTION = "AskUserQuestion";
+
+/** Whether this question can still be answered.
+ *
+ *  Three ways it cannot: it was replayed from history (no `requestId`), the user
+ *  already sent an answer, or the call has settled. Stated once here because the
+ *  card and the store both need the same answer. */
+export function answerable(item: QuestionItem): boolean {
+  return item.requestId !== null && item.submitted === null && item.result === null;
+}
 
 /**
  * Human prompts this store holds, replayed history included.
@@ -202,6 +256,15 @@ export type ChatState = {
   /** `toolUseId` -> index into `items`. Items are only ever appended, so an
    *  index stays valid for the life of the session. */
   toolIndex: Record<string, number>;
+  /** `toolUseId` -> index into `items`, for question rows. Separate from
+   *  `toolIndex` rather than shared: one id is either a tool card or a question,
+   *  never both, and one map holding two item types is how a lookup starts
+   *  returning the wrong shape. */
+  questionIndex: Record<string, number>;
+  /** Whether `AskUserQuestion` renders as a form here. Held on the state rather
+   *  than read at the call site because the reducer is pure, and a replayed
+   *  session has nothing but the tool name to go on. */
+  answerQuestionsInline: boolean;
   turns: Record<string, TurnRecord>;
   activeTurnId: string | null;
   /** The bubble a further delta of the same kind appends to, or null when the
@@ -346,11 +409,13 @@ export type ChatState = {
   seq: number;
 };
 
-export function initialChat(sessionId: string): ChatState {
+export function initialChat(sessionId: string, answerQuestionsInline = true): ChatState {
   return {
     sessionId,
     items: [],
     toolIndex: {},
+    questionIndex: {},
+    answerQuestionsInline,
     turns: {},
     activeTurnId: null,
     openTextId: null,
@@ -457,6 +522,102 @@ function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): Too
   s.toolIndex[toolUseId] = s.items.length;
   push(s, card);
   return card;
+}
+
+/** The question row for this call, creating it if this is the first frame.
+ *
+ *  **A tool card already made for this id is taken over rather than left
+ *  beside a second row.** Reachable in one window: the backend reads the
+ *  preference when it spawns and this store reads it when it mounts, so a
+ *  remount after the setting was flipped leaves a store that suppresses nothing
+ *  talking to a child that still asks. The declaration made a card, then the
+ *  request arrives, and without this the call renders twice.
+ *
+ *  The slot is reused in place, never spliced: `toolIndex` and this index are
+ *  positions into `items`, and every other entry would move under them. */
+function ensureQuestion(s: ChatState, toolUseId: string, turnId: string | null): QuestionItem {
+  const at = s.questionIndex[toolUseId];
+  if (at !== undefined) {
+    const existing = s.items[at] as QuestionItem;
+    if (existing.turnId === null && turnId !== null) existing.turnId = turnId;
+    return existing;
+  }
+  const cardAt = s.toolIndex[toolUseId];
+  if (cardAt !== undefined) {
+    const card = s.items[cardAt] as ToolItem;
+    const adopted: QuestionItem = {
+      kind: "question",
+      id: card.id,
+      toolUseId,
+      turnId: card.turnId ?? turnId,
+      requestId: null,
+      agentId: null,
+      questions: parseQuestions(card.input) ?? [],
+      submitted: null,
+      result: card.output,
+    };
+    s.items[cardAt] = adopted;
+    s.questionIndex[toolUseId] = cardAt;
+    // Removed, or a `toolIndex` lookup would hand back a question wearing a
+    // card's name, which is the exact hazard the two maps are separate to
+    // avoid.
+    delete s.toolIndex[toolUseId];
+    return adopted;
+  }
+  const item: QuestionItem = {
+    kind: "question",
+    id: nextId(s, "question"),
+    toolUseId,
+    turnId,
+    requestId: null,
+    agentId: null,
+    questions: [],
+    submitted: null,
+    result: null,
+  };
+  s.questionIndex[toolUseId] = s.items.length;
+  push(s, item);
+  return item;
+}
+
+/** An `AskUserQuestion` input, as a form.
+ *
+ *  A second reader of the shape the Rust mapper already parses, and not a
+ *  duplicate for its own sake: a replayed session carries no `questionRequest`,
+ *  so the tool call's own input is the only place the questions survive.
+ *
+ *  **All or nothing, the same rule the mapper applies.** A form one row short
+ *  would show the user fewer questions than the agent asked, and on a replayed
+ *  row it would silently disagree with the recorded answer. `null` sends the
+ *  call back to an ordinary tool card, which is honest about not being read. */
+export function parseQuestions(input: unknown): ChatQuestion[] | null {
+  if (typeof input !== "object" || input === null) return null;
+  const raw = (input as { questions?: unknown }).questions;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const questions: ChatQuestion[] = [];
+  for (const q of raw) {
+    if (typeof q !== "object" || q === null) return null;
+    const { question, header, multiSelect, options } = q as Record<string, unknown>;
+    if (typeof question !== "string" || !Array.isArray(options) || options.length === 0) return null;
+    const parsed = [];
+    for (const o of options) {
+      if (typeof o !== "object" || o === null) return null;
+      const { label, description, preview } = o as Record<string, unknown>;
+      if (typeof label !== "string") return null;
+      parsed.push({
+        label,
+        description: typeof description === "string" ? description : "",
+        preview: typeof preview === "string" ? preview : null,
+      });
+    }
+    questions.push({
+      question,
+      header: typeof header === "string" ? header : "",
+      multiSelect: multiSelect === true,
+      options: parsed,
+    });
+  }
+  return questions;
 }
 
 /** Record a turn as live. Deltas can arrive before their `turnStarted` (two
@@ -720,6 +881,23 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       return;
     case "toolCallStarted": {
       touchTurn(s, ev.turnId);
+      // The question owns this call, so no tool card is made for it. Two ways
+      // in, because `questionRequest` and this frame race each other on the
+      // wire and a replayed session carries only this one.
+      const opened = s.questionIndex[ev.toolUseId] !== undefined;
+      if (opened || (s.answerQuestionsInline && ev.name === ASK_USER_QUESTION)) {
+        // Parsed before the row is claimed, not after: an input this cannot
+        // read has to fall through to an ordinary tool card, and a row created
+        // first would already have swallowed the call.
+        const form = parseQuestions(ev.input);
+        if (opened || form) {
+          const item = ensureQuestion(s, ev.toolUseId, ev.turnId);
+          // Never overwritten: `questionRequest` carries the same form and is
+          // the authority on it, so whichever landed first stays.
+          if (item.questions.length === 0 && form) item.questions = form;
+          return;
+        }
+      }
       const card = ensureTool(s, ev.toolUseId, ev.turnId);
       card.name = ev.name;
       card.input = ev.input;
@@ -735,6 +913,17 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
     }
     case "toolCallCompleted": {
       touchTurn(s, ev.turnId);
+      // Suppressed here too, and not only at the declaration: `ensureTool`
+      // creates on miss, so a completion alone would resurrect the very card
+      // the branch above refused to make, carrying the answer string as a
+      // denied call.
+      const askedAt = s.questionIndex[ev.toolUseId];
+      if (askedAt !== undefined) {
+        const item = s.items[askedAt] as QuestionItem;
+        if (item.turnId === null) item.turnId = ev.turnId;
+        item.result = ev.output;
+        return;
+      }
       const card = ensureTool(s, ev.toolUseId, ev.turnId);
       card.state = ev.status === "ok" ? "ok" : ev.status === "denied" ? "denied" : "error";
       card.approval = null;
@@ -766,6 +955,16 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
       card.state = "awaitingApproval";
       if (card.name === null) card.name = ev.toolName;
       if (card.input === null) card.input = ev.input;
+      return;
+    }
+    case "questionRequest": {
+      const item = ensureQuestion(s, ev.toolUseId, null);
+      // A request for a call that already settled is stale, the same race a
+      // permission prompt can lose; leave the answered row alone.
+      if (item.result !== null) return;
+      item.requestId = ev.requestId;
+      item.agentId = ev.agentId;
+      item.questions = ev.questions;
       return;
     }
     case "planUpdate":
@@ -837,6 +1036,20 @@ export function applyEvent(s: ChatState, ev: ChatEvent) {
 // ---------------------------------------------------------------------------
 // Local (non-event) mutations
 // ---------------------------------------------------------------------------
+
+/** Record the answers the user just sent.
+ *
+ *  Held locally rather than waited for, the same move `pushUserTurn` makes: the
+ *  form has to stop being answerable the instant Submit is pressed, or a second
+ *  press sends a second answer to a request that can only take one. The agent's
+ *  own record replaces nothing, it arrives alongside as `result`. */
+export function pushQuestionAnswers(s: ChatState, toolUseId: string, answers: QuestionAnswer[]) {
+  const at = s.questionIndex[toolUseId];
+  if (at === undefined) return;
+  const item = s.items[at] as QuestionItem;
+  if (item.submitted !== null) return;
+  item.submitted = answers;
+}
 
 /** Record what the user actually sent, so their turn appears immediately rather
  *  than only once the child echoes it back, and mark the turn as in flight. */
