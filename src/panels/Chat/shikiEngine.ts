@@ -58,6 +58,31 @@ const swayTheme: ThemeRegistration = {
     { scope: ["markup.inline.raw", "markup.fenced_code"], settings: { foreground: "var(--syntax-string)" } },
     { scope: "markup.quote", settings: { foreground: "var(--syntax-comment)" } },
     { scope: "markup.underline.link", settings: { foreground: "var(--syntax-attribute)" } },
+    // The diff grammar's vocabulary, on the roles the transcript's tool-call
+    // hunks already paint with, so a fenced diff and a real hunk read the
+    // same. The markers carry their own deeper punctuation scope, which would
+    // otherwise beat the line scope and paint the +/- as plain punctuation.
+    {
+      scope: ["markup.inserted", "punctuation.definition.inserted"],
+      settings: { foreground: "var(--diff-added)" },
+    },
+    {
+      scope: ["markup.deleted", "punctuation.definition.deleted"],
+      settings: { foreground: "var(--diff-deleted)" },
+    },
+    {
+      scope: ["markup.changed", "punctuation.definition.changed"],
+      settings: { foreground: "var(--diff-modified)" },
+    },
+    {
+      scope: [
+        "meta.diff",
+        "punctuation.definition.range.diff",
+        "punctuation.definition.from-file.diff",
+        "punctuation.definition.to-file.diff",
+      ],
+      settings: { foreground: "var(--fg-muted)" },
+    },
   ],
 };
 
