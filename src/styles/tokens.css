@@ -251,6 +251,12 @@
     --brand-ring: rgba(201, 150, 83, 0.6);
     --brand-on: #4a3719;
 
+    /* blocking */
+    --blocking-surface: #222327;
+    --blocking-border: #d9a468;
+    --blocking-fg: #e4e8f0;
+    --blocking-accent: #d9bd85;
+
     /* ansi */
     --ansi-cursor: #e4e8f0;
     --ansi-selection: rgba(70, 110, 160, 0.4);
@@ -412,6 +418,12 @@
     --brand-bar: #7e5e2f;
     --brand-ring: rgba(138, 103, 51, 0.77);
     --brand-on: #ffffff;
+
+    /* blocking */
+    --blocking-surface: #ece9e6;
+    --blocking-border: #7e5e2f;
+    --blocking-fg: #1e1e1e;
+    --blocking-accent: #6b4f27;
 
     /* ansi */
     --ansi-cursor: #1e1e1e;

@@ -11,7 +11,7 @@ import {
 import { listThemes } from "./bundled";
 import swayDark from "./palettes/sway-dark.json";
 import swayLight from "./palettes/sway-light.json";
-import { ROLES } from "./roles";
+import { ROLES, buildRoleValues } from "./roles";
 import type { Palette } from "./schema";
 
 const dark = swayDark as Palette;
@@ -65,6 +65,31 @@ describe("the rule table", () => {
     const declared = new Set(ROLES.map((r) => r.id));
     expect([...declared].filter((id) => !ruled.has(id))).toEqual([]);
     expect([...ruled].filter((id) => !declared.has(id))).toEqual([]);
+  });
+
+  // The blocking tier is the one surface family that interrupts the user, so
+  // every part of it is measured and none of it may be parked behind a `why`.
+  // Its fill is also a step off the pane it sits on, which is what makes it
+  // read as a card rather than as a gold hairline drawn on the transcript.
+  it("measures every part of the blocking tier", () => {
+    const blocking = ROLES.filter((r) => r.group === "blocking").map((r) => r.id);
+    expect(blocking).toEqual(["blocking.surface", "blocking.border", "blocking.fg", "blocking.accent"]);
+    for (const id of blocking) {
+      const rule = CONTRAST_RULES[id];
+      expect(rule.why, `${id} is exempted rather than measured`).toBeUndefined();
+      expect(rule.fg !== undefined || rule.surface === true).toBe(true);
+    }
+    for (const palette of [dark, light]) {
+      const values = buildRoleValues(palette);
+      // A small number on purpose: the lift is bounded above by the recessive
+      // text inside the card (see the note in roles.ts). What this catches is
+      // the tier quietly becoming an alias of `canvas.card` again, which is the
+      // state it was built to leave.
+      expect(
+        ratioOn(values["blocking.surface"], values["canvas.card"]),
+        `${palette.id}: the blocking fill is indistinguishable from the pane`,
+      ).toBeGreaterThan(1.04);
+    }
   });
 
   it("gives a reason for every role it does not measure", () => {

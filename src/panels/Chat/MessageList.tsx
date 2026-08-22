@@ -1,9 +1,11 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import { Brain, Info, TriangleAlert, Webhook } from "lucide-solid";
 import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";
 import type { ContentBlock, PermissionMode, QuestionAnswer } from "../../utils/chatTypes";
 import Button from "../../components/Button/Button";
+import Icon from "../../components/Icon/Icon";
 import ToolCallCard, { type HunkRef } from "./ToolCallCard";
 import QuestionCard from "./QuestionCard";
 import type { Answer } from "./PermissionPrompt";
@@ -27,6 +29,11 @@ function ThinkingBlock(props: { text: string }) {
   return (
     <div class={styles.thinking}>
       <button type="button" class={styles.thinkingToggle} onClick={() => setOpen(!open())}>
+        {/* Every row that is not the reply now says what it is with a glyph, so
+            the kind is read before the words are. `aria-hidden` on all of them:
+            the label beside each one already says it, and a second announcement
+            is noise on the one output that cannot be skimmed. */}
+        <Icon icon={Brain} size={14} aria-hidden="true" />
         {open() ? "Hide thinking" : "Thinking"}
       </button>
       <Show when={open()}>
@@ -59,8 +66,14 @@ function HookRow(props: { item: Extract<ChatItem, { kind: "hook" }> }) {
   };
   return (
     <div class={`${styles.notice} ${failed() ? styles.noticeError : ""}`}>
-      <span>
-        {props.item.swayOwned ? "Sway's before-state hook" : props.item.name} ({detail()})
+      <span class={styles.noticeLine}>
+        {/* The glyph says "a hook ran" whether or not it failed; the colour and
+            the stderr below say how it went. Swapping it for a warning sign on
+            failure would cost the one thing it is there to carry. */}
+        <Icon icon={Webhook} size={14} class={styles.noticeIcon} aria-hidden="true" />
+        <span>
+          {props.item.swayOwned ? "Sway's before-state hook" : props.item.name} ({detail()})
+        </span>
       </span>
       <Show when={failed() && props.item.stderr}>{(err) => <div>{err()}</div>}</Show>
     </div>
@@ -332,7 +345,15 @@ export default function MessageList(props: {
             <Match when={item.kind === "notice" && item}>
               {(it) => (
                 <div class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""}`}>
-                  {it().text}
+                  <span class={styles.noticeLine}>
+                    <Icon
+                      icon={it().level === "error" ? TriangleAlert : Info}
+                      size={14}
+                      class={styles.noticeIcon}
+                      aria-hidden="true"
+                    />
+                    <span>{it().text}</span>
+                  </span>
                   {/* Closed by default: the line is the news, the details are
                       what you go looking for afterwards. A plain `<details>`
                       because it needs no state of its own - one open summary

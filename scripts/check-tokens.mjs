@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Guard the token layer. Nine checks:
+// Guard the token layer. Ten checks:
 //
 //   1. No color literal may live in a component (they render identically in
 //      both themes, which is how a "light mode" ships half-dark).
@@ -13,6 +13,8 @@
 //   7. Every role semantic tokens paint with has a --syntax-* role.
 //   8. The Omnibox palette asks Dialog for its own shorter height bound.
 //   9. The palette's own heading still matches Dialog's title recipe.
+//  10. The two blocking surfaces in the chat wear one tier, and nothing else
+//      wears it.
 //
 // All of it lives here rather than in vitest because vitest stubs CSS imports to
 // the empty string and jsdom does not resolve var(), so nothing in the test
@@ -656,6 +658,103 @@ if (titleProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 10: the blocking tier is worn by exactly two surfaces ----
+//
+// A permission prompt and a question card both stop the turn and wait on the
+// user. Until the tier existed they each spelled that out as `--brand-default`
+// over `--canvas-card`, so nothing held them together and neither could be
+// restyled without moving the brand everywhere else. The roles give the pair one
+// name; this keeps the pair honest in both directions.
+//
+// Sharing the ROLES matters more than sharing the values: two rules that happen
+// to name the same colour drift the first time one of them is edited, and the
+// drift is invisible because both still look gold. So the frame, the fill and
+// the radius are compared as declarations, not as rendered colour.
+//
+// The other half is the ambient rows. A tool call is plumbing, a thinking block
+// is an aside, a notice is news: none of them stops the turn, and a third rule
+// reaching for the blocking fill would make "this stopped the turn" mean less
+// every time it appeared. Here rather than in vitest for the reason at the top
+// of this file: a CSS import is stubbed to the empty string under test.
+const CHAT_CSS = "src/panels/Chat/Chat.module.css";
+const chatSource = sources.get(CHAT_CSS);
+const chatRules = cssRules(chatSource);
+/** The two surfaces that may wear the tier. Prefixes: `.promptQuestion` and
+ *  `.questionTitle` are parts of the same two cards. */
+const BLOCKING = [".prompt", ".question"];
+/** What both must declare identically, and what a disagreement costs. */
+const BLOCKING_SHARED = [
+  ["border", "one card is framed differently from the other"],
+  ["background", "one card sits on a different surface from the other"],
+  ["border-radius", "one card is shaped differently from the other"],
+];
+// Two copies of one pattern: the sticky `g` form is for scanning a rule body,
+// the plain one for asking whether a single value names a role. Sharing one
+// would mean carrying `lastIndex` between the two loops below.
+const TIER_VARS = /var\(\s*(--blocking-[\w-]+)\s*\)/g;
+const NAMES_TIER = /var\(\s*--blocking-[\w-]+\s*\)/;
+
+const blockingProblems = [];
+if (!chatSource) {
+  blockingProblems.push(`could not read ${CHAT_CSS}; this check needs the chat panel's stylesheet`);
+} else if (chatRules.length === 0) {
+  blockingProblems.push(`${CHAT_CSS} parsed to no rules; the shape this check scans for changed`);
+} else {
+  for (const [property, consequence] of BLOCKING_SHARED) {
+    const values = BLOCKING.map((selector) => [selector, valueOf(chatRules, selector, property)]);
+    for (const [selector, value] of values) {
+      if (value === undefined) {
+        blockingProblems.push(`${selector} declares no ${property}, so the blocking tier is not applied to it`);
+      } else if (property !== "border-radius" && !NAMES_TIER.test(value)) {
+        // The radius is exempt because there is no radius role and no reason for
+        // one: what it has to be is the SAME on both cards, which the agreement
+        // below already says.
+        blockingProblems.push(`${selector} sets ${property} to ${value}, which names no --blocking-* role`);
+      }
+    }
+    // Every card against the first, not the first two against each other: a
+    // third blocking surface must join the agreement rather than slip past it.
+    const [[firstSelector, first], ...rest] = values;
+    for (const [selector, value] of rest) {
+      if (first !== undefined && value !== undefined && value !== first) {
+        blockingProblems.push(
+          `${property}: ${firstSelector} says ${first}, ${selector} says ${value}, so ${consequence}`,
+        );
+      }
+    }
+  }
+
+  for (const rule of chatRules) {
+    const worn = [...rule.body.matchAll(TIER_VARS)].map((m) => m[1]);
+    if (worn.length === 0) continue;
+    for (const selector of rule.selectors) {
+      if (!BLOCKING.some((b) => selector.startsWith(b))) {
+        blockingProblems.push(
+          `${selector} reads ${[...new Set(worn)].join(", ")} but is not a blocking surface; ` +
+            `the tier says "this stopped the turn" and means less on every extra row that wears it`,
+        );
+      }
+    }
+  }
+}
+
+const tierRoles = ROLES.filter((r) => r.group === "blocking");
+if (tierRoles.length === 0) {
+  blockingProblems.push("no role declares group \"blocking\", so there is no tier for the two cards to share");
+}
+for (const role of tierRoles) {
+  if (!(chatSource ?? "").includes(`var(${role.cssVar})`)) {
+    blockingProblems.push(`${role.cssVar} is declared but nothing in ${CHAT_CSS} reads it`);
+  }
+}
+
+if (blockingProblems.length > 0) {
+  console.error(`${blockingProblems.length} problem(s) with the chat's blocking tier:\n`);
+  for (const problem of blockingProblems) console.error(`  ${problem}`);
+  console.error("\nThe prompt and the question card interrupt the user for the same reason; they must look it.");
+  process.exit(1);
+}
+
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted ` +
@@ -665,5 +764,6 @@ console.log(
     `every token the workbench names resolving, all ${emitted.size} seti hues backed by scale roles, ` +
     `all ${SEMANTIC_ROLES.length} semantic-token roles backed by syntax roles, ` +
     `the command palette bounding its own height, ` +
-    `and its heading matching a dialog title on all ${TITLE_RECIPE.length} recipe properties.`,
+    `its heading matching a dialog title on all ${TITLE_RECIPE.length} recipe properties, ` +
+    `and the blocking tier's ${tierRoles.length} roles worn by the ${BLOCKING.length} surfaces that interrupt the user.`,
 );
