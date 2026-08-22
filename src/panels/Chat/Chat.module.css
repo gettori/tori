@@ -383,6 +383,60 @@
   color: var(--fg-muted);
 }
 
+/* Hairlines and weight, no fill, the call `.tool` makes a few rules up. Scrolls
+   itself so a table wider than the measure cannot push the column open. */
+.assistant :global(table) {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  /* Also clips the corner cells to the radius. */
+  overflow-x: auto;
+  margin: calc(8px * var(--ui-scale)) 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  /* `separate`, because a collapsed border belongs to the cells and a cell
+     cannot be rounded. The frame sits here, the cells draw only dividers. */
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* `overflow-wrap` back to normal: the container's `anywhere` is right for a URL
+   in prose and wrong in a column, where it breaks a heading mid-word. */
+.assistant :global(th),
+.assistant :global(td) {
+  padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  border-bottom: 1px solid var(--border-default);
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* The column dividers: every cell but the first in its row. */
+.assistant :global(th + th),
+.assistant :global(td + td) {
+  border-left: 1px solid var(--border-default);
+}
+
+/* The frame draws the bottom edge already. */
+.assistant :global(tbody tr:last-child td) {
+  border-bottom: none;
+}
+
+/* Markdown's per-column `align` is a presentational attribute, which loses to
+   any author rule, so the default applies only where none was declared. */
+.assistant :global(th:not([align])),
+.assistant :global(td:not([align])) {
+  text-align: left;
+}
+
+/* Never wrapped: a header is two or three words naming the column, and the
+   table scrolls, so the row is free to be wider than the measure. */
+.assistant :global(th) {
+  border-bottom-color: var(--border-strong);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .assistant :global(a) {
   color: var(--accent-fg);
 }
