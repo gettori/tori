@@ -197,6 +197,7 @@ describe("every frontend setting has a field in the struct that persists it", ()
     density: "comfortable",
     toolOutputLines: 20,
     showSwayHooks: false,
+    answerQuestionsInline: true,
     maxConcurrentChats: 4,
   };
   const sections: Record<string, object> = { editorDefaults: DEFAULTS, chatDefaults: CHAT };
