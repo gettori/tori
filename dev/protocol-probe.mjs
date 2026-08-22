@@ -157,6 +157,14 @@ const REQUIRES = {
   // No `result`: the whole finding is that the turn never completes, because
   // nobody answered and the CLI will not answer for us.
   "permission-deadline": ["control_request/can_use_tool"],
+  // The question must be asked *and* answered: without the `tool_result` the
+  // scenario would pass while measuring nothing about the answer channel.
+  "ask-user-question": [
+    "control_request/can_use_tool",
+    "assistant/tool_use",
+    "user/tool_result",
+    "result/success",
+  ],
   "image-turn": ["assistant/text", "result/success"],
   // A set cannot say "twice", so this only pins that both turns' shapes are
   // here at all; that there are two inits is asserted in the scenario body.
@@ -783,6 +791,101 @@ const SCENARIOS = {
           "own and Sway's 110s auto-deny is no longer the one that fires first",
       );
     }
+    return p;
+  },
+
+  // `AskUserQuestion` is not a permission question, and the whole of Sway's
+  // question surface rests on two measurements taken here.
+  //
+  //   1. **It raises `can_use_tool` in every permission mode**, `acceptEdits`
+  //      and `bypassPermissions` included. That is a real exception to what
+  //      `permission-coverage` measures for every other tool, and it is the
+  //      exception the surface depends on: the CLI has no interactive client
+  //      on this transport, so it hands the question out rather than deciding
+  //      it. If this ever narrows to `default`, Sway's question form silently
+  //      stops appearing for anyone not in that mode.
+  //   2. **A deny's `message` is what the model reads**, byte for byte, with
+  //      `is_error: true`. That is the only channel a permission answer has for
+  //      carrying text, so it is how an answered question is delivered. An
+  //      `allow` cannot carry one: measured, the CLI then self-answers within
+  //      milliseconds with "The user did not answer the questions.", because
+  //      allowing the call only lets it run against a client that is not there.
+  //
+  // The non-ASCII byte in the probe's message is deliberate. The string Sway
+  // sends back quotes the user's own question text, which is arbitrary, so a
+  // channel that mangled anything outside ASCII would corrupt real answers.
+  "ask-user-question": async ({ scratch }) => {
+    const MESSAGE = "probe: answered verbatim ✓";
+    const ask =
+      "Use the AskUserQuestion tool right now to ask which colour I want, with exactly the options " +
+      "Red and Blue. Do nothing else first.";
+
+    const p = new Probe({
+      cwd: scratch,
+      extraArgs: ["--permission-mode", "default", "--permission-prompt-tool", "stdio"],
+      answerPermission: (request) =>
+        request.tool_name === "AskUserQuestion"
+          ? { behavior: "deny", message: MESSAGE }
+          : { behavior: "allow" },
+    });
+    p.sendTurn(ask);
+    await p.waitForResult();
+    await p.close();
+
+    if (!p.permissionRequests.some((r) => r.tool_name === "AskUserQuestion")) {
+      throw new Error(
+        `AskUserQuestion did not raise can_use_tool; asked: ${
+          p.permissionRequests.map((r) => r.tool_name).join(", ") || "nothing"
+        }`,
+      );
+    }
+    const answered = p.permissionRequests.find((r) => r.tool_name === "AskUserQuestion");
+    // The shape the question form is built against. A fourth key, or a renamed
+    // one, changes what Sway has to render.
+    for (const key of ["question", "header", "options", "multiSelect"]) {
+      if (!(key in (answered.input?.questions?.[0] ?? {}))) {
+        throw new Error(`a question lost the '${key}' key: ${JSON.stringify(answered.input?.questions?.[0])}`);
+      }
+    }
+
+    const results = p.events.flatMap((e) =>
+      e.type === "user" ? (e.message?.content ?? []).filter((c) => c.type === "tool_result") : [],
+    );
+    const mine = results.find((c) => c.tool_use_id === answered.tool_use_id);
+    if (!mine) throw new Error("the denied question produced no tool_result");
+    const text = typeof mine.content === "string" ? mine.content : JSON.stringify(mine.content);
+    if (text !== MESSAGE) {
+      throw new Error(`the deny message did not reach the model verbatim; it arrived as ${JSON.stringify(text)}`);
+    }
+    if (mine.is_error !== true) {
+      throw new Error("a denied question stopped being is_error: true, and it is the only answer channel there is");
+    }
+
+    // Mode independence, the half that cannot be read off the fixture. Its own
+    // child in its own directory, and its events are deliberately not the
+    // captured ones: the fixture pins one vocabulary, and this pins that the
+    // question still reaches Sway when the user has stopped being asked about
+    // anything else.
+    const bypassCwd = mkdtempSync(join(tmpdir(), "sway-probe-ask-bypass-"));
+    const bypass = new Probe({
+      cwd: bypassCwd,
+      extraArgs: ["--permission-mode", "bypassPermissions", "--permission-prompt-tool", "stdio"],
+      answerPermission: (request) =>
+        request.tool_name === "AskUserQuestion"
+          ? { behavior: "deny", message: MESSAGE }
+          : { behavior: "allow" },
+    });
+    bypass.sendTurn(ask);
+    await bypass.waitForResult();
+    await bypass.close();
+    const bypassAsked = bypass.permissionRequests.some((r) => r.tool_name === "AskUserQuestion");
+    rmSync(bypassCwd, { recursive: true, force: true });
+    if (!bypassAsked) {
+      throw new Error(
+        "AskUserQuestion stopped asking under bypassPermissions, so the question surface is now mode-dependent",
+      );
+    }
+
     return p;
   },
 
