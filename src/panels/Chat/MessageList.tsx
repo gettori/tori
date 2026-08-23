@@ -15,7 +15,16 @@ function blockText(blocks: readonly ContentBlock[]): string {
   return blocks.map((b) => (b.type === "text" ? b.text : b.type === "fileRef" ? `@${b.path}` : "[image]")).join("\n");
 }
 
-function ThinkingBlock(props: { text: string }) {
+/** The settled label: measured seconds when the span is real, plain past tense
+ *  when it is not (a replay folds in one tick and measures nothing). */
+function thoughtLabel(ms: number): string {
+  const secs = Math.round(ms / 1000);
+  if (secs < 1) return "Thought";
+  if (secs < 60) return `Thought for ${secs}s`;
+  return `Thought for ${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
+
+function ThinkingBlock(props: { text: string; live: boolean; thoughtMs: number }) {
   const [open, setOpen] = createSignal(false);
   return (
     <div class={styles.thinking}>
@@ -25,7 +34,9 @@ function ThinkingBlock(props: { text: string }) {
             the label beside each one already says it, and a second announcement
             is noise on the one output that cannot be skimmed. */}
         <Icon icon={Brain} size={14} aria-hidden="true" />
-        {open() ? "Hide thinking" : "Thinking"}
+        <span classList={{ [styles.thinkingLive]: props.live }}>
+          {open() ? "Hide thinking" : props.live ? "Thinking" : thoughtLabel(props.thoughtMs)}
+        </span>
       </button>
       <Show when={open()}>
         <div class={styles.thinkingBody}>{props.text}</div>
@@ -210,6 +221,10 @@ export default function MessageList(props: {
     return last && (last.kind === "text" || last.kind === "thinking") ? last.text.length : 0;
   };
 
+  // Live means deltas can still land here: the item is the tail of a streaming
+  // turn. A thinking block a tool call has moved past is done, mid-turn or not.
+  const tailId = () => props.items[props.items.length - 1]?.id;
+
   // The turn the reader is looking at: the last header at or above the top of
   // the viewport, else the first one below it. Turn headers are the anchor
   // because a turn is the unit the reader is actually placed in; a pixel offset
@@ -331,7 +346,11 @@ export default function MessageList(props: {
               {(it) => (
                 <>
                   <TurnAnchor itemId={it().id} />
-                  <ThinkingBlock text={it().text} />
+                  <ThinkingBlock
+                    text={it().text}
+                    live={props.streaming && tailId() === it().id}
+                    thoughtMs={it().endedAt - it().startedAt}
+                  />
                 </>
               )}
             </Match>

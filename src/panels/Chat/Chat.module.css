@@ -570,6 +570,30 @@
   color: var(--fg-default);
 }
 
+/* The word itself is the animation: a sheen sweeping the label while deltas
+   stream. Its floor is the toggle's own muted tier, so the sweep never dips
+   under what the resting label reads at, and the global reduced-motion rule
+   (base.css) freezes it into a static gradient. */
+.thinkingLive {
+  background: linear-gradient(90deg, var(--fg-muted) 40%, var(--fg-default) 50%, var(--fg-muted) 60%);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: thinkingSheen 1.6s linear infinite;
+}
+
+/* 0% to 200% of a 200%-wide tiling image is exactly one tile, so the loop has
+   no seam. */
+@keyframes thinkingSheen {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
 .thinkingBody {
   margin-top: calc(6px * var(--ui-scale));
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));

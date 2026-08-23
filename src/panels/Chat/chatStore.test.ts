@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import events from "../../../dev/fixtures/chat/events.json";
 import { parseChatEvent, type ChatEvent } from "../../utils/chatTypes";
 import { BLOCKED_REASON, sendWithProbeGate } from "../../utils/safeSend";
@@ -48,6 +48,7 @@ import {
   type ChatItem,
   type QuestionItem,
   type ChatState,
+  type ThinkingItem,
   type ToolItem,
   type UserItem,
 } from "./chatStore";
@@ -1462,5 +1463,110 @@ describe("a question the agent asked", () => {
     expect(parsed[1].multiSelect).toBe(true);
     // Absent rather than false on the wire is single-select, matching the tool.
     expect(parseQuestions({ questions: [{ question: "Q", options: [{ label: "A" }] }] })![0].multiSelect).toBe(false);
+  });
+});
+
+// How long the model thought is the silence *before* the block, not the time
+// spent receiving it: thinking usually arrives whole, in a single frame, so a
+// span measured from the first delta to the last is always about zero. That
+// was the bug: every settled thought read "Thought" and never "Thought for Ns".
+describe("how long a thought took", () => {
+  const think = (turnId: string, t: string): ChatEvent => ({
+    type: "thinkingDelta",
+    sessionId: "s1",
+    turnId,
+    text: t,
+  });
+  const thought = (s: ChatState): ThinkingItem => s.items.find((i) => i.kind === "thinking") as ThinkingItem;
+  const span = (s: ChatState) => thought(s).endedAt - thought(s).startedAt;
+
+  afterEach(() => vi.useRealTimers());
+
+  function at(ms: number) {
+    vi.setSystemTime(new Date(ms));
+  }
+
+  it("measures the wait before a thought that arrives in one frame", () => {
+    vi.useFakeTimers();
+    at(0);
+    const s = initialChat("s1");
+    applyEvent(s, turnStarted("t1"));
+    at(12_000);
+    applyEvent(s, think("t1", "the whole thought, at once"));
+    expect(span(s)).toBe(12_000);
+  });
+
+  it("runs a streamed thought from the wait through its last delta", () => {
+    vi.useFakeTimers();
+    at(0);
+    const s = initialChat("s1");
+    applyEvent(s, turnStarted("t1"));
+    at(3_000);
+    applyEvent(s, think("t1", "first "));
+    at(5_000);
+    applyEvent(s, think("t1", "second"));
+    expect(thought(s).text).toBe("first second");
+    expect(span(s)).toBe(5_000);
+  });
+
+  it("starts the clock at the tool result, not at the turn", () => {
+    vi.useFakeTimers();
+    at(0);
+    const s = initialChat("s1");
+    applyEvent(s, turnStarted("t1"));
+    applyEvent(s, started("t1", "toolu_1"));
+    at(30_000);
+    applyEvent(s, completed("t1", "toolu_1"));
+    at(34_000);
+    applyEvent(s, think("t1", "reading that"));
+    // 4s of thinking, not the 34s that includes someone else's tool run.
+    expect(span(s)).toBe(4_000);
+  });
+
+  it("does not count the time a user sat on a permission prompt", () => {
+    vi.useFakeTimers();
+    at(0);
+    const s = initialChat("s1");
+    applyEvent(s, turnStarted("t1"));
+    applyEvent(s, started("t1", "toolu_1"));
+    applyEvent(s, prompt("toolu_1"));
+    // Four minutes of the user deciding. None of it is the model thinking.
+    at(240_000);
+    resolveApproval(s, "toolu_1");
+    at(242_000);
+    applyEvent(s, think("t1", "allowed, so"));
+    expect(span(s)).toBe(2_000);
+  });
+
+  it("does not count the time a user sat on a question", () => {
+    vi.useFakeTimers();
+    at(0);
+    const s = initialChat("s1");
+    applyEvent(s, turnStarted("t1"));
+    applyEvent(s, {
+      type: "questionRequest",
+      sessionId: "s1",
+      turnId: "t1",
+      toolUseId: "toolu_q",
+      requestId: "rq",
+      agentId: null,
+      questions: [{ question: "which?", header: "h", multiSelect: false, options: [] }],
+    });
+    at(180_000);
+    pushQuestionAnswers(s, "toolu_q", [{ question: "which?", picks: ["a"], freeText: null }]);
+    at(181_000);
+    applyEvent(s, think("t1", "given that"));
+    expect(span(s)).toBe(1_000);
+  });
+
+  it("measures nothing on a replay, where every frame lands in one tick", () => {
+    vi.useFakeTimers();
+    at(0);
+    const s = initialChat("s1");
+    applyEvent(s, turnStarted("t1"));
+    applyEvent(s, think("t1", "replayed whole"));
+    // Zero, which the card reads as unmeasured and renders as plain "Thought"
+    // rather than as a fabricated duration.
+    expect(span(s)).toBe(0);
   });
 });
