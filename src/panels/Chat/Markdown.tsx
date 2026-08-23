@@ -1,6 +1,9 @@
 import { Index, Match, Switch, createMemo } from "solid-js";
 import { marked, type Token } from "marked";
+import { invoke } from "@tauri-apps/api/core";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
+import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
+import { linkTarget } from "./links";
 import CodeBlock from "./CodeBlock";
 import styles from "./Chat.module.css";
 
@@ -18,8 +21,13 @@ type Segment =
  * treatment as a local markdown file: rendered locally with `marked`, then
  * stripped of script-execution vectors before going near innerHTML. Fence
  * contents never become markup at all, so they need no sanitizing.
+ *
+ * Links are routed rather than followed. `sanitizeHtml` leaves anchors alone -
+ * they are not a script vector - but an anchor the webview follows takes the
+ * whole app off the SPA, which reads as a crash and loses the session. So every
+ * click is intercepted, and where it goes is `linkTarget`'s answer.
  */
-export default function Markdown(props: { text: string }) {
+export default function Markdown(props: { text: string; cwd: string }) {
   // Rendered prose keyed by its raw source, carried across recomputes: while
   // streaming, every segment but the tail hits this cache, so the per-delta
   // cost is one lexer pass plus one segment's parse and sanitize.
@@ -51,6 +59,24 @@ export default function Markdown(props: { text: string }) {
     return segs;
   });
 
+  function onLinkClick(e: MouseEvent) {
+    const anchor = (e.target as Element | null)?.closest?.("a");
+    if (!anchor) return;
+    // Before the switch, not inside it: an href this cannot place must still
+    // not be followed.
+    e.preventDefault();
+    const target = linkTarget(anchor.getAttribute("href") ?? "", props.cwd);
+    if (target.kind === "external") {
+      // Through the opener plugin rather than `window.open`, which the webview
+      // is free to answer by navigating.
+      void invoke("plugin:opener|open_url", { url: target.url }).catch(() => {});
+    } else if (target.kind === "file") {
+      emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: target.path, line: target.line });
+    } else if (target.kind === "outside") {
+      emitWith<ToastEvent>(TOAST, { message: `${target.path} is outside this workspace.`, kind: "info" });
+    }
+  }
+
   // `Index`, not `For`: segments are positional. While streaming, positions
   // keep their DOM and only a segment whose content changed updates.
   return (
@@ -58,7 +84,16 @@ export default function Markdown(props: { text: string }) {
       {(seg) => (
         <Switch>
           <Match when={seg().kind === "prose" && seg()}>
-            {(s) => <div class={styles.mdProse} innerHTML={(s() as Extract<Segment, { kind: "prose" }>).html} />}
+            {(s) => (
+              // The handler sits on the prose block rather than a wrapper: the
+              // transcript's spacing rules select `.mdProse` as a direct child
+              // of `.assistant`, so an extra element would break them.
+              <div
+                class={styles.mdProse}
+                onClick={onLinkClick}
+                innerHTML={(s() as Extract<Segment, { kind: "prose" }>).html}
+              />
+            )}
           </Match>
           <Match when={seg().kind === "code" && seg()}>
             {(s) => {
