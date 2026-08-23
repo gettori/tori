@@ -122,6 +122,10 @@ export type ToolItem = {
   state: ToolCardState;
   approval: PendingApproval | null;
   output: string | null;
+  /** `output` is an extract and the rest is held in the backend, so the card
+   *  offers to fetch it. False for every output that fitted, and for a replayed
+   *  one whose remainder nothing kept. */
+  outputTruncated: boolean;
   files: string[];
   durationMs: number | null;
   edits: ChatFileEdit[];
@@ -539,6 +543,7 @@ function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): Too
     state: "running",
     approval: null,
     output: null,
+    outputTruncated: false,
     files: [],
     durationMs: null,
     edits: [],
@@ -969,6 +974,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       card.state = ev.status === "ok" ? "ok" : ev.status === "denied" ? "denied" : "error";
       card.approval = null;
       card.output = ev.output;
+      card.outputTruncated = ev.outputTruncated;
       card.files = ev.files;
       card.durationMs = ev.durationMs;
       return;

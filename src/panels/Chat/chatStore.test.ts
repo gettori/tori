@@ -674,6 +674,7 @@ describe("reasoningFor", () => {
     state: "ok",
     approval: null,
     output: null,
+    outputTruncated: false,
     files: [],
     durationMs: null,
     edits: [],

@@ -73,6 +73,10 @@ export default function ToolCallCard(props: {
 }) {
   const [open, setOpen] = createSignal(false);
   const [reverting, setReverting] = createSignal<string | null>(null);
+  // Whether the user asked for the whole output. Reset when the card closes, so
+  // a reopened card fetches again rather than showing a body the backend may
+  // have evicted since.
+  const [wantFull, setWantFull] = createSignal(false);
   const renderer = () => toolRenderer(props.card.name);
   const settled = () => props.card.state === "ok" || props.card.state === "error";
 
@@ -87,6 +91,22 @@ export default function ToolCallCard(props: {
         cwd: props.cwd,
       }).catch(() => [] as ToolDiff[]),
   );
+
+  // Only once the user asks, and only while the card is open: an output over
+  // the cap is large by definition, and a turn can make dozens of calls.
+  const [fullOutput] = createResource(
+    () => (open() && wantFull() ? props.card.toolUseId : null),
+    async (toolUseId) =>
+      await invoke<string | null>("chat_tool_output", {
+        sessionId: props.sessionId,
+        toolUseId,
+      }).catch(() => null),
+  );
+
+  function toggleOpen() {
+    if (open()) setWantFull(false);
+    setOpen(!open());
+  }
 
   function openPath(path: string, line?: number) {
     // A path outside the workspace is a real case, not a bug: a tool can read a
@@ -121,7 +141,7 @@ export default function ToolCallCard(props: {
 
   return (
     <div class={`${styles.tool} ${props.card.state === "awaitingApproval" ? styles.toolBlocked : ""}`}>
-      <button type="button" class={styles.toolRow} onClick={() => setOpen(!open())} aria-expanded={open()}>
+      <button type="button" class={styles.toolRow} onClick={toggleOpen} aria-expanded={open()}>
         <span class={styles.toolCaret} classList={{ [styles.toolCaretOpen]: open() }} aria-hidden="true">
           <Icon icon={ChevronRight} size={12} />
         </span>
@@ -253,7 +273,31 @@ export default function ToolCallCard(props: {
           </Show>
 
           <Show when={props.card.output}>
-            {(output) => <pre class={`${styles.toolPre} ${styles.toolOutput}`}>{output()}</pre>}
+            {(output) => (
+              <>
+                <pre class={`${styles.toolPre} ${styles.toolOutput}`}>{fullOutput() ?? output()}</pre>
+                {/* Absent unless there is more to show, so a card whose output
+                    fitted looks exactly as it did before. */}
+                <Show when={props.card.outputTruncated}>
+                  <Switch>
+                    <Match when={!wantFull()}>
+                      <button type="button" class={styles.toolMore} onClick={() => setWantFull(true)}>
+                        Show full output
+                      </button>
+                    </Match>
+                    <Match when={fullOutput.loading}>
+                      <span class={styles.toolNote}>Loading...</span>
+                    </Match>
+                    {/* The backend keeps a bounded number of these, so an old
+                        card can outlive its own output. Saying so beats a
+                        button that does nothing. */}
+                    <Match when={fullOutput() === null}>
+                      <span class={styles.toolNote}>The rest of this output is no longer held.</span>
+                    </Match>
+                  </Switch>
+                </Show>
+              </>
+            )}
           </Show>
         </div>
       </Show>
