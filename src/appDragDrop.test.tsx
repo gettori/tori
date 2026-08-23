@@ -135,9 +135,13 @@ function layout() {
       setRect(strip, { left, top: 0, width: 400, height: 40 });
       if (strip.parentElement) setRect(strip.parentElement, { left, top: 0, width: 400, height: 300 });
     }
-    p.querySelectorAll<HTMLElement>(".otab-list [data-tab-id]").forEach((t, n) =>
-      setRect(t, { left: left + n * 100, top: 0, width: 100, height: 40 }),
-    );
+    // On the pill as well as the trigger: the pane measures the pill, which is
+    // the box the close button sits inside of.
+    p.querySelectorAll<HTMLElement>(".otab-list [data-tab-id]").forEach((t, n) => {
+      const box = { left: left + n * 100, top: 0, width: 100, height: 40 };
+      setRect(t.closest("[data-tab-pill]") ?? t, box);
+      setRect(t, box);
+    });
   });
 }
 
@@ -321,18 +325,18 @@ describe("a drop the shell cannot honour", () => {
 });
 
 describe("the drops that change nothing", () => {
-  it("leaves the layout alone when a tab is dropped in its own slot", () => {
+  it("draws no caret and leaves the layout alone in a tab's own slot", () => {
     render(() => <App />);
     layout();
     const before = [tabsIn(pane(0)), tabsIn(pane(1)), panes()];
     // sh:1 is first in its strip; the head of the strip is where it already is.
     const zone = dragTo(tabEl(pane(0), "sh:1"), tabEl(pane(0), "sh:1"), 10, 20);
 
-    expect(zone).toBe("strip");
+    expect(zone).toBeNull();
     expect([tabsIn(pane(0)), tabsIn(pane(1)), panes()]).toEqual(before);
   });
 
-  it("leaves the layout alone on its own pane's edge while it is the only tab", () => {
+  it("draws no half on its own pane's edge while it is the only tab", () => {
     render(() => <App />);
     layout();
     const before = [tabsIn(pane(0)), tabsIn(pane(1)), panes()];
@@ -340,7 +344,7 @@ describe("the drops that change nothing", () => {
     // pane it left and collapse straight back.
     const zone = dragTo(tabEl(pane(1), `${REPO}/a.ts`), column(1), 780, 150);
 
-    expect(zone).toBe("edge-right");
+    expect(zone).toBeNull();
     expect([tabsIn(pane(0)), tabsIn(pane(1)), panes()]).toEqual(before);
   });
 
@@ -370,6 +374,24 @@ describe("the drops that change nothing", () => {
 
     expect([tabsIn(pane(0)), tabsIn(pane(1)), panes()]).toEqual(before);
     expect(document.querySelector("[data-drop-zone]")).toBeNull();
+  });
+});
+
+describe("where the caret lands", () => {
+  it("draws it past the close button, at the tab's own edge", () => {
+    // The close is a sibling of the trigger `data-tab-id` sits on, so a caret
+    // measured off the trigger lands between the label and the x.
+    render(() => <App />);
+    layout();
+    setRect(tabEl(pane(0), "sh:1"), { left: 0, top: 0, width: 70, height: 40 });
+    const carried = tabEl(pane(1), `${REPO}/a.ts`);
+    const dt = new FakeDataTransfer();
+    fire(carried, "dragstart", { dt });
+    fire(column(0), "dragover", { x: 60, y: 20, dt });
+
+    const caret = pane(0).querySelector<HTMLElement>("[data-drop-zone='strip']")!;
+    expect(caret.style.left).toBe("100px");
+    fire(carried, "dragend", { dt });
   });
 });
 
