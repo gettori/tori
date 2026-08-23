@@ -31,7 +31,7 @@ use serde_json::Value;
 use crate::agents::{ChatEffortExtra, EffortExtraState};
 
 use super::model::{
-    cap_output, ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo,
+    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo,
     ChatQuestion, ChatQuestionOption, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode,
     PermissionSuggestion, QuestionAnswer, SlashCommand, SuggestedRule, ToolKind, ToolStatus, ToolSummary,
     TurnOutcome, Usage,
@@ -309,12 +309,6 @@ pub struct ClaudeMapper {
     /// bound as `sway_hook_ids`: the result frame arrives with nothing but a
     /// `tool_use_id` on it.
     read_only_calls: std::collections::HashSet<String>,
-    /// Calls whose output must reach the UI whole. Learned and retained exactly
-    /// like `read_only_calls`, and for the same reason: the result frame names
-    /// only a `tool_use_id`. Today this is `AskUserQuestion` alone, whose
-    /// "output" is the answer record Sway itself produced, so cutting it would
-    /// be the app truncating its own success path.
-    uncapped_calls: std::collections::HashSet<String>,
     /// The adapter's measured effort levels. Empty is a mapper nobody gave any,
     /// which offers the catalogue's own list rather than guessing at more.
     effort_extras: Vec<ChatEffortExtra>,
@@ -508,9 +502,6 @@ impl ClaudeMapper {
             if let ChatEvent::ToolCallStarted { tool_use_id, name, .. } = ev {
                 if READ_ONLY_TOOLS.contains(&name.as_str()) {
                     self.read_only_calls.insert(tool_use_id.clone());
-                }
-                if name == ASK_USER_QUESTION {
-                    self.uncapped_calls.insert(tool_use_id.clone());
                 }
             }
         }
@@ -903,13 +894,6 @@ impl ClaudeMapper {
             .filter(|c| c["type"] == "tool_result")
             .map(|c| {
                 let id = c["tool_use_id"].as_str().unwrap_or_default();
-                let (output, output_truncated) = match tool_result_text(&c["content"]) {
-                    Some(text) if !self.uncapped_calls.contains(id) => {
-                        let (text, cut) = cap_output(text);
-                        (Some(text), cut)
-                    }
-                    other => (other, false),
-                };
                 ChatEvent::ToolCallCompleted {
                     session_id: self.session_id.clone(),
                     turn_id: self.turn_id(),
@@ -924,7 +908,11 @@ impl ClaudeMapper {
                     } else {
                         ToolStatus::Ok
                     },
-                    output,
+                    // Whole. The host cuts it on its way past and keeps the
+                    // rest, which is the only place that can: the cache lives
+                    // there, and an adapter that cut here would have thrown
+                    // away what a card later asks for.
+                    output: tool_result_text(&c["content"]),
                     // A read reports its target in the same shape a write does,
                     // so the *call* has to say which it was. Without this,
                     // opening a file another session is editing files that file
@@ -943,7 +931,7 @@ impl ClaudeMapper {
                     // block. So this payload belongs to this block without
                     // having to be matched to it.
                     summary: summarise_result(&frame["tool_use_result"]),
-                    output_truncated,
+                    output_truncated: false,
                 }
             })
             .collect()
@@ -3325,59 +3313,6 @@ mod tests {
                 "summarised something it does not understand: {payload}"
             );
         }
-    }
-
-    /// The cap is the adapter's, so it is asserted through the adapter rather
-    /// than on the helper: a call whose output is over the line arrives cut and
-    /// flagged, and `AskUserQuestion` arrives whole because its "output" is the
-    /// answer record Sway itself produced.
-    #[test]
-    fn a_huge_output_is_capped_unless_it_is_a_questions_answer() {
-        let big = "x".repeat(1024 * 1024);
-        for (tool, expect_cut) in [("Bash", true), (ASK_USER_QUESTION, false)] {
-            let mut m = ClaudeMapper::new("s1");
-            m.map(&serde_json::json!({
-                "type": "stream_event",
-                "event": {
-                    "type": "content_block_start",
-                    "index": 0,
-                    "content_block": { "type": "tool_use", "id": "toolu_big", "name": tool }
-                }
-            }));
-            let events = m.map(&serde_json::json!({
-                "type": "user",
-                "message": { "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": "toolu_big",
-                    "content": big,
-                }]},
-            }));
-            let ChatEvent::ToolCallCompleted { output, output_truncated, .. } =
-                events.first().expect("a completion")
-            else {
-                panic!("{tool}: not a completion");
-            };
-            assert_eq!(*output_truncated, expect_cut, "{tool}: wrong truncation verdict");
-            let len = output.as_deref().unwrap_or_default().len();
-            if expect_cut {
-                assert_eq!(len, crate::chat::model::TOOL_OUTPUT_CAP, "{tool}: cut to the wrong size");
-            } else {
-                assert_eq!(len, big.len(), "{tool}: a question's answer was cut");
-            }
-        }
-    }
-
-    /// The cap is in bytes and the text is not, so the cut lands on a character
-    /// boundary rather than panicking on the multi-byte outputs most worth
-    /// capping.
-    #[test]
-    fn the_cap_never_splits_a_character() {
-        // Three bytes each, so the cap falls mid-character.
-        let text = "\u{4f60}".repeat(crate::chat::model::TOOL_OUTPUT_CAP);
-        let (cut, truncated) = crate::chat::model::cap_output(text);
-        assert!(truncated);
-        assert!(cut.len() <= crate::chat::model::TOOL_OUTPUT_CAP);
-        assert!(cut.chars().all(|c| c == '\u{4f60}'), "cut mid-character");
     }
 
     /// Walk a dotted path into a value, so `file.numLines` reads one level in.

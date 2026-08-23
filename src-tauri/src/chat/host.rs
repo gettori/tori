@@ -14,13 +14,13 @@
 //! and releases the ownership claim - one path, whether the child died on its
 //! own, was killed, or failed to start.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use super::approval::{self, CaptureServer};
 use super::model::{
-    ChatCommand, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode,
-    PermissionScope, QuestionAnswer,
+    cap_output, ChatCommand, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision,
+    PermissionMode, PermissionScope, QuestionAnswer,
 };
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
@@ -99,6 +99,87 @@ impl Identity {
     }
 }
 
+/// One session's full tool outputs, keyed by `tool_use_id` and bounded.
+///
+/// The point of the whole cache is that a card's output is **retained but not
+/// resident**: what rides the event and sits in the store is a capped extract,
+/// and the rest waits here until a user opens the card and asks for it. Bounded
+/// for the same reason [`SnapshotCache`] is, except the entries here are not
+/// tiny: an output over the cap is by definition large, so the bound is what
+/// keeps a session that catted a hundred files from holding all hundred.
+///
+/// Oldest-first eviction, since the newest cards are the ones on screen. An
+/// evicted id reads back as `None`, which the card renders as the extract it
+/// already has.
+#[derive(Debug, Default)]
+pub struct OutputCache {
+    entries: HashMap<String, String>,
+    /// Insertion order, so eviction is oldest-first rather than whatever the
+    /// map's iteration order happens to be.
+    order: VecDeque<String>,
+    cap: usize,
+    /// Calls whose output must reach the UI whole, so the cut never runs for
+    /// them at all.
+    ///
+    /// Learned from [`ChatEvent::QuestionRequest`] rather than from a tool
+    /// name: a question's "output" is the answer record Sway itself produced,
+    /// and it lands on a question row that has no card and therefore no way to
+    /// ask for the rest. Keying on Sway's own event instead of on
+    /// `AskUserQuestion` keeps the host out of one agent's vocabulary and gives
+    /// any agent that asks a question through Sway the same treatment.
+    whole: HashSet<String>,
+}
+
+impl OutputCache {
+    pub fn new(cap: usize) -> Self {
+        Self { entries: HashMap::new(), order: VecDeque::new(), cap: cap.max(1), whole: HashSet::new() }
+    }
+
+    /// Mark a call's output as one that must never be cut.
+    pub fn keep_whole(&mut self, tool_use_id: &str) {
+        self.whole.insert(tool_use_id.to_string());
+    }
+
+    /// Cut an output down to what an event should carry, keeping the rest here.
+    ///
+    /// Returns the text to send and whether it was cut. Nothing is stored for
+    /// an output that fits: the cache would then hold a copy of what the store
+    /// already has, and evicting it would push out an entry that is actually
+    /// needed.
+    pub fn take(&mut self, tool_use_id: &str, output: String) -> (String, bool) {
+        if self.whole.contains(tool_use_id) {
+            return (output, false);
+        }
+        let Some(cut) = cap_output(&output) else { return (output, false) };
+        if self.entries.insert(tool_use_id.to_string(), output).is_none() {
+            self.order.push_back(tool_use_id.to_string());
+        }
+        while self.order.len() > self.cap {
+            if let Some(oldest) = self.order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
+        (cut, true)
+    }
+
+    /// The full output for a tool call, or `None` if it was never over the cap
+    /// or has been evicted.
+    ///
+    /// `None` is a normal answer, not an error, the same way
+    /// [`SnapshotCache::get`]'s is: the card keeps showing the extract it
+    /// already has.
+    pub fn get(&self, tool_use_id: &str) -> Option<&String> {
+        self.entries.get(tool_use_id)
+    }
+
+    /// Test-only, like `SnapshotCache::len`: the product asks about one call at
+    /// a time.
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
 fn is_identity(event: &ChatEvent) -> bool {
     matches!(event, ChatEvent::SessionReady { .. } | ChatEvent::SessionStarted { .. })
 }
@@ -129,6 +210,12 @@ impl SessionBridge {
     }
 }
 
+/// How many oversized outputs one session keeps. Small on purpose: every entry
+/// is over [`crate::chat::model::TOOL_OUTPUT_CAP`] by definition, so this is a
+/// cap on megabytes, not on rows, and the cards a user actually opens are the
+/// recent ones.
+pub const OUTPUT_CACHE_CAP: usize = 16;
+
 /// The host. One per app, managed as Tauri state by `lib.rs`.
 #[derive(Default)]
 pub struct ChatHost {
@@ -140,6 +227,11 @@ pub struct ChatHost {
     /// takes the identity lock and never the map's: an event passes through
     /// while `spawn` may be holding the map, and the two must not meet.
     identity: Arc<Mutex<HashMap<String, Identity>>>,
+    /// The full text of tool outputs too large to ride their event, one cache
+    /// per session. Beside the sessions for the same reason `identity` is, and
+    /// written from the same place: the sink wrapper, which every live event
+    /// passes through exactly once.
+    outputs: Arc<Mutex<HashMap<String, OutputCache>>>,
 }
 
 /// Tauri state wrapper, matching `PtyState`'s shape.
@@ -177,6 +269,7 @@ impl ChatHost {
             registry: Arc::new(Registry::at(path)),
             bridges: Arc::default(),
             identity: Arc::default(),
+            outputs: Arc::default(),
         }
     }
 
@@ -209,6 +302,55 @@ impl ChatHost {
     /// This session's snapshot cache, for a card the user expanded.
     pub fn snapshots(&self, session_id: &str) -> Option<Arc<Mutex<SnapshotCache>>> {
         lock(&self.bridges).get(session_id).map(|b| b.snapshots.clone())
+    }
+
+    /// Cut a replayed conversation's outputs the way a live one's are cut.
+    ///
+    /// Replay does not pass through the sink wrapper: `chat_history` returns its
+    /// events straight to the caller. So the cut happens here instead, through
+    /// the same cache, and a backfilled card can fetch its remainder exactly
+    /// like a live one. Without this the replayed card would offer a button
+    /// that could only ever fail.
+    ///
+    /// **Only for a session the host knows.** History can be read for a session
+    /// that is never spawned, and storing for one of those would leave a cache
+    /// per browsed conversation with nothing to ever drop it. Those still get
+    /// their outputs cut, and their cards say the rest is not held, which is
+    /// true.
+    pub fn cut_outputs(&self, session_id: &str, events: &mut [ChatEvent]) {
+        let live = lock(&self.sessions).contains_key(session_id);
+        let mut outputs = lock(&self.outputs);
+        for event in events {
+            let ChatEvent::ToolCallCompleted { tool_use_id, output, output_truncated, .. } = event else {
+                continue;
+            };
+            let Some(text) = output.take() else { continue };
+            if live {
+                let (cut, truncated) = outputs
+                    .entry(session_id.to_string())
+                    .or_insert_with(|| OutputCache::new(OUTPUT_CACHE_CAP))
+                    .take(tool_use_id, text);
+                *output = Some(cut);
+                *output_truncated = truncated;
+            } else {
+                match cap_output(&text) {
+                    Some(cut) => {
+                        *output = Some(cut);
+                        *output_truncated = true;
+                    }
+                    None => *output = Some(text),
+                }
+            }
+        }
+    }
+
+    /// The full output of one tool call, for a card that asked for the rest.
+    ///
+    /// `None` for a session with no cache, an output that was never cut, and
+    /// one that has been evicted. The caller cannot tell those apart and does
+    /// not need to: all three mean "show what you already have".
+    pub fn tool_output(&self, session_id: &str, tool_use_id: &str) -> Option<String> {
+        lock(&self.outputs).get(session_id)?.get(tool_use_id).cloned()
     }
 
     /// Answer a tool call the agent is asking about.
@@ -363,13 +505,37 @@ impl ChatHost {
         let registry = self.registry.clone();
         let bridges = self.bridges.clone();
         let identity = self.identity.clone();
+        let outputs = self.outputs.clone();
         let id = session_id.to_string();
-        Box::new(move |event| {
+        Box::new(move |mut event| {
             let fatal = ends_session(&event);
             // Two frames per session, so the lock is taken twice in its life
             // rather than once per event.
             if is_identity(&event) {
                 lock(&identity).entry(id.clone()).or_default().keep(&event);
+            }
+            // The one place both transports' events meet before the UI, which
+            // is what makes it the place to cut. An adapter that cut instead
+            // would have to reach a cache it cannot see, and there are two of
+            // them; this is one choke point serving both.
+            match &mut event {
+                ChatEvent::QuestionRequest { tool_use_id, .. } => {
+                    lock(&outputs)
+                        .entry(id.clone())
+                        .or_insert_with(|| OutputCache::new(OUTPUT_CACHE_CAP))
+                        .keep_whole(tool_use_id);
+                }
+                ChatEvent::ToolCallCompleted { tool_use_id, output, output_truncated, .. } => {
+                    if let Some(text) = output.take() {
+                        let (cut, truncated) = lock(&outputs)
+                            .entry(id.clone())
+                            .or_insert_with(|| OutputCache::new(OUTPUT_CACHE_CAP))
+                            .take(tool_use_id, text);
+                        *output = Some(cut);
+                        *output_truncated = truncated;
+                    }
+                }
+                _ => {}
             }
             emit(event);
             if fatal {
@@ -377,6 +543,9 @@ impl ChatHost {
                 // Goes with the entry: a session that ended has no identity to
                 // hand anyone, and keeping it would be a leak per dead session.
                 lock(&identity).remove(&id);
+                // Same, and it matters more here: these entries are the large
+                // ones.
+                lock(&outputs).remove(&id);
                 if let Some(bridge) = lock(&bridges).remove(&id) {
                     bridge.teardown();
                 }
@@ -704,6 +873,181 @@ mod tests {
         // The rewire is real: events now reach the new subscriber only.
         host.close("s1").unwrap();
         assert!(first.events().is_empty());
+    }
+
+    /// A completion, with whatever output the test wants to push through.
+    fn completed(id: &str, tool_use_id: &str, output: &str) -> ChatEvent {
+        ChatEvent::ToolCallCompleted {
+            session_id: id.to_string(),
+            turn_id: "t1".into(),
+            tool_use_id: tool_use_id.to_string(),
+            status: crate::chat::model::ToolStatus::Ok,
+            output: Some(output.to_string()),
+            files: Vec::new(),
+            duration_ms: None,
+            summary: None,
+            output_truncated: false,
+        }
+    }
+
+    /// The cache is bounded and evicts oldest-first, so a session that produced
+    /// more oversized outputs than the cap keeps the recent ones. Asserted on
+    /// the cache directly, because driving `OUTPUT_CACHE_CAP + 1` megabyte
+    /// outputs through a host would be a slow way to test a `VecDeque`.
+    #[test]
+    fn the_output_cache_evicts_oldest_first_at_its_cap() {
+        let mut cache = OutputCache::new(2);
+        let big = "x".repeat(crate::chat::model::TOOL_OUTPUT_CAP + 1);
+        for id in ["a", "b", "c"] {
+            let (cut, truncated) = cache.take(id, big.clone());
+            assert!(truncated, "{id} was over the cap");
+            assert_eq!(cut.len(), crate::chat::model::TOOL_OUTPUT_CAP);
+        }
+        assert_eq!(cache.len(), 2);
+        assert_eq!(cache.get("a"), None, "the oldest went first");
+        assert_eq!(cache.get("b").map(String::len), Some(big.len()));
+        assert_eq!(cache.get("c").map(String::len), Some(big.len()));
+    }
+
+    /// An output that fits is not stored at all. Storing it would put a second
+    /// copy of what the store already has into a bounded cache, evicting an
+    /// entry that is actually needed to hold one that never will be.
+    #[test]
+    fn an_output_that_fits_is_not_cached() {
+        let mut cache = OutputCache::new(4);
+        assert_eq!(cache.take("a", "short".into()), ("short".to_string(), false));
+        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.get("a"), None);
+    }
+
+    /// Every live event passes the sink wrapper exactly once, which is what
+    /// makes it the place to cut: both transports get this without knowing the
+    /// cache exists. An oversized output arrives cut and flagged, and the rest
+    /// is waiting where the card will ask for it.
+    #[test]
+    fn a_huge_output_is_cut_on_its_way_past_and_the_rest_is_kept() {
+        let host = ChatHost::at(temp_store());
+        let seen = Collector::default();
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+        let out = sink_out.clone();
+        host.spawn("s1", "tab-a", seen.emit(), spec("s1"), move || {
+            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+        })
+        .unwrap();
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+
+        let big = "x".repeat(crate::chat::model::TOOL_OUTPUT_CAP + 500);
+        crate::chat::transport::emit(&sink, completed("s1", "toolu_1", &big));
+
+        match seen.events().as_slice() {
+            [ChatEvent::ToolCallCompleted { output, output_truncated, .. }] => {
+                assert!(*output_truncated);
+                assert_eq!(
+                    output.as_deref().unwrap_or_default().len(),
+                    crate::chat::model::TOOL_OUTPUT_CAP,
+                    "the UI gets an extract, not the whole thing"
+                );
+            }
+            other => panic!("expected one completion, got {other:?}"),
+        }
+        assert_eq!(host.tool_output("s1", "toolu_1").map(|s| s.len()), Some(big.len()));
+    }
+
+    /// A question's output is never cut. It lands on a question row rather than
+    /// a tool card, so there is nothing there to ask for the rest with, and the
+    /// exemption is keyed on Sway's own `QuestionRequest` rather than on one
+    /// agent's tool name.
+    #[test]
+    fn a_questions_answer_is_never_cut() {
+        let host = ChatHost::at(temp_store());
+        let seen = Collector::default();
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+        let out = sink_out.clone();
+        host.spawn("s1", "tab-a", seen.emit(), spec("s1"), move || {
+            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+        })
+        .unwrap();
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+
+        crate::chat::transport::emit(
+            &sink,
+            ChatEvent::QuestionRequest {
+                session_id: "s1".into(),
+                tool_use_id: "toolu_q".into(),
+                request_id: "r1".into(),
+                agent_id: None,
+                questions: Vec::new(),
+            },
+        );
+        let big = "x".repeat(crate::chat::model::TOOL_OUTPUT_CAP + 500);
+        crate::chat::transport::emit(&sink, completed("s1", "toolu_q", &big));
+
+        let last = seen.events().pop().expect("a completion");
+        match last {
+            ChatEvent::ToolCallCompleted { output, output_truncated, .. } => {
+                assert!(!output_truncated);
+                assert_eq!(output.map(|s| s.len()), Some(big.len()), "an answer record was cut");
+            }
+            other => panic!("expected a completion, got {other:?}"),
+        }
+    }
+
+    /// A replayed conversation is cut the same way a live one is, and through
+    /// the same cache, so a backfilled card can fetch its remainder instead of
+    /// offering a button that could only ever fail.
+    #[test]
+    fn a_replayed_conversation_is_cut_through_the_same_cache() {
+        let host = ChatHost::at(temp_store());
+        host.spawn("s1", "tab-a", Collector::default().emit(), spec("s1"), || {
+            Box::new(Puppet::default())
+        })
+        .unwrap();
+
+        let big = "x".repeat(crate::chat::model::TOOL_OUTPUT_CAP + 500);
+        let mut events = vec![completed("s1", "toolu_1", &big), completed("s1", "toolu_2", "short")];
+        host.cut_outputs("s1", &mut events);
+
+        match events.as_slice() {
+            [
+                ChatEvent::ToolCallCompleted { output: cut, output_truncated: true, .. },
+                ChatEvent::ToolCallCompleted { output: whole, output_truncated: false, .. },
+            ] => {
+                assert_eq!(cut.as_deref().unwrap_or_default().len(), crate::chat::model::TOOL_OUTPUT_CAP);
+                assert_eq!(whole.as_deref(), Some("short"));
+            }
+            other => panic!("expected two completions, got {other:?}"),
+        }
+        assert_eq!(host.tool_output("s1", "toolu_1").map(|s| s.len()), Some(big.len()));
+        assert_eq!(host.tool_output("s1", "toolu_2"), None, "a short output is not cached");
+    }
+
+    /// History can be read for a session that is never spawned. Those outputs
+    /// are still cut, and still nothing is stored: a cache per browsed
+    /// conversation would have nothing to ever drop it.
+    #[test]
+    fn browsing_a_dead_sessions_history_cuts_without_caching() {
+        let host = ChatHost::at(temp_store());
+        let big = "x".repeat(crate::chat::model::TOOL_OUTPUT_CAP + 500);
+        let mut events = vec![completed("gone", "toolu_1", &big)];
+        host.cut_outputs("gone", &mut events);
+
+        match events.as_slice() {
+            [ChatEvent::ToolCallCompleted { output, output_truncated, .. }] => {
+                assert!(*output_truncated, "the user is still told it was cut");
+                assert_eq!(output.as_deref().unwrap_or_default().len(), crate::chat::model::TOOL_OUTPUT_CAP);
+            }
+            other => panic!("expected one completion, got {other:?}"),
+        }
+        assert_eq!(host.tool_output("gone", "toolu_1"), None);
+    }
+
+    /// An id nothing cached reads back as `None` rather than as an error: a
+    /// short output, an evicted one and a session that never existed are all
+    /// "show what you already have".
+    #[test]
+    fn an_uncached_output_reads_back_as_nothing() {
+        let host = ChatHost::at(temp_store());
+        assert_eq!(host.tool_output("never-existed", "toolu_1"), None);
     }
 
     /// **A webview reload leaves the child running and the store empty.**

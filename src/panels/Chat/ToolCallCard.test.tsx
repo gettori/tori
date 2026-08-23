@@ -21,6 +21,7 @@ function card(over: Partial<ToolItem> = {}): ToolItem {
     title: null,
     input: { command: "ls -la" },
     output: null,
+    outputTruncated: false,
     state: "ok",
     durationMs: 120,
     approval: null,
@@ -140,5 +141,53 @@ describe("ToolCallCard", () => {
   it("shows a blocked call as blocked, not as a spinner", () => {
     const { getByText } = mount(card({ state: "awaitingApproval" }));
     expect(getByText("Waiting for approval")).toBeTruthy();
+  });
+
+  // The control is the only sign a card is showing an extract, so it must not
+  // appear on a card that is showing everything: an output that fitted looks
+  // exactly as it did before this existed.
+  it("offers nothing more to show when the output arrived whole", () => {
+    const { getByRole, queryByText } = mount(card({ output: "two lines\nof output" }));
+    fireEvent.click(getByRole("button", { name: /Bash/ }));
+    expect(queryByText("Show full output")).toBeNull();
+  });
+
+  it("fetches the rest once per open, and only when asked", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    vi.mocked(invoke).mockResolvedValue("the whole thing");
+    const { getByRole, getByText, findByText } = mount(
+      card({ output: "the extra", outputTruncated: true }),
+    );
+
+    const row = getByRole("button", { name: /Bash/ });
+    fireEvent.click(row);
+    // Opening alone fetches nothing: an output over the cap is large by
+    // definition and a turn can make dozens of calls.
+    expect(vi.mocked(invoke).mock.calls.filter((c) => c[0] === "chat_tool_output")).toHaveLength(0);
+
+    fireEvent.click(getByText("Show full output"));
+    expect(await findByText("the whole thing")).toBeTruthy();
+    const fetches = () => vi.mocked(invoke).mock.calls.filter((c) => c[0] === "chat_tool_output");
+    expect(fetches()).toHaveLength(1);
+
+    // Closing and reopening asks again rather than showing a body the backend
+    // may have evicted since, and asking again is one more fetch, not two.
+    fireEvent.click(row);
+    fireEvent.click(row);
+    expect(await findByText("Show full output")).toBeTruthy();
+    expect(fetches()).toHaveLength(1);
+  });
+
+  // The cache is bounded, so a card can outlive its own output. Saying so beats
+  // a button that does nothing.
+  it("says so when the rest is no longer held", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    vi.mocked(invoke).mockResolvedValue(null);
+    const { getByRole, getByText, findByText } = mount(
+      card({ output: "the extract", outputTruncated: true }),
+    );
+    fireEvent.click(getByRole("button", { name: /Bash/ }));
+    fireEvent.click(getByText("Show full output"));
+    expect(await findByText("The rest of this output is no longer held.")).toBeTruthy();
   });
 });

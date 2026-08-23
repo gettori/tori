@@ -619,6 +619,23 @@ pub async fn chat_tool_diff(
         .collect())
 }
 
+/// The whole text of one tool call's output, for a card that asked for the rest.
+///
+/// `None` rather than an error for everything that could go wrong, because from
+/// the card's side they are one case: an output that was never over the cap has
+/// nothing more to give, an evicted one is gone, and a session that has ended
+/// took its cache with it. All three mean "keep showing the extract you have",
+/// and an `Err` here would make a card render a failure over a perfectly good
+/// answer.
+#[tauri::command]
+pub async fn chat_tool_output(
+    state: State<'_, ChatState>,
+    session_id: String,
+    tool_use_id: String,
+) -> Result<Option<String>, String> {
+    Ok(state.0.tool_output(&session_id, &tool_use_id))
+}
+
 /// One file's whole-session diff, for the transcript's diff view.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -752,6 +769,7 @@ pub async fn chat_close(state: State<'_, ChatState>, session_id: String) -> Resu
 /// the seeded first message both say out loud.
 #[tauri::command]
 pub async fn chat_history(
+    state: State<'_, ChatState>,
     session_id: String,
     from_session_id: Option<String>,
     agent_id: String,
@@ -766,7 +784,12 @@ pub async fn chat_history(
         Some(at) => &turns[..at],
         None => &turns[..],
     };
-    Ok(super::history::events_from_turns(&session_id, shown))
+    let mut events = super::history::events_from_turns(&session_id, shown);
+    // The cut a live event gets on its way through the sink wrapper. Applied
+    // here because replay does not pass through it, and applied through the
+    // same cache so a backfilled card can fetch its remainder too.
+    state.0.cut_outputs(&session_id, &mut events);
+    Ok(events)
 }
 
 // --- mid-turn quit recovery ------------------------------------------------

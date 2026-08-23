@@ -880,6 +880,23 @@
   color: var(--fg-muted);
 }
 
+/* A plain text action, the same shape `.hunkRevert` takes: the card already has
+   one affordance per row and a second bordered control would read as chrome. */
+.toolMore {
+  align-self: flex-start;
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-ui);
+  font-size: var(--sway-text-sm);
+  cursor: pointer;
+}
+
+.toolMore:hover {
+  color: var(--fg-default);
+}
+
 .toolNote {
   color: var(--fg-subtle);
   font-size: var(--sway-text-md);

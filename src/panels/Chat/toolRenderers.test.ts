@@ -13,6 +13,7 @@ const card = (over: Partial<ToolItem> = {}): ToolItem => ({
   title: null,
   input: { command: "git status" },
   state: "ok",
+  outputTruncated: false,
   approval: null,
   output: null,
   files: [],
