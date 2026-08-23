@@ -797,6 +797,11 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
                     ToolStatus::Error
                 },
                 output,
+                // Empty because no ACP agent publishes a diff: measured on
+                // codex-acp 1.2.0 and opencode 1.18.x, a completing update
+                // carries `rawOutput` and nothing patch-shaped. The card falls
+                // back to diffing the call's own arguments.
+                patch: Vec::new(),
                 // Still empty, and Phase 8 measured *why* rather than assuming
                 // it. A diff block does name an absolute path, so this looked
                 // like it could be filled from one - but the sequence

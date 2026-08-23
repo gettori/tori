@@ -1757,6 +1757,13 @@ pub struct TranscriptBlock {
     /// is a call made inside a subagent, and for one whose shape no summariser
     /// claims.
     pub tool_summary: Option<crate::chat::model::ToolSummary>,
+    /// The diff the call measured, read off the same payload as the summary and
+    /// for the same reason: a replayed edit has to draw what the live one drew.
+    /// Empty for every block that is not a write, and it is the *only* source
+    /// that survives a reload, since nothing captures a before-state for a
+    /// session this process never watched run.
+    #[serde(default)]
+    pub tool_patch: Vec<crate::chat::model::PatchHunk>,
     /// Set only on a `compaction` block: how much context the compaction
     /// reclaimed, and whether the user asked for it. `None` for every other
     /// kind, and `None` individually when the transcript did not record that
@@ -1775,17 +1782,17 @@ pub struct TranscriptTurn {
 }
 
 pub(crate) fn text_block(kind: &str, text: String) -> TranscriptBlock {
-    TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, compact_trigger: None, pre_tokens: None, post_tokens: None }
+    TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None }
 }
 
 /// Where the conversation's middle was replaced by a summary. The summary text
 /// itself is the *next* user message, not part of this block.
 pub(crate) fn compaction_block(trigger: Option<String>, pre_tokens: Option<u64>, post_tokens: Option<u64>) -> TranscriptBlock {
-    TranscriptBlock { kind: "compaction".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, compact_trigger: trigger, pre_tokens, post_tokens }
+    TranscriptBlock { kind: "compaction".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: trigger, pre_tokens, post_tokens }
 }
 
 pub(crate) fn tool_call_block(name: String, input: serde_json::Value, tool_use_id: Option<String>) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None, tool_use_id, tool_summary: None, compact_trigger: None, pre_tokens: None, post_tokens: None }
+    TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None, tool_use_id, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None }
 }
 
 pub(crate) fn tool_result_block(
@@ -1794,8 +1801,9 @@ pub(crate) fn tool_result_block(
     is_error: bool,
     tool_use_id: Option<String>,
     tool_summary: Option<crate::chat::model::ToolSummary>,
+    tool_patch: Vec<crate::chat::model::PatchHunk>,
 ) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error), tool_use_id, tool_summary, compact_trigger: None, pre_tokens: None, post_tokens: None }
+    TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error), tool_use_id, tool_summary, tool_patch, compact_trigger: None, pre_tokens: None, post_tokens: None }
 }
 
 /// A tool_result's `content` is either a bare string or an array of text
@@ -2034,10 +2042,12 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                                 // Summarised on the spot, so the payload it was
                                 // read from is dropped with the line instead of
                                 // being carried through the whole replay.
-                                let summary = v
-                                    .get("toolUseResult")
-                                    .and_then(crate::chat::claude::summarise_result);
-                                blocks.push(tool_result_block(None, text, is_error, id, summary));
+                                let payload = v.get("toolUseResult");
+                                let summary = payload.and_then(crate::chat::claude::summarise_result);
+                                let patch = payload
+                                    .map(crate::chat::claude::structured_patch)
+                                    .unwrap_or_default();
+                                blocks.push(tool_result_block(None, text, is_error, id, summary, patch));
                             }
                             _ => {}
                         }

@@ -9,7 +9,11 @@ import type { ToolItem } from "./chatStore";
 // Highlighting is asynchronous and lands in place; every assertion here is
 // about what a body is made of, not what colour it ends up. Stubbed so no test
 // pulls shiki into jsdom.
-vi.mock("./highlight", () => ({ cappedHtml: vi.fn(() => null) }));
+vi.mock("./highlight", () => ({
+  cappedHtml: vi.fn(() => null),
+  cappedLines: vi.fn(() => null),
+  langOfPath: (p: string) => p.split(".").pop() ?? "",
+}));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 
 // Real, but countable: one of the tests below is about how often the output is
@@ -35,6 +39,7 @@ function card(over: Partial<ToolItem> = {}): ToolItem {
     output: null,
     outputTruncated: false,
     summary: null,
+    patch: [],
     state: "ok",
     durationMs: 120,
     approval: null,
@@ -76,7 +81,7 @@ describe("an execute body", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("reads the command as a command, under a prompt the grammar never sees", () => {
-    const { container } = render(() => <ToolInput card={card()} renderer="execute" />);
+    const { container } = render(() => <ToolInput card={card()} renderer="execute" onOpen={() => {}} />);
     expect(container.textContent).toBe("$ ls -la");
     // The command is a block of source; the prompt is the card talking.
     expect(container.querySelector("code")?.textContent).toBe("ls -la");
@@ -140,11 +145,131 @@ describe("a read body", () => {
     expect(container.textContent).toContain("99\tworld");
   });
 
+  // The file is named by the path chip above and the range by the summary on
+  // the row, so printing `{"file_path": ...}` in between is a third copy.
+  it("does not print the arguments a read card already shows twice", () => {
+    const { container } = mountCard(read({ output: "     1\tfirst\n" }));
+    expect(container.textContent).not.toContain("file_path");
+    expect(container.textContent).toContain("first");
+  });
+
+  it("paints the file with the grammar its own name implies", async () => {
+    const { cappedLines } = await import("./highlight");
+    mountCard(read({ output: "     1\tfn main() {}\n" }));
+    expect(vi.mocked(cappedLines).mock.calls.map((c) => c[1])).toContain("rs");
+  });
+
   it("numbers a file that arrived with no gutter from where the summary says", () => {
     const { getByRole } = mountCard(
       read({ output: "fn main() {\n}\n", summary: { type: "read", lines: 2, from: 20, total: 40 } }),
     );
     expect(getByRole("button", { name: "Open at line 21" })).toBeTruthy();
+  });
+});
+
+describe("an edit body", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const edit = (over: Partial<ToolItem> = {}): ToolItem =>
+    card({
+      name: "Edit",
+      toolKind: "edit",
+      input: { file_path: "/repo/a.rs", old_string: "was", new_string: "is" },
+      summary: { type: "edit", added: 1, removed: 1 },
+      output: "The file /repo/a.rs has been updated successfully.",
+      ...over,
+    });
+
+  // The screenshot this replaces: `old_string` and `new_string` beside each
+  // other as escaped JSON, with the change left for the reader to find.
+  it("draws the change instead of printing the arguments", () => {
+    const { container } = mountCard(edit());
+    expect(container.textContent).toContain("was");
+    expect(container.textContent).toContain("is");
+    expect(container.textContent).not.toContain("old_string");
+    // The change is drawn as a diff, not printed as arguments.
+    expect(container.querySelectorAll("[class*=diffRow]").length).toBeGreaterThan(0);
+  });
+
+  // The whole reason the patch is carried on the wire.
+  it("numbers the rows where the transport measured a patch, and says so when it did not", () => {
+    const measured = mountCard(
+      edit({
+        patch: [{ oldStart: 12, oldLines: 1, newStart: 12, newLines: 1, lines: ["-was", "+is"] }],
+      }),
+    );
+    expect(measured.container.textContent).toContain("12");
+    expect(measured.container.textContent).not.toContain("no line numbers");
+
+    const computed = mountCard(edit({ id: "tool-2", toolUseId: "toolu_2" }));
+    expect(computed.container.textContent).toContain("no line numbers");
+  });
+
+  // "The file has been updated successfully" is the diff, said worse.
+  it("drops the answer a successful write gives, and keeps a failure's", () => {
+    expect(mountCard(edit()).container.textContent).not.toContain("updated successfully");
+    const failed = mountCard(edit({ id: "t3", toolUseId: "toolu_3", state: "error", output: "String not found" }));
+    expect(failed.container.textContent).toContain("String not found");
+  });
+
+  // Four hunks used to be four framed panels with four scrollbars, which made
+  // reading one edit an exercise in scrolling.
+  it("draws every hunk in one scrolling block, separated from inside", () => {
+    const { container } = mountCard(
+      edit({
+        patch: [
+          { oldStart: 10, oldLines: 1, newStart: 10, newLines: 2, lines: [" a", "+b"] },
+          { oldStart: 90, oldLines: 1, newStart: 91, newLines: 2, lines: [" c", "+d"] },
+        ],
+      }),
+    );
+    expect(container.querySelectorAll("[class*=toolDiffRows]")).toHaveLength(1);
+    // The transcript's own scroller, not a second native bar per body.
+    expect(container.querySelectorAll("[class*=viewport]").length).toBeGreaterThan(0);
+    // Both `@@` lines live inside that one block.
+    expect(container.querySelectorAll("[class*=diffHunkRow]")).toHaveLength(2);
+    expect(container.textContent).toContain("@@ -10,1 +10,2 @@");
+    expect(container.textContent).toContain("@@ -90,1 +91,2 @@");
+  });
+
+  it("paints the change with the grammar the file's own name implies", async () => {
+    const { cappedLines } = await import("./highlight");
+    mountCard(edit());
+    expect(vi.mocked(cappedLines).mock.calls.map((c) => c[1])).toContain("rs");
+  });
+});
+
+describe("an argument that is a program", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // The MCP case: `{"language":"shell","code":"cd x\nnpx tsc"}` rendered as one
+  // JSON line with `\n` in it is unreadable, and it is the everyday shape.
+  it("gets a block of its own rather than an escaped JSON string", () => {
+    const { container } = render(() => (
+      <ToolInput
+        card={card({ toolKind: "other", input: { language: "shell", code: "cd /repo\nnpx tsc", timeout: 300000 } })}
+        renderer="generic"
+        onOpen={() => {}}
+      />
+    ));
+    expect(container.textContent).toContain("code");
+    // The program itself, on two lines, with no escape in sight.
+    expect(container.textContent).toContain("cd /repo\nnpx tsc");
+    expect(container.textContent).not.toContain("\\n");
+    // What is left over is still JSON, because it still is JSON.
+    expect(container.textContent).toContain("300000");
+  });
+
+  it("paints the block with the language the call itself named", async () => {
+    const { cappedHtml } = await import("./highlight");
+    render(() => (
+      <ToolInput
+        card={card({ toolKind: "other", input: { language: "python", code: "import os\nprint(1)" } })}
+        renderer="generic"
+        onOpen={() => {}}
+      />
+    ));
+    expect(vi.mocked(cappedHtml).mock.calls.map((c) => c[1])).toContain("python");
   });
 });
 

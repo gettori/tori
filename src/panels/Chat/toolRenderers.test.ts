@@ -2,7 +2,15 @@ import { describe, it, expect } from "vitest";
 import events from "../../../dev/fixtures/chat/events.json";
 import { parseChatEvent } from "../../utils/chatTypes";
 import { applyEvent, initialChat, type ToolItem } from "./chatStore";
-import { formatDuration, isEditCall, toolDigest, toolPaths, toolRenderer, toolSummaryText } from "./toolRenderers";
+import {
+  foldEdits,
+  formatDuration,
+  isEditCall,
+  toolDigest,
+  toolPaths,
+  toolRenderer,
+  toolSummaryText,
+} from "./toolRenderers";
 
 const card = (over: Partial<ToolItem> = {}): ToolItem => ({
   kind: "tool",
@@ -19,6 +27,7 @@ const card = (over: Partial<ToolItem> = {}): ToolItem => ({
   approval: null,
   output: null,
   summary: null,
+  patch: [],
   files: [],
   durationMs: null,
   edits: [],
@@ -154,6 +163,47 @@ describe("toolPaths", () => {
       ],
     });
     expect(toolPaths(c)).toEqual(["/a.rs", "/b.rs"]);
+  });
+});
+
+describe("foldEdits", () => {
+  const write = (id: string, path: string, over: Partial<ToolItem> = {}): ToolItem =>
+    card({ id, toolUseId: id, name: "Edit", toolKind: "edit", input: { file_path: path }, state: "ok", ...over });
+
+  it("folds a run of writes to one file onto the first of them", () => {
+    const { followers, hidden } = foldEdits([write("a", "/x.ts"), write("b", "/x.ts"), write("c", "/x.ts")]);
+    expect(followers.get("a")?.map((c) => c.id)).toEqual(["b", "c"]);
+    expect([...hidden]).toEqual(["b", "c"]);
+  });
+
+  it("keeps writes to different files apart", () => {
+    const { followers, hidden } = foldEdits([write("a", "/x.ts"), write("b", "/y.ts")]);
+    expect(followers.size).toBe(0);
+    expect(hidden.size).toBe(0);
+  });
+
+  // The run has to be adjacent, or a card would fold into one it does not sit
+  // beside and the transcript would stop reading in order.
+  it("ends a run at anything that is not a write to the same file", () => {
+    const between = card({ id: "r", toolUseId: "r", name: "Read", toolKind: "read" });
+    const { followers, hidden } = foldEdits([write("a", "/x.ts"), between, write("b", "/x.ts")]);
+    expect(followers.size).toBe(0);
+    expect(hidden.size).toBe(0);
+  });
+
+  // Approving is per call, and so is failing: neither may be hidden behind
+  // another card.
+  it("never folds a call that is still waiting, or one that did not succeed", () => {
+    const blocked = write("b", "/x.ts", { state: "awaitingApproval", approval: null });
+    const failed = write("c", "/x.ts", { state: "error" });
+    const { hidden } = foldEdits([write("a", "/x.ts"), blocked, failed]);
+    expect(hidden.size).toBe(0);
+  });
+
+  it("leaves a transcript with no writes in it completely alone", () => {
+    const { followers, hidden } = foldEdits([card({ id: "x", toolUseId: "x" })]);
+    expect(followers.size).toBe(0);
+    expect(hidden.size).toBe(0);
   });
 });
 

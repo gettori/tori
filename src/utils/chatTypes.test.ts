@@ -312,6 +312,24 @@ describe("chatTypes mirrors the Rust chat model", () => {
     }
   });
 
+  // And for the diff an expanded card is about to draw. Same reason as the
+  // question and the summary: `toolCallCompleted`'s own key list stops at
+  // `patch`, so nothing above this looks inside a hunk.
+  it("agrees with Rust on every field name inside a patch hunk", () => {
+    const sorted = (o: object) => Object.keys(o).sort();
+    const done = (goldenEvents as ChatEvent[]).find((e) => e.type === "toolCallCompleted");
+    expect(done?.type).toBe("toolCallCompleted");
+    if (done?.type !== "toolCallCompleted") return;
+
+    expect(done.patch.length).toBeGreaterThan(0);
+    for (const hunk of done.patch) {
+      expect(sorted(hunk)).toEqual([...CHAT_NESTED_KEYS.patchHunk].sort());
+      // The markers ride on the lines rather than in a parallel array, which is
+      // what lets one row type serve a measured patch and a computed one.
+      expect(hunk.lines.every((l) => typeof l === "string")).toBe(true);
+    }
+  });
+
   // The same nested check, for the summary a collapsed row is about to read.
   //
   // `toolCallCompleted`'s own key list stops at `summary`, so nothing above

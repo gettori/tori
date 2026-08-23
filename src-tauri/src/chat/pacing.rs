@@ -463,6 +463,7 @@ mod tests {
             duration_ms: None,
             summary: None,
             output_truncated: false,
+            patch: Vec::new(),
         };
         pacer.deliver(done.clone());
         assert_eq!(seen.events(), vec![done]);
