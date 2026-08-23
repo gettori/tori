@@ -1680,6 +1680,10 @@ mod tests {
             "two-turns",
             "bash-call",
             "edit-call",
+            "read-call",
+            "glob-call",
+            "grep-modes",
+            "webfetch-call",
             "interrupt",
             "hook-denied",
             "image-turn",
@@ -2704,5 +2708,362 @@ mod tests {
     fn a_mode_this_build_does_not_know_is_carried_not_downgraded() {
         assert_eq!(permission_mode(Some("dontAsk")).as_str(), "dontAsk");
         assert_eq!(permission_mode(Some("newModeInV3")).as_str(), "newModeInV3");
+    }
+
+    // -----------------------------------------------------------------------
+    // What `tool_use_result` actually holds, per tool
+    // -----------------------------------------------------------------------
+    //
+    // Phase 3 summarises a finished call from this payload rather than by
+    // parsing the prose beside it, so what each tool puts there is a
+    // *measurement* the corpus has to keep taking. Captured against claude
+    // 2.1.241 by `dev/protocol-probe.mjs`; the surprise was that there is no
+    // text-only successful tool in the corpus at all, so the fallback parser
+    // the plan reserved for them has nothing to fall back for.
+    //
+    // Two shapes are not objects, and both matter more than the happy path:
+    // a call that failed or was refused answers with a bare **string**, and a
+    // tool call made *inside a subagent* carries no `tool_use_result` at all.
+
+    /// What a tool answers with, as measured.
+    #[derive(Debug, Clone, Copy)]
+    enum ResultShape {
+        /// A JSON object. The listed paths are the ones a summary will read,
+        /// dotted for nesting, so a CLI that drops one fails here rather than
+        /// rendering a blank row months later.
+        Structured(&'static [&'static str]),
+        /// A bare string where an object sits on the success path. Measured
+        /// only on calls that failed, were denied, or were never answered.
+        ErrorText,
+        /// No `tool_use_result` key on the frame whatsoever.
+        Absent,
+    }
+
+    /// One row per (fixture, tool, `output_mode`). `mode` is empty for tools
+    /// that have none; `Grep` is the one tool whose result shape follows its
+    /// mode rather than its name, which is why the key is a triple.
+    const RESULT_SHAPES: &[(&str, &str, &str, ResultShape)] = &[
+        // Execute. Note what is NOT here: no exit code, on either the result or
+        // the frame. `ToolSummary::Execute` can only ever carry `None` for it
+        // over this transport, and `interrupted` plus `is_error` are the whole
+        // verdict available.
+        (
+            "bash-call",
+            "Bash",
+            "",
+            ResultShape::Structured(&["stdout", "stderr", "interrupted"]),
+        ),
+        (
+            "permission-coverage",
+            "Bash",
+            "",
+            ResultShape::Structured(&["stdout", "stderr", "interrupted"]),
+        ),
+        // Read. Its target sits under `file.filePath`, the same spelling a
+        // write uses at the top level, which is why `READ_ONLY_TOOLS` keys the
+        // exclusion off the call's name and not the result's shape.
+        (
+            "read-call",
+            "Read",
+            "",
+            ResultShape::Structured(&[
+                "file.filePath",
+                "file.content",
+                "file.numLines",
+                "file.startLine",
+                "file.totalLines",
+            ]),
+        ),
+        (
+            "edit-call",
+            "Read",
+            "",
+            ResultShape::Structured(&[
+                "file.filePath",
+                "file.content",
+                "file.numLines",
+                "file.startLine",
+                "file.totalLines",
+            ]),
+        ),
+        (
+            "hook-matcher",
+            "Read",
+            "",
+            ResultShape::Structured(&[
+                "file.filePath",
+                "file.content",
+                "file.numLines",
+                "file.startLine",
+                "file.totalLines",
+            ]),
+        ),
+        (
+            "permission-coverage",
+            "Read",
+            "",
+            ResultShape::Structured(&[
+                "file.filePath",
+                "file.content",
+                "file.numLines",
+                "file.startLine",
+                "file.totalLines",
+            ]),
+        ),
+        // Edits and writes both answer with a `structuredPatch`, so an
+        // added/removed count is counted off the hunks rather than diffed here.
+        (
+            "edit-call",
+            "Edit",
+            "",
+            ResultShape::Structured(&["filePath", "structuredPatch"]),
+        ),
+        (
+            "hook-matcher",
+            "Edit",
+            "",
+            ResultShape::Structured(&["filePath", "structuredPatch"]),
+        ),
+        (
+            "hook-matcher",
+            "Write",
+            "",
+            ResultShape::Structured(&["filePath", "structuredPatch"]),
+        ),
+        (
+            "permission-coverage",
+            "Write",
+            "",
+            ResultShape::Structured(&["filePath", "structuredPatch"]),
+        ),
+        (
+            "permission-grant",
+            "Write",
+            "",
+            ResultShape::Structured(&["filePath", "structuredPatch"]),
+        ),
+        // Paths. `numFiles` is the count the row reports; `truncated` says
+        // whether it is the whole answer.
+        (
+            "glob-call",
+            "Glob",
+            "",
+            ResultShape::Structured(&["filenames", "numFiles", "truncated"]),
+        ),
+        // Search, three ways. `content` mode leaves `filenames` EMPTY and puts
+        // the hits in `content`, `files_with_matches` fills `filenames` and
+        // has no hit count at all, and `count` reports `numMatches` and no
+        // `numLines`. One tool name, three payloads: the summary variant has
+        // to be chosen by the payload, never by the name.
+        (
+            "grep-modes",
+            "Grep",
+            "content",
+            ResultShape::Structured(&["mode", "numFiles", "numLines", "content"]),
+        ),
+        (
+            "grep-modes",
+            "Grep",
+            "files_with_matches",
+            ResultShape::Structured(&["mode", "filenames", "numFiles"]),
+        ),
+        (
+            "grep-modes",
+            "Grep",
+            "count",
+            ResultShape::Structured(&["mode", "numFiles", "numMatches", "content"]),
+        ),
+        // Fetch. `result` is the model's answer about the page, not the page,
+        // so only `url`, `code` and `bytes` describe the fetch itself.
+        (
+            "webfetch-call",
+            "WebFetch",
+            "",
+            ResultShape::Structured(&["url", "code", "bytes", "result"]),
+        ),
+        // A subagent, from outside. The enclosing call answers richly even
+        // though the calls it made inside it do not - see the `Absent` row.
+        (
+            "permission-subagent",
+            "Agent",
+            "",
+            ResultShape::Structured(&["status", "agentType", "totalToolUseCount"]),
+        ),
+        // The three non-object shapes.
+        //
+        // A refused, denied or unanswered call answers with a bare string, so
+        // a summariser that assumes an object has to return `None` here rather
+        // than unwrap. `AskUserQuestion` is the sharp one: Sway answers it *by
+        // denying it*, which makes this the shape of the app's own success.
+        ("ask-user-question", "AskUserQuestion", "", ResultShape::ErrorText),
+        ("hook-denied", "Bash", "", ResultShape::ErrorText),
+        ("permission-deadline", "Write", "", ResultShape::ErrorText),
+        // A tool called INSIDE a subagent. The frame carries
+        // `parent_tool_use_id` and no result payload at all, so a nested call
+        // can never be summarised and its row stays bare. Asserted so that a
+        // CLI which starts sending one is noticed rather than silently
+        // improving nothing.
+        ("permission-subagent", "Write", "", ResultShape::Absent),
+    ];
+
+    /// Walk a dotted path into a value, so `file.numLines` reads one level in.
+    fn dotted<'a>(v: &'a Value, path: &str) -> Option<&'a Value> {
+        path.split('.').try_fold(v, |acc, seg| acc.get(seg))
+    }
+
+    /// Every `tool_result` in a fixture, paired with the call it answers.
+    fn tool_results(name: &str) -> Vec<(String, String, Option<Value>, bool)> {
+        let mut calls: HashMap<String, (String, String)> = HashMap::new();
+        let mut out = Vec::new();
+        for frame in fixture(name) {
+            let content = frame["message"]["content"].as_array().cloned().unwrap_or_default();
+            match frame["type"].as_str() {
+                Some("assistant") => {
+                    for c in content.iter().filter(|c| c["type"] == "tool_use") {
+                        calls.insert(
+                            c["id"].as_str().unwrap_or_default().to_string(),
+                            (
+                                c["name"].as_str().unwrap_or_default().to_string(),
+                                c["input"]["output_mode"].as_str().unwrap_or_default().to_string(),
+                            ),
+                        );
+                    }
+                }
+                Some("user") => {
+                    for c in content.iter().filter(|c| c["type"] == "tool_result") {
+                        let id = c["tool_use_id"].as_str().unwrap_or_default();
+                        let (tool, mode) = calls.get(id).cloned().unwrap_or_default();
+                        // `get` rather than indexing: indexing a missing key
+                        // yields `Null`, which is indistinguishable from a
+                        // payload that really is null, and the absence is one
+                        // of the three shapes this table records.
+                        out.push((
+                            tool,
+                            mode,
+                            frame.get("tool_use_result").cloned(),
+                            c["is_error"].as_bool().unwrap_or(false),
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// The corpus is the contract for the payload as much as for the frame
+    /// kinds, and a vocabulary check cannot see inside a frame. Every observed
+    /// result must have a row, and every row must be observed - so a new tool
+    /// shape cannot arrive unrecorded, and a fixture cannot quietly stop
+    /// containing the thing it was captured for.
+    #[test]
+    fn every_captured_tool_result_matches_its_measured_shape() {
+        let mut seen: HashMap<(&str, &str, &str), usize> = HashMap::new();
+        for &(fixture_name, tool, mode, _) in RESULT_SHAPES {
+            seen.insert((fixture_name, tool, mode), 0);
+        }
+
+        // Sorted before dedup, deliberately: `dedup` only collapses *adjacent*
+        // duplicates, and one fixture legitimately holds several tools whose
+        // rows are not next to each other in the table.
+        let mut fixtures: Vec<&str> = RESULT_SHAPES.iter().map(|r| r.0).collect();
+        fixtures.sort_unstable();
+        fixtures.dedup();
+        for fixture_name in fixtures {
+            for (tool, mode, result, is_error) in tool_results(fixture_name) {
+                let row = RESULT_SHAPES
+                    .iter()
+                    .find(|(f, t, m, _)| *f == fixture_name && *t == tool && *m == mode);
+                let Some((_, row_tool, row_mode, shape)) = row else {
+                    panic!(
+                        "{fixture_name}: {tool}{} answered with an unrecorded result shape; \
+                         add a row to RESULT_SHAPES saying what it carries",
+                        if mode.is_empty() { String::new() } else { format!(" ({mode})") }
+                    );
+                };
+                *seen.get_mut(&(fixture_name, row_tool, row_mode)).unwrap() += 1;
+
+                match shape {
+                    ResultShape::Structured(paths) => {
+                        let obj = result.as_ref().unwrap_or_else(|| {
+                            panic!("{fixture_name}: {tool} lost its tool_use_result entirely")
+                        });
+                        assert!(
+                            obj.is_object(),
+                            "{fixture_name}: {tool} answered with {obj:?}, not an object"
+                        );
+                        assert!(!is_error, "{fixture_name}: {tool} was captured as an error");
+                        for path in *paths {
+                            assert!(
+                                dotted(obj, path).is_some_and(|v| !v.is_null()),
+                                "{fixture_name}: {tool}'s result no longer carries `{path}`, \
+                                 which a tool summary reads"
+                            );
+                        }
+                    }
+                    ResultShape::ErrorText => {
+                        let v = result.as_ref().unwrap_or_else(|| {
+                            panic!("{fixture_name}: {tool} lost its tool_use_result entirely")
+                        });
+                        assert!(
+                            v.is_string(),
+                            "{fixture_name}: {tool} now answers with {v:?} rather than a bare \
+                             string; a summariser may stop returning None for it"
+                        );
+                        assert!(
+                            is_error,
+                            "{fixture_name}: {tool} carries a string result on a call that did \
+                             not fail, so the string is no longer the error shape"
+                        );
+                    }
+                    ResultShape::Absent => assert!(
+                        result.is_none(),
+                        "{fixture_name}: {tool} now carries a tool_use_result ({result:?}); a \
+                         nested subagent call can be summarised after all"
+                    ),
+                }
+            }
+        }
+
+        let unobserved: Vec<_> = seen.iter().filter(|(_, n)| **n == 0).map(|(k, _)| *k).collect();
+        assert!(
+            unobserved.is_empty(),
+            "these rows describe a call the fixture no longer contains, so they assert nothing: \
+             {unobserved:?}"
+        );
+    }
+
+    /// The four fixtures captured for their payload rather than their frame
+    /// kinds. Parsing is asserted by `fixture()` itself, which panics on a bad
+    /// line; what this adds is that each one really holds a finished call, so
+    /// an empty or turn-less capture cannot pass as a measurement.
+    ///
+    /// A floor rather than an exact count, deliberately: a recapture in which
+    /// the model read one extra file is not the CLI drifting, and pinning the
+    /// number here would fail on model discretion - the thing the corpus is
+    /// built set-and-grammar-wise to avoid. An *unrecorded* shape is still
+    /// caught, by `RESULT_SHAPES` having no row for it.
+    #[test]
+    fn the_result_shape_fixtures_each_hold_a_completed_tool_call() {
+        for (name, least) in [
+            ("read-call", 1),
+            ("glob-call", 1),
+            ("grep-modes", 3),
+            ("webfetch-call", 1),
+        ] {
+            let results = tool_results(name);
+            assert!(
+                results.len() >= least,
+                "{name} holds {} tool results, fewer than the {least} it was captured for",
+                results.len()
+            );
+            let events = run(name);
+            assert!(
+                events
+                    .iter()
+                    .any(|e| matches!(e, ChatEvent::ToolCallCompleted { .. })),
+                "{name} produced no ToolCallCompleted"
+            );
+        }
     }
 }
