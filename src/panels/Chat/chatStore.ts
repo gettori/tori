@@ -115,6 +115,9 @@ export type ToolItem = {
    *  session-scoped on the wire and can materialize the card first. */
   turnId: string | null;
   name: string | null;
+  /** The agent's own prose for the call, when it sent any. ACP fills this and
+   *  Claude does not, whose `name` is already the human-readable thing. */
+  title: string | null;
   input: unknown;
   state: ToolCardState;
   approval: PendingApproval | null;
@@ -531,6 +534,7 @@ function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): Too
     toolUseId,
     turnId,
     name: null,
+    title: null,
     input: null,
     state: "running",
     approval: null,
@@ -930,8 +934,14 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
         }
       }
       const card = ensureTool(s, ev.toolUseId, ev.turnId);
-      card.name = ev.name;
-      card.input = ev.input;
+      // Merged, not replaced. `toolCallStarted` is an upsert and a later
+      // emission carries only what that frame said, so an empty name or a null
+      // input is the transport declining to speak about the field. Assigning
+      // them anyway would blank a card that an ACP `tool_call_update` merely
+      // described.
+      if (ev.name) card.name = ev.name;
+      if (ev.title) card.title = ev.title;
+      if (ev.input !== null && ev.input !== undefined) card.input = ev.input;
       // Never walk a card backwards: the completion (or a pending approval) can
       // legitimately have landed before the declaration.
       if (card.state === "running" && card.approval) card.state = "awaitingApproval";

@@ -211,7 +211,7 @@ impl Pacer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat::model::{ToolStatus, TurnOutcome, Usage};
+    use crate::chat::model::{ToolKind, ToolStatus, TurnOutcome, Usage};
     use crate::chat::transport::new_sink;
 
     /// A clock a test steps by hand.
@@ -361,6 +361,9 @@ mod tests {
             tool_use_id: "tu1".into(),
             name: "Read".into(),
             input: serde_json::json!({}),
+            kind: ToolKind::Read,
+            locations: vec![],
+            title: None,
         };
         pacer.deliver(started.clone());
 
@@ -458,6 +461,8 @@ mod tests {
             output: None,
             files: vec!["src/main.rs".into()],
             duration_ms: None,
+            summary: None,
+            output_truncated: false,
         };
         pacer.deliver(done.clone());
         assert_eq!(seen.events(), vec![done]);

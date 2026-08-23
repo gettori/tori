@@ -115,6 +115,84 @@ pub enum ToolStatus {
     Denied,
 }
 
+/// What a tool call is *doing*, in a vocabulary both transports can fill.
+///
+/// These are ACP's own `ToolKind` variants rather than a set invented here.
+/// Adopting a published, versioned vocabulary means the ACP adapter passes its
+/// agent's answer straight through, and the Claude adapter maps onto the same
+/// words instead of every renderer keying off Claude's tool names. It is also
+/// what lets a card be chosen by what a call *is* rather than by what it is
+/// called, which matters most for the agents whose tool names are prose.
+///
+/// Unlike [`PermissionMode`], an unrecognised kind is **not** carried through
+/// verbatim: it folds into `Other`. The difference is what the unknown value
+/// would be used for. An unknown permission mode had to be reported as itself,
+/// because collapsing it announced the strictest mode for a session running the
+/// most permissive one. A kind only picks a card, `Other` is the generic card
+/// that every call renders as today, and the agent's own words for the call
+/// survive on `name` and `title` either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolKind {
+    Read,
+    Edit,
+    Delete,
+    Move,
+    Search,
+    Execute,
+    Think,
+    Fetch,
+    SwitchMode,
+    /// The escape hatch, and the default. A kind this build has not heard of
+    /// lands here rather than failing to parse the whole event.
+    #[default]
+    #[serde(other)]
+    Other,
+}
+
+/// A file a tool call reached for, and the line it cared about.
+///
+/// ACP publishes these so a client can follow along; Claude has no equivalent
+/// field and fills it from the call's own arguments. Kept separate from
+/// `ToolCallCompleted::files`, which is narrower on purpose: that one is only
+/// the paths a call **wrote**, and per-turn attribution depends on it staying
+/// that way.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolLocation {
+    pub path: String,
+    #[serde(default)]
+    pub line: Option<u32>,
+}
+
+/// What a finished tool call actually did, in numbers a collapsed row can say.
+///
+/// The variant is chosen by the **payload**, never by the tool's name. Claude's
+/// `Grep` is the reason: measured, its result shape follows its `output_mode`,
+/// so one tool name answers with hits, with paths, or with a count, and a
+/// renderer keyed on the name would render the wrong body for two of the three.
+/// `Paths` exists for the same reason, since ACP has no kind that distinguishes
+/// a path list from a hit list.
+///
+/// Every field is filled in Phase 3; this phase only puts the vocabulary on the
+/// wire, so the adapters still send `None`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum ToolSummary {
+    /// A search that reports what it matched.
+    Search { hits: u64, files: u64 },
+    /// A search or glob that reports only which files matched.
+    Paths { count: u64 },
+    Read { lines: u64, from: u64, to: u64 },
+    /// `exit_code` is `Option` because Claude does not report one at all:
+    /// measured on 2.1.241, `Bash`'s result carries no exit status on the
+    /// result or on the frame, so `interrupted` plus the call's error status is
+    /// the whole verdict available over that transport.
+    Execute { exit_code: Option<i32>, lines: u64 },
+    Edit { added: u64, removed: u64 },
+    Fetch { host: String },
+}
+
 /// What a tool did to a file, for the edit cards and the diff gutter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -838,12 +916,32 @@ pub enum ChatEvent {
     /// Measured on the Claude transport: exactly two emissions per call, `{}`
     /// then the parsed input. Appending instead of upserting renders two cards
     /// per tool call.
+    ///
+    /// **An empty field means "unchanged", never "cleared".** A later emission
+    /// carries only what that frame actually said, so a consumer merges rather
+    /// than replaces: a null `input`, an empty `name` or an empty `locations`
+    /// is the transport declining to speak about that field. ACP is where this
+    /// bites, since a `tool_call_update` may describe a call's kind or
+    /// locations while saying nothing about its arguments.
     ToolCallStarted {
         session_id: String,
         turn_id: String,
         tool_use_id: String,
+        /// A short token for the call, meant to be rendered in mono. Claude
+        /// sends its tool name; ACP has no such field, so the adapter puts the
+        /// kind's canonical spelling here and the agent's prose in `title`.
         name: String,
         input: serde_json::Value,
+        /// Defaulted rather than required, so an event serialized before this
+        /// field existed still reads back as the generic card it rendered as.
+        #[serde(default)]
+        kind: ToolKind,
+        #[serde(default)]
+        locations: Vec<ToolLocation>,
+        /// The agent's own prose for the call, when it has any. `None` on
+        /// Claude, whose `name` is already the human-readable thing.
+        #[serde(default)]
+        title: Option<String>,
     },
 
     /// Streaming arguments for a call whose input is still arriving, so a card
@@ -870,6 +968,16 @@ pub enum ChatEvent {
         files: Vec<String>,
         #[serde(default)]
         duration_ms: Option<u64>,
+        /// What the call did, for the collapsed row. `None` whenever the
+        /// result's shape was not recognised, which is deliberately common: a
+        /// row with no summary reads exactly as it does today, and a wrong
+        /// number would be worse than no number.
+        #[serde(default)]
+        summary: Option<ToolSummary>,
+        /// `output` was cut to fit the wire, and the full text is fetched on
+        /// demand instead. Set by the adapter that did the cutting.
+        #[serde(default)]
+        output_truncated: bool,
     },
 
     /// A file was written, with the before-state addressed by content hash so
@@ -1236,6 +1344,11 @@ mod tests {
                 tool_use_id: "toolu_1".into(),
                 name: "Bash".into(),
                 input: serde_json::json!({ "command": "echo hi" }),
+                kind: ToolKind::Execute,
+                locations: vec![ToolLocation { path: "/tmp/w/probe.txt".into(), line: Some(12) }],
+                // Filled rather than `None`, so a mirror that dropped the field
+                // fails on the sample instead of agreeing with it by accident.
+                title: Some("Running echo hi".into()),
             },
             ChatEvent::ToolCallProgress {
                 session_id: "s1".into(),
@@ -1251,6 +1364,12 @@ mod tests {
                 output: Some("hi".into()),
                 files: vec!["/tmp/w/probe.txt".into()],
                 duration_ms: Some(42),
+                // `None` on purpose: the adapters do not summarise yet, and the
+                // absent case is the one every consumer has to keep rendering.
+                // The filled variants get their own corpus, see
+                // `every_tool_summary`.
+                summary: None,
+                output_truncated: false,
             },
             ChatEvent::FileEdit {
                 session_id: "s1".into(),
@@ -1596,6 +1715,67 @@ mod tests {
         }
     }
 
+    /// One sample per `ToolSummary` variant.
+    ///
+    /// A corpus of its own rather than more `ChatEvent` samples, because
+    /// `every_event` holds exactly one sample per event variant and six more
+    /// `ToolCallCompleted`s would break that. The TypeScript mirror walks this
+    /// file to check the field names inside each variant, which is the only
+    /// place they are checked: an event's own key list stops at `summary`.
+    fn every_tool_summary() -> Vec<ToolSummary> {
+        vec![
+            ToolSummary::Search { hits: 12, files: 3 },
+            ToolSummary::Paths { count: 7 },
+            ToolSummary::Read { lines: 40, from: 1, to: 40 },
+            // `Some` here and `None` asserted in the mirror's own test: the
+            // absent exit code is Claude's permanent answer, so the sample
+            // carries the shape that has to survive a round trip.
+            ToolSummary::Execute { exit_code: Some(0), lines: 118 },
+            ToolSummary::Edit { added: 4, removed: 2 },
+            ToolSummary::Fetch { host: "example.com".into() },
+        ]
+    }
+
+    #[test]
+    fn every_tool_summary_variant_round_trips() {
+        for summary in every_tool_summary() {
+            let json = serde_json::to_string(&summary).expect("serialize");
+            let back: ToolSummary =
+                serde_json::from_str(&json).unwrap_or_else(|e| panic!("deserialize {json}: {e}"));
+            assert_eq!(summary, back, "round trip changed the value: {json}");
+        }
+    }
+
+    /// Exhaustive, so a variant added without a sample fails to compile here
+    /// rather than reaching the TypeScript mirror untested.
+    #[test]
+    fn variant_list_covers_every_tool_summary() {
+        let all = every_tool_summary();
+        for summary in &all {
+            let _name = match summary {
+                ToolSummary::Search { .. } => "search",
+                ToolSummary::Paths { .. } => "paths",
+                ToolSummary::Read { .. } => "read",
+                ToolSummary::Execute { .. } => "execute",
+                ToolSummary::Edit { .. } => "edit",
+                ToolSummary::Fetch { .. } => "fetch",
+            };
+        }
+        assert_eq!(all.len(), 6, "every_tool_summary() must hold exactly one sample per variant");
+    }
+
+    /// An unknown kind folds into `Other` rather than failing the whole event.
+    /// This is the property the ACP adapter leans on: an agent may send a kind
+    /// from a newer spec than this build knows.
+    #[test]
+    fn a_tool_kind_this_build_does_not_know_becomes_other() {
+        assert_eq!(
+            serde_json::from_str::<ToolKind>("\"somethingNewInV3\"").expect("parses"),
+            ToolKind::Other
+        );
+        assert_eq!(serde_json::from_str::<ToolKind>("\"switchMode\"").expect("parses"), ToolKind::SwitchMode);
+    }
+
     /// The round-trip tests above only cover the variants `every_event` lists,
     /// so a variant added without a sample would be silently untested. This
     /// `match` is exhaustive, so adding one to `ChatEvent` fails to compile
@@ -1685,8 +1865,10 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("create fixture dir");
         let events = serde_json::to_string_pretty(&every_event()).expect("serialize events");
         let commands = serde_json::to_string_pretty(&every_command()).expect("serialize commands");
+        let summaries = serde_json::to_string_pretty(&every_tool_summary()).expect("serialize summaries");
         std::fs::write(dir.join("events.json"), format!("{events}\n")).expect("write events");
         std::fs::write(dir.join("commands.json"), format!("{commands}\n")).expect("write commands");
+        std::fs::write(dir.join("toolSummaries.json"), format!("{summaries}\n")).expect("write summaries");
     }
 
     /// Agent-specific data must survive the round trip untouched, since the

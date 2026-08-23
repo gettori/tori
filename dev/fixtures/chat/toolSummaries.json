@@ -1,0 +1,31 @@
+[
+  {
+    "type": "search",
+    "hits": 12,
+    "files": 3
+  },
+  {
+    "type": "paths",
+    "count": 7
+  },
+  {
+    "type": "read",
+    "lines": 40,
+    "from": 1,
+    "to": 40
+  },
+  {
+    "type": "execute",
+    "exitCode": 0,
+    "lines": 118
+  },
+  {
+    "type": "edit",
+    "added": 4,
+    "removed": 2
+  },
+  {
+    "type": "fetch",
+    "host": "example.com"
+  }
+]
