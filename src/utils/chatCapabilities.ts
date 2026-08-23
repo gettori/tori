@@ -91,6 +91,21 @@ export type ApprovalTier = "none" | "sway-hook" | "in-protocol";
  */
 export type DiffTier = "none" | "agent-supplied" | "before-state";
 
+/**
+ * Where a reopened session's earlier turns come from.
+ *
+ * `transcript`: the agent wrote a file Sway reads, so history lands through
+ * `chat_history` before the child says anything.
+ *
+ * `session-replay`: the agent has no file Sway can read (`transcript_path`
+ * returns `None` for every ACP adapter) and re-sends the conversation as
+ * ordinary `session/update` notifications while it opens the session. That
+ * history therefore arrives on the *live* channel, and a consumer that does not
+ * know it re-fires every side effect a live turn has - a spinner for a turn
+ * that ended yesterday, a git gutter lit up by another session's edits.
+ */
+export type HistorySource = "transcript" | "session-replay";
+
 export type ChatTier = {
   rewind: RewindTier;
   steer: SteerTier;
@@ -111,6 +126,10 @@ export type ChatTier = {
   /** Where a tool card's before-and-after comes from, or `none` when it has
    *  nowhere to come from. See [`DiffTier`] for why this is not a boolean. */
   diffs: DiffTier;
+  /** Stated per transport rather than inferred, because the failure is silent:
+   *  a transport whose history arrives live and is read as live looks busy
+   *  forever. See [`HistorySource`]. */
+  historySource: HistorySource;
   /** A spend ceiling can stop this chat. Needs nothing from the agent: it is
    *  Sway declining to open the next turn. */
   spendCeilings: boolean;
@@ -155,6 +174,9 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // `can_use_tool` control request, which is the question Sway now renders.
     approvals: "in-protocol",
     diffs: "before-state",
+    // The CLI writes a per-session `.jsonl` and `chat_history` reads it, so
+    // history has landed before the child is asked for anything.
+    historySource: "transcript",
     spendCeilings: true,
     // Nothing missing, so nothing to explain.
     gaps: {},
@@ -189,6 +211,11 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // sends none, which is why this is not `before-state` either - an ACP
     // session gets an exact diff exactly when its agent supplies one.
     diffs: "agent-supplied",
+    // `sessions.rs::transcript_path` returns `None` for every ACP adapter: the
+    // store is the agent's own. So a reopened conversation arrives as the
+    // `session/update` notifications `session/load` replays, on the same
+    // channel a running turn uses.
+    historySource: "session-replay",
     // **Not because it rides the hook** - Phase 2 moved ceilings to the turn
     // boundary, where they need nothing from the agent. Because ACP reports no
     // *cost*: `session/update`'s usage carries context occupancy (`used` of
@@ -215,6 +242,9 @@ export const NO_CHAT_TIER: ChatTier = {
   steerCost: null,
   approvals: "none",
   diffs: "none",
+  // No chat channel to replay onto, so the transcript reader is the only way in
+  // and the answer is the same one it gives for an agent with no file: nothing.
+  historySource: "transcript",
   // A PTY tab's turns are not Sway's to open, so there is no boundary to hold.
   spendCeilings: false,
   // Deliberately empty. Explaining five absences one by one would be five ways
