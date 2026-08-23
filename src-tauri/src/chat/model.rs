@@ -216,21 +216,25 @@ pub enum ToolSummary {
 /// would otherwise sit in memory for the life of the session.
 pub const TOOL_OUTPUT_CAP: usize = 64 * 1024;
 
-/// Cut a tool's output to [`TOOL_OUTPUT_CAP`], reporting whether it had to.
+/// The extract of a tool's output that fits [`TOOL_OUTPUT_CAP`], or `None` when
+/// the whole thing already does.
+///
+/// Borrows and returns an `Option` rather than consuming and returning a pair,
+/// so the common case allocates nothing and the caller keeps the original to
+/// put somewhere: the one place that cuts also has to hold on to what it cut.
 ///
 /// Cuts on a character boundary, since the cap is in bytes and the output is
 /// not: slicing mid-codepoint would panic on exactly the outputs most worth
-/// capping. Callers that must not cut (a question's answer record is the
-/// measured one) do not call this at all rather than passing a flag.
-pub fn cap_output(text: String) -> (String, bool) {
+/// capping.
+pub fn cap_output(text: &str) -> Option<String> {
     if text.len() <= TOOL_OUTPUT_CAP {
-        return (text, false);
+        return None;
     }
     let mut end = TOOL_OUTPUT_CAP;
     while end > 0 && !text.is_char_boundary(end) {
         end -= 1;
     }
-    (text[..end].to_string(), true)
+    Some(text[..end].to_string())
 }
 
 /// What a tool did to a file, for the edit cards and the diff gutter.
@@ -1743,6 +1747,26 @@ mod tests {
         let model: ChatModelInfo = serde_json::from_str(stored).expect("an older cache still deserializes");
         assert_eq!(model.supported_effort_levels, ["low", "high"]);
         assert!(model.effort_levels.is_empty(), "absent, so the reader falls back to the published list");
+    }
+
+    /// The cap is in bytes and the text is not, so the cut lands on a character
+    /// boundary rather than panicking on exactly the multi-byte outputs most
+    /// worth capping.
+    #[test]
+    fn the_cap_never_splits_a_character() {
+        // Three bytes each, so the cap falls mid-character.
+        let text = "\u{4f60}".repeat(TOOL_OUTPUT_CAP);
+        let cut = cap_output(&text).expect("well over the cap");
+        assert!(cut.len() <= TOOL_OUTPUT_CAP);
+        assert!(cut.chars().all(|c| c == '\u{4f60}'), "cut mid-character");
+    }
+
+    /// Text that fits yields no extract at all, so the caller keeps the string
+    /// it already had. The equal-to-cap case is the boundary the `<=` is for.
+    #[test]
+    fn text_that_fits_is_not_cut() {
+        assert_eq!(cap_output(&"x".repeat(TOOL_OUTPUT_CAP)), None);
+        assert_eq!(cap_output(""), None);
     }
 
     #[test]

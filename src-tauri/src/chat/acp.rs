@@ -24,7 +24,7 @@ use agent_client_protocol::schema::v1::{
 
 use super::model;
 use super::model::{
-    cap_output, ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel,
+    ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel,
     ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, FileEditKind, PermissionSuggestion,
     PlanItem, PlanItemStatus, ToolLocation, ToolStatus, ToolSummary, TurnOutcome, Usage,
 };
@@ -773,13 +773,20 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
     };
     match status {
         ToolCallStatus::Completed | ToolCallStatus::Failed => {
-            let (output, output_truncated) = match update.fields.raw_output.as_ref() {
-                Some(v) if !v.is_null() => {
-                    let (text, cut) = cap_output(v.to_string());
-                    (Some(text), cut)
-                }
-                _ => (None, false),
-            };
+            // Whole, and cut by the host on its way past: the cache that keeps
+            // the rest lives there, so an adapter that cut here would have
+            // thrown away what a card later asks for.
+            //
+            // A JSON `null` is the agent saying there was no output, not an
+            // output whose text is "null" - which is what `Value::to_string`
+            // would have made of it, and what a card would then have rendered
+            // as the call's answer.
+            let output = update
+                .fields
+                .raw_output
+                .as_ref()
+                .filter(|v| !v.is_null())
+                .map(|v| v.to_string());
             vec![ChatEvent::ToolCallCompleted {
                 session_id: session_id.to_string(),
                 turn_id: turn_id.to_string(),
@@ -789,10 +796,6 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
                 } else {
                     ToolStatus::Error
                 },
-                // A JSON `null` is the agent saying there was no output, not
-                // an output whose text is "null" - which is what
-                // `Value::to_string` would have made of it, and what a card
-                // would then have rendered as the call's answer.
                 output,
                 // Still empty, and Phase 8 measured *why* rather than assuming
                 // it. A diff block does name an absolute path, so this looked
@@ -810,7 +813,7 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
                 // Filled by `AcpToolCalls`, which is the only thing that still
                 // knows what kind this call opened as.
                 summary: None,
-                output_truncated,
+                output_truncated: false,
             }]
         }
         ToolCallStatus::InProgress | ToolCallStatus::Pending => {
@@ -1526,29 +1529,6 @@ mod tests {
             [ChatEvent::ToolCallCompleted { output, output_truncated, .. }] => {
                 assert_eq!(*output, None, "a null output is no output block at all");
                 assert!(!output_truncated);
-            }
-            other => panic!("expected one ToolCallCompleted, got {other:?}"),
-        }
-    }
-
-    /// The cap is the adapter's on this side too, and an ACP output is the
-    /// agent's own JSON rather than a shell's text, so it is the one most
-    /// likely to arrive enormous.
-    #[test]
-    fn a_huge_raw_output_arrives_capped_and_flagged() {
-        let mut fields = ToolCallUpdateFields::default();
-        fields.status = Some(ToolCallStatus::Completed);
-        fields.raw_output = Some(serde_json::json!({ "output": "x".repeat(1024 * 1024) }));
-        let events = map_update(
-            "s1",
-            "t1",
-            &SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(ToolCallId::new("call-1"), fields)),
-            None,
-        );
-        match events.as_slice() {
-            [ChatEvent::ToolCallCompleted { output, output_truncated, .. }] => {
-                assert!(*output_truncated);
-                assert_eq!(output.as_deref().unwrap_or_default().len(), model::TOOL_OUTPUT_CAP);
             }
             other => panic!("expected one ToolCallCompleted, got {other:?}"),
         }

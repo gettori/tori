@@ -19,8 +19,8 @@
 
 use crate::sessions::{TranscriptBlock, TranscriptTurn};
 
-use super::claude::{tool_kind, ASK_USER_QUESTION};
-use super::model::{cap_output, ChatEvent, ContentBlock, ToolStatus};
+use super::claude::tool_kind;
+use super::model::{ChatEvent, ContentBlock, ToolStatus};
 
 /// Ids for replayed turns and calls are prefixed so they can never collide with
 /// a live turn's (`turn-1`) or a real `tool_use_id` (`toolu_...`), which is what
@@ -108,7 +108,7 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                     });
                 }
                 "tool_result" => {
-                    let Some((tool_use_id, name)) = take_call(&mut open_calls, block) else {
+                    let Some((tool_use_id, _)) = take_call(&mut open_calls, block) else {
                         // A result whose call is not in this transcript - a
                         // resumed session whose earlier half lives in another
                         // file, most often. Dropped rather than rendered as a
@@ -116,22 +116,16 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                         // run that never happened.
                         continue;
                     };
-                    // Same cap and the same exemption as the live adapter,
-                    // applied here rather than in the scanner so that the one
-                    // place that knows the call's name is the one that decides.
-                    let (output, output_truncated) = match block.text.clone() {
-                        Some(text) if name != ASK_USER_QUESTION => {
-                            let (text, cut) = cap_output(text);
-                            (Some(text), cut)
-                        }
-                        other => (other, false),
-                    };
                     events.push(ChatEvent::ToolCallCompleted {
                         session_id: session_id.to_string(),
                         turn_id: turn_id.clone(),
                         tool_use_id,
                         status: if block.is_error == Some(true) { ToolStatus::Error } else { ToolStatus::Ok },
-                        output,
+                        // Whole, and cut by the host afterwards through the same
+                        // cache a live event goes through. Cutting here instead
+                        // would leave a replayed card offering to fetch a
+                        // remainder nothing kept.
+                        output: block.text.clone(),
                         // Deliberately empty: the transcript records that a tool
                         // ran, not which paths it wrote. Guessing from the input
                         // would feed per-turn attribution a set nothing measured.
@@ -144,7 +138,7 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                         // replayed card and a live one cannot disagree about
                         // the same result.
                         summary: block.tool_summary.clone(),
-                        output_truncated,
+                        output_truncated: false,
                     });
                 }
                 _ => {}
