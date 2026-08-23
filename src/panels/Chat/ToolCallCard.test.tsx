@@ -9,6 +9,10 @@ import type { ToolItem } from "./chatStore";
 // what it was given, not what the backend returns.
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 
+// Highlighting is lazy, asynchronous, and lands in place; nothing here asserts
+// colour. Stubbed so no card test pulls shiki into jsdom.
+vi.mock("./highlight", () => ({ cappedHtml: vi.fn(() => null) }));
+
 // No cast: a `as ToolItem` here would let a fixture omit a field the store
 // always sets, and the card would then throw on something that cannot happen in
 // the app. Same reason Phase 1's TypeScript mirror is compared rather than cast.
