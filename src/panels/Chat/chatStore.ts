@@ -80,7 +80,22 @@ export type ChatFileEdit = {
  *  the reply below it answers only that. */
 export type UserItem = { kind: "user"; id: string; blocks: ContentBlock[]; steer: boolean };
 export type TextItem = { kind: "text"; id: string; turnId: string; text: string };
-export type ThinkingItem = { kind: "thinking"; id: string; turnId: string; text: string };
+/** `startedAt` is when the model went quiet (the frame before this block),
+ *  `endedAt` when its last delta landed, so a settled block can say how long the
+ *  thinking took. **Not the first delta to the last**: thinking usually arrives
+ *  whole, in one frame, and a span measured inside that frame is always ~0. The
+ *  wait is what the reader sat through, so the wait is what is measured.
+ *
+ *  A replay folds every frame in one tick, so its span really is ~0 and renders
+ *  as unmeasured rather than as a fabricated duration. */
+export type ThinkingItem = {
+  kind: "thinking";
+  id: string;
+  turnId: string;
+  text: string;
+  startedAt: number;
+  endedAt: number;
+};
 /** `details` is the long half of a notice, shown behind a disclosure: the line
  *  itself has to stay readable at a glance in the middle of a conversation, and
  *  a compaction summary is several hundred words. Absent on a notice that is
@@ -271,6 +286,10 @@ export type ChatState = {
    *  next delta must open a fresh one. */
   openTextId: string | null;
   openThinkingId: string | null;
+  /** When this chat last showed a sign of life, of any kind. Read by nothing
+   *  but the thinking span, which needs to know when the model went quiet, and
+   *  the last frame is the only thing that knows. */
+  lastFrameAt: number;
   /** The child answered the `initialize` handshake. Weaker than `started`:
    *  the process is alive and talking, but no turn has run, so nothing has
    *  named the model or the mode yet. */
@@ -420,6 +439,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     activeTurnId: null,
     openTextId: null,
     openThinkingId: null,
+    lastFrameAt: Date.now(),
     ready: false,
     started: false,
     ended: false,
@@ -683,11 +703,14 @@ function appendText(s: ChatState, turnId: string, text: string, thinking: boolea
     const last = s.items[s.items.length - 1] as TextItem | ThinkingItem;
     if (last.id === openId) {
       last.text += text;
+      if (last.kind === "thinking") last.endedAt = Date.now();
       return;
     }
   }
   const item: TextItem | ThinkingItem = thinking
-    ? { kind: "thinking", id: nextId(s, "think"), turnId, text }
+    ? // Opens at the previous frame, not at this one: the silence before the
+      // block is the thinking, the block itself is only its transcript.
+      { kind: "thinking", id: nextId(s, "think"), turnId, text, startedAt: s.lastFrameAt, endedAt: Date.now() }
     : { kind: "text", id: nextId(s, "text"), turnId, text };
   push(s, item);
   if (thinking) s.openThinkingId = item.id;
@@ -747,6 +770,14 @@ export function reasoningFor(items: readonly ChatItem[], toolUseId: string): str
  */
 export function applyEvent(s: ChatState, ev: ChatEvent) {
   if (ev.sessionId !== s.sessionId) return;
+  foldEvent(s, ev);
+  // After the fold, never before: the handlers read `lastFrameAt` to find out
+  // how long the model was quiet, and stamping first would answer "no time at
+  // all" every time.
+  s.lastFrameAt = Date.now();
+}
+
+function foldEvent(s: ChatState, ev: ChatEvent) {
   switch (ev.type) {
     case "sessionStarted": {
       // `system/init` re-emits every turn; only the first is a session start,
@@ -1049,6 +1080,9 @@ export function pushQuestionAnswers(s: ChatState, toolUseId: string, answers: Qu
   const item = s.items[at] as QuestionItem;
   if (item.submitted !== null) return;
   item.submitted = answers;
+  // The agent was blocked on the user, not thinking. Whatever it thinks next
+  // starts here.
+  s.lastFrameAt = Date.now();
 }
 
 /** Record what the user actually sent, so their turn appears immediately rather
@@ -1056,6 +1090,9 @@ export function pushQuestionAnswers(s: ChatState, toolUseId: string, answers: Qu
 export function pushUserTurn(s: ChatState, blocks: ContentBlock[]) {
   push(s, { kind: "user", id: nextId(s, "user"), blocks, steer: false });
   s.awaitingTurn = true;
+  // Stamped here as well as in `applyEvent`: this is the frame that starts the
+  // model thinking, and it is one the transport never sends back.
+  s.lastFrameAt = Date.now();
 }
 
 /**
@@ -1068,6 +1105,7 @@ export function pushUserTurn(s: ChatState, blocks: ContentBlock[]) {
  */
 export function pushSteer(s: ChatState, blocks: ContentBlock[]) {
   push(s, { kind: "user", id: nextId(s, "steer"), blocks, steer: true });
+  s.lastFrameAt = Date.now();
 }
 
 /**
@@ -1204,6 +1242,9 @@ export function resolveApproval(s: ChatState, toolUseId: string) {
   const card = s.items[at] as ToolItem;
   card.approval = null;
   if (card.state === "awaitingApproval") card.state = "running";
+  // Same reason as `pushQuestionAnswers`: the agent was blocked on the user for
+  // however long that took, and none of it was thinking.
+  s.lastFrameAt = Date.now();
 }
 
 // ---------------------------------------------------------------------------

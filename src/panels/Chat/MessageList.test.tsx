@@ -33,6 +33,7 @@ const ITEMS: ChatItem[] = [1, 2, 3].flatMap(turn);
 function list(
   over: {
     items?: ChatItem[];
+    streaming?: boolean;
     anchorTurnId?: string | null;
     onAnchor?: (id: string | null) => void;
   } = {},
@@ -269,7 +270,7 @@ describe("a question in the transcript", () => {
 // all (see the notes on `.notice` and `.thinkingToggle` in Chat.module.css).
 describe("the ambient rows say what kind they are", () => {
   const AMBIENT: ChatItem[] = [
-    { kind: "thinking", id: "th1", turnId: "turn-1", text: "weighing the two channels" },
+    { kind: "thinking", id: "th1", turnId: "turn-1", text: "weighing the two channels", startedAt: 1000, endedAt: 13000 },
     {
       kind: "hook",
       id: "h1",
@@ -307,15 +308,45 @@ describe("the ambient rows say what kind they are", () => {
   });
 
   // The thinking row is a disclosure, so its glyph must not have joined its
-  // accessible name: "Brain Thinking" is what a decorative icon inside a button
+  // accessible name: "Brain Thought" is what a decorative icon inside a button
   // reads as when nobody hides it.
-  it("leaves the thinking toggle named by its own word", () => {
+  it("leaves the thinking toggle named by its own words", () => {
     render(() => list({ items: AMBIENT }));
-    expect(screen.getByRole("button", { name: "Thinking" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Thought for 12s" })).toBeTruthy();
   });
 
   it("stays clean with all of them on screen", async () => {
     const { container } = render(() => list({ items: AMBIENT }));
     await expectNoAxeViolations(container);
+  });
+});
+
+// The label tells the tense: a sheen-swept "Thinking" only while deltas can
+// still land (the tail of a streaming turn), the measured span once settled,
+// and plain "Thought" where nothing was measured (a replay folds in one tick).
+describe("the thinking label follows the stream", () => {
+  const THINKING: ChatItem = {
+    kind: "thinking",
+    id: "th1",
+    turnId: "turn-1",
+    text: "weighing the two channels",
+    startedAt: 1000,
+    endedAt: 13000,
+  };
+
+  it("says Thinking while it is the streaming tail", () => {
+    render(() => list({ items: [THINKING], streaming: true }));
+    expect(screen.getByRole("button", { name: "Thinking" })).toBeTruthy();
+  });
+
+  it("settles the moment something streams after it, mid-turn or not", () => {
+    const text: ChatItem = { kind: "text", id: "t1", turnId: "turn-1", text: "so:" };
+    render(() => list({ items: [THINKING, text], streaming: true }));
+    expect(screen.getByRole("button", { name: "Thought for 12s" })).toBeTruthy();
+  });
+
+  it("reads plain Thought where the span measured nothing", () => {
+    render(() => list({ items: [{ ...THINKING, endedAt: 1000 }] }));
+    expect(screen.getByRole("button", { name: "Thought" })).toBeTruthy();
   });
 });
