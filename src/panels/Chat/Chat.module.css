@@ -885,6 +885,71 @@
   color: var(--fg-default);
 }
 
+/* The card's way of saying "this is a command". Not part of the source, so the
+   grammar never sees it, and not part of a selection either. */
+.toolPrompt {
+  color: var(--fg-subtle);
+  user-select: none;
+}
+
+/* A list body: one row per entry, each with its own click target. Rows rather
+   than one highlighted block with a gutter beside it, because a row survives
+   wrapping and a gutter matched to a block's line boxes does not. */
+.toolRows {
+  display: flex;
+  flex-direction: column;
+}
+
+.toolLine {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+}
+
+.toolGutter {
+  flex: none;
+  min-width: calc(36px * var(--ui-scale));
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: inherit;
+  text-align: right;
+}
+
+button.toolGutter {
+  cursor: pointer;
+}
+
+button.toolGutter:hover {
+  color: var(--accent-fg);
+}
+
+/* The file a row came from, on the same affordance `.toolPath` uses. */
+.toolHit {
+  flex: none;
+  align-self: flex-start;
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-fg);
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.toolHit:hover {
+  text-decoration: underline;
+}
+
+.toolLineText {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .toolOutput {
   color: var(--fg-muted);
 }

@@ -3,13 +3,9 @@ import { Check, Code, Copy, Eye } from "lucide-solid";
 import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { copyText } from "../../utils/clipboard";
-import { highlightedHtml } from "./highlight";
+import { cappedHtml } from "./highlight";
 import Icon from "../../components/Icon/Icon";
 import styles from "./Chat.module.css";
-
-// Above this a block is pasted output, not code being read, and a TextMate
-// pass over it would be the one thing on the streaming path worth feeling.
-const HIGHLIGHT_MAX = 100_000;
 
 // Front matter is metadata about the document, not the document: rendered,
 // its fences degenerate into an hr through the corner controls and a stray
@@ -29,7 +25,7 @@ export default function CodeBlock(props: { lang: string; code: string }) {
   const [copied, setCopied] = createSignal(false);
   const [preview, setPreview] = createSignal(false);
   const isMarkdown = () => /^(md|mdx|mkd|markdown)$/i.test(props.lang);
-  const html = createMemo(() => (props.code.length > HIGHLIGHT_MAX ? null : highlightedHtml(props.code, props.lang)));
+  const html = createMemo(() => cappedHtml(props.code, props.lang));
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => clearTimeout(timer));
