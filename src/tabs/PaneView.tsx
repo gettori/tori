@@ -105,6 +105,12 @@ export default function PaneView(props: {
     return !!paneRefusal(props.ws ?? "", { id: drag.id, kind: drag.kind }, props.paneId);
   };
 
+  /** A tab's whole box. `data-tab-id` rides the trigger, which stops short of
+   *  the close button, so the midpoint that picks an anchor and the caret drawn
+   *  at a tab's edge both have to come from the pill around it. */
+  const pillRect = (el: HTMLElement) =>
+    (el.closest<HTMLElement>("[data-tab-pill]") ?? el).getBoundingClientRect();
+
   /** The zone under the pointer, or null when this pane is not a target at all
    *  (no tree, or nothing in flight). */
   function zoneAt(e: DragEvent): DropZone | null {
@@ -112,7 +118,7 @@ export default function PaneView(props: {
     const tabs = strip
       ? [...strip.querySelectorAll<HTMLElement>(".otab-list [data-tab-id]")].map((el) => ({
           id: el.dataset.tabId!,
-          rect: el.getBoundingClientRect(),
+          rect: pillRect(el),
         }))
       : [];
     return hitTest({
@@ -124,20 +130,27 @@ export default function PaneView(props: {
     });
   }
 
-  /** Turn a drop into the edit it means, and say so through the same events the
-   *  palette and the tab menu use, so one set of guards runs either way. */
-  function apply(z: DropZone) {
+  /** The edit this zone means, or null for the drops that ask for the layout
+   *  they already have. Asked twice: once to draw, once to apply. */
+  function actionFor(z: DropZone) {
     const drag = draggingTab();
-    if (!drag || !props.paneId) return;
+    if (!drag || !props.paneId) return null;
     const ws = props.ws ?? "";
-    const action = dropAction({
+    return dropAction({
       zone: z,
       drag,
       paneId: props.paneId,
       idsInPane: paneTabs(ws, props.paneId).map((t) => t.id),
       countInFrom: drag.fromPane ? paneTabs(ws, drag.fromPane).length : 0,
     });
-    if (!action) return;
+  }
+
+  /** Turn a drop into the edit it means, and say so through the same events the
+   *  palette and the tab menu use, so one set of guards runs either way. */
+  function apply(z: DropZone) {
+    const drag = draggingTab();
+    const action = actionFor(z);
+    if (!drag || !action) return;
     if (action.type === "move") {
       emitWith<MoveTabToPane>(MOVE_TAB_TO_PANE, {
         tabId: drag.id,
@@ -159,15 +172,18 @@ export default function PaneView(props: {
   function show(z: DropZone, e: DragEvent) {
     // The center is drawn by nobody: it is the surface's until the surface
     // passes, and lighting the pane up would promise a landing it may not get.
-    setZone(z.kind === "center" ? null : z);
+    // A zone for a no-op is the same false promise: both slots either side of
+    // the tab in flight are the slot it already sits in.
+    const drawn = z.kind !== "center" && !!actionFor(z);
+    setZone(drawn ? z : null);
     setRefused(wouldRefuse(z));
-    if (z.kind === "strip") {
+    if (drawn && z.kind === "strip") {
       const box = root.getBoundingClientRect();
       const after =
         z.afterId && strip
           ? strip.querySelector<HTMLElement>(`.otab-list [data-tab-id="${CSS.escape(z.afterId)}"]`)
           : null;
-      const at = after?.getBoundingClientRect();
+      const at = after ? pillRect(after) : null;
       setCaret((at ? at.left + at.width : (strip?.getBoundingClientRect().left ?? box.left)) - box.left);
     }
     e.preventDefault();
