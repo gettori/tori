@@ -40,6 +40,7 @@ import type {
   HookPhase,
   McpServer,
   PermissionMode,
+  PatchHunk,
   PermissionSuggestion,
   PlanItem,
   QuestionAnswer,
@@ -139,6 +140,10 @@ export type ToolItem = {
   /** What the call did, in numbers. Null while it runs, and null for a result
    *  whose shape no summariser recognised. */
   summary: ToolSummary | null;
+  /** The diff the call made, where the transport measured one. Empty for a call
+   *  that wrote nothing, and for every ACP agent, whose cards diff the call's
+   *  own arguments instead. */
+  patch: PatchHunk[];
   files: string[];
   durationMs: number | null;
   edits: ChatFileEdit[];
@@ -560,6 +565,7 @@ function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): Too
     output: null,
     outputTruncated: false,
     summary: null,
+    patch: [],
     files: [],
     durationMs: null,
     edits: [],
@@ -996,6 +1002,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       card.output = ev.output;
       card.outputTruncated = ev.outputTruncated;
       card.summary = ev.summary;
+      card.patch = ev.patch;
       card.files = ev.files;
       card.durationMs = ev.durationMs;
       return;

@@ -6,7 +6,7 @@
 // server, a future release, a kind published after this build - so the fallback
 // is the common case, not the error case.
 
-import type { ToolItem } from "./chatStore";
+import type { ChatItem, ToolItem } from "./chatStore";
 import type { ToolKind, ToolSummary } from "../../utils/chatTypes";
 
 /** The renderers a card can pick. `generic` is a JSON dump, and is correct for
@@ -145,6 +145,42 @@ export function toolPaths(card: Pick<ToolItem, "name" | "input" | "edits" | "fil
   for (const e of card.edits) add(e.path);
   for (const f of card.files) add(f);
   return found;
+}
+
+/**
+ * Consecutive writes to one file, folded onto the first of them.
+ *
+ * An agent editing a file usually does it in three or four calls in a row, and
+ * three cards saying `Edit MessageList.tsx` are three copies of one answer to
+ * "what changed in this file". The rest of the transcript is untouched: only a
+ * run of *adjacent* settled writes to the *same* path folds, so a read between
+ * two edits ends the run, and a card still waiting on approval never folds into
+ * anything, because approving is per call.
+ *
+ * `followers` maps the surviving card's id to what folded into it, in order.
+ * `hidden` is every card that folded, which the list skips.
+ */
+export function foldEdits(items: ChatItem[]): { followers: Map<string, ToolItem[]>; hidden: Set<string> } {
+  const followers = new Map<string, ToolItem[]>();
+  const hidden = new Set<string>();
+  let lead: ToolItem | null = null;
+
+  const foldable = (it: ChatItem): it is ToolItem =>
+    it.kind === "tool" && it.state === "ok" && it.approval === null && isEditCall(it) && toolPaths(it).length > 0;
+
+  for (const item of items) {
+    if (!foldable(item)) {
+      lead = null;
+      continue;
+    }
+    if (lead && toolPaths(lead)[0] === toolPaths(item)[0]) {
+      followers.set(lead.id, [...(followers.get(lead.id) ?? []), item]);
+      hidden.add(item.id);
+      continue;
+    }
+    lead = item;
+  }
+  return { followers, hidden };
 }
 
 /** How long a call took, when it is long enough to be worth saying. */

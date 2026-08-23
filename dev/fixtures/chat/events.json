@@ -211,7 +211,22 @@
     ],
     "durationMs": 42,
     "summary": null,
-    "outputTruncated": false
+    "outputTruncated": false,
+    "patch": [
+      {
+        "oldStart": 12,
+        "oldLines": 3,
+        "newStart": 12,
+        "newLines": 4,
+        "lines": [
+          " ctx",
+          "-was",
+          "+is",
+          "+and",
+          " ctx"
+        ]
+      }
+    ]
   },
   {
     "type": "fileEdit",

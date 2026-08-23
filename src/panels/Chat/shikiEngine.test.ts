@@ -3,7 +3,7 @@
 // the mapping holds. The diff case exists because it shipped unmapped once -
 // the grammar loaded fine and every line fell through to the default color.
 import { describe, it, expect, beforeAll } from "vitest";
-import { init, canHighlight, isLoaded, loadLang, toHtml } from "./shikiEngine";
+import { init, canHighlight, isLoaded, loadLang, toHtml, toLines } from "./shikiEngine";
 
 const DIFF = ["--- a/x.ts", "+++ b/x.ts", "@@ -1 +1 @@", "-const old = 1;", "+const fresh = 1;"].join("\n");
 
@@ -27,6 +27,19 @@ describe("the chat highlighter engine", () => {
     expect(html).toContain("var(--diff-deleted)");
     // Headers and the hunk range recede rather than fall through to default.
     expect(html).toContain("var(--fg-muted)");
+  });
+
+  // A body that puts a gutter or a diff marker beside a line needs the lines
+  // already separated, and tokenizing the block whole is what keeps a comment
+  // spanning several lines coloured as the one thing it is.
+  it("gives one line of HTML per line, with a multi-line construct still whole", () => {
+    const lines = toLines("/* one\n   two */\nconst x = 1;", "ts");
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain("var(--syntax-comment)");
+    expect(lines[1]).toContain("var(--syntax-comment)");
+    expect(lines[2]).toContain("var(--syntax-keyword)");
+    // Nothing may reach the DOM as markup that was not markup in the source.
+    expect(toLines("const a = b < c && d > e;", "ts").join("")).not.toContain("<c");
   });
 
   it("paints code through the syntax roles, not literal colors", () => {

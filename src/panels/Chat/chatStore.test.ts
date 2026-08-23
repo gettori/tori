@@ -118,6 +118,7 @@ const completed = (turnId: string, toolUseId: string, status: "ok" | "error" | "
   durationMs: 12,
   summary: null,
   outputTruncated: false,
+  patch: [],
 });
 const prompt = (toolUseId: string, requestId = "r1"): ChatEvent => ({
   type: "permissionRequest",
@@ -305,6 +306,7 @@ describe("the neutral facts a collapsed row reads", () => {
     durationMs: 12,
     summary,
     outputTruncated: false,
+    patch: [],
   });
 
   it("carries the kind, the locations and the summary onto the card", () => {
@@ -728,6 +730,7 @@ describe("reasoningFor", () => {
     output: null,
     outputTruncated: false,
     summary: null,
+    patch: [],
     files: [],
     durationMs: null,
     edits: [],
@@ -1398,6 +1401,7 @@ describe("a question the agent asked", () => {
     durationMs: 3,
     summary: null,
     outputTruncated: false,
+    patch: [],
   });
   const question = (s: ChatState): QuestionItem =>
     s.items.find((i): i is QuestionItem => i.kind === "question")!;

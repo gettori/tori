@@ -139,6 +139,12 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                         // the same result.
                         summary: block.tool_summary.clone(),
                         output_truncated: false,
+                        // Read back off the same `toolUseResult` a live run
+                        // reads, so a replayed edit draws the same diff. It is
+                        // the only source that survives a reload: nothing
+                        // captures a before-state for a session this process
+                        // never watched run.
+                        patch: block.tool_patch.clone(),
                     });
                 }
                 _ => {}
@@ -324,8 +330,8 @@ mod tests {
     /// all. So the captured frames are rewritten as the transcript records the
     /// CLI would have written for the same run, and parsed back.
     #[test]
-    fn a_replayed_call_summarises_exactly_as_the_live_one_did() {
-        use crate::chat::model::ToolSummary;
+    fn a_replayed_call_summarises_and_diffs_exactly_as_the_live_one_did() {
+        use crate::chat::model::{PatchHunk, ToolSummary};
         use std::path::PathBuf;
 
         // One fixture per summary variant, plus the two shapes that must
@@ -356,11 +362,11 @@ mod tests {
 
             // Live: the stream, through the adapter.
             let mut mapper = crate::chat::claude::ClaudeMapper::new("s1");
-            let live: Vec<Option<ToolSummary>> = frames
+            let live: Vec<(Option<ToolSummary>, Vec<PatchHunk>)> = frames
                 .iter()
                 .flat_map(|f| mapper.map(f))
                 .filter_map(|e| match e {
-                    ChatEvent::ToolCallCompleted { summary, .. } => Some(summary),
+                    ChatEvent::ToolCallCompleted { summary, patch, .. } => Some((summary, patch)),
                     _ => None,
                 })
                 .collect();
@@ -372,10 +378,10 @@ mod tests {
             let transcript = dir.join("session.jsonl");
             std::fs::write(&transcript, transcript_of(&frames)).expect("write transcript");
             let turns = crate::sessions::transcript_turns(transcript.to_str().unwrap(), "claude");
-            let replayed: Vec<Option<ToolSummary>> = events_from_turns("s1", &turns)
+            let replayed: Vec<(Option<ToolSummary>, Vec<PatchHunk>)> = events_from_turns("s1", &turns)
                 .into_iter()
                 .filter_map(|e| match e {
-                    ChatEvent::ToolCallCompleted { summary, .. } => Some(summary),
+                    ChatEvent::ToolCallCompleted { summary, patch, .. } => Some((summary, patch)),
                     _ => None,
                 })
                 .collect();
@@ -383,7 +389,16 @@ mod tests {
 
             assert!(!live.is_empty(), "{name}: no completed calls to compare");
             assert_eq!(live, replayed, "{name}: replay and live disagree");
-            for summary in live.into_iter().flatten() {
+            if name == "edit-call" {
+                // The point of carrying the patch at all: a conversation
+                // reopened from history has no captured before-state, so this
+                // is the only diff its cards can draw.
+                assert!(
+                    replayed.iter().any(|(_, patch)| !patch.is_empty()),
+                    "an edit replayed with no diff to draw"
+                );
+            }
+            for summary in live.into_iter().filter_map(|(s, _)| s) {
                 variants.push(match summary {
                     ToolSummary::Search { .. } => "search",
                     ToolSummary::Paths { .. } => "paths",
@@ -433,7 +448,7 @@ mod tests {
                     tool_call_block("Edit".into(), serde_json::json!({ "file_path": "/a" }), Some("toolu_1".into())),
                 ],
             ),
-            turn("user", vec![tool_result_block(None, "done".into(), false, Some("toolu_1".into()), None)]),
+            turn("user", vec![tool_result_block(None, "done".into(), false, Some("toolu_1".into()), None, Vec::new())]),
             turn("assistant", vec![text_block("text", "fixed".into())]),
         ];
 
@@ -463,8 +478,8 @@ mod tests {
             turn(
                 "user",
                 vec![
-                    tool_result_block(None, "b output".into(), false, Some("toolu_b".into()), None),
-                    tool_result_block(None, "a output".into(), true, Some("toolu_a".into()), None),
+                    tool_result_block(None, "b output".into(), false, Some("toolu_b".into()), None, Vec::new()),
+                    tool_result_block(None, "a output".into(), true, Some("toolu_a".into()), None, Vec::new()),
                 ],
             ),
         ];
@@ -488,7 +503,7 @@ mod tests {
         // A transcript recording no tool ids at all still has to pair up.
         let turns = vec![
             turn("assistant", vec![tool_call_block("Read".into(), serde_json::json!({}), None)]),
-            turn("tool", vec![tool_result_block(Some("Read".into()), "out".into(), false, None, None)]),
+            turn("tool", vec![tool_result_block(Some("Read".into()), "out".into(), false, None, None, Vec::new())]),
         ];
         let events = events_from_turns("s1", &turns);
         let started = match &events[0] {
@@ -506,7 +521,7 @@ mod tests {
         // The first half of a resumed conversation lives in another file.
         let turns = vec![turn(
             "user",
-            vec![tool_result_block(None, "orphan".into(), false, Some("toolu_gone".into()), None)],
+            vec![tool_result_block(None, "orphan".into(), false, Some("toolu_gone".into()), None, Vec::new())],
         )];
         assert!(events_from_turns("s1", &turns).is_empty());
     }
@@ -738,7 +753,7 @@ mod tests {
                 "assistant",
                 vec![tool_call_block("Edit".into(), serde_json::json!({ "file_path": "/a" }), Some("t1".into()))],
             ),
-            turn("user", vec![tool_result_block(None, "ok".into(), false, Some("t1".into()), None)]),
+            turn("user", vec![tool_result_block(None, "ok".into(), false, Some("t1".into()), None, Vec::new())]),
         ];
         match &events_from_turns("s1", &turns)[1] {
             ChatEvent::ToolCallCompleted { files, duration_ms, .. } => {

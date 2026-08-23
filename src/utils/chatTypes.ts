@@ -53,6 +53,20 @@ export type ToolKind =
 /// only the paths a call wrote.
 export type ToolLocation = { path: string; line: number | null };
 
+/// One hunk of a measured diff, in the shape Claude's `structuredPatch` sends:
+/// each entry of `lines` carries its own `+`, `-` or space marker.
+///
+/// The only place a call's *file* line numbers exist. An `Edit`'s arguments name
+/// a fragment and never say where in the file it sits, and a `Write` over an
+/// existing file carries no before-state at all.
+export type PatchHunk = {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: string[];
+};
+
 /// What a finished call did, in numbers a collapsed row can say. Chosen by the
 /// result's payload, never by the tool's name: Claude's `Grep` answers with
 /// hits, with paths, or with a count depending on its `output_mode`.
@@ -458,6 +472,10 @@ export type ChatEvent =
       durationMs: number | null;
       summary: ToolSummary | null;
       outputTruncated: boolean;
+      /// The diff the call produced, where the transport measured one. Empty for
+      /// every call that wrote nothing, for a patch too big for the wire, and
+      /// for every ACP agent, none of which publish one.
+      patch: PatchHunk[];
     }
   | {
       type: "fileEdit";
@@ -675,6 +693,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
       "durationMs",
       "summary",
       "outputTruncated",
+      "patch",
     ],
   },
   fileEdit: {
@@ -727,6 +746,7 @@ export const CHAT_NESTED_KEYS = {
   questionOption: keysOf<ChatQuestionOption>({ label: true, description: true, preview: true }),
   questionAnswer: keysOf<QuestionAnswer>({ question: true, picks: true, freeText: true }),
   toolLocation: keysOf<ToolLocation>({ path: true, line: true }),
+  patchHunk: keysOf<PatchHunk>({ oldStart: true, oldLines: true, newStart: true, newLines: true, lines: true }),
   // One entry per `ToolSummary` variant rather than one `keysOf` over the
   // union. `Record<keyof T, true>` on a union resolves to the keys they *share*,
   // which for these six is only `type`, so a single entry would have pinned the

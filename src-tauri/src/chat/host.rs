@@ -887,6 +887,7 @@ mod tests {
             duration_ms: None,
             summary: None,
             output_truncated: false,
+            patch: Vec::new(),
         }
     }
 

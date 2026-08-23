@@ -795,6 +795,16 @@
   white-space: nowrap;
 }
 
+/* The two numbers a write's row reports, each carrying its own verdict. Same
+   roles the diff rows and the chat's `diff` fences use. */
+.diffAddCount {
+  color: var(--diff-added);
+}
+
+.diffDelCount {
+  color: var(--diff-deleted);
+}
+
 .toolDuration {
   color: var(--fg-subtle);
   font-size: var(--sway-text-sm);
@@ -895,9 +905,28 @@
 /* A list body: one row per entry, each with its own click target. Rows rather
    than one highlighted block with a gutter beside it, because a row survives
    wrapping and a gutter matched to a block's line boxes does not. */
+/* The frame of an overlay scroller, so it clips and its own viewport is what
+   moves. `.toolPre`'s `overflow: auto` here would be a second scroller around
+   the first. */
 .toolRows {
-  display: flex;
-  flex-direction: column;
+  overflow: hidden;
+}
+
+/* One block for a whole diff, so a four-hunk edit is one scroll rather than
+   four. It gives up the frame every other body wears: a diff is one run of a
+   file's lines, and a border around each part of it reads as several files.
+   Bled to the card's own edges, where the `@@` separators can draw the only
+   lines in it. */
+.toolDiffRows {
+  max-height: calc(520px * var(--ui-scale));
+  margin: 0 calc(-12px * var(--ui-scale));
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  /* No fill of its own: the card gave its fill up to the prompt bubble, and a
+     diff that painted one back would make the plumbing the loudest surface in
+     the transcript again. The row tints are then the only colour in it. */
+  background: transparent;
 }
 
 .toolLine {
@@ -948,6 +977,89 @@ button.toolGutter:hover {
   min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* The name of an argument that got a block of its own, because it turned out to
+   be a program rather than a value. */
+.toolArgName {
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
+/* A diff row. The tint carries the add/remove verdict rather than the text
+   colour, because the text is syntax highlighted and its colour is spoken for.
+   The roles are the ones the chat's own `diff` fences already paint with, so a
+   card and a fenced diff cannot disagree about what green means. */
+.diffRow {
+  display: flex;
+  gap: calc(6px * var(--ui-scale));
+  padding: 0 calc(12px * var(--ui-scale));
+}
+
+.diffRowAdd {
+  background: color-mix(in srgb, var(--diff-added) 20%, transparent);
+}
+
+.diffRowDel {
+  background: color-mix(in srgb, var(--diff-deleted) 20%, transparent);
+}
+
+/* Where one hunk ends and the next begins, from inside the one block they
+   share rather than by giving each its own frame. */
+.diffHunkRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
+  background: var(--neutral-hover);
+}
+
+/* The first hunk opens the block, so there is nothing above it to separate. */
+.diffHunkRow:first-child {
+  border-top: none;
+}
+
+.diffHunkHeader {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--fg-subtle);
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+}
+
+button.diffHunkHeader {
+  cursor: pointer;
+}
+
+button.diffHunkHeader:hover {
+  color: var(--accent-fg);
+}
+
+.diffNum {
+  flex: none;
+  min-width: calc(30px * var(--ui-scale));
+  color: var(--fg-subtle);
+  text-align: right;
+  user-select: none;
+}
+
+.diffMark {
+  flex: none;
+  color: var(--fg-subtle);
+  user-select: none;
+}
+
+.diffRowAdd .diffMark {
+  color: var(--diff-added);
+}
+
+.diffRowDel .diffMark {
+  color: var(--diff-deleted);
 }
 
 .toolOutput {

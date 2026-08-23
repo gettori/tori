@@ -11,7 +11,11 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 
 // Highlighting is lazy, asynchronous, and lands in place; nothing here asserts
 // colour. Stubbed so no card test pulls shiki into jsdom.
-vi.mock("./highlight", () => ({ cappedHtml: vi.fn(() => null) }));
+vi.mock("./highlight", () => ({
+  cappedHtml: vi.fn(() => null),
+  cappedLines: vi.fn(() => null),
+  langOfPath: (p: string) => p.split(".").pop() ?? "",
+}));
 
 // No cast: a `as ToolItem` here would let a fixture omit a field the store
 // always sets, and the card would then throw on something that cannot happen in
@@ -30,6 +34,7 @@ function card(over: Partial<ToolItem> = {}): ToolItem {
     output: null,
     outputTruncated: false,
     summary: null,
+    patch: [],
     state: "ok",
     durationMs: 120,
     approval: null,
@@ -221,6 +226,101 @@ describe("ToolCallCard", () => {
 // "Show the plumbing when it breaks" is about a break that just happened.
 // Replayed history is full of failures that were dealt with long ago, and a
 // codex tab replays its whole conversation on every reload.
+describe("the row a write gets", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // A row is 80 characters wide and `/Users/me/Projects/...` is 40 of them
+  // before the part anyone is reading.
+  it("names the file relative to the workspace, and does not repeat it below", () => {
+    const { container, queryAllByText } = mount(
+      card({
+        name: "Edit",
+        toolKind: "edit",
+        input: { file_path: "/repo/src/panels/Chat/MessageList.tsx", old_string: "a", new_string: "b" },
+      }),
+    );
+    expect(container.textContent).toContain("src/panels/Chat/MessageList.tsx");
+    expect(container.textContent).not.toContain("/repo/src/panels");
+    // The path chip under the row would be the same path a second time.
+    expect(queryAllByText("/repo/src/panels/Chat/MessageList.tsx")).toHaveLength(0);
+  });
+
+  it("leaves a path outside the workspace absolute", () => {
+    const { container } = mount(
+      card({ name: "Read", toolKind: "read", input: { file_path: "/etc/hosts" } }),
+    );
+    expect(container.textContent).toContain("/etc/hosts");
+  });
+});
+
+describe("writes folded onto one card", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const write = (i: number, added: number): ToolItem =>
+    card({
+      id: `tool-${i}`,
+      toolUseId: `toolu_${i}`,
+      name: "Edit",
+      toolKind: "edit",
+      input: { file_path: "/repo/a.rs", old_string: `was ${i}`, new_string: `is ${i}` },
+      summary: { type: "edit", added, removed: 0 },
+    });
+
+  // One row for the group means the row's numbers have to be the group's, or it
+  // reports a third of the change and reads as a bug.
+  it("adds up what the whole group changed", () => {
+    const { getByText } = render(() => (
+      <ToolCallCard
+        card={write(1, 1)}
+        also={[write(2, 14), write(3, 6)]}
+        sessionId="s1"
+        cwd="/repo"
+        onAnswer={() => {}}
+        onSetMode={() => {}}
+        onRevertHunk={async () => false}
+      />
+    ));
+    // Two numbers, each with its own verdict and its own colour.
+    expect(getByText("+21")).toBeTruthy();
+    expect(getByText("-0")).toBeTruthy();
+  });
+
+  // Four folded calls used to draw four framed blocks, which is the thing
+  // folding them onto one card was supposed to stop.
+  it("draws the whole group in one block", () => {
+    const { container } = render(() => (
+      <ToolCallCard
+        card={write(1, 1)}
+        also={[write(2, 1), write(3, 1)]}
+        sessionId="s1"
+        cwd="/repo"
+        onAnswer={() => {}}
+        onSetMode={() => {}}
+        onRevertHunk={async () => false}
+      />
+    ));
+    fireEvent.click(container.querySelector("button") as HTMLButtonElement);
+    expect(container.querySelectorAll("[class*=toolDiffRows]")).toHaveLength(1);
+  });
+
+  it("draws every folded call's change, in order", () => {
+    const { container } = render(() => (
+      <ToolCallCard
+        card={write(1, 1)}
+        also={[write(2, 1)]}
+        sessionId="s1"
+        cwd="/repo"
+        onAnswer={() => {}}
+        onSetMode={() => {}}
+        onRevertHunk={async () => false}
+      />
+    ));
+    fireEvent.click(container.querySelector("button") as HTMLButtonElement);
+    expect(container.textContent).toContain("is 1");
+    expect(container.textContent).toContain("is 2");
+  });
+});
+
 describe("a call that failed", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -246,10 +346,15 @@ describe("a call that failed", () => {
     expect(await diffFetches()).toHaveLength(0);
   });
 
-  it("reads exactly one diff when one of them is clicked", async () => {
-    const { container } = mount(failed(0));
-    expect(await diffFetches()).toHaveLength(0);
+  // The card draws its own diff from the call, which costs nothing. Comparing
+  // against the file on disk is the one that shells out, and it is the question
+  // only the revert control needs answered.
+  it("reads no diff until the on-disk comparison is asked for", async () => {
+    const { container, getByText } = mount(failed(0));
     fireEvent.click(container.querySelector("button") as HTMLButtonElement);
+    expect(await diffFetches()).toHaveLength(0);
+
+    fireEvent.click(getByText("Compare with the file on disk"));
     expect(await diffFetches()).toHaveLength(1);
   });
 
