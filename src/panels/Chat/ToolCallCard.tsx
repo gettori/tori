@@ -7,6 +7,7 @@ import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } f
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { isUnderPath } from "../../utils/pathScope";
 import PermissionPrompt, { type Answer } from "./PermissionPrompt";
+import { ToolInput, ToolOutput } from "./ToolBody";
 import { formatDuration, isEditCall, toolDigest, toolPaths, toolRenderer, toolSummaryText } from "./toolRenderers";
 import type { ToolItem } from "./chatStore";
 import type { PermissionMode } from "../../utils/chatTypes";
@@ -32,15 +33,6 @@ const STATE_LABEL: Record<ToolItem["state"], string> = {
   error: "Failed",
   denied: "Denied",
 };
-
-function prettyInput(input: unknown): string {
-  if (typeof input === "string") return input;
-  try {
-    return JSON.stringify(input, null, 2) ?? "";
-  } catch {
-    return String(input);
-  }
-}
 
 function diffLineClass(line: string): string {
   if (line.startsWith("+")) return styles.diffAdd;
@@ -213,16 +205,7 @@ export default function ToolCallCard(props: {
             </div>
           </Show>
 
-          <Switch>
-            {/* A shell command is read as a command, not as JSON with a
-                "command" key in it. */}
-            <Match when={renderer() === "execute"}>
-              <pre class={`${styles.toolPre} ${styles.toolCommand}`}>{toolDigest(props.card)}</pre>
-            </Match>
-            <Match when={renderer() !== "execute"}>
-              <pre class={styles.toolPre}>{prettyInput(props.card.input)}</pre>
-            </Match>
-          </Switch>
+          <ToolInput card={props.card} renderer={renderer()} />
 
           {/* The diff, for a call that wrote something. */}
           <Show when={isEditCall(props.card) && settled()}>
@@ -297,7 +280,12 @@ export default function ToolCallCard(props: {
           <Show when={props.card.output}>
             {(output) => (
               <>
-                <pre class={`${styles.toolPre} ${styles.toolOutput}`}>{fullOutput() ?? output()}</pre>
+                <ToolOutput
+                  card={props.card}
+                  renderer={renderer()}
+                  text={fullOutput() ?? output()}
+                  onOpen={openPath}
+                />
                 {/* Absent unless there is more to show, so a card whose output
                     fitted looks exactly as it did before. */}
                 <Show when={props.card.outputTruncated}>

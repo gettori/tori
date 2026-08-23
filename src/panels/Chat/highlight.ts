@@ -13,6 +13,17 @@ const requestedLangs = new Set<string>();
 
 const bump = () => setVersion((v) => v + 1);
 
+// Above this a block is pasted output, not code being read, and a TextMate
+// pass over it would be the one thing on the streaming path worth feeling.
+export const HIGHLIGHT_MAX = 100_000;
+
+/** `highlightedHtml`, refused for a block too big to be worth the pass. Every
+ *  caller that renders a block of anything goes through this rather than
+ *  keeping its own idea of too big. */
+export function cappedHtml(code: string, lang: string): string | null {
+  return code.length > HIGHLIGHT_MAX ? null : highlightedHtml(code, lang);
+}
+
 export function highlightedHtml(code: string, lang: string): string | null {
   version();
   const name = lang.trim().toLowerCase();

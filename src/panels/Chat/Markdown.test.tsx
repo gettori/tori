@@ -5,10 +5,10 @@ import { expectNoAxeViolations } from "../../test/axe";
 import Markdown from "./Markdown";
 
 vi.mock("../../utils/clipboard", () => ({ copyText: vi.fn(async () => true) }));
-vi.mock("./highlight", () => ({ highlightedHtml: vi.fn(() => null) }));
+vi.mock("./highlight", () => ({ cappedHtml: vi.fn(() => null) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
 import { copyText } from "../../utils/clipboard";
-import { highlightedHtml } from "./highlight";
+import { cappedHtml } from "./highlight";
 import { invoke } from "@tauri-apps/api/core";
 import { onWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 
@@ -16,8 +16,8 @@ const FENCED = "intro paragraph\n\n```ts\nconst x = 1;\n```\n\noutro paragraph";
 
 beforeEach(() => {
   vi.mocked(copyText).mockClear();
-  vi.mocked(highlightedHtml).mockReset();
-  vi.mocked(highlightedHtml).mockReturnValue(null);
+  vi.mocked(cappedHtml).mockReset();
+  vi.mocked(cappedHtml).mockReturnValue(null);
 });
 
 describe("Markdown block splitting", () => {
@@ -63,9 +63,9 @@ describe("Markdown block splitting", () => {
 
 describe("code block highlighting", () => {
   it("paints shiki's spans when the highlighter answers", () => {
-    vi.mocked(highlightedHtml).mockReturnValue('<span style="color:var(--syntax-keyword)">const</span> x = 1;');
+    vi.mocked(cappedHtml).mockReturnValue('<span style="color:var(--syntax-keyword)">const</span> x = 1;');
     const { container } = render(() => <Markdown text={FENCED} cwd="/repo" />);
-    expect(highlightedHtml).toHaveBeenCalledWith("const x = 1;", "ts");
+    expect(cappedHtml).toHaveBeenCalledWith("const x = 1;", "ts");
     expect(container.querySelector("pre code span")?.textContent).toBe("const");
   });
 
