@@ -786,6 +786,15 @@
   text-overflow: ellipsis;
 }
 
+/* What the call did. Beside the duration rather than in the argument slot: the
+   argument can be a 200-character command and would push this off the row. */
+.toolSummary {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+  white-space: nowrap;
+}
+
 .toolDuration {
   color: var(--fg-subtle);
   font-size: var(--sway-text-sm);
