@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@solidjs/testing-library";
+import { createStore } from "solid-js/store";
 import ToolCallCard from "./ToolCallCard";
 import type { ToolItem } from "./chatStore";
 
@@ -19,9 +20,12 @@ function card(over: Partial<ToolItem> = {}): ToolItem {
     toolUseId: "toolu_1",
     name: "Bash",
     title: null,
+    toolKind: "execute",
+    locations: [],
     input: { command: "ls -la" },
     output: null,
     outputTruncated: false,
+    summary: null,
     state: "ok",
     durationMs: 120,
     approval: null,
@@ -79,10 +83,11 @@ describe("ToolCallCard", () => {
   });
 
   // The renderer table's fallback is the common case: a plugin, an MCP server
-  // or a future release can name a tool we have never heard of, and a card that
+  // or a future release can name a tool we have never heard of, and an agent
+  // can call it under a kind this build has never heard of either. A card that
   // threw would take the whole transcript down with it.
   it("renders an unknown tool without throwing, collapsed and expanded", () => {
-    const unknown = card({ name: "SomeFuturePluginTool", input: { whatever: [1, 2, 3] } });
+    const unknown = card({ name: "SomeFuturePluginTool", toolKind: "other", input: { whatever: [1, 2, 3] } });
     const { getByText, container } = mount(unknown);
     expect(getByText("SomeFuturePluginTool")).toBeTruthy();
     fireEvent.click(container.querySelector("button") as HTMLButtonElement);
@@ -138,6 +143,15 @@ describe("ToolCallCard", () => {
     expect(queryByText(/^Switch to/)).toBeNull();
   });
 
+  // The prompt comes off the hook socket and the declaration off the child's
+  // stdout, so the card is routinely blocked before anything has said what kind
+  // of call it is. The arguments are all it has, and they are enough.
+  it("asks about a command as a command, even before the declaration lands", () => {
+    const { container } = mount(blocked({ toolKind: "other", name: "Bash" }));
+    expect(container.textContent).toContain("Run ls -la in this workspace?");
+    expect(container.textContent).not.toContain("Allow Bash on");
+  });
+
   it("shows a blocked call as blocked, not as a spinner", () => {
     const { getByText } = mount(card({ state: "awaitingApproval" }));
     expect(getByText("Waiting for approval")).toBeTruthy();
@@ -189,5 +203,73 @@ describe("ToolCallCard", () => {
     fireEvent.click(getByRole("button", { name: /Bash/ }));
     fireEvent.click(getByText("Show full output"));
     expect(await findByText("The rest of this output is no longer held.")).toBeTruthy();
+  });
+  // A collapsed transcript that cannot be read without opening anything is the
+  // problem this row is here to fix; a row with no summary has to look exactly
+  // as it did before it existed.
+  it("reports the result on the collapsed row, and says nothing without one", () => {
+    const { getByText } = mount(card({ summary: { type: "execute", exitCode: 1, lines: 118 } }));
+    expect(getByText("exit 1, 118 lines")).toBeTruthy();
+    expect(mount(card({ summary: null })).container.textContent).not.toContain("lines");
+  });
+});
+
+// "Show the plumbing when it breaks" is about a break that just happened.
+// Replayed history is full of failures that were dealt with long ago, and a
+// codex tab replays its whole conversation on every reload.
+describe("a call that failed", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const failed = (i: number, over: Partial<ToolItem> = {}): ToolItem =>
+    card({
+      id: `tool-${i}`,
+      toolUseId: `toolu_${i}`,
+      name: "Edit",
+      toolKind: "edit",
+      input: { file_path: `/a${i}.rs` },
+      state: "error",
+      ...over,
+    });
+
+  async function diffFetches() {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return vi.mocked(invoke).mock.calls.filter((c) => c[0] === "chat_tool_diff");
+  }
+
+  it("mounts a reopened session's historical failures collapsed, and reads no diffs", async () => {
+    const containers = Array.from({ length: 10 }, (_, i) => mount(failed(i)).container);
+    for (const c of containers) expect(c.querySelector('[aria-expanded="true"]')).toBeNull();
+    expect(await diffFetches()).toHaveLength(0);
+  });
+
+  it("reads exactly one diff when one of them is clicked", async () => {
+    const { container } = mount(failed(0));
+    expect(await diffFetches()).toHaveLength(0);
+    fireEvent.click(container.querySelector("button") as HTMLButtonElement);
+    expect(await diffFetches()).toHaveLength(1);
+  });
+
+  it("opens itself when this tab watched the call fail", () => {
+    const [live, setLive] = createStore(failed(0, { state: "running" }));
+    const { container } = mount(live);
+    expect(container.querySelector('[aria-expanded="true"]')).toBeNull();
+    setLive("state", "error");
+    expect(container.querySelector('[aria-expanded="true"]')).toBeTruthy();
+  });
+
+  it("opens itself on a denial too, which is the other way a call fails", () => {
+    const [live, setLive] = createStore(failed(0, { state: "awaitingApproval" }));
+    const { container } = mount(live);
+    setLive("state", "denied");
+    expect(container.querySelector('[aria-expanded="true"]')).toBeTruthy();
+  });
+
+  // Opening is not asking: the card opened itself, and a diff is a `git diff`
+  // per file that nobody requested.
+  it("reads no diff for a card a failure opened", async () => {
+    const [live, setLive] = createStore(failed(0, { state: "running" }));
+    mount(live);
+    setLive("state", "error");
+    expect(await diffFetches()).toHaveLength(0);
   });
 });

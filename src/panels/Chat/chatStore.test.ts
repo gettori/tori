@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import events from "../../../dev/fixtures/chat/events.json";
-import { parseChatEvent, type ChatEvent } from "../../utils/chatTypes";
+import { parseChatEvent, type ChatEvent, type ToolSummary } from "../../utils/chatTypes";
 import { BLOCKED_REASON, sendWithProbeGate } from "../../utils/safeSend";
 import {
   answerable,
@@ -277,6 +277,56 @@ describe("a tool card is materialized by whichever channel arrives first", () =>
     expect(tool(s, "x").state).toBe("running");
     applyEvent(s, completed("t1", "x"));
     expect(tool(s, "x").state).toBe("ok");
+  });
+});
+
+describe("the neutral facts a collapsed row reads", () => {
+  type Started = Extract<ChatEvent, { type: "toolCallStarted" }>;
+  const declared = (over: Partial<Started> = {}): ChatEvent => ({
+    type: "toolCallStarted",
+    sessionId: "s1",
+    turnId: "t1",
+    toolUseId: "x",
+    name: "Grep",
+    input: { pattern: "fn main" },
+    kind: "search",
+    locations: [{ path: "/a.rs", line: 3 }],
+    title: null,
+    ...over,
+  });
+  const answered = (summary: ToolSummary | null): ChatEvent => ({
+    type: "toolCallCompleted",
+    sessionId: "s1",
+    turnId: "t1",
+    toolUseId: "x",
+    status: "ok",
+    output: "done",
+    files: [],
+    durationMs: 12,
+    summary,
+    outputTruncated: false,
+  });
+
+  it("carries the kind, the locations and the summary onto the card", () => {
+    const s = replay([declared(), answered({ type: "paths", count: 7 })]);
+    expect(tool(s, "x").toolKind).toBe("search");
+    expect(tool(s, "x").locations).toEqual([{ path: "/a.rs", line: 3 }]);
+    expect(tool(s, "x").summary).toEqual({ type: "paths", count: 7 });
+  });
+
+  // The upsert contract, for the two fields that gained one: `other` and an
+  // empty list are what a patch that did not mention the field carries, so
+  // neither may wipe what the card already knows.
+  it("keeps the kind and the locations a later patch said nothing about", () => {
+    const s = replay([declared(), declared({ kind: "other", locations: [], title: "Search for fn main" })]);
+    expect(tool(s, "x").toolKind).toBe("search");
+    expect(tool(s, "x").locations).toEqual([{ path: "/a.rs", line: 3 }]);
+    expect(tool(s, "x").title).toBe("Search for fn main");
+  });
+
+  it("leaves a result no summariser recognised with no summary at all", () => {
+    const s = replay([declared(), answered(null)]);
+    expect(tool(s, "x").summary).toBeNull();
   });
 });
 
@@ -670,11 +720,14 @@ describe("reasoningFor", () => {
     turnId: "t1",
     name: "Edit",
     title: null,
+    toolKind: "edit",
+    locations: [],
     input: {},
     state: "ok",
     approval: null,
     output: null,
     outputTruncated: false,
+    summary: null,
     files: [],
     durationMs: null,
     edits: [],

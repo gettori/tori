@@ -2,7 +2,7 @@ import { For, Show, createSignal } from "solid-js";
 import Button from "../../components/Button/Button";
 import type { PermissionDecision, PermissionMode, PermissionScope } from "../../utils/chatTypes";
 import type { ToolItem } from "./chatStore";
-import { toolDigest, toolRenderer } from "./toolRenderers";
+import { toolDigest } from "./toolRenderers";
 import styles from "./Chat.module.css";
 
 export type Answer = {
@@ -91,12 +91,19 @@ export default function PermissionPrompt(props: {
   }
 
   const digest = () => toolDigest(props.card);
+  // The shell wording is about there being a command to run, so it reads the
+  // input rather than the kind: a prompt that beat the declaration here has the
+  // arguments and nothing else, which is the ordering the hook socket produces.
+  const isCommand = () => {
+    const input = props.card.input;
+    return typeof (input as Record<string, unknown> | null)?.command === "string";
+  };
 
   return (
     <div class={styles.prompt}>
       <div class={styles.promptQuestion}>
         <Show
-          when={toolRenderer(props.card.name) === "bash"}
+          when={isCommand()}
           fallback={
             <>
               Allow <code>{props.card.name ?? "this tool"}</code>

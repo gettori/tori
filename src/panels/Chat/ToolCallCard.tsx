@@ -1,4 +1,4 @@
-import { For, Show, Switch, Match, createSignal, createResource } from "solid-js";
+import { For, Show, Switch, Match, createEffect, createSignal, createResource } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { invoke } from "@tauri-apps/api/core";
@@ -7,7 +7,7 @@ import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } f
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { isUnderPath } from "../../utils/pathScope";
 import PermissionPrompt, { type Answer } from "./PermissionPrompt";
-import { formatDuration, isEditTool, toolDigest, toolPaths, toolRenderer } from "./toolRenderers";
+import { formatDuration, isEditCall, toolDigest, toolPaths, toolRenderer, toolSummaryText } from "./toolRenderers";
 import type { ToolItem } from "./chatStore";
 import type { PermissionMode } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
@@ -72,18 +72,34 @@ export default function ToolCallCard(props: {
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
 }) {
   const [open, setOpen] = createSignal(false);
+  // Whether the *user* opened this card, as opposed to a failure having opened
+  // it. Only the first is a request to see a diff.
+  const [userOpened, setUserOpened] = createSignal(false);
   const [reverting, setReverting] = createSignal<string | null>(null);
   // Whether the user asked for the whole output. Reset when the card closes, so
   // a reopened card fetches again rather than showing a body the backend may
   // have evicted since.
   const [wantFull, setWantFull] = createSignal(false);
-  const renderer = () => toolRenderer(props.card.name);
+  const renderer = () => toolRenderer(props.card);
   const settled = () => props.card.state === "ok" || props.card.state === "error";
+
+  // Show the plumbing when it breaks, and only when *this tab watched it
+  // break*. The card mounts already failed for a failure read off a transcript
+  // or replayed by an ACP agent on reconnect, and those were dealt with long
+  // ago: opening them would open ten cards every time the app restarts. A live
+  // failure mounts running and changes under us, which is the whole signal.
+  let lastState = props.card.state;
+  createEffect(() => {
+    const state = props.card.state;
+    const changed = state !== lastState;
+    lastState = state;
+    if (changed && (state === "error" || state === "denied")) setOpen(true);
+  });
 
   // Fetched when the card is opened and the call has finished, never on every
   // card: a diff is a `git diff` per file, and a turn can make dozens of calls.
   const [diffs, { refetch }] = createResource(
-    () => (open() && settled() && isEditTool(props.card.name) ? props.card.toolUseId : null),
+    () => (userOpened() && settled() && isEditCall(props.card) ? props.card.toolUseId : null),
     async (toolUseId) =>
       await invoke<ToolDiff[]>("chat_tool_diff", {
         sessionId: props.sessionId,
@@ -104,8 +120,10 @@ export default function ToolCallCard(props: {
   );
 
   function toggleOpen() {
-    if (open()) setWantFull(false);
-    setOpen(!open());
+    const next = !open();
+    if (!next) setWantFull(false);
+    setUserOpened(next);
+    setOpen(next);
   }
 
   function openPath(path: string, line?: number) {
@@ -148,17 +166,21 @@ export default function ToolCallCard(props: {
         <span
           class={styles.toolName}
           classList={{
-            [styles.toolNameEdit]: isEditTool(props.card.name),
+            [styles.toolNameEdit]: isEditCall(props.card),
             [styles.toolNameError]: props.card.state === "error" || props.card.state === "denied",
           }}
         >
           {/* The agent's prose wins where there is any, which is what keeps an
-              ACP row reading "Read the file README.md" rather than "read".
-              Phase 5 gives the token and the prose separate places to sit; this
-              is the one-slot version until then. */}
+              ACP row reading "Read the file README.md" rather than "read". The
+              kind it would otherwise show now picks the body instead. */}
           {props.card.title ?? props.card.name ?? "tool"}
         </span>
         <span class={styles.toolArg}>{toolDigest(props.card)}</span>
+        {/* What the call did, once it has said. A row with no summary is the
+            row exactly as it was before this existed. */}
+        <Show when={toolSummaryText(props.card.summary)}>
+          {(text) => <span class={styles.toolSummary}>{text()}</span>}
+        </Show>
         <Show when={formatDuration(props.card.durationMs)}>
           {(d) => <span class={styles.toolDuration}>{d()}</span>}
         </Show>
@@ -194,16 +216,16 @@ export default function ToolCallCard(props: {
           <Switch>
             {/* A shell command is read as a command, not as JSON with a
                 "command" key in it. */}
-            <Match when={renderer() === "bash"}>
+            <Match when={renderer() === "execute"}>
               <pre class={`${styles.toolPre} ${styles.toolCommand}`}>{toolDigest(props.card)}</pre>
             </Match>
-            <Match when={renderer() !== "bash"}>
+            <Match when={renderer() !== "execute"}>
               <pre class={styles.toolPre}>{prettyInput(props.card.input)}</pre>
             </Match>
           </Switch>
 
           {/* The diff, for a call that wrote something. */}
-          <Show when={isEditTool(props.card.name) && settled()}>
+          <Show when={isEditCall(props.card) && settled()}>
             <Show
               when={!diffs.loading}
               fallback={<div class={styles.toolNote}>Reading what changed...</div>}
