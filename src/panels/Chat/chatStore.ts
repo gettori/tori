@@ -44,6 +44,9 @@ import type {
   PlanItem,
   QuestionAnswer,
   SlashCommand,
+  ToolKind,
+  ToolLocation,
+  ToolSummary,
   Usage,
 } from "../../utils/chatTypes";
 import type { ChatTransport } from "../../utils/agents";
@@ -118,6 +121,13 @@ export type ToolItem = {
   /** The agent's own prose for the call, when it sent any. ACP fills this and
    *  Claude does not, whose `name` is already the human-readable thing. */
   title: string | null;
+  /** What the call is doing, in ACP's vocabulary. Picks the renderer, so a
+   *  running call already has a body shape before any result lands. Not `kind`,
+   *  which every row spends on its own discriminant. */
+  toolKind: ToolKind;
+  /** Every file the call reached for, wider than `files`, which is only what it
+   *  wrote. */
+  locations: ToolLocation[];
   input: unknown;
   state: ToolCardState;
   approval: PendingApproval | null;
@@ -126,6 +136,9 @@ export type ToolItem = {
    *  offers to fetch it. False for every output that fitted, and for a replayed
    *  one whose remainder nothing kept. */
   outputTruncated: boolean;
+  /** What the call did, in numbers. Null while it runs, and null for a result
+   *  whose shape no summariser recognised. */
+  summary: ToolSummary | null;
   files: string[];
   durationMs: number | null;
   edits: ChatFileEdit[];
@@ -539,11 +552,14 @@ function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): Too
     turnId,
     name: null,
     title: null,
+    toolKind: "other",
+    locations: [],
     input: null,
     state: "running",
     approval: null,
     output: null,
     outputTruncated: false,
+    summary: null,
     files: [],
     durationMs: null,
     edits: [],
@@ -946,6 +962,10 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // described.
       if (ev.name) card.name = ev.name;
       if (ev.title) card.title = ev.title;
+      // `other` and an empty list are what a patch that did not mention the
+      // field carries, so both mean unchanged here.
+      if (ev.kind !== "other") card.toolKind = ev.kind;
+      if (ev.locations.length) card.locations = ev.locations;
       if (ev.input !== null && ev.input !== undefined) card.input = ev.input;
       // Never walk a card backwards: the completion (or a pending approval) can
       // legitimately have landed before the declaration.
@@ -975,6 +995,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       card.approval = null;
       card.output = ev.output;
       card.outputTruncated = ev.outputTruncated;
+      card.summary = ev.summary;
       card.files = ev.files;
       card.durationMs = ev.durationMs;
       return;
