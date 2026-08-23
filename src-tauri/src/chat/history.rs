@@ -19,6 +19,7 @@
 
 use crate::sessions::{TranscriptBlock, TranscriptTurn};
 
+use super::claude::tool_kind;
 use super::model::{ChatEvent, ContentBlock, ToolStatus};
 
 /// Ids for replayed turns and calls are prefixed so they can never collide with
@@ -87,8 +88,13 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                         session_id: session_id.to_string(),
                         turn_id: turn_id.clone(),
                         tool_use_id,
+                        kind: tool_kind(&name),
                         name,
                         input: block.tool_input.clone().unwrap_or(serde_json::Value::Null),
+                        // A transcript records neither, the same way it records
+                        // no written paths below.
+                        locations: Vec::new(),
+                        title: None,
                     });
                 }
                 "compaction" => {
@@ -123,6 +129,11 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                         // Never recorded on disk, and a fabricated duration
                         // would be indistinguishable from a real one.
                         duration_ms: None,
+                        // Phase 3 routes replay through the same summariser the
+                        // live path uses, once the scanner carries the
+                        // structured result this reads from.
+                        summary: None,
+                        output_truncated: false,
                     });
                 }
                 _ => {}

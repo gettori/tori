@@ -35,6 +35,47 @@ export type ToolStatus = "ok" | "error" | "denied";
 
 export type FileEditKind = "created" | "modified" | "deleted";
 
+/// What a tool call is doing, in ACP's published vocabulary. An unrecognised
+/// kind arrives as `other` rather than failing to parse.
+export type ToolKind =
+  | "read"
+  | "edit"
+  | "delete"
+  | "move"
+  | "search"
+  | "execute"
+  | "think"
+  | "fetch"
+  | "switchMode"
+  | "other";
+
+/// A file a call reached for. Wider than `toolCallCompleted.files`, which is
+/// only the paths a call wrote.
+export type ToolLocation = { path: string; line: number | null };
+
+/// What a finished call did, in numbers a collapsed row can say. Chosen by the
+/// result's payload, never by the tool's name: Claude's `Grep` answers with
+/// hits, with paths, or with a count depending on its `output_mode`.
+///
+/// Each variant is a named type because `CHAT_NESTED_KEYS` pins them one at a
+/// time; see the comment there for why the union cannot be pinned as one.
+export type ToolSummarySearch = { type: "search"; hits: number; files: number };
+export type ToolSummaryPaths = { type: "paths"; count: number };
+export type ToolSummaryRead = { type: "read"; lines: number; from: number; to: number };
+/// `exitCode` is nullable because Claude reports none at all: measured on
+/// 2.1.241, a `Bash` result carries no exit status anywhere.
+export type ToolSummaryExecute = { type: "execute"; exitCode: number | null; lines: number };
+export type ToolSummaryEdit = { type: "edit"; added: number; removed: number };
+export type ToolSummaryFetch = { type: "fetch"; host: string };
+
+export type ToolSummary =
+  | ToolSummarySearch
+  | ToolSummaryPaths
+  | ToolSummaryRead
+  | ToolSummaryExecute
+  | ToolSummaryEdit
+  | ToolSummaryFetch;
+
 /// The only two answers the approval bridge gives. `ask` is absent because it
 /// degrades to a denial headless.
 export type PermissionDecision = "allow" | "deny";
@@ -378,6 +419,8 @@ export type ChatEvent =
     }
   | { type: "textDelta"; sessionId: string; turnId: string; text: string }
   | { type: "thinkingDelta"; sessionId: string; turnId: string; text: string }
+  /// An upsert: a later emission carries only what that frame said, so an empty
+  /// `name` or a null `input` means "unchanged" rather than "cleared".
   | {
       type: "toolCallStarted";
       sessionId: string;
@@ -385,6 +428,9 @@ export type ChatEvent =
       toolUseId: string;
       name: string;
       input: unknown;
+      kind: ToolKind;
+      locations: ToolLocation[];
+      title: string | null;
     }
   | {
       type: "toolCallProgress";
@@ -404,6 +450,8 @@ export type ChatEvent =
       output: string | null;
       files: string[];
       durationMs: number | null;
+      summary: ToolSummary | null;
+      outputTruncated: boolean;
     }
   | {
       type: "fileEdit";
@@ -606,10 +654,22 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   },
   textDelta: { required: ["sessionId", "turnId", "text"] },
   thinkingDelta: { required: ["sessionId", "turnId", "text"] },
-  toolCallStarted: { required: ["sessionId", "turnId", "toolUseId", "name", "input"] },
+  toolCallStarted: {
+    required: ["sessionId", "turnId", "toolUseId", "name", "input", "kind", "locations", "title"],
+  },
   toolCallProgress: { required: ["sessionId", "turnId", "toolUseId", "partialInput"] },
   toolCallCompleted: {
-    required: ["sessionId", "turnId", "toolUseId", "status", "output", "files", "durationMs"],
+    required: [
+      "sessionId",
+      "turnId",
+      "toolUseId",
+      "status",
+      "output",
+      "files",
+      "durationMs",
+      "summary",
+      "outputTruncated",
+    ],
   },
   fileEdit: {
     required: ["sessionId", "turnId", "toolUseId", "path", "kind", "beforeBlob"],
@@ -660,6 +720,18 @@ export const CHAT_NESTED_KEYS = {
   question: keysOf<ChatQuestion>({ question: true, header: true, multiSelect: true, options: true }),
   questionOption: keysOf<ChatQuestionOption>({ label: true, description: true, preview: true }),
   questionAnswer: keysOf<QuestionAnswer>({ question: true, picks: true, freeText: true }),
+  toolLocation: keysOf<ToolLocation>({ path: true, line: true }),
+  // One entry per `ToolSummary` variant rather than one `keysOf` over the
+  // union. `Record<keyof T, true>` on a union resolves to the keys they *share*,
+  // which for these six is only `type`, so a single entry would have pinned the
+  // discriminant and nothing else and every payload field would have been
+  // unchecked.
+  toolSummarySearch: keysOf<ToolSummarySearch>({ type: true, hits: true, files: true }),
+  toolSummaryPaths: keysOf<ToolSummaryPaths>({ type: true, count: true }),
+  toolSummaryRead: keysOf<ToolSummaryRead>({ type: true, lines: true, from: true, to: true }),
+  toolSummaryExecute: keysOf<ToolSummaryExecute>({ type: true, exitCode: true, lines: true }),
+  toolSummaryEdit: keysOf<ToolSummaryEdit>({ type: true, added: true, removed: true }),
+  toolSummaryFetch: keysOf<ToolSummaryFetch>({ type: true, host: true }),
 } as const;
 
 export const CHAT_COMMAND_KEYS: Record<ChatCommandType, { required: string[]; optional?: string[] }> = {

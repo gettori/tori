@@ -18,6 +18,7 @@ function card(over: Partial<ToolItem> = {}): ToolItem {
     turnId: "t1",
     toolUseId: "toolu_1",
     name: "Bash",
+    title: null,
     input: { command: "ls -la" },
     output: null,
     state: "ok",
@@ -90,6 +91,20 @@ describe("ToolCallCard", () => {
   it("renders a call with no name at all rather than blanking the row", () => {
     const { getByText } = mount(card({ name: null, input: {} }));
     expect(getByText("tool")).toBeTruthy();
+  });
+
+  // ACP splits what Claude keeps in one field: `name` became the kind's token
+  // so a mono row has a token to show, and the agent's sentence moved to
+  // `title`. Until the two get separate places to sit, the row shows the prose,
+  // or an ACP card would have gone from "Read the file README.md" to "read".
+  it("shows the agent's own words for a call rather than its kind token", () => {
+    const { getByText } = mount(card({ name: "read", title: "Read the file README.md", input: {} }));
+    expect(getByText("Read the file README.md")).toBeTruthy();
+  });
+
+  it("falls back to the name when the agent offered no words of its own", () => {
+    const { getByText } = mount(card({ name: "Bash", title: null, input: {} }));
+    expect(getByText("Bash")).toBeTruthy();
   });
 
   // The agent offered "stop asking about edits" alongside the question. That

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import goldenEvents from "../../dev/fixtures/chat/events.json";
 import goldenCommands from "../../dev/fixtures/chat/commands.json";
+import goldenToolSummaries from "../../dev/fixtures/chat/toolSummaries.json";
 import {
   CHAT_COMMAND_KEYS,
   CHAT_COMMAND_TYPES,
@@ -11,6 +12,7 @@ import {
   parseChatEvent,
   type ChatCommand,
   type ChatEvent,
+  type ToolSummary,
 } from "./chatTypes";
 
 // These fixtures are written by the Rust round-trip test
@@ -308,6 +310,43 @@ describe("chatTypes mirrors the Rust chat model", () => {
     for (const one of answer.answers) {
       expect(sorted(one)).toEqual([...CHAT_NESTED_KEYS.questionAnswer].sort());
     }
+  });
+
+  // The same nested check, for the summary a collapsed row is about to read.
+  //
+  // `toolCallCompleted`'s own key list stops at `summary`, so nothing above
+  // looks inside one. These walk Rust's own samples, one per variant, against a
+  // `CHAT_NESTED_KEYS` entry per variant: renaming `hits` on either side fails
+  // here, and naming a key that is not on the type fails `tsc`.
+  it("agrees with Rust on every field name inside a tool summary", () => {
+    const sorted = (o: object) => Object.keys(o).sort();
+    const summaries = goldenToolSummaries as ToolSummary[];
+    const keysFor: Record<ToolSummary["type"], readonly string[]> = {
+      search: CHAT_NESTED_KEYS.toolSummarySearch,
+      paths: CHAT_NESTED_KEYS.toolSummaryPaths,
+      read: CHAT_NESTED_KEYS.toolSummaryRead,
+      execute: CHAT_NESTED_KEYS.toolSummaryExecute,
+      edit: CHAT_NESTED_KEYS.toolSummaryEdit,
+      fetch: CHAT_NESTED_KEYS.toolSummaryFetch,
+    };
+
+    // Every variant is present, so a Rust sample that stopped being emitted
+    // cannot leave its entry silently unchecked.
+    expect(summaries.map((s) => s.type).sort()).toEqual(
+      (Object.keys(keysFor) as ToolSummary["type"][]).sort(),
+    );
+    for (const summary of summaries) {
+      expect(sorted(summary)).toEqual([...keysFor[summary.type]].sort());
+    }
+  });
+
+  // Claude reports no exit code at all, so the nullable half of `exitCode` is
+  // the case that actually ships. Asserted here because the sample carries a
+  // number, and a mirror that typed it non-nullable would agree with the
+  // sample and be wrong about every Claude call.
+  it("accepts an execute summary with no exit code", () => {
+    const withoutCode: ToolSummary = { type: "execute", exitCode: null, lines: 3 };
+    expect(Object.keys(withoutCode).sort()).toEqual([...CHAT_NESTED_KEYS.toolSummaryExecute].sort());
   });
 
   it("rejects junk rather than throwing", () => {

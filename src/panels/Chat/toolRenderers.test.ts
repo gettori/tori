@@ -10,6 +10,7 @@ const card = (over: Partial<ToolItem> = {}): ToolItem => ({
   toolUseId: "toolu_1",
   turnId: "t1",
   name: "Bash",
+  title: null,
   input: { command: "git status" },
   state: "ok",
   approval: null,

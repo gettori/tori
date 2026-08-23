@@ -30,8 +30,8 @@
 //! `cfg(test)`. The real Codex and ACP transports replace them wholesale.
 
 use super::model::{
-    ChatCommand, ChatEvent, FileEditKind, PermissionMode, PlanItem, PlanItemStatus, ToolStatus, TurnOutcome,
-    Usage,
+    ChatCommand, ChatEvent, FileEditKind, PermissionMode, PlanItem, PlanItemStatus, ToolKind, ToolStatus,
+    TurnOutcome, Usage,
 };
 
 // ---------------------------------------------------------------------------
@@ -194,6 +194,12 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             tool_use_id: "item_1".into(),
             name: "shell".into(),
             input: serde_json::json!({}),
+            // The vocabulary absorbing a third agent is the point of this file:
+            // Codex names its shell tool `shell` and the neutral model files it
+            // under the same kind Claude's `Bash` and ACP's `execute` land on.
+            kind: ToolKind::Execute,
+            locations: vec![],
+            title: None,
         },
         CodexEvent::ItemCompleted => ChatEvent::ToolCallCompleted {
             session_id: sid(),
@@ -203,6 +209,8 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             output: None,
             files: vec![],
             duration_ms: None,
+            summary: None,
+            output_truncated: false,
         },
         // Streaming stdout of a running command is progress on its call, not
         // assistant prose - it belongs inside the tool card.
@@ -220,6 +228,8 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
             output: None,
             files: vec![],
             duration_ms: None,
+            summary: None,
+            output_truncated: false,
         },
         // Codex's approvals are native and in-protocol rather than hook-based,
         // but they carry the same payload the prompt needs, so they land on the
@@ -297,8 +307,14 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             session_id: sid(),
             turn_id: tid(),
             tool_use_id: "acp_1".into(),
-            name: "read_text_file".into(),
+            name: "read".into(),
             input: serde_json::json!({}),
+            // `name` is the kind's token and the agent's prose goes to `title`,
+            // which is what the ACP adapter really does: a title like "Read the
+            // file README.md" is not something a mono row can show.
+            kind: ToolKind::Read,
+            locations: vec![],
+            title: Some("read_text_file".into()),
         },
         // ACP folds progress and completion into one update discriminated by
         // its status field, and the completed case is the one that carries the
@@ -311,6 +327,8 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             output: None,
             files: vec![],
             duration_ms: None,
+            summary: None,
+            output_truncated: false,
         },
         AcpSessionUpdate::Plan => ChatEvent::PlanUpdate {
             session_id: sid(),

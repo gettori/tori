@@ -19,13 +19,14 @@ use agent_client_protocol::schema::v1::{
     ContentBlock as AcpContentBlock, ContentChunk, InitializeResponse, PermissionOption,
     RequestPermissionRequest, SessionConfigKind, SessionConfigOption, SessionConfigOptionCategory,
     SessionConfigSelect, SessionConfigSelectOption, SessionConfigSelectOptions, SessionUpdate,
-    StopReason, ToolCall, ToolCallContent, ToolCallStatus, ToolCallUpdate,
+    StopReason, ToolCall, ToolCallContent, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolKind,
 };
 
+use super::model;
 use super::model::{
     ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent,
     ChatModeInfo, ChatModelInfo, ContentBlock, FileEditKind, PermissionSuggestion, PlanItem,
-    PlanItemStatus, ToolStatus, TurnOutcome, Usage,
+    PlanItemStatus, ToolLocation, ToolStatus, TurnOutcome, Usage,
 };
 use super::snapshot;
 
@@ -581,25 +582,108 @@ fn file_edits(
         .collect()
 }
 
+/// ACP's `ToolKind` in Sway's spelling.
+///
+/// A total match rather than a serde re-parse, so a variant added to the crate
+/// fails to compile here instead of silently arriving as `Other`. `ToolKind` is
+/// `#[non_exhaustive]` upstream, which is what the wildcard arm is for, and it
+/// is the right answer for a kind from a newer spec than this build.
+fn tool_kind(kind: &ToolKind) -> model::ToolKind {
+    match kind {
+        ToolKind::Read => model::ToolKind::Read,
+        ToolKind::Edit => model::ToolKind::Edit,
+        ToolKind::Delete => model::ToolKind::Delete,
+        ToolKind::Move => model::ToolKind::Move,
+        ToolKind::Search => model::ToolKind::Search,
+        ToolKind::Execute => model::ToolKind::Execute,
+        ToolKind::Think => model::ToolKind::Think,
+        ToolKind::Fetch => model::ToolKind::Fetch,
+        ToolKind::SwitchMode => model::ToolKind::SwitchMode,
+        _ => model::ToolKind::Other,
+    }
+}
+
+fn tool_locations(locations: &[ToolCallLocation]) -> Vec<ToolLocation> {
+    locations
+        .iter()
+        .map(|l| ToolLocation {
+            path: l.path.to_string_lossy().into_owned(),
+            line: l.line,
+        })
+        .collect()
+}
+
+/// A `tool_call`, with the two fields that make its card renderable.
+///
+/// **`name` is not the agent's title.** The collapsed row renders `name` as a
+/// mono token, and an ACP title is prose: `codex-acp` opened a file read as
+/// "Read the file README.md in this directory". So `name` carries the kind's
+/// canonical spelling, which is a token, and the prose moves to `title` where a
+/// renderer can use it as a subtitle or ignore it.
+///
+/// Measured on codex-acp 1.2.0 and opencode alike, `kind` and `locations`
+/// arrive here on the opening frame and are **absent from the completing
+/// update**, which is why they are captured at the start rather than read off
+/// the end.
 fn tool_call_started(session_id: &str, turn_id: &str, call: &ToolCall) -> ChatEvent {
     ChatEvent::ToolCallStarted {
         session_id: session_id.to_string(),
         turn_id: turn_id.to_string(),
         tool_use_id: call.tool_call_id.0.to_string(),
-        name: call.title.clone(),
+        name: tool_kind_token(&call.kind).to_string(),
         input: call.raw_input.clone().unwrap_or(serde_json::Value::Null),
+        kind: tool_kind(&call.kind),
+        locations: tool_locations(&call.locations),
+        // An agent that sent an empty title said nothing, and `Some("")` would
+        // make a renderer falling back on `name` show a blank row instead.
+        title: (!call.title.is_empty()).then(|| call.title.clone()),
+    }
+}
+
+/// The short token a collapsed row shows for a kind.
+///
+/// Spelled out rather than derived from the serde name, because this is UI text
+/// and a rename of the wire spelling should not silently change what a row
+/// says.
+fn tool_kind_token(kind: &ToolKind) -> &'static str {
+    match kind {
+        ToolKind::Read => "read",
+        ToolKind::Edit => "edit",
+        ToolKind::Delete => "delete",
+        ToolKind::Move => "move",
+        ToolKind::Search => "search",
+        ToolKind::Execute => "execute",
+        ToolKind::Think => "think",
+        ToolKind::Fetch => "fetch",
+        ToolKind::SwitchMode => "switchMode",
+        // The same word an unnamed card already renders as. A kind this build
+        // does not know still has the agent's `title` beside it, which is what
+        // the row actually shows.
+        _ => "tool",
     }
 }
 
 /// A `tool_call_update` is a status patch, so whether it is "progress" or
 /// "completed" is decided by the status it carries rather than by its name.
 ///
-/// An update with no status at all is a content-only patch and yields nothing:
-/// reporting it as progress would restart a card the agent only meant to amend.
+/// An update with no status is not necessarily empty. The spec lets `kind`,
+/// `title` and `locations` arrive on any patch, so one that carries them and no
+/// status is a card being *described*, not a card being restarted, and
+/// discarding it loses the only copy of those fields. It becomes an upsert
+/// (see `ToolCallStarted`'s contract) naming only what the patch actually
+/// carried. A patch with none of them still yields nothing: reporting a
+/// content-only amendment as progress would restart a card the agent only meant
+/// to add to, and its content is collected as `FileEdit`s by the caller either
+/// way.
+///
+/// **Defensive, not measured.** Phase 1 probed codex-acp 1.2.0 and opencode and
+/// neither sends a status-less patch: both put `kind` and `locations` on the
+/// opening `tool_call`. This is a spec-legal frame with no agent behind it yet,
+/// so its test is synthetic and says so.
 fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) -> Vec<ChatEvent> {
     let tool_use_id = update.tool_call_id.0.to_string();
     let Some(status) = update.fields.status else {
-        return Vec::new();
+        return describe_tool_call(session_id, turn_id, tool_use_id, update);
     };
     match status {
         ToolCallStatus::Completed | ToolCallStatus::Failed => {
@@ -630,6 +714,10 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
                 // store reads `fileEdit.path` beside `toolCallCompleted.files`.
                 files: Vec::new(),
                 duration_ms: None,
+                // Phase 3 summarises from the state carried since the call
+                // opened, which is where its kind and locations still are.
+                summary: None,
+                output_truncated: false,
             }]
         }
         ToolCallStatus::InProgress | ToolCallStatus::Pending => {
@@ -647,6 +735,36 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
         }
         _ => Vec::new(),
     }
+}
+
+/// A status-less patch, as an upsert carrying only what it described.
+///
+/// Every field the patch did not carry is sent **empty**, which upsert reads as
+/// "unchanged": an absent `raw_input` here is the agent saying nothing about the
+/// arguments, not the agent clearing them, and a consumer that overwrote the
+/// card with these blanks would erase what the opening frame established.
+fn describe_tool_call(
+    session_id: &str,
+    turn_id: &str,
+    tool_use_id: String,
+    update: &ToolCallUpdate,
+) -> Vec<ChatEvent> {
+    let f = &update.fields;
+    if f.kind.is_none() && f.title.is_none() && f.locations.is_none() {
+        return Vec::new();
+    }
+    vec![ChatEvent::ToolCallStarted {
+        session_id: session_id.to_string(),
+        turn_id: turn_id.to_string(),
+        tool_use_id,
+        // Empty unless this patch named a kind, since the token is derived from
+        // the kind and a defaulted one would overwrite a good name with "tool".
+        name: f.kind.as_ref().map(|k| tool_kind_token(k).to_string()).unwrap_or_default(),
+        input: f.raw_input.clone().unwrap_or(serde_json::Value::Null),
+        kind: f.kind.as_ref().map(tool_kind).unwrap_or_default(),
+        locations: f.locations.as_deref().map(tool_locations).unwrap_or_default(),
+        title: f.title.clone(),
+    }]
 }
 
 /// Turn a `session/request_permission` into Sway's prompt event.
@@ -1155,10 +1273,73 @@ mod tests {
     /// A content-only patch must not restart the card. `tool_call_update`
     /// carries an optional status precisely so an agent can amend a call's
     /// content without claiming its state changed.
+    ///
+    /// Still true now that a status-less patch can describe a call: this one
+    /// names no kind, title or locations, so there is nothing to upsert and the
+    /// answer is the same as it always was.
     #[test]
     fn a_tool_call_update_without_a_status_yields_nothing() {
         let update = tool_update("call-1", None);
         assert!(map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(update), None).is_empty());
+    }
+
+    /// A tool call's `name` is a mono token in the collapsed row, and an ACP
+    /// title is prose: codex-acp opened a file read as "Read the file README.md
+    /// in this directory". So the kind's canonical spelling is the name and the
+    /// agent's sentence moves to `title`, where a renderer can use it as a
+    /// subtitle or ignore it.
+    #[test]
+    fn an_acp_call_names_its_kind_and_keeps_the_agents_prose_as_a_title() {
+        let mut call = ToolCall::new(
+            ToolCallId::new("call-1"),
+            "Read the file README.md in this directory".to_string(),
+        );
+        call.kind = ToolKind::Read;
+        call.locations = vec![ToolCallLocation::new("/tmp/w/README.md").line(3u32)];
+
+        match map_update("s1", "t1", &SessionUpdate::ToolCall(call), None).as_slice() {
+            [ChatEvent::ToolCallStarted { name, title, kind, locations, .. }] => {
+                assert_eq!(name, "read", "the row's token has to be a token");
+                assert_eq!(title.as_deref(), Some("Read the file README.md in this directory"));
+                assert_eq!(*kind, model::ToolKind::Read);
+                assert_eq!(locations.len(), 1);
+                assert_eq!(locations[0].path, "/tmp/w/README.md");
+                assert_eq!(locations[0].line, Some(3));
+            }
+            other => panic!("expected one ToolCallStarted, got {other:?}"),
+        }
+    }
+
+    /// SYNTHETIC, and deliberately so.
+    ///
+    /// Phase 1 probed codex-acp 1.2.0 and opencode for when `kind`, `locations`
+    /// and `content` arrive, and both put them on the opening `tool_call`;
+    /// neither ever sent a patch without a status. So there is no fixture
+    /// behind this and none is claimed: it is a spec-legal frame this client
+    /// has to survive, built by hand from the crate's own types.
+    #[test]
+    fn a_status_less_patch_describes_the_call_rather_than_being_discarded() {
+        let placeholder = ToolCall::new(ToolCallId::new("call-1"), "working".to_string());
+        let opened = map_update("s1", "t1", &SessionUpdate::ToolCall(placeholder), None);
+        assert!(matches!(opened.as_slice(), [ChatEvent::ToolCallStarted { .. }]));
+
+        let mut fields = ToolCallUpdateFields::default();
+        fields.locations = Some(vec![ToolCallLocation::new("/tmp/w/late.rs")]);
+        let patch = ToolCallUpdate::new(ToolCallId::new("call-1"), fields);
+
+        match map_update("s1", "t1", &SessionUpdate::ToolCallUpdate(patch), None).as_slice() {
+            [ChatEvent::ToolCallStarted { tool_use_id, locations, name, input, .. }] => {
+                assert_eq!(tool_use_id, "call-1", "an upsert onto the same card");
+                assert_eq!(locations.len(), 1);
+                assert_eq!(locations[0].path, "/tmp/w/late.rs");
+                // The patch said nothing about either, and an upsert reads an
+                // empty field as unchanged. Sending the kind's default token
+                // here would rename the card to "tool".
+                assert!(name.is_empty(), "a patch that named no kind names no token");
+                assert!(input.is_null(), "a patch that named no arguments clears none");
+            }
+            other => panic!("expected one ToolCallStarted, got {other:?}"),
+        }
     }
 
     #[test]

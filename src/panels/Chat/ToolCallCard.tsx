@@ -132,7 +132,11 @@ export default function ToolCallCard(props: {
             [styles.toolNameError]: props.card.state === "error" || props.card.state === "denied",
           }}
         >
-          {props.card.name ?? "tool"}
+          {/* The agent's prose wins where there is any, which is what keeps an
+              ACP row reading "Read the file README.md" rather than "read".
+              Phase 5 gives the token and the prose separate places to sit; this
+              is the one-slot version until then. */}
+          {props.card.title ?? props.card.name ?? "tool"}
         </span>
         <span class={styles.toolArg}>{toolDigest(props.card)}</span>
         <Show when={formatDuration(props.card.durationMs)}>

@@ -31,10 +31,9 @@ use serde_json::Value;
 use crate::agents::{ChatEffortExtra, EffortExtraState};
 
 use super::model::{
-    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent,
-    ChatModelInfo, ChatQuestion, ChatQuestionOption, Extra, HookPhase,
-    McpServer, PermissionDenial, PermissionMode, PermissionSuggestion, QuestionAnswer, SlashCommand, SuggestedRule,
-    ToolStatus, TurnOutcome, Usage,
+    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo, ChatQuestion,
+    ChatQuestionOption, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode, PermissionSuggestion,
+    QuestionAnswer, SlashCommand, SuggestedRule, ToolKind, ToolStatus, TurnOutcome, Usage,
 };
 
 /// The one tool whose `can_use_tool` is a question rather than a request to act.
@@ -793,6 +792,14 @@ impl ClaudeMapper {
                         tool_use_id: tool_use_id.clone(),
                         name: name.clone(),
                         input: Value::Object(Default::default()),
+                        kind: tool_kind(name),
+                        // Claude publishes neither. `name` is already the short
+                        // human-readable token a row wants, so there is no prose
+                        // to put in `title`, and the paths a call names live in
+                        // its arguments, which have not arrived yet at this
+                        // emission.
+                        locations: Vec::new(),
+                        title: None,
                     }],
                     _ => Vec::new(),
                 };
@@ -846,6 +853,9 @@ impl ClaudeMapper {
                             tool_use_id: tool_use_id.clone(),
                             name: name.clone(),
                             input,
+                            kind: tool_kind(name),
+                            locations: Vec::new(),
+                            title: None,
                         }]
                     }
                     _ => Vec::new(),
@@ -905,6 +915,10 @@ impl ClaudeMapper {
                     files_touched(&frame["tool_use_result"])
                 },
                 duration_ms: None,
+                // Phase 3 fills this from `tool_use_result`; the vocabulary
+                // lands first so every consumer is already carrying the field.
+                summary: None,
+                output_truncated: false,
             })
             .collect()
     }
@@ -1245,6 +1259,42 @@ fn tool_result_text(raw: &Value) -> Option<String> {
 /// `filePath` once the frame is all that is left, so the exclusion is keyed off
 /// the call's name instead of guessing at the result's shape.
 const READ_ONLY_TOOLS: &[&str] = &["Read", "NotebookRead"];
+
+/// Claude's tool names, mapped onto the neutral vocabulary.
+///
+/// Claude has no `kind` on the wire, so this is where its names become the same
+/// words ACP supplies directly, and it is the reason a renderer can stop being
+/// keyed on `"Grep"` and `"Glob"` by name.
+///
+/// Names marked *measured* appear in the committed corpus under
+/// `dev/fixtures/claude/`. The rest are the CLI's own siblings of a measured
+/// name, mapped because they are the same kind of thing; anything else, MCP
+/// tools included, lands on `Other`, which is the generic card every tool
+/// renders as today. Being wrong about a kind costs a mismatched card, so the
+/// rule here is to map only what is obvious and let the rest fall through.
+pub(crate) fn tool_kind(name: &str) -> ToolKind {
+    match name {
+        // measured
+        "Read" => ToolKind::Read,
+        "NotebookRead" => ToolKind::Read,
+        // measured: Edit, Write
+        "Edit" | "MultiEdit" | "Write" | "NotebookEdit" => ToolKind::Edit,
+        // measured: Bash
+        "Bash" | "BashOutput" | "KillShell" => ToolKind::Execute,
+        // measured: Glob, Grep
+        "Glob" | "Grep" => ToolKind::Search,
+        // measured: WebFetch
+        "WebFetch" | "WebSearch" => ToolKind::Fetch,
+        "TodoWrite" => ToolKind::Think,
+        "ExitPlanMode" => ToolKind::SwitchMode,
+        // `Agent` and `AskUserQuestion` are both measured and both deliberately
+        // `Other`: ACP has no kind for delegating to a subagent or for putting a
+        // form in front of the user, and inventing the nearest fit would render
+        // a subagent as reasoning and a question as a generic tool. Their cards
+        // are chosen by other means already.
+        _ => ToolKind::Other,
+    }
+}
 
 /// The paths a tool touched, read off `tool_use_result`.
 ///
@@ -1888,6 +1938,49 @@ mod tests {
                 ] }
             }
         })
+    }
+
+    /// Claude has no `kind` on the wire, so this map is the whole of it. The
+    /// unknown case is the one that matters most: MCP tools arrive as
+    /// `mcp__<server>__<tool>` and a build cannot know them, so they have to
+    /// land somewhere honest rather than on a guess.
+    #[test]
+    fn a_tool_name_this_build_does_not_know_lands_on_other() {
+        assert_eq!(tool_kind("Bash"), ToolKind::Execute);
+        assert_eq!(tool_kind("Grep"), ToolKind::Search);
+        assert_eq!(tool_kind("Glob"), ToolKind::Search);
+        assert_eq!(tool_kind("WebFetch"), ToolKind::Fetch);
+        assert_eq!(tool_kind("Read"), ToolKind::Read);
+        assert_eq!(tool_kind("Write"), ToolKind::Edit);
+
+        assert_eq!(tool_kind("mcp__linear__create_issue"), ToolKind::Other);
+        assert_eq!(tool_kind("SomeToolFromTheNextRelease"), ToolKind::Other);
+        assert_eq!(tool_kind(""), ToolKind::Other);
+        // Both measured in the corpus, and both deliberately unmapped: ACP has
+        // no kind for delegating to a subagent or for asking the user a
+        // question, and the nearest fit would be a wrong card rather than a
+        // generic one.
+        assert_eq!(tool_kind("Agent"), ToolKind::Other);
+        assert_eq!(tool_kind("AskUserQuestion"), ToolKind::Other);
+    }
+
+    /// The kind has to ride the *first* emission, not just the one carrying the
+    /// assembled arguments, or a card renders generic and then re-renders as
+    /// itself the moment the input finishes streaming.
+    #[test]
+    fn a_calls_kind_is_set_from_the_moment_its_block_opens() {
+        let kinds: Vec<ToolKind> = run("grep-modes")
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::ToolCallStarted { name, kind, .. } if name == "Grep" => Some(*kind),
+                _ => None,
+            })
+            .collect();
+        assert!(!kinds.is_empty(), "the fixture holds no Grep call");
+        assert!(
+            kinds.iter().all(|k| *k == ToolKind::Search),
+            "every emission of a call must agree on its kind: {kinds:?}"
+        );
     }
 
     /// The exception to every other tool: this `can_use_tool` is a question, so

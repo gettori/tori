@@ -182,7 +182,15 @@
     "name": "Bash",
     "input": {
       "command": "echo hi"
-    }
+    },
+    "kind": "execute",
+    "locations": [
+      {
+        "path": "/tmp/w/probe.txt",
+        "line": 12
+      }
+    ],
+    "title": "Running echo hi"
   },
   {
     "type": "toolCallProgress",
@@ -201,7 +209,9 @@
     "files": [
       "/tmp/w/probe.txt"
     ],
-    "durationMs": 42
+    "durationMs": 42,
+    "summary": null,
+    "outputTruncated": false
   },
   {
     "type": "fileEdit",
