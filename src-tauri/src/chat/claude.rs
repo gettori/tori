@@ -31,9 +31,10 @@ use serde_json::Value;
 use crate::agents::{ChatEffortExtra, EffortExtraState};
 
 use super::model::{
-    ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo, ChatQuestion,
-    ChatQuestionOption, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode, PermissionSuggestion,
-    QuestionAnswer, SlashCommand, SuggestedRule, ToolKind, ToolStatus, TurnOutcome, Usage,
+    cap_output, ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo,
+    ChatQuestion, ChatQuestionOption, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode,
+    PermissionSuggestion, QuestionAnswer, SlashCommand, SuggestedRule, ToolKind, ToolStatus, ToolSummary,
+    TurnOutcome, Usage,
 };
 
 /// The one tool whose `can_use_tool` is a question rather than a request to act.
@@ -308,6 +309,12 @@ pub struct ClaudeMapper {
     /// bound as `sway_hook_ids`: the result frame arrives with nothing but a
     /// `tool_use_id` on it.
     read_only_calls: std::collections::HashSet<String>,
+    /// Calls whose output must reach the UI whole. Learned and retained exactly
+    /// like `read_only_calls`, and for the same reason: the result frame names
+    /// only a `tool_use_id`. Today this is `AskUserQuestion` alone, whose
+    /// "output" is the answer record Sway itself produced, so cutting it would
+    /// be the app truncating its own success path.
+    uncapped_calls: std::collections::HashSet<String>,
     /// The adapter's measured effort levels. Empty is a mapper nobody gave any,
     /// which offers the catalogue's own list rather than guessing at more.
     effort_extras: Vec<ChatEffortExtra>,
@@ -501,6 +508,9 @@ impl ClaudeMapper {
             if let ChatEvent::ToolCallStarted { tool_use_id, name, .. } = ev {
                 if READ_ONLY_TOOLS.contains(&name.as_str()) {
                     self.read_only_calls.insert(tool_use_id.clone());
+                }
+                if name == ASK_USER_QUESTION {
+                    self.uncapped_calls.insert(tool_use_id.clone());
                 }
             }
         }
@@ -891,34 +901,50 @@ impl ClaudeMapper {
         content
             .iter()
             .filter(|c| c["type"] == "tool_result")
-            .map(|c| ChatEvent::ToolCallCompleted {
-                session_id: self.session_id.clone(),
-                turn_id: self.turn_id(),
-                tool_use_id: c["tool_use_id"].as_str().unwrap_or_default().to_string(),
-                // A blocked call and a call that ran and failed both arrive as
-                // `is_error: true`; they are told apart at the session level by
-                // whether the id shows up in `result.permission_denials`, so a
-                // finer verdict is not available here.
-                status: if c["is_error"].as_bool().unwrap_or(false) {
-                    ToolStatus::Error
-                } else {
-                    ToolStatus::Ok
-                },
-                output: tool_result_text(&c["content"]),
-                // A read reports its target in the same shape a write does, so
-                // the *call* has to say which it was. Without this, opening a
-                // file another session is editing files that file under this
-                // session's writes, and the turn offers to revert it.
-                files: if self.read_only_calls.contains(c["tool_use_id"].as_str().unwrap_or_default()) {
-                    Vec::new()
-                } else {
-                    files_touched(&frame["tool_use_result"])
-                },
-                duration_ms: None,
-                // Phase 3 fills this from `tool_use_result`; the vocabulary
-                // lands first so every consumer is already carrying the field.
-                summary: None,
-                output_truncated: false,
+            .map(|c| {
+                let id = c["tool_use_id"].as_str().unwrap_or_default();
+                let (output, output_truncated) = match tool_result_text(&c["content"]) {
+                    Some(text) if !self.uncapped_calls.contains(id) => {
+                        let (text, cut) = cap_output(text);
+                        (Some(text), cut)
+                    }
+                    other => (other, false),
+                };
+                ChatEvent::ToolCallCompleted {
+                    session_id: self.session_id.clone(),
+                    turn_id: self.turn_id(),
+                    tool_use_id: id.to_string(),
+                    // A blocked call and a call that ran and failed both arrive
+                    // as `is_error: true`; they are told apart at the session
+                    // level by whether the id shows up in
+                    // `result.permission_denials`, so a finer verdict is not
+                    // available here.
+                    status: if c["is_error"].as_bool().unwrap_or(false) {
+                        ToolStatus::Error
+                    } else {
+                        ToolStatus::Ok
+                    },
+                    output,
+                    // A read reports its target in the same shape a write does,
+                    // so the *call* has to say which it was. Without this,
+                    // opening a file another session is editing files that file
+                    // under this session's writes, and the turn offers to
+                    // revert it.
+                    files: if self.read_only_calls.contains(id) {
+                        Vec::new()
+                    } else {
+                        files_touched(&frame["tool_use_result"])
+                    },
+                    duration_ms: None,
+                    // The structured result sits on the *frame*, not on the
+                    // content block, and a frame carries at most one tool
+                    // result: measured across 47539 such records in the local
+                    // transcript corpus, none held a second `tool_result`
+                    // block. So this payload belongs to this block without
+                    // having to be matched to it.
+                    summary: summarise_result(&frame["tool_use_result"]),
+                    output_truncated,
+                }
             })
             .collect()
     }
@@ -1317,6 +1343,139 @@ fn files_touched(raw: &Value) -> Vec<String> {
         }
     }
     out
+}
+
+/// What a finished Claude tool call did, read off its structured result.
+///
+/// **Dispatch is on the payload, never on the tool's name.** `Grep` is the
+/// reason it has to be: measured, its result shape follows `output_mode`, so
+/// one name answers with hits, with paths, or with a count, and a table keyed
+/// on the name would render two of the three wrong. Every other shape turns out
+/// to be distinguishable by its own keys as well, so the name is never
+/// consulted and an MCP tool or a CLI sibling this build has never heard of
+/// gets summarised on its shape or not at all.
+///
+/// `None` is the answer for everything unrecognised, and the corpus holds four
+/// ways to be unrecognised. Three are non-objects: a **bare string**, which is
+/// what a failed, denied or unanswered call replies with; an **absent payload**,
+/// which is what a call made inside a subagent has; and an **array of content
+/// blocks**, which is what every MCP tool replies with (measured: 5247 of them
+/// locally, all `[{type: "text", ...}]`, and none of them summarisable). The
+/// fourth is an object whose keys none of the arms below claim.
+///
+/// There is deliberately no text fallback. Phase 1 measured no tool whose
+/// success is text-only, so a parser for one would be code that never runs.
+pub(crate) fn summarise_result(raw: &Value) -> Option<ToolSummary> {
+    let obj = raw.as_object()?;
+
+    // An edit and a write both answer with a patch, and the patch is the only
+    // place the counts are. Checked first because `Write` also carries the
+    // `content`/`type` pair a read answers with.
+    if let Some(patch) = obj.get("structuredPatch").and_then(Value::as_array) {
+        // An empty patch is not a no-op. Measured across the local corpus,
+        // 1588 of the 1590 empty ones are a `Write` that *created* the file,
+        // where the patch has nothing to diff against and the content is the
+        // only place the size is reported. The other 2 are a write over a file
+        // that was already there and unchanged, where 0/0 really is the answer,
+        // so `originalFile` tells the two apart without a guess.
+        if patch.is_empty() {
+            let original = obj.get("originalFile").and_then(Value::as_str).unwrap_or_default();
+            let content = obj.get("content").and_then(Value::as_str).unwrap_or_default();
+            return Some(ToolSummary::Edit {
+                added: if original.is_empty() { line_count(content) } else { 0 },
+                removed: 0,
+            });
+        }
+        let (mut added, mut removed) = (0u64, 0u64);
+        for hunk in patch {
+            for line in hunk.get("lines").and_then(Value::as_array).into_iter().flatten() {
+                match line.as_str().and_then(|l| l.chars().next()) {
+                    Some('+') => added += 1,
+                    Some('-') => removed += 1,
+                    _ => {}
+                }
+            }
+        }
+        return Some(ToolSummary::Edit { added, removed });
+    }
+
+    // `numFiles` is read as "0 means not reported" in both modes. Measured, a
+    // `content` grep whose own output spans two files still reports `numFiles:
+    // 0`, and a search that found hits in no files is a contradiction, so the
+    // zero is the field being unfilled rather than a count worth showing.
+    if let Some(mode) = obj.get("mode").and_then(Value::as_str) {
+        let files = num(obj, "numFiles").filter(|n| *n > 0);
+        return match mode {
+            "content" => Some(ToolSummary::Search { hits: num(obj, "numLines")?, files }),
+            "count" => Some(ToolSummary::Search { hits: num(obj, "numMatches")?, files }),
+            // The total rather than the returned list, so a truncated answer
+            // still says how much it matched.
+            "files_with_matches" => Some(ToolSummary::Paths {
+                count: num(obj, "totalFiles").or(files)?,
+            }),
+            _ => None,
+        };
+    }
+
+    if let Some(stdout) = obj.get("stdout").and_then(Value::as_str) {
+        let stderr = obj.get("stderr").and_then(Value::as_str).unwrap_or_default();
+        return Some(ToolSummary::Execute {
+            // Permanently `None` over this transport; see the variant's docs.
+            exit_code: None,
+            lines: line_count(stdout) + line_count(stderr),
+        });
+    }
+
+    if let Some(file) = obj.get("file").and_then(Value::as_object) {
+        return Some(ToolSummary::Read {
+            lines: num(file, "numLines")?,
+            from: num(file, "startLine").unwrap_or(1),
+            total: num(file, "totalLines"),
+        });
+    }
+
+    // A glob. Same total-not-list reading as `files_with_matches` above.
+    if obj.contains_key("filenames") {
+        return Some(ToolSummary::Paths {
+            count: num(obj, "totalMatches").or_else(|| num(obj, "numFiles"))?,
+        });
+    }
+
+    if let Some(url) = obj.get("url").and_then(Value::as_str) {
+        return Some(ToolSummary::Fetch {
+            host: host_of(url)?,
+            status: num(obj, "code").and_then(|c| u16::try_from(c).ok()),
+            bytes: num(obj, "bytes"),
+        });
+    }
+
+    None
+}
+
+fn num(obj: &serde_json::Map<String, Value>, key: &str) -> Option<u64> {
+    obj.get(key).and_then(Value::as_u64)
+}
+
+/// Lines of output, where nothing is zero rather than one.
+///
+/// `"".lines()` already yields nothing, but `str::lines` also drops a single
+/// trailing newline, which is what makes a one-line command report one line
+/// instead of two.
+fn line_count(s: &str) -> u64 {
+    s.lines().count() as u64
+}
+
+/// The host out of a URL, without a URL parser.
+///
+/// Sway has no `url` crate and this needs one field of one, so it takes the
+/// authority between `://` and the first `/`, `?` or `#` and drops any
+/// `user@`. `None` for anything without a scheme, which keeps a summary from
+/// claiming a host it guessed at.
+fn host_of(url: &str) -> Option<String> {
+    let rest = url.split_once("://")?.1;
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    (!host.is_empty()).then(|| host.to_string())
 }
 
 #[cfg(test)]
@@ -2998,6 +3157,228 @@ mod tests {
         // improving nothing.
         ("permission-subagent", "Write", "", ResultShape::Absent),
     ];
+
+    // --- What a summariser reads off those shapes ---
+    //
+    // The other half of the table above: `RESULT_SHAPES` pins what the CLI
+    // sends, this pins what Sway makes of it. Same (fixture, tool, mode) key,
+    // so a shape row without a summary row is a payload nobody summarises and
+    // the coverage test below says so by name.
+
+    /// The summary each measured payload produces. `None` is a real answer,
+    /// not a gap: it is what an unrecognised shape must yield rather than a
+    /// wrong number.
+    /// A function rather than a `const`, only because `ToolSummary::Fetch`
+    /// holds an owned host and a `const` cannot allocate one.
+    fn summaries() -> Vec<(&'static str, &'static str, &'static str, Option<ToolSummary>)> {
+        vec![
+        (
+            "bash-call",
+            "Bash",
+            "",
+            Some(ToolSummary::Execute { exit_code: None, lines: 1 }),
+        ),
+        // Empty output is zero lines, not one. `str::lines` on an empty string
+        // yields nothing, which is the behaviour a row wants here.
+        (
+            "permission-coverage",
+            "Bash",
+            "",
+            Some(ToolSummary::Execute { exit_code: None, lines: 0 }),
+        ),
+        (
+            "read-call",
+            "Read",
+            "",
+            Some(ToolSummary::Read { lines: 13, from: 1, total: Some(13) }),
+        ),
+        (
+            "edit-call",
+            "Read",
+            "",
+            Some(ToolSummary::Read { lines: 4, from: 1, total: Some(4) }),
+        ),
+        (
+            "hook-matcher",
+            "Read",
+            "",
+            Some(ToolSummary::Read { lines: 2, from: 1, total: Some(2) }),
+        ),
+        (
+            "permission-coverage",
+            "Read",
+            "",
+            Some(ToolSummary::Read { lines: 2, from: 1, total: Some(2) }),
+        ),
+        ("edit-call", "Edit", "", Some(ToolSummary::Edit { added: 1, removed: 1 })),
+        ("hook-matcher", "Edit", "", Some(ToolSummary::Edit { added: 1, removed: 1 })),
+        // A write to a new path, whose patch is empty and whose size is only in
+        // its content. `removed: 0` because there was nothing there.
+        ("hook-matcher", "Write", "", Some(ToolSummary::Edit { added: 1, removed: 0 })),
+        ("permission-coverage", "Write", "", Some(ToolSummary::Edit { added: 1, removed: 0 })),
+        ("permission-grant", "Write", "", Some(ToolSummary::Edit { added: 1, removed: 0 })),
+        ("glob-call", "Glob", "", Some(ToolSummary::Paths { count: 3 })),
+        // The three greps, and the whole reason dispatch is on the payload.
+        // `content` reports no usable file count: its own hits span two files
+        // and it still says `numFiles: 0`, so the summary declines to name one.
+        (
+            "grep-modes",
+            "Grep",
+            "content",
+            Some(ToolSummary::Search { hits: 2, files: None }),
+        ),
+        (
+            "grep-modes",
+            "Grep",
+            "files_with_matches",
+            Some(ToolSummary::Paths { count: 2 }),
+        ),
+        (
+            "grep-modes",
+            "Grep",
+            "count",
+            Some(ToolSummary::Search { hits: 2, files: Some(2) }),
+        ),
+        (
+            "webfetch-call",
+            "WebFetch",
+            "",
+            Some(ToolSummary::Fetch {
+                host: "example.com".to_string(),
+                status: Some(200),
+                bytes: Some(559),
+            }),
+        ),
+        // A subagent's own result is rich and still unsummarisable: none of its
+        // keys is a count of anything a row can say.
+        ("permission-subagent", "Agent", "", None),
+        // The non-object shapes, which are the ones that would panic an
+        // unwrapping summariser rather than merely mis-report.
+        ("ask-user-question", "AskUserQuestion", "", None),
+        ("hook-denied", "Bash", "", None),
+        ("permission-deadline", "Write", "", None),
+        ("permission-subagent", "Write", "", None),
+        ]
+    }
+
+    /// Every measured payload summarises to what it was measured to summarise.
+    #[test]
+    fn every_measured_result_shape_summarises_the_same_way() {
+        for (fixture_name, tool, mode, expected) in summaries() {
+            let matching: Vec<_> = tool_results(fixture_name)
+                .into_iter()
+                .filter(|(t, m, _, _)| t == tool && m == mode)
+                .collect();
+            assert!(
+                !matching.is_empty(),
+                "{fixture_name}: no {tool} result with mode {mode:?} left to summarise"
+            );
+            for (_, _, result, _) in matching {
+                let got = summarise_result(&result.unwrap_or(Value::Null));
+                assert_eq!(
+                    got.as_ref(),
+                    expected.as_ref(),
+                    "{fixture_name}/{tool}/{mode}: summary changed"
+                );
+            }
+        }
+    }
+
+    /// Neither table may grow a row the other does not have. Without this, a
+    /// new shape could be measured and never summarised, or a summary could
+    /// keep asserting against a payload the CLI stopped sending.
+    #[test]
+    fn the_shape_table_and_the_summary_table_cover_the_same_calls() {
+        let shapes: Vec<_> = RESULT_SHAPES.iter().map(|(f, t, m, _)| (*f, *t, *m)).collect();
+        let summaries: Vec<_> = summaries().into_iter().map(|(f, t, m, _)| (f, t, m)).collect();
+        for key in &shapes {
+            assert!(summaries.contains(key), "{key:?} is measured but never summarised");
+        }
+        for key in &summaries {
+            assert!(shapes.contains(key), "{key:?} is summarised but no longer measured");
+        }
+    }
+
+    /// The four ways a payload can be unsummarisable, as values rather than as
+    /// fixtures. Three are measured shapes; the fourth is an object whose keys
+    /// no arm claims, which is every MCP tool and every CLI tool this build has
+    /// not been taught.
+    #[test]
+    fn an_unrecognised_payload_summarises_to_nothing_rather_than_a_wrong_number() {
+        let unsummarisable = [
+            // A failed, denied or unanswered call.
+            serde_json::json!("Error: permission denied"),
+            // A call made inside a subagent: no payload at all.
+            Value::Null,
+            // Every MCP tool, measured: 5247 locally, all content blocks.
+            serde_json::json!([{ "type": "text", "text": "some output" }]),
+            // An object with none of the keys an arm reads.
+            serde_json::json!({ "matches": 3, "query": "x", "total_deferred_tools": 40 }),
+            // A shape that opens like one it knows and carries none of the
+            // numbers, which must not summarise to zeroes.
+            serde_json::json!({ "file": { "filePath": "/a" } }),
+        ];
+        for payload in unsummarisable {
+            assert_eq!(
+                summarise_result(&payload),
+                None,
+                "summarised something it does not understand: {payload}"
+            );
+        }
+    }
+
+    /// The cap is the adapter's, so it is asserted through the adapter rather
+    /// than on the helper: a call whose output is over the line arrives cut and
+    /// flagged, and `AskUserQuestion` arrives whole because its "output" is the
+    /// answer record Sway itself produced.
+    #[test]
+    fn a_huge_output_is_capped_unless_it_is_a_questions_answer() {
+        let big = "x".repeat(1024 * 1024);
+        for (tool, expect_cut) in [("Bash", true), (ASK_USER_QUESTION, false)] {
+            let mut m = ClaudeMapper::new("s1");
+            m.map(&serde_json::json!({
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": { "type": "tool_use", "id": "toolu_big", "name": tool }
+                }
+            }));
+            let events = m.map(&serde_json::json!({
+                "type": "user",
+                "message": { "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_big",
+                    "content": big,
+                }]},
+            }));
+            let ChatEvent::ToolCallCompleted { output, output_truncated, .. } =
+                events.first().expect("a completion")
+            else {
+                panic!("{tool}: not a completion");
+            };
+            assert_eq!(*output_truncated, expect_cut, "{tool}: wrong truncation verdict");
+            let len = output.as_deref().unwrap_or_default().len();
+            if expect_cut {
+                assert_eq!(len, crate::chat::model::TOOL_OUTPUT_CAP, "{tool}: cut to the wrong size");
+            } else {
+                assert_eq!(len, big.len(), "{tool}: a question's answer was cut");
+            }
+        }
+    }
+
+    /// The cap is in bytes and the text is not, so the cut lands on a character
+    /// boundary rather than panicking on the multi-byte outputs most worth
+    /// capping.
+    #[test]
+    fn the_cap_never_splits_a_character() {
+        // Three bytes each, so the cap falls mid-character.
+        let text = "\u{4f60}".repeat(crate::chat::model::TOOL_OUTPUT_CAP);
+        let (cut, truncated) = crate::chat::model::cap_output(text);
+        assert!(truncated);
+        assert!(cut.len() <= crate::chat::model::TOOL_OUTPUT_CAP);
+        assert!(cut.chars().all(|c| c == '\u{4f60}'), "cut mid-character");
+    }
 
     /// Walk a dotted path into a value, so `file.numLines` reads one level in.
     fn dotted<'a>(v: &'a Value, path: &str) -> Option<&'a Value> {

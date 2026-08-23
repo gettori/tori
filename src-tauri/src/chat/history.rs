@@ -19,8 +19,8 @@
 
 use crate::sessions::{TranscriptBlock, TranscriptTurn};
 
-use super::claude::tool_kind;
-use super::model::{ChatEvent, ContentBlock, ToolStatus};
+use super::claude::{tool_kind, ASK_USER_QUESTION};
+use super::model::{cap_output, ChatEvent, ContentBlock, ToolStatus};
 
 /// Ids for replayed turns and calls are prefixed so they can never collide with
 /// a live turn's (`turn-1`) or a real `tool_use_id` (`toolu_...`), which is what
@@ -108,7 +108,7 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                     });
                 }
                 "tool_result" => {
-                    let Some((tool_use_id, _)) = take_call(&mut open_calls, block) else {
+                    let Some((tool_use_id, name)) = take_call(&mut open_calls, block) else {
                         // A result whose call is not in this transcript - a
                         // resumed session whose earlier half lives in another
                         // file, most often. Dropped rather than rendered as a
@@ -116,12 +116,22 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                         // run that never happened.
                         continue;
                     };
+                    // Same cap and the same exemption as the live adapter,
+                    // applied here rather than in the scanner so that the one
+                    // place that knows the call's name is the one that decides.
+                    let (output, output_truncated) = match block.text.clone() {
+                        Some(text) if name != ASK_USER_QUESTION => {
+                            let (text, cut) = cap_output(text);
+                            (Some(text), cut)
+                        }
+                        other => (other, false),
+                    };
                     events.push(ChatEvent::ToolCallCompleted {
                         session_id: session_id.to_string(),
                         turn_id: turn_id.clone(),
                         tool_use_id,
                         status: if block.is_error == Some(true) { ToolStatus::Error } else { ToolStatus::Ok },
-                        output: block.text.clone(),
+                        output,
                         // Deliberately empty: the transcript records that a tool
                         // ran, not which paths it wrote. Guessing from the input
                         // would feed per-turn attribution a set nothing measured.
@@ -129,11 +139,12 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                         // Never recorded on disk, and a fabricated duration
                         // would be indistinguishable from a real one.
                         duration_ms: None,
-                        // Phase 3 routes replay through the same summariser the
-                        // live path uses, once the scanner carries the
-                        // structured result this reads from.
-                        summary: None,
-                        output_truncated: false,
+                        // Read by the scanner from the same
+                        // `summarise_result` the live adapter uses, so a
+                        // replayed card and a live one cannot disagree about
+                        // the same result.
+                        summary: block.tool_summary.clone(),
+                        output_truncated,
                     });
                 }
                 _ => {}
@@ -275,6 +286,133 @@ mod tests {
         TranscriptTurn { role: role.into(), ts: 0, blocks }
     }
 
+
+    /// Captured stream frames, rewritten as the transcript records the CLI
+    /// writes for the same run. Only two things actually change: the timestamp
+    /// and cwd every record carries, and `tool_use_result` becoming
+    /// `toolUseResult`. The content blocks are already identical, which is why
+    /// one summariser can serve both.
+    fn transcript_of(frames: &[serde_json::Value]) -> String {
+        let mut out = String::new();
+        for (i, frame) in frames.iter().enumerate() {
+            let kind = frame["type"].as_str().unwrap_or_default();
+            if kind != "assistant" && kind != "user" {
+                continue;
+            }
+            let mut record = serde_json::json!({
+                "type": kind,
+                "cwd": "/p",
+                "timestamp": format!("2026-08-24T10:00:{:02}.000Z", i % 60),
+                "message": frame["message"].clone(),
+            });
+            if let Some(result) = frame.get("tool_use_result") {
+                record["toolUseResult"] = result.clone();
+            }
+            out.push_str(&record.to_string());
+            out.push('\n');
+        }
+        out
+    }
+
+    /// A replayed call and a live one report the same result.
+    ///
+    /// The two paths read different bytes for the same run: the live adapter
+    /// reads the stream's `tool_use_result`, the replay reads the transcript's
+    /// `toolUseResult` through the scanner, and until this phase only one of
+    /// them read anything at all. So each fixture is pushed through both and
+    /// the summaries compared per call. A divergence here is the failure a
+    /// shared summariser exists to make impossible.
+    ///
+    /// The replay side goes through the **real scanner**, not through the block
+    /// constructors: a test that summarised the payload itself and handed the
+    /// answer to `events_from_turns` would be comparing `summarise_result` with
+    /// `summarise_result` and would pass with the scanner reading nothing at
+    /// all. So the captured frames are rewritten as the transcript records the
+    /// CLI would have written for the same run, and parsed back.
+    #[test]
+    fn a_replayed_call_summarises_exactly_as_the_live_one_did() {
+        use crate::chat::model::ToolSummary;
+        use std::path::PathBuf;
+
+        // One fixture per summary variant, plus the two shapes that must
+        // summarise to nothing on both paths.
+        let fixtures = [
+            "bash-call",
+            "read-call",
+            "edit-call",
+            "glob-call",
+            "grep-modes",
+            "webfetch-call",
+            "hook-denied",
+            "permission-subagent",
+        ];
+        let mut variants: Vec<&str> = Vec::new();
+
+        for name in fixtures {
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("dev/fixtures/claude")
+                .join(format!("{name}.jsonl"));
+            let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            let frames: Vec<serde_json::Value> = raw
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| serde_json::from_str(l).expect("fixture line is json"))
+                .collect();
+
+            // Live: the stream, through the adapter.
+            let mut mapper = crate::chat::claude::ClaudeMapper::new("s1");
+            let live: Vec<Option<ToolSummary>> = frames
+                .iter()
+                .flat_map(|f| mapper.map(f))
+                .filter_map(|e| match e {
+                    ChatEvent::ToolCallCompleted { summary, .. } => Some(summary),
+                    _ => None,
+                })
+                .collect();
+
+            // Replayed: the same run, written as a transcript and read back
+            // by the scanner that reads real ones.
+            let dir = std::env::temp_dir().join(format!("sway-parity-{name}"));
+            std::fs::create_dir_all(&dir).expect("scratch dir");
+            let transcript = dir.join("session.jsonl");
+            std::fs::write(&transcript, transcript_of(&frames)).expect("write transcript");
+            let turns = crate::sessions::transcript_turns(transcript.to_str().unwrap(), "claude");
+            let replayed: Vec<Option<ToolSummary>> = events_from_turns("s1", &turns)
+                .into_iter()
+                .filter_map(|e| match e {
+                    ChatEvent::ToolCallCompleted { summary, .. } => Some(summary),
+                    _ => None,
+                })
+                .collect();
+            std::fs::remove_dir_all(&dir).ok();
+
+            assert!(!live.is_empty(), "{name}: no completed calls to compare");
+            assert_eq!(live, replayed, "{name}: replay and live disagree");
+            for summary in live.into_iter().flatten() {
+                variants.push(match summary {
+                    ToolSummary::Search { .. } => "search",
+                    ToolSummary::Paths { .. } => "paths",
+                    ToolSummary::Read { .. } => "read",
+                    ToolSummary::Execute { .. } => "execute",
+                    ToolSummary::Edit { .. } => "edit",
+                    ToolSummary::Fetch { .. } => "fetch",
+                });
+            }
+        }
+
+        // The comparison is only worth as much as what it compared, so the
+        // fixture list has to keep exercising every variant. This is also the
+        // phase's own check that no variant is built by its sample list alone.
+        variants.sort_unstable();
+        variants.dedup();
+        assert_eq!(
+            variants,
+            ["edit", "execute", "fetch", "paths", "read", "search"],
+            "a summary variant is no longer produced by any fixture"
+        );
+    }
+
     fn kinds(events: &[ChatEvent]) -> Vec<&'static str> {
         events
             .iter()
@@ -301,7 +439,7 @@ mod tests {
                     tool_call_block("Edit".into(), serde_json::json!({ "file_path": "/a" }), Some("toolu_1".into())),
                 ],
             ),
-            turn("user", vec![tool_result_block(None, "done".into(), false, Some("toolu_1".into()))]),
+            turn("user", vec![tool_result_block(None, "done".into(), false, Some("toolu_1".into()), None)]),
             turn("assistant", vec![text_block("text", "fixed".into())]),
         ];
 
@@ -331,8 +469,8 @@ mod tests {
             turn(
                 "user",
                 vec![
-                    tool_result_block(None, "b output".into(), false, Some("toolu_b".into())),
-                    tool_result_block(None, "a output".into(), true, Some("toolu_a".into())),
+                    tool_result_block(None, "b output".into(), false, Some("toolu_b".into()), None),
+                    tool_result_block(None, "a output".into(), true, Some("toolu_a".into()), None),
                 ],
             ),
         ];
@@ -356,7 +494,7 @@ mod tests {
         // A transcript recording no tool ids at all still has to pair up.
         let turns = vec![
             turn("assistant", vec![tool_call_block("Read".into(), serde_json::json!({}), None)]),
-            turn("tool", vec![tool_result_block(Some("Read".into()), "out".into(), false, None)]),
+            turn("tool", vec![tool_result_block(Some("Read".into()), "out".into(), false, None, None)]),
         ];
         let events = events_from_turns("s1", &turns);
         let started = match &events[0] {
@@ -374,7 +512,7 @@ mod tests {
         // The first half of a resumed conversation lives in another file.
         let turns = vec![turn(
             "user",
-            vec![tool_result_block(None, "orphan".into(), false, Some("toolu_gone".into()))],
+            vec![tool_result_block(None, "orphan".into(), false, Some("toolu_gone".into()), None)],
         )];
         assert!(events_from_turns("s1", &turns).is_empty());
     }
@@ -606,7 +744,7 @@ mod tests {
                 "assistant",
                 vec![tool_call_block("Edit".into(), serde_json::json!({ "file_path": "/a" }), Some("t1".into()))],
             ),
-            turn("user", vec![tool_result_block(None, "ok".into(), false, Some("t1".into()))]),
+            turn("user", vec![tool_result_block(None, "ok".into(), false, Some("t1".into()), None)]),
         ];
         match &events_from_turns("s1", &turns)[1] {
             ChatEvent::ToolCallCompleted { files, duration_ms, .. } => {

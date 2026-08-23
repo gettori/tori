@@ -59,14 +59,20 @@ export type ToolLocation = { path: string; line: number | null };
 ///
 /// Each variant is a named type because `CHAT_NESTED_KEYS` pins them one at a
 /// time; see the comment there for why the union cannot be pinned as one.
-export type ToolSummarySearch = { type: "search"; hits: number; files: number };
+/// `files` is nullable because Grep's `content` mode reports `numFiles: 0` for
+/// a result spanning two files, so that mode has no count worth showing.
+export type ToolSummarySearch = { type: "search"; hits: number; files: number | null };
 export type ToolSummaryPaths = { type: "paths"; count: number };
-export type ToolSummaryRead = { type: "read"; lines: number; from: number; to: number };
+/// `total` is the file's length, not the end of the range; the end is
+/// `from + lines - 1`, and the length is the half that cannot be derived.
+export type ToolSummaryRead = { type: "read"; lines: number; from: number; total: number | null };
 /// `exitCode` is nullable because Claude reports none at all: measured on
 /// 2.1.241, a `Bash` result carries no exit status anywhere.
 export type ToolSummaryExecute = { type: "execute"; exitCode: number | null; lines: number };
 export type ToolSummaryEdit = { type: "edit"; added: number; removed: number };
-export type ToolSummaryFetch = { type: "fetch"; host: string };
+/// `status` and `bytes` are what a fetch reports; `host` only repeats what the
+/// call asked for. Both nullable because ACP publishes neither.
+export type ToolSummaryFetch = { type: "fetch"; host: string; status: number | null; bytes: number | null };
 
 export type ToolSummary =
   | ToolSummarySearch
@@ -728,10 +734,10 @@ export const CHAT_NESTED_KEYS = {
   // unchecked.
   toolSummarySearch: keysOf<ToolSummarySearch>({ type: true, hits: true, files: true }),
   toolSummaryPaths: keysOf<ToolSummaryPaths>({ type: true, count: true }),
-  toolSummaryRead: keysOf<ToolSummaryRead>({ type: true, lines: true, from: true, to: true }),
+  toolSummaryRead: keysOf<ToolSummaryRead>({ type: true, lines: true, from: true, total: true }),
   toolSummaryExecute: keysOf<ToolSummaryExecute>({ type: true, exitCode: true, lines: true }),
   toolSummaryEdit: keysOf<ToolSummaryEdit>({ type: true, added: true, removed: true }),
-  toolSummaryFetch: keysOf<ToolSummaryFetch>({ type: true, host: true }),
+  toolSummaryFetch: keysOf<ToolSummaryFetch>({ type: true, host: true, status: true, bytes: true }),
 } as const;
 
 export const CHAT_COMMAND_KEYS: Record<ChatCommandType, { required: string[]; optional?: string[] }> = {
