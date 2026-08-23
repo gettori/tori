@@ -788,6 +788,13 @@ impl AgentTransport for ClaudeTransport {
         Err(format!("this agent cannot switch `{config_id}` from a session"))
     }
 
+    /// Nothing to replay: claude writes a per-session transcript and
+    /// `chat_history` re-reads it on every mount, rewire included, so the
+    /// conversation is already back before this would be asked.
+    fn replay(&mut self) -> Result<bool, String> {
+        Ok(false)
+    }
+
     fn close(&mut self) -> Result<(), String> {
         // Marked finished *before* the kill so the reader thread's EOF does not
         // also report a death the user asked for.

@@ -55,6 +55,54 @@ struct Entry {
 
 type Sessions = Arc<Mutex<HashMap<String, Entry>>>;
 
+/// The frames that say what a session *is*, kept so a re-subscribe can be told.
+///
+/// A webview reload leaves the child running and the process untouched, so
+/// `spawn` rewires rather than starting anything - but the new tab's store is
+/// empty and these two frames were delivered once, to a subscriber that no
+/// longer exists. Without them the panel has a live session it does not know is
+/// open: `connectionHealth` reads neither `started` nor `ready` and reports
+/// "Connecting" for as long as the tab is open.
+///
+/// Only these two. Everything else is conversation, and where a transport has a
+/// transcript that is what `chat_history` is for.
+#[derive(Default, Clone)]
+struct Identity {
+    ready: Option<ChatEvent>,
+    started: Option<ChatEvent>,
+}
+
+impl Identity {
+    /// Ready first, matching the order a transport emits them: it reports a
+    /// child that answered before it reports a session that opened.
+    ///
+    /// `started` is withheld when the transport is about to replay the
+    /// conversation, because `SessionStarted` is what a consumer reads as the
+    /// end of a replay. Sending it up front would close the window before the
+    /// conversation arrived, and every replayed turn would read as live work.
+    /// The transport emits its own once the replay is done.
+    fn frames(&self, replay_coming: bool) -> Vec<ChatEvent> {
+        let started = if replay_coming { None } else { self.started.clone() };
+        [self.ready.clone(), started].into_iter().flatten().collect()
+    }
+
+    /// Whether this frame is one of the two, and keeping it if so. The check is
+    /// on the hot path for every event, so it costs a discriminant compare and
+    /// takes no lock for the frames it does not want.
+    fn keep(&mut self, event: &ChatEvent) -> bool {
+        match event {
+            ChatEvent::SessionReady { .. } => self.ready = Some(event.clone()),
+            ChatEvent::SessionStarted { .. } => self.started = Some(event.clone()),
+            _ => return false,
+        }
+        true
+    }
+}
+
+fn is_identity(event: &ChatEvent) -> bool {
+    matches!(event, ChatEvent::SessionReady { .. } | ChatEvent::SessionStarted { .. })
+}
+
 /// The approval and snapshot machinery for one session.
 ///
 /// Held beside the session rather than inside the transport: the transport
@@ -88,6 +136,10 @@ pub struct ChatHost {
     pub registry: Arc<Registry>,
     /// One per live session, installed by `chat_spawn` once its socket exists.
     bridges: Arc<Mutex<HashMap<String, SessionBridge>>>,
+    /// Kept beside the sessions rather than inside `Entry`, so recording one
+    /// takes the identity lock and never the map's: an event passes through
+    /// while `spawn` may be holding the map, and the two must not meet.
+    identity: Arc<Mutex<HashMap<String, Identity>>>,
 }
 
 /// Tauri state wrapper, matching `PtyState`'s shape.
@@ -120,7 +172,12 @@ impl ChatHost {
     /// from under a running Sway.
     #[cfg(test)]
     fn at(path: std::path::PathBuf) -> Self {
-        Self { sessions: Sessions::default(), registry: Arc::new(Registry::at(path)), bridges: Arc::default() }
+        Self {
+            sessions: Sessions::default(),
+            registry: Arc::new(Registry::at(path)),
+            bridges: Arc::default(),
+            identity: Arc::default(),
+        }
     }
 
     /// Attach a session's capture bridge, once `chat_spawn` has bound its
@@ -221,19 +278,46 @@ impl ChatHost {
         spec: StartSpec,
         make: impl FnOnce() -> Box<dyn AgentTransport>,
     ) -> Result<Spawned, String> {
-        {
+        // Taken under the map's lock, used outside it: a listener is a caller's
+        // closure, and what it does on the way out is not this host's business
+        // to hold a lock across.
+        let rewired = {
             let mut guard = lock(&self.sessions);
-            if let Some(entry) = guard.get_mut(session_id) {
-                *lock(&entry.listener) = Some(self.wrap(session_id, emit));
+            guard.get_mut(session_id).map(|entry| {
+                let transport = entry.transport.clone();
                 entry.generation += 1;
                 // The tab driving this session is whichever one just
                 // subscribed. Same id on a remount, a brand-new one after a
                 // webview reload - and the claim has to follow, or it names a
                 // tab that no longer exists and `close` releases nothing.
                 entry.tab_id = tab_id.to_string();
-                self.registry.retag(session_id, tab_id);
-                return Ok(Spawned::Rewired);
+                (entry.listener.clone(), transport)
+            })
+        };
+        if let Some((listener, transport)) = rewired {
+            *lock(&listener) = Some(self.wrap(session_id, emit));
+            self.registry.retag(session_id, tab_id);
+            // Asked **after** the listener is in place, so a replay that starts
+            // immediately has somewhere to land, and before the identity is
+            // sent, because the answer decides what the identity may include.
+            // A transport that errors here is answering "no", not failing the
+            // rewire: the tab is attached either way.
+            let replay_coming = lock(&transport).replay().unwrap_or(false);
+            // The rewired tab's store is empty, so it has to be told what it is
+            // attached to.
+            //
+            // **Bound first, so the guard is dropped before the loop.** These
+            // frames go back out through `wrap`, which takes this very lock to
+            // record them, and a `std::sync::Mutex` is not reentrant: holding
+            // the guard across the emit deadlocks the thread and leaves the lock
+            // held forever, which wedges the handshake of every session after
+            // it. Qualified because `emit` is this function's own parameter,
+            // already moved above.
+            let identity = lock(&self.identity).get(session_id).cloned().unwrap_or_default();
+            for event in identity.frames(replay_coming) {
+                super::transport::emit(&listener, event);
             }
+            return Ok(Spawned::Rewired);
         }
 
         // A fresh session starts **visible**. The tab that spawned it is
@@ -278,12 +362,21 @@ impl ChatHost {
         let sessions = self.sessions.clone();
         let registry = self.registry.clone();
         let bridges = self.bridges.clone();
+        let identity = self.identity.clone();
         let id = session_id.to_string();
         Box::new(move |event| {
             let fatal = ends_session(&event);
+            // Two frames per session, so the lock is taken twice in its life
+            // rather than once per event.
+            if is_identity(&event) {
+                lock(&identity).entry(id.clone()).or_default().keep(&event);
+            }
             emit(event);
             if fatal {
                 let tab = lock(&sessions).remove(&id).map(|e| e.tab_id);
+                // Goes with the entry: a session that ended has no identity to
+                // hand anyone, and keeping it would be a leak per dead session.
+                lock(&identity).remove(&id);
                 if let Some(bridge) = lock(&bridges).remove(&id) {
                     bridge.teardown();
                 }
@@ -470,6 +563,10 @@ mod tests {
         /// Where `start` publishes the sink the host gave it.
         sink_out: Option<Arc<Mutex<Option<Sink>>>>,
         closed: Arc<AtomicU32>,
+        /// What this transport answers when asked to hand the conversation
+        /// back, and how often it was asked.
+        can_replay: bool,
+        replays: Arc<AtomicU32>,
     }
 
     impl AgentTransport for Puppet {
@@ -515,6 +612,10 @@ mod tests {
         fn set_config_option(&mut self, _id: &str, _v: &ChatConfigValue) -> Result<(), String> {
             Ok(())
         }
+        fn replay(&mut self) -> Result<bool, String> {
+            self.replays.fetch_add(1, Ordering::SeqCst);
+            Ok(self.can_replay)
+        }
         fn close(&mut self) -> Result<(), String> {
             self.closed.fetch_add(1, Ordering::SeqCst);
             Ok(())
@@ -533,6 +634,37 @@ mod tests {
 
     fn spec(id: &str) -> StartSpec {
         StartSpec { session_id: id.to_string(), ..Default::default() }
+    }
+
+    /// The two frames that report a session's identity, at their emptiest: what
+    /// they carry is not what these tests are about, only that they come back.
+    fn ready(id: &str) -> ChatEvent {
+        ChatEvent::SessionReady {
+            session_id: id.to_string(),
+            slash_commands: Vec::new(),
+            models: Vec::new(),
+            modes: Vec::new(),
+            account: None,
+            capabilities: None,
+        }
+    }
+
+    fn started(id: &str) -> ChatEvent {
+        ChatEvent::SessionStarted {
+            session_id: id.to_string(),
+            cwd: "/repo".into(),
+            model: "m".into(),
+            permission_mode: PermissionMode::new("default"),
+            tools: Vec::new(),
+            slash_commands: Vec::new(),
+            mcp_servers: Vec::new(),
+            models: Vec::new(),
+            modes: Vec::new(),
+            fast_mode_state: None,
+            fast_mode_disabled_reason: None,
+            account: None,
+            extra: Default::default(),
+        }
     }
 
     /// The idempotent-spawn contract this host inherits from `pty.rs`: a tab
@@ -574,6 +706,100 @@ mod tests {
         assert!(first.events().is_empty());
     }
 
+    /// **A webview reload leaves the child running and the store empty.**
+    ///
+    /// The two frames that say a session is open are sent once, to a subscriber
+    /// that the reload destroyed. Without replaying them the tab that picks the
+    /// session back up has a live session it cannot tell is live: it reads
+    /// neither `started` nor `ready`, so it says "Connecting" for as long as it
+    /// is open. An ACP session never recovers, because its handshake happens
+    /// once; a Claude one limps until `system/init` re-fires on the next turn.
+    #[test]
+    fn a_rewired_tab_is_told_what_session_it_just_attached_to() {
+        let host = ChatHost::at(temp_store());
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+
+        let before = Collector::default();
+        let out = sink_out.clone();
+        host.spawn("s1", "tab-a", before.emit(), spec("s1"), move || {
+            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+        })
+        .unwrap();
+
+        // The handshake, as a reader thread would deliver it.
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+        crate::chat::transport::emit(&sink, ready("s1"));
+        crate::chat::transport::emit(&sink, started("s1"));
+        assert_eq!(before.events().len(), 2);
+
+        let after = Collector::default();
+        let outcome = host
+            .spawn("s1", "tab-b", after.emit(), spec("s1"), || unreachable!("a live session rewires"))
+            .unwrap();
+        assert_eq!(outcome, Spawned::Rewired);
+
+        let replayed = after.events();
+        assert!(
+            matches!(replayed.first(), Some(ChatEvent::SessionReady { .. })),
+            "ready first, the order a transport sends them in: {replayed:?}"
+        );
+        assert!(
+            matches!(replayed.get(1), Some(ChatEvent::SessionStarted { .. })),
+            "and the session it opened: {replayed:?}"
+        );
+        assert_eq!(replayed.len(), 2, "the identity, not the conversation: {replayed:?}");
+    }
+
+    /// **The other half of the reload story.** A transport that is about to
+    /// replay the conversation must not have `SessionStarted` sent ahead of it:
+    /// a consumer reads that event as "the session is open, everything before it
+    /// was history", so sending it first closes the window before the history
+    /// arrives and every replayed turn reads as work happening now. The
+    /// transport emits its own once the replay is done.
+    #[test]
+    fn a_rewire_withholds_the_open_frame_when_the_agent_will_replay() {
+        let host = ChatHost::at(temp_store());
+        let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
+        let replays = Arc::new(AtomicU32::new(0));
+
+        let out = sink_out.clone();
+        let asked = replays.clone();
+        host.spawn("s3", "tab-a", Collector::default().emit(), spec("s3"), move || {
+            Box::new(Puppet { sink_out: Some(out), can_replay: true, replays: asked, ..Default::default() })
+        })
+        .unwrap();
+
+        let sink = lock(&sink_out).clone().expect("the puppet published its sink");
+        crate::chat::transport::emit(&sink, ready("s3"));
+        crate::chat::transport::emit(&sink, started("s3"));
+
+        let after = Collector::default();
+        host.spawn("s3", "tab-b", after.emit(), spec("s3"), || unreachable!("a live session rewires"))
+            .unwrap();
+
+        assert_eq!(replays.load(Ordering::SeqCst), 1, "the transport is asked exactly once per rewire");
+        let replayed = after.events();
+        assert!(
+            matches!(replayed.as_slice(), [ChatEvent::SessionReady { .. }]),
+            "ready clears \"Connecting\"; started is the replay's job: {replayed:?}"
+        );
+    }
+
+    /// A rewire before the handshake has nothing to say, and must not invent
+    /// a session that is not open yet.
+    #[test]
+    fn a_rewire_replays_nothing_when_the_session_never_reported_itself() {
+        let host = ChatHost::at(temp_store());
+        host.spawn("s2", "tab-a", Collector::default().emit(), spec("s2"), || Box::<Puppet>::default())
+            .unwrap();
+
+        let after = Collector::default();
+        host.spawn("s2", "tab-b", after.emit(), spec("s2"), || unreachable!("a live session rewires"))
+            .unwrap();
+
+        assert!(after.events().is_empty(), "nothing handshook, so there is nothing to replay");
+    }
+
     /// A mock child that dies mid-turn. All three consequences are asserted
     /// together because any one of them alone leaves the session id stuck: an
     /// error nobody sees, a map entry nothing will ever drive, or a claim held
@@ -592,7 +818,7 @@ mod tests {
         let sink_holder: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
         let holder = sink_holder.clone();
         host.spawn("s-dies", "tab-a", seen.emit(), spec("s-dies"), move || {
-            Box::new(Puppet { sink_out: Some(holder), closed: Arc::default() })
+            Box::new(Puppet { sink_out: Some(holder), ..Default::default() })
         })
         .unwrap();
 
@@ -625,7 +851,7 @@ mod tests {
         let (seen, holder) = (Collector::default(), Arc::new(Mutex::new(None)));
         let out = holder.clone();
         host.spawn("s1", "tab-a", seen.emit(), spec("s1"), move || {
-            Box::new(Puppet { sink_out: Some(out), closed: Arc::default() })
+            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
         })
         .unwrap();
         let sink = lock(&holder).clone().expect("the transport should have received a sink");
@@ -647,7 +873,7 @@ mod tests {
         let (seen, holder) = (Collector::default(), Arc::new(Mutex::new(None)));
         let out = holder.clone();
         host.spawn("s2", "tab-b", seen.emit(), spec("s2"), move || {
-            Box::new(Puppet { sink_out: Some(out), closed: Arc::default() })
+            Box::new(Puppet { sink_out: Some(out), ..Default::default() })
         })
         .unwrap();
         assert!(host.set_visible("s2", false));
@@ -709,7 +935,7 @@ mod tests {
         let host = ChatHost::at(temp_store());
         for (id, tab) in [("s1", "tab-a"), ("s2", "tab-b")] {
             host.spawn(id, tab, Box::new(|_| {}), spec(id), || {
-                Box::new(Puppet { sink_out: None, closed: Arc::new(AtomicU32::new(0)) })
+                Box::new(Puppet::default())
             })
             .unwrap();
         }
@@ -735,7 +961,7 @@ mod tests {
             );
             let closed = closes.clone();
             host.spawn(id, tab, Box::new(|_| {}), spec(id), move || {
-                Box::new(Puppet { sink_out: None, closed })
+                Box::new(Puppet { sink_out: None, closed, ..Default::default() })
             })
             .unwrap();
         }
@@ -800,6 +1026,9 @@ mod tests {
             }
             fn set_config_option(&mut self, _i: &str, _v: &ChatConfigValue) -> Result<(), String> {
                 Ok(())
+            }
+            fn replay(&mut self) -> Result<bool, String> {
+                Ok(false)
             }
             fn close(&mut self) -> Result<(), String> {
                 Ok(())

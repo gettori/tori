@@ -6,6 +6,7 @@
 //   node dev/acp-probe.mjs --agent opencode    # one agent
 //   node dev/acp-probe.mjs --json              # machine-readable, for a fixture
 //   node dev/acp-probe.mjs --per-model         # does the option set follow the model?
+//   node dev/acp-probe.mjs --reload            # can a session be loaded twice? (runs one real turn)
 //
 // THE --per-model QUESTION, and why it needs measuring rather than assuming
 //
@@ -64,6 +65,7 @@ const args = process.argv.slice(2);
 const ONLY = args.includes("--agent") ? args[args.indexOf("--agent") + 1] : null;
 const AS_JSON = args.includes("--json");
 const PER_MODEL = args.includes("--per-model");
+const RELOAD = args.includes("--reload");
 // How many models one run switches through. A cap, because a catalogue can be
 // 15 rows and each switch is a round trip; whatever it skips is printed rather
 // than silently dropped, so a "no variation" finding says how much it looked at.
@@ -85,6 +87,7 @@ async function probe(name, spec, cwd) {
   let buffer = "";
   const stderr = [];
   const notifications = [];
+  const frames = [];
 
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
@@ -107,6 +110,9 @@ async function probe(name, spec, cwd) {
         else resolve(msg.result);
       } else if (msg.method && msg.id === undefined) {
         notifications.push(msg.method);
+        // Kept whole as well as by name: `--reload` counts what a second
+        // `session/load` sends back, and a method name cannot say that.
+        frames.push(msg);
       } else if (msg.method && msg.id !== undefined) {
         // An agent-to-client request. Nothing here serves fs or terminal, so
         // refuse rather than hang: an unanswered request stalls the agent.
@@ -157,6 +163,9 @@ async function probe(name, spec, cwd) {
     if (PER_MODEL) {
       out.perModel = await measurePerModel(call, session);
     }
+    if (RELOAD) {
+      out.reload = await measureReload(call, session, cwd, frames);
+    }
   } catch (e) {
     out.error = String(e.message ?? e);
     if (stderr.length) out.stderr = stderr.join("").slice(0, 600);
@@ -164,6 +173,87 @@ async function probe(name, spec, cwd) {
     child.kill("SIGKILL");
   }
   return out;
+}
+
+/**
+ * THE RELOAD QUESTION: can a session hand its conversation over twice?
+ *
+ * Sway's webview reload leaves the agent process and the session alive, so the
+ * transport rewires instead of spawning - and `session/load`, which is the only
+ * way an ACP conversation ever reaches the UI, never runs again. The panel comes
+ * back empty. Re-issuing `session/load` on the connection that already has that
+ * session open would fix it for free, if an agent will do it.
+ *
+ * Nothing in the spec says whether that is a legal thing to ask, so this asks.
+ * One turn to give the session something worth replaying, then a second
+ * `session/load` for the same id on the same connection, counting the
+ * `session/update` notifications it produces.
+ *
+ * Reading the result: `updatesAfterLoad` at or above `updatesDuringTurn` with
+ * the same kinds means the conversation came back and the transport can simply
+ * re-ask. Zero means the agent accepted the request and replayed nothing, which
+ * is a refusal wearing a success, and Sway has to keep its own log instead.
+ */
+async function measureReload(call, session, cwd, frames) {
+  const out = {};
+  const before = frames.length;
+  try {
+    // Small on purpose: the question is whether the turn comes back at all,
+    // not what it said.
+    const prompt = await call("session/prompt", {
+      sessionId: session.sessionId,
+      prompt: [{ type: "text", text: "Reply with the single word: ping." }],
+    });
+    out.stopReason = prompt?.stopReason ?? null;
+  } catch (e) {
+    out.promptError = String(e.message ?? e);
+    return out;
+  }
+  out.updatesDuringTurn = frames.length - before;
+  out.kindsDuringTurn = updateKinds(frames.slice(before));
+
+  const mark = frames.length;
+  try {
+    // `mcpServers` is required, not optional: codex-acp 1.2.0 rejects the
+    // request with an `Invalid params` schema error without it, which reads as
+    // a refusal and is not one.
+    const loaded = await call("session/load", { sessionId: session.sessionId, cwd, mcpServers: [] });
+    out.loadResolved = true;
+    out.loadReturnedConfigOptions = Array.isArray(loaded?.configOptions);
+  } catch (e) {
+    // An error here is the cleanest possible answer: the agent says no, and
+    // Sway keeps its own log rather than guessing.
+    out.loadError = String(e.message ?? e);
+    return out;
+  }
+  // Read after the response resolves: ACP sends its updates before answering,
+  // so anything the load replayed has already landed.
+  out.updatesAfterLoad = frames.length - mark;
+  out.kindsAfterLoad = updateKinds(frames.slice(mark));
+  return out;
+}
+
+function updateKinds(frames) {
+  return [...new Set(frames.map((f) => f?.params?.update?.sessionUpdate).filter(Boolean))];
+}
+
+function reloadReport(rl) {
+  const lines = ["  reload: can this session hand its conversation over twice?"];
+  if (rl.promptError) return [...lines, `    the turn never ran: ${rl.promptError}`];
+  lines.push(`    one turn produced ${rl.updatesDuringTurn} updates [${rl.kindsDuringTurn.join(", ") || "none"}]`);
+  if (rl.loadError) {
+    lines.push(`    a second session/load was REFUSED: ${rl.loadError}`);
+    lines.push("    -> Sway must keep its own log; re-asking is not available.");
+    return lines;
+  }
+  lines.push(`    a second session/load resolved, and replayed ${rl.updatesAfterLoad} updates` +
+    ` [${rl.kindsAfterLoad.join(", ") || "none"}]`);
+  lines.push(
+    rl.updatesAfterLoad > 0
+      ? "    -> the conversation comes back: the transport can re-ask on a rewire."
+      : "    -> ACCEPTED AND REPLAYED NOTHING, which is a refusal wearing a success.",
+  );
+  return lines;
 }
 
 /**
@@ -359,6 +449,7 @@ function report(r, cli) {
     }
   }
   if (r.perModel) lines.push(...perModelReport(r.perModel));
+  if (r.reload) lines.push(...reloadReport(r.reload));
   if (cli) {
     const models = r.configOptions.filter((o) => o.category === "model" && o.type === "select");
     const overProtocol = models.reduce((n, o) => n + o.count, 0);

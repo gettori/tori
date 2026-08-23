@@ -87,6 +87,15 @@ enum Command {
         value: ChatConfigValue,
         what: ConfigOption,
     },
+    /// Ask the agent to hand the conversation over again.
+    ///
+    /// An ACP conversation only ever reaches the UI as `session/load`'s replay,
+    /// so a webview reload - which leaves this child running and rewires the
+    /// sink - loses it with no way to read it back. Measured on `codex-acp`
+    /// 1.2.0: a second `session/load` for the same id on the same connection
+    /// replays the whole conversation, `user_message_chunk` included, so asking
+    /// again is cheaper and more honest than Sway keeping a copy.
+    Reload,
     Close,
 }
 
@@ -160,6 +169,12 @@ struct Shared {
     /// Set once the session has ended, so a late failure on the connection
     /// thread cannot resurrect a session the user already closed.
     finished: AtomicBool,
+    /// Whether this agent advertised `loadSession`, which is what decides
+    /// whether it can be asked for the conversation a second time. Read off the
+    /// handshake rather than assumed: an agent that cannot reload must say so
+    /// before the host commits to letting it, or a rewired tab waits for a
+    /// replay that is never coming.
+    can_reload: AtomicBool,
     /// Permission questions the agent is blocked on, keyed by the id Sway
     /// minted for them.
     ///
@@ -379,6 +394,7 @@ impl AcpTransport {
             shared: Arc::new(Shared {
                 session_id: session_id.into(),
                 finished: AtomicBool::new(false),
+                can_reload: AtomicBool::new(false),
                 pending: Mutex::new(HashMap::new()),
                 settled: std::sync::Condvar::new(),
                 current_turn: Mutex::new(String::new()),
@@ -648,6 +664,17 @@ impl AgentTransport for AcpTransport {
         })
     }
 
+    fn replay(&mut self) -> Result<bool, String> {
+        // Answered from the handshake, not attempted and reported: the host has
+        // to know *before* it decides what to hand the rewired tab, and a queued
+        // command has not run yet.
+        if !self.shared.can_reload.load(Ordering::SeqCst) {
+            return Ok(false);
+        }
+        self.send_command(Command::Reload)?;
+        Ok(true)
+    }
+
     fn close(&mut self) -> Result<(), String> {
         // Marked finished *before* the command goes out, so the connection
         // thread's own exit does not also report a session error for a teardown
@@ -823,6 +850,10 @@ async fn drive_session(
     )
     .await?;
 
+    shared
+        .can_reload
+        .store(init.agent_capabilities.load_session, Ordering::SeqCst);
+
     // The child answered, so the session is live even though no turn has run.
     // Emitted before `SessionStarted` for the same reason the Claude transport
     // does it: otherwise a freshly opened chat reads "connecting" until the
@@ -842,67 +873,9 @@ async fn drive_session(
         },
     );
 
-    let opened = open_session(conn, shared, sink, cwd, agent, overrides, &init).await?;
-    let session = opened.session_id;
-
-    // The model catalogue and the running model both come from the session's own
-    // config options, so they reach the UI on the event that says a session
-    // exists. `model_args` is empty for every ACP adapter: a switch is a request,
-    // not a flag, so the id the switch has to name is kept here rather than
-    // re-derived from an option list nobody would have any more.
-    *shared.model_switch.lock().unwrap_or_else(|e| e.into_inner()) =
-        match acp::model_config_id(&opened.config_options) {
-            Some(config_id) => Switch::Available(config_id),
-            None => Switch::Unsupported,
-        };
-    // The mode selector arrives on the same answer and is kept for the same
-    // reason. Measured on `codex-acp` 1.2.0: this is the *only* lever on whether
-    // Codex asks before it writes. It ignores the user's own `approval_policy`
-    // and `sandbox_mode` from `~/.codex/config.toml` (verified: `config/read`
-    // reports them set, and the wrapper writes anyway) and applies its own mode
-    // instead, defaulting to `agent`. So without this the agent's permission
-    // prompt is something Sway publishes and no user can reach.
-    *shared.mode_switch.lock().unwrap_or_else(|e| e.into_inner()) =
-        match acp::mode_config_id(&opened.config_options) {
-            Some(config_id) => Switch::Available(config_id),
-            None => Switch::Unsupported,
-        };
-    *shared.effort_switch.lock().unwrap_or_else(|e| e.into_inner()) =
-        match acp::effort_config_id(&opened.config_options) {
-            Some(config_id) => Switch::Available(config_id),
-            None => Switch::Unsupported,
-        };
-
-    emit(
-        sink,
-        ChatEvent::SessionStarted {
-            session_id: shared.session_id.clone(),
-            cwd: cwd.to_string(),
-            model: acp::current_model(&opened.config_options).unwrap_or_default(),
-            permission_mode: PermissionMode::new(
-                acp::current_mode(&opened.config_options).unwrap_or_default(),
-            ),
-            tools: Vec::new(),
-            slash_commands: Vec::new(),
-            mcp_servers: Vec::new(),
-            models: acp::model_catalogue(&opened.config_options),
-            modes: acp::mode_catalogue(&opened.config_options),
-            fast_mode_state: None,
-            fast_mode_disabled_reason: None,
-            account: None,
-            extra: Default::default(),
-        },
-    );
-    // Right behind the session, and separately from it: the three categories
-    // above have controls of their own, and everything else the agent published
-    // reaches the user only through this.
-    emit(
-        sink,
-        ChatEvent::ConfigOptions {
-            session_id: shared.session_id.clone(),
-            options: acp::config_options(&opened.config_options),
-        },
-    );
+    let OpenedSession { session_id: session, config_options } =
+        open_session(conn, shared, sink, cwd, agent, overrides, &init).await?;
+    adopt_session(shared, sink, cwd, &config_options);
     // **After the chat is open, never before it.** Enumerating an agent's other
     // sessions is worth one request on a connection that already exists, but it
     // is not worth making the user wait: an agent with pages of history would
@@ -935,6 +908,28 @@ async fn drive_session(
             }
             Command::Cancel => {
                 let _ = conn.send_notification(CancelNotification::new(session_id.clone()));
+            }
+            Command::Reload => {
+                let request = LoadSessionRequest::new(session_id.clone(), PathBuf::from(cwd));
+                match conn.send_request(request).block_task().await {
+                    // The replayed `session/update`s have already landed by the
+                    // time this answers, so announcing the session here puts
+                    // `SessionStarted` after them - the same order a fresh open
+                    // produces, which is what lets a consumer read everything
+                    // before it as the conversation.
+                    Ok(loaded) => adopt_session(shared, sink, cwd, &loaded.config_options.unwrap_or_default()),
+                    // Non-fatal: the session is still perfectly usable, it just
+                    // could not be re-read. Saying so beats a panel that stays
+                    // silently empty.
+                    Err(e) => emit(
+                        sink,
+                        ChatEvent::SessionError {
+                            session_id: shared.session_id.clone(),
+                            message: format!("this agent would not hand the conversation back, so this tab starts empty: {e}"),
+                            fatal: false,
+                        },
+                    ),
+                }
             }
             Command::SetConfigOption { config_id, value, what } => {
                 let request = SetSessionConfigOptionRequest::new(
@@ -1254,6 +1249,69 @@ struct OpenedSession {
     config_options: Vec<SessionConfigOption>,
 }
 
+/// Take up an opened session's own answer about itself, and tell the UI.
+///
+/// Called on the way out of `session/new` and again on a reload, which is what
+/// makes a rewired tab indistinguishable from a fresh one: the same three
+/// switches are armed from the same answer, and the same two events land in the
+/// same order. `SessionStarted` last of the two on purpose - a consumer reads it
+/// as "the session is open", which is the end of any replay that preceded it.
+fn adopt_session(shared: &Arc<Shared>, sink: &Sink, cwd: &str, config_options: &[SessionConfigOption]) {
+    // The model catalogue and the running model both come from the session's own
+    // config options, so they reach the UI on the event that says a session
+    // exists. `model_args` is empty for every ACP adapter: a switch is a request,
+    // not a flag, so the id the switch has to name is kept here rather than
+    // re-derived from an option list nobody would have any more.
+    *shared.model_switch.lock().unwrap_or_else(|e| e.into_inner()) = match acp::model_config_id(config_options) {
+        Some(config_id) => Switch::Available(config_id),
+        None => Switch::Unsupported,
+    };
+    // The mode selector arrives on the same answer and is kept for the same
+    // reason. Measured on `codex-acp` 1.2.0: this is the *only* lever on whether
+    // Codex asks before it writes. It ignores the user's own `approval_policy`
+    // and `sandbox_mode` from `~/.codex/config.toml` (verified: `config/read`
+    // reports them set, and the wrapper writes anyway) and applies its own mode
+    // instead, defaulting to `agent`. So without this the agent's permission
+    // prompt is something Sway publishes and no user can reach.
+    *shared.mode_switch.lock().unwrap_or_else(|e| e.into_inner()) = match acp::mode_config_id(config_options) {
+        Some(config_id) => Switch::Available(config_id),
+        None => Switch::Unsupported,
+    };
+    *shared.effort_switch.lock().unwrap_or_else(|e| e.into_inner()) = match acp::effort_config_id(config_options) {
+        Some(config_id) => Switch::Available(config_id),
+        None => Switch::Unsupported,
+    };
+
+    emit(
+        sink,
+        ChatEvent::SessionStarted {
+            session_id: shared.session_id.clone(),
+            cwd: cwd.to_string(),
+            model: acp::current_model(config_options).unwrap_or_default(),
+            permission_mode: PermissionMode::new(acp::current_mode(config_options).unwrap_or_default()),
+            tools: Vec::new(),
+            slash_commands: Vec::new(),
+            mcp_servers: Vec::new(),
+            models: acp::model_catalogue(config_options),
+            modes: acp::mode_catalogue(config_options),
+            fast_mode_state: None,
+            fast_mode_disabled_reason: None,
+            account: None,
+            extra: Default::default(),
+        },
+    );
+    // Right behind the session, and separately from it: the three categories
+    // above have controls of their own, and everything else the agent published
+    // reaches the user only through this.
+    emit(
+        sink,
+        ChatEvent::ConfigOptions {
+            session_id: shared.session_id.clone(),
+            options: acp::config_options(config_options),
+        },
+    );
+}
+
 async fn open_session(
     conn: &ConnectionTo<Agent>,
     shared: &Arc<Shared>,
@@ -1430,6 +1488,7 @@ mod tests {
         Arc::new(Shared {
             session_id: "s1".to_string(),
             finished: AtomicBool::new(false),
+            can_reload: AtomicBool::new(false),
             pending: Mutex::new(HashMap::new()),
             settled: std::sync::Condvar::new(),
             current_turn: Mutex::new(String::new()),

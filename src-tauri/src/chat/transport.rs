@@ -167,6 +167,20 @@ pub trait AgentTransport: Send {
     fn set_config_option(&mut self, config_id: &str, value: &ChatConfigValue)
         -> Result<(), String>;
 
+    /// Ask the agent to hand its conversation over again, and say whether it
+    /// will.
+    ///
+    /// **The answer decides what the host tells the newly attached UI**, so it
+    /// has to be given before the replay happens rather than reported after.
+    /// `true` promises that a `SessionStarted` is coming and that whatever
+    /// arrives before it is the conversation; `false` means the host announces
+    /// the session itself and nothing further is on its way.
+    ///
+    /// Only a transport whose history reached the UI as a *replay* has anything
+    /// to do here. Where the agent writes a transcript the UI re-reads on every
+    /// mount, that read has already happened and the honest answer is `false`.
+    fn replay(&mut self) -> Result<bool, String>;
+
     /// Terminate the child. Must be idempotent: the host calls it on tab close,
     /// and again on app exit for anything still in the map.
     fn close(&mut self) -> Result<(), String>;
@@ -197,6 +211,11 @@ pub(crate) mod mock {
         /// The answers `respond_question` was handed, so a test can assert the
         /// form arrived intact rather than that a call happened.
         pub answered: Vec<Vec<QuestionAnswer>>,
+        /// What `replay` should answer, and how often it was asked. Both,
+        /// because the host branches on the answer and a test needs to pin the
+        /// branch as well as the call.
+        pub can_replay: bool,
+        pub replays: u32,
         pub closed: bool,
         sink: Option<Sink>,
     }
@@ -251,6 +270,10 @@ pub(crate) mod mock {
         ) -> Result<(), String> {
             self.config_switches.push((config_id.to_string(), value.clone()));
             Ok(())
+        }
+        fn replay(&mut self) -> Result<bool, String> {
+            self.replays += 1;
+            Ok(self.can_replay)
         }
         fn close(&mut self) -> Result<(), String> {
             self.closed = true;
