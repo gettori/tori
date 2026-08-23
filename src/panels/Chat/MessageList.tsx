@@ -337,7 +337,7 @@ export default function MessageList(props: {
                 <>
                   <TurnAnchor itemId={it().id} />
                   <div class={styles.assistant}>
-                    <Markdown text={it().text} />
+                    <Markdown text={it().text} cwd={props.cwd} />
                   </div>
                 </>
               )}

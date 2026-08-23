@@ -1546,7 +1546,6 @@ describe("how long a thought took", () => {
     applyEvent(s, {
       type: "questionRequest",
       sessionId: "s1",
-      turnId: "t1",
       toolUseId: "toolu_q",
       requestId: "rq",
       agentId: null,
