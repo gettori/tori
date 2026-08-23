@@ -702,6 +702,9 @@ async fn run_session(
 ) -> Result<(), String> {
     let notification_shared = shared.clone();
     let notification_sink = sink.clone();
+    // One per connection, owned by the notification handler because that is the
+    // only thing that reads it and notifications are delivered one at a time.
+    let mut tool_calls = acp::AcpToolCalls::default();
     // The session's own directory, so an agent that sends a file's prior text
     // has an object store to put it in. Owned by the closure because the
     // notification handler outlives this frame.
@@ -715,7 +718,7 @@ async fn run_session(
         .on_receive_notification(
             async move |notification: SessionNotification, _cx| {
                 let turn = notification_shared.turn();
-                for event in acp::map_update(
+                for event in tool_calls.map(
                     &notification_shared.session_id,
                     &turn,
                     &notification.update,

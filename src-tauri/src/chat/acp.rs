@@ -24,9 +24,9 @@ use agent_client_protocol::schema::v1::{
 
 use super::model;
 use super::model::{
-    ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent,
-    ChatModeInfo, ChatModelInfo, ContentBlock, FileEditKind, PermissionSuggestion, PlanItem,
-    PlanItemStatus, ToolLocation, ToolStatus, TurnOutcome, Usage,
+    cap_output, ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel,
+    ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, FileEditKind, PermissionSuggestion,
+    PlanItem, PlanItemStatus, ToolLocation, ToolStatus, ToolSummary, TurnOutcome, Usage,
 };
 use super::snapshot;
 
@@ -398,6 +398,92 @@ fn chunk_text(chunk: &ContentChunk) -> String {
     }
 }
 
+/// What a tool call opened as, held until its completion needs it.
+///
+/// **Measured, not defensive.** On codex-acp 1.2.0 and opencode alike, `kind`
+/// and `locations` ride the opening `tool_call` and are gone from the update
+/// that completes it. An adapter that reads only the completion cannot tell a
+/// shell run from a file read, so this is the one place that knowledge survives
+/// the gap. Owned by the transport, one per session, and a call is dropped as
+/// it completes. A call the agent opens and never finishes is held for the life
+/// of the connection, which is the same bound the mapper's other per-call maps
+/// accept: one entry per tool call, and nothing unbounded behind it.
+#[derive(Default)]
+pub struct AcpToolCalls {
+    kinds: std::collections::HashMap<String, model::ToolKind>,
+}
+
+impl AcpToolCalls {
+    /// [`map_update`], plus the summary only this side can fill in.
+    ///
+    /// A wrapper rather than an argument on `map_update` itself, so the mapping
+    /// stays what its own docs claim: one update in, the events it implies out,
+    /// with no state to thread through the fifteen places that do not need it.
+    pub fn map(
+        &mut self,
+        session_id: &str,
+        turn_id: &str,
+        update: &SessionUpdate,
+        cwd: Option<&Path>,
+    ) -> Vec<ChatEvent> {
+        let mut events = map_update(session_id, turn_id, update, cwd);
+        for event in &mut events {
+            match event {
+                // An opening frame, or a status-less patch that named a kind.
+                // `Other` is not recorded: it is the default a patch sends for
+                // "I said nothing about the kind", and storing it would erase
+                // what the opening frame established.
+                ChatEvent::ToolCallStarted { tool_use_id, kind, .. } if *kind != model::ToolKind::Other => {
+                    self.kinds.insert(tool_use_id.clone(), *kind);
+                }
+                ChatEvent::ToolCallCompleted { tool_use_id, summary, .. } => {
+                    let kind = self.kinds.remove(tool_use_id).unwrap_or_default();
+                    *summary = raw_output_summary(kind, raw_output_of(update));
+                }
+                _ => {}
+            }
+        }
+        events
+    }
+}
+
+/// The `rawOutput` on a completing update, if this update is one.
+fn raw_output_of(update: &SessionUpdate) -> Option<&serde_json::Value> {
+    match update {
+        SessionUpdate::ToolCallUpdate(u) => u.fields.raw_output.as_ref().filter(|v| !v.is_null()),
+        _ => None,
+    }
+}
+
+/// What an agent's own `rawOutput` says a call did.
+///
+/// `rawOutput` is agent-defined by the spec, so this reads the shapes that were
+/// actually measured and returns `None` for everything else rather than
+/// guessing. Measured on opencode 1.18.x (`dev/acp-probe.mjs --tool-call`): an
+/// `execute` call answers with `{ output: string, metadata: { exit: number,
+/// output: string, truncated: bool } }`, and a `read` answers with the same
+/// two keys and no range in `metadata`, which is why only the execute case
+/// summarises. codex-acp 1.2.0's shape is not measured and falls through here.
+///
+/// **`metadata.exit` is the answer to the question `ToolSummary::Execute` has
+/// been holding an empty `exit_code` for.** Claude reports no exit status at
+/// all; an ACP agent does, under a key of its own choosing.
+fn raw_output_summary(kind: model::ToolKind, raw: Option<&serde_json::Value>) -> Option<ToolSummary> {
+    if kind != model::ToolKind::Execute {
+        return None;
+    }
+    let raw = raw?;
+    let out = raw.get("output").and_then(serde_json::Value::as_str)?;
+    Some(ToolSummary::Execute {
+        exit_code: raw
+            .get("metadata")
+            .and_then(|m| m.get("exit"))
+            .and_then(serde_json::Value::as_i64)
+            .and_then(|c| i32::try_from(c).ok()),
+        lines: out.lines().count() as u64,
+    })
+}
+
 /// Map one `session/update` onto Sway's event model.
 ///
 /// Returns a `Vec` rather than an `Option` because the relationship is not
@@ -687,6 +773,13 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
     };
     match status {
         ToolCallStatus::Completed | ToolCallStatus::Failed => {
+            let (output, output_truncated) = match update.fields.raw_output.as_ref() {
+                Some(v) if !v.is_null() => {
+                    let (text, cut) = cap_output(v.to_string());
+                    (Some(text), cut)
+                }
+                _ => (None, false),
+            };
             vec![ChatEvent::ToolCallCompleted {
                 session_id: session_id.to_string(),
                 turn_id: turn_id.to_string(),
@@ -696,11 +789,11 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
                 } else {
                     ToolStatus::Error
                 },
-                output: update
-                    .fields
-                    .raw_output
-                    .as_ref()
-                    .map(|v| v.to_string()),
+                // A JSON `null` is the agent saying there was no output, not
+                // an output whose text is "null" - which is what
+                // `Value::to_string` would have made of it, and what a card
+                // would then have rendered as the call's answer.
+                output,
                 // Still empty, and Phase 8 measured *why* rather than assuming
                 // it. A diff block does name an absolute path, so this looked
                 // like it could be filled from one - but the sequence
@@ -714,10 +807,10 @@ fn tool_call_update(session_id: &str, turn_id: &str, update: &ToolCallUpdate) ->
                 // store reads `fileEdit.path` beside `toolCallCompleted.files`.
                 files: Vec::new(),
                 duration_ms: None,
-                // Phase 3 summarises from the state carried since the call
-                // opened, which is where its kind and locations still are.
+                // Filled by `AcpToolCalls`, which is the only thing that still
+                // knows what kind this call opened as.
                 summary: None,
-                output_truncated: false,
+                output_truncated,
             }]
         }
         ToolCallStatus::InProgress | ToolCallStatus::Pending => {
@@ -1339,6 +1432,125 @@ mod tests {
                 assert!(input.is_null(), "a patch that named no arguments clears none");
             }
             other => panic!("expected one ToolCallStarted, got {other:?}"),
+        }
+    }
+
+    /// The measured opencode sequence, end to end.
+    ///
+    /// Captured 2026-08-24 by `dev/acp-probe.mjs --agent opencode --tool-call`:
+    /// an opening `tool_call` carrying `kind`, `locations`, `rawInput`, `status`
+    /// and `title` and **no content**, then a completing `tool_call_update`
+    /// carrying `content`, `rawOutput`, `status` and `title` and **neither kind
+    /// nor locations**. So the summary can only come from what was remembered at
+    /// the start, which is exactly what this asserts.
+    #[test]
+    fn an_execute_call_is_summarised_from_the_kind_its_opening_frame_named() {
+        let mut calls = AcpToolCalls::default();
+
+        let mut call = ToolCall::new(ToolCallId::new("call-1"), "Run `false`".to_string());
+        call.kind = ToolKind::Execute;
+        call.locations = vec![ToolCallLocation::new("/tmp/w")];
+        let opened = calls.map("s1", "t1", &SessionUpdate::ToolCall(call), None);
+        match opened.as_slice() {
+            [ChatEvent::ToolCallStarted { kind, locations, .. }] => {
+                assert_eq!(*kind, model::ToolKind::Execute);
+                assert_eq!(locations[0].path, "/tmp/w");
+            }
+            other => panic!("expected one ToolCallStarted, got {other:?}"),
+        }
+
+        // The completing update, with the agent's own `rawOutput` shape and
+        // nothing else. `metadata.exit` is where opencode puts the exit status
+        // Claude never reports at all.
+        let mut fields = ToolCallUpdateFields::default();
+        fields.status = Some(ToolCallStatus::Completed);
+        fields.raw_output = Some(serde_json::json!({
+            "output": "one\ntwo\nthree",
+            "metadata": { "exit": 1, "output": "one\ntwo\nthree", "truncated": false },
+        }));
+        let done = calls.map(
+            "s1",
+            "t1",
+            &SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(ToolCallId::new("call-1"), fields)),
+            None,
+        );
+        match done.as_slice() {
+            [ChatEvent::ToolCallCompleted { summary, .. }] => {
+                assert_eq!(
+                    *summary,
+                    Some(ToolSummary::Execute { exit_code: Some(1), lines: 3 }),
+                    "the completing update names no kind; only the opening frame did"
+                );
+            }
+            other => panic!("expected one ToolCallCompleted, got {other:?}"),
+        }
+    }
+
+    /// A completion whose call was never opened here summarises to nothing
+    /// rather than to a guess. This is the reconnect case: the transport rewires
+    /// mid-call and the opening frame belonged to the connection before it.
+    #[test]
+    fn a_completion_with_no_remembered_opening_frame_summarises_to_nothing() {
+        let mut calls = AcpToolCalls::default();
+        let mut fields = ToolCallUpdateFields::default();
+        fields.status = Some(ToolCallStatus::Completed);
+        fields.raw_output = Some(serde_json::json!({ "output": "one\ntwo" }));
+        let done = calls.map(
+            "s1",
+            "t1",
+            &SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(ToolCallId::new("orphan"), fields)),
+            None,
+        );
+        match done.as_slice() {
+            [ChatEvent::ToolCallCompleted { summary, .. }] => assert_eq!(*summary, None),
+            other => panic!("expected one ToolCallCompleted, got {other:?}"),
+        }
+    }
+
+    /// A `rawOutput` of JSON `null` is the agent saying there was no output.
+    /// Serialized, it would have become the four-letter string "null" and been
+    /// rendered as the call's answer, which is a write appearing to have
+    /// printed something.
+    #[test]
+    fn a_null_raw_output_is_no_output_rather_than_the_word_null() {
+        let mut fields = ToolCallUpdateFields::default();
+        fields.status = Some(ToolCallStatus::Completed);
+        fields.raw_output = Some(serde_json::Value::Null);
+        let events = map_update(
+            "s1",
+            "t1",
+            &SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(ToolCallId::new("call-1"), fields)),
+            None,
+        );
+        match events.as_slice() {
+            [ChatEvent::ToolCallCompleted { output, output_truncated, .. }] => {
+                assert_eq!(*output, None, "a null output is no output block at all");
+                assert!(!output_truncated);
+            }
+            other => panic!("expected one ToolCallCompleted, got {other:?}"),
+        }
+    }
+
+    /// The cap is the adapter's on this side too, and an ACP output is the
+    /// agent's own JSON rather than a shell's text, so it is the one most
+    /// likely to arrive enormous.
+    #[test]
+    fn a_huge_raw_output_arrives_capped_and_flagged() {
+        let mut fields = ToolCallUpdateFields::default();
+        fields.status = Some(ToolCallStatus::Completed);
+        fields.raw_output = Some(serde_json::json!({ "output": "x".repeat(1024 * 1024) }));
+        let events = map_update(
+            "s1",
+            "t1",
+            &SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(ToolCallId::new("call-1"), fields)),
+            None,
+        );
+        match events.as_slice() {
+            [ChatEvent::ToolCallCompleted { output, output_truncated, .. }] => {
+                assert!(*output_truncated);
+                assert_eq!(output.as_deref().unwrap_or_default().len(), model::TOOL_OUTPUT_CAP);
+            }
+            other => panic!("expected one ToolCallCompleted, got {other:?}"),
         }
     }
 

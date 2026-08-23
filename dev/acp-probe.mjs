@@ -288,24 +288,28 @@ async function measureToolCall(call, session, frames) {
     return out;
   }
   const before = frames.length;
-  try {
-    const prompt = await call("session/prompt", {
-      sessionId: session.sessionId,
-      prompt: [
-        {
-          type: "text",
-          // A read, because it is the case that should carry all three fields:
-          // a `read` kind, a location, and the file's content. An agent that
-          // reaches for a shell instead is itself the finding, and the report
-          // says which kind it actually got.
-          text: `Read the file ${target} in this directory and reply with just its first heading.`,
-        },
-      ],
-    });
-    out.stopReason = prompt?.stopReason ?? null;
-  } catch (e) {
-    out.promptError = String(e.message ?? e);
-    return out;
+  // Two turns, because one kind cannot answer both questions. The read is the
+  // case that should carry all three fields: a `read` kind, a location, and the
+  // file's content. The shell run is the only place an exit status could
+  // possibly ride, and Sway's `ToolSummary::Execute` has a field waiting to
+  // find out. An agent that reaches for the wrong tool is itself the finding,
+  // and the report says which kind it actually got.
+  const turns = [
+    `Read the file ${target} in this directory and reply with just its first heading.`,
+    "Run the shell command `false` and tell me only whether it succeeded.",
+  ];
+  out.stopReasons = [];
+  for (const text of turns) {
+    try {
+      const prompt = await call("session/prompt", {
+        sessionId: session.sessionId,
+        prompt: [{ type: "text", text }],
+      });
+      out.stopReasons.push(prompt?.stopReason ?? null);
+    } catch (e) {
+      out.promptError = String(e.message ?? e);
+      return out;
+    }
   }
 
   // One entry per tool call, in the order its frames arrived.
@@ -355,9 +359,34 @@ async function measureToolCall(call, session, frames) {
     const merged = Object.assign({}, ...updates);
     row.kindValue = merged.kind ?? null;
     row.locationValues = (merged.locations ?? []).map((l) => l?.path ?? JSON.stringify(l));
+    // `rawOutput`'s KEYS, not its values. It is the agent's own JSON and Sway
+    // reads nothing out of it today; what a summariser needs to know first is
+    // whether there is a field to read at all - an exit status on an `execute`
+    // above all, which is the one `ToolSummary::Execute` has been carrying an
+    // empty slot for. Keys are a shape, values would be someone's file.
+    row.rawOutputKeys = shapeOf(merged.rawOutput);
     return row;
   });
   return out;
+}
+
+/**
+ * A value's SHAPE, two levels deep: key names and the type of what is under
+ * them, never a value. `rawOutput` is the agent's own JSON and can hold a whole
+ * file, so printing it would put someone's source in a report. Two levels is
+ * enough to answer the question this was added for - whether an `execute` call
+ * reports an exit status anywhere, top level or nested.
+ */
+function shapeOf(v, depth = 2) {
+  if (v === undefined) return "never sent";
+  if (v === null) return "null";
+  if (Array.isArray(v)) return `array(${v.length})`;
+  if (typeof v !== "object") return typeof v;
+  if (depth === 0) return "object";
+  const entries = Object.keys(v)
+    .sort()
+    .map((k) => `${k}: ${shapeOf(v[k], depth - 1)}`);
+  return `{ ${entries.join(", ")} }`;
 }
 
 function toolCallReport(tc) {
@@ -367,7 +396,7 @@ function toolCallReport(tc) {
   if (!tc.calls?.length) {
     return [
       ...lines,
-      `    the turn produced NO tool call at all (stopReason ${tc.stopReason ?? "none"}),`,
+      `    the turns produced NO tool call at all (stopReasons ${tc.stopReasons?.join(", ") || "none"}),`,
       "    so this run measured nothing; re-run with a prompt this agent will use a tool for.",
     ];
   }
@@ -386,6 +415,7 @@ function toolCallReport(tc) {
       lines.push(`      ${field}: ${when}${value}`);
     }
     lines.push(`      still on the last frame: ${c.stillOnTheLastFrame.join(", ") || "none of them"}`);
+    lines.push(`      rawOutput: ${c.rawOutputKeys}`);
   }
   return lines;
 }

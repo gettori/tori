@@ -340,13 +340,29 @@ describe("chatTypes mirrors the Rust chat model", () => {
     }
   });
 
-  // Claude reports no exit code at all, so the nullable half of `exitCode` is
-  // the case that actually ships. Asserted here because the sample carries a
-  // number, and a mirror that typed it non-nullable would agree with the
-  // sample and be wrong about every Claude call.
-  it("accepts an execute summary with no exit code", () => {
-    const withoutCode: ToolSummary = { type: "execute", exitCode: null, lines: 3 };
-    expect(Object.keys(withoutCode).sort()).toEqual([...CHAT_NESTED_KEYS.toolSummaryExecute].sort());
+  // Every sample carries the `Some` half of its optional fields, so the half
+  // that actually ships is asserted here instead. Claude reports no exit code
+  // at all, Grep's content mode reports no usable file count, a replayed read
+  // knows no file length, and ACP publishes neither a status nor a byte count.
+  // A mirror that typed any of these non-nullable would agree with the sample
+  // and be wrong about the traffic.
+  it("accepts the absent half of every optional summary field", () => {
+    const absent: ToolSummary[] = [
+      { type: "execute", exitCode: null, lines: 3 },
+      { type: "search", hits: 2, files: null },
+      { type: "read", lines: 13, from: 1, total: null },
+      { type: "fetch", host: "example.com", status: null, bytes: null },
+    ];
+    const keysFor = {
+      execute: CHAT_NESTED_KEYS.toolSummaryExecute,
+      search: CHAT_NESTED_KEYS.toolSummarySearch,
+      read: CHAT_NESTED_KEYS.toolSummaryRead,
+      fetch: CHAT_NESTED_KEYS.toolSummaryFetch,
+    } as const;
+    for (const summary of absent) {
+      const keys = keysFor[summary.type as keyof typeof keysFor];
+      expect(Object.keys(summary).sort()).toEqual([...keys].sort());
+    }
   });
 
   it("rejects junk rather than throwing", () => {

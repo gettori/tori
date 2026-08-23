@@ -1741,6 +1741,22 @@ pub struct TranscriptBlock {
     /// a result with its call exactly rather than by position. A format that
     /// carries no id leaves this `None` and the replay falls back to order.
     pub tool_use_id: Option<String>,
+    /// What the call did, read off the structured result the transcript
+    /// records beside the text.
+    ///
+    /// **The summary and not the payload it came from.** Live and replayed
+    /// sessions have to agree, so both go through the one
+    /// [`crate::chat::claude::summarise_result`]; what differs is only where it
+    /// is called. Calling it here rather than in `chat/history.rs` keeps the
+    /// bulk out of memory: a result quotes whole files back
+    /// (`file.content`, `originalFile`, `oldString`), none of which a summary
+    /// reads, and on the largest local transcript those payloads come to 29 MB
+    /// against a 70 MB file that replay already holds whole.
+    ///
+    /// `None` for a block whose payload the transcript recorded none of, which
+    /// is a call made inside a subagent, and for one whose shape no summariser
+    /// claims.
+    pub tool_summary: Option<crate::chat::model::ToolSummary>,
     /// Set only on a `compaction` block: how much context the compaction
     /// reclaimed, and whether the user asked for it. `None` for every other
     /// kind, and `None` individually when the transcript did not record that
@@ -1759,21 +1775,27 @@ pub struct TranscriptTurn {
 }
 
 pub(crate) fn text_block(kind: &str, text: String) -> TranscriptBlock {
-    TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None, tool_use_id: None, compact_trigger: None, pre_tokens: None, post_tokens: None }
+    TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, compact_trigger: None, pre_tokens: None, post_tokens: None }
 }
 
 /// Where the conversation's middle was replaced by a summary. The summary text
 /// itself is the *next* user message, not part of this block.
 pub(crate) fn compaction_block(trigger: Option<String>, pre_tokens: Option<u64>, post_tokens: Option<u64>) -> TranscriptBlock {
-    TranscriptBlock { kind: "compaction".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, compact_trigger: trigger, pre_tokens, post_tokens }
+    TranscriptBlock { kind: "compaction".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, compact_trigger: trigger, pre_tokens, post_tokens }
 }
 
 pub(crate) fn tool_call_block(name: String, input: serde_json::Value, tool_use_id: Option<String>) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None, tool_use_id, compact_trigger: None, pre_tokens: None, post_tokens: None }
+    TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None, tool_use_id, tool_summary: None, compact_trigger: None, pre_tokens: None, post_tokens: None }
 }
 
-pub(crate) fn tool_result_block(name: Option<String>, text: String, is_error: bool, tool_use_id: Option<String>) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error), tool_use_id, compact_trigger: None, pre_tokens: None, post_tokens: None }
+pub(crate) fn tool_result_block(
+    name: Option<String>,
+    text: String,
+    is_error: bool,
+    tool_use_id: Option<String>,
+    tool_summary: Option<crate::chat::model::ToolSummary>,
+) -> TranscriptBlock {
+    TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error), tool_use_id, tool_summary, compact_trigger: None, pre_tokens: None, post_tokens: None }
 }
 
 /// A tool_result's `content` is either a bare string or an array of text
@@ -2000,7 +2022,22 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                                 let text = b.get("content").map(stringify_content).unwrap_or_default();
                                 let is_error = b.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
                                 let id = b.get("tool_use_id").and_then(|i| i.as_str()).map(str::to_string);
-                                blocks.push(tool_result_block(None, text, is_error, id));
+                                // Spelled `toolUseResult` on the record, not
+                                // `tool_use_result` as on the stream: same
+                                // payload, camelCased by the transcript writer.
+                                // It sits on the record rather than inside the
+                                // block, and a record carries at most one tool
+                                // result (measured: none of 47539 locally had
+                                // two), so it belongs to this block without
+                                // having to be matched to it.
+                                //
+                                // Summarised on the spot, so the payload it was
+                                // read from is dropped with the line instead of
+                                // being carried through the whole replay.
+                                let summary = v
+                                    .get("toolUseResult")
+                                    .and_then(crate::chat::claude::summarise_result);
+                                blocks.push(tool_result_block(None, text, is_error, id, summary));
                             }
                             _ => {}
                         }
@@ -3465,6 +3502,36 @@ mod tests {
         assert_eq!(turns.len(), 3);
         assert_eq!(turns[0].blocks[0].text.as_deref(), Some("turn 0"));
         assert_eq!(turns[2].blocks[0].text.as_deref(), Some("turn 2"));
+
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// The structured result reaches the summariser, so a replayed call reports
+    /// what it did with the same code the live adapter uses.
+    ///
+    /// Spelled `toolUseResult` on the record and sitting beside the content
+    /// rather than inside it, which is the pair of details a reader written
+    /// against the stream format would get wrong.
+    #[test]
+    fn a_tool_result_block_summarises_the_structured_payload() {
+        let body = r#"{"type":"assistant","cwd":"/p","timestamp":"2026-08-24T10:00:00.000Z","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/p/a.txt"}}]}}
+{"type":"user","cwd":"/p","timestamp":"2026-08-24T10:00:01.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"a\nb"}]},"toolUseResult":{"type":"text","file":{"filePath":"/p/a.txt","content":"a\nb","numLines":2,"startLine":1,"totalLines":9}}}
+{"type":"user","cwd":"/p","timestamp":"2026-08-24T10:00:02.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_2","content":"nested"}]}}
+"#;
+        let p = tmp_file("tool_result_payload.jsonl", body);
+        let turns = transcript_turns(p.to_str().unwrap(), "claude");
+
+        let carried = &turns[1].blocks[0];
+        assert_eq!(carried.kind, "tool_result");
+        assert_eq!(
+            carried.tool_summary,
+            Some(crate::chat::model::ToolSummary::Read { lines: 2, from: 1, total: Some(9) }),
+            "the payload reached the summariser, `totalLines` included"
+        );
+
+        // A call made inside a subagent records no payload at all, and an
+        // absent one summarises to nothing rather than to zeroes.
+        assert!(turns[2].blocks[0].tool_summary.is_none());
 
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }

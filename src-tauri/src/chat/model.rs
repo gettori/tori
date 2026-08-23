@@ -174,23 +174,63 @@ pub struct ToolLocation {
 /// `Paths` exists for the same reason, since ACP has no kind that distinguishes
 /// a path list from a hit list.
 ///
-/// Every field is filled in Phase 3; this phase only puts the vocabulary on the
-/// wire, so the adapters still send `None`.
+/// Optional fields are the ones a transport measurably fails to report, never
+/// the ones that were merely inconvenient to fill. Each carries the measurement
+/// that made it optional.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ToolSummary {
     /// A search that reports what it matched.
-    Search { hits: u64, files: u64 },
+    ///
+    /// `files` is `Option` on a measurement, not on caution: Grep's `content`
+    /// mode reports `numFiles: 0` for a result whose own `content` spans two
+    /// files. The count is simply not filled in that mode, and a row reading
+    /// "2 hits in 0 files" is worse than one that declines to say.
+    Search { hits: u64, files: Option<u64> },
     /// A search or glob that reports only which files matched.
     Paths { count: u64 },
-    Read { lines: u64, from: u64, to: u64 },
-    /// `exit_code` is `Option` because Claude does not report one at all:
-    /// measured on 2.1.241, `Bash`'s result carries no exit status on the
-    /// result or on the frame, so `interrupted` plus the call's error status is
-    /// the whole verdict available over that transport.
+    /// `total` is the file's length, not the end of the returned range: the end
+    /// is `from + lines - 1` and needs no field, while the length cannot be
+    /// recovered from the other two and is what makes "13 of 400" sayable.
+    Read { lines: u64, from: u64, total: Option<u64> },
+    /// `exit_code` is `Option` because Claude does not report one at all.
+    /// Measured across every `Bash` result in the local transcript corpus
+    /// (~20k), the shape carries `interrupted` and no exit status; the optional
+    /// `returnCodeInterpretation` that appears on some of them is prose
+    /// ("No matches found"), not a code. So `interrupted` plus the call's error
+    /// status is the whole verdict available over that transport.
     Execute { exit_code: Option<i32>, lines: u64 },
     Edit { added: u64, removed: u64 },
-    Fetch { host: String },
+    /// `host` alone repeats the call's own argument. What a fetch actually
+    /// *reports* is the status it came back with and how much it brought, so
+    /// both are here, and both are `Option` because ACP publishes neither.
+    Fetch { host: String, status: Option<u16>, bytes: Option<u64> },
+}
+
+/// How much of a tool's output rides on the event, in bytes.
+///
+/// Above this the adapter cuts and sets `output_truncated`, and the full text
+/// is fetched on demand instead. The number is a chat row's worth of text with
+/// room to spare, not a limit anything measured: what it is actually protecting
+/// is the event bus and the store, where a single `Bash` that catted a binary
+/// would otherwise sit in memory for the life of the session.
+pub const TOOL_OUTPUT_CAP: usize = 64 * 1024;
+
+/// Cut a tool's output to [`TOOL_OUTPUT_CAP`], reporting whether it had to.
+///
+/// Cuts on a character boundary, since the cap is in bytes and the output is
+/// not: slicing mid-codepoint would panic on exactly the outputs most worth
+/// capping. Callers that must not cut (a question's answer record is the
+/// measured one) do not call this at all rather than passing a flag.
+pub fn cap_output(text: String) -> (String, bool) {
+    if text.len() <= TOOL_OUTPUT_CAP {
+        return (text, false);
+    }
+    let mut end = TOOL_OUTPUT_CAP;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    (text[..end].to_string(), true)
 }
 
 /// What a tool did to a file, for the edit cards and the diff gutter.
@@ -1724,15 +1764,16 @@ mod tests {
     /// place they are checked: an event's own key list stops at `summary`.
     fn every_tool_summary() -> Vec<ToolSummary> {
         vec![
-            ToolSummary::Search { hits: 12, files: 3 },
+            // Every `Option` here is `Some`, and its `None` is asserted in the
+            // mirror's own test. The absent halves are what the transports
+            // permanently answer, so the samples carry the fuller shape that
+            // has to survive a round trip and the mirror checks the other one.
+            ToolSummary::Search { hits: 12, files: Some(3) },
             ToolSummary::Paths { count: 7 },
-            ToolSummary::Read { lines: 40, from: 1, to: 40 },
-            // `Some` here and `None` asserted in the mirror's own test: the
-            // absent exit code is Claude's permanent answer, so the sample
-            // carries the shape that has to survive a round trip.
+            ToolSummary::Read { lines: 40, from: 1, total: Some(400) },
             ToolSummary::Execute { exit_code: Some(0), lines: 118 },
             ToolSummary::Edit { added: 4, removed: 2 },
-            ToolSummary::Fetch { host: "example.com".into() },
+            ToolSummary::Fetch { host: "example.com".into(), status: Some(200), bytes: Some(559) },
         ]
     }
 
