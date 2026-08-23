@@ -7,6 +7,7 @@
 //   node dev/acp-probe.mjs --json              # machine-readable, for a fixture
 //   node dev/acp-probe.mjs --per-model         # does the option set follow the model?
 //   node dev/acp-probe.mjs --reload            # can a session be loaded twice? (runs one real turn)
+//   node dev/acp-probe.mjs --tool-call         # when do kind/locations/content arrive? (runs one real turn)
 //
 // THE --per-model QUESTION, and why it needs measuring rather than assuming
 //
@@ -38,6 +39,8 @@
 // data - `opencode acp` 1.18.3 advertises `list` and can return zero rows. So
 // every claim Sway makes about an agent starts here.
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // The agents this probe knows how to launch. `cli` is the agent's own
@@ -66,6 +69,7 @@ const ONLY = args.includes("--agent") ? args[args.indexOf("--agent") + 1] : null
 const AS_JSON = args.includes("--json");
 const PER_MODEL = args.includes("--per-model");
 const RELOAD = args.includes("--reload");
+const TOOL_CALL = args.includes("--tool-call");
 // How many models one run switches through. A cap, because a catalogue can be
 // 15 rows and each switch is a round trip; whatever it skips is printed rather
 // than silently dropped, so a "no variation" finding says how much it looked at.
@@ -116,12 +120,18 @@ async function probe(name, spec, cwd) {
       } else if (msg.method && msg.id !== undefined) {
         // An agent-to-client request. Nothing here serves fs or terminal, so
         // refuse rather than hang: an unanswered request stalls the agent.
+        //
+        // The one exception is the permission question under `--tool-call`.
+        // Refusing it there would measure a *cancelled* call, which has no
+        // lifecycle to speak of, so that scenario grants it - and only that
+        // scenario, so every other run keeps refusing everything.
+        const grant = TOOL_CALL && msg.method === "session/request_permission" && allowOption(msg.params);
         child.stdin.write(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: msg.id,
-            error: { code: -32601, message: "not served by this probe" },
-          }) + "\n",
+          JSON.stringify(
+            grant
+              ? { jsonrpc: "2.0", id: msg.id, result: { outcome: { outcome: "selected", optionId: grant } } }
+              : { jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "not served by this probe" } },
+          ) + "\n",
         );
       }
     }
@@ -165,6 +175,9 @@ async function probe(name, spec, cwd) {
     }
     if (RELOAD) {
       out.reload = await measureReload(call, session, cwd, frames);
+    }
+    if (TOOL_CALL) {
+      out.toolCall = await measureToolCall(call, session, frames);
     }
   } catch (e) {
     out.error = String(e.message ?? e);
@@ -231,6 +244,150 @@ async function measureReload(call, session, cwd, frames) {
   out.updatesAfterLoad = frames.length - mark;
   out.kindsAfterLoad = updateKinds(frames.slice(mark));
   return out;
+}
+
+/**
+ * Pick the "allow once" option out of a permission request, by **kind** rather
+ * than by id: the spec names the kinds (`allow_once`, `allow_always`, and their
+ * reject twins) while the ids are the agent's own strings.
+ */
+function allowOption(params) {
+  const options = params?.options ?? [];
+  const pick =
+    options.find((o) => o.kind === "allow_once") ??
+    options.find((o) => o.kind === "allow_always") ??
+    options[0];
+  return pick?.optionId ?? pick?.id ?? null;
+}
+
+/**
+ * THE TOOL-CALL QUESTION: does a tool call arrive whole, or in instalments?
+ *
+ * Sway's cards are built from `kind` (which body renders), `locations` (which
+ * paths the row lists) and `content` (what the body shows). ACP lets all three
+ * arrive on the opening `tool_call` *or* on any later `tool_call_update`, and
+ * the client cannot tell which agent does what without asking. If they arrive
+ * late, an adapter that reads them only off the opening frame renders a
+ * permanently empty card; if a completing update omits what it already sent,
+ * an adapter that rebuilds state from the last frame loses it.
+ *
+ * So this runs one real turn that should provoke a tool call, then reports, per
+ * field, the frame it first appeared on and whether it was still there at the
+ * end. What is measured is one agent's behaviour, not the protocol's promise:
+ * the answer belongs in [[concept_acp_agent_quirks]] beside the others.
+ */
+async function measureToolCall(call, session, frames) {
+  const out = {};
+  // The prompt names a file in the probe's own cwd. Run from a directory
+  // without one, the agent finds nothing and makes no tool call, and the report
+  // would read "this agent used no tool" - a measurement of the wrong thing.
+  // Say so instead.
+  const target = "README.md";
+  if (!existsSync(join(process.cwd(), target))) {
+    out.setupError = `no ${target} in ${process.cwd()}; run --tool-call from a directory that has one`;
+    return out;
+  }
+  const before = frames.length;
+  try {
+    const prompt = await call("session/prompt", {
+      sessionId: session.sessionId,
+      prompt: [
+        {
+          type: "text",
+          // A read, because it is the case that should carry all three fields:
+          // a `read` kind, a location, and the file's content. An agent that
+          // reaches for a shell instead is itself the finding, and the report
+          // says which kind it actually got.
+          text: `Read the file ${target} in this directory and reply with just its first heading.`,
+        },
+      ],
+    });
+    out.stopReason = prompt?.stopReason ?? null;
+  } catch (e) {
+    out.promptError = String(e.message ?? e);
+    return out;
+  }
+
+  // One entry per tool call, in the order its frames arrived.
+  const calls = new Map();
+  for (const f of frames.slice(before)) {
+    const u = f?.params?.update;
+    if (u?.sessionUpdate !== "tool_call" && u?.sessionUpdate !== "tool_call_update") continue;
+    const id = u.toolCallId ?? "(no id)";
+    if (!calls.has(id)) calls.set(id, []);
+    calls.get(id).push(u);
+  }
+
+  out.calls = [...calls.entries()].map(([id, updates]) => {
+    const row = { toolCallId: id, frames: [] };
+    for (const u of updates) {
+      row.frames.push({
+        sessionUpdate: u.sessionUpdate,
+        status: u.status ?? null,
+        // `present` and not the values: a field that arrived empty is a
+        // different finding from one that never arrived, and `content: []`
+        // is a real answer an agent can send.
+        fields: Object.keys(u)
+          .filter((k) => k !== "sessionUpdate" && k !== "toolCallId" && u[k] !== undefined && u[k] !== null)
+          .sort(),
+      });
+    }
+    row.firstSeen = {};
+    for (const field of ["kind", "title", "locations", "content", "status", "rawInput", "rawOutput"]) {
+      const at = updates.findIndex((u) => u[field] !== undefined && u[field] !== null);
+      row.firstSeen[field] =
+        at === -1
+          ? "never"
+          : at === 0 && updates[0].sessionUpdate === "tool_call"
+            ? "the opening tool_call"
+            : `patch #${at} (${updates[at].sessionUpdate})`;
+    }
+    // Whether the LAST frame still carries each field. An adapter that
+    // rebuilds a card from the completing update alone loses whatever this
+    // says is gone by the end.
+    const last = updates[updates.length - 1] ?? {};
+    row.stillOnTheLastFrame = ["kind", "locations", "content", "rawOutput"].filter(
+      (f) => last[f] !== undefined && last[f] !== null,
+    );
+    // The two values, not just their presence: `kind` is the vocabulary Sway
+    // is about to adopt, and a location is only useful if it is a path the
+    // editor can open. Both are short enough to print.
+    const merged = Object.assign({}, ...updates);
+    row.kindValue = merged.kind ?? null;
+    row.locationValues = (merged.locations ?? []).map((l) => l?.path ?? JSON.stringify(l));
+    return row;
+  });
+  return out;
+}
+
+function toolCallReport(tc) {
+  const lines = ["  tool call: do kind, locations and content arrive whole or by patch?"];
+  if (tc.setupError) return [...lines, `    not measured: ${tc.setupError}`];
+  if (tc.promptError) return [...lines, `    the turn never ran: ${tc.promptError}`];
+  if (!tc.calls?.length) {
+    return [
+      ...lines,
+      `    the turn produced NO tool call at all (stopReason ${tc.stopReason ?? "none"}),`,
+      "    so this run measured nothing; re-run with a prompt this agent will use a tool for.",
+    ];
+  }
+  for (const c of tc.calls) {
+    lines.push(`    ${c.toolCallId}: ${c.frames.length} frame(s)`);
+    for (const [i, f] of c.frames.entries()) {
+      lines.push(`      ${i}. ${f.sessionUpdate} status=${f.status ?? "none"} [${f.fields.join(", ") || "nothing"}]`);
+    }
+    for (const [field, when] of Object.entries(c.firstSeen)) {
+      const value =
+        field === "kind" && c.kindValue
+          ? ` = ${c.kindValue}`
+          : field === "locations" && c.locationValues.length
+            ? ` = ${c.locationValues.join(", ")}`
+            : "";
+      lines.push(`      ${field}: ${when}${value}`);
+    }
+    lines.push(`      still on the last frame: ${c.stillOnTheLastFrame.join(", ") || "none of them"}`);
+  }
+  return lines;
 }
 
 function updateKinds(frames) {
@@ -450,6 +607,7 @@ function report(r, cli) {
   }
   if (r.perModel) lines.push(...perModelReport(r.perModel));
   if (r.reload) lines.push(...reloadReport(r.reload));
+  if (r.toolCall) lines.push(...toolCallReport(r.toolCall));
   if (cli) {
     const models = r.configOptions.filter((o) => o.category === "model" && o.type === "select");
     const overProtocol = models.reduce((n, o) => n + o.count, 0);

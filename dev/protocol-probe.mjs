@@ -136,6 +136,15 @@ const REQUIRES = {
   initialize: ["control_response/success", "control_response/error"],
   "bash-call": ["assistant/tool_use", "user/tool_result", "result/success"],
   "edit-call": ["assistant/tool_use", "user/tool_result", "result/success"],
+  // The result-shape corpus. The frame kinds are the same three every tool
+  // call produces; what these four are really for is the `tool_use_result`
+  // payload riding inside `user/tool_result`, which a vocabulary cannot see.
+  // Each scenario asserts its own tool actually ran, so a capture in which the
+  // model reached for something else fails instead of being committed.
+  "read-call": ["assistant/tool_use", "user/tool_result", "result/success"],
+  "glob-call": ["assistant/tool_use", "user/tool_result", "result/success"],
+  "grep-modes": ["assistant/tool_use", "user/tool_result", "result/success"],
+  "webfetch-call": ["assistant/tool_use", "user/tool_result", "result/success"],
   // The cancelled turn's own result, plus a clean one after it: together they
   // prove the interrupt landed and the child survived it.
   interrupt: ["result/error_during_execution", "result/success"],
@@ -502,6 +511,55 @@ function captureHookSettings(scratch, log) {
   };
 }
 
+// Hand a scenario exactly the one built-in tool it is measuring, so the model
+// has nothing else to reach for. Needed because 2.1.241 **defers** most tools
+// behind `ToolSearch`: measured, an unqualified "use the Glob tool" produced a
+// `ToolSearch` and then a `Bash` ls, and adding "do not use Bash" produced a
+// `ToolSearch` and no tool call at all. A result-shape fixture cannot be left
+// to that.
+//
+// PROBE-ONLY, like `--setting-sources ''` above: it narrows what the model may
+// call, never what a tool answers with, so the `tool_use_result` payload these
+// fixtures exist for is the same payload the product sees.
+const ONLY_TOOL = (name) => ["--permission-mode", "bypassPermissions", "--tools", name];
+
+// Which tools a run actually called. A scenario that asked for `Grep` and got
+// `Bash` has measured nothing, and committing that capture would leave the
+// result-shape table asserting a payload the fixture does not contain - so the
+// scenarios that exist to pin a result shape check this and fail the capture.
+function toolsUsed(p) {
+  const used = new Set();
+  for (const ev of p.events) {
+    if (ev.type !== "assistant") continue;
+    for (const c of ev.message?.content ?? []) if (c.type === "tool_use") used.add(c.name);
+  }
+  return used;
+}
+
+function assertToolsUsed(p, expected) {
+  const used = toolsUsed(p);
+  const missing = expected.filter((n) => !used.has(n));
+  if (missing.length) {
+    throw new Error(
+      `the model never called ${missing.join(", ")}; it called ${[...used].join(", ") || "no tool at all"}`,
+    );
+  }
+}
+
+// The `output_mode` each `Grep` call was made with. An *absent* mode is kept as
+// `undefined` rather than defaulted, because a call that did not name its mode
+// cannot pin that mode's result shape however the CLI happens to fill it in.
+function grepModes(p) {
+  const modes = new Set();
+  for (const ev of p.events) {
+    if (ev.type !== "assistant") continue;
+    for (const c of ev.message?.content ?? []) {
+      if (c.type === "tool_use" && c.name === "Grep") modes.add(c.input?.output_mode);
+    }
+  }
+  return modes;
+}
+
 const SCENARIOS = {
   // The floor: one turn, no tools. Everything else is this plus something.
   "plain-turn": async ({ scratch }) => {
@@ -572,6 +630,94 @@ const SCENARIOS = {
     p.sendTurn("Use the Edit tool on probe.txt to change the word beta to delta. Change nothing else.");
     await p.waitForResult();
     await p.close();
+    return p;
+  },
+
+  // --- the result shapes the collapsed row has to summarise ---
+  //
+  // `bash-call` and `edit-call` above already cover the two write-ish tools.
+  // These four cover the read-ish ones, and they exist for a payload rather
+  // than for a frame kind: whether a tool answers with a *structured*
+  // `tool_use_result` or with text only decides whether a summary can be read
+  // off the wire or has to be parsed back out of prose. The answer per tool is
+  // asserted in `claude.rs`'s result-shape table, which reads these fixtures.
+
+  // Read reports its target under `file.filePath`, indistinguishable from a
+  // write's `filePath` once the frame is all that is left - which is why
+  // `READ_ONLY_TOOLS` is keyed on the call's name. Capturing it keeps that
+  // exclusion with something real to exclude.
+  "read-call": async ({ scratch }) => {
+    const lines = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`);
+    writeFileSync(join(scratch, "probe.txt"), `${lines.join("\n")}\n`);
+    const p = new Probe({ cwd: scratch, extraArgs: ONLY_TOOL("Read") });
+    p.sendTurn("Use the Read tool on probe.txt. Then reply with just the number of lines in it.");
+    await p.waitForResult();
+    await p.close();
+    assertToolsUsed(p, ["Read"]);
+    return p;
+  },
+
+  // A path list, not a hit list. Phase 5 dispatches on the summary variant
+  // rather than the tool name, and Glob is what proves those are two genuinely
+  // different payloads rather than one payload read two ways.
+  "glob-call": async ({ scratch }) => {
+    mkdirSync(join(scratch, "nested"), { recursive: true });
+    writeFileSync(join(scratch, "alpha.txt"), "alpha\n");
+    writeFileSync(join(scratch, "beta.txt"), "beta\n");
+    writeFileSync(join(scratch, "nested", "gamma.txt"), "gamma\n");
+    writeFileSync(join(scratch, "notes.md"), "not a match\n");
+    const p = new Probe({ cwd: scratch, extraArgs: ONLY_TOOL("Glob") });
+    p.sendTurn("Use the Glob tool with the pattern **/*.txt. Then reply with just the number of files it found.");
+    await p.waitForResult();
+    await p.close();
+    assertToolsUsed(p, ["Glob"]);
+    return p;
+  },
+
+  // All three Grep output modes in one child, because the result's shape
+  // follows `output_mode` and not the tool name: `content` answers with hits,
+  // `files_with_matches` with paths, `count` with neither. A set of frame kinds
+  // cannot say "three modes", so the modes are asserted here, the way
+  // `fast-mode` asserts what its own vocabulary cannot.
+  "grep-modes": async ({ scratch }) => {
+    writeFileSync(join(scratch, "alpha.txt"), "needle here\nplain line\n");
+    writeFileSync(join(scratch, "beta.txt"), "another needle\n");
+    writeFileSync(join(scratch, "gamma.txt"), "nothing to see\n");
+    const p = new Probe({ cwd: scratch, extraArgs: ONLY_TOOL("Grep") });
+    const wanted = ["content", "files_with_matches", "count"];
+    for (const mode of wanted) {
+      p.sendTurn(
+        `Use the Grep tool for the pattern needle with output_mode set to exactly "${mode}". ` +
+          "Then reply with just the word: done.",
+      );
+      await p.waitForResult();
+    }
+    await p.close();
+    assertToolsUsed(p, ["Grep"]);
+    const modes = grepModes(p);
+    const missing = wanted.filter((m) => !modes.has(m));
+    if (missing.length) {
+      const saw = [...modes].map((m) => (m === undefined ? "(mode not named)" : m)).join(", ");
+      throw new Error(`Grep never ran in ${missing.join(", ")} mode; it ran as ${saw || "nothing"}`);
+    }
+    return p;
+  },
+
+  // The one tool here that leaves the machine. `example.com` is small, stable
+  // and exists to be fetched; what is recorded is the result's shape, never the
+  // page.
+  //
+  // OPERATOR NOTE: the only scenario needing network beyond the API itself. A
+  // failure naming the fetch rather than a frame kind is that, not wire drift.
+  "webfetch-call": async ({ scratch }) => {
+    const p = new Probe({ cwd: scratch, extraArgs: ONLY_TOOL("WebFetch") });
+    p.sendTurn(
+      'Use the WebFetch tool on https://example.com with the prompt "what is the page title". ' +
+        "Then reply with just that title.",
+    );
+    await p.waitForResult();
+    await p.close();
+    assertToolsUsed(p, ["WebFetch"]);
     return p;
   },
 
