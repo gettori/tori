@@ -1180,6 +1180,36 @@ export function settleBackfill(s: ChatState) {
   s.awaitingTurn = false;
 }
 
+/** How a frame arriving on the live channel should actually be folded. */
+export type ReplayFold = {
+  /** `history` folds and nothing else. `settle` folds and closes the window,
+   *  the replay's own end-of-history. `live` is the ordinary path. */
+  as: "history" | "settle" | "live";
+  /** Whether the window is still open after this frame. */
+  replaying: boolean;
+};
+
+/**
+ * The replay window, for a transport that delivers history on the live channel.
+ *
+ * An ACP agent has no transcript Sway can read, so `session/load` re-sends the
+ * whole conversation as `session/update` notifications - indistinguishable, on
+ * arrival, from work happening now. Read as live they open a turn nothing will
+ * ever close, and re-announce another session's file writes to the git gutter.
+ *
+ * `SessionStarted` is the boundary: it is emitted once the session is open,
+ * which is after `session/load` has answered, so everything before it is the
+ * conversation and everything after it is the session. A session that dies
+ * while opening ends the window too, or the frame that says so would be folded
+ * as history and the message held for that session never handed back.
+ */
+export function replayFold(ev: ChatEvent, replaying: boolean): ReplayFold {
+  if (!replaying) return { as: "live", replaying: false };
+  if (ev.type === "sessionStarted") return { as: "settle", replaying: false };
+  if (ev.type === "sessionError" && ev.fatal) return { as: "live", replaying: false };
+  return { as: "history", replaying: true };
+}
+
 /** Input typed before the sent turn was acknowledged. Queued, never dropped,
  *  and never sent from here: the flush driver decides. */
 export function enqueue(s: ChatState, text: string): QueuedInput {

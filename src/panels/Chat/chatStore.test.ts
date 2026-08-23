@@ -21,6 +21,7 @@ import {
   pendingApprovals,
   pendingFlush,
   promptsSent,
+  replayFold,
   parseQuestions,
   pushQuestionAnswers,
   pushSteer,
@@ -1231,6 +1232,53 @@ describe("settleBackfill", () => {
     // A genuinely live turn re-opens through its own id space.
     applyEvent(s, turnStarted("turn-1"));
     expect(isRunning(s)).toBe(true);
+  });
+});
+
+// An ACP agent has no transcript file, so `session/load` hands the whole
+// conversation back as ordinary live notifications. Read as live they open a
+// turn nothing closes, which is the "Working 36s" a reopened codex chat sat at
+// with nothing running.
+describe("the replay window for history that arrives live", () => {
+  const started = sessionStarted();
+
+  it("folds a replayed frame as history while the session is still opening", () => {
+    expect(replayFold(text("turn-0", "an old answer"), true)).toEqual({ as: "history", replaying: true });
+  });
+
+  it("closes the window on the event that says the session is open", () => {
+    expect(replayFold(started, true)).toEqual({ as: "settle", replaying: false });
+  });
+
+  it("leaves an ordinary session alone", () => {
+    expect(replayFold(text("turn-1", "live"), false)).toEqual({ as: "live", replaying: false });
+    expect(replayFold(started, false)).toEqual({ as: "live", replaying: false });
+  });
+
+  // Otherwise the frame saying the session died is folded as history and the
+  // message being held for it is never handed back.
+  it("ends the window on a session that dies while opening", () => {
+    const fatal: ChatEvent = { type: "sessionError", sessionId: "s1", message: "gone", fatal: true };
+    expect(replayFold(fatal, true)).toEqual({ as: "live", replaying: false });
+  });
+
+  it("keeps the window open through a non-fatal error, which load failure is", () => {
+    const soft: ChatEvent = { type: "sessionError", sessionId: "s1", message: "starts empty", fatal: false };
+    expect(replayFold(soft, true)).toEqual({ as: "history", replaying: true });
+  });
+
+  // The whole point, end to end: the replay opens a turn, and the event that
+  // says the session is open is what puts it back to rest.
+  it("leaves a replayed conversation at rest rather than working", () => {
+    const s = initialChat("s1");
+    let replaying = true;
+    for (const ev of [text("turn-0", "an answer from yesterday"), started]) {
+      const fold = replayFold(ev, replaying);
+      replaying = fold.replaying;
+      applyEvent(s, ev);
+      if (fold.as === "settle") settleBackfill(s);
+    }
+    expect(isRunning(s)).toBe(false);
   });
 });
 

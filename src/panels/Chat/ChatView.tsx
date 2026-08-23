@@ -121,6 +121,7 @@ import {
   revertModelPick,
   selectEffort,
   selectMode,
+  replayFold,
   selectModel,
   sendCapable,
   settleBackfill,
@@ -413,6 +414,10 @@ export default function ChatView(props: {
     // this session's history *after* its newest turn. They are parked here
     // until the replay lands, then drained in arrival order.
     let backfilled = false;
+    // Whether the agent is still handing over the conversation it already had.
+    // Only ever true for a transport whose history rides the live channel; see
+    // `replayFold`. Set per connect, since a reconnect replays again.
+    let replaying = false;
     const parked: ChatEvent[] = [];
     // The checkpoint timestamp of the turn currently running, so this session's
     // reported writes are filed against the same turn its snapshot is named
@@ -502,6 +507,19 @@ export default function ChatView(props: {
     // still in flight or after. Two paths is how a parked event ends up folded
     // into the transcript without the side effects a live one gets.
     function handleLive(ev: ChatEvent) {
+      // History that arrives on the live channel, for a transport that has no
+      // transcript to read. Folded and nothing more: the side effects below all
+      // belong to work happening now.
+      const fold = replayFold(ev, replaying);
+      replaying = fold.replaying;
+      if (fold.as !== "live") {
+        edit((s) => {
+          applyEvent(s, ev);
+          // The replay carries no turn boundaries, exactly like a transcript.
+          if (fold.as === "settle") settleBackfill(s);
+        });
+        return;
+      }
       edit((s) => applyEvent(s, ev));
       // A session that died before it could take the message being held for it.
       // Handing the message back and turning the tab into a draft again is a
@@ -583,6 +601,9 @@ export default function ChatView(props: {
      * abandon the transcript the panel is still showing.
      */
     function connect(opts: { reconnect: boolean }) {
+      // Re-armed per connect, not once per panel: a reconnect re-opens the
+      // session, so an agent that replays on open replays again.
+      replaying = chatTier(findAdapter(props.agentId).chat?.transport).historySource === "session-replay";
       const channel = new Channel<unknown>();
       channel.onmessage = (raw) => {
         const ev = parseChatEvent(raw);
