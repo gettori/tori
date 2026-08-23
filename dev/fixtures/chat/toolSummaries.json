@@ -12,7 +12,7 @@
     "type": "read",
     "lines": 40,
     "from": 1,
-    "to": 40
+    "total": 400
   },
   {
     "type": "execute",
@@ -26,6 +26,8 @@
   },
   {
     "type": "fetch",
-    "host": "example.com"
+    "host": "example.com",
+    "status": 200,
+    "bytes": 559
   }
 ]
