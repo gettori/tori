@@ -165,6 +165,32 @@ pub struct ToolLocation {
     pub line: Option<u32>,
 }
 
+/// One hunk of a measured diff, in the shape Claude's `structuredPatch` already
+/// uses: each entry of `lines` carries its own `+`, `-` or space marker.
+///
+/// Carried rather than recomputed, because this is the only place the *file's*
+/// line numbers exist. An `Edit`'s arguments name a fragment and never say where
+/// in the file it sits, and a `Write` over an existing file carries no
+/// before-state at all, so a client diffing the arguments can draw the change
+/// but cannot number it or show a line of context around it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchHunk {
+    pub old_start: u32,
+    pub old_lines: u32,
+    pub new_start: u32,
+    pub new_lines: u32,
+    pub lines: Vec<String>,
+}
+
+/// The most patch lines carried on the wire, summed over one call's hunks.
+///
+/// Bounded by the *file* rather than by the edit, because a `Write` over an
+/// existing file answers with a whole-file patch. Over the cap the patch is
+/// dropped rather than cut, and the card falls back to diffing the call's own
+/// arguments: unnumbered, but whole and honest about being neither.
+pub const PATCH_LINE_CAP: usize = 2000;
+
 /// What a finished tool call actually did, in numbers a collapsed row can say.
 ///
 /// The variant is chosen by the **payload**, never by the tool's name. Claude's
@@ -1022,6 +1048,12 @@ pub enum ChatEvent {
         /// demand instead. Set by the adapter that did the cutting.
         #[serde(default)]
         output_truncated: bool,
+        /// The diff the call produced, where the transport measured one. Empty
+        /// for every call that wrote nothing, for a patch over
+        /// [`PATCH_LINE_CAP`], and for every ACP agent, none of which publish
+        /// one.
+        #[serde(default)]
+        patch: Vec<PatchHunk>,
     },
 
     /// A file was written, with the before-state addressed by content hash so
@@ -1414,6 +1446,15 @@ mod tests {
                 // `every_tool_summary`.
                 summary: None,
                 output_truncated: false,
+                // One hunk, in the shape `structuredPatch` sends: the markers
+                // ride on the lines rather than in a parallel array.
+                patch: vec![PatchHunk {
+                    old_start: 12,
+                    old_lines: 3,
+                    new_start: 12,
+                    new_lines: 4,
+                    lines: vec![" ctx".into(), "-was".into(), "+is".into(), "+and".into(), " ctx".into()],
+                }],
             },
             ChatEvent::FileEdit {
                 session_id: "s1".into(),

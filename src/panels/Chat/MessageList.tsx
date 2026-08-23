@@ -10,6 +10,7 @@ import type { Answer } from "./PermissionPrompt";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Markdown from "./Markdown";
+import { foldEdits } from "./toolRenderers";
 
 function blockText(blocks: readonly ContentBlock[]): string {
   return blocks.map((b) => (b.type === "text" ? b.text : b.type === "fileRef" ? `@${b.path}` : "[image]")).join("\n");
@@ -132,6 +133,10 @@ export default function MessageList(props: {
   let scroller: HTMLDivElement | undefined;
 
   const shown = createMemo(() => windowed(props.items, limit()));
+  // Three cards saying `Edit MessageList.tsx` in a row are three copies of one
+  // answer. Folded at render time rather than in the store, because what folded
+  // is still its own call: its own approval, its own revert, its own id.
+  const folded = createMemo(() => foldEdits(shown()));
 
   const turnIdOf = (it: ChatItem) =>
     it.kind === "text" || it.kind === "thinking" || it.kind === "tool" || it.kind === "question"
@@ -395,12 +400,13 @@ export default function MessageList(props: {
                 </>
               )}
             </Match>
-            <Match when={item.kind === "tool" && item}>
+            <Match when={item.kind === "tool" && !folded().hidden.has(item.id) && item}>
               {(it) => (
                 <>
                   <TurnAnchor itemId={it().id} />
                   <ToolCallCard
                     card={it()}
+                    also={folded().followers.get(it().id) ?? []}
                     sessionId={props.sessionId}
                     cwd={props.cwd}
                     onAnswer={props.onAnswer}

@@ -33,7 +33,8 @@ use crate::agents::{ChatEffortExtra, EffortExtraState};
 use super::model::{
     ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo,
     ChatQuestion, ChatQuestionOption, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode,
-    PermissionSuggestion, QuestionAnswer, SlashCommand, SuggestedRule, ToolKind, ToolStatus, ToolSummary,
+    PatchHunk, PermissionSuggestion, QuestionAnswer, SlashCommand, SuggestedRule, ToolKind, ToolStatus,
+    ToolSummary, PATCH_LINE_CAP,
     TurnOutcome, Usage,
 };
 
@@ -932,6 +933,7 @@ impl ClaudeMapper {
                     // having to be matched to it.
                     summary: summarise_result(&frame["tool_use_result"]),
                     output_truncated: false,
+                    patch: structured_patch(&frame["tool_use_result"]),
                 }
             })
             .collect()
@@ -1353,6 +1355,46 @@ fn files_touched(raw: &Value) -> Vec<String> {
 ///
 /// There is deliberately no text fallback. Phase 1 measured no tool whose
 /// success is text-only, so a parser for one would be code that never runs.
+/// The diff an edit or a write measured, in the shape the card renders.
+///
+/// Read off `structuredPatch` rather than diffed from the call's arguments,
+/// because only this carries the file's own line numbers and the context around
+/// the change. Empty for everything that is not an edit, for a creating `Write`
+/// (whose patch is empty and whose content is the whole diff anyway), and for a
+/// patch over [`PATCH_LINE_CAP`], where the card falls back to the arguments.
+pub(crate) fn structured_patch(raw: &Value) -> Vec<PatchHunk> {
+    let Some(hunks) = raw.get("structuredPatch").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut total = 0usize;
+    for hunk in hunks {
+        let lines: Vec<String> = hunk
+            .get("lines")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect();
+        total += lines.len();
+        if total > PATCH_LINE_CAP {
+            return Vec::new();
+        }
+        let at = |key: &str, fallback: u32| {
+            hunk.get(key).and_then(Value::as_u64).and_then(|n| u32::try_from(n).ok()).unwrap_or(fallback)
+        };
+        out.push(PatchHunk {
+            old_start: at("oldStart", 1),
+            old_lines: at("oldLines", 0),
+            new_start: at("newStart", 1),
+            new_lines: at("newLines", 0),
+            lines,
+        });
+    }
+    out
+}
+
 pub(crate) fn summarise_result(raw: &Value) -> Option<ToolSummary> {
     let obj = raw.as_object()?;
 
@@ -3313,6 +3355,63 @@ mod tests {
                 "summarised something it does not understand: {payload}"
             );
         }
+    }
+
+    /// The diff an edit measured, carried whole rather than recomputed.
+    ///
+    /// The card can always diff `old_string` against `new_string`, so what this
+    /// is for is the half the arguments cannot supply: which lines of the file
+    /// the change landed on, and what sits around it.
+    #[test]
+    fn an_edit_carries_the_lines_its_change_landed_on() {
+        let payload = serde_json::json!({
+            "filePath": "/a.rs",
+            "structuredPatch": [{
+                "oldStart": 12, "oldLines": 3, "newStart": 12, "newLines": 4,
+                "lines": [" ctx", "-was", "+is", "+and", " ctx"],
+            }],
+        });
+        let patch = structured_patch(&payload);
+        assert_eq!(patch.len(), 1);
+        assert_eq!(patch[0].old_start, 12);
+        assert_eq!(patch[0].new_lines, 4);
+        // The markers ride on the lines, which is the shape the renderer reads.
+        assert_eq!(patch[0].lines[1], "-was");
+    }
+
+    #[test]
+    fn a_call_that_wrote_nothing_carries_no_patch() {
+        for payload in [
+            serde_json::json!({ "stdout": "hi", "stderr": "" }),
+            serde_json::json!("Error: permission denied"),
+            Value::Null,
+            // A creating `Write`: the patch really is empty, and the content is
+            // the whole diff, which the card reads from the arguments instead.
+            serde_json::json!({ "filePath": "/a.rs", "structuredPatch": [], "originalFile": "" }),
+        ] {
+            assert!(structured_patch(&payload).is_empty(), "carried a patch for {payload}");
+        }
+    }
+
+    /// A `Write` over an existing file answers with a whole-file patch, so the
+    /// bound is the file rather than the edit. Dropped whole rather than cut,
+    /// because half a diff is worse than none: the card falls back to the
+    /// arguments and says it has no line numbers.
+    #[test]
+    fn a_patch_too_big_for_the_wire_is_dropped_rather_than_cut() {
+        let lines: Vec<String> = (0..PATCH_LINE_CAP + 1).map(|i| format!("+line {i}")).collect();
+        let payload = serde_json::json!({
+            "filePath": "/a.rs",
+            "structuredPatch": [{ "oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": lines.len(), "lines": lines }],
+        });
+        assert!(structured_patch(&payload).is_empty());
+
+        let ok: Vec<String> = (0..PATCH_LINE_CAP).map(|i| format!("+line {i}")).collect();
+        let payload = serde_json::json!({
+            "filePath": "/a.rs",
+            "structuredPatch": [{ "oldStart": 1, "oldLines": 0, "newStart": 1, "newLines": ok.len(), "lines": ok }],
+        });
+        assert_eq!(structured_patch(&payload).len(), 1);
     }
 
     /// Walk a dotted path into a value, so `file.numLines` reads one level in.

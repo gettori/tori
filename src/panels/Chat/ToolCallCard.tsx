@@ -1,13 +1,15 @@
-import { For, Show, Switch, Match, createEffect, createSignal, createResource } from "solid-js";
+import { For, Show, Switch, Match, createEffect, createMemo, createSignal, createResource } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { emitWith, OPEN_IN_EDITOR, TOAST, type OpenInEditor, type ToastEvent } from "../../utils/events";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
-import { isUnderPath } from "../../utils/pathScope";
+import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import PermissionPrompt, { type Answer } from "./PermissionPrompt";
-import { ToolInput, ToolOutput } from "./ToolBody";
+import { DiffView, ToolDiff, ToolInput, ToolOutput } from "./ToolBody";
+import { toolDiffBody, unifiedHunks } from "./toolDiff";
+import { langOfPath } from "./highlight";
 import { formatDuration, isEditCall, toolDigest, toolPaths, toolRenderer, toolSummaryText } from "./toolRenderers";
 import type { ToolItem } from "./chatStore";
 import type { PermissionMode } from "../../utils/chatTypes";
@@ -34,12 +36,6 @@ const STATE_LABEL: Record<ToolItem["state"], string> = {
   denied: "Denied",
 };
 
-function diffLineClass(line: string): string {
-  if (line.startsWith("+")) return styles.diffAdd;
-  if (line.startsWith("-")) return styles.diffDel;
-  return styles.diffCtx;
-}
-
 /**
  * One tool call.
  *
@@ -55,6 +51,10 @@ function diffLineClass(line: string): string {
  */
 export default function ToolCallCard(props: {
   card: ToolItem;
+  /** Later writes to the same file that folded onto this card. Each keeps its
+   *  own identity: this card draws their diffs, and nothing else about them
+   *  moves. */
+  also?: ToolItem[];
   sessionId: string;
   cwd: string;
   onAnswer: (card: ToolItem, answer: Answer) => void;
@@ -64,15 +64,41 @@ export default function ToolCallCard(props: {
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
 }) {
   const [open, setOpen] = createSignal(false);
-  // Whether the *user* opened this card, as opposed to a failure having opened
-  // it. Only the first is a request to see a diff.
-  const [userOpened, setUserOpened] = createSignal(false);
+  // Whether the user asked to see what is different on disk *now*, which is the
+  // question the revert control answers and the only one worth a `git diff` per
+  // file. The card's own diff is drawn from the call itself and costs nothing.
+  const [showTree, setShowTree] = createSignal(false);
   const [reverting, setReverting] = createSignal<string | null>(null);
   // Whether the user asked for the whole output. Reset when the card closes, so
   // a reopened card fetches again rather than showing a body the backend may
   // have evicted since.
   const [wantFull, setWantFull] = createSignal(false);
   const renderer = () => toolRenderer(props.card);
+  const group = () => [props.card, ...(props.also ?? [])];
+  // The argument that names this call, with the workspace prefix taken off. A
+  // row is 80 characters wide and `/Users/me/Projects/...` is 40 of them before
+  // the part anyone is reading.
+  const arg = () => mentionPath(toolDigest(props.card), props.cwd);
+  // Every other path the call touched. The one already in the row is not
+  // repeated underneath it.
+  const chips = () => toolPaths(props.card).filter((p) => p !== toolDigest(props.card));
+  const written = () => {
+    const s = summary();
+    return s?.type === "edit" ? { added: s.added, removed: s.removed } : null;
+  };
+  // One row for the group, so the numbers have to be the group's. Summed rather
+  // than taken from the first, which would report a third of the change.
+  const summary = createMemo(() => {
+    const parts = group()
+      .map((c) => c.summary)
+      .filter((s): s is NonNullable<typeof s> => s?.type === "edit");
+    if (parts.length < 2) return props.card.summary;
+    return {
+      type: "edit" as const,
+      added: parts.reduce((n, s) => n + (s.type === "edit" ? s.added : 0), 0),
+      removed: parts.reduce((n, s) => n + (s.type === "edit" ? s.removed : 0), 0),
+    };
+  });
   const settled = () => props.card.state === "ok" || props.card.state === "error";
 
   // Show the plumbing when it breaks, and only when *this tab watched it
@@ -88,10 +114,10 @@ export default function ToolCallCard(props: {
     if (changed && (state === "error" || state === "denied")) setOpen(true);
   });
 
-  // Fetched when the card is opened and the call has finished, never on every
-  // card: a diff is a `git diff` per file, and a turn can make dozens of calls.
+  // Fetched only once the user opens the revert surface, never on every card: a
+  // diff is a `git diff` per file, and a turn can make dozens of calls.
   const [diffs, { refetch }] = createResource(
-    () => (userOpened() && settled() && isEditCall(props.card) ? props.card.toolUseId : null),
+    () => (showTree() && settled() && isEditCall(props.card) ? props.card.toolUseId : null),
     async (toolUseId) =>
       await invoke<ToolDiff[]>("chat_tool_diff", {
         sessionId: props.sessionId,
@@ -113,8 +139,10 @@ export default function ToolCallCard(props: {
 
   function toggleOpen() {
     const next = !open();
-    if (!next) setWantFull(false);
-    setUserOpened(next);
+    if (!next) {
+      setWantFull(false);
+      setShowTree(false);
+    }
     setOpen(next);
   }
 
@@ -167,12 +195,24 @@ export default function ToolCallCard(props: {
               kind it would otherwise show now picks the body instead. */}
           {props.card.title ?? props.card.name ?? "tool"}
         </span>
-        <span class={styles.toolArg}>{toolDigest(props.card)}</span>
+        <span class={styles.toolArg}>{arg()}</span>
         {/* What the call did, once it has said. A row with no summary is the
-            row exactly as it was before this existed. */}
-        <Show when={toolSummaryText(props.card.summary)}>
-          {(text) => <span class={styles.toolSummary}>{text()}</span>}
-        </Show>
+            row exactly as it was before this existed. A write says it in two
+            numbers that carry their own verdict, so those get the diff's own
+            colours rather than one grey string. */}
+        <Switch>
+          <Match when={written()}>
+            {(counts) => (
+              <span class={styles.toolSummary}>
+                <span class={styles.diffAddCount}>+{counts().added}</span>{" "}
+                <span class={styles.diffDelCount}>-{counts().removed}</span>
+              </span>
+            )}
+          </Match>
+          <Match when={toolSummaryText(summary())}>
+            {(text) => <span class={styles.toolSummary}>{text()}</span>}
+          </Match>
+        </Switch>
         <Show when={formatDuration(props.card.durationMs)}>
           {(d) => <span class={styles.toolDuration}>{d()}</span>}
         </Show>
@@ -186,9 +226,9 @@ export default function ToolCallCard(props: {
       <Show when={open()}>
         <div class={styles.toolBody}>
           {/* The paths this call touched, as the way into the editor. */}
-          <Show when={toolPaths(props.card).length}>
+          <Show when={chips().length}>
             <div class={styles.toolPaths}>
-              <For each={toolPaths(props.card)}>
+              <For each={chips()}>
                 {(path) => (
                   <Tooltip
                     as="button"
@@ -205,79 +245,92 @@ export default function ToolCallCard(props: {
             </div>
           </Show>
 
-          <ToolInput card={props.card} renderer={renderer()} />
+          {/* One diff for the whole group. Rendering each folded call's own
+              body would put them back in the separate blocks folding removed. */}
+          <Show
+            when={renderer() === "edit" && group().some((c) => toolDiffBody(c.patch, c.input))}
+            fallback={<For each={group()}>{(c) => <ToolInput card={c} renderer={renderer()} onOpen={openPath} />}</For>}
+          >
+            <ToolDiff cards={group()} onOpen={openPath} />
+          </Show>
 
-          {/* The diff, for a call that wrote something. */}
+          {/* What is different **on disk now**, which is a different question
+              from what this call changed, and the only one revert can act on.
+              Behind a control because it is a `git diff` per file and because
+              the card's own diff already answered "what did this call do". */}
           <Show when={isEditCall(props.card) && settled()}>
-            <Show
-              when={!diffs.loading}
-              fallback={<div class={styles.toolNote}>Reading what changed...</div>}
-            >
-              <For each={diffs()}>
-                {(d) => (
-                  <div class={styles.toolDiff}>
-                    <button type="button" class={styles.toolPath} onClick={() => openPath(d.path)}>
-                      {d.path}
-                      <Show when={d.created}>
-                        <span class={styles.toolBadge}>new</span>
-                      </Show>
-                    </button>
-                    <Show
-                      when={d.diff}
-                      fallback={
-                        <div class={styles.toolNote}>
-                          No before-state was captured for this call, so there is nothing to diff against. Open the file
-                          to see it as it is now.
-                        </div>
-                      }
-                    >
-                      {(text) => (
-                        <For
-                          each={parseDiffHunks(text())}
-                          fallback={<div class={styles.toolNote}>The file is unchanged.</div>}
-                        >
-                          {(hunk, index) => (
-                            <div class={styles.hunk}>
-                              <div class={styles.hunkHeaderRow}>
-                                {/* The visible text is the hunk header, so the
-                                    name says what opening it does, and which
-                                    line it lands on. */}
-                                <Tooltip
-                                  as="button"
-                                  type="button"
-                                  class={`${styles.diffLine} ${styles.hunkHeader}`}
-                                  label="Open at this line"
-                                  aria-label={`Open at line ${hunk.startLine}`}
-                                  onClick={() => openPath(d.path, hunk.startLine)}
-                                >
-                                  {hunk.header}
-                                </Tooltip>
+            <Show when={showTree()} fallback={
+              <button type="button" class={styles.toolMore} onClick={() => setShowTree(true)}>
+                Compare with the file on disk
+              </button>
+            }>
+              <Show when={!diffs.loading} fallback={<div class={styles.toolNote}>Reading what changed...</div>}>
+                <For
+                  each={diffs()}
+                  fallback={
+                    <div class={styles.toolNote}>
+                      No before-state was captured for this call, so there is nothing to compare against. That is
+                      normal for a conversation reopened from history.
+                    </div>
+                  }
+                >
+                  {(d) => (
+                    <div class={styles.toolDiff}>
+                      <button type="button" class={styles.toolPath} onClick={() => openPath(d.path)}>
+                        {d.path}
+                        <Show when={d.created}>
+                          <span class={styles.toolBadge}>new</span>
+                        </Show>
+                      </button>
+                      <Show
+                        when={d.diff}
+                        fallback={
+                          <div class={styles.toolNote}>
+                            No before-state was captured for this call, so there is nothing to diff against. Open the
+                            file to see it as it is now.
+                          </div>
+                        }
+                      >
+                        {(text) => (
+                          <Show
+                            when={parseDiffHunks(text()).length}
+                            fallback={<div class={styles.toolNote}>The file is unchanged.</div>}
+                          >
+                            <DiffView
+                              hunks={unifiedHunks(text())}
+                              lang={langOfPath(d.path)}
+                              path={d.path}
+                              onOpen={openPath}
+                              action={(_, index) => (
                                 <Tooltip
                                   as="button"
                                   type="button"
                                   class={styles.hunkRevert}
                                   label="Undo this hunk in the working tree"
                                   disabled={reverting() !== null}
-                                  onClick={() => void revertHunk(d.path, index(), hunk.header, hunk.lines)}
+                                  onClick={() => {
+                                    const hunk = parseDiffHunks(text())[index];
+                                    void revertHunk(d.path, index, hunk.header, hunk.lines);
+                                  }}
                                 >
-                                  {reverting() === `${d.path}:${index()}` ? "Reverting..." : "Revert"}
+                                  {reverting() === `${d.path}:${index}` ? "Reverting..." : "Revert"}
                                 </Tooltip>
-                              </div>
-                              <For each={hunk.lines}>
-                                {(line) => <div class={`${styles.diffLine} ${diffLineClass(line)}`}>{line || " "}</div>}
-                              </For>
-                            </div>
-                          )}
-                        </For>
-                      )}
-                    </Show>
-                  </div>
-                )}
-              </For>
+                              )}
+                            />
+                          </Show>
+                        )}
+                      </Show>
+                    </div>
+                  )}
+                </For>
+              </Show>
             </Show>
           </Show>
 
-          <Show when={props.card.output}>
+          {/* An edit's own answer is a sentence saying the write worked, which
+              the diff above already says and says better. A failure's answer is
+              the only place the reason is, so it always shows. */}
+          <Show when={renderer() === "edit" && props.card.state === "ok" ? null : props.card.output}>
             {(output) => (
               <>
                 <ToolOutput

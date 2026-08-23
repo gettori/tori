@@ -122,3 +122,22 @@ export async function loadLang(name: string): Promise<void> {
 export function toHtml(code: string, name: string): string {
   return hl!.codeToHtml(code, { lang: name, theme: THEME, structure: "inline" });
 }
+
+const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+const escape = (text: string) => text.replace(/[&<>"]/g, (c) => ESCAPES[c]);
+
+/**
+ * The same colours, one string of HTML per line.
+ *
+ * `toHtml` cannot serve a body that puts anything beside a line, because a
+ * gutter or a `+` marker has to live outside the highlighted run and there is
+ * no safe place to cut its output. Tokenizing gives the lines already
+ * separated, and the whole block is still tokenized at once, so a comment or a
+ * string spanning several lines is coloured as the one thing it is.
+ */
+export function toLines(code: string, name: string): string[] {
+  const { tokens } = hl!.codeToTokens(code, { lang: name, theme: THEME });
+  return tokens.map((line) =>
+    line.map((t) => `<span style="color:${t.color ?? "inherit"}">${escape(t.content)}</span>`).join(""),
+  );
+}
