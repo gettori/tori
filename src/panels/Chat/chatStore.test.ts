@@ -103,6 +103,9 @@ const started = (turnId: string, toolUseId: string, name = "Edit", input: unknow
   toolUseId,
   name,
   input,
+  kind: "edit",
+  locations: [],
+  title: null,
 });
 const completed = (turnId: string, toolUseId: string, status: "ok" | "error" | "denied" = "ok"): ChatEvent => ({
   type: "toolCallCompleted",
@@ -113,6 +116,8 @@ const completed = (turnId: string, toolUseId: string, status: "ok" | "error" | "
   output: "done",
   files: ["/a"],
   durationMs: 12,
+  summary: null,
+  outputTruncated: false,
 });
 const prompt = (toolUseId: string, requestId = "r1"): ChatEvent => ({
   type: "permissionRequest",
@@ -664,6 +669,7 @@ describe("reasoningFor", () => {
     toolUseId: id,
     turnId: "t1",
     name: "Edit",
+    title: null,
     input: {},
     state: "ok",
     approval: null,
@@ -1321,6 +1327,11 @@ describe("a question the agent asked", () => {
     toolUseId,
     name: "AskUserQuestion",
     input: FORM,
+    // `other` rather than a nearest fit, which is what the Claude mapper really
+    // sends for this tool: a question form is not one of ACP's kinds.
+    kind: "other",
+    locations: [],
+    title: null,
   });
   const completedQuestion = (toolUseId = "toolu_q", output: string, turnId = "turn-1"): ChatEvent => ({
     type: "toolCallCompleted",
@@ -1331,6 +1342,8 @@ describe("a question the agent asked", () => {
     output,
     files: [],
     durationMs: 3,
+    summary: null,
+    outputTruncated: false,
   });
   const question = (s: ChatState): QuestionItem =>
     s.items.find((i): i is QuestionItem => i.kind === "question")!;
