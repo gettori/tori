@@ -166,6 +166,9 @@ export default function Tab(props: TabProps) {
     // it out of the tablist's owned children.
     <span
       role={row.inert ? undefined : "presentation"}
+      // The tab's whole box. `data-tab-id` rides the trigger, which stops short
+      // of the close, so a reader that wants the tab measures this instead.
+      data-tab-pill=""
       class={local.class}
       classList={{ [styles.pill]: true }}
     >
