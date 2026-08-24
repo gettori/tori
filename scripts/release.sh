@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Cut a release locally: build the universal DMG, verify it, tag, publish on
-# the public releases repo, and bump the Homebrew cask. Local counterpart of
-# release.yml for when CI macOS minutes are not worth paying for.
+# Cut a release locally: derive the version, build the universal DMG, verify
+# it, tag, publish on the public releases repo, and bump the Homebrew cask.
+# Local counterpart of release.yml for when CI macOS minutes are not worth
+# paying for.
 #
 #   scripts/release.sh
 #
-# The version is read from src-tauri/tauri.conf.json; bump it (everywhere)
-# and write the changelog section before running. Needs `gh` logged in to an
-# account with write access to both public repos.
+# The version is YY.MDD.patch from today's UTC date; the patch is the next
+# free number for that date. The stage suffix (-alpha, -beta, none) is carried
+# over from the current version in src-tauri/tauri.conf.json, so editing the
+# suffix there is how a release changes stage. Write the changelog section
+# before running. Needs `gh` logged in with write access to both public repos.
 set -euo pipefail
 
 RELEASES_REPO=skarif2/sway-releases
@@ -15,27 +18,40 @@ TAP_REPO=skarif2/homebrew-tap
 
 cd "$(git rev-parse --show-toplevel)"
 
-version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+# --- Derive the version ----------------------------------------------------
+
+current=$(node -p "require('./src-tauri/tauri.conf.json').version")
+suffix=""
+case "$current" in *-*) suffix="-${current#*-}" ;; esac
+
+yy=$(date -u +%y)
+mdd=$(( $(date -u +%-m) * 100 + $(date -u +%-d) ))
+
+# The patch namespace is shared across suffixes: an alpha and a stable cut the
+# same day get distinct patches, so neither tag ever collides.
+git fetch -q --tags origin
+patch=$(git tag -l "v$yy.$mdd.*" \
+  | sed -E "s/^v$yy\.$mdd\.([0-9]+).*/\1/" \
+  | sort -n | tail -1)
+patch=$(( ${patch:--1} + 1 ))
+
+version="$yy.$mdd.$patch$suffix"
 tag="v$version"
 
 # --- Fail-fast checks, all before the long build ---------------------------
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "error: working tree is dirty; the tag must point at a real commit" >&2
+  echo "error: working tree is dirty; the release commit must stand alone" >&2
   exit 1
 fi
 
 pkg=$(node -p "require('./package.json').version")
 crate=$(grep -m1 '^version = ' src-tauri/Cargo.toml | cut -d'"' -f2)
-if [ "$pkg" != "$version" ] || [ "$crate" != "$version" ]; then
-  echo "error: version drift: tauri.conf.json=$version package.json=$pkg Cargo.toml=$crate" >&2
+if [ "$pkg" != "$current" ] || [ "$crate" != "$current" ]; then
+  echo "error: version drift: tauri.conf.json=$current package.json=$pkg Cargo.toml=$crate" >&2
   exit 1
 fi
 
-if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-  echo "error: tag $tag already exists; bump the version first" >&2
-  exit 1
-fi
 if gh release view "$tag" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
   echo "error: release $tag already exists on $RELEASES_REPO" >&2
   exit 1
@@ -44,9 +60,20 @@ fi
 notes=$(mktemp)
 .github/scripts/changelog-section.sh "$version" > "$notes"
 
-printf 'Releasing Sway %s (tag %s). Continue? [y/N] ' "$version" "$tag"
+printf 'Releasing Sway %s (tag %s, was %s). Continue? [y/N] ' "$version" "$tag" "$current"
 read -r answer
 [ "$answer" = y ] || { echo "aborted"; exit 1; }
+
+# --- Write the version and commit ------------------------------------------
+
+sed -i '' "s/\"version\": \"$current\"/\"version\": \"$version\"/" \
+  package.json src-tauri/tauri.conf.json
+sed -i '' "s/^version = \"$current\"/version = \"$version\"/" src-tauri/Cargo.toml
+(cd src-tauri && cargo update -q --package sway)
+
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+git commit -m "Sway $version"
+git push
 
 # --- Build and verify ------------------------------------------------------
 
