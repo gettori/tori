@@ -1,6 +1,6 @@
 {
   "name": "sway",
-  "version": "0.1.0",
+  "version": "26.824.0-alpha",
   "description": "Dev workflow manager: session tree + Claude terminal + editor",
   "type": "module",
   "packageManager": "pnpm@10.32.1",
