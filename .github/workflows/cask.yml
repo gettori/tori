@@ -1,0 +1,87 @@
+# Point the Homebrew tap (skarif2/homebrew-tap) at a *published* release on
+# skarif2/sway-releases. Dispatched by hand after publishing the draft, never
+# automatically: a draft's asset URLs are not publicly downloadable, so a cask
+# written against one would 404 for every tester.
+#
+# Rewrites Casks/sway.rb whole from a template rather than sed-patching fields,
+# so the same run also creates the file the first time. Needs RELEASES_TOKEN
+# (fine-grained PAT, Contents read/write on sway-releases and homebrew-tap).
+name: Update cask
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published release version, without the v prefix (e.g. 0.1.0-alpha.1)"
+        required: true
+
+permissions: {}
+
+env:
+  GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+  RELEASES_REPO: skarif2/sway-releases
+  TAP_REPO: skarif2/homebrew-tap
+
+jobs:
+  cask:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the release DMG
+        id: rel
+        run: |
+          version="${{ inputs.version }}"
+          tag="v$version"
+
+          if [ "$(gh release view "$tag" --repo "$RELEASES_REPO" --json isDraft -q .isDraft)" = true ]; then
+            echo "$tag is still a draft - publish it first, brew cannot download draft assets" >&2
+            exit 1
+          fi
+
+          gh release download "$tag" --repo "$RELEASES_REPO" --pattern '*.dmg' --dir dist
+          shopt -s nullglob
+          dmgs=(dist/*.dmg)
+          if [ ${#dmgs[@]} -ne 1 ]; then
+            echo "expected one DMG asset on $tag, found ${#dmgs[@]}" >&2
+            exit 1
+          fi
+
+          asset=$(basename "${dmgs[0]}")
+          sha=$(shasum -a 256 "${dmgs[0]}" | cut -d' ' -f1)
+          # The literal version becomes Ruby's #{version} so the URL stanza
+          # interpolates, keeping future manual bumps to two lines.
+          pattern=$(printf '%s' "$asset" | sed "s/$version/#{version}/")
+
+          {
+            echo "version=$version"
+            echo "sha=$sha"
+            echo "pattern=$pattern"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write and push the cask
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${TAP_REPO}.git" tap
+          mkdir -p tap/Casks
+          cat > tap/Casks/sway.rb <<EOF
+          cask "sway" do
+            version "${{ steps.rel.outputs.version }}"
+            sha256 "${{ steps.rel.outputs.sha }}"
+
+            url "https://github.com/${RELEASES_REPO}/releases/download/v#{version}/${{ steps.rel.outputs.pattern }}"
+            name "Sway"
+            desc "Dev workflow manager: session tree + Claude terminal + editor"
+            homepage "https://github.com/${RELEASES_REPO}"
+
+            app "Sway.app"
+          end
+          EOF
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/sway.rb
+          if git diff --cached --quiet; then
+            echo "cask already at ${{ steps.rel.outputs.version }}, nothing to push"
+            exit 0
+          fi
+          git commit -m "sway ${{ steps.rel.outputs.version }}"
+          git push

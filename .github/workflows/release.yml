@@ -1,10 +1,18 @@
 # Draft a GitHub Release from a `v*` tag: build the universal macOS bundle,
 # prove it really is universal, and attach the DMG.
 #
-# No secrets are needed - v0.1 ships unsigned, so there is no certificate to
-# inject. The release is left as a *draft* on purpose: an unsigned build needs
-# the Gatekeeper note in docs/INSTALL.md alongside it, and that is a human's
-# call to publish.
+# Version scheme: YY.MDD.patch with a stage suffix while unstable, e.g.
+# 26.824.0-alpha is the Aug 24 2026 alpha, 26.1205.0 a Dec 5 stable. The
+# middle field is month*100+day (last two digits are always the day), so
+# versions sort by date; the patch field is for a second cut of the same day.
+#
+# The source repo is private, so the release is drafted on the public
+# skarif2/sway-releases repo instead. That needs RELEASES_TOKEN, a fine-grained
+# PAT with Contents read/write on sway-releases (github.token only reaches this
+# repo). No signing secrets - v0.1 ships unsigned. The release is left as a
+# *draft* on purpose: an unsigned build needs the Gatekeeper note in
+# docs/INSTALL.md alongside it, and that is a human's call to publish. After
+# publishing, the cask workflow (cask.yml) points the Homebrew tap at it.
 name: Release
 
 on:
@@ -111,13 +119,27 @@ jobs:
           fi
           echo "path=${dmgs[0]}" >> "$GITHUB_OUTPUT"
 
+      # The cask needs this checksum; printing it here lets a manual cask edit
+      # copy it straight from the build that produced the DMG.
+      - name: Report the DMG checksum
+        run: shasum -a 256 "${{ steps.dmg.outputs.path }}"
+
+      # Drafted on the public releases repo, not here: the source is private,
+      # so its release assets would not be downloadable by testers or by brew.
+      # gh creates the tag on that repo's default branch, which carries no
+      # meaning there - the repo only holds artifacts.
       - name: Draft the release
         if: github.ref_type == 'tag'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
+          flags=(--draft)
+          case "${{ steps.version.outputs.version }}" in
+            *-*) flags+=(--prerelease) ;;
+          esac
           gh release create "$GITHUB_REF_NAME" \
-            --draft \
+            --repo skarif2/sway-releases \
+            "${flags[@]}" \
             --title "Sway $GITHUB_REF_NAME" \
             --notes-file release-notes.md \
             "${{ steps.dmg.outputs.path }}"
