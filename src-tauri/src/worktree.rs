@@ -18,6 +18,22 @@ pub struct Worktree {
     pub path: String,
     pub branch: String,
     pub is_main: bool,
+    /// The porcelain `bare` record: the container's own `.bare`, not a checkout.
+    #[serde(skip)]
+    pub is_bare: bool,
+}
+
+/// Can git read this path as a repository? `list_worktrees_body` answers an
+/// empty list for both "no worktrees" and "not a repo", so a caller that must
+/// tell a vanished repo from an empty one asks this first.
+pub(crate) fn repo_readable(repo: &str) -> bool {
+    Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["rev-parse", "--git-dir"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -40,14 +56,16 @@ pub(crate) fn list_worktrees_body(repo_path: String) -> Result<Vec<Worktree>, St
     let mut result = Vec::new();
     let mut cur_path: Option<String> = None;
     let mut cur_branch = String::new();
+    let mut cur_bare = false;
     let mut first = true;
 
-    let flush = |path: &mut Option<String>, branch: &mut String, first: &mut bool, out: &mut Vec<Worktree>| {
+    let flush = |path: &mut Option<String>, branch: &mut String, bare: &mut bool, first: &mut bool, out: &mut Vec<Worktree>| {
         if let Some(p) = path.take() {
             out.push(Worktree {
                 path: p,
                 branch: std::mem::take(branch),
                 is_main: *first,
+                is_bare: std::mem::take(bare),
             });
             *first = false;
         }
@@ -56,16 +74,18 @@ pub(crate) fn list_worktrees_body(repo_path: String) -> Result<Vec<Worktree>, St
     for line in text.lines() {
         if let Some(p) = line.strip_prefix("worktree ") {
             // New record begins; flush the previous.
-            flush(&mut cur_path, &mut cur_branch, &mut first, &mut result);
+            flush(&mut cur_path, &mut cur_branch, &mut cur_bare, &mut first, &mut result);
             cur_path = Some(p.to_string());
             cur_branch = String::new();
         } else if let Some(b) = line.strip_prefix("branch ") {
             cur_branch = b.trim_start_matches("refs/heads/").to_string();
         } else if line == "detached" {
             cur_branch = "(detached)".to_string();
+        } else if line == "bare" {
+            cur_bare = true;
         }
     }
-    flush(&mut cur_path, &mut cur_branch, &mut first, &mut result);
+    flush(&mut cur_path, &mut cur_branch, &mut cur_bare, &mut first, &mut result);
     Ok(result)
 }
 
@@ -84,7 +104,7 @@ fn git_ok(repo: &str, args: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-fn branch_exists(repo: &str, branch: &str) -> bool {
+pub(crate) fn branch_exists(repo: &str, branch: &str) -> bool {
     Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -113,7 +133,7 @@ fn origin_default(repo: &str) -> Option<String> {
 
 /// Does `origin/<name>` exist as a remote-tracking ref? Lets a new worktree base
 /// (and track) a remote-only branch instead of origin's default.
-fn remote_branch_exists(repo: &str, name: &str) -> bool {
+pub(crate) fn remote_branch_exists(repo: &str, name: &str) -> bool {
     Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -135,7 +155,7 @@ fn new_branch_start_point(repo: &str, branch: &str) -> Option<String> {
 }
 
 /// Does `branch` already have a worktree checked out? If so, creation reuses it.
-fn branch_has_worktree(repo: &str, branch: &str) -> bool {
+pub(crate) fn branch_has_worktree(repo: &str, branch: &str) -> bool {
     list_worktrees_body(repo.to_string())
         .map(|wts| wts.iter().any(|w| w.branch == *branch))
         .unwrap_or(false)
@@ -148,7 +168,7 @@ fn last_segment(branch: &str) -> &str {
 
 /// Sanitized full-branch slug (`bug/critical` -> `bug-critical`); any character
 /// that is not alphanumeric / `-` / `_` / `.` becomes `-`.
-fn slugify(branch: &str) -> String {
+pub(crate) fn slugify(branch: &str) -> String {
     branch
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '-' })
@@ -209,19 +229,44 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
     if branch.is_empty() {
         return Err("Branch name is empty".into());
     }
-    let container = PathBuf::from(&repo_path);
 
     // Already checked out somewhere: reuse it rather than make a duplicate.
     if branch_has_worktree(&repo_path, &branch) {
         return Ok(());
     }
 
-    let folder = pick_worktree_folder(&container, &branch)?;
+    let target = create_worktree_in(&repo_path, &branch, Path::new(&repo_path))?;
+    let target_str = target.to_string_lossy().into_owned();
+    // Sway created this folder: adopt it so reusing a path that held old sessions
+    // does not surface them as historical.
+    let _ = crate::sessions::adopt(&target_str);
+    let _ = app.emit("config://changed", ());
+    Ok(())
+}
+
+/// The creation core, parameterised on where the folder goes: `container` is
+/// the bare container itself, or `<repo>/.sway/worktrees` for a plain repo. A
+/// branch that already has a worktree yields that worktree's path, except the
+/// main checkout of a plain repo, which is the user's own and never adopted.
+/// No adopt, no emit: the caller decides what the new folder means.
+pub(crate) fn create_worktree_in(repo: &str, branch: &str, container: &Path) -> Result<PathBuf, String> {
+    let branch = branch.trim();
+    if branch.is_empty() {
+        return Err("Branch name is empty".into());
+    }
+    if let Some(existing) = list_worktrees_body(repo.to_string())?.into_iter().find(|w| w.branch == branch) {
+        if existing.is_main && !existing.is_bare {
+            return Err(format!("Branch \"{branch}\" is checked out in the repository itself; switch it away first."));
+        }
+        return Ok(PathBuf::from(existing.path));
+    }
+
+    let folder = pick_worktree_folder(container, branch)?;
     let target = container.join(&folder);
     let target_str = target.to_string_lossy().into_owned();
 
-    if branch_exists(&repo_path, &branch) {
-        git_ok(&repo_path, &["worktree", "add", &target_str, &branch])?;
+    if branch_exists(repo, branch) {
+        git_ok(repo, &["worktree", "add", &target_str, branch])?;
     } else {
         // New branch: refresh origin so remote refs are current (best-effort: a
         // repo without a remote simply has no fetch to do), then base off the
@@ -229,29 +274,25 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
         // tracks it), else origin's default, else HEAD.
         let _ = Command::new("git")
             .arg("-C")
-            .arg(&repo_path)
+            .arg(repo)
             .arg("fetch")
             .output();
         let mut args: Vec<String> = vec![
             "worktree".into(),
             "add".into(),
             "-b".into(),
-            branch.clone(),
+            branch.to_string(),
             target_str.clone(),
         ];
-        if let Some(start) = new_branch_start_point(&repo_path, &branch) {
+        if let Some(start) = new_branch_start_point(repo, branch) {
             args.push(start);
         }
         let argrefs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        git_ok(&repo_path, &argrefs)?;
+        git_ok(repo, &argrefs)?;
     }
 
-    link_shared(&container, &target);
-    // Sway created this folder: adopt it so reusing a path that held old sessions
-    // does not surface them as historical.
-    let _ = crate::sessions::adopt(&target_str);
-    let _ = app.emit("config://changed", ());
-    Ok(())
+    link_shared(container, &target);
+    Ok(target)
 }
 
 /// Is the worktree dirty in a way that should block removal? Tracked
@@ -802,6 +843,76 @@ mod tests {
         assert_eq!(new_branch_start_point(&cont_s, "brand-new").as_deref(), Some("origin/main"));
         assert!(remote_branch_exists(&cont_s, "feature"));
         assert!(!remote_branch_exists(&cont_s, "brand-new"));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_bare_container_lists_its_bare_entry_and_a_deleted_dir_is_unreadable() {
+        let tmp = unique_tmp();
+        let src = tmp.join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        git(&src, &["init", "-q"]);
+        git(&src, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&src, &["config", "user.email", "t@t.t"]);
+        git(&src, &["config", "user.name", "t"]);
+        std::fs::write(src.join("a.txt"), "hi").unwrap();
+        git(&src, &["add", "."]);
+        git(&src, &["commit", "-qm", "init"]);
+        assert!(list_worktrees_body(src.to_string_lossy().into_owned()).unwrap().iter().all(|w| !w.is_bare));
+
+        let cont = tmp.join("cont");
+        std::fs::create_dir_all(&cont).unwrap();
+        Command::new("git")
+            .args(["clone", "-q", "--bare", src.to_str().unwrap(), cont.join(".bare").to_str().unwrap()])
+            .output()
+            .unwrap();
+        std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
+        git(&cont, &["worktree", "add", "-q", "main", "main"]);
+        let cont_s = cont.to_string_lossy().into_owned();
+        let listed = list_worktrees_body(cont_s.clone()).unwrap();
+        assert_eq!(listed.iter().filter(|w| w.is_bare).count(), 1, "exactly one bare record: {:?}", listed.iter().map(|w| &w.path).collect::<Vec<_>>());
+        assert!(listed.iter().any(|w| !w.is_bare && w.branch == "main"));
+
+        assert!(repo_readable(&cont_s));
+        assert!(repo_readable(&src.to_string_lossy()));
+        std::fs::remove_dir_all(&src).unwrap();
+        assert!(!repo_readable(&src.to_string_lossy()), "a deleted dir is not a repo");
+        assert!(list_worktrees_body(src.to_string_lossy().into_owned()).unwrap().is_empty(), "which list alone cannot tell from empty");
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn create_worktree_in_fills_a_plain_repo_container_and_never_adopts_main() {
+        // Canonical up front: git lists resolved paths and macOS resolves /var.
+        let tmp = std::fs::canonicalize(unique_tmp()).unwrap();
+        let repo = tmp.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(&repo, &["config", "user.email", "t@t.t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        std::fs::write(repo.join("a.txt"), "hi").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-qm", "init"]);
+        let repo_s = repo.to_string_lossy().into_owned();
+        let container = repo.join(".sway/worktrees");
+        std::fs::create_dir_all(&container).unwrap();
+        crate::git::exclude_from_repo(&repo_s, ".sway");
+
+        let made = create_worktree_in(&repo_s, "feat/x", &container).unwrap();
+        assert_eq!(made, container.join("x"));
+        assert!(made.join("a.txt").is_file());
+        let status = Command::new("git").arg("-C").arg(&repo).args(["status", "--porcelain"]).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&status.stdout).trim(), "", "the plain repo stays clean");
+
+        // A second call reuses the worktree it made.
+        assert_eq!(create_worktree_in(&repo_s, "feat/x", &container).unwrap(), made);
+
+        // The branch checked out in place is the user's checkout, not a reuse.
+        let err = create_worktree_in(&repo_s, "main", &container).unwrap_err();
+        assert!(err.contains("checked out in the repository itself"), "{err}");
 
         std::fs::remove_dir_all(&tmp).ok();
     }

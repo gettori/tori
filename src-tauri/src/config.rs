@@ -224,7 +224,7 @@ impl ProjectIndex {
     /// Drop the cached probe for `path`, forcing a fresh probe on next discovery.
     /// Attach/detach/delete/new-branch call this after writing the store, so a
     /// re-probe can never re-cache the pre-write branch set.
-    fn evict(&self, path: &Path) {
+    pub(crate) fn evict(&self, path: &Path) {
         if let Ok(mut cache) = self.0.lock() {
             cache.remove(path);
         }

@@ -79,7 +79,7 @@ pub fn repo_lock(path: &str) -> Arc<Mutex<()>> {
 /// Resolved once per path and cached: the switch path calls into here often,
 /// and the answer only changes when a repository is created where none was.
 /// `git_init`/`bare_init` call `forget_common_dir` for exactly that case.
-fn common_dir(path: &str) -> PathBuf {
+pub(crate) fn common_dir(path: &str) -> PathBuf {
     let cache = COMMON_DIRS.get_or_init(Default::default);
     if let Some(hit) = cache
         .lock()
