@@ -5,10 +5,10 @@ section matching the tag it was triggered by and uses it as the GitHub Release
 body, so a tag with no matching section here fails the release rather than
 publishing an empty one.
 
-Versions follow the `MAJOR.MINOR.PATCH` heading form (`## 0.1.0`); tags carry a
-`v` prefix (`v0.1.0`).
+Versions follow the `YY.MDD.patch` calver form with a stage suffix while
+unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## 0.1.0
+## 26.824.0-alpha
 
 First public release. macOS only, unsigned (see
 [docs/INSTALL.md](docs/INSTALL.md) for the Gatekeeper steps).
