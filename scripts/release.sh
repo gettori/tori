@@ -136,6 +136,14 @@ cask "sway" do
   homepage "https://github.com/${RELEASES_REPO}"
 
   app "Sway.app"
+
+  # Homebrew 6 removed --no-quarantine, and the app is unsigned, so without
+  # this Gatekeeper reports it as damaged. Legacy postflight blocks still run
+  # in third-party taps; drop this once builds are signed and notarized.
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-cr", "#{appdir}/Sway.app"]
+  end
 end
 EOF
 git -C "$tap" add Casks/sway.rb
