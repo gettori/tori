@@ -13,6 +13,7 @@ mod conflict;
 mod dap;
 mod env;
 mod exec;
+mod features;
 pub mod forge;
 mod format;
 mod fs;
@@ -196,6 +197,16 @@ pub fn run() {
             attempts::create_attempt,
             attempts::promote_attempt,
             attempts::list_project_attempts,
+            features::commands::list_features,
+            features::commands::create_feature,
+            features::commands::retry_member,
+            features::commands::add_member,
+            features::commands::remove_member,
+            features::commands::reorder_members,
+            features::commands::rename_member,
+            features::commands::rename_feature,
+            features::commands::delete_feature,
+            features::commands::probe_feature_branch,
             chat::commands::chat_send,
             chat::commands::chat_steer,
             chat::commands::chat_interrupt,
