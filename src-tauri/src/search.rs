@@ -430,6 +430,12 @@ fn plain_grep(
     for dir in IGNORED_DIRS {
         cmd.arg(format!("--exclude-dir={dir}"));
     }
+    // grep's exclude is by basename only, so the Feature worktree dir is
+    // excluded just when the root actually has one, not every `worktrees/`.
+    let (sway, worktrees) = crate::fs::FEATURE_WORKTREES;
+    if Path::new(root).join(sway).join(worktrees).is_dir() {
+        cmd.arg(format!("--exclude-dir={worktrees}"));
+    }
     cmd.arg("-F").arg("-e").arg(literal.unwrap_or("")).arg(".");
     cmd.current_dir(root);
     let out = cmd.output().map_err(|e| e.to_string())?;
@@ -1276,6 +1282,26 @@ mod tests {
         assert_eq!(candidates.len(), 5);
         assert!(!candidates.iter().any(|c| c.path.contains("node_modules")));
         assert!(!candidates.iter().any(|c| c.path.starts_with("./")));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn plain_grep_excludes_feature_worktrees_only_when_the_root_has_them() {
+        let dir = temp_dir("featwt");
+        std::fs::create_dir_all(dir.join("worktrees")).unwrap();
+        std::fs::write(dir.join("worktrees/plain.txt"), "needle in a plain dir\n").unwrap();
+        std::fs::write(dir.join("f.txt"), "needle here\n").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+
+        // No `.sway/worktrees`: an unrelated `worktrees/` folder is searched.
+        assert_eq!(plain_grep(&root, Some("needle"), &opts()).unwrap().len(), 2);
+
+        std::fs::create_dir_all(dir.join(".sway/worktrees/x")).unwrap();
+        std::fs::write(dir.join(".sway/worktrees/x/a.txt"), "needle in a feature worktree\n").unwrap();
+        let candidates = plain_grep(&root, Some("needle"), &opts()).unwrap();
+        assert!(!candidates.iter().any(|c| c.path.contains(".sway/worktrees")));
+        assert_eq!(candidates.len(), 1);
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
