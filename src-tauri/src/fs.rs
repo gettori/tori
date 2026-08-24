@@ -448,6 +448,9 @@ fn walk_files(root: &Path, dir: &Path, out: &mut Vec<String>) {
         if IGNORED_DIRS.contains(&name.to_string_lossy().as_ref()) {
             continue;
         }
+        if name == FEATURE_WORKTREES.1 && dir.file_name().is_some_and(|d| d == FEATURE_WORKTREES.0) {
+            continue;
+        }
         let Ok(ft) = entry.file_type() else { continue };
         let path = entry.path();
         if ft.is_dir() {
@@ -512,11 +515,28 @@ fn touch_root(entries: &mut Vec<WatchEntry>, root: &str, cap: usize) -> bool {
 const IGNORED_DIRS: &[&str] =
     &[".git", "node_modules", "dist", "target", crate::attempts::ATTEMPTS_DIR];
 
+/// Feature worktrees of a plain repo live under `.sway/worktrees`: whole
+/// checkouts, like `.sway-attempts`. A parent-child pair rather than a name in
+/// `IGNORED_DIRS`, because `.sway` itself holds the settings overlay.
+pub(crate) const FEATURE_WORKTREES: (&str, &str) = (".sway", "worktrees");
+
 fn is_ignored(path: &Path) -> bool {
-    path.components().any(|c| {
-        matches!(c, std::path::Component::Normal(os)
-            if os.to_str().map(|s| IGNORED_DIRS.contains(&s)).unwrap_or(false))
-    })
+    let mut prev: Option<&str> = None;
+    for c in path.components() {
+        let Component::Normal(os) = c else {
+            prev = None;
+            continue;
+        };
+        let name = os.to_str();
+        if name.is_some_and(|s| IGNORED_DIRS.contains(&s)) {
+            return true;
+        }
+        if prev == Some(FEATURE_WORKTREES.0) && name == Some(FEATURE_WORKTREES.1) {
+            return true;
+        }
+        prev = name;
+    }
+    false
 }
 
 #[derive(Clone, Serialize)]
@@ -740,6 +760,30 @@ mod tests {
         assert!(!is_ignored(Path::new("/p/src/App.tsx")));
         // A substring of an ignored name must not match.
         assert!(!is_ignored(Path::new("/p/src/distance.ts")));
+        // Feature worktrees are checkouts too, but `.sway` itself stays visible.
+        assert!(is_ignored(Path::new("/p/.sway/worktrees/x/a.rs")));
+        assert!(!is_ignored(Path::new("/p/.sway/settings.json")));
+        assert!(!is_ignored(Path::new("/p/worktrees/a.rs")));
+    }
+
+    #[test]
+    fn walk_files_skips_feature_worktrees_but_not_the_sway_dir() {
+        let root = std::env::temp_dir().join(format!(
+            "sway-walk-{}",
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(root.join(".sway/worktrees/x")).unwrap();
+        std::fs::write(root.join(".sway/worktrees/x/a.rs"), "").unwrap();
+        std::fs::write(root.join(".sway/settings.json"), "{}").unwrap();
+        std::fs::create_dir_all(root.join("worktrees")).unwrap();
+        std::fs::write(root.join("worktrees/b.rs"), "").unwrap();
+        std::fs::write(root.join("main.rs"), "").unwrap();
+
+        let mut out = Vec::new();
+        walk_files(&root, &root, &mut out);
+        out.sort();
+        assert_eq!(out, [".sway/settings.json", "main.rs", "worktrees/b.rs"]);
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
