@@ -5,7 +5,8 @@ import { Play } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import { debounce } from "../../utils/debounce";
-import type { FsChanged } from "../../utils/events";
+import { onWith, PURGE_WORKSPACE, type FsChanged, type PurgeWorkspace } from "../../utils/events";
+import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { loadTasks, type Task, type TaskSource } from "../../utils/tasks";
 import { runTask } from "../../utils/runTask";
 import { loadTaskRuns, runsFor, type TaskRunStore } from "../../utils/taskRecents";
@@ -39,6 +40,9 @@ export default function TasksPanel(props: { root: string | null }) {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [runs, setRuns] = createSignal<TaskRunStore>(loadTaskRuns());
+  onCleanup(
+    onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => setRuns((s) => dropWorkspaceKey(s, workspace))),
+  );
   // Bumped per read so a slow fs-refresh cannot overwrite a newer one, the same
   // latest-wins guard the Search and TODO panels keep.
   let scanGen = 0;

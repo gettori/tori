@@ -159,6 +159,13 @@ async function evaluate(ws: string, expression: string, at: number): Promise<voi
  * answers the truth. So a write is exactly when a watch is most out of date and
  * has no event to say so.
  */
+/** The workspace is gone: drop every watch filed under it. */
+export function dropWorkspaceWatches(ws: string): void {
+  if (!(ws in store())) return;
+  const { [ws]: _gone, ...rest } = store();
+  write(rest);
+}
+
 export function refreshWatches(): void {
   generation++;
   const at = generation;

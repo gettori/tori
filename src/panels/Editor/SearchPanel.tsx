@@ -28,7 +28,8 @@ import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
-import { emitWith, OPEN_IN_EDITOR, type FsChanged } from "../../utils/events";
+import { emitWith, onWith, OPEN_IN_EDITOR, PURGE_WORKSPACE, type FsChanged, type PurgeWorkspace } from "../../utils/events";
+import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { debounce } from "../../utils/debounce";
 import {
   DEFAULT_SEARCH_OPTIONS,
@@ -167,6 +168,12 @@ export default function SearchPanel(props: {
   // picked, and re-reading them is what makes that survivable.
   const [history, setHistory] = createSignal<SearchHistoryStore>(loadSearchHistory());
   const [saved, setSaved] = createSignal<SavedSearchStore>(loadSavedSearches());
+  onCleanup(
+    onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => {
+      setHistory((s) => dropWorkspaceKey(s, workspace));
+      setSaved((s) => dropWorkspaceKey(s, workspace));
+    }),
+  );
   const [cursor, setCursor] = createSignal(DRAFT);
   const [showSaved, setShowSaved] = createSignal(false);
   const [saveName, setSaveName] = createSignal("");

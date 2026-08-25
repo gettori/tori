@@ -11,6 +11,8 @@ import {
 } from 'solid-js';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { forgetWorkspace as forgetLayout } from './layout/layoutStore';
+import { forgetWorkspace as forgetPlacement } from './layout/tabPlacement';
 import LeftSidebar, { type Selection } from './panels/LeftSidebar/LeftSidebar';
 import {
   featureSelection,
@@ -68,6 +70,8 @@ import {
   OPEN_SETTINGS,
   type OpenSettings,
   type LiveTab,
+  PURGE_WORKSPACE,
+  type PurgeWorkspace,
 } from './utils/events';
 import { dispatchWindowHotkey } from './utils/hotkeys';
 import {
@@ -467,6 +471,16 @@ function App() {
     unlistenConfig = await listen('config://changed', () => void resolveFeatureSelection());
   });
   onCleanup(() => unlistenConfig?.());
+
+  // A deleted Feature: its pane tree and placements go, and if it was what
+  // the shell showed, nothing is selected now.
+  onCleanup(
+    onEventWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => {
+      if (wsKey() === workspace) setSelected(null);
+      forgetLayout(workspace);
+      forgetPlacement(workspace);
+    }),
+  );
 
   // The workspace flip has been applied; the paint endpoint is the frame after
   // the one that draws it. The span itself was opened by the sidebar click, so
@@ -979,7 +993,7 @@ function App() {
         >
           <WindowControls showSidebar={showSidebar()} />
         </div>
-        <Toolbar selected={selected()} />
+        <Toolbar selected={selected()} onActiveRoot={setActiveRoot} />
         <UpdatePill suppressed={welcome()} />
         <Button
           class="topbar-gear"
