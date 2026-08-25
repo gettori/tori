@@ -22,6 +22,7 @@ import {
   onWith,
   emitWith,
   FOCUS_SEARCH,
+  TOGGLE_SIDEBAR_MODE,
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
   OPEN_TERMINAL,
@@ -127,6 +128,8 @@ import {
   type AttemptRecord,
 } from "./attempts";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import SegmentedControl from "../../components/SegmentedControl/SegmentedControl";
+import FeatureList from "./FeatureList";
 import styles from "./LeftSidebar.module.css";
 
 // Lucide glyph for a branch-unit row, keyed by its git kind: a worktree (or an
@@ -245,6 +248,24 @@ const BRANCH_CAP = 6;
 
 const LS_EXPANDED = "sway.expanded.v1";
 const LS_ACTIVE_SPACE = "sway.active-space.v1";
+const LS_MODE = "sway.sidebar-mode.v1";
+
+// What the column shows: the Spaces tree, or the Feature list. The filter
+// field, the dialogs and the selection are shared; the tree and the space rail
+// are unmounted in Features mode rather than hidden.
+type SidebarMode = "spaces" | "features";
+const MODES: { value: SidebarMode; label: string }[] = [
+  { value: "spaces", label: "Spaces" },
+  { value: "features", label: "Features" },
+];
+
+function loadMode(): SidebarMode {
+  try {
+    return localStorage.getItem(LS_MODE) === "features" ? "features" : "spaces";
+  } catch {
+    return "spaces";
+  }
+}
 
 function loadActiveSpace(): string | null {
   try {
@@ -299,6 +320,14 @@ export default function LeftSidebar(props: {
   // its goal), so it is fetched alongside the config rather than folded into it.
   const [attempts, setAttempts] = createSignal<Record<string, AttemptRecord[]>>({});
   const [query, setQuery] = createSignal("");
+  const [mode, setMode] = createSignal<SidebarMode>(loadMode());
+  createEffect(() => {
+    try {
+      localStorage.setItem(LS_MODE, mode());
+    } catch {
+      // ignore quota
+    }
+  });
   const [gearOpen, setGearOpen] = createSignal(false);
   let searchEl: HTMLInputElement | undefined;
   let gearEl: HTMLDivElement | undefined;
@@ -831,6 +860,7 @@ export default function LeftSidebar(props: {
   // (App un-hides it on the same event; a synchronous focus would hit a
   // display:none element and be dropped).
   onCleanup(onEvent(FOCUS_SEARCH, () => requestAnimationFrame(() => searchEl?.focus())));
+  onCleanup(onEvent(TOGGLE_SIDEBAR_MODE, () => setMode((m) => (m === "spaces" ? "features" : "spaces"))));
 
   function openDeleteSpace(g: Space) {
     setDeleteReq({
@@ -2447,17 +2477,25 @@ export default function LeftSidebar(props: {
 
   return (
     <div class={styles.tree}>
+      <div class={styles.modeSwitch}>
+        <SegmentedControl size="sm" options={MODES} value={mode()} onChange={setMode} aria-label="Sidebar mode" />
+      </div>
       <div class={styles.treeSearch}>
         <input
           ref={searchEl}
           class={styles.searchInput}
-          placeholder="Filter projects (⌘⇧E)"
+          placeholder={mode() === "features" ? "Filter features (⌘⇧E)" : "Filter projects (⌘⇧E)"}
           value={query()}
           onInput={(e) => setQuery(e.currentTarget.value)}
           onKeyDown={(e) => e.key === "Escape" && setQuery("")}
         />
       </div>
 
+      <Show when={mode() === "features"}>
+        <FeatureList class={styles.featureList} spaces={visibleSpaces()} query={query()} />
+      </Show>
+
+      <Show when={mode() === "spaces"}>
       <OverlayScroll class={styles.treeScroll}>
         <For each={activeProjects()}>
           {(p) => {
@@ -2642,6 +2680,7 @@ export default function LeftSidebar(props: {
             </Tooltip>
           </Show>
         </div>
+      </Show>
       </Show>
 
       <Show when={promptReq()}>

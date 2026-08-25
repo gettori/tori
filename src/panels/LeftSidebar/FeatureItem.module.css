@@ -1,0 +1,96 @@
+/* One Feature row in the sidebar's Features mode. The name never wraps and
+   the chip row never wraps either: a Feature with more members than fit shows
+   CHIP_CAP chips and a +N, so the row height is the same for every Feature. */
+.item {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border-radius: var(--sway-radius-md);
+  min-width: 0;
+}
+
+.item:hover {
+  background: var(--neutral-subtle);
+}
+
+.name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--sway-text-xl);
+  color: var(--fg-default);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-width: 0;
+}
+
+/* The tint arrives as two custom properties from the member's Space; a member
+   outside every Space sets neither and falls back to the neutral pair. */
+.chip {
+  --chip-hue: var(--fg-muted);
+  --chip-rgb: 128 128 128;
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(22px * var(--ui-scale));
+  height: calc(22px * var(--ui-scale));
+  padding-inline: calc(4px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm, 4px);
+  font-size: var(--sway-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--chip-hue);
+  background: rgb(var(--chip-rgb) / 18%);
+}
+
+.neutral {
+  color: var(--fg-muted);
+  background: var(--neutral-subtle);
+}
+
+.pending {
+  opacity: 0.6;
+}
+
+.badge {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale));
+  right: calc(-4px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+  padding-inline: 2px;
+  border-radius: calc(6px * var(--ui-scale));
+  font-size: calc(9px * var(--ui-scale));
+  line-height: 1;
+  color: var(--canvas-default);
+  background: var(--fg-muted);
+}
+
+.chip[data-state="failed"] .badge {
+  background: var(--danger-fg);
+}
+
+.more {
+  flex: 0 0 auto;
+  font-size: var(--sway-text-2xs);
+  color: var(--fg-muted);
+  padding-inline: calc(2px * var(--ui-scale));
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(4px * var(--ui-scale));
+}

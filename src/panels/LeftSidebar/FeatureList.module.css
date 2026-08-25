@@ -1,0 +1,23 @@
+/* The Features mode of the sidebar: a plain column of FeatureItem rows. The
+   horizontal insets come from the sidebar through `class`, so the rows line up
+   with the filter field above them. */
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+}
+
+.error {
+  margin: 0 0 calc(6px * var(--ui-scale));
+  font-size: var(--sway-text-sm);
+  color: var(--danger-fg);
+}

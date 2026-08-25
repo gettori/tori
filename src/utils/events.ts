@@ -105,6 +105,10 @@ export const TOGGLE_TERMINAL = "sway:toggle-terminal";
 export const TOGGLE_EDITOR = "sway:toggle-editor";
 export const TOGGLE_FILETREE = "sway:toggle-filetree";
 
+// Flip the sidebar between its Spaces tree and the Feature list. Consumed by
+// LeftSidebar, which owns and persists the mode.
+export const TOGGLE_SIDEBAR_MODE = "sway:toggle-sidebar-mode";
+
 // Pane layout edits (plan phase 8), all consumed by App.tsx, which owns the
 // tree. Emitted by the command palette and by a tab's own context menu, so a
 // split made either way runs the same guards.

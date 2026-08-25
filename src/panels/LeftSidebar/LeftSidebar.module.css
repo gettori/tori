@@ -36,6 +36,21 @@
   --nest-step: calc(12px * var(--ui-scale));
 }
 
+/* The Spaces | Features switcher, on the same insets as the filter below it. */
+.modeSwitch {
+  display: flex;
+  padding: calc(8px * var(--ui-scale)) var(--tree-inset) 0 var(--tree-inset);
+}
+
+.modeSwitch > * {
+  flex: 1;
+}
+
+/* The Feature list on the tree's insets, like the cards it replaces. */
+.featureList {
+  padding-inline: var(--tree-inset) var(--tree-gutter);
+}
+
 .treeSearch {
   display: flex;
   align-items: center;

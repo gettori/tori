@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
+import { expectNoAxeViolations } from "../../test/axe";
+import { emit, TOGGLE_SIDEBAR_MODE } from "../../utils/events";
 
 // The fan-out group is a rendering claim, so it is asserted against the real
 // tree rather than against the grouping function alone (see attempts.test.ts for
@@ -224,5 +226,55 @@ describe("fan-out groups in the tree", () => {
 
     await waitFor(() => expect(screen.queryByText(/other 2 attempts/)).toBeNull());
     expect(bridge.calls.some((c) => c.cmd === "promote_attempt")).toBe(false);
+  });
+});
+
+describe("the Spaces | Features mode", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    bridge.calls.length = 0;
+    Element.prototype.scrollIntoView = () => {};
+    localStorage.clear();
+    localStorage.setItem("sway.active-space.v1", "work");
+  });
+
+  const sidebar = () => render(() => <LeftSidebar selected={null} onSelect={() => {}} />);
+  const segment = (name: string) => screen.getByRole("button", { name });
+  const pressed = (name: string) => segment(name).getAttribute("aria-pressed") === "true";
+
+  it("defaults to Spaces and keeps the tree mounted", async () => {
+    const { container } = sidebar();
+    await screen.findByText("repo");
+    expect(pressed("Spaces")).toBe(true);
+    expect(container.querySelector("[data-feature-list]")).toBeNull();
+    await expectNoAxeViolations(container);
+  });
+
+  it("persists Features mode across a remount and unmounts the tree there", async () => {
+    const first = sidebar();
+    await screen.findByText("repo");
+    fireEvent.click(segment("Features"));
+    await waitFor(() => expect(pressed("Features")).toBe(true));
+    expect(localStorage.getItem("sway.sidebar-mode.v1")).toBe("features");
+    expect(screen.queryByText("repo")).toBeNull();
+    expect(first.container.querySelector("[data-feature-list]")).not.toBeNull();
+    await screen.findByText("No Features yet.");
+    await expectNoAxeViolations(first.container);
+    first.unmount();
+
+    const second = sidebar();
+    await waitFor(() => expect(pressed("Features")).toBe(true));
+    expect(second.container.querySelector("[data-feature-list]")).not.toBeNull();
+    expect(screen.queryByText("repo")).toBeNull();
+  });
+
+  it("flips on the palette's toggle event", async () => {
+    sidebar();
+    await screen.findByText("repo");
+    emit(TOGGLE_SIDEBAR_MODE);
+    await waitFor(() => expect(pressed("Features")).toBe(true));
+    emit(TOGGLE_SIDEBAR_MODE);
+    await waitFor(() => expect(pressed("Spaces")).toBe(true));
+    await screen.findByText("repo");
   });
 });
