@@ -4,6 +4,8 @@
 // branch before asking, and the two member helpers exist so a chip and a state
 // badge do not each re-derive them.
 
+import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
+
 export type MemberState =
   | { kind: "present" }
   | { kind: "worktree-missing" }
@@ -76,4 +78,72 @@ export function memberState(state: MemberState): MemberStateSummary {
         reason: state.reason,
       };
   }
+}
+
+/** The workspace key prefix for a Feature: `feature:<id>`. A path never starts
+ *  with it, so the two key spaces cannot collide. */
+export const FEATURE_KEY_PREFIX = "feature:";
+
+export function featureKey(id: string): string {
+  return FEATURE_KEY_PREFIX + id;
+}
+
+export function isFeatureKey(ws: string | null | undefined): boolean {
+  return !!ws && ws.startsWith(FEATURE_KEY_PREFIX);
+}
+
+/** The present members' worktree folders, in member order. */
+export function featureRoots(feature: Pick<Feature, "members">): string[] {
+  return feature.members
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .filter((m) => m.state.kind === "present" && !!m.worktreePath)
+    .map((m) => m.worktreePath!);
+}
+
+/** The Selection a Feature opens as. Never refuses: a stale stored root falls
+ *  back to the first present member, none present opens with `activeRoot: null`.
+ *  `folderPath` mirrors `activeRoot` for consumers still on the flat field. */
+export function featureSelection(feature: Feature, storedActiveRoot?: string | null): Selection {
+  const roots = featureRoots(feature);
+  const activeRoot = storedActiveRoot && roots.includes(storedActiveRoot) ? storedActiveRoot : (roots[0] ?? null);
+  return {
+    kind: "feature",
+    featureId: feature.id,
+    featureName: feature.name,
+    roots,
+    activeRoot,
+    spaceName: "",
+    projectName: feature.name,
+    projectPath: activeRoot ?? "",
+    folderPath: activeRoot ?? "",
+    branch: feature.branch,
+    projectKind: "feature",
+  };
+}
+
+/** What every per-workspace store keys on: `feature:<id>` for a Feature, the
+ *  branch-unit folder otherwise, empty for nothing selected. */
+export function workspaceKey(sel: Pick<Selection, "kind" | "featureId" | "folderPath"> | null | undefined): string {
+  if (!sel) return "";
+  if (sel.kind === "feature" && sel.featureId) return featureKey(sel.featureId);
+  return sel.folderPath ?? "";
+}
+
+/** The folder git, settings, the watcher and a spawn run against: the active
+ *  member for a Feature, the branch-unit folder otherwise. Null, never "". */
+export function selectionRoot(
+  sel: Pick<Selection, "kind" | "activeRoot" | "folderPath"> | null | undefined,
+): string | null {
+  if (!sel) return null;
+  if (sel.kind === "feature") return sel.activeRoot ?? null;
+  return sel.folderPath || null;
+}
+
+/** The folders a `feature:<id>` workspace spans, for a per-folder backend call
+ *  that has to be unioned; a plain workspace is its own single folder. */
+export function workspaceFolders(ws: string, sel: Selection | null | undefined): string[] {
+  if (!isFeatureKey(ws)) return [ws];
+  if (sel && workspaceKey(sel) === ws) return sel.roots ?? [];
+  return [];
 }

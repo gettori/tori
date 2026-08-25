@@ -10,7 +10,14 @@ import {
   Show,
 } from 'solid-js';
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import LeftSidebar, { type Selection } from './panels/LeftSidebar/LeftSidebar';
+import {
+  featureSelection,
+  selectionRoot,
+  workspaceKey,
+  type Feature,
+} from './utils/features';
 import Terminal from './panels/Terminal/Terminal';
 import Editor from './panels/Editor/Editor';
 import { stageHost } from './tabs/stageHost';
@@ -213,6 +220,8 @@ function loadSelection(): Selection | null {
       // Backfill the space name for selections persisted under the old `groupName` key.
       if (s && !s.spaceName)
         s.spaceName = (s as unknown as { groupName?: string }).groupName ?? '';
+      // Backfill the kind for selections persisted before Features existed.
+      if (s && !s.kind) s.kind = 'unit';
       return s;
     }
   } catch {
@@ -275,7 +284,7 @@ function App() {
     ),
   );
 
-  const wsKey = () => selected()?.folderPath ?? '';
+  const wsKey = () => workspaceKey(selected());
   const seedEnvelope = () => seedOnePane();
   const env = () => envelopeFor(wsKey(), seedEnvelope);
   createEffect(() => ensureEnvelope(wsKey(), seedEnvelope));
@@ -427,6 +436,37 @@ function App() {
       // ignore
     }
   });
+
+  // Moves a Feature's active member. The mirror fields follow so a consumer
+  // still on `folderPath` sees the same folder the editor and git do.
+  function setActiveRoot(root: string | null) {
+    setSelected((prev) => {
+      if (!prev || prev.kind !== 'feature') return prev;
+      return { ...prev, activeRoot: root, folderPath: root ?? '', projectPath: root ?? '' };
+    });
+  }
+
+  // A stored feature Selection is a snapshot; the record is truth. Re-resolved
+  // at startup and whenever the tree changes, so a member that came or went is
+  // reflected and a deleted Feature no longer keeps an empty workspace open.
+  // Latest request wins: a burst of config changes must not let an older
+  // listing, resolving later, overwrite the newer one.
+  let resolveSeq = 0;
+  async function resolveFeatureSelection() {
+    if (selected()?.kind !== 'feature') return;
+    const mine = ++resolveSeq;
+    const list = (await invoke<Feature[] | null>('list_features').catch(() => null)) ?? [];
+    const sel = selected();
+    if (mine !== resolveSeq || sel?.kind !== 'feature') return;
+    const feature = list.find((f) => f.id === sel.featureId);
+    setSelected(feature ? featureSelection(feature, sel.activeRoot) : null);
+  }
+  let unlistenConfig: UnlistenFn | undefined;
+  onMount(async () => {
+    void resolveFeatureSelection();
+    unlistenConfig = await listen('config://changed', () => void resolveFeatureSelection());
+  });
+  onCleanup(() => unlistenConfig?.());
 
   // The workspace flip has been applied; the paint endpoint is the frame after
   // the one that draws it. The span itself was opened by the sidebar click, so
@@ -846,7 +886,7 @@ function App() {
     // torn down whenever another right-hand mode is showing - a rerun that only
     // worked while its own panel was open would not be a shortcut past it.
     offRunLastTask = onEvent(RUN_LAST_TASK, () => {
-      const outcome = rerunLast(selected()?.folderPath ?? null);
+      const outcome = rerunLast(selectionRoot(selected()));
       if (outcome === 'ran') return;
       emitWith<ToastEvent>(TOAST, {
         message:
@@ -961,6 +1001,7 @@ function App() {
             <LeftSidebar
               selected={selected()}
               onSelect={setSelected}
+              onActiveRoot={setActiveRoot}
               liveTabs={liveTabs()}
             />
           </div>

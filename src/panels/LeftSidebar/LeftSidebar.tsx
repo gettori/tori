@@ -222,6 +222,14 @@ type Space = {
 type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
 
 export type Selection = {
+  // Absent means "unit": a selection persisted before Features carried no kind.
+  kind?: "unit" | "feature";
+  featureId?: string;
+  featureName?: string;
+  // Present members' folders in order, and the one the editor, git and a spawn
+  // run against. Null when no member is present; `folderPath` then mirrors "".
+  roots?: string[];
+  activeRoot?: string | null;
   spaceName: string;
   projectName: string;
   projectPath: string;
@@ -295,6 +303,8 @@ function loadExpanded(): Set<string> {
 export default function LeftSidebar(props: {
   selected: Selection | null;
   onSelect: (s: Selection | null) => void;
+  // Moves a Feature's active member; the selection itself stays a Feature.
+  onActiveRoot?: (root: string | null) => void;
   liveTabs?: LiveTab[];
 }) {
   const [config, setConfig] = createSignal<ResolvedConfig | null>(null);
@@ -924,6 +934,22 @@ export default function LeftSidebar(props: {
     countRunningAgents(p.path).then((n) => forThis((r) => ({ ...r, runningCount: n })));
   }
 
+  // A folder is going away. A unit selection under it clears; a Feature whose
+  // active member is under it moves to its next present root and only clears
+  // when none remains, so removing one member never closes the Feature.
+  function dropSelectionUnder(gone: (folder: string) => boolean) {
+    const sel = props.selected;
+    if (!sel) return;
+    if (sel.kind === "feature") {
+      const roots = (sel.roots ?? []).filter((r) => !gone(r));
+      if (sel.activeRoot && !gone(sel.activeRoot)) return;
+      if (!roots.length) props.onSelect(null);
+      else props.onActiveRoot?.(roots[0]);
+      return;
+    }
+    if (gone(sel.folderPath)) props.onSelect(null);
+  }
+
   // Confirmed: tear down PTYs + editor tabs under the target BEFORE the native
   // delete (so no agent writes into a vanishing cwd), then remove the folder and
   // clear the selection if it pointed inside. Routes by mode: a space calls
@@ -937,8 +963,7 @@ export default function LeftSidebar(props: {
       req.mode === "folder" ? "remove_folder" : req.mode === "project" ? "remove_project" : "delete_space";
     try {
       await invoke(cmd, { path: req.path });
-      const sel = props.selected;
-      if (sel && isUnderPath(sel.folderPath, req.path)) props.onSelect(null);
+      dropSelectionUnder((f) => isUnderPath(f, req.path));
       await loadConfig();
     } catch (e) {
       setError(String(e));
@@ -1333,8 +1358,7 @@ export default function LeftSidebar(props: {
       } else {
         await invoke("remove_worktree", { repoPath: p.path, worktreePath: u.folderPath, force: true });
       }
-      const sel = props.selected;
-      if (sel && isUnderPath(sel.folderPath, u.folderPath)) props.onSelect(null);
+      dropSelectionUnder((f) => isUnderPath(f, u.folderPath));
       setWtReq(null);
       await loadConfig();
     } catch (e) {
@@ -1672,8 +1696,7 @@ export default function LeftSidebar(props: {
         root: p.path,
         winnerPath: a.path,
       });
-      const sel = props.selected;
-      if (sel && losers.some((l) => isUnderPath(sel.folderPath, l.path))) props.onSelect(null);
+      dropSelectionUnder((f) => losers.some((l) => isUnderPath(f, l.path)));
       // Per-loser problems: the promotion itself succeeded, so this is not an
       // error dialog, but each line names a leftover someone has to clear by
       // hand and saying nothing would leave it to be discovered.
@@ -2032,6 +2055,7 @@ export default function LeftSidebar(props: {
     traceSwitchStart("worktree", u.folderPath);
     if (!(await ensureBranch(p, u, u.branch))) return false;
     props.onSelect({
+      kind: "unit",
       spaceName: g.name,
       projectName: p.name,
       projectPath: p.path,
@@ -2067,6 +2091,7 @@ export default function LeftSidebar(props: {
     const target = s.branch || u.branch;
     if (!(await ensureBranch(p, u, target))) return;
     props.onSelect({
+      kind: "unit",
       spaceName: g.name,
       projectName: p.name,
       projectPath: p.path,
