@@ -130,7 +130,7 @@ import {
 import Tooltip from "../../components/Tooltip/Tooltip";
 import SegmentedControl from "../../components/SegmentedControl/SegmentedControl";
 import FeatureList from "./FeatureList";
-import { featureSelection, tabUnderFolder, type Feature } from "../../utils/features";
+import { featureKey, featureSelection, tabUnderFolder, type Feature } from "../../utils/features";
 import styles from "./LeftSidebar.module.css";
 
 // Lucide glyph for a branch-unit row, keyed by its git kind: a worktree (or an
@@ -2154,7 +2154,9 @@ export default function LeftSidebar(props: {
   }
 
   function selectFeature(f: Feature, preferredRoot: string | null) {
-    traceSwitchStart("feature", f.id);
+    // Keyed by the workspace key, not the bare id, so the legs the editor
+    // reports (which key on the workspace) land on this span.
+    traceSwitchStart("feature", featureKey(f.id));
     props.onSelect(featureSelection(f, preferredRoot));
   }
 

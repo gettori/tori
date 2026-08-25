@@ -863,6 +863,10 @@ export default function FileTree(props: {
   askConfirm?: (opts: ConfirmOpts) => Promise<boolean>;
   /** A member whose worktree is not usable offers a repair; this runs it. */
   onRetry?: (path: string) => void;
+  /** The switch span this tree's first listing closes a leg of: the workspace
+   *  key, so a Feature's span is keyed the same way its tabs are. Absent on the
+   *  shared and docs panes, which no switch ever waits for. */
+  settleKey?: string;
 }) {
   const [filter, setFilter] = createSignal("");
   const [wantFiles, setWantFiles] = createSignal(false);
@@ -889,6 +893,12 @@ export default function FileTree(props: {
   const metaOf = (path: string) => (): TreeRoot =>
     rootList().find((r) => r.path === path) ?? { path, label: "" };
   const headed = () => rootList().length > 1;
+  /** The one section whose listing a switch is waiting on: the active member
+   *  inside a Feature, the sole root everywhere else. */
+  const settleRoot = () => {
+    const r = props.root;
+    return r && rootPaths().includes(r) ? r : rootPaths()[0];
+  };
 
   const editable = () => !!props.editable && !!props.askText && !!props.askConfirm;
   /** The lone root's section, which is the only case where the toolbar can
@@ -1051,7 +1061,8 @@ export default function FileTree(props: {
               onRetry={props.onRetry}
               onApi={registerApi}
               onLoaded={() => {
-                if (rootPaths()[0] === path) traceSettle("tree", path);
+                const key = props.settleKey;
+                if (key && path === settleRoot()) traceSettle("tree", key);
               }}
             />
           )}

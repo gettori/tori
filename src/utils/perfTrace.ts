@@ -20,8 +20,9 @@ import { setInvokeRecorder } from "./tracedCore";
 
 type SwitchKind = "worktree" | "feature" | "tab";
 
-/** What a worktree switch waits for before it counts as settled. A tab switch
- *  has no data leg: the buffers are already in memory, so it ends at paint. */
+/** What a worktree or Feature switch waits for before it counts as settled. A
+ *  tab switch has no data leg: the buffers are already in memory, so it ends at
+ *  paint. */
 const WORKTREE_LEGS = ["tree", "git"] as const;
 export type SettleLeg = (typeof WORKTREE_LEGS)[number];
 
@@ -210,9 +211,13 @@ function tracePainted(span: Span): void {
   if (span.kind === "tab") emit(span);
 }
 
-/** One half of "settled" has landed. Both halves plus a frame end the span. */
+/** One half of "settled" has landed. Both halves plus a frame end the span.
+ *
+ *  A Feature switch waits on the same two legs as a worktree switch, so it is
+ *  the tab span (which has no data leg at all) that is excluded here rather than
+ *  the worktree kind that is admitted. */
 export function traceSettle(leg: SettleLeg, key: string): void {
-  if (!on || !current || current.kind !== "worktree" || current.key !== key) return;
+  if (!on || !current || current.kind === "tab" || current.key !== key) return;
   const span = current;
   span.legs.add(leg);
   if (!WORKTREE_LEGS.every((l) => span.legs.has(l))) return;
