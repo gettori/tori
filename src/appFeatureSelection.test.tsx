@@ -118,3 +118,17 @@ describe("a Feature as the selection", () => {
     expect(invoke).not.toHaveBeenCalledWith("list_features");
   });
 });
+
+describe("a deleted Feature", () => {
+  it("clears the selection and drops its pane tree and placements", async () => {
+    const { PURGE_WORKSPACE, emitWith } = await import("./utils/events");
+    localStorage.setItem("sway.selection.v1", JSON.stringify(storedFeature));
+    render(() => <App />);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("sway.panes.v1")!)).toHaveProperty("feature:f1"));
+    emitWith(PURGE_WORKSPACE, { workspace: "feature:f1" });
+    await waitFor(() => expect(storedSelection()).toBeNull());
+    const { flushEnvelopes } = await import("./layout/layoutStore");
+    flushEnvelopes();
+    expect(JSON.parse(localStorage.getItem("sway.panes.v1") ?? "{}")).not.toHaveProperty("feature:f1");
+  });
+});

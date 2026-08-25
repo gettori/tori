@@ -9,7 +9,8 @@ import ConfirmDialog from "../../components/Dialogs/ConfirmDialog";
 import { pushToast } from "../../components/Toasts/Toasts";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
-import { memberState, type Feature, type Member } from "../../utils/features";
+import { memberState, type Feature, type Member, featureKey } from "../../utils/features";
+import { purgeWorkspace } from "../../utils/purgeWorkspace";
 import styles from "./FeatureList.module.css";
 
 /** What the list needs from a Space: the tint for a chip and the projects for
@@ -25,7 +26,16 @@ export type FeatureSpace = SpaceTint & RepoSpace;
  *  after every step of a creation, and is applied as is, no refetch, so chips
  *  flip one by one. `config://changed` fires once at the end (and whenever
  *  the tree changes for any other reason), and that one refetches. */
-export default function FeatureList(props: { spaces: FeatureSpace[]; query: string; class?: string }) {
+export default function FeatureList(props: {
+  spaces: FeatureSpace[];
+  query: string;
+  class?: string;
+  /** The selected Feature's id, so exactly one row reads as active. */
+  activeId?: string | null;
+  onSelect?: (feature: Feature) => void;
+  /** The selected Feature was deleted; the shell drops the selection. */
+  onDeleted?: (feature: Feature) => void;
+}) {
   const [features, setFeatures] = createSignal<Feature[]>([]);
   const [error, setError] = createSignal<string | null>(null);
   const [dialog, setDialog] = createSignal<{ feature?: Feature } | null>(null);
@@ -109,11 +119,15 @@ export default function FeatureList(props: { spaces: FeatureSpace[]; query: stri
     }
   }
 
+  // The record is gone; so is every store keyed by it, before the selection
+  // changes, so nothing persists the key back on the way out.
   async function remove(feature: Feature) {
     setDeleteReq(null);
     try {
       await invoke("delete_feature", { featureId: feature.id });
       setFeatures((prev) => prev.filter((f) => f.id !== feature.id));
+      purgeWorkspace(featureKey(feature.id));
+      props.onDeleted?.(feature);
     } catch (e) {
       setError(String(e));
     }
@@ -167,7 +181,16 @@ export default function FeatureList(props: { spaces: FeatureSpace[]; query: stri
       >
         <ul class={styles.items}>
           <For each={visible()}>
-            {(f) => <FeatureItem feature={f} spaces={props.spaces} onRetry={(m) => retry(f, m)} menu={menu(f)} />}
+            {(f) => (
+              <FeatureItem
+                feature={f}
+                spaces={props.spaces}
+                active={props.activeId === f.id}
+                onSelect={props.onSelect}
+                onRetry={(m) => retry(f, m)}
+                menu={menu(f)}
+              />
+            )}
           </For>
         </ul>
       </Show>

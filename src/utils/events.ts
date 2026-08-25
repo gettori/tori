@@ -464,6 +464,12 @@ export type NewSession = { folderPath: string; projectName: string; agent?: stri
 export const PURGE_UNDER_PATH = "sway:purge-under-path";
 export type PurgeUnderPath = { path: string };
 
+// A whole workspace key is going away (a Feature was deleted). Unlike a path
+// purge nothing on disk is touched: every per-workspace store drops the key so
+// a later Feature reusing nothing of it starts clean. Emitted after the delete.
+export const PURGE_WORKSPACE = "sway:purge-workspace";
+export type PurgeWorkspace = { workspace: string };
+
 // Payload-carrying event: ask the sidebar to open its own branch-removal
 // confirmation for a branch-unit. Emitted by the Pull Requests panel once a pull
 // request has been landed, when the branch it was on has nothing left to do.

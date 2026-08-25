@@ -147,6 +147,13 @@ export function noteBufferDirty(ws: string, path: string, isDirty: boolean): voi
  * that right; sending here would arm the new name against a target that never
  * heard of it.
  */
+/** The workspace is gone: drop every breakpoint filed under it. */
+export function dropWorkspaceBreakpoints(ws: string): void {
+  if (!(ws in store())) return;
+  const { [ws]: _gone, ...rest } = store();
+  write(rest);
+}
+
 export function mapBreakpointFiles(map: (path: string) => string | null): void {
   write(mapBreakpointPaths(store(), map));
   setDirty(remap(dirty(), map));

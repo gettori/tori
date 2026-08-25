@@ -325,6 +325,14 @@ export function forgetTab(ws: string, tabId: string) {
 
 // Called from App's setup, beside resetPaneLayoutModel, for its reason: the
 // shell mounts once per app run, and repeated test mounts get a fresh model.
+/** Drop a workspace's placements outright: the key is gone, not empty. */
+export function forgetWorkspace(ws: string) {
+  if (!placements()[ws]) return;
+  const { [ws]: _gone, ...rest } = placements();
+  setPlacements(rest);
+  placementWrite.schedule();
+}
+
 export function resetTabPlacement() {
   // Unrun rather than flushed: the state a pending write would carry is the
   // state this call is throwing away.

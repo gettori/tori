@@ -20,6 +20,8 @@ import {
   OPEN_TERMINAL,
   NEW_SESSION,
   PURGE_UNDER_PATH,
+  PURGE_WORKSPACE,
+  type PurgeWorkspace,
   SESSION_DELETED,
   type SessionDeleted,
   SEND_TO_SESSION,
@@ -757,6 +759,17 @@ export default function Terminal(props: {
     }
   });
   onCleanup(offPurge);
+
+  // A workspace key is gone (a Feature was deleted): close its tabs, and mark
+  // it touched so the persisted store drops it rather than restoring it later.
+  const offPurgeWs = onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => {
+    for (const t of open()) {
+      if (t.workspace === workspace) closeId(t.id);
+    }
+    touched.add(workspace);
+    saveTabStore(open(), activeByWorkspace());
+  });
+  onCleanup(offPurgeWs);
 
   // A session's transcript was deleted: close whatever tab was driving it. The
   // sidebar has already closed the child and released the claim, so this is

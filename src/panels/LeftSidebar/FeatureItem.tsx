@@ -22,12 +22,15 @@ function samePath(a: string, b: string): boolean {
 }
 
 /** One Feature row: the name on one line, then one chip per member in order,
- *  tinted by the Space its repo sits in. The row is read-only apart from Retry
- *  on a failed member; selecting a Feature is the next ticket's business. */
+ *  tinted by the Space its repo sits in. A click selects the Feature; Retry on
+ *  a failed member is the only other action on the row. */
 export default function FeatureItem(props: {
   feature: Feature;
   spaces: SpaceTint[];
   onRetry: (member: Member) => void;
+  onSelect?: (feature: Feature) => void;
+  /** The Feature the shell is showing. */
+  active?: boolean;
   /** Right-click rows; none means the row is inert. */
   menu?: MenuItem[];
 }) {
@@ -40,7 +43,16 @@ export default function FeatureItem(props: {
     props.spaces.find((g) => g.projects.some((p) => samePath(p.path, member.repoPath)));
 
   return (
-    <ContextMenu as="li" class={styles.item} items={props.menu} disabled={!props.menu} data-feature={props.feature.id}>
+    <ContextMenu
+      as="li"
+      class={styles.item}
+      classList={{ [styles.active]: !!props.active }}
+      items={props.menu}
+      disabled={!props.menu}
+      data-feature={props.feature.id}
+      aria-current={props.active ? "true" : undefined}
+      onClick={() => props.onSelect?.(props.feature)}
+    >
       <div class={styles.name} data-name title={props.feature.branch}>
         {props.feature.name}
       </div>
@@ -108,7 +120,14 @@ export default function FeatureItem(props: {
         <div class={styles.actions}>
           <For each={retryable()}>
             {(m) => (
-              <Button size="xs" variant="ghost" onClick={() => props.onRetry(m)}>
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={(e: MouseEvent) => {
+                  e.stopPropagation();
+                  props.onRetry(m);
+                }}
+              >
                 Retry {m.displayName}
               </Button>
             )}

@@ -114,6 +114,14 @@ export function envelopeFor(ws: string, seed: () => LayoutEnvelope): LayoutEnvel
   return envelopes()[ws] ?? seed();
 }
 
+/** Drop a workspace's envelope outright: the key is gone, not empty. */
+export function forgetWorkspace(ws: string) {
+  if (!envelopes()[ws]) return;
+  const { [ws]: _gone, ...rest } = envelopes();
+  setEnvelopes(rest);
+  persistEnvelopes();
+}
+
 export function ensureEnvelope(ws: string, seed: () => LayoutEnvelope) {
   if (envelopes()[ws]) return;
   setEnvelopes({ ...envelopes(), [ws]: seed() });
