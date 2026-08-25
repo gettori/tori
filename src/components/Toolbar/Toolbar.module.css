@@ -119,3 +119,39 @@
   color: var(--danger-fg);
   font-size: var(--sway-text-md);
 }
+
+/* Feature members: one chip per repo, the active root filled in. */
+.members {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  margin-left: calc(8px * var(--ui-scale));
+}
+.member {
+  --chip-hue: var(--fg-muted);
+  --chip-rgb: 128 128 128;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(22px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
+  padding: 0 calc(5px * var(--ui-scale));
+  border: 1px solid rgb(var(--chip-rgb) / 0.5);
+  border-radius: var(--sway-radius-sm);
+  background: rgb(var(--chip-rgb) / 0.12);
+  color: var(--chip-hue);
+  font-size: var(--sway-text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+.member:hover:not(:disabled) {
+  background: rgb(var(--chip-rgb) / 0.24);
+}
+.memberActive {
+  background: rgb(var(--chip-rgb) / 0.32);
+  border-color: var(--chip-hue);
+}
+.memberOff {
+  opacity: 0.45;
+  cursor: default;
+}

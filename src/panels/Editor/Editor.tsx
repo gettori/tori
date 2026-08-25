@@ -108,6 +108,8 @@ import {
   emitWith,
   OPEN_IN_EDITOR,
   PURGE_UNDER_PATH,
+  PURGE_WORKSPACE,
+  type PurgeWorkspace,
   DRAG_PATH_MIME,
   FOCUS_PROJECT_SEARCH,
   SET_RIGHT_MODE,
@@ -145,6 +147,9 @@ import {
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { selectionRoot, workspaceKey } from "../../utils/features";
+import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
+import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
+import { dropWorkspaceWatches } from "../../utils/debugWatch";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
 import { dropStashEntry, loadPendingStash, pendingStashPaths, requestStash } from "../../utils/hotExit";
@@ -1578,6 +1583,35 @@ export default function Editor(props: {
     for (const p of next.removed) dropStashEntry(p);
   }
 
+  // A workspace key is gone (a Feature was deleted): every store keyed by it
+  // drops the key. Marked touched so the persisted tab store drops it too.
+  // Dirty text and the stash go only for paths no other workspace still has
+  // open: a member's file is usually open under the member's own unit as well.
+  function purgeWorkspaceKey(ws: string) {
+    const elsewhere = new Set(
+      Object.entries(tabsByWs()).flatMap(([w, ts]) => (w === ws ? [] : ts.map((t) => t.path))),
+    );
+    const removed = (tabsByWs()[ws] ?? []).map((t) => t.path).filter((p) => !elsewhere.has(p));
+    setTabsByWs((s) => dropWorkspaceKey(s, ws));
+    setActiveByWs((s) => dropWorkspaceKey(s, ws));
+    setClosedByWs((s) => dropWorkspaceKey(s, ws));
+    setJumpsByWs((s) => dropWorkspaceKey(s, ws));
+    setFrecency((s) => dropWorkspaceKey(s, ws));
+    setBookmarkStore((s) => dropWorkspaceKey(s, ws));
+    setAttachPorts((s) => dropWorkspaceKey(s, ws));
+    setLastTargets((s) => dropWorkspaceKey(s, ws));
+    dropWorkspaceBreakpoints(ws);
+    dropWorkspaceWatches(ws);
+    touchedWs.add(ws);
+    if (!removed.length) return;
+    setDirty((d) => {
+      const out = { ...d };
+      for (const p of removed) delete out[p];
+      return out;
+    });
+    for (const p of removed) dropStashEntry(p);
+  }
+
   // A file or folder moved on disk: repoint every tab addressing it instead of
   // closing anything. A rename is not a removal, so a dirty buffer has to come
   // along with its unsaved text; the sweep itself is pure and lives in
@@ -1764,6 +1798,7 @@ export default function Editor(props: {
   let offTouched: UnlistenFn | undefined;
   let offOpen: (() => void) | undefined;
   let offPurge: (() => void) | undefined;
+  let offPurgeWs: (() => void) | undefined;
   let offClose: (() => void) | undefined;
   let offFollow: UnlistenFn | undefined;
   let offProjectSearch: (() => void) | undefined;
@@ -1843,6 +1878,7 @@ export default function Editor(props: {
       noteTouch(d.path, "open");
     });
     offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
+    offPurgeWs = onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => purgeWorkspaceKey(workspace));
     // Cmd+Shift+F: switch to Search mode and bump the nonce so SearchPanel
     // refocuses its input even when the mode is already active.
     offProjectSearch = onEvent(FOCUS_PROJECT_SEARCH, () => {
@@ -1930,6 +1966,7 @@ export default function Editor(props: {
     offTouched?.();
     offOpen?.();
     offPurge?.();
+    offPurgeWs?.();
     offClose?.();
     offFollow?.();
     offProjectSearch?.();

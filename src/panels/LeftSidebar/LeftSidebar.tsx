@@ -130,6 +130,7 @@ import {
 import Tooltip from "../../components/Tooltip/Tooltip";
 import SegmentedControl from "../../components/SegmentedControl/SegmentedControl";
 import FeatureList from "./FeatureList";
+import { featureSelection } from "../../utils/features";
 import styles from "./LeftSidebar.module.css";
 
 // Lucide glyph for a branch-unit row, keyed by its git kind: a worktree (or an
@@ -2517,7 +2518,19 @@ export default function LeftSidebar(props: {
       </div>
 
       <Show when={mode() === "features"}>
-        <FeatureList class={styles.featureList} spaces={visibleSpaces()} query={query()} />
+        <FeatureList
+          class={styles.featureList}
+          spaces={visibleSpaces()}
+          query={query()}
+          activeId={props.selected?.kind === "feature" ? props.selected.featureId : null}
+          onSelect={(f) => {
+            traceSwitchStart("feature", f.id);
+            props.onSelect(featureSelection(f, props.selected?.featureId === f.id ? props.selected.activeRoot : null));
+          }}
+          onDeleted={(f) => {
+            if (props.selected?.kind === "feature" && props.selected.featureId === f.id) props.onSelect(null);
+          }}
+        />
       </Show>
 
       <Show when={mode() === "spaces"}>
