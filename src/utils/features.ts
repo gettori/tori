@@ -5,6 +5,7 @@
 // badge do not each re-derive them.
 
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
+import { isUnderPath } from "./pathScope";
 
 export type MemberState =
   | { kind: "present" }
@@ -146,4 +147,20 @@ export function workspaceFolders(ws: string, sel: Selection | null | undefined):
   if (!isFeatureKey(ws)) return [ws];
   if (sel && workspaceKey(sel) === ws) return sel.roots ?? [];
   return [];
+}
+
+/** Does `folder` own a cwd for attribution: at or under it, but never under
+ *  the folder's own `.sway/worktrees/`, where its Feature worktrees live and
+ *  which the member folder claims by prefix instead. The same rule as the
+ *  backend's `sessions::owned_by_listing`. */
+export function ownsCwd(cwd: string, folder: string): boolean {
+  const f = folder.replace(/\/+$/, "");
+  return isUnderPath(cwd, f) && !cwd.replace(/\/+$/, "").startsWith(`${f}/.sway/worktrees/`);
+}
+
+/** Whether a live tab counts as running under a Spaces folder: a unit tab by
+ *  its workspace, a Feature tab by where it was spawned. */
+export function tabUnderFolder(tab: { workspace: string; cwd?: string }, folder: string): boolean {
+  if (isFeatureKey(tab.workspace)) return !!tab.cwd && ownsCwd(tab.cwd, folder);
+  return isUnderPath(tab.workspace, folder);
 }
