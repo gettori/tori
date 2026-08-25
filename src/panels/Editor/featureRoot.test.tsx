@@ -71,6 +71,8 @@ vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRo
 
 const { default: Editor } = await import("./Editor");
 const { default: PaneView } = await import("../../tabs/PaneView");
+const { emitWith, FILE_RENAMED, PURGE_UNDER_PATH } = await import("../../utils/events");
+const { isDirOpen, resetExpanded, setDirOpen } = await import("../../utils/treeExpanded");
 
 const featureSel = (activeRoot: string | null, roots = [A, B]) => ({
   kind: "feature" as const,
@@ -211,5 +213,36 @@ describe("the editor inside a Feature", () => {
     await waitFor(() => expect(sectionRoots()).toEqual(["/r/a"]));
     expect(document.querySelectorAll("[data-chip]").length).toBe(0);
     expect(calls.some((c) => c.cmd === "list_features")).toBe(false);
+  });
+});
+
+// The tree's open directories are the sixth path-keyed store, and like the five
+// before it the editor is what sweeps it: nothing else hears a rename, and a
+// folder that has been trashed has no row left to collapse by hand.
+describe("the tree's expanded set", () => {
+  const WS = "/r/a";
+
+  it("follows a renamed folder and drops a trashed one", async () => {
+    resetExpanded();
+    mounted = render(() => (
+      <>
+        <Editor selected={unitSel as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
+    await waitFor(() => expect(sectionRoots()).toEqual([WS]));
+    setDirOpen(WS, `${WS}/src`, true);
+
+    // Re-emitted until it lands: the editor subscribes from an async `onMount`,
+    // and a rename that arrives before that is heard by nobody. Renaming a
+    // folder that has already moved is a no-op, so the retry costs nothing.
+    await waitFor(() => {
+      emitWith(FILE_RENAMED, { from: `${WS}/src`, to: `${WS}/lib` });
+      expect(isDirOpen(WS, `${WS}/lib`)).toBe(true);
+    });
+    expect(isDirOpen(WS, `${WS}/src`)).toBe(false);
+
+    emitWith(PURGE_UNDER_PATH, { path: `${WS}/lib` });
+    expect(isDirOpen(WS, `${WS}/lib`)).toBe(false);
   });
 });

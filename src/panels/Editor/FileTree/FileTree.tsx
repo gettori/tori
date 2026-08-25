@@ -27,6 +27,14 @@ import { debounce } from "../../../utils/debounce";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
 import { memberInitials, type MemberStateSummary } from "../../../utils/features";
+import {
+  collapseDirs,
+  isDirOpen,
+  isSectionOpen,
+  nextSessionKey,
+  setDirOpen,
+  setSectionOpen,
+} from "../../../utils/treeExpanded";
 import { editorDefaults } from "../../Settings/settingsStore";
 import styles from "./FileTree.module.css";
 
@@ -70,6 +78,14 @@ const TREE_MOVE_MIME = "application/x-sway-tree-move";
 /** A request to walk the tree to `path`. `nonce` distinguishes two requests for
  *  the same file, which a bare string could not. */
 type Reveal = { path: string; nonce: number };
+
+/** The open directories, lifted out of the rows that used to own them so they
+ *  survive a remount. One object rather than two props, since a row only ever
+ *  wants both and it is threaded down the whole recursion. */
+type ExpandApi = {
+  isOpen: (path: string) => boolean;
+  setOpen: (path: string, open: boolean) => void;
+};
 
 /** A row as the tree draws it: the entry it acts on, and the name it shows.
  *  The two differ only under compaction, where one row stands for a chain of
@@ -278,33 +294,35 @@ async function reloadDirs(ctx: EditCtx, ...dirs: string[]) {
   for (const d of new Set(dirs)) await ctx.mounted.get(d)?.();
 }
 
-/** Move `from` into the directory `dir`.
+/** Move `from` into the directory `dir`, reporting whether it went.
  *
  *  A plain `fs_rename`, never `git mv`: the manual-git invariant means a move
  *  shows up as a deletion plus an untracked add until the user stages it
  *  themselves, which is the same thing moving a file in Finder would do. */
-async function moveInto(ctx: EditCtx, from: string, dir: string) {
+async function moveInto(ctx: EditCtx, from: string, dir: string): Promise<boolean> {
   const name = from.slice(from.lastIndexOf("/") + 1);
   const to = `${dir}/${name}`;
   // Dropping something back where it already lives is a no-op, not an error.
-  if (from === to || parentOf(from) === dir) return;
+  if (from === to || parentOf(from) === dir) return false;
   // Each section fences on its own root, so a drag that crossed one is refused
   // here rather than sent: the backend would reject it anyway, and the two ends
   // sit in different member repos whose histories are not one move to make.
   if (!from.startsWith(`${ctx.root}/`)) {
     emitWith<ToastEvent>(TOAST, { message: `${name} cannot move into another ${ctx.noun}.` });
-    return;
+    return false;
   }
   // A folder cannot swallow itself. `fs_rename` would refuse or, worse, succeed
   // into a path that no longer resolves, so the tree refuses first and says why.
   if (dir === from || dir.startsWith(`${from}/`)) {
     emitWith<ToastEvent>(TOAST, { message: "A folder cannot be moved inside itself." });
-    return;
+    return false;
   }
   try {
     await applyRename(ctx, from, to, `Moved ${name}`);
+    return true;
   } catch (e) {
     emitWith<ToastEvent>(TOAST, { message: String(e) });
+    return false;
   }
 }
 
@@ -320,6 +338,7 @@ function TreeNode(props: {
   /** What the row shows. Differs from `entry.name` only under compaction. */
   label: string;
   depth: number;
+  expand: ExpandApi;
   /** Bumped to close every open directory at once. */
   collapseAll?: () => number;
   compactFolders?: boolean;
@@ -337,16 +356,35 @@ function TreeNode(props: {
   onRevealed?: () => void;
 }) {
   let row: HTMLDivElement | undefined;
-  const [open, setOpen] = createSignal(false);
+  // Open because a reveal walked through here, which is deliberately not
+  // recorded: a persisted walk would re-open on the next mount the chain the
+  // user has just closed by hand.
+  const [transient, setTransient] = createSignal(false);
   const [children, setChildren] = createSignal<Shown[] | null>(null);
   const [dropInto, setDropInto] = createSignal(false);
 
-  // Re-read this dir's children in place (keeps it expanded), so an add inside it
-  // shows without remounting the whole tree.
+  const open = () => props.expand.isOpen(props.entry.path) || transient();
+
+  // Re-read this dir's children in place, *without* opening it: a watcher burst
+  // reloads every mounted directory, and forcing them open would expand the
+  // whole tree every time a file changed under it.
   async function reloadSelf() {
     await listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
-    setOpen(true);
   }
+
+  /** The same read, for something just created in here: that one does want the
+   *  directory open, or the new file lands out of sight. */
+  async function reloadOpen() {
+    props.expand.setOpen(props.entry.path, true);
+    await reloadSelf();
+  }
+
+  // Lazily, and on restore too: a directory that comes back open on mount has
+  // never read its children.
+  createEffect(() => {
+    if (open() && children() === null)
+      void listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
+  });
 
   // Publish this directory's reload so a mutation elsewhere in the tree can
   // refresh it. Only mounted dirs are registered, which is exactly the set whose
@@ -367,14 +405,7 @@ function TreeNode(props: {
   // would silently fly to the top of the project.
   const dropDir = () => (props.entry.is_dir ? props.entry.path : parentOf(props.entry.path));
 
-  // Open without toggling. Reveal needs "make sure this is open"; a toggle would
-  // close a directory that happened to be open already, hiding the target.
-  async function expand() {
-    if (children() === null) await listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
-    setOpen(true);
-  }
-
-  async function activate(e?: MouseEvent) {
+  function activate(e?: MouseEvent) {
     // Cmd/Ctrl-click builds a selection instead of acting on the row, so a
     // multi-file delete does not have to open every file on the way.
     if (props.ctx && (e?.metaKey || e?.ctrlKey)) {
@@ -386,19 +417,20 @@ function TreeNode(props: {
       emitWith(OPEN_IN_EDITOR, { path: props.entry.path });
       return;
     }
-    // Lazy: fetch children the first time the dir is opened.
-    if (children() === null) await listChildrenCached(props.entry.path, !!props.compactFolders, setChildren);
-    setOpen(!open());
+    // Read before the transient goes, since it is half of what `open()` says.
+    const next = !open();
+    setTransient(false);
+    props.expand.setOpen(props.entry.path, next);
   }
 
-  // Collapse-all is a broadcast rather than a walk: every directory owns its own
-  // `open`, so the only way to shut them from the top is to let each one hear
-  // the same bump and close itself.
+  // The recorded directories are cleared in one go by the tree itself; this
+  // broadcast is only what reaches a row held open by a reveal, which is
+  // recorded nowhere it could be cleared from.
   createEffect(
     on(
       () => props.collapseAll?.() ?? 0,
       (n, prev) => {
-        if (prev !== undefined && n !== prev) setOpen(false);
+        if (prev !== undefined && n !== prev) setTransient(false);
       },
     ),
   );
@@ -407,7 +439,7 @@ function TreeNode(props: {
     const target = props.revealing?.()?.path;
     if (!target) return;
     if (props.entry.is_dir && target.startsWith(`${props.entry.path}/`)) {
-      void expand();
+      setTransient(true);
     } else if (props.entry.path === target) {
       // Guarded: jsdom has no layout, so it does not implement this.
       row?.scrollIntoView?.({ block: "nearest" });
@@ -425,8 +457,8 @@ function TreeNode(props: {
     if (!ctx) return [];
     const items: MenuItem[] = [];
     if (props.entry.is_dir) {
-      items.push({ label: "New File", onClick: () => newFileIn(ctx, props.entry.path, reloadSelf) });
-      items.push({ label: "New Folder", onClick: () => newFolderIn(ctx, props.entry.path, reloadSelf) });
+      items.push({ label: "New File", onClick: () => newFileIn(ctx, props.entry.path, reloadOpen) });
+      items.push({ label: "New Folder", onClick: () => newFolderIn(ctx, props.entry.path, reloadOpen) });
       items.push({ separator: true });
     }
     items.push({ label: "Rename", onClick: () => renameEntry(ctx, props.entry, props.reloadParent) });
@@ -479,7 +511,13 @@ function TreeNode(props: {
           e.stopPropagation();
           setDropInto(false);
           const from = e.dataTransfer?.getData(TREE_MOVE_MIME);
-          if (from) void moveInto(props.ctx!, from, dropDir());
+          // The destination opens once the move lands, so a file dropped on a
+          // shut folder is seen to go into it rather than appearing to vanish.
+          const dir = dropDir();
+          if (from)
+            void moveInto(props.ctx!, from, dir).then(
+              (moved) => moved && props.expand.setOpen(dir, true),
+            );
         }}
       >
         {props.entry.is_dir ? (
@@ -520,6 +558,7 @@ function TreeNode(props: {
               entry={child.entry}
               label={child.label}
               depth={props.depth + 1}
+              expand={props.expand}
               ctx={props.ctx}
               reloadParent={reloadSelf}
               activePath={props.activePath}
@@ -597,6 +636,11 @@ function RootSection(props: {
   meta: () => TreeRoot;
   /** Whether this root shows a header, which it does only alongside others. */
   headed: boolean;
+  /** Whether the section itself is open. Restored, so a member closed last run
+   *  comes back closed and never reads its listing at all. */
+  expanded: () => boolean;
+  onExpanded: (open: boolean) => void;
+  expand: ExpandApi;
   editable: boolean;
   noun?: string;
   askText?: (title: string, initial?: string) => Promise<string | null>;
@@ -618,7 +662,6 @@ function RootSection(props: {
   onLoaded: () => void;
 }) {
   const [entries, setEntries] = createSignal<Shown[]>([]);
-  const [open, setOpen] = createSignal(true);
   const [dropRoot, setDropRoot] = createSignal(false);
   const [allFiles, setAllFiles] = createSignal<string[] | null>(null);
 
@@ -675,8 +718,10 @@ function RootSection(props: {
     unwatch?.();
   });
 
-  // Not in `onMount`: a repair can make a member usable again without changing
-  // its path, and a section keyed by path never remounts to notice.
+  // The first listing, when the member is both usable and open. Not in
+  // `onMount`, on either count: a repair can make a member usable again without
+  // changing its path, and a section keyed by path never remounts to notice,
+  // while a member that comes back closed has nothing on screen to read for.
   //
   // Settled means the fresh read landed, not the cached one: the cache is what
   // makes the paint fast, and measuring it would measure that.
@@ -684,9 +729,16 @@ function RootSection(props: {
   // changes, so the transition is checked here: without it every
   // `features://changed` tick would re-read every root.
   createEffect(
-    on(usable, (ok, was) => {
-      if (ok && was !== true) void reloadRoot().then(() => props.onLoaded());
-    }),
+    on(
+      () => usable() && props.expanded(),
+      (ok, was) => {
+        if (ok && was !== true) void reloadRoot().then(() => props.onLoaded());
+        // A member nobody has open never reads, but the switch is still waiting
+        // on it: close the leg here, or the span times out after five seconds
+        // on a listing that is never going to run.
+        else if (!ok && usable()) props.onLoaded();
+      },
+    ),
   );
 
   // Turning compaction on or off restructures every row, so the visible level
@@ -697,7 +749,7 @@ function RootSection(props: {
   // only run against rows that are mounted.
   createEffect(() => {
     const target = props.revealing()?.path;
-    if (target && target.startsWith(`${props.path}/`)) setOpen(true);
+    if (target && target.startsWith(`${props.path}/`)) props.onExpanded(true);
   });
 
   // Filtering searches the whole root, not the rows that happen to be expanded:
@@ -781,10 +833,10 @@ function RootSection(props: {
             <button
               type="button"
               class={styles.sectionToggle}
-              aria-expanded={open()}
-              onClick={() => setOpen(!open())}
+              aria-expanded={props.expanded()}
+              onClick={() => props.onExpanded(!props.expanded())}
             >
-              <Chevron open={open()} />
+              <Chevron open={props.expanded()} />
               {chip()}
               <span class={styles.sectionName}>{props.meta().label}</span>
             </button>
@@ -810,7 +862,7 @@ function RootSection(props: {
           {repair()}
         </div>
       </Show>
-      <Show when={open() && usable()}>
+      <Show when={props.expanded() && usable()}>
         {/* The background is the way back out of a folder: without it, a file
             dragged into `src/` could only be moved to a sibling folder, never to
             the root. Scoped to this section, and it stops the event, so a drop
@@ -854,6 +906,7 @@ function RootSection(props: {
                     entry={e.entry}
                     label={e.label}
                     depth={0}
+                    expand={props.expand}
                     ctx={ctx()}
                     reloadParent={reloadRoot}
                     activePath={props.activePath}
@@ -896,6 +949,10 @@ export default function FileTree(props: {
    *  key, so a Feature's span is keyed the same way its tabs are. Absent on the
    *  shared and docs panes, which no switch ever waits for. */
   settleKey?: string;
+  /** The workspace whose open directories this tree restores and records.
+   *  Only the files pane passes one: the shared and docs panes expand for the
+   *  session, exactly as they always did. */
+  persistKey?: string;
 }) {
   const [filter, setFilter] = createSignal("");
   const [wantFiles, setWantFiles] = createSignal(false);
@@ -909,6 +966,15 @@ export default function FileTree(props: {
   // same file twice reveal it twice instead of going quiet after the first.
   const [revealing, setRevealing] = createSignal<Reveal | null>(null);
   let revealNonce = 0;
+
+  // One bucket per mount when nothing is persisted, so the two session-only
+  // panes cannot close each other's folders through the shared store.
+  const sessionKey = nextSessionKey();
+  const wsKey = () => props.persistKey || sessionKey;
+  const expand: ExpandApi = {
+    isOpen: (path) => isDirOpen(wsKey(), path),
+    setOpen: (path, open) => setDirOpen(wsKey(), path, open),
+  };
 
   const rootList = (): TreeRoot[] => {
     const rs = props.roots;
@@ -1058,7 +1124,10 @@ export default function FileTree(props: {
               size="md"
               icon={<Icon icon={ChevronsDownUp} />}
               tooltip="Collapse all folders"
-              onClick={() => setCollapseNonce((n) => n + 1)}
+              onClick={() => {
+                collapseDirs(wsKey());
+                setCollapseNonce((n) => n + 1);
+              }}
             />
           </Show>
         </div>
@@ -1073,6 +1142,9 @@ export default function FileTree(props: {
               path={path}
               meta={metaOf(path)}
               headed={headed()}
+              expanded={() => isSectionOpen(wsKey(), path)}
+              onExpanded={(open) => setSectionOpen(wsKey(), path, open)}
+              expand={expand}
               editable={editable()}
               noun={props.noun}
               askText={props.askText}

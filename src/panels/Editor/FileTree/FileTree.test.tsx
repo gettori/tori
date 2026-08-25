@@ -92,6 +92,7 @@ vi.mock("@tauri-apps/api/core", async () => {
 });
 
 import FileTree, { clearListingCache, type TreeRoot } from "./FileTree";
+import { resetExpanded } from "../../../utils/treeExpanded";
 import { memberState } from "../../../utils/features";
 import styles from "./FileTree.module.css";
 import { loadWorkspaceSettings } from "../../Settings/settingsStore";
@@ -138,6 +139,10 @@ const rowFor = (name: string) => screen.getByText(name).parentElement!;
 
 beforeEach(async () => {
   clearListingCache();
+  localStorage.clear();
+  // The expanded store outlives any one mount, so a test that recorded a
+  // workspace would otherwise hand its open folders to every test after it.
+  resetExpanded();
   bridge.calls = [];
   bridge.existing = new Set();
   bridge.failRename = false;
@@ -1077,6 +1082,155 @@ describe("a Feature's member roots", () => {
 
     expect(document.querySelector(`.${styles.sectionHeader}`)).toBeNull();
     expect(screen.getByLabelText("New File")).toBeTruthy();
+  });
+});
+
+
+// What the tree had open, restored. Every row used to own its `open` signal, so
+// reopening a workspace collapsed it back to its roots and a Feature's members
+// each lost their place at once.
+describe("restoring what was open", () => {
+  const WS = "feature:f1";
+  const A = "/feat/api";
+  const B = "/feat/web";
+  const MEMBERS: TreeRoot[] = [
+    { path: A, label: "Payments API" },
+    { path: B, label: "Web App" },
+  ];
+
+  const sectionOf = (path: string) => document.querySelector(`[data-root="${path}"]`) as HTMLElement;
+  const stored = () => JSON.parse(localStorage.getItem("sway.treeExpanded.v1") ?? "{}");
+
+  /** What last run left behind, as the next run finds it. */
+  const seed = (store: Record<string, { dirs?: string[]; closed?: string[] }>) => {
+    localStorage.setItem("sway.treeExpanded.v1", JSON.stringify(store));
+    resetExpanded();
+  };
+
+  const mountFeature = (overrides: Record<string, unknown> = {}) =>
+    render(() => (
+      <FileTree
+        root={null}
+        roots={MEMBERS}
+        persistKey={WS}
+        editable
+        noun="member folder"
+        askText={answering("ignored")}
+        askConfirm={confirming(true)}
+        {...overrides}
+      />
+    ));
+
+  // Added to the single-root fixture rather than replacing it: half the cases
+  // below mount the plain project tree.
+  beforeEach(() => {
+    Object.assign(bridge.dirs, {
+      [A]: [folder(A, "src"), file(A, "README.md")],
+      [`${A}/src`]: [file(`${A}/src`, "main.ts")],
+      [B]: [folder(B, "src"), file(B, "package.json")],
+      [`${B}/src`]: [file(`${B}/src`, "app.ts")],
+    });
+  });
+
+  it("comes back open in the member that had it open, and only there", async () => {
+    seed({ [WS]: { dirs: [`${B}/src`] } });
+    mountFeature();
+
+    await within(sectionOf(B)).findByText("app.ts");
+    expect(within(sectionOf(A)).queryByText("main.ts")).toBeNull();
+  });
+
+  it("keeps a reveal out of the record, so a remount does not re-open the chain", async () => {
+    const view = mountFeature({ activePath: `${B}/src/app.ts` });
+    await within(sectionOf(B)).findByText("package.json");
+
+    fireEvent.click(screen.getByLabelText("Reveal"));
+    await within(sectionOf(B)).findByText("app.ts");
+    // The walk is a cascade of transient opens: recorded, it would re-open on
+    // the next mount the chain the user has since closed by hand.
+    expect(stored()[WS]?.dirs ?? []).toEqual([]);
+
+    view.unmount();
+    mountFeature({ activePath: `${B}/src/app.ts` });
+
+    await within(sectionOf(B)).findByText("package.json");
+    expect(screen.queryByText("app.ts")).toBeNull();
+  });
+
+  it("closes every section's folders at once and leaves the sections themselves open", async () => {
+    mountFeature();
+    fireEvent.click(await within(sectionOf(A)).findByText("src"));
+    fireEvent.click(await within(sectionOf(B)).findByText("src"));
+    await within(sectionOf(A)).findByText("main.ts");
+    await within(sectionOf(B)).findByText("app.ts");
+
+    fireEvent.click(screen.getByLabelText("Collapse all folders"));
+
+    await waitFor(() => expect(screen.queryByText("main.ts")).toBeNull());
+    expect(screen.queryByText("app.ts")).toBeNull();
+    // Closing the folders inside a section is not closing the section: both
+    // members are still on screen with their top level showing.
+    expect(within(sectionOf(A)).getByText("README.md")).toBeTruthy();
+    expect(within(sectionOf(B)).getByText("package.json")).toBeTruthy();
+    expect(stored()[WS]?.dirs ?? []).toEqual([]);
+  });
+
+  it("does not read a section that comes back closed until it is opened", async () => {
+    const C = "/feat/db";
+    bridge.dirs[C] = [file(C, "schema.sql")];
+    seed({ [WS]: { closed: [B, C] } });
+    render(() => (
+      <FileTree
+        root={null}
+        roots={[...MEMBERS, { path: C, label: "Database" }]}
+        persistKey={WS}
+      />
+    ));
+    await within(sectionOf(A)).findByText("README.md");
+    await new Promise((r) => setTimeout(r, 0));
+
+    // One listing for three members: a member nobody has open has nothing on
+    // screen to go stale, so it is not read at all.
+    expect(sent("fs_read_dir_compact")).toHaveLength(1);
+    expect(within(sectionOf(B)).queryByText("package.json")).toBeNull();
+
+    fireEvent.click(sectionOf(B).querySelector("[aria-expanded]") as HTMLElement);
+    await within(sectionOf(B)).findByText("package.json");
+  });
+
+  it("records the files pane's folders under its own workspace", async () => {
+    mountProject({ persistKey: WS });
+    fireEvent.click(await screen.findByText("src"));
+    await screen.findByText("main.ts");
+
+    await waitFor(() => expect(stored()[WS].dirs).toEqual([`${ROOT}/src`]));
+    expect(Object.keys(stored())).toEqual([WS]);
+  });
+
+  it("expands a pane with no key for the session only", async () => {
+    mountProject();
+    fireEvent.click(await screen.findByText("src"));
+    await screen.findByText("main.ts");
+    await new Promise((r) => setTimeout(r, 0));
+
+    // The shared and docs panes: they expand, and nothing about them is kept.
+    expect(localStorage.getItem("sway.treeExpanded.v1")).toBeNull();
+  });
+
+  it("leaves every workspace it did not touch exactly as it found it", async () => {
+    seed({ "/w/one": { dirs: ["/w/one/src"] }, "/w/two": { closed: ["/w/two"] } });
+    mountProject({ persistKey: WS });
+    await screen.findByText("README.md");
+    // Mounting alone writes nothing: the store is the one read at startup, not
+    // a snapshot of whatever happens to be on screen.
+    expect(Object.keys(stored()).sort()).toEqual(["/w/one", "/w/two"]);
+
+    fireEvent.click(screen.getByText("src"));
+    await screen.findByText("main.ts");
+
+    await waitFor(() => expect(stored()[WS].dirs).toEqual([`${ROOT}/src`]));
+    expect(stored()["/w/one"].dirs).toEqual(["/w/one/src"]);
+    expect(stored()["/w/two"].closed).toEqual(["/w/two"]);
   });
 });
 
