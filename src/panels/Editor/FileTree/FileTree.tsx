@@ -11,6 +11,7 @@ import {
 } from "../../../utils/events";
 import FileIcon from "../../../seti/FileIcon";
 import Chevron from "../../../components/Chevron/Chevron";
+import Button from "../../../components/Button/Button";
 import IconButton from "../../../components/IconButton/IconButton";
 import Icon from "../../../components/Icon/Icon";
 import OverlayScroll from "../../../components/Scrollbar/OverlayScroll";
@@ -22,6 +23,7 @@ import { isTouched } from "../../../utils/touchedFiles";
 import { traceSettle } from "../../../utils/perfTrace";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
+import { memberInitials, type MemberStateSummary } from "../../../utils/features";
 import { editorDefaults } from "../../Settings/settingsStore";
 import styles from "./FileTree.module.css";
 
@@ -279,6 +281,13 @@ async function moveInto(ctx: EditCtx, from: string, dir: string) {
   const to = `${dir}/${name}`;
   // Dropping something back where it already lives is a no-op, not an error.
   if (from === to || parentOf(from) === dir) return;
+  // Each section fences on its own root, so a drag that crossed one is refused
+  // here rather than sent: the backend would reject it anyway, and the two ends
+  // sit in different member repos whose histories are not one move to make.
+  if (!from.startsWith(`${ctx.root}/`)) {
+    emitWith<ToastEvent>(TOAST, { message: `${name} cannot move into another ${ctx.noun}.` });
+    return;
+  }
   // A folder cannot swallow itself. `fs_rename` would refuse or, worse, succeed
   // into a path that no longer resolves, so the tree refuses first and says why.
   if (dir === from || dir.startsWith(`${from}/`)) {
@@ -550,83 +559,139 @@ function FilterResults(props: {
   );
 }
 
-/** File tree rooted at the project path, on the right of the editor pane.
- *  Dirs expand lazily; clicking a file emits OPEN_IN_EDITOR. When `editable` is
- *  set, a header (New File/New Folder) and per-node context menus mutate the tree
- *  through the containment-scoped fs commands, all bounded to `root` (`.shared`);
- *  the header actions work even before `root` exists (mkdir auto-creates it). */
-export default function FileTree(props: {
-  root: string | null;
-  editable?: boolean;
-  /** Names the containment boundary in a refusal. Presentation only. */
+/** One root the tree draws. `label` and `tint` name the member it belongs to and
+ *  are shown only when there is more than one root; `state` marks a member that
+ *  cannot be opened, which draws a badge and a repair action instead of a tree.
+ *
+ *  `path` is the worktree folder, or the repo folder for a member that has no
+ *  worktree yet. It identifies the section and is what `onRetry` hands back, so
+ *  a member with nothing on disk still has a stable key. */
+export type TreeRoot = {
+  path: string;
+  label: string;
+  /** The member's Space colour, painted on its chip. */
+  tint?: string;
+  state?: MemberStateSummary;
+};
+
+/** What a section lends the toolbar. Only a lone root does: with sections on
+ *  screen a toolbar create button would have no way to say which root it meant,
+ *  so the create actions move into each section header instead. */
+type SectionApi = { ctx: () => EditCtx | undefined; reload: () => Promise<void> };
+
+const REPAIR_LABEL = { recreate: "Recreate", locate: "Locate", retry: "Retry" } as const;
+
+/** One root's worth of tree: its own listing, its own `mounted` map, its own
+ *  `EditCtx`, its own file list for the filter, and its own drop background.
+ *  Every fs mutation a row inside it makes is fenced to this root, which is what
+ *  keeps a Feature's members from writing into each other. */
+function RootSection(props: {
+  path: string;
+  meta: () => TreeRoot;
+  /** Whether this root shows a header, which it does only alongside others. */
+  headed: boolean;
+  editable: boolean;
   noun?: string;
-  /** The file the editor is showing, so the tree can walk to it on request. */
-  activePath?: string | null;
   askText?: (title: string, initial?: string) => Promise<string | null>;
   askConfirm?: (opts: ConfirmOpts) => Promise<boolean>;
+  activePath?: string | null;
+  filter: () => string;
+  /** Set once the filter box has been touched, so the file list is read on the
+   *  way to the first keystroke rather than after it. */
+  wantFiles: () => boolean;
+  collapseAll: () => number;
+  compactFolders: boolean;
+  revealing: () => Reveal | null;
+  onRevealed: () => void;
+  selected: () => ReadonlySet<string>;
+  toggleSelected: (path: string) => void;
+  clearSelected: () => void;
+  onRetry?: (path: string) => void;
+  onApi: (path: string, api: SectionApi | null) => void;
+  onLoaded: () => void;
 }) {
-  const [roots, setRoots] = createSignal<Shown[]>([]);
-  const [filter, setFilter] = createSignal("");
-  const [allFiles, setAllFiles] = createSignal<string[] | null>(null);
-  const [collapseNonce, setCollapseNonce] = createSignal(0);
+  const [entries, setEntries] = createSignal<Shown[]>([]);
+  const [open, setOpen] = createSignal(true);
   const [dropRoot, setDropRoot] = createSignal(false);
-  const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set());
-  // The file the tree is walking to. Deliberately never cleared: the walk is a
-  // cascade of lazy loads, so a directory that mounts three levels down has to
-  // still find the target when it arrives. `nonce` is what makes asking for the
-  // same file twice reveal it twice instead of going quiet after the first.
-  const [revealing, setRevealing] = createSignal<Reveal | null>(null);
-  let revealNonce = 0;
+  const [allFiles, setAllFiles] = createSignal<string[] | null>(null);
 
-  // Only a real file under this root can be revealed: `activePath` can also be a
-  // synthetic `sway://` tab, which has no row to scroll to.
-  const revealable = () => {
-    const p = props.activePath;
-    return p && props.root && p.startsWith(`${props.root}/`) ? p : null;
-  };
-
-  function reveal() {
-    const p = revealable();
-    if (p) setRevealing({ path: p, nonce: ++revealNonce });
-  }
-
-  // Whenever the file under the focus changes - another pane taking it, a tab
-  // switch, an open - walk to it: expand what it sits under and scroll its row
-  // in. Deferred, so mounting the panel does not undo a chain you just
-  // collapsed; only a change of file moves the tree.
-  createEffect(on(revealable, (p) => p && reveal(), { defer: true }));
-
-  // Every mounted directory's reload, the root's included, so a move can refresh
-  // both ends. Stable across `ctx()` calls, which rebuild the rest each time.
+  // Every mounted directory's reload, this root's included, so a move can
+  // refresh both ends. Per section, so a root leaving takes its entries with it.
   const mounted = new Map<string, () => Promise<void>>();
 
-  const compactFolders = () => editorDefaults().compactFolders;
+  const state = () => props.meta().state;
+  const usable = () => state()?.usable !== false;
 
-  async function reloadRoots() {
-    if (!props.root) {
-      setRoots([]);
-      return;
-    }
-    await listChildrenCached(props.root, compactFolders(), setRoots);
+  async function reloadRoot() {
+    await listChildrenCached(props.path, props.compactFolders, setEntries);
   }
 
-  // Filtering searches the whole project, not the rows that happen to be
-  // expanded: a lazily-loaded tree has most of itself unread, so filtering the
-  // visible rows would answer a question nobody asked. `list_project_files`
-  // already respects .gitignore, and is read once per root and cached.
+  const ctx = (): EditCtx | undefined => {
+    if (!props.editable || !props.askText || !props.askConfirm || !usable()) return undefined;
+    return {
+      root: props.path,
+      noun: props.noun ?? "workspace folder",
+      askText: props.askText,
+      askConfirm: props.askConfirm,
+      mounted,
+      selected: props.selected,
+      toggleSelected: props.toggleSelected,
+      clearSelected: props.clearSelected,
+    };
+  };
+
+  onMount(() => {
+    mounted.set(props.path, reloadRoot);
+    props.onApi(props.path, { ctx, reload: reloadRoot });
+  });
+  onCleanup(() => props.onApi(props.path, null));
+
+  // Not in `onMount`: a repair can make a member usable again without changing
+  // its path, and a section keyed by path never remounts to notice.
+  //
+  // Settled means the fresh read landed, not the cached one: the cache is what
+  // makes the paint fast, and measuring it would measure that.
+  // `on` re-runs whenever the roots array is rebuilt, not only when the answer
+  // changes, so the transition is checked here: without it every
+  // `features://changed` tick would re-read every root.
+  createEffect(
+    on(usable, (ok, was) => {
+      if (ok && was !== true) void reloadRoot().then(() => props.onLoaded());
+    }),
+  );
+
+  // Turning compaction on or off restructures every row, so the visible level
+  // is rebuilt rather than left describing the other setting.
+  createEffect(on(() => props.compactFolders, () => void reloadRoot(), { defer: true }));
+
+  // A reveal into this root opens the section first: the row cascade below can
+  // only run against rows that are mounted.
+  createEffect(() => {
+    const target = props.revealing()?.path;
+    if (target && target.startsWith(`${props.path}/`)) setOpen(true);
+  });
+
+  // Filtering searches the whole root, not the rows that happen to be expanded:
+  // a lazily-loaded tree has most of itself unread, so filtering the visible
+  // rows would answer a question nobody asked. `list_project_files` already
+  // respects .gitignore, and is read once per root and cached.
   async function ensureFileList() {
-    if (allFiles() !== null || !props.root) return;
+    if (allFiles() !== null || !usable()) return;
     try {
-      setAllFiles(await invoke<string[]>("list_project_files", { projectPath: props.root }));
+      setAllFiles(await invoke<string[]>("list_project_files", { projectPath: props.path }));
     } catch {
       setAllFiles([]);
     }
   }
 
-  // Matches, best first. Capped because a one-letter query matches most of a
-  // repo and nobody reads past the first screen of it.
+  createEffect(() => {
+    if (props.wantFiles()) void ensureFileList();
+  });
+
+  // Matches, best first. Capped per root rather than globally, so a large repo
+  // cannot crowd a small one off the list; nobody reads past the first screen.
   const matches = () => {
-    const q = filter().trim();
+    const q = props.filter().trim();
     const files = allFiles();
     if (!q || !files) return [];
     return files
@@ -640,66 +705,264 @@ export default function FileTree(props: {
       .slice(0, 200);
   };
 
+  const chip = () => (
+    <span
+      class={styles.chip}
+      style={props.meta().tint ? { "--chip-hue": props.meta().tint } : undefined}
+      data-chip={props.path}
+    >
+      {memberInitials({ displayName: props.meta().label, repoPath: props.path })}
+    </span>
+  );
+
+  const repair = () => {
+    const action = state()?.action;
+    if (!action) return null;
+    return (
+      <Button
+        size="xs"
+        variant="ghost"
+        data-repair={props.path}
+        onClick={() => props.onRetry?.(props.path)}
+      >
+        {REPAIR_LABEL[action]}
+      </Button>
+    );
+  };
+
+  return (
+    <div class={styles.section} data-root={props.path}>
+      <Show when={props.headed}>
+        <div class={styles.sectionHeader}>
+          <Show
+            when={usable()}
+            fallback={
+              <div class={styles.sectionLabel}>
+                {chip()}
+                <span class={styles.sectionName}>{props.meta().label}</span>
+                {/* The reason reads out rather than hiding in a `title`: this
+                    badge is the only account of why a member has no tree, and a
+                    keyboard user never sees a tooltip. */}
+                <span class={styles.stateBadge}>
+                  {state()?.reason ? `${state()!.label}: ${state()!.reason}` : state()?.label}
+                </span>
+              </div>
+            }
+          >
+            <button
+              type="button"
+              class={styles.sectionToggle}
+              aria-expanded={open()}
+              onClick={() => setOpen(!open())}
+            >
+              <Chevron open={open()} />
+              {chip()}
+              <span class={styles.sectionName}>{props.meta().label}</span>
+            </button>
+          </Show>
+          <Show when={ctx()}>
+            {(c) => (
+              <>
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={FilePlus} />}
+                  tooltip={`New File in ${props.meta().label}`}
+                  onClick={() => newFileIn(c(), c().root, reloadRoot)}
+                />
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={FolderPlus} />}
+                  tooltip={`New Folder in ${props.meta().label}`}
+                  onClick={() => newFolderIn(c(), c().root, reloadRoot)}
+                />
+              </>
+            )}
+          </Show>
+          {repair()}
+        </div>
+      </Show>
+      <Show when={open() && usable()}>
+        {/* The background is the way back out of a folder: without it, a file
+            dragged into `src/` could only be moved to a sibling folder, never to
+            the root. Scoped to this section, and it stops the event, so a drop
+            here can never be read as a drop into a neighbouring root. */}
+        <div
+          class={styles.sectionBody}
+          classList={{ [styles.dropInto]: dropRoot() }}
+          onDragOver={(e) => {
+            if (!ctx() || !isTreeDrag(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+            setDropRoot(true);
+          }}
+          onDragLeave={() => setDropRoot(false)}
+          onDrop={(e) => {
+            const c = ctx();
+            if (!c || !isTreeDrag(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setDropRoot(false);
+            const from = e.dataTransfer?.getData(TREE_MOVE_MIME);
+            if (from) void moveInto(c, from, c.root);
+          }}
+        >
+          <Show
+            when={!props.filter().trim()}
+            fallback={
+              <FilterResults root={props.path} matches={matches()} activePath={props.activePath} />
+            }
+          >
+            <Show
+              when={entries().length}
+              fallback={
+                <div class={styles.empty}>This folder is empty. Use New File above to add one.</div>
+              }
+            >
+              <For each={entries()}>
+                {(e) => (
+                  <TreeNode
+                    entry={e.entry}
+                    label={e.label}
+                    depth={0}
+                    ctx={ctx()}
+                    reloadParent={reloadRoot}
+                    activePath={props.activePath}
+                    revealing={props.revealing}
+                    onRevealed={props.onRevealed}
+                    collapseAll={props.collapseAll}
+                    compactFolders={props.compactFolders}
+                  />
+                )}
+              </For>
+            </Show>
+          </Show>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+/** File tree rooted at the project path, on the right of the editor pane.
+ *  Dirs expand lazily; clicking a file emits OPEN_IN_EDITOR. When `editable` is
+ *  set, a header (New File/New Folder) and per-node context menus mutate the tree
+ *  through the containment-scoped fs commands, all bounded to `root` (`.shared`);
+ *  the header actions work even before `root` exists (mkdir auto-creates it).
+ *
+ *  `roots` is the multi-root form, one section per Feature member. A single root
+ *  (or the plain `root` prop) renders headerless, exactly as one always did. */
+export default function FileTree(props: {
+  root: string | null;
+  roots?: TreeRoot[];
+  editable?: boolean;
+  /** Names the containment boundary in a refusal. Presentation only. */
+  noun?: string;
+  /** The file the editor is showing, so the tree can walk to it on request. */
+  activePath?: string | null;
+  askText?: (title: string, initial?: string) => Promise<string | null>;
+  askConfirm?: (opts: ConfirmOpts) => Promise<boolean>;
+  /** A member whose worktree is not usable offers a repair; this runs it. */
+  onRetry?: (path: string) => void;
+}) {
+  const [filter, setFilter] = createSignal("");
+  const [wantFiles, setWantFiles] = createSignal(false);
+  const [collapseNonce, setCollapseNonce] = createSignal(0);
+  const [dropRoot, setDropRoot] = createSignal(false);
+  const [selected, setSelected] = createSignal<ReadonlySet<string>>(new Set());
+  const [apis, setApis] = createSignal<Record<string, SectionApi>>({});
+  // The file the tree is walking to. Deliberately never cleared: the walk is a
+  // cascade of lazy loads, so a directory that mounts three levels down has to
+  // still find the target when it arrives. `nonce` is what makes asking for the
+  // same file twice reveal it twice instead of going quiet after the first.
+  const [revealing, setRevealing] = createSignal<Reveal | null>(null);
+  let revealNonce = 0;
+
+  const rootList = (): TreeRoot[] => {
+    const rs = props.roots;
+    if (rs && rs.length) return rs;
+    return props.root ? [{ path: props.root, label: "" }] : [];
+  };
+  // Sections iterate over paths, not root objects: a resource hands back fresh
+  // objects on every `features://changed` tick, and a keyed `For` over those
+  // would remount every section and throw away what each one had open.
+  const rootPaths = () => rootList().map((r) => r.path);
+  const metaOf = (path: string) => (): TreeRoot =>
+    rootList().find((r) => r.path === path) ?? { path, label: "" };
+  const headed = () => rootList().length > 1;
+
+  const editable = () => !!props.editable && !!props.askText && !!props.askConfirm;
+  /** The lone root's section, which is the only case where the toolbar can
+   *  create without ambiguity. */
+  const sole = () => (rootPaths().length === 1 ? apis()[rootPaths()[0]] : undefined);
+
+  const registerApi = (path: string, api: SectionApi | null) =>
+    setApis((prev) => {
+      const next = { ...prev };
+      if (api) next[path] = api;
+      else delete next[path];
+      return next;
+    });
+
+  // Only a real file under one of these roots can be revealed: `activePath` can
+  // also be a synthetic `sway://` tab, which has no row to scroll to.
+  const revealable = () => {
+    const p = props.activePath;
+    if (!p) return null;
+    return rootPaths().some((r) => p.startsWith(`${r}/`)) ? p : null;
+  };
+
+  function reveal() {
+    const p = revealable();
+    if (p) setRevealing({ path: p, nonce: ++revealNonce });
+  }
+
+  // Whenever the file under the focus changes - another pane taking it, a tab
+  // switch, an open - walk to it: expand what it sits under and scroll its row
+  // in. Deferred, so mounting the panel does not undo a chain you just
+  // collapsed; only a change of file moves the tree.
+  createEffect(on(revealable, (p) => p && reveal(), { defer: true }));
+
+  const compactFolders = () => editorDefaults().compactFolders;
+
   createEffect(
     on(
-      () => props.root,
-      (root, prev) => {
-        if (prev) mounted.delete(prev);
-        if (root) mounted.set(root, reloadRoots);
-        // A different project is a different file list; keeping the old one
+      () => rootPaths().join("\n"),
+      () => {
+        // A different set of roots is a different file list; keeping the old one
         // would filter this tree against someone else's files, and a selection
         // made over there would light up any path that happens to match here.
-        setAllFiles(null);
         setFilter("");
+        setWantFiles(false);
         setSelected(new Set<string>());
         setRevealing(null);
-        // Settled means the fresh read landed, not the cached one: the cache
-        // is what makes the paint fast, and measuring it would measure that.
-        void reloadRoots().then(() => traceSettle("tree", root ?? ""));
       },
     ),
   );
 
-  // Turning compaction on or off restructures every row, so the visible level
-  // is rebuilt rather than left describing the other setting.
-  createEffect(on(compactFolders, () => void reloadRoots(), { defer: true }));
-
-  const ctx = (): EditCtx | undefined => {
-    if (!props.editable || !props.root || !props.askText || !props.askConfirm) return undefined;
-    return {
-      root: props.root,
-      noun: props.noun ?? "workspace folder",
-      askText: props.askText,
-      askConfirm: props.askConfirm,
-      mounted,
-      selected,
-      toggleSelected: (path) =>
-        setSelected((prev) => {
-          const next = new Set(prev);
-          if (!next.delete(path)) next.add(path);
-          return next;
-        }),
-      clearSelected: () => setSelected((prev) => (prev.size ? new Set() : prev)),
-    };
-  };
+  const toggleSelected = (path: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(path)) next.add(path);
+      return next;
+    });
+  const clearSelected = () => setSelected((prev) => (prev.size ? new Set<string>() : prev));
 
   return (
     <OverlayScroll
       class={styles.fileTree}
       classList={{ [styles.dropInto]: dropRoot() }}
-      // The background is the way back out of a folder: without it, a file
-      // dragged into `src/` could only be moved to a sibling folder, never to
-      // the workspace root. Folder rows stopPropagation, so they win.
+      // With one root the whole panel background means that root, which is how
+      // a file dragged into `src/` gets back out. With sections it would be a
+      // guess, so the sections own their own backgrounds and this one stands down.
       onDragOver={(e) => {
-        const c = ctx();
-        if (!c || !isTreeDrag(e)) return;
+        if (!sole()?.ctx() || !isTreeDrag(e)) return;
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
         setDropRoot(true);
       }}
       onDragLeave={() => setDropRoot(false)}
       onDrop={(e) => {
-        const c = ctx();
+        const c = sole()?.ctx();
         if (!c || !isTreeDrag(e)) return;
         e.preventDefault();
         setDropRoot(false);
@@ -710,81 +973,89 @@ export default function FileTree(props: {
       {/* One toolbar: the filter takes the width, the actions are the icons at
           its right. Every action is icon-only, so the row stays on one line at
           the panel's narrowest and the tooltip carries the name. */}
-      <Show when={props.root || ctx()}>
+      <Show when={rootPaths().length}>
         <div class={styles.treeActions}>
-          <Show when={props.root}>
-            <input
-              class={styles.filterBox}
-              type="text"
-              placeholder="Filter files"
-              aria-label="Filter files"
-              value={filter()}
-              onFocus={ensureFileList}
-              onInput={(e) => {
-                setFilter(e.currentTarget.value);
-                void ensureFileList();
-              }}
-            />
-          </Show>
-          <Show when={ctx()}>
-            {(c) => (
-              <>
-                <IconButton
-                  size="md"
-                  icon={<Icon icon={FilePlus} />}
-                  tooltip="New File"
-                  onClick={() => newFileIn(c(), c().root, reloadRoots)}
-                />
-                <IconButton
-                  size="md"
-                  icon={<Icon icon={FolderPlus} />}
-                  tooltip="New Folder"
-                  onClick={() => newFolderIn(c(), c().root, reloadRoots)}
-                />
-                <Show when={revealable()}>
+          <input
+            class={styles.filterBox}
+            type="text"
+            placeholder="Filter files"
+            aria-label="Filter files"
+            value={filter()}
+            onFocus={() => setWantFiles(true)}
+            onInput={(e) => {
+              setWantFiles(true);
+              setFilter(e.currentTarget.value);
+            }}
+          />
+          <Show when={editable()}>
+            <Show when={sole()?.ctx()}>
+              {(c) => (
+                <>
                   <IconButton
                     size="md"
-                    icon={<Icon icon={Crosshair} />}
-                    tooltip="Reveal the open file"
-                    aria-label="Reveal"
-                    onClick={reveal}
+                    icon={<Icon icon={FilePlus} />}
+                    tooltip="New File"
+                    onClick={() => newFileIn(c(), c().root, sole()!.reload)}
                   />
-                </Show>
-                <IconButton
-                  size="md"
-                  icon={<Icon icon={ChevronsDownUp} />}
-                  tooltip="Collapse all folders"
-                  onClick={() => setCollapseNonce((n) => n + 1)}
-                />
-              </>
-            )}
+                  <IconButton
+                    size="md"
+                    icon={<Icon icon={FolderPlus} />}
+                    tooltip="New Folder"
+                    onClick={() => newFolderIn(c(), c().root, sole()!.reload)}
+                  />
+                </>
+              )}
+            </Show>
+            <Show when={revealable()}>
+              <IconButton
+                size="md"
+                icon={<Icon icon={Crosshair} />}
+                tooltip="Reveal the open file"
+                aria-label="Reveal"
+                onClick={reveal}
+              />
+            </Show>
+            <IconButton
+              size="md"
+              icon={<Icon icon={ChevronsDownUp} />}
+              tooltip="Collapse all folders"
+              onClick={() => setCollapseNonce((n) => n + 1)}
+            />
           </Show>
         </div>
       </Show>
-      <Show when={!filter().trim()} fallback={
-          <FilterResults root={props.root!} matches={matches()} activePath={props.activePath} />
-        }>
       <Show
-        when={roots().length}
+        when={rootPaths().length}
         fallback={<div class={styles.empty}>This folder is empty. Use New File above to add one.</div>}
       >
-        <For each={roots()}>
-          {(e) => (
-            <TreeNode
-              entry={e.entry}
-              label={e.label}
-              depth={0}
-              ctx={ctx()}
-              reloadParent={reloadRoots}
+        <For each={rootPaths()}>
+          {(path) => (
+            <RootSection
+              path={path}
+              meta={metaOf(path)}
+              headed={headed()}
+              editable={editable()}
+              noun={props.noun}
+              askText={props.askText}
+              askConfirm={props.askConfirm}
               activePath={props.activePath}
-              revealing={revealing}
-              onRevealed={() => setRevealing(null)}
+              filter={filter}
+              wantFiles={wantFiles}
               collapseAll={collapseNonce}
               compactFolders={compactFolders()}
+              revealing={revealing}
+              onRevealed={() => setRevealing(null)}
+              selected={selected}
+              toggleSelected={toggleSelected}
+              clearSelected={clearSelected}
+              onRetry={props.onRetry}
+              onApi={registerApi}
+              onLoaded={() => {
+                if (rootPaths()[0] === path) traceSettle("tree", path);
+              }}
             />
           )}
         </For>
-      </Show>
       </Show>
     </OverlayScroll>
   );
