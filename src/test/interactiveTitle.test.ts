@@ -106,6 +106,7 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/CreatePrDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/DebugTargetDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/InitGitDialog.tsx", { count: 1, reason: HEADING }],
+  ["components/Dialogs/NewFeatureDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewProjectDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.test.tsx", { count: 2, reason: FIXTURE }],
   ["components/Dialogs/ProjectIconDialog.tsx", { count: 1, reason: HEADING }],
@@ -183,6 +184,8 @@ const KEPT = new Map<string, Kept>([
     "panels/Editor/SessionPanel.tsx",
     { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` },
   ],
+  ["panels/LeftSidebar/FeatureItem.tsx", { count: 4, reason: TRUNCATION }],
+  ["panels/LeftSidebar/FeatureList.tsx", { count: 2, reason: HEADING }],
   ["panels/LeftSidebar/branchTruncation.test.tsx", { count: 3, reason: FIXTURE }],
   ["panels/LeftSidebar/forgeChipRow.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/needsYou.test.tsx", { count: 1, reason: FIXTURE }],
@@ -243,7 +246,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **One back down** with the composer bar's standing note about a remembered
  *  model list, which is gone and took its title with it. */
-const RAW_ELEMENT_TITLES = 61;
+const RAW_ELEMENT_TITLES = 65;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. Down one from
  *  ten for the same reason as above, and the row itself is unchanged. */
@@ -345,9 +348,12 @@ describe("the title= guard", () => {
     // had a copy.
     // Down one more: the composer bar's standing note about a remembered model
     // list is gone, and its title with it.
+    // Up one div and three spans: the sidebar's Feature row (#153) shows the
+    // branch behind a truncated name, and each member chip, its state badge
+    // and the +N overflow carry the full text a 22px chip cannot.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
-      div: 15,
-      span: 46,
+      div: 16,
+      span: 49,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

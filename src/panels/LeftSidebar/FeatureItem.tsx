@@ -1,5 +1,7 @@
 import { For, Show, createMemo } from "solid-js";
 import Button from "../../components/Button/Button";
+import ContextMenu from "../../components/Menu/ContextMenu";
+import type { MenuItem } from "../../components/Menu/rows";
 import { memberInitials, memberState, type Feature, type Member } from "../../utils/features";
 import { spaceHue, spaceHueRgb } from "../../utils/spaceTint";
 import styles from "./FeatureItem.module.css";
@@ -26,6 +28,8 @@ export default function FeatureItem(props: {
   feature: Feature;
   spaces: SpaceTint[];
   onRetry: (member: Member) => void;
+  /** Right-click rows; none means the row is inert. */
+  menu?: MenuItem[];
 }) {
   const members = createMemo(() => [...props.feature.members].sort((a, b) => a.order - b.order));
   const shown = () => members().slice(0, CHIP_CAP);
@@ -36,7 +40,7 @@ export default function FeatureItem(props: {
     props.spaces.find((g) => g.projects.some((p) => samePath(p.path, member.repoPath)));
 
   return (
-    <li class={styles.item} data-feature={props.feature.id}>
+    <ContextMenu as="li" class={styles.item} items={props.menu} disabled={!props.menu} data-feature={props.feature.id}>
       <div class={styles.name} data-name title={props.feature.branch}>
         {props.feature.name}
       </div>
@@ -111,7 +115,7 @@ export default function FeatureItem(props: {
           </For>
         </div>
       </Show>
-    </li>
+    </ContextMenu>
   );
 }
 
