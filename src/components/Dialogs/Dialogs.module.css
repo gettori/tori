@@ -280,3 +280,34 @@
 .newSeg {
   margin-bottom: calc(10px * var(--ui-scale));
 }
+
+/* ---- Feature creation (NewFeatureDialog, RepoChecklist): one checkbox group
+   per Space, and under a checked repo whose branch already exists, the
+   collision line with its two answers. ---- */
+.repoChecklist {
+  display: flex;
+  flex-direction: column;
+  gap: calc(12px * var(--ui-scale));
+}
+.slug {
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-md);
+  color: var(--fg-muted);
+  margin-top: calc(6px * var(--ui-scale));
+  word-break: break-all;
+}
+.slug strong {
+  color: var(--fg-default);
+  font-weight: 500;
+}
+.collision {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  font-size: var(--sway-text-md);
+  color: var(--fg-muted);
+}
+.collision[data-adopting] {
+  color: var(--fg-default);
+}
