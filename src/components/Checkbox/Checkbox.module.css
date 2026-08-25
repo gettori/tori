@@ -62,12 +62,16 @@
   color: var(--fg-on-emphasis);
 }
 
-/* Kobalte mounts the indicator only while checked, so this needs no hidden
-   state of its own. */
+/* Mounted whether or not the box is checked (see Checkbox.tsx), so the hidden
+   state is CSS: Kobalte stamps `data-checked` on the indicator itself. */
 .indicator {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
+}
+.indicator[data-checked],
+.indicator[data-indeterminate] {
+  display: flex;
 }
 
 /* Typography is inherited, not set here. The box is this component's; the words
