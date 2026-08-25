@@ -20,6 +20,7 @@ const WORKSPACE_STORES = [
   "sway.taskRuns",
   "sway.searchHistory",
   "sway.savedSearches",
+  "sway.treeExpanded.v1",
 ] as const;
 
 export function dropWorkspaceKey<T extends Record<string, unknown>>(store: T, ws: string): T {
