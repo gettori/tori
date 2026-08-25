@@ -1,4 +1,4 @@
-import { For, createSignal, createEffect, on, onCleanup, onMount, lazy, untrack, Match, Show, Suspense, Switch, type JSX } from "solid-js";
+import { For, createSignal, createEffect, createMemo, on, onCleanup, onMount, lazy, untrack, Match, Show, Suspense, Switch, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -1120,7 +1120,6 @@ export default function Editor(props: {
       // program output, and the pane has no way to say whose it was.
       clearDebugConsole();
       if (!r) return;
-      invoke("fs_watch_start", { projectPath: r }).catch(() => {});
       // Sweep local history for what a save can never reach: versions past the
       // age cap in files nobody has saved since, and the timelines of worktrees
       // that have been removed. Once per project per run: the sweep walks the
@@ -1141,6 +1140,33 @@ export default function Editor(props: {
       clearSymbols();
       clearCallRoots();
       void import("./lspClient").then((m) => m.retainLspRoots(r));
+    }),
+  );
+
+  // The watcher is the one thing that follows the whole Feature rather than the
+  // member in front: a background member's edit still has to reach the tree
+  // section showing it. Keyed on the joined list, so moving the active root
+  // inside a Feature re-issues nothing, and repairing a member (which grows the
+  // list) re-issues rather than leaving the newcomer muted for the session.
+  const watchRoots = () => {
+    const sel = props.selected;
+    if (sel?.kind === "feature") return sel.roots ?? [];
+    const r = root();
+    return r ? [r] : [];
+  };
+  // A memo, not a bare accessor: `on` re-runs whenever its tracked accessor's
+  // dependencies invalidate, not only when the value changes, so a Selection
+  // rebuilt with an equal root list would re-issue the whole set. The memo's
+  // string equality is what makes moving the active root a no-op here.
+  const watchKey = createMemo(() => watchRoots().join("\n"));
+  createEffect(
+    on(watchKey, (joined) => {
+      const roots = joined ? joined.split("\n") : [];
+      // An empty set still goes out for a Feature: it evicts, where skipping
+      // would leave the last Feature's members watched and unmuted, emitting
+      // bursts for a tree nobody is looking at.
+      if (props.selected?.kind === "feature") invoke("fs_watch_set", { roots }).catch(() => {});
+      else if (roots.length) invoke("fs_watch_start", { projectPath: roots[0] }).catch(() => {});
     }),
   );
 

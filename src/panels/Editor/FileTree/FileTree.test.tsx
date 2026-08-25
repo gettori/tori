@@ -52,6 +52,22 @@ const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
 const readsOf = (path: string) =>
   sent("fs_read_dir_compact").filter((c) => c.args.path === path);
 
+const listeners = vi.hoisted(() => ({}) as Record<string, ((e: { payload: unknown }) => void)[]>);
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (name: string, cb: (e: { payload: unknown }) => void) => {
+    (listeners[name] ??= []).push(cb);
+    return Promise.resolve(() => {
+      const arr = listeners[name] ?? [];
+      const i = arr.indexOf(cb);
+      if (i >= 0) arr.splice(i, 1);
+    });
+  },
+}));
+
+/** One watcher burst, as the backend tags it. */
+const fsChanged = (root: string, paths: string[]) =>
+  (listeners["fs://changed"] ?? []).slice().forEach((cb) => cb({ payload: { root, paths } }));
+
 vi.mock("@tauri-apps/api/core", async () => {
   const { compactRows } = await import("../../../test/compactDirs");
   return {
@@ -903,6 +919,23 @@ describe("a Feature's member roots", () => {
       [B]: [folder(B, "src"), file(B, "package.json")],
       [`${B}/src`]: [file(`${B}/src`, "app.ts")],
     };
+  });
+
+  it("refreshes only the section whose root the burst names, once per burst", async () => {
+    mountFeature();
+    await within(sectionOf(A)).findByText("README.md");
+    await within(sectionOf(B)).findByText("package.json");
+    bridge.calls = [];
+
+    // Three events, one root, one reload: the same debounce every other
+    // `fs://changed` consumer sits behind.
+    fsChanged(B, [`${B}/package.json`]);
+    fsChanged(B, [`${B}/src/app.ts`]);
+    fsChanged(B, [`${B}/src/new.ts`]);
+    await waitFor(() => expect(readsOf(B)).toHaveLength(1), { timeout: 2000 });
+    await new Promise((r) => setTimeout(r, 250));
+    expect(readsOf(B)).toHaveLength(1);
+    expect(readsOf(A)).toHaveLength(0);
   });
 
   it("keeps its sections when the roots array is rebuilt with the same paths", async () => {

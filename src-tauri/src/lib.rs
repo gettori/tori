@@ -278,6 +278,7 @@ pub fn run() {
             fs::fs_rename,
             fs::list_project_files,
             fs::fs_watch_start,
+            fs::fs_watch_set,
             search::grep_project,
             search::preview_replace,
             search::replace_in_files,
