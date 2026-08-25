@@ -3,6 +3,7 @@ import {
   featureSelection,
   featureSlug,
   isFeatureKey,
+  tabUnderFolder,
   memberInitials,
   memberState,
   selectionRoot,
@@ -130,5 +131,31 @@ describe("workspaceKey and selectionRoot", () => {
     expect(workspaceFolders("/r/a", sel)).toEqual(["/r/a"]);
     expect(isFeatureKey("feature:f1")).toBe(true);
     expect(isFeatureKey("/feature:f1")).toBe(false);
+  });
+});
+
+// A Spaces row counts a Feature tab by its cwd, and a repo never owns the
+// Feature worktrees parked under its own `.sway/worktrees/`: the member
+// folder does. Mirrors `sessions::listing_never_claims_a_repos_own_feature_worktrees`.
+describe("tabUnderFolder", () => {
+  const featureTab = (cwd: string) => ({ workspace: "feature:f1", cwd });
+
+  it("counts a Feature tab on the member folder it was spawned in", () => {
+    expect(tabUnderFolder(featureTab("/w/api-auth/src"), "/w/api-auth")).toBe(true);
+    expect(tabUnderFolder(featureTab("/w/api-auth"), "/w/api-auth/")).toBe(true);
+    expect(tabUnderFolder(featureTab("/w/web-auth"), "/w/api-auth")).toBe(false);
+  });
+
+  it("never counts it on a repo whose .sway/worktrees holds the member", () => {
+    const cwd = "/w/api/.sway/worktrees/auth/src";
+    expect(tabUnderFolder(featureTab(cwd), "/w/api")).toBe(false);
+    expect(tabUnderFolder(featureTab(cwd), "/w/api/.sway/worktrees/auth")).toBe(true);
+    expect(tabUnderFolder({ workspace: "feature:f1" }, "/w/api")).toBe(false);
+  });
+
+  it("keeps the workspace prefix rule for a unit tab", () => {
+    expect(tabUnderFolder({ workspace: "/w/api", cwd: "/elsewhere" }, "/w/api")).toBe(true);
+    expect(tabUnderFolder({ workspace: "/w/api/.sway/worktrees/x", cwd: "/w/api" }, "/w/api")).toBe(true);
+    expect(tabUnderFolder({ workspace: "/w/apix", cwd: "/w/api" }, "/w/api")).toBe(false);
   });
 });

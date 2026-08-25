@@ -45,7 +45,7 @@ import {
   SET_RIGHT_MODE,
   type SetRightMode,
 } from "../../utils/events";
-import { isUnderPath } from "../../utils/pathScope";
+import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { traceSwitchStart } from "../../utils/perfTrace";
 import { syntheticId } from "../../utils/syntheticTabs";
 import { onNeedsYouNotificationClick } from "../../utils/presence";
@@ -130,7 +130,7 @@ import {
 import Tooltip from "../../components/Tooltip/Tooltip";
 import SegmentedControl from "../../components/SegmentedControl/SegmentedControl";
 import FeatureList from "./FeatureList";
-import { featureSelection } from "../../utils/features";
+import { featureSelection, tabUnderFolder, type Feature } from "../../utils/features";
 import styles from "./LeftSidebar.module.css";
 
 // Lucide glyph for a branch-unit row, keyed by its git kind: a worktree (or an
@@ -309,6 +309,24 @@ export default function LeftSidebar(props: {
   liveTabs?: LiveTab[];
 }) {
   const [config, setConfig] = createSignal<ResolvedConfig | null>(null);
+  // Every Feature record, for the "in <Feature>" chip on a member unit row.
+  // Latest request wins, as in `FeatureList`.
+  const [features, setFeatures] = createSignal<Feature[]>([]);
+  let featuresSeq = 0;
+  async function loadFeatures() {
+    const mine = ++featuresSeq;
+    const list = (await invoke<Feature[] | null>("list_features").catch(() => null)) ?? [];
+    if (mine === featuresSeq) setFeatures(list);
+  }
+  function applyFeature(feature: Feature) {
+    setFeatures((prev) => {
+      const i = prev.findIndex((f) => f.id === feature.id);
+      if (i < 0) return [...prev, feature];
+      const next = prev.slice();
+      next[i] = feature;
+      return next;
+    });
+  }
 
   // Errors surface as auto-dismissing toasts (bottom-right) rather than a banner
   // pinned above the tree. setError keeps its old signature so all call sites are
@@ -519,7 +537,7 @@ export default function LeftSidebar(props: {
   // twelve things are running in a folder where nothing is.
   function liveTabsUnder(path: string): LiveTab[] {
     return (props.liveTabs ?? []).filter(
-      (t) => t.kind !== "command" && t.state === "live" && isUnderPath(t.workspace, path),
+      (t) => t.kind !== "command" && t.state === "live" && tabUnderFolder(t, path),
     );
   }
 
@@ -532,10 +550,16 @@ export default function LeftSidebar(props: {
   // already names, so before `liveTabsUnder` filtered on state an *inert* tab
   // holding a stored session id hid that session from the probe entirely - and
   // this count is what destructive confirms are worded from.
+  //
+  // Inclusive on purpose, unlike the tree's own attribution: a Feature agent
+  // running in this repo's `.sway/worktrees/` belongs to the Feature, but
+  // removing the repo still kills it, so the confirm has to count it.
   async function countRunningAgents(path: string): Promise<number> {
-    const tabs = liveTabsUnder(path);
+    const tabs = (props.liveTabs ?? []).filter(
+      (t) => t.kind !== "command" && t.state === "live" && isUnderPath(t.cwd ?? t.workspace, path),
+    );
     const tabSessions = new Set(tabs.map((t) => t.sessionId).filter((x): x is string => !!x));
-    const nested = await invoke<SessionMeta[]>("list_sessions", { folder: path }).catch(
+    const nested = await invoke<SessionMeta[]>("list_sessions", { folder: path, inclusive: true }).catch(
       () => [] as SessionMeta[],
     );
     const offTab = nested.filter((s) => !tabSessions.has(s.id) && isUnderPath(s.cwd, path));
@@ -2115,9 +2139,23 @@ export default function LeftSidebar(props: {
   // A branch-unit reads as selected when it is the direct selection OR when a
   // session under it is (its sessions carry the unit's folderPath + label), so
   // the branch stays highlighted as the context while a session is open.
+  // A Feature is never a unit, even while its active member is this very
+  // folder: the Feature row is its home, and the chip below points there.
   function unitSelected(u: BranchUnit) {
     const s = props.selected;
-    return s != null && s.folderPath === u.folderPath && s.branch === unitLabel(u);
+    return s != null && s.kind !== "feature" && s.folderPath === u.folderPath && s.branch === unitLabel(u);
+  }
+
+  // The Features this folder is a member of, so a unit row can point back at
+  // its other home. Kept here rather than lifted out of `FeatureList` because
+  // that list mounts only in Features mode and this chip renders in Spaces.
+  function featuresAt(folder: string): Feature[] {
+    return features().filter((f) => f.members.some((m) => !!m.worktreePath && sameCwd(m.worktreePath, folder)));
+  }
+
+  function selectFeature(f: Feature, preferredRoot: string | null) {
+    traceSwitchStart("feature", f.id);
+    props.onSelect(featureSelection(f, preferredRoot));
   }
 
   const gkey = (g: Space, p: Project, groupId: string) => `a:${g.name}/${p.name}/${groupId}`;
@@ -2143,9 +2181,26 @@ export default function LeftSidebar(props: {
           items={attempt ? attemptMenu(g, p, u, attempt) : unitMenu(g, p, u)}
           draggable={true}
           onDragStart={(e) => startAbsDrag(e, u.folderPath)}
+          aria-current={unitSelected(u) ? "true" : undefined}
         >
           <span class={styles.rowIcon}><Icon icon={kindIcon(u.kind)} /></span>
           <span class={styles.label}>{unitLabel(u)}</span>
+          <For each={featuresAt(u.folderPath)}>
+            {(f) => (
+              <button
+                type="button"
+                class={`${styles.badge} ${styles.featureChip}`}
+                aria-label={`Open Feature ${f.name}`}
+                data-feature-chip={f.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  selectFeature(f, u.folderPath);
+                }}
+              >
+                in {f.name}
+              </button>
+            )}
+          </For>
           <Show when={u.kind === "incomplete"}>
             <span class={`${styles.badge} ${styles.hint}`} title="A .bare with no worktrees (right-click to add one or remove it)">stub</span>
           </Show>
@@ -2273,6 +2328,7 @@ export default function LeftSidebar(props: {
   let unlistenSessions: UnlistenFn | undefined;
   let unlistenActivity: UnlistenFn | undefined;
   let unlistenTrayFocus: UnlistenFn | undefined;
+  let unlistenFeatures: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   let offFocus: (() => void) | undefined;
@@ -2280,7 +2336,12 @@ export default function LeftSidebar(props: {
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
     await loadConfig();
-    unlistenConfig = await listen("config://changed", () => loadConfig());
+    void loadFeatures();
+    unlistenConfig = await listen("config://changed", () => {
+      void loadConfig();
+      void loadFeatures();
+    });
+    unlistenFeatures = await listen<Feature>("features://changed", (e) => applyFeature(e.payload));
     unlistenSessions = await listen<SessionsChanged | null>("sessions://changed", (e) => {
       // No explicit tail re-read: the tail-state effect now triggers on the
       // store as well as on liveTabs, so a refresh that changed something
@@ -2365,6 +2426,7 @@ export default function LeftSidebar(props: {
   });
   onCleanup(() => {
     unlistenConfig?.();
+    unlistenFeatures?.();
     unlistenSessions?.();
     unlistenActivity?.();
     unlistenTrayFocus?.();
@@ -2523,10 +2585,7 @@ export default function LeftSidebar(props: {
           spaces={visibleSpaces()}
           query={query()}
           activeId={props.selected?.kind === "feature" ? props.selected.featureId : null}
-          onSelect={(f) => {
-            traceSwitchStart("feature", f.id);
-            props.onSelect(featureSelection(f, props.selected?.featureId === f.id ? props.selected.activeRoot : null));
-          }}
+          onSelect={(f) => selectFeature(f, props.selected?.featureId === f.id ? (props.selected.activeRoot ?? null) : null)}
           onDeleted={(f) => {
             if (props.selected?.kind === "feature" && props.selected.featureId === f.id) props.onSelect(null);
           }}

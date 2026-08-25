@@ -542,11 +542,23 @@ fn cwd_matches(cwd: &str, folder: &str) -> bool {
     c == f || c.starts_with(&format!("{f}/"))
 }
 
+/// The listing's ownership rule: `cwd_matches`, minus anything under the
+/// folder's own `.sway/worktrees/`. Those are Feature worktrees and the member
+/// folder claims them by prefix, so the repo would otherwise list them as its
+/// own. Teardown (`ids_under`) keeps the plain prefix rule on purpose: removing
+/// the repo must still find every session it physically contained.
+fn owned_by_listing(cwd: &str, folder: &str) -> bool {
+    let f = norm(folder);
+    cwd_matches(cwd, folder) && !norm(cwd).starts_with(&format!("{f}/.sway/worktrees/"))
+}
+
 /// Filter to sessions under `folder` and sort most-recently-active first.
-fn filter_sort(all: Vec<SessionMeta>, folder: &str) -> Vec<SessionMeta> {
+/// `inclusive` is the teardown rule (plain prefix): a destructive confirm has
+/// to count what removing the folder will kill, Feature worktrees included.
+fn filter_sort(all: Vec<SessionMeta>, folder: &str, inclusive: bool) -> Vec<SessionMeta> {
     let mut v: Vec<SessionMeta> = all
         .into_iter()
-        .filter(|s| cwd_matches(&s.cwd, folder))
+        .filter(|s| if inclusive { cwd_matches(&s.cwd, folder) } else { owned_by_listing(&s.cwd, folder) })
         .collect();
     v.sort_by(|a, b| b.last_active.cmp(&a.last_active));
     v
@@ -580,9 +592,10 @@ pub(crate) fn ids_under(index: &SessionIndex, folder: &str) -> Vec<String> {
 pub fn list_sessions(
     index: State<SessionIndex>,
     folder: String,
+    inclusive: Option<bool>,
 ) -> Result<Vec<SessionMeta>, String> {
     let accounts = crate::accounts::load();
-    let rows = filter_sort(ensure_index(&index, &accounts), &folder);
+    let rows = filter_sort(ensure_index(&index, &accounts), &folder, inclusive.unwrap_or(false));
     Ok(stamp_listing(rows, &load_overlay(), &accounts))
 }
 
@@ -762,7 +775,7 @@ pub fn folder_historical(
     folder: String,
 ) -> Result<bool, String> {
     let state = load_adopted();
-    let times: Vec<u64> = filter_sort(ensure_index(&index, &crate::accounts::load()), &folder)
+    let times: Vec<u64> = filter_sort(ensure_index(&index, &crate::accounts::load()), &folder, false)
         .iter()
         .map(|s| s.last_active)
         .collect();
@@ -2866,6 +2879,31 @@ mod tests {
     }
 
     #[test]
+    fn listing_never_claims_a_repos_own_feature_worktrees() {
+        let repo = "/p/repo";
+        let member = "/p/repo/.sway/worktrees/auth";
+        let cwd = "/p/repo/.sway/worktrees/auth/sub";
+        // The repo lists its own tree but not the Feature worktrees inside it.
+        assert!(owned_by_listing("/p/repo/src", repo));
+        assert!(!owned_by_listing(cwd, repo));
+        assert!(!owned_by_listing(member, repo));
+        // The member folder claims them by plain prefix.
+        assert!(owned_by_listing(cwd, member));
+        assert!(owned_by_listing(member, member));
+        // Teardown keeps the inclusive rule: `ids_under` is `cwd_matches`.
+        assert!(cwd_matches(cwd, repo));
+
+        let all = vec![meta("in-repo", "/p/repo/src", "claude", 1), meta("in-member", cwd, "claude", 2)];
+        let ids = |folder: &str, inclusive: bool| -> Vec<String> {
+            filter_sort(all.clone(), folder, inclusive).into_iter().map(|s| s.id).collect()
+        };
+        assert_eq!(ids(repo, false), vec!["in-repo"]);
+        assert_eq!(ids(member, false), vec!["in-member"]);
+        // A destructive confirm counts everything the removal will reach.
+        assert_eq!(ids(repo, true), vec!["in-member", "in-repo"]);
+    }
+
+    #[test]
     fn filter_sort_merges_agents_under_folder_newest_first() {
         let all = vec![
             meta("claude-root", "/p/wt", "claude", 100),
@@ -2873,7 +2911,7 @@ mod tests {
             meta("claude-old", "/p/wt", "claude", 50),
             meta("other", "/p/elsewhere", "claude", 999), // excluded
         ];
-        let got = filter_sort(all, "/p/wt");
+        let got = filter_sort(all, "/p/wt", false);
         let ids: Vec<&str> = got.iter().map(|s| s.id.as_str()).collect();
         // Excludes the non-matching folder; sorted newest-first.
         assert_eq!(ids, vec!["other-agent-nested", "claude-root", "claude-old"]);
