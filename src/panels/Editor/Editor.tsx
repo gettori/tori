@@ -17,7 +17,7 @@ const CodeEditor = lazy(() => import("./CodeEditor"));
 // the Search panel can reach them on the eager path without dragging the
 // library in behind them.
 const SearchResultsBuffer = lazy(() => import("./SearchResultsBuffer"));
-import FileTree from "./FileTree/FileTree";
+import FileTree, { type TreeRoot } from "./FileTree/FileTree";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
@@ -147,6 +147,7 @@ import {
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { selectionRoot, workspaceKey } from "../../utils/features";
+import { createFeatureMembers } from "../../utils/featureMembers";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
 import { dropWorkspaceWatches } from "../../utils/debugWatch";
@@ -783,6 +784,25 @@ export default function Editor(props: {
   // For a Feature it is the active member, and null (never "") with none present.
   const root = () => selectionRoot(props.selected);
 
+  // Inside a Feature the file tree draws one section per member, unusable ones
+  // included, so a member with no worktree has somewhere to say so and a Retry
+  // to offer. A branch unit reads no Feature record at all.
+  const featureId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
+  const members = createFeatureMembers(featureId);
+  const treeRoots = (): TreeRoot[] | undefined =>
+    featureId() ? members().map((m) => ({ path: m.key, label: m.label, tint: m.hue, state: m.state })) : undefined;
+
+  // The tree hands back the section key, which is the worktree when there is one
+  // and the repo folder otherwise; the backend wants the repo either way.
+  function repairMember(key: string) {
+    const id = featureId();
+    const m = members().find((tm) => tm.key === key);
+    if (!id || !m) return;
+    invoke("retry_member", { featureId: id, repoPath: m.member.repoPath }).catch((e) =>
+      emitWith<ToastEvent>(TOAST, { message: `${m.label}: ${String(e)}`, kind: "error" }),
+    );
+  }
+
   // The open file is mid-conflict. Read from the shared git store rather than
   // probed per file: the store is already refreshed by every watcher burst and
   // every git action, so the banner appears and clears on the same beat as the
@@ -1081,7 +1101,9 @@ export default function Editor(props: {
       // the Changes panel: that panel is unmounted whenever the right pane shows
       // anything else, and the palette's git commands still have to know whether
       // this workspace has anything staged or anything to push.
-      void refreshGit(r).then(() => traceSettle("git", r ?? ""));
+      // Keyed by the workspace, not the root: inside a Feature the span is the
+      // Feature's, and the active member moving within it is not a new switch.
+      void refreshGit(r).then(() => traceSettle("git", ws()));
       // The per-workspace settings overlay, for the same reason: this pane is
       // always mounted and is what knows which workspace is selected, and the
       // Settings panel (which badges the overlay) is usually not open.
@@ -2404,11 +2426,14 @@ export default function Editor(props: {
           <Match when={rightMode() === "files"}>
             <FileTree
               root={root()}
+              roots={treeRoots()}
               editable
-              noun="project folder"
+              noun={featureId() ? "member folder" : "project folder"}
               activePath={shownFileId()}
               askText={askText}
               askConfirm={askConfirm}
+              onRetry={repairMember}
+              settleKey={ws()}
             />
           </Match>
           <Match when={rightMode() === "problems"}>

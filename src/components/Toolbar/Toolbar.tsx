@@ -1,19 +1,14 @@
-import { createSignal, createEffect, createResource, on, onCleanup, onMount, For, Show } from "solid-js";
+import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import ClaudeIcon from "../../seti/ClaudeIcon";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
 import { ChevronRight, SquareTerminal, Code2, ArrowUpRight } from "lucide-solid";
-import { memberInitials, memberState, selectionRoot, type Feature, type Member } from "../../utils/features";
-import { spaceHue, spaceHueRgb } from "../../utils/spaceTint";
+import { memberInitials, selectionRoot } from "../../utils/features";
+import { createFeatureMembers, type TintedMember } from "../../utils/featureMembers";
 import styles from "./Toolbar.module.css";
-
-type TintSpace = { name: string; color?: string; projects: { path: string }[] };
-
-const samePath = (a: string, b: string) => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
 // Where you are and what to open it with: the breadcrumb to the selected
 // session, and the two hand-offs out of the app. The session's figures live in
@@ -31,41 +26,11 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
   const isFeature = () => sel()?.kind === "feature";
   const featureId = () => (isFeature() ? (sel()?.featureId ?? null) : null);
 
-  // The Selection carries only the present roots; badges need every member,
-  // so the record is read whenever the Feature changes or the tree does.
-  const [tick, setTick] = createSignal(0);
-  const [feature] = createResource(
-    () => (featureId() ? { id: featureId()!, tick: tick() } : null),
-    async ({ id }) => {
-      const list = (await invoke<Feature[] | null>("list_features").catch(() => null)) ?? [];
-      return list.find((f) => f.id === id) ?? null;
-    },
-  );
-  const [spaces] = createResource(
-    () => (featureId() ? tick() : null),
-    async () => {
-      const cfg = await invoke<{ spaces: TintSpace[] } | null>("get_config").catch(() => null);
-      return cfg?.spaces ?? [];
-    },
-  );
-  let unlistenConfig: UnlistenFn | undefined;
-  let unlistenFeatures: UnlistenFn | undefined;
-  onMount(async () => {
-    unlistenConfig = await listen("config://changed", () => setTick((n) => n + 1));
-    unlistenFeatures = await listen("features://changed", () => setTick((n) => n + 1));
-  });
-  onCleanup(() => {
-    unlistenConfig?.();
-    unlistenFeatures?.();
-  });
-
-  const members = () => [...(feature()?.members ?? [])].sort((a, b) => a.order - b.order);
-  const spaceOf = (m: Member) => (spaces() ?? []).find((g) => g.projects.some((p) => samePath(p.path, m.repoPath)));
-  const tint = (m: Member) => {
-    const g = spaceOf(m);
-    return g ? { "--chip-hue": spaceHue(g.name, g.color), "--chip-rgb": spaceHueRgb(g.name, g.color) } : undefined;
-  };
-  const isActive = (m: Member) => !!m.worktreePath && m.worktreePath === sel()?.activeRoot;
+  // The Selection carries only the present roots; badges need every member, so
+  // the record comes from the shared resource, which also owns the tint and the
+  // refetch on `features://changed` / `config://changed`.
+  const members = createFeatureMembers(featureId);
+  const isActive = (m: TintedMember) => !!m.member.worktreePath && m.member.worktreePath === sel()?.activeRoot;
 
   createEffect(
     on(
@@ -126,22 +91,22 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
               <div class={styles.members} role="group" aria-label="Feature members">
                 <For each={members()}>
                   {(m) => {
-                    const state = () => memberState(m.state);
+                    const name = () => (m.state.usable ? m.label : `${m.label}: ${m.state.label}`);
                     return (
                       <Tooltip
                         as="button"
                         type="button"
                         class={styles.member}
-                        classList={{ [styles.memberActive]: isActive(m), [styles.memberOff]: !state().usable }}
-                        style={tint(m)}
-                        disabled={!state().usable}
+                        classList={{ [styles.memberActive]: isActive(m), [styles.memberOff]: !m.state.usable }}
+                        style={m.style}
+                        disabled={!m.state.usable}
                         aria-pressed={isActive(m)}
-                        aria-label={state().usable ? m.displayName : `${m.displayName}: ${state().label}`}
-                        label={state().usable ? m.displayName : `${m.displayName}: ${state().label}`}
-                        data-member={m.repoPath}
-                        onClick={() => m.worktreePath && props.onActiveRoot?.(m.worktreePath)}
+                        aria-label={name()}
+                        label={name()}
+                        data-member={m.member.repoPath}
+                        onClick={() => m.member.worktreePath && props.onActiveRoot?.(m.member.worktreePath)}
                       >
-                        {memberInitials(m)}
+                        {memberInitials(m.member)}
                       </Tooltip>
                     );
                   }}
