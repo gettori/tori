@@ -102,6 +102,7 @@ const sectionRoots = () =>
   Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"));
 
 const rootsOf = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args.projectPath ?? c.args.root);
+const watchSets = () => calls.filter((c) => c.cmd === "fs_watch_set").map((c) => c.args.roots);
 const store = () => JSON.parse(localStorage.getItem("sway.editor.tabs.v1") ?? "{}");
 
 let mounted: ReturnType<typeof render> | null = null;
@@ -115,7 +116,7 @@ afterEach(() => {
 });
 
 describe("the editor inside a Feature", () => {
-  it("keeps the strip under feature:<id> while git and the watcher follow the active member", async () => {
+  it("keeps the strip under feature:<id> while git follows the active member and the watcher the whole set", async () => {
     localStorage.setItem(
       "sway.editor.tabs.v1",
       JSON.stringify({ "feature:f1": { paths: [FILE], active: FILE, savedAt: Date.now() } }),
@@ -128,17 +129,42 @@ describe("the editor inside a Feature", () => {
       </>
     ));
     await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
-    await waitFor(() => expect(rootsOf("fs_watch_start")).toEqual([A]));
+    // Every member at once, and not one `fs_watch_start` among them: a Feature
+    // has no single foreground root for the LRU to name.
+    await waitFor(() => expect(watchSets()).toEqual([[A, B]]));
+    expect(rootsOf("fs_watch_start")).toEqual([]);
 
     setSel(featureSel(B));
-    await waitFor(() => expect(rootsOf("fs_watch_start")).toEqual([A, B]));
-    const gitRoots = rootsOf("git_status");
-    expect(gitRoots[gitRoots.length - 1]).toBe(B);
+    await waitFor(() => {
+      const gitRoots = rootsOf("git_status");
+      expect(gitRoots[gitRoots.length - 1]).toBe(B);
+    });
+    // The member list did not change, so the watcher was not re-issued.
+    expect(watchSets()).toEqual([[A, B]]);
     // The strip is the Feature's, so moving the root neither closes nor rehomes it.
     expect(screen.queryByText(EMPTY_PANE)).toBeNull();
     await waitFor(() => expect(store()["feature:f1"]?.paths).toEqual([FILE]));
     expect(store()).not.toHaveProperty(A);
     expect(store()).not.toHaveProperty(B);
+  });
+
+  it("re-issues the watch set when a repaired member joins, and leaves a unit on the single-root watcher", async () => {
+    const C = "/r/c/.sway/worktrees/auth";
+    const [sel, setSel] = createSignal(featureSel(A));
+    mounted = render(() => (
+      <>
+        <Editor selected={sel() as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
+    await waitFor(() => expect(watchSets()).toEqual([[A, B]]));
+
+    setSel(featureSel(A, [A, B, C]));
+    await waitFor(() => expect(watchSets()).toEqual([[A, B], [A, B, C]]));
+
+    setSel(unitSel as never);
+    await waitFor(() => expect(rootsOf("fs_watch_start")).toEqual(["/r/a"]));
+    expect(watchSets()).toEqual([[A, B], [A, B, C]]);
   });
 
   it("opens a Feature with no present member as the empty state, pointing nothing at an empty root", async () => {

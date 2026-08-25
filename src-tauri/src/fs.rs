@@ -503,6 +503,44 @@ fn touch_root(entries: &mut Vec<WatchEntry>, root: &str, cap: usize) -> bool {
     is_new
 }
 
+/// How many roots a Feature may keep watched at once. `MAX_WATCHED_ROOTS` is a
+/// working set of *recently visited* worktrees, which is the wrong shape here:
+/// a Feature's members are all foreground at the same time. Nothing caps how
+/// many repositories a Feature may span, so `max(3, roots.len())` would hand
+/// the bound to the user; members past this one refresh on selection instead.
+const MAX_WATCH_SET_ROOTS: usize = 8;
+
+/// The set form of `touch_root`: every root in `roots` (the first `cap`, in the
+/// order given) is kept and unmuted, everything else is evicted - dropping an
+/// entry drops its watcher, whose closed channel ends the debounce thread.
+/// Answers the roots that still need a watcher installed, in the same order.
+///
+/// A separate function rather than a flag on `touch_root`, because the two want
+/// opposite things: one root foreground and the rest merely warm, against a
+/// whole set foreground at once.
+fn touch_roots(entries: &mut Vec<WatchEntry>, roots: &[String], cap: usize) -> Vec<String> {
+    use std::sync::atomic::Ordering;
+    let mut kept: Vec<WatchEntry> = Vec::with_capacity(roots.len().min(cap));
+    let mut fresh: Vec<String> = Vec::new();
+    for root in roots.iter().take(cap) {
+        if kept.iter().any(|e| &e.root == root) {
+            continue;
+        }
+        match entries.iter().position(|e| &e.root == root) {
+            Some(i) => kept.push(entries.remove(i)),
+            None => {
+                kept.push(WatchEntry { root: root.clone(), muted: Arc::default(), watcher: None });
+                fresh.push(root.clone());
+            }
+        }
+    }
+    for e in kept.iter() {
+        e.muted.store(false, Ordering::Relaxed);
+    }
+    *entries = kept;
+    fresh
+}
+
 /// Directories whose churn must never reach the editor panes: VCS internals and
 /// build output. Terminal-driven git/build/install touch these constantly and a
 /// match here means "skip" so follow-mode and the git gutter only react to real
@@ -567,8 +605,6 @@ pub async fn fs_watch_start(
 }
 
 fn fs_watch_start_body(app: AppHandle, state: &FsWatch, project_path: String) -> Result<(), String> {
-    use std::sync::atomic::Ordering;
-
     let root = PathBuf::from(&project_path);
     if !root.is_dir() {
         return Err(format!("not a directory: {project_path}"));
@@ -580,6 +616,20 @@ fn fs_watch_start_body(app: AppHandle, state: &FsWatch, project_path: String) ->
         return Ok(());
     }
     let muted = entries.last().expect("just pushed").muted.clone();
+    let watcher = install_watcher(&app, &root, &project_path, muted)?;
+    entries.last_mut().expect("just pushed").watcher = Some(watcher);
+    Ok(())
+}
+
+/// Watch one root and wire its bursts to `fs://changed`. Shared by the
+/// single-root command and the set one, which differ only in bookkeeping.
+fn install_watcher(
+    app: &AppHandle,
+    root: &Path,
+    emit_root: &str,
+    muted: Arc<std::sync::atomic::AtomicBool>,
+) -> Result<RecommendedWatcher, String> {
+    use std::sync::atomic::Ordering;
 
     // notify handler -> channel -> debounce thread -> single batched emit.
     // Muted is checked at the handler too, not only at emit, so a churning
@@ -602,14 +652,14 @@ fn fs_watch_start_body(app: AppHandle, state: &FsWatch, project_path: String) ->
     .map_err(|e| e.to_string())?;
 
     watcher
-        .watch(&root, RecursiveMode::Recursive)
+        .watch(root, RecursiveMode::Recursive)
         .map_err(|e| e.to_string())?;
 
     // Trailing-edge debounce: collect a burst, emit once it goes quiet for
     // 250ms. recv() returns Err when the watcher (and its sender) is dropped
     // on eviction, which is how this thread cleanly ends.
     let app_handle = app.clone();
-    let emit_root = project_path.clone();
+    let emit_root = emit_root.to_string();
     thread::spawn(move || {
         while let Ok(first) = rx.recv() {
             let mut batch: BTreeSet<PathBuf> = BTreeSet::new();
@@ -633,7 +683,45 @@ fn fs_watch_start_body(app: AppHandle, state: &FsWatch, project_path: String) ->
         }
     });
 
-    entries.last_mut().expect("just pushed").watcher = Some(watcher);
+    Ok(watcher)
+}
+
+/// Watch a Feature's whole member set at once: every root in `roots` is
+/// foreground, and anything outside it is evicted. Unlike `fs_watch_start` this
+/// is not an LRU - a Feature has no "the one root in front", so a warm entry
+/// from a previous set is either in this one or gone.
+#[tauri::command]
+pub async fn fs_watch_set(
+    app: AppHandle,
+    state: State<'_, FsWatch>,
+    roots: Vec<String>,
+) -> Result<(), String> {
+    let state = state.inner().clone();
+    crate::exec::blocking("fs_watch_set", move || fs_watch_set_body(app, &state, roots)).await
+}
+
+fn fs_watch_set_body(app: AppHandle, state: &FsWatch, roots: Vec<String>) -> Result<(), String> {
+    // A member whose worktree is not on disk yet is skipped rather than failing
+    // the set: its section already says so, and its siblings still want a watcher.
+    let usable: Vec<String> = roots.into_iter().filter(|r| PathBuf::from(r).is_dir()).collect();
+
+    let mut entries = state.0.lock().map_err(|e| e.to_string())?;
+    for root in touch_roots(&mut entries, &usable, MAX_WATCH_SET_ROOTS) {
+        let Some(muted) = entries.iter().find(|e| e.root == root).map(|e| e.muted.clone()) else {
+            continue;
+        };
+        // One member that cannot be watched loses live refresh; the rest of the
+        // Feature keeps it, which is why this does not `?` out of the loop. Its
+        // entry goes with it: kept, it would read as warm to the next
+        // `touch_roots` and the install would never be retried.
+        let Ok(watcher) = install_watcher(&app, Path::new(&root), &root, muted) else {
+            entries.retain(|e| e.root != root);
+            continue;
+        };
+        if let Some(e) = entries.iter_mut().find(|e| e.root == root) {
+            e.watcher = Some(watcher);
+        }
+    }
     Ok(())
 }
 
@@ -675,6 +763,45 @@ mod tests {
         let roots: Vec<&str> = entries.iter().map(|e| e.root.as_str()).collect();
         assert_eq!(roots, vec!["/c", "/a", "/d"], "the coldest root is evicted");
         assert!(entries.iter().all(|e| e.muted.load(Ordering::Relaxed) == (e.root != "/d")));
+    }
+
+    /// The Feature form: a whole set is foreground at once, a root already warm
+    /// is reused rather than rebuilt, the set is bounded, and a single-root
+    /// `fs_watch_start` afterwards puts the LRU's one-in-front rule back.
+    #[test]
+    fn watch_set_keeps_every_member_unmuted_and_bounds_the_set() {
+        use std::sync::atomic::Ordering;
+        let set = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+
+        let mut entries: Vec<WatchEntry> = Vec::new();
+        assert!(touch_root(&mut entries, "/a", 3), "warm /a through the single-root path");
+
+        let fresh = touch_roots(&mut entries, &set(&["/a", "/b", "/c"]), 8);
+        assert_eq!(fresh, vec!["/b", "/c"], "a warm root needs no new watcher");
+        let roots: Vec<&str> = entries.iter().map(|e| e.root.as_str()).collect();
+        assert_eq!(roots, vec!["/a", "/b", "/c"], "member order, no eviction");
+        assert!(
+            entries.iter().all(|e| !e.muted.load(Ordering::Relaxed)),
+            "every member of the set is foreground"
+        );
+
+        // Back to a single root: the LRU's rule applies again to what is left.
+        assert!(touch_root(&mut entries, "/x", MAX_WATCHED_ROOTS));
+        assert!(entries.iter().all(|e| e.muted.load(Ordering::Relaxed) == (e.root != "/x")));
+
+        // Nine members, eight watched, in member order.
+        let mut entries: Vec<WatchEntry> = Vec::new();
+        let nine = set(&["/1", "/2", "/3", "/4", "/5", "/6", "/7", "/8", "/9"]);
+        let fresh = touch_roots(&mut entries, &nine, MAX_WATCH_SET_ROOTS);
+        assert_eq!(fresh, nine[..8].to_vec(), "the ninth member is left unwatched");
+        let roots: Vec<&str> = entries.iter().map(|e| e.root.as_str()).collect();
+        assert_eq!(roots, vec!["/1", "/2", "/3", "/4", "/5", "/6", "/7", "/8"]);
+
+        // A set that shrinks evicts what left it, rather than keeping it warm.
+        let fresh = touch_roots(&mut entries, &set(&["/2"]), MAX_WATCH_SET_ROOTS);
+        assert!(fresh.is_empty(), "/2 was already watched");
+        let roots: Vec<&str> = entries.iter().map(|e| e.root.as_str()).collect();
+        assert_eq!(roots, vec!["/2"]);
     }
 
     /// The compacted listing mirrors what the frontend's per-dir loop drew: a
