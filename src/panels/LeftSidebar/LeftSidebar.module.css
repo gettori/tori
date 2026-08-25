@@ -590,6 +590,21 @@
   background: var(--neutral-subtle);
 }
 
+/* The "in <Feature>" chip on a member unit: a real button, since it moves the
+   selection to the Feature, drawn as the badge so the row keeps one rhythm. */
+.row .badge.featureChip {
+  margin-left: calc(4px * var(--ui-scale));
+  appearance: none;
+  border: 0;
+  font: inherit;
+  font-size: var(--sway-text-2xs);
+  line-height: inherit;
+  cursor: pointer;
+}
+.row .badge.featureChip:hover {
+  background: var(--brand-muted, var(--brand-subtle));
+}
+
 /* ---- Space bar (Arc-style spaces) ----
    The bottom strip: a settings gear pinned left, the "new space" tile pinned
    right, and the centered, horizontally scrollable space tiles between them (one

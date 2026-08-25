@@ -615,6 +615,7 @@ export default function Terminal(props: {
         id: o.id,
         workspace: o.workspace,
         kind: o.kind,
+        cwd: o.cwd,
         sessionId: o.sessionId,
         agent: o.kind === "agent" || o.kind === "chat" ? agentIdForProgram(o.program) : undefined,
         state: tabState(o),
