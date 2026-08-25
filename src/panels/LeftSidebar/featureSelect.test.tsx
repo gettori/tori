@@ -161,7 +161,8 @@ describe("selecting a Feature", () => {
     seed("sway.taskRuns", []);
     seed("sway.searchHistory", []);
     seed("sway.savedSearches", []);
-    expect(storesHolding("feature:f1").length).toBe(13);
+    seed("sway.treeExpanded.v1", { dirs: ["/w/api/src"], closed: [] });
+    expect(storesHolding("feature:f1").length).toBe(14);
 
     const { onSelect } = await mounted(featureSel);
     fireEvent.contextMenu(row("Auth"));
@@ -171,6 +172,6 @@ describe("selecting a Feature", () => {
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_feature")).toBe(true));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
     expect(storesHolding("feature:f1")).toEqual([]);
-    expect(storesHolding("/w/api").length).toBe(13);
+    expect(storesHolding("/w/api").length).toBe(14);
   });
 });

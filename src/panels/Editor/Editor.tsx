@@ -150,6 +150,7 @@ import { selectionRoot, workspaceKey } from "../../utils/features";
 import { createFeatureMembers } from "../../utils/featureMembers";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
+import { dropWorkspaceExpanded, mapExpandedFiles } from "../../utils/treeExpanded";
 import { dropWorkspaceWatches } from "../../utils/debugWatch";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
@@ -1615,6 +1616,9 @@ export default function Editor(props: {
     // breakpoint on a trashed file has no gutter left to click, so nothing could
     // ever remove it and it would go out in every future run's `setBreakpoints`.
     mapBreakpointFiles((p) => (isUnderPath(p, path) ? null : p));
+    // A folder that is gone cannot be collapsed by hand: there is no row left
+    // to click, so an entry naming it would sit in the store for good.
+    mapExpandedFiles((p) => (isUnderPath(p, path) ? null : p));
     setClosedByWs((s) => sweepClosed(s, (p) => (isUnderPath(p, path) ? null : p)));
     const next = purgeTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, path);
     if (!next.removed.length) return;
@@ -1649,6 +1653,7 @@ export default function Editor(props: {
     setAttachPorts((s) => dropWorkspaceKey(s, ws));
     setLastTargets((s) => dropWorkspaceKey(s, ws));
     dropWorkspaceBreakpoints(ws);
+    dropWorkspaceExpanded(ws);
     dropWorkspaceWatches(ws);
     touchedWs.add(ws);
     if (!removed.length) return;
@@ -1672,6 +1677,7 @@ export default function Editor(props: {
     setFrecency((s) => mapFrecencyPaths(s, (p) => repoint(p, from, to) ?? p));
     setBookmarkStore((s) => mapBookmarkPaths(s, (p) => repoint(p, from, to) ?? p));
     mapBreakpointFiles((p) => repoint(p, from, to) ?? p);
+    mapExpandedFiles((p) => repoint(p, from, to) ?? p);
     setClosedByWs((s) => sweepClosed(s, (p) => repoint(p, from, to) ?? p));
     const next = renameTabsUnder({ tabs: tabsByWs(), active: activeByWs() }, from, to);
     if (!next.moved.length) return;
@@ -2460,6 +2466,7 @@ export default function Editor(props: {
               askConfirm={askConfirm}
               onRetry={repairMember}
               settleKey={ws()}
+              persistKey={ws()}
             />
           </Match>
           <Match when={rightMode() === "problems"}>
