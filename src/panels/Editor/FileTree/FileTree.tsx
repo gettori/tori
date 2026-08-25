@@ -1,5 +1,6 @@
 import { createSignal, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   emitWith,
   OPEN_IN_EDITOR,
@@ -7,6 +8,7 @@ import {
   FILE_RENAMED,
   TOAST,
   type FileRenamed,
+  type FsChanged,
   type ToastEvent,
 } from "../../../utils/events";
 import FileIcon from "../../../seti/FileIcon";
@@ -21,6 +23,7 @@ import { type MenuItem } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import { isTouched } from "../../../utils/touchedFiles";
 import { traceSettle } from "../../../utils/perfTrace";
+import { debounce } from "../../../utils/debounce";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
 import { memberInitials, type MemberStateSummary } from "../../../utils/features";
@@ -132,6 +135,10 @@ async function listChildrenCached(
   listingCache.set(k, fresh);
   if (!hit || !sameListing(hit, fresh)) apply(fresh);
 }
+
+/** Same figure the Todos, Tasks and Search panes debounce their own
+ *  `fs://changed` refreshes by: one burst, one reload. */
+const FS_CHANGE_DEBOUNCE_MS = 400;
 
 // A single path segment: no separators, no `.`/`..`. fs_mkdir/rename/delete are
 // containment-scoped in the backend, but the new-file write is not, so the name
@@ -640,11 +647,33 @@ function RootSection(props: {
     };
   };
 
-  onMount(() => {
+  // Every mounted directory, not just the root: a burst can have landed three
+  // levels down, and an expanded row is as stale as the row above it.
+  const reloadMounted = () => void Promise.all([...mounted.values()].map((reload) => reload()));
+  const refresh = debounce(reloadMounted, FS_CHANGE_DEBOUNCE_MS);
+
+  // `gone` because the section can be dropped from the Feature while the
+  // subscription is still in flight, and the handle that arrives afterwards
+  // would then never be released.
+  let unwatch: UnlistenFn | undefined;
+  let gone = false;
+  onMount(async () => {
     mounted.set(props.path, reloadRoot);
     props.onApi(props.path, { ctx, reload: reloadRoot });
+    // Only this root's bursts. Inside a Feature every member is unmuted at once,
+    // so the backend's `root` tag is the only thing separating them.
+    const off = await listen<FsChanged>("fs://changed", (e) => {
+      if (e.payload.root === props.path) refresh();
+    });
+    if (gone) off();
+    else unwatch = off;
   });
-  onCleanup(() => props.onApi(props.path, null));
+  onCleanup(() => {
+    gone = true;
+    props.onApi(props.path, null);
+    refresh.cancel();
+    unwatch?.();
+  });
 
   // Not in `onMount`: a repair can make a member usable again without changing
   // its path, and a section keyed by path never remounts to notice.
