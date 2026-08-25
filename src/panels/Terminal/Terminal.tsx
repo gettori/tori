@@ -45,6 +45,7 @@ import { homeDir } from "@tauri-apps/api/path";
 import { refreshAgentHealth } from "../../utils/agentHealth";
 import { agentEnabled, agentOffReason, draftChatAgent } from "../../utils/agentEnabled";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
+import { isFeatureKey, selectionRoot, workspaceFolders, workspaceKey } from "../../utils/features";
 import {
   agents,
   chatCapable,
@@ -229,7 +230,7 @@ export default function Terminal(props: {
   // command tab (clone/bootstrap) has no branch home, so it changes nothing.
   function selectTab(t: OpenTerm) {
     focusTab(t.workspace, t.id);
-    if (t.kind === "command") return;
+    if (t.kind === "command" || isFeatureKey(t.workspace)) return;
     emitWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, {
       folderPath: t.workspace,
       sessionId: isSessionTab(t) ? t.sessionId : undefined,
@@ -341,6 +342,18 @@ export default function Terminal(props: {
     });
   }
 
+  // A `feature:<id>` workspace spans its member folders, so a per-folder
+  // listing is unioned. Only the selected Feature's roots are known here; a
+  // Feature that is not selected lists nothing.
+  async function listSessionsFor<T>(ws: string): Promise<T[]> {
+    const lists = await Promise.all(
+      workspaceFolders(ws, props.selected).map((folder) =>
+        invoke<T[]>("list_sessions", { folder }).catch(() => [] as T[]),
+      ),
+    );
+    return lists.flat();
+  }
+
   async function restoreInto(ws: string, entry: WorkspaceTabs) {
     // Waited for rather than assumed: a stored draft names its harness, and
     // checking that name against a list that has not arrived would answer "no
@@ -349,9 +362,7 @@ export default function Terminal(props: {
     // One scan for the whole workspace: every stored session is checked against
     // it, so a session deleted since last run is skipped rather than resumed
     // into a dead id.
-    const sessions = await invoke<RestoreSession[]>("list_sessions", { folder: ws }).catch(
-      () => [] as RestoreSession[],
-    );
+    const sessions = await listSessionsFor<RestoreSession>(ws);
     const byId = new Map(sessions.map((s) => [s.id, s]));
     let missingSessions = 0;
     let relocated = 0;
@@ -582,7 +593,10 @@ export default function Terminal(props: {
   const historyCrumb = (): string[] => {
     const ws = activeWorkspace() ?? "";
     const sel = props.selected;
-    if (sel && sel.folderPath === ws) return [sel.spaceName, sel.projectName, sel.branch];
+    if (sel && workspaceKey(sel) === ws) {
+      if (sel.kind === "feature") return [sel.featureName ?? sel.projectName, sel.branch];
+      return [sel.spaceName, sel.projectName, sel.branch];
+    }
     return ws.split("/").filter(Boolean).slice(-2);
   };
 
@@ -955,9 +969,7 @@ export default function Terminal(props: {
     for (const [workspace, tabs] of byWorkspace) {
       if (tabs.length !== 1) continue; // ambiguous: two+ fresh tabs in this workspace
       const tab = tabs[0];
-      const sessions = await invoke<BackfillSession[]>("list_sessions", { folder: workspace }).catch(
-        () => [] as BackfillSession[],
-      );
+      const sessions = await listSessionsFor<BackfillSession>(workspace);
       const candidates = sessions.filter(
         (s) =>
           !claimed.has(s.id) &&
@@ -991,9 +1003,7 @@ export default function Terminal(props: {
     const updates: Record<string, string> = {};
     await Promise.all(
       [...byWorkspace].map(async ([workspace, tabs]) => {
-        const sessions = await invoke<RestoreSession[]>("list_sessions", { folder: workspace }).catch(
-          () => [] as RestoreSession[],
-        );
+        const sessions = await listSessionsFor<RestoreSession>(workspace);
         const byId = new Map(sessions.map((s) => [s.id, s]));
         for (const t of tabs) {
           const s = byId.get(t.sessionId!);
@@ -1018,8 +1028,9 @@ export default function Terminal(props: {
     on(
       () => props.selected,
       (sel, prev) => {
-        if (!sel?.folderPath) return;
-        setActiveWorkspace(sel.folderPath);
+        const ws = workspaceKey(sel);
+        if (!sel || !ws) return;
+        setActiveWorkspace(ws);
         if (sel.sessionId) {
           // A sidebar session click means "take me there": reveal and focus
           // the pane the session's tab lives in (or will open in), even when
@@ -1027,7 +1038,7 @@ export default function Terminal(props: {
           // Not on the first delivery: that is the selection restored at
           // launch, and revealing for it would override the workspace's saved
           // pane focus (phase 5) with nobody having clicked anything.
-          if (prev !== undefined) revealKindPane(sel.folderPath, "shell");
+          if (prev !== undefined) revealKindPane(ws, "shell");
           void openSelectedSession(sel);
         }
       },
@@ -1219,14 +1230,20 @@ export default function Terminal(props: {
   // Launch args come from the adapter: base args, plus its yolo args when asked
   // (claude's skip permission prompts; an adapter may declare none),
   // plus any Sway-launched-only hook args (Phase 3).
-  async function spawnSession(agentId: string, folderPath: string, projectName: string, yolo = false) {
+  async function spawnSession(
+    agentId: string,
+    folderPath: string,
+    projectName: string,
+    yolo = false,
+    workspace = folderPath,
+  ) {
     const a = findAdapter(agentId);
     const args = [...a.base_args, ...(yolo ? a.yolo_args : []), ...(await hookArgs(agentId))];
     openOrActivate({
       id: shellId(),
       title: `${projectName} ${agentId}`,
       cwd: folderPath,
-      workspace: folderPath,
+      workspace,
       kind: "agent",
       program: a.program,
       args,
@@ -1417,8 +1434,9 @@ export default function Terminal(props: {
 
   /** Why a new chat cannot be started here, or null. */
   const noChatReason = () => {
-    if (!props.selected) return "Select a branch first";
-    return draftAgent(props.selected.folderPath) ? null : "No agent enabled. Turn one on in Settings.";
+    const root = selectionRoot(props.selected);
+    if (!root) return "Select a branch first";
+    return draftAgent(root) ? null : "No agent enabled. Turn one on in Settings.";
   };
 
   /** The menu's two agent-backed rows, each present only while its agent is
@@ -1439,10 +1457,11 @@ export default function Terminal(props: {
   // message decides there is going to be a conversation at all.
   function newChat(agentId?: string) {
     const sel = props.selected;
-    if (!sel) return;
-    const agent = agentId ?? draftAgent(sel.folderPath);
+    const root = selectionRoot(sel);
+    if (!sel || !root) return;
+    const agent = agentId ?? draftAgent(root);
     if (!agent) return;
-    openChatDraft(sel.folderPath, sel.folderPath, sel.projectName, agent);
+    openChatDraft(workspaceKey(sel), root, sel.projectName, agent);
   }
 
   /**
@@ -1509,20 +1528,22 @@ export default function Terminal(props: {
 
   function newSession(agentId: string, yolo = false) {
     const sel = props.selected;
-    if (!sel) return;
-    spawnSession(agentId, sel.folderPath, sel.projectName, yolo);
+    const root = selectionRoot(sel);
+    if (!sel || !root) return;
+    spawnSession(agentId, root, sel.projectName, yolo, workspaceKey(sel));
   }
 
   // A plain shell tab: the same login shell as an agent tab, just unseeded (no
   // init), opened in the selected branch-unit folder.
   function newShell() {
     const sel = props.selected;
-    if (!sel) return;
+    const root = selectionRoot(sel);
+    if (!sel || !root) return;
     openOrActivate({
       id: shellId(),
       title: `${sel.projectName} shell`,
-      cwd: sel.folderPath,
-      workspace: sel.folderPath,
+      cwd: root,
+      workspace: workspaceKey(sel),
       kind: "shell",
       program: "",
       args: [],

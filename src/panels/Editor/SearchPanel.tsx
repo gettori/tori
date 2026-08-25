@@ -139,6 +139,8 @@ function groupByFile(matches: SearchMatch[]): FileGroup[] {
  *  would not produce. */
 export default function SearchPanel(props: {
   root: string | null;
+  /** The store key history and saved searches live under; defaults to `root`. */
+  workspace?: string;
   focusNonce: number;
   /** Absolute-keyed dirty record from the editor. Files with unsaved edits are
    *  left out of a replace: the buffer, not the disk, is what the user sees. */
@@ -266,7 +268,7 @@ export default function SearchPanel(props: {
 
   // --- history and saved searches ---
 
-  const ws = () => props.root ?? "";
+  const ws = () => props.workspace ?? props.root ?? "";
   const recallList = () => historyFor(history(), ws());
   const savedList = () => savedFor(saved(), ws());
 
