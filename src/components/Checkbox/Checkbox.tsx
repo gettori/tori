@@ -47,7 +47,11 @@ export default function Checkbox(props: {
         aria-describedby={props["aria-describedby"]}
       />
       <Primitive.Control class={styles.control}>
-        <Primitive.Indicator class={styles.indicator}>
+        {/* Always mounted: Kobalte's mount-on-check runs the tick through
+            solid-presence, whose lazily computed style under jsdom 30 reads a
+            document the element has left, and an uncheck inside a Dialog throws.
+            CSS hides it instead. */}
+        <Primitive.Indicator class={styles.indicator} forceMount>
           <Icon icon={Check} size={15} strokeWidth={3} />
         </Primitive.Indicator>
       </Primitive.Control>
