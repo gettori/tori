@@ -1062,3 +1062,15 @@ describe("saved searches", () => {
     }
   });
 });
+
+describe("inside a Feature", () => {
+  it("files history and saved searches under the workspace key, not the root it searched", async () => {
+    mount({ workspace: "feature:f1" });
+    await commit("here");
+    const { historyFor, loadSearchHistory } = await import("../../utils/searchHistory");
+    expect(historyFor(loadSearchHistory(), "feature:f1").map((h) => h.query)).toEqual(["here"]);
+    expect(historyFor(loadSearchHistory(), "/proj")).toEqual([]);
+    const ran = searches();
+    expect(ran[ran.length - 1]?.query).toBe("here");
+  });
+});

@@ -144,6 +144,7 @@ import {
   type FsChanged,
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
+import { selectionRoot, workspaceKey } from "../../utils/features";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
 import { dropStashEntry, loadPendingStash, pendingStashPaths, requestStash } from "../../utils/hotExit";
@@ -366,9 +367,9 @@ export default function Editor(props: {
       tooltip={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
     />
   );
-  // Derived from `root()` rather than reading the prop a second time, so the two
-  // cannot drift; they differ only in how each spells "nothing selected".
-  const ws = () => root() ?? "";
+  // The store key, not the folder: a Feature is one workspace over several
+  // member folders, so its tabs live under `feature:<id>` while `root()` moves.
+  const ws = () => workspaceKey(props.selected);
   const tabs = () => tabsByWs()[ws()] ?? [];
   // ---- Panes (plan phase 9) ----------------------------------------------
   // A column per pane holding file tabs; with no pane tree (a panel mounted
@@ -774,7 +775,8 @@ export default function Editor(props: {
 
   // The session/branch-unit working folder is the anchor for the editor, file
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
-  const root = () => props.selected?.folderPath ?? null;
+  // For a Feature it is the active member, and null (never "") with none present.
+  const root = () => selectionRoot(props.selected);
 
   // The open file is mid-conflict. Read from the shared git store rather than
   // probed per file: the store is already refreshed by every watcher burst and
@@ -2398,6 +2400,7 @@ export default function Editor(props: {
           <Match when={rightMode() === "search"}>
             <SearchPanel
               root={root()}
+              workspace={ws()}
               focusNonce={searchFocusNonce()}
               dirty={dirty()}
               confirm={askConfirm}
