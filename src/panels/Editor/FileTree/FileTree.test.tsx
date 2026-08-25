@@ -34,8 +34,19 @@ const bridge: {
   existing: Set<string>;
   failRename: boolean;
   projectFiles: string[];
+  /** Per-root file lists, for the multi-root filter. Falls back to the flat
+   *  `projectFiles` so every single-root test reads exactly as it did. */
+  filesByRoot: Record<string, string[]>;
   overlay: Record<string, unknown>;
-} = { calls: [], dirs: {}, existing: new Set(), failRename: false, projectFiles: [], overlay: {} };
+} = {
+  calls: [],
+  dirs: {},
+  existing: new Set(),
+  failRename: false,
+  projectFiles: [],
+  filesByRoot: {},
+  overlay: {},
+};
 
 const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
 const readsOf = (path: string) =>
@@ -51,7 +62,8 @@ vi.mock("@tauri-apps/api/core", async () => {
         compactRows(bridge.dirs, args as { path: string; compact: boolean; hidden: string[] }),
       );
     if (cmd === "fs_read_dir") return Promise.resolve(bridge.dirs[args.path as string] ?? []);
-    if (cmd === "list_project_files") return Promise.resolve(bridge.projectFiles);
+    if (cmd === "list_project_files")
+      return Promise.resolve(bridge.filesByRoot[args.projectPath as string] ?? bridge.projectFiles);
     if (cmd === "file_exists") return Promise.resolve(bridge.existing.has(args.path as string));
     if (cmd === "fs_rename" && bridge.failRename)
       return Promise.reject("A file or folder with that name already exists.");
@@ -63,7 +75,8 @@ vi.mock("@tauri-apps/api/core", async () => {
   };
 });
 
-import FileTree, { clearListingCache } from "./FileTree";
+import FileTree, { clearListingCache, type TreeRoot } from "./FileTree";
+import { memberState } from "../../../utils/features";
 import styles from "./FileTree.module.css";
 import { loadWorkspaceSettings } from "../../Settings/settingsStore";
 
@@ -113,6 +126,7 @@ beforeEach(async () => {
   bridge.existing = new Set();
   bridge.failRename = false;
   bridge.projectFiles = [];
+  bridge.filesByRoot = {};
   bridge.overlay = {};
   // The overlay lives in a module-level store that outlives any one mount, so a
   // test that selected a workspace would otherwise hand its answers to every
@@ -842,12 +856,226 @@ describe("the row context menu", () => {
   });
 });
 
+// A Feature opens N member worktrees as one tree: one section per member, each
+// fenced to its own root. What is asserted here is the containment (a mutation
+// carries the section's root and nothing else), and that the sections survive
+// the identity churn a `features://changed` resource hands them.
+describe("a Feature's member roots", () => {
+  const A = "/feat/api";
+  const B = "/feat/web";
+
+  const MEMBERS: TreeRoot[] = [
+    { path: A, label: "Payments API" },
+    { path: B, label: "Web App" },
+  ];
+
+  const sectionOf = (path: string) => document.querySelector(`[data-root="${path}"]`) as HTMLElement;
+  const backgroundOf = (path: string) =>
+    sectionOf(path).querySelector(`.${styles.sectionBody}`) as HTMLElement;
+
+  function mountFeature(overrides: Record<string, unknown> = {}) {
+    return render(() => (
+      <FileTree
+        root={null}
+        roots={MEMBERS}
+        editable
+        noun="member folder"
+        askText={answering("ignored")}
+        askConfirm={confirming(true)}
+        {...overrides}
+      />
+    ));
+  }
+
+  function toasts() {
+    const seen: { message: string }[] = [];
+    const onToast = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener("sway:toast", onToast);
+    return { seen, stop: () => window.removeEventListener("sway:toast", onToast) };
+  }
+
+  beforeEach(() => {
+    // Both members carry a `src`, so nothing below can pass by matching a name
+    // that happens to be unique.
+    bridge.dirs = {
+      [A]: [folder(A, "src"), file(A, "README.md")],
+      [`${A}/src`]: [file(`${A}/src`, "main.ts")],
+      [B]: [folder(B, "src"), file(B, "package.json")],
+      [`${B}/src`]: [file(`${B}/src`, "app.ts")],
+    };
+  });
+
+  it("keeps its sections when the roots array is rebuilt with the same paths", async () => {
+    // `features://changed` fires once per member while a Feature is being
+    // created, and a resource hands back fresh objects every time. Keyed on
+    // those objects, every section would remount and lose what it had open.
+    const [roots, setRoots] = createSignal<TreeRoot[]>([...MEMBERS]);
+    render(() => <FileTree root={null} roots={roots()} />);
+    await within(sectionOf(A)).findByText("README.md");
+    fireEvent.click(within(sectionOf(A)).getByText("src"));
+    await within(sectionOf(A)).findByText("main.ts");
+    const reads = sent("fs_read_dir_compact").length;
+
+    setRoots(MEMBERS.map((m) => ({ ...m })));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(sent("fs_read_dir_compact")).toHaveLength(reads);
+    expect(within(sectionOf(A)).getByText("main.ts")).toBeTruthy();
+  });
+
+  it("fences every mutation to the section it was made in", async () => {
+    mountFeature({ askText: answering("moved") });
+    await within(sectionOf(B)).findByText("package.json");
+
+    fireEvent.click(within(sectionOf(B)).getByLabelText("New Folder in Web App"));
+    await waitFor(() => expect(sent("fs_mkdir")).toHaveLength(1));
+    expect(sent("fs_mkdir")[0].args).toMatchObject({ root: B, path: `${B}/moved` });
+
+    fireEvent.contextMenu(within(sectionOf(B)).getByText("package.json"));
+    pointerClick(await screen.findByText("Rename"));
+    await waitFor(() => expect(sent("fs_rename")).toHaveLength(1));
+    expect(sent("fs_rename")[0].args).toMatchObject({ root: B, from: `${B}/package.json` });
+
+    fireEvent.contextMenu(within(sectionOf(B)).getByText("src"));
+    pointerClick(await screen.findByText("Delete"));
+    await waitFor(() => expect(sent("fs_delete")).toHaveLength(1));
+    expect(sent("fs_delete")[0].args).toMatchObject({ root: B, path: `${B}/src` });
+  });
+
+  it("moves back out to the section's own root when dropped on its background", async () => {
+    mountFeature();
+    await within(sectionOf(A)).findByText("README.md");
+    fireEvent.click(within(sectionOf(A)).getByText("src"));
+    await within(sectionOf(A)).findByText("main.ts");
+
+    const dt = dataTransfer();
+    fireEvent.dragStart(within(sectionOf(A)).getByText("main.ts").parentElement!, { dataTransfer: dt });
+    fireEvent.drop(backgroundOf(A), { dataTransfer: dt });
+
+    await waitFor(() => expect(sent("fs_rename")).toHaveLength(1));
+    expect(sent("fs_rename")[0].args).toMatchObject({
+      root: A,
+      from: `${A}/src/main.ts`,
+      to: `${A}/main.ts`,
+    });
+  });
+
+  it("refuses a move across roots before any command goes out", async () => {
+    const notices = toasts();
+    mountFeature();
+    await within(sectionOf(A)).findByText("README.md");
+    await within(sectionOf(B)).findByText("package.json");
+
+    const dt = dataTransfer();
+    fireEvent.dragStart(within(sectionOf(A)).getByText("README.md").parentElement!, { dataTransfer: dt });
+    fireEvent.drop(backgroundOf(B), { dataTransfer: dt });
+
+    await waitFor(() => expect(notices.seen).toHaveLength(1));
+    expect(notices.seen[0].message).toContain("member folder");
+    expect(sent("fs_rename")).toHaveLength(0);
+    notices.stop();
+  });
+
+  it("reveals into the root that owns the file and leaves the others shut", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    mountFeature({ activePath: `${B}/src/app.ts` });
+    await within(sectionOf(A)).findByText("README.md");
+    expect(screen.queryByText("app.ts")).toBeNull();
+
+    fireEvent.click(screen.getByLabelText("Reveal"));
+
+    await within(sectionOf(B)).findByText("app.ts");
+    expect(within(sectionOf(A)).queryByText("main.ts")).toBeNull();
+  });
+
+  it("filters each root on its own and keeps both sections under their chips", async () => {
+    bridge.filesByRoot = { [A]: ["src/config.ts"], [B]: ["lib/config.ts"] };
+    mountFeature();
+    await within(sectionOf(A)).findByText("README.md");
+
+    fireEvent.input(screen.getByLabelText("Filter files"), { target: { value: "config" } });
+
+    await within(sectionOf(A)).findByText("src/config.ts");
+    await within(sectionOf(B)).findByText("lib/config.ts");
+    expect(sent("list_project_files").map((c) => c.args.projectPath).sort()).toEqual([A, B]);
+    expect(sectionOf(A).querySelector("[data-chip]")!.textContent).toBe("PA");
+    expect(sectionOf(B).querySelector("[data-chip]")!.textContent).toBe("WA");
+  });
+
+  it("offers a repair instead of a tree for a member with no worktree", async () => {
+    const onRetry = vi.fn();
+    mountFeature({
+      roots: [
+        MEMBERS[0],
+        { ...MEMBERS[1], state: memberState({ kind: "worktree-missing" }) },
+      ],
+      onRetry,
+    });
+    await within(sectionOf(A)).findByText("README.md");
+
+    expect(within(sectionOf(B)).queryByText("package.json")).toBeNull();
+    expect(within(sectionOf(B)).getByText("Worktree missing")).toBeTruthy();
+    fireEvent.click(sectionOf(B).querySelector("[data-repair]") as HTMLElement);
+    expect(onRetry).toHaveBeenCalledWith(B);
+  });
+
+  it("loads a repaired member, which never changed path and so never remounted", async () => {
+    const [state, setState] = createSignal(memberState({ kind: "worktree-missing" }));
+    render(() => <FileTree root={null} roots={[MEMBERS[0], { ...MEMBERS[1], state: state() }]} />);
+    await within(sectionOf(A)).findByText("README.md");
+    expect(within(sectionOf(B)).queryByText("package.json")).toBeNull();
+
+    setState(memberState({ kind: "present" }));
+
+    await within(sectionOf(B)).findByText("package.json");
+  });
+
+  it("draws no section chrome for a lone root", async () => {
+    render(() => (
+      <FileTree
+        root={A}
+        editable
+        noun="member folder"
+        askText={answering(null)}
+        askConfirm={confirming(true)}
+      />
+    ));
+    await screen.findByText("README.md");
+
+    expect(document.querySelector(`.${styles.sectionHeader}`)).toBeNull();
+    expect(screen.getByLabelText("New File")).toBeTruthy();
+  });
+});
+
 describe("the file tree, to axe", () => {
   it("has no accessibility violations", async () => {
     mountProject();
     await screen.findByText("README.md");
 
     // `document.body`, not the render container: a tooltip portals out of it.
+    await expectNoAxeViolations(document.body);
+  });
+
+  it("has none once it grows section headers either", async () => {
+    bridge.dirs = {
+      "/feat/api": [file("/feat/api", "README.md")],
+      "/feat/web": [file("/feat/web", "package.json")],
+    };
+    render(() => (
+      <FileTree
+        root={null}
+        roots={[
+          { path: "/feat/api", label: "Payments API" },
+          { path: "/feat/web", label: "Web App", state: memberState({ kind: "worktree-missing" }) },
+        ]}
+        editable
+        noun="member folder"
+        askText={answering(null)}
+        askConfirm={confirming(true)}
+      />
+    ));
+    await screen.findByText("README.md");
+
     await expectNoAxeViolations(document.body);
   });
 });
