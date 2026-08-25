@@ -331,11 +331,19 @@ fn pending_member(repo: &str, order: u32) -> Member {
 /// Create one member's worktree and flip its record. The repo lock covers the
 /// git work only; the store is re-loaded under its own lock for the flip, so
 /// a concurrent read never overwrites this member with a stale copy.
+///
+/// A branch that already has a secondary worktree is adopted as it is; one
+/// checked out in the repo's own working tree is the user's and fails instead.
 fn build_member(store: &Store, feature_id: &str, repo: &str, branch: &str) -> Result<(), String> {
     let outcome = {
         let lock = repo_lock(repo);
         let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        feature_container(repo).and_then(|c| create_worktree_in(repo, branch, &c))
+        let existing = list_worktrees_body(repo.to_string()).ok().and_then(|wts| wts.into_iter().find(|w| w.branch == branch));
+        match existing {
+            Some(w) if w.is_main && !w.is_bare => Err(format!("{branch} is checked out in place")),
+            Some(w) => Ok(PathBuf::from(w.path)),
+            None => feature_container(repo).and_then(|c| create_worktree_in(repo, branch, &c)),
+        }
     };
     store.mutate(|file| {
         let member = member_mut(feature_mut(file, feature_id)?, repo)?;
@@ -359,8 +367,9 @@ fn load_feature(store: &Store, feature_id: &str) -> Result<Feature, String> {
 
 /// Record first, then one worktree per member in order. A member that fails
 /// stays recorded as `Failed` with git's reason and the loop moves on, so the
-/// Feature exists even when one repo has a colliding folder.
-pub fn create_feature(store: &Store, name: &str, repos: &[String]) -> Result<Feature, String> {
+/// Feature exists even when one repo has a colliding folder. `on_step` sees
+/// the record after the write and after every member, N+1 times for N repos.
+pub fn create_feature(store: &Store, name: &str, repos: &[String], on_step: &dyn Fn(&Feature)) -> Result<Feature, String> {
     let name = name.trim();
     let slug = feature_slug(name)?;
     let branch = feature_branch(&slug);
@@ -388,8 +397,10 @@ pub fn create_feature(store: &Store, name: &str, repos: &[String]) -> Result<Fea
         Ok(())
     })?;
 
+    on_step(&load_feature(store, &id)?);
     for repo in repos {
         build_member(store, &id, repo, &branch)?;
+        on_step(&load_feature(store, &id)?);
     }
     load_feature(store, &id)
 }
@@ -406,8 +417,9 @@ pub fn retry_member(store: &Store, feature_id: &str, repo: &str) -> Result<Featu
 }
 
 /// Append a pending member, then build it: one call ends with a member the
-/// user can open, or a `Failed` one with the reason.
-pub fn add_member(store: &Store, feature_id: &str, repo: &str) -> Result<Feature, String> {
+/// user can open, or a `Failed` one with the reason. `on_step` sees the
+/// record after the append and after the build.
+pub fn add_member(store: &Store, feature_id: &str, repo: &str, on_step: &dyn Fn(&Feature)) -> Result<Feature, String> {
     let branch = store.mutate(|file| {
         let feature = feature_mut(file, feature_id)?;
         if feature.members.iter().any(|m| same_repo(&m.repo_path, repo)) {
@@ -417,8 +429,11 @@ pub fn add_member(store: &Store, feature_id: &str, repo: &str) -> Result<Feature
         feature.members.push(pending_member(repo, order));
         Ok(feature.branch.clone())
     })?;
+    on_step(&load_feature(store, feature_id)?);
     build_member(store, feature_id, repo, &branch)?;
-    load_feature(store, feature_id)
+    let feature = load_feature(store, feature_id)?;
+    on_step(&feature);
+    Ok(feature)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -449,6 +464,14 @@ pub mod commands {
     use crate::config::ProjectIndex;
     use crate::exec::blocking;
 
+    /// Per-step progress for the Feature list: cheap for the sidebar, unlike
+    /// `config://changed`, which reloads the whole Spaces tree.
+    fn step(app: &AppHandle) -> impl Fn(&Feature) + '_ {
+        move |feature| {
+            let _ = app.emit("features://changed", feature);
+        }
+    }
+
     /// After a worktree-creating call: adopt the new folders, drop the cached
     /// probes so discovery sees them, and refresh the tree once.
     fn settle(app: &AppHandle, index: &ProjectIndex, feature: &Feature) {
@@ -475,7 +498,7 @@ pub mod commands {
     ) -> Result<Feature, String> {
         let index = index.inner().clone();
         blocking("create_feature", move || {
-            let feature = super::create_feature(&Store::default_location(), &name, &members)?;
+            let feature = super::create_feature(&Store::default_location(), &name, &members, &step(&app))?;
             settle(&app, &index, &feature);
             Ok(feature)
         })
@@ -507,7 +530,7 @@ pub mod commands {
     ) -> Result<Feature, String> {
         let index = index.inner().clone();
         blocking("add_member", move || {
-            let feature = super::add_member(&Store::default_location(), &feature_id, &repo_path)?;
+            let feature = super::add_member(&Store::default_location(), &feature_id, &repo_path, &step(&app))?;
             settle(&app, &index, &feature);
             Ok(feature)
         })
@@ -774,7 +797,7 @@ mod tests {
         std::fs::create_dir_all(tmp.join("b/.sway/worktrees/feat-x")).unwrap();
         let store = Store::at(tmp.join("features.json"));
 
-        let f = create_feature(&store, "X", &[a.clone(), b.clone(), c.clone()]).unwrap();
+        let f = create_feature(&store, "X", &[a.clone(), b.clone(), c.clone()], &|_| {}).unwrap();
         assert_eq!(f.branch, "feat/x");
         assert!(f.id.starts_with("x-"));
         let states: Vec<_> = f.members.iter().map(|m| &m.state).collect();
@@ -802,11 +825,11 @@ mod tests {
         assert!(hits.matches.iter().all(|m| !m.path.contains(".sway/worktrees")));
 
         // Guards: same slug, same repo twice, a worktree of a member is the member.
-        assert!(create_feature(&store, "x", std::slice::from_ref(&a)).unwrap_err().contains("already uses feat/x"));
-        assert!(create_feature(&store, "Y", &[a.clone(), a.clone()]).unwrap_err().contains("listed twice"));
+        assert!(create_feature(&store, "x", std::slice::from_ref(&a), &|_| {}).unwrap_err().contains("already uses feat/x"));
+        assert!(create_feature(&store, "Y", &[a.clone(), a.clone()], &|_| {}).unwrap_err().contains("listed twice"));
         let wt_a_s = wt_a.to_string_lossy().into_owned();
-        assert!(create_feature(&store, "Y", &[a.clone(), wt_a_s]).unwrap_err().contains("listed twice"));
-        assert!(create_feature(&store, "Z", &[]).is_err());
+        assert!(create_feature(&store, "Y", &[a.clone(), wt_a_s], &|_| {}).unwrap_err().contains("listed twice"));
+        assert!(create_feature(&store, "Z", &[], &|_| {}).is_err());
         assert_eq!(store.load().features.len(), 1, "a rejected create leaves no record");
 
         // Retry flips the failed member once the collision is gone.
@@ -820,17 +843,71 @@ mod tests {
 
         // add_member ends present with a worktree on disk.
         let d = repo(&tmp.join("d"));
-        let f = add_member(&store, &f.id, &d).unwrap();
+        let f = add_member(&store, &f.id, &d, &|_| {}).unwrap();
         assert_eq!(f.members.len(), 4);
         assert_eq!(f.members[3].order, 3);
         assert_eq!(f.members[3].state, MemberState::Present);
         assert!(tmp.join("d/.sway/worktrees/x/a.txt").is_file());
-        assert!(add_member(&store, &f.id, &d).unwrap_err().contains("already a member"));
+        assert!(add_member(&store, &f.id, &d, &|_| {}).unwrap_err().contains("already a member"));
 
         let probe = probe_feature_branch(&d, "x");
         assert_eq!(probe, BranchProbe { local: true, remote: false, has_worktree: true });
         let fresh = repo(&tmp.join("e"));
         assert_eq!(probe_feature_branch(&fresh, "x"), BranchProbe { local: false, remote: false, has_worktree: false });
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn build_member_adopts_a_secondary_worktree_and_refuses_the_main_tree() {
+        let tmp = unique_tmp();
+        let a = tmp.join("a");
+        let a_s = repo(&a);
+        let wt = tmp.join("elsewhere");
+        let wt_s = wt.to_string_lossy().into_owned();
+        git(&a, &["worktree", "add", "-q", "-b", "feat/x", &wt_s]);
+        let b = tmp.join("b");
+        let b_s = repo(&b);
+        git(&b, &["checkout", "-q", "-b", "feat/x"]);
+        let store = Store::at(tmp.join("features.json"));
+
+        let f = create_feature(&store, "X", &[a_s.clone(), b_s.clone()], &|_| {}).unwrap();
+        assert_eq!(f.members[0].state, MemberState::Present);
+        assert_eq!(f.members[0].worktree_path.as_deref(), Some(wt_s.as_str()));
+        assert!(!a.join(".sway/worktrees").exists(), "adopting creates no container");
+        let listed = list_worktrees_body(a_s.clone()).unwrap();
+        assert_eq!(listed.len(), 2, "no new worktree");
+        assert_eq!(f.members[1].state, MemberState::Failed { reason: "feat/x is checked out in place".into() });
+        assert_eq!(f.members[1].worktree_path, None);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn on_step_sees_the_record_once_per_write() {
+        use std::cell::RefCell;
+        let tmp = unique_tmp();
+        let a = repo(&tmp.join("a"));
+        let b = repo(&tmp.join("b"));
+        let store = Store::at(tmp.join("features.json"));
+        let seen = RefCell::new(Vec::<Vec<MemberState>>::new());
+        let record = |f: &Feature| seen.borrow_mut().push(f.members.iter().map(|m| m.state.clone()).collect());
+
+        let f = create_feature(&store, "X", &[a, b], &record).unwrap();
+        let pending = MemberState::Failed { reason: PENDING.into() };
+        assert_eq!(
+            *seen.borrow(),
+            vec![
+                vec![pending.clone(), pending.clone()],
+                vec![MemberState::Present, pending.clone()],
+                vec![MemberState::Present, MemberState::Present],
+            ]
+        );
+
+        seen.borrow_mut().clear();
+        let c = repo(&tmp.join("c"));
+        add_member(&store, &f.id, &c, &record).unwrap();
+        assert_eq!(seen.borrow().len(), 2);
+        assert_eq!(seen.borrow()[0][2], pending);
+        assert_eq!(seen.borrow()[1][2], MemberState::Present);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
