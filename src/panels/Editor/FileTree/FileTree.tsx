@@ -26,7 +26,8 @@ import { traceSettle } from "../../../utils/perfTrace";
 import { debounce } from "../../../utils/debounce";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
-import { memberInitials, type MemberStateSummary } from "../../../utils/features";
+import { memberInitials } from "../../../utils/features";
+import type { MemberRoot } from "../../../utils/featureMembers";
 import {
   collapseDirs,
   isDirOpen,
@@ -605,20 +606,9 @@ function FilterResults(props: {
   );
 }
 
-/** One root the tree draws. `label` and `tint` name the member it belongs to and
- *  are shown only when there is more than one root; `state` marks a member that
- *  cannot be opened, which draws a badge and a repair action instead of a tree.
- *
- *  `path` is the worktree folder, or the repo folder for a member that has no
- *  worktree yet. It identifies the section and is what `onRetry` hands back, so
- *  a member with nothing on disk still has a stable key. */
-export type TreeRoot = {
-  path: string;
-  label: string;
-  /** The member's Space colour, painted on its chip. */
-  tint?: string;
-  state?: MemberStateSummary;
-};
+/** One root the tree draws. Shared with the Search panel, which draws the same
+ *  section per member, so the shape lives beside the member list that mints it. */
+export type TreeRoot = MemberRoot;
 
 /** What a section lends the toolbar. Only a lone root does: with sections on
  *  screen a toolbar create button would have no way to say which root it meant,
@@ -976,17 +966,19 @@ export default function FileTree(props: {
     setOpen: (path, open) => setDirOpen(wsKey(), path, open),
   };
 
+  // A lone root is its own repo as far as anything keyed on `repoPath` is
+  // concerned: there is no member record behind it to say otherwise.
   const rootList = (): TreeRoot[] => {
     const rs = props.roots;
     if (rs && rs.length) return rs;
-    return props.root ? [{ path: props.root, label: "" }] : [];
+    return props.root ? [{ path: props.root, repoPath: props.root, label: "" }] : [];
   };
   // Sections iterate over paths, not root objects: a resource hands back fresh
   // objects on every `features://changed` tick, and a keyed `For` over those
   // would remount every section and throw away what each one had open.
   const rootPaths = () => rootList().map((r) => r.path);
   const metaOf = (path: string) => (): TreeRoot =>
-    rootList().find((r) => r.path === path) ?? { path, label: "" };
+    rootList().find((r) => r.path === path) ?? { path, repoPath: path, label: "" };
   const headed = () => rootList().length > 1;
   /** The one section whose listing a switch is waiting on: the active member
    *  inside a Feature, the sole root everywhere else. */

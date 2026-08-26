@@ -16,7 +16,7 @@ type Options = {
   exclude: string;
   noIgnore: boolean;
 };
-type Call = { query: string; options: Options };
+type Call = { root: string; query: string; options: Options };
 
 type ReplaceCall = {
   root: string;
@@ -30,7 +30,7 @@ const bridge: {
   calls: Call[];
   replaces: ReplaceCall[];
   previews: { replacement: string; options: Options; spans: unknown[] }[];
-  respond: (query: string, options: Options) => unknown;
+  respond: (query: string, options: Options, root: string) => unknown;
   replaceResult: () => unknown;
   previewResult: (replacement: string, spans: { text: string; start: number; end: number }[]) => unknown;
 } = {
@@ -76,9 +76,10 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd !== "grep_project") return Promise.resolve(null);
     const query = args.query as string;
     const options = args.options as Options;
-    bridge.calls.push({ query, options });
+    const root = args.root as string;
+    bridge.calls.push({ root, query, options });
     try {
-      return Promise.resolve(bridge.respond(query, options));
+      return Promise.resolve(bridge.respond(query, options, root));
     } catch (e) {
       return Promise.reject(e);
     }
@@ -1072,5 +1073,259 @@ describe("inside a Feature", () => {
     expect(historyFor(loadSearchHistory(), "/proj")).toEqual([]);
     const ran = searches();
     expect(ran[ran.length - 1]?.query).toBe("here");
+  });
+});
+
+// A Feature searches every member at once. `grep_project` stays single-root, so
+// what is asserted here is strictly the panel's own job: that it fans out once
+// per member, keeps each member's answer (and each member's failure) in its own
+// section, and never lets one member's state speak for another's.
+describe("multi-root search", () => {
+  const API = "/feat/api";
+  const WEB = "/feat/web";
+  const DOCS = "/feat/docs";
+
+  const MEMBERS = [
+    { path: API, repoPath: "/repos/api", label: "Payments API" },
+    { path: WEB, repoPath: "/repos/web", label: "Web App" },
+    { path: DOCS, repoPath: "/repos/docs", label: "Docs Site" },
+  ];
+
+  const missing = {
+    label: "Worktree missing",
+    usable: false,
+    action: "recreate" as const,
+    reason: null,
+  };
+
+  const mountFeature = (extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) =>
+    render(() => (
+      <SearchPanel root={API} roots={MEMBERS} workspace="feature:f1" focusNonce={0} {...extra} />
+    ));
+
+  const sectionEl = (root: string) => document.querySelector(`[data-root="${root}"]`) as HTMLElement;
+  const rootsSearched = () => searches().map((c) => c.root);
+
+  it("greps every member once with the same options", async () => {
+    mountFeature();
+    await type("needle");
+
+    expect(rootsSearched()).toEqual([API, WEB, DOCS]);
+    const sent = searches().map((c) => JSON.stringify(c.options));
+    expect(new Set(sent).size).toBe(1);
+  });
+
+  it("drops a fan-out that a newer search overtook", async () => {
+    // The first query's legs never settle until the second has already been
+    // sent, so the stale answer arrives last and must set nothing.
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((r) => (release = r));
+    bridge.respond = (query) =>
+      query === "slow"
+        ? held.then(() => ok([match("slow hit", [[0, 4]])]))
+        : ok([match("fast hit", [[0, 4]])]);
+
+    mountFeature();
+    await type("slow");
+    await type("fast");
+    release!();
+
+    const results = () => (document.querySelector(`[class*="results"]`) as HTMLElement).textContent ?? "";
+    await waitFor(() => expect(results()).toContain("fast hit"));
+    expect(results()).not.toContain("slow hit");
+  });
+
+  it("keeps the results when the active member changes", async () => {
+    // `root` is the Feature's *active member*, the thing a Toolbar chip moves.
+    // A search that spans every member must not be spent by that click.
+    const [active, setActive] = createSignal(API);
+    bridge.respond = () => ONE_FILE();
+    render(() => (
+      <SearchPanel root={active()} roots={MEMBERS} workspace="feature:f1" focusNonce={0} />
+    ));
+    await type("ab");
+    await waitFor(() => expect(sectionEl(API).textContent).toContain("ab cd ab"));
+    const ran = searches().length;
+
+    setActive(WEB);
+    await Promise.resolve();
+
+    expect(sectionEl(API).textContent).toContain("ab cd ab");
+    expect(searches().length).toBe(ran);
+  });
+
+  it("clears the results when the workspace itself changes", async () => {
+    const [ws, setWs] = createSignal("feature:f1");
+    bridge.respond = () => ONE_FILE();
+    render(() => <SearchPanel root={API} roots={MEMBERS} workspace={ws()} focusNonce={0} />);
+    await type("ab");
+    await waitFor(() => expect(sectionEl(API).textContent).toContain("ab cd ab"));
+
+    setWs("feature:f2");
+    await waitFor(() => expect(sectionEl(API).textContent).not.toContain("ab cd ab"));
+  });
+
+  it("disables a toggle no member can honour and names that member's backend", async () => {
+    bridge.respond = (_q, _o, root) =>
+      root === WEB ? ok([], { backend: "plain", unsupported: ["noIgnore"] }) : ok([]);
+    mountFeature();
+
+    const ignored = () => screen.getByLabelText("Search ignored files") as HTMLButtonElement;
+    await waitFor(() => expect(ignored().disabled).toBe(true));
+
+    const surface = ignored().closest("[data-tooltip-hover-surface]");
+    fireEvent.pointerEnter(surface!);
+    // The reason belongs to the backend that blocked it, not to whichever root
+    // happened to answer first.
+    await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("no ignore rules"));
+  });
+
+  it("skips a member with no usable worktree instead of grepping its repo", async () => {
+    const roots = [MEMBERS[0], MEMBERS[1], { ...MEMBERS[2], state: missing }];
+    render(() => (
+      <SearchPanel root={API} roots={roots} workspace="feature:f1" focusNonce={0} />
+    ));
+    await type("needle");
+
+    expect(rootsSearched()).toEqual([API, WEB]);
+    expect(sectionEl(DOCS).textContent).toContain("Worktree missing");
+  });
+
+  it("draws one section per member, with its own chip", async () => {
+    bridge.respond = () => ONE_FILE();
+    const { container } = mountFeature();
+    await type("ab");
+
+    for (const m of MEMBERS) expect(sectionEl(m.path)).toBeTruthy();
+    expect(sectionEl(API).textContent).toContain("PA");
+    expect(sectionEl(WEB).textContent).toContain("WA");
+    expect(sectionEl(DOCS).textContent).toContain("DS");
+
+    await expectNoAxeViolations(container);
+  });
+
+  it("draws no section header for a lone root", async () => {
+    bridge.respond = () => ONE_FILE();
+    mount();
+    await type("ab");
+
+    expect(document.querySelector(`[data-root="/proj"]`)).toBeTruthy();
+    expect(screen.queryByText("Payments API")).toBeNull();
+    expect(document.querySelector(`[class*="sectionHeader"]`)).toBeNull();
+  });
+
+  it("reports truncation and failure per section, and keeps the rest", async () => {
+    bridge.respond = (_q, _o, root) => {
+      if (root === API) return ok([match("ab cd ab", [[0, 2], [6, 8]])], { truncated: true });
+      if (root === WEB) throw new Error("grep: permission denied");
+      return ok([match("docs hit", [[0, 4]], 3, "README.md")]);
+    };
+    mountFeature();
+    await type("ab");
+
+    await waitFor(() => expect(sectionEl(API).textContent).toContain("First 500 matching lines"));
+    expect(sectionEl(WEB).textContent).toContain("permission denied");
+    // The member that answered is untouched by the one that did not.
+    expect(sectionEl(WEB).textContent).not.toContain("First 500");
+    expect(sectionEl(DOCS).textContent).toContain("docs hit");
+  });
+
+  it("still errors at the panel level when every member fails", async () => {
+    bridge.respond = () => {
+      throw new Error("regex parse error");
+    };
+    mountFeature();
+    await type("[");
+
+    await waitFor(() => expect(screen.getByText(/regex parse error/)).toBeTruthy());
+  });
+
+  it("opens a hit against its own member's root", async () => {
+    bridge.respond = (_q, _o, root) =>
+      root === WEB ? ok([match("web hit", [[0, 3]], 12, "src/App.tsx")]) : ok([]);
+    mountFeature();
+    await type("web");
+
+    await waitFor(() => expect(sectionEl(WEB).textContent).toContain("web hit"));
+
+    const opened: { path: string; line?: number }[] = [];
+    const listener = (e: Event) => opened.push((e as CustomEvent).detail);
+    window.addEventListener("sway:open-in-editor", listener);
+    try {
+      fireEvent.click(sectionEl(WEB).querySelector(`[class*="matchRow"]`)!);
+    } finally {
+      window.removeEventListener("sway:open-in-editor", listener);
+    }
+
+    expect(opened).toEqual([{ path: `${WEB}/src/App.tsx`, line: 12 }]);
+  });
+
+  it("re-greps only the member a change happened under", async () => {
+    bridge.respond = () => ONE_FILE();
+    mountFeature();
+    await type("ab");
+    const before = searches().length;
+
+    fsHandlers["fs://changed"]?.({ payload: { root: WEB } });
+    await waitFor(() => expect(searches().length).toBe(before + 1));
+
+    expect(searches()[searches().length - 1].root).toBe(WEB);
+  });
+
+  it("ignores a change under a folder that is not a member", async () => {
+    bridge.respond = () => ONE_FILE();
+    mountFeature();
+    await type("ab");
+    const before = searches().length;
+
+    fsHandlers["fs://changed"]?.({ payload: { root: "/somewhere/else" } });
+    await new Promise((r) => setTimeout(r, 500));
+
+    expect(searches().length).toBe(before);
+  });
+
+  it("refuses the editable buffer while hits span more than one member", async () => {
+    bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE());
+    mountFeature();
+    await type("ab");
+
+    const open = () => screen.getByLabelText("Edit results in a buffer") as HTMLButtonElement;
+    await waitFor(() => expect(open().disabled).toBe(true));
+
+    // Refused out loud: the doc still holds one root, so a buffer over two would
+    // write every row into the wrong repo.
+    const surface = open().closest("[data-tooltip-hover-surface]");
+    fireEvent.pointerEnter(surface!);
+    await waitFor(() =>
+      expect(screen.getByRole("tooltip").textContent).toContain("more than one member"),
+    );
+  });
+
+  it("replaces against the member the row belongs to", async () => {
+    // Both members hold the same relative path, which is the ordinary case in a
+    // frontend/backend Feature and the one a bare path cannot tell apart.
+    bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE("src/index.ts"));
+    mountFeature();
+    await type("ab");
+    await typeReplacement("X");
+
+    const webRow = sectionEl(WEB).querySelector(`[aria-label="Replace in src/index.ts"]`)!;
+    fireEvent.click(webRow);
+
+    await waitFor(() => expect(bridge.replaces.length).toBe(1));
+    expect(bridge.replaces[0].root).toBe(WEB);
+    expect(bridge.replaces[0].targets.map((t) => t.path)).toEqual(["src/index.ts"]);
+  });
+
+  it("replaces all across members, one call per member", async () => {
+    bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE());
+    mountFeature({ confirm: async () => true });
+    await type("ab");
+    await typeReplacement("X");
+
+    fireEvent.click(screen.getByLabelText("Replace all"));
+
+    await waitFor(() => expect(bridge.replaces.length).toBe(2));
+    expect(bridge.replaces.map((r) => r.root)).toEqual([API, WEB]);
   });
 });
