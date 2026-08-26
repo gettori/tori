@@ -34,6 +34,25 @@ export type TintedMember = {
   style: ChipStyle | undefined;
 };
 
+/** One member root, as the surfaces that draw a section per member take it.
+ *
+ *  `path` is the worktree folder, or the repo folder for a member that has no
+ *  worktree yet: it identifies the section and is what a repair action hands
+ *  back. It is deliberately **not** an identity to persist, because a Recreate
+ *  moves it. `repoPath` is the one field that survives recreate, relocate and a
+ *  missing worktree, so anything stored across sessions keys on that.
+ *
+ *  `label` and `tint` name the member and are shown only alongside other roots;
+ *  `state` marks a member that cannot be opened. */
+export type MemberRoot = {
+  path: string;
+  repoPath: string;
+  label: string;
+  /** The member's Space colour, painted on its chip. */
+  tint?: string;
+  state?: MemberStateSummary;
+};
+
 const samePath = (a: string, b: string) => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
 export function spaceOfMember(member: Pick<Member, "repoPath">, spaces: SpaceTint[]): SpaceTint | undefined {

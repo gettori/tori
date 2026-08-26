@@ -37,15 +37,22 @@ import {
   dirtyRelativePaths,
   grepArgs,
   isUnsupported,
+  mergeSearchResults,
   replaceOutcome,
   replaceTargets,
   splitHighlights,
   truncationNotice,
+  unionUnsupported,
   unsupportedReason,
+  type SearchMatch,
   type SearchOptions,
+  type SearchResult,
+  type SearchSection,
   type Submatch,
   type ToggleKey,
 } from "../../utils/searchOptions";
+import { memberInitials } from "../../utils/features";
+import type { MemberRoot } from "../../utils/featureMembers";
 import {
   DRAFT,
   historyFor,
@@ -70,35 +77,19 @@ import {
 import { openSearchResults } from "./searchResultsStore";
 import styles from "./SearchPanel.module.css";
 
-// `submatches` are UTF-16 code-unit offsets into `text`, so they can index the
-// string directly; the backend converts from its own byte offsets.
-type SearchMatch = { path: string; line: number; text: string; submatches: Submatch[] };
-type FileDigest = { path: string; digest: string };
-type SearchResult = {
-  matches: SearchMatch[];
-  truncated: boolean;
-  /** Which backend ran: `rg`, `git` or `plain`. */
-  backend: string;
-  /** Option names this backend cannot honour, so a toggle never sits inert. */
-  unsupported: string[];
-  files: FileDigest[];
-};
 type FileGroup = { path: string; matches: SearchMatch[] };
-/** What the backend can do here, kept apart from `result` so clearing results
- *  (an empty query, a root switch) does not also blank the toggle states. */
+/** What the backends can do here, kept apart from `sections` so clearing results
+ *  (an empty query, a workspace switch) does not also blank the toggle states.
+ *  Unioned across members: a toggle one member cannot honour is disabled for
+ *  all of them, since its result set would be a lie for that member. */
 type Capabilities = { backend: string; unsupported: string[] };
 type ReplaceOutcome = { changed: string[]; skipped: { path: string; reason: string }[]; occurrences: number };
 /** One span to replace, as `replace_in_files` takes it. */
 type ReplaceSpan = { line: number; start: number; end: number };
 
+/** Per root, not shared across them: truncation is reported per section, and one
+ *  budget split across members would let a noisy repo starve the rest. */
 const MAX_RESULTS = 500;
-const EMPTY_RESULT: SearchResult = {
-  matches: [],
-  truncated: false,
-  backend: "",
-  unsupported: [],
-  files: [],
-};
 const INPUT_DEBOUNCE_MS = 200;
 const FS_CHANGE_DEBOUNCE_MS = 400;
 
@@ -127,8 +118,11 @@ function groupByFile(matches: SearchMatch[]): FileGroup[] {
 }
 
 /** Project-wide Search mode: debounced query -> `grep_project`, results
- *  grouped by file with per-file match counts, click opens the file at the
- *  matched line. Refreshes on `fs://changed` (its own, longer debounce) only
+ *  grouped by member and then by file with per-file match counts, click opens
+ *  the file at the matched line. Inside a Feature every member is searched at
+ *  once: `grep_project` stays single-root and this panel fans out and merges,
+ *  because the sections, the per-member truncation and the per-member replace
+ *  targets have to exist here whatever the backend returns. Refreshes on `fs://changed` (its own, longer debounce) only
  *  while this mode is mounted - the Editor's right-panel Switch/Match tears
  *  the component down when another mode is selected, so no background grep
  *  runs while the mode is hidden.
@@ -140,6 +134,9 @@ function groupByFile(matches: SearchMatch[]): FileGroup[] {
  *  would not produce. */
 export default function SearchPanel(props: {
   root: string | null;
+  /** The multi-root form, one section per Feature member. A branch unit passes
+   *  none and the panel searches `root` alone, headerless, exactly as it did. */
+  roots?: MemberRoot[];
   /** The store key history and saved searches live under; defaults to `root`. */
   workspace?: string;
   focusNonce: number;
@@ -155,7 +152,8 @@ export default function SearchPanel(props: {
   const [showReplace, setShowReplace] = createSignal(false);
   const [options, setOptions] = createSignal<SearchOptions>({ ...DEFAULT_SEARCH_OPTIONS });
   const [showGlobs, setShowGlobs] = createSignal(false);
-  const [result, setResult] = createSignal<SearchResult>(EMPTY_RESULT);
+  /** One entry per searched root, in member order. Empty until a search runs. */
+  const [sections, setSections] = createSignal<SearchSection[]>([]);
   const [caps, setCaps] = createSignal<Capabilities>({ backend: "", unsupported: [] });
   const [preview, setPreview] = createSignal<(string | null)[]>([]);
   const [outcome, setOutcome] = createSignal<string | null>(null);
@@ -191,6 +189,27 @@ export default function SearchPanel(props: {
     query: "",
     options: { ...DEFAULT_SEARCH_OPTIONS },
   };
+  /** Every root the panel draws a section for, unusable members included: a
+   *  member that cannot be searched still needs somewhere to say so. */
+  const allRoots = (): MemberRoot[] => {
+    const rs = props.roots;
+    if (rs && rs.length) return rs;
+    return props.root ? [{ path: props.root, repoPath: props.root, label: "" }] : [];
+  };
+  /** The roots a search actually greps. A member with no usable worktree is
+   *  skipped rather than invoked: its section path is the *repo* folder, so
+   *  grepping it would search the user's own checkout instead of the Feature. */
+  const searchRoots = () => allRoots().filter((r) => r.state?.usable !== false);
+  /** Sections are drawn per member, so the panel is headed only alongside
+   *  others; a lone root renders exactly as it always did. */
+  const headed = () => allRoots().length > 1;
+  const sectionOf = (root: string) => sections().find((s) => s.root === root);
+  /** The searched root set as one comparable string, for the effects that must
+   *  re-run when the set changes. NUL-joined, not space-joined: a path may
+   *  contain a space, and two different sets must never spell the same key. */
+  const rootsKey = () => searchRoots().map((r) => r.path).join("\u0000");
+  const allMatches = () => sections().flatMap((s) => s.matches);
+
   // Bumped per call, so a slower in-flight request (e.g. an fs-refresh racing
   // a fresh keystroke search) can't overwrite a newer result once it resolves.
   let searchGen = 0;
@@ -198,71 +217,114 @@ export default function SearchPanel(props: {
   // fires one per root, and the earlier root's probe can resolve last.
   let probeGen = 0;
 
+  /** One root's leg of the fan-out. It never throws: a member whose grep fails
+   *  reports in its own section, so one unreadable repo cannot blank the
+   *  members that answered. */
+  async function grepRoot(root: string, q: string) {
+    try {
+      return { root, result: await invoke<SearchResult>("grep_project", grepArgs(root, q, options(), MAX_RESULTS)) };
+    } catch (e) {
+      return { root, error: String(e) };
+    }
+  }
+
   /** `user` searches come from a query, toggle or glob change; `refresh` ones
    *  from the fs watcher. Only the former clears results on failure.
    *
-   *  Returns what it found, or `null` when there was nothing to search or a
-   *  newer search overtook this one. Every caller but `openSaved` ignores it and
-   *  reads the signal; that one needs the matches in hand, because it opens a
-   *  buffer over them and `result()` is only the answer if it was not raced. */
+   *  Fans out one `grep_project` per searchable root and merges. Returns the
+   *  merged sections, or `null` when there was nothing to search, every root
+   *  failed, or a newer search overtook this one. Every caller but `openSaved`
+   *  ignores the return and reads the signal; that one needs the matches in
+   *  hand, because it opens a buffer over them and the signal is only the
+   *  answer if it was not raced. */
   async function runSearch(
     q: string,
     source: "user" | "refresh" = "user",
-  ): Promise<SearchResult | null> {
-    const root = props.root;
-    if (!root || !q) {
+  ): Promise<SearchSection[] | null> {
+    const roots = searchRoots();
+    if (!roots.length || !q) {
       searchGen++;
-      setResult(EMPTY_RESULT);
+      setSections([]);
       setError(null);
       return null;
     }
     const gen = ++searchGen;
     setLoading(true);
     try {
-      const r = await invoke<SearchResult>(
-        "grep_project",
-        grepArgs(root, q, options(), MAX_RESULTS),
-      );
+      const legs = await Promise.all(roots.map((r) => grepRoot(r.path, q)));
       if (gen !== searchGen) return null;
-      setResult(r);
-      setCaps({ backend: r.backend, unsupported: r.unsupported });
+      const merged = mergeSearchResults(legs);
+      // Only a fan-out where every root failed is a panel-level error: with one
+      // root that is the old behaviour exactly, and with several the surviving
+      // members' hits are still the honest answer.
+      const failures = merged.sections.filter((s) => s.error);
+      if (failures.length === merged.sections.length) {
+        if (source === "user") setSections([]);
+        setError(failures[0].error);
+        return null;
+      }
+      setSections(merged.sections);
+      setCaps({ backend: backendLabel(merged.sections), unsupported: merged.unsupported });
       setError(null);
-      return r;
-    } catch (e) {
-      if (gen !== searchGen) return null;
-      // A failed *user* search clears the results: an invalid regex is the
-      // common case, and leaving the previous pattern's hits under the error
-      // reads as though they matched the pattern being complained about. A
-      // failed refresh keeps them, since the results on screen are still the
-      // honest answer for the query the user actually typed.
-      if (source === "user") setResult(EMPTY_RESULT);
-      setError(String(e));
-      return null;
+      return merged.sections;
     } finally {
       if (gen === searchGen) setLoading(false);
     }
   }
 
-  /** Ask the backend what it can do before the first query, so a toggle it
-   *  cannot honour is disabled from the start rather than after a search. An
+  /** How the toggle tooltips name the backend. One root answers with its own;
+   *  several answer with whichever cannot honour an option, since that is the
+   *  backend the disabled-reason is actually about. */
+  function backendLabel(list: { backend: string; unsupported: string[] }[]): string {
+    const blocking = list.find((s) => s.unsupported.length);
+    return (blocking ?? list.find((s) => s.backend))?.backend ?? "";
+  }
+
+  /** Ask each backend what it can do before the first query, so a toggle no
+   *  member can honour is disabled from the start rather than after a search. An
    *  empty query returns capabilities without searching anything. */
   async function probeCapabilities() {
-    const root = props.root;
+    const roots = searchRoots();
     probeGen++;
-    if (!root) return setCaps({ backend: "", unsupported: [] });
+    if (!roots.length) return setCaps({ backend: "", unsupported: [] });
     const gen = probeGen;
-    try {
-      const r = await invoke<SearchResult>("grep_project", grepArgs(root, "", options(), 0));
-      if (gen !== probeGen) return;
-      setCaps({ backend: r.backend, unsupported: r.unsupported });
-    } catch {
-      // A failed probe must not disable controls; leave them enabled and let a
-      // real search report the error.
-    }
+    const probes = await Promise.all(
+      roots.map((r) =>
+        // A failed probe must not disable controls; that root simply reports no
+        // capabilities and a real search says what went wrong.
+        invoke<SearchResult>("grep_project", grepArgs(r.path, "", options(), 0)).catch(() => null),
+      ),
+    );
+    if (gen !== probeGen) return;
+    const answered = probes.filter((p): p is SearchResult => !!p);
+    if (!answered.length) return;
+    setCaps({ backend: backendLabel(answered), unsupported: unionUnsupported(answered) });
   }
+
+  /** Re-grep just the roots the watcher named, leaving the other sections as
+   *  they are. A leg that fails here replaces that section with its error the
+   *  same way a fresh search would; the rest keep their hits. */
+  async function refreshRoots(roots: string[]) {
+    const q = query();
+    if (!q || !roots.length) return;
+    const gen = searchGen;
+    const legs = await Promise.all(roots.map((r) => grepRoot(r, q)));
+    if (gen !== searchGen) return;
+    const fresh = mergeSearchResults(legs).sections;
+    setSections((prev) => prev.map((s) => fresh.find((f) => f.root === s.root) ?? s));
+  }
+
+  /** Roots the watcher touched since the last refresh fired. A set, so a burst
+   *  under one member costs one grep rather than one per event. */
+  const dirtyRoots = new Set<string>();
 
   const debouncedSearch = debounce((q: string) => void runSearch(q), INPUT_DEBOUNCE_MS);
   const debouncedRefresh = debounce(() => void runSearch(query(), "refresh"), FS_CHANGE_DEBOUNCE_MS);
+  const debouncedRefreshRoots = debounce(() => {
+    const roots = [...dirtyRoots];
+    dirtyRoots.clear();
+    void refreshRoots(roots);
+  }, FS_CHANGE_DEBOUNCE_MS);
   const debouncedGlobs = debounce(() => void runSearch(query()), INPUT_DEBOUNCE_MS);
 
   function onInput(v: string) {
@@ -369,13 +431,15 @@ export default function SearchPanel(props: {
    * tab: an empty buffer would be a tab to close rather than an answer.
    */
   async function openSaved(s: SavedSearch) {
-    const root = props.root;
     setCursor(DRAFT);
     setQuery(s.query);
     setOptions({ ...s.options });
     setHistory((h) => noteQuery(h, ws(), s.query, s.options));
-    const r = await runSearch(s.query);
-    if (root && r && r.matches.length) openSearchResults(root, s.query, r.matches);
+    const fresh = await runSearch(s.query);
+    if (!fresh) return;
+    const withHits = fresh.filter((sec) => sec.matches.length);
+    // Same single-root rule as the Open button, for the same reason.
+    if (withHits.length === 1) openSearchResults(withHits[0].root, s.query, withHits[0].matches);
   }
 
   // A toggle click is one deliberate act, not a keystroke, so it re-searches
@@ -395,7 +459,7 @@ export default function SearchPanel(props: {
   /** Flat list of every displayed span, in render order, so a preview response
    *  can be read back positionally. */
   const flatSpans = () =>
-    result().matches.flatMap((m) => m.submatches.map(([start, end]) => ({ text: m.text, start, end })));
+    allMatches().flatMap((m) => m.submatches.map(([start, end]) => ({ text: m.text, start, end })));
 
   /** Where each match's spans begin within `flatSpans()`. Memoised because the
    *  alternative is rescanning the result set once per rendered span, which is
@@ -403,7 +467,7 @@ export default function SearchPanel(props: {
   const previewBase = createMemo(() => {
     const base = new Map<SearchMatch, number>();
     let i = 0;
-    for (const m of result().matches) {
+    for (const m of allMatches()) {
       base.set(m, i);
       i += m.submatches.length;
     }
@@ -438,40 +502,59 @@ export default function SearchPanel(props: {
   }
   const debouncedPreview = debounce(() => void runPreview(), INPUT_DEBOUNCE_MS);
 
-  const dirtyPaths = () => dirtyRelativePaths(props.root ?? "", props.dirty ?? {});
-  const allTargets = () => replaceTargets(result().matches, result().files, dirtyPaths());
+  const dirtyPathsFor = (root: string) => dirtyRelativePaths(root, props.dirty ?? {});
+  /** One root's replace targets, built from that root's own matches and its own
+   *  digests. Keeping the fence per root is what stops a file that moved under
+   *  one member from blocking a write to another. */
+  const targetsFor = (s: SearchSection) => replaceTargets(s.matches, s.files, dirtyPathsFor(s.root));
+  /** Every root that has something to replace, each carrying its own targets.
+   *  A bare relative path is not an identity here: two members routinely hold
+   *  the same `src/index.ts`, so nothing selects a target by path alone. */
+  type RootTargets = { root: string; targets: { path: string; digest: string; matches: ReplaceSpan[] }[] };
+  const allTargets = (): RootTargets[] =>
+    sections()
+      .map((s) => ({ root: s.root, targets: targetsFor(s) }))
+      .filter((g) => g.targets.length);
+  const targetFileCount = () => allTargets().reduce((n, g) => n + g.targets.length, 0);
+  /** Any member at its cap disables Replace All for the whole set, not just for
+   *  that member. A capped section is a subset of its real matches, and one
+   *  button reading "replace everything" that quietly means "everywhere except
+   *  the repo that overflowed" is the reading worth ruling out. */
+  const anyTruncated = () => sections().some((s) => s.truncated);
 
-  /** Apply `targets`, then report and re-search. The re-search matters beyond
-   *  freshness: it is what proves on screen that the write landed. */
-  async function applyReplace(
-    targets: { path: string; digest: string; matches: ReplaceSpan[] }[],
-    skippedForDirt: string[] = [],
-  ) {
-    const root = props.root;
+  /** Apply each root's targets against that root, then report once and
+   *  re-search. The re-search matters beyond freshness: it is what proves on
+   *  screen that the write landed. */
+  async function applyReplace(groups: RootTargets[], skippedForDirt: string[] = []) {
     // One replace at a time. A second would find every digest already moved and
     // report "0 replaced, N skipped (changed on disk)" for work that in fact
     // succeeded, which reads as a failure.
-    if (!root || !targets.length || applying()) return;
+    if (!groups.length || applying()) return;
     setApplying(true);
     // A query you replaced with is one you stood behind, whether or not you
     // ever pressed Enter on it.
     commitQuery();
     try {
-      const out = await invoke<ReplaceOutcome>("replace_in_files", {
-        root,
-        query: query(),
-        options: options(),
-        replacement: replacement(),
-        targets,
-      });
-      // Deliberately NOT markSelfWrite: the buffers of open files do not hold
-      // this edit, so suppressing the watcher echo would leave a clean tab
-      // showing pre-replace text whose next save would silently revert it.
-      const skipped = [
-        ...out.skipped,
-        ...skippedForDirt.map((path) => ({ path, reason: "unsaved changes" })),
-      ];
-      setOutcome(replaceOutcome(out.occurrences, out.changed, skipped));
+      let occurrences = 0;
+      const changed: string[] = [];
+      const skipped: { path: string; reason: string }[] = [];
+      for (const g of groups) {
+        const out = await invoke<ReplaceOutcome>("replace_in_files", {
+          root: g.root,
+          query: query(),
+          options: options(),
+          replacement: replacement(),
+          targets: g.targets,
+        });
+        // Deliberately NOT markSelfWrite: the buffers of open files do not hold
+        // this edit, so suppressing the watcher echo would leave a clean tab
+        // showing pre-replace text whose next save would silently revert it.
+        occurrences += out.occurrences;
+        changed.push(...out.changed);
+        skipped.push(...out.skipped);
+      }
+      skipped.push(...skippedForDirt.map((path) => ({ path, reason: "unsaved changes" })));
+      setOutcome(replaceOutcome(occurrences, changed, skipped));
       setError(null);
       await runSearch(query());
     } catch (e) {
@@ -482,10 +565,10 @@ export default function SearchPanel(props: {
   }
 
   async function replaceAll() {
-    const targets = allTargets();
-    if (!targets.length || applying()) return;
-    const occurrences = targets.reduce((n, t) => n + t.matches.length, 0);
-    const files = targets.length;
+    const groups = allTargets();
+    if (!groups.length || applying()) return;
+    const occurrences = groups.reduce((n, g) => n + g.targets.reduce((m, t) => m + t.matches.length, 0), 0);
+    const files = targetFileCount();
     const ok = props.confirm
       ? await props.confirm({
           title: `Replace ${occurrences} ${occurrences === 1 ? "occurrence" : "occurrences"} in ${files} ${files === 1 ? "file" : "files"}?`,
@@ -494,26 +577,37 @@ export default function SearchPanel(props: {
         })
       : true;
     if (!ok) return;
-    await applyReplace(targets, dirtyPaths().filter((p) => result().matches.some((m) => m.path === p)));
+    const dirtyHits = sections().flatMap((s) =>
+      dirtyPathsFor(s.root).filter((p) => s.matches.some((m) => m.path === p)),
+    );
+    await applyReplace(groups, dirtyHits);
   }
 
-  function replaceFile(path: string) {
-    void applyReplace(allTargets().filter((t) => t.path === path));
+  function replaceFile(root: string, path: string) {
+    const g = allTargets().find((x) => x.root === root);
+    const targets = g?.targets.filter((t) => t.path === path) ?? [];
+    if (targets.length) void applyReplace([{ root, targets }]);
   }
 
-  function replaceOne(m: SearchMatch, span: Submatch) {
-    const target = allTargets().find((t) => t.path === m.path);
+  function replaceOne(root: string, m: SearchMatch, span: Submatch) {
+    const target = allTargets()
+      .find((x) => x.root === root)
+      ?.targets.find((t) => t.path === m.path);
     if (!target) return;
     void applyReplace([
-      { ...target, matches: [{ line: m.line, start: span[0], end: span[1] }] },
+      { root, targets: [{ ...target, matches: [{ line: m.line, start: span[0], end: span[1] }] }] },
     ]);
   }
 
+  // Keyed on the searched root set and the workspace, deliberately not on
+  // `props.root`: inside a Feature that is the *active member*, and clicking a
+  // Toolbar chip to read another member's file must not spend a search that
+  // spans all of them. A real workspace change moves both of these.
   createEffect(
     on(
-      () => props.root,
+      () => `${props.workspace ?? ""}\u0000${rootsKey()}`,
       () => {
-        setResult(EMPTY_RESULT);
+        setSections([]);
         setError(null);
         // Everything below is scoped to a workspace, and none of it means
         // anything in the next one: a cursor indexes the history that was
@@ -536,7 +630,7 @@ export default function SearchPanel(props: {
   // not just a read: reopening the row after the results changed underneath it
   // would otherwise show no preview until the replacement was retyped.
   createEffect(
-    on([replacement, result, showReplace], () => {
+    on([replacement, sections, showReplace], () => {
       if (showReplace()) debouncedPreview();
       else setPreview([]);
     }),
@@ -547,7 +641,7 @@ export default function SearchPanel(props: {
   // nothing to do with.
   createEffect(
     on(
-      [query, options, () => props.root],
+      [query, options, rootsKey],
       () => setOutcome(null),
       { defer: true },
     ),
@@ -565,20 +659,31 @@ export default function SearchPanel(props: {
     ),
   );
 
-  function openMatch(path: string, line: number) {
-    const root = props.root;
-    if (root) emitWith(OPEN_IN_EDITOR, { path: `${root}/${path}`, line });
+  function openMatch(root: string, path: string, line: number) {
+    emitWith(OPEN_IN_EDITOR, { path: `${root}/${path}`, line });
   }
+
+  /** The one section a results buffer can be built from, or null.
+   *
+   *  `SearchDoc` still holds a single root and rows relative to it, so a set
+   *  spanning members has no honest document yet: every row would resolve
+   *  against one member's folder and write into the wrong repo. Refused here
+   *  rather than half-built, until the doc carries the root per row (#156
+   *  phase 3). One member with hits is the ordinary case and still works. */
+  const bufferable = () => {
+    const withHits = sections().filter((s) => s.matches.length);
+    return withHits.length === 1 ? withHits[0] : null;
+  };
 
   /** Hand the current results to an editable buffer, as a tab. The matches go
    *  as they are: the buffer's whole claim is that each row is the line the
    *  search read, so re-deriving them here would give it a second answer to be
    *  wrong about. */
   function openResultsBuffer() {
-    const root = props.root;
-    if (!root || !result().matches.length) return;
+    const s = bufferable();
+    if (!s) return;
     commitQuery();
-    openSearchResults(root, query(), result().matches);
+    openSearchResults(s.root, query(), s.matches);
   }
 
   let unlistenFs: UnlistenFn | undefined;
@@ -587,8 +692,16 @@ export default function SearchPanel(props: {
   });
   onMount(async () => {
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
-      if (e.payload.root && e.payload.root !== props.root) return;
-      if (query()) debouncedRefresh();
+      if (!query()) return;
+      const changed = e.payload.root;
+      // An event names one root, so only that root is re-grepped and its section
+      // is merged back over the others. Re-running the whole fan-out would cost
+      // one grep per member per burst, in exactly the Feature that has an agent
+      // writing in one of them. An event with no root refreshes everything.
+      if (!changed) return debouncedRefresh();
+      if (!searchRoots().some((r) => r.path === changed)) return;
+      dirtyRoots.add(changed);
+      debouncedRefreshRoots();
     });
   });
   onCleanup(() => {
@@ -598,13 +711,16 @@ export default function SearchPanel(props: {
     // whose signals nothing reads any more.
     debouncedSearch.cancel();
     debouncedRefresh.cancel();
+    debouncedRefreshRoots.cancel();
     debouncedGlobs.cancel();
     debouncedPreview.cancel();
   });
 
-  const groups = () => groupByFile(result().matches);
-  const notice = () =>
-    truncationNotice(result().truncated, MAX_RESULTS, countOccurrences(result().matches));
+  /** Per section, never once for the set: a cap reached in one repo says nothing
+   *  about another, and one notice over three members names none of them. */
+  const noticeFor = (s: SearchSection) =>
+    truncationNotice(s.truncated, MAX_RESULTS, countOccurrences(s.matches));
+  const hitCount = () => allMatches().length;
 
   return (
     <div class={styles.searchPanel}>
@@ -646,14 +762,14 @@ export default function SearchPanel(props: {
               // to survive the control being disabled.
               tooltipWhenDisabled
               tooltip={
-                result().truncated
+                anyTruncated()
                   ? "Refine the search first: Replace All is disabled while results are capped"
                   : "Replace all"
               }
               // A capped result set is a subset of the real matches, so a
               // "replace everything" that silently means "replace the first 500"
               // is the one action that must not be offered here.
-              disabled={result().truncated || !allTargets().length || applying()}
+              disabled={anyTruncated() || !allTargets().length || applying()}
               onClick={() => void replaceAll()}
             />
           </div>
@@ -688,8 +804,13 @@ export default function SearchPanel(props: {
             size="xs"
             icon={<Icon icon={FilePen} size={14} />}
             aria-label="Edit results in a buffer"
-            tooltip="Edit results in a buffer and write them back"
-            disabled={!result().matches.length}
+            tooltipWhenDisabled
+            tooltip={
+              hitCount() && !bufferable()
+                ? "Hits in more than one member: narrow the search to one to edit them as a buffer"
+                : "Edit results in a buffer and write them back"
+            }
+            disabled={!bufferable()}
             onClick={openResultsBuffer}
           />
           <IconButton
@@ -854,81 +975,124 @@ export default function SearchPanel(props: {
       <Show when={!error() && !query()}>
         <div class="tree-empty">Type to search the project</div>
       </Show>
-      <Show when={!error() && query() && !loading() && !result().matches.length}>
+      <Show when={!error() && query() && !loading() && !hitCount()}>
         <div class="tree-empty">No matches</div>
-      </Show>
-      <Show when={notice()}>
-        <div class={styles.truncatedNotice}>{notice()}</div>
       </Show>
       <Show when={outcome()}>
         <div class={styles.outcome}>{outcome()}</div>
       </Show>
       <div class={styles.results}>
-        <For each={groups()}>
-          {(group) => (
-            <div class={styles.fileGroup}>
-              <div class={styles.fileHeader} title={group.path}>
-                <span class={styles.filePath}>{group.path}</span>
-                <span class={styles.matchCount}>{group.matches.length}</span>
-                <Show when={showReplace() && replacement()}>
-                  <IconButton
-                    size="xs"
-                    class={styles.rowAction}
-                    icon={<Icon icon={Replace} size={12} />}
-                    aria-label={`Replace in ${group.path}`}
-                    tooltip={`Replace in ${group.path}`}
-                    disabled={dirtyPaths().includes(group.path) || applying()}
-                    onClick={() => replaceFile(group.path)}
-                  />
-                </Show>
-              </div>
-              <For each={group.matches}>
-                {(m) => (
-                  <div class={styles.matchRow} onClick={() => openMatch(m.path, m.line)}>
-                    <span class={styles.matchLine}>{m.line}</span>
-                    <span class={styles.matchText}>
-                      <For each={splitHighlights(m.text, m.submatches)}>
-                        {(seg) =>
-                          seg.hit ? <mark class={styles.hit}>{seg.text}</mark> : <>{seg.text}</>
-                        }
-                      </For>
+        {/* Sections iterate over the roots, not over `sections()`: a member with
+            no worktree never runs a grep and so has no result to iterate, yet it
+            still needs a header to say why it is empty. */}
+        <For each={allRoots()}>
+          {(member) => {
+            const found = () => sectionOf(member.path);
+            const unusable = () => member.state?.usable === false;
+            const files = () => groupByFile(found()?.matches ?? []);
+            return (
+              <div class={styles.section} data-root={member.path}>
+                <Show when={headed()}>
+                  <div class={styles.sectionHeader}>
+                    <span
+                      class={styles.chip}
+                      style={member.tint ? { "--chip-hue": member.tint } : undefined}
+                      aria-hidden="true"
+                    >
+                      {memberInitials({ displayName: member.label, repoPath: member.repoPath })}
                     </span>
-                    <Show when={showReplace() && replacement()}>
-                      <span class={styles.previewText}>
-                        <For each={m.submatches}>
-                          {(span, i) => {
-                            const next = () => preview()[previewIndex(m, i())];
-                            return (
-                              <Show when={next() != null}>
-                                <span class={styles.previewPair}>
-                                  <del class={styles.previewOld}>
-                                    {m.text.slice(span[0], span[1])}
-                                  </del>
-                                  <ins class={styles.previewNew}>{next()}</ins>
-                                  <IconButton
-                                    size="xs"
-                                    class={styles.rowAction}
-                                    icon={<Icon icon={Replace} size={12} />}
-                                    aria-label={`Replace this occurrence on line ${m.line}`}
-                                    tooltip="Replace this occurrence"
-                                    disabled={dirtyPaths().includes(m.path) || applying()}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      replaceOne(m, span);
-                                    }}
-                                  />
-                                </span>
-                              </Show>
-                            );
-                          }}
-                        </For>
-                      </span>
+                    <span class={styles.sectionName}>{member.label}</span>
+                    <Show when={!unusable()}>
+                      <span class={styles.matchCount}>{found()?.matches.length ?? 0}</span>
                     </Show>
                   </div>
-                )}
-              </For>
-            </div>
-          )}
+                </Show>
+                {/* Three ways a section says nothing was found, and they are not
+                    the same answer: it could not be searched, it failed, or it
+                    was searched and had no hits. */}
+                <Show when={unusable()}>
+                  <div class="tree-empty">{member.state?.label}: not searched</div>
+                </Show>
+                <Show when={found()?.error}>
+                  <div class="tree-empty">{found()!.error}</div>
+                </Show>
+                <Show when={found() && noticeFor(found()!)}>
+                  <div class={styles.truncatedNotice}>{noticeFor(found()!)}</div>
+                </Show>
+                <For each={files()}>
+                  {(group) => (
+                    <div class={styles.fileGroup}>
+                      <div class={styles.fileHeader} title={group.path}>
+                        <span class={styles.filePath}>{group.path}</span>
+                        <span class={styles.matchCount}>{group.matches.length}</span>
+                        <Show when={showReplace() && replacement()}>
+                          <IconButton
+                            size="xs"
+                            class={styles.rowAction}
+                            icon={<Icon icon={Replace} size={12} />}
+                            aria-label={`Replace in ${group.path}`}
+                            tooltip={`Replace in ${group.path}`}
+                            disabled={dirtyPathsFor(member.path).includes(group.path) || applying()}
+                            onClick={() => replaceFile(member.path, group.path)}
+                          />
+                        </Show>
+                      </div>
+                      <For each={group.matches}>
+                        {(m) => (
+                          <div
+                            class={styles.matchRow}
+                            onClick={() => openMatch(member.path, m.path, m.line)}
+                          >
+                            <span class={styles.matchLine}>{m.line}</span>
+                            <span class={styles.matchText}>
+                              <For each={splitHighlights(m.text, m.submatches)}>
+                                {(seg) =>
+                                  seg.hit ? <mark class={styles.hit}>{seg.text}</mark> : <>{seg.text}</>
+                                }
+                              </For>
+                            </span>
+                            <Show when={showReplace() && replacement()}>
+                              <span class={styles.previewText}>
+                                <For each={m.submatches}>
+                                  {(span, i) => {
+                                    const next = () => preview()[previewIndex(m, i())];
+                                    return (
+                                      <Show when={next() != null}>
+                                        <span class={styles.previewPair}>
+                                          <del class={styles.previewOld}>
+                                            {m.text.slice(span[0], span[1])}
+                                          </del>
+                                          <ins class={styles.previewNew}>{next()}</ins>
+                                          <IconButton
+                                            size="xs"
+                                            class={styles.rowAction}
+                                            icon={<Icon icon={Replace} size={12} />}
+                                            aria-label={`Replace this occurrence on line ${m.line}`}
+                                            tooltip="Replace this occurrence"
+                                            disabled={
+                                              dirtyPathsFor(member.path).includes(m.path) || applying()
+                                            }
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              replaceOne(member.path, m, span);
+                                            }}
+                                          />
+                                        </span>
+                                      </Show>
+                                    );
+                                  }}
+                                </For>
+                              </span>
+                            </Show>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  )}
+                </For>
+              </div>
+            );
+          }}
         </For>
       </div>
     </div>

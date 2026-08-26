@@ -6,11 +6,14 @@ import {
   dirtyRelativePaths,
   grepArgs,
   isUnsupported,
+  mergeSearchResults,
   replaceOutcome,
   replaceTargets,
   splitHighlights,
   truncationNotice,
+  unionUnsupported,
   type SearchOptions,
+  type SearchResult,
 } from "./searchOptions";
 
 describe("defaults", () => {
@@ -258,5 +261,97 @@ describe("splitHighlights", () => {
     ] as [number, number][][]) {
       expect(join(splitHighlights("ab cd ab", spans))).toBe("ab cd ab");
     }
+  });
+});
+
+describe("mergeSearchResults", () => {
+  const result = (over: Partial<SearchResult> = {}): SearchResult => ({
+    matches: [],
+    truncated: false,
+    backend: "rg",
+    unsupported: [],
+    files: [],
+    ...over,
+  });
+  const hit = (path: string) => ({ path, line: 1, text: "needle", submatches: [[0, 6]] as [number, number][] });
+
+  const FAN = [
+    {
+      root: "/feat/api",
+      result: result({
+        matches: [hit("src/main.rs")],
+        files: [{ path: "src/main.rs", digest: "a" }],
+        truncated: true,
+      }),
+    },
+    {
+      root: "/feat/web",
+      result: result({ matches: [hit("src/App.tsx")], backend: "plain", unsupported: ["noIgnore"] }),
+    },
+    { root: "/feat/docs", error: "grep: permission denied" },
+  ];
+
+  it("keeps one section per root, in the order the legs came in", () => {
+    expect(mergeSearchResults(FAN).sections.map((s) => s.root)).toEqual([
+      "/feat/api",
+      "/feat/web",
+      "/feat/docs",
+    ]);
+  });
+
+  it("keeps truncation on the section that hit the cap, not the whole set", () => {
+    const [api, web] = mergeSearchResults(FAN).sections;
+    expect(api.truncated).toBe(true);
+    expect(web.truncated).toBe(false);
+  });
+
+  it("unions the options no searched backend can honour", () => {
+    expect(mergeSearchResults(FAN).unsupported).toEqual(["noIgnore"]);
+  });
+
+  it("gives a failed root its own section and leaves the others intact", () => {
+    const { sections } = mergeSearchResults(FAN);
+    expect(sections[2]).toEqual({
+      root: "/feat/docs",
+      matches: [],
+      files: [],
+      truncated: false,
+      backend: "",
+      unsupported: [],
+      error: "grep: permission denied",
+    });
+    expect(sections[0].matches).toHaveLength(1);
+    expect(sections[1].matches).toHaveLength(1);
+  });
+
+  it("carries each root's digests separately, so a replace stays fenced", () => {
+    const { sections } = mergeSearchResults(FAN);
+    expect(sections[0].files).toEqual([{ path: "src/main.rs", digest: "a" }]);
+    expect(sections[1].files).toEqual([]);
+  });
+
+  it("merges nothing into nothing", () => {
+    expect(mergeSearchResults([])).toEqual({ sections: [], unsupported: [] });
+  });
+});
+
+describe("unionUnsupported", () => {
+  it("de-duplicates and keeps first-seen order", () => {
+    const r = (unsupported: string[]): SearchResult => ({
+      matches: [],
+      truncated: false,
+      backend: "plain",
+      unsupported,
+      files: [],
+    });
+    expect(unionUnsupported([r(["noIgnore", "wholeWord"]), r(["wholeWord"]), r(["regex"])])).toEqual([
+      "noIgnore",
+      "wholeWord",
+      "regex",
+    ]);
+  });
+
+  it("ignores a root that never answered", () => {
+    expect(unionUnsupported([null, undefined])).toEqual([]);
   });
 });

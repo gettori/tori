@@ -269,3 +269,54 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* One member's results. Mirrors the file tree's section chrome, since the two
+   panels draw the same member list and a Feature reads as one thing only if
+   they agree on what a member looks like. */
+.section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Sticky, so the member a hit belongs to stays named while its files scroll.
+   Offset is 0: unlike the tree this list has no toolbar above it inside the
+   scroller, the input bar sits outside. */
+.sectionHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* The member's Space colour arrives as one custom property; a member outside
+   every Space leaves it at the neutral default. */
+.chip {
+  --chip-hue: var(--fg-muted);
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(20px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+  padding-inline: calc(4px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  color: var(--chip-hue);
+  background: color-mix(in srgb, var(--chip-hue) 18%, transparent);
+  font-size: var(--sway-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.sectionName {
+  flex: 1;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

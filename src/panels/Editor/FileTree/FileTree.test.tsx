@@ -886,8 +886,8 @@ describe("a Feature's member roots", () => {
   const B = "/feat/web";
 
   const MEMBERS: TreeRoot[] = [
-    { path: A, label: "Payments API" },
-    { path: B, label: "Web App" },
+    { path: A, repoPath: "/repos/api", label: "Payments API" },
+    { path: B, repoPath: "/repos/web", label: "Web App" },
   ];
 
   const sectionOf = (path: string) => document.querySelector(`[data-root="${path}"]`) as HTMLElement;
@@ -1094,8 +1094,8 @@ describe("restoring what was open", () => {
   const A = "/feat/api";
   const B = "/feat/web";
   const MEMBERS: TreeRoot[] = [
-    { path: A, label: "Payments API" },
-    { path: B, label: "Web App" },
+    { path: A, repoPath: "/repos/api", label: "Payments API" },
+    { path: B, repoPath: "/repos/web", label: "Web App" },
   ];
 
   const sectionOf = (path: string) => document.querySelector(`[data-root="${path}"]`) as HTMLElement;
@@ -1182,7 +1182,7 @@ describe("restoring what was open", () => {
     render(() => (
       <FileTree
         root={null}
-        roots={[...MEMBERS, { path: C, label: "Database" }]}
+        roots={[...MEMBERS, { path: C, repoPath: "/repos/db", label: "Database" }]}
         persistKey={WS}
       />
     ));
@@ -1252,8 +1252,8 @@ describe("the file tree, to axe", () => {
       <FileTree
         root={null}
         roots={[
-          { path: "/feat/api", label: "Payments API" },
-          { path: "/feat/web", label: "Web App", state: memberState({ kind: "worktree-missing" }) },
+          { path: "/feat/api", repoPath: "/repos/api", label: "Payments API" },
+          { path: "/feat/web", repoPath: "/repos/web", label: "Web App", state: memberState({ kind: "worktree-missing" }) },
         ]}
         editable
         noun="member folder"

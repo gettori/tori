@@ -791,7 +791,15 @@ export default function Editor(props: {
   const featureId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
   const members = createFeatureMembers(featureId);
   const treeRoots = (): TreeRoot[] | undefined =>
-    featureId() ? members().map((m) => ({ path: m.key, label: m.label, tint: m.hue, state: m.state })) : undefined;
+    featureId()
+      ? members().map((m) => ({
+          path: m.key,
+          repoPath: m.member.repoPath,
+          label: m.label,
+          tint: m.hue,
+          state: m.state,
+        }))
+      : undefined;
 
   // The tree hands back the section key, which is the worktree when there is one
   // and the repo folder otherwise; the backend wants the repo either way.
@@ -2495,6 +2503,7 @@ export default function Editor(props: {
           <Match when={rightMode() === "search"}>
             <SearchPanel
               root={root()}
+              roots={treeRoots()}
               workspace={ws()}
               focusNonce={searchFocusNonce()}
               dirty={dirty()}
