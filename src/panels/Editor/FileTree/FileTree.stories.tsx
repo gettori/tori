@@ -54,10 +54,13 @@ function stubHost() {
 // The tints come from the same helper the sidebar's chips use, so a swatch here
 // is the swatch a member's Space would actually paint.
 const MEMBERS: TreeRoot[] = [
-  { path: API, label: "Payments API", tint: spaceHue("backend", "Indigo") },
-  { path: WEB, label: "Web App", tint: spaceHue("frontend", "Emerald") },
+  { path: API, repoPath: "/repos/api", label: "Payments API", tint: spaceHue("backend", "Indigo") },
+  { path: WEB, repoPath: "/repos/web", label: "Web App", tint: spaceHue("frontend", "Emerald") },
   {
+    // No worktree, so the section path is the repo itself, exactly as
+    // `tintedMember` mints it.
     path: DOCS,
+    repoPath: DOCS,
     label: "Docs Site",
     tint: spaceHue("docs", "Amber"),
     state: memberState({ kind: "worktree-missing" }),

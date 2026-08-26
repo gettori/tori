@@ -17,6 +17,26 @@ export type SearchOptions = {
 /** UTF-16 code-unit offsets into a match's `text`, as the backend emits them. */
 export type Submatch = [number, number];
 
+/** One match, as `grep_project` reports it: a root-relative path, a 1-based
+ *  line, that line's text, and the spans inside it. */
+export type SearchMatch = { path: string; line: number; text: string; submatches: Submatch[] };
+
+/** A file's size+mtime digest, the staleness guard a replace is fenced on. */
+export type FileDigest = { path: string; digest: string };
+
+/** What one `grep_project` call answers with. Here rather than in the panel
+ *  because the merge below consumes it, and a shape the pure module cannot name
+ *  is a shape its tests cannot build. */
+export type SearchResult = {
+  matches: SearchMatch[];
+  truncated: boolean;
+  /** Which backend ran: `rg`, `git` or `plain`. */
+  backend: string;
+  /** Option names this backend cannot honour, so a toggle never sits inert. */
+  unsupported: string[];
+  files: FileDigest[];
+};
+
 export const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
   case: false,
   regex: false,
@@ -64,6 +84,73 @@ export function grepArgs(root: string, query: string, options: SearchOptions, ma
  *  disable that toggle rather than let it sit there doing nothing. */
 export function isUnsupported(unsupported: string[], key: ToggleKey): boolean {
   return unsupported.includes(key);
+}
+
+/** One root's leg of a fan-out: what it answered, or how it failed. A leg has
+ *  one or the other, never both. */
+export type RootOutcome = { root: string; result?: SearchResult | null; error?: string | null };
+
+/** One member's worth of the merged result set. `error` is the only field that
+ *  can be set with the rest empty: a member whose grep failed still gets a
+ *  section, so its failure is reported where it happened rather than swallowing
+ *  the members that succeeded. */
+export type SearchSection = {
+  root: string;
+  matches: SearchMatch[];
+  files: FileDigest[];
+  truncated: boolean;
+  backend: string;
+  /** This root's own unsupported list, kept beside the union so a tooltip can
+   *  name the backend that actually blocked the toggle. */
+  unsupported: string[];
+  error: string | null;
+};
+
+export type MergedSearch = {
+  sections: SearchSection[];
+  /** Every option no searched backend could honour. */
+  unsupported: string[];
+};
+
+const EMPTY_SECTION = { matches: [], files: [], truncated: false, backend: "", unsupported: [] };
+
+/** The options no backend in `results` can honour, in first-seen order.
+ *
+ *  A union rather than an intersection: a toggle that one member would silently
+ *  ignore is a toggle whose result set would be a lie for that member, so it is
+ *  disabled for all of them. Only the roots that answered contribute; a root
+ *  that failed reported no capabilities to union in. */
+export function unionUnsupported(results: (SearchResult | null | undefined)[]): string[] {
+  const out: string[] = [];
+  for (const r of results) {
+    for (const key of r?.unsupported ?? []) if (!out.includes(key)) out.push(key);
+  }
+  return out;
+}
+
+/** Fold a fan-out into per-member sections plus the capability union.
+ *
+ *  Section order is the order the legs came in, which is member order: the
+ *  panel's sections must not reshuffle because one member's grep was quicker.
+ *  Truncation stays per section, since a cap reached in one repo says nothing
+ *  about another. */
+export function mergeSearchResults(entries: RootOutcome[]): MergedSearch {
+  return {
+    sections: entries.map(({ root, result, error }) => ({
+      root,
+      ...(result
+        ? {
+            matches: result.matches,
+            files: result.files,
+            truncated: result.truncated,
+            backend: result.backend,
+            unsupported: result.unsupported,
+          }
+        : EMPTY_SECTION),
+      error: error ?? null,
+    })),
+    unsupported: unionUnsupported(entries.map((e) => e.result)),
+  };
 }
 
 /** Total match spans across every result line. Distinct from the number of
