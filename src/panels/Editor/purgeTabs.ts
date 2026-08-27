@@ -10,6 +10,7 @@
 
 import { isUnderPath } from "../../utils/pathScope";
 import { tabScopePath } from "../../utils/syntheticTabs";
+import { searchBufferRoots } from "./searchResultsStore";
 
 export type PathTab = { path: string };
 
@@ -32,16 +33,22 @@ export type TabMaps<T extends PathTab> = {
  * A synthetic tab (`sway://…`) is matched on the workspace its id carries, not
  * on the id itself, so a deleted space takes its commit-log tabs with it rather
  * than leaving views onto a folder that is gone.
+ *
+ * `rootsOf` is the one exception, and the reason it is injected: a results
+ * buffer's id carries a workspace *key*, which inside a Feature is not a folder
+ * at all, so only the document knows which repos its rows write into. It stays
+ * a parameter so this module is still testable without the buffer store.
  */
 export function purgeTabsUnder<T extends PathTab>(
   maps: TabMaps<T>,
   root: string,
+  rootsOf: (id: string) => string[] | null = searchBufferRoots,
 ): TabMaps<T> & { removed: string[] } {
   const removed: string[] = [];
   const tabs: Record<string, T[]> = {};
   for (const [ws, list] of Object.entries(maps.tabs)) {
     tabs[ws] = list.filter((t) => {
-      const gone = isUnderPath(tabScopePath(t.path), root);
+      const gone = scopes(t.path, rootsOf).some((p) => isUnderPath(p, root));
       if (gone) removed.push(t.path);
       return !gone;
     });
@@ -59,4 +66,17 @@ export function purgeTabsUnder<T extends PathTab>(
     }
   }
   return { tabs, active, removed };
+}
+
+/**
+ * The folders a tab is scoped to. One for nearly everything; a results buffer
+ * answers with every member it spans, and any of them under the purge takes it.
+ *
+ * Dropped rather than trimmed: the line map is fixed at build time and the
+ * buffer forbids a line-count change, so a partly invalidated document cannot
+ * be repaired into an honest one.
+ */
+function scopes(id: string, rootsOf: (id: string) => string[] | null): string[] {
+  const roots = rootsOf(id);
+  return roots?.length ? roots : [tabScopePath(id)];
 }

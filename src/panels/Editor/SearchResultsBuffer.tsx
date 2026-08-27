@@ -14,6 +14,7 @@ import {
   renderLines,
   settle,
   type ApplyOutcome,
+  type DocFile,
   type FileEdits,
   type SearchDoc,
 } from "./searchResultsDoc";
@@ -60,39 +61,50 @@ function guardEdits(doc: () => SearchDoc, refuse: (why: string) => void): Extens
  * panel's replace refuses to make, because it leaves a clean tab showing
  * pre-write text whose next save reverts the write.
  */
-async function writeBack(root: string, groups: FileEdits[]): Promise<ApplyOutcome> {
-  const written: string[] = [];
-  const inBuffer: string[] = [];
-  const refused: { file: string; reason: string }[] = [];
-  const toDisk: FileEdits[] = [];
+async function writeBack(groups: FileEdits[]): Promise<ApplyOutcome> {
+  const written: DocFile[] = [];
+  const inBuffer: DocFile[] = [];
+  const refused: (DocFile & { reason: string })[] = [];
+  // `apply_line_edits` takes one root, so the batch is split by member and each
+  // part is sent against its own. Grouped rather than one call per file so a
+  // member still writes in a single command, as it always did.
+  const toDisk = new Map<string, FileEdits[]>();
 
   for (const group of groups) {
-    const abs = `${root}/${group.path}`;
+    const abs = `${group.root}/${group.path}`;
     if (!dirtyBuffers([abs]).length) {
-      toDisk.push(group);
+      const here = toDisk.get(group.root);
+      if (here) here.push(group);
+      else toDisk.set(group.root, [group]);
       continue;
     }
     const outcome = patchBuffer(abs, group.edits);
-    if (outcome === "applied") inBuffer.push(group.path);
+    if (outcome === "applied") inBuffer.push({ root: group.root, file: group.path });
     else {
       refused.push({
+        root: group.root,
         file: group.path,
         reason: outcome === "stale" ? "changed since the search" : "no longer open",
       });
     }
   }
 
-  if (toDisk.length) {
+  for (const [root, files] of toDisk) {
     // Marked twice, as the cross-file rename is: once to cover an echo that
     // arrives while the batch is still writing, and once from the moment it
     // finished, so the watcher's own debounce still lands inside the window.
     // The second pass names only what was written, so a refused file does not
     // keep a genuine external edit suppressed.
-    for (const group of toDisk) markSelfWrite(`${root}/${group.path}`);
-    const out = await invoke<ApplyResult>("apply_line_edits", { root, files: toDisk });
+    for (const group of files) markSelfWrite(`${root}/${group.path}`);
+    const out = await invoke<ApplyResult>("apply_line_edits", {
+      root,
+      // The root is stripped: it is this call's argument, and the backend's
+      // per-file struct has no field for it.
+      files: files.map(({ path, edits }) => ({ path, edits })),
+    });
     for (const rel of out.changed) markSelfWrite(`${root}/${rel}`);
-    written.push(...out.changed);
-    refused.push(...out.skipped.map((s) => ({ file: s.path, reason: s.reason })));
+    written.push(...out.changed.map((file) => ({ root, file })));
+    refused.push(...out.skipped.map((s) => ({ root, file: s.path, reason: s.reason })));
     for (const rel of out.changed) {
       const abs = `${root}/${rel}`;
       if (liveBufferText(abs) === null) continue;
@@ -154,10 +166,10 @@ export default function SearchResultsBuffer(props: { id: string }) {
     setApplying(true);
     setRefusal(null);
     try {
-      const out = await writeBack(e.doc.root, groups);
+      const out = await writeBack(groups);
       e.doc = settle(e.doc, lines, out);
       repaint();
-      setOutcome(describeApply(out));
+      setOutcome(describeApply(e.doc, out));
     } catch (err) {
       setOutcome(`Could not write back: ${String(err)}`);
     } finally {
