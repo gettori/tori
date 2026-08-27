@@ -103,9 +103,11 @@ function unmetReason(req: Requirement): string | null {
     case "gitRoot":
       return editorState().projectRoot ? null : "Select a branch first";
     case "staged":
-      return stagedFiles().length ? null : "Nothing staged";
+      // Scoped to the root the git commands will actually act on, which inside
+      // a Feature is the member owning the file in front, not the workspace.
+      return stagedFiles(editorState().projectRoot).length ? null : "Nothing staged";
     case "ahead":
-      return canPush() ? null : "Nothing to push";
+      return canPush(editorState().projectRoot) ? null : "Nothing to push";
     case "sourceActions":
       return offersAnySourceAction()
         ? null

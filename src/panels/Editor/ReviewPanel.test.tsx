@@ -80,6 +80,10 @@ let statusByRoot: Record<string, FileStatus[]> | null = null;
 let statusArgs: string[] = [];
 let diffArgs: { projectPath: string; file: string }[] = [];
 let stageArgs: { projectPath: string; paths: string[] }[] = [];
+// Which repo the checkpoint timeline read its backstops from. It has to be the
+// same member the commit box is about, or the strip lists one member's history
+// against another member's changes.
+let backstopRoots: string[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: unknown) => {
@@ -112,6 +116,9 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "git_apply_lines":
         applyLineArgs.push(args);
         return Promise.resolve(null);
+      case "backstop_list":
+        backstopRoots.push((args as { repoPath: string }).repoPath);
+        return Promise.resolve([]);
       case "git_stash_list":
         calls.stashList += 1;
         return Promise.resolve(stashRows);
@@ -248,6 +255,7 @@ beforeEach(async () => {
   statusArgs = [];
   diffArgs = [];
   stageArgs = [];
+  backstopRoots = [];
   aheadBehind = null;
   branches = [];
   headMsg = "";
@@ -1391,5 +1399,95 @@ describe("inside a Feature", () => {
     window.dispatchEvent(new Event("focus"));
 
     await waitFor(() => expect(new Set(statusArgs)).toEqual(new Set([A, B])));
+  });
+});
+
+// Phase 3: one member at a time. The commit box, its draft and the checkpoint
+// strip are one-repo surfaces, so which repo they mean has to be a single
+// answer, visible on screen and the same for all three.
+describe("the member a Feature commits in", () => {
+  const A = "/feat/api";
+  const B = "/feat/web";
+  const READY = { label: "Ready", usable: true, action: null, reason: null };
+  const MEMBERS = [
+    { path: A, repoPath: "/r/api", label: "api", tint: "200", state: READY },
+    { path: B, repoPath: "/r/web", label: "web", state: READY },
+  ];
+  const SESSION = { sessionId: "s1", agent: "claude", folderPath: A, sessionCwd: A };
+
+  /** Two members, each with one staged file, and a tab open in `activePath`. */
+  async function mountWithActive(activePath: string | null, selected: unknown = null) {
+    statusByRoot = {
+      [A]: [{ status: "M ", path: "src/index.ts", staged: true, unstaged: false }],
+      [B]: [{ status: "M ", path: "src/index.ts", staged: true, unstaged: false }],
+    };
+    enterRoots([A, B], A);
+    render(() => (
+      <ReviewPanel root={A} roots={MEMBERS as never} activePath={activePath} selected={selected as never} />
+    ));
+    await waitFor(() => expect(document.querySelectorAll("[data-root]").length).toBe(2));
+    await waitFor(() => expect(handlers["fs://changed"]?.length).toBeGreaterThan(1));
+  }
+
+  /** The commit box's own Commit, not a member header's. */
+  const commitBox = () => screen.getByPlaceholderText("Summary").parentElement!;
+
+  async function commitWith(message: string) {
+    fireEvent.input(screen.getByPlaceholderText("Summary"), { target: { value: message } });
+    fireEvent.click(within(commitBox()).getByText("Commit"));
+    await waitFor(() => expect(commitArgs).toHaveLength(1));
+  }
+
+  it("follows the file in front, and says which member that is", async () => {
+    // The member in front is A; the file being looked at is B's. The changes
+    // on screen are B's, so the message is about B.
+    await mountWithActive(`${B}/src/index.ts`);
+
+    expect(screen.getByText("Committing in web")).toBeTruthy();
+    await commitWith("Say what changed");
+    expect(commitArgs[0]).toMatchObject({ projectPath: B });
+  });
+
+  it("falls back to the member in front with no file open", async () => {
+    await mountWithActive(null);
+
+    expect(screen.getByText("Committing in api")).toBeTruthy();
+    await commitWith("Say what changed");
+    expect(commitArgs[0]).toMatchObject({ projectPath: A });
+  });
+
+  it("keeps the member a section's Commit button named, even as the file in front moves", async () => {
+    // An explicit choice is the one thing on screen saying where the message
+    // lands, so it stays put rather than moving under the reader.
+    await mountWithActive(`${A}/src/index.ts`);
+    fireEvent.click(screen.getByRole("button", { name: "Commit in web" }));
+
+    await waitFor(() => expect(screen.getByText("Committing in web")).toBeTruthy());
+    await commitWith("Say what changed");
+    expect(commitArgs[0]).toMatchObject({ projectPath: B });
+  });
+
+  it("names the drafted paths the way the session can resolve them", async () => {
+    // The agent is running in A. A bare "src/index.ts" would name A's file
+    // while meaning B's, so the mention goes out absolute instead.
+    await mountWithActive(`${B}/src/index.ts`, SESSION);
+    const sent: { text: string }[] = [];
+    const onSend = (e: Event) => sent.push((e as CustomEvent<{ text: string }>).detail);
+    window.addEventListener(SEND_TO_SESSION, onSend);
+
+    fireEvent.click(screen.getByText("Ask agent to draft"));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    window.removeEventListener(SEND_TO_SESSION, onSend);
+
+    expect(sent[0].text).toContain(`${B}/src/index.ts`);
+  });
+
+  it("points the checkpoint strip at the same member the box is about", async () => {
+    await mountWithActive(`${B}/src/index.ts`, SESSION);
+
+    // Both of the strip's roots move together: a `root` that followed the file
+    // while `folderPath` stayed would list A's sessions over B's checkpoints.
+    await waitFor(() => expect(backstopRoots).toContain(B));
+    expect(backstopRoots).not.toContain(A);
   });
 });

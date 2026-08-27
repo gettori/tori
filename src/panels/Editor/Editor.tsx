@@ -146,7 +146,7 @@ import {
   type FsChanged,
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
-import { selectionRoot, workspaceKey } from "../../utils/features";
+import { rootOf, selectionRoot, workspaceKey } from "../../utils/features";
 import { createFeatureMembers } from "../../utils/featureMembers";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
@@ -161,7 +161,7 @@ import {
   startGitWatch,
   enterRoots,
   setActiveRoot,
-  gitState,
+  gitStateFor,
   isConflicted,
   stagedFiles,
   stage as stageFiles,
@@ -1732,7 +1732,7 @@ export default function Editor(props: {
       activePath: file,
       dirty: file ? !!dirty()[file] : false,
       tabCount: tabs().length,
-      projectRoot: root(),
+      projectRoot: gitRoot(),
       recentJumps: recentTargets(jumps()),
     });
   });
@@ -1828,46 +1828,52 @@ export default function Editor(props: {
     void removeScratchFile(from);
   }
 
-  // Repo-relative, which is what every git_* command takes. A file outside the
-  // workspace (a Docs note, a `.shared/` file) has no path git would accept, so
-  // it is refused by name rather than staged against the wrong repo.
+  // Which repo the palette's git commands act in. The member owning the file in
+  // front, since that is the one whose changes you are looking at; the member in
+  // front otherwise, which is the only answer a branch unit has.
+  const gitRoot = () => rootOf(activeId(), watchRoots()) ?? root();
+
+  // Repo-relative, which is what every git_* command takes, alongside the repo
+  // it is relative to. A file outside every member (a Docs note, a `.shared/`
+  // file) has no path git would accept, so it is refused by name rather than
+  // staged against the wrong repo.
   //
   // Relativized through `mentionPath` rather than by slicing the root's length:
   // `isUnderPath` normalizes a trailing slash before comparing, so a root that
   // carried one would pass the guard and then yield a path off by a character.
-  function activeRepoPath(): string | null {
-    const r = root();
+  function activeRepoPath(): { root: string; rel: string } | null {
     const path = activeId();
-    if (!r || !path) return null;
-    if (!isUnderPath(path, r)) {
+    if (!path) return null;
+    const r = rootOf(path, watchRoots());
+    if (!r) {
       emitWith<ToastEvent>(TOAST, {
         message: `${basename(path)} isn't in this workspace, so git has nothing to stage.`,
         kind: "error",
       });
       return null;
     }
-    return mentionPath(path, r);
+    return { root: r, rel: mentionPath(path, r) };
   }
 
   function stageActive(staging: boolean) {
-    const r = root();
-    const rel = activeRepoPath();
-    if (!r || !rel) return;
-    void (staging ? stageFiles(r, [rel]) : unstageFiles(r, [rel]));
+    const hit = activeRepoPath();
+    if (!hit) return;
+    void (staging ? stageFiles(hit.root, [hit.rel]) : unstageFiles(hit.root, [hit.rel]));
   }
 
   async function commitFromPrompt() {
-    const r = root();
+    const r = gitRoot();
     // Re-checked here, not just in the palette's enablement: the index can move
     // between the row being listed and the prompt being answered.
-    if (!r || !stagedFiles().length) return;
+    if (!r || !stagedFiles(r).length) return;
     const message = (await askText("Commit message", ""))?.trim();
     if (!message) return;
     await commitStaged(r, message);
   }
 
   function pushCurrentBranch() {
-    const { root: r, branch } = gitState();
+    const r = gitRoot();
+    const branch = gitStateFor(r).branch;
     if (r && branch) void pushToOrigin(r, branch);
   }
 
@@ -2512,6 +2518,7 @@ export default function Editor(props: {
             <ReviewPanel
               root={root()}
               roots={treeRoots()}
+              activePath={activeId()}
               selected={props.selected}
               onReverted={handleReverted}
               onRetry={repairMember}

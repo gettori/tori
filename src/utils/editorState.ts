@@ -19,7 +19,9 @@ export type EditorSnapshot = {
   dirty: boolean;
   /** Tabs open in the visible workspace. */
   tabCount: number;
-  /** The selected workspace (branch-unit folder), which is the editor's root. */
+  /** The repo the editor's git commands act in: the member owning the active
+   *  file inside a Feature, the selected workspace otherwise. One field rather
+   *  than two, because every consumer of it is asking git a question. */
   projectRoot: string | null;
   /** Where the jump list has just been, newest first, for the omnibox's empty
    *  box. Published rather than read out of the editor for this module's whole

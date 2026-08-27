@@ -38,6 +38,7 @@ import DiffRows, { diffRowClasses } from "./DiffRows";
 import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { copyText } from "../../utils/clipboard";
+import { mentionPath } from "../../utils/pathScope";
 import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
 import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../utils/safeSend";
@@ -47,7 +48,7 @@ import { comparePrUrl } from "../../utils/prUrl";
 import { composeDraftRequest, prPath } from "../../utils/createPr";
 import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils/forgeTypes";
 import { settings } from "../Settings/settingsStore";
-import { memberInitials, type MemberStateSummary } from "../../utils/features";
+import { memberInitials, rootOf, type MemberStateSummary } from "../../utils/features";
 import type { MemberRoot } from "../../utils/featureMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import HunkCommentInput from "./HunkCommentInput";
@@ -133,6 +134,9 @@ export default function ReviewPanel(props: {
   /** The Feature's members, in member order. Absent for a branch unit, which is
    *  the single-section case. Same list the file tree and search panel take. */
   roots?: MemberRoot[];
+  /** The active editor tab's path, which is what "the member you are working
+   *  in" means when nothing has been chosen by hand. */
+  activePath?: string | null;
   selected: Selection | null;
   onReverted?: (outcome: RevertOutcome) => void;
   onRetry?: (path: string) => void;
@@ -260,12 +264,19 @@ export default function ReviewPanel(props: {
   const branch = () => gitStateFor(props.root).branch;
   const aheadBehind = () => gitStateFor(props.root).aheadBehind;
 
-  // Which member the commit box acts on. Null means the member in front, which
-  // is the only answer a branch unit has; a section's Commit button names its
-  // own, so a Feature commits where you asked rather than where you were.
+  // Which member the commit box, its draft request and the timeline are about.
+  //
+  // Chosen by hand where a section's Commit button was clicked, and that choice
+  // sticks: it is the one thing on screen saying which repo the message lands
+  // in, so having it move under you would be worse than having to click again.
+  // Otherwise the member holding the file in front, which is the one whose
+  // changes you are looking at; the member in front is the fallback, and the
+  // only answer a branch unit has.
   const [commitTarget, setCommitTarget] = createSignal<string | null>(null);
-  const commitRoot = () => commitTarget() ?? props.root;
-  const commitStagedFiles = () => stagedFiles(commitRoot());
+  const targetMember = () =>
+    commitTarget() ?? rootOf(props.activePath, sections().map((s) => s.root)) ?? props.root;
+  const targetSection = () => sections().find((s) => s.root === targetMember());
+  const commitStagedFiles = () => stagedFiles(targetMember());
 
   function target(): SessionTarget | null {
     const sel = props.selected;
@@ -360,7 +371,7 @@ export default function ReviewPanel(props: {
   }
 
   async function commit() {
-    const root = commitRoot();
+    const root = targetMember();
     const message = composeCommitMessage(commitSubject(), commitBody());
     if (!root || !message || committing() || !canCommit()) return;
     // Held across the confirm too, not just the invoke: the dialog is awaited,
@@ -402,7 +413,7 @@ export default function ReviewPanel(props: {
   /** Toggling amend on prefills HEAD's message (stashing whatever was typed);
    *  toggling it back off restores that draft. */
   async function toggleAmend(on: boolean) {
-    const root = commitRoot();
+    const root = targetMember();
     setAmend(on);
     if (!on) {
       const saved = preAmendDraft();
@@ -425,10 +436,17 @@ export default function ReviewPanel(props: {
   // agent proposes a commit message at its own prompt, unsubmitted.
   async function askAgentToDraft() {
     const t = target();
+    const root = targetMember();
     const paths = commitStagedFiles().map((f) => f.path);
-    if (!t || disabledReason() || !paths.length || drafting()) return;
+    if (!t || !root || disabledReason() || !paths.length || drafting()) return;
     setDrafting(true);
-    const text = `Draft a commit message for the staged changes: ${paths.join(", ")}`;
+    // Named against the session's own cwd, the same rule every other mention
+    // follows: relative while the agent is running in this member, absolute
+    // when the message is about the member next door. Not by rewriting the
+    // target's cwd, which would claim the session moved when it did not.
+    const cwd = t.sessionCwd || t.folderPath;
+    const named = paths.map((rel) => mentionPath(`${root.replace(/\/+$/, "")}/${rel}`, cwd));
+    const text = `Draft a commit message for the staged changes: ${named.join(", ")}`;
     const result = await requestSend({ ...t, text });
     setDrafting(false);
     if (result.kind === "timeout") {
@@ -1314,6 +1332,9 @@ export default function ReviewPanel(props: {
           <Button
             size="xs"
             variant="ghost"
+            // Named apart from the box's own Commit: they are two controls a
+            // word apart, and only one of them commits anything.
+            aria-label={`Commit in ${sec.label}`}
             tooltip="Point the commit box at this member"
             onClick={() => commitIn(sec.root)}
           >
@@ -1441,10 +1462,14 @@ export default function ReviewPanel(props: {
           </Show>
         </div>
       </Show>
+      {/* Both fields, and both the target member: the refs it reads, the chats
+          it lists and the revert paths it resolves all have to name one repo,
+          and a `root` that moved while `folderPath` stayed would list the
+          member in front's sessions against another member's checkpoints. */}
       <CheckpointTimeline
-        root={props.root}
+        root={targetMember()}
         sessionId={props.selected?.sessionId ?? null}
-        folderPath={props.selected?.folderPath ?? null}
+        folderPath={targetMember()}
         onReverted={(outcome) => {
           props.onReverted?.(outcome);
           void refreshAll();
@@ -1558,6 +1583,18 @@ export default function ReviewPanel(props: {
         </div>
       </Show>
       <div class={styles.commitBox}>
+        {/* Which repo this message lands in. Only inside a Feature: with one
+            member there is nothing for it to disambiguate. */}
+        <Show when={headed() ? targetSection() : null}>
+          {(sec) => (
+            <div class={styles.commitTarget}>
+              <span class={styles.chip} style={sec().tint ? { "--chip-hue": sec().tint } : undefined}>
+                {memberInitials({ displayName: sec().label ?? "", repoPath: sec().root })}
+              </span>
+              <span>Committing in {sec().label}</span>
+            </div>
+          )}
+        </Show>
         <input
           ref={subjectRef}
           class={styles.commitInput}
