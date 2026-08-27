@@ -3,6 +3,7 @@
 // colour from. Each has to refetch exactly the half it invalidates.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createRoot } from "solid-js";
+import type { TintedMember } from "./featureMembers";
 
 const bridge = vi.hoisted(() => ({
   calls: [] as string[],
@@ -24,14 +25,18 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 const handlers = vi.hoisted(() => ({} as Record<string, () => void>));
+// Never reset between tests: the module registers its listeners once for the
+// whole file, which is the property the last test here asserts.
+const listens = vi.hoisted(() => [] as string[]);
 vi.mock("@tauri-apps/api/event", () => ({
   listen: (name: string, cb: () => void) => {
+    listens.push(name);
     handlers[name] = cb;
     return Promise.resolve(() => {});
   },
 }));
 
-const { createFeatureMembers, resolveMemberRestriction, tintedMembers } = await import(
+const { createFeatureMembers, memberFor, resolveMemberRestriction, tintedMembers } = await import(
   "./featureMembers"
 );
 
@@ -96,6 +101,20 @@ describe("createFeatureMembers", () => {
       dispose();
     });
   });
+
+  it("watches each source once, however many consumers mount", async () => {
+    // What lets the Editor and the Terminal both draw member chips without a
+    // second `list_features` or a second listener pair: the module shares one
+    // read per generation, so neither panel has to own the resource.
+    await createRoot(async (dispose) => {
+      createFeatureMembers(() => "f1");
+      createFeatureMembers(() => "f1");
+      await settle();
+      expect(listens.filter((n) => n === "features://changed")).toHaveLength(1);
+      expect(listens.filter((n) => n === "config://changed")).toHaveLength(1);
+      dispose();
+    });
+  });
 });
 
 describe("tintedMembers", () => {
@@ -129,5 +148,51 @@ describe("resolveMemberRestriction", () => {
     expect(resolveMemberRestriction(["/repos/docs"], here)).toEqual([]);
     expect(resolveMemberRestriction([], here)).toEqual([]);
     expect(resolveMemberRestriction(undefined, here)).toEqual([]);
+  });
+});
+
+describe("memberFor", () => {
+  const tinted = (worktreePath: string | null, displayName: string, kind = "present"): TintedMember =>
+    ({
+      member: { repoPath: `/repos/${displayName}`, displayName, worktreePath, state: { kind }, order: 0 },
+      key: worktreePath ?? `/repos/${displayName}`,
+      label: displayName,
+      state: { label: "", usable: kind === "present", action: null, reason: null },
+      hue: undefined,
+      style: undefined,
+    }) as TintedMember;
+
+  const OUTER = tinted("/w/outer", "outer");
+  const INNER = tinted("/w/outer/vendor/inner", "inner");
+  const BROKEN = tinted("/w/gone", "gone", "worktree-missing");
+  const NO_WORKTREE = tinted(null, "pending", "failed");
+  const ALL = [OUTER, INNER, BROKEN, NO_WORKTREE];
+
+  it("picks the deeper member when one is nested inside another", () => {
+    expect(memberFor("/w/outer/vendor/inner/src/app.ts", ALL)?.label).toBe("inner");
+    expect(memberFor("/w/outer/src/app.ts", ALL)?.label).toBe("outer");
+  });
+
+  it("still resolves a file whose worktree is gone", () => {
+    // The tab outlives the worktree, and a tab with no chip in a strip of
+    // chips reads as "belongs to no repo" rather than "its repo is broken".
+    expect(memberFor("/w/gone/src/app.ts", ALL)?.label).toBe("gone");
+  });
+
+  it("matches the root itself, not just what is under it", () => {
+    expect(memberFor("/w/outer", ALL)?.label).toBe("outer");
+  });
+
+  it("returns null outside every member, and for a member with no worktree", () => {
+    expect(memberFor("/elsewhere/app.ts", ALL)).toBeNull();
+    expect(memberFor("/repos/pending/app.ts", ALL)).toBeNull();
+    // A sibling whose path merely shares a prefix is not inside it.
+    expect(memberFor("/w/outer-other/app.ts", ALL)).toBeNull();
+  });
+
+  it("answers null rather than throwing on nothing", () => {
+    expect(memberFor(null, ALL)).toBeNull();
+    expect(memberFor("/w/outer/a.ts", [])).toBeNull();
+    expect(memberFor("/w/outer/a.ts", undefined)).toBeNull();
   });
 });
