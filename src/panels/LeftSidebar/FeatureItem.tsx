@@ -72,7 +72,6 @@ export default function FeatureItem(props: {
                 size="md"
                 // Never `decorative` here: the badge below is the only spoken
                 // account of a member whose worktree is gone.
-                classList={{ [styles.pending]: m.state.label === "Creating" }}
                 title={title()}
                 data-chip={m.member.repoPath}
                 data-state={m.member.state.kind}

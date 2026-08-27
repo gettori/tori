@@ -9,6 +9,8 @@ import { render, screen, waitFor } from "@solidjs/testing-library";
 import { pointerClick } from "../test/menus";
 import { setTabBarWidth } from "../test/tabLayout";
 import { expectNoAxeViolations } from "../test/axe";
+import { TabMemberChip } from "../components/MemberChip/MemberChip";
+import type { TintedMember } from "../utils/featureMembers";
 import UnifiedTabStrip from "./UnifiedTabStrip";
 import { registerKind } from "./registry";
 import type { UnifiedTab } from "./unifiedTabs";
@@ -164,6 +166,16 @@ describe("per-kind affordances", () => {
   });
 });
 
+/** What the panels hand `TabMemberChip` inside a Feature. */
+const tinted = (displayName: string, hue: string): TintedMember => ({
+  member: { repoPath: `/r/${displayName}`, displayName, worktreePath: `/w/${displayName}`, state: { kind: "present" }, order: 0 },
+  key: `/w/${displayName}`,
+  label: displayName,
+  state: { label: "Ready", usable: true, action: null, reason: null },
+  hue,
+  style: { "--chip-hue": hue, "--chip-rgb": "1 2 3" },
+});
+
 describe("accessibility", () => {
   it("is clean while mixed, overflowing, and wearing a trailing cluster", async () => {
     setTabBarWidth(500);
@@ -179,6 +191,48 @@ describe("accessibility", () => {
       <UnifiedTabStrip items={many} activeId="c1" onReorder={() => {}} />
     ));
     await screen.findByRole("button", { name: "3 more" });
+    await expectNoAxeViolations(container);
+  });
+
+  it("stays clean once the tabs wear their member", async () => {
+    // The Feature shape both panels register: a silent chip before the kind's
+    // own glyph, and the repo reaching the name through a hidden span rather
+    // than through an `aria-label`, which would replace the label instead.
+    const api = tinted("api", "oklch(0.72 0.13 250)");
+    const web = tinted("web", "oklch(0.74 0.15 145)");
+    const withChip = (m: TintedMember) => ({
+      icon: () => <TabMemberChip member={m} />,
+      title: (t: UnifiedTab) => (
+        <>
+          <span>{m.label} / </span>
+          {labels[t.id]}
+        </>
+      ),
+      tooltip: (t: UnifiedTab) => labels[t.id],
+      renderMenuItem: (t: UnifiedTab) => (
+        <>
+          <TabMemberChip member={m} />
+          <span>{`${m.label} / ${labels[t.id]}`}</span>
+        </>
+      ),
+      activate: () => {},
+      close: () => {},
+    });
+    registerKind("file", withChip(api));
+    registerKind("chat", withChip(web));
+
+    setTabBarWidth(500);
+    const many = [
+      fileTab("f1", "a.txt"),
+      chatTab("c1", "shell"),
+      fileTab("f2", "b.txt"),
+      chatTab("c2", "task"),
+      fileTab("f3", "c.txt"),
+    ];
+    const { container } = render(() => (
+      <UnifiedTabStrip items={many} activeId="f1" onReorder={() => {}} />
+    ));
+    await screen.findByRole("button", { name: "2 more" });
     await expectNoAxeViolations(container);
   });
 });

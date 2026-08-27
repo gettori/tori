@@ -70,6 +70,7 @@ import Button from "../../components/Button/Button";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
 import Tab from "../../components/Tab/Tab";
+import { TabMemberChip } from "../../components/MemberChip/MemberChip";
 import FileIcon from "../../seti/FileIcon";
 import Icon from "../../components/Icon/Icon";
 import {
@@ -147,7 +148,7 @@ import {
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { rootOf, selectionRoot, workspaceKey } from "../../utils/features";
-import { createFeatureMembers } from "../../utils/featureMembers";
+import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
 import { dropWorkspaceExpanded, mapExpandedFiles } from "../../utils/treeExpanded";
@@ -267,6 +268,7 @@ import { paneMenuItems } from "../../tabs/paneTabs";
 import { forgetTab, setPaneActive } from "../../layout/tabPlacement";
 import { editorStageId, stageHost } from "../../tabs/stageHost";
 import styles from "./Editor.module.css";
+import patterns from "../../styles/patterns.module.css";
 
 // The right pane's modes. Tab descriptors are module-level singletons so the
 // filtered list hands OverflowTabBar the same object references on every read:
@@ -797,6 +799,13 @@ export default function Editor(props: {
   // to offer. A branch unit reads no Feature record at all.
   const featureId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
   const members = createFeatureMembers(featureId);
+
+  // Which member a tab's file sits in, for the surfaces that have to name the
+  // repo. Null outside a Feature, and for a synthetic view, which belongs to
+  // the workspace rather than to any one repo in it.
+  const tabMember = (path: string): TintedMember | null =>
+    featureId() && !isSyntheticId(path) ? memberFor(path, members()) : null;
+
   const treeRoots = (): TreeRoot[] | undefined =>
     featureId()
       ? members().map((m) => ({
@@ -2313,9 +2322,39 @@ export default function Editor(props: {
     unifiedTabs().filter((u): u is FileUnifiedTab => u.kind === "file" && u.workspace === ws());
 
   registerKind("file", {
-    icon: (u) => tabIcon(asFile(u)),
-    title: (u) => asFile(u).name,
-    tooltip: (u) => tabTitle(asFile(u)),
+    // The chip composes *before* the file glyph rather than replacing it: `icon`
+    // is one slot, and the seti glyph is the other half of what a tab says.
+    icon: (u) => {
+      const t = asFile(u);
+      const m = tabMember(t.path);
+      return (
+        <>
+          {m && <TabMemberChip member={m} />}
+          {tabIcon(t)}
+        </>
+      );
+    },
+    // The repo reaches the accessible name through a hidden span, never
+    // `aria-label`: a name on a tab replaces its visible text rather than adding
+    // to it, and 34 `getByRole("tab", { name })` queries read that text.
+    title: (u) => {
+      const t = asFile(u);
+      const m = tabMember(t.path);
+      return (
+        <>
+          {m && <span class={patterns.srOnly}>{m.label} / </span>}
+          {t.name}
+        </>
+      );
+    },
+    tooltip: (u) => {
+      const t = asFile(u);
+      const m = tabMember(t.path);
+      const base = tabTitle(t);
+      // A tab outlives its member's worktree, so the hover text is where the
+      // dimmed chip gets a name for what happened to it.
+      return m && !m.state.usable ? `${base}\n${m.label}: ${m.state.label}` : base;
+    },
     dots: fileDots,
     // The tab moves between panes either way (the registry says so); what a
     // synthetic view cannot do is hand anyone a path, since dropping its id on
@@ -2337,10 +2376,16 @@ export default function Editor(props: {
     ),
     renderMenuItem: (u) => {
       const t = asFile(u);
+      const m = tabMember(t.path);
+      // The overflow row is the one place two members' same-named files sit
+      // next to each other, so it spends the width on the whole `<repo> / <rel>`
+      // rather than on the basename the strip already showed.
+      const rel = m && repoRelative(t.path, m.key);
       return (
         <>
+          {m && <TabMemberChip member={m} />}
           {tabIcon(t)}
-          <span class="tab-name">{t.name}</span>
+          <span class="tab-name">{m ? `${m.label} / ${rel ?? t.name}` : t.name}</span>
           {fileDots(u)}
           <button
             class="tab-close"
