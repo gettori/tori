@@ -141,3 +141,18 @@
   border: 0;
   background: var(--border-default);
 }
+
+/* What the menu is acting on, not something it offers to do, so it is styled
+   away from `.item` rather than as a quiet one: no hover, no pointer, a muted
+   role and a step down the text ramp. Padded to the rows' inline inset so the
+   name lines up with their labels, and tighter block-wise so it reads as
+   attached to the rows below it rather than as one of them. */
+.heading {
+  display: block;
+  padding: var(--sway-space-2) var(--sway-space-4);
+  font-size: var(--sway-text-md);
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

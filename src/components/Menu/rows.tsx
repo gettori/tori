@@ -1,18 +1,20 @@
-import { For, type JSX } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import Icon from "../Icon/Icon";
 import { DropdownMenu as Primitive } from "../../lib/menu";
 import { useMenuSurface } from "./surface";
 import styles from "./Menu.module.css";
 
-/** A menu entry: an action row, or a visual separator. Covers the flat cases
- *  (right-click menus, button dropdowns). Rows that need custom content (icons,
- *  a close button) are expressed as `<MenuRow>` children instead.
+/** A menu entry: an action row, a visual separator, or a heading naming what the
+ *  menu is acting on. Covers the flat cases (right-click menus, button
+ *  dropdowns). Rows that need custom content (icons, a close button) are
+ *  expressed as `<MenuRow>` children instead.
  *
  *  Structurally identical to the type the hand-rolled `Menu.tsx` exports, so a
  *  call site migrating in phase 3 or 4 changes its import and nothing else. */
 export type MenuItem =
   | { separator: true }
+  | { heading: string }
   | {
       label: string;
       onClick: () => void;
@@ -152,14 +154,28 @@ export function MenuSeparator() {
   return <Primitive.Separator class={styles.separator} />;
 }
 
-/** A flat `MenuItem[]` as rows. What a caller gets when it passes `items`
- *  rather than composing children by hand. */
-export function MenuRows(props: { items: MenuItem[] }) {
+/** What the menu is acting on, rather than something it offers to do. Kobalte's
+ *  `GroupLabel`, so it is not a `menuitem`: the arrows and typeahead pass over
+ *  it, and the group it names announces that name before its first row instead
+ *  of the label being read as an option.
+ *
+ *  Unexported, unlike every other row here: it reads the id it registers from
+ *  the enclosing group's context and throws without one, so it is only ever
+ *  usable through `MenuRows`, which owns that group. */
+function MenuHeading(props: { children: JSX.Element }) {
+  return <Primitive.GroupLabel class={styles.heading}>{props.children}</Primitive.GroupLabel>;
+}
+
+/** The rows of a flat `MenuItem[]`, ungrouped. Split out so `MenuRows` can put
+ *  the same list inside a group or not without writing it twice. */
+function FlatRows(props: { items: MenuItem[] }) {
   return (
     <For each={props.items}>
       {(it) =>
         "separator" in it ? (
           <MenuSeparator />
+        ) : "heading" in it ? (
+          <MenuHeading>{it.heading}</MenuHeading>
         ) : (
           <MenuRow
             onClick={it.onClick}
@@ -172,5 +188,24 @@ export function MenuRows(props: { items: MenuItem[] }) {
         )
       }
     </For>
+  );
+}
+
+/** A flat `MenuItem[]` as rows. What a caller gets when it passes `items`
+ *  rather than composing children by hand.
+ *
+ *  The group appears only when something is there to name it: an unlabelled
+ *  `role="group"` around every menu in the app would be structure that says
+ *  nothing, and `GroupLabel` cannot stand outside one. */
+export function MenuRows(props: { items: MenuItem[] }) {
+  return (
+    <Show
+      when={props.items.some((it) => "heading" in it)}
+      fallback={<FlatRows items={props.items} />}
+    >
+      <Primitive.Group>
+        <FlatRows items={props.items} />
+      </Primitive.Group>
+    </Show>
   );
 }

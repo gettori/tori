@@ -822,6 +822,19 @@ describe("the row context menu", () => {
     expect(within(m).queryByText("New Folder")).toBeNull();
   });
 
+  it("names no member, because a lone root is the only one there is", async () => {
+    mountProject();
+    await screen.findByText("README.md");
+
+    fireEvent.contextMenu(screen.getByText("README.md"));
+
+    // No heading, so no group either: outside a Feature there is nothing to
+    // disambiguate and the menu reads exactly as it always did.
+    const m = await screen.findByRole("menu");
+    expect(within(m).queryByRole("group")).toBeNull();
+    expect(within(m).getByText("Rename")).toBeTruthy();
+  });
+
   it("offers a folder the create actions as well", async () => {
     mountProject();
     await screen.findByText("src");
@@ -924,6 +937,19 @@ describe("a Feature's member roots", () => {
       [B]: [folder(B, "src"), file(B, "package.json")],
       [`${B}/src`]: [file(`${B}/src`, "app.ts")],
     };
+  });
+
+  it("heads a row's menu with the member the row sits in", async () => {
+    mountFeature();
+    const row = await within(sectionOf(B)).findByText("package.json");
+
+    fireEvent.contextMenu(row);
+
+    // Both members carry a `src`, and the menu that opens over one of them
+    // otherwise says nothing about which repo it is about to rename inside.
+    const m = await screen.findByRole("menu");
+    expect(within(m).getByRole("group", { name: "Web App" })).toBeTruthy();
+    expect(within(m).queryByText("Payments API")).toBeNull();
   });
 
   it("refreshes only the section whose root the burst names, once per burst", async () => {

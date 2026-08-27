@@ -1,5 +1,7 @@
 import {
   Content as DropdownContent,
+  Group as DropdownGroup,
+  GroupLabel as DropdownGroupLabel,
   Item as DropdownItem,
   Portal as DropdownPortal,
   Root as DropdownRoot,
@@ -11,6 +13,8 @@ import {
 } from "@kobalte/core/dropdown-menu";
 import {
   Content as ContextContent,
+  Group as ContextGroup,
+  GroupLabel as ContextGroupLabel,
   Item as ContextItem,
   Portal as ContextPortal,
   Root as ContextRoot,
@@ -46,15 +50,21 @@ import {
  *
  * The lists are allow-lists of the parts Sway's menus are actually built from.
  * Absent deliberately rather than by oversight: `CheckboxItem`, `RadioItem`,
- * `RadioGroup`, `GroupLabel`, `Group`, `Icon`, `ItemIndicator`, `ItemLabel`,
- * `ItemDescription` and `Arrow`. Nothing composes them yet, and a re-export
- * nothing composes reads as a supported part of the surface.
+ * `RadioGroup`, `Icon`, `ItemIndicator`, `ItemLabel`, `ItemDescription` and
+ * `Arrow`. Nothing composes them yet, and a re-export nothing composes reads as
+ * a supported part of the surface.
+ *
+ * `Group` and `GroupLabel` arrived together and are only useful together:
+ * `GroupLabel` reads the group's context for its id and throws without it, and
+ * a `Group` with no label is a `role="group"` naming nothing.
  */
 export const DropdownMenu = {
   Root: DropdownRoot,
   Trigger: DropdownTrigger,
   Portal: DropdownPortal,
   Content: DropdownContent,
+  Group: DropdownGroup,
+  GroupLabel: DropdownGroupLabel,
   Item: DropdownItem,
   Separator: DropdownSeparator,
   Sub: DropdownSub,
@@ -67,6 +77,8 @@ export const ContextMenu = {
   Trigger: ContextTrigger,
   Portal: ContextPortal,
   Content: ContextContent,
+  Group: ContextGroup,
+  GroupLabel: ContextGroupLabel,
   Item: ContextItem,
   Separator: ContextSeparator,
   Sub: ContextSub,

@@ -190,9 +190,46 @@ describe("ContextMenu", () => {
     });
   });
 
+  describe("what the menu is acting on", () => {
+    it("names the menu with a heading, which is not itself an option", async () => {
+      const { row } = mountRow({ items: [{ heading: "web" }, ...items()] });
+      rightClick(row);
+      await screen.findByRole("menu");
+
+      // Skipped by the arrows and by typeahead because it is not a row at all.
+      expect(screen.getAllByRole("menuitem").map((r) => r.textContent)).toEqual([
+        "Rename",
+        "Delete",
+      ]);
+      // The name reaches a screen reader through the group it labels, rather
+      // than being read out a second time where it sits.
+      const group = screen.getByRole("group", { name: "web" });
+      expect(group.textContent).toContain("web");
+      expect(screen.getByText("web").getAttribute("aria-hidden")).toBe("true");
+    });
+
+    it("leaves a menu with no heading ungrouped", async () => {
+      const { row } = mountRow({ items: items() });
+      rightClick(row);
+      await screen.findByRole("menu");
+
+      // An unlabelled `role="group"` around every menu would be structure that
+      // says nothing, so the group appears only with something to name it.
+      expect(screen.queryByRole("group")).toBeNull();
+    });
+  });
+
   describe("the accessibility gate", () => {
     it("has no violations while open", async () => {
       const { row } = mountRow({ items: items() });
+      rightClick(row);
+      await screen.findByRole("menu");
+
+      await expectNoAxeViolations(document.body);
+    });
+
+    it("has no violations with a heading either", async () => {
+      const { row } = mountRow({ items: [{ heading: "web" }, ...items()] });
       rightClick(row);
       await screen.findByRole("menu");
 
