@@ -123,6 +123,26 @@ export function featureSelection(feature: Feature, storedActiveRoot?: string | n
   };
 }
 
+/** The root that owns `path`, longest match first so a member nested inside
+ *  another still answers with itself. Null outside every root, which is what
+ *  "this file belongs to no member" has to read as.
+ *
+ *  One rule, shared by the conflict banner, the commit target and the palette's
+ *  git commands: three copies of it is how the three disagree about which repo
+ *  the file in front of you is in. */
+export function rootOf(
+  path: string | null | undefined,
+  roots: readonly string[] | null | undefined,
+): string | null {
+  if (!path || !roots?.length) return null;
+  let best: string | null = null;
+  for (const r of roots) {
+    if (!r || !isUnderPath(path, r)) continue;
+    if (!best || r.length > best.length) best = r;
+  }
+  return best;
+}
+
 /** What every per-workspace store keys on: `feature:<id>` for a Feature, the
  *  branch-unit folder otherwise, empty for nothing selected. */
 export function workspaceKey(sel: Pick<Selection, "kind" | "featureId" | "folderPath"> | null | undefined): string {

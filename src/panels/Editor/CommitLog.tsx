@@ -1,6 +1,6 @@
 import { createSignal, createMemo, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { gitState } from "../../utils/gitActions";
+import { gitStateFor } from "../../utils/gitActions";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 import { syntheticId } from "../../utils/syntheticTabs";
 import IconButton from "../../components/IconButton/IconButton";
@@ -43,15 +43,15 @@ export default function CommitLog(props: { workspace: string; file?: string }) {
   const [end, setEnd] = createSignal(false);
   const [error, setError] = createSignal("");
 
-  // Only when the store is describing *this* workspace: a switch mid-flight
-  // would otherwise label one unit's history with another's branch.
-  const meta = () => (gitState().root === props.workspace ? gitState() : null);
+  // This workspace's own slot: a log tab open on a background member still
+  // wants that member's branch, not whichever member is in front.
+  const meta = () => gitStateFor(props.workspace);
   // Memos, not plain accessors. The reload effect below reads these, and a
   // plain accessor would make it depend on the *store signal*, which every file
   // save bumps (`refreshStatus` rewrites `files`) - so the log would refetch on
   // every watcher burst. A memo only propagates when its own value changes.
-  const branch = createMemo(() => meta()?.branch ?? null);
-  const aheadBehind = createMemo(() => meta()?.aheadBehind ?? null);
+  const branch = createMemo(() => meta().branch);
+  const aheadBehind = createMemo(() => meta().aheadBehind);
 
   // Which load is current. A reload *replaces* the list, so a newer one simply
   // supersedes an older one in flight; refusing to start it (the obvious guard)

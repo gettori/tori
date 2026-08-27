@@ -80,7 +80,7 @@ const { default: Editor } = await import("./Editor");
 const { emitWith, onWith, OPEN_IN_EDITOR, SET_RIGHT_MODE, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } = await import(
   "../../utils/events"
 );
-const { refreshStatus } = await import("../../utils/gitActions");
+const { enterRoots, refreshStatus } = await import("../../utils/gitActions");
 
 const selection = selectionFor(REPO);
 // The same selection with a session attached: safe-send has nowhere to land
@@ -115,8 +115,9 @@ function collectSends(): { sent: { text: string }[]; off: () => void } {
 
 beforeEach(async () => {
   // The git store outlives any one mount, so the previous test's file list
-  // would otherwise still be loaded. Selecting nothing is the app's own reset.
-  await refreshStatus(null);
+  // would otherwise still be loaded. Entering no root at all is the reset: the
+  // mount below enters this workspace's own.
+  enterRoots([]);
   statusRows = [];
   listening.ready = false;
 });
@@ -219,15 +220,15 @@ describe("the conflict banner", () => {
     );
   });
 
-  it("says nothing while the store describes another workspace", async () => {
-    // The store blanks and refills on a workspace switch, so between the two
-    // its file list belongs to the workspace being left. Answering from it
-    // would flag a file here because a file *there* is conflicted.
+  it("says nothing once the store stops covering this workspace", async () => {
+    // Leaving a workspace drops its slot rather than blanking a shared one, so
+    // the answer goes with it: a file conflicted *there* can never flag a file
+    // here, and neither can this file's own list once nobody is reading it.
     statusRows = [CONFLICT];
     await mountWith(FILE);
     await waitFor(() => expect(screen.getByText(BANNER)).toBeTruthy());
 
-    await refreshStatus("/space/proj/other");
+    enterRoots(["/space/proj/other"]);
 
     await waitFor(() => expect(screen.queryByText(BANNER)).toBeNull());
   });
