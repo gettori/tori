@@ -22,6 +22,10 @@ import type { SymbolNode } from "../../utils/symbols";
  */
 export type PathCrumb = { name: string; path: string; isDir: boolean };
 
+/** The member a trail starts at, inside a Feature: the folder the file actually
+ *  sits under, and the name that folder wears in the bar. */
+export type CrumbMember = { root: string; label: string };
+
 /** The folder holding `path`. A path directly under `/` gives `/`, so this
  *  never returns the empty string and a caller can always list what it gets. */
 export function dirOf(path: string): string {
@@ -45,14 +49,28 @@ export function baseName(path: string): string {
  * That covers a Docs-tree file and anything opened from outside the project: the
  * trail cannot say where it sits relative to a root it does not share, but it
  * can still offer its own folder, which is the crumb people actually click.
+ *
+ * Inside a Feature the member is what the file sits under, and it need not be
+ * the active one: resolving a background member's file against the active root
+ * would find no shared prefix and collapse the whole trail to a basename.
  */
-export function pathCrumbs(root: string | null, path: string | null): PathCrumb[] {
+export function pathCrumbs(
+  root: string | null,
+  path: string | null,
+  member?: CrumbMember | null,
+): PathCrumb[] {
   if (!path) return [];
-  const under = root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : null;
+  // Only a member that really holds the file replaces the root, so a mismatched
+  // one costs its own crumb rather than the whole trail.
+  const held = member && path.startsWith(`${member.root}/`) ? member : null;
+  const base = held?.root ?? root;
+  const under = base && path.startsWith(`${base}/`) ? path.slice(base.length + 1) : null;
   if (under === null) return [{ name: baseName(path), path, isDir: false }];
   const names = under.split("/").filter(Boolean);
-  const out: PathCrumb[] = [];
-  let at = root!;
+  // The member crumb is the one place the trail does name its root: it is what
+  // says which repo, and it is the only root a Feature has more than one of.
+  const out: PathCrumb[] = held ? [{ name: held.label, path: held.root, isDir: true }] : [];
+  let at = base!;
   for (let i = 0; i < names.length; i++) {
     at = `${at}/${names[i]}`;
     out.push({ name: names[i], path: at, isDir: i < names.length - 1 });

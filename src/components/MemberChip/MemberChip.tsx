@@ -69,7 +69,7 @@ export default function MemberChip(props: MemberChipProps) {
   );
 }
 
-/** The chip a tab and its overflow row wear.
+/** The chip a tab, its overflow row and the crumb trail all wear.
  *
  *  Decorative, because the row's own text already names the repo; `data-state`
  *  rides along so a member that cannot be opened right now still says so. */

@@ -803,8 +803,8 @@ export default function Editor(props: {
   // Which member a tab's file sits in, for the surfaces that have to name the
   // repo. Null outside a Feature, and for a synthetic view, which belongs to
   // the workspace rather than to any one repo in it.
-  const tabMember = (path: string): TintedMember | null =>
-    featureId() && !isSyntheticId(path) ? memberFor(path, members()) : null;
+  const tabMember = (path: string | null): TintedMember | null =>
+    path && featureId() && !isSyntheticId(path) ? memberFor(path, members()) : null;
 
   const treeRoots = (): TreeRoot[] | undefined =>
     featureId()
@@ -2190,7 +2190,8 @@ export default function Editor(props: {
     // it either way, since that is where the empty note belongs.
     const shown = () =>
       !!fileId() || p.paneId === SOLO_PANE || isKindHome(ws(), "file", p.paneId);
-    const conflictedHere = () => isConflicted(watchRoots(), fileTabOf(fileId())?.path ?? null);
+    const filePath = () => fileTabOf(fileId())?.path ?? null;
+    const conflictedHere = () => isConflicted(watchRoots(), filePath());
     /** This pane's file when it is one that renders, which is what earns the
      *  bar its toggle. */
     const previewableId = () => {
@@ -2213,7 +2214,8 @@ export default function Editor(props: {
             picker could list. */}
         <Breadcrumbs
           root={root()}
-          path={fileTabOf(fileId())?.path ?? null}
+          path={filePath()}
+          member={tabMember(filePath())}
           caret={focused() ? caretHere() : null}
           trailing={
             // Keyed, or the button freezes: non-keyed Show re-runs its child

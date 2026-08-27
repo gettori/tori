@@ -31,6 +31,10 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
   // refetch on `features://changed` / `config://changed`.
   const members = createFeatureMembers(featureId);
   const isActive = (m: TintedMember) => !!m.member.worktreePath && m.member.worktreePath === sel()?.activeRoot;
+  // Which repo the panels below are showing. Absent for a Feature whose members
+  // are all broken, where the crumb falls back to the two it always had rather
+  // than to an empty middle and a separator with nothing after it.
+  const activeMember = () => members().find(isActive) ?? null;
 
   createEffect(
     on(
@@ -86,6 +90,16 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
               <nav class={styles.tbCrumb} aria-label="location">
                 <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.featureName ?? sel()!.projectName}</span>
                 <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
+                {/* Named here and switched below: the crumb reads as where you
+                    are, the chip row as the control that moves it. */}
+                <Show when={activeMember()}>
+                  {(m) => (
+                    <>
+                      <span class={`${styles.crumb} dim`}>{m().label}</span>
+                      <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
+                    </>
+                  )}
+                </Show>
                 <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
               </nav>
               <div class={styles.members} role="group" aria-label="Feature members">
