@@ -31,7 +31,9 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
-const { createFeatureMembers, tintedMembers } = await import("./featureMembers");
+const { createFeatureMembers, resolveMemberRestriction, tintedMembers } = await import(
+  "./featureMembers"
+);
 
 const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 const count = (cmd: string) => bridge.calls.filter((c) => c === cmd).length;
@@ -102,5 +104,30 @@ describe("tintedMembers", () => {
     const [first] = tintedMembers({ members: bridge.members as never }, []);
     expect(first.hue).toBeUndefined();
     expect(first.style).toBeUndefined();
+  });
+});
+
+describe("resolveMemberRestriction", () => {
+  // Repo paths, not section paths, and this is the whole reason: a Recreate
+  // moves the worktree and the member is still the one that was picked.
+  const here = [
+    { repoPath: "/repos/api" },
+    { repoPath: "/repos/web" },
+  ];
+
+  it("holds when a member's worktree moved but its repo did not", () => {
+    expect(resolveMemberRestriction(["/repos/api"], here)).toEqual(["/repos/api"]);
+  });
+
+  it("drops a member that left, keeping the rest", () => {
+    expect(resolveMemberRestriction(["/repos/api", "/repos/docs"], here)).toEqual(["/repos/api"]);
+  });
+
+  it("falls back to every member when none of them resolve", () => {
+    // Searching nothing for a query that used to work reads as a broken saved
+    // search; an empty list is the panel's "no restriction" value.
+    expect(resolveMemberRestriction(["/repos/docs"], here)).toEqual([]);
+    expect(resolveMemberRestriction([], here)).toEqual([]);
+    expect(resolveMemberRestriction(undefined, here)).toEqual([]);
   });
 });

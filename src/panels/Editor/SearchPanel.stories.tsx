@@ -1,3 +1,4 @@
+import { onMount } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import SearchPanel from "./SearchPanel";
@@ -83,9 +84,36 @@ type Story = StoryObj<typeof meta>;
 /** Three members at once: one capped at the cap, one that could not be read, one
  *  ordinary. Type in the box to see them fill; each section reports its own
  *  truncation and its own failure, and `noIgnore` is disabled because one
- *  member's backend cannot honour it. */
+ *  member's backend cannot honour it.
+ *
+ *  The chip row above the box is unrestricted here, which is the default: All
+ *  is pressed and every member is searched. */
 export const FeatureMembers: Story = {
   args: { roots: MEMBERS },
+};
+
+/** The same panel narrowed to one member. The excluded members lose their
+ *  sections entirely rather than sitting there empty, because a bare header
+ *  over no hits reads as "searched, nothing here".
+ *
+ *  Clicked rather than passed in: the restriction is a live control with no
+ *  prop behind it, and inventing one only the workshop would use would be a
+ *  second way to set it that the panel has to keep in step. */
+export const RestrictedToOneMember: Story = {
+  args: { roots: MEMBERS },
+  render: (args) => {
+    let host: HTMLDivElement | undefined;
+    onMount(() =>
+      requestAnimationFrame(() =>
+        (host?.querySelector('[aria-label="Web App"]') as HTMLButtonElement | null)?.click(),
+      ),
+    );
+    return (
+      <div ref={host} style={{ display: "flex", flex: 1, "min-width": 0 }}>
+        <SearchPanel {...args} />
+      </div>
+    );
+  },
 };
 
 /** Every member usable and answering, which is the ordinary case. */

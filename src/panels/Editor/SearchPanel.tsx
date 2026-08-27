@@ -52,7 +52,7 @@ import {
   type ToggleKey,
 } from "../../utils/searchOptions";
 import { memberInitials } from "../../utils/features";
-import type { MemberRoot } from "../../utils/featureMembers";
+import { resolveMemberRestriction, type MemberRoot } from "../../utils/featureMembers";
 import {
   DRAFT,
   historyFor,
@@ -92,6 +92,12 @@ type ReplaceSpan = { line: number; start: number; end: number };
 const MAX_RESULTS = 500;
 const INPUT_DEBOUNCE_MS = 200;
 const FS_CHANGE_DEBOUNCE_MS = 400;
+
+/** The separator every root-set key is joined on. A path may contain a space,
+ *  and two different member sets must never spell the same key. Named rather
+ *  than inlined because a raw NUL in a source file is invisible: one that
+ *  reached a template literal here type-checked and passed every test. */
+const NUL = "\u0000";
 
 const GLOBS_ID = "search-globs";
 const SAVED_ID = "search-saved";
@@ -152,6 +158,11 @@ export default function SearchPanel(props: {
   const [showReplace, setShowReplace] = createSignal(false);
   const [options, setOptions] = createSignal<SearchOptions>({ ...DEFAULT_SEARCH_OPTIONS });
   const [showGlobs, setShowGlobs] = createSignal(false);
+  /** The member **repo paths** the search is narrowed to; empty means every
+   *  member. Repo paths rather than the section paths a grep takes, because
+   *  this is the value that gets saved with a search and a repaired worktree
+   *  moves the section path out from under it. */
+  const [restricted, setRestricted] = createSignal<readonly string[]>([]);
   /** One entry per searched root, in member order. Empty until a search runs. */
   const [sections, setSections] = createSignal<SearchSection[]>([]);
   const [caps, setCaps] = createSignal<Capabilities>({ backend: "", unsupported: [] });
@@ -183,11 +194,13 @@ export default function SearchPanel(props: {
   const [savedNotice, setSavedNotice] = createSignal<string | null>(null);
   let inputEl: HTMLInputElement | undefined;
   /** What was in the box when recall started, restored by arrowing back down
-   *  past the newest entry. The options travel with it: recall replaces both,
-   *  so returning only the text would hand back a half-restored draft. */
-  let draft: { query: string; options: SearchOptions } = {
+   *  past the newest entry. The options and the restriction travel with it:
+   *  recall replaces all three, so returning only the text would hand back a
+   *  half-restored draft. */
+  let draft: { query: string; options: SearchOptions; repos: readonly string[] } = {
     query: "",
     options: { ...DEFAULT_SEARCH_OPTIONS },
+    repos: [],
   };
   /** Every root the panel draws a section for, unusable members included: a
    *  member that cannot be searched still needs somewhere to say so. */
@@ -196,18 +209,38 @@ export default function SearchPanel(props: {
     if (rs && rs.length) return rs;
     return props.root ? [{ path: props.root, repoPath: props.root, label: "" }] : [];
   };
-  /** The roots a search actually greps. A member with no usable worktree is
-   *  skipped rather than invoked: its section path is the *repo* folder, so
-   *  grepping it would search the user's own checkout instead of the Feature. */
-  const searchRoots = () => allRoots().filter((r) => r.state?.usable !== false);
+  /** The restriction as it applies to the members on screen right now. Resolved
+   *  rather than read raw, so a stored restriction naming a member that has
+   *  gone narrows to what is left rather than to nothing. */
+  const restriction = createMemo(() => resolveMemberRestriction(restricted(), allRoots()));
+  /** The members the results list draws a section for. Unusable ones stay, since
+   *  a member that could not be searched still needs somewhere to say so;
+   *  restricted-away ones go, because a bare header over no hits reads as
+   *  "searched, nothing here" when it was never searched at all. */
+  const sectionRoots = () => {
+    const only = restriction();
+    return only.length ? allRoots().filter((r) => only.includes(r.repoPath)) : allRoots();
+  };
+  /** The roots a search actually greps: the sections, minus any member that
+   *  cannot be opened. An unusable member is skipped rather than invoked,
+   *  because its section path is the *repo* folder and grepping it would search
+   *  the user's own checkout instead of the Feature. */
+  const searchRoots = () => sectionRoots().filter((r) => r.state?.usable !== false);
   /** Sections are drawn per member, so the panel is headed only alongside
-   *  others; a lone root renders exactly as it always did. */
+   *  others; a lone root renders exactly as it always did. Based on the whole
+   *  member set, not the restricted one: narrowing to a single member is
+   *  exactly when its name still needs to be on screen. */
   const headed = () => allRoots().length > 1;
   const sectionOf = (root: string) => sections().find((s) => s.root === root);
   /** The searched root set as one comparable string, for the effects that must
    *  re-run when the set changes. NUL-joined, not space-joined: a path may
    *  contain a space, and two different sets must never spell the same key. */
-  const rootsKey = () => searchRoots().map((r) => r.path).join("\u0000");
+  const rootsKey = () => searchRoots().map((r) => r.path).join(NUL);
+  /** Every member the panel draws, restriction ignored. What the reset effect
+   *  keys on: narrowing the search with a chip changes what gets grepped, not
+   *  which workspace you are in, and it must not cost the history cursor or a
+   *  half-typed name. */
+  const membersKey = () => allRoots().map((r) => r.path).join(NUL);
   const allMatches = () => sections().flatMap((s) => s.matches);
 
   // Bumped per call, so a slower in-flight request (e.g. an fs-refresh racing
@@ -356,14 +389,17 @@ export default function SearchPanel(props: {
   function commitQuery() {
     const q = query();
     if (!q || !ws()) return;
-    setHistory((h) => noteQuery(h, ws(), q, options()));
+    setHistory((h) => noteQuery(h, ws(), q, options(), restriction()));
     setCursor(DRAFT);
   }
 
-  /** Put a past search back in the box, toggles and all, and run it. */
-  function applyRecall(q: string, o: SearchOptions) {
+  /** Put a past search back in the box, toggles and restriction and all, and
+   *  run it. The stored repo paths are resolved against the members present
+   *  now, so a recall from before a member was recreated still narrows to it. */
+  function applyRecall(q: string, o: SearchOptions, repos: readonly string[] | undefined) {
     setQuery(q);
     setOptions({ ...o });
+    setRestricted(resolveMemberRestriction(repos, allRoots()));
     // Debounced like typing rather than immediate like a toggle: holding Up
     // walks the list, and each step would otherwise be its own round trip.
     debouncedSearch(q);
@@ -372,13 +408,15 @@ export default function SearchPanel(props: {
   function recall(step: 1 | -1) {
     const list = recallList();
     const from = cursor();
-    if (from === DRAFT && step === 1) draft = { query: query(), options: { ...options() } };
+    if (from === DRAFT && step === 1) {
+      draft = { query: query(), options: { ...options() }, repos: restriction() };
+    }
     const to = stepRecall(list, from, step);
     if (to === from) return;
     setCursor(to);
     const entry = recallAt(list, to);
-    if (entry) applyRecall(entry.query, entry.options);
-    else applyRecall(draft.query, draft.options);
+    if (entry) applyRecall(entry.query, entry.options, entry.repos);
+    else applyRecall(draft.query, draft.options, draft.repos);
   }
 
   function onQueryKeyDown(e: KeyboardEvent) {
@@ -403,7 +441,7 @@ export default function SearchPanel(props: {
   function commitSave() {
     const name = saveName().trim();
     if (!name || !query() || !ws()) return;
-    setSaved((s) => saveSearch(s, ws(), name, query(), options()));
+    setSaved((s) => saveSearch(s, ws(), name, query(), options(), restriction()));
     setSaveName("");
     setSavedNotice(null);
     commitQuery();
@@ -434,7 +472,11 @@ export default function SearchPanel(props: {
     setCursor(DRAFT);
     setQuery(s.query);
     setOptions({ ...s.options });
-    setHistory((h) => noteQuery(h, ws(), s.query, s.options));
+    // Resolved here rather than read through the memo, so what is stored back
+    // into the history is the same set the search is about to run against.
+    const repos = resolveMemberRestriction(s.repos, allRoots());
+    setRestricted(repos);
+    setHistory((h) => noteQuery(h, ws(), s.query, s.options, repos));
     const fresh = await runSearch(s.query);
     if (!fresh) return;
     const withHits = fresh.filter((sec) => sec.matches.length);
@@ -447,6 +489,32 @@ export default function SearchPanel(props: {
   function toggleOption(key: ToggleKey) {
     setOptions((o) => ({ ...o, [key]: !o[key] }));
     void runSearch(query());
+  }
+
+  /** Narrowing the search narrows what the toggles are judged against too: an
+   *  option only the excluded member could not honour has to come back. With a
+   *  query in the box the fresh search reports that; without one there is
+   *  nothing to report it, so the probe answers instead. */
+  function afterRestrictionChange() {
+    if (query()) void runSearch(query());
+    else void probeCapabilities();
+  }
+
+  /** Add or remove one member. Multi-select, and against the *resolved* set, so
+   *  a stale entry from a saved search cannot survive the first click. */
+  function toggleRestriction(repoPath: string) {
+    const now = restriction();
+    setRestricted(now.includes(repoPath) ? now.filter((p) => p !== repoPath) : [...now, repoPath]);
+    afterRestrictionChange();
+  }
+
+  /** Back to every member. Clears the raw pick, not just the resolved one: a
+   *  pick naming a member that has left resolves to nothing today and would
+   *  otherwise come back the moment that member did, after All was pressed. */
+  function clearRestriction() {
+    const had = restriction().length;
+    setRestricted([]);
+    if (had) afterRestrictionChange();
   }
 
   function setGlob(key: "include" | "exclude", v: string) {
@@ -599,23 +667,27 @@ export default function SearchPanel(props: {
     ]);
   }
 
-  // Keyed on the searched root set and the workspace, deliberately not on
-  // `props.root`: inside a Feature that is the *active member*, and clicking a
-  // Toolbar chip to read another member's file must not spend a search that
-  // spans all of them. A real workspace change moves both of these.
+  // Keyed on the member set and the workspace, deliberately not on `props.root`
+  // (inside a Feature that is the *active member*, and clicking a Toolbar chip
+  // to read another member's file must not spend a search that spans all of
+  // them) and not on the searched set either, which the restriction moves.
+  // A real workspace change moves both of these.
   createEffect(
     on(
-      () => `${props.workspace ?? ""}\u0000${rootsKey()}`,
+      () => `${props.workspace ?? ""}${NUL}${membersKey()}`,
       () => {
         setSections([]);
         setError(null);
+        // A restriction names members of the Feature you were in, so it means
+        // nothing in the next one.
+        setRestricted([]);
         // Everything below is scoped to a workspace, and none of it means
         // anything in the next one: a cursor indexes the history that was
         // there, and the draft it would restore is a query for the project you
         // just left. Carrying them over is how the first arrow press after a
         // switch puts someone else's half-typed text in the box.
         setCursor(DRAFT);
-        draft = { query: "", options: { ...DEFAULT_SEARCH_OPTIONS } };
+        draft = { query: "", options: { ...DEFAULT_SEARCH_OPTIONS }, repos: [] };
         setRenaming(null);
         setSaveName("");
         setSavedNotice(null);
@@ -725,6 +797,59 @@ export default function SearchPanel(props: {
   return (
     <div class={styles.searchPanel}>
       <div class={styles.inputBar}>
+        {/* Which members to search, and nothing else. Deliberately not wired to
+            the Toolbar's active-member row: two chip rows on screen mean two
+            different things, and narrowing a search must not also move which
+            member the editor is showing. Multi-select, so "these two of five"
+            is expressible; none selected means all, which is why All is a
+            button rather than a chip you can also deselect into nothing. */}
+        <Show when={headed()}>
+          <div class={styles.memberRow} role="group" aria-label="Search these members">
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.memberChip}
+              classList={{ [styles.memberOn]: !restriction().length }}
+              aria-pressed={!restriction().length}
+              label="Search every member of this Feature"
+              onClick={clearRestriction}
+            >
+              All
+            </Tooltip>
+            <For each={allRoots()}>
+              {(member) => {
+                const unusable = () => member.state?.usable === false;
+                const on = () => restriction().includes(member.repoPath);
+                return (
+                  <Tooltip
+                    as="button"
+                    type="button"
+                    class={styles.memberChip}
+                    classList={{ [styles.memberOn]: on() }}
+                    style={member.tint ? { "--chip-hue": member.tint } : undefined}
+                    // The initials are the visible label; the name is the
+                    // accessible one, because "PA" announces as nothing.
+                    aria-label={member.label}
+                    aria-pressed={on()}
+                    disabled={unusable()}
+                    // Only the unusable chip needs it: it wraps the control in
+                    // a hover surface, and the ordinary chip has no reason to
+                    // carry that extra element.
+                    whenDisabled={unusable()}
+                    label={
+                      unusable()
+                        ? `${member.label}: ${member.state?.label}, nothing to search`
+                        : `Search only ${member.label}`
+                    }
+                    onClick={() => toggleRestriction(member.repoPath)}
+                  >
+                    {memberInitials({ displayName: member.label, repoPath: member.repoPath })}
+                  </Tooltip>
+                );
+              }}
+            </For>
+          </div>
+        </Show>
         {/* The one swept site that does not become a `Tooltip`. This text
             describes the field rather than naming a control, and a tooltip on a
             text box opens on focus and then sits over the results for as long as
@@ -985,7 +1110,7 @@ export default function SearchPanel(props: {
         {/* Sections iterate over the roots, not over `sections()`: a member with
             no worktree never runs a grep and so has no result to iterate, yet it
             still needs a header to say why it is empty. */}
-        <For each={allRoots()}>
+        <For each={sectionRoots()}>
           {(member) => {
             const found = () => sectionOf(member.path);
             const unusable = () => member.state?.usable === false;
