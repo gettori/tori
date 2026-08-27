@@ -53,6 +53,25 @@ export type MemberRoot = {
   state?: MemberStateSummary;
 };
 
+/** A stored member restriction as it applies to the members present now.
+ *
+ *  Matched on `repoPath`, the one identity that survives a member being
+ *  recreated at a different worktree path, and narrowed to the members actually
+ *  here so a departed one is simply dropped. Nothing resolving falls back to
+ *  every member: a saved search whose members have all left should still
+ *  answer, and one that searches nothing reads as broken rather than as empty.
+ *
+ *  An empty result is the panel's "no restriction" value, which is why the
+ *  fallback needs no separate signal. */
+export function resolveMemberRestriction(
+  repos: readonly string[] | undefined,
+  members: readonly Pick<MemberRoot, "repoPath">[],
+): string[] {
+  if (!repos?.length) return [];
+  const here = new Set(members.map((m) => m.repoPath));
+  return repos.filter((p) => here.has(p));
+}
+
 const samePath = (a: string, b: string) => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
 export function spaceOfMember(member: Pick<Member, "repoPath">, spaces: SpaceTint[]): SpaceTint | undefined {

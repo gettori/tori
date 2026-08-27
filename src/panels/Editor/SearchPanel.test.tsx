@@ -1329,3 +1329,194 @@ describe("multi-root search", () => {
     expect(bridge.replaces.map((r) => r.root)).toEqual([API, WEB]);
   });
 });
+
+// The search-local restriction (#156 phase 2). It narrows the grep and nothing
+// else: the Toolbar's active-member row is a different control with a different
+// meaning, and this one must not move it or be moved by it.
+describe("member restriction", () => {
+  const API = "/feat/api";
+  const WEB = "/feat/web";
+  const DOCS = "/feat/docs";
+  const API_REPO = "/repos/api";
+  const WEB_REPO = "/repos/web";
+
+  const MEMBERS = [
+    { path: API, repoPath: API_REPO, label: "Payments API" },
+    { path: WEB, repoPath: WEB_REPO, label: "Web App" },
+    { path: DOCS, repoPath: "/repos/docs", label: "Docs Site" },
+  ];
+
+  const mountFeature = (extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) =>
+    render(() => (
+      <SearchPanel root={API} roots={MEMBERS} workspace="feature:f1" focusNonce={0} {...extra} />
+    ));
+
+  const chip = (label: string) => screen.getByLabelText(label) as HTMLButtonElement;
+  const allChip = () => screen.getByText("All") as HTMLButtonElement;
+  const pressed = (el: HTMLElement) => el.getAttribute("aria-pressed") === "true";
+  const sectionEl = (root: string) => document.querySelector(`[data-root="${root}"]`);
+
+  it("greps only the members it is narrowed to", async () => {
+    mountFeature();
+    await type("needle");
+    const before = searches().length;
+    expect(before).toBe(3);
+
+    fireEvent.click(chip("Payments API"));
+
+    await waitFor(() => expect(searches().length).toBeGreaterThan(before));
+    expect(searches().slice(before).map((c) => c.root)).toEqual([API]);
+  });
+
+  it("is multi-select, and All puts every member back", async () => {
+    mountFeature();
+    await type("needle");
+
+    fireEvent.click(chip("Payments API"));
+    fireEvent.click(chip("Web App"));
+    await waitFor(() => expect(pressed(chip("Web App"))).toBe(true));
+    expect(pressed(chip("Payments API"))).toBe(true);
+    expect(pressed(allChip())).toBe(false);
+
+    const before = searches().length;
+    fireEvent.click(allChip());
+    await waitFor(() => expect(searches().length).toBeGreaterThan(before));
+    expect(searches().slice(before).map((c) => c.root)).toEqual([API, WEB, DOCS]);
+    expect(pressed(allChip())).toBe(true);
+  });
+
+  it("drops the sections of the members it excluded", async () => {
+    // A bare header over no hits reads as "searched, nothing here", which is a
+    // different answer from "not searched".
+    bridge.respond = () => ONE_FILE();
+    mountFeature();
+    await type("ab");
+    await waitFor(() => expect(sectionEl(WEB)).toBeTruthy());
+
+    fireEvent.click(chip("Payments API"));
+
+    await waitFor(() => expect(sectionEl(WEB)).toBeNull());
+    expect(sectionEl(API)).toBeTruthy();
+  });
+
+  it("re-enables a toggle once the member that could not honour it is excluded", async () => {
+    bridge.respond = (_q, _o, root) =>
+      root === DOCS ? ok([], { backend: "plain", unsupported: ["noIgnore"] }) : ok([]);
+    mountFeature();
+
+    const ignored = () => screen.getByLabelText("Search ignored files") as HTMLButtonElement;
+    await waitFor(() => expect(ignored().disabled).toBe(true));
+
+    // Narrowed away from the `plain` member, the option is honourable again, so
+    // leaving it greyed out would be disabling it on behalf of a repo this
+    // search will not touch.
+    fireEvent.click(chip("Payments API"));
+    fireEvent.click(chip("Web App"));
+
+    await waitFor(() => expect(ignored().disabled).toBe(false));
+  });
+
+  it("retires a replace outcome when the restriction changes", async () => {
+    bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE());
+    bridge.replaceResult = () => ({ changed: ["src/a.ts"], skipped: [], occurrences: 2 });
+    mountFeature({ confirm: async () => true });
+    await type("ab");
+    await typeReplacement("X");
+
+    fireEvent.click(screen.getByLabelText("Replace all"));
+    await waitFor(() => expect(screen.getByText(/Replaced 4 occurrences/)).toBeTruthy());
+
+    fireEvent.click(chip("Payments API"));
+
+    // The line describes a replace across every member; over one member's hits
+    // it is a claim about work that did not happen there.
+    await waitFor(() => expect(screen.queryByText(/Replaced 4 occurrences/)).toBeNull());
+  });
+
+  it("restores the restriction a recalled query was run with", async () => {
+    mountFeature();
+    await type("needle");
+    fireEvent.click(chip("Web App"));
+    await waitFor(() => expect(pressed(chip("Web App"))).toBe(true));
+
+    const input = screen.getByPlaceholderText("Search project");
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.click(allChip());
+    await waitFor(() => expect(pressed(chip("Web App"))).toBe(false));
+
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+
+    // Recall hands back the search that was run, and which members it covered
+    // is as much a part of that as the toggles are.
+    await waitFor(() => expect(pressed(chip("Web App"))).toBe(true));
+    expect(pressed(chip("Payments API"))).toBe(false);
+  });
+
+  it("re-runs a saved search against the members it was saved with", async () => {
+    localStorage.setItem(
+      "sway.savedSearches",
+      JSON.stringify({
+        "feature:f1": [
+          { name: "web todos", query: "TODO", options: {}, repos: [WEB_REPO] },
+        ],
+      }),
+    );
+    mountFeature();
+    fireEvent.click(screen.getByLabelText("Saved searches"));
+    const before = searches().length;
+    fireEvent.click(screen.getByText("web todos"));
+
+    await waitFor(() => expect(searches().length).toBeGreaterThan(before));
+    expect(searches().slice(before).map((c) => c.root)).toEqual([WEB]);
+    expect(pressed(chip("Web App"))).toBe(true);
+  });
+
+  it("falls back to every member when the saved restriction names none of them", async () => {
+    // A saved search whose members have all left should still answer. Searching
+    // nothing for a query that used to work reads as broken, not as empty.
+    localStorage.setItem(
+      "sway.savedSearches",
+      JSON.stringify({
+        "feature:f1": [{ name: "gone", query: "TODO", options: {}, repos: ["/repos/vanished"] }],
+      }),
+    );
+    mountFeature();
+    fireEvent.click(screen.getByLabelText("Saved searches"));
+    const before = searches().length;
+    fireEvent.click(screen.getByText("gone"));
+
+    await waitFor(() => expect(searches().length).toBeGreaterThan(before));
+    expect(searches().slice(before).map((c) => c.root)).toEqual([API, WEB, DOCS]);
+  });
+
+  it("offers no chip for a member that cannot be searched", async () => {
+    const missing = { label: "Worktree missing", usable: false, action: "recreate" as const, reason: null };
+    render(() => (
+      <SearchPanel
+        root={API}
+        roots={[MEMBERS[0], MEMBERS[1], { ...MEMBERS[2], state: missing }]}
+        workspace="feature:f1"
+        focusNonce={0}
+      />
+    ));
+
+    await waitFor(() => expect(chip("Docs Site").disabled).toBe(true));
+    expect(chip("Payments API").disabled).toBe(false);
+  });
+
+  it("has no chip row at all for a branch unit", async () => {
+    mount();
+    await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
+    expect(screen.queryByRole("group", { name: "Search these members" })).toBeNull();
+  });
+
+  it("has no axe violations", async () => {
+    bridge.respond = () => ONE_FILE();
+    const { container } = mountFeature();
+    await type("ab");
+    fireEvent.click(chip("Payments API"));
+    await waitFor(() => expect(pressed(chip("Payments API"))).toBe(true));
+
+    await expectNoAxeViolations(container);
+  });
+});

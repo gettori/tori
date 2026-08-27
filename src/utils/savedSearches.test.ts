@@ -149,6 +149,16 @@ describe("reading a stored list back", () => {
     ]);
   });
 
+  it("round-trips a member restriction and reads a pre-restriction entry as unrestricted", () => {
+    const restricted = saveSearch({}, WS, "api todos", "TODO", opts(), ["/repos/api"]);
+    expect(parseSavedStore(JSON.stringify(restricted))).toEqual(restricted);
+    expect(savedFor(restricted, WS)[0].repos).toEqual(["/repos/api"]);
+
+    // Every entry saved before Phase 2 looks exactly like this one.
+    const old = JSON.stringify({ [WS]: [{ name: "todos", query: "TODO", options: opts() }] });
+    expect(savedFor(parseSavedStore(old), WS)[0].repos).toBeUndefined();
+  });
+
   it("keeps the first of a duplicated name, so delete cannot hit the wrong row", () => {
     const raw = JSON.stringify({
       [WS]: [

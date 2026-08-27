@@ -66,7 +66,7 @@ describe("recording a query", () => {
 
   it("drops the oldest once the list is full", () => {
     let s: SearchHistoryStore = {};
-    for (let i = 0; i < 5; i++) s = noteQuery(s, WS, `q${i}`, opts(), 3);
+    for (let i = 0; i < 5; i++) s = noteQuery(s, WS, `q${i}`, opts(), [], 3);
     expect(historyFor(s, WS).map((h) => h.query)).toEqual(["q4", "q3", "q2"]);
   });
 
@@ -148,6 +148,29 @@ describe("reading a stored history back", () => {
   it("keeps the first of a duplicated query, so recall cannot show it twice", () => {
     const raw = JSON.stringify({ [WS]: [{ query: "a" }, { query: "a" }, { query: "b" }] });
     expect(historyFor(parseHistoryStore(raw), WS).map((h) => h.query)).toEqual(["a", "b"]);
+  });
+
+  it("round-trips a member restriction and reads a pre-restriction entry as unrestricted", () => {
+    const restricted = noteQuery({}, WS, "needle", opts(), ["/repos/api", "/repos/web"]);
+    expect(parseHistoryStore(JSON.stringify(restricted))).toEqual(restricted);
+    expect(historyFor(restricted, WS)[0].repos).toEqual(["/repos/api", "/repos/web"]);
+
+    // Every entry written before Phase 2 looks exactly like this one.
+    const old = JSON.stringify({ [WS]: [{ query: "needle", options: opts() }] });
+    expect(historyFor(parseHistoryStore(old), WS)[0].repos).toBeUndefined();
+  });
+
+  it("reads a restriction that is not a list of paths as no restriction at all", () => {
+    // "Restricted to nothing" is a state that would search no member and report
+    // no matches, so nothing in storage is allowed to spell it.
+    const raw = JSON.stringify({
+      [WS]: [{ query: "a", repos: [] }, { query: "b", repos: "/repos/api" }, { query: "c", repos: [7, ""] }],
+    });
+    expect(historyFor(parseHistoryStore(raw), WS).map((h) => h.repos)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 
   it("caps a file that grew past the limit", () => {

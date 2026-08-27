@@ -11,10 +11,18 @@
 // curated, and a control whose rows rearrange themselves when you rename one is
 // a control you have to re-read every time you use it.
 
-import { parseSearchOptions, type SearchOptions } from "./searchOptions";
+import { parseSearchOptions, parseSearchRepos, type SearchOptions } from "./searchOptions";
 
 /** One named search. `name` is unique within a workspace. */
-export type SavedSearch = { name: string; query: string; options: SearchOptions };
+export type SavedSearch = {
+  name: string;
+  query: string;
+  options: SearchOptions;
+  /** The member **repo paths** this search was narrowed to, absent for one that
+   *  covers every member. Same identity choice as `SearchRecall.repos`: a
+   *  worktree recreated at a new folder is still the member you picked. */
+  repos?: string[];
+};
 
 /** One workspace's saved searches, in the order they were added. */
 export type WorkspaceSaved = readonly SavedSearch[];
@@ -51,10 +59,16 @@ export function saveSearch(
   name: string,
   query: string,
   options: SearchOptions,
+  repos: readonly string[] = [],
 ): SavedSearchStore {
   const trimmed = name.trim();
   if (!ws || !trimmed || !query) return store;
-  const entry: SavedSearch = { name: trimmed, query, options: { ...options } };
+  const entry: SavedSearch = {
+    name: trimmed,
+    query,
+    options: { ...options },
+    ...(repos.length ? { repos: [...repos] } : {}),
+  };
   const here = savedFor(store, ws);
   const at = here.findIndex((s) => s.name === trimmed);
   const next = at >= 0 ? here.map((s, i) => (i === at ? entry : s)) : [...here, entry];
@@ -104,14 +118,20 @@ export function parseSavedStore(raw: string | null): SavedSearchStore {
       const kept: SavedSearch[] = [];
       const seen = new Set<string>();
       for (const entry of entries) {
-        const e = entry as { name?: unknown; query?: unknown; options?: unknown };
+        const e = entry as { name?: unknown; query?: unknown; options?: unknown; repos?: unknown };
         if (typeof e?.name !== "string" || typeof e?.query !== "string") continue;
         const name = e.name.trim();
         // A stored file with a duplicate name would give the panel two rows
         // that delete each other, so the first one wins and the rest go.
         if (!name || !e.query || seen.has(name)) continue;
         seen.add(name);
-        kept.push({ name, query: e.query, options: parseSearchOptions(e.options) });
+        const repos = parseSearchRepos(e.repos);
+        kept.push({
+          name,
+          query: e.query,
+          options: parseSearchOptions(e.options),
+          ...(repos ? { repos } : {}),
+        });
       }
       if (kept.length) out[ws] = kept;
     }

@@ -320,3 +320,51 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Which members to search. Sits above the query box because it scopes the
+   query, and reads as one strip that wraps rather than scrolls: a Feature with
+   six members would otherwise hide half of them behind a gesture. */
+.memberRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  margin-bottom: calc(4px * var(--ui-scale));
+}
+
+/* Same chip as a section header wears, plus a pressed state. Unpressed is
+   outlined rather than tinted, so the row reads as "one of these is on" at a
+   glance instead of as five equally lit buttons. */
+.memberChip {
+  --chip-hue: var(--fg-muted);
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(24px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
+  padding-inline: calc(6px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.memberChip:hover:not(:disabled) {
+  background: var(--neutral-hover);
+}
+
+.memberChip:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.memberOn {
+  border-color: color-mix(in srgb, var(--chip-hue) 45%, transparent);
+  background: color-mix(in srgb, var(--chip-hue) 18%, transparent);
+  color: var(--chip-hue);
+}

@@ -14,10 +14,18 @@
 // shape, the dedupe rule and the recall cursor are the decisions, and the panel
 // is the surface that renders them.
 
-import { parseSearchOptions, type SearchOptions } from "./searchOptions";
+import { parseSearchOptions, parseSearchRepos, type SearchOptions } from "./searchOptions";
 
 /** One query as it was run. */
-export type SearchRecall = { query: string; options: SearchOptions };
+export type SearchRecall = {
+  query: string;
+  options: SearchOptions;
+  /** The member **repo paths** the search was narrowed to, absent for one that
+   *  searched every member. Repo paths rather than the section paths the panel
+   *  greps: a worktree recreated somewhere else is still the same member, and a
+   *  restriction that forgot it would come back silently unrestricted. */
+  repos?: string[];
+};
 
 /** One workspace's queries, **newest first**, which is the order the arrows
  *  walk and so the order it is stored in. */
@@ -52,16 +60,26 @@ export function historyFor(store: SearchHistoryStore, ws: string): WorkspaceHist
  *
  * Re-running an old query moves it to the front, so the list stays ordered by
  * when you last cared about it rather than when you first typed it.
+ *
+ * `repos` travels with the entry for the reason the options do: a query run
+ * against one member of a Feature is a different search from the same words run
+ * against all of them. An empty list writes no field at all, so an unrestricted
+ * search stores exactly what it stored before.
  */
 export function noteQuery(
   store: SearchHistoryStore,
   ws: string,
   query: string,
   options: SearchOptions,
+  repos: readonly string[] = [],
   cap = MAX_HISTORY,
 ): SearchHistoryStore {
   if (!ws || !query) return store;
-  const entry: SearchRecall = { query, options: { ...options } };
+  const entry: SearchRecall = {
+    query,
+    options: { ...options },
+    ...(repos.length ? { repos: [...repos] } : {}),
+  };
   const rest = historyFor(store, ws).filter((h) => h.query !== query);
   return { ...store, [ws]: [entry, ...rest].slice(0, cap) };
 }
@@ -99,10 +117,15 @@ export function parseHistoryStore(raw: string | null): SearchHistoryStore {
       const kept: SearchRecall[] = [];
       const seen = new Set<string>();
       for (const entry of entries) {
-        const e = entry as { query?: unknown; options?: unknown };
+        const e = entry as { query?: unknown; options?: unknown; repos?: unknown };
         if (typeof e?.query !== "string" || !e.query || seen.has(e.query)) continue;
         seen.add(e.query);
-        kept.push({ query: e.query, options: parseSearchOptions(e.options) });
+        const repos = parseSearchRepos(e.repos);
+        kept.push({
+          query: e.query,
+          options: parseSearchOptions(e.options),
+          ...(repos ? { repos } : {}),
+        });
         if (kept.length === MAX_HISTORY) break;
       }
       if (kept.length) out[ws] = kept;

@@ -74,6 +74,19 @@ export function parseSearchOptions(raw: unknown): SearchOptions {
   };
 }
 
+/** Read a stored member restriction back: the repo paths a search was narrowed
+ *  to, or `undefined` for one that was not narrowed.
+ *
+ *  Beside `parseSearchOptions` for the same reason: both stores persist this
+ *  field, and a validator living next to one of them is one the other drifts
+ *  from. Empty and malformed both read as absent, so nothing in storage can put
+ *  the panel in a "restricted to no member at all" state. */
+export function parseSearchRepos(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const kept = [...new Set(raw.filter((p): p is string => typeof p === "string" && !!p))];
+  return kept.length ? kept : undefined;
+}
+
 /** Shape the `grep_project` invoke payload. Kept here so the argument names are
  *  asserted by a test rather than only by a failing round-trip at runtime. */
 export function grepArgs(root: string, query: string, options: SearchOptions, max: number) {
