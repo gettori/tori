@@ -205,13 +205,5 @@
    saw. Same recipe as `.srOnly` in ReviewPanel.module.css, copied rather than
    shared so this module stays self-contained. */
 .srOnly {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
+  composes: srOnly from "../../styles/patterns.module.css";
 }

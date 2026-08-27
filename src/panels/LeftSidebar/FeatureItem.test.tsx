@@ -4,6 +4,7 @@ import { expectNoAxeViolations } from "../../test/axe";
 import FeatureItem, { CHIP_CAP, type SpaceTint } from "./FeatureItem";
 import type { Feature, Member, MemberState } from "../../utils/features";
 import styles from "./FeatureItem.module.css";
+import chipStyles from "../../components/MemberChip/MemberChip.module.css";
 
 const SPACES: SpaceTint[] = [
   {
@@ -57,7 +58,8 @@ describe("FeatureItem", () => {
     const [inSpace, outside] = Array.from(container.querySelectorAll<HTMLElement>("[data-chip]"));
     expect(inSpace.style.getPropertyValue("--chip-hue")).not.toBe("");
     expect(outside.style.getPropertyValue("--chip-hue")).toBe("");
-    expect(outside.className).toContain(styles.neutral);
+    // The neutral fallback moved into MemberChip with the chip box itself.
+    expect(outside.className).toContain(chipStyles.neutral);
   });
 
   it("badges a failed member with the reason and offers Retry for it only", async () => {

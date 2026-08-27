@@ -26,7 +26,7 @@ import { traceSettle } from "../../../utils/perfTrace";
 import { debounce } from "../../../utils/debounce";
 import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
-import { memberInitials } from "../../../utils/features";
+import MemberChip from "../../../components/MemberChip/MemberChip";
 import type { MemberRoot } from "../../../utils/featureMembers";
 import {
   collapseDirs,
@@ -777,13 +777,11 @@ function RootSection(props: {
   };
 
   const chip = () => (
-    <span
-      class={styles.chip}
-      style={props.meta().tint ? { "--chip-hue": props.meta().tint } : undefined}
+    <MemberChip
+      member={{ displayName: props.meta().label, repoPath: props.path }}
+      tint={props.meta().tint}
       data-chip={props.path}
-    >
-      {memberInitials({ displayName: props.meta().label, repoPath: props.path })}
-    </span>
+    />
   );
 
   const repair = () => {
