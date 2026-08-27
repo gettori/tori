@@ -8,6 +8,7 @@ import ChatDraft from "../Chat/ChatDraft";
 import Dropdown from "../../components/Menu/Dropdown";
 import Icon from "../../components/Icon/Icon";
 import TabMark from "./TabMark";
+import { TabMemberChip } from "../../components/MemberChip/MemberChip";
 import HistoryPanel from "./HistoryPanel";
 import Button from "../../components/Button/Button";
 import { X, ChevronDown, Plus, History, CircleDashed } from "lucide-solid";
@@ -48,6 +49,7 @@ import { refreshAgentHealth } from "../../utils/agentHealth";
 import { agentEnabled, agentOffReason, draftChatAgent } from "../../utils/agentEnabled";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { isFeatureKey, selectionRoot, workspaceFolders, workspaceKey } from "../../utils/features";
+import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
 import {
   agents,
   chatCapable,
@@ -111,6 +113,7 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../componen
 import { unifiedTabs, unifyTerm, type TerminalUnifiedTab, type UnifiedTab } from "../../tabs/unifiedTabs";
 import { registerKind, kindEntry, type TabDescriptor } from "../../tabs/registry";
 import styles from "./Terminal.module.css";
+import patterns from "../../styles/patterns.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
@@ -1719,11 +1722,24 @@ export default function Terminal(props: {
   // can each show a terminal); with none, the workspace's own visible tab, as
   // it was before panes could split.
   const onScreen = (t: OpenTerm) => visibleInPane(t) ?? visibleId() === t.id;
+  // The same shared resource the editor reads, not a second one: `list_features`
+  // is fetched once per generation module-wide, so two panels asking cannot end
+  // up drawing two different member sets during a refetch.
+  const featureId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
+  const members = createFeatureMembers(featureId);
+
+  /** Which member a tab's shell is sitting in. A terminal has no file, so the
+   *  cwd is what answers; null outside a Feature. */
+  const tabMember = (cwd: string): TintedMember | null =>
+    featureId() ? memberFor(cwd, members()) : null;
+
   const termMenuItem = (u: UnifiedTab) => {
     const t = asTerm(u);
+    const m = tabMember(t.cwd);
     return (
       <>
-        <span class="tab-label">{tabTitle(t)}</span>
+        {m && <TabMemberChip member={m} />}
+        <span class="tab-label">{m ? `${m.label} / ${tabTitle(t)}` : tabTitle(t)}</span>
         <span class="tab-close" aria-label="Close" onClick={(e) => close(t.id, e)}>
           <Icon icon={X} />
         </span>
@@ -2021,18 +2037,44 @@ export default function Terminal(props: {
     // own, so a tab going quiet does not change shape in a scanned strip.
     icon: (u) => {
       const t = asTerm(u);
-      return marksSession(t) ? (
+      const mark = marksSession(t) ? (
         <TabMark agentId={t.program} status={tabStatus(t)} certainty={tabCertainty(t)} />
       ) : undefined;
+      const m = tabMember(t.cwd);
+      // Still undefined outside a Feature, so a plain shell keeps the bare label
+      // the descriptor documents.
+      if (!m) return mark;
+      return (
+        <>
+          <TabMemberChip member={m} />
+          {mark}
+        </>
+      );
     },
-    title: (u) => tabTitle(asTerm(u)),
+    // Hidden span rather than `aria-label`, the same reason the file tabs give.
+    title: (u) => {
+      const t = asTerm(u);
+      const m = tabMember(t.cwd);
+      return m ? (
+        <>
+          <span class={patterns.srOnly}>{m.label} / </span>
+          {tabTitle(t)}
+        </>
+      ) : (
+        tabTitle(t)
+      );
+    },
     tooltip: (u) => {
       const t = asTerm(u);
       // An inert tab looks like every other entry in the strip, so the hover
       // text is where it says it is only an entry. Without it a restored strip
       // reads as a dozen running things.
       if (tabState(t) === "inert") return `${t.cwd} - not started, open it to load it`;
-      return blockedTab(t) ? `${t.cwd} - waiting for your approval` : t.cwd;
+      // Appended rather than substituted: a tab waiting for your approval says
+      // so whatever has happened to the folder underneath it.
+      const m = tabMember(t.cwd);
+      const state = m && !m.state.usable ? `\n${m.label}: ${m.state.label}` : "";
+      return blockedTab(t) ? `${t.cwd} - waiting for your approval${state}` : `${t.cwd}${state}`;
     },
     renderMenuItem: termMenuItem,
     // Where this tab could go, and how to make somewhere for it to go. The

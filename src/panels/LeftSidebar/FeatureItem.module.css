@@ -55,10 +55,6 @@
 /* The chip box and its neutral fallback live in MemberChip now; what stays here
    is the state badge it carries, which only this surface draws. */
 
-.pending {
-  opacity: 0.6;
-}
-
 .badge {
   position: absolute;
   top: calc(-4px * var(--ui-scale));
