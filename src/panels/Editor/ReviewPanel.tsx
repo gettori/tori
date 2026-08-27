@@ -48,7 +48,8 @@ import { comparePrUrl } from "../../utils/prUrl";
 import { composeDraftRequest, prPath } from "../../utils/createPr";
 import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils/forgeTypes";
 import { settings } from "../Settings/settingsStore";
-import { memberInitials, rootOf, type MemberStateSummary } from "../../utils/features";
+import { rootOf, type MemberStateSummary } from "../../utils/features";
+import MemberChip from "../../components/MemberChip/MemberChip";
 import type { MemberRoot } from "../../utils/featureMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import HunkCommentInput from "./HunkCommentInput";
@@ -1290,13 +1291,12 @@ export default function ReviewPanel(props: {
     const usable = () => sec.state?.usable !== false;
     return (
       <div class={styles.memberHeader}>
-        <span
-          class={styles.chip}
-          style={sec.tint ? { "--chip-hue": sec.tint } : undefined}
+        <MemberChip
+          member={{ displayName: sec.label ?? "", repoPath: sec.root }}
+          tint={sec.tint}
           data-chip={sec.root}
-        >
-          {memberInitials({ displayName: sec.label ?? "", repoPath: sec.root })}
-        </span>
+          decorative
+        />
         <span class={styles.memberName}>{sec.label}</span>
         <Show
           when={usable()}
@@ -1588,9 +1588,11 @@ export default function ReviewPanel(props: {
         <Show when={headed() ? targetSection() : null}>
           {(sec) => (
             <div class={styles.commitTarget}>
-              <span class={styles.chip} style={sec().tint ? { "--chip-hue": sec().tint } : undefined}>
-                {memberInitials({ displayName: sec().label ?? "", repoPath: sec().root })}
-              </span>
+              <MemberChip
+                member={{ displayName: sec().label ?? "", repoPath: sec().root }}
+                tint={sec().tint}
+                decorative
+              />
               <span>Committing in {sec().label}</span>
             </div>
           )}

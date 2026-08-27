@@ -2,7 +2,8 @@ import { For, Show, createMemo } from "solid-js";
 import Button from "../../components/Button/Button";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import type { MenuItem } from "../../components/Menu/rows";
-import { memberInitials, type Feature, type Member } from "../../utils/features";
+import MemberChip from "../../components/MemberChip/MemberChip";
+import type { Feature, Member } from "../../utils/features";
 import { tintedMembers, type SpaceTint } from "../../utils/featureMembers";
 import styles from "./FeatureItem.module.css";
 
@@ -65,18 +66,17 @@ export default function FeatureItem(props: {
                 : `${m.label}: ${s.label}, ${m.key}`;
             };
             return (
-              <span
-                class={styles.chip}
-                classList={{
-                  [styles.neutral]: !m.style,
-                  [styles.pending]: m.state.label === "Creating",
-                }}
-                style={m.style}
+              <MemberChip
+                member={m.member}
+                chipStyle={m.style}
+                size="md"
+                // Never `decorative` here: the badge below is the only spoken
+                // account of a member whose worktree is gone.
+                classList={{ [styles.pending]: m.state.label === "Creating" }}
                 title={title()}
                 data-chip={m.member.repoPath}
                 data-state={m.member.state.kind}
               >
-                {memberInitials(m.member)}
                 <Show when={!m.state.usable}>
                   <span
                     class={styles.badge}
@@ -87,7 +87,7 @@ export default function FeatureItem(props: {
                     {badgeGlyph(m.member)}
                   </span>
                 </Show>
-              </span>
+              </MemberChip>
             );
           }}
         </For>
