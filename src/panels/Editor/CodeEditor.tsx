@@ -20,7 +20,7 @@ import { blameExtension, setAgentMarkers, setBlameMarkers, type TurnLink } from 
 import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blame";
 import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agentLines";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
-import { gitState } from "../../utils/gitActions";
+import { gitStateFor } from "../../utils/gitActions";
 import { traceMark } from "../../utils/perfTrace";
 import {
   claimedByLsp,
@@ -710,7 +710,7 @@ export default function CodeEditor(props: {
     // HEAD comes from the shared git store, which re-reads it on exactly the
     // events that move it. No HEAD (unborn, or a folder that is not a repo)
     // means there is nothing to blame against.
-    const head = gitState().root === root ? (gitState().head ?? "") : "";
+    const head = gitStateFor(root).head ?? "";
     const blame = head ? await blameFor(root, relTo(root, path), head) : emptyBlame();
     if (!view || shown !== path || !props.blame) return;
     if (!canPlaceBlame(view.state.sliceDoc(), buffers.get(path)?.savedText)) return;
@@ -2523,8 +2523,9 @@ export default function CodeEditor(props: {
   // A commit or a checkout moved HEAD, so the blame that was read at the old one
   // no longer describes this file. Reading `head` alone (a memo, not the store
   // signal) keeps this off the path of every file save, which rewrites the
-  // store's file list and nothing else this cares about.
-  const head = createMemo(() => gitState().head);
+  // store's file list and nothing else this cares about. This buffer's own
+  // member, not the one in front: a background member commits too.
+  const head = createMemo(() => gitStateFor(props.projectRoot).head);
 
   // The chats in this worktree, by id and name. Both halves matter and neither
   // is a doc change, so nothing else would repaint on them: a new chat changes

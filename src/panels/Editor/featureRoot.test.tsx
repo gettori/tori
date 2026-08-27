@@ -37,6 +37,8 @@ const FEATURE = {
 };
 
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
+// What `git_status` answers, for the tests that care whether a slot is filled.
+let gitRows: unknown[] = [];
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     calls.push({ cmd, args: args ?? {} });
@@ -46,6 +48,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "get_docs_root":
         return Promise.reject("no docs root");
       case "git_status":
+        return Promise.resolve(gitRows);
       case "list_branches":
       case "fs_read_dir":
       case "fs_read_dir_compact":
@@ -70,6 +73,7 @@ vi.mock("./CodeEditor", () => ({ default: () => null }));
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
+const { changedAcross } = await import("../../utils/gitActions");
 const { default: PaneView } = await import("../../tabs/PaneView");
 const { emitWith, FILE_RENAMED, PURGE_UNDER_PATH } = await import("../../utils/events");
 const { isDirOpen, resetExpanded, setDirOpen } = await import("../../utils/treeExpanded");
@@ -111,6 +115,7 @@ let mounted: ReturnType<typeof render> | null = null;
 beforeEach(() => {
   localStorage.clear();
   calls.length = 0;
+  gitRows = [];
 });
 afterEach(() => {
   mounted?.unmount();
@@ -118,7 +123,7 @@ afterEach(() => {
 });
 
 describe("the editor inside a Feature", () => {
-  it("keeps the strip under feature:<id> while git follows the active member and the watcher the whole set", async () => {
+  it("keeps the strip under feature:<id> while git and the watcher both span the whole member set", async () => {
     localStorage.setItem(
       "sway.editor.tabs.v1",
       JSON.stringify({ "feature:f1": { paths: [FILE], active: FILE, savedAt: Date.now() } }),
@@ -136,13 +141,16 @@ describe("the editor inside a Feature", () => {
     await waitFor(() => expect(watchSets()).toEqual([[A, B]]));
     expect(rootsOf("fs_watch_start")).toEqual([]);
 
+    // Git spans the same set, from cold: a background member's numbers have to
+    // be true for the section showing them and for the palette, neither of
+    // which is about the member in front.
+    await waitFor(() => expect(rootsOf("git_status")).toEqual([A, B]));
+
     setSel(featureSel(B));
-    await waitFor(() => {
-      const gitRoots = rootsOf("git_status");
-      expect(gitRoots[gitRoots.length - 1]).toBe(B);
-    });
-    // The member list did not change, so the watcher was not re-issued.
+    // The member list did not change, so neither the watcher nor git was
+    // re-issued: moving the active member is a pointer move, not a reload.
     expect(watchSets()).toEqual([[A, B]]);
+    expect(rootsOf("git_status")).toEqual([A, B]);
     // The strip is the Feature's, so moving the root neither closes nor rehomes it.
     expect(screen.queryByText(EMPTY_PANE)).toBeNull();
     await waitFor(() => expect(store()["feature:f1"]?.paths).toEqual([FILE]));
@@ -163,6 +171,8 @@ describe("the editor inside a Feature", () => {
 
     setSel(featureSel(A, [A, B, C]));
     await waitFor(() => expect(watchSets()).toEqual([[A, B], [A, B, C]]));
+    // And the newcomer gets a slot of its own rather than joining muted.
+    await waitFor(() => expect(rootsOf("git_status")).toContain(C));
 
     setSel(unitSel as never);
     await waitFor(() => expect(rootsOf("fs_watch_start")).toEqual(["/r/a"]));
@@ -201,6 +211,24 @@ describe("the editor inside a Feature", () => {
     await waitFor(() =>
       expect(calls.find((c) => c.cmd === "retry_member")?.args).toEqual({ featureId: "f1", repoPath: REPO_B }),
     );
+  });
+
+  it("drops every git slot when the Feature it was showing goes away", async () => {
+    // What a deleted Feature does: App clears the selection, and the store must
+    // stop answering about members nobody is in - the palette and the sidebar
+    // count both read it with nothing on screen to say whose it was.
+    gitRows = [{ status: " M", path: "a.txt", staged: false, unstaged: true }];
+    const [sel, setSel] = createSignal<unknown>(featureSel(A));
+    mounted = render(() => (
+      <>
+        <Editor selected={sel() as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
+    await waitFor(() => expect(changedAcross()).toHaveLength(2));
+
+    setSel(null);
+    await waitFor(() => expect(changedAcross()).toEqual([]));
   });
 
   it("leaves a branch unit headerless, with no member chip and no Feature record read", async () => {

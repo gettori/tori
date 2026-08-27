@@ -66,7 +66,7 @@ vi.mock("./CodeEditor", () => ({ default: () => null }));
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
-const { refreshStatus } = await import("../../utils/gitActions");
+const { enterRoots } = await import("../../utils/gitActions");
 const {
   emitWith,
   OPEN_IN_EDITOR,
@@ -120,7 +120,7 @@ function invokedWith(cmd: string) {
 }
 
 beforeEach(async () => {
-  await refreshStatus(null);
+  enterRoots([]);
   localStorage.clear();
   invokes.length = 0;
   statusRows = [];

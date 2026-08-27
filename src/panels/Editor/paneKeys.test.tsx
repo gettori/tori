@@ -62,7 +62,7 @@ vi.mock("./CodeEditor", () => ({
 vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
-const { refreshStatus } = await import("../../utils/gitActions");
+const { enterRoots } = await import("../../utils/gitActions");
 const { emitWith, emit, OPEN_IN_EDITOR, CLOSE_TAB, TAB_JUMP, TAB_CYCLE, GIT_STAGE_ACTIVE } =
   await import("../../utils/events");
 const { ensureEnvelope, resetPaneLayoutModel, seedTwoPane, setFocusedPane } = await import(
@@ -108,7 +108,7 @@ async function expectActive(rel: string) {
 }
 
 beforeEach(async () => {
-  await refreshStatus(null);
+  enterRoots([]);
   localStorage.clear();
   invokes.length = 0;
   listening.ready = false;

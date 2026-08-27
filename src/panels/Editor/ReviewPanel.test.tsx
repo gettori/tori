@@ -182,7 +182,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import ReviewPanel from "./ReviewPanel";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
-import { stage, refreshStatus } from "../../utils/gitActions";
+import { stage, enterRoots, refreshStatus } from "../../utils/gitActions";
 import {
   TOAST,
   OPEN_IN_EDITOR,
@@ -220,8 +220,9 @@ function fsBurst(paths: string[]) {
 
 beforeEach(async () => {
   // The git store outlives any one panel, so the previous test's index would
-  // otherwise still be loaded. Selecting nothing is the reset the app uses.
-  await refreshStatus(null);
+  // otherwise still be loaded. Re-entering the root is the reset the app uses:
+  // the panel fills its slot but never opens one.
+  enterRoots(["/proj"]);
   statusRows = [UNSTAGED];
   calls.status = 0;
   calls.diff = 0;
