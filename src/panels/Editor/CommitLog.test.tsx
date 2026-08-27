@@ -55,7 +55,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 
 const { default: CommitLog } = await import("./CommitLog");
-const { refreshGit, refreshStatus } = await import("../../utils/gitActions");
+const { enterRoots, refreshGit, refreshStatus } = await import("../../utils/gitActions");
 const { onWith, OPEN_IN_EDITOR } = await import("../../utils/events");
 const { parseSyntheticId } = await import("../../utils/syntheticTabs");
 
@@ -66,7 +66,7 @@ async function mount(workspace = REPO, file?: string) {
 }
 
 beforeEach(async () => {
-  await refreshStatus(null);
+  enterRoots([REPO]);
   pages = [];
   logArgs = [];
   logFails = "";
@@ -119,6 +119,24 @@ describe("the commit log tab", () => {
     expect(screen.queryByText("wave-2")).toBeNull();
     expect(screen.queryByText("↑2 ↓1")).toBeNull();
     expect(logArgs[0]).toMatchObject({ skip: 0 });
+  });
+
+  it("shows a background member's own branch while another member is in front", async () => {
+    // Inside a Feature every member is a repo of its own, so a log tab opened
+    // on one must not go blank just because another member is in front - which
+    // is what reading a single shared slot did.
+    const OTHER = "/other";
+    branches = [{ name: "wave-2", current: true }];
+    aheadBehind = { ahead: 2, behind: 1, has_upstream: true };
+    pages = [[commit(1)]];
+    enterRoots([REPO, OTHER], REPO);
+    // Only the background member is filled, so a read of the member in front
+    // would find nothing to label the history with.
+    await refreshGit(OTHER);
+    render(() => <CommitLog workspace={OTHER} />);
+
+    await waitFor(() => expect(screen.getByText("wave-2")).toBeTruthy());
+    expect(screen.getByText("↑2 ↓1")).toBeTruthy();
   });
 
   it("pages through a history longer than one page, and stops at the end", async () => {

@@ -20,7 +20,7 @@ import {
   stagedFiles,
   changedFiles,
   conflictedFiles,
-  pushing,
+  pushingIn,
   refreshStatus,
   refreshMeta,
   refreshGit,
@@ -1262,7 +1262,7 @@ export default function ReviewPanel(props: {
             {(ab) => (
               <Button
                 size="xs"
-                disabled={pushing() || (ab().has_upstream && ab().ahead === 0)}
+                disabled={pushingIn(props.root) || (ab().has_upstream && ab().ahead === 0)}
                 tooltip={ab().has_upstream ? "Push" : "Push (sets upstream)"}
                 onClick={() => {
                   const root = props.root;
@@ -1270,7 +1270,7 @@ export default function ReviewPanel(props: {
                   if (root && branchName) void pushToOrigin(root, branchName);
                 }}
               >
-                {pushing()
+                {pushingIn(props.root)
                   ? "Pushing…"
                   : ab().has_upstream
                     ? `↑${ab().ahead} ↓${ab().behind}`

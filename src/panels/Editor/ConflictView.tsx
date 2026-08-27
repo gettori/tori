@@ -1,6 +1,6 @@
 import { createSignal, createMemo, createEffect, on, onCleanup, batch, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { gitState, refreshStatus } from "../../utils/gitActions";
+import { gitStateFor, refreshStatus } from "../../utils/gitActions";
 import { EditorView, lineNumbers, showPanel, Decoration, type DecorationSet } from "@codemirror/view";
 import { Compartment, EditorState, RangeSetBuilder, Text, type Extension } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
@@ -281,10 +281,10 @@ export default function ConflictView(props: {
 
   /**
    * Whether the shared store still lists this file as conflicted, or null when
-   * it is describing some other workspace and so has nothing to say about it.
+   * this workspace has no slot in it and so has nothing to say about it.
    */
   const listedConflicted = createMemo(() => {
-    const s = gitState();
+    const s = gitStateFor(props.workspace);
     if (s.root !== props.workspace) return null;
     return s.files.some((f) => f.conflicted && f.path === props.file);
   });

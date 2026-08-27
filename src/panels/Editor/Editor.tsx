@@ -159,6 +159,8 @@ import { flushDeferredWrites } from "../../utils/deferredWrite";
 import {
   refreshGit,
   startGitWatch,
+  enterRoots,
+  setActiveRoot,
   gitState,
   isConflicted,
   stagedFiles,
@@ -1111,13 +1113,10 @@ export default function Editor(props: {
   // review surface refresh on external changes.
   createEffect(
     on(root, (r) => {
-      // The shared git store's root-change refresh is driven from here, not from
-      // the Changes panel: that panel is unmounted whenever the right pane shows
-      // anything else, and the palette's git commands still have to know whether
-      // this workspace has anything staged or anything to push.
-      // Keyed by the workspace, not the root: inside a Feature the span is the
-      // Feature's, and the active member moving within it is not a new switch.
-      void refreshGit(r).then(() => traceSettle("git", ws()));
+      // Which slot the one-repo surfaces read. Only the pointer: the slots
+      // themselves follow the member set, below, so moving the active member
+      // inside a Feature costs no read at all.
+      setActiveRoot(r);
       // The per-workspace settings overlay, for the same reason: this pane is
       // always mounted and is what knows which workspace is selected, and the
       // Settings panel (which badges the overlay) is usually not open.
@@ -1173,6 +1172,16 @@ export default function Editor(props: {
   // rebuilt with an equal root list would re-issue the whole set. The memo's
   // string equality is what makes moving the active root a no-op here.
   const watchKey = createMemo(() => watchRoots().join("\n"));
+  // The git store spans the same set, and for the same reason: a background
+  // member's numbers have to be true for the section showing them, the palette
+  // and the sidebar count, none of which is the member in front.
+  createEffect(
+    on(watchKey, (joined) => {
+      const roots = joined ? joined.split("\n") : [];
+      enterRoots(roots, root());
+      void Promise.all(roots.map((r) => refreshGit(r))).then(() => traceSettle("git", ws()));
+    }),
+  );
   createEffect(
     on(watchKey, (joined) => {
       const roots = joined ? joined.split("\n") : [];
@@ -2166,7 +2175,7 @@ export default function Editor(props: {
     // it either way, since that is where the empty note belongs.
     const shown = () =>
       !!fileId() || p.paneId === SOLO_PANE || isKindHome(ws(), "file", p.paneId);
-    const conflictedHere = () => isConflicted(root(), fileTabOf(fileId())?.path ?? null);
+    const conflictedHere = () => isConflicted(watchRoots(), fileTabOf(fileId())?.path ?? null);
     /** This pane's file when it is one that renders, which is what earns the
      *  bar its toggle. */
     const previewableId = () => {

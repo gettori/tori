@@ -91,7 +91,7 @@ vi.mock("./lspClient", () => ({
 
 const { default: CodeEditor } = await import("./CodeEditor");
 const { emitWith, EDITOR_SAVE } = await import("../../utils/events");
-const { refreshStatus, refreshMeta } = await import("../../utils/gitActions");
+const { enterRoots, refreshStatus, refreshMeta } = await import("../../utils/gitActions");
 const { clearBlameCache } = await import("../../utils/blame");
 
 type Dirty = { path: string; dirty: boolean };
@@ -152,6 +152,10 @@ beforeEach(async () => {
   reads.length = 0;
   noted.length = 0;
   clearBlameCache();
+  // Membership first: a refresh fills a slot, it never opens one. Entered
+  // *behind* another member, so blame placing here proves it reads this
+  // buffer's own slot rather than whichever member is in front.
+  enterRoots(["/other/member", REPO], "/other/member");
   await refreshStatus(REPO);
   await refreshMeta(REPO);
 });

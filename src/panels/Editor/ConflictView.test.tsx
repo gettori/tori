@@ -63,7 +63,7 @@ vi.mock("../../utils/sessionActivity", async (importOriginal) => ({
 }));
 
 const { default: ConflictView } = await import("./ConflictView");
-const { refreshStatus } = await import("../../utils/gitActions");
+const { enterRoots, refreshStatus } = await import("../../utils/gitActions");
 const { TOAST } = await import("../../utils/events");
 
 let mounted: ReturnType<typeof render> | null = null;
@@ -103,8 +103,9 @@ beforeEach(async () => {
   written = [];
   resolved = [];
   live = [];
-  // The git store outlives any one mount. Selecting nothing is the app's reset.
-  await refreshStatus(null);
+  // The git store outlives any one mount. Re-entering the root is the app's
+  // reset: it drops every other slot and seeds this one blank.
+  enterRoots(["/proj"]);
 });
 afterEach(() => {
   mounted?.unmount();
@@ -182,7 +183,7 @@ describe("the conflict tab", () => {
     // open: resolve the file in the terminal, or abort the merge, and the
     // stages are gone. Following the shared store costs one read on the
     // transition and keeps the tab from presenting an abandoned merge.
-    await refreshStatus(null);
+    enterRoots(["/proj"]);
     statusRows = [{ status: "UU", path: "src/f.txt", staged: false, unstaged: false, conflicted: true }];
     await refreshStatus("/proj");
     mount();

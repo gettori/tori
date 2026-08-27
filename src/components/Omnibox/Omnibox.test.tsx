@@ -34,7 +34,7 @@ vi.mock("../../panels/Settings/settingsStore", async (orig) => {
 const { default: Omnibox } = await import("./Omnibox");
 const { setLiveChat, dropLiveChat } = await import("../../utils/chatSessions");
 const { publishEditorState, clearEditorState } = await import("../../utils/editorState");
-const { refreshStatus } = await import("../../utils/gitActions");
+const { enterRoots } = await import("../../utils/gitActions");
 const {
   publishSymbols,
   clearSymbols,
@@ -132,7 +132,7 @@ beforeEach(async () => {
   opened = [];
   searched = [];
   offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opened.push(d));
-  await refreshStatus(null);
+  enterRoots([]);
 });
 
 afterEach(() => {

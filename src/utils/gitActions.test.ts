@@ -40,8 +40,14 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 const {
   gitState,
+  gitStateFor,
+  enterRoots,
+  isConflicted,
   stagedFiles,
   changedFiles,
+  stagedAcross,
+  changedAcross,
+  pushingIn,
   canPush,
   refreshGit,
   refreshStatus,
@@ -55,6 +61,7 @@ const { TOAST } = await import("./events");
 
 const modified = { status: " M", path: "src/a.ts", staged: false, unstaged: true };
 const added = { status: "M ", path: "src/a.ts", staged: true, unstaged: false };
+const conflicted = { status: "UU", path: "src/a.ts", staged: false, unstaged: false, conflicted: true };
 
 // The suite runs in the node environment, so `window` is stubbed rather than
 // spied on - the same stand-in `hotkeys.test.ts` uses. Only `dispatchEvent` is
@@ -80,8 +87,9 @@ beforeEach(async () => {
     },
   });
   // The store is module-level, so a previous test's workspace would otherwise
-  // still be loaded. Selecting nothing is the reset the app itself uses.
-  await refreshStatus(null);
+  // still be loaded. Re-entering is the reset the app itself uses: it drops
+  // every other slot and seeds this one blank.
+  enterRoots(["/proj"]);
   calls.length = 0;
   status = [];
   fail = null;
@@ -126,35 +134,108 @@ describe("the shared git store", () => {
     expect(calls.filter((c) => c.cmd === "git_ahead_behind").length).toBe(2);
   });
 
-  it("blanks the previous workspace's numbers the moment the root changes", async () => {
+  it("keeps a slot per member, each answering only about itself", async () => {
+    enterRoots(["/a", "/b"]);
     status = [added];
-    await refreshGit("/proj");
-    expect(stagedFiles()).toHaveLength(1);
+    await refreshGit("/a");
+    status = [modified];
+    await refreshGit("/b");
 
-    // Synchronous, before any read for the new root can land: the palette must
-    // never offer "Commit" on the strength of another workspace's index.
-    status = [];
-    const pending = refreshGit("/other");
-    expect(gitState().root).toBe("/other");
-    expect(stagedFiles()).toEqual([]);
-    await pending;
+    expect(stagedFiles("/a")).toEqual([added]);
+    expect(stagedFiles("/b")).toEqual([]);
+    expect(changedFiles("/b")).toEqual([modified]);
+    // No argument still means the member in front, so the palette's guards read
+    // one repo rather than a union it would then commit in the wrong one.
+    expect(gitState().root).toBe("/a");
+    expect(stagedFiles()).toEqual([added]);
+    // The union is a separate name, and carries whose each row is.
+    expect(stagedAcross()).toEqual([{ ...added, root: "/a" }]);
+    expect(changedAcross()).toEqual([{ ...modified, root: "/b" }]);
   });
 
-  it("drops an in-flight read that a root switch superseded", async () => {
+  it("drops the workspace it leaves and leaves the members beside it alone", async () => {
+    enterRoots(["/a", "/b"]);
     status = [added];
-    const slow = refreshStatus("/proj");
+    await Promise.all([refreshGit("/a"), refreshGit("/b")]);
+    expect(stagedFiles("/a")).toHaveLength(1);
+
+    // A refresh fills a slot; only entering opens or closes one. So committing
+    // in one member cannot blank the member next to it.
     status = [];
-    await refreshStatus("/other");
+    await refreshGit("/b");
+    expect(stagedFiles("/a")).toHaveLength(1);
+
+    // And the drop is synchronous, before any read for the new set can land:
+    // the palette must never offer "Commit" on the strength of a workspace
+    // nobody is in any more.
+    enterRoots(["/b", "/c"]);
+    expect(gitStateFor("/a").files).toEqual([]);
+    expect(gitStateFor("/c").files).toEqual([]);
+    expect(gitState().root).toBe("/b");
+    expect(stagedAcross()).toEqual([]);
+  });
+
+  it("answers about the member that owns the file, not the member in front", async () => {
+    enterRoots(["/a", "/b"]);
+    status = [conflicted];
+    await refreshStatus("/b");
+    status = [];
+    await refreshStatus("/a");
+
+    // Same relative path in both members, conflicted in only one of them.
+    expect(gitState().root).toBe("/a");
+    expect(isConflicted(["/a", "/b"], "/b/src/a.ts")).toBe(true);
+    expect(isConflicted(["/a", "/b"], "/a/src/a.ts")).toBe(false);
+    // A file under no member (a Docs note, a `.shared/` file) is not something
+    // git has anything to say about.
+    expect(isConflicted(["/a", "/b"], "/elsewhere/src/a.ts")).toBe(false);
+  });
+
+  it("refuses to fill a slot nobody opened", async () => {
+    status = [added];
+    await refreshGit("/elsewhere");
+    expect(gitStateFor("/elsewhere").root).toBeNull();
+    expect(calls.filter((c) => c.cmd === "git_status")).toHaveLength(0);
+  });
+
+  it("drops an in-flight read whose root left the set, and files one that stayed", async () => {
+    enterRoots(["/a", "/b"]);
+    status = [added];
+    const slow = refreshStatus("/a");
+    // Out and back: the same path, a new generation, so the answer in flight is
+    // about a set that no longer exists.
+    enterRoots(["/b"]);
+    enterRoots(["/a", "/b"]);
     await slow;
-    // /proj's answer must not be filed under /other.
-    expect(gitState().root).toBe("/other");
-    expect(gitState().files).toEqual([]);
+    expect(gitStateFor("/a").files).toEqual([]);
+
+    // A read that outlives nothing is filed as usual.
+    await refreshStatus("/a");
+    expect(stagedFiles("/a")).toEqual([added]);
   });
 
-  it("coalesces two refreshes of the same root into one read", async () => {
+  it("coalesces two refreshes of the same root into one read, and re-reads after a re-entry", async () => {
     status = [modified];
     await Promise.all([refreshStatus("/proj"), refreshStatus("/proj")]);
     expect(calls.filter((c) => c.cmd === "git_status")).toHaveLength(1);
+
+    // A new generation is a new question, so it is not answered by the read the
+    // previous one is about to discard.
+    enterRoots(["/proj"]);
+    await refreshStatus("/proj");
+    expect(calls.filter((c) => c.cmd === "git_status")).toHaveLength(2);
+    expect(changedFiles("/proj")).toEqual([modified]);
+  });
+
+  it("leaves no slot behind when the selection empties, as a deleted Feature's does", async () => {
+    enterRoots(["/a", "/b"]);
+    status = [modified];
+    await Promise.all([refreshGit("/a"), refreshGit("/b")]);
+    expect(changedAcross()).toHaveLength(2);
+
+    enterRoots([]);
+    expect(changedAcross()).toEqual([]);
+    expect(gitState().root).toBeNull();
   });
 
   it("toasts a failed action and leaves the store alone", async () => {
@@ -176,13 +257,18 @@ describe("the shared git store", () => {
     expect(await result).toBe(false);
   });
 
-  it("refuses a second push while one is in flight", async () => {
-    await refreshGit("/proj");
-    const first = push("/proj", "feature");
-    expect(await push("/proj", "feature")).toBe(false);
+  it("refuses a second push while one is in flight, per member", async () => {
+    enterRoots(["/a", "/b"]);
+    const first = push("/a", "feature");
+    expect(await push("/a", "feature")).toBe(false);
+    // The flag is the member's, not the store's: a push in one leaves the Push
+    // beside it live rather than labelling every member "Pushing…".
+    expect(pushingIn("/a")).toBe(true);
+    expect(pushingIn("/b")).toBe(false);
     await vi.waitFor(() => expect(listeners["git://push-done"]?.length).toBeTruthy());
-    for (const fn of listeners["git://push-done"]!) fn({ payload: { repo: "/proj" } });
+    for (const fn of listeners["git://push-done"]!) fn({ payload: { repo: "/a" } });
     expect(await first).toBe(true);
+    expect(pushingIn("/a")).toBe(false);
   });
 
   it("refreshes on a fetch landing, so the panel need not be open", async () => {
@@ -195,5 +281,23 @@ describe("the shared git store", () => {
     await vi.waitFor(() => expect(changedFiles()).toEqual([modified]));
     stop();
     expect(listeners["git://fetch-done"]).toHaveLength(0);
+  });
+
+  it("refreshes the member a burst names, and only that one", async () => {
+    enterRoots(["/a", "/b"]);
+    status = [];
+    await Promise.all([refreshGit("/a"), refreshGit("/b")]);
+    const stop = await startGitWatch();
+
+    status = [modified];
+    for (const fn of listeners["fs://changed"] ?? []) fn({ payload: { root: "/b", paths: ["/b/src/a.ts"] } });
+    await vi.waitFor(() => expect(changedFiles("/b")).toEqual([modified]));
+    expect(changedFiles("/a")).toEqual([]);
+
+    // A fetch names its repo the same way, on the event `.git` being
+    // watcher-filtered means the burst never arrives on.
+    for (const fn of listeners["git://fetch-done"] ?? []) fn({ payload: { repo: "/a" } });
+    await vi.waitFor(() => expect(changedFiles("/a")).toEqual([modified]));
+    stop();
   });
 });

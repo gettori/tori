@@ -10,10 +10,16 @@
 // invalidates the store, and splitting them would leave each caller to remember
 // the refresh - which is exactly the bug the Changes panel had, where staging
 // from anywhere else left its list stale.
+//
+// One slot per root, not one slot total: inside a Feature every member is a
+// repo of its own, and the member in front is a pointer into the set rather
+// than the only one whose numbers are true.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { emitWith, TOAST, type ToastEvent } from "./events";
+import { emitWith, TOAST, type FsChanged, type ToastEvent } from "./events";
+import { rootOf } from "./features";
+import { mentionPath } from "./pathScope";
 
 /** One porcelain entry. `path` is repo-relative, as every git_* command wants,
  *  and since the backend moved to `--porcelain=v2 -z` it is always a real
@@ -47,34 +53,68 @@ export type GitState = {
   head: string | null;
 };
 
-const EMPTY: Omit<GitState, "root"> = { files: [], branch: null, aheadBehind: null, head: null };
+/** A file with the member it came from, for the reads that span a Feature. */
+export type RootedFile = FileStatus & { root: string };
 
-const [gitState, setGitState] = createSignal<GitState>({ root: null, ...EMPTY });
-export { gitState };
+// One object for every root with no slot, so a consumer memo comparing `files`
+// by identity sees no change on each read of one. `root: null` is what makes a
+// slotless read distinguishable from an entered member that has not answered
+// yet: the first knows nothing, the second knows it is clean so far.
+const NO_FILES: FileStatus[] = [];
+const NO_SLOT: GitState = { root: null, files: NO_FILES, branch: null, aheadBehind: null, head: null };
 
-export const stagedFiles = () => gitState().files.filter((f) => f.staged);
-export const changedFiles = () => gitState().files.filter((f) => f.unstaged);
-export const conflictedFiles = () => gitState().files.filter((f) => f.conflicted);
+// The slot map, in the order the roots were entered, which is member order.
+const [slots, setSlots] = createSignal<ReadonlyMap<string, GitState>>(new Map());
+// Which slot the surfaces that only ever describe one repo are about.
+const [activeRoot, setActiveRoot] = createSignal<string | null>(null);
+export { setActiveRoot };
+
+/** This root's numbers. A root nobody entered reads blank rather than reading
+ *  somebody else's, which is what keeps every consumer failing closed. */
+export function gitStateFor(root: string | null | undefined): GitState {
+  return (root ? slots().get(root) : null) ?? NO_SLOT;
+}
+
+/** The active member's slot: what a surface showing one repo at a time reads. */
+export const gitState = () => gitStateFor(activeRoot());
+
+const filesIn = (root?: string | null) => (root === undefined ? gitState() : gitStateFor(root)).files;
+
+export const stagedFiles = (root?: string | null) => filesIn(root).filter((f) => f.staged);
+export const changedFiles = (root?: string | null) => filesIn(root).filter((f) => f.unstaged);
+export const conflictedFiles = (root?: string | null) => filesIn(root).filter((f) => f.conflicted);
+
+// Deliberately not the no-argument form of the three above: a union under those
+// names would compile clean at every existing call site and quietly arm the
+// palette to commit one member's index on another member's staged file.
+function across(pick: (f: FileStatus) => boolean | undefined): RootedFile[] {
+  const out: RootedFile[] = [];
+  for (const [root, state] of slots()) {
+    for (const f of state.files) if (pick(f)) out.push({ ...f, root });
+  }
+  return out;
+}
+
+/** Every entered member's staged files, tagged with the member. */
+export const stagedAcross = (): RootedFile[] => across((f) => f.staged);
+export const changedAcross = (): RootedFile[] => across((f) => f.unstaged);
+export const conflictedAcross = (): RootedFile[] => across((f) => f.conflicted);
 
 /**
- * Is this file mid-conflict in the workspace the store currently describes?
+ * Is this file mid-conflict in the member that owns it?
  *
  * Takes the **absolute** path, because that is what the editor holds and the
  * store's paths are repo-relative; the two coordinate systems have to meet
- * somewhere, and it may as well be the one place that knows both. The prefix
- * strip duplicates `CodeEditor`'s `relTo` on purpose: that module is the lazy
- * CM6 edge, and importing one helper out of it would pull the whole editor
- * into the graph of a store the command palette reads.
+ * somewhere, and it may as well be the one place that knows both.
  *
- * Root-checked. The store is shared across workspaces and blanks on a switch,
- * so answering from a file list that describes a different workspace would put
- * a conflict banner on a file that is perfectly fine.
+ * Resolved through `rootOf` rather than against one root, so a file open from a
+ * background member answers about that member instead of failing closed.
  */
-export function isConflicted(root: string | null, absPath: string | null): boolean {
-  const state = gitState();
-  if (!root || !absPath || state.root !== root) return false;
-  const rel = absPath.startsWith(root + "/") ? absPath.slice(root.length + 1) : absPath;
-  return state.files.some((f) => f.conflicted && f.path === rel);
+export function isConflicted(roots: readonly string[] | null | undefined, absPath: string | null): boolean {
+  const root = rootOf(absPath, roots);
+  if (!root || !absPath) return false;
+  const rel = mentionPath(absPath, root);
+  return gitStateFor(root).files.some((f) => f.conflicted && f.path === rel);
 }
 
 /** Can a push do anything? A branch with no upstream counts: the push sets it.
@@ -84,16 +124,32 @@ export function canPush(): boolean {
   return !!ab && (!ab.has_upstream || ab.ahead > 0);
 }
 
-const [pushing, setPushing] = createSignal(false);
-export { pushing };
+// Per root, not one flag: a Feature draws a Push per member, and one shared
+// flag would label every one of them "Pushing..." for a push in any one.
+const [pushingRoots, setPushingRoots] = createSignal<ReadonlySet<string>>(new Set());
+
+/** Is a push in flight in this member? */
+export const pushingIn = (root: string | null | undefined): boolean => !!root && pushingRoots().has(root);
+
+function markPushing(root: string, on: boolean): void {
+  setPushingRoots((prev) => {
+    if (prev.has(root) === on) return prev;
+    const next = new Set(prev);
+    if (on) next.add(root);
+    else next.delete(root);
+    return next;
+  });
+}
 
 function toastError(e: unknown) {
   emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
 }
 
-// The root every event-driven refresh below is about. Tracked separately from
-// the state so an in-flight read can tell it has been superseded.
-let currentRoot: string | null = null;
+// Which generation of membership each entered root is on. Doubles as the
+// membership set itself, and as the stale-answer guard: a read files its answer
+// only while the root it asked about is still the one it entered.
+const epochs = new Map<string, number>();
+let epoch = 0;
 
 // A refresh already running for the same key is the answer to a second request
 // for it: the Changes panel and Editor both refresh on a root change, and
@@ -110,29 +166,62 @@ function coalesce(key: string, run: () => Promise<void>): Promise<void> {
   return started;
 }
 
-// Switching root blanks the numbers immediately rather than leaving the previous
-// workspace's counts on screen (and in the palette's refusal reasons) until the
-// new read lands. Returns whether there is anything to read.
-function enterRoot(root: string | null): root is string {
-  currentRoot = root;
-  if (gitState().root !== root) setGitState({ root, ...EMPTY });
-  return root !== null;
+function writeSlot(root: string, patch: Partial<GitState>): void {
+  const prev = slots();
+  const cur = prev.get(root);
+  if (!cur) return;
+  const next = new Map(prev);
+  next.set(root, { ...cur, ...patch });
+  setSlots(next);
+}
+
+/**
+ * Declare which roots the store is about, and which of them is in front.
+ *
+ * The only writer of membership. A refresh fills a slot and never opens or
+ * closes one, so committing in one member cannot drop the numbers of the
+ * members beside it - which is exactly what `enterRoot`-inside-`refreshStatus`
+ * did when the store held a single slot.
+ *
+ * Roots outside the new set go immediately rather than after their replacement
+ * lands: the palette must never offer "Commit" on the strength of a workspace
+ * nobody is looking at any more.
+ */
+export function enterRoots(roots: readonly string[], active: string | null = roots[0] ?? null): void {
+  const prev = slots();
+  const next = new Map<string, GitState>();
+  for (const root of roots) {
+    const cur = prev.get(root);
+    if (cur) {
+      next.set(root, cur);
+      continue;
+    }
+    epochs.set(root, ++epoch);
+    next.set(root, { root, files: [], branch: null, aheadBehind: null, head: null });
+  }
+  for (const root of epochs.keys()) if (!next.has(root)) epochs.delete(root);
+  setActiveRoot(active && next.has(active) ? active : (roots[0] ?? null));
+  setSlots(next);
 }
 
 /** Re-read the file list. The cheap refresh, run after a stage or unstage. */
 export function refreshStatus(root: string | null): Promise<void> {
-  if (!enterRoot(root)) return Promise.resolve();
-  return coalesce(`status:${root}`, async () => {
+  const at = root ? epochs.get(root) : undefined;
+  if (!root || at === undefined) return Promise.resolve();
+  // Keyed by generation as well as root: a root that left the set and came
+  // back is a new question, and joining the answer to the old one (which this
+  // guard is about to discard) would leave the slot blank for good.
+  return coalesce(`status:${root}#${at}`, async () => {
     let files: FileStatus[] = [];
     try {
       files = await invoke<FileStatus[]>("git_status", { projectPath: root });
     } catch {
       files = [];
     }
-    // A switch landed while we were reading, so this answer is about a
+    // The root left the set while we were reading, so this answer is about a
     // workspace nobody is looking at any more.
-    if (currentRoot !== root) return;
-    setGitState((prev) => ({ ...prev, files }));
+    if (epochs.get(root) !== at) return;
+    writeSlot(root, { files });
   });
 }
 
@@ -140,8 +229,9 @@ export function refreshStatus(root: string | null): Promise<void> {
  *  backend round trips than the file list and changes far less often: it runs
  *  on the events that move HEAD, not on every save. */
 export function refreshMeta(root: string | null): Promise<void> {
-  if (!enterRoot(root)) return Promise.resolve();
-  return coalesce(`meta:${root}`, async () => {
+  const at = root ? epochs.get(root) : undefined;
+  if (!root || at === undefined) return Promise.resolve();
+  return coalesce(`meta:${root}#${at}`, async () => {
     // Three independent probes, so three at once: they were serial while there
     // were two of them, and a third would have made this refresh visibly slower
     // than the file list it runs beside. Each keeps its own failure, so one
@@ -155,8 +245,8 @@ export function refreshMeta(root: string | null): Promise<void> {
         .then((sha) => sha || null)
         .catch(() => null),
     ]);
-    if (currentRoot !== root) return;
-    setGitState((prev) => ({ ...prev, branch, aheadBehind, head }));
+    if (epochs.get(root) !== at) return;
+    writeSlot(root, { branch, aheadBehind, head });
   });
 }
 
@@ -227,24 +317,24 @@ function waitForPush(repo: string): Promise<{ ok: boolean; error: string }> {
 }
 
 /**
- * Push `branch` to origin and wait for the result. The `pushing` flag is shared
- * rather than per-caller: the palette and the Changes panel can both be reached
- * while a push is in flight, and two concurrent pushes of one branch is not a
- * thing either of them should be able to start.
+ * Push `branch` to origin and wait for the result. The flag is per root rather
+ * than per caller: the palette and the Changes panel can both be reached while
+ * a push is in flight, and two concurrent pushes of one branch is not a thing
+ * either of them should be able to start.
  */
 export async function push(root: string, branch: string): Promise<boolean> {
-  if (pushing()) return false;
-  setPushing(true);
+  if (pushingIn(root)) return false;
+  markPushing(root, true);
   const result = waitForPush(root);
   try {
     await invoke("git_push", { repo: root, remote: "origin", branch });
   } catch (e) {
-    setPushing(false);
+    markPushing(root, false);
     toastError(e);
     return false;
   }
   const { ok, error } = await result;
-  setPushing(false);
+  markPushing(root, false);
   if (!ok) {
     toastError(error || "Push failed");
     return false;
@@ -254,17 +344,25 @@ export async function push(root: string, branch: string): Promise<boolean> {
 }
 
 /**
- * Subscribe the store to the git events that change status behind Sway's back.
+ * Subscribe the store to the events that change status behind Sway's back.
  *
- * `.git` is watcher-filtered (gotchas), so a fetch that moves the upstream emits
- * no `fs://changed`. Called once from Editor.tsx, which is always mounted, so
- * the numbers stay true with the Changes panel closed.
+ * Watcher bursts included, because the Changes panel is unmounted whenever the
+ * right pane shows anything else and the palette still has to know what is
+ * staged. `.git` is watcher-filtered (gotchas), so a fetch that moves the
+ * upstream emits no `fs://changed` and arrives on its own event instead.
+ * Called once from Editor.tsx, which is always mounted.
  */
 export async function startGitWatch(): Promise<() => void> {
-  const refresh = () => void refreshGit(currentRoot);
+  // A payload naming no root predates the per-root events and is taken as
+  // "somewhere in here", which is every entered member.
+  const refreshOne = (root: string | undefined, run: (root: string) => Promise<void>) => {
+    if (root) void run(root);
+    else for (const r of [...epochs.keys()]) void run(r);
+  };
   const unlisteners = await Promise.all([
-    listen("git://fetch-done", refresh),
-    listen("git://fetch-error", refresh),
+    listen<FsChanged>("fs://changed", (e) => refreshOne(e.payload?.root, refreshStatus)),
+    listen<{ repo?: string }>("git://fetch-done", (e) => refreshOne(e.payload?.repo, refreshGit)),
+    listen<{ repo?: string }>("git://fetch-error", (e) => refreshOne(e.payload?.repo, refreshGit)),
   ]);
   return () => {
     for (const un of unlisteners) un();

@@ -6,6 +6,7 @@ import {
   tabUnderFolder,
   memberInitials,
   memberState,
+  rootOf,
   selectionRoot,
   workspaceFolders,
   workspaceKey,
@@ -131,6 +132,25 @@ describe("workspaceKey and selectionRoot", () => {
     expect(workspaceFolders("/r/a", sel)).toEqual(["/r/a"]);
     expect(isFeatureKey("feature:f1")).toBe(true);
     expect(isFeatureKey("/feature:f1")).toBe(false);
+  });
+});
+
+// One rule for "which member owns this file", shared by the conflict banner,
+// the commit target and the palette's git commands.
+describe("rootOf", () => {
+  it("picks the deepest root that owns the path, and nothing outside them all", () => {
+    const roots = ["/r/a", "/r/a/vendor/lib", "/r/b"];
+    expect(rootOf("/r/a/src/x.ts", roots)).toBe("/r/a");
+    // Nesting is real: a member checked out inside another must answer with
+    // itself, or every file in it stages against its host.
+    expect(rootOf("/r/a/vendor/lib/src/x.ts", roots)).toBe("/r/a/vendor/lib");
+    expect(rootOf("/r/b", roots)).toBe("/r/b");
+    expect(rootOf("/r/c/x.ts", roots)).toBeNull();
+    expect(rootOf(null, roots)).toBeNull();
+    expect(rootOf("/r/a/x.ts", [])).toBeNull();
+    // Trailing slashes are normalized, so a root carrying one still owns its
+    // files rather than owning them one character off.
+    expect(rootOf("/r/a/x.ts", ["/r/a/"])).toBe("/r/a/");
   });
 });
 
