@@ -104,3 +104,41 @@ describe("purgeTabsUnder", () => {
     expect(out.removed).toEqual([]);
   });
 });
+
+// A results buffer spans a Feature's members, and its id carries the workspace
+// key, which is not a folder at all. So the only thing that knows which repos
+// the tab reaches into is the document, and the sweep has to ask.
+describe("a results buffer's own roots", () => {
+  const search = syntheticId("search", "feature:f1", "needle");
+  const covers = (roots: string[]) => (id: string) => (id === search ? roots : null);
+  const input = (): TabMaps<{ path: string; name: string }> => ({
+    tabs: { "feature:f1": [{ path: search, name: "Search: needle" }] },
+    active: { "feature:f1": search },
+  });
+
+  it("takes the tab when any one of its members is deleted", () => {
+    // Dropped rather than trimmed: the line map is fixed at build time, so a
+    // half-invalidated document cannot be repaired into an honest one.
+    const out = purgeTabsUnder(input(), "/space/one", covers(["/space/one/api", "/space/two/web"]));
+    expect(out.removed).toEqual([search]);
+    expect(out.active["feature:f1"]).toBeNull();
+  });
+
+  it("leaves it alone when the deleted folder is none of them", () => {
+    const out = purgeTabsUnder(input(), "/space/three", covers(["/space/one/api", "/space/two/web"]));
+    expect(out.removed).toEqual([]);
+    expect(out.tabs["feature:f1"]).toHaveLength(1);
+  });
+
+  it("falls back to the id's own workspace for a buffer that is gone", () => {
+    // Evicted from the store, or never opened here. Scoping it to the id keeps
+    // the branch-unit case working and errs towards keeping the tab, which is
+    // the safe direction for a purge that skips the dirty prompt.
+    const log = syntheticId("log", "/space/one/main");
+    const maps: TabMaps<{ path: string; name: string }> = {
+      tabs: { "/space/one/main": [{ path: log, name: "Commit log" }] },
+      active: { "/space/one/main": log },
+    };
+    expect(purgeTabsUnder(maps, "/space/one", () => null).removed).toEqual([log]);
+  });
+});

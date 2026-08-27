@@ -241,7 +241,22 @@ export default function SearchPanel(props: {
    *  which workspace you are in, and it must not cost the history cursor or a
    *  half-typed name. */
   const membersKey = () => allRoots().map((r) => r.path).join(NUL);
-  const allMatches = () => sections().flatMap((s) => s.matches);
+  /** Every match on screen, in the order it is drawn. Over `sectionRoots()`
+   *  rather than `sections()` because the two disagree for as long as a fresh
+   *  restriction's search is in flight, and the preview spans are read back by
+   *  position: a row would show the previous member's expansion. */
+  const allMatches = () => sectionRoots().flatMap((r) => sectionOf(r.path)?.matches ?? []);
+  /** The same matches, each tagged with the member it belongs to. What the
+   *  editable buffer is built from: its rows write into their own member. */
+  const rootedMatches = () =>
+    sectionRoots().flatMap((r) =>
+      (sectionOf(r.path)?.matches ?? []).map((m) => ({ ...m, root: r.path })),
+    );
+  /** What a member is called in prose. Falls back to its path, which is what a
+   *  lone root has instead of a label. */
+  const labelFor = (root: string) => allRoots().find((r) => r.path === root)?.label || root;
+  const docRootsOf = (roots: readonly string[]) =>
+    roots.map((root) => ({ root, label: labelFor(root) }));
 
   // Bumped per call, so a slower in-flight request (e.g. an fs-refresh racing
   // a fresh keystroke search) can't overwrite a newer result once it resolves.
@@ -479,9 +494,13 @@ export default function SearchPanel(props: {
     setHistory((h) => noteQuery(h, ws(), s.query, s.options, repos));
     const fresh = await runSearch(s.query);
     if (!fresh) return;
-    const withHits = fresh.filter((sec) => sec.matches.length);
-    // Same single-root rule as the Open button, for the same reason.
-    if (withHits.length === 1) openSearchResults(withHits[0].root, s.query, withHits[0].matches);
+    // Read off `fresh` rather than the signal, for the reason `runSearch`
+    // returns it at all: the signal is only this search's answer if nothing
+    // overtook it.
+    const matches = fresh.flatMap((sec) => sec.matches.map((m) => ({ ...m, root: sec.root })));
+    if (matches.length) {
+      openSearchResults(ws(), s.query, matches, docRootsOf(fresh.map((sec) => sec.root)));
+    }
   }
 
   // A toggle click is one deliberate act, not a keystroke, so it re-searches
@@ -590,10 +609,19 @@ export default function SearchPanel(props: {
    *  the repo that overflowed" is the reading worth ruling out. */
   const anyTruncated = () => sections().some((s) => s.truncated);
 
+  /** Why a file was skipped, phrased for the outcome line. Inside a Feature the
+   *  reason alone is not actionable: two members routinely hold the same
+   *  `src/index.ts`, so it has to say which one to go and deal with. */
+  const skipReason = (root: string, reason: string) =>
+    headed() ? `${reason} in ${labelFor(root)}` : reason;
+
   /** Apply each root's targets against that root, then report once and
    *  re-search. The re-search matters beyond freshness: it is what proves on
    *  screen that the write landed. */
-  async function applyReplace(groups: RootTargets[], skippedForDirt: string[] = []) {
+  async function applyReplace(
+    groups: RootTargets[],
+    skippedForDirt: { root: string; path: string }[] = [],
+  ) {
     // One replace at a time. A second would find every digest already moved and
     // report "0 replaced, N skipped (changed on disk)" for work that in fact
     // succeeded, which reads as a failure.
@@ -619,9 +647,14 @@ export default function SearchPanel(props: {
         // showing pre-replace text whose next save would silently revert it.
         occurrences += out.occurrences;
         changed.push(...out.changed);
-        skipped.push(...out.skipped);
+        skipped.push(...out.skipped.map((s) => ({ path: s.path, reason: skipReason(g.root, s.reason) })));
       }
-      skipped.push(...skippedForDirt.map((path) => ({ path, reason: "unsaved changes" })));
+      skipped.push(
+        ...skippedForDirt.map(({ root, path }) => ({
+          path,
+          reason: skipReason(root, "unsaved changes"),
+        })),
+      );
       setOutcome(replaceOutcome(occurrences, changed, skipped));
       setError(null);
       await runSearch(query());
@@ -646,7 +679,9 @@ export default function SearchPanel(props: {
       : true;
     if (!ok) return;
     const dirtyHits = sections().flatMap((s) =>
-      dirtyPathsFor(s.root).filter((p) => s.matches.some((m) => m.path === p)),
+      dirtyPathsFor(s.root)
+        .filter((p) => s.matches.some((m) => m.path === p))
+        .map((path) => ({ root: s.root, path })),
     );
     await applyReplace(groups, dirtyHits);
   }
@@ -735,27 +770,15 @@ export default function SearchPanel(props: {
     emitWith(OPEN_IN_EDITOR, { path: `${root}/${path}`, line });
   }
 
-  /** The one section a results buffer can be built from, or null.
-   *
-   *  `SearchDoc` still holds a single root and rows relative to it, so a set
-   *  spanning members has no honest document yet: every row would resolve
-   *  against one member's folder and write into the wrong repo. Refused here
-   *  rather than half-built, until the doc carries the root per row (#156
-   *  phase 3). One member with hits is the ordinary case and still works. */
-  const bufferable = () => {
-    const withHits = sections().filter((s) => s.matches.length);
-    return withHits.length === 1 ? withHits[0] : null;
-  };
-
   /** Hand the current results to an editable buffer, as a tab. The matches go
    *  as they are: the buffer's whole claim is that each row is the line the
    *  search read, so re-deriving them here would give it a second answer to be
-   *  wrong about. */
+   *  wrong about. One tab for the whole set, keyed on the workspace: Open means
+   *  "the results on screen", and a tab per member is a tab per member to close. */
   function openResultsBuffer() {
-    const s = bufferable();
-    if (!s) return;
+    if (!hitCount()) return;
     commitQuery();
-    openSearchResults(s.root, query(), s.matches);
+    openSearchResults(ws(), query(), rootedMatches(), docRootsOf(sectionRoots().map((r) => r.path)));
   }
 
   let unlistenFs: UnlistenFn | undefined;
@@ -930,12 +953,8 @@ export default function SearchPanel(props: {
             icon={<Icon icon={FilePen} size={14} />}
             aria-label="Edit results in a buffer"
             tooltipWhenDisabled
-            tooltip={
-              hitCount() && !bufferable()
-                ? "Hits in more than one member: narrow the search to one to edit them as a buffer"
-                : "Edit results in a buffer and write them back"
-            }
-            disabled={!bufferable()}
+            tooltip="Edit results in a buffer and write them back"
+            disabled={!hitCount()}
             onClick={openResultsBuffer}
           />
           <IconButton

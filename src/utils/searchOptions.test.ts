@@ -208,6 +208,23 @@ describe("replaceOutcome", () => {
       "Replaced 12 occurrences in 1 file, 2 skipped (unsaved changes), 1 skipped (changed on disk).",
     );
   });
+
+  it("sums two members' outcomes into one sentence that names both skips", () => {
+    // A fan-out is one act, so it reports once. The member is inside the reason
+    // because the counts are grouped by it: two members hold the same
+    // `src/index.ts`, and a bare path names neither of them.
+    const api = { changed: ["src/a.ts"], skipped: [{ path: "src/index.ts", reason: "changed on disk in Payments API" }], occurrences: 3 };
+    const web = { changed: ["src/b.ts"], skipped: [{ path: "src/index.ts", reason: "unsaved changes in Web App" }], occurrences: 2 };
+    expect(
+      replaceOutcome(
+        api.occurrences + web.occurrences,
+        [...api.changed, ...web.changed],
+        [...api.skipped, ...web.skipped],
+      ),
+    ).toBe(
+      "Replaced 5 occurrences in 2 files, 1 skipped (changed on disk in Payments API), 1 skipped (unsaved changes in Web App).",
+    );
+  });
 });
 
 describe("splitHighlights", () => {

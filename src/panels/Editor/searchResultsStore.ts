@@ -17,7 +17,13 @@
 import type { EditorState } from "@codemirror/state";
 import { syntheticId } from "../../utils/syntheticTabs";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
-import { buildSearchDoc, collectEdits, type ResultMatch, type SearchDoc } from "./searchResultsDoc";
+import {
+  buildSearchDoc,
+  collectEdits,
+  type DocRoot,
+  type ResultMatch,
+  type SearchDoc,
+} from "./searchResultsDoc";
 
 export type SearchBuffer = {
   doc: SearchDoc;
@@ -33,13 +39,28 @@ export type SearchBuffer = {
 const MAX_BUFFERS = 4;
 const buffers = new Map<string, SearchBuffer>();
 
-/** The tab id one search materialises into. */
-export function searchResultsId(root: string, query: string): string {
-  return syntheticId("search", root, query);
+/** The tab id one search materialises into.
+ *
+ *  Keyed on the **workspace**, not on a root: inside a Feature one buffer spans
+ *  every member, so keying on a root would give the same search as many tabs as
+ *  it had members and none of them the whole answer. */
+export function searchResultsId(workspace: string, query: string): string {
+  return syntheticId("search", workspace, query);
 }
 
 export function searchBuffer(id: string): SearchBuffer | null {
   return buffers.get(id) ?? null;
+}
+
+/** The absolute roots a results buffer's rows write into, or null for an id
+ *  that names no buffer.
+ *
+ *  For `purgeTabsUnder`: a search tab's id carries the workspace key, which
+ *  inside a Feature is not a folder at all, so the folder sweep has to ask the
+ *  document which repos it actually reaches into. */
+export function searchBufferRoots(id: string): string[] | null {
+  const buf = buffers.get(id);
+  return buf ? buf.doc.roots.map((r) => r.root) : null;
 }
 
 /** Test seam: these outlive any one component, so a suite has to be able to
@@ -62,12 +83,17 @@ function hasPendingEdits(buf: SearchBuffer): boolean {
  * edits to hand back a fresher copy of what they were made from is the one
  * outcome worth ruling out. It is focused as it stands instead.
  */
-export function openSearchResults(root: string, query: string, matches: ResultMatch[]): string {
-  const id = searchResultsId(root, query);
+export function openSearchResults(
+  workspace: string,
+  query: string,
+  matches: ResultMatch[],
+  roots: readonly DocRoot[],
+): string {
+  const id = searchResultsId(workspace, query);
   const existing = buffers.get(id);
   if (!existing || !hasPendingEdits(existing)) {
     buffers.delete(id);
-    buffers.set(id, { doc: buildSearchDoc(root, query, matches), state: null });
+    buffers.set(id, { doc: buildSearchDoc(roots, query, matches), state: null });
     for (const oldest of buffers.keys()) {
       if (buffers.size <= MAX_BUFFERS) break;
       buffers.delete(oldest);

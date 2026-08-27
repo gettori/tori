@@ -67,10 +67,11 @@ const A = `${ROOT}/src/a.ts`;
 const B = `${ROOT}/src/b.ts`;
 const C = `${ROOT}/src/c.ts`;
 
+const ROOTS = [{ root: ROOT, label: "proj" }];
 const MATCHES = [
-  { path: "src/a.ts", line: 2, text: "const needle = 1" },
-  { path: "src/b.ts", line: 1, text: "needle" },
-  { path: "src/c.ts", line: 1, text: "c needle" },
+  { root: ROOT, path: "src/a.ts", line: 2, text: "const needle = 1" },
+  { root: ROOT, path: "src/b.ts", line: 1, text: "needle" },
+  { root: ROOT, path: "src/c.ts", line: 1, text: "c needle" },
 ];
 
 /** Which buffer line each file's one match sits on, 1-based as CodeMirror
@@ -101,8 +102,8 @@ function registerBuffers() {
   });
 }
 
-function mount(query = "needle", matches = MATCHES) {
-  const id = openSearchResults(ROOT, query, matches);
+function mount(query = "needle", matches = MATCHES, roots = ROOTS, ws = ROOT) {
+  const id = openSearchResults(ws, query, matches, roots);
   mounted = render(() => <SearchResultsBuffer id={id} />);
   return id;
 }
@@ -159,6 +160,9 @@ describe("materialising a search", () => {
       const id = mount();
       expect(seen).toEqual([id]);
       expect(id).toContain(encodeURIComponent(ROOT));
+      // The workspace is what the id is keyed on, not a root the search
+      // happened to cover: the same word in the next project is its own buffer.
+      expect(openSearchResults("/space/other", "needle", MATCHES, ROOTS)).not.toBe(id);
     } finally {
       window.removeEventListener("sway:open-in-editor", listener);
     }
@@ -170,7 +174,7 @@ describe("materialising a search", () => {
     // edits to do it is not.
     const id = mount();
     retype(id, ROW.a, "const pin = 1");
-    expect(openSearchResults(ROOT, "needle", MATCHES)).toBe(id);
+    expect(openSearchResults(ROOT, "needle", MATCHES, ROOTS)).toBe(id);
     expect(searchBuffer(id)!.state!.doc.line(ROW.a).text).toBe("2: const pin = 1");
   });
 });
@@ -323,6 +327,72 @@ describe("writing edits back", () => {
     expect(view().state.doc.line(ROW.a).text).toBe("2: const pin = 1");
     expect(screen.getByRole("status").textContent).toMatch(/already been written back/);
     expect(applyCalls.length).toBe(1);
+  });
+});
+
+// One buffer over a whole Feature. `apply_line_edits` takes a single root, so
+// the interesting part is the split: which rows go to which repo, and whether an
+// absolute path is ever built against the wrong one.
+describe("writing back across members", () => {
+  const API = "/feat/api";
+  const WEB = "/feat/web";
+  const FEATURE = [
+    { root: API, label: "Payments API" },
+    { root: WEB, label: "Web App" },
+  ];
+  const SHARED = [
+    { root: API, path: "src/index.ts", line: 1, text: "api needle" },
+    { root: WEB, path: "src/index.ts", line: 1, text: "web needle" },
+  ];
+  /** Two notes, then blank/member/header/row twice over. */
+  const ROWS = { api: 6, web: 10 };
+
+  const mountFeature = () => mount("needle", SHARED, FEATURE, "feature:f1");
+
+  beforeEach(() => {
+    disk[`${API}/src/index.ts`] = "api needle";
+    disk[`${WEB}/src/index.ts`] = "web needle";
+  });
+
+  it("sends each member's edits against that member's own root", async () => {
+    const id = mountFeature();
+    retype(id, ROWS.api, "api pin");
+    retype(id, ROWS.web, "web pin");
+    fireEvent.click(applyButton());
+
+    await waitFor(() => expect(applyCalls.length).toBe(2));
+    expect(applyCalls.map((c) => c.root)).toEqual([API, WEB]);
+    // One relative path, two files. A batch that sent both under one root would
+    // write the same repo twice and leave the other untouched.
+    expect(applyCalls.map((c) => c.files.map((f) => f.path))).toEqual([
+      ["src/index.ts"],
+      ["src/index.ts"],
+    ]);
+    expect(disk[`${API}/src/index.ts`]).toBe("api pin");
+    expect(disk[`${WEB}/src/index.ts`]).toBe("web pin");
+    await screen.findByText(/Wrote 2 files/);
+  });
+
+  it("marks the write at the absolute path the row's own member gives it", async () => {
+    const id = mountFeature();
+    retype(id, ROWS.web, "web pin");
+    fireEvent.click(applyButton());
+
+    await waitFor(() => expect(applyCalls.length).toBe(1));
+    expect(marked.every((p) => p === `${WEB}/src/index.ts`)).toBe(true);
+    expect(marked).not.toContain(`${API}/src/index.ts`);
+  });
+
+  it("names the member when one file refuses and the path alone names two", async () => {
+    const id = mountFeature();
+    retype(id, ROWS.web, "web pin");
+    disk[`${WEB}/src/index.ts`] = "somebody else got here first";
+    fireEvent.click(applyButton());
+
+    await screen.findByText(/Refused src\/index\.ts in Web App/);
+    // The other member's copy of the path is untouched and still editable.
+    retype(id, ROWS.api, "api pin");
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });
 

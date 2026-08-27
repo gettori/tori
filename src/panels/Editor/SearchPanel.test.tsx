@@ -29,7 +29,7 @@ type ReplaceCall = {
 const bridge: {
   calls: Call[];
   replaces: ReplaceCall[];
-  previews: { replacement: string; options: Options; spans: unknown[] }[];
+  previews: { replacement: string; options: Options; spans: unknown[]; root?: string }[];
   respond: (query: string, options: Options, root: string) => unknown;
   replaceResult: () => unknown;
   previewResult: (replacement: string, spans: { text: string; start: number; end: number }[]) => unknown;
@@ -57,6 +57,9 @@ vi.mock("@tauri-apps/api/core", () => ({
         replacement: args.replacement as string,
         options: args.options as Options,
         spans: args.spans as unknown[],
+        // Captured so the "one root-free call" claim is asserted rather than
+        // only stated by the type: the spans carry their own text already.
+        root: args.root as string | undefined,
       });
       return Promise.resolve(
         bridge.previewResult(
@@ -800,9 +803,10 @@ describe("handing the results to an editable buffer", () => {
     const { searchBuffer } = await import("./searchResultsStore");
     expect(opened.length).toBe(1);
     const buf = searchBuffer(opened[0])!;
-    expect(buf.doc.root).toBe("/proj");
+    expect(buf.doc.roots).toEqual([{ root: "/proj", label: "/proj" }]);
     expect(buf.doc.rows).toContainEqual({
       kind: "match",
+      root: "/proj",
       file: "src/a.ts",
       line: 12,
       original: "const needle = 1",
@@ -1032,6 +1036,7 @@ describe("saved searches", () => {
     expect(buf.doc.query).toBe("needle");
     expect(buf.doc.rows).toContainEqual({
       kind: "match",
+      root: "/proj",
       file: "src/a.ts",
       line: 12,
       original: "const needle = 1",
@@ -1284,21 +1289,57 @@ describe("multi-root search", () => {
     expect(searches().length).toBe(before);
   });
 
-  it("refuses the editable buffer while hits span more than one member", async () => {
-    bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE());
+  it("hands every member's hits to one buffer, keyed on the workspace", async () => {
+    bridge.respond = (_q, _o, root) => ok([match(`${root} ab`, [[0, 2]], 1, "src/index.ts")]);
     mountFeature();
     await type("ab");
 
     const open = () => screen.getByLabelText("Edit results in a buffer") as HTMLButtonElement;
-    await waitFor(() => expect(open().disabled).toBe(true));
+    await waitFor(() => expect(open().disabled).toBe(false));
 
-    // Refused out loud: the doc still holds one root, so a buffer over two would
-    // write every row into the wrong repo.
-    const surface = open().closest("[data-tooltip-hover-surface]");
-    fireEvent.pointerEnter(surface!);
-    await waitFor(() =>
-      expect(screen.getByRole("tooltip").textContent).toContain("more than one member"),
-    );
+    const opened: string[] = [];
+    const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
+    window.addEventListener("sway:open-in-editor", listener);
+    try {
+      fireEvent.click(open());
+    } finally {
+      window.removeEventListener("sway:open-in-editor", listener);
+    }
+
+    const { searchBuffer } = await import("./searchResultsStore");
+    const doc = searchBuffer(opened[0])!.doc;
+    // One tab for the result set on screen, not one per member: N tabs to close
+    // is a worse answer than one document with member headers in it.
+    expect(opened[0]).toContain(encodeURIComponent("feature:f1"));
+    expect(doc.roots.map((r) => r.root)).toEqual([API, WEB, DOCS]);
+    expect(doc.rows.filter((r) => r.kind === "member")).toEqual([
+      { kind: "member", label: "Payments API" },
+      { kind: "member", label: "Web App" },
+      { kind: "member", label: "Docs Site" },
+    ]);
+  });
+
+  it("previews every member's spans in one root-free call, in the order drawn", async () => {
+    bridge.respond = (_q, _o, root) =>
+      root === DOCS
+        ? ok([])
+        : ok([match(root === API ? "api ab" : "web ab", [[4, 6]], 1, "src/index.ts")], {
+            files: [{ path: "src/index.ts", digest: "d1" }],
+          });
+    bridge.previewResult = (_r, spans) => spans.map((s, i) => `p${i}:${s.text}`);
+    mountFeature();
+    await type("ab");
+    await typeReplacement("X");
+
+    // The spans are read back positionally, so section order is the contract.
+    expect(bridge.previews.length).toBe(1);
+    expect(bridge.previews[0].root).toBeUndefined();
+    expect(bridge.previews[0].spans).toEqual([
+      { text: "api ab", start: 4, end: 6 },
+      { text: "web ab", start: 4, end: 6 },
+    ]);
+    expect(sectionEl(API).textContent).toContain("p0:api ab");
+    expect(sectionEl(WEB).textContent).toContain("p1:web ab");
   });
 
   it("replaces against the member the row belongs to", async () => {
@@ -1317,6 +1358,23 @@ describe("multi-root search", () => {
     expect(bridge.replaces[0].targets.map((t) => t.path)).toEqual(["src/index.ts"]);
   });
 
+  it("replaces one occurrence against the member its row belongs to", async () => {
+    bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE("src/index.ts"));
+    mountFeature();
+    await type("ab");
+    await typeReplacement("X");
+
+    fireEvent.click(
+      sectionEl(WEB).querySelector(`[aria-label="Replace this occurrence on line 1"]`)!,
+    );
+
+    await waitFor(() => expect(bridge.replaces.length).toBe(1));
+    expect(bridge.replaces[0].root).toBe(WEB);
+    expect(bridge.replaces[0].targets).toEqual([
+      { path: "src/index.ts", digest: "d1", matches: [{ line: 1, start: 0, end: 2 }] },
+    ]);
+  });
+
   it("replaces all across members, one call per member", async () => {
     bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE());
     mountFeature({ confirm: async () => true });
@@ -1327,6 +1385,30 @@ describe("multi-root search", () => {
 
     await waitFor(() => expect(bridge.replaces.length).toBe(2));
     expect(bridge.replaces.map((r) => r.root)).toEqual([API, WEB]);
+  });
+
+  it("writes the member that answered when another's file moved on disk", async () => {
+    // Each member carries its own digests, so a file that moved under one of
+    // them cannot fence off a write to the other. The outcome names which.
+    bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE("src/index.ts"));
+    bridge.replaceResult = () => {
+      const last = bridge.replaces[bridge.replaces.length - 1];
+      return last.root === API
+        ? { changed: [], skipped: [{ path: "src/index.ts", reason: "changed on disk" }], occurrences: 0 }
+        : { changed: ["src/index.ts"], skipped: [], occurrences: 2 };
+    };
+    mountFeature({ confirm: async () => true });
+    await type("ab");
+    await typeReplacement("X");
+
+    fireEvent.click(screen.getByLabelText("Replace all"));
+
+    await waitFor(() => expect(bridge.replaces.length).toBe(2));
+    // "1 skipped (changed on disk)" over a Feature names neither the file you
+    // can see twice on screen nor the repo to go and deal with it in.
+    await screen.findByText(
+      "Replaced 2 occurrences in 1 file, 1 skipped (changed on disk in Payments API).",
+    );
   });
 });
 

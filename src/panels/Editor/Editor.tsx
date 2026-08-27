@@ -169,6 +169,7 @@ import {
 } from "../../utils/gitActions";
 import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
+import { searchBufferRoots } from "./searchResultsStore";
 import { renameTabsUnder, repoint } from "./renameTabs";
 import { isSyntheticId, parseSyntheticId, syntheticId, syntheticTabName } from "../../utils/syntheticTabs";
 import {
@@ -330,8 +331,12 @@ function tabIcon(t: FileTab) {
 
 // A file tab's tooltip is its path. A view's is the workspace it belongs to,
 // which is the one thing its label cannot say and the only thing telling two
-// branch-units' log tabs apart.
+// branch-units' log tabs apart. A results buffer answers with the folders it
+// writes into instead: its `ws=` field is a workspace *key*, and inside a
+// Feature that is `feature:<id>`, which names nothing a reader knows.
 function tabTitle(t: FileTab): string {
+  const roots = searchBufferRoots(t.path);
+  if (roots?.length) return roots.join("\n");
   return parseSyntheticId(t.path)?.workspace ?? t.path;
 }
 

@@ -27,13 +27,16 @@ import {
 // half succeeds - rather than the wording of the document it renders.
 
 const ROOT = "/space/proj";
+const ROOTS = [{ root: ROOT, label: "proj" }];
 const MATCHES: ResultMatch[] = [
-  { path: "src/a.ts", line: 12, text: "const needle = 1" },
-  { path: "src/a.ts", line: 400, text: "  needle()" },
-  { path: "src/b.ts", line: 7, text: "needle" },
+  { root: ROOT, path: "src/a.ts", line: 12, text: "const needle = 1" },
+  { root: ROOT, path: "src/a.ts", line: 400, text: "  needle()" },
+  { root: ROOT, path: "src/b.ts", line: 7, text: "needle" },
 ];
 
-const doc = () => buildSearchDoc(ROOT, "needle", MATCHES);
+const doc = () => buildSearchDoc(ROOTS, "needle", MATCHES);
+/** One file, addressed the way an apply outcome addresses it. */
+const hit = (file: string, root = ROOT) => ({ root, file });
 const lines = (d: SearchDoc) => renderLines(d);
 
 /** The buffer's lines with one match row retyped. */
@@ -82,7 +85,7 @@ describe("reading edits back out", () => {
     const edited = typed(d, 5, "  pin(1, 2, 3)");
     expect(textAt(d, edited, 5)).toBe("  pin(1, 2, 3)");
     expect(collectEdits(d, edited)).toEqual([
-      { path: "src/a.ts", edits: [{ line: 400, was: "  needle()", now: "  pin(1, 2, 3)" }] },
+      { root: ROOT, path: "src/a.ts", edits: [{ line: 400, was: "  needle()", now: "  pin(1, 2, 3)" }] },
     ]);
   });
 
@@ -93,14 +96,82 @@ describe("reading edits back out", () => {
     edited[5] = edited[5].slice(0, 5) + "  pin()";
     expect(collectEdits(doc(), edited)).toEqual([
       {
+        root: ROOT,
         path: "src/a.ts",
         edits: [
           { line: 12, was: "const needle = 1", now: "const pin = 1" },
           { line: 400, was: "  needle()", now: "  pin()" },
         ],
       },
-      { path: "src/b.ts", edits: [{ line: 7, was: "needle", now: "pin" }] },
+      { root: ROOT, path: "src/b.ts", edits: [{ line: 7, was: "needle", now: "pin" }] },
     ]);
+  });
+});
+
+// One buffer over a whole Feature. The trap it exists to rule out: two members
+// hold the same `src/index.ts`, so anything keyed on the relative path alone
+// would lock, re-anchor or write the wrong one of them.
+describe("a document spanning members", () => {
+  const API = "/feat/api";
+  const WEB = "/feat/web";
+  const FEATURE = [
+    { root: API, label: "Payments API" },
+    { root: WEB, label: "Web App" },
+  ];
+  const SHARED: ResultMatch[] = [
+    { root: API, path: "src/index.ts", line: 3, text: "api needle" },
+    { root: WEB, path: "src/index.ts", line: 9, text: "web needle" },
+  ];
+  const feature = () => buildSearchDoc(FEATURE, "needle", SHARED);
+
+  it("heads each member's files with the member's name", () => {
+    expect(renderLines(feature())).toEqual([
+      '2 matches in 2 files for "needle"',
+      "Edit a result's text, then apply to write it back. Lines cannot be added or removed.",
+      "",
+      "[Payments API]",
+      "src/index.ts",
+      "3: api needle",
+      "",
+      "[Web App]",
+      "src/index.ts",
+      "9: web needle",
+    ]);
+  });
+
+  it("leaves the other member's copy of the same path editable", () => {
+    const d = feature();
+    const lines = renderLines(d);
+    const after = settle(d, lines, { written: [hit("src/index.ts", API)], inBuffer: [], refused: [] });
+
+    expect(renderLines(after, lines)[4]).toBe("src/index.ts  written back");
+    // The same relative path in the other member: untouched, and still asking
+    // to be written.
+    expect(renderLines(after, lines)[8]).toBe("src/index.ts");
+
+    const edited = [...lines];
+    edited[9] = edited[9].slice(0, prefixLen(d)) + "web pin";
+    expect(collectEdits(after, edited)).toEqual([
+      { root: WEB, path: "src/index.ts", edits: [{ line: 9, was: "web needle", now: "web pin" }] },
+    ]);
+  });
+
+  it("says which member a refusal belongs to, where the path alone names two", () => {
+    expect(
+      describeApply(feature(), {
+        written: [],
+        inBuffer: [],
+        refused: [{ ...hit("src/index.ts", WEB), reason: "changed since the search" }],
+      }),
+    ).toBe("Refused src/index.ts in Web App: changed since the search.");
+  });
+
+  it("heads nothing when every hit came from one member", () => {
+    // The header would name what every row in the document already is, and a
+    // reader who has to skip a line to reach the first result is worse off.
+    const one = buildSearchDoc(FEATURE, "needle", [SHARED[0]]);
+    expect(renderLines(one).some((l) => l.startsWith("["))).toBe(false);
+    expect(one.roots).toEqual([{ root: API, label: "Payments API" }]);
   });
 });
 
@@ -148,7 +219,7 @@ describe("what the buffer refuses", () => {
   });
 
   it("refuses an edit to a file that has already been written back", () => {
-    const d = settle(doc(), lines(doc()), { written: ["src/a.ts"], inBuffer: [], refused: [] });
+    const d = settle(doc(), lines(doc()), { written: [hit("src/a.ts")], inBuffer: [], refused: [] });
     expect(refusal(d, { from: at(d, 4, 6), insert: "x" })).toBe(appliedRefusal("src/a.ts"));
   });
 });
@@ -163,16 +234,16 @@ describe("settling an apply", () => {
 
   it("re-anchors what landed, so applying twice writes it once", () => {
     const d = doc();
-    const after = settle(d, edited(), { written: ["src/a.ts"], inBuffer: [], refused: [] });
+    const after = settle(d, edited(), { written: [hit("src/a.ts")], inBuffer: [], refused: [] });
     expect(collectEdits(after, edited()).map((f) => f.path)).toEqual(["src/b.ts"]);
   });
 
   it("marks the applied file read-only and the refused one with its reason", () => {
     const d = doc();
     const after = settle(d, edited(), {
-      written: ["src/a.ts"],
+      written: [hit("src/a.ts")],
       inBuffer: [],
-      refused: [{ file: "src/b.ts", reason: "changed since the search" }],
+      refused: [{ ...hit("src/b.ts"), reason: "changed since the search" }],
     });
     const shown = renderLines(after, edited());
     expect(shown[3]).toBe("src/a.ts  written back");
@@ -190,16 +261,20 @@ describe("settling an apply", () => {
     const after = settle(doc(), edited(), {
       written: [],
       inBuffer: [],
-      refused: [{ file: "src/b.ts", reason: "changed since the search" }],
+      refused: [{ ...hit("src/b.ts"), reason: "changed since the search" }],
     });
     expect(collectEdits(after, edited())).toEqual([
-      { path: "src/a.ts", edits: [{ line: 12, was: "const needle = 1", now: "const pin = 1" }] },
-      { path: "src/b.ts", edits: [{ line: 7, was: "needle", now: "pin" }] },
+      {
+        root: ROOT,
+        path: "src/a.ts",
+        edits: [{ line: 12, was: "const needle = 1", now: "const pin = 1" }],
+      },
+      { root: ROOT, path: "src/b.ts", edits: [{ line: 7, was: "needle", now: "pin" }] },
     ]);
   });
 
   it("treats an edit taken by an open buffer as landed, and says it is unsaved", () => {
-    const after = settle(doc(), edited(), { written: [], inBuffer: ["src/a.ts"], refused: [] });
+    const after = settle(doc(), edited(), { written: [], inBuffer: [hit("src/a.ts")], refused: [] });
     expect(renderLines(after, edited())[3]).toBe(
       "src/a.ts  applied in the open buffer, not saved yet",
     );
@@ -231,10 +306,10 @@ describe("staying off the eager path", () => {
 describe("saying what happened", () => {
   it("names every file it refused, and counts the rest", () => {
     expect(
-      describeApply({
-        written: ["a.ts", "b.ts"],
-        inBuffer: ["c.ts"],
-        refused: [{ file: "d.ts", reason: "changed since the search" }],
+      describeApply(doc(), {
+        written: [hit("a.ts"), hit("b.ts")],
+        inBuffer: [hit("c.ts")],
+        refused: [{ ...hit("d.ts"), reason: "changed since the search" }],
       }),
     ).toBe(
       "Wrote 2 files. 1 file took the edit in an open buffer, still unsaved. Refused d.ts: changed since the search.",
@@ -242,6 +317,8 @@ describe("saying what happened", () => {
   });
 
   it("has something to say when nothing happened at all", () => {
-    expect(describeApply({ written: [], inBuffer: [], refused: [] })).toBe("Nothing to write.");
+    expect(describeApply(doc(), { written: [], inBuffer: [], refused: [] })).toBe(
+      "Nothing to write.",
+    );
   });
 });
