@@ -18,6 +18,9 @@ vi.mock("@tauri-apps/api/core", () => ({
     return cmd === "list_project_files" ? Promise.resolve(bridge.files) : Promise.resolve(null);
   },
 }));
+// The box reads the Feature's members to name each row's repo, and that resource
+// subscribes to `features://changed` the moment it is created.
+vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 
 // The box lists the agents this install offers, and the default is none, so a
 // bench that wants a "New Claude session" row has to say Claude is offered.
@@ -258,8 +261,9 @@ describe("files", () => {
   it("puts the files you work in first before anything is typed", async () => {
     saveFrecency(note({}, REPO, `${REPO}/src/beta.ts`, "edit", Date.now()));
     open();
-    await waitFor(() => expect(screen.getByText("src/beta.ts")).toBeTruthy());
-    expect(rowLabels()).toEqual(["src/beta.ts", "src/alpha.ts"]);
+    // On the whole list, not on `beta` alone: the frecency block renders it
+    // synchronously, so waiting for it would not wait for the listing at all.
+    await waitFor(() => expect(rowLabels()).toEqual(["src/beta.ts", "src/alpha.ts"]));
   });
 
   it("offers a worked-in file once, not in two blocks", () => {
@@ -276,7 +280,7 @@ describe("files", () => {
   it("leaves a typed query to the fuzzy score, not to what you opened last", async () => {
     saveFrecency(note({}, REPO, `${REPO}/src/beta.ts`, "edit", Date.now()));
     open();
-    await waitFor(() => expect(screen.getByText("src/beta.ts")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("src/alpha.ts")).toBeTruthy());
 
     typeInto("alpha");
 
