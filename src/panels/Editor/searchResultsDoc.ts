@@ -30,16 +30,26 @@
 // the view instead, in `SearchResultsBuffer.tsx`.
 import type { ChangeSet, EditorState, Text } from "@codemirror/state";
 
-/** One match, as `grep_project` reports it: a root-relative path, a 1-based
- *  line, and that line's text. */
-export type ResultMatch = { path: string; line: number; text: string };
+/** One match, as `grep_project` reports it, tagged with the member root it was
+ *  found under: a root-relative path, a 1-based line, and that line's text. */
+export type ResultMatch = { root: string; path: string; line: number; text: string };
+
+/** One member the document covers: the absolute root its rows write into, and
+ *  the name a header row shows. */
+export type DocRoot = { root: string; label: string };
+
+/** One file the document has something to say about. A bare relative path is
+ *  not an identity here: two members of a Feature routinely hold the same
+ *  `src/index.ts`, and one of them is not the other. */
+export type DocFile = { root: string; file: string };
 
 /** One buffer line. `note` is chrome (the headline, the blank separators),
- *  `file` is a group header, `match` is the only editable kind. */
+ *  `member` and `file` are group headers, `match` is the only editable kind. */
 export type Row =
   | { kind: "note"; text: string }
-  | { kind: "file"; file: string }
-  | { kind: "match"; file: string; line: number; original: string };
+  | { kind: "member"; label: string }
+  | { kind: "file"; root: string; file: string }
+  | { kind: "match"; root: string; file: string; line: number; original: string };
 
 /** What became of a file at the last apply. `applied` covers both landings: on
  *  disk, and in an open buffer that still has to be saved. Either way this
@@ -47,27 +57,47 @@ export type Row =
 export type Mark = { state: "applied" | "refused"; note: string };
 
 export type SearchDoc = {
-  /** Absolute workspace root. The rows' paths are relative to it. */
-  root: string;
+  /** Every member the rows resolve against, in the order they appear. One
+   *  buffer spans a Feature, so this is a list rather than the single root it
+   *  was: a row writes into *its own* member, not into the document's. */
+  roots: DocRoot[];
   query: string;
   rows: Row[];
   /** Width of the line-number column, so the read-only prefix is one length for
    *  the whole document and the numbers line up under each other. */
   width: number;
+  /** Keyed by `markKey`, i.e. on the member as well as the path. */
   marks: Record<string, Mark>;
 };
 
-/** Edits to one file, in the shape `apply_line_edits` takes. `was` is the guard:
- *  a line that no longer reads that way refuses its whole file. */
-export type FileEdits = { path: string; edits: { line: number; was: string; now: string }[] };
+/** Edits to one file, in the shape `apply_line_edits` takes plus the root it
+ *  goes to. `was` is the guard: a line that no longer reads that way refuses
+ *  its whole file. */
+export type FileEdits = {
+  root: string;
+  path: string;
+  edits: { line: number; was: string; now: string }[];
+};
 
 export type ApplyOutcome = {
   /** Files written to disk. */
-  written: string[];
+  written: DocFile[];
   /** Files whose edit went into an open buffer instead, which is still unsaved. */
-  inBuffer: string[];
-  refused: { file: string; reason: string }[];
+  inBuffer: DocFile[];
+  refused: (DocFile & { reason: string })[];
 };
+
+/** The separator a file key is joined on, named rather than inlined because a
+ *  raw NUL in a source file is invisible: one that reached a template literal
+ *  in `SearchPanel` type-checked and passed every test. */
+const NUL = "\u0000";
+
+/** How a file is addressed everywhere in this module. Joined on a character no
+ *  root and no relative path can hold, so two members' `src/index.ts` can never
+ *  spell the same key. */
+function markKey(root: string, file: string): string {
+  return `${root}${NUL}${file}`;
+}
 
 export const LINE_COUNT_REFUSAL =
   "A result line cannot be added or removed here - edit its text in place.";
@@ -82,19 +112,31 @@ export function prefixLen(doc: SearchDoc): number {
   return doc.width + 2;
 }
 
-/** Build the document for one result set. Files keep the order the backend
- *  reported them in, which is the order the panel shows. */
-export function buildSearchDoc(root: string, query: string, matches: ResultMatch[]): SearchDoc {
-  const order: string[] = [];
+/**
+ * Build the document for one result set.
+ *
+ * Members and files both keep the order the panel showed them in, which is the
+ * order the fan-out reported. `roots` supplies the header labels and nothing
+ * else: a member with no hits is not part of this document.
+ */
+export function buildSearchDoc(
+  roots: readonly DocRoot[],
+  query: string,
+  matches: ResultMatch[],
+): SearchDoc {
+  const order: DocFile[] = [];
   const byFile = new Map<string, ResultMatch[]>();
   for (const m of matches) {
-    if (!byFile.has(m.path)) {
-      order.push(m.path);
-      byFile.set(m.path, []);
+    const key = markKey(m.root, m.path);
+    if (!byFile.has(key)) {
+      order.push({ root: m.root, file: m.path });
+      byFile.set(key, []);
     }
-    byFile.get(m.path)!.push(m);
+    byFile.get(key)!.push(m);
   }
   const width = matches.reduce((w, m) => Math.max(w, String(m.line).length), 1);
+  const labelOf = (root: string) => roots.find((r) => r.root === root)?.label || root;
+  const covered = [...new Set(order.map((o) => o.root))];
 
   const rows: Row[] = [
     { kind: "note", text: headline(query, matches.length, order.length) },
@@ -103,14 +145,25 @@ export function buildSearchDoc(root: string, query: string, matches: ResultMatch
       text: "Edit a result's text, then apply to write it back. Lines cannot be added or removed.",
     },
   ];
-  for (const file of order) {
+  let member: string | null = null;
+  for (const { root, file } of order) {
     rows.push({ kind: "note", text: "" });
-    rows.push({ kind: "file", file });
-    for (const m of byFile.get(file)!) {
-      rows.push({ kind: "match", file, line: m.line, original: m.text });
+    // Only where a reader could otherwise not tell which repo a row writes
+    // into. Over a single member the header names what every row already is.
+    if (covered.length > 1 && root !== member) rows.push({ kind: "member", label: labelOf(root) });
+    member = root;
+    rows.push({ kind: "file", root, file });
+    for (const m of byFile.get(markKey(root, file))!) {
+      rows.push({ kind: "match", root, file, line: m.line, original: m.text });
     }
   }
-  return { root, query, rows, width, marks: {} };
+  return {
+    roots: covered.map((root) => ({ root, label: labelOf(root) })),
+    query,
+    rows,
+    width,
+    marks: {},
+  };
 }
 
 function headline(query: string, matches: number, files: number): string {
@@ -133,8 +186,11 @@ export function renderLines(doc: SearchDoc, current?: readonly string[]): string
   const pad = prefixLen(doc) - 2;
   return doc.rows.map((row, i) => {
     if (row.kind === "note") return row.text;
+    // Bracketed so a member cannot be misread as the file header under it: both
+    // are bare left-aligned text, and the two mean different things.
+    if (row.kind === "member") return `[${row.label}]`;
     if (row.kind === "file") {
-      const mark = doc.marks[row.file];
+      const mark = doc.marks[markKey(row.root, row.file)];
       return mark ? `${row.file}  ${mark.note}` : row.file;
     }
     const text = current ? textAt(doc, current, i) : row.original;
@@ -159,19 +215,21 @@ export function textAt(doc: SearchDoc, lines: readonly string[], i: number): str
  * either: its rows were re-anchored, and it is locked besides.
  */
 export function collectEdits(doc: SearchDoc, lines: readonly string[]): FileEdits[] {
-  const order: string[] = [];
+  const order: DocFile[] = [];
   const byFile = new Map<string, FileEdits["edits"]>();
   doc.rows.forEach((row, i) => {
-    if (row.kind !== "match" || doc.marks[row.file]?.state === "applied") return;
+    if (row.kind !== "match") return;
+    const key = markKey(row.root, row.file);
+    if (doc.marks[key]?.state === "applied") return;
     const now = textAt(doc, lines, i);
     if (now === null || now === row.original) return;
-    if (!byFile.has(row.file)) {
-      order.push(row.file);
-      byFile.set(row.file, []);
+    if (!byFile.has(key)) {
+      order.push({ root: row.root, file: row.file });
+      byFile.set(key, []);
     }
-    byFile.get(row.file)!.push({ line: row.line, was: row.original, now });
+    byFile.get(key)!.push({ line: row.line, was: row.original, now });
   });
-  return order.map((path) => ({ path, edits: byFile.get(path)! }));
+  return order.map(({ root, file }) => ({ root, path: file, edits: byFile.get(markKey(root, file))! }));
 }
 
 /**
@@ -195,7 +253,7 @@ export function refusalFor(doc: SearchDoc, before: EditorState, changes: ChangeS
       why = REGION_REFUSAL;
       return;
     }
-    if (doc.marks[row.file]?.state === "applied") {
+    if (doc.marks[markKey(row.root, row.file)]?.state === "applied") {
       why = appliedRefusal(row.file);
       return;
     }
@@ -215,15 +273,16 @@ export function refusalFor(doc: SearchDoc, before: EditorState, changes: ChangeS
  */
 export function settle(doc: SearchDoc, lines: readonly string[], out: ApplyOutcome): SearchDoc {
   const marks: Record<string, Mark> = { ...doc.marks };
-  for (const file of out.written) marks[file] = { state: "applied", note: "written back" };
-  for (const file of out.inBuffer) {
-    marks[file] = { state: "applied", note: "applied in the open buffer, not saved yet" };
+  const key = (f: DocFile) => markKey(f.root, f.file);
+  for (const f of out.written) marks[key(f)] = { state: "applied", note: "written back" };
+  for (const f of out.inBuffer) {
+    marks[key(f)] = { state: "applied", note: "applied in the open buffer, not saved yet" };
   }
-  for (const r of out.refused) marks[r.file] = { state: "refused", note: `refused: ${r.reason}` };
+  for (const r of out.refused) marks[key(r)] = { state: "refused", note: `refused: ${r.reason}` };
 
-  const landed = new Set([...out.written, ...out.inBuffer]);
+  const landed = new Set([...out.written, ...out.inBuffer].map(key));
   const rows = doc.rows.map((row, i) => {
-    if (row.kind !== "match" || !landed.has(row.file)) return row;
+    if (row.kind !== "match" || !landed.has(markKey(row.root, row.file))) return row;
     const now = textAt(doc, lines, i);
     return now === null ? row : { ...row, original: now };
   });
@@ -231,12 +290,20 @@ export function settle(doc: SearchDoc, lines: readonly string[], out: ApplyOutco
 }
 
 /** One line saying where an apply's edits went. */
-export function describeApply(out: ApplyOutcome): string {
+export function describeApply(doc: SearchDoc, out: ApplyOutcome): string {
   const parts: string[] = [];
   if (out.written.length) parts.push(`Wrote ${plural(out.written.length, "file")}.`);
   if (out.inBuffer.length) {
     parts.push(`${plural(out.inBuffer.length, "file")} took the edit in an open buffer, still unsaved.`);
   }
-  for (const r of out.refused) parts.push(`Refused ${r.file}: ${r.reason}.`);
+  for (const r of out.refused) parts.push(`Refused ${nameFile(doc, r)}: ${r.reason}.`);
   return parts.join(" ") || "Nothing to write.";
+}
+
+/** How a file is named in a message. Qualified by its member only in a document
+ *  that spans several, where the path alone names two files. */
+function nameFile(doc: SearchDoc, f: DocFile): string {
+  if (doc.roots.length < 2) return f.file;
+  const label = doc.roots.find((r) => r.root === f.root)?.label;
+  return label ? `${f.file} in ${label}` : f.file;
 }
