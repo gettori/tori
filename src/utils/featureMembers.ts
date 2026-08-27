@@ -6,7 +6,7 @@
 import { createMemo, createResource, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { memberState, type Feature, type Member, type MemberStateSummary } from "./features";
+import { memberState, rootOf, type Feature, type Member, type MemberStateSummary } from "./features";
 import { spaceHue, spaceHueRgb } from "./spaceTint";
 
 /** The slice of a Space a chip needs: the name and colour the hue derives from,
@@ -98,6 +98,29 @@ export function tintedMembers(
 ): TintedMember[] {
   if (!feature) return [];
   return [...feature.members].sort((a, b) => a.order - b.order).map((m) => tintedMember(m, spaces));
+}
+
+/**
+ * Which member a file belongs to, for a surface that has to name its repo.
+ *
+ * Over every member, not over `Selection.roots`, which holds only present ones:
+ * a tab stays open when its worktree goes missing, and that is exactly when
+ * losing the chip would read as "this file belongs to no repo".
+ *
+ * The longest-match rule itself is `rootOf`'s, so a member nested inside another
+ * still answers with itself and the two cannot disagree.
+ */
+export function memberFor(
+  path: string | null | undefined,
+  members: readonly TintedMember[] | null | undefined,
+): TintedMember | null {
+  if (!path || !members?.length) return null;
+  const byRoot = new Map<string, TintedMember>();
+  for (const m of members) {
+    if (m.member.worktreePath) byRoot.set(m.member.worktreePath, m);
+  }
+  const root = rootOf(path, [...byRoot.keys()]);
+  return root ? (byRoot.get(root) ?? null) : null;
 }
 
 // One generation counter and one read per generation, module-wide. The crumb,
