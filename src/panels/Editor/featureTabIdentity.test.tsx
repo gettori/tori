@@ -3,7 +3,7 @@
 // span, and the `+N` rows spend their width on `<repo> / <rel path>` because the
 // overflow menu is where two members' same-named files sit next to each other.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor, within } from "@solidjs/testing-library";
 
 import { installResizeObserver } from "./__fixtures__/editorAgent";
 import { installAnimationFrame } from "../../test/frames";
@@ -138,6 +138,22 @@ describe("a file tab inside a Feature", () => {
     mount(featureSel);
     const tab = await screen.findByRole("tab", { name: NAMED("web", "b.txt") });
     expect(tab.querySelector("[data-chip]")?.getAttribute("data-state")).toBe("worktree-missing");
+  });
+
+  it("hands the crumb bar the same member, which is not the active root", async () => {
+    // The wiring, not the bar: `Breadcrumbs` is tested on its own with a member
+    // handed to it, and this is the one line that says where that member comes
+    // from. The file is in the background member, so a trail resolved against
+    // `activeRoot` would collapse to the basename.
+    openTabs("feature:f1", [FILE_B]);
+    mount(featureSel);
+    const crumbs = within(await screen.findByRole("navigation", { name: "Breadcrumbs" }));
+    await waitFor(() => expect(crumbs.getByRole("button", { name: "web" })).toBeTruthy());
+    // The whole trail, not just its head: against `activeRoot` there would have
+    // been one crumb here, and it would have been the basename.
+    expect(crumbs.getAllByRole("button")).toHaveLength(3);
+    expect(crumbs.getByRole("button", { name: "src" })).toBeTruthy();
+    expect(crumbs.getByRole("button", { name: "b.txt" })).toBeTruthy();
   });
 
   it("leaves a branch unit's tab exactly as it was, chipless", async () => {

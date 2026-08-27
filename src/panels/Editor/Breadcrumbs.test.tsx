@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 import Breadcrumbs from "./Breadcrumbs";
+import type { TintedMember } from "../../utils/featureMembers";
 import { pointerClick } from "../../test/menus";
 import { publishSymbols, clearSymbols, normalizeDocumentSymbols } from "../../utils/symbols";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
@@ -98,6 +99,54 @@ describe("the path half of the bar", () => {
   it("shows nothing at all with no file open", () => {
     render(() => <Breadcrumbs root={ROOT} path={null} caret={null} />);
     expect(document.querySelector("nav")).toBeNull();
+  });
+});
+
+// Inside a Feature the trail starts one crumb earlier, at the repo the file is
+// in (#158). The pane resolves the member; the bar only has to draw it.
+describe("the member crumb", () => {
+  const WEB = "/space/proj/web";
+  const MEMBER: TintedMember = {
+    member: {
+      repoPath: "/repos/web",
+      displayName: "web",
+      worktreePath: WEB,
+      state: { kind: "present" },
+      order: 1,
+    },
+    key: WEB,
+    label: "web",
+    state: { label: "Ready", usable: true, action: null, reason: null },
+    hue: "oklch(0.72 0.13 250)",
+    style: { "--chip-hue": "oklch(0.72 0.13 250)", "--chip-rgb": "111 176 224" },
+  };
+  const buttons = () => [...document.querySelectorAll<HTMLElement>("nav button")];
+
+  it("starts the trail at the member holding the file, not at the active root", () => {
+    // `ROOT` is the member in front; this file is in another one. Resolved
+    // against `ROOT` the trail would find no shared prefix and collapse to the
+    // basename, which is the state this crumb exists to end.
+    render(() => <Breadcrumbs root={ROOT} path={`${WEB}/src/a.ts`} member={MEMBER} caret={null} />);
+    // The chip is decorative, so the crumb is named by its label alone.
+    expect(buttons()[0]).toBe(screen.getByRole("button", { name: "web" }));
+    expect(crumbs().slice(1)).toEqual(["src", "a.ts"]);
+    expect(document.querySelector("nav [data-chip]")?.getAttribute("data-chip")).toBe("/repos/web");
+  });
+
+  it("lists the member's own folder from its crumb", async () => {
+    dirs[WEB] = [entry(WEB, "src", true), entry(WEB, "README.md")];
+    render(() => <Breadcrumbs root={ROOT} path={`${WEB}/src/a.ts`} member={MEMBER} caret={null} />);
+    pointerClick(screen.getByRole("button", { name: "web" }));
+    expect(await screen.findByRole("menuitem", { name: "README.md" })).toBeTruthy();
+    expect(reads).toEqual([WEB]);
+  });
+
+  it("leaves a file outside every member alone", () => {
+    // A Docs-tree file opened while a Feature is selected: the pane resolves no
+    // member for it, and a trail that named one would be naming the wrong repo.
+    render(() => <Breadcrumbs root={ROOT} path="/elsewhere/todo.md" member={null} caret={null} />);
+    expect(crumbs()).toEqual(["todo.md"]);
+    expect(document.querySelector("nav [data-chip]")).toBeNull();
   });
 });
 

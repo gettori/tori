@@ -76,6 +76,35 @@ describe("the path half of the trail", () => {
     expect(pathCrumbs(null, null)).toEqual([]);
   });
 
+  it("starts at the member a Feature's file belongs to", () => {
+    // The member root, not the active one: the trail for a background member's
+    // file has to resolve against the folder that file is actually under.
+    const MEMBER = "/space/proj/web";
+    expect(pathCrumbs(ROOT, `${MEMBER}/src/a.ts`, { root: MEMBER, label: "web" })).toEqual([
+      { name: "web", path: MEMBER, isDir: true },
+      { name: "src", path: `${MEMBER}/src`, isDir: true },
+      { name: "a.ts", path: `${MEMBER}/src/a.ts`, isDir: false },
+    ]);
+  });
+
+  it("keeps the single crumb when the member does not hold the file either", () => {
+    // A Docs-tree file opened while a Feature is selected. Naming a member the
+    // file is not under would be the one thing worse than saying nothing.
+    expect(pathCrumbs(ROOT, "/elsewhere/todo.md", { root: "/space/proj/web", label: "web" })).toEqual([
+      { name: "todo.md", path: "/elsewhere/todo.md", isDir: false },
+    ]);
+  });
+
+  it("falls back to the root when the member does not hold the file", () => {
+    // The member costs its own crumb, not the trail: a root that does hold the
+    // file still has a folder chain worth walking.
+    expect(pathCrumbs(ROOT, PATH, { root: "/space/proj/web", label: "web" })).toEqual([
+      { name: "src", path: `${ROOT}/src`, isDir: true },
+      { name: "panels", path: `${ROOT}/src/panels`, isDir: true },
+      { name: "thing.ts", path: PATH, isDir: false },
+    ]);
+  });
+
   it("does not mistake a sibling workspace for a parent", () => {
     // `/space/proj/main-old` shares the root's characters but not its folder.
     expect(pathCrumbs(ROOT, "/space/proj/main-old/a.ts")).toEqual([

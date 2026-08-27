@@ -25,6 +25,18 @@ vi.mock("@tauri-apps/api/core", () => ({
             { repoPath: "/w/ledger", displayName: "ledger", worktreePath: null, state: { kind: "worktree-missing" }, order: 2 },
           ],
         },
+        // A second record rather than a second mock: `featureMembers` reads once
+        // per generation module-wide, so a test that swapped this payload would
+        // be served the first one from the cache.
+        {
+          id: "f2",
+          name: "Broken",
+          branch: "feat/broken",
+          createdAt: 2,
+          members: [
+            { repoPath: "/w/api", displayName: "api", worktreePath: null, state: { kind: "worktree-missing" }, order: 0 },
+          ],
+        },
       ]);
     if (cmd === "get_config")
       return Promise.resolve({ spaces: [{ name: "work", color: "Sky", projects: [{ path: "/w/api" }, { path: "/w/web" }] }] });
@@ -58,7 +70,23 @@ const unitSel = {
   projectKind: "plain",
 };
 
+const brokenSel = {
+  kind: "feature",
+  featureId: "f2",
+  featureName: "Broken",
+  roots: [],
+  activeRoot: null,
+  spaceName: "",
+  projectName: "Broken",
+  projectPath: "",
+  folderPath: "",
+  branch: "feat/broken",
+  projectKind: "feature",
+};
+
 const chip = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+const crumbs = () =>
+  [...document.querySelectorAll("nav[aria-label='location'] > span")].map((s) => s.textContent);
 
 beforeEach(() => {
   bridge.calls.length = 0;
@@ -77,6 +105,25 @@ describe("Toolbar for a Feature", () => {
 
     fireEvent.click(chip("web"));
     expect(onActiveRoot).toHaveBeenCalledWith(B);
+  });
+
+  it("names the active member between the Feature and its branch", async () => {
+    // Three crumbs, and the middle one follows the chip row: the crumb says
+    // where you are, the chips are what move it (#158).
+    const onActiveRoot = vi.fn();
+    render(() => <Toolbar selected={featureSel(B) as never} onActiveRoot={onActiveRoot} />);
+    await waitFor(() => expect(crumbs()).toEqual(["Auth", "web", "feat/auth"]));
+
+    fireEvent.click(chip("api"));
+    expect(onActiveRoot).toHaveBeenCalledWith(A);
+  });
+
+  it("falls back to two crumbs when no member is open, with no dangling separator", async () => {
+    render(() => <Toolbar selected={brokenSel as never} />);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /api/ })).toBeTruthy());
+    // Not an empty middle crumb: the separator leaves with the name it followed.
+    expect(crumbs()).toEqual(["Broken", "feat/broken"]);
+    expect(document.querySelectorAll("nav[aria-label='location'] svg").length).toBe(1);
   });
 
   it("disables a member with no worktree and names the state", async () => {
