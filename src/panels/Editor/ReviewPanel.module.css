@@ -105,6 +105,17 @@
   white-space: nowrap;
 }
 
+/* Which member the message below lands in. Present only inside a Feature, so
+   it is never a line explaining the one repo there is. */
+.commitTarget {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: 0 0 calc(4px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
 /* A clean member still keeps its header, so it needs a line saying so. */
 .memberEmpty {
   padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
