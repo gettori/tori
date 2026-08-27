@@ -31,6 +31,8 @@ import {
   type StopChat,
   type NewSession,
 } from "../../utils/events";
+import { rootOf, workspaceKey } from "../../utils/features";
+import { createFeatureMembers, memberFor } from "../../utils/featureMembers";
 import { loadFrecency, rankByFrecency, topFiles } from "../../utils/frecency";
 import { loadTasks, type Task } from "../../utils/tasks";
 import { loadTaskRuns } from "../../utils/taskRecents";
@@ -81,6 +83,14 @@ type Row = {
   enters?: string;
   run?: () => void;
 };
+
+/** One listed file: which root it came from, and where it sits inside it.
+ *  Inside a Feature the rel path alone no longer identifies a file. */
+type ProjectFile = { root: string; rel: string };
+
+function absOf(f: ProjectFile): string {
+  return `${f.root}/${f.rel}`;
+}
 
 function basename(path: string): string {
   return path.split("/").pop() || path;
@@ -171,20 +181,40 @@ export default function Omnibox(props: {
   onClose: () => void;
 }) {
   const [query, setQuery] = createSignal(props.prefix ?? "");
-  const [files, setFiles] = createSignal<string[]>([]);
+  const [files, setFiles] = createSignal<ProjectFile[]>([]);
   const [tasks, setTasks] = createSignal<Task[]>([]);
   const [wsHits, setWsHits] = createSignal<SymbolNode[]>([]);
   let input: HTMLInputElement | undefined;
 
   const root = () => props.selected?.folderPath ?? null;
 
+  /** Every root the box lists files from: inside a Feature that is all its
+   *  present members, since this is the one surface that can reach a file in a
+   *  repo that is not the one in front of you. */
+  const roots = (): string[] => {
+    const sel = props.selected;
+    if (sel?.kind === "feature") return sel.roots ?? [];
+    const at = root();
+    return at ? [at] : [];
+  };
+
+  const featureId = () =>
+    props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null;
+  const members = createFeatureMembers(featureId);
+  // One map rather than a `memberFor` per row: the untyped list draws hundreds,
+  // and a member's key is the very root the rows already carry.
+  const repoNames = createMemo(() => new Map(members().map((m) => [m.key, m.label])));
+
   // Read once, when the box opens, and held for its lifetime. The editor writes
   // this back on every open and edit, so storage is current by the time anyone
   // can press ⌘P; reading it here keeps the ranking out of App's prop chain, and
   // freezing `now` with it keeps the order from drifting under the cursor while
   // someone types.
+  //
+  // Keyed the way the editor writes it: `feature:<id>` for a Feature, whose
+  // members' files would otherwise be filed under whichever one was in front.
   const openedAt = Date.now();
-  const stats = loadFrecency(openedAt)[root() ?? ""] ?? {};
+  const stats = loadFrecency(openedAt)[workspaceKey(props.selected)] ?? {};
 
   const parsed = createMemo(() => parseQuery(query()));
   const mode = () => parsed().mode;
@@ -198,12 +228,18 @@ export default function Omnibox(props: {
     // that can start. Cached in the backend, so this is a no-op after the first
     // call from anywhere.
     ensureAgentHealthLoaded();
-    const at = root();
-    if (!at) return;
-    void invoke<string[]>("list_project_files", { projectPath: at }).then(
-      setFiles,
-      () => setFiles([]),
-    );
+    // All roots at once rather than streaming them in: rows that arrive one
+    // member at a time shift under a cursor that is already moving.
+    const at = roots();
+    if (!at.length) return;
+    void Promise.all(
+      at.map((r) =>
+        invoke<string[]>("list_project_files", { projectPath: r }).then(
+          (rels) => rels.map((rel) => ({ root: r, rel })),
+          () => [],
+        ),
+      ),
+    ).then((lists) => setFiles(lists.flat()));
   });
 
   // Not on mount, unlike the file list: `fs_read_dir` shells out to
@@ -267,17 +303,37 @@ export default function Omnibox(props: {
 
   // --- The modes ------------------------------------------------------------
 
-  /** A file row, labelled by its workspace-relative path: a bare basename makes
-   *  two `index.ts` rows indistinguishable, and the path is also what you would
-   *  type to find one. */
-  function fileRow(rel: string, section?: string): Row {
-    const at = root();
+  /** How a file reads in the list: its root-relative path, prefixed by the repo
+   *  inside a Feature. A bare basename makes two `index.ts` rows
+   *  indistinguishable, and inside a Feature so does the rel path alone, since
+   *  two members hold the same `package.json`. */
+  function fileLabel(f: ProjectFile): string {
+    const repo = repoNames().get(f.root);
+    return repo ? `${repo}/${f.rel}` : f.rel;
+  }
+
+  /** The same, for a row that starts from an absolute path rather than from the
+   *  listing: the jump list and the frecency block both do.
+   *
+   *  Over every member rather than over `roots()`, which holds only the present
+   *  ones: a file outlives its member's worktree in both blocks, and that is
+   *  exactly when an absolute path is the wrong thing to fall back to. */
+  function pathLabel(abs: string): string {
+    const m = memberFor(abs, members());
+    if (m) return `${m.label}/${mentionPath(abs, m.key)}`;
+    const at = rootOf(abs, roots());
+    return at ? fileLabel({ root: at, rel: mentionPath(abs, at) }) : abs;
+  }
+
+  /** A file row. The root rides on the id as well as the label, so two members'
+   *  same-named files are two rows rather than one that collides. */
+  function fileRow(f: ProjectFile, section?: string): Row {
     return {
-      id: `file:${rel}`,
-      label: rel,
+      id: `file:${f.root}:${f.rel}`,
+      label: fileLabel(f),
       section,
-      fileIcon: basename(rel),
-      run: () => at && openAt(`${at}/${rel}`),
+      fileIcon: basename(f.rel),
+      run: () => openAt(`${f.root}/${f.rel}`),
     };
   }
 
@@ -300,10 +356,9 @@ export default function Omnibox(props: {
    *  frecency, and they answer different questions - "back to what I was doing"
    *  against "the files this project is". */
   const emptyFileRows = createMemo((): { rows: Row[]; paths: Set<string> } => {
-    const at = root();
     const paths = new Set<string>();
     const jumps = editorState().recentJumps.map((entry): Row => {
-      const rel = at ? mentionPath(entry.path, at) : entry.path;
+      const rel = pathLabel(entry.path);
       paths.add(entry.path);
       return {
         id: `jump:${entry.path}:${entry.line ?? ""}`,
@@ -313,14 +368,16 @@ export default function Omnibox(props: {
         run: () => openAt(entry.path, entry.line),
       };
     });
-    const worked = at
+    const worked = roots().length
       ? topFiles(stats, openedAt, MAX_RECENTS)
           .filter((path) => !paths.has(path))
           .map((path): Row => {
             paths.add(path);
             return {
-              ...fileRow(mentionPath(path, at), "Recent files"),
               id: `worked:${path}`,
+              label: pathLabel(path),
+              section: "Recent files",
+              fileIcon: basename(path),
               run: () => openAt(path),
             };
           })
@@ -340,28 +397,32 @@ export default function Omnibox(props: {
       // Minus whatever the blocks above already offered: the ranking would put
       // exactly those at the top, and one file on two rows is a list that reads
       // as broken however sensible each half is on its own.
-      const at = root();
       const { rows: head, paths } = emptyFileRows();
-      const ranked = at
-        ? rankByFrecency(all, (rel) => `${at}/${rel}`, stats, openedAt)
-        : all;
-      const rest = at
-        ? ranked.filter((rel) => !paths.has(`${at}/${rel}`))
-        : ranked;
-      return [
-        ...head,
-        ...rest
-          .slice(0, MAX_RESULTS)
-          .map((rel) => fileRow(rel, head.length ? "Project" : undefined)),
-      ];
+      const ranked = rankByFrecency(all, absOf, stats, openedAt);
+      // Capped per root rather than over the whole list: one shared cap on an
+      // untyped list of eight members silently drops the last few members
+      // entirely, and a member with no rows reads as a member with no files.
+      const taken = new Map<string, number>();
+      const rest: ProjectFile[] = [];
+      for (const f of ranked) {
+        if (paths.has(absOf(f))) continue;
+        const n = taken.get(f.root) ?? 0;
+        if (n >= MAX_RESULTS) continue;
+        taken.set(f.root, n + 1);
+        rest.push(f);
+      }
+      return [...head, ...rest.map((f) => fileRow(f, head.length ? "Project" : undefined))];
     }
-    const scored: { rel: string; score: number }[] = [];
-    for (const rel of all) {
-      const s = fuzzyScore(q, rel);
-      if (s !== null) scored.push({ rel, score: s });
+    // Scored against the label, so inside a Feature the repo name narrows the
+    // list the same way a folder name does. One cap here: scores are comparable
+    // across members, so the best 200 really are the best 200.
+    const scored: { f: ProjectFile; score: number }[] = [];
+    for (const f of all) {
+      const s = fuzzyScore(q, fileLabel(f));
+      if (s !== null) scored.push({ f, score: s });
     }
     scored.sort((a, b) => b.score - a.score);
-    return scored.slice(0, MAX_RESULTS).map((r) => fileRow(r.rel));
+    return scored.slice(0, MAX_RESULTS).map((r) => fileRow(r.f));
   });
 
   const commandRows = createMemo((): Row[] => {
