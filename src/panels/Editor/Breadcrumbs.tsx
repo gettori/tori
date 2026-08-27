@@ -2,10 +2,12 @@ import { For, Show, createMemo, createResource, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronRight } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
+import { TabMemberChip } from "../../components/MemberChip/MemberChip";
 import Dropdown from "../../components/Menu/Dropdown";
 import { MenuRow, MenuSub } from "../../components/Menu/rows";
 import SymbolIcon from "../../components/SymbolIcon/SymbolIcon";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
+import type { TintedMember } from "../../utils/featureMembers";
 import { symbolsFor } from "../../utils/symbols";
 import { pathCrumbs, siblingsAt, symbolTrail, dirOf, type PathCrumb } from "./breadcrumbTrail";
 import styles from "./Breadcrumbs.module.css";
@@ -58,11 +60,21 @@ export default function Breadcrumbs(props: {
    *  (nothing open, or a caret last seen in a file that is no longer shown).
    *  Null renders the path half alone rather than a stale symbol trail. */
   caret: { line: number; column: number } | null;
+  /** The member holding the file, inside a Feature. Resolved by the pane, which
+   *  already reads the member list for the tab strip; null outside a Feature,
+   *  where there is one root and the sidebar has named it. */
+  member?: TintedMember | null;
   /** Pinned to the bar's right edge: a control about the file the trail names,
    *  which belongs to this pane rather than to the strip every pane shares. */
   trailing?: JSX.Element;
 }) {
-  const crumbs = createMemo(() => pathCrumbs(props.root, props.path));
+  const crumbs = createMemo(() =>
+    pathCrumbs(
+      props.root,
+      props.path,
+      props.member ? { root: props.member.key, label: props.member.label } : null,
+    ),
+  );
   const nodes = createMemo(() => symbolsFor(props.path));
   const trail = createMemo(() => {
     const at = props.caret;
@@ -78,6 +90,12 @@ export default function Breadcrumbs(props: {
   // A folder crumb lists itself; the file crumb lists what it sits beside.
   const dirFor = (crumb: PathCrumb) => (crumb.isDir ? crumb.path : dirOf(crumb.path));
 
+  // Matched on the path rather than on being first, so a trail that did not
+  // prepend the member (a Docs file open while a Feature is selected) wears no
+  // chip instead of pinning one to whatever crumb happened to lead.
+  const chipFor = (crumb: PathCrumb) =>
+    props.member && crumb.path === props.member.key ? props.member : null;
+
   return (
     <Show when={crumbs().length}>
       <nav class={styles.bar} aria-label="Breadcrumbs">
@@ -88,6 +106,7 @@ export default function Breadcrumbs(props: {
                 <Sep />
               </Show>
               <Crumb menu={<DirLevel dir={dirFor(crumb)} here={props.path} onPick={goTo} />}>
+                <Show when={chipFor(crumb)}>{(m) => <TabMemberChip member={m()} />}</Show>
                 {crumb.name}
               </Crumb>
             </>
