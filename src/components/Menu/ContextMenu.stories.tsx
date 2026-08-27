@@ -52,6 +52,21 @@ export const RowStates: Story = {
   },
 };
 
+/** What the menu is acting on, when the row alone does not say it. Inside a
+ *  Feature two members hold the same `package.json`, so the tree's row menu
+ *  leads with the repo. Kobalte's group label: the arrows skip it, and the group
+ *  it names is announced before the first row rather than the name being read as
+ *  an option. */
+export const WithHeading: Story = {
+  args: {
+    items: [
+      { heading: "web" },
+      { label: "Rename", onClick: () => {} },
+      { label: "Delete", onClick: () => {}, danger: true },
+    ],
+  },
+};
+
 /** Rows with more than a label: an icon, a count, a trailing control. `items` is
  *  the shorthand; `menu` is the escape hatch, and both render the same chrome
  *  because they go through the same row layer. */
