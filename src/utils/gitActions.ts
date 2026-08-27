@@ -118,9 +118,10 @@ export function isConflicted(roots: readonly string[] | null | undefined, absPat
 }
 
 /** Can a push do anything? A branch with no upstream counts: the push sets it.
- *  Unknown (the probe failed, or nothing is selected) reads as no. */
-export function canPush(): boolean {
-  const ab = gitState().aheadBehind;
+ *  Unknown (the probe failed, or nothing is selected) reads as no. Takes the
+ *  member to ask about, defaulting to the one in front, like the file lists. */
+export function canPush(root?: string | null): boolean {
+  const ab = (root === undefined ? gitState() : gitStateFor(root)).aheadBehind;
   return !!ab && (!ab.has_upstream || ab.ahead > 0);
 }
 

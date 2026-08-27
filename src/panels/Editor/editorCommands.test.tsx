@@ -86,11 +86,29 @@ const selection = {
   projectKind: "plain",
 };
 
+// A Feature spanning two members, with the second one not the active member:
+// the palette's git commands have to reach it anyway, since the file in front
+// is what says which repo the reader means.
+const MEMBER_B = "/space/other/main";
+const featureSelection = {
+  kind: "feature",
+  featureId: "f1",
+  featureName: "Auth",
+  roots: [REPO, MEMBER_B],
+  activeRoot: REPO,
+  spaceName: "",
+  projectName: "Auth",
+  projectPath: REPO,
+  folderPath: REPO,
+  branch: "feat/auth",
+  projectKind: "feature",
+};
+
 let mounted: ReturnType<typeof render> | null = null;
 
 /** Mount the pane and wait until it has read the workspace and is listening. */
-async function mountEditor() {
-  mounted = render(() => <Editor selected={selection as never} />);
+async function mountEditor(sel: unknown = selection) {
+  mounted = render(() => <Editor selected={sel as never} />);
   await waitFor(() => expect(invokes.some((i) => i.cmd === "git_status")).toBe(true));
   await waitFor(() => expect(listening.ready).toBe(true));
 }
@@ -225,6 +243,56 @@ describe("commands the editor answers", () => {
     // the index can move between the row being listed and it being picked.
     await Promise.resolve();
     expect(screen.queryByText("Commit message")).toBeNull();
+  });
+
+  it("stages a file in a background member of a Feature, in that member", async () => {
+    // The file in front lives in the member that is *not* active. Refusing it
+    // ("isn't in this workspace") would be a refusal about a file that plainly
+    // is, and staging it in the active member would stage the wrong repo.
+    await mountEditor(featureSelection);
+    await open(`${MEMBER_B}/src/b.ts`);
+
+    const toasts: string[] = [];
+    const on = (e: Event) => toasts.push((e as CustomEvent<{ message: string }>).detail.message);
+    window.addEventListener(TOAST, on);
+    emitWith(GIT_STAGE_ACTIVE, null);
+    await waitFor(() =>
+      expect(invokedWith("git_stage")).toEqual([{ projectPath: MEMBER_B, paths: ["src/b.ts"] }]),
+    );
+    window.removeEventListener(TOAST, on);
+
+    expect(toasts).toEqual([]);
+  });
+
+  it("commits in the member the file in front belongs to", async () => {
+    statusRows = [{ status: "M ", path: "src/b.ts", staged: true, unstaged: false }];
+    await mountEditor(featureSelection);
+    await open(`${MEMBER_B}/src/b.ts`);
+
+    emitWith(GIT_COMMIT, null);
+    await waitFor(() => expect(screen.getByText("Commit message")).toBeTruthy());
+    fireEvent.input(prompt("Commit message"), { target: { value: "Say what changed" } });
+    fireEvent.click(screen.getByText("OK"));
+
+    await waitFor(() =>
+      expect(invokedWith("git_commit")).toEqual([
+        { projectPath: MEMBER_B, message: "Say what changed", amend: false },
+      ]),
+    );
+  });
+
+  it("still refuses a file that is under no member at all", async () => {
+    await mountEditor(featureSelection);
+    await open("/elsewhere/notes.md");
+
+    const toasts: string[] = [];
+    const on = (e: Event) => toasts.push((e as CustomEvent<{ message: string }>).detail.message);
+    window.addEventListener(TOAST, on);
+    emitWith(GIT_STAGE_ACTIVE, null);
+    await waitFor(() => expect(toasts).toHaveLength(1));
+    window.removeEventListener(TOAST, on);
+
+    expect(invokedWith("git_stage")).toEqual([]);
   });
 
   it("asks for a line number, and does nothing with a non-number", async () => {
