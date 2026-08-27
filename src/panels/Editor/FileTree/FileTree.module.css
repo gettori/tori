@@ -211,22 +211,6 @@
 
 /* The member's Space colour arrives as one custom property; a member outside
    every Space leaves it at the neutral default. */
-.chip {
-  --chip-hue: var(--fg-muted);
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: calc(20px * var(--ui-scale));
-  height: calc(18px * var(--ui-scale));
-  padding-inline: calc(4px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
-  color: var(--chip-hue);
-  background: color-mix(in srgb, var(--chip-hue) 18%, transparent);
-  font-size: var(--sway-text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
 
 .sectionName {
   overflow: hidden;

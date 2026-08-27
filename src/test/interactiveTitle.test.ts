@@ -246,7 +246,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **One back down** with the composer bar's standing note about a remembered
  *  model list, which is gone and took its title with it. */
-const RAW_ELEMENT_TITLES = 66;
+const RAW_ELEMENT_TITLES = 65;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. Down one from
  *  ten for the same reason as above, and the row itself is unchanged. */
@@ -354,9 +354,12 @@ describe("the title= guard", () => {
     // Up one more span: the Changes panel's member headers (#157) each show
     // their branch behind a truncated label, the same way the top bar's own
     // branch name already did when there was only one of it.
+    // Down one span: the sidebar's member chip is a `MemberChip` now (#158), so
+    // its title rides a component prop rather than a raw element. The attribute
+    // still renders; it is just no longer this census's to count.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 16,
-      span: 50,
+      span: 49,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

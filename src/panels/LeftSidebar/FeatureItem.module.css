@@ -52,31 +52,8 @@
   min-width: 0;
 }
 
-/* The tint arrives as two custom properties from the member's Space; a member
-   outside every Space sets neither and falls back to the neutral pair. */
-.chip {
-  --chip-hue: var(--fg-muted);
-  --chip-rgb: 128 128 128;
-  position: relative;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: calc(22px * var(--ui-scale));
-  height: calc(22px * var(--ui-scale));
-  padding-inline: calc(4px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm, 4px);
-  font-size: var(--sway-text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--chip-hue);
-  background: rgb(var(--chip-rgb) / 18%);
-}
-
-.neutral {
-  color: var(--fg-muted);
-  background: var(--neutral-subtle);
-}
+/* The chip box and its neutral fallback live in MemberChip now; what stays here
+   is the state badge it carries, which only this surface draws. */
 
 .pending {
   opacity: 0.6;
@@ -99,7 +76,9 @@
   background: var(--fg-muted);
 }
 
-.chip[data-state="failed"] .badge {
+/* Keyed off the data attribute alone: the chip's own class is MemberChip's now,
+   so a `.chip` descendant selector here would no longer match. */
+[data-state="failed"] .badge {
   background: var(--danger-fg);
 }
 

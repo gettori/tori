@@ -1,0 +1,35 @@
+/* The repo chip: a member's initials on its Space tint. Five surfaces drew this
+   box separately before, in three copies of one recipe plus a fourth that only
+   differed in size. */
+
+.chip {
+  --chip-hue: var(--fg-muted);
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(20px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+  padding-inline: calc(4px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm, 4px);
+  font-size: var(--sway-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--chip-hue);
+  background: color-mix(in srgb, var(--chip-hue) 18%, transparent);
+}
+
+/* The sidebar's Feature rows sit on a taller line and carry a state badge, so
+   the box is squarer there. */
+.md {
+  min-width: calc(22px * var(--ui-scale));
+  height: calc(22px * var(--ui-scale));
+}
+
+/* A repo in no Space has no hue to mix, so it falls back to a flat neutral
+   rather than to a muted-grey mix of itself. */
+.neutral {
+  color: var(--fg-muted);
+  background: var(--neutral-subtle);
+}

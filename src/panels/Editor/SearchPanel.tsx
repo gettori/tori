@@ -52,6 +52,7 @@ import {
   type ToggleKey,
 } from "../../utils/searchOptions";
 import { memberInitials } from "../../utils/features";
+import MemberChip from "../../components/MemberChip/MemberChip";
 import { resolveMemberRestriction, type MemberRoot } from "../../utils/featureMembers";
 import {
   DRAFT,
@@ -1138,13 +1139,11 @@ export default function SearchPanel(props: {
               <div class={styles.section} data-root={member.path}>
                 <Show when={headed()}>
                   <div class={styles.sectionHeader}>
-                    <span
-                      class={styles.chip}
-                      style={member.tint ? { "--chip-hue": member.tint } : undefined}
-                      aria-hidden="true"
-                    >
-                      {memberInitials({ displayName: member.label, repoPath: member.repoPath })}
-                    </span>
+                    <MemberChip
+                      member={{ displayName: member.label, repoPath: member.repoPath }}
+                      tint={member.tint}
+                      decorative
+                    />
                     <span class={styles.sectionName}>{member.label}</span>
                     <Show when={!unusable()}>
                       <span class={styles.matchCount}>{found()?.matches.length ?? 0}</span>
