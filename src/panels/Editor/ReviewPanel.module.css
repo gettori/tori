@@ -36,6 +36,82 @@
 
 /* Header push / Open-PR are shared <Button size="xs">s now. */
 
+/* One member's band inside a Feature. Nothing on a branch unit, which has one
+   section and no header to separate it from anything. */
+.memberSection {
+  display: block;
+}
+
+/* Whose section this is, where its branch stands, and the three things you do
+   to one repo. Sticky under the panel's own bar, the same as the file tree's. */
+.memberHeader {
+  position: sticky;
+  top: calc(30px * var(--ui-scale));
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* The member's Space colour arrives as one custom property; a member outside
+   every Space leaves it at the neutral default. Same chip the tree draws. */
+.chip {
+  --chip-hue: var(--fg-muted);
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(20px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+  padding-inline: calc(4px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  color: var(--chip-hue);
+  background: color-mix(in srgb, var(--chip-hue) 18%, transparent);
+  font-size: var(--sway-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.memberName {
+  overflow: hidden;
+  color: var(--fg-default);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The member's branch. Quiet beside its name: inside a Feature every member is
+   on the same branch, so it is confirmation rather than news. */
+.memberBranch {
+  flex: 1;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Why this member has nothing to show. Quiet, since the repair button beside
+   it is the thing to act on. */
+.stateBadge {
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A clean member still keeps its header, so it needs a line saying so. */
+.memberEmpty {
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
 .reviewPanel :global(.tree-empty) {
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);

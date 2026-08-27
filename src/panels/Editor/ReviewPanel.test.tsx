@@ -29,7 +29,7 @@ const DIFF = [
   "",
 ].join("\n");
 
-const calls: { status: number; diff: number } = { status: 0, diff: 0 };
+const calls: { status: number; diff: number; stashList: number } = { status: 0, diff: 0, stashList: 0 };
 
 // What `git_ahead_behind` reports, and what `git_commit` was called with. Both
 // drive the amend guard, which is the only thing here that asks the backend a
@@ -71,18 +71,32 @@ const STAGED = { status: "M ", path: "src/a.ts", staged: true, unstaged: false }
 // The index as the backend would report it next. `git_stage` moves it, so a
 // panel that re-read the status shows the file under a different heading.
 let statusRows: FileStatus[] = [UNSTAGED];
+// Per-root answers, for the Feature tests: one store slot per member means one
+// `git_status` per member, and a shared answer would prove nothing about which
+// section is reading which slot.
+let statusByRoot: Record<string, FileStatus[]> | null = null;
+// Which root each backend call named. The whole point of the sectioning is that
+// an action lands in the member whose row you clicked.
+let statusArgs: string[] = [];
+let diffArgs: { projectPath: string; file: string }[] = [];
+let stageArgs: { projectPath: string; paths: string[] }[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: unknown) => {
     switch (cmd) {
       case "git_stage":
+        stageArgs.push(args as { projectPath: string; paths: string[] });
         statusRows = [STAGED];
         return Promise.resolve(null);
-      case "git_status":
+      case "git_status": {
         calls.status += 1;
-        return Promise.resolve(statusRows);
+        const root = (args as { projectPath: string }).projectPath;
+        statusArgs.push(root);
+        return Promise.resolve(statusByRoot ? (statusByRoot[root] ?? []) : statusRows);
+      }
       case "git_diff_text":
         calls.diff += 1;
+        diffArgs.push(args as { projectPath: string; file: string });
         return Promise.resolve(DIFF);
       case "git_ahead_behind":
         return Promise.resolve(aheadBehind);
@@ -99,6 +113,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         applyLineArgs.push(args);
         return Promise.resolve(null);
       case "git_stash_list":
+        calls.stashList += 1;
         return Promise.resolve(stashRows);
       case "git_stash_push":
         stashArgs.push({ cmd, args });
@@ -213,9 +228,11 @@ function prDialog() {
   return within(screen.getByRole("dialog"));
 }
 
-/** One watcher burst, delivered to every registered `fs://changed` listener. */
-function fsBurst(paths: string[]) {
-  for (const fn of handlers["fs://changed"] ?? []) fn({ payload: { paths } });
+/** One watcher burst, delivered to every registered `fs://changed` listener.
+ *  The backend always names the root it happened in, and the panel now matches
+ *  on it: a burst in one member must not refetch another member's diff. */
+function fsBurst(paths: string[], root = "/proj") {
+  for (const fn of handlers["fs://changed"] ?? []) fn({ payload: { root, paths } });
 }
 
 beforeEach(async () => {
@@ -226,6 +243,11 @@ beforeEach(async () => {
   statusRows = [UNSTAGED];
   calls.status = 0;
   calls.diff = 0;
+  calls.stashList = 0;
+  statusByRoot = null;
+  statusArgs = [];
+  diffArgs = [];
+  stageArgs = [];
   aheadBehind = null;
   branches = [];
   headMsg = "";
@@ -317,12 +339,12 @@ describe("expanded diff refetch", () => {
   it("ignores a burst that does not name the open file", async () => {
     await mountWithOpenDiff();
 
-    const statusBefore = calls.status;
+    const stashBefore = calls.stashList;
     fsBurst(["/proj/src/other.ts"]);
-    // The burst's unconditional `git_status` refresh is the synchronisation
-    // point: once it lands, the handler has run to completion, so a diff count
-    // that has not moved is a real skip rather than a race.
-    await waitFor(() => expect(calls.status).toBeGreaterThan(statusBefore));
+    // The stash read is the synchronisation point now that the status refresh
+    // belongs to the store: once it lands the handler has run to completion, so
+    // a diff count that has not moved is a real skip rather than a race.
+    await waitFor(() => expect(calls.stashList).toBeGreaterThan(stashBefore));
     expect(calls.diff).toBe(1);
   });
 
@@ -343,9 +365,9 @@ describe("expanded diff refetch", () => {
   it("ignores every burst when no diff is expanded", async () => {
     await mountPanel();
 
-    const statusBefore = calls.status;
+    const stashBefore = calls.stashList;
     fsBurst(["/proj/src/a.ts"]);
-    await waitFor(() => expect(calls.status).toBeGreaterThan(statusBefore));
+    await waitFor(() => expect(calls.stashList).toBeGreaterThan(stashBefore));
     expect(calls.diff).toBe(0);
   });
 });
@@ -1209,5 +1231,165 @@ describe("the agent-drafted PR description", () => {
     expect(sent.length).toBe(1);
     expect(String(sent[0])).toContain("wave-3");
     expect(String(sent[0])).toContain("main");
+  });
+});
+
+// The Feature path (#157 phase 2): one section per member, each reading and
+// writing its own repo. What is asserted here is the fencing - a click in one
+// member's section never reaches the member beside it - plus the one-repo
+// controls that stay one-repo when there are several.
+describe("inside a Feature", () => {
+  const A = "/feat/api";
+  const B = "/feat/web";
+  const READY = { label: "Ready", usable: true, action: null, reason: null };
+  const MEMBERS = [
+    { path: A, repoPath: "/r/api", label: "api", tint: "200", state: READY },
+    { path: B, repoPath: "/r/web", label: "web", state: READY },
+  ];
+  const rowIn = (root: string, name: string) =>
+    within(document.querySelector(`[data-root="${root}"]`)!).getByTitle(name);
+
+  /** Mount over two members, each with its own single unstaged file. */
+  async function mountFeature(roots = MEMBERS) {
+    statusByRoot = {
+      [A]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
+      [B]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
+    };
+    enterRoots([A, B], A);
+    render(() => <ReviewPanel root={A} roots={roots as never} selected={null} />);
+    await waitFor(() => expect(document.querySelectorAll("[data-root]").length).toBe(roots.length));
+    // The panel registers its listeners from an async `onMount`; a test that
+    // fires a burst or a focus before that would be testing nothing.
+    await waitFor(() => expect(handlers["fs://changed"]?.length).toBeGreaterThan(1));
+    return roots;
+  }
+
+  it("has no accessibility violations with member sections on screen", async () => {
+    statusByRoot = {
+      [A]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
+      [B]: [{ status: "UU", path: "src/index.ts", staged: false, unstaged: false, conflicted: true }],
+    };
+    enterRoots([A, B], A);
+    const { container } = render(() => <ReviewPanel root={A} roots={MEMBERS as never} selected={null} />);
+    await waitFor(() => expect(document.querySelectorAll("[data-root]").length).toBe(2));
+
+    await expectNoAxeViolations(container);
+  });
+
+  it("draws one section per member, in member order, each with its own chip", async () => {
+    await mountFeature();
+
+    expect(Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"))).toEqual([A, B]);
+    const chips = Array.from(document.querySelectorAll<HTMLElement>("[data-chip]"));
+    expect(chips.map((c) => c.textContent)).toEqual(["A", "W"]);
+    // The member outside every Space wears the neutral chip rather than a
+    // borrowed hue.
+    expect(chips[0].style.getPropertyValue("--chip-hue")).not.toBe("");
+    expect(chips[1].style.getPropertyValue("--chip-hue")).toBe("");
+    // Both members list the same relative path, and neither row is the other's.
+    expect(screen.getAllByTitle("src/index.ts")).toHaveLength(2);
+  });
+
+  it("discards in the member whose row was clicked, and leaves the other alone", async () => {
+    await mountFeature();
+
+    fireEvent.click(within(rowIn(B, "src/index.ts")).getByText("Discard"));
+    fireEvent.click(await screen.findByText("Discard changes"));
+
+    await waitFor(() => expect(discardArgs).toHaveLength(1));
+    expect(discardArgs[0].args).toMatchObject({ projectPath: B, files: ["src/index.ts"] });
+    // A's row is still there: the discard was fenced to B, and so was the
+    // status re-read that followed it.
+    expect(rowIn(A, "src/index.ts")).toBeTruthy();
+  });
+
+  it("stages every change in one member from its header, and only that member", async () => {
+    await mountFeature();
+
+    const header = document.querySelector(`[data-root="${B}"]`)!;
+    fireEvent.click(within(header as HTMLElement).getByText("Stage all"));
+
+    await waitFor(() => expect(stageArgs).toHaveLength(1));
+    expect(stageArgs[0]).toMatchObject({ projectPath: B, paths: ["src/index.ts"] });
+  });
+
+  it("expands one row panel-wide, keyed by member, and fetches that member's diff", async () => {
+    await mountFeature();
+
+    fireEvent.click(rowIn(A, "src/index.ts"));
+    await waitFor(() => expect(diffArgs).toHaveLength(1));
+    expect(diffArgs[0].projectPath).toBe(A);
+
+    // The same relative path in the member beside it. One row is open at a
+    // time, so this closes A's rather than showing A's diff under B's name.
+    fireEvent.click(rowIn(B, "src/index.ts"));
+    await waitFor(() => expect(diffArgs).toHaveLength(2));
+    expect(diffArgs[1].projectPath).toBe(B);
+    // One diff body on screen, not two: the panel holds one diff, its gaps and
+    // its line selection, so a second open row could only show the first's.
+    expect(screen.getAllByText("Stage hunk")).toHaveLength(1);
+  });
+
+  it("keeps branch, ahead/behind and Push in the member headers, and Open PR on the member in front", async () => {
+    branches = [{ name: "feat/auth", current: true }];
+    aheadBehind = { ahead: 2, behind: 0, has_upstream: true };
+    originUrl = "git@github.com:o/r.git";
+    defaultBase = "main";
+    await mountFeature();
+
+    // One per member, none in the top bar: a Feature has no single branch to
+    // push, and a bar-level Push could only ever mean the member in front.
+    await waitFor(() => expect(screen.getAllByText("↑2 ↓0")).toHaveLength(2));
+    for (const [i, root] of [A, B].entries()) {
+      const section = document.querySelector(`[data-root="${root}"]`)! as HTMLElement;
+      expect(within(section).getAllByText("↑2 ↓0")).toHaveLength(1);
+      expect(within(section).getAllByText("feat/auth")).toHaveLength(1);
+      expect(i).toBeLessThan(2);
+    }
+    // The PR is still one repo's, so there is exactly one of it.
+    await waitFor(() => expect(screen.getAllByText("Open PR")).toHaveLength(1));
+  });
+
+  it("says a member cannot be opened instead of listing files for it", async () => {
+    const broken = [
+      MEMBERS[0],
+      {
+        path: "/r/web",
+        repoPath: "/r/web",
+        label: "web",
+        state: { label: "Worktree missing", usable: false, action: "recreate", reason: null },
+      },
+    ];
+    await mountFeature(broken as never);
+
+    const section = document.querySelector('[data-root="/r/web"]')! as HTMLElement;
+    expect(within(section).getByText("Worktree missing")).toBeTruthy();
+    expect(within(section).getByText("Recreate")).toBeTruthy();
+    // No file list, and no Stage all offering to act on a repo that is not there.
+    expect(within(section).queryByTitle("src/index.ts")).toBeNull();
+    expect(within(section).queryByText("Stage all")).toBeNull();
+  });
+
+  it("refetches an expanded diff only for the member the burst named", async () => {
+    await mountFeature();
+    fireEvent.click(rowIn(A, "src/index.ts"));
+    await waitFor(() => expect(diffArgs).toHaveLength(1));
+
+    const stashBefore = calls.stashList;
+    fsBurst([`${B}/src/index.ts`], B);
+    // A burst in B is not the member in front either, so not even the stash
+    // read runs: nothing about B can change what this panel is showing.
+    fsBurst([`${A}/src/index.ts`], A);
+    await waitFor(() => expect(calls.stashList).toBeGreaterThan(stashBefore));
+    expect(diffArgs.map((d) => d.projectPath)).toEqual([A, A]);
+  });
+
+  it("re-reads every member on window focus, not just the one in front", async () => {
+    await mountFeature();
+    statusArgs = [];
+
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => expect(new Set(statusArgs)).toEqual(new Set([A, B])));
   });
 });

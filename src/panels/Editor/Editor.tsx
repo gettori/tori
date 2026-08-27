@@ -2509,7 +2509,13 @@ export default function Editor(props: {
             />
           </Match>
           <Match when={rightMode() === "changes"}>
-            <ReviewPanel root={root()} selected={props.selected} onReverted={handleReverted} />
+            <ReviewPanel
+              root={root()}
+              roots={treeRoots()}
+              selected={props.selected}
+              onReverted={handleReverted}
+              onRetry={repairMember}
+            />
           </Match>
           <Match when={rightMode() === "pulls"}>
             <PullRequests root={root()} />

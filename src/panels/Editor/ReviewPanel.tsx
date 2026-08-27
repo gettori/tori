@@ -16,7 +16,7 @@ import {
 } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import {
-  gitState,
+  gitStateFor,
   stagedFiles,
   changedFiles,
   conflictedFiles,
@@ -47,6 +47,8 @@ import { comparePrUrl } from "../../utils/prUrl";
 import { composeDraftRequest, prPath } from "../../utils/createPr";
 import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils/forgeTypes";
 import { settings } from "../Settings/settingsStore";
+import { memberInitials, type MemberStateSummary } from "../../utils/features";
+import type { MemberRoot } from "../../utils/featureMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import HunkCommentInput from "./HunkCommentInput";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
@@ -85,6 +87,14 @@ type StashEntry = {
 };
 type StashOutcome = { restored: string[]; deleted: string[] };
 
+/** One member's worth of the panel: its own file lists, its own branch, its own
+ *  stage / commit / push. A branch unit is the one-section case, and the only
+ *  one that draws no header, since there is nothing to say whose it is. */
+type Section = { root: string; label?: string; tint?: string; state?: MemberStateSummary };
+
+// Same wording as the file tree's section headers: one member, one vocabulary.
+const REPAIR_LABEL = { recreate: "Recreate", locate: "Locate", retry: "Retry" } as const;
+
 // Map a porcelain XY code to a coarse class for the badge color.
 function statusClass(status: string): string {
   if (status.includes("?")) return "untracked";
@@ -120,8 +130,12 @@ const AMEND_HINT_ID = "review-amend-hint";
  *  gaps, the PR base branch) is state only a mounted panel has any use for. */
 export default function ReviewPanel(props: {
   root: string | null;
+  /** The Feature's members, in member order. Absent for a branch unit, which is
+   *  the single-section case. Same list the file tree and search panel take. */
+  roots?: MemberRoot[];
   selected: Selection | null;
   onReverted?: (outcome: RevertOutcome) => void;
+  onRetry?: (path: string) => void;
 }) {
   const [expanded, setExpanded] = createSignal<string | null>(null);
   const [diff, setDiff] = createSignal<string>("");
@@ -156,7 +170,7 @@ export default function ReviewPanel(props: {
   const [authState, setAuthState] = createSignal<AuthState>({ kind: "signedOut" });
   // Which file the expanded diff belongs to, and which of its two sections:
   // needed to refetch the right diff after a hunk apply or a disk change.
-  const [openDiff, setOpenDiff] = createSignal<{ path: string; staged: boolean } | null>(null);
+  const [openDiff, setOpenDiff] = createSignal<{ root: string; path: string; staged: boolean } | null>(null);
   const [applying, setApplying] = createSignal(false);
   const [stashes, setStashes] = createSignal<StashEntry[]>([]);
   const [includeUntracked, setIncludeUntracked] = createSignal(false);
@@ -196,7 +210,7 @@ export default function ReviewPanel(props: {
   // Fetch (once) and reveal the file lines behind a collapsed gap. Clicking an
   // open gap closes it again; the fetched lines stay cached so reopening is
   // instant.
-  async function expandGap(key: string, path: string, staged: boolean, gap: Gap) {
+  async function expandGap(key: string, root: string, path: string, staged: boolean, gap: Gap) {
     if (openGaps().has(key)) {
       setOpenGaps((prev) => {
         const next = new Set(prev);
@@ -205,8 +219,6 @@ export default function ReviewPanel(props: {
       });
       return;
     }
-    const root = props.root;
-    if (!root) return;
     if (!gapLines()[key]) {
       try {
         const lines = await invoke<string[]>("git_file_slice", {
@@ -228,12 +240,32 @@ export default function ReviewPanel(props: {
     setOpenGaps((prev) => new Set(prev).add(key));
   }
 
-  const files = () => gitState().files;
-  const staged = stagedFiles;
-  const unstaged = changedFiles;
-  const conflicts = conflictedFiles;
-  const branch = () => gitState().branch;
-  const aheadBehind = () => gitState().aheadBehind;
+  // One section per member inside a Feature, one unnamed section for a branch
+  // unit. Member order, which is the order the tree and the search panel draw
+  // them in, so the three surfaces agree about what "second member" means.
+  const sections = createMemo<Section[]>(() =>
+    props.roots?.length
+      ? props.roots.map((m) => ({ root: m.path, label: m.label, tint: m.tint, state: m.state }))
+      : props.root
+        ? [{ root: props.root }]
+        : [],
+  );
+  /** Whether sections carry a header. Only a Feature's do: with one root on
+   *  screen there is nothing for a header to distinguish it from. */
+  const headed = () => !!props.roots?.length;
+  const anyFiles = () => sections().some((s) => gitStateFor(s.root).files.length);
+
+  // The header bar, the PR paths and the stash list are all one-repo surfaces,
+  // and the repo they are about is the member in front.
+  const branch = () => gitStateFor(props.root).branch;
+  const aheadBehind = () => gitStateFor(props.root).aheadBehind;
+
+  // Which member the commit box acts on. Null means the member in front, which
+  // is the only answer a branch unit has; a section's Commit button names its
+  // own, so a Feature commits where you asked rather than where you were.
+  const [commitTarget, setCommitTarget] = createSignal<string | null>(null);
+  const commitRoot = () => commitTarget() ?? props.root;
+  const commitStagedFiles = () => stagedFiles(commitRoot());
 
   function target(): SessionTarget | null {
     const sel = props.selected;
@@ -254,10 +286,6 @@ export default function ReviewPanel(props: {
   // so safe-send has nowhere to land a queued comment or draft request. The
   // shared gate, so the three panels asking it cannot word it three ways.
   const disabledReason = () => sendBlockedReason(props.selected ?? null);
-
-  async function refresh() {
-    await refreshStatus(props.root);
-  }
 
   // Header state. Branch and ahead/behind live in the shared store (the palette
   // needs them too); origin and the PR base branch stay here, since nothing
@@ -290,34 +318,49 @@ export default function ReviewPanel(props: {
     }
   }
 
+  // Every section, not just the member in front: this runs on window focus and
+  // after a revert, and a commit made in a background member from a terminal
+  // has no other way in (`.git` is watcher-filtered).
   async function refreshAll() {
-    await Promise.all([refreshGit(props.root), refreshHeader(), loadStashes()]);
+    await Promise.all([...sections().map((s) => refreshGit(s.root)), refreshHeader(), loadStashes()]);
   }
 
   function toastError(e: unknown) {
     emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
   }
 
-  async function stage(path: string) {
-    const root = props.root;
-    if (root) await stageFiles(root, [path]);
+  async function stage(root: string, path: string) {
+    await stageFiles(root, [path]);
   }
 
-  async function unstage(path: string) {
-    const root = props.root;
-    if (root) await unstageFiles(root, [path]);
+  async function unstage(root: string, path: string) {
+    await unstageFiles(root, [path]);
+  }
+
+  /** Stage everything this member has, conflicts excluded: git refuses `add` on
+   *  an unmerged path, so including them would fail the whole call. */
+  async function stageAll(root: string) {
+    const paths = changedFiles(root).map((f) => f.path);
+    if (paths.length) await stageFiles(root, paths);
+  }
+
+  /** Point the commit box at a member and put the cursor in it, so the click
+   *  that chose the member is also the click that starts the message. */
+  function commitIn(root: string) {
+    setCommitTarget(root);
+    subjectRef?.focus();
   }
 
   /** Amend is the one form that needs nothing staged: rewriting only the
    *  message is a normal thing to want. Everything else still does. */
-  const canCommit = () => !!commitSubject().trim() && (amend() || !!staged().length);
+  const canCommit = () => !!commitSubject().trim() && (amend() || !!commitStagedFiles().length);
 
   function askConfirm(opts: Omit<ConfirmReq, "resolve">): Promise<boolean> {
     return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
   }
 
   async function commit() {
-    const root = props.root;
+    const root = commitRoot();
     const message = composeCommitMessage(commitSubject(), commitBody());
     if (!root || !message || committing() || !canCommit()) return;
     // Held across the confirm too, not just the invoke: the dialog is awaited,
@@ -330,10 +373,9 @@ export default function ReviewPanel(props: {
       // fetch, so it asks rather than refuses - and says so, since a stale ref
       // is the reason to trust your own judgement over this warning.
       //
-      // Scoped to this panel's root: the store is shared and a switch in flight
-      // would otherwise answer with another workspace's counts, which fails
-      // *open* here (no warning on a pushed commit).
-      const ab = gitState().root === root ? aheadBehind() : null;
+      // The targeted member's own numbers, not the panel's: amending in a
+      // background member has to warn about that member's upstream.
+      const ab = gitStateFor(root).aheadBehind;
       if (amend() && amendRewritesPushed(ab)) {
         const ok = await askConfirm({
           title: "Amend a pushed commit?",
@@ -360,7 +402,7 @@ export default function ReviewPanel(props: {
   /** Toggling amend on prefills HEAD's message (stashing whatever was typed);
    *  toggling it back off restores that draft. */
   async function toggleAmend(on: boolean) {
-    const root = props.root;
+    const root = commitRoot();
     setAmend(on);
     if (!on) {
       const saved = preAmendDraft();
@@ -383,7 +425,7 @@ export default function ReviewPanel(props: {
   // agent proposes a commit message at its own prompt, unsubmitted.
   async function askAgentToDraft() {
     const t = target();
-    const paths = staged().map((f) => f.path);
+    const paths = commitStagedFiles().map((f) => f.path);
     if (!t || disabledReason() || !paths.length || drafting()) return;
     setDrafting(true);
     const text = `Draft a commit message for the staged changes: ${paths.join(", ")}`;
@@ -401,15 +443,14 @@ export default function ReviewPanel(props: {
   // The refusal is a toast rather than a silent no-op: the button is disabled
   // for the same reason, but a disabled button that never says why is how the
   // capability gate reads as a broken control.
-  async function askToResolve(file: string) {
+  async function askToResolve(root: string, file: string) {
     const t = target();
-    const root = props.root;
     const reason = disabledReason();
     if (reason) {
       emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" });
       return;
     }
-    if (!t || !root || asking().has(file)) return;
+    if (!t || asking().has(file)) return;
     setAsking((prev) => new Set(prev).add(file));
     try {
       await askAgentToResolve(t, root, file);
@@ -422,21 +463,23 @@ export default function ReviewPanel(props: {
     }
   }
 
-  // Keyed by section+path (not path alone): a partially-staged file ("MM")
-  // has a row in both the Staged and Changes sections, and each must expand
-  // independently rather than sharing one toggle. The two rows also show
-  // different diffs, hence the mode carried alongside.
-  async function toggleDiff(key: string, path: string, staged: boolean) {
+  // Keyed by member+section+path (not path alone): a partially-staged file
+  // ("MM") has a row in both the Staged and Changes sections, and each must
+  // expand independently rather than sharing one toggle, while two members with
+  // the same relative path must not answer for each other. The two rows also
+  // show different diffs, hence the mode carried alongside.
+  //
+  // One row open panel-wide, as before: the diff, its gaps and its line
+  // selection are single, so a second open row would show the first one's body.
+  async function toggleDiff(key: string, root: string, path: string, staged: boolean) {
     if (expanded() === key) {
       setExpanded(null);
       setOpenDiff(null);
       return;
     }
-    const root = props.root;
-    if (!root) return;
     setOpenGaps(new Set<string>());
     setGapLines({});
-    setOpenDiff({ path, staged });
+    setOpenDiff({ root, path, staged });
     setDiff(await fileDiff(root, path, staged ? "staged" : "unstaged"));
     setExpanded(key);
   }
@@ -458,10 +501,9 @@ export default function ReviewPanel(props: {
   // whenever the open file changes on disk, so the rendered hunks (and the
   // fingerprints derived from them) never lag the file.
   async function refreshExpandedDiff() {
-    const root = props.root;
     const open = openDiff();
-    if (!root || !open) return;
-    setDiff(await fileDiff(root, open.path, open.staged ? "staged" : "unstaged"));
+    if (!open) return;
+    setDiff(await fileDiff(open.root, open.path, open.staged ? "staged" : "unstaged"));
     // The hunks just moved, so the cached gap contents no longer line up with
     // the ranges they were fetched for.
     setOpenGaps(new Set<string>());
@@ -473,10 +515,8 @@ export default function ReviewPanel(props: {
   // longer matches, so a stale view can never apply the wrong hunk. On any
   // failure the diff is refetched before the error surfaces, so the user is
   // never left looking at hunks that have already moved.
-  async function applyHunk(path: string, staged: boolean, index: number, fingerprint: string) {
-    const root = props.root;
-    if (!root) return;
-    await applied(() =>
+  async function applyHunk(root: string, path: string, staged: boolean, index: number, fingerprint: string) {
+    await applied(root, () =>
       invoke("git_apply_hunks", {
         projectPath: root,
         file: path,
@@ -495,12 +535,12 @@ export default function ReviewPanel(props: {
    *  by the time an apply returns, and on failure the refetch happens *before*
    *  the error surfaces, so the user is never left looking at hunks that have
    *  already moved and inviting the same doomed click again. */
-  async function applied(run: () => Promise<unknown>) {
+  async function applied(root: string, run: () => Promise<unknown>) {
     if (applying()) return;
     setApplying(true);
     try {
       await run();
-      await Promise.all([refresh(), refreshExpandedDiff()]);
+      await Promise.all([refreshStatus(root), refreshExpandedDiff()]);
     } catch (e) {
       await refreshExpandedDiff();
       toastError(e);
@@ -528,10 +568,15 @@ export default function ReviewPanel(props: {
    *  The same guarantees as `applyHunk`, one level finer: the fingerprint proves
    *  the hunk is still the one on screen, and the line indices are only
    *  meaningful against that same body, which is why the two travel together. */
-  async function applyLines(path: string, staged: boolean, index: number, fingerprint: string, lines: number[]) {
-    const root = props.root;
-    if (!root) return;
-    await applied(() =>
+  async function applyLines(
+    root: string,
+    path: string,
+    staged: boolean,
+    index: number,
+    fingerprint: string,
+    lines: number[],
+  ) {
+    await applied(root, () =>
       invoke("git_apply_lines", {
         projectPath: root,
         file: path,
@@ -552,9 +597,7 @@ export default function ReviewPanel(props: {
    *  being busy anywhere in the folder would make the control unusable in the
    *  situation it is most wanted. Whole-file discard, which is unscoped, does
    *  consult it. */
-  async function discardHunk(path: string, index: number, fingerprint: string) {
-    const root = props.root;
-    if (!root) return;
+  async function discardHunk(root: string, path: string, index: number, fingerprint: string) {
     await busy(async () => {
       try {
         const ok = await askConfirm({
@@ -572,7 +615,7 @@ export default function ReviewPanel(props: {
           context: DIFF_CONTEXT,
         });
         reportDiscarded(outcome);
-        await Promise.all([refresh(), refreshExpandedDiff()]);
+        await Promise.all([refreshStatus(root), refreshExpandedDiff()]);
       } catch (e) {
         // Refetched before the error surfaces, and this is the only reason this
         // one has its own catch rather than leaving it to `busy`: a refused
@@ -592,9 +635,7 @@ export default function ReviewPanel(props: {
    *  tiers, the same as a tree revert: a session verifiably Executing blocks
    *  hard, one Sway cannot see inside is overridable. `verb` names the action in
    *  the override, so the question reads as itself rather than as a revert. */
-  async function guarded(verb: string, action: () => Promise<void>) {
-    const root = props.root;
-    if (!root) return;
+  async function guarded(verb: string, root: string, action: () => Promise<void>) {
     const candidates = await folderActors(root);
     const verdict = revertGuard(candidates, { folderPath: root });
     if (!verdict.allow) {
@@ -636,11 +677,9 @@ export default function ReviewPanel(props: {
    *
    *  Unscoped in the sense the revert guard cares about: an agent mid-turn in
    *  this folder may be writing the very file about to be rolled back. */
-  async function discardFile(path: string, untracked: boolean) {
-    const root = props.root;
-    if (!root) return;
+  async function discardFile(root: string, path: string, untracked: boolean) {
     await busy(() =>
-      guarded("Discard", async () => {
+      guarded("Discard", root, async () => {
         const ok = await askConfirm({
           title: untracked ? `Delete ${path}?` : `Discard changes to ${path}?`,
           message: untracked
@@ -656,7 +695,7 @@ export default function ReviewPanel(props: {
           files: [path],
         });
         reportDiscarded(outcome);
-        await Promise.all([refresh(), refreshExpandedDiff()]);
+        await Promise.all([refreshStatus(root), refreshExpandedDiff()]);
       }),
     );
   }
@@ -672,7 +711,7 @@ export default function ReviewPanel(props: {
     const root = props.root;
     if (!root) return;
     await busy(() =>
-      guarded("Stash", async () => {
+      guarded("Stash", root, async () => {
         const created = await invoke<boolean>("git_stash_push", {
           projectPath: root,
           message: commitSubject().trim() || null,
@@ -688,7 +727,7 @@ export default function ReviewPanel(props: {
         // itself to whatever gets committed next.
         setCommitSubject("");
         setCommitBody("");
-        await Promise.all([refresh(), refreshExpandedDiff(), loadStashes()]);
+        await Promise.all([refreshStatus(root), refreshExpandedDiff(), loadStashes()]);
       }),
     );
   }
@@ -697,7 +736,7 @@ export default function ReviewPanel(props: {
     const root = props.root;
     if (!root) return;
     await busy(() =>
-      guarded(pop ? "Pop" : "Apply", async () => {
+      guarded(pop ? "Pop" : "Apply", root, async () => {
         const outcome = await invoke<StashOutcome>("git_stash_apply", {
           projectPath: root,
           selector: entry.selector,
@@ -706,7 +745,7 @@ export default function ReviewPanel(props: {
         // Same channel discard and checkpoint revert use: a stash laid back down
         // over an open buffer must offer Reload / Keep mine, not lose a side.
         props.onReverted?.({ backstop_ts: null, ...outcome });
-        await Promise.all([refresh(), refreshExpandedDiff(), loadStashes()]);
+        await Promise.all([refreshStatus(root), refreshExpandedDiff(), loadStashes()]);
       }),
     );
   }
@@ -718,7 +757,7 @@ export default function ReviewPanel(props: {
     const root = props.root;
     if (!root) return;
     await busy(() =>
-      guarded("Drop", async () => {
+      guarded("Drop", root, async () => {
         const ok = await askConfirm({
           title: "Drop this stash?",
           message: `"${entry.message}" is deleted. Unlike discarding a change, this cannot be undone from the timeline: a stash is not part of the working tree, so no snapshot of it holds a copy.`,
@@ -757,9 +796,7 @@ export default function ReviewPanel(props: {
 
   // Copies the file's unified patch. Fetched fresh rather than read off the
   // expanded diff, so the action works from a collapsed row too.
-  async function copyDiff(path: string) {
-    const root = props.root;
-    if (!root) return;
+  async function copyDiff(root: string, path: string) {
     const text = await fileDiff(root, path);
     if (!text) {
       emitWith<ToastEvent>(TOAST, { message: "No diff to copy.", kind: "error" });
@@ -772,19 +809,23 @@ export default function ReviewPanel(props: {
     });
   }
 
-  function openFile(path: string) {
-    const root = props.root;
-    if (root) emitWith(OPEN_IN_EDITOR, { path: `${root}/${path}` });
+  function openFile(root: string, path: string) {
+    emitWith(OPEN_IN_EDITOR, { path: `${root}/${path}` });
   }
 
+  // Keyed on the member set rather than the member in front: moving between
+  // members inside a Feature leaves every section's numbers standing, so
+  // collapsing the open diff and re-reading all of them would be a switch that
+  // did not happen. A repaired member joining is a real one.
   createEffect(
     on(
-      () => props.root,
+      () => sections().map((s) => s.root).join("\n"),
       () => {
         setExpanded(null);
         setOpenDiff(null);
         setOpenGaps(new Set<string>());
         setGapLines({});
+        setCommitTarget(null);
         refreshAll();
       },
     ),
@@ -843,7 +884,7 @@ export default function ReviewPanel(props: {
     const base = prBase();
     if (!t || disabledReason() || !branchName || !base || prDrafting()) return;
     setPrDrafting(true);
-    const paths = [...staged(), ...unstaged()].map((f) => f.path);
+    const paths = [...stagedFiles(props.root), ...changedFiles(props.root)].map((f) => f.path);
     const result = await requestSend({ ...t, text: composeDraftRequest(branchName, base, paths) });
     setPrDrafting(false);
     // A blocked session is refused outright rather than queued: the user has to
@@ -903,7 +944,9 @@ export default function ReviewPanel(props: {
   const flushAgentWrites = debounce(() => {
     const paths = [...agentWritten];
     agentWritten.clear();
-    void refresh();
+    // Ahead of the watcher's own debounce, so this one still drives the status
+    // read; it names no root, so every section takes it.
+    for (const s of sections()) void refreshStatus(s.root);
     const open = openDiff();
     if (open && paths.some((p) => p.endsWith(open.path))) void refreshExpandedDiff();
   }, AGENT_WRITE_DEBOUNCE_MS);
@@ -911,13 +954,15 @@ export default function ReviewPanel(props: {
   let unlistenFetchError: UnlistenFn | undefined;
   onMount(async () => {
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
-      if (e.payload.root && e.payload.root !== props.root) return;
-      void refresh();
+      const from = e.payload.root;
+      // The status refresh is the store's now (`startGitWatch`), so that it
+      // happens with this panel closed and for every member at once. What is
+      // left here is the two things only a mounted panel holds.
+      //
       // A `git stash` run in a terminal shows up as a working-tree burst like
       // any other, and the entry it created would otherwise stay invisible
-      // until a fetch or a window focus. Reading the stash reflog is far cheaper
-      // than the status refresh already happening on this line.
-      void loadStashes();
+      // until a fetch or a window focus. Reading the stash reflog is cheap.
+      if (!from || from === props.root) void loadStashes();
       // An agent writing the open file renumbers its hunks, so the expanded
       // diff must refetch or the next stage click would carry a stale
       // fingerprint (which the backend would refuse). Only the open file's own
@@ -929,7 +974,8 @@ export default function ReviewPanel(props: {
       // a rename's `old -> new` and git's quoting), so this is a suffix test
       // against the watcher's absolute paths rather than a path comparison.
       const open = openDiff();
-      if (open && e.payload.paths.some((p) => p.endsWith(open.path))) void refreshExpandedDiff();
+      if (!open || (from && from !== open.root)) return;
+      if (e.payload.paths.some((p) => p.endsWith(open.path))) void refreshExpandedDiff();
     });
     // A chat session's own report of what it just wrote, ahead of the watcher's
     // debounce. Same two refreshes the watcher drives, and both are re-entrant,
@@ -964,7 +1010,7 @@ export default function ReviewPanel(props: {
   // row; expanded it shows the real file lines, fetched on demand because the
   // diff (taken at git's default context so a hunk stays a stageable unit)
   // simply does not contain them.
-  function gapRow(gap: Gap, gapKey: string, path: string, staged: boolean) {
+  function gapRow(gap: Gap, gapKey: string, root: string, path: string, staged: boolean) {
     const count = gap.end - gap.start + 1;
     return (
       <Show
@@ -972,7 +1018,7 @@ export default function ReviewPanel(props: {
         fallback={
           <div
             class={`${diffRowClasses.line} ${styles.diffGap}`}
-            onClick={() => void expandGap(gapKey, path, staged, gap)}
+            onClick={() => void expandGap(gapKey, root, path, staged, gap)}
           >
             {`\u22ef ${count} unchanged line${count === 1 ? "" : "s"}`}
           </div>
@@ -1012,16 +1058,14 @@ export default function ReviewPanel(props: {
    *  mouse-only, which is the reason the commit views' rows are buttons too.
    *  The ask sits *beside* it rather than inside it, because a button nested in
    *  a button is neither valid nor clickable in its own right. */
-  function conflictRow(f: FileStatus) {
+  function conflictRow(f: FileStatus, root: string) {
     return (
       <div class={styles.conflictRowWrap}>
         <Tooltip
           as="button"
           type="button"
           class={`${styles.reviewRow} ${styles.conflictRow}`}
-          onClick={() =>
-            props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("conflict", props.root, f.path) })
-          }
+          onClick={() => emitWith(OPEN_IN_EDITOR, { path: syntheticId("conflict", root, f.path) })}
           label={f.path}
         >
           <span class={`${styles.reviewStatus} ${styles.conflicted}`}>{f.status.trim() || "U"}</span>
@@ -1036,7 +1080,7 @@ export default function ReviewPanel(props: {
           // reachable while it is.
           tooltipWhenDisabled
           tooltip={disabledReason() ?? "Ask the selected session to resolve this conflict"}
-          onClick={() => askToResolve(f.path)}
+          onClick={() => askToResolve(root, f.path)}
         >
           Ask agent
         </Button>
@@ -1044,11 +1088,15 @@ export default function ReviewPanel(props: {
     );
   }
 
-  function row(f: FileStatus, opts: { staged: boolean }) {
-    const key = `${opts.staged ? "staged" : "unstaged"}:${f.path}`;
+  function row(f: FileStatus, opts: { staged: boolean; root: string }) {
+    const key = `${opts.staged ? "staged" : "unstaged"}:${opts.root}:${f.path}`;
     return (
       <div>
-        <div class={styles.reviewRow} onClick={() => toggleDiff(key, f.path, opts.staged)} title={f.path}>
+        <div
+          class={styles.reviewRow}
+          onClick={() => toggleDiff(key, opts.root, f.path, opts.staged)}
+          title={f.path}
+        >
           <Button
             size="xs"
             variant="ghost"
@@ -1057,7 +1105,7 @@ export default function ReviewPanel(props: {
             tooltip={opts.staged ? "Unstage" : "Stage"}
             onClick={(e) => {
               e.stopPropagation();
-              void (opts.staged ? unstage(f.path) : stage(f.path));
+              void (opts.staged ? unstage(opts.root, f.path) : stage(opts.root, f.path));
             }}
           >
             {opts.staged ? "−" : "+"}
@@ -1067,7 +1115,7 @@ export default function ReviewPanel(props: {
             class={styles.reviewName}
             onClick={(e) => {
               e.stopPropagation();
-              openFile(f.path);
+              openFile(opts.root, f.path);
             }}
           >
             {/* A rename names both halves. Only `f.path` is clickable-through
@@ -1084,7 +1132,7 @@ export default function ReviewPanel(props: {
             tooltip="Copy diff"
             onClick={(e) => {
               e.stopPropagation();
-              void copyDiff(f.path);
+              void copyDiff(opts.root, f.path);
             }}
           >
             Copy
@@ -1105,7 +1153,7 @@ export default function ReviewPanel(props: {
               }
               onClick={(e) => {
                 e.stopPropagation();
-                void discardFile(f.path, f.status.includes("?"));
+                void discardFile(opts.root, f.path, f.status.includes("?"));
               }}
             >
               Discard
@@ -1118,7 +1166,7 @@ export default function ReviewPanel(props: {
                 so they interleave with the hunks rather than living inside
                 one. */}
             <For each={gaps().filter((g) => g.afterHunk === -1)}>
-              {(gap) => gapRow(gap, `${key}:gap-1`, f.path, opts.staged)}
+              {(gap) => gapRow(gap, `${key}:gap-1`, opts.root, f.path, opts.staged)}
             </For>
             <For each={hunks()}>
               {(hunk, hi) => (
@@ -1138,7 +1186,7 @@ export default function ReviewPanel(props: {
                         // The fingerprint is derived from the hunk exactly as
                         // rendered, so the backend can prove it is still the
                         // same hunk before applying it.
-                        void applyHunk(f.path, opts.staged, hi(), hunkFingerprint(hunk.header, hunk.lines));
+                        void applyHunk(opts.root, f.path, opts.staged, hi(), hunkFingerprint(hunk.header, hunk.lines));
                       }}
                     >
                       {opts.staged ? "Unstage hunk" : "Stage hunk"}
@@ -1159,6 +1207,7 @@ export default function ReviewPanel(props: {
                           onClick={(e) => {
                             e.stopPropagation();
                             void applyLines(
+                              opts.root,
                               f.path,
                               opts.staged,
                               hi(),
@@ -1181,7 +1230,7 @@ export default function ReviewPanel(props: {
                         tooltip="Throw away this hunk"
                         onClick={(e) => {
                           e.stopPropagation();
-                          void discardHunk(f.path, hi(), hunkFingerprint(hunk.header, hunk.lines));
+                          void discardHunk(opts.root, f.path, hi(), hunkFingerprint(hunk.header, hunk.lines));
                         }}
                       >
                         Discard hunk
@@ -1190,7 +1239,7 @@ export default function ReviewPanel(props: {
                     <HunkCommentInput
                       target={target()}
                       disabledReason={disabledReason()}
-                      filePath={props.root ? `${props.root}/${f.path}` : f.path}
+                      filePath={`${opts.root}/${f.path}`}
                       startLine={hunk.startLine}
                       endLine={hunk.endLine}
                     />
@@ -1204,7 +1253,7 @@ export default function ReviewPanel(props: {
                     }}
                   />
                   <For each={gaps().filter((g) => g.afterHunk === hi())}>
-                    {(gap) => gapRow(gap, `${key}:gap${hi()}`, f.path, opts.staged)}
+                    {(gap) => gapRow(gap, `${key}:gap${hi()}`, opts.root, f.path, opts.staged)}
                   </For>
                 </div>
               )}
@@ -1215,6 +1264,108 @@ export default function ReviewPanel(props: {
     );
   }
 
+  /** A member's header: whose section this is, where that member's branch
+   *  stands, and the three things you do to one repo. A member that cannot be
+   *  opened says so here and offers its repair instead of a file list. */
+  function memberHeader(sec: Section) {
+    const meta = () => gitStateFor(sec.root);
+    const usable = () => sec.state?.usable !== false;
+    return (
+      <div class={styles.memberHeader}>
+        <span
+          class={styles.chip}
+          style={sec.tint ? { "--chip-hue": sec.tint } : undefined}
+          data-chip={sec.root}
+        >
+          {memberInitials({ displayName: sec.label ?? "", repoPath: sec.root })}
+        </span>
+        <span class={styles.memberName}>{sec.label}</span>
+        <Show
+          when={usable()}
+          fallback={
+            <>
+              {/* The reason reads out rather than hiding in a `title`: this is
+                  the only account of why a member has no changes to show. */}
+              <span class={styles.stateBadge}>
+                {sec.state?.reason ? `${sec.state.label}: ${sec.state.reason}` : sec.state?.label}
+              </span>
+              <Show when={sec.state?.action}>
+                {(action) => (
+                  <Button size="xs" variant="ghost" data-repair={sec.root} onClick={() => props.onRetry?.(sec.root)}>
+                    {REPAIR_LABEL[action()]}
+                  </Button>
+                )}
+              </Show>
+            </>
+          }
+        >
+          <span class={styles.memberBranch} title={meta().branch ?? ""}>
+            {meta().branch}
+          </span>
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={applying() || !changedFiles(sec.root).length}
+            tooltip="Stage every change in this member"
+            onClick={() => void stageAll(sec.root)}
+          >
+            Stage all
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            tooltip="Point the commit box at this member"
+            onClick={() => commitIn(sec.root)}
+          >
+            Commit
+          </Button>
+          <Show when={meta().aheadBehind}>
+            {(ab) => (
+              <Button
+                size="xs"
+                disabled={pushingIn(sec.root) || (ab().has_upstream && ab().ahead === 0)}
+                tooltip={ab().has_upstream ? "Push" : "Push (sets upstream)"}
+                onClick={() => {
+                  const branchName = meta().branch;
+                  if (branchName) void pushToOrigin(sec.root, branchName);
+                }}
+              >
+                {pushingIn(sec.root)
+                  ? "Pushing…"
+                  : ab().has_upstream
+                    ? `↑${ab().ahead} ↓${ab().behind}`
+                    : "Unpushed branch"}
+              </Button>
+            )}
+          </Show>
+        </Show>
+      </div>
+    );
+  }
+
+  /** One member's three lists. Empty ones draw nothing, as they always have. */
+  function sectionLists(sec: Section) {
+    return (
+      <>
+        {/* First, because nothing below it can be finished until these are:
+            git refuses to commit with unmerged paths in the index. */}
+        <Show when={conflictedFiles(sec.root).length}>
+          <div class={styles.sectionHeader}>Conflicts</div>
+          <For each={conflictedFiles(sec.root)}>{(f) => conflictRow(f, sec.root)}</For>
+        </Show>
+        <Show when={stagedFiles(sec.root).length}>
+          <div class={styles.sectionHeader}>Staged Changes</div>
+          <For each={stagedFiles(sec.root)}>{(f) => row(f, { staged: true, root: sec.root })}</For>
+        </Show>
+        <Show when={changedFiles(sec.root).length}>
+          <div class={styles.sectionHeader}>Changes</div>
+          <For each={changedFiles(sec.root)}>{(f) => row(f, { staged: false, root: sec.root })}</For>
+        </Show>
+      </>
+    );
+  }
+
+  let subjectRef: HTMLInputElement | undefined;
   let panelRef: HTMLDivElement | undefined;
   onMount(() => {
     if (!panelRef) return;
@@ -1225,11 +1376,17 @@ export default function ReviewPanel(props: {
 
   return (
     <div class={styles.reviewPanel} ref={panelRef}>
-      <Show when={props.root && branch()}>
+      {/* Branch, ahead/behind and Push moved into the member headers inside a
+          Feature: they are one repo's answers, and a Feature has several. What
+          is left here is what stays one-repo either way - the diff layout, the
+          member in front's log, and the PR that follows it. */}
+      <Show when={props.root && (headed() || branch())}>
         <div class={styles.headerBar}>
-          <span class={styles.branchName} title={branch() ?? ""}>
-            {branch()}
-          </span>
+          <Show when={!headed()}>
+            <span class={styles.branchName} title={branch() ?? ""}>
+              {branch()}
+            </span>
+          </Show>
           <IconButton
             size="xs"
             icon={<Icon icon={History} />}
@@ -1255,28 +1412,27 @@ export default function ReviewPanel(props: {
             }
             onClick={toggleSideBySide}
           />
-          <Show
-            when={aheadBehind()}
-            fallback={<span class={styles.aheadBehind}>-</span>}
-          >
-            {(ab) => (
-              <Button
-                size="xs"
-                disabled={pushingIn(props.root) || (ab().has_upstream && ab().ahead === 0)}
-                tooltip={ab().has_upstream ? "Push" : "Push (sets upstream)"}
-                onClick={() => {
-                  const root = props.root;
-                  const branchName = branch();
-                  if (root && branchName) void pushToOrigin(root, branchName);
-                }}
-              >
-                {pushingIn(props.root)
-                  ? "Pushing…"
-                  : ab().has_upstream
-                    ? `↑${ab().ahead} ↓${ab().behind}`
-                    : "Unpushed branch"}
-              </Button>
-            )}
+          <Show when={!headed()}>
+            <Show when={aheadBehind()} fallback={<span class={styles.aheadBehind}>-</span>}>
+              {(ab) => (
+                <Button
+                  size="xs"
+                  disabled={pushingIn(props.root) || (ab().has_upstream && ab().ahead === 0)}
+                  tooltip={ab().has_upstream ? "Push" : "Push (sets upstream)"}
+                  onClick={() => {
+                    const root = props.root;
+                    const branchName = branch();
+                    if (root && branchName) void pushToOrigin(root, branchName);
+                  }}
+                >
+                  {pushingIn(props.root)
+                    ? "Pushing…"
+                    : ab().has_upstream
+                      ? `↑${ab().ahead} ↓${ab().behind}`
+                      : "Unpushed branch"}
+                </Button>
+              )}
+            </Show>
           </Show>
           <Show when={origin() && baseBranch()}>
             <Button size="xs" disabled={openingPr()} onClick={openPr}>
@@ -1294,28 +1450,33 @@ export default function ReviewPanel(props: {
           void refreshAll();
         }}
       />
+      {/* A Feature keeps its member headers on a clean tree: they are where its
+          branches, their ahead/behind and their pushes live, and a panel-wide
+          empty note would take all three away. A branch unit has nothing to
+          keep, so it says so exactly as it did before. */}
       <Show
-        when={files().length}
+        when={headed() || anyFiles()}
         fallback={
           <div class="tree-empty">
             <p>No changes yet. Edit a file and it shows up here to stage, commit, and push.</p>
           </div>
         }
       >
-        {/* First, because nothing below it can be finished until these are:
-            git refuses to commit with unmerged paths in the index. */}
-        <Show when={conflicts().length}>
-          <div class={styles.sectionHeader}>Conflicts</div>
-          <For each={conflicts()}>{(f) => conflictRow(f)}</For>
-        </Show>
-        <Show when={staged().length}>
-          <div class={styles.sectionHeader}>Staged Changes</div>
-          <For each={staged()}>{(f) => row(f, { staged: true })}</For>
-        </Show>
-        <Show when={unstaged().length}>
-          <div class={styles.sectionHeader}>Changes</div>
-          <For each={unstaged()}>{(f) => row(f, { staged: false })}</For>
-        </Show>
+        <For each={sections()}>
+          {(sec) => (
+            <div class={styles.memberSection} data-root={sec.root}>
+              <Show when={headed()}>{memberHeader(sec)}</Show>
+              {/* A member that cannot be opened has no repo to read, so its
+                  header's state badge is the whole of its section. */}
+              <Show when={sec.state?.usable !== false}>
+                {sectionLists(sec)}
+                <Show when={headed() && !gitStateFor(sec.root).files.length}>
+                  <div class={styles.memberEmpty}>No changes</div>
+                </Show>
+              </Show>
+            </div>
+          )}
+        </For>
       </Show>
       {/* Outside the empty-state Show above: a clean tree can still have
           stashes, and hiding them then would lose the only way back to them. */}
@@ -1360,7 +1521,8 @@ export default function ReviewPanel(props: {
           )}
         </For>
       </Show>
-      <Show when={files().length}>
+      {/* The member in front's tree, since that is the repo a stash lands in. */}
+      <Show when={gitStateFor(props.root).files.length}>
         <div class={styles.stashBar}>
           {/* The explanation belongs to the checkbox, not to the label: a
               `<label>` takes no focus of its own, so a tooltip on it would open
@@ -1381,11 +1543,11 @@ export default function ReviewPanel(props: {
               outright, so the button would only ever produce git's error. */}
           <Button
             size="xs"
-            disabled={applying() || conflicts().length > 0}
+            disabled={applying() || conflictedFiles(props.root).length > 0}
             // The label names the unresolved merge that is blocking it.
             tooltipWhenDisabled
             tooltip={
-              conflicts().length
+              conflictedFiles(props.root).length
                 ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
                 : "Put every change aside for later, named after the Summary below if you have written one"
             }
@@ -1397,6 +1559,7 @@ export default function ReviewPanel(props: {
       </Show>
       <div class={styles.commitBox}>
         <input
+          ref={subjectRef}
           class={styles.commitInput}
           type="text"
           placeholder="Summary"
@@ -1432,7 +1595,7 @@ export default function ReviewPanel(props: {
           <Button
             size="sm"
             class={styles.draftButton}
-            disabled={!staged().length || !!disabledReason() || drafting()}
+            disabled={!commitStagedFiles().length || !!disabledReason() || drafting()}
             tooltipWhenDisabled
             tooltip={disabledReason() ?? "Ask the selected session to draft a commit message"}
             onClick={askAgentToDraft}
@@ -1447,7 +1610,7 @@ export default function ReviewPanel(props: {
             // "Nothing staged" is the whole explanation for a greyed-out Commit,
             // and it is the branch that only ever shows while disabled.
             tooltipWhenDisabled
-            tooltip={amend() ? "Amend the last commit" : staged().length ? "Commit staged changes" : "Nothing staged"}
+            tooltip={amend() ? "Amend the last commit" : commitStagedFiles().length ? "Commit staged changes" : "Nothing staged"}
             onClick={commit}
           >
             {amend() ? "Amend" : "Commit"}
