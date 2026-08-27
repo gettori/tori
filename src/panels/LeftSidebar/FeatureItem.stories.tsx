@@ -63,6 +63,17 @@ export const TwoMembers: Story = {
   },
 };
 
+/** The open Feature, with the files touched across every member on the row. The
+ *  number arrives as a prop: the row itself reads no store, so it renders the
+ *  same here as it does with the editor open on that Feature. */
+export const OpenWithChanges: Story = {
+  args: {
+    feature: feature("Notifications", [member("/w/api", 0), member("/w/web", 1), member("/s/blog", 2)]),
+    active: true,
+    changed: 7,
+  },
+};
+
 /** Nine members: six chips and a +3, the name still on one line at 240px. The
  *  width claim lives here because jsdom does no layout; the dom test only
  *  counts chips. */

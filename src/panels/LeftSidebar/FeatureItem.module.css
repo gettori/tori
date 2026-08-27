@@ -19,12 +19,29 @@
   box-shadow: inset 2px 0 0 var(--brand-default);
 }
 
+/* The count sits beside the name rather than under it: the row's height is the
+   same for every Feature, and the count is on at most one row at a time. */
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+}
+
 .name {
+  flex: 1 1 auto;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--sway-text-xl);
   color: var(--fg-default);
+}
+
+.count {
+  flex: 0 0 auto;
+  font-size: var(--sway-text-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
 }
 
 .chips {

@@ -21,6 +21,9 @@ export default function FeatureItem(props: {
   onSelect?: (feature: Feature) => void;
   /** The Feature the shell is showing. */
   active?: boolean;
+  /** Files touched across this Feature's members. Zero shows nothing: a Feature
+   *  nobody has open reads zero, and a clean one has no news either way. */
+  changed?: number;
   /** Right-click rows; none means the row is inert. */
   menu?: MenuItem[];
 }) {
@@ -40,8 +43,17 @@ export default function FeatureItem(props: {
       aria-current={props.active ? "true" : undefined}
       onClick={() => props.onSelect?.(props.feature)}
     >
-      <div class={styles.name} data-name title={props.feature.branch}>
-        {props.feature.name}
+      <div class={styles.head}>
+        <div class={styles.name} data-name title={props.feature.branch}>
+          {props.feature.name}
+        </div>
+        <Show when={props.changed}>
+          {(n) => (
+            <span class={styles.count} data-changed>
+              {n()} changed
+            </span>
+          )}
+        </Show>
       </div>
       <div class={styles.chips}>
         <For each={shown()}>

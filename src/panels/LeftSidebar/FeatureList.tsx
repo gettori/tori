@@ -10,6 +10,7 @@ import { pushToast } from "../../components/Toasts/Toasts";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
 import { memberState, type Feature, type Member, featureKey } from "../../utils/features";
+import { gitStateFor } from "../../utils/gitActions";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
 import styles from "./FeatureList.module.css";
 
@@ -133,6 +134,12 @@ export default function FeatureList(props: {
     }
   }
 
+  // Asked per member rather than of the slot map as a whole: the editor only
+  // enters the open Feature's roots, so every other row sums to nothing on its
+  // own, and no row can be handed a number the member beside it measured.
+  const changedIn = (feature: Feature) =>
+    feature.members.reduce((n, m) => n + gitStateFor(m.worktreePath).files.length, 0);
+
   const menu = (feature: Feature): MenuItem[] => [
     { label: "Rename…", onClick: () => setRenameReq(feature) },
     { label: "Add repository…", onClick: () => setDialog({ feature }) },
@@ -186,6 +193,7 @@ export default function FeatureList(props: {
                 feature={f}
                 spaces={props.spaces}
                 active={props.activeId === f.id}
+                changed={changedIn(f)}
                 onSelect={props.onSelect}
                 onRetry={(m) => retry(f, m)}
                 menu={menu(f)}
