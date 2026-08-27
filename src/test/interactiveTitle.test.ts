@@ -177,7 +177,7 @@ const KEPT = new Map<string, Kept>([
   ],
   [
     "panels/Editor/ReviewPanel.tsx",
-    { count: 5, reason: `two ${TRUNCATION}, one ${ROW_ONCLICK}, and two of ${HEADING}` },
+    { count: 6, reason: `three ${TRUNCATION}, one ${ROW_ONCLICK}, and two of ${HEADING}` },
   ],
   ["panels/Editor/SearchPanel.tsx", { count: 1, reason: TRUNCATION }],
   [
@@ -246,7 +246,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **One back down** with the composer bar's standing note about a remembered
  *  model list, which is gone and took its title with it. */
-const RAW_ELEMENT_TITLES = 65;
+const RAW_ELEMENT_TITLES = 66;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. Down one from
  *  ten for the same reason as above, and the row itself is unchanged. */
@@ -351,9 +351,12 @@ describe("the title= guard", () => {
     // Up one div and three spans: the sidebar's Feature row (#153) shows the
     // branch behind a truncated name, and each member chip, its state badge
     // and the +N overflow carry the full text a 22px chip cannot.
+    // Up one more span: the Changes panel's member headers (#157) each show
+    // their branch behind a truncated label, the same way the top bar's own
+    // branch name already did when there was only one of it.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 16,
-      span: 49,
+      span: 50,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
