@@ -200,7 +200,9 @@ describe("the editor inside a Feature", () => {
     ));
     await waitFor(() => expect(sectionRoots()).toEqual([A, REPO_B]));
     // Both members wear a chip, and the one outside every Space is untinted.
-    const chips = Array.from(document.querySelectorAll<HTMLElement>("[data-chip]"));
+    // Scoped to the tree's sections: a file tab wears a chip of its own (#158),
+    // so a bare `[data-chip]` sweep would answer for both surfaces at once.
+    const chips = Array.from(document.querySelectorAll<HTMLElement>("[data-root] [data-chip]"));
     expect(chips.map((c) => c.textContent)).toEqual(["A", "W"]);
     expect(chips[0].style.getPropertyValue("--chip-hue")).not.toBe("");
     expect(chips[1].style.getPropertyValue("--chip-hue")).toBe("");

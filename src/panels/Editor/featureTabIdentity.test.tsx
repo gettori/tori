@@ -1,0 +1,160 @@
+// A file tab inside a Feature names its repo (#158 phase 2): the chip composes
+// before the seti glyph, the repo reaches the accessible name through a hidden
+// span, and the `+N` rows spend their width on `<repo> / <rel path>` because the
+// overflow menu is where two members' same-named files sit next to each other.
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor } from "@solidjs/testing-library";
+
+import { installResizeObserver } from "./__fixtures__/editorAgent";
+import { installAnimationFrame } from "../../test/frames";
+import { setTabBarWidth } from "../../test/tabLayout";
+import { pointerClick } from "../../test/menus";
+
+installResizeObserver();
+installAnimationFrame();
+
+const A = "/r/a/.sway/worktrees/auth";
+const B = "/r/b/.sway/worktrees/auth";
+const FILE_A = `${A}/a.txt`;
+const DEEP_A = `${A}/deep/c.txt`;
+const FILE_B = `${B}/src/b.txt`;
+
+// The second member's worktree is gone, but its path is still on record: that is
+// exactly the case where the tab outlives the folder and must keep saying whose
+// file it is.
+const FEATURE = {
+  id: "f1",
+  name: "Auth",
+  branch: "feat/auth",
+  createdAt: 1,
+  members: [
+    { repoPath: "/r/a", displayName: "api", worktreePath: A, state: { kind: "present" }, order: 0 },
+    { repoPath: "/r/b", displayName: "web", worktreePath: B, state: { kind: "worktree-missing" }, order: 1 },
+  ],
+};
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (cmd: string) => {
+    switch (cmd) {
+      case "file_exists":
+        return Promise.resolve(true);
+      case "get_docs_root":
+        return Promise.reject("no docs root");
+      case "git_status":
+      case "list_branches":
+      case "fs_read_dir":
+      case "fs_read_dir_compact":
+      case "list_project_files":
+        return Promise.resolve([]);
+      case "list_features":
+        return Promise.resolve([FEATURE]);
+      case "get_config":
+        return Promise.resolve({ spaces: [{ name: "work", color: "Sky", projects: [{ path: "/r/a" }] }] });
+      case "git_ahead_behind":
+        return Promise.resolve({ ahead: 0, behind: 0, has_upstream: false });
+      default:
+        return Promise.resolve(null);
+    }
+  },
+}));
+vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ onCloseRequested: () => Promise.resolve(() => {}) }),
+}));
+vi.mock("./CodeEditor", () => ({ default: () => null }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+
+const { default: Editor } = await import("./Editor");
+const { default: PaneView } = await import("../../tabs/PaneView");
+
+const featureSel = {
+  kind: "feature" as const,
+  featureId: "f1",
+  featureName: "Auth",
+  roots: [A],
+  activeRoot: A,
+  spaceName: "",
+  projectName: "Auth",
+  projectPath: A,
+  folderPath: A,
+  branch: "feat/auth",
+  projectKind: "feature",
+};
+
+const unitSel = {
+  kind: "unit",
+  spaceName: "work",
+  projectName: "a",
+  projectPath: "/r/a",
+  folderPath: "/r/a",
+  branch: "main",
+  projectKind: "plain",
+};
+
+function openTabs(ws: string, paths: string[]) {
+  localStorage.setItem(
+    "sway.editor.tabs.v1",
+    JSON.stringify({ [ws]: { paths, active: paths[0], savedAt: Date.now() } }),
+  );
+}
+
+/** `<repo> / <basename>`, tolerant of how an engine joins a hidden span to the
+ *  text beside it: the separator is what matters, not the exact spaces around
+ *  it (jsdom trims each node, browsers do not). */
+const NAMED = (repo: string, file: string) =>
+  new RegExp(`^${repo}\\s*/\\s*${file.replace(".", "\\.")}$`);
+
+let mounted: ReturnType<typeof render> | null = null;
+const mount = (sel: unknown) => {
+  mounted = render(() => (
+    <>
+      <Editor selected={sel as never} />
+      <PaneView pinKind="file" />
+    </>
+  ));
+};
+
+beforeEach(() => localStorage.clear());
+afterEach(() => {
+  mounted?.unmount();
+  mounted = null;
+});
+
+describe("a file tab inside a Feature", () => {
+  it("names its member in the accessible name and keeps the file glyph beside the chip", async () => {
+    openTabs("feature:f1", [FILE_A]);
+    mount(featureSel);
+    const tab = await screen.findByRole("tab", { name: NAMED("api", "a.txt") });
+    // Composed, not substituted: the chip says which repo, the seti glyph still
+    // says which kind of file.
+    expect(tab.querySelector("[data-chip]")).toBeTruthy();
+    expect(tab.querySelector(".seti-icon")).toBeTruthy();
+    // The chip itself is silent; the hidden span is what carries the repo.
+    expect(tab.querySelector("[data-chip]")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("keeps the chip on a member whose worktree is gone, and wears the state", async () => {
+    openTabs("feature:f1", [FILE_B]);
+    mount(featureSel);
+    const tab = await screen.findByRole("tab", { name: NAMED("web", "b.txt") });
+    expect(tab.querySelector("[data-chip]")?.getAttribute("data-state")).toBe("worktree-missing");
+  });
+
+  it("leaves a branch unit's tab exactly as it was, chipless", async () => {
+    openTabs("/r/a", ["/r/a/a.txt"]);
+    mount(unitSel);
+    const tab = await screen.findByRole("tab", { name: "a.txt" });
+    expect(tab.querySelector("[data-chip]")).toBeNull();
+  });
+
+  it("spells out <repo> / <rel path> on every overflow row", async () => {
+    // 150px fits one 120px tab once the +N button is reserved, so two collapse.
+    setTabBarWidth(150);
+    openTabs("feature:f1", [FILE_A, FILE_B, DEEP_A]);
+    mount(featureSel);
+    pointerClick(await screen.findByRole("button", { name: "2 more" }));
+    const menu = await waitFor(() => screen.getByRole("menu"));
+    expect(menu.textContent).toContain("web / src/b.txt");
+    expect(menu.textContent).toContain("api / deep/c.txt");
+  });
+});

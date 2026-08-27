@@ -5,6 +5,8 @@ import Icon from "./Icon/Icon";
 import IconButton from "./IconButton/IconButton";
 import OverflowTabBar from "./OverflowTabBar";
 import Tab from "./Tab/Tab";
+import { TabMemberChip } from "./MemberChip/MemberChip";
+import type { TintedMember } from "../utils/featureMembers";
 
 type File = { id: string; name: string };
 
@@ -112,4 +114,81 @@ export const Roomy: Story = {
  *  measured rather than after, so the row never overlaps it. */
 export const WithTrailing: Story = {
   render: () => <Strip width="520px" trailing />,
+};
+
+const member = (displayName: string, hue: string): TintedMember => ({
+  member: {
+    repoPath: `/repos/${displayName}`,
+    displayName,
+    worktreePath: `/w/${displayName}`,
+    state: { kind: "present" },
+    order: 0,
+  },
+  key: `/w/${displayName}`,
+  label: displayName,
+  state: { label: "Ready", usable: true, action: null, reason: null },
+  hue,
+  style: { "--chip-hue": hue, "--chip-rgb": "111 176 224" },
+});
+
+type MemberFile = File & { member: TintedMember; rel: string };
+
+const MEMBERS = [member("frontend", "oklch(0.72 0.13 250)"), member("api", "oklch(0.74 0.15 145)")];
+const MEMBER_FILES: MemberFile[] = [
+  "src/App.tsx",
+  "package.json",
+  "src/routes/index.ts",
+  "package.json",
+  "src/main.rs",
+  "Cargo.toml",
+].map((rel, i) => ({
+  id: `m${i}`,
+  name: rel.split("/").pop()!,
+  rel,
+  member: MEMBERS[i < 3 ? 0 : 1],
+}));
+
+/** Inside a Feature, every tab wears its repo. The strip has no room to spell it
+ *  out, so it shows the chip and hides the repo in the tab's accessible name;
+ *  the `+N` menu, which is where two members' `package.json` sit next to each
+ *  other, spends its width on the whole `<repo> / <rel path>`. */
+export const AcrossMembers: Story = {
+  render: () => {
+    const [items, setItems] = createSignal(MEMBER_FILES);
+    const [active, setActive] = createSignal<string | null>("m0");
+    return (
+      <div style={{ width: "520px", resize: "horizontal", overflow: "auto" }}>
+        <OverflowTabBar
+          class="sb-strip"
+          items={items()}
+          activeId={active()}
+          idOf={(t) => t.id}
+          onActivate={setActive}
+          onReorder={setItems}
+          renderTab={(t) => (
+            <Tab
+              value={t.id}
+              icon={
+                <>
+                  <TabMemberChip member={t.member} />
+                  <Icon icon={FileText} />
+                </>
+              }
+              tooltip={`${t.member.key}/${t.rel}`}
+              onClose={() => setItems((fs) => fs.filter((x) => x.id !== t.id))}
+            >
+              {t.name}
+            </Tab>
+          )}
+          renderMenuItem={(t) => (
+            <>
+              <TabMemberChip member={t.member} />
+              <span>{`${t.member.label} / ${t.rel}`}</span>
+            </>
+          )}
+        />
+        <style>{STRIP_CSS}</style>
+      </div>
+    );
+  },
 };

@@ -1,6 +1,6 @@
 import { createMemo, splitProps, type JSX } from "solid-js";
 import { memberInitials } from "../../utils/features";
-import type { ChipStyle } from "../../utils/featureMembers";
+import type { ChipStyle, TintedMember } from "../../utils/featureMembers";
 import styles from "./MemberChip.module.css";
 
 /** What the chip needs to name a repo: the display name it takes initials from,
@@ -66,5 +66,21 @@ export default function MemberChip(props: MemberChipProps) {
       {memberInitials(local.member)}
       {local.children}
     </span>
+  );
+}
+
+/** The chip a tab and its overflow row wear.
+ *
+ *  Decorative, because the row's own text already names the repo; `data-state`
+ *  rides along so a member that cannot be opened right now still says so. */
+export function TabMemberChip(props: { member: TintedMember }) {
+  return (
+    <MemberChip
+      member={props.member.member}
+      chipStyle={props.member.style}
+      decorative
+      data-chip={props.member.member.repoPath}
+      data-state={props.member.member.state.kind}
+    />
   );
 }
