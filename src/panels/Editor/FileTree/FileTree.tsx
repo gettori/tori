@@ -57,6 +57,10 @@ const HIDDEN = new Set([".git"]);
 type EditCtx = {
   root: string;
   noun: string;
+  /** Which repo this root is, inside a Feature. Empty everywhere else, where
+   *  there is one root and nothing to disambiguate. Rides here rather than down
+   *  the recursion because the row menu exists only where this context does. */
+  member?: string;
   askText: (title: string, initial?: string) => Promise<string | null>;
   askConfirm: (opts: ConfirmOpts) => Promise<boolean>;
   /** Directories mounted right now, keyed by path. A mutation sometimes has to
@@ -457,6 +461,10 @@ function TreeNode(props: {
     const ctx = props.ctx;
     if (!ctx) return [];
     const items: MenuItem[] = [];
+    // Two members hold the same `src/index.ts`, and a menu that opened over one
+    // of them says nothing about which. First, so it reads before the actions
+    // rather than as a footnote to them.
+    if (ctx.member) items.push({ heading: ctx.member });
     if (props.entry.is_dir) {
       items.push({ label: "New File", onClick: () => newFileIn(ctx, props.entry.path, reloadOpen) });
       items.push({ label: "New Folder", onClick: () => newFolderIn(ctx, props.entry.path, reloadOpen) });
@@ -671,6 +679,7 @@ function RootSection(props: {
     return {
       root: props.path,
       noun: props.noun ?? "workspace folder",
+      member: props.meta().label || undefined,
       askText: props.askText,
       askConfirm: props.askConfirm,
       mounted,
