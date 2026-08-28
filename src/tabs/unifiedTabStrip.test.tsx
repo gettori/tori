@@ -174,6 +174,9 @@ const tinted = (displayName: string, hue: string): TintedMember => ({
   state: { label: "Ready", usable: true, action: null, reason: null },
   hue,
   style: { "--chip-hue": hue, "--chip-rgb": "1 2 3" },
+  spaceName: "work",
+  projectName: displayName,
+  kind: "worktree",
 });
 
 describe("accessibility", () => {

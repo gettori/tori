@@ -71,6 +71,7 @@ import ContextMenu from "../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../components/Menu/rows";
 import Tab from "../../components/Tab/Tab";
 import { TabMemberChip } from "../../components/MemberChip/MemberChip";
+import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
 import FileIcon from "../../seti/FileIcon";
 import Icon from "../../components/Icon/Icon";
 import {
@@ -291,6 +292,12 @@ type RightMode =
   | "tasks"
   | "debug";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
+/** The modes that answer for the member `activeRoot` points at, rather than for
+ *  the whole Feature (Files, Changes, Search, Problems, TODOs, Bookmarks) or for
+ *  the file in front (Outline, Calls, Session, Debug). These are the four the
+ *  chip row switches. */
+const ACTIVE_ROOT_MODES: RightMode[] = ["pulls", "tasks", "shared", "docs"];
+
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   files: { mode: "files", label: "Files", icon: Files },
   changes: { mode: "changes", label: "Changes", icon: GitCompare },
@@ -366,6 +373,10 @@ export default function Editor(props: {
   liveTabs?: LiveTab[];
   showFiletree?: boolean;
   onToggleFiletree?: () => void;
+  /** Move the Feature's active member, from the right panel's own chip row. The
+   *  same handler the Toolbar's crumb chips and the sidebar use, so the three
+   *  cannot disagree about which member is in front. */
+  onActiveRoot?: (root: string) => void;
 }) {
   // The tab model lives in editorTabStore (module-level, phase 4 composes it);
   // the reset keeps its lifetime tied to this panel exactly as before.
@@ -816,6 +827,10 @@ export default function Editor(props: {
   const focusRoot = () => focusMemberRoot(activeId(), members(), root());
   const focusMember = () => (featureId() ? memberFor(focusRoot(), members()) : null);
 
+  /** The member the workspace is pointed at, for the panes that follow
+   *  `activeRoot` rather than the file in front: Pull requests, Tasks, Shared
+   *  and Docs. Null outside a Feature, where there is only one repo anyway. */
+  const activeMember = () => (featureId() ? memberFor(root(), members()) : null);
   /** Which repo the pane below is about. Only inside a Feature: with one repo
    *  on screen there is nothing to disambiguate, and Outline, Calls, Session and
    *  Debug all otherwise read as answers about the whole workspace. */
@@ -974,10 +989,21 @@ export default function Editor(props: {
     );
   }
 
-  // The editable `.shared/` folder lives on the worktree container (projectPath);
-  // only worktree units have one. Null for plain / plain-dir units gates the tab.
-  const sharedPath = () =>
-    props.selected?.projectKind === "worktree" ? `${props.selected.projectPath}/.shared` : null;
+  // The editable `.shared/` folder lives on the worktree container; only a
+  // worktree layout has one. Null for plain / plain-dir gates the tab.
+  //
+  // Inside a Feature the question is per member, and it is asked of the *repo*,
+  // not of the Feature: `projectKind` is "feature" there, which is why this tab
+  // was hidden outright before. A member's `repoPath` is its project path from
+  // discovery, so it is already the container, and `kind` says whether that
+  // container is a bare one (`create_worktree` links `.shared/` into each
+  // worktree) or a plain repo (whose Feature worktrees sit under
+  // `.sway/worktrees`, where no such folder is linked).
+  const sharedPath = () => {
+    const m = activeMember();
+    if (m) return m.kind === "worktree" ? `${m.member.repoPath}/.shared` : null;
+    return props.selected?.projectKind === "worktree" ? `${props.selected.projectPath}/.shared` : null;
+  };
 
   // In-app replacement for window.prompt (unimplemented in WKWebView); mirrors the
   // sidebar's askText. Threaded into the editable Shared tree for name entry.
@@ -1118,11 +1144,29 @@ export default function Editor(props: {
       // no docs root configured: the docs section stays hidden
     }
   });
+  // Inside a Feature the space and project are the *active member's*: the
+  // selection's own are `""` and the Feature's name, which name no folder on
+  // disk, so this tab was permanently hidden there.
+  const docsCandidate = () => {
+    const dr = docsRoot();
+    const sel = props.selected;
+    if (!dr || !sel) return null;
+    const m = activeMember();
+    const space = m ? m.spaceName : sel.spaceName;
+    const project = m ? m.projectName : sel.projectName;
+    return space && project ? `${dr}/${space}/${project}` : null;
+  };
+  // Bumped per probe: moving the active member twice in quick succession leaves
+  // two `file_exists` in flight, and the slower one must not answer for the
+  // member that is no longer selected. Same latest-wins guard the TODO and
+  // Search panels keep.
+  let docsProbe = 0;
   createEffect(
-    on([() => props.selected, docsRoot], async ([sel, dr]) => {
-      if (!sel || !dr) return setDocsPath(null);
-      const candidate = `${dr}/${sel.spaceName}/${sel.projectName}`;
+    on(docsCandidate, async (candidate) => {
+      const probe = ++docsProbe;
+      if (!candidate) return setDocsPath(null);
       const exists = await invoke<boolean>("file_exists", { path: candidate }).catch(() => false);
+      if (probe !== docsProbe) return;
       setDocsPath(exists ? candidate : null);
     }),
   );
@@ -2606,6 +2650,17 @@ export default function Editor(props: {
             </>
           )}
         />
+        {/* Below the tab strip rather than inside a pane: the four modes it
+            serves each answer for one repo, and one row above all of them is
+            one control to learn instead of four. Only alongside other members:
+            one member is not a choice. */}
+        <Show when={ACTIVE_ROOT_MODES.includes(rightMode()) && featureId() && members().length > 1}>
+          <MemberChipRow
+            members={members()}
+            activeRoot={root()}
+            onActiveRoot={props.onActiveRoot}
+          />
+        </Show>
         <Switch>
           <Match when={rightMode() === "files"}>
             <FileTree

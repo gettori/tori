@@ -129,6 +129,9 @@ const member = (displayName: string, hue: string): TintedMember => ({
   state: { label: "Ready", usable: true, action: null, reason: null },
   hue,
   style: { "--chip-hue": hue, "--chip-rgb": "111 176 224" },
+  spaceName: "work",
+  projectName: displayName,
+  kind: "worktree",
 });
 
 type MemberFile = File & { member: TintedMember; rel: string };

@@ -43,6 +43,7 @@ const {
   groupByMemberRoot,
   memberFor,
   memberSectionsHeaded,
+  projectUnitKind,
   resolveMemberRestriction,
   tintedMembers,
 } = await import("./featureMembers");
@@ -349,5 +350,89 @@ describe("focusMemberRoot", () => {
 
   it("passes a null active root through rather than inventing one", () => {
     expect(focusMemberRoot(null, MEMBERS, null)).toBeNull();
+  });
+});
+
+describe("the project a member's repo was discovered as", () => {
+  const member = (repoPath: string, worktreePath: string | null) =>
+    ({ repoPath, displayName: "m", worktreePath, state: { kind: "present" }, order: 0 }) as never;
+
+  const unit = (folderPath: string, kind: string) => ({ folderPath, kind });
+
+  /** A bare container: no unit sits at the container itself, every unit is a
+   *  worktree beside it. This is the layout `.shared/` belongs to. */
+  const CONTAINER = {
+    name: "work",
+    color: "Sky",
+    projects: [
+      {
+        name: "api",
+        path: "/w/api",
+        branchUnits: [unit("/w/api/main", "worktree"), unit("/w/api/auth", "worktree")],
+      },
+    ],
+  };
+
+  /** A plain repo. Its attached branches all sit at the repo folder, and since
+   *  #158 the Feature worktrees inside it are listed too. */
+  const PLAIN = {
+    name: "work",
+    color: "Sky",
+    projects: [
+      {
+        name: "web",
+        path: "/w/web",
+        branchUnits: [
+          unit("/w/web/.sway/worktrees/auth", "worktree"),
+          unit("/w/web", "plain"),
+        ],
+      },
+    ],
+  };
+
+  it("reads a plain repo as plain even when a Feature worktree is listed first", () => {
+    // Position says nothing, and matching the *member's* worktree would answer
+    // `worktree` here, which would offer a `.shared/` folder that is not there.
+    const [m] = tintedMembers(
+      { members: [member("/w/web", "/w/web/.sway/worktrees/auth")] } as never,
+      [PLAIN] as never,
+    );
+    expect(m.kind).toBe("plain");
+    expect(m.spaceName).toBe("work");
+    expect(m.projectName).toBe("web");
+  });
+
+  it("reads a bare container as a worktree layout", () => {
+    const [m] = tintedMembers(
+      { members: [member("/w/api", "/w/api/auth")] } as never,
+      [CONTAINER] as never,
+    );
+    expect(m.kind).toBe("worktree");
+    expect(m.projectName).toBe("api");
+  });
+
+  it("resolves a repo outside every Space to no space name, without throwing", () => {
+    const [m] = tintedMembers(
+      { members: [member("/tmp/scratch", "/tmp/scratch/wt")] } as never,
+      [PLAIN] as never,
+    );
+    expect(m.spaceName).toBeUndefined();
+    expect(m.projectName).toBeUndefined();
+    expect(m.kind).toBeUndefined();
+    // And it still tints neutrally rather than failing the whole list.
+    expect(m.hue).toBeUndefined();
+    expect(m.label).toBe("m");
+  });
+
+  it("says nothing about a project with no units to read", () => {
+    expect(projectUnitKind(undefined)).toBeUndefined();
+    expect(projectUnitKind({ path: "/w/api" })).toBeUndefined();
+    expect(projectUnitKind({ path: "/w/api", branchUnits: [] })).toBeUndefined();
+  });
+
+  it("ignores a trailing slash on either side of the match", () => {
+    expect(projectUnitKind({ path: "/w/web/", branchUnits: [{ folderPath: "/w/web", kind: "plain" }] })).toBe(
+      "plain",
+    );
   });
 });
