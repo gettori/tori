@@ -47,7 +47,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 // The buffers are CodeEditor's; this suite is about what the pane publishes.
 vi.mock("./CodeEditor", () => ({ default: () => null }));
-vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, OPEN_IN_EDITOR } = await import("../../utils/events");

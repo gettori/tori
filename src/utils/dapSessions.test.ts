@@ -499,7 +499,10 @@ describe("stopping", () => {
     const effect = editorSource.slice(editorSource.indexOf("on(root, (r) => {"));
     const guard = effect.indexOf("if (!r) return;");
     const dap = effect.indexOf("stopAllDap()");
-    const lsp = effect.indexOf("retainLspRoots(");
+    // `touchWarmRoot`, not `retainLspRoots`: the switch reaches the LRU through
+    // the cycle-free `lspWarmRoots` module now, and only asks `lspClient` to
+    // stop what fell off. Same effect, same half, different door.
+    const lsp = effect.indexOf("touchWarmRoot(");
 
     expect(guard).toBeGreaterThan(-1);
     expect(lsp).toBeGreaterThan(guard);

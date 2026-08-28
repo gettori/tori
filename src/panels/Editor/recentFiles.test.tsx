@@ -60,7 +60,7 @@ vi.mock("./CodeEditor", () => ({
     return null;
   },
 }));
-vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, OPEN_IN_EDITOR, EDITOR_CLOSE_TAB, EDITOR_REOPEN_CLOSED, FILE_RENAMED, PURGE_UNDER_PATH } =

@@ -48,6 +48,7 @@ import {
 import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
 import { pathToUri, SwayWorkspace } from "./swayWorkspace";
+import { clearWarmRoots, touchWarmRoot, underWarmRoot } from "./lspWarmRoots";
 import type { ApplyDeps, MaterialisedFile, Mapping } from "./workspaceEdit";
 
 /** Identifies one running server session. Produced by the backend; the
@@ -643,45 +644,26 @@ export async function executeServerCommand(
 }
 
 /** Tear down every client and stop every server. What app teardown calls; a
- *  project switch calls `retainLspRoots` instead, so servers stay warm. */
+ *  project switch retires instead (`lspWarmRoots`), so servers stay warm. */
 export async function stopAllLsp(): Promise<void> {
   generation += 1;
   dropAllSessions();
   starting.clear();
-  rootLru.length = 0;
+  clearWarmRoots();
   await invoke("lsp_stop_all").catch(() => {});
 }
 
-// Warm roots (perf): a language server survives the switch away from its
-// project, so switching back is a claim on a running server instead of a cold
-// start and a re-index. Three, not unlimited: each root can hold a tsserver or
-// a rust-analyzer, and the point is the worktrees being flipped between, not
-// every project visited since launch. Most-recent last.
-const WARM_ROOTS = 3;
-const rootLru: string[] = [];
-
-/** Note that `projectPath` is the selected project, and stop the servers of
- *  whatever falls off the warm end. What a project switch calls. */
-export async function retainLspRoots(projectPath: string | null): Promise<void> {
-  if (!projectPath) return;
-  for (const root of touchWarmRoot(projectPath)) await stopLspUnder(root);
-}
-
-/** Move a project to the warm end, returning what fell off. `ensureLspFor`
- *  touches too, so a start is warm for its own project by construction rather
- *  than by trusting the shell to have announced the switch first. */
-function touchWarmRoot(projectPath: string): string[] {
-  const i = rootLru.indexOf(projectPath);
-  if (i >= 0) rootLru.splice(i, 1);
-  rootLru.push(projectPath);
-  return rootLru.splice(0, Math.max(0, rootLru.length - WARM_ROOTS));
-}
-
-/** Whether a server root belongs to a still-warm project. A session's root can
- *  be a package below the project (monorepo), so this is containment, not
- *  equality. */
-function underWarmRoot(root: string): boolean {
-  return rootLru.some((r) => root === r || isUnderPath(root, r));
+/** Stop the servers of projects that fell off the warm end.
+ *
+ *  The touch itself is `lspWarmRoots`, and the split is not tidiness: a project
+ *  switch is the one caller that reaches this module through a dynamic import,
+ *  and this module is in a cycle, so that import can resolve before a single
+ *  statement of the body has run. Touching the LRU from here read module-scope
+ *  bindings in their temporal dead zone and threw on every switch. The touch is
+ *  now done in a module with no cycle to be caught in, and this is asked for
+ *  only when something was actually evicted, which is rare and by then late. */
+export async function stopEvictedLspRoots(roots: readonly string[]): Promise<void> {
+  for (const root of roots) await stopLspUnder(root);
 }
 
 /** Stop the sessions of one evicted project, and drop what they published: the

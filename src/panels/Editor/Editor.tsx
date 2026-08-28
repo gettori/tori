@@ -1169,13 +1169,22 @@ export default function Editor(props: {
       // servers keep them true and the consumers scope to the selected root.
       // A silent stop-and-restart of every server was most of why a worktree
       // switch felt slow: tsserver or rust-analyzer cold-started on every
-      // click. `retainLspRoots` keeps the last few projects' servers running
+      // click. The warm-root LRU keeps the last few projects' servers running
       // and stops only what falls off the warm end. Servers are still started
       // lazily by CodeEditor on the first file of each language; the lazy
       // import keeps CodeMirror out of the startup chunk.
       clearSymbols();
       clearCallRoots();
-      void import("./lspClient").then((m) => m.retainLspRoots(r));
+      // Through `lspWarmRoots`, not `lspClient`: that module is in an import
+      // cycle, so this dynamic import can resolve before its body has run, and
+      // the touch would read bindings that are not there yet. `lspClient` is
+      // only reached when a project actually fell off the warm end.
+      if (r) {
+        void import("./lspWarmRoots").then(({ touchWarmRoot }) => {
+          const evicted = touchWarmRoot(r);
+          if (evicted.length) void import("./lspClient").then((m) => m.stopEvictedLspRoots(evicted));
+        });
+      }
     }),
   );
 
