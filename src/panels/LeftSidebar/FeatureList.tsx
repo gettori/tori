@@ -5,7 +5,11 @@ import FeatureItem, { type SpaceTint } from "./FeatureItem";
 import Button from "../../components/Button/Button";
 import NewFeatureDialog from "../../components/Dialogs/NewFeatureDialog";
 import PromptModal from "../../components/Dialogs/PromptModal";
-import ConfirmDialog from "../../components/Dialogs/ConfirmDialog";
+import ConfirmDeleteFeature, { type MemberRisk } from "../../components/Dialogs/ConfirmDeleteFeature";
+import FeatureWorktreeSweepDialog, {
+  type SweepChoice,
+  type SweepMember,
+} from "../../components/Dialogs/FeatureWorktreeSweepDialog";
 import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog";
 import { pushToast } from "../../components/Toasts/Toasts";
 import type { MenuItem } from "../../components/Menu/rows";
@@ -48,7 +52,18 @@ export default function FeatureList(props: {
   const [error, setError] = createSignal<string | null>(null);
   const [dialog, setDialog] = createSignal<{ feature?: Feature } | null>(null);
   const [renameReq, setRenameReq] = createSignal<Feature | null>(null);
-  const [deleteReq, setDeleteReq] = createSignal<Feature | null>(null);
+  // The delete confirm and the sweep that follows it, both carrying the same
+  // per-member risk rows: the confirm fetches them, the sweep inherits them
+  // rather than asking git the same question twice in a row.
+  const [deleteReq, setDeleteReq] = createSignal<{ feature: Feature; members: MemberRisk[] } | null>(null);
+  const [sweepReq, setSweepReq] = createSignal<{
+    feature: Feature;
+    members: SweepMember[];
+    busy: boolean;
+    failures: Record<string, string>;
+    /** Live tabs under each worktree, so a row says what removal stops. */
+    running: Record<string, number>;
+  } | null>(null);
   const [memberRenameReq, setMemberRenameReq] = createSignal<{ feature: Feature; member: Member } | null>(null);
   // The worktree offer that follows a Remove repository. `worktreePath` is held
   // beside the member because the record no longer carries it by the time this
@@ -254,18 +269,100 @@ export default function FeatureList(props: {
     if (target) void reorder(feature, moveKey(keys, member.repoPath, target));
   }
 
+  /** Every member as the delete flow shows it, before git has answered. */
+  const risks = (feature: Feature): MemberRisk[] =>
+    [...feature.members]
+      .sort((a, b) => a.order - b.order)
+      .map((m) => ({
+        repoPath: m.repoPath,
+        label: m.displayName,
+        worktreePath: memberState(m.state).usable ? m.worktreePath : null,
+        state: memberState(m.state).label,
+        dirty: null,
+        unpushed: null,
+      }));
+
+  // What git said about each member's worktree, by repo path. Kept beside the two
+  // signals rather than only in them: the confirm closes before `delete_feature`
+  // answers and the sweep opens after, so a status resolving in that gap has no
+  // dialog to land on and the row would reach the sweep stuck on "checking...".
+  let statuses: Record<string, { dirty: boolean; unpushed: boolean }> = {};
+  const withStatuses = <T extends MemberRisk>(members: T[]): T[] =>
+    members.map((m) => (statuses[m.repoPath] ? { ...m, ...statuses[m.repoPath] } : m));
+
+  // Open the confirm, then ask git about each member's worktree so the rows can
+  // say what is about to be at risk. A member with nothing usable on disk is
+  // asked nothing: its row shows its state instead.
+  function openDelete(feature: Feature) {
+    statuses = {};
+    setDeleteReq({ feature, members: risks(feature) });
+    const fold = (repoPath: string, s: { dirty: boolean; unpushed: boolean }) => {
+      statuses[repoPath] = s;
+      const same = (r: { feature: Feature } | null) => !!r && r.feature.id === feature.id;
+      setDeleteReq((r) => (same(r) ? { ...r!, members: withStatuses(r!.members) } : r));
+      setSweepReq((r) => (same(r) ? { ...r!, members: withStatuses(r!.members) } : r));
+    };
+    for (const m of risks(feature)) {
+      if (!m.worktreePath) continue;
+      invoke<{ dirty: boolean; unpushed: boolean }>("worktree_status", { path: m.worktreePath })
+        .then((s) => fold(m.repoPath, { dirty: s.dirty, unpushed: s.unpushed }))
+        .catch(() => fold(m.repoPath, { dirty: false, unpushed: false }));
+    }
+  }
+
   // The record is gone; so is every store keyed by it, before the selection
-  // changes, so nothing persists the key back on the way out.
-  async function remove(feature: Feature) {
+  // changes, so nothing persists the key back on the way out. Only then are the
+  // worktrees offered: a sweep opened before the delete could be answered for a
+  // Feature the delete then refused to remove.
+  async function remove(feature: Feature, members: MemberRisk[]) {
     setDeleteReq(null);
     try {
       await invoke("delete_feature", { featureId: feature.id });
-      setFeatures((prev) => prev.filter((f) => f.id !== feature.id));
-      purgeWorkspace(featureKey(feature.id));
-      props.onDeleted?.(feature);
     } catch (e) {
       setError(String(e));
+      return;
     }
+    setFeatures((prev) => prev.filter((f) => f.id !== feature.id));
+    purgeWorkspace(featureKey(feature.id));
+    props.onDeleted?.(feature);
+    const left = withStatuses(members).filter((m): m is SweepMember => !!m.worktreePath);
+    if (!left.length) return;
+    setSweepReq({ feature, members: left, busy: false, failures: {}, running: {} });
+    // Asked once the sweep exists rather than with the confirm: the count is
+    // about what a removal stops, and the confirm removes nothing.
+    for (const m of left) {
+      void props.countRunning?.(m.worktreePath).then((n) =>
+        setSweepReq((r) =>
+          r && r.feature.id === feature.id ? { ...r, running: { ...r.running, [m.repoPath]: n } } : r,
+        ),
+      );
+    }
+  }
+
+  // Every row through the same purge-then-remove helper as Remove repository,
+  // concurrently and settled rather than raced: one repo refusing must not keep
+  // the others' worktrees. What failed stays on screen with git's reason.
+  async function sweep(choices: SweepChoice[]) {
+    const req = sweepReq();
+    if (!req) return;
+    setSweepReq({ ...req, busy: true, failures: {} });
+    const results = await Promise.allSettled(
+      choices.map((c) =>
+        removeMemberWorktree(
+          { repoPath: c.repoPath, worktreePath: c.worktreePath },
+          { branch: req.feature.branch, deleteBranch: c.deleteBranch },
+        ),
+      ),
+    );
+    const failures: Record<string, string> = {};
+    results.forEach((r, i) => {
+      if (r.status === "rejected") failures[choices[i].repoPath] = String(r.reason);
+    });
+    const stuck = req.members.filter((m) => failures[m.repoPath]);
+    // "Keep all" stays live while the removals run, so a dismissed dialog must
+    // not be reopened by a row that failed after the user had walked away.
+    if (!sweepReq() || !stuck.length) return setSweepReq(null);
+    setSweepReq({ ...req, members: stuck, busy: false, failures });
   }
 
   // Asked per member rather than of the slot map as a whole: the editor only
@@ -278,7 +375,7 @@ export default function FeatureList(props: {
     { label: "Rename…", onClick: () => setRenameReq(feature) },
     { label: "Add repository…", onClick: () => setDialog({ feature }) },
     { separator: true },
-    { label: "Delete…", danger: true, onClick: () => setDeleteReq(feature) },
+    { label: "Delete…", danger: true, onClick: () => openDelete(feature) },
   ];
 
   // Refusing rather than disabled for the last member: the row stays reachable
@@ -302,15 +399,6 @@ export default function FeatureList(props: {
       },
     ];
   };
-
-  const deleteMessage = (feature: Feature) =>
-    [
-      `${feature.branch} stays checked out in every member; only the Feature record goes.`,
-      "",
-      ...[...feature.members]
-        .sort((a, b) => a.order - b.order)
-        .map((m) => `${m.displayName}: ${memberState(m.state).label}`),
-    ].join("\n");
 
   const visible = createMemo(() => {
     const q = props.query.trim().toLowerCase();
@@ -420,14 +508,28 @@ export default function FeatureList(props: {
       </Show>
 
       <Show when={deleteReq()}>
-        {(f) => (
-          <ConfirmDialog
-            title={`Delete ${f().name}?`}
-            message={deleteMessage(f())}
-            confirmLabel="Delete"
-            danger
-            onConfirm={() => void remove(f())}
+        {(req) => (
+          <ConfirmDeleteFeature
+            featureName={req().feature.name}
+            branch={req().feature.branch}
+            members={req().members}
+            onConfirm={() => void remove(req().feature, req().members)}
             onCancel={() => setDeleteReq(null)}
+          />
+        )}
+      </Show>
+
+      <Show when={sweepReq()}>
+        {(req) => (
+          <FeatureWorktreeSweepDialog
+            featureName={req().feature.name}
+            branch={req().feature.branch}
+            members={req().members}
+            busy={req().busy}
+            failures={req().failures}
+            running={req().running}
+            onApply={(choices) => void sweep(choices)}
+            onClose={() => setSweepReq(null)}
           />
         )}
       </Show>

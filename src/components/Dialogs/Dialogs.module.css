@@ -311,3 +311,30 @@
 .collision[data-adopting] {
   color: var(--fg-default);
 }
+
+/* ---- Feature worktree sweep ---- */
+/* One row is two lines: the member and its evidence, then the choice that
+   evidence drives. Side by side would put the tags and the checkbox that
+   follows them at opposite ends of a wide dialog. */
+.sweepRow {
+  padding: calc(6px * var(--ui-scale)) 0;
+}
+.sweepRow + .sweepRow {
+  border-top: 1px solid var(--border-default);
+}
+.sweepChoice {
+  display: flex;
+  align-items: center;
+  gap: calc(10px * var(--ui-scale));
+  padding: 0 calc(10px * var(--ui-scale));
+}
+.sweepError {
+  padding: calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
+  font-size: var(--sway-text-md);
+  color: var(--danger-fg);
+}
+.sweepRunning {
+  padding: 0 calc(10px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  font-size: var(--sway-text-md);
+  color: var(--fg-muted);
+}
