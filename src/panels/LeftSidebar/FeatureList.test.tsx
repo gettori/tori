@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 import { Toast } from "../../lib/toast";
-import type { Feature, Member, MemberState } from "../../utils/features";
+import { LAST_MEMBER, type Feature, type Member, type MemberState } from "../../utils/features";
 
 function member(repoPath: string, order: number, state: MemberState = { kind: "present" }): Member {
   return {
@@ -63,9 +63,42 @@ vi.mock("@tauri-apps/api/core", () => ({
       };
       return Promise.resolve(fixed);
     }
+    // The record-only commands answer with the reloaded Feature, the shape the
+    // backend took on when it started emitting `features://changed` for them.
+    if (RECORD_ONLY.has(cmd)) {
+      const at = (bridge.features ?? []).findIndex((f) => f.id === args.featureId);
+      if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.featureId}`));
+      const next = recordOnly(cmd, bridge.features![at], args);
+      bridge.features = bridge.features!.map((f, i) => (i === at ? next : f));
+      return Promise.resolve(next);
+    }
     return Promise.resolve(null);
   },
 }));
+
+const RECORD_ONLY = new Set(["rename_feature", "rename_member", "reorder_members", "remove_member"]);
+
+function recordOnly(cmd: string, f: Feature, args: Record<string, unknown>): Feature {
+  if (cmd === "rename_feature") return { ...f, name: String(args.name) };
+  if (cmd === "rename_member") {
+    return {
+      ...f,
+      members: f.members.map((m) =>
+        m.repoPath === args.repoPath ? { ...m, displayName: String(args.displayName) } : m,
+      ),
+    };
+  }
+  if (cmd === "remove_member") {
+    return { ...f, members: f.members.filter((m) => m.repoPath !== args.repoPath) };
+  }
+  const order = args.repoPaths as string[];
+  return {
+    ...f,
+    members: [...f.members]
+      .sort((a, b) => order.indexOf(a.repoPath) - order.indexOf(b.repoPath))
+      .map((m, i) => ({ ...m, order: i })),
+  };
+}
 vi.mock("@tauri-apps/api/event", () => ({
   listen: (name: string, handler: (e: { payload: unknown }) => void) => {
     bridge.handlers.set(name, handler);
@@ -300,5 +333,81 @@ describe("FeatureList", () => {
     expect(bridge.calls.find((c) => c.cmd === "delete_feature")!.args).toEqual({ featureId: "pay-1" });
     expect(bridge.calls.some((c) => c.cmd === "remove_worktree")).toBe(false);
     expect(screen.getByText("Auth")).toBeTruthy();
+  });
+
+  describe("the member row menu", () => {
+    const expand = async (name: string) =>
+      fireEvent.click(await screen.findByRole("button", { name: `Show members of ${name}` }));
+    const memberRow = (repoPath: string) =>
+      document.querySelector<HTMLElement>(`li[data-member="${repoPath}"]`)!;
+
+    async function openOn(featureName: string, repoPath: string) {
+      render(() => <FeatureList spaces={SPACES} query="" />);
+      await screen.findByText(featureName);
+      await expand(featureName);
+      fireEvent.contextMenu(memberRow(repoPath));
+    }
+
+    it("moves a member up through reorder_members, in the swapped order", async () => {
+      await openOn("Auth", "/w/web");
+      pointerClick(await screen.findByText("Move up"));
+
+      await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "reorder_members")).toBe(true));
+      expect(bridge.calls.find((c) => c.cmd === "reorder_members")!.args).toEqual({
+        featureId: "auth-1",
+        repoPaths: ["/w/web", "/w/api"],
+      });
+      await waitFor(() =>
+        expect(Array.from(document.querySelectorAll("li[data-member]")).map((r) => r.getAttribute("data-member"))).toEqual([
+          "/w/web",
+          "/w/api",
+        ]),
+      );
+    });
+
+    it("renames a member and shows the new name on its row", async () => {
+      await openOn("Auth", "/w/api");
+      pointerClick(await screen.findByText("Rename…"));
+      const input = await screen.findByRole("textbox", { name: "Rename api" });
+      fireEvent.input(input, { target: { value: "Payments API" } });
+      fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+
+      await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "rename_member")).toBe(true));
+      expect(bridge.calls.find((c) => c.cmd === "rename_member")!.args).toEqual({
+        featureId: "auth-1",
+        repoPath: "/w/api",
+        displayName: "Payments API",
+      });
+      await waitFor(() => expect(memberRow("/w/api").textContent).toContain("Payments API"));
+    });
+
+    it("removes a member the Feature can spare", async () => {
+      await openOn("Auth", "/w/web");
+      pointerClick(await screen.findByText("Remove repository"));
+
+      await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "remove_member")).toBe(true));
+      expect(bridge.calls.find((c) => c.cmd === "remove_member")!.args).toEqual({
+        featureId: "auth-1",
+        repoPath: "/w/web",
+      });
+      await waitFor(() => expect(memberRow("/w/web")).toBeNull());
+    });
+
+    it("refuses to remove the last member and says why on the row", async () => {
+      bridge.features = [{ ...AUTH, members: [AUTH.members[0]] }, PAY];
+      await openOn("Auth", "/w/api");
+      const remove = (await screen.findByText("Remove repository")).closest<HTMLElement>("[role=menuitem]")!;
+
+      // Refusing rather than disabled: an arrow key still reaches the row, so
+      // the reason is not written somewhere only a pointer can find it. Drawn
+      // and described rather than hung off a native `title`, which is what
+      // `src/test/interactiveTitle.test.ts` exists to keep off a menu row.
+      expect(remove.getAttribute("aria-disabled")).toBe("true");
+      expect(remove.getAttribute("title")).toBeNull();
+      const note = document.getElementById(remove.getAttribute("aria-describedby")!)!;
+      expect(note.textContent).toBe(LAST_MEMBER);
+      pointerClick(remove);
+      expect(bridge.calls.some((c) => c.cmd === "remove_member")).toBe(false);
+    });
   });
 });

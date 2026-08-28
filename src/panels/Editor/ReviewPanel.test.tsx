@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import type { FileStatus } from "../../utils/gitActions";
@@ -1296,6 +1297,28 @@ describe("inside a Feature", () => {
     expect(chips[1].style.getPropertyValue("--chip-hue")).toBe("");
     // Both members list the same relative path, and neither row is the other's.
     expect(screen.getAllByTitle("src/index.ts")).toHaveLength(2);
+  });
+
+  // A member rename and a member reorder (#159 phase 1) arrive as a new `roots`
+  // prop: the commands emit now, so the shared resource refetches and hands the
+  // panel a new array. What is pinned here is that the groups follow it.
+  it("follows a renamed and reordered roots prop", async () => {
+    const [roots, setRoots] = createSignal(MEMBERS);
+    statusByRoot = {
+      [A]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
+      [B]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
+    };
+    enterRoots([A, B], A);
+    render(() => <ReviewPanel root={A} roots={roots() as never} selected={null} />);
+    const order = () => Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"));
+    await waitFor(() => expect(order()).toEqual([A, B]));
+
+    setRoots([{ ...MEMBERS[1], label: "Storefront" }, MEMBERS[0]]);
+
+    await waitFor(() => expect(order()).toEqual([B, A]));
+    expect(
+      Array.from(document.querySelectorAll<HTMLElement>("[data-chip]")).map((c) => c.textContent),
+    ).toEqual(["S", "A"]);
   });
 
   it("discards in the member whose row was clicked, and leaves the other alone", async () => {

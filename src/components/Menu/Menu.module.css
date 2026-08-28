@@ -156,3 +156,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* A row whose reason is drawn rather than hovered. Stacked, so the label still
+   reads as the action and the reason sits under it in the muted voice. */
+.noted {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+  min-width: 0;
+}
+
+.note {
+  font-size: var(--sway-text-xs);
+  color: var(--fg-muted);
+  white-space: normal;
+  max-width: 32ch;
+}

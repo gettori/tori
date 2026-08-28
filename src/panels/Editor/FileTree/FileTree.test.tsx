@@ -987,6 +987,24 @@ describe("a Feature's member roots", () => {
     expect(within(sectionOf(A)).getByText("main.ts")).toBeTruthy();
   });
 
+  // The other half of the same churn (#159 phase 1): a rename and a reorder do
+  // change the array, and the section headers have to follow rather than keep
+  // naming the members the way the first render found them.
+  it("renames and reorders its sections when the roots array says so", async () => {
+    const [roots, setRoots] = createSignal<TreeRoot[]>([...MEMBERS]);
+    render(() => <FileTree root={null} roots={roots()} />);
+    await within(sectionOf(A)).findByText("README.md");
+    const order = () => Array.from(document.querySelectorAll("[data-root]")).map((s) => s.getAttribute("data-root"));
+    expect(order()).toEqual([A, B]);
+    expect(screen.getByText("Web App")).toBeTruthy();
+
+    setRoots([{ ...MEMBERS[1], label: "Storefront" }, MEMBERS[0]]);
+
+    await waitFor(() => expect(order()).toEqual([B, A]));
+    expect(screen.getByText("Storefront")).toBeTruthy();
+    expect(screen.queryByText("Web App")).toBeNull();
+  });
+
   it("fences every mutation to the section it was made in", async () => {
     mountFeature({ askText: answering("moved") });
     await within(sectionOf(B)).findByText("package.json");
