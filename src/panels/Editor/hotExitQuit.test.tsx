@@ -79,7 +79,7 @@ vi.mock("./CodeEditor", async () => {
     },
   };
 });
-vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { default: PaneView } = await import("../../tabs/PaneView");

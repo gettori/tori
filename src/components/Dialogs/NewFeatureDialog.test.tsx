@@ -197,4 +197,22 @@ describe("NewFeatureDialog", () => {
     expect(adds.map((c) => c.args)).toEqual([{ featureId: "auth-1", repoPath: "/w/web" }]);
     expect(probeCalls()[0].args).toEqual({ repoPath: "/w/web", slug: "auth" });
   });
+
+  // The same collision machinery in add mode, where the escape hatch differs:
+  // the Feature's slug was frozen at creation, so the offer is to leave this
+  // repo out rather than to rename the Feature around it.
+  it("offers Leave out rather than a rename when an added repo already has the branch", async () => {
+    bridge.probes["/w/web@auth"] = { local: true, remote: false, hasWorktree: false };
+    open({ feature: EXISTING });
+    fireEvent.click(box("web"));
+
+    expect(await screen.findByText("feat/auth already exists")).toBeTruthy();
+    expect(done().disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /Rename this Feature/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave out, web" }));
+    await waitFor(() => expect(screen.queryByText("feat/auth already exists")).toBeNull());
+    expect(box("web").checked).toBe(false);
+    expect(bridge.calls.some((c) => c.cmd === "add_member")).toBe(false);
+  });
 });

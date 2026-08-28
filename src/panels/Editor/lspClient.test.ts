@@ -191,6 +191,16 @@ async function freshModule() {
   return await import("./lspClient");
 }
 
+// What a project switch does: touch the LRU in `lspWarmRoots`, then ask
+// `lspClient` to stop whatever fell off. `Editor.tsx` is split the same way and
+// for the reason that module's own header gives, so exercising the pair here
+// keeps this test on the path the app actually takes. The dynamic import lands
+// on the same fresh instance `freshModule` just registered.
+async function switchTo(m: Awaited<ReturnType<typeof freshModule>>, projectPath: string) {
+  const { touchWarmRoot } = await import("./lspWarmRoots");
+  await m.stopEvictedLspRoots(touchWarmRoot(projectPath));
+}
+
 beforeEach(() => {
   started.length = 0;
   stopped.length = 0;
@@ -1129,8 +1139,8 @@ describe("warm roots", () => {
   it("keeps a switched-away project's server, so switching back is a claim, not a start", async () => {
     const m = await freshModule();
     await m.ensureLspFor("/proj/a/a.ts", "/proj/a");
-    await m.retainLspRoots("/proj/b");
-    await m.retainLspRoots("/proj/a");
+    await switchTo(m, "/proj/b");
+    await switchTo(m, "/proj/a");
 
     // One start ever, and the plugin still attaches after the round trip.
     expect(started.map((s) => s.projectPath)).toEqual(["/proj/a"]);
@@ -1161,7 +1171,7 @@ describe("warm roots", () => {
     await m.ensureLspFor("/proj/c/a.ts", "/proj/c");
     // Coming back to `a` makes `b` the oldest, so the next new project
     // evicts `b` and the flip-flopped pair both stay warm.
-    await m.retainLspRoots("/proj/a");
+    await switchTo(m, "/proj/a");
     await m.ensureLspFor("/proj/d/a.ts", "/proj/d");
 
     expect(m.lspPluginFor("/proj/a/a.ts")).not.toEqual([]);
