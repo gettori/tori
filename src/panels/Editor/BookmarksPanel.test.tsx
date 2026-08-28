@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import BookmarksPanel, { type BookmarkRow } from "./BookmarksPanel";
+import type { MemberRoot } from "../../utils/featureMembers";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 
 // The panel reads rows and emits an open, so what is asserted here is the
@@ -86,6 +87,74 @@ describe("the bookmarks panel, to axe", () => {
   it("has no accessibility violations", () => {
     const { container } = render(() => (
       <BookmarksPanel rows={ROWS} root={ROOT} onLabel={noop} onRemove={noop} />
+    ));
+
+    return expectNoAxeViolations(container);
+  });
+});
+
+describe("the bookmarks panel inside a Feature", () => {
+  const API = "/w/feat/api";
+  const WEB = "/w/feat/web";
+  const member = (label: string, path: string): MemberRoot => ({
+    path,
+    repoPath: path,
+    label,
+    state: { label: "Ready", usable: true, action: null, reason: null },
+  });
+  const MEMBERS = [member("api", API), member("web", WEB)];
+  const SPREAD: BookmarkRow[] = [
+    { path: `${API}/src/routes/a.ts`, line: 12 },
+    { path: `${WEB}/src/views/b.ts`, line: 40 },
+  ];
+
+  it("puts each mark under the member its file is in", () => {
+    const { container } = render(() => (
+      <BookmarksPanel rows={SPREAD} root={API} roots={MEMBERS} onLabel={noop} onRemove={noop} />
+    ));
+    const sections = [...container.querySelectorAll("[data-root]")];
+    expect(sections.map((s) => s.getAttribute("data-root"))).toEqual([API, WEB]);
+    expect(sections[0].textContent).toContain("a.ts");
+    expect(sections[1].textContent).toContain("b.ts");
+  });
+
+  it("names a folder relative to its own member, not to the active one", () => {
+    // The active member is the api one. Relativising the web row against it
+    // would print the whole absolute path, which is the line the row has least
+    // room for.
+    render(() => (
+      <BookmarksPanel rows={SPREAD} root={API} roots={MEMBERS} onLabel={noop} onRemove={noop} />
+    ));
+    expect(screen.getByText("src/routes")).toBeTruthy();
+    expect(screen.getByText("src/views")).toBeTruthy();
+  });
+
+  it("keeps a mark under no member, in a section of its own", () => {
+    // Removing a repository keeps its worktree by default, so this file is
+    // still on disk and the mark still opens it.
+    const rows = [...SPREAD, { path: "/w/feat/left/src/c.ts", line: 3 }];
+    render(() => (
+      <BookmarksPanel rows={rows} root={API} roots={MEMBERS} onLabel={noop} onRemove={noop} />
+    ));
+    expect(screen.getByRole("button", { name: /Outside this Feature/ })).toBeTruthy();
+    expect(screen.getByText("c.ts")).toBeTruthy();
+    // With no member to be relative to, the whole folder is the honest answer.
+    expect(screen.getByText("/w/feat/left/src")).toBeTruthy();
+  });
+
+  it("draws no header for a one-member Feature", () => {
+    // Naming the only repo on screen is noise, so a Feature with one member
+    // reads exactly as a branch unit does.
+    render(() => (
+      <BookmarksPanel rows={[SPREAD[0]]} root={API} roots={[MEMBERS[0]]} onLabel={noop} onRemove={noop} />
+    ));
+    expect(screen.queryByRole("button", { name: /^api/ })).toBeNull();
+    expect(screen.getByText("a.ts")).toBeTruthy();
+  });
+
+  it("has no accessibility violations across two members", () => {
+    const { container } = render(() => (
+      <BookmarksPanel rows={SPREAD} root={API} roots={MEMBERS} onLabel={noop} onRemove={noop} />
     ));
 
     return expectNoAxeViolations(container);

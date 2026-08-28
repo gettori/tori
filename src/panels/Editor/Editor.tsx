@@ -561,10 +561,13 @@ export default function Editor(props: {
   const rightTabs = () => modeOrder().filter(modeAvailable).map((m) => RIGHT_MODE_TABS[m]);
   // This workspace's problems. The store now spans every warm project (the
   // servers stay up across a switch), so what the tab and the panel show has to
-  // be scoped here, or one worktree's errors would badge another's tree.
+  // be scoped here, or one worktree's errors would badge another's tree. Inside
+  // a Feature the scope is every member, not the active one: hiding the tab
+  // because the repo you happen to be looking at is clean would hide the
+  // section that is not.
   const problemsHere = () => {
-    const r = root();
-    return r != null && Object.keys(diagnostics()).some((p) => isUnderPath(p, r));
+    const rs = treeRoots()?.map((r) => r.path) ?? (root() != null ? [root()!] : []);
+    return rs.length > 0 && Object.keys(diagnostics()).some((p) => rs.some((r) => isUnderPath(p, r)));
   };
   const [searchFocusNonce, setSearchFocusNonce] = createSignal(0);
   // Source-vs-render preview toggle, per tab id (so switching tabs remembers
@@ -2568,7 +2571,7 @@ export default function Editor(props: {
             />
           </Match>
           <Match when={rightMode() === "problems"}>
-            <ProblemsPanel selected={props.selected} />
+            <ProblemsPanel selected={props.selected} roots={treeRoots()} />
           </Match>
           <Match when={rightMode() === "outline"}>
             <OutlinePanel path={activeId()} />
@@ -2580,6 +2583,7 @@ export default function Editor(props: {
             <BookmarksPanel
               rows={bookmarkList()}
               root={root()}
+              roots={treeRoots()}
               onLabel={labelMark}
               onRemove={(row) => toggleMark(row.path, row.line)}
             />
@@ -2608,7 +2612,7 @@ export default function Editor(props: {
             />
           </Match>
           <Match when={rightMode() === "todos"}>
-            <TodoPanel root={root()} selected={props.selected} />
+            <TodoPanel root={root()} selected={props.selected} roots={treeRoots()} />
           </Match>
           <Match when={rightMode() === "tasks"}>
             <TasksPanel root={root()} />

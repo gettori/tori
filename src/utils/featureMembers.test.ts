@@ -36,9 +36,14 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
-const { createFeatureMembers, memberFor, resolveMemberRestriction, tintedMembers } = await import(
-  "./featureMembers"
-);
+const {
+  createFeatureMembers,
+  groupByMemberRoot,
+  memberFor,
+  memberSectionsHeaded,
+  resolveMemberRestriction,
+  tintedMembers,
+} = await import("./featureMembers");
 
 const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 const count = (cmd: string) => bridge.calls.filter((c) => c === cmd).length;
@@ -203,5 +208,93 @@ describe("memberFor", () => {
     expect(memberFor(null, ALL)).toBeNull();
     expect(memberFor("/w/outer/a.ts", [])).toBeNull();
     expect(memberFor("/w/outer/a.ts", undefined)).toBeNull();
+  });
+});
+
+describe("groupByMemberRoot", () => {
+  const root = (label: string, path: string, usable = true) => ({
+    path,
+    repoPath: path,
+    label,
+    state: { label: usable ? "Ready" : "Worktree missing", usable, action: null, reason: null },
+  });
+  const ROOTS = [root("api", "/w/api"), root("web", "/w/web")];
+  const at = (path: string) => ({ path });
+
+  it("puts each row under the member it is in, in member order", () => {
+    const groups = groupByMemberRoot(
+      [at("/w/web/src/a.ts"), at("/w/api/src/b.ts"), at("/w/web/src/c.ts")],
+      (r) => r.path,
+      ROOTS,
+    );
+    expect(groups.map((g) => g.root?.label)).toEqual(["api", "web"]);
+    expect(groups[0].items.map((i) => i.path)).toEqual(["/w/api/src/b.ts"]);
+    expect(groups[1].items.map((i) => i.path)).toEqual(["/w/web/src/a.ts", "/w/web/src/c.ts"]);
+  });
+
+  it("collects a row under no member in a trailing bucket rather than losing it", () => {
+    // Removing a repository keeps its worktree by default, so the marks that
+    // point into it are still about files on disk.
+    const rows = [at("/w/api/a.ts"), at("/gone/b.ts"), at("/gone/c.ts")];
+    const groups = groupByMemberRoot(rows, (r) => r.path, ROOTS);
+    expect(groups).toHaveLength(3);
+    expect(groups[2].root).toBeNull();
+    expect(groups[2].items.map((i) => i.path)).toEqual(["/gone/b.ts", "/gone/c.ts"]);
+    expect(groups.flatMap((g) => g.items)).toHaveLength(rows.length);
+  });
+
+  it("leaves the trailing bucket off when every row is in a member", () => {
+    const groups = groupByMemberRoot([at("/w/api/a.ts")], (r) => r.path, ROOTS);
+    expect(groups.every((g) => g.root)).toBe(true);
+  });
+
+  it("keeps an empty group for a member with nothing in it", () => {
+    // The section is where an unusable member says why it is empty, so it has
+    // to survive having no rows.
+    const groups = groupByMemberRoot([at("/w/api/a.ts")], (r) => r.path, ROOTS);
+    expect(groups[1].items).toEqual([]);
+  });
+
+  it("gives a nested member its own rows, longest match winning", () => {
+    const nested = [root("outer", "/w"), root("inner", "/w/api")];
+    const groups = groupByMemberRoot([at("/w/api/a.ts")], (r) => r.path, nested);
+    expect(groups[0].items).toEqual([]);
+    expect(groups[1].items.map((i) => i.path)).toEqual(["/w/api/a.ts"]);
+  });
+
+  it("counts a row once when two members share a path", () => {
+    const twice = [root("api", "/w/api"), root("api again", "/w/api")];
+    const groups = groupByMemberRoot([at("/w/api/a.ts")], (r) => r.path, twice);
+    expect(groups.flatMap((g) => g.items)).toHaveLength(1);
+    expect(groups[0].items).toHaveLength(1);
+  });
+
+  it("puts everything outside when there are no members to be inside of", () => {
+    const groups = groupByMemberRoot([at("/w/api/a.ts")], (r) => r.path, []);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].root).toBeNull();
+  });
+});
+
+describe("memberSectionsHeaded", () => {
+  const root = (path: string, usable: boolean) => ({
+    path,
+    repoPath: path,
+    label: path,
+    state: { label: usable ? "Ready" : "Worktree missing", usable, action: null, reason: null },
+  });
+
+  it("heads nothing for a branch unit or a lone healthy member", () => {
+    expect(memberSectionsHeaded(undefined)).toBe(false);
+    expect(memberSectionsHeaded([])).toBe(false);
+    expect(memberSectionsHeaded([root("/w/api", true)])).toBe(false);
+  });
+
+  it("heads a lone member that cannot be opened, so it can say why", () => {
+    expect(memberSectionsHeaded([root("/w/api", false)])).toBe(true);
+  });
+
+  it("heads every member once there is more than one", () => {
+    expect(memberSectionsHeaded([root("/w/api", true), root("/w/web", true)])).toBe(true);
   });
 });
