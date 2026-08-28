@@ -56,6 +56,8 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "list_features") return Promise.resolve(bridge.features);
     if (cmd === "git_status") return Promise.resolve(bridge.status[String(args?.projectPath)] ?? []);
     if (cmd === "create_feature") return Promise.resolve(bridge.created);
+    if (cmd === "worktree_status")
+      return Promise.resolve({ dirty: false, unpushed: false, hasRemote: false });
     if (cmd === "retry_member") {
       const fixed = {
         ...PAY,
@@ -391,6 +393,24 @@ describe("FeatureList", () => {
         repoPath: "/w/web",
       });
       await waitFor(() => expect(memberRow("/w/web")).toBeNull());
+      // The record is gone and the worktree is only offered, so declining is
+      // "keep" rather than an undo. `removeMember.test.tsx` takes both outcomes.
+      const dialog = await screen.findByRole("dialog", { name: /Remove worktree/ });
+      expect(dialog.textContent).toContain("Keep worktree");
+    });
+
+    // `reconcile_member` never clears `worktree_path`, so a broken member still
+    // carries a folder its repo cannot reach. Offering it would confirm a
+    // removal that fails; the record detaching is the whole action here.
+    it("offers no worktree for a member whose repo is gone", async () => {
+      const broken = { ...AUTH.members[1], state: { kind: "repo-missing" } as MemberState };
+      bridge.features = [{ ...AUTH, members: [AUTH.members[0], broken] }, PAY];
+      await openOn("Auth", "/w/web");
+      pointerClick(await screen.findByText("Remove repository"));
+
+      await waitFor(() => expect(memberRow("/w/web")).toBeNull());
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(bridge.calls.some((c) => c.cmd === "worktree_status")).toBe(false);
     });
 
     it("refuses to remove the last member and says why on the row", async () => {
