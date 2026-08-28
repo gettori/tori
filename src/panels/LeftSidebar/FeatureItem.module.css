@@ -114,12 +114,6 @@
   padding-inline: calc(2px * var(--ui-scale));
 }
 
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: calc(4px * var(--ui-scale));
-}
-
 /* The expanded list. Uncapped, unlike the chip row: every member needs a row a
    right-click can land on, and one hidden behind a +N would have none. */
 .members {
@@ -170,6 +164,13 @@
   flex: 0 0 auto;
   font-size: var(--sway-text-2xs);
   color: var(--fg-muted);
+}
+
+/* The repair, at the end of the row it repairs. `cursor: pointer` because the
+   row itself is `grab`, and a button that looks draggable reads as one. */
+.repair {
+  flex: 0 0 auto;
+  cursor: pointer;
 }
 
 .member[data-state="failed"] .memberState,

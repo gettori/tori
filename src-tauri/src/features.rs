@@ -275,6 +275,106 @@ pub fn rename_feature(store: &Store, feature_id: &str, name: &str) -> Result<(),
     })
 }
 
+/// Point a member at the repository it moved to.
+///
+/// `repo_path` is a member's persisted identity, so this is the one write that
+/// changes it. Three steps, in this order, and the order is the point.
+///
+///   1. **Re-point the worktree when it travelled.** A worktree inside the repo
+///      folder (both layouts put one there: `.sway/worktrees/<slug>` for a plain
+///      repo, `<container>/<slug>` for a bare one) moved with it, so its recorded
+///      path is stale in exactly the same way. One that sits elsewhere did not
+///      move and is left alone.
+///   2. **`git worktree repair`.** A moved repo leaves its worktrees physically
+///      present but administratively broken, pointing at a gitdir that is gone.
+///      Without this the member reads `WorktreeMissing` at a folder that is
+///      plainly there, and Recreate refuses it as a branch already checked out.
+///   3. **Prune.** Whatever repair could not save is dropped, so the member
+///      lands on `WorktreeMissing` honestly and Recreate can build it.
+///
+/// Repair is not "rebuild the worktree". This never creates or deletes one; the
+/// reconcile that follows is what names the state.
+pub fn relocate_member(
+    store: &Store,
+    feature_id: &str,
+    repo_path: &str,
+    new_repo_path: &str,
+) -> Result<Feature, String> {
+    if !crate::worktree::repo_readable(new_repo_path) {
+        return Err(format!("{new_repo_path} is not a git repository"));
+    }
+    let feature = load_feature(store, feature_id)?;
+    let member = feature
+        .members
+        .iter()
+        .find(|m| same_path(&m.repo_path, repo_path))
+        .ok_or_else(|| format!("{repo_path} is not a member of {}", feature.name))?;
+    // Every member but this one: re-pointing a member at the repo it already
+    // has is a harmless no-op, while landing on another member's repo would
+    // check the same branch out twice.
+    if feature
+        .members
+        .iter()
+        .filter(|m| !same_path(&m.repo_path, repo_path))
+        .any(|m| same_repo(&m.repo_path, new_repo_path))
+    {
+        return Err(format!("{new_repo_path} is already a member of {}", feature.name));
+    }
+
+    let worktree_path = member
+        .worktree_path
+        .as_deref()
+        .map(|wt| match relative_to(wt, &member.repo_path) {
+            Some(rest) => format!("{}/{rest}", new_repo_path.trim_end_matches('/')),
+            None => wt.to_string(),
+        });
+
+    {
+        let lock = repo_lock(new_repo_path);
+        let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut args = vec!["worktree".to_string(), "repair".to_string()];
+        if let Some(wt) = worktree_path.as_deref() {
+            args.push(wt.to_string());
+        }
+        let _ = std::process::Command::new("git")
+            .arg("-C")
+            .arg(new_repo_path)
+            .args(&args)
+            .output();
+        crate::worktree::prune_worktrees(new_repo_path);
+    }
+
+    store.mutate(|file| {
+        let member = member_mut(feature_mut(file, feature_id)?, repo_path)?;
+        member.repo_path = new_repo_path.to_string();
+        member.worktree_path = worktree_path;
+        Ok(())
+    })?;
+    reconciled_feature(store, feature_id)
+}
+
+/// The record with every member's state refreshed. What a call that changed the
+/// world on disk has to answer with: `load_feature` returns the stored state,
+/// and the stored state is the one such a call has just invalidated. Callers
+/// that write the state themselves (`build_member`) do not need it.
+fn reconciled_feature(store: &Store, feature_id: &str) -> Result<Feature, String> {
+    list_features(store)
+        .into_iter()
+        .find(|f| f.id == feature_id)
+        .ok_or_else(|| format!("No Feature with id {feature_id}"))
+}
+
+/// `path`'s tail below `base`, or None when it is not inside it. String work on
+/// purpose: a moved repo's old path no longer exists, so nothing here can be
+/// canonicalized.
+fn relative_to(path: &str, base: &str) -> Option<String> {
+    let base = base.trim_end_matches('/');
+    path.strip_prefix(base)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .filter(|rest| !rest.is_empty())
+        .map(str::to_string)
+}
+
 /// The record only. Worktrees and branches stay exactly as they are.
 pub fn delete_feature(store: &Store, feature_id: &str) -> Result<(), String> {
     store.mutate(|file| {
@@ -338,11 +438,21 @@ fn pending_member(repo: &str, order: u32) -> Member {
 ///
 /// A branch that already has a secondary worktree is adopted as it is; one
 /// checked out in the repo's own working tree is the user's and fails instead.
+///
+/// The prune and the `is_dir` filter are what make Recreate converge. Git keeps
+/// listing a worktree whose folder was deleted outside Sway, so adopting the
+/// entry as it stands would flip the member `Present` and `reconcile_member`
+/// (which checks the disk separately, `features.rs:189`) would put it straight
+/// back to `WorktreeMissing` on the next read. Both, not either: prune skips a
+/// locked entry, and it can fail on a repo git is unhappy with.
 fn build_member(store: &Store, feature_id: &str, repo: &str, branch: &str) -> Result<(), String> {
     let outcome = {
         let lock = repo_lock(repo);
         let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let existing = list_worktrees_body(repo.to_string()).ok().and_then(|wts| wts.into_iter().find(|w| w.branch == branch));
+        crate::worktree::prune_worktrees(repo);
+        let existing = list_worktrees_body(repo.to_string())
+            .ok()
+            .and_then(|wts| wts.into_iter().find(|w| w.branch == branch && Path::new(&w.path).is_dir()));
         match existing {
             Some(w) if w.is_main && !w.is_bare => Err(format!("{branch} is checked out in place")),
             Some(w) => Ok(PathBuf::from(w.path)),
@@ -535,6 +645,28 @@ pub mod commands {
         let index = index.inner().clone();
         blocking("add_member", move || {
             let feature = super::add_member(&Store::default_location(), &feature_id, &repo_path, &step(&app))?;
+            settle(&app, &index, &feature);
+            Ok(feature)
+        })
+        .await
+    }
+
+    /// Not record-only despite writing one field: the repo folder changed, so
+    /// the tree has to re-discover it and the probe cache for both paths is
+    /// stale. That is `settle`, the same finish a worktree-creating call takes.
+    #[tauri::command]
+    pub async fn relocate_member(
+        app: AppHandle,
+        index: State<'_, ProjectIndex>,
+        feature_id: String,
+        repo_path: String,
+        new_repo_path: String,
+    ) -> Result<Feature, String> {
+        let index = index.inner().clone();
+        blocking("relocate_member", move || {
+            index.evict(Path::new(&repo_path));
+            let feature =
+                super::relocate_member(&Store::default_location(), &feature_id, &repo_path, &new_repo_path)?;
             settle(&app, &index, &feature);
             Ok(feature)
         })
@@ -942,6 +1074,115 @@ mod tests {
         assert_eq!(listed.len(), 2, "no new worktree");
         assert_eq!(f.members[1].state, MemberState::Failed { reason: "feat/x is checked out in place".into() });
         assert_eq!(f.members[1].worktree_path, None);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn recreate_converges_on_a_worktree_deleted_outside_git() {
+        // The exact state Recreate exists for: the folder is gone but git still
+        // lists it, because nothing ran `git worktree prune`. Adopting that
+        // entry flips the member Present at a path that is not there, and
+        // `reconcile_member`'s own disk check puts it back to WorktreeMissing on
+        // the very next read, so Recreate would loop forever on its own subject.
+        let tmp = unique_tmp();
+        let a = tmp.join("a");
+        let a_s = repo(&a);
+        let store = Store::at(tmp.join("features.json"));
+        let f = create_feature(&store, "X", &[a_s.clone()], &|_| {}).unwrap();
+        let wt = f.members[0].worktree_path.clone().unwrap();
+
+        std::fs::remove_dir_all(&wt).unwrap();
+        assert_eq!(
+            list_worktrees_body(a_s.clone()).unwrap().len(),
+            2,
+            "git still lists the deleted folder"
+        );
+        assert_eq!(list_features(&store)[0].members[0].state, MemberState::WorktreeMissing);
+
+        let fixed = retry_member(&store, &f.id, &a_s).unwrap();
+        assert_eq!(fixed.members[0].state, MemberState::Present);
+        let path = fixed.members[0].worktree_path.clone().unwrap();
+        assert!(Path::new(&path).is_dir(), "{path} is not on disk");
+        // And it stays: a second read is what the loop used to fail.
+        assert_eq!(list_features(&store)[0].members[0].state, MemberState::Present);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn relocate_refuses_a_non_repo_and_another_members_repo() {
+        let tmp = unique_tmp();
+        let a = repo(&tmp.join("a"));
+        let b = repo(&tmp.join("b"));
+        let store = Store::at(tmp.join("features.json"));
+        let f = create_feature(&store, "X", &[a.clone(), b.clone()], &|_| {}).unwrap();
+
+        let plain = tmp.join("not-a-repo");
+        std::fs::create_dir_all(&plain).unwrap();
+        let err = relocate_member(&store, &f.id, &a, plain.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("not a git repository"), "{err}");
+
+        let err = relocate_member(&store, &f.id, &a, &b).unwrap_err();
+        assert!(err.contains("already a member"), "{err}");
+
+        // Neither refusal wrote anything.
+        let now = list_features(&store).remove(0);
+        assert_eq!(now.members[0].repo_path, a);
+        assert_eq!(now.members[0].state, MemberState::Present);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn relocate_lands_a_moved_plain_repo_on_present_in_one_step() {
+        // What Locate is for. The whole repo folder was renamed outside Sway, so
+        // the member reads RepoMissing and its worktree, which travelled inside
+        // the folder, is at a path nobody recorded and has a gitdir pointer to a
+        // directory that is gone.
+        let tmp = unique_tmp();
+        let old = tmp.join("api");
+        let old_s = repo(&old);
+        let store = Store::at(tmp.join("features.json"));
+        let f = create_feature(&store, "X", &[old_s.clone()], &|_| {}).unwrap();
+        let old_wt = f.members[0].worktree_path.clone().unwrap();
+        assert!(old_wt.starts_with(&old_s), "the plain layout puts it inside the repo");
+
+        let new = tmp.join("moved-api");
+        std::fs::rename(&old, &new).unwrap();
+        let new_s = new.to_string_lossy().into_owned();
+        assert_eq!(list_features(&store)[0].members[0].state, MemberState::RepoMissing);
+
+        let fixed = relocate_member(&store, &f.id, &old_s, &new_s).unwrap();
+        assert_eq!(fixed.members[0].repo_path, new_s);
+        assert_eq!(
+            fixed.members[0].worktree_path.as_deref(),
+            Some(format!("{new_s}/.sway/worktrees/x").as_str())
+        );
+        assert_eq!(fixed.members[0].state, MemberState::Present, "one step, no Recreate");
+        assert_eq!(list_features(&store)[0].members[0].state, MemberState::Present);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn relocate_leaves_a_worktree_that_lives_outside_the_repo_alone() {
+        // The adopted case: the worktree was never inside the repo folder, so it
+        // did not travel with it and its recorded path is still true.
+        let tmp = unique_tmp();
+        let old = tmp.join("api");
+        let old_s = repo(&old);
+        let wt = tmp.join("elsewhere");
+        let wt_s = wt.to_string_lossy().into_owned();
+        git(&old, &["worktree", "add", "-q", "-b", "feat/x", &wt_s]);
+        let store = Store::at(tmp.join("features.json"));
+        let f = create_feature(&store, "X", &[old_s.clone()], &|_| {}).unwrap();
+        assert_eq!(f.members[0].worktree_path.as_deref(), Some(wt_s.as_str()), "adopted");
+
+        let new = tmp.join("moved-api");
+        std::fs::rename(&old, &new).unwrap();
+        let new_s = new.to_string_lossy().into_owned();
+
+        let fixed = relocate_member(&store, &f.id, &old_s, &new_s).unwrap();
+        assert_eq!(fixed.members[0].repo_path, new_s);
+        assert_eq!(fixed.members[0].worktree_path.as_deref(), Some(wt_s.as_str()), "untouched");
+        assert_eq!(fixed.members[0].state, MemberState::Present);
         std::fs::remove_dir_all(&tmp).ok();
     }
 

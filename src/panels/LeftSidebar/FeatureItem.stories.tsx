@@ -42,7 +42,7 @@ const meta = {
   component: FeatureItem,
   args: {
     spaces: SPACES,
-    onRetry: () => {},
+    onRepair: () => {},
   },
   decorators: [
     (Story) => (

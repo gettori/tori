@@ -62,6 +62,17 @@ export type MemberStateSummary = {
   reason: string | null;
 };
 
+/** The repair a broken member offers. `memberState` chooses it; this names it.
+ *  One table because four surfaces draw the button (the sidebar's member list,
+ *  the editor's file tree, its Changes sections, and whatever comes next), and
+ *  a second copy is how one of them ends up saying Locate and running a retry. */
+export type RepairAction = NonNullable<MemberStateSummary["action"]>;
+export const REPAIR_LABEL: Record<RepairAction, string> = {
+  recreate: "Recreate",
+  locate: "Locate",
+  retry: "Retry",
+};
+
 /** Reads the backend's tagged state into what a badge needs to render. */
 export function memberState(state: MemberState): MemberStateSummary {
   switch (state.kind) {

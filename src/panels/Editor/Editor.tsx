@@ -819,13 +819,27 @@ export default function Editor(props: {
 
   // The tree hands back the section key, which is the worktree when there is one
   // and the repo folder otherwise; the backend wants the repo either way.
-  function repairMember(key: string) {
+  //
+  // Routed by `memberState().action`, the same value the button's own label is
+  // drawn from. Running `retry_member` for all three made a button reading
+  // "Locate" call a command that cannot read the repo it is about to fail on,
+  // and land the member on `Failed` until the next read reconciled it back.
+  async function repairMember(key: string) {
     const id = featureId();
     const m = members().find((tm) => tm.key === key);
-    if (!id || !m) return;
-    invoke("retry_member", { featureId: id, repoPath: m.member.repoPath }).catch((e) =>
-      emitWith<ToastEvent>(TOAST, { message: `${m.label}: ${String(e)}`, kind: "error" }),
-    );
+    if (!id || !m || !m.state.action) return;
+    try {
+      if (m.state.action === "locate") {
+        const newRepoPath = await invoke<string | null>("pick_folder");
+        // A cancelled picker leaves the record exactly as it was.
+        if (!newRepoPath) return;
+        await invoke("relocate_member", { featureId: id, repoPath: m.member.repoPath, newRepoPath });
+        return;
+      }
+      await invoke("retry_member", { featureId: id, repoPath: m.member.repoPath });
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: `${m.label}: ${String(e)}`, kind: "error" });
+    }
   }
 
   // The open file is mid-conflict. Read from the shared git store rather than
@@ -2539,7 +2553,7 @@ export default function Editor(props: {
               activePath={shownFileId()}
               askText={askText}
               askConfirm={askConfirm}
-              onRetry={repairMember}
+              onRepair={repairMember}
               settleKey={ws()}
               persistKey={ws()}
             />
@@ -2568,7 +2582,7 @@ export default function Editor(props: {
               activePath={activeId()}
               selected={props.selected}
               onReverted={handleReverted}
-              onRetry={repairMember}
+              onRepair={repairMember}
             />
           </Match>
           <Match when={rightMode() === "pulls"}>

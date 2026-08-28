@@ -35,10 +35,10 @@ function feature(members: Member[]): Feature {
   };
 }
 
-const mount = (f: Feature, onRetry = () => {}, extra: Record<string, unknown> = {}) =>
+const mount = (f: Feature, onRepair = () => {}, extra: Record<string, unknown> = {}) =>
   render(() => (
     <ul>
-      <FeatureItem feature={f} spaces={SPACES} onRetry={onRetry} {...extra} />
+      <FeatureItem feature={f} spaces={SPACES} onRepair={onRepair} {...extra} />
     </ul>
   ));
 
@@ -66,25 +66,50 @@ describe("FeatureItem", () => {
     expect(outside.className).toContain(chipStyles.neutral);
   });
 
+  // The repair moved onto the member row (#159 phase 3). It was an actions strip
+  // under the chips, which named the member in the button and still left the
+  // seventh one, hidden behind the `+N`, with nothing to press.
   it("badges a failed member with the reason and offers Retry for it only", async () => {
-    const onRetry = vi.fn();
+    const onRepair = vi.fn();
     const failed = member("/w/web", 1, {
       kind: "failed",
       reason: "refusing to overwrite",
     });
     const { container } = mount(
       feature([member("/w/api", 0), failed, member("/o/dotfiles", 2, { kind: "failed", reason: "pending" })]),
-      onRetry,
+      onRepair,
     );
     const badge = screen.getByRole("img", { name: "Failed" });
     expect(badge.getAttribute("title")).toBe("refusing to overwrite");
     expect(screen.getByRole("img", { name: "Creating" })).toBeTruthy();
-    // By name, not every button on the row: the disclosure is one too.
+
+    await expand();
+
+    // By name, not every button on the row: the disclosure is one too. Pending
+    // carries no action, so a member mid-creation offers nothing to press.
     const buttons = screen.getAllByRole("button", { name: /^Retry/ });
     expect(buttons.map((b) => b.textContent)).toEqual(["Retry web"]);
     fireEvent.click(buttons[0]);
-    expect(onRetry).toHaveBeenCalledWith(failed);
+    expect(onRepair).toHaveBeenCalledWith(failed, "retry");
     await expectNoAxeViolations(container);
+  });
+
+  it("names the repair after the state, one per broken member", async () => {
+    const onRepair = vi.fn();
+    const gone = member("/w/web", 1, { kind: "worktree-missing" });
+    const moved = member("/o/dotfiles", 2, { kind: "repo-missing" });
+    mount(feature([member("/w/api", 0), gone, moved]), onRepair);
+
+    await expand();
+
+    expect(screen.getAllByRole("button", { name: /^(Recreate|Locate|Retry)/ }).map((b) => b.textContent)).toEqual([
+      "Recreate web",
+      "Locate dotfiles",
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Recreate web" }));
+    expect(onRepair).toHaveBeenCalledWith(gone, "recreate");
+    fireEvent.click(screen.getByRole("button", { name: "Locate dotfiles" }));
+    expect(onRepair).toHaveBeenCalledWith(moved, "locate");
   });
 
   describe("the member list", () => {
@@ -112,7 +137,7 @@ describe("FeatureItem", () => {
       await expand();
 
       const rows = memberRows(container);
-      expect(rows.map((r) => r.textContent)).toEqual(["AapiReady", "WwebWorktree missing"]);
+      expect(rows.map((r) => r.textContent)).toEqual(["AapiReady", "WwebWorktree missingRecreate web"]);
       expect(rows[1].getAttribute("data-state")).toBe("worktree-missing");
     });
 

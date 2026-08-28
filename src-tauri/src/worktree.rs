@@ -104,6 +104,21 @@ fn git_ok(repo: &str, args: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
+/// Drop admin entries whose folder is gone. Best-effort: a repo that cannot run
+/// it is one the caller is about to fail on anyway.
+///
+/// Worth its own name because git keeps listing a worktree deleted outside Sway,
+/// and `list_worktrees_body` does not parse the `prunable` field that would say
+/// so. Every caller that reads the list to decide whether a worktree exists has
+/// to prune first, or it adopts a folder that is not there.
+pub(crate) fn prune_worktrees(repo: &str) {
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["worktree", "prune"])
+        .output();
+}
+
 pub(crate) fn branch_exists(repo: &str, branch: &str) -> bool {
     Command::new("git")
         .arg("-C")
@@ -536,11 +551,7 @@ pub(crate) fn do_remove_worktree(repo_path: &str, worktree_path: &str, force: bo
         return Err("This worktree has uncommitted changes; commit or discard them first.".into());
     }
     git_ok(repo_path, &["worktree", "remove", "--force", worktree_path])?;
-    let _ = Command::new("git")
-        .arg("-C")
-        .arg(repo_path)
-        .args(["worktree", "prune"])
-        .output();
+    prune_worktrees(repo_path);
     Ok(())
 }
 

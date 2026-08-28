@@ -201,6 +201,7 @@ pub fn run() {
             features::commands::create_feature,
             features::commands::retry_member,
             features::commands::add_member,
+            features::commands::relocate_member,
             features::commands::remove_member,
             features::commands::reorder_members,
             features::commands::rename_member,

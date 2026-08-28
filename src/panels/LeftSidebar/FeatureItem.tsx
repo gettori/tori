@@ -5,7 +5,7 @@ import Icon from "../../components/Icon/Icon";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import type { MenuItem } from "../../components/Menu/rows";
 import MemberChip from "../../components/MemberChip/MemberChip";
-import type { Feature, Member } from "../../utils/features";
+import { REPAIR_LABEL, type Feature, type Member, type RepairAction } from "../../utils/features";
 import { tintedMembers, type SpaceTint } from "../../utils/featureMembers";
 import { createDragReorder } from "../../utils/dragReorder";
 import styles from "./FeatureItem.module.css";
@@ -23,7 +23,10 @@ export const CHIP_CAP = 6;
 export default function FeatureItem(props: {
   feature: Feature;
   spaces: SpaceTint[];
-  onRetry: (member: Member) => void;
+  /** The repair a broken member's row offers. Which one is `memberState`'s
+   *  call, not this row's: the same three actions drive the Omnibox and the
+   *  toast, and a fourth reading of the state is a fourth chance to disagree. */
+  onRepair: (member: Member, action: RepairAction) => void;
   onSelect?: (feature: Feature) => void;
   /** The Feature the shell is showing. */
   active?: boolean;
@@ -50,7 +53,6 @@ export default function FeatureItem(props: {
   const members = createMemo(() => tintedMembers(props.feature, props.spaces));
   const shown = () => members().slice(0, CHIP_CAP);
   const overflow = () => Math.max(0, members().length - CHIP_CAP);
-  const retryable = () => members().filter((m) => m.state.action === "retry");
 
   const drag = createDragReorder({
     keys: () => members().map((m) => m.member.repoPath),
@@ -171,28 +173,28 @@ export default function FeatureItem(props: {
                 <span class={styles.memberState} data-member-state>
                   {m.state.label}
                 </span>
+                {/* On the row rather than in an actions strip below the chips:
+                    the strip named the member in the button and still left the
+                    seventh one, hidden behind `+N`, with nothing to press. */}
+                <Show when={m.state.action}>
+                  {(action) => (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      class={styles.repair}
+                      onClick={(e: MouseEvent) => {
+                        e.stopPropagation();
+                        props.onRepair(m.member, action());
+                      }}
+                    >
+                      {REPAIR_LABEL[action()]} {m.label}
+                    </Button>
+                  )}
+                </Show>
               </ContextMenu>
             )}
           </For>
         </ul>
-      </Show>
-      <Show when={retryable().length > 0}>
-        <div class={styles.actions}>
-          <For each={retryable()}>
-            {(m) => (
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={(e: MouseEvent) => {
-                  e.stopPropagation();
-                  props.onRetry(m.member);
-                }}
-              >
-                Retry {m.label}
-              </Button>
-            )}
-          </For>
-        </div>
       </Show>
     </ContextMenu>
   );
