@@ -92,11 +92,14 @@ const TRUNCATION =
   "non-interactive `title` on a span/div: the full text behind a truncated label, on an element no keyboard can reach. issue 102 keeps these deliberately - a tooltip per row of a dense list is the waste the ticket declines to add";
 const FIXTURE =
   "a test fixture passing a component's `title` prop, or an attribute selector asserting on one";
+const DEV_ONLY =
+  "a dev-only marker's standing note, on a non-interactive span that never ships: the chip is tree-shaken out of production by an `import.meta.env.DEV` guard, so no user of a release build can hover it";
 const ROW_ONCLICK =
   "a row-level `div` with an `onClick` and no keyboard path, so its `title` shows the full text of a line no Tab reaches. Making these real controls is its own ticket; sweeping them onto `Tooltip` here would only put keyboard-openable hover text on something the keyboard still cannot select";
 
 const KEPT = new Map<string, Kept>([
   ["App.tsx", { count: 1, reason: `${HEADING} - the quit confirmation` }],
+  ["components/DevBadge/DevBadge.tsx", { count: 1, reason: DEV_ONLY }],
   ["components/Dialog/Dialog.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/Dialogs/AskpassDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/BranchRemoveDialog.tsx", { count: 1, reason: HEADING }],
@@ -249,7 +252,7 @@ const KEPT = new Map<string, Kept>([
  *
  *  **One back down** with the composer bar's standing note about a remembered
  *  model list, which is gone and took its title with it. */
-const RAW_ELEMENT_TITLES = 65;
+const RAW_ELEMENT_TITLES = 66;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. Down one from
  *  ten for the same reason as above, and the row itself is unchanged. */
@@ -360,9 +363,11 @@ describe("the title= guard", () => {
     // Down one span: the sidebar's member chip is a `MemberChip` now (#158), so
     // its title rides a component prop rather than a raw element. The attribute
     // still renders; it is just no longer this census's to count.
+    // Up one span: the dev build's chip, which is the one span here that never
+    // reaches a release - see DEV_ONLY.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 16,
-      span: 49,
+      span: 50,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

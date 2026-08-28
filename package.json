@@ -10,6 +10,7 @@
     "build": "vite build",
     "serve": "vite preview",
     "tauri": "tauri",
+    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "lsp:install": "npm --prefix src-tauri/resources/lsp install",
     "dap:install": "node scripts/install-dap.mjs",
     "test": "node scripts/check-tokens.mjs && vitest run",

@@ -1,0 +1,31 @@
+/* Dev-instance marker. Orange from the scale palette on purpose: it belongs
+   to no UI role, so it never reads as part of the design. */
+@layer components {
+  .stripe {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--scale-orange);
+    z-index: 1000;
+    pointer-events: none;
+  }
+
+  .chip {
+    flex: 0 0 auto;
+    align-self: center;
+    margin-right: var(--sway-space-3);
+    padding: 0 var(--sway-space-2);
+    height: calc(18px * var(--ui-scale));
+    line-height: calc(18px * var(--ui-scale));
+    font-size: var(--sway-text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--scale-orange);
+    border: var(--sway-border-thin) solid var(--scale-orange);
+    border-radius: var(--sway-radius-pill);
+    user-select: none;
+  }
+}

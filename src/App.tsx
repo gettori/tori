@@ -33,6 +33,7 @@ import ConfirmDialog, { type ConfirmReq } from './components/Dialogs/ConfirmDial
 import ToastRegion from './components/Toasts/Toasts';
 import Settings from './panels/Settings/Settings';
 import UpdatePill from './components/UpdatePill/UpdatePill';
+import DevBadge from './components/DevBadge/DevBadge';
 import Button from './components/Button/Button';
 import Icon from './components/Icon/Icon';
 import { Settings as SettingsIcon } from 'lucide-solid';
@@ -1022,6 +1023,7 @@ function App() {
           <WindowControls showSidebar={showSidebar()} />
         </div>
         <Toolbar selected={selected()} onActiveRoot={setActiveRoot} />
+        <DevBadge />
         <UpdatePill suppressed={welcome()} />
         <Button
           class="topbar-gear"
