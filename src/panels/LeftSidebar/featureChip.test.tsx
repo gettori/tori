@@ -8,6 +8,9 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 const REPO = "/w/api";
 const MEMBER = "/w/api-auth";
 const SIBLING = "/w/api-other";
+// What `probe_project` now emits for a plain repo: the checkout a Feature made
+// under the repo's own `.sway/worktrees`, which is where a kept worktree lands.
+const NESTED = `${REPO}/.sway/worktrees/kept`;
 
 const config = {
   path: "/cfg/sway.toml",
@@ -26,6 +29,7 @@ const config = {
             { label: "main", folderPath: REPO, branch: "main", kind: "plain", isCurrent: true },
             { label: "feat/auth", folderPath: MEMBER, branch: "feat/auth", kind: "worktree", isCurrent: false },
             { label: "other", folderPath: SIBLING, branch: "other", kind: "worktree", isCurrent: false },
+            { label: "feat/kept", folderPath: NESTED, branch: "feat/kept", kind: "worktree", isCurrent: false },
           ],
         },
       ],
@@ -148,5 +152,18 @@ describe("a Feature worktree in Spaces", () => {
     await mounted(unitSel);
     await waitFor(() => expect(activeUnits().length).toBe(1));
     expect(activeUnits()[0].textContent).toContain("feat/auth");
+  });
+
+  // The Keep half of Remove repository: the worktree stays where it is, the
+  // record no longer names it, and Spaces is the only place left to reach it
+  // from. A row inside the repo's own `.sway/worktrees` is an ordinary unit.
+  it("reaches a worktree nested under its own repo", async () => {
+    bridge.features = [
+      { ...AUTH, id: "f2", name: "Kept", branch: "feat/kept", members: [{ ...AUTH.members[0], worktreePath: NESTED }] },
+    ];
+    await mounted(null);
+    await waitFor(() => expect(chips().length).toBe(1));
+    const row = screen.getByRole("button", { name: "Open Feature Kept" }).closest('[draggable="true"]');
+    expect(row?.textContent).toContain("feat/kept");
   });
 });
