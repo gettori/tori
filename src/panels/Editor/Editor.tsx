@@ -157,6 +157,7 @@ import { dropWorkspaceWatches } from "../../utils/debugWatch";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
 import { dropStashEntry, loadPendingStash, pendingStashPaths, requestStash } from "../../utils/hotExit";
+import { closeAllowed } from "../../utils/closeGuard";
 import { flushDeferredWrites } from "../../utils/deferredWrite";
 import {
   refreshGit,
@@ -2136,9 +2137,18 @@ export default function Editor(props: {
     // block the close first, then destroy the window ourselves if the user confirms
     // (destroy bypasses this handler, so there is no re-prompt loop).
     offClose = await getCurrentWindow().onCloseRequested(async (event) => {
-      // Before any branch: two of the three exits below are `destroy()`, which
-      // skips `beforeunload`, and the layout stores write on a debounce now.
+      // Before any branch: every exit below is `destroy()`, which skips
+      // `beforeunload`, and the layout stores write on a debounce now.
       flushDeferredWrites();
+      // Block first, unconditionally. Everything under this line is async, and
+      // a handler that returns before it has decided has already let the window
+      // go: Tauri destroys as soon as the handler settles without a prevent.
+      event.preventDefault();
+      // The app's own quit question comes before the editor's: a refused quit
+      // must not have stashed buffers or asked about them on the way out. The
+      // guards are registered elsewhere (App.tsx); this is the only close
+      // listener in the app, see utils/closeGuard.
+      if (!(await closeAllowed())) return;
       const anyDirty = Object.values(dirty()).some(Boolean);
       // Hot exit rewrites the stash on *every* quit, not only when something is
       // unsaved. The file is the whole of this feature's memory, and a quit
@@ -2153,8 +2163,10 @@ export default function Editor(props: {
       // milliseconds; `stashToWrite` then yields whatever is still genuinely
       // pending (a stashed tab nobody clicked keeps its entry, a claimed or
       // saved one does not).
-      if (!anyDirty && !editorDefaults().hotExit) return;
-      event.preventDefault();
+      if (!anyDirty && !editorDefaults().hotExit) {
+        await getCurrentWindow().destroy();
+        return;
+      }
       // Hot exit replaces the prompt rather than sitting beside it: there is
       // nothing to warn about once the work is kept. But only once it *is*
       // kept - the key being on is not evidence that anything reached the
