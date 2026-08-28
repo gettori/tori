@@ -168,7 +168,7 @@ describe("selecting a Feature", () => {
     fireEvent.contextMenu(row("Auth"));
     pointerClick(await screen.findByText("Delete…"));
     await screen.findByRole("dialog", { name: "Delete Auth?" });
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_feature")).toBe(true));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
     expect(storesHolding("feature:f1")).toEqual([]);
