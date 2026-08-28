@@ -40,6 +40,20 @@ describe("a chat tab's provider mark", () => {
     expect(classes("budgetStopped")).toBe(classes("waitingForApproval"));
   });
 
+  // The tint is the vendor's, so the strip says whose turn is running without
+  // reading a label. Keyed on the mark that was actually resolved rather than
+  // on the adapter id: a session wearing the fallback brain has no brand to
+  // borrow, and a wrong logo's colour is a wrong claim.
+  it("names the brand it is tinted with, and only for a mark it resolved", () => {
+    const at = (agentId: string) => {
+      const { container } = render(() => <TabMark agentId={agentId} status="executing" />);
+      return (container.firstElementChild as HTMLElement).getAttribute("data-mark");
+    };
+    expect(at("claude")).toBe("claude");
+    expect(at("gemini")).toBe("gemini");
+    expect(at("some-adapter-with-no-logo")).toBeNull();
+  });
+
   it("names only the states worth interrupting a screen reader for", () => {
     expect(mark("executing").getAttribute("aria-label")).toBe("Executing");
     expect(mark("waitingForApproval").getAttribute("aria-label")).toBe("Waiting for approval");
@@ -58,14 +72,15 @@ describe("a chat tab's provider mark", () => {
 });
 
 // The mark is worn by chat tabs, PTY agent tabs and History's rows now, and
-// only one of those knows its status rather than guessing it. Marking the exact
-// side (never the inferred one) is what keeps the PTY tab rendering as it
-// always has while the marker still means something where it appears.
+// only one of those knows its status rather than guessing it. The tier is a
+// word in the tooltip and nothing more: it used to draw a hairline under a
+// measured mark, which read as a rendering fault in a strip of tabs rather than
+// as a claim about where the status came from.
 describe("the certainty tier a mark claims", () => {
-  it("marks the measured side and says so, and leaves the inferred side alone", () => {
+  it("says which side it is in words, and draws nothing either way", () => {
     expect(mark("executing", "exact").getAttribute("title")).toBe("Executing (measured)");
     expect(mark("executing", "inferred").getAttribute("title")).toBe("Executing");
-    expect(classes("executing", "exact")).not.toBe(classes("executing", "inferred"));
+    expect(classes("executing", "exact")).toBe(classes("executing", "inferred"));
   });
 
   // A caller that forgets is claiming nothing, which is both the safer answer

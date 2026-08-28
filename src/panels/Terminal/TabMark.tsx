@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import Icon from "../../components/Icon/Icon";
-import { providerIcon } from "../../components/Icon/ProviderIcon";
+import { providerIcon, providerMarkKey } from "../../components/Icon/ProviderIcon";
+import agentStyles from "../../components/Icon/agentMarks.module.css";
 import { statusPresentation, type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
 import styles from "./TabMark.module.css";
@@ -24,9 +25,10 @@ import styles from "./TabMark.module.css";
  * **Certainty is the one thing the caller must not get wrong.** A chat states
  * its status outright through its own event stream; a PTY agent tab's is
  * composed from a pgrep probe, PTY quiet and a transcript tail, and is a good
- * guess rather than a measurement. Only the exact side is marked (see
- * `statusPresentation`), so an inferred tab renders exactly as it always has
- * and the marker means what it says wherever it appears.
+ * guess rather than a measurement. It rides the tooltip ("Executing
+ * (measured)") and nothing else: the hairline that used to sit under a measured
+ * mark read as a rendering fault in a strip of tabs, which is a bad price for a
+ * distinction nobody acts on.
  */
 export default function TabMark(props: {
   /** The adapter driving this tab, for the provider mark itself. */
@@ -41,6 +43,10 @@ export default function TabMark(props: {
   certainty?: StatusCertainty;
 }) {
   const working = () => props.status === "executing";
+  // Whose logo this ended up being, for the tint. Resolved rather than assumed
+  // from `agentId`, so a session wearing the fallback brain cannot pick up a
+  // brand colour it has not earned.
+  const markKey = () => providerMarkKey(null, props.agentId);
   const needsYou = () => props.status === "waitingForApproval" || props.status === "budgetStopped";
   // The tooltip is the whole status vocabulary, spelled the way the sidebar and
   // the command palette spell it: one name per state across the app, with the
@@ -55,9 +61,15 @@ export default function TabMark(props: {
       class={styles.mark}
       classList={{
         [styles.working]: working(),
+        // The same breathe chat wears, from the marks' own stylesheet: one
+        // keyframe, so the two surfaces cannot drift to two rhythms. On the
+        // wrapper rather than the glyph because the fallback brain is a Lucide
+        // component with no `animated` prop to take.
+        [agentStyles.thinking]: working(),
         [styles.needsYou]: needsYou(),
-        [styles.exact]: shown()?.exact === true,
       }}
+      // What the colour keys on, and what a test reads to check it.
+      data-mark={markKey() ?? undefined}
       title={shown()?.title}
       // Only the states worth interrupting a screen reader for. Idle is the
       // absence of news, and every tab announcing "Idle" would bury the one

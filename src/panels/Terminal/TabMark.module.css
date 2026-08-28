@@ -8,53 +8,48 @@
   position: relative;
 }
 
-/* Working. The colour is on the rule and the dimming lives only in the
-   keyframes, so the global reduced-motion rule (base.css) leaves a steady tint
-   rather than removing the signal - same construction as the editor strip's
-   "editing now" pulse. */
-@keyframes tabMarkWorking {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
+/* Working.
+
+   The motion is `agentMarks`' breathe, worn on the wrapper rather than
+   redeclared here: chat already animates its mark that way, and two surfaces
+   showing the same logo for the same reason should not pulse to two different
+   rhythms. What is left here is the colour.
+
+   The tint is the brand's own, keyed on the mark actually rendered rather than
+   on the adapter id, so a session whose provider Sway cannot name (the brain)
+   keeps the neutral accent instead of borrowing a logo's colour. Only the
+   working state is tinted: at rest the strip is chrome, and a row of brand
+   colours in it would compete with the tab you are reading. */
+.working {
+  color: var(--accent-fg);
 }
 
-.working {
-  animation: tabMarkWorking 1.6s ease-in-out infinite;
-  color: var(--accent-fg);
+/* Anthropic's is the one brand hue the palettes carry, because it is worn
+   outside this strip too (the toolbar crumb) where it has to answer to the
+   theme's contrast. */
+.working[data-mark="claude"] {
+  color: var(--agent-claude);
+}
+
+.working[data-mark="gemini"] {
+  color: var(--sway-agent-gemini);
+}
+
+/* Codex, Copilot, Kimi, OpenCode and Pi are all published as monochrome black
+   (Simple Icons; Codex has no entry and OpenAI's own mark is black on light,
+   white on dark). The faithful rendering of a black-or-white brand is the
+   theme's foreground, not a fixed black that would vanish into a dark strip. */
+.working[data-mark="codex"],
+.working[data-mark="copilot"],
+.working[data-mark="kimi"],
+.working[data-mark="opencode"],
+.working[data-mark="pi"] {
+  color: var(--fg-default);
 }
 
 /* Waiting on you: no motion, because nothing is running. */
 .needsYou {
   color: var(--attention-fg);
-}
-
-/* The exact tier's marker: a hairline rule under the mark, meaning Sway measured
-   this status from the session's own event stream rather than inferring it from
-   a probe, PTY quiet and a transcript tail. Only this side is marked, the same
-   rule and the same drawing as the sidebar's status indicator - marking the
-   inferred side instead would restyle every PTY agent tab, which is the
-   rendering that predates chat and the one the golden fixture protects.
-
-   A pseudo-element rather than a border, so it costs the tab strip no layout.
-   The bare rule is what makes the class name exist to be applied at all: a
-   selector that only ever appears with `::after` is not exported. */
-.exact {
-  position: relative;
-}
-.exact::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(-2px * var(--ui-scale));
-  height: max(1px, calc(1px * var(--ui-scale)));
-  background: currentColor;
-  border-radius: 1px;
-  opacity: 0.75;
 }
 
 /* The shape half of the signal, so "needs you" is not carried by colour alone.
