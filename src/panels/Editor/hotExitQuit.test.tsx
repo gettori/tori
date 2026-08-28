@@ -236,9 +236,13 @@ describe("closing the window with unsaved edits", () => {
     expect(screen.queryByText(CONFIRM)).toBeNull();
   });
 
-  it("stays out of the way entirely when hot exit is off and nothing is dirty", async () => {
+  it("closes without a word when hot exit is off and nothing is dirty", async () => {
     // With the key off there is no stash to keep current, so there is nothing
-    // worth blocking a close for.
+    // worth asking about. The close is still taken over rather than let
+    // through: the handler blocks first on every path, because the app's own
+    // quit guards (utils/closeGuard) are consulted asynchronously and a handler
+    // that returned unprevented would have closed the window before they
+    // answered. So "out of the way" is measured as a silent destroy.
     hotExit = false;
     await loadSettings();
     mounted = render(() => (
@@ -252,7 +256,8 @@ describe("closing the window with unsaved edits", () => {
     const closing = requestClose();
     await closing.done;
 
-    expect(closing.wasPrevented()).toBe(false);
-    expect(destroyed).toBe(0);
+    expect(closing.wasPrevented()).toBe(true);
+    await waitFor(() => expect(destroyed).toBe(1));
+    expect(screen.queryByText(CONFIRM)).toBeNull();
   });
 });
