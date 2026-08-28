@@ -2642,8 +2642,11 @@ export default function LeftSidebar(props: {
                 .filter((m) => !m.unit)
                 .map(attemptUnit),
             ];
+            // Rows are clickable `div`s, which window drag cannot tell from
+            // chrome by selector, so the card opts its whole subtree out of it
+            // (utils/windowDrag).
             return (
-              <div class={`node ${styles.projectCard}`}>
+              <div class={`node ${styles.projectCard}`} data-no-window-drag>
                 <ContextMenu
                   class={`${styles.row} ${styles.project}`}
                   onClick={() => {
@@ -2737,7 +2740,7 @@ export default function LeftSidebar(props: {
               <Icon icon={FolderCog} />
             </Tooltip>
             <Show when={gearOpen()}>
-              <div class={styles.gearMenu}>
+              <div class={styles.gearMenu} data-no-window-drag>
                 <Show when={hasRoot()}>
                   <div class={styles.gearItem} onClick={() => gearAction(addSpace)}>
                     <Icon icon={FolderPlus} />New space
