@@ -10,7 +10,7 @@ import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog"
 import { pushToast } from "../../components/Toasts/Toasts";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
-import { memberState, type Feature, type Member, featureKey, LAST_MEMBER } from "../../utils/features";
+import { memberState, type Feature, type Member, type RepairAction, featureKey, LAST_MEMBER } from "../../utils/features";
 import { moveKey } from "../../utils/dragReorder";
 import { gitStateFor } from "../../utils/gitActions";
 import { removeMemberWorktree } from "../../utils/memberWorktree";
@@ -111,6 +111,25 @@ export default function FeatureList(props: {
       const next = await invoke<Feature>("retry_member", {
         featureId: feature.id,
         repoPath: member.repoPath,
+      });
+      if (next) apply(next);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // Which repair a broken member gets is `memberState`'s call, made once in the
+  // row; this only routes it. Locate is the one that asks first, and a cancelled
+  // picker answers null, which must leave the record exactly as it was.
+  async function repair(feature: Feature, member: Member, action: RepairAction) {
+    if (action !== "locate") return retry(feature, member);
+    try {
+      const newRepoPath = await invoke<string | null>("pick_folder");
+      if (!newRepoPath) return;
+      const next = await invoke<Feature>("relocate_member", {
+        featureId: feature.id,
+        repoPath: member.repoPath,
+        newRepoPath,
       });
       if (next) apply(next);
     } catch (e) {
@@ -332,7 +351,7 @@ export default function FeatureList(props: {
                 active={props.activeId === f.id}
                 changed={changedIn(f)}
                 onSelect={props.onSelect}
-                onRetry={(m) => retry(f, m)}
+                onRepair={(m, action) => void repair(f, m, action)}
                 menu={menu(f)}
                 memberMenu={memberMenu(f)}
                 onReorder={(repoPaths) => void reorder(f, repoPaths)}

@@ -1085,20 +1085,20 @@ describe("a Feature's member roots", () => {
   });
 
   it("offers a repair instead of a tree for a member with no worktree", async () => {
-    const onRetry = vi.fn();
+    const onRepair = vi.fn();
     mountFeature({
       roots: [
         MEMBERS[0],
         { ...MEMBERS[1], state: memberState({ kind: "worktree-missing" }) },
       ],
-      onRetry,
+      onRepair,
     });
     await within(sectionOf(A)).findByText("README.md");
 
     expect(within(sectionOf(B)).queryByText("package.json")).toBeNull();
     expect(within(sectionOf(B)).getByText("Worktree missing")).toBeTruthy();
     fireEvent.click(sectionOf(B).querySelector("[data-repair]") as HTMLElement);
-    expect(onRetry).toHaveBeenCalledWith(B);
+    expect(onRepair).toHaveBeenCalledWith(B);
   });
 
   it("loads a repaired member, which never changed path and so never remounted", async () => {

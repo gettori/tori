@@ -28,6 +28,7 @@ import { isEditingNow } from "../../../utils/editingNow";
 import { fuzzyScore } from "../../../utils/fuzzy";
 import MemberChip from "../../../components/MemberChip/MemberChip";
 import type { MemberRoot } from "../../../utils/featureMembers";
+import { REPAIR_LABEL } from "../../../utils/features";
 import {
   collapseDirs,
   isDirOpen,
@@ -623,7 +624,6 @@ export type TreeRoot = MemberRoot;
  *  so the create actions move into each section header instead. */
 type SectionApi = { ctx: () => EditCtx | undefined; reload: () => Promise<void> };
 
-const REPAIR_LABEL = { recreate: "Recreate", locate: "Locate", retry: "Retry" } as const;
 
 /** One root's worth of tree: its own listing, its own `mounted` map, its own
  *  `EditCtx`, its own file list for the filter, and its own drop background.
@@ -655,7 +655,7 @@ function RootSection(props: {
   selected: () => ReadonlySet<string>;
   toggleSelected: (path: string) => void;
   clearSelected: () => void;
-  onRetry?: (path: string) => void;
+  onRepair?: (path: string) => void;
   onApi: (path: string, api: SectionApi | null) => void;
   onLoaded: () => void;
 }) {
@@ -801,7 +801,7 @@ function RootSection(props: {
         size="xs"
         variant="ghost"
         data-repair={props.path}
-        onClick={() => props.onRetry?.(props.path)}
+        onClick={() => props.onRepair?.(props.path)}
       >
         {REPAIR_LABEL[action]}
       </Button>
@@ -941,7 +941,7 @@ export default function FileTree(props: {
   askText?: (title: string, initial?: string) => Promise<string | null>;
   askConfirm?: (opts: ConfirmOpts) => Promise<boolean>;
   /** A member whose worktree is not usable offers a repair; this runs it. */
-  onRetry?: (path: string) => void;
+  onRepair?: (path: string) => void;
   /** The switch span this tree's first listing closes a leg of: the workspace
    *  key, so a Feature's span is keyed the same way its tabs are. Absent on the
    *  shared and docs panes, which no switch ever waits for. */
@@ -1158,7 +1158,7 @@ export default function FileTree(props: {
               selected={selected}
               toggleSelected={toggleSelected}
               clearSelected={clearSelected}
-              onRetry={props.onRetry}
+              onRepair={props.onRepair}
               onApi={registerApi}
               onLoaded={() => {
                 const key = props.settleKey;

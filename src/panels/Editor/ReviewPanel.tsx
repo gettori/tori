@@ -48,7 +48,7 @@ import { comparePrUrl } from "../../utils/prUrl";
 import { composeDraftRequest, prPath } from "../../utils/createPr";
 import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils/forgeTypes";
 import { settings } from "../Settings/settingsStore";
-import { rootOf, type MemberStateSummary } from "../../utils/features";
+import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/features";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import type { MemberRoot } from "../../utils/featureMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
@@ -95,7 +95,6 @@ type StashOutcome = { restored: string[]; deleted: string[] };
 type Section = { root: string; label?: string; tint?: string; state?: MemberStateSummary };
 
 // Same wording as the file tree's section headers: one member, one vocabulary.
-const REPAIR_LABEL = { recreate: "Recreate", locate: "Locate", retry: "Retry" } as const;
 
 // Map a porcelain XY code to a coarse class for the badge color.
 function statusClass(status: string): string {
@@ -140,7 +139,7 @@ export default function ReviewPanel(props: {
   activePath?: string | null;
   selected: Selection | null;
   onReverted?: (outcome: RevertOutcome) => void;
-  onRetry?: (path: string) => void;
+  onRepair?: (path: string) => void;
 }) {
   const [expanded, setExpanded] = createSignal<string | null>(null);
   const [diff, setDiff] = createSignal<string>("");
@@ -1309,7 +1308,7 @@ export default function ReviewPanel(props: {
               </span>
               <Show when={sec.state?.action}>
                 {(action) => (
-                  <Button size="xs" variant="ghost" data-repair={sec.root} onClick={() => props.onRetry?.(sec.root)}>
+                  <Button size="xs" variant="ghost" data-repair={sec.root} onClick={() => props.onRepair?.(sec.root)}>
                     {REPAIR_LABEL[action()]}
                   </Button>
                 )}
