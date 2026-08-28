@@ -47,10 +47,13 @@ to the bundled set is welcome.
 git clone https://github.com/skarif2/sway.git
 cd sway
 pnpm install
-pnpm tauri dev
+pnpm tauri:dev
 ```
 
-`pnpm tauri dev` runs `pnpm lsp:install` first, which installs the bundled
+`pnpm tauri:dev` layers `src-tauri/tauri.dev.conf.json` over the main config:
+the app is named "Sway Dev", wears an orange stripe and a `dev` chip in the
+topbar, and uses its own identifier (`com.skarif.sway.dev`) so it keeps its
+own data dir and can run beside the installed build. It runs `pnpm lsp:install` first, which installs the bundled
 TypeScript language server into `src-tauri/resources/lsp`. The first Rust build
 takes a while; later ones are incremental.
 
