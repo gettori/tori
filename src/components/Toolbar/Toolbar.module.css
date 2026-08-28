@@ -42,20 +42,26 @@
   max-width: calc(280px * var(--ui-scale));
 }
 
+/* Takes the bar's free width rather than sitting at its content size, so a long
+   branch or worktree name has somewhere to go. */
 .tbCrumb {
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
+  flex: 1;
   min-width: 0;
   overflow: hidden;
 }
 
+/* No max-width. A fixed cap ellipsised every branch past ~200px even with half
+   the bar empty beside it; the flex shrink below does the same job only when
+   the crumbs actually run out of room, and then it takes it from the longest. */
 .tbCrumb .crumb {
   font-size: var(--sway-text-lg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: calc(200px * var(--ui-scale));
+  min-width: 0;
   color: var(--fg-subtle);
 }
 
