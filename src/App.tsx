@@ -74,6 +74,7 @@ import {
   type PurgeWorkspace,
 } from './utils/events';
 import { dispatchWindowHotkey } from './utils/hotkeys';
+import { windowDragStart } from './utils/windowDrag';
 import {
   MAX_PANES,
   closePane,
@@ -985,7 +986,7 @@ function App() {
 
   return (
     <div class="app">
-      <header class="topbar" data-tauri-drag-region>
+      <header class="topbar" onMouseDown={windowDragStart}>
         <div
           class="topbar-rail"
           ref={railEl}
@@ -1010,6 +1011,7 @@ function App() {
           class="pane sidebar"
           classList={{ hidden: !showSidebar() }}
           style={{ width: `${sidebarW()}px` }}
+          onMouseDown={windowDragStart}
         >
           <div class="pane-body tree-body">
             <LeftSidebar

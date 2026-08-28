@@ -1,11 +1,11 @@
-/* Topbar pane toggles: three independent <IconButton> toggles. The cluster is
-   marked no-drag so the buttons stay clickable inside the draggable titlebar. */
+/* Topbar pane toggles: three independent <IconButton> toggles. They stay
+   clickable inside the draggable titlebar because window drag carves out real
+   controls by selector (utils/windowDrag), not because of a CSS app-region. */
 .cluster {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  -webkit-app-region: no-drag;
 }
 
 /* Pane hidden: accent the glyph (only the glyph, the border keeps its token),

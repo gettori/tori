@@ -437,7 +437,7 @@ export default function FeatureList(props: {
           </div>
         }
       >
-        <ul class={styles.items}>
+        <ul class={styles.items} data-no-window-drag>
           <For each={visible()}>
             {(f) => (
               <FeatureItem

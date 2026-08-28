@@ -1,8 +1,10 @@
 /* The titlebar's top-left cluster: reserved space for the system traffic lights,
    the sidebar toggle beside them, and the editor's jump navigation at the right
    edge (aligned with the sidebar's right border). The cluster fills the rail so
-   the two ends sit apart; it is draggable, with the controls carved out as
-   no-drag. */
+   the two ends sit apart. Dragging the window from the empty part of it is the
+   topbar's `onMouseDown` (utils/windowDrag), not CSS: `-webkit-app-region` is
+   Electron's and WKWebView ignores it, so the rule that used to sit here only
+   looked like it worked. */
 .winControls {
   flex: 1 1 auto;
   min-width: 0;
@@ -10,7 +12,6 @@
   align-items: center;
   gap: 4px;
   padding: 0 4px 0 86px;
-  -webkit-app-region: drag;
 }
 
 /* The sidebar toggle sits where the traffic lights end; the jump navigation is
@@ -19,7 +20,6 @@
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  -webkit-app-region: no-drag;
 }
 
 .navSlot {
@@ -28,5 +28,4 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  -webkit-app-region: no-drag;
 }
