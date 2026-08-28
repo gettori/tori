@@ -1109,6 +1109,36 @@ mod tests {
     }
 
     #[test]
+    fn one_repo_belongs_to_two_features_at_once() {
+        // The refusal is per branch, not per repo: two Features over the same
+        // repository get one worktree each, on their own `feat/<slug>`, so the
+        // repo's unit row wears a chip pointing back at each of them.
+        let tmp = unique_tmp();
+        let a = repo(&tmp.join("a"));
+        let store = Store::at(tmp.join("features.json"));
+
+        let auth = create_feature(&store, "auth", std::slice::from_ref(&a), &|_| {}).unwrap();
+        let billing = create_feature(&store, "billing", std::slice::from_ref(&a), &|_| {}).unwrap();
+
+        assert_eq!(auth.members[0].state, MemberState::Present);
+        assert_eq!(billing.members[0].state, MemberState::Present);
+        let (wt_a, wt_b) = (
+            auth.members[0].worktree_path.clone().unwrap(),
+            billing.members[0].worktree_path.clone().unwrap(),
+        );
+        assert_ne!(wt_a, wt_b, "one worktree each, named by the slug");
+        assert!(wt_a.ends_with("auth") && wt_b.ends_with("billing"));
+        assert_eq!(list_features(&store).len(), 2);
+        // Only the branch collides, and only with itself.
+        assert!(
+            create_feature(&store, "auth", std::slice::from_ref(&a), &|_| {})
+                .unwrap_err()
+                .contains("already uses feat/auth")
+        );
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
     fn relocate_refuses_a_non_repo_and_another_members_repo() {
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));

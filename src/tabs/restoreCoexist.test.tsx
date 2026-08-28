@@ -108,7 +108,7 @@ vi.mock("../panels/Chat/ChatDraft", () => ({
   ),
 }));
 vi.mock("../panels/Editor/CodeEditor", () => ({ default: () => null }));
-vi.mock("../panels/Editor/lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+vi.mock("../panels/Editor/lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Terminal } = await import("../panels/Terminal/Terminal");
 const { default: PaneView } = await import("./PaneView");

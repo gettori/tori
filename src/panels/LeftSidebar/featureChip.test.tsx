@@ -154,6 +154,24 @@ describe("a Feature worktree in Spaces", () => {
     expect(activeUnits()[0].textContent).toContain("feat/auth");
   });
 
+  // One repo, two Features. Each Feature's worktree carries its own slug, so
+  // the two never share a folder and the unit row for each wears its own chip:
+  // a repo belonging to several Features has several ways back.
+  it("wears one chip per Feature a folder belongs to", async () => {
+    bridge.features = [
+      AUTH,
+      { ...AUTH, id: "f2", name: "Billing", branch: "feat/billing", members: [{ ...AUTH.members[0], worktreePath: SIBLING }] },
+    ];
+    await mounted(null);
+
+    await waitFor(() => expect(chips().length).toBe(2));
+    const names = Array.from(chips()).map((c) => c.getAttribute("aria-label"));
+    expect(names).toEqual(["Open Feature Auth", "Open Feature Billing"]);
+    // One each, on the row that actually holds that Feature's worktree.
+    expect(screen.getByRole("button", { name: "Open Feature Auth" }).closest('[draggable="true"]')?.textContent).toContain("feat/auth");
+    expect(screen.getByRole("button", { name: "Open Feature Billing" }).closest('[draggable="true"]')?.textContent).toContain("other");
+  });
+
   // The Keep half of Remove repository: the worktree stays where it is, the
   // record no longer names it, and Spaces is the only place left to reach it
   // from. A row inside the repo's own `.sway/worktrees` is an ordinary unit.

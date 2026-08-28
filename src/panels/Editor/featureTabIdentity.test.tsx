@@ -62,7 +62,7 @@ vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({ onCloseRequested: () => Promise.resolve(() => {}) }),
 }));
 vi.mock("./CodeEditor", () => ({ default: () => null }));
-vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { default: PaneView } = await import("../../tabs/PaneView");

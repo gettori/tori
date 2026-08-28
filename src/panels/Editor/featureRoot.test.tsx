@@ -78,13 +78,14 @@ vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({ onCloseRequested: () => Promise.resolve(() => {}) }),
 }));
 vi.mock("./CodeEditor", () => ({ default: () => null }));
-vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { changedAcross } = await import("../../utils/gitActions");
 const { default: PaneView } = await import("../../tabs/PaneView");
 const { emitWith, FILE_RENAMED, PURGE_UNDER_PATH } = await import("../../utils/events");
 const { isDirOpen, resetExpanded, setDirOpen } = await import("../../utils/treeExpanded");
+const { overlayRoot } = await import("../Settings/settingsStore");
 
 const featureSel = (activeRoot: string | null, roots = [A, B]) => ({
   kind: "feature" as const,
@@ -197,7 +198,7 @@ describe("the editor inside a Feature", () => {
     await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeTruthy());
     expect(calls.filter((c) => c.cmd === "fs_watch_start")).toEqual([]);
     expect(calls.filter((c) => c.cmd === "git_status")).toEqual([]);
-    expect(calls.filter((c) => c.cmd === "workspace_settings_load" || c.cmd === "load_workspace_settings")).toEqual([]);
+    expect(calls.filter((c) => c.cmd === "get_workspace_settings")).toEqual([]);
   });
   it("draws one file-tree section per member and repairs the one with no worktree", async () => {
     mounted = render(() => (
@@ -265,6 +266,26 @@ describe("the editor inside a Feature", () => {
 
     await waitFor(() => expect(calls.some((c) => c.cmd === "pick_folder")).toBe(true));
     expect(calls.some((c) => c.cmd === "relocate_member")).toBe(false);
+  });
+
+  // A Feature has no `.sway/settings.json` of its own: the overlay is the active
+  // member's, so moving the active root swaps which project's answers are in
+  // force. `feature:<id>` is a workspace key, not a folder, and must never be
+  // handed to a loader that reads a file under it.
+  it("loads the settings overlay per member, and swaps it with the active root", async () => {
+    const [sel, setSel] = createSignal(featureSel(A));
+    mounted = render(() => (
+      <>
+        <Editor selected={sel() as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
+    await waitFor(() => expect(rootsOf("get_workspace_settings")).toEqual([A]));
+
+    setSel(featureSel(B));
+    await waitFor(() => expect(rootsOf("get_workspace_settings")).toEqual([A, B]));
+    expect(overlayRoot()).toBe(B);
+    expect(calls.some((c) => String(c.args.root ?? "").startsWith("feature:"))).toBe(false);
   });
 
   it("drops every git slot when the Feature it was showing goes away", async () => {

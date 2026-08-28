@@ -1005,6 +1005,24 @@ describe("a Feature's member roots", () => {
     expect(screen.queryByText("Web App")).toBeNull();
   });
 
+  // And the third shape of the same churn (#159 phase 5): Add repository grows
+  // the member set, so a section has to appear for a root that was not there,
+  // with its own listing rather than a share of a neighbour's.
+  it("grows a section, and only that one, when a member is added", async () => {
+    const [roots, setRoots] = createSignal<TreeRoot[]>([MEMBERS[0]]);
+    render(() => <FileTree root={null} roots={roots()} />);
+    await within(sectionOf(A)).findByText("README.md");
+    const reads = readsOf(A).length;
+
+    setRoots([...MEMBERS]);
+
+    await within(sectionOf(B)).findByText("package.json");
+    expect(Array.from(document.querySelectorAll("[data-root]")).map((s) => s.getAttribute("data-root"))).toEqual([A, B]);
+    // The newcomer read its own root; the one already there did not read again.
+    expect(readsOf(B).length).toBeGreaterThan(0);
+    expect(readsOf(A)).toHaveLength(reads);
+  });
+
   it("fences every mutation to the section it was made in", async () => {
     mountFeature({ askText: answering("moved") });
     await within(sectionOf(B)).findByText("package.json");

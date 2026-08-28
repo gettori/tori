@@ -46,7 +46,7 @@ vi.mock("./lspClient", () => ({
   onLspChange: () => () => {},
   setSemanticRefreshListener: () => () => {},
   setCodeLensRefreshListener: () => () => {},
-  stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve(),
+  stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve(),
 }));
 
 const { default: CodeEditor } = await import("./CodeEditor");

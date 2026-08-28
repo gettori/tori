@@ -91,7 +91,7 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 // The real editor is all of CodeMirror and owns none of this.
 vi.mock("./CodeEditor", () => ({ default: () => null }));
-vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, SET_RIGHT_MODE } = await import("../../utils/events");

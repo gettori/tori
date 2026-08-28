@@ -74,7 +74,7 @@ vi.mock("@tauri-apps/api/window", () => ({
   }),
 }));
 vi.mock("./CodeEditor", () => ({ default: () => null }));
-vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, onWith, OPEN_IN_EDITOR, SET_RIGHT_MODE, SEND_TO_SESSION, SEND_TO_SESSION_RESULT } = await import(

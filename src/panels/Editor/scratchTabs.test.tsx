@@ -95,7 +95,7 @@ vi.mock("./CodeEditor", () => ({
     return null;
   },
 }));
-vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), retainLspRoots: () => Promise.resolve() }));
+vi.mock("./lspClient", () => ({ stopAllLsp: () => Promise.resolve(), stopEvictedLspRoots: () => Promise.resolve() }));
 
 const { default: Editor } = await import("./Editor");
 const { setBufferAccess } = await import("./liveBuffers");

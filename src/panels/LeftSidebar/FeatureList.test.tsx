@@ -447,6 +447,11 @@ describe("FeatureList", () => {
       name: "Auth v2",
     });
     await screen.findByText("Auth v2");
+    // The slug, and with it every member's branch, was frozen at creation: a
+    // rename is a record write and nothing else. The note in the prompt says
+    // so, and this is what keeps the note true.
+    const GIT = ["create_worktree_in", "create_worktree", "remove_worktree", "remove_worktree_and_branch", "delete_remote_branch"];
+    expect(bridge.calls.filter((c) => GIT.includes(c.cmd))).toEqual([]);
   });
 
   it("opens Add repository with the members left out", async () => {
