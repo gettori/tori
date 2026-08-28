@@ -56,13 +56,18 @@ function vendorOfModel(id: string): string | undefined {
  *  so wearing it over a `gpt-*` model that some other agent is running would
  *  name the wrong program. Anthropic's is the company's, so it is the one mark
  *  a bare model id can earn. */
-function markForModel(id: string): Component<MarkProps> | undefined {
-  if (vendorOfModel(id) === "anthropic") return agentMark("claude");
-  return undefined;
+function markForModel(id: string): string | undefined {
+  return vendorOfModel(id) === "anthropic" ? "claude" : undefined;
 }
 
 /**
- * The mark for the provider behind a session, for `<Icon icon={...}>`.
+ * Which mark a session earns, as the key `agentMarks` files them under, or
+ * `null` for a session whose provider Sway cannot name.
+ *
+ * The key, not the component, because two callers want two different things out
+ * of one decision: `providerIcon` wants the glyph, and a caller tinting that
+ * glyph wants to know *whose* logo it ended up being. Resolving twice, once per
+ * question, is how the tint and the mark drift apart.
  *
  * The model id is asked first and the agent second, because they answer
  * different questions: a agent can run a model that is not its vendor's
@@ -77,10 +82,10 @@ function markForModel(id: string): Component<MarkProps> | undefined {
  * different icon simply falls through to the brain here - the settings cards,
  * which have the adapter itself rather than only its id, honour the field.
  */
-export function providerIcon(
+export function providerMarkKey(
   model: string | null | undefined,
   agentId?: string | null,
-): Component<MarkProps> {
+): string | null {
   const id = (model ?? "").toLowerCase();
   const byModel = markForModel(id);
   if (byModel) return byModel;
@@ -97,6 +102,16 @@ export function providerIcon(
   // one, is the router mismatch this exists to catch.
   const declared = agentId ? MARK_VENDORS[agentId] : undefined;
   const running = vendorOfModel(id);
-  if (declared && running && declared !== running) return Brain;
-  return agentMark(agentId) ?? Brain;
+  if (declared && running && declared !== running) return null;
+  return agentId && agentMark(agentId) ? agentId : null;
+}
+
+/** The mark for the provider behind a session, for `<Icon icon={...}>`. The
+ *  brain is what a session with no nameable provider wears; see
+ *  `providerMarkKey` for the decision itself. */
+export function providerIcon(
+  model: string | null | undefined,
+  agentId?: string | null,
+): Component<MarkProps> {
+  return agentMark(providerMarkKey(model, agentId)) ?? Brain;
 }
