@@ -470,8 +470,14 @@ export type PurgeUnderPath = { path: string };
 // A whole workspace key is going away (a Feature was deleted). Unlike a path
 // purge nothing on disk is touched: every per-workspace store drops the key so
 // a later Feature reusing nothing of it starts clean. Emitted after the delete.
+//
+// `roots` are the Feature's member folders, and only the debug state keyed on
+// one is dropped for them. Deliberately not the whole per-workspace sweep: the
+// delete *offers* to remove each worktree rather than removing it, so a member
+// the user keeps can still be opened as a branch unit, and its tabs, terminals
+// and tree state are that unit's, not the Feature's.
 export const PURGE_WORKSPACE = "sway:purge-workspace";
-export type PurgeWorkspace = { workspace: string };
+export type PurgeWorkspace = { workspace: string; roots?: string[] };
 
 // Payload-carrying event: ask the sidebar to open its own branch-removal
 // confirmation for a branch-unit. Emitted by the Pull Requests panel once a pull
