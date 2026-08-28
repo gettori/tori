@@ -214,16 +214,20 @@ fn member_mut<'a>(feature: &'a mut Feature, repo_path: &str) -> Result<&'a mut M
         .ok_or_else(|| format!("{repo_path} is not a member of {}", feature.name))
 }
 
+/// What the last-member refusal says, so the row menu can draw the reason on a
+/// refusing Remove rather than waiting for the command to answer with it.
+pub const LAST_MEMBER: &str = "A Feature needs at least one repository. Delete the Feature instead.";
+
 /// Detach the record only. The worktree stays on disk; removing it is the
 /// existing `remove_worktree` flow's job, with its own guards.
 pub fn remove_member(store: &Store, feature_id: &str, repo_path: &str) -> Result<(), String> {
     store.mutate(|file| {
         let feature = feature_mut(file, feature_id)?;
-        let before = feature.members.len();
-        feature.members.retain(|m| !same_path(&m.repo_path, repo_path));
-        if feature.members.len() == before {
-            return Err(format!("{repo_path} is not a member of {}", feature.name));
+        member_mut(feature, repo_path)?;
+        if feature.members.len() <= 1 {
+            return Err(LAST_MEMBER.into());
         }
+        feature.members.retain(|m| !same_path(&m.repo_path, repo_path));
         Ok(())
     })
 }
@@ -537,27 +541,66 @@ pub mod commands {
         .await
     }
 
-    #[tauri::command]
-    pub async fn remove_member(feature_id: String, repo_path: String) -> Result<(), String> {
-        blocking("remove_member", move || super::remove_member(&Store::default_location(), &feature_id, &repo_path)).await
+    /// A record-only mutation: run it, reload, and announce the result. Every
+    /// consumer of `createFeatureMembers` reads on the event, so a rename or a
+    /// reorder that emits nothing is invisible outside the sidebar's own signal.
+    fn announce(
+        app: &AppHandle,
+        store: &Store,
+        feature_id: &str,
+        run: impl FnOnce() -> Result<(), String>,
+    ) -> Result<Feature, String> {
+        run()?;
+        let feature = super::load_feature(store, feature_id)?;
+        let _ = app.emit("features://changed", &feature);
+        Ok(feature)
     }
 
     #[tauri::command]
-    pub async fn reorder_members(feature_id: String, repo_paths: Vec<String>) -> Result<(), String> {
-        blocking("reorder_members", move || super::reorder_members(&Store::default_location(), &feature_id, &repo_paths)).await
-    }
-
-    #[tauri::command]
-    pub async fn rename_member(feature_id: String, repo_path: String, display_name: String) -> Result<(), String> {
-        blocking("rename_member", move || {
-            super::rename_member(&Store::default_location(), &feature_id, &repo_path, &display_name)
+    pub async fn remove_member(app: AppHandle, feature_id: String, repo_path: String) -> Result<Feature, String> {
+        blocking("remove_member", move || {
+            let store = Store::default_location();
+            announce(&app, &store, &feature_id, || {
+                super::remove_member(&store, &feature_id, &repo_path)
+            })
         })
         .await
     }
 
     #[tauri::command]
-    pub async fn rename_feature(feature_id: String, name: String) -> Result<(), String> {
-        blocking("rename_feature", move || super::rename_feature(&Store::default_location(), &feature_id, &name)).await
+    pub async fn reorder_members(app: AppHandle, feature_id: String, repo_paths: Vec<String>) -> Result<Feature, String> {
+        blocking("reorder_members", move || {
+            let store = Store::default_location();
+            announce(&app, &store, &feature_id, || {
+                super::reorder_members(&store, &feature_id, &repo_paths)
+            })
+        })
+        .await
+    }
+
+    #[tauri::command]
+    pub async fn rename_member(
+        app: AppHandle,
+        feature_id: String,
+        repo_path: String,
+        display_name: String,
+    ) -> Result<Feature, String> {
+        blocking("rename_member", move || {
+            let store = Store::default_location();
+            announce(&app, &store, &feature_id, || {
+                super::rename_member(&store, &feature_id, &repo_path, &display_name)
+            })
+        })
+        .await
+    }
+
+    #[tauri::command]
+    pub async fn rename_feature(app: AppHandle, feature_id: String, name: String) -> Result<Feature, String> {
+        blocking("rename_feature", move || {
+            let store = Store::default_location();
+            announce(&app, &store, &feature_id, || super::rename_feature(&store, &feature_id, &name))
+        })
+        .await
     }
 
     #[tauri::command]
@@ -744,12 +787,33 @@ mod tests {
         let wt = tmp.join("wt");
         let wt_str = wt.to_string_lossy().into_owned();
         git(&r, &["worktree", "add", "-q", "-b", "feat/f", &wt_str]);
-        let store = store_with(&tmp, vec![feature("f", vec![member(&repo_path, Some(&wt_str), MemberState::Present)])]);
+        let store = store_with(
+            &tmp,
+            vec![feature(
+                "f",
+                vec![
+                    member(&repo_path, Some(&wt_str), MemberState::Present),
+                    member("/r/b", None, MemberState::WorktreeMissing),
+                ],
+            )],
+        );
 
         remove_member(&store, "f", &repo_path).unwrap();
-        assert!(store.load().features[0].members.is_empty());
+        let members = store.load().features[0].members.clone();
+        assert_eq!(members.iter().map(|m| m.repo_path.as_str()).collect::<Vec<_>>(), ["/r/b"]);
         assert!(wt.join("a.txt").is_file(), "the worktree is untouched");
         assert!(remove_member(&store, "f", &repo_path).is_err(), "a second removal names the absent member");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn remove_member_refuses_the_last_one_and_points_at_delete() {
+        let tmp = unique_tmp();
+        let store = store_with(&tmp, vec![feature("f", vec![member("/r/a", None, MemberState::WorktreeMissing)])]);
+
+        let err = remove_member(&store, "f", "/r/a").expect_err("the last member stays");
+        assert_eq!(err, LAST_MEMBER);
+        assert_eq!(store.load().features[0].members.len(), 1, "the record is intact");
         std::fs::remove_dir_all(&tmp).ok();
     }
 

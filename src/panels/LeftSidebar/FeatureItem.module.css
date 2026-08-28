@@ -28,6 +28,35 @@
   min-width: 0;
 }
 
+.disclosure {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+  padding: 0;
+  border: 0;
+  border-radius: var(--sway-radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.disclosure:hover {
+  color: var(--fg-default);
+}
+
+.caret {
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+  transition: transform 120ms ease;
+}
+
+.caretOpen {
+  transform: rotate(90deg);
+}
+
 .name {
   flex: 1 1 auto;
   white-space: nowrap;
@@ -89,4 +118,62 @@
   display: flex;
   flex-wrap: wrap;
   gap: calc(4px * var(--ui-scale));
+}
+
+/* The expanded list. Uncapped, unlike the chip row: every member needs a row a
+   right-click can land on, and one hidden behind a +N would have none. */
+.members {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  gap: calc(2px * var(--ui-scale));
+}
+
+.member {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  min-width: 0;
+  cursor: grab;
+}
+
+.member:hover {
+  background: var(--neutral-hover);
+}
+
+.memberDragging {
+  opacity: 0.5;
+}
+
+/* The whole row, not an edge line. A drop puts the carried member where this
+   one sits, which is above it going up and below it going down; an edge would
+   be right half the time. */
+.memberOver {
+  background: var(--brand-wash);
+  box-shadow: inset 0 0 0 1px var(--brand-default);
+}
+
+.memberName {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--sway-text-sm);
+  color: var(--fg-default);
+}
+
+.memberState {
+  flex: 0 0 auto;
+  font-size: var(--sway-text-2xs);
+  color: var(--fg-muted);
+}
+
+.member[data-state="failed"] .memberState,
+.member[data-state="repo-missing"] .memberState,
+.member[data-state="worktree-missing"] .memberState {
+  color: var(--danger-fg);
 }

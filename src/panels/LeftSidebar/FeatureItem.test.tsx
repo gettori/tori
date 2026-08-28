@@ -35,12 +35,16 @@ function feature(members: Member[]): Feature {
   };
 }
 
-const mount = (f: Feature, onRetry = () => {}) =>
+const mount = (f: Feature, onRetry = () => {}, extra: Record<string, unknown> = {}) =>
   render(() => (
     <ul>
-      <FeatureItem feature={f} spaces={SPACES} onRetry={onRetry} />
+      <FeatureItem feature={f} spaces={SPACES} onRetry={onRetry} {...extra} />
     </ul>
   ));
+
+const expand = async () => fireEvent.click(await screen.findByRole("button", { name: /^Show members/ }));
+const memberRows = (container: HTMLElement) =>
+  Array.from(container.querySelectorAll<HTMLElement>("li[data-member]"));
 
 describe("FeatureItem", () => {
   it("caps the chip row at six and counts the rest", () => {
@@ -75,10 +79,73 @@ describe("FeatureItem", () => {
     const badge = screen.getByRole("img", { name: "Failed" });
     expect(badge.getAttribute("title")).toBe("refusing to overwrite");
     expect(screen.getByRole("img", { name: "Creating" })).toBeTruthy();
-    const buttons = screen.getAllByRole("button");
+    // By name, not every button on the row: the disclosure is one too.
+    const buttons = screen.getAllByRole("button", { name: /^Retry/ });
     expect(buttons.map((b) => b.textContent)).toEqual(["Retry web"]);
     fireEvent.click(buttons[0]);
     expect(onRetry).toHaveBeenCalledWith(failed);
     await expectNoAxeViolations(container);
+  });
+
+  describe("the member list", () => {
+    const seven = () => feature(Array.from({ length: 7 }, (_, i) => member(`/w/repo-${i}`, i)));
+
+    it("opens one row per member, uncapped, and puts the chip row away", async () => {
+      const { container } = mount(seven());
+      expect(container.querySelectorAll("[data-chip]").length).toBe(CHIP_CAP);
+
+      await expand();
+
+      // Seven rows where the chip row could only ever show six: a member behind
+      // the `+N` is a member whose rename, reorder and repair have no home.
+      expect(memberRows(container).length).toBe(7);
+      expect(container.querySelector("[data-more]")).toBeNull();
+      expect(memberRows(container).map((r) => r.getAttribute("data-member"))).toEqual(
+        Array.from({ length: 7 }, (_, i) => `/w/repo-${i}`),
+      );
+    });
+
+    it("names each member and says what state it is in", async () => {
+      const { container } = mount(
+        feature([member("/w/api", 0), member("/w/web", 1, { kind: "worktree-missing" })]),
+      );
+      await expand();
+
+      const rows = memberRows(container);
+      expect(rows.map((r) => r.textContent)).toEqual(["AapiReady", "WwebWorktree missing"]);
+      expect(rows[1].getAttribute("data-state")).toBe("worktree-missing");
+    });
+
+    it("carries a row menu and stays clean under axe with it open", async () => {
+      const memberMenu = (m: Member) => [
+        { label: "Rename…", onClick: () => {} },
+        { label: "Move up", disabled: m.order === 0, onClick: () => {} },
+      ];
+      const { container } = mount(feature([member("/w/api", 0), member("/w/web", 1)]), () => {}, {
+        memberMenu,
+      });
+      await expand();
+
+      fireEvent.contextMenu(memberRows(container)[1]);
+      await screen.findByText("Move up");
+      await expectNoAxeViolations(container);
+    });
+
+    it("drags a row onto the one above it and commits that order", async () => {
+      const onReorder = vi.fn();
+      const { container } = mount(
+        feature([member("/w/api", 0), member("/w/web", 1), member("/o/dotfiles", 2)]),
+        () => {},
+        { onReorder },
+      );
+      await expand();
+
+      const [api, web] = memberRows(container);
+      fireEvent.dragStart(web);
+      fireEvent.dragOver(api);
+      fireEvent.drop(api);
+
+      expect(onReorder).toHaveBeenCalledWith(["/w/web", "/w/api", "/o/dotfiles"]);
+    });
   });
 });

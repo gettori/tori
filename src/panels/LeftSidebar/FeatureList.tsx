@@ -9,7 +9,8 @@ import ConfirmDialog from "../../components/Dialogs/ConfirmDialog";
 import { pushToast } from "../../components/Toasts/Toasts";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
-import { memberState, type Feature, type Member, featureKey } from "../../utils/features";
+import { memberState, type Feature, type Member, featureKey, LAST_MEMBER } from "../../utils/features";
+import { moveKey } from "../../utils/dragReorder";
 import { gitStateFor } from "../../utils/gitActions";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
 import styles from "./FeatureList.module.css";
@@ -42,6 +43,10 @@ export default function FeatureList(props: {
   const [dialog, setDialog] = createSignal<{ feature?: Feature } | null>(null);
   const [renameReq, setRenameReq] = createSignal<Feature | null>(null);
   const [deleteReq, setDeleteReq] = createSignal<Feature | null>(null);
+  const [memberRenameReq, setMemberRenameReq] = createSignal<{ feature: Feature; member: Member } | null>(null);
+  // Kept here rather than on the row: applying a record replaces the object the
+  // `<For>` keys on, so a row's own open state would not survive a rename.
+  const [expanded, setExpanded] = createSignal<Record<string, boolean>>({});
 
   // Latest request wins: a refetch started later must not be overwritten by
   // an earlier one that resolved later.
@@ -108,16 +113,46 @@ export default function FeatureList(props: {
     });
   }
 
+  // Every record-only command answers with the reloaded Feature and emits
+  // `features://changed` for the surfaces outside this list; applying the
+  // answer here is only what keeps the row from waiting on the round trip.
+  async function mutate(command: string, args: Record<string, unknown>) {
+    try {
+      const next = await invoke<Feature>(command, args);
+      if (next) apply(next);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function rename(feature: Feature, name: string) {
     setRenameReq(null);
     const trimmed = name.trim();
     if (!trimmed || trimmed === feature.name) return;
-    try {
-      await invoke("rename_feature", { featureId: feature.id, name: trimmed });
-      apply({ ...feature, name: trimmed });
-    } catch (e) {
-      setError(String(e));
-    }
+    await mutate("rename_feature", { featureId: feature.id, name: trimmed });
+  }
+
+  async function renameMember(feature: Feature, member: Member, name: string) {
+    setMemberRenameReq(null);
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === member.displayName) return;
+    await mutate("rename_member", { featureId: feature.id, repoPath: member.repoPath, displayName: trimmed });
+  }
+
+  const reorder = (feature: Feature, repoPaths: string[]) =>
+    mutate("reorder_members", { featureId: feature.id, repoPaths });
+
+  const removeMember = (feature: Feature, member: Member) =>
+    mutate("remove_member", { featureId: feature.id, repoPath: member.repoPath });
+
+  /** Member repo paths in the order the record holds them. */
+  const orderOf = (feature: Feature) =>
+    [...feature.members].sort((a, b) => a.order - b.order).map((m) => m.repoPath);
+
+  function move(feature: Feature, member: Member, by: -1 | 1) {
+    const keys = orderOf(feature);
+    const target = keys[keys.indexOf(member.repoPath) + by];
+    if (target) void reorder(feature, moveKey(keys, member.repoPath, target));
   }
 
   // The record is gone; so is every store keyed by it, before the selection
@@ -146,6 +181,28 @@ export default function FeatureList(props: {
     { separator: true },
     { label: "Delete…", danger: true, onClick: () => setDeleteReq(feature) },
   ];
+
+  // Refusing rather than disabled for the last member: the row stays reachable
+  // by arrow key, and the reason the backend would answer with is drawn on it
+  // here instead of arriving as an error after the click.
+  const memberMenu = (feature: Feature) => (member: Member): MenuItem[] => {
+    const keys = orderOf(feature);
+    const i = keys.indexOf(member.repoPath);
+    const last = feature.members.length <= 1;
+    return [
+      { label: "Rename…", onClick: () => setMemberRenameReq({ feature, member }) },
+      { label: "Move up", disabled: i <= 0, onClick: () => move(feature, member, -1) },
+      { label: "Move down", disabled: i < 0 || i >= keys.length - 1, onClick: () => move(feature, member, 1) },
+      { separator: true },
+      {
+        label: "Remove repository",
+        danger: true,
+        refusing: last,
+        note: last ? LAST_MEMBER : undefined,
+        onClick: () => void removeMember(feature, member),
+      },
+    ];
+  };
 
   const deleteMessage = (feature: Feature) =>
     [
@@ -197,6 +254,10 @@ export default function FeatureList(props: {
                 onSelect={props.onSelect}
                 onRetry={(m) => retry(f, m)}
                 menu={menu(f)}
+                memberMenu={memberMenu(f)}
+                onReorder={(repoPaths) => void reorder(f, repoPaths)}
+                expanded={!!expanded()[f.id]}
+                onExpand={(open) => setExpanded((prev) => ({ ...prev, [f.id]: open }))}
               />
             )}
           </For>
@@ -224,6 +285,19 @@ export default function FeatureList(props: {
             okLabel="Rename"
             onSubmit={(v) => void rename(f(), v)}
             onCancel={() => setRenameReq(null)}
+          />
+        )}
+      </Show>
+
+      <Show when={memberRenameReq()}>
+        {(req) => (
+          <PromptModal
+            title={`Rename ${req().member.displayName}`}
+            initial={req().member.displayName}
+            note="The repository and its worktree stay as they are; only the name shown here changes."
+            okLabel="Rename"
+            onSubmit={(v) => void renameMember(req().feature, req().member, v)}
+            onCancel={() => setMemberRenameReq(null)}
           />
         )}
       </Show>

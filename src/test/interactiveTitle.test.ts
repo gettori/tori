@@ -185,7 +185,7 @@ const KEPT = new Map<string, Kept>([
     { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` },
   ],
   ["panels/LeftSidebar/FeatureItem.tsx", { count: 4, reason: TRUNCATION }],
-  ["panels/LeftSidebar/FeatureList.tsx", { count: 2, reason: HEADING }],
+  ["panels/LeftSidebar/FeatureList.tsx", { count: 3, reason: HEADING }],
   ["panels/LeftSidebar/branchTruncation.test.tsx", { count: 3, reason: FIXTURE }],
   ["panels/LeftSidebar/forgeChipRow.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/needsYou.test.tsx", { count: 1, reason: FIXTURE }],

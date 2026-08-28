@@ -1209,6 +1209,28 @@ describe("multi-root search", () => {
     await expectNoAxeViolations(container);
   });
 
+  // A member rename and a member reorder (#159 phase 1) reach here as a new
+  // `roots` prop, since the shared tinted-members resource refetches on the
+  // emit the commands now send. What this pins is the other half: the groups
+  // follow the prop rather than the order and the names of the first render.
+  it("follows a renamed and reordered roots prop", async () => {
+    bridge.respond = () => ONE_FILE();
+    const [roots, setRoots] = createSignal(MEMBERS);
+    render(() => (
+      <SearchPanel root={API} roots={roots()} workspace="feature:f1" focusNonce={0} />
+    ));
+    await type("ab");
+    const order = () => Array.from(document.querySelectorAll("[data-root]")).map((s) => s.getAttribute("data-root"));
+    expect(order()).toEqual([API, WEB, DOCS]);
+
+    setRoots([{ ...MEMBERS[1], label: "Storefront" }, MEMBERS[0], MEMBERS[2]]);
+
+    await waitFor(() => expect(order()).toEqual([WEB, API, DOCS]));
+    // "Storefront" -> "S", where "Web App" gave "WA".
+    expect(sectionEl(WEB).textContent).toContain("S");
+    expect(sectionEl(WEB).textContent).not.toContain("WA");
+  });
+
   it("draws no section header for a lone root", async () => {
     bridge.respond = () => ONE_FILE();
     mount();

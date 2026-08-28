@@ -81,6 +81,11 @@ export function memberState(state: MemberState): MemberStateSummary {
   }
 }
 
+/** What `features::remove_member` answers when the last member would go. The
+ *  row menu draws it on a refusing Remove rather than waiting for the click to
+ *  fail; the Rust constant `features::LAST_MEMBER` is the same string. */
+export const LAST_MEMBER = "A Feature needs at least one repository. Delete the Feature instead.";
+
 /** The workspace key prefix for a Feature: `feature:<id>`. A path never starts
  *  with it, so the two key spaces cannot collide. */
 export const FEATURE_KEY_PREFIX = "feature:";
