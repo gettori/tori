@@ -96,6 +96,7 @@ const ROW_ONCLICK =
   "a row-level `div` with an `onClick` and no keyboard path, so its `title` shows the full text of a line no Tab reaches. Making these real controls is its own ticket; sweeping them onto `Tooltip` here would only put keyboard-openable hover text on something the keyboard still cannot select";
 
 const KEPT = new Map<string, Kept>([
+  ["App.tsx", { count: 1, reason: `${HEADING} - the quit confirmation` }],
   ["components/Dialog/Dialog.test.tsx", { count: 1, reason: FIXTURE }],
   ["components/Dialogs/AskpassDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/BranchRemoveDialog.tsx", { count: 1, reason: HEADING }],

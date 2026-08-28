@@ -29,6 +29,7 @@ import Toolbar from './components/Toolbar/Toolbar';
 import WindowControls from './components/WindowControls/WindowControls';
 import Resizer from './components/Resizer/Resizer';
 import AskpassDialog from './components/Dialogs/AskpassDialog';
+import ConfirmDialog, { type ConfirmReq } from './components/Dialogs/ConfirmDialog';
 import ToastRegion from './components/Toasts/Toasts';
 import Settings from './panels/Settings/Settings';
 import UpdatePill from './components/UpdatePill/UpdatePill';
@@ -74,6 +75,7 @@ import {
   type PurgeWorkspace,
 } from './utils/events';
 import { dispatchWindowHotkey } from './utils/hotkeys';
+import { registerCloseGuard } from './utils/closeGuard';
 import { windowDragStart } from './utils/windowDrag';
 import {
   MAX_PANES,
@@ -431,6 +433,31 @@ function App() {
   // own async load. Cleared as soon as the panel closes, so reopening Settings
   // by hand is the ordinary panel.
   const [welcome, setWelcome] = createSignal(false);
+
+  // Quitting has no undo, and the red traffic light sits a few pixels from the
+  // sidebar toggle, so the app asks first. A close *guard* rather than a second
+  // `onCloseRequested`: only one listener can own the window's close (see
+  // utils/closeGuard), and the editor's unsaved-buffer prompt is already it.
+  // This runs ahead of that one, so a cancelled quit never reaches the buffers.
+  const [quitReq, setQuitReq] = createSignal<ConfirmReq | null>(null);
+  function resolveQuit(v: boolean) {
+    const req = quitReq();
+    setQuitReq(null);
+    req?.resolve(v);
+  }
+  onCleanup(
+    registerCloseGuard(
+      () =>
+        new Promise<boolean>((resolve) =>
+          setQuitReq({
+            title: 'Quit Sway?',
+            message: 'Running sessions and terminals will be stopped.',
+            confirmLabel: 'Quit',
+            resolve,
+          }),
+        ),
+    ),
+  );
 
   createEffect(() => {
     const s = selected();
@@ -1084,6 +1111,17 @@ function App() {
 
       <Show when={shortcutsOpen()}>
         <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
+      </Show>
+
+      <Show when={quitReq()}>
+        <ConfirmDialog
+          title={quitReq()!.title}
+          message={quitReq()!.message}
+          confirmLabel={quitReq()!.confirmLabel}
+          danger
+          onConfirm={() => resolveQuit(true)}
+          onCancel={() => resolveQuit(false)}
+        />
       </Show>
 
       <AskpassDialog />
