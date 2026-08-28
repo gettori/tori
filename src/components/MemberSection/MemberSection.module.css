@@ -1,0 +1,61 @@
+/* One member's band in a right-panel list. The tree and the Search panel keep
+   their own copies of this header because theirs carry per-section actions; this
+   one is the three list panels' shared shape. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  width: 100%;
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+  text-align: left;
+}
+
+.toggle {
+  border-inline: 0;
+  border-top: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.toggle:hover {
+  background: var(--neutral-subtle);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--sway-text-xs);
+  font-weight: 600;
+  color: var(--fg-default);
+}
+
+.count {
+  flex: 0 0 auto;
+  font-size: var(--sway-text-2xs);
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A member that cannot be opened says so here rather than in a tooltip: this is
+   the only spoken account of why its section is empty. */
+.badge {
+  flex: 0 0 auto;
+  font-size: var(--sway-text-2xs);
+  color: var(--fg-muted);
+}
