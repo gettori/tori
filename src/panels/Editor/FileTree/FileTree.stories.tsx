@@ -95,7 +95,7 @@ type Story = StoryObj<typeof meta>;
 /** A Feature's three members, the last one with no worktree on disk: it keeps
  *  its header and offers the repair instead of pretending to be an empty repo. */
 export const FeatureMembers: Story = {
-  args: { roots: MEMBERS, onRetry: (path: string) => console.log("retry", path) },
+  args: { roots: MEMBERS, onRepair: (path: string) => console.log("repair", path) },
 };
 
 /** Every member usable, which is the ordinary case. */

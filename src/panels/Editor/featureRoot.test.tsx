@@ -16,8 +16,11 @@ installAnimationFrame();
 const A = "/r/a/.sway/worktrees/auth";
 const B = "/r/b/.sway/worktrees/auth";
 const FILE = `${A}/a.txt`;
-// The second member never got a worktree, so its section is keyed by the repo.
+// Neither of these ever got a worktree, so their sections are keyed by the repo.
+// Two broken members, not one, because the repair they are offered differs: a
+// creation that failed retries, a repo that moved has to be located first.
 const REPO_B = "/r/b";
+const REPO_C = "/r/c";
 
 const FEATURE = {
   id: "f1",
@@ -33,12 +36,15 @@ const FEATURE = {
       state: { kind: "failed", reason: "clone refused" },
       order: 1,
     },
+    { repoPath: REPO_C, displayName: "docs", worktreePath: null, state: { kind: "repo-missing" }, order: 2 },
   ],
 };
 
 const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 // What `git_status` answers, for the tests that care whether a slot is filled.
 let gitRows: unknown[] = [];
+// What the folder picker answers; null is the cancelled one.
+let picked: string | null = null;
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     calls.push({ cmd, args: args ?? {} });
@@ -58,6 +64,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve([FEATURE]);
       case "get_config":
         return Promise.resolve({ spaces: [{ name: "work", color: "Sky", projects: [{ path: "/r/a" }] }] });
+      case "pick_folder":
+        return Promise.resolve(picked);
       case "git_ahead_behind":
         return Promise.resolve({ ahead: 0, behind: 0, has_upstream: false });
       default:
@@ -198,12 +206,12 @@ describe("the editor inside a Feature", () => {
         <PaneView pinKind="file" />
       </>
     ));
-    await waitFor(() => expect(sectionRoots()).toEqual([A, REPO_B]));
-    // Both members wear a chip, and the one outside every Space is untinted.
+    await waitFor(() => expect(sectionRoots()).toEqual([A, REPO_B, REPO_C]));
+    // Every member wears a chip, and the ones outside every Space are untinted.
     // Scoped to the tree's sections: a file tab wears a chip of its own (#158),
     // so a bare `[data-chip]` sweep would answer for both surfaces at once.
     const chips = Array.from(document.querySelectorAll<HTMLElement>("[data-root] [data-chip]"));
-    expect(chips.map((c) => c.textContent)).toEqual(["A", "W"]);
+    expect(chips.map((c) => c.textContent)).toEqual(["A", "W", "D"]);
     expect(chips[0].style.getPropertyValue("--chip-hue")).not.toBe("");
     expect(chips[1].style.getPropertyValue("--chip-hue")).toBe("");
 
@@ -213,6 +221,50 @@ describe("the editor inside a Feature", () => {
     await waitFor(() =>
       expect(calls.find((c) => c.cmd === "retry_member")?.args).toEqual({ featureId: "f1", repoPath: REPO_B }),
     );
+  });
+
+  // The button's label and the command behind it come from one value, the
+  // member's `action`. They used to disagree: every section ran `retry_member`,
+  // so a section reading "Locate" called a command that cannot read the repo it
+  // was about to fail on, and left the member Failed until the next read.
+  it("locates a member whose repo moved rather than retrying it", async () => {
+    picked = "/moved/docs";
+    mounted = render(() => (
+      <>
+        <Editor selected={featureSel(A, [A]) as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
+    await waitFor(() => expect(sectionRoots()).toEqual([A, REPO_B, REPO_C]));
+
+    const repair = document.querySelector<HTMLElement>(`[data-repair="${REPO_C}"]`)!;
+    expect(repair.textContent).toBe("Locate");
+    repair.click();
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.cmd === "relocate_member")?.args).toEqual({
+        featureId: "f1",
+        repoPath: REPO_C,
+        newRepoPath: "/moved/docs",
+      }),
+    );
+    expect(calls.some((c) => c.cmd === "retry_member")).toBe(false);
+  });
+
+  it("leaves a located member alone when the picker is cancelled", async () => {
+    picked = null;
+    mounted = render(() => (
+      <>
+        <Editor selected={featureSel(A, [A]) as never} />
+        <PaneView pinKind="file" />
+      </>
+    ));
+    await waitFor(() => expect(sectionRoots()).toEqual([A, REPO_B, REPO_C]));
+
+    document.querySelector<HTMLElement>(`[data-repair="${REPO_C}"]`)!.click();
+
+    await waitFor(() => expect(calls.some((c) => c.cmd === "pick_folder")).toBe(true));
+    expect(calls.some((c) => c.cmd === "relocate_member")).toBe(false);
   });
 
   it("drops every git slot when the Feature it was showing goes away", async () => {

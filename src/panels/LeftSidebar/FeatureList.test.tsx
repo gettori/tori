@@ -45,6 +45,8 @@ const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
   features: null as Feature[] | null,
   created: null as Feature | null,
+  // What `pick_folder` answers; null is the cancelled picker.
+  picked: null as string | null,
   // What `git_status` answers per member root, for the row's change count.
   status: {} as Record<string, unknown[]>,
   handlers: new Map<string, (e: { payload: unknown }) => void>(),
@@ -58,12 +60,27 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "create_feature") return Promise.resolve(bridge.created);
     if (cmd === "worktree_status")
       return Promise.resolve({ dirty: false, unpushed: false, hasRemote: false });
-    if (cmd === "retry_member") {
-      const fixed = {
-        ...PAY,
-        members: PAY.members.map((m) => (m.repoPath === args.repoPath ? { ...m, state: { kind: "present" } } : m)),
+    if (cmd === "pick_folder") return Promise.resolve(bridge.picked);
+    // Both repairs answer with the reconciled record: `relocate_member` also
+    // rewrites `repoPath`, which is the one field a member's identity is.
+    if (cmd === "retry_member" || cmd === "relocate_member") {
+      const at = (bridge.features ?? []).findIndex((f) => f.id === args.featureId);
+      if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.featureId}`));
+      const f = bridge.features![at];
+      const next: Feature = {
+        ...f,
+        members: f.members.map((m) =>
+          m.repoPath === args.repoPath
+            ? {
+                ...m,
+                repoPath: args.newRepoPath ? String(args.newRepoPath) : m.repoPath,
+                state: { kind: "present" } as MemberState,
+              }
+            : m,
+        ),
       };
-      return Promise.resolve(fixed);
+      bridge.features = bridge.features!.map((x, i) => (i === at ? next : x));
+      return Promise.resolve(next);
     }
     // The record-only commands answer with the reloaded Feature, the shape the
     // backend took on when it started emitting `features://changed` for them.
@@ -132,6 +149,7 @@ describe("FeatureList", () => {
     bridge.handlers.clear();
     bridge.features = [AUTH, PAY];
     bridge.created = null;
+    bridge.picked = null;
     bridge.status = {};
     enterRoots([]);
   });
@@ -190,13 +208,75 @@ describe("FeatureList", () => {
     await waitFor(() => expect(listCalls()).toBe(2));
   });
 
+  // The repair lives on the member row now, so it is reached through the
+  // disclosure rather than an actions strip under the chips (#159 phase 3).
   it("wires Retry to retry_member and applies the answer", async () => {
     render(() => <FeatureList spaces={SPACES} query="" />);
-    const retry = await screen.findByRole("button", { name: "Retry ledger" });
-    fireEvent.click(retry);
+    fireEvent.click(await screen.findByRole("button", { name: "Show members of Payments" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Retry ledger" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Retry ledger" })).toBeNull());
     const call = bridge.calls.find((c) => c.cmd === "retry_member")!;
     expect(call.args).toEqual({ featureId: "pay-1", repoPath: "/w/ledger" });
+  });
+
+  // One per action `memberState` can return. The row decides which; these pin
+  // that each routes to the right command with the right arguments, and that
+  // the member stops reading broken once the answer lands.
+  describe("repairing a broken member", () => {
+    const broken = (state: MemberState) => [
+      { ...AUTH, members: [AUTH.members[0], { ...AUTH.members[1], worktreePath: null, state }] },
+      PAY,
+    ];
+    async function press(state: MemberState, name: string) {
+      bridge.features = broken(state);
+      render(() => <FeatureList spaces={SPACES} query="" />);
+      fireEvent.click(await screen.findByRole("button", { name: "Show members of Auth" }));
+      fireEvent.click(await screen.findByRole("button", { name }));
+    }
+    const gone = (name: string) => waitFor(() => expect(screen.queryByRole("button", { name })).toBeNull());
+
+    it("recreates a member whose worktree went missing", async () => {
+      await press({ kind: "worktree-missing" }, "Recreate web");
+
+      await gone("Recreate web");
+      expect(bridge.calls.find((c) => c.cmd === "retry_member")!.args).toEqual({
+        featureId: "auth-1",
+        repoPath: "/w/web",
+      });
+    });
+
+    it("retries a member the creation failed on", async () => {
+      await press({ kind: "failed", reason: "refusing to overwrite" }, "Retry web");
+
+      await gone("Retry web");
+      expect(bridge.calls.find((c) => c.cmd === "retry_member")!.args).toEqual({
+        featureId: "auth-1",
+        repoPath: "/w/web",
+      });
+    });
+
+    it("locates a member whose repo moved, through the folder picker", async () => {
+      bridge.picked = "/moved/web";
+      await press({ kind: "repo-missing" }, "Locate web");
+
+      await gone("Locate web");
+      expect(bridge.calls.some((c) => c.cmd === "pick_folder")).toBe(true);
+      expect(bridge.calls.find((c) => c.cmd === "relocate_member")!.args).toEqual({
+        featureId: "auth-1",
+        repoPath: "/w/web",
+        newRepoPath: "/moved/web",
+      });
+      // `repoPath` is the member's identity, so the row now answers to the new one.
+      await waitFor(() => expect(document.querySelector('li[data-member="/moved/web"]')).toBeTruthy());
+    });
+
+    it("leaves the record alone when the picker is cancelled", async () => {
+      await press({ kind: "repo-missing" }, "Locate web");
+
+      await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "pick_folder")).toBe(true));
+      expect(bridge.calls.some((c) => c.cmd === "relocate_member")).toBe(false);
+      expect(screen.getByRole("button", { name: "Locate web" })).toBeTruthy();
+    });
   });
 
   it("closes the dialog on creation and toasts the member that failed", async () => {
