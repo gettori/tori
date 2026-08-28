@@ -1043,6 +1043,7 @@ function App() {
             liveTabs={liveTabs()}
             showFiletree={showFiletree()}
             onToggleFiletree={toggleFiletree}
+            onActiveRoot={setActiveRoot}
           />
           <div class="work-split">
             <PaneTree node={renderedLayout()} roles={paneRoles()} />

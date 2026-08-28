@@ -10,12 +10,23 @@ import { memberState, rootOf, type Feature, type Member, type MemberStateSummary
 import { spaceHue, spaceHueRgb } from "./spaceTint";
 import { isSyntheticId } from "./syntheticTabs";
 
+/** The slice of a project a member needs: the path that says which repo belongs
+ *  to which Space, the name Docs looks its folder up by, and the branch units
+ *  that say how this repo's worktrees are laid out. */
+export type SpaceProject = {
+  name?: string;
+  path: string;
+  /** `kind` is "worktree" | "plain" | "plain-dir" | "incomplete", typed as the
+   *  string the wire carries so a `get_config` payload assigns without a cast. */
+  branchUnits?: { folderPath: string; kind: string }[];
+};
+
 /** The slice of a Space a chip needs: the name and colour the hue derives from,
- *  and the project paths that say which repo belongs to it. */
+ *  and the projects that say which repo belongs to it. */
 export type SpaceTint = {
   name: string;
   color?: string;
-  projects: { path: string }[];
+  projects: SpaceProject[];
 };
 
 /** The custom properties a tinted chip paints itself with. */
@@ -33,6 +44,15 @@ export type TintedMember = {
   /** The Space hue, absent for a repo outside every Space. */
   hue: string | undefined;
   style: ChipStyle | undefined;
+  /** The Space and project this member's repo was discovered as, for the two
+   *  surfaces that address a folder by name rather than by path: Docs looks up
+   *  `<docsRoot>/<spaceName>/<projectName>`. Absent for a repo outside every
+   *  Space, which has no such folder to find. */
+  spaceName: string | undefined;
+  projectName: string | undefined;
+  /** How this member's *repo* is laid out, which is what says whether it has a
+   *  `.shared/` folder to offer. See `projectUnitKind`. */
+  kind: string | undefined;
 };
 
 /** One member root, as the surfaces that draw a section per member take it.
@@ -123,6 +143,16 @@ export function groupByMemberRoot<T>(
   return groups;
 }
 
+/**
+ * How many member chips a capped row shows before the rest collapse into `+N`.
+ *
+ * Two surfaces cap: the sidebar's collapsed Feature row and the right panel's
+ * chip row. A list with per-member *actions* never caps, because a member no
+ * chip can reach is a member whose rename, reorder and repair are unreachable
+ * with it.
+ */
+export const CHIP_CAP = 6;
+
 /** Whether a per-member surface draws its headers. Alongside other members it
  *  has to; alone it does not, unless that one member cannot be opened, in which
  *  case the header carries the only account of why there is nothing below it. */
@@ -134,11 +164,45 @@ export function memberSectionsHeaded(roots: readonly MemberRoot[] | null | undef
 const samePath = (a: string, b: string) => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
 export function spaceOfMember(member: Pick<Member, "repoPath">, spaces: SpaceTint[]): SpaceTint | undefined {
-  return spaces.find((g) => g.projects.some((p) => samePath(p.path, member.repoPath)));
+  return projectOfMember(member, spaces)?.space;
+}
+
+/** The Space and project a member's repo was discovered as. A member's
+ *  `repoPath` *is* the project path (that is what the Space match has always
+ *  compared), so one find answers both. */
+export function projectOfMember(
+  member: Pick<Member, "repoPath">,
+  spaces: SpaceTint[],
+): { space: SpaceTint; project: SpaceProject } | undefined {
+  for (const space of spaces) {
+    const project = space.projects.find((p) => samePath(p.path, member.repoPath));
+    if (project) return { space, project };
+  }
+  return undefined;
+}
+
+/**
+ * How a project is laid out, from the unit whose folder *is* the project.
+ *
+ * Matched on `folderPath`, never taken from `branchUnits[0]`. A plain repo
+ * carries a unit per attached branch, all rooted at the repo folder itself, and
+ * since #158 it also lists the Feature worktrees inside it, each with
+ * `kind: "worktree"`. So position says nothing, and matching the *member's*
+ * worktree would answer `worktree` for a Feature worktree in a plain repo.
+ *
+ * A bare container has no unit at its own folder: every unit is a worktree
+ * beside it. That is exactly the layout `.shared/` belongs to, which is what
+ * the answer is used for.
+ */
+export function projectUnitKind(project: SpaceProject | undefined): string | undefined {
+  if (!project?.branchUnits?.length) return undefined;
+  const { path, branchUnits } = project;
+  return branchUnits.find((u) => samePath(u.folderPath, path))?.kind ?? "worktree";
 }
 
 export function tintedMember(member: Member, spaces: SpaceTint[]): TintedMember {
-  const space = spaceOfMember(member, spaces);
+  const found = projectOfMember(member, spaces);
+  const space = found?.space;
   const hue = space ? spaceHue(space.name, space.color) : undefined;
   return {
     member,
@@ -147,6 +211,9 @@ export function tintedMember(member: Member, spaces: SpaceTint[]): TintedMember 
     state: memberState(member.state),
     hue,
     style: space && hue ? { "--chip-hue": hue, "--chip-rgb": spaceHueRgb(space.name, space.color) } : undefined,
+    spaceName: space?.name,
+    projectName: found?.project.name,
+    kind: projectUnitKind(found?.project),
   };
 }
 

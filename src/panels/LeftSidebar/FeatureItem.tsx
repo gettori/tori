@@ -6,16 +6,16 @@ import ContextMenu from "../../components/Menu/ContextMenu";
 import type { MenuItem } from "../../components/Menu/rows";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import { REPAIR_LABEL, type Feature, type Member, type RepairAction } from "../../utils/features";
-import { tintedMembers, type SpaceTint } from "../../utils/featureMembers";
+import { CHIP_CAP, tintedMembers, type SpaceTint } from "../../utils/featureMembers";
 import { createDragReorder } from "../../utils/dragReorder";
 import styles from "./FeatureItem.module.css";
 
 export type { SpaceTint };
 
-/** How many member chips a *collapsed* row shows before the rest collapse into
- *  `+N`. The expanded list has no cap: a member no chip can reach is a member
- *  whose rename, reorder and repair would be unreachable with it. */
-export const CHIP_CAP = 6;
+/** Re-exported for this row's own test, which reads the cap it draws to. The
+ *  constant lives beside the member rules now, because the right panel's chip
+ *  row caps to the same number. */
+export { CHIP_CAP };
 
 /** One Feature row: the name on one line, then one chip per member in order,
  *  tinted by the Space its repo sits in. A click selects the Feature; the
