@@ -184,6 +184,17 @@ describe("WorktreeRemoveDialog", () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
+    // Remove repository detaches the record before opening this, so declining
+    // there is "keep the worktree", not "undo". Same callback, renamed button.
+    it("renames the decline button when the caller asks", () => {
+      const { onCancel } = open({ keepLabel: "Keep worktree" });
+
+      expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Keep worktree" }));
+
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
     it("focuses the confirm button, not the destructive checkbox", async () => {
       open();
       await frame();

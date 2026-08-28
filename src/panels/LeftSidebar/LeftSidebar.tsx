@@ -2587,6 +2587,7 @@ export default function LeftSidebar(props: {
           spaces={visibleSpaces()}
           query={query()}
           activeId={props.selected?.kind === "feature" ? props.selected.featureId : null}
+          countRunning={countRunningAgents}
           onSelect={(f) => selectFeature(f, props.selected?.featureId === f.id ? (props.selected.activeRoot ?? null) : null)}
           onDeleted={(f) => {
             if (props.selected?.kind === "feature" && props.selected.featureId === f.id) props.onSelect(null);

@@ -476,6 +476,46 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
     units
 }
 
+/// A plain repo's secondary worktrees as units, sorted by label. `git worktree
+/// list` always names the main worktree first, so everything after it is one a
+/// `git worktree add` made, Sway's own `.sway/worktrees/` included.
+///
+/// Only the ones **inside** the main worktree, which is where `feature_container`
+/// puts a plain repo's Feature worktrees. A linked worktree elsewhere is a
+/// project in its own right, and listing it here would put a folder outside this
+/// project under it, twice over once the sibling is probed too. The containment
+/// test runs against git's own path for the main worktree rather than the probed
+/// one, so a symlinked root cannot make it silently match nothing.
+///
+/// A branch already carrying a unit is skipped: a branch attached to the repo
+/// dir and checked out elsewhere would otherwise appear twice, and the folder
+/// the worktree names is the one that actually holds it.
+fn secondary_worktree_units(real: &[WtEntry], plain: &[BranchUnit]) -> Vec<BranchUnit> {
+    let Some(main) = real.first() else {
+        return Vec::new();
+    };
+    let inside = format!("{}/", main.path.trim_end_matches('/'));
+    let taken: HashSet<&str> = plain.iter().filter_map(|u| u.branch.as_deref()).collect();
+    let mut units: Vec<BranchUnit> = real
+        .iter()
+        .skip(1)
+        .filter(|w| w.path.starts_with(&inside))
+        .filter(|w| w.branch.as_deref().map(|b| !taken.contains(b)).unwrap_or(true))
+        .map(|w| BranchUnit {
+            label: w
+                .branch
+                .clone()
+                .unwrap_or_else(|| basename(Path::new(&w.path))),
+            folder_path: w.path.clone(),
+            branch: w.branch.clone(),
+            kind: ProjectKind::Worktree,
+            is_current: false,
+        })
+        .collect();
+    units.sort_by(|a, b| a.label.cmp(&b.label));
+    units
+}
+
 /// Classify a project folder and enumerate its branch-units.
 fn probe_project(path: &Path) -> Vec<BranchUnit> {
     // Counts only the single-flight test's own paths: tests run in parallel,
@@ -500,9 +540,15 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
     let real: Vec<WtEntry> = entries.into_iter().filter(|e| !e.bare).collect();
 
     if !has_bare {
-        // A normal repo: branch-units are its attached + current branches.
+        // A normal repo: branch-units are its attached + current branches, plus
+        // one unit per secondary worktree. Without that second half a Feature
+        // worktree in a plain repo is invisible in Sway: `plain_branch_units`
+        // enumerates `git branch` and keeps only the current checkout and the
+        // attached names, and the walkers skip `.sway/worktrees`.
         let attached = attached_branches(&load_attached(), path);
-        return plain_branch_units(path, &attached);
+        let mut units = plain_branch_units(path, &attached);
+        units.extend(secondary_worktree_units(&real, &units));
+        return units;
     }
 
     // A bare container. With no worktrees it is a cleanable stub.
@@ -2282,6 +2328,55 @@ mod tests {
             .filter_map(|u| u.branch.as_deref())
             .collect();
         assert_eq!(names2, HashSet::from(["main"]));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn plain_repo_lists_its_sway_worktrees_as_units() {
+        // What a Feature leaves behind on Keep: a checkout under `.sway/worktrees`
+        // that `git branch` names but `plain_branch_units` filters out, and that
+        // the folder walkers skip. Without a unit for it, it is gone from Sway.
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        init_repo(&repo, "main");
+        let wt = repo.join(".sway/worktrees/x");
+        git(
+            &repo,
+            &["worktree", "add", "-q", "-b", "feat/x", wt.to_str().unwrap()],
+        );
+
+        let units = probe_project(&repo);
+        assert_eq!(units.len(), 2, "{:?}", units.iter().map(|u| &u.label).collect::<Vec<_>>());
+        let main = units.iter().find(|u| u.label == "main").unwrap();
+        assert_eq!(main.kind, ProjectKind::Plain);
+        assert_eq!(main.folder_path, repo.to_string_lossy());
+        let feat = units.iter().find(|u| u.label == "feat/x").unwrap();
+        assert_eq!(feat.kind, ProjectKind::Worktree);
+        assert!(feat.folder_path.ends_with(".sway/worktrees/x"));
+        assert!(!feat.is_current);
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_worktree_outside_the_repo_is_not_one_of_its_units() {
+        // The other half of the rule: only worktrees the repo contains. A linked
+        // worktree beside it is a project of its own, and claiming it here would
+        // point a unit at a folder outside this project, then list the pair
+        // twice once the sibling is probed too.
+        let tmp = unique_tmp();
+        let repo = tmp.join("repo");
+        init_repo(&repo, "main");
+        let outside = tmp.join("repo-feature");
+        git(
+            &repo,
+            &["worktree", "add", "-q", "-b", "feature", outside.to_str().unwrap()],
+        );
+
+        let units = probe_project(&repo);
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].label, "main");
 
         std::fs::remove_dir_all(&tmp).ok();
     }

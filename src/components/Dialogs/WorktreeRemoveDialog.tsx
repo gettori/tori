@@ -27,6 +27,11 @@ export default function WorktreeRemoveDialog(props: {
   // Live shell/agent tabs running under this worktree, whose PTYs removal tears down.
   runningCount: number;
   busy: boolean;
+  /** What declining is called. "Cancel" everywhere the worktree is the only
+   *  thing at stake; "Keep worktree" where the caller has already changed
+   *  something else (Remove repository detaches the record first, so cancelling
+   *  there would read as an undo the dialog cannot perform). */
+  keepLabel?: string;
   onConfirm: (opts: { deleteLocal: boolean; deleteRemote: boolean }) => void;
   onCancel: () => void;
 }) {
@@ -54,7 +59,7 @@ export default function WorktreeRemoveDialog(props: {
       initialFocus={() => ok}
       actions={
         <>
-          <Button onClick={() => props.onCancel()}>Cancel</Button>
+          <Button onClick={() => props.onCancel()}>{props.keepLabel ?? "Cancel"}</Button>
           <Button ref={ok} variant="warn" disabled={props.busy} onClick={() => confirm()}>
             {props.busy ? "Removing…" : "Remove worktree"}
           </Button>
