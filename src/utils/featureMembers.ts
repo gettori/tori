@@ -72,6 +72,64 @@ export function resolveMemberRestriction(
   return repos.filter((p) => here.has(p));
 }
 
+/** One member's worth of rows, or the trailing bucket of rows under no member. */
+export type MemberGroup<T> = {
+  /** The member these rows belong to, null for the trailing bucket. */
+  root: MemberRoot | null;
+  items: T[];
+};
+
+/** What the trailing bucket is called wherever it is drawn. */
+export const OUTSIDE_MEMBERS_LABEL = "Outside this Feature";
+
+/**
+ * Rows split into one group per member, in member order, plus a trailing group
+ * for anything under none of them.
+ *
+ * A row under no member is kept rather than dropped: removing a repository from
+ * a Feature keeps its worktree by default, so the marks and diagnostics that
+ * point into it are still about files on disk. Silently sweeping them would
+ * destroy hand-made marks for a folder that is still there.
+ *
+ * Every member gets a group even when it has no rows, the way the tree and the
+ * Search panel draw a section per member: an empty section under a member that
+ * cannot be opened is the only place that says why it is empty.
+ *
+ * The match itself is `rootOf`'s longest-wins rule, so a member nested inside
+ * another answers with itself and no two surfaces can disagree.
+ */
+export function groupByMemberRoot<T>(
+  items: readonly T[],
+  pathOf: (item: T) => string,
+  roots: readonly MemberRoot[],
+): MemberGroup<T>[] {
+  const buckets: T[][] = roots.map(() => []);
+  // First index wins, so two members sharing a path cannot double-count a row.
+  const at = new Map<string, number>();
+  roots.forEach((r, i) => {
+    if (!at.has(r.path)) at.set(r.path, i);
+  });
+  const paths = [...at.keys()];
+  const outside: T[] = [];
+  for (const item of items) {
+    const root = rootOf(pathOf(item), paths);
+    const i = root != null ? at.get(root) : undefined;
+    if (i != null) buckets[i].push(item);
+    else outside.push(item);
+  }
+  const groups: MemberGroup<T>[] = roots.map((root, i) => ({ root, items: buckets[i] }));
+  if (outside.length) groups.push({ root: null, items: outside });
+  return groups;
+}
+
+/** Whether a per-member surface draws its headers. Alongside other members it
+ *  has to; alone it does not, unless that one member cannot be opened, in which
+ *  case the header carries the only account of why there is nothing below it. */
+export function memberSectionsHeaded(roots: readonly MemberRoot[] | null | undefined): boolean {
+  if (!roots?.length) return false;
+  return roots.length > 1 || roots.some((r) => r.state?.usable === false);
+}
+
 const samePath = (a: string, b: string) => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
 export function spaceOfMember(member: Pick<Member, "repoPath">, spaces: SpaceTint[]): SpaceTint | undefined {
