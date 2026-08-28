@@ -129,7 +129,16 @@ export default function OverlayScroll(
       </div>
       {/* Purely presentational: the real scroller above is what assistive
           tech and the keyboard already drive. */}
-      <div class={styles.track} classList={{ [styles.shown]: shown() }} ref={track} aria-hidden="true">
+      {/* `data-no-window-drag`: the track sits inside surfaces that move the
+          window on a press (utils/windowDrag), and a scrollbar is the one thing
+          there that must keep its own drag. */}
+      <div
+        class={styles.track}
+        classList={{ [styles.shown]: shown() }}
+        ref={track}
+        aria-hidden="true"
+        data-no-window-drag
+      >
         <div
           class={styles.thumb}
           classList={{ [styles.dragging]: dragging() }}
