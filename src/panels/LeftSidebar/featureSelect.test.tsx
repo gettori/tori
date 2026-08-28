@@ -174,4 +174,39 @@ describe("selecting a Feature", () => {
     expect(storesHolding("feature:f1")).toEqual([]);
     expect(storesHolding("/w/api").length).toBe(14);
   });
+
+  it("sweeps the debug stores under each member root, and leaves the rest of that folder alone", async () => {
+    // Three stores key on the member root rather than on `feature:<id>`: what a
+    // run remembered, its attach port and its watches. The Feature key going
+    // never reached them.
+    const seed = (key: string, value: unknown) =>
+      localStorage.setItem(
+        key,
+        JSON.stringify({ "feature:f1": value, [A]: value, [B]: value }),
+      );
+    seed("sway.watches", ["req.body"]);
+    seed("sway.debugAttachPorts", 9229);
+    seed("sway.debugLastTarget", { kind: "attach", port: 9229 });
+    // Not the Feature's: a member you keep can be reopened as a branch unit,
+    // and these are that unit's.
+    seed("sway.editor.tabs.v1", { paths: [`${A}/a.ts`], active: null, savedAt: 1 });
+    seed("sway.terminalTabs", { tabs: [], active: 0, savedAt: 1 });
+    seed("sway.treeExpanded.v1", { dirs: [`${A}/src`], closed: [] });
+
+    await mounted(featureSel);
+    fireEvent.contextMenu(row("Auth"));
+    pointerClick(await screen.findByText("Delete…"));
+    await screen.findByRole("dialog", { name: "Delete Auth?" });
+    fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
+    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_feature")).toBe(true));
+
+    await waitFor(() => expect(storesHolding("feature:f1")).toEqual([]));
+    for (const root of [A, B]) {
+      expect(storesHolding(root)).toEqual([
+        "sway.editor.tabs.v1",
+        "sway.terminalTabs",
+        "sway.treeExpanded.v1",
+      ]);
+    }
+  });
 });

@@ -490,29 +490,39 @@ describe("stopping", () => {
     expect(calls.filter((c) => c.cmd === "dap_stop")).toHaveLength(1);
   });
 
-  it("is swept by the same project switch that retires the language servers", () => {
+  it("is swept when the workspace changes, not when the active member moves", () => {
     // Read as source, because the alternative is mounting the whole editor to
-    // observe one line of a teardown effect. What matters is that the two
-    // live in the *same* effect: a debug run left behind by a project switch
-    // holds a process nothing on screen can name any more. The language-server
-    // half is a retire (warm roots survive, the eviction sweeps), not a stop.
-    const effect = editorSource.slice(editorSource.indexOf("on(root, (r) => {"));
-    const guard = effect.indexOf("if (!r) return;");
-    const dap = effect.indexOf("stopAllDap()");
+    // observe one line of a teardown effect.
+    //
+    // It used to live in the same effect as the language-server retire, keyed
+    // on `root`. Inside a Feature `root` is the *active member*, and moving it
+    // is a pointer move: clicking another repo in the tree stopped the debuggee
+    // and blanked the transcript (#160 phase 2). The run belongs to the
+    // workspace, so the sweep keys on the workspace.
+    const rootEffect = editorSource.slice(editorSource.indexOf("on(root, (r) => {"));
     // `touchWarmRoot`, not `retainLspRoots`: the switch reaches the LRU through
     // the cycle-free `lspWarmRoots` module now, and only asks `lspClient` to
-    // stop what fell off. Same effect, same half, different door.
-    const lsp = effect.indexOf("touchWarmRoot(");
+    // stop what fell off.
+    expect(rootEffect.indexOf("touchWarmRoot(")).toBeGreaterThan(
+      rootEffect.indexOf("if (!r) return;"),
+    );
+    // And the run is no longer in that effect at all.
+    expect(rootEffect.slice(0, rootEffect.indexOf("watchRoots"))).not.toContain("stopAllDap()");
 
-    expect(guard).toBeGreaterThan(-1);
-    expect(lsp).toBeGreaterThan(guard);
-    // And *above* the guard, unlike the servers. Deselecting the workspace
-    // leaves `r` null, which is precisely the case where nothing on screen
-    // names the run any more: swept only on the way into a new project, a
-    // debuggee would be left holding its ports and children with no way to
-    // stop it short of quitting.
+    const wsEffect = editorSource.slice(editorSource.indexOf("on(wsKey, () => {"));
+    const dap = wsEffect.indexOf("stopAllDap()");
+    const console = wsEffect.indexOf("clearDebugConsole()");
     expect(dap).toBeGreaterThan(-1);
-    expect(dap).toBeLessThan(guard);
+    // The transcript goes with it: what is on screen is another workspace's
+    // program output, and the pane has no way to say whose it was.
+    expect(console).toBeGreaterThan(dap);
+    // Unguarded, so deselecting still sweeps. That is precisely the case where
+    // nothing on screen names the run any more: swept only on the way into a
+    // new workspace, a debuggee would be left holding its ports and children
+    // with no way to stop it short of quitting.
+    expect(wsEffect.slice(0, dap)).not.toContain("return;");
+    // A memo, so a Selection rebuilt with the same key does not re-run it.
+    expect(editorSource).toContain("const wsKey = createMemo(ws);");
     expect(editorSource).toContain('from "../../utils/dapSessions"');
   });
 
