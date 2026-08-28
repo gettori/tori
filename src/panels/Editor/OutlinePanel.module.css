@@ -2,7 +2,10 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  height: 100%;
+  /* Shares the column with the member line above it inside a Feature, so it
+     takes the space that is left rather than all of it. */
+  flex: 1;
+  min-height: 0;
   background: var(--canvas-card);
   font-size: var(--sway-text-lg);
 }

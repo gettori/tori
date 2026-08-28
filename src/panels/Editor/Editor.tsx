@@ -148,7 +148,7 @@ import {
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { rootOf, selectionRoot, workspaceKey } from "../../utils/features";
-import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
+import { createFeatureMembers, focusMemberRoot, memberFor, type TintedMember } from "../../utils/featureMembers";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
 import { dropWorkspaceExpanded, mapExpandedFiles } from "../../utils/treeExpanded";
@@ -809,6 +809,27 @@ export default function Editor(props: {
   const tabMember = (path: string | null): TintedMember | null =>
     path && featureId() && !isSyntheticId(path) ? memberFor(path, members()) : null;
 
+  // The repo the surfaces that follow the *file* ask for: Debug launches in it,
+  // Session reports it, and the header line above those panes names it. Not
+  // `root()`, which is the member you last clicked in the tree, and not the
+  // whole member set either: a debuggee runs in one repo.
+  const focusRoot = () => focusMemberRoot(activeId(), members(), root());
+  const focusMember = () => (featureId() ? memberFor(focusRoot(), members()) : null);
+
+  /** Which repo the pane below is about. Only inside a Feature: with one repo
+   *  on screen there is nothing to disambiguate, and Outline, Calls, Session and
+   *  Debug all otherwise read as answers about the whole workspace. */
+  const focusMemberLine = () => (
+    <Show when={focusMember()}>
+      {(m) => (
+        <div class={styles.focusMember} data-focus-member={m().member.repoPath}>
+          <TabMemberChip member={m()} />
+          <span class={styles.focusMemberName}>{m().label}</span>
+        </div>
+      )}
+    </Show>
+  );
+
   const treeRoots = (): TreeRoot[] | undefined =>
     featureId()
       ? members().map((m) => ({
@@ -1015,7 +1036,7 @@ export default function Editor(props: {
    *  ones that root actually declares. In a monorepo those are the package's
    *  own, which is the only list runnable from the `cwd` the config will use. */
   async function openDebugPicker(kind: TargetKind) {
-    const ws = root();
+    const ws = focusRoot();
     if (!ws) return;
     const anchor = debugFilePath() ?? ws;
     const resolved = await resolveRoot(anchor, ws);
@@ -1023,7 +1044,7 @@ export default function Editor(props: {
   }
 
   async function runDebugTarget(target: DebugTarget) {
-    const ws = root();
+    const ws = focusRoot();
     if (!ws) return;
     // Remembered before the run rather than after it: a target that fails to
     // start is still the one you meant, and having to re-pick it to retry is
@@ -1045,7 +1066,7 @@ export default function Editor(props: {
   }
 
   function startDebugging() {
-    const ws = root();
+    const ws = focusRoot();
     if (!ws) return;
     const remembered = lastTargetFor(lastTargets(), ws);
     // A remembered file target whose tab is gone is not a target any more, and
@@ -1133,6 +1154,34 @@ export default function Editor(props: {
     }),
   );
 
+  // A debug run holds a *debuggee*: a process the workspace's code is running,
+  // with its own ports, open files and children. Leaving the workspace is
+  // exactly the case where nothing on screen names it any more, so it is swept
+  // on the way out rather than only when a new one arrives.
+  //
+  // Keyed on the workspace, not on `root`. Inside a Feature the debuggee belongs
+  // to the Feature, and moving the active member is a pointer move: killing the
+  // run because you clicked another repo in the tree is not a sweep, it is a
+  // stop nobody asked for. `ws()` is "" with nothing selected, so deselecting
+  // still fires.
+  //
+  // Statically imported, unlike the LSP client: `dapSessions` is deliberately
+  // editor-free, so it costs no CodeMirror in the chunk.
+  //
+  // A memo, not the bare `ws` accessor, for the reason `watchKey` is one: `on`
+  // re-runs whenever its tracked accessor's dependencies invalidate, not only
+  // when the value changes, and a Selection rebuilt with the same key would
+  // then stop the run anyway.
+  const wsKey = createMemo(ws);
+  createEffect(
+    on(wsKey, () => {
+      void stopAllDap();
+      // And the transcript with them: what is on screen is another workspace's
+      // program output, and the pane has no way to say whose it was.
+      clearDebugConsole();
+    }),
+  );
+
   // Projects already swept by local_history_prune this run.
   const prunedHistory = new Set<string>();
   // Start (and on folder switch, replace) the fs watcher so the gutter and the
@@ -1147,17 +1196,6 @@ export default function Editor(props: {
       // always mounted and is what knows which workspace is selected, and the
       // Settings panel (which badges the overlay) is usually not open.
       void loadWorkspaceSettings(r);
-      // Above the guard below, unlike the language servers. A debug run holds a
-      // *debuggee*, a process the previous project's code was running, with its
-      // own ports, open files and children. Deselecting the workspace is exactly
-      // the case where nothing left on screen names it, so sweeping only when a
-      // new project arrives would strand it with no way to stop it but quitting.
-      // Statically imported, unlike the LSP client: `dapSessions` is
-      // deliberately editor-free, so it costs no CodeMirror in the chunk.
-      void stopAllDap();
-      // And the transcript with them: what is on screen is another project's
-      // program output, and the pane has no way to say whose it was.
-      clearDebugConsole();
       if (!r) return;
       // Sweep local history for what a save can never reach: versions past the
       // age cap in files nobody has saved since, and the timelines of worktrees
@@ -1692,6 +1730,16 @@ export default function Editor(props: {
     for (const p of next.removed) dropStashEntry(p);
   }
 
+  /** What a Feature wrote under a *member root* rather than under its own key.
+   *  Narrower than `purgeWorkspaceKey` on purpose: deleting a Feature offers its
+   *  worktrees rather than removing them, and a kept one's tabs, terminals and
+   *  tree state belong to that folder as a branch unit. */
+  function dropMemberDebugState(memberRoot: string) {
+    setAttachPorts((s) => dropWorkspaceKey(s, memberRoot));
+    setLastTargets((s) => dropWorkspaceKey(s, memberRoot));
+    dropWorkspaceWatches(memberRoot);
+  }
+
   // A workspace key is gone (a Feature was deleted): every store keyed by it
   // drops the key. Marked touched so the persisted tab store drops it too.
   // Dirty text and the stash go only for paths no other workspace still has
@@ -1995,7 +2043,10 @@ export default function Editor(props: {
       noteTouch(d.path, "open");
     });
     offPurge = onWith<PurgeUnderPath>(PURGE_UNDER_PATH, ({ path }) => purgeUnder(path));
-    offPurgeWs = onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => purgeWorkspaceKey(workspace));
+    offPurgeWs = onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace, roots }) => {
+      purgeWorkspaceKey(workspace);
+      for (const r of roots ?? []) dropMemberDebugState(r);
+    });
     // Cmd+Shift+F: switch to Search mode and bump the nonce so SearchPanel
     // refocuses its input even when the mode is already active.
     offProjectSearch = onEvent(FOCUS_PROJECT_SEARCH, () => {
@@ -2574,9 +2625,11 @@ export default function Editor(props: {
             <ProblemsPanel selected={props.selected} roots={treeRoots()} />
           </Match>
           <Match when={rightMode() === "outline"}>
+            {focusMemberLine()}
             <OutlinePanel path={activeId()} />
           </Match>
           <Match when={rightMode() === "calls"}>
+            {focusMemberLine()}
             <CallsPanel path={activeId()} />
           </Match>
           <Match when={rightMode() === "bookmarks"}>
@@ -2618,14 +2671,16 @@ export default function Editor(props: {
             <TasksPanel root={root()} />
           </Match>
           <Match when={rightMode() === "debug"}>
-            <DebugPanel root={root()} selected={props.selected} />
+            {focusMemberLine()}
+            <DebugPanel root={focusRoot()} selected={props.selected} />
           </Match>
           <Match when={rightMode() === "session" && props.selected?.sessionId}>
+            {focusMemberLine()}
             <SessionPanel
               path={props.selected!.sessionPath ?? null}
               agent={props.selected!.agent ?? "claude"}
               cwd={props.selected!.sessionCwd ?? null}
-              projectRoot={root()}
+              projectRoot={focusRoot()}
               selfSessionId={props.selected!.sessionId ?? null}
               liveTabs={props.liveTabs ?? []}
             />

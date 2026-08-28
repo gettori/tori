@@ -323,7 +323,14 @@ export default function FeatureList(props: {
       return;
     }
     setFeatures((prev) => prev.filter((f) => f.id !== feature.id));
-    purgeWorkspace(featureKey(feature.id));
+    // The member roots go with the key: the three debug stores key on one, and
+    // `delete_feature` has already taken the record they could be read back
+    // from. Same rule as `tintedMember.key`, so the sweep names the folder the
+    // panels wrote under.
+    purgeWorkspace(
+      featureKey(feature.id),
+      feature.members.map((m) => m.worktreePath ?? m.repoPath),
+    );
     props.onDeleted?.(feature);
     const left = withStatuses(members).filter((m): m is SweepMember => !!m.worktreePath);
     if (!left.length) return;

@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createRoot } from "solid-js";
 import type { TintedMember } from "./featureMembers";
+import { isSyntheticId, syntheticId } from "./syntheticTabs";
 
 const bridge = vi.hoisted(() => ({
   calls: [] as string[],
@@ -38,6 +39,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 const {
   createFeatureMembers,
+  focusMemberRoot,
   groupByMemberRoot,
   memberFor,
   memberSectionsHeaded,
@@ -296,5 +298,56 @@ describe("memberSectionsHeaded", () => {
 
   it("heads every member once there is more than one", () => {
     expect(memberSectionsHeaded([root("/w/api", true), root("/w/web", true)])).toBe(true);
+  });
+});
+
+describe("focusMemberRoot", () => {
+  const tinted = (worktreePath: string, displayName: string): TintedMember =>
+    ({
+      member: { repoPath: `/repos/${displayName}`, displayName, worktreePath, state: { kind: "present" }, order: 0 },
+      key: worktreePath,
+      label: displayName,
+      state: { label: "Ready", usable: true, action: null, reason: null },
+      hue: undefined,
+      style: undefined,
+    }) as TintedMember;
+
+  const API = tinted("/w/api", "api");
+  const WEB = tinted("/w/web", "web");
+  const MEMBERS = [API, WEB];
+  const ACTIVE = "/w/api";
+
+  it("answers with the member the file in front is in", () => {
+    expect(focusMemberRoot("/w/web/src/b.ts", MEMBERS, ACTIVE)).toBe("/w/web");
+  });
+
+  it("falls back to the active root with nothing open", () => {
+    // The tree is focused and no tab exists. The member you last worked in is
+    // the only honest answer, and Debug still needs one.
+    expect(focusMemberRoot(null, MEMBERS, ACTIVE)).toBe(ACTIVE);
+    expect(focusMemberRoot(undefined, MEMBERS, ACTIVE)).toBe(ACTIVE);
+    expect(focusMemberRoot("", MEMBERS, ACTIVE)).toBe(ACTIVE);
+  });
+
+  it("falls back to the active root for a synthetic view", () => {
+    // A commit log or a history view belongs to the workspace, not to any one
+    // repo in it.
+    const id = syntheticId("log", "/w/api");
+    expect(isSyntheticId(id)).toBe(true);
+    expect(focusMemberRoot(id, MEMBERS, ACTIVE)).toBe(ACTIVE);
+  });
+
+  it("falls back to the active root for a file under no member", () => {
+    expect(focusMemberRoot("/somewhere/else/c.ts", MEMBERS, ACTIVE)).toBe(ACTIVE);
+  });
+
+  it("is the active root outright when there are no members", () => {
+    // A branch unit: nothing to be a member of, so the answer never moves.
+    expect(focusMemberRoot("/w/api/src/a.ts", [], ACTIVE)).toBe(ACTIVE);
+    expect(focusMemberRoot("/w/api/src/a.ts", undefined, ACTIVE)).toBe(ACTIVE);
+  });
+
+  it("passes a null active root through rather than inventing one", () => {
+    expect(focusMemberRoot(null, MEMBERS, null)).toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { memberState, rootOf, type Feature, type Member, type MemberStateSummary } from "./features";
 import { spaceHue, spaceHueRgb } from "./spaceTint";
+import { isSyntheticId } from "./syntheticTabs";
 
 /** The slice of a Space a chip needs: the name and colour the hue derives from,
  *  and the project paths that say which repo belongs to it. */
@@ -179,6 +180,28 @@ export function memberFor(
   }
   const root = rootOf(path, [...byRoot.keys()]);
   return root ? (byRoot.get(root) ?? null) : null;
+}
+
+/**
+ * The member root a surface that follows the file in front should use.
+ *
+ * Four ways the answer is not the active tab's member, and all four fall back
+ * to the workspace's own active root: nothing open, a synthetic view (which
+ * belongs to the workspace rather than to any one repo in it), a path under no
+ * member, and a selection that is not a Feature at all, which has no members
+ * for a path to be in.
+ *
+ * The fallback is `activeRoot` rather than nothing, because Debug, Session,
+ * Outline and Calls all have to name *a* repo: with the tree focused and no tab
+ * open, the one you last worked in is the only honest answer.
+ */
+export function focusMemberRoot(
+  path: string | null | undefined,
+  members: readonly TintedMember[] | null | undefined,
+  activeRoot: string | null,
+): string | null {
+  if (!path || isSyntheticId(path)) return activeRoot;
+  return memberFor(path, members)?.key ?? activeRoot;
 }
 
 // One generation counter and one read per generation, module-wide. The crumb,

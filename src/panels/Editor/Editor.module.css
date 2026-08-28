@@ -182,3 +182,26 @@
 
 /* The mode tabs (Files / Changes / ...) are icon-only <Tab> pills; the selected
    one's top rail is the shared Tab's, see Tab.module.css. */
+
+/* Which member the pane below is about, above Outline, Calls, Session and
+   Debug. Only inside a Feature: those four follow the file in front, so without
+   this line they read as answers about the whole workspace. */
+.focusMember {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.focusMemberName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--sway-text-xs);
+  font-weight: 600;
+  color: var(--fg-default);
+}
