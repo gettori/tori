@@ -8,6 +8,7 @@ import Tooltip from "../Tooltip/Tooltip";
 import { ChevronRight, SquareTerminal, Code2, ArrowUpRight } from "lucide-solid";
 import { memberInitials, selectionRoot } from "../../utils/features";
 import { createFeatureMembers, type TintedMember } from "../../utils/featureMembers";
+import { createDragReorder } from "../../utils/dragReorder";
 import styles from "./Toolbar.module.css";
 
 // Where you are and what to open it with: the breadcrumb to the selected
@@ -35,6 +36,17 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
   // are all broken, where the crumb falls back to the two it always had rather
   // than to an empty middle and a separator with nothing after it.
   const activeMember = () => members().find(isActive) ?? null;
+
+  // The chip row reorders the Feature as the sidebar's member list does, through
+  // the same helper. The command emits, so `members()` comes back in the new
+  // order on its own and nothing here holds a second copy of it.
+  const drag = createDragReorder({
+    keys: () => members().map((m) => m.member.repoPath),
+    onCommit: (repoPaths) => {
+      const id = featureId();
+      if (id) void invoke("reorder_members", { featureId: id, repoPaths }).catch((e) => setErr(String(e)));
+    },
+  });
 
   createEffect(
     on(
@@ -111,14 +123,25 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
                         as="button"
                         type="button"
                         class={styles.member}
-                        classList={{ [styles.memberActive]: isActive(m), [styles.memberOff]: !m.state.usable }}
+                        classList={{
+                          [styles.memberActive]: isActive(m),
+                          [styles.memberOff]: !m.state.usable,
+                          [styles.memberDragging]: drag.dragging() === m.member.repoPath,
+                          [styles.memberOver]: drag.over() === m.member.repoPath,
+                        }}
                         style={m.style}
                         disabled={!m.state.usable}
                         aria-pressed={isActive(m)}
                         aria-label={name()}
                         label={name()}
                         data-member={m.member.repoPath}
-                        onClick={() => m.member.worktreePath && props.onActiveRoot?.(m.member.worktreePath)}
+                        {...drag.rowProps(m.member.repoPath)}
+                        // A drag is a press that never becomes a click, except
+                        // where the browser disagrees; carrying a chip must not
+                        // also switch the panels below to it.
+                        onClick={() =>
+                          !drag.fromDrag() && m.member.worktreePath && props.onActiveRoot?.(m.member.worktreePath)
+                        }
                       >
                         {memberInitials(m.member)}
                       </Tooltip>

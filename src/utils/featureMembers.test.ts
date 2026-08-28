@@ -179,6 +179,15 @@ describe("memberFor", () => {
     expect(memberFor("/w/gone/src/app.ts", ALL)?.label).toBe("gone");
   });
 
+  it("resolves on the worktree, so a rename moves no file to another member", () => {
+    // A display name is the one field a rename touches (#159 phase 1), and the
+    // match has never read it. The chip over an open tab gets the new name; the
+    // tab does not change repo under it.
+    const renamed = [{ ...OUTER, label: "Payments API" }, INNER, BROKEN, NO_WORKTREE];
+    expect(memberFor("/w/outer/src/app.ts", renamed)?.member.repoPath).toBe("/repos/outer");
+    expect(memberFor("/w/outer/src/app.ts", renamed)?.label).toBe("Payments API");
+  });
+
   it("matches the root itself, not just what is under it", () => {
     expect(memberFor("/w/outer", ALL)?.label).toBe("outer");
   });

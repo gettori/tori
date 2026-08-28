@@ -1,4 +1,4 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Show, createUniqueId, type JSX } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import Icon from "../Icon/Icon";
 import { DropdownMenu as Primitive } from "../../lib/menu";
@@ -21,6 +21,12 @@ export type MenuItem =
       danger?: boolean;
       warn?: boolean;
       disabled?: boolean;
+      /** See `MenuRow`: refusing rather than disabled keeps a row that says why
+       *  reachable by arrow key. */
+      refusing?: boolean;
+      /** Why the row refuses, drawn under the label and announced after it. A
+       *  native `title` would be neither, which is what `refusing` exists for. */
+      note?: string;
     };
 
 /**
@@ -166,6 +172,33 @@ function MenuHeading(props: { children: JSX.Element }) {
   return <Primitive.GroupLabel class={styles.heading}>{props.children}</Primitive.GroupLabel>;
 }
 
+/** One action row of a flat list, with its `note` drawn under the label rather
+ *  than hung off a native `title`: a hover-only reason on a row the keyboard
+ *  can reach is the defect `src/test/interactiveTitle.test.ts` guards against,
+ *  and `describedBy` is what announces it after the label instead. */
+function NoteRow(props: { item: Extract<MenuItem, { label: string }> }) {
+  const noteId = createUniqueId();
+  return (
+    <MenuRow
+      onClick={props.item.onClick}
+      danger={props.item.danger}
+      warn={props.item.warn}
+      disabled={props.item.disabled}
+      refusing={props.item.refusing}
+      describedBy={props.item.note ? noteId : undefined}
+    >
+      <Show when={props.item.note} fallback={props.item.label}>
+        <span class={styles.noted}>
+          {props.item.label}
+          <span class={styles.note} id={noteId}>
+            {props.item.note}
+          </span>
+        </span>
+      </Show>
+    </MenuRow>
+  );
+}
+
 /** The rows of a flat `MenuItem[]`, ungrouped. Split out so `MenuRows` can put
  *  the same list inside a group or not without writing it twice. */
 function FlatRows(props: { items: MenuItem[] }) {
@@ -177,14 +210,7 @@ function FlatRows(props: { items: MenuItem[] }) {
         ) : "heading" in it ? (
           <MenuHeading>{it.heading}</MenuHeading>
         ) : (
-          <MenuRow
-            onClick={it.onClick}
-            danger={it.danger}
-            warn={it.warn}
-            disabled={it.disabled}
-          >
-            {it.label}
-          </MenuRow>
+          <NoteRow item={it} />
         )
       }
     </For>
