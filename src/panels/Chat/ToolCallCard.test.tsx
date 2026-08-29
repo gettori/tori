@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, fireEvent } from "@solidjs/testing-library";
 import { createStore } from "solid-js/store";
 import ToolCallCard from "./ToolCallCard";
 import type { ToolItem } from "./chatStore";
+// Read off disk rather than imported: vitest resolves a `.module.css` to its
+// class-name map whatever query rides along, and the map is not the text this
+// reads.
+const sheet = readFileSync(join(process.cwd(), "src/panels/Chat/Chat.module.css"), "utf8");
 
 // The card reaches for Tauri when it expands an edit, which a jsdom test has
 // none of. Stubbed to nothing: what is under test here is that the card renders
@@ -16,6 +22,31 @@ vi.mock("./highlight", () => ({
   cappedLines: vi.fn(() => null),
   langOfPath: (p: string) => p.split(".").pop() ?? "",
 }));
+
+// The row's own geometry, read off the stylesheet because jsdom lays nothing
+// out. It is here rather than left to the eye because the failure is invisible
+// until it is not: an ACP agent puts the whole command in the title (`codex`
+// sends a 300-character `sed` where claude sends `Bash`), and a text cell that
+// cannot shrink makes the row wider than the transcript, which puts a
+// horizontal scrollbar across the entire chat.
+describe("a tool row's text cells", () => {
+  /** One rule block's declarations, whitespace-normalised. */
+  const rule = (name: string) => {
+    const found = sheet.match(new RegExp(`\\.${name}\\s*\\{([^}]*)\\}`));
+    if (!found) throw new Error(`no .${name} rule in Chat.module.css`);
+    return found[1].replace(/\s+/g, " ");
+  };
+
+  // Both cells, the same three properties. `min-width: 0` is the load-bearing
+  // one: without it a flex item refuses to go below its content, and the other
+  // two never get the chance to do anything.
+  it.each(["toolName", "toolArg"])("lets %s shrink and truncate", (name) => {
+    const declarations = rule(name);
+    expect(declarations).toContain("min-width: 0");
+    expect(declarations).toContain("overflow: hidden");
+    expect(declarations).toContain("text-overflow: ellipsis");
+  });
+});
 
 // No cast: a `as ToolItem` here would let a fixture omit a field the store
 // always sets, and the card would then throw on something that cannot happen in
