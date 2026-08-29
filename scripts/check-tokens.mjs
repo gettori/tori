@@ -12,6 +12,8 @@
 //   6. Every hue the generated seti mapping emits has a scale.* role.
 //   7. Every role semantic tokens paint with has a --syntax-* role.
 //   8. The Omnibox palette asks Dialog for its own shorter height bound.
+//   8b. Both text cells of a tool call's row can shrink, so one long command
+//      cannot scroll the whole transcript sideways.
 //   9. The palette's own heading still matches Dialog's title recipe.
 //  10. The two blocking surfaces in the chat wear one tier, and nothing else
 //      wears it.
@@ -610,6 +612,42 @@ if (omniboxProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 8b: a tool row's text cells can shrink ----
+//
+// A row that cannot shrink is wider than its column, and a row wider than its
+// column puts a horizontal scrollbar across the whole transcript. Here rather
+// than in vitest because jsdom lays nothing out, so no test can see a width.
+const CHAT_CSS = "src/panels/Chat/Chat.module.css";
+const chatSource = sources.get(CHAT_CSS);
+const chatRules = cssRules(chatSource);
+const SHRINKABLE = ["min-width", "overflow", "text-overflow"];
+const rowProblems = [];
+if (!chatSource) {
+  rowProblems.push(`could not read ${CHAT_CSS}; this check needs the chat's stylesheet`);
+} else {
+  for (const selector of [".toolName", ".toolArg"]) {
+    if (!chatRules.some((rule) => rule.selectors.includes(selector))) {
+      rowProblems.push(`${CHAT_CSS} has no ${selector} rule, so the shape this check scans for changed`);
+      continue;
+    }
+    for (const property of SHRINKABLE) {
+      if (!declares(chatRules, selector, property)) {
+        rowProblems.push(
+          `${selector} does not declare ${property}, so a long command in it widens the row past the ` +
+            `transcript and scrolls the whole chat sideways`,
+        );
+      }
+    }
+  }
+}
+
+if (rowProblems.length > 0) {
+  console.error(`${rowProblems.length} problem(s) in the tool row's text cells:\n`);
+  for (const problem of rowProblems) console.error(`  ${problem}`);
+  console.error("\nA row is as wide as its widest cell, and the transcript is as wide as its widest row.");
+  process.exit(1);
+}
+
 // ---- Check 9: the palette's heading still reads as a dialog title ----
 //
 // The palette's real title is `titleHidden` (the visible line names the *mode*,
@@ -676,9 +714,6 @@ if (titleProblems.length > 0) {
 // reaching for the blocking fill would make "this stopped the turn" mean less
 // every time it appeared. Here rather than in vitest for the reason at the top
 // of this file: a CSS import is stubbed to the empty string under test.
-const CHAT_CSS = "src/panels/Chat/Chat.module.css";
-const chatSource = sources.get(CHAT_CSS);
-const chatRules = cssRules(chatSource);
 /** The two surfaces that may wear the tier. Prefixes: `.promptQuestion` and
  *  `.questionTitle` are parts of the same two cards. */
 const BLOCKING = [".prompt", ".question"];
@@ -764,6 +799,7 @@ console.log(
     `every token the workbench names resolving, all ${emitted.size} seti hues backed by scale roles, ` +
     `all ${SEMANTIC_ROLES.length} semantic-token roles backed by syntax roles, ` +
     `the command palette bounding its own height, ` +
+    `a tool row's 2 text cells able to shrink, ` +
     `its heading matching a dialog title on all ${TITLE_RECIPE.length} recipe properties, ` +
     `and the blocking tier's ${tierRoles.length} roles worn by the ${BLOCKING.length} surfaces that interrupt the user.`,
 );
