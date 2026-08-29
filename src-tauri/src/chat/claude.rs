@@ -868,6 +868,13 @@ impl ClaudeMapper {
             }
 
             Some("message_delta") => {
+                // One API response's usage, which is what "context" means: the
+                // tokens this request was given. A subagent's response is not
+                // the conversation's, so it is skipped rather than allowed to
+                // report a Task's occupancy as the session's.
+                if frame["parent_tool_use_id"].is_string() {
+                    return Vec::new();
+                }
                 let usage = usage_from(&ev["usage"]);
                 if usage == Usage::default() {
                     return Vec::new();
@@ -1532,6 +1539,54 @@ mod tests {
 
     fn count(events: &[ChatEvent], pred: impl Fn(&ChatEvent) -> bool) -> usize {
         events.iter().filter(|e| pred(e)).count()
+    }
+
+    /// What the context meter is fed, measured against the capture rather than
+    /// asserted from the docs.
+    ///
+    /// `permission-grant` is one turn over three API calls, reading 17,440,
+    /// 23,532 and 23,766 cached tokens. Every usage event carries one of those,
+    /// never their sum: the conversation held about 24k, and the result frame's
+    /// 64,738 is what that turn *cost*, not what the window holds. Reading the
+    /// latter as the former is how a 1M window comes to report 7.8M.
+    #[test]
+    fn usage_events_carry_one_response_each_and_never_the_turn_total() {
+        let events = run("permission-grant");
+        let reads: Vec<u64> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::Usage { usage, .. } => Some(usage.cache_read_tokens),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reads, vec![17_440, 23_532, 23_766]);
+
+        let totals: Vec<u64> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::TurnCompleted { usage, .. } => Some(usage.cache_read_tokens),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(totals, vec![64_738], "the result frame is the turn added up");
+        assert_eq!(
+            reads.iter().sum::<u64>(),
+            64_738,
+            "and it is exactly the sum of the responses, which is why it must not be read as one"
+        );
+    }
+
+    /// A subagent's response is not the conversation's context. It reports its
+    /// own occupancy, in its own window, and a Task finishing last would leave
+    /// the meter describing the subagent.
+    #[test]
+    fn a_subagents_response_reports_no_usage_for_the_session() {
+        let mut m = ClaudeMapper::new("s1");
+        let frame: Value = serde_json::from_str(
+            r#"{"type":"stream_event","parent_tool_use_id":"toolu_1","event":{"type":"message_delta","usage":{"input_tokens":2,"cache_read_input_tokens":999999,"cache_creation_input_tokens":0,"output_tokens":5}}}"#,
+        )
+        .unwrap();
+        assert_eq!(count(&m.map(&frame), |e| matches!(e, ChatEvent::Usage { .. })), 0);
     }
 
     /// The measurement this whole state machine exists for.
