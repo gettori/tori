@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onMount, type JSX } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { ArrowUp, Plus, Square } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
@@ -128,24 +128,62 @@ export default function Composer(props: {
   // would recompute it until the next keystroke.
   //
   // It still has to *measure*, because a prompt is mostly prose without hard
-  // newlines and only layout knows how many lines it soft-wrapped to. Shrinking
-  // to one row first is what makes scrollHeight report the content rather than
-  // the box it is already filling.
+  // newlines and only layout knows how many lines it soft-wrapped to.
+  //
+  // **It measures without collapsing the box first**, which it used to do on
+  // every keystroke: `rows = 1`, read, `rows = n`. Two forced layouts of the
+  // whole pane per character, and the transcript above resized twice in the
+  // same breath for a box that mostly was not changing size at all. The floor
+  // is where a box is if it is not overflowing, so `scrollHeight` against
+  // `clientHeight` answers "does it need to be taller" without moving
+  // anything. Only shrinking still has to measure small, and only from a box
+  // that is already taller than the floor - which is deleting, not typing.
   function fit() {
     if (!input) return;
-    input.rows = 1;
     const style = getComputedStyle(input);
     const line = parseFloat(style.lineHeight);
     const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
     if (!Number.isFinite(line) || line <= 0) return;
-    const lines = Math.round((input.scrollHeight - padding) / line);
-    input.rows = Math.min(MAX_ROWS, Math.max(MIN_ROWS, lines));
+    const rowsForContent = () =>
+      Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.round((input!.scrollHeight - padding) / line)));
+    // Overflowing its box: grow to the content, from where it already is.
+    if (input.scrollHeight > input.clientHeight) {
+      input.rows = rowsForContent();
+      return;
+    }
+    // Not overflowing and at the floor: there is nothing smaller to be, so the
+    // measurement is the one that can be skipped outright. Below the floor is
+    // not a size the box is allowed to keep, so it comes back up rather than
+    // being left there.
+    if (input.rows <= MIN_ROWS) {
+      if (input.rows < MIN_ROWS) input.rows = MIN_ROWS;
+      return;
+    }
+    input.rows = MIN_ROWS;
+    input.rows = rowsForContent();
   }
 
-  // A draft restored when the tab comes back can be many lines long, and it
-  // would otherwise paint at the resting height the `rows` attribute asks for.
+  // Always, not only for a restored draft. The resting height is one rule's
+  // answer or it is two: the `rows` attribute decided the first paint and
+  // `fit` decided every paint after it, so a box those two disagreed about
+  // sat wrong until the first keystroke and then jumped.
+  onMount(fit);
+
+  // Re-wrap on a width change: how many lines a prompt takes is a property of
+  // how wide the box is, so a dragged divider or a zoom step leaves the height
+  // measured against a width that is gone. Width only - `fit` changes the
+  // height, and reacting to that would be a loop.
   onMount(() => {
-    if (text()) fit();
+    if (!input || typeof ResizeObserver === "undefined") return;
+    let width = input.clientWidth;
+    const ro = new ResizeObserver(() => {
+      const next = input?.clientWidth ?? 0;
+      if (next === width) return;
+      width = next;
+      fit();
+    });
+    ro.observe(input);
+    onCleanup(() => ro.disconnect());
   });
 
   const fileHits = createMemo(() => {
@@ -271,8 +309,13 @@ export default function Composer(props: {
     setText("");
     setHistoryIndex(-1);
     closeMenu();
-    // The textarea grows with its content, so it has to be shrunk back by hand.
-    if (input) input.rows = 1;
+    // The textarea grew with its content, so it has to be put back by hand -
+    // back to the *floor*, which is where an empty composer belongs. It went
+    // back to one row, a height the box has at no other moment: every send left
+    // it a row short of its resting size until the next keystroke measured it
+    // and snapped it up again, which is the jump that reads as the composer
+    // resizing itself while you type.
+    if (input) input.rows = MIN_ROWS;
   }
 
   // Up at the very start of the input walks back through what was sent, the

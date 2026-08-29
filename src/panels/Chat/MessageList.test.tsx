@@ -168,6 +168,81 @@ describe("MessageList turn anchoring", () => {
   });
 });
 
+// The other way the bottom of the conversation leaves the screen: the viewport
+// shrinks under it. The composer below grows as you type, and every pixel it
+// takes comes off this list - so the reply you were reading slides under the
+// input box, and a tall row (a question card) can go behind it whole. Scroll
+// position is measured from the top, so nothing about the content changed and
+// the content-driven pin never ran.
+describe("staying at the bottom when the list is made shorter", () => {
+  /** The stub the suite installs globally is a no-op; this one hands back its
+   *  callback so a test can say "the box resized" without a layout engine. */
+  function captureResizeObserver() {
+    const callbacks: (() => void)[] = [];
+    const original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(cb: () => void) {
+        callbacks.push(cb);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    return { callbacks, restore: () => (globalThis.ResizeObserver = original) };
+  }
+
+  /** A scroller with the geometry jsdom does not have: a viewport that can be
+   *  told to shrink, and a scrollTop that remembers what it was set to. */
+  function stubScroll(el: HTMLElement, height: number) {
+    let top = 0;
+    let clientHeight = height;
+    Object.defineProperty(el, "scrollHeight", { get: () => 1000, configurable: true });
+    Object.defineProperty(el, "clientHeight", { get: () => clientHeight, configurable: true });
+    Object.defineProperty(el, "scrollTop", {
+      get: () => top,
+      set: (v: number) => (top = v),
+      configurable: true,
+    });
+    return {
+      top: () => top,
+      setTop: (v: number) => (top = v),
+      shrinkTo: (h: number) => (clientHeight = h),
+    };
+  }
+
+  it("follows the bottom down when the composer takes the room", () => {
+    const ro = captureResizeObserver();
+    const { container } = render(() => list());
+    const scroller = container.firstElementChild as HTMLElement;
+    const geom = stubScroll(scroller, 400);
+    // At the bottom: 1000 tall, 400 of it visible, scrolled to 600.
+    geom.setTop(600);
+
+    geom.shrinkTo(340);
+    ro.callbacks.forEach((cb) => cb());
+
+    expect(geom.top()).toBe(1000);
+    ro.restore();
+  });
+
+  it("leaves a reader who has scrolled up where they are", () => {
+    // A resize is not a reason to take a position away from someone holding it
+    // on purpose.
+    const ro = captureResizeObserver();
+    const { container } = render(() => list());
+    const scroller = container.firstElementChild as HTMLElement;
+    const geom = stubScroll(scroller, 400);
+    geom.setTop(100);
+    fireEvent.scroll(scroller);
+
+    geom.shrinkTo(340);
+    ro.callbacks.forEach((cb) => cb());
+
+    expect(geom.top()).toBe(100);
+    ro.restore();
+  });
+});
+
 // A compaction summary is the agent's own text, several hundred words of it,
 // and it used to sit inline in the middle of the conversation. The boundary is
 // what the reader needs at a glance; the summary is what they go looking for
