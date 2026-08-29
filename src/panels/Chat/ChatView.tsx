@@ -70,6 +70,7 @@ import {
   selectedModel,
   type PickableModel,
 } from "../../utils/chatModels";
+import { rememberWindows } from "../../utils/contextWindowMemory";
 import {
   cachedModels,
   catalogFor,
@@ -1296,6 +1297,14 @@ export default function ChatView(props: {
     if (ran) return contextWindowFor(ran, state.contextWindows, state.contextWindow);
     return shownModel()?.contextWindow ?? state.contextWindow ?? null;
   };
+
+  // What a completed turn measured, kept for the next session on this model so
+  // it can open at 0/1M rather than at nothing. Only ever the agent's own
+  // figure; see utils/contextWindowMemory.
+  // Spread rather than passed by reference: a store proxy read as one object
+  // subscribes to the reference, and the reducer merges into it in place, so
+  // the effect would never see the model that arrived.
+  createEffect(() => rememberWindows({ ...state.contextWindows }));
 
   // The mode the pill shows: the session's own, else the mode the *adapter*
   // nominates. Never the literal "default", which is Claude's spelling and
