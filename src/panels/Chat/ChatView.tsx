@@ -12,7 +12,7 @@ import ModeSelector from "./ModeSelector";
 import ConfigMirror from "./ConfigMirror";
 import ModelPicker from "./ModelPicker";
 import { lockedProvider } from "./agentPaletteData";
-import { draftPick, hasPick, pickRidesArgv } from "../../utils/chatDraftPick";
+import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { rateLimitMessage } from "../../utils/chatRateLimit";
 import {
@@ -119,6 +119,7 @@ import {
   resolveApproval,
   revertEffortPick,
   revertModelPick,
+  seedEffort,
   selectEffort,
   selectMode,
   replayFold,
@@ -246,9 +247,13 @@ export default function ChatView(props: {
    *  transport, lives with the rest of the store's decisions. */
   const canSend = () => sendCapable(state, findAdapter(props.agentId).chat?.transport);
 
-  // What the draft this tab grew out of was set to run as, read once: it is what
-  // the session is *opened* on, and every change after that goes through the
-  // session's own controls. All-null for a fork, a rewind or a restore.
+  // What this tab is set to run as, read once: it is what the session is
+  // *opened* on, and every change after that goes through the session's own
+  // controls - which write back here as they land, so a tab restored next
+  // launch opens on what this conversation was actually running.
+  //
+  // All-null for a fork or a rewind, which start from the conversation rather
+  // than from a pick.
   const opening = draftPick(props.tabId);
 
   /** Whether the opening pick is in force, so the held first message may go.
@@ -331,6 +336,11 @@ export default function ChatView(props: {
 
   const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
 
+  // The level this session opened on is in force from the first frame: it rode
+  // the argv the child was started with, and nothing on the wire will ever
+  // mention it again. Without this the control read "Default" over a child
+  // running `--effort high`, on a fresh session as much as on a restored one.
+  if (opening.effort !== null) edit((s) => seedEffort(s, opening.effort));
   const running = () => isRunning(state);
 
   // Memoized, not a plain accessor. Solid props are getters and MessageList
@@ -1201,7 +1211,13 @@ export default function ChatView(props: {
   function onSelectMode(mode: PermissionMode) {
     edit((s) => selectMode(s, mode));
     void invoke("chat_set_mode", { sessionId: props.sessionId, mode })
-      .then(() => rememberChatPrefs(props.workspace, { mode }))
+      .then(() => {
+        rememberChatPrefs(props.workspace, { mode });
+        // And on the tab, which is what a restore reads: a resumed session
+        // comes back on the CLI's default mode, so this is the only record of
+        // the one it was in.
+        setDraftPick(props.tabId, { mode });
+      })
       .catch((e) => {
         // The request never left, so the control must stop promising a switch.
         // Left set, it would show a mode the session will never enter.
@@ -1376,6 +1392,10 @@ export default function ChatView(props: {
         // Recorded only once the agent has taken it, so the next draft here
         // opens on a model that was accepted rather than one that was refused.
         rememberChatPrefs(props.workspace, { model, effort });
+        // The tab's own record, for the restore. Effort especially: nothing on
+        // the wire reports it back and a resume does not carry it, so this is
+        // the only place a reload can learn the level from.
+        setDraftPick(props.tabId, { model, effort });
       })
       .catch((e) => {
         revert();
