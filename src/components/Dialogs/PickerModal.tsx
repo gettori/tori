@@ -26,6 +26,10 @@ export default function PickerModal(props: {
   items: string[];
   placeholder?: string;
   creatable?: boolean;
+  /** More rows are on their way (a background fetch). The list takes its full
+   *  height now: grown later, it would slide every row out from under the
+   *  cursor, since the panel is centred and sized by its content. */
+  reserve?: boolean;
   okLabel?: string;
   onSubmit: (value: string) => void;
   onCancel: () => void;
@@ -103,6 +107,7 @@ export default function PickerModal(props: {
     >
       <Combobox
         class={styles.pickerField}
+        listClass={props.reserve ? styles.pickerListReserved : undefined}
         options={options()}
         query={query()}
         onQueryChange={setQuery}
