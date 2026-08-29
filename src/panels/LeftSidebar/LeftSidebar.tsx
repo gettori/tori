@@ -100,6 +100,7 @@ import Icon from "../../components/Icon/Icon";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
+import { rememberSelection, rememberedUnit } from "../../utils/selectionMemory";
 import {
   FolderCog,
   FolderPlus,
@@ -409,6 +410,42 @@ export default function LeftSidebar(props: {
     return gs.find((g) => g.name === activeSpaceName()) ?? gs[0] ?? null;
   };
   const activeProjects = () => (activeSpace()?.projects ?? []).filter(projectVisible);
+
+  // Every selection is also the bookmark for the way back to it: its space, or
+  // the Feature slot.
+  createEffect(() => rememberSelection(props.selected));
+
+  // Re-read from the live tree, so a folder that is gone restores nothing
+  // rather than a ghost. No `ensureBranch`: navigating must not check anything
+  // out behind a click that only said "show me that".
+  function restoreUnit(g: Space): boolean {
+    const back = rememberedUnit(g.name);
+    if (!back) return false;
+    const p = g.projects.find((p) => p.branchUnits.some((u) => sameCwd(u.folderPath, back.folderPath)));
+    const u = p?.branchUnits.find((u) => sameCwd(u.folderPath, back.folderPath));
+    if (!p || !u) return false;
+    if (unitSelected(u)) return true;
+    traceSwitchStart("worktree", u.folderPath);
+    props.onSelect({
+      ...back,
+      spaceName: g.name,
+      projectName: p.name,
+      projectPath: p.path,
+      folderPath: u.folderPath,
+      branch: unitLabel(u),
+      projectKind: u.kind,
+    });
+    return true;
+  }
+
+  // Switching space switches the work, not just the tree. Nothing remembered
+  // means nothing selected: leaving the previous space's worktree open is the
+  // bug this fixes, the sidebar showing one context and every pane another.
+  function switchSpace(g: Space) {
+    if (activeSpaceName() === g.name) return;
+    setActiveSpaceName(g.name);
+    if (!restoreUnit(g)) props.onSelect(null);
+  }
 
   // In-app replacement for window.prompt (unimplemented in WKWebView). Holds the
   // pending request plus its resolver; askText opens the modal and awaits an
@@ -2524,7 +2561,7 @@ export default function LeftSidebar(props: {
         }}
         label={g.external ? `${g.name} (pinned)` : g.name}
         aria-label={g.external ? `${g.name} (pinned)` : g.name}
-        onClick={() => setActiveSpaceName(g.name)}
+        onClick={() => switchSpace(g)}
         draggable={true}
         onDragStart={(e) => {
           startAbsDrag(e, g.projects.map((p) => p.path));
