@@ -412,6 +412,24 @@ export default function LeftSidebar(props: {
   };
   const activeProjects = () => (activeSpace()?.projects ?? []).filter(projectVisible);
 
+  // Where a right-click on the tree's empty area put the space menu, and the
+  // one thing that opens it. Anchor mode rather than a wrapping ContextMenu:
+  // the trigger would swallow every row's own menu on the way past.
+  const [spaceAnchor, setSpaceAnchor] = createSignal<{ x: number; y: number }>();
+
+  // A right-click nobody claimed belongs to the space. Kobalte's trigger stops
+  // the ones it takes (see ContextMenu on nesting), and the guard covers a
+  // plain handler that only prevents, so what reaches here is the empty area.
+  function onSpaceAreaMenu(e: MouseEvent) {
+    if (e.defaultPrevented || !activeSpace()) return;
+    e.preventDefault();
+    setSpaceAnchor({ x: e.clientX, y: e.clientY });
+  }
+
+  // What "Add" does in an empty space: the same action its own menu offers, so
+  // a pinned space adds by pinning and a root space by creating or cloning.
+  const addToSpace = (g: Space) => (g.external ? void pinFolder() : openNewProject(g));
+
   // Every selection is also the bookmark for the way back to it: its space, or
   // the Feature slot.
   createEffect(() => rememberSelection(props.selected));
@@ -2670,7 +2688,11 @@ export default function LeftSidebar(props: {
           as one lit icon among twelve, which is a legend you have to learn. */}
       <Show when={activeSpace()}>
         {(g) => (
-          <div class={styles.spaceHeader} style={{ "--space-hue-rgb": spaceHueRgb(g().name, g().color) }}>
+          <div
+            class={styles.spaceHeader}
+            style={{ "--space-hue-rgb": spaceHueRgb(g().name, g().color) }}
+            onContextMenu={onSpaceAreaMenu}
+          >
             <span class={styles.spaceHeaderIcon} aria-hidden="true">
               <Show when={resolveIcon(g().icon)} fallback={g().name.trim().charAt(0).toUpperCase() || "?"}>
                 {(glyph) => <Icon icon={glyph()} />}
@@ -2698,7 +2720,7 @@ export default function LeftSidebar(props: {
           </div>
         )}
       </Show>
-      <OverlayScroll class={styles.treeScroll}>
+      <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu}>
         <For each={activeProjects()}>
           {(p) => {
             const g = activeSpace()!;
@@ -2803,9 +2825,23 @@ export default function LeftSidebar(props: {
         </For>
 
         <Show when={(config()?.spaces ?? []).length > 0 && activeProjects().length === 0}>
-          <div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>
-            {q() ? "no matches in this space" : "no projects in this space"}
-          </div>
+          <Show
+            when={!q() && activeSpace()}
+            fallback={<div class={`${styles.row} ${styles.dim} ${styles.sub1}`}>no matches in this space</div>}
+          >
+            {(g) => (
+              <div class="tree-empty">
+                <p>
+                  {g().external
+                    ? "Nothing is pinned here yet. Press Add to pin a folder to this space."
+                    : "This space has no projects yet. Press Add to create, clone or add one."}
+                </p>
+                <Button icon={<Icon icon={Plus} />} onClick={() => addToSpace(g())}>
+                  Add
+                </Button>
+              </div>
+            )}
+          </Show>
         </Show>
 
         <Show when={(config()?.spaces ?? []).length === 0}>
@@ -2826,6 +2862,17 @@ export default function LeftSidebar(props: {
           </div>
         </Show>
       </OverlayScroll>
+
+      <Show when={activeSpace()}>
+        {(g) => (
+          <Dropdown
+            open={spaceAnchor() != null}
+            anchor={spaceAnchor() ?? { x: 0, y: 0 }}
+            onOpenChange={(open) => !open && setSpaceAnchor(undefined)}
+            items={spaceMenu(g())}
+          />
+        )}
+      </Show>
 
       <Show when={config()}>
         <div class={styles.spaceBar}>

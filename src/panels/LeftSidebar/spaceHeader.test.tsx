@@ -3,7 +3,7 @@
 // only way to it before.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
-import { pointerClick } from "../../test/menus";
+import { pointerClick, rightClick } from "../../test/menus";
 
 const WORK = "/root/work/proj";
 
@@ -113,6 +113,13 @@ describe("the active space header", () => {
     // Hidden by opacity, never by `display`, so it is still a tab stop: an
     // action only a mouse can find is not an action.
     expect(menuButton().tabIndex).not.toBe(-1);
+  });
+
+  it("answers a right-click with the same menu", async () => {
+    mount();
+    await waitFor(() => expect(header()).toBeTruthy());
+    expect(rightClick(header()!)).toBe(true);
+    expect(await screen.findByText("Delete space")).toBeTruthy();
   });
 
   it("is a Spaces-mode heading, gone with the tree in Features", async () => {
