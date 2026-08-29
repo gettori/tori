@@ -62,7 +62,6 @@ import type { UsageTotals } from "../../utils/chatUsageStore";
 import {
   capabilitiesFor,
   contextPercent,
-  contextTokens,
   contextWindowFor,
   defaultMode,
   modeAfterModelSwitch,
@@ -1096,13 +1095,12 @@ export default function ChatView(props: {
   /** What this chat has spent, in the three currencies a ceiling can name. */
   function spend(): Spend {
     const totals = spent();
-    const usage = state.lastUsage;
     return {
       sessionUsd: totals?.session.costUsd ?? null,
       projectUsd: totals?.project.costUsd ?? null,
       // One resolver for both meters and for the ceiling, so a session cannot
       // be stopped against one denominator while the strip draws another.
-      contextPercent: contextPercent(contextTokens(usage), shownModel()?.contextWindow ?? null),
+      contextPercent: contextPercent(state.contextTokens, stripWindow()),
     };
   }
 
@@ -1251,7 +1249,7 @@ export default function ChatView(props: {
    * by the same `turnCompleted` that the store folds in memory - but the CLI
    * has not necessarily flushed that turn to disk yet, so the scan comes back
    * describing the turn *before* the one that just landed. The store has no such
-   * lag: `lastUsage` is the turn's own reported usage.
+   * lag: `contextTokens` is the newest response's own figure.
    *
    * So the scan stays the baseline (it is the only thing that knows a resumed
    * session's earlier turns) and the store overrides it wherever the store is
@@ -1273,7 +1271,7 @@ export default function ChatView(props: {
   const liveDetail = () => {
     const scanned = detail();
     if (!scanned) return null;
-    const live = contextTokens(state.lastUsage);
+    const live = state.contextTokens;
     return {
       ...scanned,
       context_tokens: live ?? scanned.context_tokens,
@@ -1288,10 +1286,15 @@ export default function ChatView(props: {
   // the transcript says ran - not `shownModel()`, the one currently selected in
   // the picker. The two differ after a mid-session switch, where dividing the
   // historical figures by the new model's window would be simply wrong.
+  //
+  // The budget ceiling reads this too. It used to divide by
+  // `shownModel()?.contextWindow` while the strip divided by the resolver,
+  // which is two denominators for one ratio: a session could be stopped at a
+  // percentage the strip was not showing.
   const stripWindow = () => {
     const ran = detail()?.model;
-    if (ran) return contextWindowFor(ran, state.contextWindows);
-    return shownModel()?.contextWindow ?? null;
+    if (ran) return contextWindowFor(ran, state.contextWindows, state.contextWindow);
+    return shownModel()?.contextWindow ?? state.contextWindow ?? null;
   };
 
   // The mode the pill shows: the session's own, else the mode the *adapter*

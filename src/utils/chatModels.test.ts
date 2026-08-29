@@ -692,6 +692,19 @@ describe("contextWindowFor", () => {
   it("reports nothing for a model no source knows, rather than a guessed window", () => {
     expect(contextWindowFor("some-model-nobody-declared", {})).toBeNull();
   });
+
+  // ACP agents report occupancy and window together, for the session rather
+  // than per model, so an agent Sway drives over ACP has a denominator from its
+  // first usage update - and it is the agent's own, not a catalogue's.
+  it("takes the window a session states for itself when no model figure exists", () => {
+    expect(contextWindowFor("some-acp-model", {}, 272_000)).toBe(272_000);
+  });
+
+  // Per model beats per session: the finer measurement wins where both exist,
+  // because a session can run more than one model.
+  it("prefers the model's own reported window to the session's", () => {
+    expect(contextWindowFor("claude-sonnet-5", { "claude-sonnet-5": 1_000_000 }, 200_000)).toBe(1_000_000);
+  });
 });
 
 describe("reportedWindows", () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import twoTurns from "../../dev/fixtures/claude/two-turns.jsonl?raw";
 import { fmtCost, fmtTokens, observationComplete, turnTokens, usageSummary } from "./chatUsage";
+import { contextTokens } from "./chatModels";
 import { applyEvent, initialChat } from "../panels/Chat/chatStore";
 import type { ChatEvent, Usage } from "./chatTypes";
 
@@ -128,7 +129,7 @@ describe("usageSummary", () => {
     applyEvent(s, { type: "usage", sessionId: SESSION, turnId: "t2", usage: second.usage });
 
     // The meter sees the new figure...
-    expect(s.lastUsage).toEqual(second.usage);
+    expect(s.contextTokens).toBe(contextTokens(second.usage));
     // ...while the priced readout still describes the turn that has a price.
     expect(usageSummary(s).turn).toEqual({ tokens: turnTokens(first.usage), cost: first.costUsd });
     expect(usageSummary(s).session.turns).toBe(1);
