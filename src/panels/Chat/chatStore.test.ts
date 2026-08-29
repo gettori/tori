@@ -19,6 +19,7 @@ import {
   modePending,
   modelPending,
   pendingApprovals,
+  pendingSwitchNotice,
   pendingFlush,
   promptsSent,
   replayFold,
@@ -140,6 +141,42 @@ const turnDone = (turnId: string, outcome: "completed" | "cancelled" | "errored"
   usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, thinkingTokens: 0 },
   costUsd: 0.01,
   permissionDenials: [],
+});
+
+// The three switches land at the same turn boundary, so they are promised once
+// rather than three times - and above the input rather than in the bar, where
+// the sentence used to appear beside whichever pill was pending and push every
+// control to its right out from under the cursor.
+describe("what is waiting for the next turn", () => {
+  const pending = (over: Partial<ChatState>) => pendingSwitchNotice({ ...initialChat("s1"), ...over });
+
+  it("says nothing while nothing is waiting", () => {
+    expect(pendingSwitchNotice(initialChat("s1"))).toBeNull();
+  });
+
+  it("names the one control that is waiting", () => {
+    expect(pending({ pendingEffort: "high" })).toBe("Thinking effort applies from the next turn.");
+    expect(pending({ pendingMode: "plan" })).toBe("Permission mode applies from the next turn.");
+  });
+
+  it("names them all in one sentence when several are", () => {
+    expect(
+      pending({
+        pendingModel: { value: "sonnet", resolvedModel: "claude-sonnet-5" },
+        pendingEffort: "high",
+        pendingMode: "plan",
+      }),
+    ).toBe("Model, thinking effort and permission mode apply from the next turn.");
+    expect(pending({ pendingEffort: "high", pendingMode: "plan" })).toBe(
+      "Thinking effort and permission mode apply from the next turn.",
+    );
+  });
+
+  // `undefined` is "nothing picked" and `null` is "picked: back to the CLI's
+  // own default", which is a switch like any other and waits like one.
+  it("counts a pick of the CLI's own default as a pick", () => {
+    expect(pending({ pendingEffort: null })).toBe("Thinking effort applies from the next turn.");
+  });
 });
 
 // Effort is the one setting nothing on the wire ever mentions: `system/init`

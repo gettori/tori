@@ -5,7 +5,6 @@ import AgentPalette from "./AgentPalette";
 import Picker, { PickerButton, PickerOption } from "./Picker";
 import type { PaletteProvider } from "./agentPaletteData";
 import type { PickableModel } from "../../utils/chatModels";
-import styles from "./Chat.module.css";
 
 /**
  * The `--model` and `--effort` controls, as pills in the composer bar.
@@ -210,16 +209,13 @@ export default function ModelPicker(props: {
         </Picker>
       </Show>
 
-      {/* Nothing here says where the list came from. A cached list is the
-          agent's own answer from the last time anything asked, and it is right
-          almost always; standing in the bar to say so made the provenance a
-          permanent fixture of a surface that is supposed to show its plumbing
-          only when something has actually gone wrong. A row the agent has since
-          dropped fails the send, with a sentence, which is the moment it
-          matters. */}
-      <Show when={props.modelPending || props.effortPending}>
-        <span class={`${styles.barNote} ${styles.barNotePending}`}>Applies from the next turn.</span>
-      </Show>
+      {/* Nothing stands in the bar. Not the provenance of the list - a cached
+          one is the agent's own answer from the last time anything asked, and
+          saying so on every draft made the plumbing a permanent fixture of a
+          surface that shows it only when something has gone wrong. And not the
+          pending promise either: it lands with the other two at the same
+          boundary, so it is said once above the input where it moves no
+          control. See `pendingSwitchNotice`. */}
     </>
   );
 }

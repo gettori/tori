@@ -2041,16 +2041,24 @@ button.diffHunkHeader:hover {
   background: var(--border-default);
 }
 
-/* Small print in the composer bar (context meter, pending and stale notes). */
+/* What the next turn will run under, above the input. One line for all three
+   controls: they land at the same boundary, and saying it beside each pill
+   moved the others sideways as soon as anything was picked. Aligned with the
+   input's own text rather than centred, so it reads as a caption on the box
+   below it. */
+.composerNotice {
+  color: var(--brand-strong);
+  font-size: var(--sway-text-md);
+  line-height: 1.3;
+  padding: 0 calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale));
+}
+
+/* Small print in the composer bar (the draft's blocked reason). */
 .barNote {
   color: var(--fg-subtle);
   font-size: var(--sway-text-md);
   line-height: 1.3;
   white-space: nowrap;
-}
-
-.barNotePending {
-  color: var(--brand-strong);
 }
 
 .contextMeter {

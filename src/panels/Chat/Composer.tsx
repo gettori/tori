@@ -88,6 +88,14 @@ export default function Composer(props: {
   history: readonly string[];
   onSendQueued: () => void;
   onDiscardQueued: () => void;
+  /** One line about what the next turn will run under, above the input.
+   *
+   *  Above rather than in the bar, and one line rather than one per control:
+   *  the three switches land at the same boundary and used to say so beside
+   *  whichever pill was pending, which moved every control to its right the
+   *  moment anything was picked. A row of buttons that shuffles under the
+   *  cursor is a worse cost than a line that appears. */
+  notice?: JSX.Element;
   /** The session controls (mode, model, effort) rendered into the bar under
    *  the input. Slotted rather than owned: their state and wiring belong to
    *  `ChatView`, and this component only decides where they sit. */
@@ -463,6 +471,9 @@ export default function Composer(props: {
             )}
           </For>
         </div>
+      </Show>
+      <Show when={props.notice}>
+        {(notice) => <div class={styles.composerNotice}>{notice()}</div>}
       </Show>
       <div class={styles.composerBox}>
         <textarea

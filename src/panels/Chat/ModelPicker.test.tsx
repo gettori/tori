@@ -328,11 +328,15 @@ describe("ModelPicker", () => {
     expect(setup({ value: "sonnet" }).container.textContent).not.toContain("200k");
   });
 
-  it("promises the next turn rather than claiming a switch took effect", () => {
-    expect(setup().queryByText("Applies from the next turn.")).toBeNull();
-    expect(setup({ modelPending: true }).getByText("Applies from the next turn.")).toBeTruthy();
-    // Effort lands at the same boundary and says so in the same words.
-    expect(setup({ effortPending: true }).getByText("Applies from the next turn.")).toBeTruthy();
+  // The promise itself is one line above the input now, said once for all three
+  // controls (`pendingSwitchNotice`). What stays here is the pill's own mark: a
+  // tint, which is the half that has to be *on* the control the user just used
+  // and the half that costs the bar no width.
+  it("marks the pending pill without putting a sentence in the bar", () => {
+    expect(setup({ modelPending: true }).queryByText(/next turn/)).toBeNull();
+    expect(setup({ effortPending: true }).queryByText(/next turn/)).toBeNull();
+    const pending = setup({ modelPending: true }).getByLabelText("Model");
+    expect(pending.className).not.toBe(setup().getByLabelText("Model").className);
   });
 
   it("hands back the whole entry, so the caller has the resolved id a pick is confirmed by", () => {
