@@ -437,6 +437,11 @@ export type ChatEvent =
       postTokens: number | null;
       summary: string | null;
     }
+  /// The commands this session takes. Its own event because for an ACP agent
+  /// they arrive after the handshake, on a notification of their own: measured
+  /// on pi-acp 0.0.33, `session/new` answers with the models and the modes and
+  /// 33 commands follow moments later.
+  | { type: "slashCommands"; sessionId: string; commands: SlashCommand[] }
   /// A compaction started. The only warning the panel gets that the next half
   /// minute of silence is work: measured at 33s between this and the boundary,
   /// with nothing on the wire in between.
@@ -564,6 +569,7 @@ export const CHAT_EVENT_TYPES = [
   "turnStarted",
   "userMessage",
   "compacted",
+  "slashCommands",
   "compactionStarted",
   "compactionFailed",
   "textDelta",
@@ -684,6 +690,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   compacted: {
     required: ["sessionId", "turnId", "trigger", "preTokens", "postTokens", "summary"],
   },
+  slashCommands: { required: ["sessionId", "commands"] },
   compactionStarted: { required: ["sessionId", "turnId"] },
   compactionFailed: { required: ["sessionId", "turnId", "error"] },
   textDelta: { required: ["sessionId", "turnId", "text"] },

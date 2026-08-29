@@ -179,6 +179,12 @@ const CATALOGS = [
       ],
       modes: [],
       account: null,
+      // From the same handshake the models came from. Skills are already in
+      // this list on the wire, so there is one source rather than two.
+      commands: [
+        { name: "review", description: "Review the diff", argumentHint: "", aliases: [] },
+        { name: "dataviz", description: "A skill, which the CLI lists here too", argumentHint: "", aliases: [] },
+      ],
     },
     lastFailure: null,
   },
@@ -195,6 +201,13 @@ const CATALOGS = [
         { ...row("gpt-5", "GPT-5"), options: OPTIONS },
         { ...row("gpt-5-mini", "GPT-5 mini"), options: NARROWER },
       ],
+      // An ACP agent's commands reach the cache the same way, though they come
+      // from a notification after `session/new` rather than from any response.
+      // Not asserted through this draft: codex is the fixture's not-found
+      // agent, so its composer is disabled and types nothing. What the menu
+      // does with a list is agent-agnostic (`cachedCommands`), and that an ACP
+      // update becomes one is pinned in Rust.
+      commands: [{ name: "handoff", description: "Package this for a fresh session", argumentHint: "", aliases: [] }],
       modes: ACP_MODES,
       options: OPTIONS,
       account: null,
@@ -381,6 +394,34 @@ describe("a chat draft's first send", () => {
     const { container } = setup();
     expect(container.textContent).not.toContain("never");
   });
+});
+
+// `/` in a new chat opened on nothing at all: a draft has no session, and the
+// commands were treated as unknowable until one existed. They ride the same
+// handshake the models do, and the draft already reads that cache for its model
+// picker.
+describe("a chat draft's slash commands", () => {
+  it("completes from the agent's last handshake, skills included", async () => {
+    const { input } = setup();
+    await settle();
+
+    fireEvent.input(input, { target: { value: "/dat" } });
+
+    // A skill, which the CLI publishes in the same list as its commands.
+    expect(await screen.findByText("/dataviz")).toBeTruthy();
+  });
+
+  it("offers the agent's own list, not another agent's", async () => {
+    // The catalogue the menu reads is the one for the agent this draft would
+    // start, so it never completes into a command that agent does not publish.
+    const { input } = setup({ agentId: "codex" });
+    await settle();
+
+    fireEvent.input(input, { target: { value: "/rev" } });
+
+    expect(screen.queryByText("/review")).toBeNull();
+  });
+
 });
 
 describe("a chat draft's pick", () => {

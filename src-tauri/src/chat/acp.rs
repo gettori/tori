@@ -16,7 +16,8 @@
 use std::path::Path;
 
 use agent_client_protocol::schema::v1::{
-    ContentBlock as AcpContentBlock, ContentChunk, InitializeResponse, PermissionOption,
+    AvailableCommandInput, ContentBlock as AcpContentBlock, ContentChunk, InitializeResponse,
+    PermissionOption,
     RequestPermissionRequest, SessionConfigKind, SessionConfigOption, SessionConfigOptionCategory,
     SessionConfigSelect, SessionConfigSelectOption, SessionConfigSelectOptions, SessionUpdate,
     StopReason, ToolCall, ToolCallContent, ToolCallLocation, ToolCallStatus, ToolCallUpdate, ToolKind,
@@ -26,8 +27,8 @@ use super::model;
 use super::model::{
     ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel,
     ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, Extra, FileEditKind,
-    PermissionSuggestion, PlanItem, PlanItemStatus, ToolLocation, ToolStatus, ToolSummary,
-    TurnOutcome, Usage,
+    PermissionSuggestion, PlanItem, PlanItemStatus, SlashCommand, ToolLocation, ToolStatus,
+    ToolSummary, TurnOutcome, Usage,
 };
 use super::snapshot;
 
@@ -598,11 +599,41 @@ pub fn map_update(
             options: config_options(&update.config_options),
         }],
 
-        // Modes, session metadata and command catalogues all change
-        // session-level state rather than describing turn content. They reach
-        // the UI through the handshake and the session events, so they produce
-        // nothing here rather than being forced into a turn-shaped event they do
-        // not belong to.
+        // The commands this agent takes, which for ACP is the *only* way they
+        // arrive: measured on pi-acp 0.0.33, `session/new` answers with the
+        // models, the modes and the config options, and this notification
+        // follows moments later carrying 33 commands - the agent's own skills
+        // among them. Dropped here until now, which is why `/` in a chat on any
+        // ACP agent opened on an empty menu while claude's worked.
+        //
+        // Replaced whole rather than merged: the update is the agent's current
+        // list, and a command it has stopped publishing is one it will refuse.
+        SessionUpdate::AvailableCommandsUpdate(update) => vec![ChatEvent::SlashCommands {
+            session_id: session_id.to_string(),
+            commands: update
+                .available_commands
+                .iter()
+                .map(|c| SlashCommand {
+                    name: c.name.clone(),
+                    description: c.description.clone(),
+                    // The one input shape the protocol has today: everything
+                    // typed after the name, with a hint to show before it is.
+                    // The enum is `#[non_exhaustive]`, and a shape invented
+                    // after this was written has no honest hint to show, so it
+                    // shows none rather than a guess.
+                    argument_hint: c.input.as_ref().and_then(|input| match input {
+                        AvailableCommandInput::Unstructured(u) => Some(u.hint.clone()),
+                        _ => None,
+                    }),
+                    aliases: Vec::new(),
+                })
+                .collect(),
+        }],
+
+        // Modes and session metadata change session-level state rather than
+        // describing turn content. They reach the UI through the handshake and
+        // the session events, so they produce nothing here rather than being
+        // forced into a turn-shaped event they do not belong to.
         _ => Vec::new(),
     }
 }
@@ -1020,11 +1051,46 @@ pub fn prompt_blocks(blocks: &[ContentBlock]) -> Vec<AcpContentBlock> {
 mod tests {
     use super::*;
     use agent_client_protocol::schema::v1::{
-        PermissionOptionId, PermissionOptionKind, TextContent, ToolCallId, ToolCallUpdateFields,
+        AvailableCommand, AvailableCommandsUpdate, PermissionOptionId, PermissionOptionKind,
+        TextContent, ToolCallId, ToolCallUpdateFields, UnstructuredCommandInput,
     };
 
     fn text_chunk(text: &str) -> ContentChunk {
         ContentChunk::new(AcpContentBlock::Text(TextContent::new(text.to_string())))
+    }
+
+    /// The commands an ACP agent publishes, which is the only way they ever
+    /// arrive there.
+    ///
+    /// Measured on pi-acp 0.0.33: `session/new` answers with the models, the
+    /// modes and the config options, and an `available_commands_update`
+    /// notification follows moments later carrying 33 commands - the agent's
+    /// own skills among them. This update used to fall into the catch-all, so
+    /// `/` in a chat on any ACP agent opened on an empty menu.
+    #[test]
+    fn the_commands_an_agent_publishes_reach_the_panel() {
+        let update = SessionUpdate::AvailableCommandsUpdate(AvailableCommandsUpdate::new(vec![
+            AvailableCommand::new("plan".to_string(), "Plan before building".to_string())
+                .input(AvailableCommandInput::Unstructured(UnstructuredCommandInput::new(
+                    "what to plan".to_string(),
+                ))),
+            AvailableCommand::new("lint".to_string(), "Check the toolkit's own files".to_string()),
+        ]));
+
+        let events = map_update("s1", "t1", &update, None);
+        match events.as_slice() {
+            [ChatEvent::SlashCommands { commands, .. }] => {
+                assert_eq!(
+                    commands.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+                    ["plan", "lint"]
+                );
+                // The hint is the one input shape the protocol has, carried
+                // through so the menu can show what to type after the name.
+                assert_eq!(commands[0].argument_hint.as_deref(), Some("what to plan"));
+                assert_eq!(commands[1].argument_hint, None);
+            }
+            other => panic!("expected one command list, got {other:?}"),
+        }
     }
 
     // --- session config options ------------------------------------------
