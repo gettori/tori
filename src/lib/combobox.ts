@@ -1,3 +1,4 @@
+import type { ComponentProps, JSX } from "solid-js";
 import {
   Control,
   Input,
@@ -8,6 +9,12 @@ import {
   Section,
   useComboboxContext,
 } from "@kobalte/core/combobox";
+
+/** Selection behaviour the combobox's listbox forwards to `Listbox.Root` and
+ *  does not type. Named here so the one call site that turns hover-focus off
+ *  (see Combobox.tsx) is a prop and not a cast; the picker's press/release test
+ *  is what fails if a future Kobalte stops forwarding it. */
+type ListboxSelection = { shouldFocusOnHover?: boolean };
 
 /**
  * Kobalte's combobox, and the only door it comes through.
@@ -43,7 +50,7 @@ export const Combobox = {
   Root,
   Control,
   Input,
-  Listbox,
+  Listbox: Listbox as (props: ComponentProps<typeof Listbox> & ListboxSelection) => JSX.Element,
   Section,
   Item,
   ItemLabel,
