@@ -189,7 +189,17 @@ export default function Combobox(props: {
             reference and never rebuilds, quietly undoing `keyed`. */}
         <Show when={headings()} keyed>
           {(_signature) => (
-            <Primitive.Listbox class={styles.listbox} aria-label={props.listLabel} />
+            <Primitive.Listbox
+              class={styles.listbox}
+              aria-label={props.listLabel}
+              // Hover must not move the highlight. Kobalte reads hover-focus as
+              // consent to commit on release over *whatever row is under the
+              // cursor then*, so a list that moves between press and release
+              // (the picker's, as fetched branches land in it) commits a row
+              // nobody pressed. Off, the commit is the click, and a click whose
+              // press and release differ lands on no row at all.
+              shouldFocusOnHover={false}
+            />
           )}
         </Show>
       </Show>

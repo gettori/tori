@@ -153,6 +153,36 @@ describe("PickerModal", () => {
       expect(onSubmit).toHaveBeenCalledWith("develop");
     });
 
+    // A real mouse presses, releases and only then clicks, and the list under
+    // it can move in between: the attach flow folds fetched remote branches
+    // into the open dialog, which grows a centred panel and slides every row.
+    it("commits the row pressed, not the row released over", () => {
+      const { onSubmit, rows } = open();
+      const pressed = rows()[0];
+      const released = rows()[1];
+
+      fireEvent.pointerMove(pressed, { pointerType: "mouse" });
+      fireEvent.pointerDown(pressed, { pointerType: "mouse", button: 0 });
+      fireEvent.pointerUp(released, { pointerType: "mouse", button: 0 });
+      // What the browser does when press and release land on different rows:
+      // the click goes to their common ancestor, which is no row at all.
+      fireEvent.click(screen.getByRole("listbox"));
+
+      expect(onSubmit).not.toHaveBeenCalledWith("develop");
+    });
+
+    it("still commits a press and release on one row", () => {
+      const { onSubmit, rows } = open();
+      const row = rows()[1];
+
+      fireEvent.pointerMove(row, { pointerType: "mouse" });
+      fireEvent.pointerDown(row, { pointerType: "mouse", button: 0 });
+      fireEvent.pointerUp(row, { pointerType: "mouse", button: 0 });
+      fireEvent.click(row);
+
+      expect(onSubmit).toHaveBeenCalledWith("develop");
+    });
+
     it("commits an exactly typed item on Ok", () => {
       const { onSubmit, input } = open();
 
@@ -334,16 +364,16 @@ describe("PickerModal", () => {
       expect(active()?.textContent).toBe("develop");
     });
 
-    // `pointerMove` rather than `mouseEnter` since the move to the shared
-    // surface: Kobalte drives hover-focus off pointer events and ignores any
-    // whose `pointerType` is not a mouse, so a touch drag does not drag the
-    // highlight along with it.
-    it("follows the mouse", () => {
+    // Deliberately *not* the mouse. The highlight is what Enter and Ok commit,
+    // and hover-focus made both follow the pointer: pointing at a row while
+    // pressing Ok took that row, and the same consent let a release over a
+    // moved list commit a row nobody pressed. Hover keeps its own background.
+    it("stays where the keyboard put it while the mouse moves over the list", () => {
       const { rows, active } = open();
 
       fireEvent.pointerMove(rows()[2], { pointerType: "mouse" });
 
-      expect(active()?.textContent).toBe("feature/omnibox");
+      expect(active()?.textContent).toBe("main");
     });
 
     it("pulls the highlight back into range when the filter shortens the list", () => {
