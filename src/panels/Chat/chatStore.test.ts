@@ -34,6 +34,7 @@ import {
   resolveApproval,
   revertEffortPick,
   revertModelPick,
+  seedEffort,
   selectEffort,
   selectMode,
   selectModel,
@@ -139,6 +140,29 @@ const turnDone = (turnId: string, outcome: "completed" | "cancelled" | "errored"
   usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, thinkingTokens: 0 },
   costUsd: 0.01,
   permissionDenials: [],
+});
+
+// Effort is the one setting nothing on the wire ever mentions: `system/init`
+// names the model and the permission mode and stops there, and a resume does
+// not carry the flag. So the level a session was started on has to be recorded
+// as applied when the panel opens, or the control describes a child it is not
+// running.
+describe("the effort a session opened on", () => {
+  it("is in force from the first frame, not pending", () => {
+    const s = initialChat("s1");
+    seedEffort(s, "high");
+    expect(shownEffort(s)).toBe("high");
+    expect(effortPending(s)).toBe(false);
+  });
+
+  it("never overwrites a level this session has actually picked", () => {
+    // The seed is what the argv already carried; a pick is a request in flight.
+    // Ordering is not something a mount can promise, so the seed yields.
+    const s = initialChat("s1");
+    selectEffort(s, "low");
+    seedEffort(s, "high");
+    expect(shownEffort(s)).toBe("low");
+  });
 });
 
 // A compaction is 30-odd seconds in which the wire says nothing at all

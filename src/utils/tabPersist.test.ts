@@ -159,14 +159,29 @@ describe("toStore", () => {
     expect(parseStore(raw)["/w/a"].tabs[0].pick?.optionValues).toEqual({ web_search: false });
   });
 
-  it("keeps neither for a chat with a live child, whose transcript is the record", () => {
+  // The text and the pick part company here. What was typed at a live chat has
+  // somewhere to go - the composer sends it, and the transcript is the record.
+  // What it is *running* has nowhere else at all: measured on claude 2.1.251, a
+  // resumed session reports the model it had and comes back on the CLI's
+  // default permission mode, with the effort level reported nowhere ever. So
+  // the pick goes down and the text does not.
+  it("keeps what a live chat is running, and not what was typed at it", () => {
     const out = toStore(
-      [tab({ id: "1", kind: "chat", sessionId: "c1", live: true, text: "typed", pick: { model: "sonnet", mode: null, effort: null, optionValues: {} } })],
+      [
+        tab({
+          id: "1",
+          kind: "chat",
+          sessionId: "c1",
+          live: true,
+          text: "typed",
+          pick: { model: "sonnet", mode: "plan", effort: "high", optionValues: {} },
+        }),
+      ],
       {},
       100,
     );
     expect("text" in out["/w/a"].tabs[0]).toBe(false);
-    expect("pick" in out["/w/a"].tabs[0]).toBe(false);
+    expect(out["/w/a"].tabs[0].pick).toEqual({ model: "sonnet", mode: "plan", effort: "high", optionValues: {} });
   });
 
   // The test the line above used to make was "has a session id", which a

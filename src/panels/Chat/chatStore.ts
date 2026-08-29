@@ -1497,6 +1497,20 @@ export function revertEffortPick(s: ChatState, effort: string | null) {
   if (s.pendingEffort === effort) s.pendingEffort = undefined;
 }
 
+/**
+ * The level the session was *opened* on, which is already in force: it rode the
+ * argv the child was started with.
+ *
+ * Applied rather than pending, and not a pick: there is nothing to send and
+ * nothing to wait for. It exists because nothing on the wire reports effort
+ * back - `system/init` names the model and the permission mode and stops there
+ * - so a session started at `high`, or resumed onto it after a reload, had a
+ * control reading "Default" about a child running something else.
+ */
+export function seedEffort(s: ChatState, effort: string | null) {
+  if (s.effort === null && s.pendingEffort === undefined) s.effort = effort;
+}
+
 /** Record an effort pick. Nothing reports effort back, so there is no confirmed
  *  value to compare against beyond the last one sent. */
 export function selectEffort(s: ChatState, effort: string | null) {

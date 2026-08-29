@@ -125,6 +125,15 @@ export function toStore(
     // into a *live* chat is not kept: that session replays its own transcript,
     // and the composer is the one place the text was already going.
     const draft = t.kind === "chat" && !t.live;
+    // The pick goes down for a *live* chat too, unlike the text. It used to be
+    // draft-only on the reasoning that a session already knows what it is
+    // running, and that is true of the model alone: measured on claude 2.1.251,
+    // `--resume` brings the model back and reports it on `system/init`, while
+    // `--permission-mode` and `--effort` are per-process flags that a resume
+    // does not restore (init came back `permissionMode: "default"` for a
+    // session started in `plan`). So the pick is the only record of two of the
+    // three, and dropping it is what made them reset on every reload.
+    const keepPick = t.kind === "chat";
     ws.tabs.push({
       id: t.id,
       title: t.title,
@@ -135,7 +144,7 @@ export function toStore(
       ...(t.sessionId ? { sessionId: t.sessionId } : {}),
       ...(t.rewindTo ? { rewindTo: t.rewindTo } : {}),
       ...(draft && t.text && t.text.length <= MAX_DRAFT_TEXT ? { text: t.text } : {}),
-      ...(draft && t.pick && (hasPick(t.pick) || hasOptionPick(t.pick)) ? { pick: t.pick } : {}),
+      ...(keepPick && t.pick && (hasPick(t.pick) || hasOptionPick(t.pick)) ? { pick: t.pick } : {}),
     });
   }
   return out;
@@ -182,10 +191,16 @@ const optionValuesField = (v: unknown): Record<string, ChatConfigValue> => {
   return out;
 };
 
-/** A draft's two fields, normalised. Both are overwritten rather than merged, so
- *  anything the file got wrong is dropped rather than passed on: the tab still
- *  restores, just without that part. */
-function draftFields(t: PersistedTab): Pick<PersistedTab, "text" | "pick"> {
+/** A chat tab's two extras, normalised. Both are overwritten rather than merged,
+ *  so anything the file got wrong is dropped rather than passed on: the tab
+ *  still restores, just without that part.
+ *
+ *  Which tabs *carry* either is `toStore`'s decision, not this one's: text for a
+ *  chat nothing is driving (a draft, or a restored one opened to read), the pick
+ *  for any chat at all - a live one is restored by resuming a session that comes
+ *  back without its mode or its effort level. This end only normalises what it
+ *  finds, since a hand-edited file reaches the composer through it. */
+function chatFields(t: PersistedTab): Pick<PersistedTab, "text" | "pick"> {
   const p = t.pick as Partial<DraftPick> | undefined;
   return {
     text: typeof t.text === "string" && t.text.length <= MAX_DRAFT_TEXT ? t.text : undefined,
@@ -221,15 +236,14 @@ export function parseStore(raw: string | null): TabStore {
             isPersistable(t.kind) &&
             Array.isArray(t.args),
         )
-        // A chat tab with no session id is a draft, which is a thing to come
-        // back to now rather than a record with nothing behind it. Its two
-        // extras are checked here, since a hand-edited file reaches the
-        // composer and the palette through them.
+        // A chat tab's extras are checked here, since a hand-edited file reaches
+        // the composer and the palette through them. Every chat, not only a
+        // draft: a live one carries the pick its session is running.
         .map((t) => {
           // An id that is not a non-empty string is dropped rather than carried:
           // restore mints a fresh one, which is exactly what an older store gets.
           const base = typeof t.id === "string" && t.id ? t : { ...t, id: undefined };
-          return base.kind === "chat" && !base.sessionId ? { ...base, ...draftFields(base) } : base;
+          return base.kind === "chat" ? { ...base, ...chatFields(base) } : base;
         });
       if (tabs.length) {
         out[ws] = {
