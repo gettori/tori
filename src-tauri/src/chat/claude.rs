@@ -600,6 +600,7 @@ impl ClaudeMapper {
         match frame["subtype"].as_str() {
             Some("init") => self.map_init(frame),
             Some("compact_boundary") => self.map_compact_boundary(frame),
+            Some("status") => self.map_status(frame),
             Some("hook_started") => self.map_hook(frame, HookPhase::Started),
             Some("hook_response") => self.map_hook(frame, HookPhase::Finished),
             _ => Vec::new(),
@@ -613,19 +614,62 @@ impl ClaudeMapper {
     /// Sidechain (subagent) boundaries are skipped: they compact a subagent's
     /// own context, not this conversation's, and showing one would report a
     /// reclaim the user's transcript never had.
+    ///
+    /// **Both spellings, because the two surfaces disagree.** The stream frame
+    /// says `compact_metadata`/`pre_tokens`/`post_tokens` (claude 2.1.251,
+    /// `dev/fixtures/claude/compaction.jsonl`) while the transcript record on
+    /// disk says `compactMetadata`/`preTokens`/`postTokens` for the same
+    /// compaction - checked against both on one captured run. Reading only the
+    /// camelCase one, as this did, cost a live compaction its trigger word and
+    /// both its figures: the notice degraded to a bare "Compacted." while the
+    /// same session, reopened and replayed off disk, read "Compacted manually
+    /// (16.6k to 2k)". Neither spelling is more correct, so neither is dropped.
     fn map_compact_boundary(&mut self, frame: &Value) -> Vec<ChatEvent> {
         if frame["isSidechain"].as_bool() == Some(true) {
             return Vec::new();
         }
-        let meta = &frame["compactMetadata"];
+        let meta = match frame.get("compact_metadata") {
+            Some(m) if !m.is_null() => m,
+            _ => &frame["compactMetadata"],
+        };
+        let tokens = |snake: &str, camel: &str| meta[snake].as_u64().or_else(|| meta[camel].as_u64());
         vec![ChatEvent::Compacted {
             session_id: self.session_id.clone(),
             turn_id: self.turn_id(),
             trigger: meta["trigger"].as_str().map(str::to_string),
-            pre_tokens: meta["preTokens"].as_u64(),
-            post_tokens: meta["postTokens"].as_u64(),
+            pre_tokens: tokens("pre_tokens", "preTokens"),
+            post_tokens: tokens("post_tokens", "postTokens"),
             summary: None,
         }]
+    }
+
+    /// The CLI's own "what am I doing" channel.
+    ///
+    /// Measured values: `"requesting"`, which every turn emits and which the
+    /// turn state already says better; `"compacting"`; and `null` on the frame
+    /// that closes one, alongside `compact_result` and, when it did not work, a
+    /// `compact_error`. Only the compaction pair is carried across - a status
+    /// this build has never seen is not news, and inventing a caption for it is
+    /// how a wire word ends up in the UI.
+    fn map_status(&mut self, frame: &Value) -> Vec<ChatEvent> {
+        if frame["status"].as_str() == Some("compacting") {
+            return vec![ChatEvent::CompactionStarted {
+                session_id: self.session_id.clone(),
+                turn_id: self.turn_id(),
+            }];
+        }
+        // Keyed on the error rather than on `compact_result`, because the
+        // failure is the half worth reporting and the message is the whole of
+        // what it has to say. A success needs nothing here: the boundary that
+        // follows it carries the figures.
+        if let Some(error) = frame["compact_error"].as_str() {
+            return vec![ChatEvent::CompactionFailed {
+                session_id: self.session_id.clone(),
+                turn_id: self.turn_id(),
+                error: error.to_string(),
+            }];
+        }
+        Vec::new()
     }
 
     /// One `hook_started`/`hook_response` frame.
@@ -1539,6 +1583,93 @@ mod tests {
 
     fn count(events: &[ChatEvent], pred: impl Fn(&ChatEvent) -> bool) -> usize {
         events.iter().filter(|e| pred(e)).count()
+    }
+
+    /// The compaction channel, off the captured run.
+    ///
+    /// The point of the scenario: a compaction is announced, takes 33 seconds
+    /// of complete silence, and then reports itself. Both ends have to reach
+    /// the panel or the transcript has nothing to say for half a minute.
+    #[test]
+    fn a_compaction_reports_both_its_start_and_its_result() {
+        let events = run("compaction");
+        assert_eq!(
+            count(&events, |e| matches!(e, ChatEvent::CompactionStarted { .. })),
+            1,
+            "system/status carries `compacting`, and it is the only warning the panel gets"
+        );
+        let boundary = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::Compacted {
+                    trigger,
+                    pre_tokens,
+                    post_tokens,
+                    ..
+                } => Some((trigger.clone(), *pre_tokens, *post_tokens)),
+                _ => None,
+            })
+            .expect("the boundary reaches the panel");
+        // The figures the notice reads out. They are only here because both
+        // spellings are accepted: this frame says `compact_metadata` with
+        // `pre_tokens`, and reading only the transcript's camelCase left every
+        // live compaction reporting a bare "Compacted." with no trigger and no
+        // sizes.
+        assert_eq!(boundary, (Some("manual".to_string()), Some(16_572), Some(1_990)));
+    }
+
+    /// The transcript on disk spells the same metadata the other way
+    /// (`compactMetadata`/`preTokens`), which is what a resumed session
+    /// replays. One reader, both spellings, or the same compaction reads two
+    /// different ways depending on which surface it came from.
+    #[test]
+    fn the_boundarys_other_spelling_reads_the_same() {
+        let mut m = ClaudeMapper::new("s1");
+        let frame: Value = serde_json::from_str(
+            r#"{"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"auto","preTokens":16566,"postTokens":2157}}"#,
+        )
+        .unwrap();
+        match m.map(&frame).first() {
+            Some(ChatEvent::Compacted {
+                trigger,
+                pre_tokens,
+                post_tokens,
+                ..
+            }) => assert_eq!(
+                (trigger.as_deref(), *pre_tokens, *post_tokens),
+                (Some("auto"), Some(16_566), Some(2_157))
+            ),
+            other => panic!("expected a boundary, got {other:?}"),
+        }
+    }
+
+    /// A compaction that did not happen writes no boundary, so the closing
+    /// status frame's error is the whole of what it has to report. Measured by
+    /// asking a conversation too short to compact.
+    #[test]
+    fn a_refused_compaction_reports_the_agents_reason() {
+        let mut m = ClaudeMapper::new("s1");
+        let frame: Value = serde_json::from_str(
+            r#"{"type":"system","subtype":"status","status":null,"compact_result":"failed","compact_error":"Not enough messages to compact."}"#,
+        )
+        .unwrap();
+        match m.map(&frame).first() {
+            Some(ChatEvent::CompactionFailed { error, .. }) => {
+                assert_eq!(error, "Not enough messages to compact.")
+            }
+            other => panic!("expected a failure, got {other:?}"),
+        }
+    }
+
+    /// `requesting` is on the same channel and is every turn's ordinary state.
+    /// Carrying it would put a wire word on screen for something the turn state
+    /// already says.
+    #[test]
+    fn an_ordinary_status_frame_is_not_news() {
+        let mut m = ClaudeMapper::new("s1");
+        let frame: Value =
+            serde_json::from_str(r#"{"type":"system","subtype":"status","status":"requesting"}"#).unwrap();
+        assert!(m.map(&frame).is_empty());
     }
 
     /// What the context meter is fed, measured against the capture rather than

@@ -32,6 +32,10 @@ export default function StatusStrip(props: {
   health: ConnectionHealth;
   running: boolean;
   awaitingApproval: boolean;
+  /** A compaction is running inside the turn. Named separately because it is
+   *  the one kind of work that produces nothing to look at for half a minute:
+   *  "Working" is true but says the least exactly when the wait is longest. */
+  compacting?: boolean;
   /** Distinct files this session's tool calls touched. */
   files: number;
   /** This session's figures, or null before the transcript has been read (a
@@ -84,6 +88,7 @@ export default function StatusStrip(props: {
     if (props.health === "disconnected") return "Disconnected";
     if (props.health === "connecting") return "Connecting";
     if (props.awaitingApproval) return "Waiting for approval";
+    if (props.compacting) return "Compacting";
     return props.running ? "Working" : "Idle";
   };
 

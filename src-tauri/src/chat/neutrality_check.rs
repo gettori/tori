@@ -468,6 +468,8 @@ mod tests {
             ChatEvent::TurnStarted { .. } => "turnStarted",
             ChatEvent::UserMessage { .. } => "userMessage",
             ChatEvent::Compacted { .. } => "compacted",
+            ChatEvent::CompactionStarted { .. } => "compactionStarted",
+            ChatEvent::CompactionFailed { .. } => "compactionFailed",
             ChatEvent::TextDelta { .. } => "textDelta",
             ChatEvent::ThinkingDelta { .. } => "thinkingDelta",
             ChatEvent::ToolCallStarted { .. } => "toolCallStarted",

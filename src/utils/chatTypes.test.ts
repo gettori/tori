@@ -187,6 +187,16 @@ describe("chatTypes mirrors the Rust chat model", () => {
           expect(ev.outcome).toBe("cancelled");
           expect(ev.permissionDenials[0]?.toolName).toBe("Bash");
           break;
+        case "compactionStarted":
+          // Carries nothing but its place in the turn: the news is that a
+          // compaction is running at all.
+          expect(ev.turnId).toBeTruthy();
+          break;
+        case "compactionFailed":
+          // The agent's own reason, which is the whole of what a failed
+          // compaction has to report - there is no boundary behind it.
+          expect(ev.error).toBe("Not enough messages to compact.");
+          break;
         case "sessionError":
           expect(ev.fatal).toBe(true);
           break;

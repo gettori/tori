@@ -330,6 +330,7 @@ export default function ChatView(props: {
   }
 
   const edit = (fn: (s: ChatState) => void) => setState(produce(fn));
+
   const running = () => isRunning(state);
 
   // Memoized, not a plain accessor. Solid props are getters and MessageList
@@ -1666,6 +1667,7 @@ export default function ChatView(props: {
         <StatusStrip
           health={connectionHealth(state)}
           running={running()}
+          compacting={state.compactingItemId !== null}
           awaitingApproval={pendingApprovals(state).length > 0}
           files={touchedFiles()}
           detail={liveDetail()}

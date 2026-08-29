@@ -163,6 +163,17 @@
     "summary": "This session is being continued from a previous conversation"
   },
   {
+    "type": "compactionStarted",
+    "sessionId": "s1",
+    "turnId": "t1"
+  },
+  {
+    "type": "compactionFailed",
+    "sessionId": "s1",
+    "turnId": "t1",
+    "error": "Not enough messages to compact."
+  },
+  {
     "type": "textDelta",
     "sessionId": "s1",
     "turnId": "t1",

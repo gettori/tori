@@ -174,6 +174,11 @@ const REQUIRES = {
     "user/tool_result",
     "result/success",
   ],
+  // The compaction channel, which is two frames the CLI reports on its own:
+  // `system/status` carries `status: "compacting"` when it starts and, when it
+  // ends, `compact_result` plus a `compact_error` on failure. Without the
+  // boundary this would pass on a run where the CLI declined to compact.
+  compaction: ["system/status", "system/compact_boundary", "result/success"],
   "image-turn": ["assistant/text", "result/success"],
   // A set cannot say "twice", so this only pins that both turns' shapes are
   // here at all; that there are two inits is asserted in the scenario body.
@@ -581,6 +586,26 @@ const SCENARIOS = {
     const alive = p.child.exitCode === null;
     await p.close();
     if (!alive) throw new Error("child exited between turns - the long-lived-process assumption is broken");
+    return p;
+  },
+
+  // What the wire says while a compaction runs, which is the only warning the
+  // panel gets that the next 40 seconds are not a hung session.
+  //
+  // Four turns first: a shorter conversation is refused with
+  // `compact_error: "Not enough messages to compact."`, which is a real branch
+  // and a useless capture - it would record the failure path as if it were the
+  // normal one. The words are the cheapest turns that still leave something to
+  // summarise.
+  compaction: async ({ scratch }) => {
+    const p = new Probe({ cwd: scratch });
+    for (const word of ["one", "two", "three", "four"]) {
+      p.sendTurn(`Reply with exactly the word: ${word}. Do not use any tools.`);
+      await p.waitForResult();
+    }
+    p.sendTurn("/compact");
+    await p.waitForResult();
+    await p.close();
     return p;
   },
 

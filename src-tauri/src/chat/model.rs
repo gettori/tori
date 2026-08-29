@@ -964,6 +964,32 @@ pub enum ChatEvent {
         summary: Option<String>,
     },
 
+    /// A compaction has *started*, which is the only warning the panel gets
+    /// that the next half minute of silence is work rather than a hang.
+    ///
+    /// Measured (claude 2.1.251, `dev/fixtures/claude/compaction.jsonl`): the
+    /// CLI reports what it is doing on `system`/`status`, and a compaction is
+    /// `status: "compacting"` at the start against `status: null` plus
+    /// `compact_result` at the end. The captured run took 33 seconds between
+    /// the two, with no other frame in between - which is exactly the window in
+    /// which the transcript showed nothing at all.
+    CompactionStarted { session_id: String, turn_id: String },
+
+    /// A compaction that ended without one: the closing status frame carried a
+    /// `compact_error`. Measured on the same channel, by asking a conversation
+    /// too short to compact: `compact_result: "failed"` with
+    /// `compact_error: "Not enough messages to compact."`.
+    ///
+    /// Its own event rather than a flag on `Compacted`, because no boundary is
+    /// written for a compaction that did not happen: there is nothing to report
+    /// the size of, and a `Compacted` with empty figures would read as one that
+    /// reclaimed an unknown amount.
+    CompactionFailed {
+        session_id: String,
+        turn_id: String,
+        error: String,
+    },
+
     TextDelta {
         session_id: String,
         turn_id: String,
@@ -1403,6 +1429,15 @@ mod tests {
                 pre_tokens: Some(247408),
                 post_tokens: Some(9444),
                 summary: Some("This session is being continued from a previous conversation".into()),
+            },
+            ChatEvent::CompactionStarted {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+            },
+            ChatEvent::CompactionFailed {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+                error: "Not enough messages to compact.".into(),
             },
             ChatEvent::TextDelta {
                 session_id: "s1".into(),
@@ -1897,6 +1932,8 @@ mod tests {
                 ChatEvent::TurnStarted { .. } => "turnStarted",
                 ChatEvent::UserMessage { .. } => "userMessage",
                 ChatEvent::Compacted { .. } => "compacted",
+                ChatEvent::CompactionStarted { .. } => "compactionStarted",
+                ChatEvent::CompactionFailed { .. } => "compactionFailed",
                 ChatEvent::TextDelta { .. } => "textDelta",
                 ChatEvent::ThinkingDelta { .. } => "thinkingDelta",
                 ChatEvent::ToolCallStarted { .. } => "toolCallStarted",
@@ -1914,8 +1951,8 @@ mod tests {
                 ChatEvent::ConfigOptions { .. } => "configOptions",
             };
         }
-        // 21 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 21, "every_event() must hold exactly one sample per variant");
+        // 23 variants; a mismatch means a sample is missing or duplicated.
+        assert_eq!(events.len(), 23, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]

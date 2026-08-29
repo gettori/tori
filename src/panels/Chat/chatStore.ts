@@ -110,6 +110,11 @@ export type NoticeItem = {
   text: string;
   level: "info" | "error";
   details?: string;
+  /** Set while the thing the line describes is still happening, and cleared
+   *  when it lands. The only one so far is a compaction, which takes half a
+   *  minute of complete wire silence: the row is what says the session is
+   *  working rather than wedged, and the stamp is what lets it count. */
+  pendingSince?: number;
 };
 export type ToolItem = {
   kind: "tool";
@@ -385,6 +390,11 @@ export type ChatState = {
    *  history carries no frames for. */
   compactions: number;
   compactionReclaimed: number;
+  /** The notice a running compaction is writing itself into, or null when none
+   *  is running. Held as an id rather than a boolean because the boundary that
+   *  ends it has to land *in that row* - a compaction that announced itself and
+   *  then reported its result three rows later would read as two events. */
+  compactingItemId: string | null;
   /** Context windows the agent reported, keyed by every id it named them
    *  under, accumulated across turns. The authoritative source: it is measured
    *  per model and per provider by the session itself. Empty until the first
@@ -507,6 +517,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     capabilities: null,
     compactions: 0,
     compactionReclaimed: 0,
+    compactingItemId: null,
     contextWindows: {},
     contextWindow: null,
     permissionMode: null,
@@ -553,6 +564,20 @@ function fmtTokens(tokens: number): string {
 function nextId(s: ChatState, prefix: string): string {
   s.seq += 1;
   return `${prefix}${s.seq}`;
+}
+
+/**
+ * The notice a running compaction is writing itself into, released from the
+ * state as it is handed back. Null when none is running, which is every
+ * compaction Sway learns about only from the boundary: a resumed session's
+ * replayed history, and any agent that reports no start of its own.
+ */
+function settleCompaction(s: ChatState): NoticeItem | null {
+  const id = s.compactingItemId;
+  if (!id) return null;
+  s.compactingItemId = null;
+  const item = s.items.find((i) => i.id === id);
+  return item?.kind === "notice" ? item : null;
 }
 
 /** Appending anything closes both streaming bubbles, so text that resumes after
@@ -950,18 +975,51 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
           ? ` (${fmtTokens(ev.preTokens)} to ${fmtTokens(ev.postTokens)})`
           : "";
       const how = ev.trigger === "auto" ? "automatically" : "manually";
-      push(s, {
-        kind: "notice",
-        id: nextId(s, "notice"),
+      const settled = {
         text: `Compacted ${how}${reclaimed}.`,
-        level: "info",
+        level: "info" as const,
         // Kept, but folded away. It is the agent's own text and the only
         // record of what the model still remembers past the boundary, so
         // dropping it would lose the one thing a reader might come back for -
         // and it is several hundred words, which inline is a wall the
         // conversation has to be scrolled past every time.
         details: ev.summary ?? undefined,
+        pendingSince: undefined,
+      };
+      // Into the row that announced it, where there is one. The running row and
+      // the result are one event and belong in one place; pushing a second
+      // notice would leave "Compacting the conversation" sitting above its own
+      // outcome forever.
+      const running = settleCompaction(s);
+      if (running) Object.assign(running, settled);
+      else push(s, { kind: "notice", id: nextId(s, "notice"), ...settled });
+      return;
+    }
+    case "compactionStarted": {
+      // Nothing else reaches the wire for the whole compaction - measured at 33
+      // seconds of silence on the captured run - so this row is the only thing
+      // between "working" and "wedged" for the person watching.
+      if (s.compactingItemId) return;
+      const id = nextId(s, "notice");
+      s.compactingItemId = id;
+      push(s, {
+        kind: "notice",
+        id,
+        text: "Compacting the conversation",
+        level: "info",
+        pendingSince: Date.now(),
       });
+      return;
+    }
+    case "compactionFailed": {
+      const running = settleCompaction(s);
+      const settled = {
+        text: `Compaction failed: ${ev.error}`,
+        level: "error" as const,
+        pendingSince: undefined,
+      };
+      if (running) Object.assign(running, settled);
+      else push(s, { kind: "notice", id: nextId(s, "notice"), ...settled });
       return;
     }
     case "textDelta":
@@ -1101,6 +1159,12 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       s.awaitingTurn = false;
       s.openTextId = null;
       s.openThinkingId = null;
+      // A compaction cannot outlive the turn it ran in. If the turn ended
+      // without either a boundary or an error - an interrupt, a crash, a CLI
+      // that reports neither - the row goes rather than sitting there claiming
+      // to still be working. Nothing was recorded, so nothing is claimed.
+      const unsettled = settleCompaction(s);
+      if (unsettled) s.items = s.items.filter((i) => i.id !== unsettled.id);
       // Not `lastUsage`: this frame is the turn added up across every API call
       // it made, and reading it as the context is what put 7.8M in a 1M window.
       s.lastTurnUsage = ev.usage;

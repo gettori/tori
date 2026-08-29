@@ -1450,6 +1450,32 @@ button.diffHunkHeader:hover {
   color: var(--danger-fg);
 }
 
+/* A notice for something still happening. The glyph breathes rather than
+   spinning: it sits in the middle of a conversation, and a spinner in a
+   transcript reads as a stuck row. Motion is the whole job here, since the
+   thing it marks (a compaction) publishes no progress to draw. */
+.noticePending {
+  animation: noticeBreathe 1.6s ease-in-out infinite;
+}
+
+@keyframes noticeBreathe {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* How long it has been going. Quieter than the line, because it is the reason
+   to keep waiting rather than the news itself - and tabular figures so a
+   ticking second does not shuffle the words beside it. */
+.noticeClock {
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
 /* The long half of a notice (a compaction summary), folded away. The trigger
    is quieter than the line above it: it is an offer, not news. */
 .noticeDetails {

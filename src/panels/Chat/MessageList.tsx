@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
-import { Brain, Info, TriangleAlert, Webhook } from "lucide-solid";
+import { Brain, FoldVertical, Info, TriangleAlert, Webhook } from "lucide-solid";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";
 import type { ContentBlock, PermissionMode, QuestionAnswer } from "../../utils/chatTypes";
 import Button from "../../components/Button/Button";
@@ -80,6 +80,32 @@ function HookRow(props: { item: Extract<ChatItem, { kind: "hook" }> }) {
       </span>
       <Show when={failed() && props.item.stderr}>{(err) => <div>{err()}</div>}</Show>
     </div>
+  );
+}
+
+/**
+ * A notice for something that has not finished yet, which so far means one
+ * thing: a compaction.
+ *
+ * It exists because the wire goes completely silent for the duration - measured
+ * at 33 seconds on the captured run, with the start and the boundary the only
+ * two frames - and a transcript that shows nothing for half a minute is
+ * indistinguishable from a session that has hung. There is no progress to
+ * report (nobody publishes one), so what it counts is the only honest thing it
+ * can: how long this has been going on.
+ */
+function PendingNotice(props: { text: string; since: number }) {
+  const [now, setNow] = createSignal(Date.now());
+  const timer = window.setInterval(() => setNow(Date.now()), 1000);
+  onCleanup(() => window.clearInterval(timer));
+  const seconds = () => Math.max(0, Math.floor((now() - props.since) / 1000));
+  const clock = () => (seconds() >= 60 ? `${Math.floor(seconds() / 60)}m ${seconds() % 60}s` : `${seconds()}s`);
+  return (
+    <span class={styles.noticeLine}>
+      <Icon icon={FoldVertical} size={14} class={`${styles.noticeIcon} ${styles.noticePending}`} aria-hidden="true" />
+      <span>{props.text}</span>
+      <span class={styles.noticeClock}>{clock()}</span>
+    </span>
   );
 }
 
@@ -362,15 +388,22 @@ export default function MessageList(props: {
             <Match when={item.kind === "notice" && item}>
               {(it) => (
                 <div class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""}`}>
-                  <span class={styles.noticeLine}>
-                    <Icon
-                      icon={it().level === "error" ? TriangleAlert : Info}
-                      size={14}
-                      class={styles.noticeIcon}
-                      aria-hidden="true"
-                    />
-                    <span>{it().text}</span>
-                  </span>
+                  <Show
+                    when={it().pendingSince}
+                    fallback={
+                      <span class={styles.noticeLine}>
+                        <Icon
+                          icon={it().level === "error" ? TriangleAlert : Info}
+                          size={14}
+                          class={styles.noticeIcon}
+                          aria-hidden="true"
+                        />
+                        <span>{it().text}</span>
+                      </span>
+                    }
+                  >
+                    {(since) => <PendingNotice text={it().text} since={since()} />}
+                  </Show>
                   {/* Closed by default: the line is the news, the details are
                       what you go looking for afterwards. A plain `<details>`
                       because it needs no state of its own - one open summary
