@@ -481,10 +481,17 @@ export default function Terminal(props: {
         },
         false,
       );
-        // What was typed at this conversation while nothing was driving it. No
-        // pick rides along: the session already has a model, and the stored one
-        // was a draft's opening choice rather than a request to switch.
+        // What was typed at this conversation while nothing was driving it, and
+        // what it was running.
+        //
+        // The pick used to be left behind here, on the reasoning that the
+        // session already has a model. That holds for the model and for nothing
+        // else: measured on claude 2.1.251, a resumed session reports the model
+        // it had and comes back on the CLI's *default* permission mode, with no
+        // effort level reported at all. So the pick is the only record of what
+        // this conversation was set to, and the spawn below re-asserts it.
         if (d.text) setDraft(id, d.text);
+        if (d.pick) setDraftPick(id, d.pick);
         producedId[i] = id;
         continue;
       }

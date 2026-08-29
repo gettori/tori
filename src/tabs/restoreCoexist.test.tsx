@@ -276,6 +276,26 @@ describe("restore, per pane", () => {
     expect(screen.queryByTestId("chat")).toBeNull();
   });
 
+  // The pick comes back for a *resumed* chat too, which is the half a session
+  // cannot restore for itself. Measured on claude 2.1.251: `--resume` brings
+  // the model back and reports it on `system/init`, and comes back on the
+  // CLI's default permission mode with no effort level reported at all. So the
+  // mode and the level reset on every reload until the tab carried them.
+  it("brings back what a resumed chat was running, which its session cannot", async () => {
+    const t = chatTab(1);
+    storeTabs([{ ...t, pick: { model: "sonnet", mode: "plan", effort: "high", optionValues: {} } }]);
+
+    await restore();
+
+    const chat = await screen.findByTestId("chat");
+    expect(draftPick(chat.dataset.tab!)).toEqual({
+      model: "sonnet",
+      mode: "plan",
+      effort: "high",
+      optionValues: {},
+    });
+  });
+
   // A chat that has been opened to read holds unsent text the same way a draft
   // does: no child is carrying it, so the store is the only place it can wait.
   it("brings back what was typed at a restored chat that was never started", async () => {
