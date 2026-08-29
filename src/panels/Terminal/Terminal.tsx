@@ -665,7 +665,12 @@ export default function Terminal(props: {
     tabs.map((t) => {
       const named = { ...t, title: tabTitle(t) };
       if (named.kind !== "chat") return named;
-      if (chatIsLive(named)) return { ...named, live: true };
+      // The pick goes down either way. A live chat's session restores its own
+      // model and nothing else: `--permission-mode` and `--effort` are
+      // per-process flags a resume does not carry, so this is the only record
+      // of two of the three. Its *text* is still left behind, which is the
+      // half a running conversation really does have somewhere else to keep.
+      if (chatIsLive(named)) return { ...named, live: true, pick: draftPick(t.id) };
       return { ...named, live: false, text: draftFor(t.id), pick: draftPick(t.id) };
     });
 
@@ -685,11 +690,14 @@ export default function Terminal(props: {
   const saveDrafts = debounce(() => saveTabStore(open(), activeByWorkspace()), DRAFT_SAVE_MS);
   createEffect(() => {
     for (const t of open()) {
-      // Read for the subscription, not for the value: touching each draft's two
-      // stores is the whole of what makes a keystroke arm the timer below.
-      if (t.kind !== "chat" || chatIsLive(t)) continue;
-      draftFor(t.id);
+      // Read for the subscription, not for the value: touching these stores is
+      // the whole of what makes a keystroke, or a landed switch, arm the timer
+      // below.
+      if (t.kind !== "chat") continue;
+      // Every chat, live or not: a live one's pick moves when a model or mode
+      // switch lands, and that is what the next launch resumes it on.
       draftPick(t.id);
+      if (!chatIsLive(t)) draftFor(t.id);
     }
     saveDrafts();
   });

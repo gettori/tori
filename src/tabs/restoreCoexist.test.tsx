@@ -296,6 +296,34 @@ describe("restore, per pane", () => {
     });
   });
 
+  // The half the restore above depends on: a *live* chat's pick has to reach the
+  // store in the first place. It used to be dropped on the way out - the save
+  // read the pick only for a chat with no child - so the record the resume
+  // needs was never written, however faithfully it was read back.
+  it("keeps writing a live chat's pick down, which is what a resume reads", async () => {
+    const t = chatTab(1);
+    storeTabs([{ ...t, pick: { model: "sonnet", mode: "plan", effort: "high", optionValues: {} } }]);
+    liveChats = ["s-1"];
+
+    await restore();
+    // Live means the backend still holds the session, which is what makes this
+    // tab take the branch the pick used to fall off.
+    const chat = await screen.findByTestId("chat");
+    await waitFor(() => expect(chat.dataset.started).toBe("true"));
+
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0].pick).toEqual({
+        model: "sonnet",
+        mode: "plan",
+        effort: "high",
+        optionValues: {},
+      }),
+    );
+    // And not its text: a running conversation has the composer and the
+    // transcript for that.
+    expect("text" in JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0]).toBe(false);
+  });
+
   // A chat that has been opened to read holds unsent text the same way a draft
   // does: no child is carrying it, so the store is the only place it can wait.
   it("brings back what was typed at a restored chat that was never started", async () => {
