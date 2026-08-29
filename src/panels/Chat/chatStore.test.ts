@@ -141,6 +141,74 @@ const turnDone = (turnId: string, outcome: "completed" | "cancelled" | "errored"
   permissionDenials: [],
 });
 
+// A compaction is 30-odd seconds in which the wire says nothing at all
+// (measured at 33s on dev/fixtures/claude/compaction.jsonl: the start frame,
+// then the boundary, with nothing between them). The transcript's job in that
+// window is to say the session is working rather than wedged.
+describe("a compaction while it is running", () => {
+  const started: ChatEvent = { type: "compactionStarted", sessionId: "s1", turnId: "t1" };
+  const failed: ChatEvent = {
+    type: "compactionFailed",
+    sessionId: "s1",
+    turnId: "t1",
+    error: "Not enough messages to compact.",
+  };
+  const boundary = (pre: number | null, post: number | null): ChatEvent => ({
+    type: "compacted",
+    sessionId: "s1",
+    turnId: "t1",
+    trigger: "manual",
+    preTokens: pre,
+    postTokens: post,
+    summary: "the summary",
+  });
+  const notices = (s: ChatState) => s.items.filter((i): i is Extract<ChatItem, { kind: "notice" }> => i.kind === "notice");
+
+  it("announces itself the moment it starts, with a stamp to count from", () => {
+    const s = replay([turnStarted("t1"), started]);
+    expect(notices(s)).toHaveLength(1);
+    expect(notices(s)[0].text).toBe("Compacting the conversation");
+    expect(notices(s)[0].pendingSince).toBeGreaterThan(0);
+  });
+
+  it("settles into the same row rather than pushing a second one", () => {
+    // The running row and the result are one event. Two rows would leave
+    // "Compacting the conversation" sitting above its own outcome forever.
+    const s = replay([turnStarted("t1"), started, boundary(16_572, 1_990)]);
+    expect(notices(s)).toHaveLength(1);
+    expect(notices(s)[0].text).toBe("Compacted manually (17k to 2k).");
+    expect(notices(s)[0].pendingSince).toBeUndefined();
+    expect(notices(s)[0].details).toBe("the summary");
+  });
+
+  it("says so when the agent refused, which used to be silent", () => {
+    const s = replay([turnStarted("t1"), started, failed]);
+    expect(notices(s)).toHaveLength(1);
+    expect(notices(s)[0].text).toBe("Compaction failed: Not enough messages to compact.");
+    expect(notices(s)[0].level).toBe("error");
+  });
+
+  it("drops the row when the turn ends having reported neither", () => {
+    // An interrupt, a crash, a CLI that reports neither end. Nothing was
+    // recorded, so nothing is claimed - and a row still saying "Compacting"
+    // after the turn is over is the one outcome worse than no row at all.
+    const s = replay([turnStarted("t1"), started, turnDone("t1", "cancelled")]);
+    expect(notices(s)).toHaveLength(0);
+  });
+
+  it("still reports a compaction it never saw start", () => {
+    // Replayed history and any agent that reports no start of its own: the
+    // boundary alone is still the whole record.
+    const s = replay([turnStarted("t1"), boundary(247_408, 9_444)]);
+    expect(notices(s).map((n) => n.text)).toEqual(["Compacted manually (247k to 9k)."]);
+  });
+
+  it("ignores a second start while one is already running", () => {
+    const s = replay([turnStarted("t1"), started, started]);
+    expect(notices(s)).toHaveLength(1);
+  });
+});
+
 // What the context meter divides. Measured on dev/fixtures/claude, where one
 // turn made three API calls reading 17,440, 23,532 and 23,766 cached tokens and
 // the result frame reported their sum, 64,738, for a conversation that never
@@ -240,13 +308,15 @@ describe("what a turn's usage means", () => {
 describe("replaying the captured fixture", () => {
   it("produces one item per rendered event, in arrival order", () => {
     const s = replay(FIXTURE);
-    // the replayed user turn, the compaction notice, text, thinking, then a
-    // card each for toolu_1 (started), toolu_2 (fileEdit) and toolu_3
-    // (permissionRequest), then toolu_4's question, then the error and end
-    // notices, and last the hook frame (the fixture lists it after the
-    // lifecycle events).
+    // the replayed user turn, the compaction notice, then the second one the
+    // compaction *lifecycle* pair leaves behind (a start that the failure
+    // settles in place), text, thinking, then a card each for toolu_1
+    // (started), toolu_2 (fileEdit) and toolu_3 (permissionRequest), then
+    // toolu_4's question, then the error and end notices, and last the hook
+    // frame (the fixture lists it after the lifecycle events).
     expect(kinds(s)).toEqual([
       "user",
+      "notice",
       "notice",
       "text",
       "thinking",
@@ -263,6 +333,9 @@ describe("replaying the captured fixture", () => {
     const boundary = s.items[1] as { text: string; details?: string };
     expect(boundary.text).toBe("Compacted manually (247k to 9k).");
     expect(boundary.details).toContain("continued from a previous conversation");
+    // And the pair after it: the start row, settled by the failure that
+    // follows it in the fixture, so one row carries both.
+    expect((s.items[2] as { text: string }).text).toBe("Compaction failed: Not enough messages to compact.");
     expect(s.items.filter((i): i is ToolItem => i.kind === "tool").map((t) => t.toolUseId)).toEqual([
       "toolu_1",
       "toolu_2",
