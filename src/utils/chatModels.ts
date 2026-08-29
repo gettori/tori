@@ -71,11 +71,19 @@ export type PickableModel = {
 /**
  * How much of the context window the conversation currently occupies.
  *
- * **The latest turn's figure, not a sum over turns.** A turn's input already
- * contains the whole conversation so far, so adding turns together would count
- * the same history once per turn and cross the window long before the session
- * actually did. It still grows across turns, which is what the meter shows -
- * the growth is in each turn's input, not in an accumulator here.
+ * **The latest API response's figure, not a sum.** The request the model was
+ * last given already contains the whole conversation, so adding responses
+ * together counts the same history once per response and crosses the window
+ * long before the session does. It still grows, which is what the meter shows -
+ * the growth is in each response's input, not in an accumulator here.
+ *
+ * This is the rule Anthropic's own status line publishes, which is worth naming
+ * because the mistake it rules out is not hypothetical: a `result` frame's
+ * usage is the turn added up across every API call it made, and reading that as
+ * the context put 7.8M in a 1M window. Measured on this repo's own capture
+ * (dev/fixtures/claude/permission-grant.jsonl): three responses reading 17,440,
+ * 23,532 and 23,766 cached tokens, and a result frame reporting their sum,
+ * 64,738, for a conversation that never held more than 24k.
  *
  * Cache reads and writes count because they are context the model was given;
  * only the output is left out, since it becomes input on the next turn and
@@ -128,24 +136,28 @@ export function reportedWindows(extra: Record<string, unknown> | undefined): Rec
  * The context window for a resolved model id, from the best source that knows
  * one, or null when none does.
  *
- * The order is the point:
+ * The order is the point, and every step is something an agent measured:
  *
- *   1. **What the session reported** (`reported`). Measured per model and per
- *      provider by the agent that is running the turn, so it beats anything
- *      written down anywhere. It only exists once a turn has completed.
- *   2. **A catalogue lookup, for non-Claude ids only** (`foreignWindow`). A
- *      Claude id never reaches it: step 1 is closer to the truth than a third
- *      party's idea of the same number, and a Claude id arriving here means
- *      nothing knew, which is an answer rather than a cue to guess.
- *   3. **Nothing.** No guess by family, no rounding to a familiar number. A
+ *   1. **What this session reported for this model** (`reported`). Measured per
+ *      model and per provider by the agent running the turn, so it beats
+ *      anything written down anywhere. It only exists once a turn has
+ *      completed.
+ *   2. **What this session reported for itself** (`stated`). ACP agents report
+ *      occupancy and window together on every usage update ("used" of "size"),
+ *      for the session rather than per model. Second only because it is the
+ *      coarser of the two measurements, not the less trustworthy one.
+ *   3. **A catalogue lookup, for non-Claude ids only** (`foreignWindow`). A
+ *      Claude id never reaches it: the steps above are closer to the truth than
+ *      a third party's idea of the same number.
+ *   4. **Nothing.** No guess by family, no rounding to a familiar number. A
  *      meter with an invented denominator reads as a measurement.
  *
- * There used to be a step between the two: the adapter's declared window, as
- * the pre-first-turn answer. It is gone with the table it came from, and it is
- * the one step that was demonstrably wrong (Sonnet 5 and Opus 5 both declared
- * 200k against a reported 1M). **So a Claude session shows no denominator at all
- * until its first turn completes.** That is the accepted cost of not printing a
- * number nobody measured.
+ * What is deliberately *not* a step: the adapter's declared window. It used to
+ * sit here as the pre-first-turn answer and it was the one step that was
+ * demonstrably wrong (Sonnet 5 and Opus 5 both declared 200k against a reported
+ * 1M). **So a Claude session still shows no denominator until its first turn
+ * completes**, which is the accepted cost of not printing a number nobody
+ * measured.
  *
  * Note what is deliberately *not* a step: the `[1m]` suffix some catalogue
  * values carry (`claude-fable-5[1m]`). It is real but redundant - the session
@@ -155,8 +167,13 @@ export function reportedWindows(extra: Record<string, unknown> | undefined): Rec
 export function contextWindowFor(
   resolvedModel: string,
   reported: Readonly<Record<string, number>> = {},
+  stated: number | null = null,
 ): number | null {
-  return reported[resolvedModel] ?? foreignWindow(resolvedModel);
+  return (
+    reported[resolvedModel] ??
+    stated ??
+    foreignWindow(resolvedModel)
+  );
 }
 
 /**

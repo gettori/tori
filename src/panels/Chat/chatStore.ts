@@ -52,7 +52,7 @@ import type {
 } from "../../utils/chatTypes";
 import type { ChatTransport } from "../../utils/agents";
 import { chatPlugins, stringList, type ChatPlugin } from "../../utils/chatCapabilities";
-import { reportedWindows } from "../../utils/chatModels";
+import { contextTokens, reportedWindows } from "../../utils/chatModels";
 import { rateLimitFrom, type RateLimitState } from "../../utils/chatRateLimit";
 import type { ProbeState } from "../../utils/safeSend";
 import type { SessionStatus } from "../../utils/sessionStatus";
@@ -390,6 +390,11 @@ export type ChatState = {
    *  per model and per provider by the session itself. Empty until the first
    *  turn completes, which is what the adapter's declared figure covers. */
   contextWindows: Record<string, number>;
+  /** The window the session stated for *itself*, whatever model is running:
+   *  ACP's `size`, which arrives with every usage update. Null for an agent
+   *  that states none, which is every Claude session (it reports per model
+   *  instead, above). */
+  contextWindow: number | null;
   /** Who the session is signed in as. Null until the handshake answers, and
    *  forever for a session that never handshook - which renders as nothing
    *  rather than as a guessed tier. */
@@ -419,11 +424,27 @@ export type ChatState = {
   agents: string[];
   plugins: ChatPlugin[];
   plan: PlanItem[];
-  /** The newest usage figure of any kind, including the mid-turn `usage`
-   *  events. The context meter wants this: it asks "how full is the window
-   *  right now", and waiting for the turn to end would leave it stale for the
-   *  whole turn. */
-  lastUsage: Usage | null;
+  /** Tokens the conversation is holding right now, or null before anything has
+   *  measured it.
+   *
+   *  **The newest measurement, never a sum**, and there are two kinds:
+   *
+   *    - a **per-response** usage event, which is the request the model was
+   *      last given (`contextTokens`: input plus both cache figures, output
+   *      excluded because it becomes input on the next request);
+   *    - a **compaction boundary**, which reports the size it left behind.
+   *
+   *  Whichever arrived last is the answer, so there is no precedence rule to
+   *  get wrong: a compaction supersedes the response before it, and the next
+   *  response supersedes the compaction.
+   *
+   *  What must never land here is a `result` frame's usage. That is the whole
+   *  turn added up across every API call it made, so a turn with thirty tool
+   *  calls reports thirty cache reads of the same conversation - 7.8M against a
+   *  1M window, which is not a context size, it is a bill. Anthropic's own
+   *  status line defines the context as the figures "from the most recent API
+   *  response"; the turn's total is kept under the two names that mean it. */
+  contextTokens: number | null;
   /** The last **completed** turn's usage, paired with `lastCostUsd` from the
    *  same `result` frame. Kept apart from `lastUsage` because that one moves
    *  mid-turn while the cost cannot: showing them together would caption a
@@ -487,6 +508,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     compactions: 0,
     compactionReclaimed: 0,
     contextWindows: {},
+    contextWindow: null,
     permissionMode: null,
     pendingMode: null,
     tools: [],
@@ -496,7 +518,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     agents: [],
     plugins: [],
     plan: [],
-    lastUsage: null,
+    contextTokens: null,
     lastTurnUsage: null,
     lastCostUsd: null,
     totalUsage: zeroUsage(),
@@ -906,6 +928,13 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       return;
     case "compacted": {
       s.compactions += 1;
+      // The boundary says how much it left behind, and that is the context from
+      // here until the next response reports its own. Anthropic's status line
+      // blanks the figure at this moment instead; a measured size is the better
+      // answer where the agent gives one, and where it does not, the reading
+      // stands until the next API call rather than being replaced by a zero
+      // that was never true. Nothing invented either way.
+      if (ev.postTokens !== null) s.contextTokens = ev.postTokens;
       // Only when the agent reported both ends. A compaction that named
       // neither reclaimed an unknown amount, not zero, and adding zero would
       // quietly understate the total.
@@ -1046,10 +1075,17 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       touchTurn(s, ev.turnId);
       s.plan = ev.items;
       return;
-    case "usage":
+    case "usage": {
       touchTurn(s, ev.turnId);
-      s.lastUsage = ev.usage;
+      s.contextTokens = contextTokens(ev.usage);
+      // ACP states the window beside the occupancy it measured ("used" of
+      // "size"), for a session rather than per model, so it cannot go in the
+      // per-model map Claude's `modelUsage` fills. See `contextWindowFor` for
+      // where the two meet.
+      const stated = ev.extra?.contextWindow;
+      if (typeof stated === "number" && stated > 0) s.contextWindow = stated;
       return;
+    }
     case "rateLimit":
       // Recorded whatever the status, so the banner's own rule decides what is
       // worth showing. Every captured frame says `allowed`, and rendering on
@@ -1065,7 +1101,8 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       s.awaitingTurn = false;
       s.openTextId = null;
       s.openThinkingId = null;
-      s.lastUsage = ev.usage;
+      // Not `lastUsage`: this frame is the turn added up across every API call
+      // it made, and reading it as the context is what put 7.8M in a 1M window.
       s.lastTurnUsage = ev.usage;
       s.lastCostUsd = ev.costUsd;
       // Merged rather than replaced: a turn reports only the models it touched,
