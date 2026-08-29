@@ -762,15 +762,25 @@ export default function LeftSidebar(props: {
   // Rollup badge: Waiting first (it always wins the
   // row), then Executing, each with an xN count when more than one session
   // shares the state. Renders nothing when neither count is present.
+  //
+  // An approval and a question share the chip, since both say "this one is
+  // waiting on you", and only the title tells them apart.
   function statusBubble(r: Rollup | null) {
     if (!r) return null;
-    if (!r.waitingForApproval && !r.executing && !r.idle && !r.running) return null;
+    const waiting = () => r.waitingForApproval + r.waitingForAnswer;
+    const waitingTitle = () =>
+      r.waitingForApproval && r.waitingForAnswer
+        ? "Waiting for you"
+        : r.waitingForApproval
+          ? "Waiting for approval"
+          : "Waiting for an answer";
+    if (!waiting() && !r.executing && !r.idle && !r.running) return null;
     return (
       <span class={styles.statusBubble}>
-        <Show when={r.waitingForApproval}>
-          <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title="Waiting for approval">
+        <Show when={waiting()}>
+          <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title={waitingTitle()}>
             <Icon icon={MessageCircleQuestion} />
-            <Show when={r.waitingForApproval > 1}>{r.waitingForApproval}</Show>
+            <Show when={waiting() > 1}>{waiting()}</Show>
           </span>
         </Show>
         <Show when={r.executing}>
