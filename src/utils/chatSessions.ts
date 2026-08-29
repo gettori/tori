@@ -11,7 +11,7 @@
 // `folderActors` (utils) does not have to import a panel, and so the revert
 // guard can be tested against it without mounting anything.
 import { createSignal } from "solid-js";
-import type { SessionStatus } from "./sessionStatus";
+import { awaitingUser, type SessionStatus } from "./sessionStatus";
 
 export type LiveChat = {
   sessionId: string;
@@ -64,12 +64,12 @@ export function chatsInFolder(folderPath: string): LiveChat[] {
 
 /** Would a stop do anything to this chat?
  *
- *  `waitingForApproval` counts: a chat blocked on a tool approval is still
+ *  A blocked chat counts: waiting on an approval or on a question, it is still
  *  mid-turn, and stopping is a reasonable answer to a prompt you do not want to
  *  grant. Excluding it would make the one state where a user most wants out the
  *  one state stop is unavailable in. */
 export function isStoppable(status: SessionStatus): boolean {
-  return status === "executing" || status === "waitingForApproval";
+  return status === "executing" || awaitingUser(status);
 }
 
 export function stoppableChats(chats: readonly LiveChat[]): LiveChat[] {

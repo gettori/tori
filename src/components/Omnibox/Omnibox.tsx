@@ -18,6 +18,7 @@ import { fuzzyScore } from "../../utils/fuzzy";
 import { ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { enabledAgents } from "../../utils/agentEnabled";
 import { liveChats, stoppableChats } from "../../utils/chatSessions";
+import { awaitingUser, STATUS_LABEL } from "../../utils/sessionStatus";
 import { COMMANDS, type Command, type Requirement } from "../../utils/commands";
 import { editorState } from "../../utils/editorState";
 import { stagedFiles, canPush } from "../../utils/gitActions";
@@ -487,10 +488,7 @@ export default function Omnibox(props: {
       out.push({
         id: `stop:${c.sessionId}`,
         label: `Stop ${c.sessionName}`,
-        sub:
-          c.status === "waitingForApproval"
-            ? "Waiting for approval"
-            : "Running a turn",
+        sub: awaitingUser(c.status) ? STATUS_LABEL[c.status] : "Running a turn",
         run: () => emitWith<StopChat>(STOP_CHAT, { sessionId: c.sessionId }),
       });
     }

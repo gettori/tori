@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import Icon from "../../components/Icon/Icon";
 import { providerIcon, providerMarkKey } from "../../components/Icon/ProviderIcon";
 import agentStyles from "../../components/Icon/agentMarks.module.css";
-import { statusPresentation, type SessionStatus } from "../../utils/sessionStatus";
+import { blockedOnUser, statusPresentation, type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
 import styles from "./TabMark.module.css";
 
@@ -47,7 +47,7 @@ export default function TabMark(props: {
   // from `agentId`, so a session wearing the fallback brain cannot pick up a
   // brand colour it has not earned.
   const markKey = () => providerMarkKey(null, props.agentId);
-  const needsYou = () => props.status === "waitingForApproval" || props.status === "budgetStopped";
+  const needsYou = () => props.status !== null && blockedOnUser(props.status);
   // The tooltip is the whole status vocabulary, spelled the way the sidebar and
   // the command palette spell it: one name per state across the app, with the
   // exact tier's "(measured)" suffix carried through by the same helper.

@@ -74,6 +74,19 @@ export function statusFromDot(dot: string): SessionStatus {
 // pipeline (OS notification, tray, dock badge). Those consumers were written
 // against dots, and a second presence pipeline keyed on statuses would be two
 // implementations of "is anything waiting on me" that could disagree.
+/** Is a person being asked something they can answer here and now? Stated once
+ *  so the tab marker, the jump-to-next hotkey and the stop command cannot end
+ *  up with three different ideas of which prompts count. */
+export function awaitingUser(status: SessionStatus): status is "waitingForApproval" {
+  return status === "waitingForApproval";
+}
+
+/** Is the session going nowhere without the user? A budget stop blocks the same
+ *  way, with nothing to answer. */
+export function blockedOnUser(status: SessionStatus): boolean {
+  return awaitingUser(status) || status === "budgetStopped";
+}
+
 export function dotFromStatus(status: SessionStatus): SessionDot {
   switch (status) {
     case "executing":
