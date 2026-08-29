@@ -57,6 +57,38 @@
   background: var(--tab-active-bg);
 }
 
+/* ---- Plain: tabs, not a control. No box, no dividers, and the pane tab
+   strips' own padding, colours and hover (see components/Tab), so a tab in the
+   sidebar reads as one of the tabs everywhere else. ---- */
+.plain {
+  /* `none`, not a transparent colour: the box is border-box, so a 1px border
+     costs the segments 2px of the size's height and drops their text half a
+     pixel off the line a real tab's sits on. */
+  border: none;
+  overflow: visible;
+  gap: calc(2px * var(--ui-scale));
+}
+
+.plain .segment {
+  padding: 0 calc(8px * var(--ui-scale));
+  border-radius: var(--sway-radius-md);
+  color: var(--tab-inactive-fg);
+}
+
+.plain .segment + .segment {
+  border-left: none;
+}
+
+.plain .segment:hover:not([data-pressed]) {
+  color: var(--tab-active-fg);
+  background: var(--tab-hover-bg);
+}
+
+.plain .segment[data-pressed] {
+  color: var(--tab-active-fg);
+  background: var(--tab-active-bg);
+}
+
 /* ---- Sizes ---- */
 .md {
 }

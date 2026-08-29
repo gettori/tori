@@ -44,6 +44,10 @@ export interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   size?: ControlSize;
+  /** `boxed` is the bordered strip. `plain` drops the box and the dividers and
+   *  rounds the pressed segment, for a row that reads as tabs rather than as a
+   *  control (the sidebar's Spaces/Features). */
+  variant?: "boxed" | "plain";
   /** Names the group for assistive tech. */
   "aria-label"?: string;
   class?: string;
@@ -89,6 +93,7 @@ export default function SegmentedControl<T extends string>(
       classList={{
         [styles.group]: true,
         [styles[props.size ?? "md"]]: true,
+        [styles.plain]: props.variant === "plain",
       }}
     >
       <For each={props.options}>
