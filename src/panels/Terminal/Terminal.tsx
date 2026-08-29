@@ -59,7 +59,7 @@ import {
   applyTemplate,
 } from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
-import { type SessionStatus } from "../../utils/sessionStatus";
+import { awaitingUser, blockedOnUser, type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
 import { liveSessionStatuses, sessionStatus } from "../../utils/sessionActivity";
 import { sessions } from "../../utils/sessionStore";
@@ -745,7 +745,7 @@ export default function Terminal(props: {
   // approval" (Phase 1's shared status store), across every workspace/space,
   // cycling from whichever waiting session (if any) is currently focused.
   const offNextWaiting = onEvent(NEXT_WAITING_SESSION, () => {
-    const waiting = liveSessionStatuses().filter((s) => s.status === "waitingForApproval");
+    const waiting = liveSessionStatuses().filter((s) => awaitingUser(s.status));
     if (!waiting.length) return;
     const idx = waiting.findIndex((w) => w.tabId === visibleId());
     const next = waiting[(idx + 1) % waiting.length];
@@ -1707,12 +1707,11 @@ export default function Terminal(props: {
    *  tail, which is the same answer the sidebar has always shown for it. */
   const tabCertainty = (t: OpenTerm): StatusCertainty => (t.kind === "chat" ? "exact" : "inferred");
 
-  /** Is this tab's session blocked on an approval? A budget stop blocks the same
-   *  way and is worded the same way in the tooltip: both mean the session is
-   *  waiting on a person. */
+  /** Is this tab's session blocked on the user? An approval, a question and a
+   *  budget stop all block the same way, and the tooltip words each one. */
   function blockedTab(t: OpenTerm): boolean {
     const s = marksSession(t) ? tabStatus(t) : null;
-    return s === "waitingForApproval" || s === "budgetStopped";
+    return s !== null && blockedOnUser(s);
   }
 
   // Splice the bar's new order (active workspace only) back over the same
