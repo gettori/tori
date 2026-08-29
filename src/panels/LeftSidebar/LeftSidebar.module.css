@@ -86,6 +86,77 @@
   border-color: var(--brand-default);
 }
 
+/* ---- Active space header ---- */
+/* The heading over the tree: uppercase and subtle, so it names the column
+   without competing with the project rows under it. */
+.spaceHeader {
+  --space-hue-rgb: var(--shell-glow-rgb);
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-height: calc(22px * var(--ui-scale));
+  padding-block: calc(8px * var(--ui-scale));
+  padding-inline: var(--tree-inset) var(--tree-gutter);
+  margin-bottom: calc(4px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+}
+
+/* The space's own hue, as on its tile, so the two read as one thing. */
+.spaceHeaderIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(20px * var(--ui-scale));
+  color: rgb(var(--space-hue-rgb));
+  font-weight: 600;
+}
+
+.spaceHeaderIcon > :global(svg) {
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+}
+
+/* Truncates rather than wrapping, so a long space name cannot push the
+   ellipsis off the column. */
+.spaceHeaderName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-subtle);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The trigger wraps the button rather than being it (Dropdown's `wrapper`), so
+   this is placement and the reveal only. `opacity` and not `display`, so the
+   keyboard keeps the way in that the pointer gets on hover. */
+.spaceHeaderMenu {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  opacity: 0;
+  transition: opacity var(--sway-duration-fast) ease;
+}
+
+.spaceHeader:hover .spaceHeaderMenu,
+.spaceHeaderMenu:focus-within,
+.spaceHeaderMenu[data-expanded] {
+  opacity: 1;
+}
+
+.spaceHeaderMenuBtn {
+  color: var(--fg-subtle);
+}
+
+.spaceHeaderMenuBtn:hover {
+  color: var(--fg-default);
+}
+
 /* ---- Gear dropdown (sidebar actions) ---- */
 .gearWrap {
   position: relative;

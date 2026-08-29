@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ContextMenu from "../../components/Menu/ContextMenu";
+import Dropdown from "../../components/Menu/Dropdown";
 import { type MenuItem } from "../../components/Menu/rows";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import PickerModal from "../../components/Dialogs/PickerModal";
@@ -2665,6 +2666,38 @@ export default function LeftSidebar(props: {
       </Show>
 
       <Show when={mode() === "spaces"}>
+      {/* Which space you are in, said in words. The rail says it too, but only
+          as one lit icon among twelve, which is a legend you have to learn. */}
+      <Show when={activeSpace()}>
+        {(g) => (
+          <div class={styles.spaceHeader} style={{ "--space-hue-rgb": spaceHueRgb(g().name, g().color) }}>
+            <span class={styles.spaceHeaderIcon} aria-hidden="true">
+              <Show when={resolveIcon(g().icon)} fallback={g().name.trim().charAt(0).toUpperCase() || "?"}>
+                {(glyph) => <Icon icon={glyph()} />}
+              </Show>
+            </span>
+            <span class={styles.spaceHeaderName}>{g().name}</span>
+            {/* The tile's own menu, reachable without the right-click that is
+                the only way to it today. Hidden until hover, but focusable
+                throughout: an action only a pointer can find is not an action. */}
+            <Dropdown
+              as="span"
+              wrapper
+              class={styles.spaceHeaderMenu}
+              items={spaceMenu(g())}
+              placement="bottom-end"
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                class={styles.spaceHeaderMenuBtn}
+                tooltip={`Actions for ${g().name}`}
+                icon={<Icon icon={Ellipsis} />}
+              />
+            </Dropdown>
+          </div>
+        )}
+      </Show>
       <OverlayScroll class={styles.treeScroll}>
         <For each={activeProjects()}>
           {(p) => {
