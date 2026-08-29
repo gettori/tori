@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render } from "@solidjs/testing-library";
+import { render, fireEvent } from "@solidjs/testing-library";
 import PlanCard from "./PlanCard";
 import { applyEvent, initialChat } from "./chatStore";
 import type { PlanItem } from "../../utils/chatTypes";
@@ -73,6 +73,51 @@ describe("PlanCard", () => {
     expect(c.textContent).toContain("3/3");
     // Every item settled, so nothing is claimed to be in flight any more.
     expect(c.querySelector("[class*='planActive']")).toBeNull();
+  });
+
+  // Folding it away gives the transcript its space back, and the plan is still
+  // there to be read: a count on the composer's own edge, the list a hover
+  // away, and one click back to the card.
+  describe("folding the card away", () => {
+    const items = plan(["read it", "completed"], ["fix it", "inProgress"], ["test it", "pending"]);
+
+    it("opens as the card, which is what it always was", () => {
+      const { container } = render(() => <PlanCard items={items} />);
+      expect(container.querySelector("[class*='planCard']")).toBeTruthy();
+      expect(container.querySelector("[class*='planPill']")).toBeNull();
+    });
+
+    it("collapses to the tally, and the tally opens it again", () => {
+      const { container, getByRole } = render(() => <PlanCard items={items} />);
+
+      fireEvent.click(container.querySelector("[class*='planHead']")!);
+      const pill = getByRole("button");
+      expect(pill.textContent).toBe("1/3");
+      expect(container.querySelector("[class*='planList']")).toBeNull();
+
+      fireEvent.click(pill);
+      expect(container.querySelector("[class*='planCard']")).toBeTruthy();
+      expect(container.querySelector("[class*='planList']")).toBeTruthy();
+    });
+
+    // The whole list, not a summary of it: the pill is a way to read the plan
+    // without unfolding it, so what it carries has to be the plan.
+    it("carries the list in its tooltip", () => {
+      const { container, getByRole } = render(() => <PlanCard items={items} />);
+      fireEvent.click(container.querySelector("[class*='planHead']")!);
+
+      fireEvent.focus(getByRole("button"));
+      const tip = document.querySelector("[role='tooltip']");
+      expect(tip?.textContent).toContain("read it");
+      expect(tip?.textContent).toContain("fix it");
+      expect(tip?.textContent).toContain("test it");
+    });
+
+    it("names itself for a reader who cannot see the number", () => {
+      const { container, getByRole } = render(() => <PlanCard items={items} />);
+      fireEvent.click(container.querySelector("[class*='planHead']")!);
+      expect(getByRole("button").getAttribute("aria-label")).toBe("Plan: 1/3 done. Show the list.");
+    });
   });
 
   // A plan is current state, not a transcript entry: a second update replaces
