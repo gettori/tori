@@ -100,7 +100,7 @@ import Icon from "../../components/Icon/Icon";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
-import { rememberSelection, rememberedUnit } from "../../utils/selectionMemory";
+import { rememberSelection, rememberedUnit, rememberedFeature } from "../../utils/selectionMemory";
 import {
   FolderCog,
   FolderPlus,
@@ -438,6 +438,17 @@ export default function LeftSidebar(props: {
     return true;
   }
 
+  // The last Feature, re-resolved against the live records: the stored copy is
+  // a snapshot, and its members may have come or gone since.
+  function restoreFeature(): boolean {
+    const back = rememberedFeature();
+    const f = back?.featureId ? features().find((f) => f.id === back.featureId) : null;
+    if (!f) return false;
+    if (props.selected?.kind === "feature" && props.selected.featureId === f.id) return true;
+    selectFeature(f, back!.activeRoot ?? null);
+    return true;
+  }
+
   // Switching space switches the work, not just the tree. Nothing remembered
   // means nothing selected: leaving the previous space's worktree open is the
   // bug this fixes, the sidebar showing one context and every pane another.
@@ -445,6 +456,17 @@ export default function LeftSidebar(props: {
     if (activeSpaceName() === g.name) return;
     setActiveSpaceName(g.name);
     if (!restoreUnit(g)) props.onSelect(null);
+  }
+
+  // The mode is how you browse, not which work is open, so an empty memory
+  // leaves the selection alone here rather than clearing it.
+  function switchMode(next: SidebarMode) {
+    setMode(next);
+    if (next === "features") restoreFeature();
+    else {
+      const g = activeSpace();
+      if (g) restoreUnit(g);
+    }
   }
 
   // In-app replacement for window.prompt (unimplemented in WKWebView). Holds the
@@ -932,7 +954,7 @@ export default function LeftSidebar(props: {
   // (App un-hides it on the same event; a synchronous focus would hit a
   // display:none element and be dropped).
   onCleanup(onEvent(FOCUS_SEARCH, () => requestAnimationFrame(() => searchEl?.focus())));
-  onCleanup(onEvent(TOGGLE_SIDEBAR_MODE, () => setMode((m) => (m === "spaces" ? "features" : "spaces"))));
+  onCleanup(onEvent(TOGGLE_SIDEBAR_MODE, () => switchMode(mode() === "spaces" ? "features" : "spaces")));
 
   function openDeleteSpace(g: Space) {
     setDeleteReq({
@@ -2605,7 +2627,7 @@ export default function LeftSidebar(props: {
   return (
     <div class={styles.tree}>
       <div class={styles.modeSwitch}>
-        <SegmentedControl size="sm" options={MODES} value={mode()} onChange={setMode} aria-label="Sidebar mode" />
+        <SegmentedControl size="sm" options={MODES} value={mode()} onChange={switchMode} aria-label="Sidebar mode" />
       </div>
       <div class={styles.treeSearch}>
         <input
