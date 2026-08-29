@@ -48,6 +48,108 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
   return { ...result, input, onSend, onInterrupt, onDropAttachment, onAttachFile, onAttachImages, onAttachRejected, onAttachPaths };
 }
 
+// jsdom lays nothing out, so the box is handed the two numbers the arithmetic
+// reads: `clientHeight` is what the rows attribute currently buys it, and
+// `scrollHeight` is what the text needs. Everything else about the fit is
+// decided from those two.
+function stubMetrics(input: HTMLTextAreaElement, opts: { line: number; padding: number; needed: () => number }) {
+  Object.defineProperty(input, "clientHeight", {
+    get: () => input.rows * opts.line + opts.padding,
+    configurable: true,
+  });
+  Object.defineProperty(input, "scrollHeight", { get: opts.needed, configurable: true });
+  const style = { lineHeight: `${opts.line}px`, paddingTop: `${opts.padding / 2}px`, paddingBottom: `${opts.padding / 2}px` };
+  vi.spyOn(window, "getComputedStyle").mockReturnValue(style as unknown as CSSStyleDeclaration);
+}
+
+/** Every value `rows` is set to, in order. The collapse this used to do shows
+ *  up here as a 1 between two sensible numbers. */
+function watchRows(input: HTMLTextAreaElement) {
+  const seen: number[] = [];
+  let rows = input.rows;
+  Object.defineProperty(input, "rows", {
+    get: () => rows,
+    set: (v: number) => {
+      rows = v;
+      seen.push(v);
+    },
+    configurable: true,
+  });
+  return seen;
+}
+
+describe("the input's own height", () => {
+  it("grows without collapsing the box first", () => {
+    // The old fit set `rows = 1` before every measurement, which laid out the
+    // whole pane twice per keystroke and moved the transcript above with it.
+    const { input } = setup();
+    let needed = 200;
+    stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
+    const seen = watchRows(input);
+
+    needed = 100; // four lines of content in a two-line box
+    fireEvent.input(input, { target: { value: "a\nb\nc\nd" } });
+
+    expect(seen).not.toContain(1);
+    expect(input.rows).toBe(4);
+  });
+
+  it("measures nothing at all while the text still fits", () => {
+    // The common case by far: typing along inside a box that is already the
+    // right size. Nothing is written, so nothing is laid out twice.
+    const { input } = setup();
+    stubMetrics(input, { line: 20, padding: 20, needed: () => 60 });
+    const seen = watchRows(input);
+
+    fireEvent.input(input, { target: { value: "hello" } });
+
+    expect(seen).toEqual([]);
+    expect(input.rows).toBe(2);
+  });
+
+  it("comes back to its resting height when a message goes, not below it", () => {
+    // The bug the whole of this describe exists around: sending put the box at
+    // one row, which is a height it has at no other moment. The next keystroke
+    // measured it and snapped it back up, and that jump is what reads as the
+    // composer resizing itself while you type.
+    const { input } = setup();
+    let needed = 100;
+    stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
+    fireEvent.input(input, { target: { value: "a\nb\nc\nd" } });
+    expect(input.rows).toBe(4);
+
+    needed = 40;
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(input.rows).toBe(2);
+  });
+
+  it("puts a box that is somehow under the floor back on it", () => {
+    // Belt for the same braces: whatever leaves it short - an older build's
+    // send, a hand-set attribute - the next fit is not allowed to agree with
+    // it. Nothing is measured at a size the box is not permitted to be.
+    const { input } = setup();
+    stubMetrics(input, { line: 20, padding: 20, needed: () => 40 });
+    input.rows = 1;
+
+    fireEvent.input(input, { target: { value: "a" } });
+
+    expect(input.rows).toBe(2);
+  });
+
+  it("still shrinks when the text does", () => {
+    const { input } = setup();
+    let needed = 100;
+    stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
+    fireEvent.input(input, { target: { value: "a\nb\nc\nd" } });
+    expect(input.rows).toBe(4);
+
+    needed = 40;
+    fireEvent.input(input, { target: { value: "a" } });
+    expect(input.rows).toBe(2);
+  });
+});
+
 describe("Composer keys", () => {
   it("sends on Enter", () => {
     const { input, onSend } = setup();

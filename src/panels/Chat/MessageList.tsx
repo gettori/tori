@@ -318,6 +318,31 @@ export default function MessageList(props: {
     ),
   );
 
+  // And re-pin when the *viewport* shrinks, which is the other way the bottom
+  // of the conversation leaves the screen and the one nothing was watching.
+  //
+  // The composer under this list grows as you type - a second line, an
+  // attachment chip, the queue strip - and every pixel it takes comes off the
+  // list. Scroll position is measured from the top, so a shorter viewport
+  // leaves the last rows below the fold: the reply you were reading slides
+  // under the input box, and a tall row (a question card) can disappear behind
+  // it whole. Nothing about the *content* changed, so the effect above never
+  // ran.
+  onMount(() => {
+    if (!scroller || typeof ResizeObserver === "undefined") return;
+    let height = scroller.clientHeight;
+    const ro = new ResizeObserver(() => {
+      const next = scroller?.clientHeight ?? 0;
+      if (next === height) return;
+      height = next;
+      // Only while pinned: a reader who has scrolled up is holding a position
+      // on purpose, and a resize is not a reason to take it away from them.
+      if (stuck() && scroller) scroller.scrollTop = scroller.scrollHeight;
+    });
+    ro.observe(scroller);
+    onCleanup(() => ro.disconnect());
+  });
+
   return (
     <div class={styles.list} ref={scroller} onScroll={() => setStuck(atBottom())}>
       <Show when={hasEarlier(props.items, limit())}>
