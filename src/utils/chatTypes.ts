@@ -437,6 +437,12 @@ export type ChatEvent =
       postTokens: number | null;
       summary: string | null;
     }
+  /// A compaction started. The only warning the panel gets that the next half
+  /// minute of silence is work: measured at 33s between this and the boundary,
+  /// with nothing on the wire in between.
+  | { type: "compactionStarted"; sessionId: string; turnId: string }
+  /// A compaction that ended without a boundary, carrying the agent's reason.
+  | { type: "compactionFailed"; sessionId: string; turnId: string; error: string }
   | { type: "textDelta"; sessionId: string; turnId: string; text: string }
   | { type: "thinkingDelta"; sessionId: string; turnId: string; text: string }
   /// An upsert: a later emission carries only what that frame said, so an empty
@@ -558,6 +564,8 @@ export const CHAT_EVENT_TYPES = [
   "turnStarted",
   "userMessage",
   "compacted",
+  "compactionStarted",
+  "compactionFailed",
   "textDelta",
   "thinkingDelta",
   "toolCallStarted",
@@ -676,6 +684,8 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   compacted: {
     required: ["sessionId", "turnId", "trigger", "preTokens", "postTokens", "summary"],
   },
+  compactionStarted: { required: ["sessionId", "turnId"] },
+  compactionFailed: { required: ["sessionId", "turnId", "error"] },
   textDelta: { required: ["sessionId", "turnId", "text"] },
   thinkingDelta: { required: ["sessionId", "turnId", "text"] },
   toolCallStarted: {
