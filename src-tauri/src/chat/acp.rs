@@ -25,8 +25,9 @@ use agent_client_protocol::schema::v1::{
 use super::model;
 use super::model::{
     ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel,
-    ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, FileEditKind, PermissionSuggestion,
-    PlanItem, PlanItemStatus, ToolLocation, ToolStatus, ToolSummary, TurnOutcome, Usage,
+    ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, Extra, FileEditKind,
+    PermissionSuggestion, PlanItem, PlanItemStatus, ToolLocation, ToolStatus, ToolSummary,
+    TurnOutcome, Usage,
 };
 use super::snapshot;
 
@@ -563,15 +564,29 @@ pub fn map_update(
         // `used` is carried across, into the one field that means "tokens the
         // conversation is holding". Spreading it across the other counters
         // would invent a breakdown the agent never reported.
-        SessionUpdate::UsageUpdate(usage) => vec![ChatEvent::Usage {
-            session_id: session_id.to_string(),
-            turn_id: turn_id.to_string(),
-            usage: Usage {
-                input_tokens: usage.used,
-                ..Usage::default()
-            },
-            extra: Default::default(),
-        }],
+        //
+        // `size` rides along as the window. Dropping it, as this did, left
+        // every ACP session with a numerator its agent measured over a
+        // denominator looked up in a catalogue - two sources for one ratio, and
+        // the one that knows (the agent, which is holding the conversation) was
+        // the one being ignored. The schema is explicit about both fields:
+        // "Tokens currently in context" over "Total context window size in
+        // tokens".
+        SessionUpdate::UsageUpdate(usage) => {
+            let mut extra = Extra::new();
+            if usage.size > 0 {
+                extra.insert("contextWindow".to_string(), serde_json::json!(usage.size));
+            }
+            vec![ChatEvent::Usage {
+                session_id: session_id.to_string(),
+                turn_id: turn_id.to_string(),
+                usage: Usage {
+                    input_tokens: usage.used,
+                    ..Usage::default()
+                },
+                extra,
+            }]
+        }
 
         // The agent moved its own configuration, unprompted. Carried across
         // whole, because the update is the whole option set and one option can

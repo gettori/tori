@@ -1158,10 +1158,26 @@ pub(crate) fn scan_counts(reader: impl BufRead) -> RawCounts {
                         if let Some(u) = msg.get("usage") {
                             let get = |k: &str| u.get(k).and_then(|n| n.as_u64()).unwrap_or(0);
                             output_tokens += get("output_tokens");
-                            // Last assistant turn's input reflects current context size.
-                            context_tokens = get("input_tokens")
-                                + get("cache_read_input_tokens")
-                                + get("cache_creation_input_tokens");
+                            // The newest API response's input is the context, as
+                            // Anthropic's own status line defines it: input plus
+                            // both cache figures, output excluded because it
+                            // becomes input on the next request and would be
+                            // counted twice. Assigned, never summed: each
+                            // response already carries the whole conversation,
+                            // so adding them counts the same history once per
+                            // request and crosses the window long before the
+                            // session does.
+                            //
+                            // Sidechains are skipped, the way compactions below
+                            // already skip them. A subagent runs in a context of
+                            // its own, so a Task finishing last would otherwise
+                            // leave the strip reporting the subagent's occupancy
+                            // as the conversation's.
+                            if v.get("isSidechain").and_then(|b| b.as_bool()) != Some(true) {
+                                context_tokens = get("input_tokens")
+                                    + get("cache_read_input_tokens")
+                                    + get("cache_creation_input_tokens");
+                            }
                         }
                     }
                 }
@@ -2789,6 +2805,26 @@ mod tests {
         assert_eq!(r.turn_count, 1);
         assert_eq!(r.tool_count, 1);
         assert_eq!(r.model.as_deref(), Some("claude-opus-4-8"));
+    }
+
+    /// The context is the newest *main-chain* response, and only ever one of
+    /// them. Assigning rather than summing is what keeps a long session under
+    /// its own window; skipping sidechains is what stops a Task, which runs in
+    /// a context of its own, reporting its occupancy as the conversation's.
+    #[test]
+    fn scan_counts_reads_context_off_the_last_main_chain_response() {
+        let body = r#"{"type":"assistant","message":{"content":[],"usage":{"output_tokens":1,"input_tokens":2,"cache_read_input_tokens":17440,"cache_creation_input_tokens":0}}}
+{"type":"assistant","message":{"content":[],"usage":{"output_tokens":1,"input_tokens":2,"cache_read_input_tokens":23532,"cache_creation_input_tokens":234}}}
+{"type":"assistant","isSidechain":true,"message":{"content":[],"usage":{"output_tokens":1,"input_tokens":9,"cache_read_input_tokens":999999,"cache_creation_input_tokens":0}}}
+"#;
+        let r = scan_counts(std::io::Cursor::new(body));
+        // The second response, whole: 2 + 23532 + 234. Not the sum of the two
+        // (which would be 41210, a conversation that never existed), and not
+        // the subagent's, which arrived last.
+        assert_eq!(r.context_tokens, 23_768);
+        // Output still totals, because a session's output really is the sum of
+        // what it wrote.
+        assert_eq!(r.output_tokens, 3);
     }
 
     /// Parse a committed transcript head from `dev/fixtures/sessions/`. Resolved
