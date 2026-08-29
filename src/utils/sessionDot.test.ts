@@ -121,6 +121,9 @@ describe("dotFromStatus", () => {
   // The one that carries the notification, the badge and the tab marker.
   it("maps a blocked chat onto the needs-you dot the notification path watches", () => {
     expect(dotFromStatus("waitingForApproval")).toBe("needsYou");
+    // A question the agent asked raises it too: the turn is just as parked,
+    // and it is the case that had no notification behind it at all.
+    expect(dotFromStatus("waitingForAnswer")).toBe("needsYou");
     // A budget stop raises the same needs-you edge as a permission prompt.
     // Both mean "this is not going anywhere until you look at it", which is the
     // only question the dot answers - and a stopped chat reported as idle would

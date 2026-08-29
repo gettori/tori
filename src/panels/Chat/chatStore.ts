@@ -1563,16 +1563,26 @@ export function pendingApprovals(s: ChatState): ToolItem[] {
   return s.items.filter((i): i is ToolItem => i.kind === "tool" && i.approval !== null);
 }
 
+/** Every question still open for an answer. A replayed one carries no
+ *  `requestId` and an answered one has its result, so neither blocks. */
+export function pendingQuestions(s: ChatState): QuestionItem[] {
+  return s.items.filter((i): i is QuestionItem => i.kind === "question" && answerable(i));
+}
+
 /**
  * What this chat reports to the rest of Sway (the sidebar dot, the revert
  * blast-radius guard). Phase 11 owns the presentation; this is the signal.
  *
- * "waitingForApproval" wins over "executing": a blocked call is the more
- * specific truth, and it is the one a user needs to see.
+ * Blocked wins over "executing": a turn parked on the user is the more
+ * specific truth, and it is the one a user needs to see. A question counts as
+ * much as a permission does - the turn is just as stopped, and reporting it as
+ * "executing" is what left an asked question with no notification behind it
+ * while the user was in another space.
  */
 export function chatStatus(s: ChatState): SessionStatus {
   if (s.ended) return "none";
   if (pendingApprovals(s).length) return "waitingForApproval";
+  if (pendingQuestions(s).length) return "waitingForAnswer";
   // Ahead of idle, and deliberately not folded into it: a chat that stopped at
   // its ceiling looks idle from the outside, and reporting it as idle is how it
   // would sit there unnoticed until someone wondered why it never finished.

@@ -50,6 +50,7 @@ const {
 const { trackFolders, resetSessionStoreForTests } = await import("./sessionStore");
 const { setLiveChat, dropLiveChat } = await import("./chatSessions");
 const { liveCounts, trayEntries } = await import("./presence");
+type SessionStatus = import("./sessionStatus").SessionStatus;
 
 // Effects inside the store's root are queued, and `notifyNeedsYou` awaits a
 // permission check on top of that, so a notification lands two ticks out.
@@ -298,14 +299,14 @@ describe("the needs-you notification", () => {
 
   // Distinct ids per case: the presence tracker fires on a *rising* edge, so
   // reusing one id would make the second case depend on the first's teardown.
-  const blocks = async (sessionId: string, name: string) => {
+  const blocks = async (sessionId: string, name: string, status: SessionStatus = "waitingForApproval") => {
     setLiveChat({
       sessionId,
       sessionName: name,
       folderPath: FOLDER,
       tabId: `chat:${sessionId}`,
       visible: false,
-      status: "waitingForApproval",
+      status,
     });
     await flush();
   };
@@ -322,6 +323,15 @@ describe("the needs-you notification", () => {
     await blocks("blocked-b", "session B");
     expect(bridge.notified.map((n) => n.title)).not.toContain("session B");
     dropLiveChat("blocked-b");
+  });
+
+  // The bug this pins: a question the agent asked reported as "executing", so
+  // the dot never rose and nobody working in another space was told about it.
+  it("fires for a question, not only for a permission prompt", async () => {
+    noteAttention("something-else", true);
+    await blocks("asked-e", "session E", "waitingForAnswer");
+    expect(bridge.notified.map((n) => n.title)).toContain("session E");
+    dropLiveChat("asked-e");
   });
 
   // Focus is half the signal: the same selection with the window in the

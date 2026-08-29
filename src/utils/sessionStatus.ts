@@ -13,6 +13,12 @@ export type SessionStatus =
   | "executing"
   /** Blocked on a permission prompt. */
   | "waitingForApproval"
+  /** Blocked on a question the agent asked (AskUserQuestion and its kin).
+   *  Its own status rather than folded into `waitingForApproval`, because the
+   *  label is read out loud in tooltips and a multiple-choice question is not
+   *  an approval; both raise the same needs-you dot, which is what the
+   *  notification, the tray and the tab marker key on. */
+  | "waitingForAnswer"
   /** Stopped at a spend ceiling. Distinct from `waitingForApproval` because it
    *  is not a question with a yes: the session will not continue until a limit
    *  is raised, and labelling it "waiting for approval" would send the user
@@ -26,6 +32,7 @@ export type SessionStatus =
 export const STATUS_LABEL: Record<Exclude<SessionStatus, "none">, string> = {
   executing: "Executing",
   waitingForApproval: "Waiting for approval",
+  waitingForAnswer: "Waiting for an answer",
   budgetStopped: "Stopped: budget reached",
   idle: "Idle",
   running: "Running",
@@ -77,8 +84,8 @@ export function statusFromDot(dot: string): SessionStatus {
 /** Is a person being asked something they can answer here and now? Stated once
  *  so the tab marker, the jump-to-next hotkey and the stop command cannot end
  *  up with three different ideas of which prompts count. */
-export function awaitingUser(status: SessionStatus): status is "waitingForApproval" {
-  return status === "waitingForApproval";
+export function awaitingUser(status: SessionStatus): status is "waitingForApproval" | "waitingForAnswer" {
+  return status === "waitingForApproval" || status === "waitingForAnswer";
 }
 
 /** Is the session going nowhere without the user? A budget stop blocks the same
@@ -92,6 +99,7 @@ export function dotFromStatus(status: SessionStatus): SessionDot {
     case "executing":
       return "working";
     case "waitingForApproval":
+    case "waitingForAnswer":
     case "budgetStopped":
       return "needsYou";
     case "idle":
@@ -124,6 +132,7 @@ export type LiveSessionStatus = {
 
 export type Rollup = {
   waitingForApproval: number;
+  waitingForAnswer: number;
   executing: number;
   idle: number;
   running: number;
@@ -133,9 +142,10 @@ export type Rollup = {
 // (a branch unit's, a project's, or a space's), for a collapsed/hidden ancestor
 // row's badge.
 export function rollupStatuses(sessions: { status: SessionStatus }[]): Rollup {
-  const r: Rollup = { waitingForApproval: 0, executing: 0, idle: 0, running: 0 };
+  const r: Rollup = { waitingForApproval: 0, waitingForAnswer: 0, executing: 0, idle: 0, running: 0 };
   for (const s of sessions) {
     if (s.status === "waitingForApproval") r.waitingForApproval++;
+    else if (s.status === "waitingForAnswer") r.waitingForAnswer++;
     else if (s.status === "executing") r.executing++;
     else if (s.status === "idle") r.idle++;
     else if (s.status === "running") r.running++;
