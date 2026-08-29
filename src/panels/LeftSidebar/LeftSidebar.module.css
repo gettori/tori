@@ -37,13 +37,43 @@
 }
 
 /* The Spaces | Features switcher, on the same insets as the filter below it. */
-.modeSwitch {
+/* Tabs, the filter's toggle, and the filter itself, in one wrapping row.
+   The wrap *is* the layout rule: the field asks for 120px and lands on the
+   next line when what the tabs leave is less than that. */
+.treeHead {
   display: flex;
-  padding: calc(8px * var(--ui-scale)) var(--tree-inset) 0 var(--tree-inset);
+  flex-wrap: wrap;
+  align-items: center;
+  --head-gap: calc(6px * var(--ui-scale));
+  gap: var(--head-gap);
+  padding-inline: var(--tree-inset) var(--tree-gutter);
 }
 
-.modeSwitch > * {
-  flex: 1;
+/* The pane tab strips' own height (`.unified-strip` in App.css), so the
+   sidebar's head lines up with the tabs across the window. Carried by a strut
+   rather than the row's `min-height`, which a second line would spend on
+   centring both lines - lifting the tabs as the field appeared. */
+.headStrut {
+  width: 0;
+  /* Zero wide still takes a gap, and that gap would inset the tabs past the
+     column everything below them lines up on. */
+  margin-inline-end: calc(-1 * var(--head-gap));
+  min-height: calc(40px * var(--ui-scale));
+}
+
+.modeTabs {
+  flex: none;
+}
+
+/* Holds the right edge while the field is closed, and gives way to it when it
+   opens, since a growing field leaves no free space for the auto margin. */
+.searchToggle {
+  margin-left: auto;
+  color: var(--fg-subtle);
+}
+
+.searchToggle:hover {
+  color: var(--fg-default);
 }
 
 /* The Feature list on the tree's insets, like the cards it replaces. */
@@ -51,18 +81,11 @@
   padding-inline: var(--tree-inset) var(--tree-gutter);
 }
 
-.treeSearch {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  min-height: calc(40px * var(--ui-scale));
-  padding-inline: var(--tree-inset) var(--tree-gutter);
-  margin-bottom: calc(4px * var(--ui-scale));
-}
-
 .searchInput {
-  flex: 1;
-  min-width: 0;
+  /* The 120px is the threshold itself: a field that cannot have that much
+     beside the tabs is a field on its own line. */
+  flex: 1 1 calc(120px * var(--ui-scale));
+  min-width: calc(120px * var(--ui-scale));
   background: transparent;
   border: 1px solid var(--border-default);
   color: var(--fg-default);
@@ -82,8 +105,10 @@
   opacity: 1;
 }
 
+/* A quiet edge rather than the brand ring: this field opens focused every
+   time, so a loud focus state would be its resting state. */
 .searchInput:focus {
-  border-color: var(--brand-default);
+  border-color: var(--border-strong);
 }
 
 /* ---- Active space header ---- */
