@@ -74,6 +74,8 @@ export default function Combobox(props: {
   onActiveChange?: (value: string | null) => void;
   inputRef?: (el: HTMLInputElement) => void;
   class?: string;
+  /** Layout for the list, as `class` is for the field. */
+  listClass?: string;
 }) {
   const hasRows = createMemo(() =>
     (props.options as (ComboboxOption | ComboboxGroup)[]).some((entry) =>
@@ -190,7 +192,7 @@ export default function Combobox(props: {
         <Show when={headings()} keyed>
           {(_signature) => (
             <Primitive.Listbox
-              class={styles.listbox}
+              class={`${styles.listbox} ${props.listClass ?? ""}`.trim()}
               aria-label={props.listLabel}
               // Hover must not move the highlight. Kobalte reads hover-focus as
               // consent to commit on release over *whatever row is under the

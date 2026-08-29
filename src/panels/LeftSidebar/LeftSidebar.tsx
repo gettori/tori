@@ -525,12 +525,19 @@ export default function LeftSidebar(props: {
     title: string;
     items: string[];
     creatable: boolean;
+    reserve: boolean;
     resolve: (v: string | null) => void;
   } | null>(null);
   // `creatable`: let Ok/Enter commit a typed name that matches no listed item, so
-  // the same dialog attaches a listed branch or creates a new one.
-  function askPick(title: string, items: string[], creatable = false): Promise<string | null> {
-    return new Promise((resolve) => setPickReq({ title, items, creatable, resolve }));
+  // the same dialog attaches a listed branch or creates a new one. `reserve`:
+  // rows are still coming, so the list holds its full height from the start.
+  function askPick(
+    title: string,
+    items: string[],
+    creatable = false,
+    reserve = false,
+  ): Promise<string | null> {
+    return new Promise((resolve) => setPickReq({ title, items, creatable, reserve, resolve }));
   }
   function resolvePick(v: string | null) {
     const req = pickReq();
@@ -1629,7 +1636,12 @@ export default function LeftSidebar(props: {
     const baseTitle = "Branch Name";
     attachCtx = { repo: p.path, map, allLocals, baseTitle };
 
-    const pick = askPick(hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle, candidates, true);
+    const pick = askPick(
+      hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle,
+      candidates,
+      true,
+      hasOrigin(p),
+    );
     if (hasOrigin(p)) beginBackgroundFetch(p.path);
 
     const value = await pick;
@@ -1677,7 +1689,12 @@ export default function LeftSidebar(props: {
     const baseTitle = "Branch Name";
     attachCtx = { repo: p.path, map, allLocals, baseTitle };
 
-    const pick = askPick(hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle, candidates, true);
+    const pick = askPick(
+      hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle,
+      candidates,
+      true,
+      hasOrigin(p),
+    );
     if (hasOrigin(p)) beginBackgroundFetch(p.path);
 
     const value = await pick;
@@ -2950,6 +2967,7 @@ export default function LeftSidebar(props: {
           title={pickReq()!.title}
           items={pickReq()!.items}
           creatable={pickReq()!.creatable}
+          reserve={pickReq()!.reserve}
           placeholder="Type to filter or name a new branch…"
           onSubmit={(v) => resolvePick(v)}
           onCancel={() => resolvePick(null)}

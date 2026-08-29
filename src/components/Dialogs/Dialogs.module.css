@@ -67,6 +67,13 @@
   top: 0;
   z-index: 1;
 }
+/* A list that is still filling. `height`, not `max-height`: the point is that
+   it does not change, so what lands late scrolls inside a box that is already
+   the size it will end up. */
+.pickerListReserved {
+  height: calc(300px * var(--ui-scale));
+}
+
 /* Inside the field's own flex row, so it needs no positioning of its own; the
    visual treatment comes from the shared <Button>. */
 .pickerClear {

@@ -376,6 +376,19 @@ describe("PickerModal", () => {
       expect(active()?.textContent).toBe("main");
     });
 
+    // Named class rather than a measured height, which jsdom has none of. The
+    // rule it stands for: a list still being filled is the size it will end up,
+    // so what lands late cannot slide the rows out from under the cursor.
+    it("holds the list at its full height when more rows are coming", () => {
+      open({ reserve: true });
+      expect(screen.getByRole("listbox").className).toMatch(/pickerListReserved/);
+    });
+
+    it("lets a settled list size itself", () => {
+      open();
+      expect(screen.getByRole("listbox").className).not.toMatch(/pickerListReserved/);
+    });
+
     it("pulls the highlight back into range when the filter shortens the list", () => {
       const { input, active } = open();
 
