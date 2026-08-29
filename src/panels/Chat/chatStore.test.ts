@@ -1814,6 +1814,21 @@ describe("a question the agent asked", () => {
     expect(answerable(question(s)), "already settled, so still not answerable").toBe(false);
   });
 
+  // The bug this pins: an open question reported as "executing", so the dot
+  // never rose to needs-you and a user in another space was never notified.
+  it("blocks the session while a question is open, and stops blocking once it is answered", () => {
+    const s = replay([FIXTURE[0], turnStarted("turn-1"), startedQuestion(), asked()]);
+    expect(chatStatus(s)).toBe("waitingForAnswer");
+    applyEvent(s, completedQuestion("toolu_q", ANSWER));
+    expect(chatStatus(s)).toBe("executing");
+  });
+
+  it("does not block on a replayed question, which carries nothing to answer with", () => {
+    const s = replay([FIXTURE[0], turnStarted("turn-1"), startedQuestion(), completedQuestion("toolu_q", ANSWER)]);
+    expect(answerable(question(s))).toBe(false);
+    expect(chatStatus(s)).toBe("executing");
+  });
+
   it("reads the option keys the answer string depends on", () => {
     const parsed = parseQuestions(FORM)!;
     expect(parsed[0].options[0].preview).toBe("behavior: deny");
