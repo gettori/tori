@@ -1616,20 +1616,75 @@ button.diffHunkHeader:hover {
 /* ---- plan card ----
    Pinned between the transcript and the composer: current state, not a
    transcript entry (see PlanCard.tsx). */
+/* The centred column the transcript and the composer share: without it the card
+   ran the full pane width and read as the window's, not the conversation's. */
 .planCard {
   flex: 0 0 auto;
+  width: 100%;
+  max-width: var(--chat-measure);
+  margin-inline: auto;
   border-top: 1px solid var(--border-default);
   background: var(--canvas-card);
   font-size: var(--sway-text-md);
 }
 
+/* A button because it is the fold, the way a tool call's row is; the reset is
+   the button chrome and nothing more. */
 .planHead {
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
+  width: 100%;
   padding: calc(6px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  border: none;
+  background: transparent;
   color: var(--fg-muted);
+  font: inherit;
   font-size: var(--sway-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.planCaret {
+  flex: none;
+  display: inline-flex;
+  color: var(--fg-subtle);
+}
+
+/* Folded: a pill straddling the composer's top-right edge. `height: 0` gives
+   the fold's space back to the transcript, and `top` is the composer's own
+   padding, so the pill hangs from the box's edge and not from the gap above. */
+.planPillRow {
+  position: relative;
+  z-index: 1;
+  height: 0;
+  width: 100%;
+  max-width: var(--chat-measure);
+  margin-inline: auto;
+}
+
+.planPill {
+  position: absolute;
+  right: calc(16px * var(--ui-scale));
+  top: calc(16px * var(--ui-scale));
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  height: calc(20px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-pill);
+  background: var(--canvas-card);
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.planPill:hover {
+  border-color: var(--border-strong);
+  color: var(--fg-default);
 }
 
 .planTitle {
