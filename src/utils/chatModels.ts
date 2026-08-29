@@ -28,6 +28,7 @@
 // session describing itself; it just does not exist until turn one ends, and
 // nothing stands in for it before then. See `contextWindowFor`.
 import { foreignWindow } from "./modelCaps";
+import { rememberedWindows } from "./contextWindowMemory";
 import type { ChatConfig, ChatMode } from "./agents";
 import type { CatalogModel, ModelCatalog } from "./modelCatalog";
 import type { ChatConfigOption, ChatEffortLevel, ChatModeInfo, ChatModelInfo, Usage } from "./chatTypes";
@@ -146,18 +147,21 @@ export function reportedWindows(extra: Record<string, unknown> | undefined): Rec
  *      occupancy and window together on every usage update ("used" of "size"),
  *      for the session rather than per model. Second only because it is the
  *      coarser of the two measurements, not the less trustworthy one.
- *   3. **A catalogue lookup, for non-Claude ids only** (`foreignWindow`). A
+ *   3. **What this model was measured at last time** (`rememberedWindows`).
+ *      Step 1's answer, from the last session on this machine that got one. It
+ *      is what lets a fresh chat open at `0/1M` instead of at nothing, and it
+ *      is overwritten the moment this session reports its own.
+ *   4. **A catalogue lookup, for non-Claude ids only** (`foreignWindow`). A
  *      Claude id never reaches it: the steps above are closer to the truth than
  *      a third party's idea of the same number.
- *   4. **Nothing.** No guess by family, no rounding to a familiar number. A
+ *   5. **Nothing.** No guess by family, no rounding to a familiar number. A
  *      meter with an invented denominator reads as a measurement.
  *
  * What is deliberately *not* a step: the adapter's declared window. It used to
  * sit here as the pre-first-turn answer and it was the one step that was
  * demonstrably wrong (Sonnet 5 and Opus 5 both declared 200k against a reported
- * 1M). **So a Claude session still shows no denominator until its first turn
- * completes**, which is the accepted cost of not printing a number nobody
- * measured.
+ * 1M). Remembering a measurement is not the same thing as reinstating a
+ * declaration: nothing here was ever written down by hand.
  *
  * Note what is deliberately *not* a step: the `[1m]` suffix some catalogue
  * values carry (`claude-fable-5[1m]`). It is real but redundant - the session
@@ -172,6 +176,7 @@ export function contextWindowFor(
   return (
     reported[resolvedModel] ??
     stated ??
+    rememberedWindows()[resolvedModel] ??
     foreignWindow(resolvedModel)
   );
 }
