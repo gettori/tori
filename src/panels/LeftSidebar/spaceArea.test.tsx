@@ -127,6 +127,7 @@ describe("a space with nothing in it", () => {
     localStorage.setItem("sway.active-space.v1", "work");
     mount();
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
     fireEvent.input(screen.getByPlaceholderText(/Filter projects/), { target: { value: "zzz" } });
     await waitFor(() => expect(screen.getByText("no matches in this space")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Add" })).toBeNull();

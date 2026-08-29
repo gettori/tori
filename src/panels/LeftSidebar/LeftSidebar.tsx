@@ -113,6 +113,7 @@ import {
   GitFork,
   Layers,
   Ellipsis,
+  Search,
   ChevronDown,
   ChevronUp,
   Plus,
@@ -351,6 +352,13 @@ export default function LeftSidebar(props: {
   // its goal), so it is fetched alongside the config rather than folded into it.
   const [attempts, setAttempts] = createSignal<Record<string, AttemptRecord[]>>({});
   const [query, setQuery] = createSignal("");
+  // The filter is behind a toggle now. Closing clears it: a tree filtered by a
+  // field nobody can see is a tree that has lost rows for no stated reason.
+  const [searching, setSearching] = createSignal(false);
+  function closeSearch() {
+    setQuery("");
+    setSearching(false);
+  }
   const [mode, setMode] = createSignal<SidebarMode>(loadMode());
   createEffect(() => {
     try {
@@ -989,7 +997,14 @@ export default function LeftSidebar(props: {
   // Deferred to the next frame so focus lands after the sidebar is revealed
   // (App un-hides it on the same event; a synchronous focus would hit a
   // display:none element and be dropped).
-  onCleanup(onEvent(FOCUS_SEARCH, () => requestAnimationFrame(() => searchEl?.focus())));
+  // Opens it when it is closed; the input focuses itself on mount, so this only
+  // has to reach for the field when it was already there.
+  onCleanup(
+    onEvent(FOCUS_SEARCH, () => {
+      if (!searching()) return setSearching(true);
+      requestAnimationFrame(() => searchEl?.select());
+    }),
+  );
   onCleanup(onEvent(TOGGLE_SIDEBAR_MODE, () => switchMode(mode() === "spaces" ? "features" : "spaces")));
 
   function openDeleteSpace(g: Space) {
@@ -2672,18 +2687,60 @@ export default function LeftSidebar(props: {
 
   return (
     <div class={styles.tree}>
-      <div class={styles.modeSwitch}>
-        <SegmentedControl size="sm" options={MODES} value={mode()} onChange={switchMode} aria-label="Sidebar mode" />
-      </div>
-      <div class={styles.treeSearch}>
-        <input
-          ref={searchEl}
-          class={styles.searchInput}
-          placeholder={mode() === "features" ? "Filter features (⌘⇧E)" : "Filter projects (⌘⇧E)"}
-          value={query()}
-          onInput={(e) => setQuery(e.currentTarget.value)}
-          onKeyDown={(e) => e.key === "Escape" && setQuery("")}
+      <div
+        class={styles.treeHead}
+        // Focus gone from the head is the filter abandoned. Moving inside it
+        // (to a tab) is not, which would otherwise close on the way past.
+        onFocusOut={(e) => {
+          if (!searching()) return;
+          const next = e.relatedTarget as Node | null;
+          if (next && e.currentTarget.contains(next)) return;
+          closeSearch();
+        }}
+      >
+        {/* A strut, zero wide: it holds the first line at the strip's height,
+            so the field taking a second one grows the head downward instead of
+            lifting the tabs. */}
+        <span class={styles.headStrut} aria-hidden="true" />
+        <SegmentedControl
+          class={styles.modeTabs}
+          variant="plain"
+          options={MODES}
+          value={mode()}
+          onChange={switchMode}
+          aria-label="Sidebar mode"
         />
+        <Show when={searching()}>
+          <input
+            ref={(el) => {
+              searchEl = el;
+              // Opened to be typed in. After paint, or the element is not
+              // focusable yet.
+              requestAnimationFrame(() => el.focus());
+            }}
+            class={styles.searchInput}
+            // A placeholder is not a name: it goes the moment anything is
+            // typed, and this field is now mounted only while it is in use.
+            aria-label={mode() === "features" ? "Filter features" : "Filter projects"}
+            placeholder={mode() === "features" ? "Filter features (⌘⇧E)" : "Filter projects (⌘⇧E)"}
+            value={query()}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+            onKeyDown={(e) => e.key === "Escape" && closeSearch()}
+          />
+        </Show>
+        {/* Only while the field is shut: open, the field is the affordance and
+            the icon would be a second one beside it, in the space it wants. */}
+        <Show when={!searching()}>
+          <Button
+            class={styles.searchToggle}
+            variant="ghost"
+            size="md"
+            aria-label="Filter"
+            tooltip="Filter (⌘⇧E)"
+            icon={<Icon icon={Search} />}
+            onClick={() => setSearching(true)}
+          />
+        </Show>
       </div>
 
       <Show when={mode() === "features"}>
