@@ -1,0 +1,134 @@
+// The space's own surface: a right-click on the tree's empty area is the
+// space's menu, and a space with nothing in it says so and offers the way out.
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { rightClick } from "../../test/menus";
+
+const WORK = "/root/work/proj";
+
+const config = {
+  path: "/cfg/sway.toml",
+  roots: ["/root"],
+  spaces: [
+    {
+      name: "work",
+      path: "/root/work",
+      external: false,
+      projects: [
+        {
+          name: "proj",
+          path: WORK,
+          external: false,
+          branchUnits: [
+            { label: "main", folderPath: `${WORK}/main`, branch: "main", kind: "worktree", isCurrent: true },
+          ],
+        },
+      ],
+    },
+    { name: "blank", path: "/root/blank", external: false, projects: [] },
+    { name: "Other", path: "", external: true, projects: [] },
+  ],
+};
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (cmd: string) => {
+    if (cmd === "get_config") return Promise.resolve(config);
+    if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
+      return Promise.resolve([]);
+    if (cmd === "folder_historical") return Promise.resolve(false);
+    if (cmd === "git_origin") return Promise.resolve(null);
+    return Promise.resolve(null);
+  },
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: () => Promise.resolve(() => {}),
+  emit: () => Promise.resolve(),
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    onFocusChanged: () => Promise.resolve(() => {}),
+    isFocused: () => Promise.resolve(true),
+  }),
+}));
+vi.mock("@tauri-apps/plugin-notification", () => ({
+  isPermissionGranted: () => Promise.resolve(false),
+  requestPermission: () => Promise.resolve("denied"),
+  sendNotification: () => {},
+  onAction: () => Promise.resolve(() => {}),
+}));
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promise.resolve() }));
+
+const { default: LeftSidebar } = await import("./LeftSidebar");
+const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
+const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
+
+const mount = () => render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
+const scroller = (container: HTMLElement) => container.querySelector('[class*="treeScroll"]') as HTMLElement;
+
+describe("the space's empty area", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    Element.prototype.scrollIntoView = () => {};
+    localStorage.clear();
+    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("sway.sidebar-mode.v1", "spaces");
+  });
+
+  it("opens the space's own menu on a right-click", async () => {
+    const { container } = mount();
+    await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
+
+    expect(rightClick(scroller(container))).toBe(true);
+    expect(await screen.findByText("New…")).toBeTruthy();
+    expect(screen.getByText("Edit space…")).toBeTruthy();
+    expect(screen.getByText("Delete space")).toBeTruthy();
+  });
+
+  it("leaves a row's own right-click alone", async () => {
+    // The rule the two menus share: a row that answers claims the event, and
+    // only what nobody claimed reaches the space. Without that, right-clicking
+    // a project would open two menus at once.
+    mount();
+    await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
+
+    rightClick(screen.getByText("proj"));
+    expect(await screen.findByText("Change icon…")).toBeTruthy();
+    expect(screen.queryByText("Delete space")).toBeNull();
+  });
+});
+
+describe("a space with nothing in it", () => {
+  beforeEach(() => {
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    Element.prototype.scrollIntoView = () => {};
+    localStorage.clear();
+    localStorage.setItem("sway.active-space.v1", "blank");
+    localStorage.setItem("sway.sidebar-mode.v1", "spaces");
+  });
+
+  it("says so, and offers the way to fill it", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText(/no projects yet/)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    // The same dialog the space menu's "New…" opens.
+    expect(await screen.findByText(/New in .blank./)).toBeTruthy();
+  });
+
+  it("adds by pinning in the pinned space, which is what it can do there", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText(/no projects yet/)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Other (pinned)" }));
+    await waitFor(() => expect(screen.getByText(/Nothing is pinned here yet/)).toBeTruthy());
+  });
+
+  it("still says nothing matched when it is the filter hiding everything", async () => {
+    localStorage.setItem("sway.active-space.v1", "work");
+    mount();
+    await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
+    fireEvent.input(screen.getByPlaceholderText(/Filter projects/), { target: { value: "zzz" } });
+    await waitFor(() => expect(screen.getByText("no matches in this space")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
+  });
+});
