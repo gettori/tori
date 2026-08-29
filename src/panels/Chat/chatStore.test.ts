@@ -141,6 +141,102 @@ const turnDone = (turnId: string, outcome: "completed" | "cancelled" | "errored"
   permissionDenials: [],
 });
 
+// What the context meter divides. Measured on dev/fixtures/claude, where one
+// turn made three API calls reading 17,440, 23,532 and 23,766 cached tokens and
+// the result frame reported their sum, 64,738, for a conversation that never
+// held more than 24k. Read the sum as the context and a long turn reports
+// several times the window it is running in.
+describe("what a turn's usage means", () => {
+  const usage = (turnId: string, cacheRead: number, extra?: Record<string, unknown>): ChatEvent => ({
+    type: "usage",
+    sessionId: "s1",
+    turnId,
+    usage: { inputTokens: 2, outputTokens: 9, cacheReadTokens: cacheRead, cacheWriteTokens: 0, thinkingTokens: 0 },
+    ...(extra ? { extra } : {}),
+  });
+  const resultUsage = (turnId: string, cacheRead: number): ChatEvent => ({
+    ...(turnDone(turnId, "completed") as Extract<ChatEvent, { type: "turnCompleted" }>),
+    usage: { inputTokens: 6, outputTokens: 30, cacheReadTokens: cacheRead, cacheWriteTokens: 0, thinkingTokens: 0 },
+  });
+
+  it("reads the context off the newest response, not off the turn's total", () => {
+    const s = replay([turnStarted("t1"), usage("t1", 17_440), usage("t1", 23_766), resultUsage("t1", 64_738)]);
+    expect(s.contextTokens).toBe(2 + 23_766);
+  });
+
+  it("still totals the turn, under the names that mean the turn", () => {
+    // The aggregate is not wrong, it is a different measurement: it is what the
+    // turn cost. Losing it would take the cost readout with it.
+    const s = replay([turnStarted("t1"), usage("t1", 17_440), resultUsage("t1", 64_738)]);
+    expect(s.lastTurnUsage?.cacheReadTokens).toBe(64_738);
+    expect(s.totalUsage.cacheReadTokens).toBe(64_738);
+  });
+
+  it("keeps the last response's figure after the turn ends", () => {
+    // The regression this pins: a turn that completes must not move the meter.
+    // It used to jump to the total at exactly that moment, which is why the
+    // number looked right mid-turn and wrong the rest of the time.
+    const s = replay([turnStarted("t1"), usage("t1", 23_766), resultUsage("t1", 64_738)]);
+    const during = replay([turnStarted("t1"), usage("t1", 23_766)]);
+    expect(s.contextTokens).toBe(during.contextTokens);
+  });
+
+  // A compaction is the one moment the newest response stops describing the
+  // conversation: the middle of it has just been replaced by a summary. The
+  // boundary reports the size it left behind, so there is a measured answer to
+  // move to rather than a stale one to sit on.
+  it("follows a compaction down to the size it left behind", () => {
+    const compacted = (post: number | null): ChatEvent => ({
+      type: "compacted",
+      sessionId: "s1",
+      turnId: "t1",
+      trigger: "auto",
+      preTokens: 247_000,
+      postTokens: post,
+      summary: null,
+    });
+    const s = replay([turnStarted("t1"), usage("t1", 240_000), compacted(9_000)]);
+    expect(s.contextTokens).toBe(9_000);
+
+    // ...and the next response supersedes it in turn, with no precedence rule
+    // to get wrong: whichever measurement arrived last is the answer.
+    const after = replay([turnStarted("t1"), usage("t1", 240_000), compacted(9_000), usage("t1", 12_000)]);
+    expect(after.contextTokens).toBe(2 + 12_000);
+  });
+
+  it("holds its last reading when a compaction reports no size", () => {
+    // Nothing measured is not zero. The next response repopulates it within one
+    // API call, and until then a figure that was true a moment ago beats one
+    // that was never true.
+    const s = replay([
+      turnStarted("t1"),
+      usage("t1", 240_000),
+      {
+        type: "compacted",
+        sessionId: "s1",
+        turnId: "t1",
+        trigger: "manual",
+        preTokens: null,
+        postTokens: null,
+        summary: null,
+      } as ChatEvent,
+    ]);
+    expect(s.contextTokens).toBe(2 + 240_000);
+  });
+
+  it("takes the window an ACP agent states beside its occupancy", () => {
+    // ACP reports "used of size" per session rather than per model, so it
+    // cannot go in the per-model map Claude fills.
+    const s = replay([turnStarted("t1"), usage("t1", 1000, { contextWindow: 200_000 })]);
+    expect(s.contextWindow).toBe(200_000);
+  });
+
+  it("ignores a stated window that is not one", () => {
+    const s = replay([turnStarted("t1"), usage("t1", 1000, { contextWindow: 0 })]);
+    expect(s.contextWindow).toBeNull();
+  });
+});
+
 describe("replaying the captured fixture", () => {
   it("produces one item per rendered event, in arrival order", () => {
     const s = replay(FIXTURE);
@@ -181,7 +277,7 @@ describe("replaying the captured fixture", () => {
     expect(s.slashCommands.map((c) => c.name)).toEqual(["review"]);
     expect(s.mcpServers.map((m) => m.name)).toEqual(["ctx"]);
     expect(s.plan.length).toBeGreaterThan(0);
-    expect(s.lastUsage).not.toBeNull();
+    expect(s.contextTokens).not.toBeNull();
   });
 
   it("is idempotent under a duplicated replay of every event", () => {
