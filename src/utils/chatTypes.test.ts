@@ -187,6 +187,11 @@ describe("chatTypes mirrors the Rust chat model", () => {
           expect(ev.outcome).toBe("cancelled");
           expect(ev.permissionDenials[0]?.toolName).toBe("Bash");
           break;
+        case "slashCommands":
+          // The list an ACP agent publishes after its handshake, which is the
+          // only way it ever arrives there.
+          expect(ev.commands.map((c) => c.name)).toEqual(["plan"]);
+          break;
         case "compactionStarted":
           // Carries nothing but its place in the turn: the news is that a
           // compaction is running at all.

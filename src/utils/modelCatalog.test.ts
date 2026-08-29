@@ -11,6 +11,7 @@ import { refreshAgentHealth } from "./agentHealth";
 import {
   __resetModelCatalogsForTests,
   CACHE_SHAPE,
+  cachedCommands,
   cachedModels,
   cachedOptions,
   catalogFor,
@@ -315,5 +316,24 @@ describe("the levers a draft can read before it has a session", () => {
 
   it("answers nothing for a agent nobody has probed", () => {
     expect(cachedOptions(undefined, "gpt-5")).toEqual([]);
+  });
+
+  // `/` in a new chat used to open on an empty menu: a draft has no session to
+  // ask, and the commands were treated as unknowable until one existed. They
+  // ride the same handshake the models do, so the cache has had the answer all
+  // along.
+  it("hands a draft the commands the last handshake published", () => {
+    const claude = withModels([model("sonnet", "claude-sonnet-5")]);
+    claude.catalogue!.commands = [
+      { name: "review", description: "Review the diff", argumentHint: "", aliases: [] },
+    ];
+    expect(cachedCommands(claude).map((c) => c.name)).toEqual(["review"]);
+  });
+
+  it("answers nothing for a agent nobody has probed, or a cache from before the field", () => {
+    expect(cachedCommands(undefined)).toEqual([]);
+    // A catalogue written at shape 4 carries no `commands` at all, which is
+    // "nobody asked" rather than "an agent with none".
+    expect(cachedCommands(withModels([model("sonnet", "claude-sonnet-5")]))).toEqual([]);
   });
 });

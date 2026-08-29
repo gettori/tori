@@ -72,6 +72,7 @@ import {
 } from "../../utils/chatModels";
 import { rememberWindows } from "../../utils/contextWindowMemory";
 import {
+  cachedCommands,
   cachedModels,
   catalogFor,
   refreshCatalogIfDue,
@@ -1795,7 +1796,13 @@ export default function ChatView(props: {
         draft={draftFor(composerKey())}
         onDraftChange={(t) => setDraft(composerKey(), t)}
         history={historyFor(composerKey())}
-        commands={state.slashCommands}
+        // This session's own, and the agent's last answer until it has one. A
+        // handshake takes a moment to land and a chat opened only to read never
+        // gets one at all, and `/` opening on an empty menu in either is worse
+        // than a list that may name a command since removed - which the agent
+        // refuses with a sentence. Replaced, never merged: once the session has
+        // spoken, it is the only authority on what it takes.
+        commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId))}
         loadFiles={attachments.loadProjectFiles}
         held={state.queueHeld}
         disabled={refused() || state.ended}

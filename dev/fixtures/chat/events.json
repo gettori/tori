@@ -163,6 +163,18 @@
     "summary": "This session is being continued from a previous conversation"
   },
   {
+    "type": "slashCommands",
+    "sessionId": "s1",
+    "commands": [
+      {
+        "name": "plan",
+        "description": "Plan, explore, interview, then create a scoped plan file",
+        "argumentHint": "what to plan",
+        "aliases": []
+      }
+    ]
+  },
+  {
     "type": "compactionStarted",
     "sessionId": "s1",
     "turnId": "t1"

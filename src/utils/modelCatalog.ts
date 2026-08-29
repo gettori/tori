@@ -8,7 +8,7 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { agentVersion } from "./agentHealth";
-import type { ChatAccount, ChatConfigOption, ChatModeInfo, ChatModelInfo } from "./chatTypes";
+import type { ChatAccount, ChatConfigOption, ChatModeInfo, ChatModelInfo, SlashCommand } from "./chatTypes";
 
 // Which of the three things a agent's catalogue currently is.
 //
@@ -60,6 +60,10 @@ export type Catalogue = {
   // The account the agent named, when it named one. A catalogue can differ per
   // account, so a surface showing one has to be able to say whose answer it is.
   account: ChatAccount | null;
+  // The agent's slash commands, from the same handshake the models came from,
+  // for a composer with no session to ask. Optional for a cache written before
+  // the field existed, which reads as none rather than as an agent with none.
+  commands?: SlashCommand[];
 };
 
 export type ModelCatalog = {
@@ -115,6 +119,25 @@ function withoutMeasuredLevels(model: CatalogModel): CatalogModel {
  *  the whole ACP set the moment a row was found, which since the draft opens on
  *  a model is always. Nothing is lost by falling through: a claude row with no
  *  options falls into a catalogue set that is empty for claude anyway. */
+/**
+ * The commands a composer can offer before the session that publishes them
+ * exists.
+ *
+ * The agent's own last answer, from the handshake this cache was built by, and
+ * empty for an agent nobody has probed. A draft used to offer nothing at all on
+ * the reasoning that a stale list would promise commands this chat may not have
+ * - the same argument the model picker faced and answered the other way, which
+ * is the answer taken here too: the cache is what this agent said last time,
+ * the live list replaces it the moment the handshake lands, and a command that
+ * has since gone is refused by the agent with a sentence.
+ *
+ * Skills need no second source: measured on claude 2.1.251, they are already in
+ * this list (17 of 49 entries).
+ */
+export function cachedCommands(catalog: ModelCatalog | undefined): SlashCommand[] {
+  return catalog?.catalogue?.commands ?? [];
+}
+
 export function cachedOptions(
   catalog: ModelCatalog | undefined,
   model: string | null,
@@ -148,7 +171,7 @@ export function distinctModelCount(catalog: ModelCatalog | undefined): number {
  *  bump that lands in one language fails rather than half-applying.
  *
  *  Exported for that test alone; nothing else has any business comparing it. */
-export const CACHE_SHAPE = 4;
+export const CACHE_SHAPE = 6;
 
 /** Whether what is remembered no longer describes what this Sway reads.
  *

@@ -39,6 +39,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use agent_client_protocol::schema::v1::{
+    SessionNotification,
     CloseSessionRequest, SessionConfigId, SessionConfigOption, SessionConfigOptionValue,
     SessionConfigValueId, SetSessionConfigOptionRequest,
 };
@@ -50,7 +51,7 @@ use crate::agents::{AgentAdapter, ChatEffortExtra, ChatTransport};
 use crate::chat::acp;
 use crate::chat::acp_transport::{initialize_request, new_session_request};
 use crate::chat::claude::{self, ClaudeMapper};
-use crate::chat::model::{ChatAccount, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo};
+use crate::chat::model::{ChatAccount, ChatConfigOption, ChatEvent, ChatModeInfo, ChatModelInfo, SlashCommand};
 use crate::chat::transport::{build_command, StartSpec};
 
 /// How long one agent gets to answer before the probe gives up on it.
@@ -193,6 +194,15 @@ pub struct CatalogModel {
 ///   levels. A cache written at 2 has `options: []` on every ACP row and the
 ///   probe session's levels copied onto all of them, so a draft would offer a
 ///   level the picked model refuses.
+/// - **6**: an *ACP* agent's commands are in it too. Shape 5 collected them
+///   from claude's handshake only, and every other agent Sway ships an adapter
+///   for is ACP - where they arrive on a notification after `session/new`,
+///   which the probe was not listening for. So a cache at 5 has an empty list
+///   for those agents, and it is empty for the wrong reason: nobody asked.
+/// - **5**: the catalogue carries the agent's slash commands. A cache written
+///   at 4 has none, and a draft reads its completions from here rather than
+///   from a session, so `/` in a new chat would open on an empty menu until
+///   something re-probed.
 /// - **4**: claude's `thinking` option was withdrawn. A cache written at 3 still
 ///   carries the row, and a **draft** reads its levers from here rather than
 ///   from a session, so it would keep drawing a pill this build no longer
@@ -200,7 +210,7 @@ pub struct CatalogModel {
 ///   that was never switchable. The first bump for a field *removed* rather than
 ///   added, which is the same rule read the other way: the cache describes a
 ///   shape this Sway no longer reads.
-pub const CACHE_SHAPE: u32 = 4;
+pub const CACHE_SHAPE: u32 = 6;
 
 /// How many models one probe switches through to read their own option sets.
 ///
@@ -209,6 +219,16 @@ pub const CACHE_SHAPE: u32 = 4;
 /// measured ~4.5s including spawn. It is a backstop against a catalogue nobody
 /// has seen, not a limit anything real is expected to hit.
 const PER_MODEL_SWEEP_CAP: usize = 24;
+
+/// How long an ACP probe waits after opening a session for the agent to publish
+/// its commands.
+///
+/// They arrive on a notification rather than on any response, so there is
+/// nothing to await on: measured on pi-acp 0.0.33, the
+/// `available_commands_update` landed well inside a second of `session/new`.
+/// Half a second is the beat that catches it without adding meaningfully to a
+/// sweep that already spends seconds switching models.
+const COMMANDS_GRACE: Duration = Duration::from_millis(500);
 
 /// What a catalogue carrying no stamp is: the shape from before the field
 /// existed.
@@ -250,6 +270,16 @@ pub struct Catalogue {
     /// surface's honesty: a catalogue can differ per account, so a page showing
     /// one has to be able to say whose answer it is.
     pub account: Option<ChatAccount>,
+    /// The agent's slash commands, from the same handshake the models come
+    /// from. Kept for the composer of a chat that has not handshaken yet: a
+    /// draft has no session to ask, so without this `/` opened on nothing.
+    ///
+    /// Measured (claude 2.1.251): the `initialize` response's `commands` and
+    /// `system/init`'s `slash_commands` are the same list, and the skills are
+    /// already in it - 17 of the 49 entries on this machine. So there is one
+    /// completion source rather than a second one for skills.
+    #[serde(default)]
+    pub commands: Vec<SlashCommand>,
 }
 
 /// Everything Sway remembers about one agent's catalogue.
@@ -476,8 +506,8 @@ fn probe_claude(
                 continue;
             };
             for event in mapper.map(&frame) {
-                if let ChatEvent::SessionReady { models, modes, account, .. } = event {
-                    let _ = tx.send(Some((models, modes, account)));
+                if let ChatEvent::SessionReady { models, modes, account, slash_commands, .. } = event {
+                    let _ = tx.send(Some((models, modes, account, slash_commands)));
                     return;
                 }
             }
@@ -503,7 +533,8 @@ fn probe_claude(
     abandon(&mut child);
 
     match answer {
-        Ok(Some((models, modes, account))) => Ok(Catalogue {
+        Ok(Some((models, modes, account, commands))) => Ok(Catalogue {
+            commands,
             models: models
                 .into_iter()
                 .map(|mut info| {
@@ -681,6 +712,7 @@ fn acp_catalogue(
     version: Option<String>,
     options: Vec<SessionConfigOption>,
     per_model: HashMap<String, Vec<SessionConfigOption>>,
+    commands: Vec<SlashCommand>,
 ) -> Catalogue {
     let models = acp::model_catalogue(&options)
         .into_iter()
@@ -710,6 +742,13 @@ fn acp_catalogue(
         models,
         modes: acp::mode_catalogue(&options),
         options: acp::config_options(&options),
+        // Not on the handshake, which is why this is collected rather than
+        // read off a response: measured on pi-acp 0.0.33, `session/new` answers
+        // with the models, the modes and the options, and the commands follow
+        // as a notification a moment later. Empty for an agent that sent none
+        // inside the window, which is an agent with none as far as anything
+        // here can tell.
+        commands,
         // ACP publishes no account on the handshake. Empty rather than guessed,
         // which also means the surface's "whose answer is this" line correctly
         // says nothing for an ACP agent.
@@ -791,8 +830,32 @@ fn probe_acp(
 
     let init_request = initialize_request(overrides);
     let session_request = new_session_request(&spec.cwd, overrides);
+    // The commands the agent publishes, which arrive as a notification rather
+    // than on any response (measured on pi-acp 0.0.33). Shared with the handler
+    // because that is the only thing that can see them, and read back after the
+    // session has settled.
+    let commands: Arc<Mutex<Vec<SlashCommand>>> = Arc::new(Mutex::new(Vec::new()));
+    let collected = commands.clone();
     let answer = futures::executor::block_on(async {
-        let work = Client.builder().name("sway").connect_with(
+        let work = Client
+            .builder()
+            .name("sway")
+            .on_receive_notification(
+                async move |notification: SessionNotification, _cx| {
+                    // Through the same mapper a live session reads, so the
+                    // probe and the chat cannot disagree about one list.
+                    for event in acp::map_update("catalog-probe", "probe-turn", &notification.update, None) {
+                        if let ChatEvent::SlashCommands { commands: published, .. } = event {
+                            if let Ok(mut held) = collected.lock() {
+                                *held = published;
+                            }
+                        }
+                    }
+                    Ok(())
+                },
+                agent_client_protocol::on_receive_notification!(),
+            )
+            .connect_with(
             ByteStreams::new(stdin, stdout),
             async move |conn: ConnectionTo<Agent>| {
                 let init = conn.send_request(init_request).block_task().await?;
@@ -815,6 +878,12 @@ fn probe_acp(
                         .block_task()
                         .await;
                 }
+                // The commands ride a notification, so there is nothing to
+                // await: this is the beat that lets one arrive before the
+                // connection is torn down. Short, because it is spent on every
+                // ACP probe whether or not the agent sends any.
+                async_io::Timer::after(COMMANDS_GRACE).await;
+
                 Ok((options, per_model))
             },
         );
@@ -832,7 +901,10 @@ fn probe_acp(
     abandon_group(&mut child);
 
     let failed = match answer {
-        Some(Ok((options, per_model))) => return Ok(acp_catalogue(version, options, per_model)),
+        Some(Ok((options, per_model))) => {
+            let published = commands.lock().map(|c| c.clone()).unwrap_or_default();
+            return Ok(acp_catalogue(version, options, per_model, published));
+        }
         // `None` is the deadline, `Some(Err(_))` is the agent's own refusal.
         other => other,
     };
@@ -1153,6 +1225,12 @@ mod tests {
             modes: Vec::new(),
             options: Vec::new(),
             account: None,
+            commands: vec![SlashCommand {
+                name: "review".into(),
+                description: "Review the diff".into(),
+                argument_hint: None,
+                aliases: Vec::new(),
+            }],
         }
     }
 
@@ -1532,7 +1610,7 @@ mod tests {
 
         // No per-model measurement, which is the refused-switch path: every row
         // falls back to the session's opening set.
-        let catalogue = acp_catalogue(Some("1.18.3".into()), options, HashMap::new());
+        let catalogue = acp_catalogue(Some("1.18.3".into()), options, HashMap::new(), Vec::new());
 
         assert_eq!(catalogue.models.len(), 1, "the model selector still becomes the model list");
         assert_eq!(catalogue.models[0].info.value, "sonnet");
@@ -1579,7 +1657,7 @@ mod tests {
             ),
         ]);
 
-        let catalogue = acp_catalogue(Some("1.2.0".into()), opening, per_model);
+        let catalogue = acp_catalogue(Some("1.2.0".into()), opening, per_model, Vec::new());
         let levels = |value: &str| {
             catalogue
                 .models
@@ -1614,7 +1692,7 @@ mod tests {
         // Only terra answered.
         let per_model = HashMap::from([("terra".to_string(), opening.clone())]);
 
-        let catalogue = acp_catalogue(Some("1.2.0".into()), opening, per_model);
+        let catalogue = acp_catalogue(Some("1.2.0".into()), opening, per_model, Vec::new());
         let mini = catalogue.models.iter().find(|m| m.info.value == "mini").expect("mini is listed");
         assert_eq!(mini.info.supported_effort_levels, ["low"]);
         assert!(!mini.options.is_empty(), "a refused switch is not an agent that publishes nothing");
@@ -1630,6 +1708,7 @@ mod tests {
             Some("1.18.3".into()),
             vec![select_option("web-search", None, &[("on", "On"), ("off", "Off")])],
             HashMap::new(),
+            Vec::new(),
         )));
         save_to(&root, &written).expect("the file should write");
 

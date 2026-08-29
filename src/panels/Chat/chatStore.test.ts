@@ -408,10 +408,21 @@ describe("replaying the captured fixture", () => {
     const s = replay(FIXTURE);
     expect(s.started).toBe(true);
     expect(s.tools).toEqual(["Bash", "Edit"]);
-    expect(s.slashCommands.map((c) => c.name)).toEqual(["review"]);
     expect(s.mcpServers.map((m) => m.name)).toEqual(["ctx"]);
     expect(s.plan.length).toBeGreaterThan(0);
     expect(s.contextTokens).not.toBeNull();
+  });
+
+  // The commands are the one session fact that is not settled by the init. An
+  // ACP agent publishes them afterwards, on a notification of their own, and
+  // the fixture carries both: the handshake's list and the update that replaces
+  // it. Replaced, not merged - the update is the agent's current list.
+  it("takes a later command list over the one the handshake carried", () => {
+    const s = replay(FIXTURE);
+    expect(s.slashCommands.map((c) => c.name)).toEqual(["plan"]);
+
+    const handshakeOnly = replay(FIXTURE.filter((e) => e.type !== "slashCommands"));
+    expect(handshakeOnly.slashCommands.map((c) => c.name)).toEqual(["review"]);
   });
 
   it("is idempotent under a duplicated replay of every event", () => {

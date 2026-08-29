@@ -964,6 +964,21 @@ pub enum ChatEvent {
         summary: Option<String>,
     },
 
+    /// The commands this session takes, republished whenever the agent's list
+    /// changes.
+    ///
+    /// Its own event rather than a field on `SessionReady`, because for an ACP
+    /// agent it does not arrive with the handshake: measured on pi-acp 0.0.33,
+    /// `session/new` answers with `sessionId`, `configOptions`, `models` and
+    /// `modes`, and the commands follow moments later as an
+    /// `available_commands_update` notification - 33 of them, the agent's own
+    /// skills among them. Folding that into the handshake event would mean
+    /// re-emitting a whole catalogue to carry one late list.
+    SlashCommands {
+        session_id: String,
+        commands: Vec<SlashCommand>,
+    },
+
     /// A compaction has *started*, which is the only warning the panel gets
     /// that the next half minute of silence is work rather than a hang.
     ///
@@ -1429,6 +1444,15 @@ mod tests {
                 pre_tokens: Some(247408),
                 post_tokens: Some(9444),
                 summary: Some("This session is being continued from a previous conversation".into()),
+            },
+            ChatEvent::SlashCommands {
+                session_id: "s1".into(),
+                commands: vec![SlashCommand {
+                    name: "plan".into(),
+                    description: "Plan, explore, interview, then create a scoped plan file".into(),
+                    argument_hint: Some("what to plan".into()),
+                    aliases: Vec::new(),
+                }],
             },
             ChatEvent::CompactionStarted {
                 session_id: "s1".into(),
@@ -1932,6 +1956,7 @@ mod tests {
                 ChatEvent::TurnStarted { .. } => "turnStarted",
                 ChatEvent::UserMessage { .. } => "userMessage",
                 ChatEvent::Compacted { .. } => "compacted",
+                ChatEvent::SlashCommands { .. } => "slashCommands",
                 ChatEvent::CompactionStarted { .. } => "compactionStarted",
                 ChatEvent::CompactionFailed { .. } => "compactionFailed",
                 ChatEvent::TextDelta { .. } => "textDelta",
@@ -1951,8 +1976,8 @@ mod tests {
                 ChatEvent::ConfigOptions { .. } => "configOptions",
             };
         }
-        // 23 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 23, "every_event() must hold exactly one sample per variant");
+        // 24 variants; a mismatch means a sample is missing or duplicated.
+        assert_eq!(events.len(), 24, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]

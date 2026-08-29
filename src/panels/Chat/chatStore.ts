@@ -995,6 +995,11 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       else push(s, { kind: "notice", id: nextId(s, "notice"), ...settled });
       return;
     }
+    case "slashCommands":
+      // Replaced, never merged: the update is the agent's current list, and one
+      // it has stopped publishing is one it will refuse.
+      s.slashCommands = ev.commands;
+      return;
     case "compactionStarted": {
       // Nothing else reaches the wire for the whole compaction - measured at 33
       // seconds of silence on the captured run - so this row is the only thing

@@ -36,6 +36,7 @@ import {
 } from "../../utils/chatModels";
 import { keptOptionValues, overlaidOptions } from "../../utils/chatTypes";
 import {
+  cachedCommands,
   cachedOptions,
   catalogFor,
   ensureModelCatalogsLoaded,
@@ -246,10 +247,13 @@ export default function ChatDraft(props: {
         draft={draftFor(props.tabId)}
         onDraftChange={(t) => setDraft(props.tabId, t)}
         history={historyFor(props.tabId)}
-        // Empty on purpose: an agent's commands come from its handshake, and no
-        // agent has been asked anything yet. Offering a stale set from the last
-        // one would promise commands this chat may not have.
-        commands={[]}
+        // The agent's own last answer, cached with the models by the same
+        // handshake. It used to be empty here on the reasoning that a stale set
+        // would promise commands this chat may not have - which left `/` in a
+        // new chat opening on nothing at all, in a composer whose whole content
+        // is unsent. The model picker faced the same argument and answered it
+        // the other way; this follows it. See `cachedCommands`.
+        commands={cachedCommands(catalog())}
         held={false}
         disabled={starting() || blocked() !== null}
         loadFiles={attachments.loadProjectFiles}
