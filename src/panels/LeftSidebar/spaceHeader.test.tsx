@@ -84,10 +84,10 @@ describe("the active space header", () => {
     const { container } = mount();
     await waitFor(() => expect(header()).toBeTruthy());
     expect(header()!.textContent).toContain("work");
-    // Above the tree and below the filter, which is what makes it read as the
+    // Above the tree and below the tabs, which is what makes it read as the
     // heading over the projects rather than as one of them.
-    const search = container.querySelector('[class*="treeSearch"]')!;
-    expect(search.compareDocumentPosition(header()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const head = container.querySelector('[class*="treeHead"]')!;
+    expect(head.compareDocumentPosition(header()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("follows the space you switch to", async () => {
