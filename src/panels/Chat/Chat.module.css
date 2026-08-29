@@ -764,9 +764,21 @@
 
 /* Read-ish tools quiet green, writes the brand-adjacent attention hue,
    failures the danger one - the mock's colour code, on role tokens. */
+/* The call's name, or an ACP agent's own prose for it - which is not a name at
+   all but the whole command: `codex` puts a 300-character `sed` in here, where
+   claude sends `Bash` and puts the command in the argument slot beside it.
+   Nothing here could shrink, so the row grew past the transcript, and a row
+   wider than the column it is in puts a horizontal scrollbar across the entire
+   chat. It truncates like the argument does, on the same three properties, and
+   `min-width: 0` is the one that lets a flex item go below its content at all. */
 .toolName {
+  flex: 0 1 auto;
+  min-width: 0;
   color: var(--success-fg);
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .toolNameEdit {
