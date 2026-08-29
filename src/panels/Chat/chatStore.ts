@@ -1525,6 +1525,34 @@ export function effortPending(s: ChatState): boolean {
   return s.pendingEffort !== undefined;
 }
 
+/**
+ * What is waiting for the next turn boundary, as one line, or null when nothing
+ * is.
+ *
+ * One sentence for all three because they land together: the CLI applies a
+ * model, a level and a mode at the same boundary, so three copies of the same
+ * promise said the same thing three times. It also used to say it *inside the
+ * bar*, beside whichever pill was pending, which moved every control to its
+ * right the moment anything was picked - the control you had just used slid out
+ * from under the cursor.
+ *
+ * The names are the controls' own (`Model`, `Thinking effort`, `Permission
+ * mode`), so the line names things the user can point at rather than describing
+ * them again in different words.
+ */
+export function pendingSwitchNotice(s: ChatState): string | null {
+  const waiting = [
+    modelPending(s) && "model",
+    effortPending(s) && "thinking effort",
+    modePending(s) && "permission mode",
+  ].filter((n): n is string => typeof n === "string");
+  if (!waiting.length) return null;
+  const list =
+    waiting.length === 1 ? waiting[0] : `${waiting.slice(0, -1).join(", ")} and ${waiting[waiting.length - 1]}`;
+  const verb = waiting.length === 1 ? "applies" : "apply";
+  return `${list[0].toUpperCase()}${list.slice(1)} ${verb} from the next turn.`;
+}
+
 /** Every card still blocked on the user. */
 export function pendingApprovals(s: ChatState): ToolItem[] {
   return s.items.filter((i): i is ToolItem => i.kind === "tool" && i.approval !== null);

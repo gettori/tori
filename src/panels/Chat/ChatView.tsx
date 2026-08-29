@@ -110,6 +110,7 @@ import {
   modePending,
   modelPending,
   pendingApprovals,
+  pendingSwitchNotice,
   pendingFlush,
   promptsSent,
   pushSteer,
@@ -1808,6 +1809,9 @@ export default function ChatView(props: {
         onDropAttachment={(id) => dropPending(composerKey(), id)}
         onSendQueued={() => edit((s) => releaseQueue(s))}
         onDiscardQueued={() => edit((s) => discardQueue(s))}
+        // One line for all three switches, above the input. In the bar it sat
+        // beside whichever pill was pending and pushed the rest along.
+        notice={pendingSwitchNotice(state)}
         // Everything the next turn will run under: the mode, the model and its
         // effort. All the switches land at the same next-turn boundary, so
         // they sit together in the bar under the input.

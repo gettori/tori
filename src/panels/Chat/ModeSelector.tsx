@@ -1,9 +1,8 @@
-import { For, Show } from "solid-js";
+import { For } from "solid-js";
 import { ShieldCheck } from "lucide-solid";
 import Picker, { PickerOption } from "./Picker";
 import type { ChatMode } from "../../utils/agents";
 import type { PermissionMode } from "../../utils/chatTypes";
-import styles from "./Chat.module.css";
 
 /**
  * The `--permission-mode` control.
@@ -86,12 +85,12 @@ export default function ModeSelector(props: {
           )}
         </For>
       </Picker>
-      {/* Never "switched to X": the CLI applies a mode at a turn boundary, and
-          a control that claimed otherwise would be wrong for the rest of the
-          running turn - which is exactly the turn the user is worried about. */}
-      <Show when={props.pending}>
-        <span class={`${styles.barNote} ${styles.barNotePending}`}>Applies from the next turn.</span>
-      </Show>
+      {/* The pill tints while a pick waits; the sentence that says what it is
+          waiting for is above the input, said once for all three controls
+          (`pendingSwitchNotice`). It is never "switched to X" wherever it is
+          said: the CLI applies a mode at a turn boundary, and a control
+          claiming otherwise would be wrong for the rest of the running turn -
+          exactly the turn the user is worried about. */}
     </>
   );
 }
