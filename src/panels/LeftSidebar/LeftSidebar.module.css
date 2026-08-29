@@ -31,7 +31,7 @@
      now, the name right after. 32px·s clears the elbow (which ends at 25px·s)
      with the same ~8px of breathing room the hover pill was always given, and
      lands the icon one clear indent past the project icon at 8px·s. */
-  --branch-label-x: calc(32px * var(--ui-scale));
+  --branch-label-x: calc(28px * var(--ui-scale));
   /* One indent level: branch depth to attempt depth. */
   --nest-step: calc(12px * var(--ui-scale));
 }
@@ -281,34 +281,15 @@
   padding: 0 var(--tree-gutter) calc(10px * var(--ui-scale)) 0;
 }
 
-/* ---- Project cards ----
-   One card per project, whatever its state: a card with a single header row is
-   how a collapsed project reads, so expanding one adds rows inside a box that
-   was already there rather than conjuring the box itself. That is the whole
-   point of carding them - the boundary between two projects is drawn, not
-   inferred from indentation.
-
-   The card takes over the 6px·s inset that every row used to carry as its own
-   left margin (see `.projectCard .row` below), so the content lands on exactly
-   the same x as before and the branch rail's geometry needs only to drop that
-   one term. */
 .projectCard {
   position: relative;
-  /* No right margin: the scroll container's own right padding already stands the
-     card off that edge (see --tree-gutter). */
   margin: 0 0 calc(10px * var(--ui-scale)) var(--tree-inset);
-  padding: calc(6px * var(--ui-scale));
-  /* No fill: the shell's wash is what shows through, and an opaque card would
-     punch a flat hole in it. The border alone carries the grouping - which is
-     all it was ever doing, since the fill and the surrounding surface were only
-     a step apart. */
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-lg);
 }
 
-/* Inside a card the row spans the card's content box: the inset it used to hold
-   is the card's padding now. Applying it here (rather than zeroing `.row`)
-   leaves the empty-state rows, which have no card, indented as they were. */
+/* Zeroed here rather than on `.row`, which would also unindent the empty-state
+   rows that have no card. */
 .projectCard .row {
   margin-left: 0;
 }
@@ -336,42 +317,10 @@
   background: var(--neutral-hover);
 }
 
-/* ---- Sticky headers: removed with the cards' fill ----
-   The project and fan-out headers used to pin to the top of the scroll area as
-   their subtree scrolled past (VS Code-style sticky scroll). That only works
-   with an OPAQUE header - a transparent one lets the rows sliding beneath it
-   show through its own text - and an opaque header is exactly what a card with
-   no fill cannot have: it would punch a flat patch out of the shell's wash at
-   the top of every group.
-   Little is lost. A card holds six branches before it truncates, so it is
-   almost never taller than the viewport, and the border now marks the grouping
-   the pinned header used to. If a long expanded list ever wants it back, the
-   way to do it is a blurred backdrop rather than a fill, so the wash still
-   reads through. */
-
-/* ---- Git-branch graph (branch/worktree level) ----
-   Each branch sits in a `.branchNode` inside the project's card; a thin rail
-   drops from the project row's icon and a rounded elbow curves into each branch
-   row, landing just short of that row's own type icon. `--rail-x` is the rail's
-   x from the node's left edge, `--rail-x-row` the same x from the row's box. */
 .branchNode {
   position: relative;
-  /* Centre the rail under the project row's icon: row padding (8px·s) + half
-     the 16px icon (8px). `--rail-x-row` is that same x re-expressed from the
-     row's own box, which is what the elbow and the gold segment are drawn
-     against. The two now come out equal - inside a card a row has no left
-     margin of its own, so the node's box and the row's box start together -
-     but they stay two names because they answer two questions, and only one of
-     them moves if a row ever regains an inset. Every term folds --ui-scale
-     (`s`), so the rail tracks the elbow at any UI scale. */
-  --rail-x: calc(8px * var(--ui-scale) + 8px * var(--ui-scale));
-  --rail-x-row: calc(8px * var(--ui-scale) + 8px * var(--ui-scale));
-  /* How far the elbow reaches from the rail into the row. Named because two
-     rules depend on it: the elbow's own width, and the left edge of the hover
-     pill, which must begin exactly where the elbow ends. Before the branch rows
-     carried icons those two were tuned to miss each other by a pixel; the icon
-     moved the pill left, and a magic number in one place would have quietly put
-     the pill back under the elbow. */
+  --rail-x: calc(4px * var(--ui-scale) + 8px * var(--ui-scale));
+  --rail-x-row: calc(4px * var(--ui-scale) + 8px * var(--ui-scale));
   --elbow-w: calc(9px * var(--ui-scale));
 }
 
@@ -385,12 +334,6 @@
   bottom: 0;
   width: 1px;
   background: var(--border-rail);
-  /* Above the rows (`.row.branch` sits at 2). Every elbow's vertical leg is
-     drawn in the row, at exactly this x, so whichever of the two paints last
-     owns the line: with the rows on top a grey leg chopped the rail once per
-     row, and colouring those legs only moved the seam into the elbow's corner,
-     where its two borders blend. The rail owning its own column settles both -
-     it covers the legs, and each elbow keeps one colour, its own. */
   z-index: 3;
 }
 
@@ -403,27 +346,6 @@
   height: calc(var(--row-h) / 2 - 5px * var(--ui-scale));
 }
 
-/* The path to the selection, drawn in the rail itself: every segment above the
-   selected row is gilded, and the selected row's own segment is gilded down to
-   its elbow and grey after it, so the line reads as running from the project
-   down to where you are and stopping there.
-   `:has` does the whole thing, which is why the node carries `.railSel`: a
-   segment gilds if a later sibling is the selection (or holds it), and a group
-   holding the selection gilds too. The group's outer rail runs past its own
-   attempts, so on a selected attempt that outer segment overshoots by the rows
-   below it - the inner rail, the one at the selection's own depth, still stops
-   on the nose. */
-.branchNode:has(~ .railSel)::before,
-.branchNode:has(~ .branchNode .railSel)::before,
-.branchNode:has(.railSel)::before {
-  background: var(--brand-bar);
-}
-.railSel::before {
-  top: -8px;
-  background: linear-gradient(var(--brand-bar) 0 calc(var(--row-h) / 2), var(--border-rail) 0);
-}
-
-
 /* ---- Attempt groups (one level deeper than a branch) ----
    A fan-out group is a branch node whose children are branch nodes: the group
    header sits at branch depth and each attempt one step in. Nothing here
@@ -432,9 +354,9 @@
    right and the same rules draw the deeper rail, elbow and hover pill. Declared
    after .branchNode (equal specificity) so the overrides win. */
 .attemptNode {
-  --rail-x: calc(8px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
-  --rail-x-row: calc(8px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
-  --branch-label-x: calc(32px * var(--ui-scale) + var(--nest-step));
+  --rail-x: calc(4px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
+  --rail-x-row: calc(4px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
+  --branch-label-x: calc(28px * var(--ui-scale) + var(--nest-step));
 }
 
 /* Branch hover: an inset fill that hugs the row's content and never reaches the
@@ -453,7 +375,7 @@
   content: "";
   position: absolute;
   left: calc(var(--rail-x-row) + var(--elbow-w));
-  right: 0;
+  right: 4px;
   top: 0;
   bottom: 0;
   z-index: -1;
@@ -514,12 +436,6 @@
       var(--sway-border-thick) calc(15px * var(--ui-scale)) no-repeat,
     var(--brand-subtle);
 }
-/* The elbow the gilded run turns on. Colour only, at the rail's own 1px: the
-   2px it used to take made a blob exactly where the rail, the elbow and the
-   pill's bar already meet. */
-.row.branch.sel::after {
-  border-color: var(--brand-bar);
-}
 
 .row.project .label,
 .row.branch.sel .label {
@@ -567,8 +483,8 @@
 }
 /* CSS-sized glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
 .rowIcon :global(svg) {
-  width: calc(14px * var(--ui-scale));
-  height: calc(14px * var(--ui-scale));
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
 }
 
 /* A project row's icon may be an IMAGE (its favicon, or one the user uploaded)

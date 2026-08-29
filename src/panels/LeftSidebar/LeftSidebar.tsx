@@ -2293,8 +2293,6 @@ export default function LeftSidebar(props: {
         class={`node ${styles.branchNode}`}
         classList={{
           [styles.attemptNode]: attempt != null,
-          // What the gilded rail above the selection keys off (CSS `:has`).
-          [styles.railSel]: unitSelected(u),
         }}
       >
         <ContextMenu
@@ -2865,10 +2863,6 @@ export default function LeftSidebar(props: {
                   </span>
                   <span class={styles.label}>{p.name}</span>
                   {statusBubble(
-                    // A plain-dir row has no children at all, so it carries its
-                    // folder's rollup unconditionally - it is the only row that
-                    // will ever report those sessions. A git project defers to
-                    // its branch rows whenever they are on screen.
                     plainDir()
                       ? bubbleForUnits(p, [folderUnit()])
                       : !popen()
