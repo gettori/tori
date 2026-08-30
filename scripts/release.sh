@@ -154,4 +154,4 @@ rm -rf "$tap" "$notes"
 echo
 echo "Released Sway $version:"
 echo "  https://github.com/${RELEASES_REPO}/releases/tag/$tag"
-echo "  brew install --cask skarif2/tap/sway --no-quarantine"
+echo "  brew install --cask skarif2/tap/sway"
