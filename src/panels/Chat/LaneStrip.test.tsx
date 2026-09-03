@@ -18,12 +18,20 @@ function lane(over: Partial<Lane> = {}): Lane {
     summary: null,
     parentId: null,
     startedAt: Date.now(),
+    seen: false,
     ...over,
   };
 }
 
 const strip = (over: Partial<Parameters<typeof LaneStrip>[0]> = {}) => (
-  <LaneStrip lanes={[lane()]} selected={null} onSelect={() => {}} active={true} {...over} />
+  <LaneStrip
+    lanes={[lane()]}
+    selected={null}
+    blocked={new Set()}
+    onSelect={() => {}}
+    active={true}
+    {...over}
+  />
 );
 
 describe("the lane strip", () => {
@@ -105,6 +113,30 @@ describe("the lane strip", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("says how a lane ended rather than only tinting a dot", () => {
+    // Six pixels of colour is not a way to learn that work you were counting on
+    // failed, and the agent's own word is the one the reader can act on.
+    const ended = [
+      lane({ agentId: "a1", description: "one", status: "failed" }),
+      lane({ agentId: "a2", description: "two", status: "cancelled" }),
+      // Measured on disk: a backgrounded call whose ending was never written.
+      lane({ agentId: "a3", description: "three", status: "async_launched" }),
+    ];
+    render(() => strip({ lanes: ended }));
+    expect(screen.getByText("failed")).toBeTruthy();
+    expect(screen.getByText("cancelled")).toBeTruthy();
+    expect(screen.getByText("async_launched")).toBeTruthy();
+  });
+
+  it("says which lane is waiting on you", () => {
+    const two = [lane({ agentId: "a1", description: "one" }), lane({ agentId: "a2", description: "two" })];
+    const { container } = render(() => strip({ lanes: two, blocked: new Set(["a2"]) }));
+    expect(screen.getByText("waiting")).toBeTruthy();
+    // The one that is merely running still shows its clock, so "waiting" reads
+    // as the exception rather than as the row's ordinary state.
+    expect(container.textContent).toContain("0s");
   });
 
   it("marks the lane being read", () => {

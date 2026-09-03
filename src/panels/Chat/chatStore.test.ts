@@ -40,6 +40,7 @@ import {
   seedEffort,
   selectEffort,
   selectLane,
+  blockedLanes,
   selectMode,
   selectModel,
   settleBackfill,
@@ -2181,6 +2182,63 @@ describe("subagent lanes", () => {
         completed("t1", CALL),
       ]);
       expect(laneStrip(s).map((l) => l.status)).toEqual([status]);
+    }
+  });
+
+  it("shows a blocked subagent's prompt in main as well as in its own lane", () => {
+    // A prompt landing in a lane nobody is looking at stalls the session with
+    // nothing on screen explaining why.
+    const s = replay([
+      turnStarted("t1"),
+      laneStarted(),
+      started("t1", CALL, "Agent", {}),
+      { ...prompt(NESTED, "r1"), agentId: AGENT } as ChatEvent,
+    ]);
+    const inMain = () => visibleItems(s.items, false, null).filter((i) => i.kind === "tool");
+    expect(inMain().map((i) => (i as ToolItem).toolUseId)).toContain(NESTED);
+    expect(visibleItems(s.items, false, AGENT).map((i) => (i as ToolItem).toolUseId)).toEqual([NESTED]);
+    // And the strip says which lane is the one waiting.
+    expect([...blockedLanes(s)]).toEqual([AGENT]);
+
+    // Answered, it goes back to being the subagent's business alone.
+    applyEvent(s, completed("t1", NESTED));
+    expect(inMain().map((i) => (i as ToolItem).toolUseId)).not.toContain(NESTED);
+    expect([...blockedLanes(s)]).toEqual([]);
+  });
+
+  it("holds the strip for a lane that ended badly until it is opened", () => {
+    const s = replay([
+      turnStarted("t1"),
+      laneStarted(),
+      started("t1", CALL, "Agent", {}),
+      laneUpdate("failed"),
+      completed("t1", CALL),
+    ]);
+    // Its card has settled, which retires a success; a failure it does not.
+    expect(laneStrip(s)).toHaveLength(1);
+    selectLane(s, AGENT);
+    expect(laneStrip(s)).toHaveLength(0);
+    expect(s.lanes[AGENT]!.status).toBe("failed");
+  });
+
+  it("settles every lane still working when the session is interrupted", () => {
+    // The interrupt kills the child and every subagent with it. A lane left
+    // claiming to work is the one lie the strip can tell.
+    const OTHER = "b3e0c11f0a2d4e5f6";
+    const s = replay([
+      turnStarted("t1"),
+      laneStarted(),
+      laneStarted(OTHER, "toolu_other"),
+      turnDone("t1", "cancelled"),
+    ]);
+    expect(Object.values(s.lanes).map((l) => l.status)).toEqual(["cancelled", "cancelled"]);
+
+    // Neither an ordinary completion nor a failed turn settles anything: the
+    // child is still alive in both, and a backgrounded subagent outlives the
+    // turn that launched it.
+    for (const outcome of ["completed", "errored"] as const) {
+      const alive = replay([turnStarted("t2"), laneStarted(), turnDone("t2", outcome)]);
+      expect(alive.lanes[AGENT]!.status).toBeNull();
     }
   });
 

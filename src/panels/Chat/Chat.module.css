@@ -1831,6 +1831,12 @@ button.diffHunkHeader:hover {
   color: var(--fg-subtle);
 }
 
+/* Waiting on you, the same role the status strip's attention dot wears: the two
+   sit at opposite ends of one panel and must not disagree about a tone. */
+.laneBlocked {
+  color: var(--brand-default);
+}
+
 .laneBad {
   color: var(--danger-fg);
 }

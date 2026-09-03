@@ -156,6 +156,9 @@ export default function MessageList(props: {
   /** The lane an `Agent` call opened, or null for an ordinary call. A finished
    *  lane leaves the strip, so its card is the only way back into it. */
   laneOpenedBy?: (toolUseId: string) => string | null;
+  /** The lane a row belongs to while it is showing outside that lane, which is
+   *  what a blocked row does. */
+  blockedIn?: (item: ChatItem) => string | null;
   onOpenLane?: (agentId: string) => void;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
@@ -466,6 +469,8 @@ export default function MessageList(props: {
                     onAnswer={
                       props.onAnswerQuestion ? (answers) => props.onAnswerQuestion?.(it(), answers) : undefined
                     }
+                    inLane={props.blockedIn?.(it()) ?? null}
+                    onOpenLane={props.onOpenLane}
                   />
                 </>
               )}
@@ -483,6 +488,7 @@ export default function MessageList(props: {
                     onSetMode={props.onSetMode}
                     onRevertHunk={props.onRevertHunk}
                     lane={props.laneOpenedBy?.(it().toolUseId) ?? null}
+                    inLane={props.blockedIn?.(it()) ?? null}
                     onOpenLane={props.onOpenLane}
                   />
                 </>

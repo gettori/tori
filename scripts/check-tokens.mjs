@@ -882,6 +882,59 @@ if (laneProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 12: one tone, one meaning, across the panel's two status rows ----
+//
+// The status strip above the transcript and the lane strip above the composer
+// are the same panel saying the same four things, and a reader scans both in one
+// glance. They are checked against each other rather than against the sidebar's
+// dot, which speaks a different vocabulary on purpose (a brand hue for working,
+// so a row of tabs identifies its agents).
+const TONES = [
+  ["busy", ".stripBusy .stripDot", ".laneBusy"],
+  ["idle", ".stripIdle .stripDot", ".laneIdle"],
+  ["waiting on you", ".stripAttention .stripDot", ".laneBlocked"],
+  ["ended badly", ".stripBad", ".laneBad"],
+];
+
+const toneProblems = [];
+const toneRole = (selector) => {
+  const rule = chatRules.find((r) => r.selectors.includes(selector));
+  if (rule === undefined) return null;
+  return /(?:^|[;{\s])color:\s*([^;]+);/.exec(rule.body)?.[1]?.trim() ?? null;
+};
+if (!chatSource) {
+  toneProblems.push(`could not read ${CHAT_CSS}; this check needs the chat panel's stylesheet`);
+} else {
+  const worn = new Map();
+  for (const [meaning, strip, lane] of TONES) {
+    const stripRole = toneRole(strip);
+    const laneRole = toneRole(lane);
+    if (stripRole === null || laneRole === null) {
+      toneProblems.push(`${stripRole === null ? strip : lane} sets no color, so "${meaning}" has no tone to compare`);
+      continue;
+    }
+    if (stripRole !== laneRole) {
+      toneProblems.push(
+        `"${meaning}" is ${stripRole} on ${strip} and ${laneRole} on ${lane}; ` +
+          `one panel, one tone per meaning`,
+      );
+      continue;
+    }
+    const already = worn.get(stripRole);
+    if (already !== undefined) {
+      toneProblems.push(`${stripRole} means both "${already}" and "${meaning}"; a tone may carry only one`);
+    }
+    worn.set(stripRole, meaning);
+  }
+}
+
+if (toneProblems.length > 0) {
+  console.error(`${toneProblems.length} problem(s) with the chat panel's status tones:\n`);
+  for (const problem of toneProblems) console.error(`  ${problem}`);
+  console.error("\nThe two strips are read in one glance; a tone that means two things reads as neither.");
+  process.exit(1);
+}
+
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted ` +
@@ -895,5 +948,6 @@ console.log(
     `the sidebar filter's row able to wrap under its tabs, ` +
     `its heading matching a dialog title on all ${TITLE_RECIPE.length} recipe properties, ` +
     `the blocking tier's ${tierRoles.length} roles worn by the ${BLOCKING.length} surfaces that interrupt the user, ` +
-    `and the lane strip painting only the one surface its ${LANE_TEXT.length} text roles are measured against.`,
+    `the lane strip painting only the one surface its ${LANE_TEXT.length} text roles are measured against, ` +
+    `and the panel's two status rows agreeing on all ${TONES.length} tones.`,
 );

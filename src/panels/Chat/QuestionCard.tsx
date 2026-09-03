@@ -83,6 +83,11 @@ export default function QuestionCard(props: {
   /** Absent where nothing can be sent, which renders the read-only shape rather
    *  than a form whose Submit would do nothing. */
   onAnswer?: (answers: QuestionAnswer[]) => void;
+  /** The subagent whose lane this card belongs to, set only while it is showing
+   *  outside that lane. Same reason as [`ToolCallCard`]'s: an unanswered
+   *  question surfaces in main so the stall is visible there. */
+  inLane?: string | null;
+  onOpenLane?: (agentId: string) => void;
 }) {
   const titleId = createUniqueId();
   const [drafts, setDrafts] = createStore<Record<number, Draft>>({});
@@ -152,7 +157,14 @@ export default function QuestionCard(props: {
             `title`: it is a hex handle nobody recognises, and hover text is the
             one place a keyboard user would never find it. */}
         <Show when={props.item.agentId !== null}>
-          <span class={styles.questionAgent}>from a subagent</span>
+          <Show
+            when={props.inLane && props.onOpenLane}
+            fallback={<span class={styles.questionAgent}>from a subagent</span>}
+          >
+            <button type="button" class={styles.toolLane} onClick={() => props.onOpenLane?.(props.inLane!)}>
+              Read what this subagent is doing
+            </button>
+          </Show>
         </Show>
         {/* Said in words as well as by the frame: the border shift alone is too
             quiet to scan for, and no chip is what marks the card still open. */}

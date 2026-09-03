@@ -277,6 +277,23 @@ describe("QuestionCard", () => {
     expect(document.body.textContent).not.toContain("affdd797eddcfa753");
   });
 
+  it("turns that badge into the way into the lane while it is showing in main", () => {
+    // An unanswered question surfaces in main so the stall is visible, and the
+    // line that says whose it is becomes the way to go and read it.
+    const opened: string[] = [];
+    render(() => (
+      <QuestionCard
+        item={item({ agentId: "affdd797eddcfa753" })}
+        onAnswer={() => {}}
+        inLane="affdd797eddcfa753"
+        onOpenLane={(id) => opened.push(id)}
+      />
+    ));
+    expect(screen.queryByText("from a subagent")).toBeNull();
+    fireEvent.click(screen.getByText("Read what this subagent is doing"));
+    expect(opened).toEqual(["affdd797eddcfa753"]);
+  });
+
   it("says nothing about a subagent when the main agent asked", () => {
     render(() => <QuestionCard item={item()} onAnswer={() => {}} />);
     expect(screen.queryByText("from a subagent")).toBeNull();
