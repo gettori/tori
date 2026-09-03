@@ -95,6 +95,10 @@ struct Shared {
     /// the question's own prose and echo the picked option's preview back.
     /// Keyed and dropped exactly like `granted_rules`, so it is bounded by the
     /// number of *outstanding* questions rather than by the session.
+    /// The mode each outstanding `set_permission_mode` asked for, keyed by
+    /// request id, so a refusal can name the mode it refused. Dropped on the
+    /// response either way, so it holds at most one entry per unanswered switch.
+    mode_requests: Mutex<HashMap<String, PermissionMode>>,
     parked_questions: Mutex<HashMap<String, Vec<ChatQuestion>>>,
 }
 
@@ -299,6 +303,7 @@ impl ClaudeTransport {
                 stdin: Mutex::new(None),
                 pending: Mutex::new(HashMap::new()),
                 parked_questions: Mutex::new(HashMap::new()),
+                mode_requests: Mutex::new(HashMap::new()),
                 settled: Condvar::new(),
                 granted_rules: Mutex::new(HashMap::new()),
             }),
@@ -458,6 +463,28 @@ fn guarded<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// A `set_permission_mode` the CLI answered with an error, as the event saying
+/// so. The bookkeeping is dropped on any response, success included: a switch
+/// that landed is confirmed by the next `system/init` instead.
+fn mode_refusal(shared: &Shared, frame: &Value) -> Option<ChatEvent> {
+    if frame["type"].as_str() != Some("control_response") {
+        return None;
+    }
+    let response = &frame["response"];
+    let mode = guarded(&shared.mode_requests).remove(response["request_id"].as_str()?)?;
+    if response["subtype"].as_str() != Some("error") {
+        return None;
+    }
+    Some(ChatEvent::ModeRefused {
+        session_id: shared.session_id.clone(),
+        mode,
+        reason: response["error"]
+            .as_str()
+            .unwrap_or("the agent refused the switch without saying why")
+            .to_string(),
+    })
+}
+
 /// The `response` payload of a permission answer, as the CLI reads it.
 ///
 /// Pure so the envelope can be asserted without a live child; the shape is a
@@ -587,6 +614,9 @@ impl AgentTransport for ClaudeTransport {
                     }
                     match serde_json::from_str::<Value>(line) {
                         Ok(frame) => {
+                            if let Some(refused) = mode_refusal(&shared, &frame) {
+                                emit(&sink, refused);
+                            }
                             for mut event in mapper.map(&frame) {
                                 // The mapper turns the frame into an event; the
                                 // deadline is armed here, because the transport
@@ -672,6 +702,7 @@ impl AgentTransport for ClaudeTransport {
         // the only boundary at which the CLI can honour one.
         if let Some(mode) = self.pending_mode.take() {
             let request_id = self.next_request_id();
+            guarded(&self.shared.mode_requests).insert(request_id.clone(), mode.clone());
             let _ = self.write_frame(&json!({
                 "type": "control_request",
                 "request_id": request_id,
@@ -840,6 +871,7 @@ pub mod tests {
             settled: Condvar::new(),
             granted_rules: Mutex::new(HashMap::new()),
             parked_questions: Mutex::new(HashMap::new()),
+            mode_requests: Mutex::new(HashMap::new()),
         })
     }
 
@@ -1649,5 +1681,56 @@ pub mod tests {
             matches!(events.first(), Some(ChatEvent::SessionError { fatal: false, .. })),
             "expected a non-fatal parse error, got {events:?}"
         );
+    }
+
+    // Measured on claude 2.1.258: a session not launched bypass-capable answers
+    // `set_permission_mode bypassPermissions` with an error and stays in the
+    // mode it was in, so nothing later on the wire contradicts the pick.
+    #[test]
+    fn a_refused_switch_becomes_an_event_naming_the_mode_and_the_reason() {
+        let shared = shared();
+        guarded(&shared.mode_requests).insert("r1".into(), PermissionMode::new("bypassPermissions"));
+        let frame = json!({
+            "type": "control_response",
+            "response": {
+                "subtype": "error",
+                "request_id": "r1",
+                "error": "Cannot set permission mode to bypassPermissions because the session was not launched with --dangerously-skip-permissions",
+            },
+        });
+        match mode_refusal(&shared, &frame) {
+            Some(ChatEvent::ModeRefused { mode, reason, .. }) => {
+                assert_eq!(mode.as_str(), "bypassPermissions");
+                assert!(reason.contains("--dangerously-skip-permissions"), "got {reason}");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+        assert!(guarded(&shared.mode_requests).is_empty(), "the request is spent");
+    }
+
+    #[test]
+    fn a_switch_the_agent_took_reports_nothing_and_stops_being_tracked() {
+        let shared = shared();
+        guarded(&shared.mode_requests).insert("r1".into(), PermissionMode::new("plan"));
+        let frame = json!({
+            "type": "control_response",
+            "response": { "subtype": "success", "request_id": "r1", "response": { "mode": "plan" } },
+        });
+        assert!(mode_refusal(&shared, &frame).is_none());
+        // Confirmed by the next init instead, so holding the entry would only
+        // leave it to be reported against some later request id.
+        assert!(guarded(&shared.mode_requests).is_empty());
+    }
+
+    #[test]
+    fn an_error_for_a_different_request_leaves_the_mode_switch_outstanding() {
+        let shared = shared();
+        guarded(&shared.mode_requests).insert("r1".into(), PermissionMode::new("plan"));
+        let frame = json!({
+            "type": "control_response",
+            "response": { "subtype": "error", "request_id": "r2", "error": "unknown model" },
+        });
+        assert!(mode_refusal(&shared, &frame).is_none());
+        assert_eq!(guarded(&shared.mode_requests).len(), 1);
     }
 }

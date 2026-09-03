@@ -218,6 +218,11 @@ describe("chatTypes mirrors the Rust chat model", () => {
           expect(select?.kind === "select" && select.current).toBe("concise");
           break;
         }
+        case "modeRefused":
+          // The agent's own sentence, verbatim: it is what the refused row shows.
+          expect(ev.mode).toBe("bypassPermissions");
+          expect(ev.reason).toContain("--dangerously-skip-permissions");
+          break;
         default: {
           const never: never = ev;
           throw new Error(`unhandled event variant: ${JSON.stringify(never)}`);

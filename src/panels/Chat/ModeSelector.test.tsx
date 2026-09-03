@@ -199,3 +199,56 @@ describe("a mode gated on a model capability", () => {
     expect(openMenu(getByLabelText).textContent).toContain("Auto");
   });
 });
+
+// Measured on claude 2.1.258: `set_permission_mode bypassPermissions` is
+// answered with an error unless the session was launched bypass-capable. Only
+// the agent knows, so the row is marked from its answer, keyed on the id it named.
+describe("a mode the agent refused", () => {
+  const refusals = { yolo: "the session was not launched with --dangerously-skip-permissions" };
+
+  it("keeps the row, shows the agent's reason on it, and does not act", () => {
+    const chat = foreign(GEMINI_MODES);
+    const onSelect = vi.fn();
+    const { getByLabelText } = render(() => (
+      <ModeSelector
+        mode="auto_edit"
+        modes={chat.modes}
+        pending={false}
+        refusals={refusals}
+        disabled={false}
+        onSelect={onSelect}
+      />
+    ));
+    const menu = openMenu(getByLabelText);
+    // Still reachable, so a keyboard user can hear why.
+    expect(menu.textContent).toContain("Yolo");
+    expect(menu.textContent).toContain("--dangerously-skip-permissions");
+
+    const row = [...menu.querySelectorAll('[role="menuitem"]')].find((r) =>
+      r.textContent?.includes("Yolo"),
+    ) as HTMLElement;
+    pointerClick(row);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("leaves every other row selectable", () => {
+    const chat = foreign(GEMINI_MODES);
+    const onSelect = vi.fn();
+    const { getByLabelText } = render(() => (
+      <ModeSelector
+        mode="yolo"
+        modes={chat.modes}
+        pending={false}
+        refusals={refusals}
+        disabled={false}
+        onSelect={onSelect}
+      />
+    ));
+    const menu = openMenu(getByLabelText);
+    const row = [...menu.querySelectorAll('[role="menuitem"]')].find((r) =>
+      r.textContent?.includes("Auto edit"),
+    ) as HTMLElement;
+    pointerClick(row);
+    expect(onSelect).toHaveBeenCalledWith("auto_edit");
+  });
+});

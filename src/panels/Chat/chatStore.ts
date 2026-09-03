@@ -422,6 +422,10 @@ export type ChatState = {
    *  switch at the next turn boundary, so until then the two disagree and the
    *  control has to say so. */
   pendingMode: PermissionMode | null;
+  /// Modes this agent answered with a refusal, and the reason it gave. Kept so
+  /// the control can mark a row that can never land instead of offering it
+  /// again; the agent is the only thing that knows, so this is its answer.
+  refusedModes: Record<string, string>;
   tools: string[];
   slashCommands: SlashCommand[];
   mcpServers: McpServer[];
@@ -522,6 +526,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     contextWindow: null,
     permissionMode: null,
     pendingMode: null,
+    refusedModes: {},
     tools: [],
     slashCommands: [],
     mcpServers: [],
@@ -746,12 +751,12 @@ function touchTurn(s: ChatState, turnId: string) {
   }
 }
 
-/** Record the mode the child says it is in. The per-turn init re-emission is the
- *  only confirmation a switch landed, so a pending pick clears here and nowhere
- *  else - clearing it on the click would show the new mode a turn early. */
+/** Record the mode the child says it is in, and settle any pending pick: at the
+ *  boundary rather than on the click, and whether or not the switch landed, since
+ *  a refusal would otherwise leave the control promising a mode forever. */
 function noteMode(s: ChatState, mode: PermissionMode) {
   s.permissionMode = mode;
-  if (s.pendingMode === mode) s.pendingMode = null;
+  s.pendingMode = null;
 }
 
 /**
@@ -903,6 +908,13 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       noteMode(s, ev.permissionMode);
       touchTurn(s, ev.turnId);
       s.turns[ev.turnId].model = ev.model;
+      return;
+    }
+    case "modeRefused": {
+      // The pick is settled here rather than at the next boundary: a refusal is
+      // answered on the control channel, so the answer is already in hand.
+      s.refusedModes[ev.mode] = ev.reason;
+      if (s.pendingMode === ev.mode) s.pendingMode = null;
       return;
     }
     case "hookFired": {
@@ -1458,6 +1470,11 @@ export function shownMode(s: ChatState, fallback: PermissionMode | null = null):
  *  this one? */
 export function modePending(s: ChatState): boolean {
   return s.pendingMode !== null;
+}
+
+/** Why this agent refused this mode, in its own words, or null if it has not. */
+export function modeRefusal(s: ChatState, mode: PermissionMode): string | null {
+  return s.refusedModes[mode] ?? null;
 }
 
 /**
