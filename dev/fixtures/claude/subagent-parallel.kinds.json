@@ -1,0 +1,32 @@
+{
+  "verifiedAgainst": "2.1.259 (Claude Code)",
+  "required": [
+    "assistant/text",
+    "assistant/tool_use",
+    "result/success",
+    "stream_event/content_block_delta/input_json_delta",
+    "stream_event/content_block_delta/text_delta",
+    "stream_event/content_block_start/text",
+    "stream_event/content_block_start/tool_use",
+    "stream_event/content_block_stop",
+    "stream_event/message_delta",
+    "stream_event/message_start",
+    "stream_event/message_stop",
+    "system/init",
+    "system/status",
+    "system/task_notification",
+    "system/task_started",
+    "system/task_updated",
+    "user/text",
+    "user/tool_result"
+  ],
+  "optional": [
+    "assistant/thinking",
+    "rate_limit_event",
+    "stream_event/content_block_delta/signature_delta",
+    "stream_event/content_block_delta/thinking_delta",
+    "stream_event/content_block_start/thinking",
+    "system/task_progress",
+    "system/thinking_tokens"
+  ]
+}
