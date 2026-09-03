@@ -1,10 +1,11 @@
-import { createEffect, Show } from "solid-js";
-import { X } from "lucide-solid";
+import { createEffect, createSignal, Show } from "solid-js";
+import { Square, X } from "lucide-solid";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
+import ConfirmDialog from "../../components/Dialogs/ConfirmDialog";
 import { emit, REFIT_PANES } from "../../utils/events";
 import { stageHost } from "../../tabs/stageHost";
-import { hideDrawer, shownJob } from "./jobStore";
+import { hideDrawer, shownJob, stopJob } from "./jobStore";
 import styles from "./Jobs.module.css";
 
 /** What the head says a job is doing, code included once there is one. */
@@ -24,6 +25,7 @@ function outcome(state: string, code: number | null | undefined): string {
  */
 export default function JobDrawer() {
   let body!: HTMLDivElement;
+  const [stopping, setStopping] = createSignal<{ id: string; title: string } | null>(null);
 
   // Adopt the shown job's stage host, the way PaneView adopts a tab's. The
   // surface moves; it is never rebuilt, so scrollback and the process survive.
@@ -56,6 +58,22 @@ export default function JobDrawer() {
             </span>
           )}
         </Show>
+        {/* Never a bare click. Killing a job is a SIGKILL, so a bootstrap
+            loses its `|| rm -rf` and leaves a `.bare` stub behind
+            ([[gotchas#clone-and-bootstrap-run-in-a-terminal-tab]]). */}
+        <Show when={shownJob()?.state === "running"}>
+          <Button
+            variant="ghost"
+            size="md"
+            aria-label="Stop job"
+            tooltip="Stop"
+            icon={<Icon icon={Square} />}
+            onClick={() => {
+              const job = shownJob();
+              if (job) setStopping({ id: job.id, title: job.title });
+            }}
+          />
+        </Show>
         <Button
           variant="ghost"
           size="md"
@@ -66,6 +84,21 @@ export default function JobDrawer() {
         />
       </div>
       <div class={styles.drawerBody} ref={body} />
+      <Show when={stopping()}>
+        {(req) => (
+          <ConfirmDialog
+            title={`Stop ${req().title}?`}
+            message="The process is killed outright, so whatever it was part-way through stays that way. A half-done clone or bootstrap leaves a folder behind for you to clean up."
+            confirmLabel="Stop"
+            danger
+            onConfirm={() => {
+              stopJob(req().id);
+              setStopping(null);
+            }}
+            onCancel={() => setStopping(null)}
+          />
+        )}
+      </Show>
     </div>
   );
 }

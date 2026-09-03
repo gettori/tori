@@ -82,17 +82,39 @@ export function startJob(spec: OpenJob): void {
  * to read, and a receipt that has to be dismissed is a chore. Anything else
  * stays on screen wearing its code, which is what `kind: "command"` stickiness
  * used to buy and what this has to keep.
+ *
+ * Returns the finished job, or `null` for an id this store does not own (every
+ * terminal tab's exit arrives here too). The caller announces it: a toast needs
+ * `window`, and keeping that out of here is what lets the model be tested
+ * without a DOM.
  */
-export function finishJob(id: string, code: number | null): void {
+export function finishJob(id: string, code: number | null): Job | null {
   const job = jobs().find((j) => j.id === id);
-  if (!job || job.state !== "running") return;
+  if (!job || job.state !== "running") return null;
   const state = stateForCode(code);
-  setJobs(jobs().map((j) => (j.id === id ? { ...j, state, code, endedAt: Date.now() } : j)));
+  const done: Job = { ...job, state, code, endedAt: Date.now() };
+  setJobs(jobs().map((j) => (j.id === id ? done : j)));
   // After the state is recorded, so anything watching sees the outcome even
   // when the job is about to go.
   if (job.rediscoverOnExit) invoke("rediscover").catch(() => {});
   if (job.recheckAgentsOnExit) void refreshAgentHealth();
   if (state === "ok") forgetJob(id);
+  return done;
+}
+
+/**
+ * Kill a running job's process.
+ *
+ * Nothing is removed here. The kill closes the pty, `pty://exit` comes back
+ * with a non-zero code, and the job stays on screen saying it was stopped,
+ * rather than vanishing as though it had finished. Destructive, so the caller
+ * is expected to have asked first: a bootstrap killed part-way skips its
+ * `|| rm -rf` and leaves a `.bare` stub
+ * ([[gotchas#clone-and-bootstrap-run-in-a-terminal-tab]]).
+ */
+export function stopJob(id: string): void {
+  if (jobs().find((j) => j.id === id)?.state !== "running") return;
+  invoke("pty_kill", { id }).catch(() => {});
 }
 
 /** Drop a finished job by hand. Running jobs are not dismissable: the row is

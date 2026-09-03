@@ -3,9 +3,46 @@ import { Portal } from "solid-js/web";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView, { type PtyExit } from "../Terminal/TerminalView";
 import { stageHost } from "../../tabs/stageHost";
-import { OPEN_JOB, onWith, type OpenJob } from "../../utils/events";
+import {
+  emit,
+  emitWith,
+  onWith,
+  OPEN_JOB,
+  REVEAL_SIDEBAR,
+  TOAST,
+  type OpenJob,
+  type ToastEvent,
+} from "../../utils/events";
 import JobDrawer from "./JobDrawer";
-import { finishJob, jobs, shownJob, startJob } from "./jobStore";
+import { finishJob, jobs, showJob, shownJob, startJob, type Job } from "./jobStore";
+
+/**
+ * Say what happened, wherever the user is looking.
+ *
+ * The drawer can be closed and the tray lives in a sidebar that can be hidden,
+ * so a job can finish with nothing on screen that says so. Only a failure
+ * carries the action: a clean job has already cleared itself, and there would
+ * be nothing left for Show to reveal.
+ */
+function announce(job: Job) {
+  const failed = job.state === "failed";
+  const status = job.code == null ? "no exit status" : `exit ${job.code}`;
+  emitWith<ToastEvent>(TOAST, {
+    message: failed ? `${job.title} failed (${status})` : `${job.title} finished`,
+    kind: failed ? "error" : "info",
+    ...(failed
+      ? {
+          action: {
+            label: "Show",
+            run: () => {
+              emit(REVEAL_SIDEBAR);
+              showJob(job.id);
+            },
+          },
+        }
+      : {}),
+  });
+}
 
 /**
  * The Jobs host: listeners, surfaces, drawer.
@@ -23,9 +60,10 @@ export default function Jobs() {
     offOpenJob = onWith<OpenJob>(OPEN_JOB, startJob);
     // The same event every terminal tab listens to. An id this store does not
     // know is a tab's, and `finishJob` ignores it.
-    unlistenExit = await listen<PtyExit>("pty://exit", (e) =>
-      finishJob(e.payload.id, e.payload.code),
-    );
+    unlistenExit = await listen<PtyExit>("pty://exit", (e) => {
+      const done = finishJob(e.payload.id, e.payload.code);
+      if (done) announce(done);
+    });
   });
 
   onCleanup(() => {

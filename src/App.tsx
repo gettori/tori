@@ -55,6 +55,7 @@ import {
   ZOOM_RESET,
   RELOAD_APP,
   TOGGLE_SIDEBAR,
+  REVEAL_SIDEBAR,
   TOGGLE_TERMINAL,
   TOGGLE_EDITOR,
   TOGGLE_FILETREE,
@@ -571,6 +572,12 @@ function App() {
     persistLayout();
   }
 
+  function revealSidebar() {
+    if (showSidebar()) return;
+    setShowSidebar(true);
+    persistLayout();
+  }
+
   const TERMINAL_KINDS = ['shell', 'agent', 'command', 'chat', 'task'];
   function togglePaneFor(kinds: string[], pinKind: string) {
     const ws = wsKey();
@@ -830,6 +837,7 @@ function App() {
   let offZoomReset: (() => void) | undefined;
   let offReload: (() => void) | undefined;
   let offToggleSidebar: (() => void) | undefined;
+  let offRevealSidebar: (() => void) | undefined;
   let offToggleTerminal: (() => void) | undefined;
   let offToggleEditor: (() => void) | undefined;
   let offToggleFiletree: (() => void) | undefined;
@@ -866,6 +874,7 @@ function App() {
     offZoomReset = onEvent(ZOOM_RESET, resetZoom);
     offReload = onEvent(RELOAD_APP, () => location.reload());
     offToggleSidebar = onEvent(TOGGLE_SIDEBAR, toggleSidebar);
+    offRevealSidebar = onEvent(REVEAL_SIDEBAR, revealSidebar);
     offToggleTerminal = onEvent(TOGGLE_TERMINAL, toggleTerminal);
     offToggleEditor = onEvent(TOGGLE_EDITOR, toggleEditor);
     offToggleFiletree = onEvent(TOGGLE_FILETREE, toggleFiletree);
@@ -996,6 +1005,7 @@ function App() {
     offZoomReset?.();
     offReload?.();
     offToggleSidebar?.();
+    offRevealSidebar?.();
     offToggleTerminal?.();
     offToggleEditor?.();
     offToggleFiletree?.();
