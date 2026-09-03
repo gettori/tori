@@ -271,6 +271,9 @@ export type Lane = {
    *  as cards inside its ancestor's lane, so the strip stays a list. */
   parentId: string | null;
   startedAt: number;
+  /** Whether the reader has opened this lane. Only a lane that ended badly
+   *  cares: it holds the strip until then. */
+  seen: boolean;
 };
 
 /** The tool whose call is a question. Named here as well as in the Rust mapper
@@ -341,13 +344,24 @@ export function toolCallsSeen(s: ChatState): number {
  *
  * `lane` narrows it to one agent's rows, null being the main agent's. A hidden
  * notice survives neither: it is kept only so the indexes above it stay put.
+ *
+ * The one row that ignores the lane is a blocked one, which also shows in main:
+ * a subagent's prompt landing in a lane nobody is looking at stalls the session
+ * with nothing on screen explaining why.
  */
 export function visibleItems(items: readonly ChatItem[], showAllHooks: boolean, lane: string | null): ChatItem[] {
   return items.filter((it) => {
-    if (laneOf(it) !== lane) return false;
+    if (laneOf(it) !== lane && !(lane === null && blocking(it))) return false;
     if (it.kind === "notice" && it.hidden) return false;
     return showAllHooks || it.kind !== "hook" || hookFailed(it);
   });
+}
+
+/** A row the session is stopped on until the user answers it: a call waiting on
+ *  approval, or a question still open. */
+function blocking(it: ChatItem): boolean {
+  if (it.kind === "tool") return it.state === "awaitingApproval";
+  return it.kind === "question" && answerable(it);
 }
 
 /** The one outcome worth a transcript row: the agent reported a non-zero
@@ -879,6 +893,7 @@ function ensureLane(s: ChatState, agentId: string): Lane {
     summary: null,
     parentId: null,
     startedAt: Date.now(),
+    seen: false,
   };
   s.lanes[agentId] = lane;
   return lane;
@@ -904,10 +919,15 @@ export function laneStrip(s: ChatState): Lane[] {
 }
 
 /** A lane leaves the strip once it succeeded *and* its launching call settled,
- *  from which point that card is the way back in. Only success retires: the rule
- *  that clears finished work must not clear a failure. */
+ *  from which point that card is the way back in.
+ *
+ *  Anything other than success holds the strip until it has been opened. The
+ *  rule that clears finished work must not clear the one outcome a reader
+ *  cannot afford to miss, and a glance is what "seen" means here. */
 function retired(s: ChatState, lane: Lane): boolean {
-  if (lane.status !== "completed" || lane.toolUseId === null) return false;
+  if (lane.status === null) return false;
+  if (lane.status !== "completed") return lane.seen;
+  if (lane.toolUseId === null) return false;
   const at = s.toolIndex[lane.toolUseId];
   if (at === undefined) return false;
   const card = s.items[at] as ToolItem;
@@ -918,6 +938,28 @@ function retired(s: ChatState, lane: Lane): boolean {
  *  back to main rather than to an empty transcript. */
 export function selectLane(s: ChatState, agentId: string | null) {
   s.selectedLane = agentId !== null && s.lanes[agentId] ? rootLane(s, agentId) : null;
+  if (s.selectedLane !== null) s.lanes[s.selectedLane]!.seen = true;
+}
+
+/** The lanes with a row waiting on the user. Derived rather than flagged: the
+ *  answer arrives by three different paths, and a flag would need clearing in
+ *  all of them. */
+export function blockedLanes(s: ChatState): ReadonlySet<string> {
+  const waiting = new Set<string>();
+  for (const it of s.items) {
+    const lane = laneOf(it);
+    if (lane !== null && blocking(it)) waiting.add(lane);
+  }
+  return waiting;
+}
+
+/** Every lane still claiming to work, told the session it belonged to is over.
+ *  The agent never got to send a status, so `TurnOutcome`'s own two words for a
+ *  session that stopped stand in: a lane left spinning is the strip's one lie. */
+function settleLanes(s: ChatState, status: string) {
+  for (const lane of Object.values(s.lanes)) {
+    if (lane.status === null) lane.status = status;
+  }
 }
 
 /** Record the mode the child says it is in, and settle any pending pick: at the
@@ -1423,7 +1465,13 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       if (ev.costUsd !== null) s.totalCostUsd = (s.totalCostUsd ?? 0) + ev.costUsd;
       // The load-bearing distinction: an interrupt is a completion on the wire
       // but the opposite of one in intent.
-      if (ev.outcome !== "completed" && s.queue.length) s.queueHeld = true;
+      if (ev.outcome !== "completed") {
+        // `cancelled` alone, which is how an interrupt arrives: it kills the
+        // child and every subagent with it. `errored` is a turn that failed
+        // with the child still alive, where a backgrounded lane keeps running.
+        if (ev.outcome === "cancelled") settleLanes(s, ev.outcome);
+        if (s.queue.length) s.queueHeld = true;
+      }
       return;
     }
     case "sessionError": {
@@ -1432,6 +1480,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
         s.ended = true;
         s.activeTurnId = null;
         s.awaitingTurn = false;
+        settleLanes(s, "errored");
         if (s.queue.length) s.queueHeld = true;
       }
       return;
@@ -1440,6 +1489,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       s.ended = true;
       s.activeTurnId = null;
       s.awaitingTurn = false;
+      settleLanes(s, "cancelled");
       if (s.queue.length) s.queueHeld = true;
       push(s, {
         kind: "notice",

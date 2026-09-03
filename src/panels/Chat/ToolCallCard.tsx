@@ -66,8 +66,19 @@ export default function ToolCallCard(props: {
    *  leaves the strip above the composer, so this card is the way back to what
    *  it did. */
   lane?: string | null;
+  /** The subagent whose lane this row belongs to, set only while it is showing
+   *  outside that lane: a blocked row surfaces in main so the stall is visible
+   *  there, and needs to say where answering it applies. */
+  inLane?: string | null;
   onOpenLane?: (agentId: string) => void;
 }) {
+  const jump = () =>
+    props.inLane
+      ? { agentId: props.inLane, label: "Read what this subagent is doing" }
+      : props.lane
+        ? { agentId: props.lane, label: "Read what this subagent did" }
+        : null;
+
   const [open, setOpen] = createSignal(false);
   // Whether the user asked to see what is different on disk *now*, which is the
   // question the revert control answers and the only one worth a `git diff` per
@@ -230,15 +241,15 @@ export default function ToolCallCard(props: {
 
       {/* Its own row rather than a control inside the one above, which is a
           button: a button inside a button is invalid, and the disclosure and
-          the lane are two different destinations. */}
-      <Show when={props.lane && props.onOpenLane}>
-        <button
-          type="button"
-          class={styles.toolLane}
-          onClick={() => props.onOpenLane?.(props.lane!)}
-        >
-          Read what this subagent did
-        </button>
+          the lane are two different destinations. A row that is both (a nested
+          `Agent` call waiting on approval) offers the blocking one, which is
+          the reason it is on screen at all. */}
+      <Show when={props.onOpenLane && jump()}>
+        {(target) => (
+          <button type="button" class={styles.toolLane} onClick={() => props.onOpenLane?.(target().agentId)}>
+            {target().label}
+          </button>
+        )}
       </Show>
 
       <Show when={open()}>
