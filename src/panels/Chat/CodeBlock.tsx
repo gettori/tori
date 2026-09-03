@@ -1,10 +1,11 @@
-import { Show, createMemo, createSignal, onCleanup } from "solid-js";
+import { Match, Show, Switch, createMemo, createSignal, onCleanup } from "solid-js";
 import { Check, Code, Copy, Eye } from "lucide-solid";
 import { marked } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { copyText } from "../../utils/clipboard";
 import { cappedHtml } from "./highlight";
 import Icon from "../../components/Icon/Icon";
+import Diagram from "../../components/Diagram/Diagram";
 import styles from "./Chat.module.css";
 
 // Front matter is metadata about the document, not the document: rendered,
@@ -17,14 +18,22 @@ function stripFrontMatter(text: string): string {
 
 /**
  * One fenced code block in the transcript: the language label in the corner
- * says what it is, copy takes the raw text, and an `md` fence can flip to its
- * rendered form. Paints plain immediately and colorizes in place once the
- * lazy highlighter and the grammar are in.
+ * says what it is, copy takes the raw text, and an `md` or `mermaid` fence can
+ * flip between its source and its rendered form. Paints plain immediately and
+ * colorizes in place once the lazy highlighter and the grammar are in.
  */
 export default function CodeBlock(props: { lang: string; code: string }) {
   const [copied, setCopied] = createSignal(false);
-  const [preview, setPreview] = createSignal(false);
+  const [flipped, setFlipped] = createSignal(false);
   const isMarkdown = () => /^(md|mdx|mkd|markdown)$/i.test(props.lang);
+  const isMermaid = () => /^mermaid$/i.test(props.lang);
+  // A diagram opens drawn and a markdown fence opens as source, because that is
+  // what each one is for. One flag, read against whichever face is the default.
+  const rendered = () => flipped() !== isMermaid();
+  const toggleLabel = () => {
+    if (isMermaid()) return rendered() ? "Show diagram source" : "Draw diagram";
+    return rendered() ? "Show markdown source" : "Preview markdown";
+  };
   const html = createMemo(() => cappedHtml(props.code, props.lang));
 
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -42,15 +51,15 @@ export default function CodeBlock(props: { lang: string; code: string }) {
           until hover, and a label sitting left of two hidden buttons reads as
           floating mid-air rather than as the block's corner annotation. */}
       <div class={styles.codeControls}>
-        <Show when={isMarkdown()}>
+        <Show when={isMarkdown() || isMermaid()}>
           <button
             type="button"
             class={styles.codeBtn}
-            aria-label={preview() ? "Show markdown source" : "Preview markdown"}
-            aria-pressed={preview()}
-            onClick={() => setPreview(!preview())}
+            aria-label={toggleLabel()}
+            aria-pressed={rendered()}
+            onClick={() => setFlipped(!flipped())}
           >
-            <Icon icon={preview() ? Code : Eye} size={13} aria-hidden="true" />
+            <Icon icon={rendered() ? Code : Eye} size={13} aria-hidden="true" />
           </button>
         </Show>
         <button type="button" class={styles.codeBtn} aria-label="Copy code" onClick={copy}>
@@ -60,8 +69,7 @@ export default function CodeBlock(props: { lang: string; code: string }) {
           <span class={styles.codeLang}>{props.lang}</span>
         </Show>
       </div>
-      <Show
-        when={!preview()}
+      <Switch
         fallback={
           <div
             class={styles.codePreview}
@@ -69,12 +77,17 @@ export default function CodeBlock(props: { lang: string; code: string }) {
           />
         }
       >
-        <pre>
-          <Show when={html()} fallback={<code>{props.code}</code>}>
-            {(h) => <code innerHTML={h()} />}
-          </Show>
-        </pre>
-      </Show>
+        <Match when={!rendered()}>
+          <pre>
+            <Show when={html()} fallback={<code>{props.code}</code>}>
+              {(h) => <code innerHTML={h()} />}
+            </Show>
+          </pre>
+        </Match>
+        <Match when={isMermaid()}>
+          <Diagram code={props.code} />
+        </Match>
+      </Switch>
     </div>
   );
 }
