@@ -41,6 +41,12 @@ const COALESCE_WINDOW: Duration = Duration::from_millis(16);
 // rather than sitting on a growing buffer for the rest of the window.
 const COALESCE_MAX_BYTES: usize = 64 * 1024;
 
+// How long the reader waits for its child's status once the PTY has closed, and
+// how often it asks. Polled rather than waited: a blocking `wait` would hold the
+// lock `pty_kill` takes on the IPC thread ([[adr_no_sync_ipc_commands]]).
+const EXIT_WAIT: Duration = Duration::from_millis(2000);
+const EXIT_POLL: Duration = Duration::from_millis(10);
+
 #[derive(Default)]
 pub struct PtyState(pub Mutex<HashMap<String, Session>>);
 
@@ -63,10 +69,14 @@ type Sink = Arc<Mutex<Option<Channel<InvokeResponseBody>>>>;
 /// The PTY writer, shared between `pty_write` and the init-delivery threads.
 type SharedWriter = Arc<Mutex<Box<dyn Write + Send>>>;
 
+/// The child process, shared so the reader thread can read its exit status
+/// after EOF while `pty_kill` can still reach the same handle to kill it.
+type SharedChild = Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>;
+
 pub struct Session {
     master: Box<dyn MasterPty + Send>,
     writer: SharedWriter,
-    child: Box<dyn portable_pty::Child + Send + Sync>,
+    child: SharedChild,
     sink: Sink,
     /// The agent session id this tab claimed, so `pty_kill` can release it.
     /// `None` for a shell/command tab, and for a fresh agent tab whose session
@@ -91,6 +101,36 @@ struct ActivityEvent {
     id: String,
     /// "active" | "quiet"
     state: &'static str,
+}
+
+/// What `pty://exit` carries. A `None` code is an *unproven* exit, not a zero:
+/// the frontend has to read it as failure, because the output it would close
+/// over is exactly the output worth keeping.
+#[derive(Clone, Serialize)]
+struct ExitEvent {
+    id: String,
+    code: Option<u32>,
+}
+
+/// The child's status, asked for repeatedly rather than waited on. The guard is
+/// dropped between polls so `pty_kill` can take the same lock; `limit` and
+/// `poll` are parameters so a test can expire the wait without spending 2s.
+fn poll_exit_code(child: &SharedChild, limit: Duration, poll: Duration) -> Option<u32> {
+    let deadline = Instant::now() + limit;
+    loop {
+        match child.lock() {
+            Ok(mut guard) => match guard.try_wait() {
+                Ok(Some(status)) => return Some(status.exit_code()),
+                Ok(None) => {}
+                Err(_) => return None,
+            },
+            Err(_) => return None,
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        thread::sleep(poll);
+    }
 }
 
 /// Called on every PTY read. Stamps `last_output_at` unconditionally, but only
@@ -319,7 +359,8 @@ pub fn pty_spawn(
         cmd.env(key, value);
     }
 
-    let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+    let child: SharedChild =
+        Arc::new(Mutex::new(pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?));
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
@@ -346,6 +387,7 @@ pub fn pty_spawn(
     let reader_init = init.clone();
     let app_handle = app.clone();
     let emit_id = id.clone();
+    let reader_child = child.clone();
 
     let activity: SharedActivity = Arc::new(Mutex::new(Activity { last_output_at: Instant::now(), active: false }));
     let reader_activity = activity.clone();
@@ -405,7 +447,11 @@ pub fn pty_spawn(
         // bytes the process wrote.
         drop(tx);
         let _ = coalescer.join();
-        let _ = app_handle.emit("pty://exit", emit_id.clone());
+        // EOF means nothing holds the slave open any more, so the child is
+        // almost always already reaped; the poll covers the race where it is
+        // not, and gives up rather than hanging on a process that outlives it.
+        let code = poll_exit_code(&reader_child, EXIT_WAIT, EXIT_POLL);
+        let _ = app_handle.emit("pty://exit", ExitEvent { id: emit_id, code });
     });
 
     // Watcher: no read-timeout exists on a blocking PTY reader, so a separate
@@ -494,8 +540,10 @@ pub fn pty_kill(
     id: String,
 ) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    if let Some(mut session) = guard.remove(&id) {
-        let _ = session.child.kill();
+    if let Some(session) = guard.remove(&id) {
+        if let Ok(mut child) = session.child.lock() {
+            let _ = child.kill();
+        }
         // Give the session id back, or closing an agent tab would leave it
         // permanently unopenable until Sway restarts.
         if let Some(session_id) = &session.claimed_session {
@@ -556,10 +604,28 @@ mod tests {
         Session {
             master: pair.master,
             writer: Arc::new(Mutex::new(writer)),
-            child,
+            child: Arc::new(Mutex::new(child)),
             sink: Arc::new(Mutex::new(None)),
             claimed_session: claimed_session.map(str::to_string),
         }
+    }
+
+    /// One shell line on a real PTY, read to EOF and then polled, which is the
+    /// order the reader thread does it in.
+    fn ran(line: &str) -> Option<u32> {
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .expect("openpty");
+        let mut cmd = CommandBuilder::new("/bin/sh");
+        cmd.arg("-c");
+        cmd.arg(line);
+        let child: SharedChild = Arc::new(Mutex::new(pair.slave.spawn_command(cmd).expect("spawn")));
+        // Or the master never sees EOF: this process would still hold the slave.
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().expect("reader");
+        let mut buf = [0u8; 1024];
+        while matches!(reader.read(&mut buf), Ok(n) if n > 0) {}
+        poll_exit_code(&child, EXIT_WAIT, EXIT_POLL)
     }
 
     /// The listing a restore matches terminal tabs against answers in **tab
@@ -578,8 +644,8 @@ mod tests {
         let ids = state.live_ids().unwrap();
         // Killed before the asserts, so a failing one does not leave the
         // children running for the rest of the suite.
-        for mut session in state.0.lock().unwrap().drain().map(|(_, s)| s) {
-            let _ = session.child.kill();
+        for session in state.0.lock().unwrap().drain().map(|(_, s)| s) {
+            let _ = session.child.lock().unwrap().kill();
         }
 
         assert_eq!(ids, vec!["tab-agent", "tab-shell"], "sorted tab ids");
@@ -791,5 +857,45 @@ mod tests {
             tx.send(b"tail".to_vec()).unwrap();
         });
         assert_eq!(String::from_utf8(sends.concat()).unwrap(), "firsttail");
+    }
+
+    /// The whole reason `pty://exit` carries a code: a job that finished
+    /// cleanly can close itself, and one that did not has to stay on screen.
+    /// A bare id cannot tell those apart, so both had to be treated as failure.
+    #[test]
+    fn the_exit_code_tells_a_clean_run_from_a_failed_one() {
+        assert_eq!(ran("exit 0"), Some(0), "a clean run");
+        assert_eq!(ran("exit 3"), Some(3), "a failing run keeps its status");
+    }
+
+    /// A child still alive when the poll expires has proved nothing, so it
+    /// reports no code rather than a zero. Reading that as success would close
+    /// a surface over the output somebody needed.
+    #[test]
+    fn a_child_outliving_the_poll_reports_no_code() {
+        let session = live_session(None);
+        let code =
+            poll_exit_code(&session.child, Duration::from_millis(50), Duration::from_millis(10));
+        let _ = session.child.lock().unwrap().kill();
+        assert_eq!(code, None);
+    }
+
+    /// The reason the poll exists at all. `pty_kill` takes this lock from the
+    /// IPC thread ([[adr_no_sync_ipc_commands]]), so a blocking `wait` here
+    /// would freeze every terminal in the app until the child chose to exit.
+    #[test]
+    fn the_exit_poll_never_blocks_a_kill() {
+        let session = live_session(None);
+        let polling = session.child.clone();
+        let poll = thread::spawn(move || poll_exit_code(&polling, EXIT_WAIT, EXIT_POLL));
+
+        thread::sleep(Duration::from_millis(30));
+        let start = Instant::now();
+        let _ = session.child.lock().unwrap().kill();
+        let waited = start.elapsed();
+        let code = poll.join().unwrap();
+
+        assert!(waited < Duration::from_millis(500), "the kill waited {waited:?} on the poll");
+        assert!(code.is_some(), "the poll should reap the killed child, not time out");
     }
 }

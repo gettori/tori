@@ -92,10 +92,10 @@ function mount() {
   return render(() => <Terminal selected={branchSelection as any} onOpenChange={() => {}} />);
 }
 
-/** Fire the backend's process-exit event for one tab. */
-async function exit(id: string) {
+/** Fire the backend's process-exit event for one tab, cleanly by default. */
+async function exit(id: string, code: number | null = 0) {
   await waitFor(() => expect(bridge.listeners.has("pty://exit")).toBe(true));
-  bridge.listeners.get("pty://exit")!({ payload: id });
+  bridge.listeners.get("pty://exit")!({ payload: { id, code } });
 }
 
 beforeEach(() => {
