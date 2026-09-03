@@ -2318,11 +2318,13 @@ export default function Editor(props: {
   function EditorColumn(p: { paneId: string }) {
     const fileId = () => paneFileId(p.paneId);
     const focused = () => focusedEditorPane() === p.paneId;
-    // A pane showing a terminal tab keeps its editor column mounted (buffers
-    // and scroll survive) but out of the way; the pane files open into keeps
-    // it either way, since that is where the empty note belongs.
+    // A pane showing a terminal tab keeps its editor column mounted (buffers and
+    // scroll survive) but out of the way. The file home keeps it only while
+    // nothing else is on screen there: two flex:1 stage children split the pane.
     const shown = () =>
-      !!fileId() || p.paneId === SOLO_PANE || isKindHome(ws(), "file", p.paneId);
+      !!fileId() ||
+      p.paneId === SOLO_PANE ||
+      (isKindHome(ws(), "file", p.paneId) && !paneActiveId(ws(), p.paneId));
     const filePath = () => fileTabOf(fileId())?.path ?? null;
     const conflictedHere = () => isConflicted(watchRoots(), filePath());
     /** This pane's file when it is one that renders, which is what earns the
