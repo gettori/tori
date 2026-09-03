@@ -1800,6 +1800,22 @@ pub struct TranscriptBlock {
     pub compact_trigger: Option<String>,
     pub pre_tokens: Option<u64>,
     pub post_tokens: Option<u64>,
+    /// Set only on a `subagent` block: how a subagent ended. `None` for every
+    /// other kind.
+    pub subagent: Option<SubagentOutcome>,
+}
+
+/// How a subagent ended. Two records carry one and a backgrounded subagent
+/// writes both: the `Agent` call's `toolUseResult`, then a `<task-notification>`
+/// message. Read here for the same reason [`TranscriptBlock::tool_summary`] is.
+#[derive(Serialize, Clone)]
+pub struct SubagentOutcome {
+    pub agent_id: String,
+    /// The agent's own word (`completed`, `async_launched`, ...), never an enum,
+    /// matching how the live `SubagentUpdate` carries it.
+    pub status: String,
+    pub summary: Option<String>,
+    pub usage: crate::chat::model::SubagentUsage,
 }
 
 #[derive(Serialize, Clone)]
@@ -1811,17 +1827,17 @@ pub struct TranscriptTurn {
 }
 
 pub(crate) fn text_block(kind: &str, text: String) -> TranscriptBlock {
-    TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None }
+    TranscriptBlock { kind: kind.into(), text: Some(text), tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: None }
 }
 
 /// Where the conversation's middle was replaced by a summary. The summary text
 /// itself is the *next* user message, not part of this block.
 pub(crate) fn compaction_block(trigger: Option<String>, pre_tokens: Option<u64>, post_tokens: Option<u64>) -> TranscriptBlock {
-    TranscriptBlock { kind: "compaction".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: trigger, pre_tokens, post_tokens }
+    TranscriptBlock { kind: "compaction".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: trigger, pre_tokens, post_tokens, subagent: None }
 }
 
 pub(crate) fn tool_call_block(name: String, input: serde_json::Value, tool_use_id: Option<String>) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None, tool_use_id, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None }
+    TranscriptBlock { kind: "tool_call".into(), text: None, tool_name: Some(name), tool_input: Some(input), is_error: None, tool_use_id, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: None }
 }
 
 pub(crate) fn tool_result_block(
@@ -1832,7 +1848,51 @@ pub(crate) fn tool_result_block(
     tool_summary: Option<crate::chat::model::ToolSummary>,
     tool_patch: Vec<crate::chat::model::PatchHunk>,
 ) -> TranscriptBlock {
-    TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error), tool_use_id, tool_summary, tool_patch, compact_trigger: None, pre_tokens: None, post_tokens: None }
+    TranscriptBlock { kind: "tool_result".into(), text: Some(text), tool_name: name, tool_input: None, is_error: Some(is_error), tool_use_id, tool_summary, tool_patch, compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: None }
+}
+
+pub(crate) fn subagent_block(outcome: SubagentOutcome) -> TranscriptBlock {
+    TranscriptBlock { kind: "subagent".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: Some(outcome) }
+}
+
+/// The outcome an `Agent` call's `toolUseResult` records, `None` for every other
+/// tool's payload. A foreground run reports its ending here; a backgrounded one
+/// reports only `async_launched`, the call having returned before the work did.
+fn subagent_outcome(payload: &serde_json::Value) -> Option<SubagentOutcome> {
+    let agent_id = payload.get("agentId").and_then(|v| v.as_str())?.to_string();
+    let get = |k: &str| payload.get(k).and_then(|n| n.as_u64()).unwrap_or(0);
+    Some(SubagentOutcome {
+        agent_id,
+        status: payload.get("status").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+        // The same sentence the live `task_notification` puts on the lane, so a
+        // reopened lane carries what a watched one did.
+        summary: payload.get("content").map(stringify_content).filter(|s| !s.is_empty()),
+        usage: crate::chat::model::SubagentUsage {
+            total_tokens: get("totalTokens"),
+            tool_uses: get("totalToolUseCount"),
+            duration_ms: get("totalDurationMs"),
+        },
+    })
+}
+
+/// A backgrounded subagent's ending, filed under the user's own role as an XML
+/// envelope the CLI wrote for the model. The person did not type it: replay used
+/// to render it as their message while `is_human_prompt` refused to count it.
+fn task_notification(text: &str) -> Option<SubagentOutcome> {
+    if !text.trim_start().starts_with("<task-notification>") {
+        return None;
+    }
+    let num = |tag: &str| tag_body(text, tag).and_then(|b| b.trim().parse::<u64>().ok()).unwrap_or(0);
+    Some(SubagentOutcome {
+        agent_id: tag_body(text, "task-id")?.trim().to_string(),
+        status: tag_body(text, "status").unwrap_or_default().trim().to_string(),
+        summary: tag_body(text, "summary").map(|s| s.trim().to_string()).filter(|s| !s.is_empty()),
+        usage: crate::chat::model::SubagentUsage {
+            total_tokens: num("subagent_tokens"),
+            tool_uses: num("tool_uses"),
+            duration_ms: num("duration_ms"),
+        },
+    })
 }
 
 /// A tool_result's `content` is either a bare string or an array of text
@@ -1901,6 +1961,75 @@ pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Where a session's subagent sidecars live, or `None` before it has launched
+/// one. Derived from the transcript's path, not rebuilt from the session id:
+/// both stem shapes [`transcript_path`] accepts name the directory beside them.
+pub(crate) fn subagents_dir(transcript_path: &str) -> Option<PathBuf> {
+    let stem = transcript_path.strip_suffix(".jsonl")?;
+    let dir = Path::new(stem).join("subagents");
+    dir.is_dir().then_some(dir)
+}
+
+/// One subagent's whole run, as the two files beside the session transcript
+/// record it.
+pub struct SubagentTranscript {
+    pub agent_id: String,
+    pub agent_type: String,
+    pub description: String,
+    /// The `Agent` call that launched it, and the only join back to the card.
+    pub tool_use_id: String,
+    /// What it was asked to do, read off its own first message: `meta.json`
+    /// records the one-line description but not the prompt.
+    pub prompt: String,
+    /// Its conversation, with that first message removed: nothing can talk to a
+    /// subagent, so a user row in its lane could only be the prompt above.
+    pub turns: Vec<TranscriptTurn>,
+}
+
+/// Every subagent this session launched, in no particular order: the replay
+/// places each one at its own `Agent` call rather than by arrival.
+pub(crate) fn subagent_transcripts(transcript_path: &str, agent: &str) -> Vec<SubagentTranscript> {
+    let Some(dir) = subagents_dir(transcript_path) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(agent_id) = name.strip_prefix("agent-").and_then(|n| n.strip_suffix(".meta.json")) else {
+            continue;
+        };
+        let Ok(text) = std::fs::read_to_string(entry.path()) else { continue };
+        let Ok(meta) = serde_json::from_str::<serde_json::Value>(&text) else { continue };
+        let str_of = |k: &str| meta.get(k).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        // No `toolUseId` means no call to hang the lane on, so the run cannot be
+        // placed in the conversation at all.
+        let tool_use_id = meta.get("toolUseId").and_then(|v| v.as_str());
+        let Some(tool_use_id) = tool_use_id.filter(|id| !id.is_empty()) else { continue };
+        let mut turns = parse_transcript_turns(&dir.join(format!("agent-{agent_id}.jsonl")).to_string_lossy(), agent);
+        out.push(SubagentTranscript {
+            agent_id: agent_id.to_string(),
+            agent_type: str_of("agentType"),
+            description: str_of("description"),
+            tool_use_id: tool_use_id.to_string(),
+            prompt: take_prompt(&mut turns),
+            turns,
+        });
+    }
+    out
+}
+
+/// Strip a subagent's own prompt out of its turns, returning it.
+fn take_prompt(turns: &mut Vec<TranscriptTurn>) -> String {
+    let mut prompt = None;
+    for turn in turns.iter_mut().filter(|t| t.role == "user") {
+        if prompt.is_none() {
+            prompt = turn.blocks.iter().find(|b| b.kind == "text").and_then(|b| b.text.clone());
+        }
+        turn.blocks.retain(|b| b.kind != "text");
+    }
+    turns.retain(|t| !t.blocks.is_empty());
+    prompt.unwrap_or_default()
 }
 
 fn parse_transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
@@ -2042,6 +2171,11 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
             let mut blocks = Vec::new();
             if let Some(content) = v.get("message").and_then(|m| m.get("content")) {
                 if let Some(s) = content.as_str() {
+                    // Its own role, so the rewind boundary and the replay both
+                    // stop treating a backgrounded subagent's ending as a prompt.
+                    if let Some(outcome) = task_notification(s) {
+                        return Some(TranscriptTurn { role: "subagent".into(), ts, blocks: vec![subagent_block(outcome)] });
+                    }
                     if !s.trim().is_empty() && !is_command_envelope(s) {
                         blocks.push(text_block("text", s.to_string()));
                     }
@@ -2077,6 +2211,12 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                                     .map(crate::chat::claude::structured_patch)
                                     .unwrap_or_default();
                                 blocks.push(tool_result_block(None, text, is_error, id, summary, patch));
+                                // Beside the card rather than on it: an `Agent`
+                                // result settles a call and ends a lane, and the
+                                // lane outlives the card when it was backgrounded.
+                                if let Some(outcome) = payload.and_then(subagent_outcome) {
+                                    blocks.push(subagent_block(outcome));
+                                }
                             }
                             _ => {}
                         }
@@ -3856,5 +3996,111 @@ mod tests {
     fn an_empty_touched_set_means_all_not_none() {
         assert_eq!(folders_for(&SessionIndex::default(), &HashSet::new()), None);
         assert_eq!(SessionsChanged::all().folders, None);
+    }
+
+    /// A session's sidecars sit in a directory named after the transcript's
+    /// whole stem, so both stem shapes `transcript_path` accepts have to resolve.
+    #[test]
+    fn subagent_sidecars_are_found_beside_either_stem_shape() {
+        let root = std::env::temp_dir().join("sway-subagents-dir");
+        let _ = std::fs::remove_dir_all(&root);
+        for stem in ["7f3a", "myproject_7f3a"] {
+            std::fs::create_dir_all(root.join(stem).join("subagents")).expect("scratch dir");
+            std::fs::write(root.join(format!("{stem}.jsonl")), "").expect("scratch transcript");
+            let path = root.join(format!("{stem}.jsonl"));
+            assert_eq!(
+                subagents_dir(path.to_str().unwrap()),
+                Some(root.join(stem).join("subagents")),
+                "{stem} resolves to the directory beside it"
+            );
+        }
+        // A session that never launched one, which is nearly all of them. An ACP
+        // session never gets this far: `transcript_path` returns `None` first.
+        std::fs::write(root.join("bare.jsonl"), "").expect("scratch transcript");
+        assert_eq!(subagents_dir(root.join("bare.jsonl").to_str().unwrap()), None);
+        assert_eq!(subagents_dir("/nowhere/session"), None, "a path that is not a transcript at all");
+    }
+
+    /// The prompt is the one thing `meta.json` does not record, so it is read
+    /// off the subagent's own first message and taken out of its rows: nothing
+    /// can talk to a subagent, so a user row in its lane could only be this.
+    #[test]
+    fn a_sidecar_gives_up_its_prompt_and_keeps_its_work() {
+        let path = fixture_session("subagent-foreground");
+        let subs = subagent_transcripts(&path, "claude");
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].agent_id, "acb01121756a92ca0");
+        assert_eq!(subs[0].agent_type, "general-purpose");
+        assert_eq!(subs[0].description, "Create sub-made.txt");
+        assert_eq!(subs[0].tool_use_id, "toolu_01Ec9PYYDVBe9S6DjXp4RM1s");
+        assert_eq!(subs[0].prompt, "Use the Write tool to create sub-made.txt containing the word sub. Then report done.");
+        let kinds: Vec<&str> = subs[0].turns.iter().flat_map(|t| t.blocks.iter()).map(|b| b.kind.as_str()).collect();
+        assert_eq!(kinds, ["tool_call", "tool_result", "text"], "its work, with the prompt taken out");
+    }
+
+    /// The CLI files a backgrounded subagent's ending under the user's own role,
+    /// as an XML envelope written for the model. `is_human_prompt` already
+    /// refused to count it; until this it was still replayed as their message.
+    #[test]
+    fn a_task_notification_is_an_ending_rather_than_a_prompt() {
+        let turns = transcript_turns(&fixture_session("subagent-background"), "claude");
+        let notification = turns.iter().find(|t| t.role == "subagent").expect("the ending is its own turn");
+        let outcome = notification.blocks[0].subagent.clone().expect("the block carries one");
+        assert_eq!(outcome.agent_id, "ad7048d25dc5e778a");
+        assert_eq!(outcome.status, "completed");
+        assert_eq!(outcome.summary.as_deref(), Some("Agent \"Create bg file\" finished"));
+        assert_eq!(outcome.usage.total_tokens, 9551);
+        assert_eq!(outcome.usage.tool_uses, 1);
+        assert_eq!(outcome.usage.duration_ms, 5886);
+
+        // Nothing left over: the envelope is not also a message.
+        let prompts: Vec<&str> = turns
+            .iter()
+            .filter(|t| t.role == "user")
+            .flat_map(|t| t.blocks.iter())
+            .filter_map(|b| b.text.as_deref())
+            .collect();
+        assert!(
+            prompts.iter().all(|p| !p.contains("<task-notification>")),
+            "the envelope reached the conversation as a prompt: {prompts:?}"
+        );
+    }
+
+    /// The `Agent` call's own result, which is where a foreground run reports
+    /// its ending and a backgrounded one reports only its launch.
+    #[test]
+    fn an_agent_calls_result_carries_the_outcome_beside_the_card() {
+        let outcome = |name: &str| {
+            transcript_turns(&fixture_session(name), "claude")
+                .iter()
+                .flat_map(|t| t.blocks.iter())
+                .find_map(|b| b.subagent.clone())
+                .expect("an outcome")
+        };
+        let fg = outcome("subagent-foreground");
+        assert_eq!(fg.status, "completed");
+        assert_eq!(fg.usage.total_tokens, 10429);
+        assert_eq!(fg.usage.tool_uses, 1);
+        // The same sentence the live `task_notification` puts on the lane. Its
+        // wire twin never sends this run's closing report, so without it a
+        // reopened foreground lane would carry less than a watched one did.
+        assert_eq!(
+            fg.summary.as_deref(),
+            Some("Done. Created `/Users/dev/proj/sub-made.txt` containing the word `sub`.")
+        );
+        // Launched, not finished: the call returned before the work did, and
+        // the ending arrives later as its own record.
+        assert_eq!(outcome("subagent-background").status, "async_launched");
+    }
+
+    /// A committed session fixture's path, sidecars and all. Same reason as
+    /// [`session_fixture`]: reading `$HOME` would make the result per-machine.
+    fn fixture_session(name: &str) -> String {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("dev/fixtures/sessions")
+            .join(format!("{name}.jsonl"))
+            .to_string_lossy()
+            .into_owned()
     }
 }
