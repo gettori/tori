@@ -80,7 +80,7 @@ const turnStarted = (turnId: string, model = "m"): ChatEvent => ({
   sessionId: "s1",
   turnId,
   model,
-  permissionMode: "default",
+  permissionMode: "default", agentInitiated: false
 });
 const sessionStarted = (over: Partial<Extract<ChatEvent, { type: "sessionStarted" }>> = {}): ChatEvent => ({
   type: "sessionStarted",
@@ -868,7 +868,7 @@ describe("the permission mode control", () => {
     sessionId: "s1",
     turnId,
     model: "m",
-    permissionMode: mode,
+    permissionMode: mode, agentInitiated: false
   });
 
   it("shows a pick immediately and flags it as not yet in force", () => {

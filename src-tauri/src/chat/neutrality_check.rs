@@ -160,6 +160,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
         CodexEvent::TurnStarted => ChatEvent::TurnStarted {
             session_id: sid(),
             turn_id: tid(),
+            agent_initiated: false,
             model: "gpt-5-codex".into(),
             permission_mode: PermissionMode::new("default"),
             extra: Default::default(),
@@ -372,6 +373,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
         AcpSessionUpdate::CurrentModeUpdate => ChatEvent::TurnStarted {
             session_id: sid(),
             turn_id: tid(),
+            agent_initiated: false,
             model: "gemini-2.5-pro".into(),
             permission_mode: PermissionMode::new("auto_edit"),
             extra: Default::default(),
@@ -480,6 +482,9 @@ mod tests {
             ChatEvent::FileEdit { .. } => "fileEdit",
             ChatEvent::PermissionRequest { .. } => "permissionRequest",
             ChatEvent::QuestionRequest { .. } => "questionRequest",
+            ChatEvent::SubagentStarted { .. } => "subagentStarted",
+            ChatEvent::SubagentCall { .. } => "subagentCall",
+            ChatEvent::SubagentUpdate { .. } => "subagentUpdate",
             ChatEvent::PlanUpdate { .. } => "planUpdate",
             ChatEvent::Usage { .. } => "usage",
             ChatEvent::RateLimit { .. } => "rateLimit",
