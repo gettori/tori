@@ -545,3 +545,28 @@ describe("Composer attachments", () => {
     expect(onSend).toHaveBeenCalledWith("");
   });
 });
+
+// The lane strip switches what you read, never what you type: Sway has no
+// channel to a subagent, so the composer stays bound to the main agent in every
+// lane. The placeholder is the only thing that changes, and it has to say so.
+describe("reading a subagent's lane", () => {
+  it("says where what you type is going, and never offers to steer", () => {
+    const { input } = setup({ watching: "Create one.txt", running: true, steering: true, steerCost: "1.5-5.4s" });
+    expect(input.placeholder).toBe("Watching Create one.txt. What you type goes to the main agent");
+    // The load-bearing half. A steer reaches the turn it names, and this box
+    // cannot reach the lane on screen, so the wording must not survive here.
+    expect(input.placeholder).not.toContain("Steer");
+  });
+
+  it("still sends, and sends the same way main does", () => {
+    const { input, onSend } = setup({ watching: "Create one.txt" });
+    fireEvent.input(input, { target: { value: "stop agent one" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledWith("stop agent one");
+  });
+
+  it("reads as usual back on main", () => {
+    const { input } = setup({ watching: null, running: true, steering: true, steerCost: "1.5-5.4s" });
+    expect(input.placeholder).toBe("Steer this turn, picked up in 1.5-5.4s");
+  });
+});

@@ -5,6 +5,7 @@ import MessageList from "./MessageList";
 import SessionDiffView from "./SessionDiffView";
 import SessionInfo from "./SessionInfo";
 import Composer from "./Composer";
+import LaneStrip, { laneLabel } from "./LaneStrip";
 import PlanCard from "./PlanCard";
 import UsageReadout from "./UsageReadout";
 import StatusStrip from "./StatusStrip";
@@ -136,6 +137,8 @@ import {
   shownModelValue,
   pushQuestionAnswers,
   takeForSend,
+  laneStrip,
+  selectLane,
   toolCallsSeen,
   visibleItems,
   type ChatState,
@@ -352,6 +355,17 @@ export default function ChatView(props: {
   const shownItems = createMemo(() =>
     visibleItems(state.items, settings.chatDefaults.showSwayHooks, state.selectedLane),
   );
+
+  /** The lane being read, by name, for the composer's placeholder. */
+  const watchedLane = () => {
+    const lane = state.selectedLane === null ? null : state.lanes[state.selectedLane];
+    return lane ? laneLabel(lane) : null;
+  };
+
+  /** The lane an `Agent` call opened, so its card can offer the way back in
+   *  once the lane has left the strip. */
+  const laneOpenedBy = (toolUseId: string) =>
+    Object.values(state.lanes).find((l) => l.toolUseId === toolUseId)?.agentId ?? null;
 
   // The strip's three numbers. Derived from the transcript rather than kept as
   // counters, so a replayed history and a live session count the same way.
@@ -1758,7 +1772,10 @@ export default function ChatView(props: {
           <SessionDiffView
             sessionId={props.sessionId}
             cwd={props.cwd}
-            items={shownItems()}
+            // Every lane's rows, not the selected one's: this answers "what
+            // did this session do to my files", and a subagent's edit going
+            // missing would break the one view trusted to be complete.
+            items={state.items}
             live={state.started}
             sinceTs={firstTurnTs()}
           />
@@ -1789,13 +1806,23 @@ export default function ChatView(props: {
         // and deliver only the tree.
         rewindTsFor={(turnId) => (tier().rewind === "fork" ? turnStamps()[turnId] ?? null : null)}
         agentTurn={(turnId) => state.turns[turnId]?.agentInitiated === true}
+        laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
+        onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
         onRewind={onRewind}
       />
       </Show>
 
       <PlanCard items={state.plan} />
 
+      <LaneStrip
+        lanes={laneStrip(state)}
+        selected={state.selectedLane}
+        onSelect={(agentId) => edit((s) => selectLane(s, agentId))}
+        active={props.active}
+      />
+
       <Composer
+        watching={watchedLane()}
         running={running()}
         steering={canSteer()}
         steerCost={steerCostLabel(tier())}

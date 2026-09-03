@@ -1754,6 +1754,109 @@ button.diffHunkHeader:hover {
    button, the session-control chips, and the brand-gold send circle. Focus
    paints the shared gold ring. */
 
+/* The way back into a lane that has left the strip. Reads as a link rather
+   than a control: it changes what is on screen, never the session. */
+.toolLane {
+  align-self: flex-start;
+  padding: calc(2px * var(--ui-scale)) 0 calc(2px * var(--ui-scale)) calc(20px * var(--ui-scale));
+  border: 0;
+  background: transparent;
+  color: var(--accent-fg);
+  font-family: inherit;
+  font-size: var(--sway-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.toolLane:hover {
+  text-decoration: underline;
+}
+
+/* The lane strip, above the composer. Held to the composer's own measure and
+   padding so the row of chips lines up with the input under it rather than
+   floating at the pane's full width. */
+.lanes {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  width: 100%;
+  max-width: var(--chat-measure);
+  margin-inline: auto;
+  padding: 0 calc(16px * var(--ui-scale));
+}
+
+/* No fill of its own: an unselected chip sits on whatever canvas is behind it,
+   so the strip introduces no surface the contrast gate has not measured. */
+.lane {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  max-width: calc(220px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid transparent;
+  border-radius: calc(6px * var(--ui-scale));
+  background: transparent;
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: var(--sway-text-sm);
+  cursor: pointer;
+}
+
+.lane:hover {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
+
+.laneOn {
+  background: var(--neutral-hover);
+  border-color: var(--border-default);
+  color: var(--fg-default);
+}
+
+.laneDot {
+  flex: none;
+  width: calc(6px * var(--ui-scale));
+  height: calc(6px * var(--ui-scale));
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.laneBusy {
+  color: var(--success-fg);
+}
+
+.laneIdle {
+  color: var(--fg-subtle);
+}
+
+.laneBad {
+  color: var(--danger-fg);
+}
+
+.laneLabel {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.laneFigure {
+  flex: none;
+  color: var(--fg-muted);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+}
+
+/* Watermark, deliberately: the binding is a hint for whoever wants it, and at
+   full contrast nine of them would be the loudest thing above the input. */
+.laneKey {
+  flex: none;
+  color: var(--fg-watermark);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+}
+
 .composer {
   flex: none;
   width: 100%;

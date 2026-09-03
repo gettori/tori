@@ -2138,6 +2138,69 @@ describe("subagent lanes", () => {
     expect(tool(s, "toolu_deep").agentId).toBe(AGENT);
   });
 
+  const laneUpdate = (status: string | null): ChatEvent => ({
+    type: "subagentUpdate",
+    sessionId: "s1",
+    agentId: AGENT,
+    status,
+    activity: null,
+    lastToolName: null,
+    usage: null,
+    summary: null,
+  });
+
+  it("leaves the strip once it has succeeded and its card has settled", () => {
+    const s = replay([turnStarted("t1"), laneStarted(), started("t1", CALL, "Agent", {})]);
+    expect(laneStrip(s)).toHaveLength(1);
+
+    // Finished, but the `Agent` call has not reported yet, so that card is not
+    // a way back in and the lane has to stay reachable.
+    applyEvent(s, laneUpdate("completed"));
+    expect(laneStrip(s)).toHaveLength(1);
+
+    applyEvent(s, completed("t1", CALL));
+    expect(laneStrip(s)).toHaveLength(0);
+    // Still readable, and still holding its rows: it left the strip, not the
+    // session.
+    expect(s.lanes[AGENT]!.status).toBe("completed");
+  });
+
+  it("keeps a lane that did not succeed, whatever the agent called it", () => {
+    // The rule that clears finished work must not clear the one state a reader
+    // cannot afford to miss.
+    for (const status of ["failed", "cancelled", "a_word_this_build_has_never_seen"]) {
+      const s = replay([
+        turnStarted("t1"),
+        laneStarted(),
+        started("t1", CALL, "Agent", {}),
+        laneUpdate(status),
+        completed("t1", CALL),
+      ]);
+      expect(laneStrip(s).map((l) => l.status)).toEqual([status]);
+    }
+  });
+
+  it("never answers a subagent's edit with the main agent's words", () => {
+    // The real order: a subagent's call lands before its report, so the nearest
+    // paragraph above it is the main agent's, about a different call entirely.
+    const s = replay([
+      turnStarted("t1"),
+      text("t1", "launching a subagent"),
+      laneStarted(),
+      started("t1", CALL, "Agent", {}),
+      laneCall(AGENT, NESTED),
+      completed("t1", NESTED),
+      text("t1", "Done. Created sub-made.txt.", AGENT),
+    ]);
+    expect(reasoningFor(s.items, CALL)).toBe("launching a subagent");
+    expect(reasoningFor(s.items, NESTED)).toBeNull();
+
+    // And why the Diff view is handed the whole session rather than the lane on
+    // screen: `reasoningFor` is the only thing it reads `items` for, and a
+    // lane-filtered list is one the card it is asking about is not in.
+    expect(reasoningFor(visibleItems(s.items, false, AGENT), CALL)).toBeNull();
+  });
+
   it("opens on main, and refuses a lane this session never had", () => {
     expect(initialChat("s1").selectedLane).toBeNull();
     const s = replay(oneSubagent);

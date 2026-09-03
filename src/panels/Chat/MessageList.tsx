@@ -153,6 +153,10 @@ export default function MessageList(props: {
    *  subagent's finishing makes it do. Such a turn answers no prompt, so it
    *  must not claim the one above it. */
   agentTurn?: (turnId: string) => boolean;
+  /** The lane an `Agent` call opened, or null for an ordinary call. A finished
+   *  lane leaves the strip, so its card is the only way back into it. */
+  laneOpenedBy?: (toolUseId: string) => string | null;
+  onOpenLane?: (agentId: string) => void;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   // Read once, deliberately: whether this list opens pinned to the bottom is an
@@ -478,6 +482,8 @@ export default function MessageList(props: {
                     onAnswer={props.onAnswer}
                     onSetMode={props.onSetMode}
                     onRevertHunk={props.onRevertHunk}
+                    lane={props.laneOpenedBy?.(it().toolUseId) ?? null}
+                    onOpenLane={props.onOpenLane}
                   />
                 </>
               )}

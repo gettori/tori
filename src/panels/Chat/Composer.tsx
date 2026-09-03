@@ -100,6 +100,10 @@ export default function Composer(props: {
    *  the input. Slotted rather than owned: their state and wiring belong to
    *  `ChatView`, and this component only decides where they sit. */
   controls?: JSX.Element;
+  /** The subagent lane being read, by name, or null on the main transcript.
+   *  Only the placeholder changes: Sway has no channel to a subagent, so what
+   *  is typed goes to the main agent from every lane. */
+  watching?: string | null;
 }) {
   // The draft lives in the caller's store; this reads and writes it so there is
   // one answer to "what is in the composer" rather than a local copy that has to
@@ -528,13 +532,17 @@ export default function Composer(props: {
           // the declared tier, so it cannot drift from what was measured; the
           // fallback wording still refuses to promise immediacy.
           placeholder={
-            props.running
-              ? props.steering
-                ? props.steerCost
-                  ? `Steer this turn, picked up in ${props.steerCost}`
-                  : "Steer this turn, picked up at its next step"
-                : "Type to queue for the next turn"
-              : "Reply, or @ a file · / for commands"
+            props.watching
+              ? // Never the steer wording outside main. A steer reaches the
+                // turn it names, and this box cannot reach the lane on screen.
+                `Watching ${props.watching}. What you type goes to the main agent`
+              : props.running
+                ? props.steering
+                  ? props.steerCost
+                    ? `Steer this turn, picked up in ${props.steerCost}`
+                    : "Steer this turn, picked up at its next step"
+                  : "Type to queue for the next turn"
+                : "Reply, or @ a file · / for commands"
           }
           value={text()}
           disabled={props.disabled}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, fireEvent } from "@solidjs/testing-library";
+import { render, fireEvent, screen } from "@solidjs/testing-library";
 import { createStore } from "solid-js/store";
 import ToolCallCard from "./ToolCallCard";
 import type { ToolItem } from "./chatStore";
@@ -381,5 +381,36 @@ describe("a call that failed", () => {
     mount(live);
     setLive("state", "error");
     expect(await diffFetches()).toHaveLength(0);
+  });
+});
+
+// A lane leaves the strip above the composer once its subagent succeeds, so the
+// card that launched it is the only way back to what it did. Without this the
+// work is still in the transcript and unreachable, which is worse than not
+// having had a lane at all.
+describe("the way back into a subagent's lane", () => {
+  const agent = card({ name: "Agent", toolUseId: "toolu_agent", input: { description: "Create one.txt" } });
+
+  it("offers it on the call that opened a lane", () => {
+    const opened: string[] = [];
+    render(() => (
+      <ToolCallCard
+        card={agent}
+        sessionId="s1"
+        cwd="/repo"
+        onAnswer={() => {}}
+        onSetMode={() => {}}
+        onRevertHunk={async () => false}
+        lane="acb01121756a92ca0"
+        onOpenLane={(id) => opened.push(id)}
+      />
+    ));
+    fireEvent.click(screen.getByText("Read what this subagent did"));
+    expect(opened).toEqual(["acb01121756a92ca0"]);
+  });
+
+  it("offers nothing on an ordinary call", () => {
+    const { container } = mount(card({ name: "Bash" }));
+    expect(container.textContent).not.toContain("Read what this subagent did");
   });
 });

@@ -62,6 +62,11 @@ export default function ToolCallCard(props: {
   /** Undo one hunk. Resolves true when the file was actually rewritten, which is
    *  when the card's diff has to be re-read. */
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
+  /** The subagent this call launched, when it launched one. A finished lane
+   *  leaves the strip above the composer, so this card is the way back to what
+   *  it did. */
+  lane?: string | null;
+  onOpenLane?: (agentId: string) => void;
 }) {
   const [open, setOpen] = createSignal(false);
   // Whether the user asked to see what is different on disk *now*, which is the
@@ -222,6 +227,19 @@ export default function ToolCallCard(props: {
           <span class={styles.toolState}>{STATE_LABEL[props.card.state]}</span>
         </Show>
       </button>
+
+      {/* Its own row rather than a control inside the one above, which is a
+          button: a button inside a button is invalid, and the disclosure and
+          the lane are two different destinations. */}
+      <Show when={props.lane && props.onOpenLane}>
+        <button
+          type="button"
+          class={styles.toolLane}
+          onClick={() => props.onOpenLane?.(props.lane!)}
+        >
+          Read what this subagent did
+        </button>
+      </Show>
 
       <Show when={open()}>
         <div class={styles.toolBody}>
