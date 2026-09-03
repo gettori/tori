@@ -824,6 +824,64 @@ if (blockingProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 11: the lane strip paints no surface the gate has not measured ----
+//
+// The contrast gate measures role pairs, not components, so a row that invents
+// its own tint puts text on a pair nothing ever measured and the gate stays
+// green. Held in both directions: the rules may name no other fill, and
+// `contrast.ts` must still measure the strip's text roles against that one.
+const LANE_SELECTORS = [".lanes", ".lane", ".lane:hover", ".laneOn", ".laneDot", ".laneLabel", ".laneFigure", ".laneKey", ".toolLane", ".toolLane:hover"];
+/** The one fill the strip may wear, in both spellings: the CSS var the rules
+ *  name, and the role id the contrast table measures against. */
+const LANE_FILL = "--neutral-hover";
+const LANE_FILL_ROLE = "neutral.hover";
+/** The text roles worn on it. */
+const LANE_TEXT = ["fg.default", "fg.muted"];
+const CONTRAST_TS = "src/theme/contrast.ts";
+
+const laneProblems = [];
+if (!chatSource) {
+  laneProblems.push(`could not read ${CHAT_CSS}; this check needs the chat panel's stylesheet`);
+} else if (!chatRules.some((rule) => rule.selectors.includes(".lane"))) {
+  laneProblems.push(`${CHAT_CSS} has no .lane rule, so the shape this check scans for changed`);
+} else {
+  for (const rule of chatRules) {
+    if (!rule.selectors.some((sel) => LANE_SELECTORS.includes(sel))) continue;
+    const fill = /background:\s*([^;]+);/.exec(rule.body)?.[1]?.trim();
+    // `currentColor` is the status dot taking its chip's own colour. It is a
+    // 6px graphic with no text on it, and the three tones it wears are roles
+    // the gate measures in their own right.
+    if (fill === undefined || fill === "transparent" || fill === "currentColor") continue;
+    if (fill !== `var(${LANE_FILL})`) {
+      laneProblems.push(
+        `${rule.selectors.join(", ")} paints ${fill}; the strip may only wear var(${LANE_FILL}), ` +
+          `which is the surface the contrast gate already measures its text against`,
+      );
+    }
+  }
+  // The other half. Without it the rule above pins the strip to a fill whose
+  // measurement could be dropped from `contrast.ts` without anything noticing.
+  const contrastSource = readFileSync(CONTRAST_TS, "utf8");
+  for (const role of LANE_TEXT) {
+    const line = contrastSource.split("\n").find((l) => l.trimStart().startsWith(`"${role}":`));
+    if (line === undefined) {
+      laneProblems.push(`${CONTRAST_TS} declares no rule for ${role}, so this check cannot read its surfaces`);
+    } else if (!line.includes(`"${LANE_FILL_ROLE}"`)) {
+      laneProblems.push(
+        `${CONTRAST_TS} no longer measures ${role} against ${LANE_FILL_ROLE}, ` +
+          `so the lane strip's text is on an unmeasured pair`,
+      );
+    }
+  }
+}
+
+if (laneProblems.length > 0) {
+  console.error(`${laneProblems.length} problem(s) with the lane strip's surfaces:\n`);
+  for (const problem of laneProblems) console.error(`  ${problem}`);
+  console.error("\nA new tint puts text on a pair the contrast gate has never measured, and it stays green.");
+  process.exit(1);
+}
+
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted ` +
@@ -836,5 +894,6 @@ console.log(
     `a tool row's 2 text cells able to shrink, ` +
     `the sidebar filter's row able to wrap under its tabs, ` +
     `its heading matching a dialog title on all ${TITLE_RECIPE.length} recipe properties, ` +
-    `and the blocking tier's ${tierRoles.length} roles worn by the ${BLOCKING.length} surfaces that interrupt the user.`,
+    `the blocking tier's ${tierRoles.length} roles worn by the ${BLOCKING.length} surfaces that interrupt the user, ` +
+    `and the lane strip painting only the one surface its ${LANE_TEXT.length} text roles are measured against.`,
 );

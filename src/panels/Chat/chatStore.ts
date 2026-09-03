@@ -900,7 +900,18 @@ function noteLane(s: ChatState, toolUseId: string, agentId: string) {
  *  start order. A deeper agent is absent by design - its rows render inside its
  *  ancestor's lane. */
 export function laneStrip(s: ChatState): Lane[] {
-  return Object.values(s.lanes).filter((l) => l.parentId === null);
+  return Object.values(s.lanes).filter((l) => l.parentId === null && !retired(s, l));
+}
+
+/** A lane leaves the strip once it succeeded *and* its launching call settled,
+ *  from which point that card is the way back in. Only success retires: the rule
+ *  that clears finished work must not clear a failure. */
+function retired(s: ChatState, lane: Lane): boolean {
+  if (lane.status !== "completed" || lane.toolUseId === null) return false;
+  const at = s.toolIndex[lane.toolUseId];
+  if (at === undefined) return false;
+  const card = s.items[at] as ToolItem;
+  return card.state !== "running" && card.state !== "awaitingApproval";
 }
 
 /** Read another lane, or main with `null`. One this session never had falls
