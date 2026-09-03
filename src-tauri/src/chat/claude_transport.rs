@@ -63,6 +63,10 @@ const DECIDE_TIMEOUT_SECS: u64 = super::approval::DECIDE_TIMEOUT_SECS;
 /// Per-session state the reader thread and the command methods share.
 struct Shared {
     session_id: String,
+    /// Set when Sway writes a user turn, cleared by the `TurnStarted` it causes.
+    /// Nothing on the wire tells an agent-opened turn from a user-opened one:
+    /// the two `system/init` frames are identical bar their `uuid`.
+    turn_expected: AtomicBool,
     /// Set once the session has ended, so a late reader-thread error cannot
     /// resurrect a session the user already closed.
     finished: AtomicBool,
@@ -300,6 +304,7 @@ impl ClaudeTransport {
                 session_id: session_id.into(),
                 finished: AtomicBool::new(false),
                 stderr_tail: Mutex::new(String::new()),
+                turn_expected: AtomicBool::new(false),
                 stdin: Mutex::new(None),
                 pending: Mutex::new(HashMap::new()),
                 parked_questions: Mutex::new(HashMap::new()),
@@ -622,6 +627,13 @@ impl AgentTransport for ClaudeTransport {
                                 // deadline is armed here, because the transport
                                 // is the half that can actually answer.
                                 match &mut event {
+                                    // Consumed rather than read, so the turn
+                                    // after this one is user-opened only if the
+                                    // user opens it too.
+                                    ChatEvent::TurnStarted { agent_initiated, .. } => {
+                                        *agent_initiated =
+                                            !shared.turn_expected.swap(false, Ordering::SeqCst);
+                                    }
                                     ChatEvent::PermissionRequest {
                                         request_id, auto_deny_at_ms, suggestions, ..
                                     } => {
@@ -724,7 +736,13 @@ impl AgentTransport for ClaudeTransport {
                 "request": request,
             }));
         }
-        self.write_frame(&turn_frame(blocks))
+        // Armed only once the frame is away: a failed write opens no turn, and
+        // a flag left set would hand the next agent-opened turn to the user.
+        let sent = self.write_frame(&turn_frame(blocks));
+        if sent.is_ok() {
+            self.shared.turn_expected.store(true, Ordering::SeqCst);
+        }
+        sent
     }
 
     /// The same `user` frame `send` ends with, and deliberately nothing else.
@@ -858,9 +876,30 @@ pub mod tests {
     use crate::chat::transport::new_sink;
     use std::collections::HashMap;
 
+    /// Nothing on the wire says who opened a turn: the `system/init` a
+    /// background subagent produces is identical to a user turn's bar its
+    /// `uuid`. Only the writing side holds this, and a ceiling needs it.
+    #[test]
+    fn a_turn_the_user_did_not_send_is_marked_as_the_agents() {
+        let shared = shared();
+
+        // Nobody sent anything: the next turn is the agent's own.
+        assert!(!shared.turn_expected.swap(false, Ordering::SeqCst));
+
+        // Sway writes a turn, so the one that follows is the user's, and
+        // exactly one is: the flag is consumed, not merely read.
+        shared.turn_expected.store(true, Ordering::SeqCst);
+        assert!(shared.turn_expected.swap(false, Ordering::SeqCst), "the turn the user sent");
+        assert!(
+            !shared.turn_expected.swap(false, Ordering::SeqCst),
+            "and the turn after it is not, or one send would excuse every later turn"
+        );
+    }
+
     fn shared() -> Arc<Shared> {
         Arc::new(Shared {
             session_id: "s1".into(),
+            turn_expected: AtomicBool::new(false),
             finished: AtomicBool::new(false),
             stderr_tail: Mutex::new(String::new()),
             // No child: every write fails, which is exactly the condition these

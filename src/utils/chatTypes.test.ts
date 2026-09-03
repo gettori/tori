@@ -124,6 +124,8 @@ describe("chatTypes mirrors the Rust chat model", () => {
           break;
         case "turnStarted":
           expect(ev.turnId).toBeTruthy();
+          // False on the sample: the ordinary turn is the one a user sent.
+          expect(ev.agentInitiated).toBe(false);
           break;
         case "hookFired":
           // The measured shape: `name` reports the tool, not the configured
@@ -222,6 +224,25 @@ describe("chatTypes mirrors the Rust chat model", () => {
           // The agent's own sentence, verbatim: it is what the refused row shows.
           expect(ev.mode).toBe("bypassPermissions");
           expect(ev.reason).toContain("--dangerously-skip-permissions");
+          break;
+        case "subagentStarted":
+          // The join this frame alone carries: the id a subagent's permission
+          // prompt names, and the `Agent` call its nested frames point at.
+          expect(ev.agentId).toBe("acb01121756a92ca0");
+          expect(ev.toolUseId).toBe("toolu_5");
+          expect(ev.agentType).toBe("general-purpose");
+          break;
+        case "subagentCall":
+          // Membership, keyed on the call rather than carried by it.
+          expect(ev.agentId).toBe("acb01121756a92ca0");
+          expect(ev.toolUseId).toBe("toolu_01V4im1SuXMxH4xRjNuCDorw");
+          break;
+        case "subagentUpdate":
+          // The agent's own status word, and the three figures a subagent
+          // reports instead of a token breakdown.
+          expect(ev.status).toBe("completed");
+          expect(ev.usage?.totalTokens).toBe(10371);
+          expect(ev.usage?.toolUses).toBe(1);
           break;
         default: {
           const never: never = ev;

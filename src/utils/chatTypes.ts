@@ -307,6 +307,14 @@ export type PlanItem = {
   status: PlanItemStatus;
 };
 
+/// Not `Usage`: a subagent reports a flat total, a tool count and an elapsed
+/// time rather than the token breakdown a `result` frame carries.
+export type SubagentUsage = {
+  totalTokens: number;
+  toolUses: number;
+  durationMs: number;
+};
+
 /// Mirrors `result.permission_denials`, which measurably carries no reason -
 /// the denial reason reaches the model as the tool result instead.
 export type PermissionDenial = {
@@ -416,6 +424,10 @@ export type ChatEvent =
       turnId: string;
       model: string;
       permissionMode: PermissionMode;
+      /// Opened by the agent, not by anything the user sent: a background
+      /// subagent finishing makes the CLI open one. A ceiling works by
+      /// declining the next turn, and this is the one it never got to.
+      agentInitiated: boolean;
       extra?: Extra;
     }
   /// The agent refused a mode switch outright, in its own words. Distinct from
@@ -536,6 +548,37 @@ export type ChatEvent =
       agentId: string | null;
       questions: ChatQuestion[];
     }
+  /// A subagent started, and the only frame joining its two ids: `agentId` is
+  /// what its `can_use_tool` carries, `toolUseId` is what its nested frames
+  /// point at through `parent_tool_use_id`.
+  | {
+      type: "subagentStarted";
+      sessionId: string;
+      agentId: string;
+      toolUseId: string;
+      agentType: string;
+      description: string;
+      prompt: string;
+    }
+  /// A tool call made inside a subagent, keyed on `toolUseId` so a consumer
+  /// attributes the card whichever of the two arrives first. Emitted beside the
+  /// call rather than as a field on it; see the Rust variant for why.
+  | { type: "subagentCall"; sessionId: string; agentId: string; toolUseId: string }
+  /// Three frames patching one record. Fields are nullable because each sends
+  /// a different subset, and absent means "not reported now". No `turnId`: a
+  /// background subagent's updates outlive its parent's turn.
+  | {
+      type: "subagentUpdate";
+      sessionId: string;
+      agentId: string;
+      status: string | null;
+      /// What it is doing now, not what it was asked to do; the task itself is
+      /// `subagentStarted.description`.
+      activity: string | null;
+      lastToolName: string | null;
+      usage: SubagentUsage | null;
+      summary: string | null;
+    }
   | { type: "planUpdate"; sessionId: string; turnId: string; items: PlanItem[] }
   | { type: "usage"; sessionId: string; turnId: string; usage: Usage; extra?: Extra }
   | {
@@ -584,6 +627,9 @@ export const CHAT_EVENT_TYPES = [
   "fileEdit",
   "permissionRequest",
   "questionRequest",
+  "subagentStarted",
+  "subagentCall",
+  "subagentUpdate",
   "planUpdate",
   "usage",
   "rateLimit",
@@ -688,7 +734,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     required: ["sessionId", "hookId", "name", "event", "phase", "swayOwned", "outcome", "exitCode", "output", "stderr"],
   },
   turnStarted: {
-    required: ["sessionId", "turnId", "model", "permissionMode"],
+    required: ["sessionId", "turnId", "model", "permissionMode", "agentInitiated"],
     optional: ["extra"],
   },
   modeRefused: { required: ["sessionId", "mode", "reason"] },
@@ -731,6 +777,13 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   questionRequest: {
     required: ["sessionId", "toolUseId", "requestId", "agentId", "questions"],
   },
+  subagentStarted: {
+    required: ["sessionId", "agentId", "toolUseId", "agentType", "description", "prompt"],
+  },
+  subagentCall: { required: ["sessionId", "agentId", "toolUseId"] },
+  subagentUpdate: {
+    required: ["sessionId", "agentId", "status", "activity", "lastToolName", "usage", "summary"],
+  },
   planUpdate: { required: ["sessionId", "turnId", "items"] },
   usage: { required: ["sessionId", "turnId", "usage"], optional: ["extra"] },
   rateLimit: { required: ["sessionId", "status", "resetsAt", "limitType"] },
@@ -769,6 +822,7 @@ export const CHAT_NESTED_KEYS = {
   questionOption: keysOf<ChatQuestionOption>({ label: true, description: true, preview: true }),
   questionAnswer: keysOf<QuestionAnswer>({ question: true, picks: true, freeText: true }),
   toolLocation: keysOf<ToolLocation>({ path: true, line: true }),
+  subagentUsage: keysOf<SubagentUsage>({ totalTokens: true, toolUses: true, durationMs: true }),
   patchHunk: keysOf<PatchHunk>({ oldStart: true, oldLines: true, newStart: true, newLines: true, lines: true }),
   // One entry per `ToolSummary` variant rather than one `keysOf` over the
   // union. `Record<keyof T, true>` on a union resolves to the keys they *share*,

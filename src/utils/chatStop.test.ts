@@ -128,7 +128,7 @@ describe("end to end through the store", () => {
       sessionId: SESSION,
       turnId: "t1",
       model: "claude-sonnet-5",
-      permissionMode: "default",
+      permissionMode: "default", agentInitiated: false
     });
     expect(chatToStop(entry())?.sessionId).toBe(SESSION);
 

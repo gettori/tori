@@ -74,7 +74,7 @@ describe("a chat's own turn blocks reverting its own edits", () => {
       sessionId: SESSION,
       turnId: "t1",
       model: "claude-sonnet-5",
-      permissionMode: "default",
+      permissionMode: "default", agentInitiated: false
     };
     applyEvent(state, started);
     register(state);

@@ -715,6 +715,19 @@ pub struct PlanItem {
     pub status: PlanItemStatus,
 }
 
+/// Not [`Usage`]: a subagent reports a flat total, a tool count and an elapsed
+/// time, so folding the two would invent a breakdown the wire never sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentUsage {
+    #[serde(default)]
+    pub total_tokens: u64,
+    #[serde(default)]
+    pub tool_uses: u64,
+    #[serde(default)]
+    pub duration_ms: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PlanItemStatus {
@@ -918,6 +931,11 @@ pub enum ChatEvent {
     TurnStarted {
         session_id: String,
         turn_id: String,
+        /// Opened by the agent, not by anything the user sent: a backgrounded
+        /// subagent finishing makes the CLI open one to report itself. Only the
+        /// transport can tell, and a ceiling declines turns it never saw open.
+        #[serde(default)]
+        agent_initiated: bool,
         model: String,
         permission_mode: PermissionMode,
         #[serde(default, skip_serializing_if = "extra_is_empty")]
@@ -1182,6 +1200,49 @@ pub enum ChatEvent {
         questions: Vec<ChatQuestion>,
     },
 
+    /// The only frame joining a subagent's two ids: `agent_id` is what its
+    /// `can_use_tool` carries, `tool_use_id` is what its nested frames point at.
+    /// Miss it and neither the prompt nor the nested calls can be attributed.
+    SubagentStarted {
+        session_id: String,
+        agent_id: String,
+        tool_use_id: String,
+        agent_type: String,
+        description: String,
+        prompt: String,
+    },
+
+    /// A tool call made inside a subagent, keyed on `tool_use_id` so arrival
+    /// order does not matter. Emitted beside the call rather than as a field on
+    /// it: the field would need naming at ninety-odd sites, nearly all `None`.
+    SubagentCall {
+        session_id: String,
+        agent_id: String,
+        tool_use_id: String,
+    },
+
+    /// One variant for three frames that patch one record. Fields are optional
+    /// because each sends a different subset, and absent means "not reported
+    /// now". No `turn_id`: a background subagent outlives its parent's turn.
+    SubagentUpdate {
+        session_id: String,
+        agent_id: String,
+        /// The agent's own word, never an enum: an unrecognised status must
+        /// reach the UI as itself rather than fold into one this build knows.
+        #[serde(default)]
+        status: Option<String>,
+        /// What it is doing *now* ("Writing sub-made.txt"), not what it was
+        /// asked to do. `SubagentStarted::description` is the task.
+        #[serde(default)]
+        activity: Option<String>,
+        #[serde(default)]
+        last_tool_name: Option<String>,
+        #[serde(default)]
+        usage: Option<SubagentUsage>,
+        #[serde(default)]
+        summary: Option<String>,
+    },
+
     PlanUpdate {
         session_id: String,
         turn_id: String,
@@ -1437,6 +1498,7 @@ mod tests {
             ChatEvent::TurnStarted {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
+                agent_initiated: false,
                 model: "claude-sonnet-5".into(),
                 permission_mode: PermissionMode::new("default"),
                 extra: Extra::new(),
@@ -1656,6 +1718,28 @@ mod tests {
                         ],
                     },
                 ],
+            },
+            ChatEvent::SubagentStarted {
+                session_id: "s1".into(),
+                agent_id: "acb01121756a92ca0".into(),
+                tool_use_id: "toolu_5".into(),
+                agent_type: "general-purpose".into(),
+                description: "Create sub-made.txt".into(),
+                prompt: "Use the Write tool to create sub-made.txt containing the word sub.".into(),
+            },
+            ChatEvent::SubagentCall {
+                session_id: "s1".into(),
+                agent_id: "acb01121756a92ca0".into(),
+                tool_use_id: "toolu_01V4im1SuXMxH4xRjNuCDorw".into(),
+            },
+            ChatEvent::SubagentUpdate {
+                session_id: "s1".into(),
+                agent_id: "acb01121756a92ca0".into(),
+                status: Some("completed".into()),
+                activity: Some("Writing sub-made.txt".into()),
+                last_tool_name: Some("Write".into()),
+                usage: Some(SubagentUsage { total_tokens: 10371, tool_uses: 1, duration_ms: 4844 }),
+                summary: Some("Done. Created sub-made.txt containing the word sub.".into()),
             },
             ChatEvent::PlanUpdate {
                 session_id: "s1".into(),
@@ -1982,6 +2066,9 @@ mod tests {
                 ChatEvent::FileEdit { .. } => "fileEdit",
                 ChatEvent::PermissionRequest { .. } => "permissionRequest",
                 ChatEvent::QuestionRequest { .. } => "questionRequest",
+                ChatEvent::SubagentStarted { .. } => "subagentStarted",
+                ChatEvent::SubagentCall { .. } => "subagentCall",
+                ChatEvent::SubagentUpdate { .. } => "subagentUpdate",
                 ChatEvent::PlanUpdate { .. } => "planUpdate",
                 ChatEvent::Usage { .. } => "usage",
                 ChatEvent::RateLimit { .. } => "rateLimit",
@@ -1992,7 +2079,7 @@ mod tests {
             };
         }
         // 25 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 25, "every_event() must hold exactly one sample per variant");
+        assert_eq!(events.len(), 28, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]
@@ -2062,6 +2149,7 @@ mod tests {
         let ev = ChatEvent::TurnStarted {
             session_id: "s1".into(),
             turn_id: "t1".into(),
+            agent_initiated: false,
             model: "m".into(),
             permission_mode: PermissionMode::new("default"),
             extra: HashMap::from([

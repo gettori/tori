@@ -25,7 +25,7 @@ const turn = (turnId: string): ChatEvent => ({
   sessionId: SESSION,
   turnId,
   model: "claude-sonnet-5",
-  permissionMode: "default",
+  permissionMode: "default", agentInitiated: false
 });
 
 /** What `claude_transport` emits when the child's stdout hits EOF - i.e. what
