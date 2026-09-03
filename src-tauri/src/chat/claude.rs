@@ -517,7 +517,16 @@ impl ClaudeMapper {
             return events;
         };
         let mut out = Vec::with_capacity(events.len());
-        for ev in events {
+        for mut ev in events {
+            // Text is stamped in place; a call is announced beside itself
+            // instead, keyed on its id, because a card is built from several
+            // frames and only one of them is nested.
+            match &mut ev {
+                ChatEvent::TextDelta { agent_id: lane, .. } | ChatEvent::ThinkingDelta { agent_id: lane, .. } => {
+                    *lane = Some(agent_id.clone());
+                }
+                _ => {}
+            }
             if let Some(tool_use_id) = call_named_by(&ev) {
                 if self.announced_calls.insert(tool_use_id.to_string()) {
                     out.push(ChatEvent::SubagentCall {
@@ -537,7 +546,7 @@ impl ClaudeMapper {
             Some("system") => self.map_system(frame),
             Some("stream_event") => self.map_stream_event(frame),
             Some("user") => self.map_user(frame),
-            Some("assistant") => Vec::new(), // Already delivered as deltas; see above.
+            Some("assistant") => self.map_assistant(frame),
             Some("rate_limit_event") => self.map_rate_limit(frame),
             Some("result") => self.map_result(frame),
             Some("control_response") => {
@@ -917,6 +926,50 @@ impl ClaudeMapper {
         out
     }
 
+    /// A **nested** `assistant` frame, a subagent's only declaration of its own
+    /// work: it does not stream, so no `stream_event` twin repeats this. The
+    /// main agent's frames stay dropped, or every call would render twice.
+    fn map_assistant(&self, frame: &Value) -> Vec<ChatEvent> {
+        if !frame["parent_tool_use_id"].is_string() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for block in frame["message"]["content"].as_array().into_iter().flatten() {
+            match block["type"].as_str() {
+                Some("text") => {
+                    let text = block["text"].as_str().unwrap_or_default();
+                    if text.is_empty() {
+                        continue;
+                    }
+                    out.push(ChatEvent::TextDelta {
+                        session_id: self.session_id.clone(),
+                        turn_id: self.turn_id(),
+                        text: text.to_string(),
+                        agent_id: None,
+                    });
+                }
+                Some("tool_use") => {
+                    let name = block["name"].as_str().unwrap_or_default().to_string();
+                    // Whole, in one emission, unlike the streamed path: the
+                    // arguments are already here, so there is no empty card to
+                    // fill in later.
+                    out.push(ChatEvent::ToolCallStarted {
+                        session_id: self.session_id.clone(),
+                        turn_id: self.turn_id(),
+                        tool_use_id: block["id"].as_str().unwrap_or_default().to_string(),
+                        kind: tool_kind(&name),
+                        name,
+                        input: block["input"].clone(),
+                        locations: Vec::new(),
+                        title: None,
+                    });
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
     fn map_stream_event(&mut self, frame: &Value) -> Vec<ChatEvent> {
         let ev = &frame["event"];
         let index = ev["index"].as_u64().unwrap_or(0);
@@ -963,15 +1016,20 @@ impl ClaudeMapper {
                 // Route by the block this index opened with: the delta itself
                 // never says whether it is text or thinking.
                 match (self.open_blocks.get(&index), delta["type"].as_str()) {
+                    // Never a lane: only the main agent streams, so a delta
+                    // is the main agent's by construction. A subagent's prose
+                    // arrives whole, through `map_assistant`.
                     (Some(OpenBlock::Text), Some("text_delta")) => vec![ChatEvent::TextDelta {
                         session_id: self.session_id.clone(),
                         turn_id: self.turn_id(),
                         text: delta["text"].as_str().unwrap_or_default().to_string(),
+                        agent_id: None,
                     }],
                     (Some(OpenBlock::Thinking), Some("thinking_delta")) => vec![ChatEvent::ThinkingDelta {
                         session_id: self.session_id.clone(),
                         turn_id: self.turn_id(),
                         text: delta["thinking"].as_str().unwrap_or_default().to_string(),
+                        agent_id: None,
                     }],
                     // The cryptographic signature of a thinking block is not
                     // content and must never reach the transcript.
@@ -1748,6 +1806,68 @@ mod tests {
             !announced.iter().any(|(_, id)| *id == "toolu_01Ec9PYYDVBe9S6DjXp4RM1s"),
             "the Agent call belongs to the main agent, not to the lane it opened"
         );
+    }
+
+    /// A subagent's `assistant` frame is its only declaration of its own work.
+    /// Without it the lane's card is built from the `tool_result` alone, so it
+    /// carries no name and no arguments: a row that says nothing about itself.
+    #[test]
+    fn a_subagents_call_is_named_by_its_own_frame() {
+        let events = run("subagent-background");
+        let named: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::ToolCallStarted { tool_use_id, name, input, .. } => {
+                    Some((name.as_str(), tool_use_id.as_str(), input))
+                }
+                _ => None,
+            })
+            .collect();
+
+        let write: Vec<_> = named.iter().filter(|(n, ..)| *n == "Write").collect();
+        assert_eq!(write.len(), 1, "the nested call, announced once, got {named:?}");
+        assert!(
+            write[0].2["file_path"].as_str().is_some_and(|p| p.ends_with("bg-made.txt")),
+            "and carrying the arguments the subagent sent, got {}",
+            write[0].2
+        );
+
+        // The main agent's frames stay dropped. Its `Agent` call is announced
+        // twice by the streamed path (block open, then block close with the
+        // full input), and a third would be this arm double-counting it.
+        assert_eq!(
+            named.iter().filter(|(n, ..)| *n == "Agent").count(),
+            2,
+            "the streamed pair and nothing more, got {named:?}"
+        );
+    }
+
+    /// The one piece of prose a live lane has. It arrives whole, in a nested
+    /// `assistant` frame, because a subagent never streams.
+    #[test]
+    fn a_subagents_closing_report_lands_in_its_own_lane() {
+        let events = run("subagent-background");
+        let laned: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::TextDelta { text, agent_id: Some(lane), .. } => Some((lane.as_str(), text.as_str())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(laned.len(), 1, "one whole frame, not deltas, got {laned:?}");
+        assert_eq!(laned[0].0, "ad7048d25dc5e778a");
+        assert!(laned[0].1.starts_with("Done. Created"), "got {:?}", laned[0].1);
+
+        let main: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::TextDelta { text, agent_id: None, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(main.contains("launched"), "the main agent's own text is untouched, got {main:?}");
+        assert!(main.contains("The background subagent finished"));
+        assert!(!main.contains("Done. Created"), "and the lane's report is not in it");
     }
 
     /// A lane's tokens are the CLI's figure, not one Sway adds up: the

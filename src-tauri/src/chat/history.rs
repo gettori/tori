@@ -68,6 +68,9 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                             session_id: session_id.to_string(),
                             turn_id: turn_id.clone(),
                             text: text.clone(),
+                            // The session transcript holds no subagent turns at
+                            // all; they live in sidecar files nothing reads yet.
+                            agent_id: None,
                         });
                     }
                 }
@@ -77,6 +80,7 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                             session_id: session_id.to_string(),
                             turn_id: turn_id.clone(),
                             text: text.clone(),
+                            agent_id: None,
                         });
                     }
                 }

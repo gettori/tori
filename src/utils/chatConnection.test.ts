@@ -103,7 +103,7 @@ describe("beginReconnect", () => {
     const s = initialChat(SESSION);
     applyEvent(s, started);
     applyEvent(s, turn("t1"));
-    applyEvent(s, { type: "textDelta", sessionId: SESSION, turnId: "t1", text: "half an answer" });
+    applyEvent(s, { type: "textDelta", sessionId: SESSION, turnId: "t1", text: "half an answer", agentId: null });
     enqueue(s, "the thing I typed during the outage");
     applyEvent(s, childDied);
 

@@ -24,7 +24,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
 function turn(n: number): ChatItem[] {
   return [
     { kind: "user", id: `u${n}`, blocks: [{ type: "text", text: `question ${n}` }], steer: false },
-    { kind: "text", id: `t${n}`, turnId: `turn-${n}`, text: `answer ${n}` },
+    { kind: "text", id: `t${n}`, turnId: `turn-${n}`, text: `answer ${n}`, agentId: null },
   ];
 }
 
@@ -62,9 +62,9 @@ function list(
 describe("a steer renders as an interjection", () => {
   const STEERED: ChatItem[] = [
     { kind: "user", id: "u1", blocks: [{ type: "text", text: "read every file" }], steer: false },
-    { kind: "text", id: "t1", turnId: "turn-1", text: "reading" },
+    { kind: "text", id: "t1", turnId: "turn-1", text: "reading", agentId: null },
     { kind: "user", id: "s1", blocks: [{ type: "text", text: "stop, just summarise" }], steer: true },
-    { kind: "text", id: "t2", turnId: "turn-1", text: "summarising" },
+    { kind: "text", id: "t2", turnId: "turn-1", text: "summarising", agentId: null },
   ];
 
   it("labels it and does not open a turn group of its own", () => {
@@ -348,7 +348,15 @@ describe("a question in the transcript", () => {
 // all (see the notes on `.notice` and `.thinkingToggle` in Chat.module.css).
 describe("the ambient rows say what kind they are", () => {
   const AMBIENT: ChatItem[] = [
-    { kind: "thinking", id: "th1", turnId: "turn-1", text: "weighing the two channels", startedAt: 1000, endedAt: 13000 },
+    {
+      kind: "thinking",
+      id: "th1",
+      turnId: "turn-1",
+      text: "weighing the two channels",
+      startedAt: 1000,
+      endedAt: 13000,
+      agentId: null,
+    },
     {
       kind: "hook",
       id: "h1",
@@ -410,6 +418,7 @@ describe("the thinking label follows the stream", () => {
     text: "weighing the two channels",
     startedAt: 1000,
     endedAt: 13000,
+    agentId: null,
   };
 
   it("says Thinking while it is the streaming tail", () => {
@@ -418,7 +427,7 @@ describe("the thinking label follows the stream", () => {
   });
 
   it("settles the moment something streams after it, mid-turn or not", () => {
-    const text: ChatItem = { kind: "text", id: "t1", turnId: "turn-1", text: "so:" };
+    const text: ChatItem = { kind: "text", id: "t1", turnId: "turn-1", text: "so:", agentId: null };
     render(() => list({ items: [THINKING, text], streaming: true }));
     expect(screen.getByRole("button", { name: "Thought for 12s" })).toBeTruthy();
   });
@@ -435,7 +444,7 @@ describe("the thinking label follows the stream", () => {
 describe("a turn the agent opened for itself", () => {
   const REPORT: ChatItem[] = [
     { kind: "user", id: "u1", blocks: [{ type: "text", text: "launch it in the background" }], steer: false },
-    { kind: "text", id: "t2", turnId: "turn-2", text: "the background subagent finished" },
+    { kind: "text", id: "t2", turnId: "turn-2", text: "the background subagent finished", agentId: null },
   ];
 
   it("claims no prompt of its own", () => {
@@ -459,7 +468,7 @@ describe("a turn the agent opened for itself", () => {
   it("leaves the prompt on the turn the user actually opened", () => {
     const items: ChatItem[] = [
       REPORT[0]!,
-      { kind: "text", id: "t1", turnId: "turn-1", text: "launched" },
+      { kind: "text", id: "t1", turnId: "turn-1", text: "launched", agentId: null },
       REPORT[1]!,
     ];
     const asked: string[] = [];
