@@ -2,7 +2,7 @@ import { createSignal, createEffect, createMemo, on, onCleanup, onMount, untrack
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import TerminalView from "./TerminalView";
+import TerminalView, { type PtyExit } from "./TerminalView";
 import ChatView from "../Chat/ChatView";
 import ChatDraft from "../Chat/ChatDraft";
 import Dropdown from "../../components/Menu/Dropdown";
@@ -904,8 +904,8 @@ export default function Terminal(props: {
     // A shell/agent tab that exits (the user typed `exit`) is closed; a command
     // tab (clone/bootstrap) stays visible so its failure is inspectable, and
     // re-discovers projects. Agent-exit within a live shell fires no event.
-    unlistenExit = await listen<string>("pty://exit", (e) => {
-      const id = e.payload;
+    unlistenExit = await listen<PtyExit>("pty://exit", (e) => {
+      const id = e.payload.id;
       // Before the early return below, because a sign-in tab is a command tab
       // today but the reason to re-probe is that the process ended, not how the
       // tab happened to be hosted. Abandoning the tab lands here too, and that

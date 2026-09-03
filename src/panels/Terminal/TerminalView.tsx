@@ -23,6 +23,10 @@ import styles from "./Terminal.module.css";
  *  tab that took no claim, which is most of them. */
 type PtySpawnResult = { ownership: ClaimOutcome | null };
 
+/** `pty://exit`'s payload. A null `code` is an exit the backend could not
+ *  confirm within its wait, so it means "no clean exit proved", not zero. */
+export type PtyExit = { id: string; code: number | null };
+
 // File paths in terminal output, with optional :line:col. Requires an extension
 // so it doesn't match arbitrary words; existence is validated before linking.
 const PATH_RE = /[\w.\-~/]+\.\w+(?::\d+(?::\d+)?)?/g;
@@ -295,8 +299,8 @@ export default function TerminalView(props: {
 
     // Only command tabs stay visible after exit, so only they print this. A
     // shell/agent tab is removed by Terminal.tsx on exit, so it would never show.
-    unlistenExit = await listen<string>("pty://exit", (e) => {
-      if (e.payload === props.id && props.kind === "command") {
+    unlistenExit = await listen<PtyExit>("pty://exit", (e) => {
+      if (e.payload.id === props.id && props.kind === "command") {
         term?.writeln("\r\n\x1b[90m[process exited]\x1b[0m");
       }
     });
