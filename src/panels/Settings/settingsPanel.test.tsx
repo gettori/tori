@@ -19,7 +19,7 @@ import { DEFAULT_SETTINGS, loadWorkspaceSettings, setZoom, zoom, zoomIn } from "
 import { blameOn, reloadBlamePref, writeBlamePref } from "../../utils/blamePref";
 import { reloadSideBySide, sideBySideOn, writeSideBySide } from "../../utils/sideBySide";
 import { SETTINGS, SETTING_TABS } from "../../utils/settingsCatalog";
-import { OPEN_TERMINAL, emitWith, type OpenTerminal } from "../../utils/events";
+import { OPEN_JOB, emitWith, type OpenJob } from "../../utils/events";
 import { rowDomId } from "./components/paneKit";
 import styles from "./Settings.module.css";
 
@@ -678,19 +678,19 @@ describe("Escape", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  // Two of the panel's buttons (Sign in, Install) open a terminal tab, and the
-  // panel is a modal over the workspace: without this the tab would land
-  // behind the still-open overlay, which reads as the button doing nothing.
-  it("closes when something inside it opens a terminal tab", () => {
+  // Two of the panel's buttons (Sign in, Install) start a job, and the panel is
+  // a modal over the workspace: without this the job's drawer would open behind
+  // the still-open overlay, which reads as the button doing nothing.
+  it("closes when something inside it starts a job", () => {
     const onClose = vi.fn();
     render(() => <Settings onClose={onClose} />);
-    emitWith<OpenTerminal>(OPEN_TERMINAL, {
+    emitWith<OpenJob>(OPEN_JOB, {
       id: "install:copilot",
       title: "Install Copilot",
       cwd: "/home/me",
       program: "npm",
       args: ["install", "-g", "@github/copilot"],
-      kind: "command",
+      interactive: true,
     });
     expect(onClose).toHaveBeenCalled();
   });

@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
-import { OPEN_TERMINAL, type OpenTerminal } from "../../../../utils/events";
+import { OPEN_JOB, type OpenJob } from "../../../../utils/events";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "/home/me" }));
@@ -81,11 +81,9 @@ async function open(r: ReturnType<typeof render>, label = "Claude") {
 }
 
 /** Terminal tabs the component asked for, in order. */
-function openedTabs(): OpenTerminal[] {
-  const seen: OpenTerminal[] = [];
-  window.addEventListener(OPEN_TERMINAL, (e) =>
-    seen.push((e as CustomEvent<OpenTerminal>).detail),
-  );
+function openedJobs(): OpenJob[] {
+  const seen: OpenJob[] = [];
+  window.addEventListener(OPEN_JOB, (e) => seen.push((e as CustomEvent<OpenJob>).detail));
   return seen;
 }
 
@@ -108,7 +106,7 @@ describe("the sign-in state on an agent page", () => {
   // The setup sign-in signs in the *default* profile: no home variable set is
   // what resolves the login the user already had.
   it("signs the default profile in from the setup step", async () => {
-    const tabs = openedTabs();
+    const tabs = openedJobs();
     const { container, getByRole } = await open(mount({ health: { signIn: "signedOut" } }));
     await waitFor(() => expect(container.textContent).toContain("claude auth login"));
     fireEvent.click(getByRole("button", { name: "Sign in" }));
@@ -236,7 +234,7 @@ describe("signing in", () => {
   // A login is browser OAuth with no non-interactive variant, so the only
   // honest thing the button can do is hand the user a real terminal.
   it("opens a terminal tab rather than trying to complete the login", async () => {
-    const tabs = openedTabs();
+    const tabs = openedJobs();
     const { container, getByText } = await open(mount({
       accounts: { profiles: [profile({ signIn: "signedOut" })] },
     }));
@@ -253,7 +251,7 @@ describe("signing in", () => {
   // view, every press opened a tab with no home variable, so signing in to
   // "Work" signed the user into the login they already had and said it worked.
   it("signs each profile in to its own home", async () => {
-    const tabs = openedTabs();
+    const tabs = openedJobs();
     const { container, getAllByText } = await open(mount({
       accounts: {
         profiles: [

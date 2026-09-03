@@ -8,10 +8,10 @@
 // The rung that matters most is `terminal`. Phase 0 measured that `claude auth
 // login` is browser OAuth with no non-interactive variant and that `setup-token`
 // is interactive too, so a login is a real PTY or it is nothing: anything that
-// captured it would hang rather than fail. The tab therefore spawns the program
-// directly (`kind: "command"`), which is also what keeps it on screen after the
-// process exits, so a failed login is readable instead of a tab that vanished.
-import type { OpenTerminal } from "./events";
+// captured it would hang rather than fail. It runs as a **job**, which spawns
+// the program directly and keeps the output on screen after a failing exit, so
+// a failed login is readable instead of a surface that vanished.
+import type { OpenJob } from "./events";
 
 /** Mirrors `crate::auth::LoginRoute`. */
 export type LoginRoute =
@@ -20,25 +20,25 @@ export type LoginRoute =
   | { type: "docs"; url: string };
 
 /**
- * The tab that signs one profile in, or `null` for a route that opens no tab.
+ * The job that signs one profile in, or `null` for a route that runs nothing.
  *
- * `cwd` is where the tab starts. It has nothing to do with the login itself; a
+ * `cwd` is where it starts. It has nothing to do with the login itself; a
  * terminal needs somewhere to be, and the folder the user is looking at is the
  * least surprising answer.
  *
  * The id carries the adapter and profile, so pressing "Sign in" twice for the
- * same account focuses the tab already doing it rather than starting a second
- * browser flow. Two different accounts get two different tabs, which is the
+ * same account reveals the login already running rather than starting a second
+ * browser flow. Two different accounts get two different jobs, which is the
  * point: they are two logins.
  */
-export function loginTab(
+export function loginJob(
   agentId: string,
   agentLabel: string,
   profileId: string,
   profileLabel: string,
   route: LoginRoute,
   cwd: string,
-): OpenTerminal | null {
+): OpenJob | null {
   if (route.type !== "terminal") return null;
   return {
     id: `signin:${agentId}:${profileId}`,
@@ -46,7 +46,9 @@ export function loginTab(
     cwd,
     program: route.program,
     args: route.args,
-    kind: "command",
+    // Browser OAuth: the flow prompts and has to be typed at, so this one takes
+    // the keyboard when it opens.
+    interactive: true,
     // The whole mechanism of a second account. Without it the agent writes
     // into the login the user already had, and Sway would show two profiles
     // that are one account.
@@ -58,9 +60,9 @@ export function loginTab(
 }
 
 /**
- * What to tell the user for a route that opens no tab.
+ * What to tell the user for a route that runs nothing.
  *
- * `null` for the terminal rung, which needs no explanation: the tab is the
+ * `null` for the terminal rung, which needs no explanation: the job is the
  * explanation.
  */
 export function loginNote(agentLabel: string, route: LoginRoute): string | null {

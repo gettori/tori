@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
-import { OPEN_TERMINAL, type OpenTerminal } from "../../../../utils/events";
+import { OPEN_JOB, type OpenJob } from "../../../../utils/events";
 import type { InstallRoute } from "../../../../utils/install";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -79,31 +79,28 @@ async function open(r: ReturnType<typeof render>) {
 }
 
 /** Terminal tabs the component asked for, in order. */
-function openedTabs(): OpenTerminal[] {
-  const seen: OpenTerminal[] = [];
-  window.addEventListener(OPEN_TERMINAL, (e) =>
-    seen.push((e as CustomEvent<OpenTerminal>).detail),
-  );
+function openedJobs(): OpenJob[] {
+  const seen: OpenJob[] = [];
+  window.addEventListener(OPEN_JOB, (e) => seen.push((e as CustomEvent<OpenJob>).detail));
   return seen;
 }
 
 describe("installing an agent from its detail page", () => {
   beforeEach(() => invoked.mockReset());
 
-  it("opens a terminal tab running the vendor's documented command", async () => {
-    const tabs = openedTabs();
+  it("starts a job running the vendor's documented command", async () => {
+    const tabs = openedJobs();
     const { getByText } = await open(mount());
     fireEvent.click(getByText("Install"));
     await waitFor(() => expect(tabs.length).toBe(1));
     expect(tabs[0].program).toBe("npm");
     expect(tabs[0].args).toEqual(["install", "-g", "@github/copilot"]);
-    // Direct spawn, so the tab stays put on failure and "npm: command not
-    // found" is readable rather than a vanished window.
-    expect(tabs[0].kind).toBe("command");
+    // Installers prompt, so the keyboard has to reach this one when it opens.
+    expect(tabs[0].interactive).toBe(true);
     // A finished install has to flip the card to Ready without a restart.
     expect(tabs[0].recheckAgentsOnExit).toBe(true);
-    // Per adapter, not per press: a second press focuses the tab already
-    // installing rather than racing two package managers.
+    // Per adapter, not per press: a second press reveals the install already
+    // running rather than racing two package managers.
     expect(tabs[0].id).toBe("install:copilot");
   });
 
@@ -111,7 +108,7 @@ describe("installing an agent from its detail page", () => {
   // Said in the step itself rather than behind a button: a button whose only
   // outcome is a sentence would be a control pretending to be an action.
   it("explains instead of guessing when the adapter declares no command", async () => {
-    const tabs = openedTabs();
+    const tabs = openedJobs();
     const { container, queryByText } = await open(mount({ route: { type: "undeclared" } }));
     await waitFor(() => expect(container.textContent).toContain("no install command"));
     expect(container.textContent).toContain("copilot");
@@ -154,7 +151,7 @@ describe("updating and uninstalling", () => {
   // on version drift, which is the steady state of every fast-shipping vendor
   // and deliberately never painted as a warning anywhere in the app.
   it("offers the vendor's update for any installed agent that declares one", async () => {
-    const tabs = openedTabs();
+    const tabs = openedJobs();
     const r = await open(mount({ health: installedCopilot, update: NPM_UPDATE }));
     await waitFor(() => expect(r.container.textContent).toContain("Ready"));
 
@@ -193,7 +190,7 @@ describe("updating and uninstalling", () => {
   // Older than the measurement means a newer release provably exists: that
   // earns the banner, carrying both versions and the vendor's update.
   it("offers the update in a banner when the binary is behind the measurement", async () => {
-    const tabs = openedTabs();
+    const tabs = openedJobs();
     const r = await open(
       mount({
         health: {
@@ -233,7 +230,7 @@ describe("updating and uninstalling", () => {
   });
 
   it("uninstalls through the vendor's removal command", async () => {
-    const tabs = openedTabs();
+    const tabs = openedJobs();
     const r = await open(
       mount({
         health: { status: "versionUnknown", path: "/usr/bin/copilot", version: "1.0.80" },

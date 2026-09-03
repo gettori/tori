@@ -28,9 +28,9 @@ import {
 import { fuzzyMatch, type Range } from "../../../../utils/fuzzy";
 import { Mark } from "../../components/paneKit";
 import type { AgentHealth } from "../../../../utils/agentHealth";
-import { setupTab, installNote, type InstallRoute, type SetupVerb } from "../../../../utils/install";
-import { loginTab, loginNote, type LoginRoute } from "../../../../utils/signIn";
-import { OPEN_TERMINAL, emitWith, type OpenTerminal } from "../../../../utils/events";
+import { setupJob, installNote, type InstallRoute, type SetupVerb } from "../../../../utils/install";
+import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
+import { OPEN_JOB, emitWith, type OpenJob } from "../../../../utils/events";
 import { mirroredOptions } from "../../../../utils/chatTypes";
 import { settings, saveSettings } from "../../settingsStore";
 import { behindVerified, verifiedVersion } from "../../../../utils/versions";
@@ -210,15 +210,15 @@ export default function AgentDetail(props: {
   onMount(() => backEl?.focus());
 
   // Sway never installs, updates, or removes anything itself: each button
-  // opens a real terminal tab running the vendor's own documented command
-  // (from the adapter's [install] table) and gets out of the way, the same
-  // posture as signing in. When the process exits the tab re-probes health, so
-  // a finished run flips this very page forward without a restart.
+  // starts a job running the vendor's own documented command (from the
+  // adapter's [install] table) and gets out of the way, the same posture as
+  // signing in. When the process exits the job re-probes health, so a finished
+  // run flips this very page forward without a restart.
   const runVerb = async (verb: SetupVerb, route: InstallRoute | null) => {
     if (!route) return;
     const cwd = await homeDir().catch(() => "/");
-    const tab = setupTab(verb, a().id, a().label, route, cwd);
-    if (tab) emitWith<OpenTerminal>(OPEN_TERMINAL, tab);
+    const job = setupJob(verb, a().id, a().label, route, cwd);
+    if (job) emitWith<OpenJob>(OPEN_JOB, job);
   };
 
   // The default profile, by name: this step exists to make the agent usable at
@@ -228,8 +228,8 @@ export default function AgentDetail(props: {
     const route = loginCmd();
     if (!route) return;
     const cwd = await homeDir().catch(() => "/");
-    const tab = loginTab(a().id, a().label, "default", "Default", route, cwd);
-    if (tab) emitWith<OpenTerminal>(OPEN_TERMINAL, tab);
+    const job = loginJob(a().id, a().label, "default", "Default", route, cwd);
+    if (job) emitWith<OpenJob>(OPEN_JOB, job);
   };
 
   /** The verdict pill, same ladder as the table's state column except drift,

@@ -7,9 +7,9 @@ import IconButton from "../../../../components/IconButton/IconButton";
 import ConfirmDialog, { type ConfirmReq } from "../../../../components/Dialogs/ConfirmDialog";
 import PromptModal from "../../../../components/Dialogs/PromptModal";
 import { homeDir } from "@tauri-apps/api/path";
-import { OPEN_TERMINAL, TOAST, emitWith, type OpenTerminal, type ToastEvent } from "../../../../utils/events";
+import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
-import { loginTab, loginNote, type LoginRoute } from "../../../../utils/signIn";
+import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import styles from "../../Settings.module.css";
 
 // The accounts half of an agent card: who is signed in, and the one control
@@ -87,7 +87,7 @@ function ProfileRow(props: {
   const [busy, setBusy] = createSignal(false);
 
   const signIn = () => {
-    const tab = loginTab(
+    const job = loginJob(
       props.agentId,
       props.agentLabel,
       p().id,
@@ -95,11 +95,11 @@ function ProfileRow(props: {
       p().login,
       props.cwd,
     );
-    if (!tab) {
+    if (!job) {
       toast(loginNote(props.agentLabel, p().login) ?? "", "info");
       return;
     }
-    emitWith<OpenTerminal>(OPEN_TERMINAL, tab);
+    emitWith<OpenJob>(OPEN_JOB, job);
   };
 
   // Two calls rather than one command with a flag, so the sentence the user
@@ -288,15 +288,15 @@ export default function AgentAccounts(props: {
     setAdding(true);
     try {
       // The profile and its home exist before anyone signs in, which is why the
-      // route comes back from here: the tab it opens has to carry *this*
+      // route comes back from here: the job it starts has to carry *this*
       // profile's home, or the login lands in the account the user already had.
       const route = await invoke<LoginRoute>("add_agent_account", {
         adapterId: props.agentId,
         label,
       });
       changed();
-      const tab = loginTab(props.agentId, props.agentLabel, label, label, route, cwd() ?? "/");
-      if (tab) emitWith<OpenTerminal>(OPEN_TERMINAL, tab);
+      const job = loginJob(props.agentId, props.agentLabel, label, label, route, cwd() ?? "/");
+      if (job) emitWith<OpenJob>(OPEN_JOB, job);
       else toast(loginNote(props.agentLabel, route) ?? "", "info");
     } catch (e) {
       toast(String(e), "error");

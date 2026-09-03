@@ -45,7 +45,6 @@ import {
   type TerminalTabFocused,
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
-import { refreshAgentHealth } from "../../utils/agentHealth";
 import { agentEnabled, agentOffReason, draftChatAgent } from "../../utils/agentEnabled";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { isFeatureKey, selectionRoot, workspaceFolders, workspaceKey } from "../../utils/features";
@@ -866,34 +865,24 @@ export default function Terminal(props: {
       .catch((e) => emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" }));
   }
 
-  // Tabs (clone / bootstrap) that should re-discover projects when they exit.
-  const rediscoverOnExit = new Set<string>();
-  // Sign-in tabs, whose whole purpose is to change the answer `agent_health`
-  // gave. Without this a completed login would keep reading as signed out until
-  // the user went and found the button in Settings.
-  const recheckAgentsOnExit = new Set<string>();
   let offOpenTerminal: (() => void) | undefined;
   let offNewSession: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
   onMount(async () => {
     offOpenTerminal = onWith<OpenTerminal>(OPEN_TERMINAL, (t) => {
-      if (t.rediscoverOnExit) rediscoverOnExit.add(t.id);
-      if (t.recheckAgentsOnExit) recheckAgentsOnExit.add(t.id);
       openOrActivate({
         id: t.id,
         title: t.title,
         cwd: t.cwd,
-        // Clone/bootstrap have no branch-unit yet, so they group under their own
-        // cwd; opening one reveals that group so its progress is visible. A task
-        // runs *at* its branch-unit, so the same line groups it with that unit's
-        // other tabs.
+        // A task runs *at* its branch-unit, so this groups it with that unit's
+        // other tabs. Sound for the only kind still arriving here: the ones
+        // whose cwd was not a branch unit are jobs now.
         workspace: t.cwd,
-        kind: t.kind ?? "command",
+        kind: t.kind,
         program: t.program,
         args: t.args,
         ...(t.init ? { init: t.init } : {}),
-        ...(t.env ? { env: t.env } : {}),
       });
     });
     // Sidebar "New session": matches the "+ Claude" main button (claude, non-yolo).
@@ -901,22 +890,11 @@ export default function Terminal(props: {
     offNewSession = onWith<NewSession>(NEW_SESSION, (s) => {
       spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
     });
-    // A shell/agent tab that exits (the user typed `exit`) is closed; a command
-    // tab (clone/bootstrap) stays visible so its failure is inspectable, and
-    // re-discovers projects. Agent-exit within a live shell fires no event.
+    // A tab whose process ends (the user typed `exit`, a task finished) is
+    // closed. Agent-exit within a live shell fires no event. Ids this panel
+    // does not own belong to a job, whose own listener answers for them.
     unlistenExit = await listen<PtyExit>("pty://exit", (e) => {
-      const id = e.payload.id;
-      // Before the early return below, because a sign-in tab is a command tab
-      // today but the reason to re-probe is that the process ended, not how the
-      // tab happened to be hosted. Abandoning the tab lands here too, and that
-      // is correct: the probe re-reads the agent and finds it unchanged.
-      if (recheckAgentsOnExit.delete(id)) void refreshAgentHealth();
-      const t = open().find((o) => o.id === id);
-      if (t && t.kind !== "command") {
-        closeId(id);
-        return;
-      }
-      if (rediscoverOnExit.delete(id)) invoke("rediscover").catch(() => {});
+      if (open().some((o) => o.id === e.payload.id)) closeId(e.payload.id);
     });
     // Pulled, not listened for. The startup reap runs inside Tauri's `setup`,
     // which finishes before this webview exists, so an event emitted there

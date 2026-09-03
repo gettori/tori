@@ -390,9 +390,9 @@ export type RevealTurn = { sessionId: string; promptTs: number };
 export const SESSION_ACTION = "sway:session-action";
 export type SessionAction = { sessionId: string; action: "open" | "rename" | "delete" };
 
-// Payload-carrying event: open a terminal tab running a specific command (used
-// by clone / bare-worktree bootstrap, which need native git progress + auth).
-// When rediscoverOnExit is set, the terminal area re-discovers on process exit.
+// Payload-carrying event: open a tab that runs one task at a branch unit. The
+// transient commands (clone, bootstrap, install, sign-in) left through OPEN_JOB
+// below; what stays is the kind whose cwd is a real workspace.
 export const OPEN_TERMINAL = "sway:open-terminal";
 export type OpenTerminal = {
   id: string;
@@ -400,25 +400,45 @@ export type OpenTerminal = {
   cwd: string;
   program: string;
   args: string[];
-  rediscoverOnExit?: boolean;
-  /** How the tab is hosted. `command` (the default) spawns `program` directly,
-   *  which is what clone/bootstrap want: the tab stays put on failure. `task`
-   *  hosts a login shell instead and is seeded with `init`, so the task sees the
-   *  PATH the user's own terminal has, and is excluded from tab persistence for
-   *  the same reason a clone is: re-running it on relaunch is not a restore. */
-  kind?: "command" | "task";
+  /** Shell-hosted and seeded with `init`, so the task sees the PATH the user's
+   *  own terminal has. Excluded from tab persistence: re-running a task on
+   *  relaunch is not a restore. The only kind this event still opens. */
+  kind: "task";
   /** The command line typed into the shell once it is ready, newline included.
    *  Delivered **backend-once** by `pty_spawn`, so a remount re-subscribes to
-   *  the live process rather than running the command a second time. Only
-   *  shell-hosted kinds carry one. */
+   *  the live process rather than running the command a second time. */
   init?: string;
-  /** Extra environment for the tab's process. A sign-in tab carries the
+};
+
+// Payload-carrying event: run a transient command as a **Job** (clone,
+// bare-worktree bootstrap, agent install/update/uninstall, sign-in). Not a tab.
+// These run at a path that is not a branch unit, so as tabs they grouped under
+// a workspace nothing else was in: they appeared in no strip, and focusing one
+// hid the strip the user was in ([[adr_jobs_leave_the_tab_model]]). A job has
+// no workspace, a tray row, and a drawer of its own.
+export const OPEN_JOB = "sway:open-job";
+export type OpenJob = {
+  /** Also the dedupe key: a second start under a live id reveals that job
+   *  rather than spawning a second process. */
+  id: string;
+  title: string;
+  cwd: string;
+  program: string;
+  args: string[];
+  /** Extra environment for the job's process. A sign-in job carries the
    *  profile's home variable, which is the whole mechanism of signing in to a
    *  second account: the agent writes its credentials wherever this points. */
   env?: Record<string, string>;
-  /** Re-probe agent health when the process exits. Set by a sign-in tab, whose
-   *  whole purpose is to change the answer: without it a completed login would
-   *  keep reading as signed out until the user found the button in Settings. */
+  /** Takes the keyboard the moment it opens. True for a sign-in (browser OAuth
+   *  that has to be typed at) and an install (vendor installers prompt); false
+   *  for a clone, which must not misdirect the next keystroke. */
+  interactive?: boolean;
+  /** Re-discover projects when the process exits. Set by clone and bootstrap:
+   *  without it the cloned project never appears. */
+  rediscoverOnExit?: boolean;
+  /** Re-probe agent health when the process exits. Set by sign-in and install,
+   *  whose whole purpose is to change the answer: without it a completed login
+   *  would keep reading as signed out. */
   recheckAgentsOnExit?: boolean;
 };
 
