@@ -2130,12 +2130,16 @@ describe("subagent lanes", () => {
       laneStarted(CHILD, "toolu_child_agent"),
       laneCall(CHILD, "toolu_deep"),
       completed("t1", "toolu_deep"),
+      text("t1", "the deep agent reporting", CHILD),
     ]);
     expect(s.lanes[CHILD]!.parentId).toBe(AGENT);
     // Flat strip: a deeper agent renders as cards inside its ancestor's lane,
     // so the strip stays a list instead of becoming a tree.
     expect(laneStrip(s).map((l) => l.agentId)).toEqual([AGENT]);
     expect(tool(s, "toolu_deep").agentId).toBe(AGENT);
+    // Its prose too, or the one row a lane always has would be the one row no
+    // lane shows: a card resolves to the root, an unresolved paragraph does not.
+    expect(visibleItems(s.items, false, AGENT).some((i) => i.kind === "text")).toBe(true);
   });
 
   const laneUpdate = (status: string | null): ChatEvent => ({

@@ -951,8 +951,11 @@ function noteModel(s: ChatState, resolvedModel: string) {
 /** Appends into the bubble of the lane the text came from. A subagent's prose
  *  arrives whole, in one frame, so it opens and closes in a single call and
  *  never interleaves with the main agent's the way two streams would. */
-function appendText(s: ChatState, turnId: string, text: string, thinking: boolean, agentId: string | null) {
+function appendText(s: ChatState, turnId: string, text: string, thinking: boolean, laned: string | null) {
   touchTurn(s, turnId);
+  // Root-resolved the way `noteLane` resolves a card's, so a depth-2 agent's
+  // paragraph lands in the same strip entry its cards do.
+  const agentId = laned === null ? null : rootLane(s, laned);
   const lane = laneKey(agentId);
   const open = thinking ? s.openThinking : s.openText;
   const at = open[lane];

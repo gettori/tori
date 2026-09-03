@@ -17,6 +17,10 @@ prose bodies are cut at a word boundary and marked with `…`. Command envelopes
 the local-command caveat and command output are kept **byte-for-byte**, because
 their exact tags and their ordering are what the parser branches on.
 
+The two subagent fixtures below also drop every `attachment` record. Nothing reads
+them (`turn_from_line` has no arm for the type) and one of them quotes the whole
+skills catalogue, which is most of the file's bytes and none of its meaning.
+
 ## The fixtures
 
 | Fixture | Head shape | Title |
@@ -31,3 +35,22 @@ The last two are the pair that pins the distinction: a command envelope introduc
 by `<local-command-caveat>` is a client-side command, so it never becomes a title,
 even when it carries args (`/model haiku`). A command envelope with no caveat is a
 skill invocation, which is exactly what the person typed.
+
+## Subagent sidecars
+
+A session that launches a subagent writes two more files per subagent, beside the
+transcript rather than inside it:
+
+    subagent-foreground.jsonl                                  the session
+    subagent-foreground/subagents/agent-<id>.jsonl             the subagent's own conversation
+    subagent-foreground/subagents/agent-<id>.meta.json         agentType, description, toolUseId, spawnDepth
+
+| Fixture | The run | What it pins |
+|---|---|---|
+| `subagent-foreground` | one `Agent` call, waited for | the `toolUseResult` a finished call carries, and a closing report that exists **only** here |
+| `subagent-background` | one `run_in_background` call | `async_launched` on the call, then the `<task-notification>` message carrying the real ending |
+
+Each is the **same run** as the stream capture of the same name in
+`dev/fixtures/claude/` (`permission-subagent` for the foreground one), which is what
+lets `chat::history` assert that reopening a session offers the lanes watching it
+did. Two captures of two different runs would only prove each shape self-consistent.

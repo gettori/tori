@@ -17,7 +17,9 @@
 //! streams. The fold appends either way, so the result is identical; what is
 //! lost is the typing, which is exactly the part nobody wants replayed.
 
-use crate::sessions::{TranscriptBlock, TranscriptTurn};
+use std::collections::{HashMap, HashSet};
+
+use crate::sessions::{SubagentTranscript, TranscriptBlock, TranscriptTurn};
 
 use super::claude::tool_kind;
 use super::model::{ChatEvent, ContentBlock, ToolStatus};
@@ -33,7 +35,11 @@ const TOOL_PREFIX: &str = "hist-tool-";
 /// Turn grouping follows the file rather than being re-derived: each
 /// `TranscriptTurn` is one turn, because that is the only boundary the
 /// transcript actually records.
-pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<ChatEvent> {
+pub fn events_from_turns(
+    session_id: &str,
+    turns: &[TranscriptTurn],
+    subagents: &[SubagentTranscript],
+) -> Vec<ChatEvent> {
     let mut events = Vec::new();
     // Calls awaiting their result, oldest first. Claude records an id on both
     // halves so the match is exact; a transcript recording none falls back to
@@ -41,6 +47,9 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
     // order a single-threaded agent produces them in.
     let mut open_calls: Vec<(String, String)> = Vec::new();
     let mut seq = 0usize;
+    let by_call: HashMap<&str, &SubagentTranscript> =
+        subagents.iter().map(|s| (s.tool_use_id.as_str(), s)).collect();
+    let mut expanding = HashSet::new();
 
     for (at, turn) in turns.iter().enumerate() {
         seq += 1;
@@ -62,45 +71,6 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                         user_blocks.push(ContentBlock::Text { text: text.clone() });
                     }
                 }
-                "text" => {
-                    if let Some(text) = &block.text {
-                        events.push(ChatEvent::TextDelta {
-                            session_id: session_id.to_string(),
-                            turn_id: turn_id.clone(),
-                            text: text.clone(),
-                            // The session transcript holds no subagent turns at
-                            // all; they live in sidecar files nothing reads yet.
-                            agent_id: None,
-                        });
-                    }
-                }
-                "thinking" => {
-                    if let Some(text) = &block.text {
-                        events.push(ChatEvent::ThinkingDelta {
-                            session_id: session_id.to_string(),
-                            turn_id: turn_id.clone(),
-                            text: text.clone(),
-                            agent_id: None,
-                        });
-                    }
-                }
-                "tool_call" => {
-                    let tool_use_id = replay_id(block, &mut seq);
-                    let name = block.tool_name.clone().unwrap_or_default();
-                    open_calls.push((tool_use_id.clone(), name.clone()));
-                    events.push(ChatEvent::ToolCallStarted {
-                        session_id: session_id.to_string(),
-                        turn_id: turn_id.clone(),
-                        tool_use_id,
-                        kind: tool_kind(&name),
-                        name,
-                        input: block.tool_input.clone().unwrap_or(serde_json::Value::Null),
-                        // A transcript records neither, the same way it records
-                        // no written paths below.
-                        locations: Vec::new(),
-                        title: None,
-                    });
-                }
                 "compaction" => {
                     events.push(ChatEvent::Compacted {
                         session_id: session_id.to_string(),
@@ -111,50 +81,42 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
                         summary: summary_after(turns, at),
                     });
                 }
-                "tool_result" => {
-                    let Some((tool_use_id, _)) = take_call(&mut open_calls, block) else {
-                        // A result whose call is not in this transcript - a
-                        // resumed session whose earlier half lives in another
-                        // file, most often. Dropped rather than rendered as a
-                        // card with no call, which would read as a phantom tool
-                        // run that never happened.
-                        continue;
-                    };
-                    events.push(ChatEvent::ToolCallCompleted {
-                        session_id: session_id.to_string(),
-                        turn_id: turn_id.clone(),
-                        tool_use_id,
-                        status: if block.is_error == Some(true) { ToolStatus::Error } else { ToolStatus::Ok },
-                        // Whole, and cut by the host afterwards through the same
-                        // cache a live event goes through. Cutting here instead
-                        // would leave a replayed card offering to fetch a
-                        // remainder nothing kept.
-                        output: block.text.clone(),
-                        // Deliberately empty: the transcript records that a tool
-                        // ran, not which paths it wrote. Guessing from the input
-                        // would feed per-turn attribution a set nothing measured.
-                        files: Vec::new(),
-                        // Never recorded on disk, and a fabricated duration
-                        // would be indistinguishable from a real one.
-                        duration_ms: None,
-                        // Read by the scanner from the same
-                        // `summarise_result` the live adapter uses, so a
-                        // replayed card and a live one cannot disagree about
-                        // the same result.
-                        summary: block.tool_summary.clone(),
-                        output_truncated: false,
-                        // Read back off the same `toolUseResult` a live run
-                        // reads, so a replayed edit draws the same diff. It is
-                        // the only source that survives a reload: nothing
-                        // captures a before-state for a session this process
-                        // never watched run.
-                        patch: block.tool_patch.clone(),
-                    });
+                // Two records carry one and a backgrounded subagent writes
+                // both, so the later `<task-notification>` patches the
+                // `async_launched` the `Agent` result left behind - the same
+                // way `task_updated` patches `task_started` on the wire.
+                "subagent" => {
+                    if let Some(outcome) = &block.subagent {
+                        events.push(ChatEvent::SubagentUpdate {
+                            session_id: session_id.to_string(),
+                            agent_id: outcome.agent_id.clone(),
+                            status: Some(outcome.status.clone()),
+                            activity: None,
+                            last_tool_name: None,
+                            usage: Some(outcome.usage),
+                            summary: outcome.summary.clone(),
+                        });
+                    }
+                }
+                "text" | "thinking" | "tool_call" | "tool_result" => {
+                    let opened = push_block(
+                        &mut events,
+                        session_id,
+                        &turn_id,
+                        None,
+                        block,
+                        &mut open_calls,
+                        &mut seq,
+                    );
+                    // The lane this call opened, replayed inside the turn that
+                    // launched it.
+                    if let Some(sub) = opened.as_deref().and_then(|id| by_call.get(id)) {
+                        expand_subagent(&mut events, session_id, &turn_id, sub, &by_call, &mut seq, &mut expanding);
+                    }
                 }
                 _ => {}
             }
         }
-
         if !user_blocks.is_empty() {
             events.push(ChatEvent::UserMessage {
                 session_id: session_id.to_string(),
@@ -165,6 +127,152 @@ pub fn events_from_turns(session_id: &str, turns: &[TranscriptTurn]) -> Vec<Chat
     }
 
     events
+}
+
+/// The four block kinds a lane and the main conversation both produce, mapped in
+/// one place so the two cannot drift. `agent_id` names the lane, `None` for the
+/// main agent. Returns the call it opened, which is where a subagent hangs.
+fn push_block(
+    events: &mut Vec<ChatEvent>,
+    session_id: &str,
+    turn_id: &str,
+    agent_id: Option<&str>,
+    block: &TranscriptBlock,
+    open_calls: &mut Vec<(String, String)>,
+    seq: &mut usize,
+) -> Option<String> {
+    match block.kind.as_str() {
+        "text" => {
+            if let Some(text) = &block.text {
+                events.push(ChatEvent::TextDelta {
+                    session_id: session_id.to_string(),
+                    turn_id: turn_id.to_string(),
+                    text: text.clone(),
+                    agent_id: agent_id.map(str::to_string),
+                });
+            }
+        }
+        "thinking" => {
+            if let Some(text) = &block.text {
+                events.push(ChatEvent::ThinkingDelta {
+                    session_id: session_id.to_string(),
+                    turn_id: turn_id.to_string(),
+                    text: text.clone(),
+                    agent_id: agent_id.map(str::to_string),
+                });
+            }
+        }
+        "tool_call" => {
+            let tool_use_id = replay_id(block, seq);
+            let name = block.tool_name.clone().unwrap_or_default();
+            open_calls.push((tool_use_id.clone(), name.clone()));
+            // Beside the call, never a field on it, matching how the live
+            // mapper names a nested call's lane.
+            if let Some(agent_id) = agent_id {
+                events.push(ChatEvent::SubagentCall {
+                    session_id: session_id.to_string(),
+                    agent_id: agent_id.to_string(),
+                    tool_use_id: tool_use_id.clone(),
+                });
+            }
+            events.push(ChatEvent::ToolCallStarted {
+                session_id: session_id.to_string(),
+                turn_id: turn_id.to_string(),
+                tool_use_id: tool_use_id.clone(),
+                kind: tool_kind(&name),
+                name,
+                input: block.tool_input.clone().unwrap_or(serde_json::Value::Null),
+                // A transcript records neither, the same way it records
+                // no written paths below.
+                locations: Vec::new(),
+                title: None,
+            });
+            return Some(tool_use_id);
+        }
+        "tool_result" => {
+            let Some((tool_use_id, _)) = take_call(open_calls, block) else {
+                // A result whose call is not in this transcript - a
+                // resumed session whose earlier half lives in another
+                // file, most often. Dropped rather than rendered as a
+                // card with no call, which would read as a phantom tool
+                // run that never happened.
+                return None;
+            };
+            events.push(ChatEvent::ToolCallCompleted {
+                session_id: session_id.to_string(),
+                turn_id: turn_id.to_string(),
+                tool_use_id,
+                status: if block.is_error == Some(true) { ToolStatus::Error } else { ToolStatus::Ok },
+                // Whole, and cut by the host afterwards through the same
+                // cache a live event goes through. Cutting here instead
+                // would leave a replayed card offering to fetch a
+                // remainder nothing kept.
+                output: block.text.clone(),
+                // Deliberately empty: the transcript records that a tool
+                // ran, not which paths it wrote. Guessing from the input
+                // would feed per-turn attribution a set nothing measured.
+                files: Vec::new(),
+                // Never recorded on disk, and a fabricated duration
+                // would be indistinguishable from a real one.
+                duration_ms: None,
+                // Read by the scanner from the same
+                // `summarise_result` the live adapter uses, so a
+                // replayed card and a live one cannot disagree about
+                // the same result.
+                summary: block.tool_summary.clone(),
+                output_truncated: false,
+                // Read back off the same `toolUseResult` a live run
+                // reads, so a replayed edit draws the same diff. It is
+                // the only source that survives a reload: nothing
+                // captures a before-state for a session this process
+                // never watched run.
+                patch: block.tool_patch.clone(),
+            });
+        }
+        _ => {}
+    }
+    None
+}
+
+/// One subagent's whole conversation, replayed into the turn that launched it.
+/// Its own message boundaries are not turns here: headers the live run never
+/// made would offer "rewind to here" on a boundary nobody typed.
+fn expand_subagent(
+    events: &mut Vec<ChatEvent>,
+    session_id: &str,
+    turn_id: &str,
+    sub: &SubagentTranscript,
+    by_call: &HashMap<&str, &SubagentTranscript>,
+    seq: &mut usize,
+    expanding: &mut HashSet<String>,
+) {
+    // Nothing the CLI writes can make a cycle; a `meta.json` naming a call
+    // inside its own transcript would otherwise recurse until the stack ran out.
+    if !expanding.insert(sub.agent_id.clone()) {
+        return;
+    }
+    // After the `Agent` card, so a lane launched by another subagent finds its
+    // parent already named in `laneOfCall`.
+    events.push(ChatEvent::SubagentStarted {
+        session_id: session_id.to_string(),
+        agent_id: sub.agent_id.clone(),
+        tool_use_id: sub.tool_use_id.clone(),
+        agent_type: sub.agent_type.clone(),
+        description: sub.description.clone(),
+        prompt: sub.prompt.clone(),
+    });
+    // Its own, because a subagent's calls pair within its own file.
+    let mut open_calls: Vec<(String, String)> = Vec::new();
+    for turn in &sub.turns {
+        for block in &turn.blocks {
+            let opened =
+                push_block(events, session_id, turn_id, Some(&sub.agent_id), block, &mut open_calls, seq);
+            if let Some(nested) = opened.as_deref().and_then(|id| by_call.get(id)) {
+                expand_subagent(events, session_id, turn_id, nested, by_call, seq, expanding);
+            }
+        }
+    }
+    expanding.remove(&sub.agent_id);
 }
 
 fn is_compaction(turn: &TranscriptTurn) -> bool {
@@ -285,6 +393,8 @@ fn take_call(open: &mut Vec<(String, String)>, block: &TranscriptBlock) -> Optio
 mod tests {
     use super::*;
     use crate::sessions::{compaction_block, text_block, tool_call_block, tool_result_block};
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
 
     fn turn(role: &str, blocks: Vec<TranscriptBlock>) -> TranscriptTurn {
         TranscriptTurn { role: role.into(), ts: 0, blocks }
@@ -382,7 +492,7 @@ mod tests {
             let transcript = dir.join("session.jsonl");
             std::fs::write(&transcript, transcript_of(&frames)).expect("write transcript");
             let turns = crate::sessions::transcript_turns(transcript.to_str().unwrap(), "claude");
-            let replayed: Vec<(Option<ToolSummary>, Vec<PatchHunk>)> = events_from_turns("s1", &turns)
+            let replayed: Vec<(Option<ToolSummary>, Vec<PatchHunk>)> = events_from_turns("s1", &turns, &[])
                 .into_iter()
                 .filter_map(|e| match e {
                     ChatEvent::ToolCallCompleted { summary, patch, .. } => Some((summary, patch)),
@@ -456,7 +566,7 @@ mod tests {
             turn("assistant", vec![text_block("text", "fixed".into())]),
         ];
 
-        let events = events_from_turns("s1", &turns);
+        let events = events_from_turns("s1", &turns, &[]);
         assert_eq!(kinds(&events), ["user", "thinking", "text", "started", "completed", "text"]);
         // Every event carries the session, since a shared channel routes on it.
         assert!(events.iter().all(|e| matches!(e,
@@ -488,7 +598,7 @@ mod tests {
             ),
         ];
 
-        let events = events_from_turns("s1", &turns);
+        let events = events_from_turns("s1", &turns, &[]);
         let completed: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
@@ -509,7 +619,7 @@ mod tests {
             turn("assistant", vec![tool_call_block("Read".into(), serde_json::json!({}), None)]),
             turn("tool", vec![tool_result_block(Some("Read".into()), "out".into(), false, None, None, Vec::new())]),
         ];
-        let events = events_from_turns("s1", &turns);
+        let events = events_from_turns("s1", &turns, &[]);
         let started = match &events[0] {
             ChatEvent::ToolCallStarted { tool_use_id, .. } => tool_use_id.clone(),
             other => panic!("expected a started call, got {other:?}"),
@@ -527,13 +637,13 @@ mod tests {
             "user",
             vec![tool_result_block(None, "orphan".into(), false, Some("toolu_gone".into()), None, Vec::new())],
         )];
-        assert!(events_from_turns("s1", &turns).is_empty());
+        assert!(events_from_turns("s1", &turns, &[]).is_empty());
     }
 
     #[test]
     fn replayed_ids_cannot_collide_with_a_live_turn() {
         let turns = vec![turn("user", vec![text_block("text", "hi".into())])];
-        match &events_from_turns("s1", &turns)[0] {
+        match &events_from_turns("s1", &turns, &[])[0] {
             ChatEvent::UserMessage { turn_id, .. } => {
                 assert!(turn_id.starts_with(TURN_PREFIX));
                 // A live turn is `turn-1`; a replayed one must never be.
@@ -569,7 +679,7 @@ mod tests {
         .unwrap();
 
         let turns = crate::sessions::transcript_turns(path.to_str().unwrap(), "claude");
-        let events = events_from_turns("s1", &turns);
+        let events = events_from_turns("s1", &turns, &[]);
         assert_eq!(kinds(&events), ["user", "text", "started", "completed"]);
 
         // The fact the user stated in the terminal is in the replay, which is
@@ -651,7 +761,7 @@ mod tests {
         .unwrap();
 
         let turns = crate::sessions::transcript_turns(path.to_str().unwrap(), "claude");
-        let events = events_from_turns("s1", &turns);
+        let events = events_from_turns("s1", &turns, &[]);
         assert_eq!(kinds(&events), ["user", "user"]);
         let texts: Vec<_> = events
             .iter()
@@ -687,7 +797,7 @@ mod tests {
         .unwrap();
 
         let turns = crate::sessions::transcript_turns(path.to_str().unwrap(), "claude");
-        assert_eq!(kinds(&events_from_turns("s1", &turns)), ["user"]);
+        assert_eq!(kinds(&events_from_turns("s1", &turns, &[])), ["user"]);
         let _ = std::fs::remove_file(&path);
     }
 
@@ -716,7 +826,7 @@ mod tests {
         .unwrap();
 
         let turns = crate::sessions::transcript_turns(path.to_str().unwrap(), "claude");
-        let events = events_from_turns("s1", &turns);
+        let events = events_from_turns("s1", &turns, &[]);
         // The continuation preamble is *not* a second user turn.
         assert_eq!(kinds(&events), ["user", "other", "text"]);
         match &events[1] {
@@ -737,7 +847,7 @@ mod tests {
     #[test]
     fn a_compaction_with_no_following_turn_reports_no_summary() {
         let turns = vec![turn("compaction", vec![crate::sessions::compaction_block(Some("auto".into()), Some(100), Some(10))])];
-        match &events_from_turns("s1", &turns)[0] {
+        match &events_from_turns("s1", &turns, &[])[0] {
             // A session compacted and then closed has no summary message yet,
             // and inventing one would be worse than saying nothing.
             ChatEvent::Compacted { summary, trigger, .. } => {
@@ -759,7 +869,7 @@ mod tests {
             ),
             turn("user", vec![tool_result_block(None, "ok".into(), false, Some("t1".into()), None, Vec::new())]),
         ];
-        match &events_from_turns("s1", &turns)[1] {
+        match &events_from_turns("s1", &turns, &[])[1] {
             ChatEvent::ToolCallCompleted { files, duration_ms, .. } => {
                 assert!(files.is_empty());
                 assert!(duration_ms.is_none());
@@ -829,8 +939,8 @@ mod tests {
             stamped("assistant", 1205, "also done"),
         ];
         let at = prompt_boundary(&turns, 1200).unwrap();
-        let cut = events_from_turns("s1", &turns[..at]);
-        let whole = events_from_turns("s1", &turns);
+        let cut = events_from_turns("s1", &turns[..at], &[]);
+        let whole = events_from_turns("s1", &turns, &[]);
         assert_eq!(cut, whole[..cut.len()]);
         // And it really did cut: the second exchange is gone, not merely equal
         // by both sides being empty.
@@ -843,5 +953,199 @@ mod tests {
         // rather than opening it blank.
         assert_eq!(prompt_boundary(&[], 1200), None);
         assert_eq!(prompt_boundary(&[stamped("assistant", 1200, "hi")], 1200), None);
+    }
+
+    /// Replay a committed session fixture, sidecars and all. Read from
+    /// `CARGO_MANIFEST_DIR` for the reason the fixture README gives.
+    fn replay_session(name: &str) -> Vec<ChatEvent> {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("dev/fixtures/sessions")
+            .join(format!("{name}.jsonl"));
+        let path = path.to_str().expect("fixture path is utf-8");
+        let turns = crate::sessions::transcript_turns(path, "claude");
+        let subagents = crate::sessions::subagent_transcripts(path, "claude");
+        events_from_turns("s1", &turns, &subagents)
+    }
+
+    /// The same run as it arrived live, straight off the captured stream.
+    fn live_events(name: &str) -> Vec<ChatEvent> {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("dev/fixtures/claude")
+            .join(format!("{name}.jsonl"));
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let mut mapper = crate::chat::claude::ClaudeMapper::new("s1");
+        raw.lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).expect("fixture line is json"))
+            .flat_map(|f| mapper.map(&f))
+            .collect()
+    }
+
+    /// Every lane a run produced and, in order, what each put on screen.
+    /// Consecutive text collapses the way the store's fold collapses it into one
+    /// bubble, so a stream's deltas and a replay's whole block compare equal.
+    fn lane_shapes(events: &[ChatEvent]) -> BTreeMap<String, Vec<&'static str>> {
+        let mut lane_of_call: HashMap<&str, &str> = HashMap::new();
+        for ev in events {
+            if let ChatEvent::SubagentCall { agent_id, tool_use_id, .. } = ev {
+                lane_of_call.insert(tool_use_id, agent_id);
+            }
+        }
+        let mut out: BTreeMap<String, Vec<&'static str>> = BTreeMap::new();
+        for ev in events {
+            match ev {
+                ChatEvent::SubagentStarted { agent_id, .. } => {
+                    out.entry(agent_id.clone()).or_default();
+                }
+                ChatEvent::TextDelta { agent_id: Some(agent_id), .. } => {
+                    let rows = out.entry(agent_id.clone()).or_default();
+                    if rows.last() != Some(&"text") {
+                        rows.push("text");
+                    }
+                }
+                ChatEvent::ToolCallStarted { tool_use_id, .. } => {
+                    if let Some(agent_id) = lane_of_call.get(tool_use_id.as_str()) {
+                        out.entry((*agent_id).to_string()).or_default().push("tool");
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// Each pair is the **same run** captured twice, the stream and the files
+    /// the CLI wrote for it. Comparing two different runs would only prove each
+    /// shape self-consistent.
+    ///
+    /// **A foreground subagent's closing report is not on the wire at all.**
+    /// Measured: the nested frames of `permission-subagent` and
+    /// `subagent-parallel` are the call and its result and nothing else, while
+    /// the backgrounded run does send its closing `assistant/text`. So reopening
+    /// a foreground lane shows *more*, and this asserts a superset.
+    #[test]
+    fn a_reopened_session_offers_the_lanes_the_live_run_showed() {
+        for (fixture, session) in [
+            ("permission-subagent", "subagent-foreground"),
+            ("subagent-background", "subagent-background"),
+        ] {
+            let replayed = lane_shapes(&replay_session(session));
+            let live = lane_shapes(&live_events(fixture));
+            assert_eq!(
+                replayed.keys().collect::<Vec<_>>(),
+                live.keys().collect::<Vec<_>>(),
+                "{session}: the same lanes"
+            );
+            for (lane, rows) in &live {
+                let mine = replayed.get(lane).expect("the lane is there");
+                assert_eq!(&mine[..rows.len()], &rows[..], "{session}: lane {lane} kept the rows it showed live");
+            }
+        }
+
+        // The one row the two disagree on, named rather than left to a count.
+        assert_eq!(
+            lane_shapes(&replay_session("subagent-foreground")).get("acb01121756a92ca0").map(Vec::as_slice),
+            Some(["tool", "text"].as_slice()),
+            "its call, then the closing report only the sidecar has"
+        );
+        assert_eq!(
+            lane_shapes(&live_events("subagent-background")).get("ad7048d25dc5e778a").map(Vec::as_slice),
+            lane_shapes(&replay_session("subagent-background")).get("ad7048d25dc5e778a").map(Vec::as_slice),
+            "a backgrounded lane does send its report, so its two shapes match exactly"
+        );
+    }
+
+    /// A lane belongs to the turn that launched it, so its rows group under the
+    /// header the live run put them under.
+    #[test]
+    fn a_reopened_subagents_rows_stay_in_the_turn_that_launched_it() {
+        let events = replay_session("subagent-foreground");
+        let launcher = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::ToolCallStarted { tool_use_id, name, turn_id, .. } if name == "Agent" => {
+                    Some((tool_use_id.clone(), turn_id.clone()))
+                }
+                _ => None,
+            })
+            .expect("the Agent call");
+        let laned: Vec<&String> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::TextDelta { agent_id: Some(_), turn_id, .. } => Some(turn_id),
+                _ => None,
+            })
+            .collect();
+        assert!(!laned.is_empty(), "the lane produced rows to attribute");
+        assert!(laned.iter().all(|t| **t == launcher.1), "every laned row sits in the launching turn");
+        assert_eq!(launcher.0, "toolu_01Ec9PYYDVBe9S6DjXp4RM1s");
+    }
+
+    /// A backgrounded subagent ends twice on disk: the call returns
+    /// `async_launched`, the ending arrives later as a notification. The later
+    /// record has to win, or a reopened lane reads as never finished.
+    #[test]
+    fn a_reopened_background_lane_ends_where_its_notification_says() {
+        let events = replay_session("subagent-background");
+        let statuses: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::SubagentUpdate { agent_id, status: Some(s), .. } if agent_id == "ad7048d25dc5e778a" => {
+                    Some(s.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(statuses, ["async_launched", "completed"], "the launch, then the ending");
+
+        let ending = events
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                ChatEvent::SubagentUpdate { usage: Some(u), summary, .. } => Some((*u, summary.clone())),
+                _ => None,
+            })
+            .expect("a terminal update");
+        assert_eq!(ending.0.total_tokens, 9551);
+        assert_eq!(ending.0.tool_uses, 1);
+        assert_eq!(ending.1.as_deref(), Some("Agent \"Create bg file\" finished"));
+
+        // And it is no longer also a message the user appears to have sent.
+        let said: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::UserMessage { blocks, .. } => Some(
+                    blocks
+                        .iter()
+                        .map(|b| match b {
+                            ContentBlock::Text { text } => text.clone(),
+                            _ => String::new(),
+                        })
+                        .collect::<String>(),
+                ),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(said.len(), 1, "one prompt, the one that was typed: {said:?}");
+    }
+
+    /// The common session, which never launched one, replays as it always did.
+    #[test]
+    fn a_session_with_no_subagents_replays_untouched() {
+        let events = replay_session("plain-prompt");
+        assert!(!events.is_empty(), "the fixture still replays");
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                ChatEvent::SubagentStarted { .. } | ChatEvent::SubagentCall { .. } | ChatEvent::SubagentUpdate { .. }
+            )),
+            "no lane is invented for a session that never fanned out"
+        );
+        assert!(
+            events.iter().all(|e| !matches!(e, ChatEvent::TextDelta { agent_id: Some(_), .. })),
+            "and no row is laned"
+        );
     }
 }
