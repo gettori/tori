@@ -784,7 +784,11 @@ pub async fn chat_history(
         Some(at) => &turns[..at],
         None => &turns[..],
     };
-    let mut events = super::history::events_from_turns(&session_id, shown);
+    // Read whole rather than cut at the rewind boundary: a subagent is placed at
+    // its own `Agent` call, so one launched after the cut simply has no call
+    // left to hang on and drops out on its own.
+    let subagents = crate::sessions::subagent_transcripts(&path, &agent_id);
+    let mut events = super::history::events_from_turns(&session_id, shown, &subagents);
     // The cut a live event gets on its way through the sink wrapper. Applied
     // here because replay does not pass through it, and applied through the
     // same cache so a backfilled card can fetch its remainder too.
