@@ -36,6 +36,9 @@ function list(
     streaming?: boolean;
     anchorTurnId?: string | null;
     onAnchor?: (id: string | null) => void;
+    rewindTsFor?: (turnId: string) => number | null;
+    agentTurn?: (turnId: string) => boolean;
+    onRewind?: (promptTs: number) => void;
   } = {},
 ) {
   return (
@@ -423,5 +426,54 @@ describe("the thinking label follows the stream", () => {
   it("reads plain Thought where the span measured nothing", () => {
     render(() => list({ items: [{ ...THINKING, endedAt: 1000 }] }));
     expect(screen.getByRole("button", { name: "Thought" })).toBeTruthy();
+  });
+});
+
+// A background subagent finishing makes the CLI open a turn of its own, with no
+// user message in front of it. The transcript must not read that turn as an
+// answer to whatever the reader last asked.
+describe("a turn the agent opened for itself", () => {
+  const REPORT: ChatItem[] = [
+    { kind: "user", id: "u1", blocks: [{ type: "text", text: "launch it in the background" }], steer: false },
+    { kind: "text", id: "t2", turnId: "turn-2", text: "the background subagent finished" },
+  ];
+
+  it("claims no prompt of its own", () => {
+    // Without the guard the prompt hangs on `turn-2`, so "rewind to here" would
+    // restore the tree as it stood *after* the turn the reader meant.
+    const { container } = render(() =>
+      list({
+        items: REPORT,
+        rewindTsFor: () => 1,
+        onRewind: () => {},
+        agentTurn: (id) => id === "turn-2",
+      }),
+    );
+    expect(container.textContent).not.toContain("Rewind to here");
+
+    // The control, so the assertion above cannot pass for the wrong reason.
+    const same = render(() => list({ items: REPORT, rewindTsFor: () => 1, onRewind: () => {} }));
+    expect(same.container.textContent).toContain("Rewind to here");
+  });
+
+  it("leaves the prompt on the turn the user actually opened", () => {
+    const items: ChatItem[] = [
+      REPORT[0]!,
+      { kind: "text", id: "t1", turnId: "turn-1", text: "launched" },
+      REPORT[1]!,
+    ];
+    const asked: string[] = [];
+    render(() =>
+      list({
+        items,
+        rewindTsFor: (id) => {
+          asked.push(id);
+          return 1;
+        },
+        onRewind: () => {},
+        agentTurn: (id) => id === "turn-2",
+      }),
+    );
+    expect(asked).toEqual(["turn-1"]);
   });
 });

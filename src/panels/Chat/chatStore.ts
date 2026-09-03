@@ -45,6 +45,7 @@ import type {
   PlanItem,
   QuestionAnswer,
   SlashCommand,
+  SubagentUsage,
   ToolKind,
   ToolLocation,
   ToolSummary,
@@ -115,11 +116,19 @@ export type NoticeItem = {
    *  minute of complete wire silence: the row is what says the session is
    *  working rather than wedged, and the stamp is what lets it count. */
   pendingSince?: number;
+  /** Kept in `items` but dropped by the view, the same move a folded hook row
+   *  makes. Set on a compaction whose turn ended without a boundary: removing
+   *  the row would move every index in `toolIndex` under it. */
+  hidden?: boolean;
 };
 export type ToolItem = {
   kind: "tool";
   id: string;
   toolUseId: string;
+  /** The subagent that made the call, or null for the main agent. Filled from
+   *  whichever frame names the lane first: `subagentCall`, or the permission
+   *  prompt for a call that had to ask. */
+  agentId: string | null;
   /** Null until a frame that knows the turn arrives: a permission prompt is
    *  session-scoped on the wire and can materialize the card first. */
   turnId: string | null;
@@ -216,6 +225,45 @@ export type QuestionItem = {
 
 export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeItem | HookItem | QuestionItem;
 
+/** The lane a row belongs to: the subagent that produced it, or null for the
+ *  main agent. Only a card and a question can answer anything else today - a
+ *  subagent does not stream, so its calls are all that reach this store. */
+export function laneOf(it: ChatItem): string | null {
+  return it.kind === "tool" || it.kind === "question" ? it.agentId : null;
+}
+
+/** The main agent's key in the per-lane maps. Empty rather than a word: a
+ *  subagent's id is the CLI's `task_id`, which no reserved name can rule out. */
+const MAIN_LANE = "";
+
+function laneKey(agentId: string | null): string {
+  return agentId ?? MAIN_LANE;
+}
+
+/** One subagent, as the lane strip reads it. Everything but `agentId` is
+ *  nullable because three frames patch this a piece at a time, and `status`
+ *  stays the agent's own word so `cancelled` cannot fold into "finished". */
+export type Lane = {
+  agentId: string;
+  /** The `Agent` call that launched it: the way back into the lane from the
+   *  parent's transcript once the lane leaves the strip. */
+  toolUseId: string | null;
+  agentType: string | null;
+  /** What it was asked to do. `activity` is what it is doing now. */
+  description: string | null;
+  prompt: string | null;
+  status: string | null;
+  activity: string | null;
+  lastToolName: string | null;
+  usage: SubagentUsage | null;
+  summary: string | null;
+  /** The lane this one was launched from, or null for one the main agent
+   *  opened. Only a null-parent lane reaches the strip: a deeper agent renders
+   *  as cards inside its ancestor's lane, so the strip stays a list. */
+  parentId: string | null;
+  startedAt: number;
+};
+
 /** The tool whose call is a question. Named here as well as in the Rust mapper
  *  because a replayed session carries no `questionRequest` to recognise: the
  *  name on the tool call is the only signal history preserves. */
@@ -241,6 +289,9 @@ export function answerable(item: QuestionItem): boolean {
  *
  * Nothing is ever dropped from `items` (the render window is a view, not
  * storage), so this is a total rather than a count of what is on screen.
+ *
+ * Unscoped by lane, unlike `toolCallsSeen`: nothing can talk to a subagent, so
+ * a `user` row is the main agent's by construction.
  */
 export function promptsSent(s: ChatState): number {
   return s.items.reduce((n, it) => n + (it.kind === "user" ? 1 : 0), 0);
@@ -252,9 +303,12 @@ export function promptsSent(s: ChatState): number {
  * One per `toolUseId`, which is what a tool card is keyed by, so a call
  * announced twice (the permission prompt and the assistant frame race) counts
  * once. Same reason as `promptsSent` for not asking the scan.
+ *
+ * **The main agent's calls only.** One `Agent` call that fanned out into twenty
+ * is one call the session made, and the strip pairs this with the prompt count.
  */
 export function toolCallsSeen(s: ChatState): number {
-  return s.items.reduce((n, it) => n + (it.kind === "tool" ? 1 : 0), 0);
+  return s.items.reduce((n, it) => n + (it.kind === "tool" && laneOf(it) === null ? 1 : 0), 0);
 }
 
 /**
@@ -275,10 +329,16 @@ export function toolCallsSeen(s: ChatState): number {
  *
  * The setting reveals everything, and nothing is ever dropped from the state,
  * so the toggle works on a session already in progress.
+ *
+ * `lane` narrows it to one agent's rows, null being the main agent's. A hidden
+ * notice survives neither: it is kept only so the indexes above it stay put.
  */
-export function visibleItems(items: readonly ChatItem[], showAllHooks: boolean): ChatItem[] {
-  if (showAllHooks) return items.slice();
-  return items.filter((it) => it.kind !== "hook" || hookFailed(it));
+export function visibleItems(items: readonly ChatItem[], showAllHooks: boolean, lane: string | null): ChatItem[] {
+  return items.filter((it) => {
+    if (laneOf(it) !== lane) return false;
+    if (it.kind === "notice" && it.hidden) return false;
+    return showAllHooks || it.kind !== "hook" || hookFailed(it);
+  });
 }
 
 /** The one outcome worth a transcript row: the agent reported a non-zero
@@ -293,7 +353,14 @@ export type QueuedInput = { id: string; text: string };
  *  for a turn that never named one (replayed history has no turn frames). The
  *  transcript's per-turn header reads it, so an old turn keeps the model that
  *  actually ran it rather than inheriting whatever the session switched to. */
-type TurnRecord = { completed: boolean; model: string | null };
+type TurnRecord = {
+  completed: boolean;
+  model: string | null;
+  /** The agent opened this turn, not anything the user sent: a background
+   *  subagent finishing makes the CLI open one. The transcript must not hang
+   *  the user's last prompt on it. */
+  agentInitiated: boolean;
+};
 
 export type ChatState = {
   sessionId: string;
@@ -312,10 +379,22 @@ export type ChatState = {
   answerQuestionsInline: boolean;
   turns: Record<string, TurnRecord>;
   activeTurnId: string | null;
-  /** The bubble a further delta of the same kind appends to, or null when the
-   *  next delta must open a fresh one. */
-  openTextId: string | null;
-  openThinkingId: string | null;
+  /** Lane key -> index in `items` of the bubble a further delta appends to,
+   *  absent when the next must open a fresh one. An index per lane, because a
+   *  subagent's card landing between two deltas made the old "is it still the
+   *  last row" check answer no and split the paragraph in half. */
+  openText: Record<string, number>;
+  openThinking: Record<string, number>;
+  /** Every subagent this session has heard of. Nothing is ever removed: a lane
+   *  leaves the *strip* when it ends, and its rows stay readable. */
+  lanes: Record<string, Lane>;
+  /** The lane being read, or null for the main agent. Never restored from a
+   *  previous session, whose subagents are gone. */
+  selectedLane: string | null;
+  /** `toolUseId` -> the lane a subagent's call ran in. Kept because a card can
+   *  be made before the frame naming its lane, and because a nested `Agent`
+   *  call is how a depth-2 lane finds its parent. */
+  laneOfCall: Record<string, string>;
   /** When this chat last showed a sign of life, of any kind. Read by nothing
    *  but the thinking span, which needs to know when the model went quiet, and
    *  the last frame is the only thing that knows. */
@@ -497,8 +576,11 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     answerQuestionsInline,
     turns: {},
     activeTurnId: null,
-    openTextId: null,
-    openThinkingId: null,
+    openText: {},
+    openThinking: {},
+    lanes: {},
+    selectedLane: null,
+    laneOfCall: {},
     lastFrameAt: Date.now(),
     ready: false,
     started: false,
@@ -585,11 +667,13 @@ function settleCompaction(s: ChatState): NoticeItem | null {
   return item?.kind === "notice" ? item : null;
 }
 
-/** Appending anything closes both streaming bubbles, so text that resumes after
- *  a tool call renders as its own bubble in the right place. */
+/** Appending closes both streaming bubbles **of its own lane**, so text after a
+ *  tool call opens a fresh bubble while a subagent's card, which renders
+ *  nowhere near it, leaves the main agent's paragraph alone. */
 function push(s: ChatState, item: ChatItem) {
-  s.openTextId = null;
-  s.openThinkingId = null;
+  const lane = laneKey(laneOf(item));
+  delete s.openText[lane];
+  delete s.openThinking[lane];
   s.items.push(item);
 }
 
@@ -606,6 +690,7 @@ function ensureTool(s: ChatState, toolUseId: string, turnId: string | null): Too
     kind: "tool",
     id: nextId(s, "tool"),
     toolUseId,
+    agentId: s.laneOfCall[toolUseId] ?? null,
     turnId,
     name: null,
     title: null,
@@ -654,7 +739,7 @@ function ensureQuestion(s: ChatState, toolUseId: string, turnId: string | null):
       toolUseId,
       turnId: card.turnId ?? turnId,
       requestId: null,
-      agentId: null,
+      agentId: card.agentId,
       questions: parseQuestions(card.input) ?? [],
       submitted: null,
       result: card.output,
@@ -673,7 +758,7 @@ function ensureQuestion(s: ChatState, toolUseId: string, turnId: string | null):
     toolUseId,
     turnId,
     requestId: null,
-    agentId: null,
+    agentId: s.laneOfCall[toolUseId] ?? null,
     questions: [],
     submitted: null,
     result: null,
@@ -733,7 +818,7 @@ function touchTurn(s: ChatState, turnId: string) {
     if (!known.completed) s.activeTurnId = turnId;
     return;
   }
-  s.turns[turnId] = { completed: false, model: null };
+  s.turns[turnId] = { completed: false, model: null, agentInitiated: false };
   s.activeTurnId = turnId;
   s.awaitingTurn = false;
   // A new turn is the boundary the CLI applies a queued effort switch at, and
@@ -749,6 +834,70 @@ function touchTurn(s: ChatState, turnId: string) {
     s.effort = s.pendingEffort;
     s.pendingEffort = undefined;
   }
+}
+
+/** The lane a subagent's rows land in: itself when the main agent launched it,
+ *  its topmost ancestor when another subagent did. Flattened here rather than
+ *  at render, so the strip stays a list instead of becoming a tree. */
+function rootLane(s: ChatState, agentId: string): string {
+  const seen = new Set<string>([agentId]);
+  let id = agentId;
+  for (;;) {
+    const parent = s.lanes[id]?.parentId;
+    // Nothing on the wire can make a cycle. Guarded anyway because the cost of
+    // being wrong is a hung fold rather than a misplaced row.
+    if (!parent || seen.has(parent)) return id;
+    seen.add(parent);
+    id = parent;
+  }
+}
+
+/** The lane record, created empty on first mention: a permission prompt carries
+ *  the `task_id` alone and can beat `task_started` to the panel. */
+function ensureLane(s: ChatState, agentId: string): Lane {
+  const known = s.lanes[agentId];
+  if (known) return known;
+  const lane: Lane = {
+    agentId,
+    toolUseId: null,
+    agentType: null,
+    description: null,
+    prompt: null,
+    status: null,
+    activity: null,
+    lastToolName: null,
+    usage: null,
+    summary: null,
+    parentId: null,
+    startedAt: Date.now(),
+  };
+  s.lanes[agentId] = lane;
+  return lane;
+}
+
+/** Attribute one call to a lane, and to whichever row was already made for it:
+ *  the card and the frame naming its lane race on the wire. */
+function noteLane(s: ChatState, toolUseId: string, agentId: string) {
+  ensureLane(s, agentId);
+  const lane = rootLane(s, agentId);
+  s.laneOfCall[toolUseId] = lane;
+  const at = s.toolIndex[toolUseId];
+  if (at !== undefined) (s.items[at] as ToolItem).agentId = lane;
+  const askedAt = s.questionIndex[toolUseId];
+  if (askedAt !== undefined) (s.items[askedAt] as QuestionItem).agentId = lane;
+}
+
+/** The lanes the strip offers: one per subagent the **main** agent launched, in
+ *  start order. A deeper agent is absent by design - its rows render inside its
+ *  ancestor's lane. */
+export function laneStrip(s: ChatState): Lane[] {
+  return Object.values(s.lanes).filter((l) => l.parentId === null);
+}
+
+/** Read another lane, or main with `null`. One this session never had falls
+ *  back to main rather than to an empty transcript. */
+export function selectLane(s: ChatState, agentId: string | null) {
+  s.selectedLane = agentId !== null && s.lanes[agentId] ? rootLane(s, agentId) : null;
 }
 
 /** Record the mode the child says it is in, and settle any pending pick: at the
@@ -779,16 +928,17 @@ function noteModel(s: ChatState, resolvedModel: string) {
   s.pendingModel = null;
 }
 
+/** The main agent's lane, always: a subagent does not stream, so nothing on the
+ *  wire carries a nested delta. See `laneOf`. */
 function appendText(s: ChatState, turnId: string, text: string, thinking: boolean) {
   touchTurn(s, turnId);
-  const openId = thinking ? s.openThinkingId : s.openTextId;
-  if (openId !== null) {
-    const last = s.items[s.items.length - 1] as TextItem | ThinkingItem;
-    if (last.id === openId) {
-      last.text += text;
-      if (last.kind === "thinking") last.endedAt = Date.now();
-      return;
-    }
+  const open = thinking ? s.openThinking : s.openText;
+  const at = open[MAIN_LANE];
+  if (at !== undefined) {
+    const block = s.items[at] as TextItem | ThinkingItem;
+    block.text += text;
+    if (block.kind === "thinking") block.endedAt = Date.now();
+    return;
   }
   const item: TextItem | ThinkingItem = thinking
     ? // Opens at the previous frame, not at this one: the silence before the
@@ -796,8 +946,7 @@ function appendText(s: ChatState, turnId: string, text: string, thinking: boolea
       { kind: "thinking", id: nextId(s, "think"), turnId, text, startedAt: s.lastFrameAt, endedAt: Date.now() }
     : { kind: "text", id: nextId(s, "text"), turnId, text };
   push(s, item);
-  if (thinking) s.openThinkingId = item.id;
-  else s.openTextId = item.id;
+  open[MAIN_LANE] = s.items.length - 1;
 }
 
 /**
@@ -908,6 +1057,9 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       noteMode(s, ev.permissionMode);
       touchTurn(s, ev.turnId);
       s.turns[ev.turnId].model = ev.model;
+      // Assigned rather than or-ed in: a delta that overtook this frame created
+      // the record already, and `false` is what it had to assume.
+      s.turns[ev.turnId].agentInitiated = ev.agentInitiated;
       return;
     }
     case "modeRefused": {
@@ -1120,6 +1272,9 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       return;
     }
     case "permissionRequest": {
+      // Before the card is made, not after: a card born in the main lane would
+      // close the paragraph the main agent is midway through.
+      if (ev.agentId) noteLane(s, ev.toolUseId, ev.agentId);
       const card = ensureTool(s, ev.toolUseId, null);
       if (card.approval?.requestId === ev.requestId) return;
       // A prompt for a call that already finished is stale (the auto-deny
@@ -1137,13 +1292,39 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       return;
     }
     case "questionRequest": {
+      if (ev.agentId) noteLane(s, ev.toolUseId, ev.agentId);
       const item = ensureQuestion(s, ev.toolUseId, null);
       // A request for a call that already settled is stale, the same race a
       // permission prompt can lose; leave the answered row alone.
       if (item.result !== null) return;
       item.requestId = ev.requestId;
-      item.agentId = ev.agentId;
       item.questions = ev.questions;
+      return;
+    }
+    case "subagentStarted": {
+      const lane = ensureLane(s, ev.agentId);
+      lane.toolUseId = ev.toolUseId;
+      lane.agentType = ev.agentType;
+      lane.description = ev.description;
+      lane.prompt = ev.prompt;
+      // The call that opened this lane may itself belong to one, which is what
+      // makes this a depth-2 agent. Read from `laneOfCall`, so this frame has
+      // to precede the lane's own calls - which is the order measured.
+      lane.parentId = s.laneOfCall[ev.toolUseId] ?? null;
+      return;
+    }
+    case "subagentCall":
+      noteLane(s, ev.toolUseId, ev.agentId);
+      return;
+    case "subagentUpdate": {
+      // Three frames patch this record and each sends a different subset, so
+      // null is "not reported now" rather than "cleared".
+      const lane = ensureLane(s, ev.agentId);
+      if (ev.status !== null) lane.status = ev.status;
+      if (ev.activity !== null) lane.activity = ev.activity;
+      if (ev.lastToolName !== null) lane.lastToolName = ev.lastToolName;
+      if (ev.usage !== null) lane.usage = ev.usage;
+      if (ev.summary !== null) lane.summary = ev.summary;
       return;
     }
     case "planUpdate":
@@ -1171,17 +1352,24 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
     case "turnCompleted": {
       const known = s.turns[ev.turnId];
       if (known?.completed) return;
-      s.turns[ev.turnId] = { completed: true, model: known?.model ?? null };
+      s.turns[ev.turnId] = {
+        completed: true,
+        model: known?.model ?? null,
+        agentInitiated: known?.agentInitiated ?? false,
+      };
       if (s.activeTurnId === ev.turnId) s.activeTurnId = null;
       s.awaitingTurn = false;
-      s.openTextId = null;
-      s.openThinkingId = null;
-      // A compaction cannot outlive the turn it ran in. If the turn ended
-      // without either a boundary or an error - an interrupt, a crash, a CLI
-      // that reports neither - the row goes rather than sitting there claiming
-      // to still be working. Nothing was recorded, so nothing is claimed.
+      // The main agent's bubbles only. A background subagent runs on past the
+      // turn that launched it, and closing its lane here would cut whatever it
+      // is midway through saying.
+      delete s.openText[MAIN_LANE];
+      delete s.openThinking[MAIN_LANE];
+      // A compaction cannot outlive its turn: one still saying "Compacting"
+      // after the turn ended claims work nothing recorded. Hidden rather than
+      // removed, because `toolIndex` holds positions into `items` and splicing
+      // moved every entry above it.
       const unsettled = settleCompaction(s);
-      if (unsettled) s.items = s.items.filter((i) => i.id !== unsettled.id);
+      if (unsettled) unsettled.hidden = true;
       // Not `lastUsage`: this frame is the turn added up across every API call
       // it made, and reading it as the context is what put 7.8M in a 1M window.
       s.lastTurnUsage = ev.usage;
