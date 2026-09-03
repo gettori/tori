@@ -101,11 +101,17 @@ export default function TerminalView(props: {
   // sides of a diverging conversation to one file.
   sessionId?: string;
   active: boolean;
+  /** Take the keyboard on the way to active. Default true, because a tab the
+   *  user clicked is a tab they mean to type in. A job sets it false when its
+   *  caller declared it non-interactive: a clone opens by itself, and the next
+   *  keystroke belongs wherever it was already going. */
+  autoFocus?: boolean;
   /** The session id was refused: something else already drives it, so nothing
    *  was spawned. The owner renders the way out, because only it can focus
    *  another tab or open a fresh session. */
   onOwnershipRefused?: (refusal: Refusal) => void;
 }) {
+  const takesFocus = () => props.active && props.autoFocus !== false;
   let host!: HTMLDivElement;
   let searchInput: HTMLInputElement | undefined;
   let term: Terminal | undefined;
@@ -344,10 +350,10 @@ export default function TerminalView(props: {
 
     ro = new ResizeObserver(onResizeObserved);
     ro.observe(host);
-    if (props.active) term.focus();
+    if (takesFocus()) term.focus();
 
     offFocus = onEvent(FOCUS_TERMINAL, () => {
-      if (props.active) term?.focus();
+      if (takesFocus()) term?.focus();
     });
     offTheme = onEvent(THEME_APPLIED, () => {
       if (term) term.options.theme = termColors();
@@ -389,7 +395,7 @@ export default function TerminalView(props: {
       traceMark("term:revealed");
       queueMicrotask(() => {
         fitNow();
-        term?.focus();
+        if (takesFocus()) term?.focus();
         traceMark("term:focused");
       });
     } else {

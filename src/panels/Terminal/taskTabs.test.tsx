@@ -108,25 +108,6 @@ describe("a task tab arriving from the Tasks panel", () => {
     expect(tab.program).toBe("");
     expect(tab.cwd).toBe(REPO);
   });
-
-  it("still spawns a clone the old way, directly and with no init", async () => {
-    // The kind is optional on the event, so the callers that predate tasks must
-    // keep getting a `command` tab: theirs stays put on failure so it can be
-    // read, which a login shell would swallow.
-    mount();
-    emitWith<OpenTerminal>(OPEN_TERMINAL, {
-      id: "clone-1",
-      title: "Clone",
-      cwd: "/tmp/new",
-      program: "git",
-      args: ["clone", "url"],
-    });
-    await waitFor(() => expect(bridge.spawned.some((s) => s.id === "clone-1")).toBe(true));
-
-    const tab = bridge.spawned.find((s) => s.id === "clone-1")!;
-    expect(tab.kind).toBe("command");
-    expect(tab.init).toBeUndefined();
-  });
 });
 
 describe("what a relaunch brings back", () => {

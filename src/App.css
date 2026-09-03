@@ -326,6 +326,9 @@ html {
   /* Breathing room around the raised card. The left gap is the outer splitter,
      so no padding-left here. */
   padding: 0 calc(10px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
+  /* The job drawer's containing block: it takes this box's bottom edge rather
+     than the window's, so it never covers the sidebar. */
+  position: relative;
 }
 
 /* The raised work-card: terminal + editor read as one elevated block floating

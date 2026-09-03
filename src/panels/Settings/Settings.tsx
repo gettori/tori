@@ -16,7 +16,7 @@ import { Bot, Braces, Columns2, FileCode, MessageSquare, Palette, Plug, X, type 
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
-import { OPEN_TERMINAL, onWith } from "../../utils/events";
+import { OPEN_JOB, OPEN_TERMINAL, onWith } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
@@ -236,9 +236,11 @@ export default function Settings(props: {
   );
 
   // The panel is a modal over the workspace, and two of its buttons (Sign in,
-  // Install) open a terminal tab. Without this the tab lands *behind* the
-  // still-open overlay, which reads as the button doing nothing; the panel
-  // closes and hands the screen to the work it just started.
+  // Install) start a job. Without this the drawer opens *behind* the still-open
+  // overlay, which reads as the button doing nothing; the panel closes and
+  // hands the screen to the work it just started. A tab counts too: the palette
+  // reaches over this modal, so a task can be run from here.
+  onCleanup(onWith(OPEN_JOB, () => props.onClose()));
   onCleanup(onWith(OPEN_TERMINAL, () => props.onClose()));
 
   onMount(() => {

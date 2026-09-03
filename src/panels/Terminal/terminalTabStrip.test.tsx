@@ -100,15 +100,16 @@ function mount() {
   ));
 }
 
-/** Open a plain shell tab, the way the New button does. The title is what the
- *  tab is named, so these are reachable by name rather than by position. */
+/** Put one more tab in the strip. The title is what the tab is named, so these
+ *  are reachable by name rather than by position. */
 async function openShell(id: string) {
   emitWith<OpenTerminal>(OPEN_TERMINAL, {
     id,
     title: id,
     cwd: REPO,
-    program: "bash",
+    program: "",
     args: [],
+    kind: "task",
   });
   await waitFor(() => expect(tabs(id)).toHaveLength(1));
 }
