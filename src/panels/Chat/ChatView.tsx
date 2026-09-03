@@ -542,6 +542,11 @@ export default function ChatView(props: {
       if (ev.type === "sessionError" && ev.fatal && !canSend()) {
         failFirstSend(ev.message);
       }
+      // Said out loud as well as marked on the row: the row is behind a menu
+      // the user has already closed by the time the answer comes back.
+      if (ev.type === "modeRefused") {
+        emitWith<ToastEvent>(TOAST, { message: ev.reason, kind: "error" });
+      }
       // A real turn boundary, not one inferred from a re-read prompt count.
       // Fired on `turnStarted` so the snapshot is the tree *before* this turn's
       // edits, which is the only state reverting the turn can mean.
@@ -1850,6 +1855,7 @@ export default function ChatView(props: {
               mode={shownModeValue()}
               modes={offered().modes}
               pending={modePending(state)}
+              refusals={state.refusedModes}
               disabled={refused() || state.ended}
               onSelect={onSelectMode}
             />

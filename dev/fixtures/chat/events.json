@@ -143,6 +143,12 @@
     "permissionMode": "default"
   },
   {
+    "type": "modeRefused",
+    "sessionId": "s1",
+    "mode": "bypassPermissions",
+    "reason": "the session was not launched with --dangerously-skip-permissions"
+  },
+  {
     "type": "userMessage",
     "sessionId": "s1",
     "turnId": "t1",

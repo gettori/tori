@@ -418,6 +418,10 @@ export type ChatEvent =
       permissionMode: PermissionMode;
       extra?: Extra;
     }
+  /// The agent refused a mode switch outright, in its own words. Distinct from
+  /// a switch that merely did not take: the control can stop offering a row
+  /// that can never land rather than let it be picked again.
+  | { type: "modeRefused"; sessionId: string; mode: PermissionMode; reason: string }
   /// A user turn the panel did not send itself: a replayed transcript, or turns
   /// that happened in a PTY tab or an outside terminal. A live chat pushes its
   /// own user turn locally, so this is history's counterpart to that.
@@ -586,6 +590,7 @@ export const CHAT_EVENT_TYPES = [
   "turnCompleted",
   "sessionError",
   "sessionEnded",
+  "modeRefused",
 ] as const satisfies readonly ChatEventType[];
 
 // ---------------------------------------------------------------------------
@@ -686,6 +691,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     required: ["sessionId", "turnId", "model", "permissionMode"],
     optional: ["extra"],
   },
+  modeRefused: { required: ["sessionId", "mode", "reason"] },
   userMessage: { required: ["sessionId", "turnId", "blocks"] },
   compacted: {
     required: ["sessionId", "turnId", "trigger", "preTokens", "postTokens", "summary"],

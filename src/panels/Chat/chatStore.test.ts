@@ -17,6 +17,7 @@ import {
   initialChat,
   isRunning,
   modePending,
+  modeRefusal,
   modelPending,
   pendingApprovals,
   pendingSwitchNotice,
@@ -891,14 +892,38 @@ describe("the permission mode control", () => {
     expect(shownMode(s)).toBe("plan");
   });
 
-  // The CLI is free to ignore a switch. A control that cleared its pending mark
-  // on the click alone would then show a mode the session is not in, forever.
-  it("stays pending when the next turn comes back in the old mode", () => {
+  // The CLI is free to refuse a switch, and the turn boundary is where that
+  // shows. Holding the promise past it is what left the notice up forever with
+  // the pill naming a mode the session had never been in.
+  it("settles on the real mode when the next turn comes back in the old one", () => {
     const s = replay([turnIn("t1", "default")]);
     selectMode(s, "bypassPermissions");
     applyEvent(s, turnIn("t2", "default"));
-    expect(modePending(s)).toBe(true);
-    expect(shownMode(s)).toBe("bypassPermissions");
+    expect(modePending(s)).toBe(false);
+    expect(shownMode(s)).toBe("default");
+  });
+
+  // Measured on claude 2.1.258: `set_permission_mode bypassPermissions` is
+  // answered with an error unless the session was launched bypass-capable, and
+  // the session stays in the mode it was already in.
+  it("takes the refusal as the answer without waiting for a boundary", () => {
+    const s = replay([turnIn("t1", "default")]);
+    selectMode(s, "bypassPermissions");
+    applyEvent(s, {
+      type: "modeRefused",
+      sessionId: "s1",
+      mode: "bypassPermissions",
+      reason: "the session was not launched with --dangerously-skip-permissions",
+    });
+    expect(modePending(s)).toBe(false);
+    expect(shownMode(s)).toBe("default");
+    expect(modeRefusal(s, "bypassPermissions")).toContain("dangerously-skip-permissions");
+  });
+
+  it("leaves the modes it has not refused alone", () => {
+    const s = replay([turnIn("t1", "default")]);
+    applyEvent(s, { type: "modeRefused", sessionId: "s1", mode: "bypassPermissions", reason: "no" });
+    expect(modeRefusal(s, "plan")).toBeNull();
   });
 
   it("treats re-picking the mode in force as cancelling the pending switch", () => {
