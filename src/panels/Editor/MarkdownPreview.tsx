@@ -1,10 +1,13 @@
-import { createEffect, createResource, Show } from "solid-js";
+import { For, createEffect, createMemo, createResource, Show } from "solid-js";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { marked } from "marked";
+import { marked, type Token } from "marked";
 import { sanitizeHtml } from "../../utils/sanitizeHtml";
 import { bufferTextOf, handOff, takeHandOff, scrollFraction } from "../../utils/liveBuffer";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
+import PreviewCode from "./PreviewCode";
 import styles from "./MarkdownPreview.module.css";
+
+type Segment = { kind: "prose"; html: string } | { kind: "code"; lang: string; code: string };
 
 function dirOf(path: string): string {
   const i = path.lastIndexOf("/");
@@ -33,6 +36,10 @@ function resolveImages(html: string, fileDir: string): string {
  *  before it goes into innerHTML, then relative images are resolved to the
  *  file's own directory via the asset protocol.
  *
+ *  Rendered block by block rather than as one innerHTML blob, the way the chat
+ *  transcript is, so a fence can be a real component with a copy button and a
+ *  `mermaid` fence can be a drawn diagram instead of its own arrow syntax.
+ *
  *  Renders the open buffer rather than the file: the toggle sits next to the
  *  editor, so "preview" that ignored unsaved edits would be showing a
  *  different document from the one just typed into. Disk is the fallback for a
@@ -47,11 +54,29 @@ export default function MarkdownPreview(props: { path: string }) {
     (path: string) => invoke<string>("fs_read_file", { path }),
   );
   const text = () => live() ?? disk();
-  const html = () => {
+
+  const segments = createMemo<Segment[]>(() => {
     const t = text();
-    if (t === undefined) return "";
-    return resolveImages(sanitizeHtml(marked.parse(t) as string), dirOf(props.path));
-  };
+    if (t === undefined) return [];
+    const dir = dirOf(props.path);
+    const segs: Segment[] = [];
+    let run: Token[] = [];
+    const flush = () => {
+      if (!run.length) return;
+      segs.push({ kind: "prose", html: resolveImages(sanitizeHtml(marked.parser(run)), dir) });
+      run = [];
+    };
+    for (const token of marked.lexer(t)) {
+      if (token.type === "code") {
+        flush();
+        segs.push({ kind: "code", lang: (token.lang ?? "").trim().split(/\s+/)[0], code: token.text });
+      } else {
+        run.push(token);
+      }
+    }
+    flush();
+    return segs;
+  });
 
   let box!: HTMLDivElement;
   // The path this view has already positioned itself for. Per path rather than
@@ -93,7 +118,20 @@ export default function MarkdownPreview(props: { path: string }) {
         <div class="tree-empty">Loading…</div>
       </Show>
       <Show when={text() !== undefined}>
-        <div class={styles.markdownBody} innerHTML={html()} />
+        <div class={styles.markdownBody}>
+          <For each={segments()}>
+            {(seg) =>
+              seg.kind === "prose" ? (
+                // `display: contents` on the carrier: the document's own
+                // margins have to keep collapsing across a fence, or every
+                // block boundary gains a seam the source does not have.
+                <div class={styles.prose} innerHTML={seg.html} />
+              ) : (
+                <PreviewCode lang={seg.lang} code={seg.code} />
+              )
+            }
+          </For>
+        </div>
       </Show>
     </OverlayScroll>
   );

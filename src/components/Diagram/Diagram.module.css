@@ -1,0 +1,20 @@
+/* The drawn face of a mermaid fence. Centred and scrollable rather than scaled:
+   a wide graph shrunk to fit turns its labels into grey noise, so it keeps its
+   size and the box takes the overflow. */
+.diagram {
+  display: flex;
+  justify-content: center;
+  margin: calc(8px * var(--ui-scale)) 0;
+  padding: calc(12px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  background: var(--canvas-default);
+  overflow-x: auto;
+}
+
+/* Mermaid writes its own width/height onto the root svg. Height has to follow
+   the clamp, or a narrow pane leaves a tall band of empty box under the graph. */
+.diagram :global(svg) {
+  max-width: 100%;
+  height: auto;
+}

@@ -7,6 +7,12 @@ import Markdown from "./Markdown";
 vi.mock("../../utils/clipboard", () => ({ copyText: vi.fn(async () => true) }));
 vi.mock("./highlight", () => ({ cappedHtml: vi.fn(() => null) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => undefined) }));
+// The real engine measures text through `getBBox`, which jsdom does not have.
+// What it answers is `Diagram.test.tsx`'s subject; here it only has to answer.
+vi.mock("../../utils/mermaidEngine", () => ({
+  configure: vi.fn(),
+  render: vi.fn(async () => '<svg role="img" aria-label="a flowchart"><g></g></svg>'),
+}));
 import { copyText } from "../../utils/clipboard";
 import { cappedHtml } from "./highlight";
 import { invoke } from "@tauri-apps/api/core";
@@ -120,6 +126,34 @@ describe("code block controls", () => {
     expect(container.querySelector("hr")).toBeNull();
     expect(container.textContent).not.toContain("title: Notes");
     expect(container.querySelector("h1")?.textContent).toBe("The heading");
+  });
+});
+
+describe("a mermaid fence in the transcript", () => {
+  const DIAGRAM = "```mermaid\nflowchart TD\n  a --> b\n```";
+  // The mocked engine's own SVG, told apart from the lucide glyph in the
+  // corner button, which is an `svg` too.
+  const DRAWN = 'svg[aria-label="a flowchart"]';
+
+  it("opens drawn rather than as source, and flips both ways", async () => {
+    // The default is the opposite of an `md` fence's, and deliberately: arrow
+    // syntax is what the picture is made of, not what anyone reads.
+    const { container, getByLabelText } = render(() => <Markdown text={DIAGRAM} cwd="/repo" />);
+    await waitFor(() => expect(container.querySelector(DRAWN)).not.toBeNull());
+    expect(container.querySelector("pre")).toBeNull();
+
+    fireEvent.click(getByLabelText("Show diagram source"));
+    expect(container.querySelector(DRAWN)).toBeNull();
+    expect(container.querySelector("pre")?.textContent).toBe("flowchart TD\n  a --> b");
+
+    fireEvent.click(getByLabelText("Draw diagram"));
+    await waitFor(() => expect(container.querySelector(DRAWN)).not.toBeNull());
+  });
+
+  it("still copies the fence's raw text while it is showing a picture", async () => {
+    const { getByLabelText } = render(() => <Markdown text={DIAGRAM} cwd="/repo" />);
+    fireEvent.click(getByLabelText("Copy code"));
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith("flowchart TD\n  a --> b"));
   });
 });
 
