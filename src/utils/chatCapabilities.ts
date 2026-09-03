@@ -92,6 +92,13 @@ export type ApprovalTier = "none" | "sway-hook" | "in-protocol";
 export type DiffTier = "none" | "agent-supplied" | "before-state";
 
 /**
+ * How much a chat can say about the subagents its agent launches. The
+ * distinction is **addressability**, not attribution: `observable` is a lane you
+ * can read, `addressable` would be a channel to one, and no agent offers that.
+ */
+export type SubagentTier = "none" | "observable" | "addressable";
+
+/**
  * Where a reopened session's earlier turns come from.
  *
  * `transcript`: the agent wrote a file Sway reads, so history lands through
@@ -133,6 +140,9 @@ export type ChatTier = {
   /** A spend ceiling can stop this chat. Needs nothing from the agent: it is
    *  Sway declining to open the next turn. */
   spendCeilings: boolean;
+  /** Whether this chat can show what a subagent is doing, and whether it could
+   *  ever talk to one. See [`SubagentTier`]. */
+  subagents: SubagentTier;
   /**
    * Why each affordance this agent lacks is missing, in the words a user
    * reads.
@@ -178,6 +188,10 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // history has landed before the child is asked for anything.
     historySource: "transcript",
     spendCeilings: true,
+    // Measured against claude 2.1.259: the `task_*` frames carry a subagent's
+    // lifecycle and its totals, and the sidecar transcript has the rest. Not
+    // `addressable` - nothing on this wire carries a message to one.
+    subagents: "observable",
     // Nothing missing, so nothing to explain.
     gaps: {},
   },
@@ -222,6 +236,9 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // `size`) and no money, so a ceiling in dollars would never fire. Publishing
     // it as armed is the one failure a spend ceiling must not have.
     spendCeilings: false,
+    // The protocol has no subagent in it: a `session/update` names the session
+    // and nothing inside it, so there is no id to group a nested call under.
+    subagents: "none",
     gaps: {
       rewind:
         "Rewinding needs Sway to fork the conversation, and it has no way to ask an ACP agent to. Turn checkpoints still restore your files from the Changes panel.",
@@ -229,6 +246,8 @@ const TIERS: Record<ChatTransport, ChatTier> = {
         "A message typed during a turn waits for the next one: this protocol has no way to deliver it mid-turn, so Sway holds it rather than claiming it landed.",
       budgets:
         "A spend ceiling needs the agent to report what a turn cost, and this one reports how full the context is instead. Nothing would ever trip the limit, so it is not offered.",
+      subagents:
+        "If this agent splits work across helpers, it says so nowhere Sway can hear: the protocol has no message for one starting, working or finishing. Their tool calls arrive as the session's own, so the transcript reads as one agent doing everything.",
     },
   },
 };
@@ -247,9 +266,9 @@ export const NO_CHAT_TIER: ChatTier = {
   historySource: "transcript",
   // A PTY tab's turns are not Sway's to open, so there is no boundary to hold.
   spendCeilings: false,
-  // Deliberately empty. Explaining five absences one by one would be five ways
-  // of saying the same thing: this agent has no chat surface at all, which the
-  // surfaces say once instead.
+  subagents: "none",
+  // Deliberately empty. Explaining each absence in turn would be that many ways
+  // of saying one thing: this agent has no chat surface at all.
   gaps: {},
 };
 
@@ -261,7 +280,7 @@ export function chatTier(transport: ChatTransport | null | undefined): ChatTier 
 /** One published capability, split so a caller can look up its explanation by
  *  `key` without parsing `label` back apart. */
 export type PublishedCapability = {
-  key: "rewind" | "steer" | "approvals" | "diffs" | "budgets" | "history" | "sessions";
+  key: "rewind" | "steer" | "approvals" | "diffs" | "budgets" | "history" | "sessions" | "subagents";
   value: string;
   label: string;
 };
@@ -296,6 +315,9 @@ export function publishedCapabilities(
   // case is exactly what this file's "name what shipped" rule forbids.
   if (tier.diffs !== "none") add("diffs", tier.diffs);
   if (tier.spendCeilings) add("budgets", "turn-boundary");
+  // The value carries the promise, which is why it is not a bare `subagents:
+  // yes`: `observable` says you can read one, not send it anything.
+  if (tier.subagents !== "none") add("subagents", tier.subagents);
   // Derived from the running agent's own handshake rather than from the
   // transport, because one generic transport carries agents that differ: the
   // same `acp` tier sits behind an agent that reopens conversations and one
@@ -334,6 +356,7 @@ export function unavailableCapabilities(tier: ChatTier): MissingCapability[] {
   add("approvals", tier.approvals === "none");
   add("diffs", tier.diffs === "none");
   add("budgets", !tier.spendCeilings);
+  add("subagents", tier.subagents === "none");
   return out;
 }
 

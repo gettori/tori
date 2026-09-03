@@ -181,6 +181,7 @@ describe("every tier explains what it lacks", () => {
         ["approvals", tier.approvals === "none"],
         ["diffs", tier.diffs === "none"],
         ["budgets", !tier.spendCeilings],
+        ["subagents", tier.subagents === "none"],
       ] as const;
       for (const [key, missing] of expected) {
         if (missing) {
@@ -202,6 +203,31 @@ describe("every tier explains what it lacks", () => {
 
   it("says nothing five times over for an agent with no chat surface at all", () => {
     expect(unavailableCapabilities(NO_CHAT_TIER)).toEqual([]);
+  });
+});
+
+describe("subagent lanes, as published", () => {
+  // The tier value is about **addressability**, not attribution. A lane shows
+  // you what a helper did; nothing offers a way to send it anything, so the
+  // value has to say which of the two shipped.
+  it("says a Claude chat can be read and never that it can be addressed", () => {
+    const tier = chatTier("claude_stream_json");
+    expect(tier.subagents).toBe("observable");
+    expect(publishedCapabilities(tier)).toContainEqual({
+      key: "subagents",
+      value: "observable",
+      label: "subagents: observable",
+    });
+    // The one value nothing may claim yet: only the main agent can message a
+    // helper it launched, so the composer stays bound to main in every lane.
+    for (const transport of ["claude_stream_json", "acp"] as const) {
+      expect(chatTier(transport).subagents).not.toBe("addressable");
+    }
+  });
+
+  it("promises nothing at all for an agent with no chat surface", () => {
+    expect(NO_CHAT_TIER.subagents).toBe("none");
+    expect(publishedCapabilities(NO_CHAT_TIER)).toEqual([]);
   });
 });
 
@@ -240,6 +266,12 @@ describe("the ACP tier", () => {
     });
   });
 
+  it("promises no subagent lane, because the protocol has no subagent in it", () => {
+    const tier = chatTier("acp");
+    expect(tier.subagents).toBe("none");
+    expect(publishedCapabilities(tier).map((c) => c.key)).not.toContain("subagents");
+  });
+
   it("never reports a budget as armed, because ACP reports no cost to measure", () => {
     // The load-bearing half of "budgets never report as armed for an ACP
     // session": `applyBudget` returns early on this flag, and a ceiling that
@@ -275,6 +307,12 @@ describe("the ACP tier", () => {
     // There is no `rules` gap to explain any more: no agent has a Sway-owned
     // rule store, so its absence is not a thing this transport lacks.
     expect(by("rules")).toBe("");
+
+    // The protocol's silence, not Claude's hook. An ACP agent may well fan out;
+    // what is missing is any message saying so, which is the fact a user can act
+    // on when the transcript reads as one agent doing everything.
+    expect(by("subagents")).toContain("protocol");
+    expect(by("subagents")).not.toContain("hook");
   });
 
   it("cannot steer, and quotes no cost for one", () => {

@@ -56,6 +56,10 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
   history:
     "This agent can reopen a conversation it still holds, so a chat closed and reopened replays its earlier turns.",
   sessions: "This agent can list its own sessions, including ones started outside Sway.",
+  // "Read" and not "talk to": the lane switches what you are reading and never
+  // where the composer sends, since only the main agent can reach a helper.
+  subagents:
+    "When this agent splits work across helpers, each one gets a lane above the composer you can switch into and read, both while it runs and after the session is reopened.",
 };
 
 /**
