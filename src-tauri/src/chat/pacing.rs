@@ -66,12 +66,12 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// Which run of deltas a fragment belongs to.
 ///
 /// Identity, not just kind: two turns' text are different streams even though
-/// both are `TextDelta`, and two tool calls' arguments are different streams
-/// even within one turn.
+/// both are `TextDelta`, two tool calls' arguments are different streams even
+/// within one turn, and two lanes' text are different streams within one turn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Stream {
-    Text { session_id: String, turn_id: String },
-    Thinking { session_id: String, turn_id: String },
+    Text { session_id: String, turn_id: String, agent_id: Option<String> },
+    Thinking { session_id: String, turn_id: String, agent_id: Option<String> },
     ToolInput { session_id: String, turn_id: String, tool_use_id: String },
 }
 
@@ -81,8 +81,12 @@ impl Stream {
     /// which is what lets every consumer stay unaware that pacing exists.
     fn rejoin(self, text: String) -> ChatEvent {
         match self {
-            Stream::Text { session_id, turn_id } => ChatEvent::TextDelta { session_id, turn_id, text },
-            Stream::Thinking { session_id, turn_id } => ChatEvent::ThinkingDelta { session_id, turn_id, text },
+            Stream::Text { session_id, turn_id, agent_id } => {
+                ChatEvent::TextDelta { session_id, turn_id, text, agent_id }
+            }
+            Stream::Thinking { session_id, turn_id, agent_id } => {
+                ChatEvent::ThinkingDelta { session_id, turn_id, text, agent_id }
+            }
             Stream::ToolInput { session_id, turn_id, tool_use_id } => {
                 ChatEvent::ToolCallProgress { session_id, turn_id, tool_use_id, partial_input: text }
             }
@@ -98,12 +102,20 @@ impl Stream {
 /// here, not silently unthrottled.
 fn split(event: &ChatEvent) -> Option<(Stream, String)> {
     match event {
-        ChatEvent::TextDelta { session_id, turn_id, text } => Some((
-            Stream::Text { session_id: session_id.clone(), turn_id: turn_id.clone() },
+        ChatEvent::TextDelta { session_id, turn_id, text, agent_id } => Some((
+            Stream::Text {
+                session_id: session_id.clone(),
+                turn_id: turn_id.clone(),
+                agent_id: agent_id.clone(),
+            },
             text.clone(),
         )),
-        ChatEvent::ThinkingDelta { session_id, turn_id, text } => Some((
-            Stream::Thinking { session_id: session_id.clone(), turn_id: turn_id.clone() },
+        ChatEvent::ThinkingDelta { session_id, turn_id, text, agent_id } => Some((
+            Stream::Thinking {
+                session_id: session_id.clone(),
+                turn_id: turn_id.clone(),
+                agent_id: agent_id.clone(),
+            },
             text.clone(),
         )),
         ChatEvent::ToolCallProgress { session_id, turn_id, tool_use_id, partial_input } => Some((
@@ -251,11 +263,25 @@ mod tests {
     }
 
     fn text_delta(turn: &str, text: &str) -> ChatEvent {
-        ChatEvent::TextDelta { session_id: "s1".into(), turn_id: turn.into(), text: text.into() }
+        laned_text(turn, None, text)
+    }
+
+    fn laned_text(turn: &str, agent_id: Option<&str>, text: &str) -> ChatEvent {
+        ChatEvent::TextDelta {
+            session_id: "s1".into(),
+            turn_id: turn.into(),
+            text: text.into(),
+            agent_id: agent_id.map(str::to_string),
+        }
     }
 
     fn thinking_delta(turn: &str, text: &str) -> ChatEvent {
-        ChatEvent::ThinkingDelta { session_id: "s1".into(), turn_id: turn.into(), text: text.into() }
+        ChatEvent::ThinkingDelta {
+            session_id: "s1".into(),
+            turn_id: turn.into(),
+            text: text.into(),
+            agent_id: None,
+        }
     }
 
     fn tool_progress(call: &str, part: &str) -> ChatEvent {
@@ -392,6 +418,30 @@ mod tests {
                 text_delta("t2", "second turn"),
                 tool_progress("tu1", "{\"pa"),
                 tool_progress("tu2", "{\"ot"),
+                turn_completed(),
+            ]
+        );
+    }
+
+    /// Two lanes inside one turn are two streams. Nothing captured has a
+    /// subagent streaming, so this is synthesised: the failure it prevents is a
+    /// subagent's report being appended to the main agent's paragraph.
+    #[test]
+    fn two_lanes_in_one_turn_are_not_concatenated() {
+        let (seen, hand) = (Seen::default(), Hand::default());
+        let pacer = paced(&seen, &hand, false);
+
+        pacer.deliver(laned_text("t1", None, "the main agent"));
+        pacer.deliver(laned_text("t1", Some("acb01121756a92ca0"), "the subagent"));
+        pacer.deliver(laned_text("t1", None, ", still"));
+        pacer.deliver(turn_completed());
+
+        assert_eq!(
+            seen.events(),
+            vec![
+                laned_text("t1", None, "the main agent"),
+                laned_text("t1", Some("acb01121756a92ca0"), "the subagent"),
+                laned_text("t1", None, ", still"),
                 turn_completed(),
             ]
         );

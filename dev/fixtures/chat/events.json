@@ -196,13 +196,15 @@
     "type": "textDelta",
     "sessionId": "s1",
     "turnId": "t1",
-    "text": "hello"
+    "text": "hello",
+    "agentId": "acb01121756a92ca0"
   },
   {
     "type": "thinkingDelta",
     "sessionId": "s1",
     "turnId": "t1",
-    "text": "considering"
+    "text": "considering",
+    "agentId": null
   },
   {
     "type": "toolCallStarted",

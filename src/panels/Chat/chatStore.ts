@@ -84,7 +84,7 @@ export type ChatFileEdit = {
  *  two differently, because reading a steer as an ordinary prompt would suggest
  *  the reply below it answers only that. */
 export type UserItem = { kind: "user"; id: string; blocks: ContentBlock[]; steer: boolean };
-export type TextItem = { kind: "text"; id: string; turnId: string; text: string };
+export type TextItem = { kind: "text"; id: string; turnId: string; text: string; agentId: string | null };
 /** `startedAt` is when the model went quiet (the frame before this block),
  *  `endedAt` when its last delta landed, so a settled block can say how long the
  *  thinking took. **Not the first delta to the last**: thinking usually arrives
@@ -100,6 +100,7 @@ export type ThinkingItem = {
   text: string;
   startedAt: number;
   endedAt: number;
+  agentId: string | null;
 };
 /** `details` is the long half of a notice, shown behind a disclosure: the line
  *  itself has to stay readable at a glance in the middle of a conversation, and
@@ -226,10 +227,18 @@ export type QuestionItem = {
 export type ChatItem = UserItem | TextItem | ThinkingItem | ToolItem | NoticeItem | HookItem | QuestionItem;
 
 /** The lane a row belongs to: the subagent that produced it, or null for the
- *  main agent. Only a card and a question can answer anything else today - a
- *  subagent does not stream, so its calls are all that reach this store. */
+ *  main agent. A notice, a hook row and a user message are the session's rather
+ *  than any one agent's, so they are always the main agent's. */
 export function laneOf(it: ChatItem): string | null {
-  return it.kind === "tool" || it.kind === "question" ? it.agentId : null;
+  switch (it.kind) {
+    case "tool":
+    case "question":
+    case "text":
+    case "thinking":
+      return it.agentId;
+    default:
+      return null;
+  }
 }
 
 /** The main agent's key in the per-lane maps. Empty rather than a word: a
@@ -928,12 +937,14 @@ function noteModel(s: ChatState, resolvedModel: string) {
   s.pendingModel = null;
 }
 
-/** The main agent's lane, always: a subagent does not stream, so nothing on the
- *  wire carries a nested delta. See `laneOf`. */
-function appendText(s: ChatState, turnId: string, text: string, thinking: boolean) {
+/** Appends into the bubble of the lane the text came from. A subagent's prose
+ *  arrives whole, in one frame, so it opens and closes in a single call and
+ *  never interleaves with the main agent's the way two streams would. */
+function appendText(s: ChatState, turnId: string, text: string, thinking: boolean, agentId: string | null) {
   touchTurn(s, turnId);
+  const lane = laneKey(agentId);
   const open = thinking ? s.openThinking : s.openText;
-  const at = open[MAIN_LANE];
+  const at = open[lane];
   if (at !== undefined) {
     const block = s.items[at] as TextItem | ThinkingItem;
     block.text += text;
@@ -943,10 +954,18 @@ function appendText(s: ChatState, turnId: string, text: string, thinking: boolea
   const item: TextItem | ThinkingItem = thinking
     ? // Opens at the previous frame, not at this one: the silence before the
       // block is the thinking, the block itself is only its transcript.
-      { kind: "thinking", id: nextId(s, "think"), turnId, text, startedAt: s.lastFrameAt, endedAt: Date.now() }
-    : { kind: "text", id: nextId(s, "text"), turnId, text };
+      {
+        kind: "thinking",
+        id: nextId(s, "think"),
+        turnId,
+        text,
+        startedAt: s.lastFrameAt,
+        endedAt: Date.now(),
+        agentId,
+      }
+    : { kind: "text", id: nextId(s, "text"), turnId, text, agentId };
   push(s, item);
-  open[MAIN_LANE] = s.items.length - 1;
+  open[lane] = s.items.length - 1;
 }
 
 /**
@@ -979,10 +998,15 @@ export function filesWritten(ev: ChatEvent): readonly string[] {
 export function reasoningFor(items: readonly ChatItem[], toolUseId: string): string | null {
   const at = items.findIndex((it) => it.kind === "tool" && it.toolUseId === toolUseId);
   if (at < 0) return null;
+  // Within the calling agent's own lane. A subagent's edit sits among the main
+  // agent's rows, and the nearest paragraph above it is usually the main
+  // agent's, which explains a different call entirely.
+  const lane = laneOf(items[at]!);
   for (let i = at - 1; i >= 0; i--) {
     const it = items[i];
     // A user turn boundary means the model said nothing before this call.
     if (it.kind === "user") return null;
+    if (laneOf(it) !== lane) continue;
     if (it.kind === "text" || it.kind === "thinking") {
       const text = it.text.trim();
       if (text) return text;
@@ -1192,10 +1216,10 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       return;
     }
     case "textDelta":
-      appendText(s, ev.turnId, ev.text, false);
+      appendText(s, ev.turnId, ev.text, false, ev.agentId);
       return;
     case "thinkingDelta":
-      appendText(s, ev.turnId, ev.text, true);
+      appendText(s, ev.turnId, ev.text, true, ev.agentId);
       return;
     case "toolCallStarted": {
       touchTurn(s, ev.turnId);

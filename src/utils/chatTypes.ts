@@ -464,8 +464,11 @@ export type ChatEvent =
   | { type: "compactionStarted"; sessionId: string; turnId: string }
   /// A compaction that ended without a boundary, carrying the agent's reason.
   | { type: "compactionFailed"; sessionId: string; turnId: string; error: string }
-  | { type: "textDelta"; sessionId: string; turnId: string; text: string }
-  | { type: "thinkingDelta"; sessionId: string; turnId: string; text: string }
+  /// `agentId` is the subagent whose prose this is, null for the main agent's.
+  /// A subagent never streams, so its text arrives as one whole frame rather
+  /// than as deltas; this is the only prose a live lane has.
+  | { type: "textDelta"; sessionId: string; turnId: string; text: string; agentId: string | null }
+  | { type: "thinkingDelta"; sessionId: string; turnId: string; text: string; agentId: string | null }
   /// An upsert: a later emission carries only what that frame said, so an empty
   /// `name` or a null `input` means "unchanged" rather than "cleared".
   | {
@@ -745,8 +748,8 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   slashCommands: { required: ["sessionId", "commands"] },
   compactionStarted: { required: ["sessionId", "turnId"] },
   compactionFailed: { required: ["sessionId", "turnId", "error"] },
-  textDelta: { required: ["sessionId", "turnId", "text"] },
-  thinkingDelta: { required: ["sessionId", "turnId", "text"] },
+  textDelta: { required: ["sessionId", "turnId", "text", "agentId"] },
+  thinkingDelta: { required: ["sessionId", "turnId", "text", "agentId"] },
   toolCallStarted: {
     required: ["sessionId", "turnId", "toolUseId", "name", "input", "kind", "locations", "title"],
   },

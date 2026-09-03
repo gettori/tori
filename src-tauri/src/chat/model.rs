@@ -1036,12 +1036,21 @@ pub enum ChatEvent {
         session_id: String,
         turn_id: String,
         text: String,
+        /// The subagent whose text this is, `None` for the main agent's. A
+        /// subagent never streams, so its arrives as one whole `assistant`
+        /// frame: the only prose a live lane has.
+        #[serde(default)]
+        agent_id: Option<String>,
     },
 
     ThinkingDelta {
         session_id: String,
         turn_id: String,
         text: String,
+        /// The subagent whose thinking this is. Same rule as `TextDelta`, and
+        /// no capture has yet shown a nested thinking block.
+        #[serde(default)]
+        agent_id: Option<String>,
     },
 
     /// A tool call was announced.
@@ -1543,11 +1552,15 @@ mod tests {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
                 text: "hello".into(),
+                // Filled rather than `None`, so a mirror that dropped the
+                // field fails here instead of reading every lane as main.
+                agent_id: Some("acb01121756a92ca0".into()),
             },
             ChatEvent::ThinkingDelta {
                 session_id: "s1".into(),
                 turn_id: "t1".into(),
                 text: "considering".into(),
+                agent_id: None,
             },
             ChatEvent::ToolCallStarted {
                 session_id: "s1".into(),
@@ -2109,6 +2122,7 @@ mod tests {
             session_id: "s1".into(),
             turn_id: "t1".into(),
             text: "hi".into(),
+            agent_id: None,
         })
         .unwrap();
         assert_eq!(json["type"], "textDelta");

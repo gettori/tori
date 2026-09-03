@@ -298,6 +298,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             session_id: sid(),
             turn_id: tid(),
             text: String::new(),
+            agent_id: None,
         },
         // ACP's "thought" is the same thing Claude calls thinking: reasoning
         // shown collapsed, not part of the answer.
@@ -305,6 +306,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             session_id: sid(),
             turn_id: tid(),
             text: String::new(),
+            agent_id: None,
         },
         AcpSessionUpdate::ToolCall => ChatEvent::ToolCallStarted {
             session_id: sid(),
