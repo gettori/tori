@@ -47,6 +47,10 @@ export default function ModeSelector(props: {
   modes: readonly ChatMode[];
   /** True while the shown mode is a pick that has not taken effect yet. */
   pending: boolean;
+  /** Why a mode was refused, keyed by its id, as the agent worded it. A refused
+   *  row stays navigable and says why rather than vanishing: the reason is the
+   *  useful part, and a row that silently disappears teaches nothing. */
+  refusals?: Readonly<Record<string, string>>;
   disabled: boolean;
   onSelect: (mode: PermissionMode) => void;
 }) {
@@ -80,6 +84,8 @@ export default function ModeSelector(props: {
               label={m.label}
               description={m.hint}
               selected={m.id === props.mode}
+              refusing={!!props.refusals?.[m.id]}
+              note={props.refusals?.[m.id]}
               onSelect={() => props.onSelect(m.id)}
             />
           )}

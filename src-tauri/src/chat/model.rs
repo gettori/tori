@@ -924,6 +924,15 @@ pub enum ChatEvent {
         extra: Extra,
     },
 
+    /// The agent refused a mode switch outright, in its own words. Distinct
+    /// from a switch that merely did not take: this is answered on the control
+    /// channel, so the control can stop offering a row that can never land.
+    ModeRefused {
+        session_id: String,
+        mode: PermissionMode,
+        reason: String,
+    },
+
     /// A user turn, as an event rather than as something the composer already
     /// knows it sent.
     ///
@@ -1431,6 +1440,11 @@ mod tests {
                 model: "claude-sonnet-5".into(),
                 permission_mode: PermissionMode::new("default"),
                 extra: Extra::new(),
+            },
+            ChatEvent::ModeRefused {
+                session_id: "s1".into(),
+                mode: PermissionMode::new("bypassPermissions"),
+                reason: "the session was not launched with --dangerously-skip-permissions".into(),
             },
             ChatEvent::UserMessage {
                 session_id: "s1".into(),
@@ -1954,6 +1968,7 @@ mod tests {
                 ChatEvent::SessionReady { .. } => "sessionReady",
                 ChatEvent::HookFired { .. } => "hookFired",
                 ChatEvent::TurnStarted { .. } => "turnStarted",
+                ChatEvent::ModeRefused { .. } => "modeRefused",
                 ChatEvent::UserMessage { .. } => "userMessage",
                 ChatEvent::Compacted { .. } => "compacted",
                 ChatEvent::SlashCommands { .. } => "slashCommands",
@@ -1976,8 +1991,8 @@ mod tests {
                 ChatEvent::ConfigOptions { .. } => "configOptions",
             };
         }
-        // 24 variants; a mismatch means a sample is missing or duplicated.
-        assert_eq!(events.len(), 24, "every_event() must hold exactly one sample per variant");
+        // 25 variants; a mismatch means a sample is missing or duplicated.
+        assert_eq!(events.len(), 25, "every_event() must hold exactly one sample per variant");
     }
 
     #[test]

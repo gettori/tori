@@ -466,6 +466,7 @@ mod tests {
             ChatEvent::SessionReady { .. } => "sessionReady",
             ChatEvent::HookFired { .. } => "hookFired",
             ChatEvent::TurnStarted { .. } => "turnStarted",
+            ChatEvent::ModeRefused { .. } => "modeRefused",
             ChatEvent::UserMessage { .. } => "userMessage",
             ChatEvent::Compacted { .. } => "compacted",
             ChatEvent::SlashCommands { .. } => "slashCommands",
