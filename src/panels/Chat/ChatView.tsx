@@ -349,7 +349,9 @@ export default function ChatView(props: {
   // reads `items` in three places (its window memo, its stick-to-bottom tail
   // probe, and the load-earlier check), so an accessor would re-filter the
   // whole transcript three times for every streaming delta.
-  const shownItems = createMemo(() => visibleItems(state.items, settings.chatDefaults.showSwayHooks));
+  const shownItems = createMemo(() =>
+    visibleItems(state.items, settings.chatDefaults.showSwayHooks, state.selectedLane),
+  );
 
   // The strip's three numbers. Derived from the transcript rather than kept as
   // counters, so a replayed history and a live session count the same way.
@@ -1786,6 +1788,7 @@ export default function ChatView(props: {
         // "rewind to here" there would promise the tree *and* the conversation
         // and deliver only the tree.
         rewindTsFor={(turnId) => (tier().rewind === "fork" ? turnStamps()[turnId] ?? null : null)}
+        agentTurn={(turnId) => state.turns[turnId]?.agentInitiated === true}
         onRewind={onRewind}
       />
       </Show>

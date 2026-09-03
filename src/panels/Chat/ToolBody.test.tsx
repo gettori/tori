@@ -31,6 +31,7 @@ function card(over: Partial<ToolItem> = {}): ToolItem {
     id: "tool-1",
     turnId: "t1",
     toolUseId: "toolu_1",
+    agentId: null,
     name: "Bash",
     title: null,
     toolKind: "execute",

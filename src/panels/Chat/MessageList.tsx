@@ -149,6 +149,10 @@ export default function MessageList(props: {
    *  never recorded. */
   rewindTsFor?: (turnId: string) => number | null;
   onRewind?: (promptTs: number) => void;
+  /** Whether the agent opened this turn for itself, which a background
+   *  subagent's finishing makes it do. Such a turn answers no prompt, so it
+   *  must not claim the one above it. */
+  agentTurn?: (turnId: string) => boolean;
 }) {
   const [limit, setLimit] = createSignal(WINDOW_STEP);
   // Read once, deliberately: whether this list opens pinned to the bottom is an
@@ -198,6 +202,10 @@ export default function MessageList(props: {
       }
       const turnId = turnIdOf(it);
       if (!turnId) continue;
+      // A turn the agent opened for itself starts no prompt. Letting it claim
+      // the pending one would point "rewind to here" at a checkpoint taken
+      // *after* the turn the reader meant, so the undo would miss its edits.
+      if (props.agentTurn?.(turnId)) continue;
       if (pending) map.set(pending, turnId);
       pending = null;
     }
