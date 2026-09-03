@@ -507,16 +507,20 @@ pub fn map_update(
     cwd: Option<&Path>,
 ) -> Vec<ChatEvent> {
     match update {
+        // No lane, ever: ACP has no subagent concept on the wire, so an
+        // agent's chunk is the agent's own.
         SessionUpdate::AgentMessageChunk(chunk) => vec![ChatEvent::TextDelta {
             session_id: session_id.to_string(),
             turn_id: turn_id.to_string(),
             text: chunk_text(chunk),
+            agent_id: None,
         }],
 
         SessionUpdate::AgentThoughtChunk(chunk) => vec![ChatEvent::ThinkingDelta {
             session_id: session_id.to_string(),
             turn_id: turn_id.to_string(),
             text: chunk_text(chunk),
+            agent_id: None,
         }],
 
         // A replayed user turn. The live composer pushes its own, so this

@@ -101,7 +101,13 @@ const sessionStarted = (over: Partial<Extract<ChatEvent, { type: "sessionStarted
   account: null,
   ...over,
 });
-const text = (turnId: string, t: string): ChatEvent => ({ type: "textDelta", sessionId: "s1", turnId, text: t });
+const text = (turnId: string, t: string, agentId: string | null = null): ChatEvent => ({
+  type: "textDelta",
+  sessionId: "s1",
+  turnId,
+  text: t,
+  agentId,
+});
 const started = (turnId: string, toolUseId: string, name = "Edit", input: unknown = { file_path: "/a" }): ChatEvent => ({
   type: "toolCallStarted",
   sessionId: "s1",
@@ -1022,7 +1028,13 @@ describe("reasoningFor", () => {
     durationMs: null,
     edits: [],
   });
-  const text = (id: string, body: string): ChatItem => ({ kind: "text", id, turnId: "t1", text: body });
+  const text = (id: string, body: string, agentId: string | null = null): ChatItem => ({
+    kind: "text",
+    id,
+    turnId: "t1",
+    text: body,
+    agentId,
+  });
 
   it("takes the model's last word before the call", () => {
     const items = [text("x1", "first thought"), tool("toolu_1"), text("x2", "second thought"), tool("toolu_2")];
@@ -1900,6 +1912,7 @@ describe("how long a thought took", () => {
   const think = (turnId: string, t: string): ChatEvent => ({
     type: "thinkingDelta",
     sessionId: "s1",
+    agentId: null,
     turnId,
     text: t,
   });
@@ -2043,6 +2056,25 @@ describe("subagent lanes", () => {
     const paragraphs = s.items.filter((i) => i.kind === "text");
     expect(paragraphs).toHaveLength(1);
     expect(paragraphs[0]!.text).toBe("half and half");
+  });
+
+  it("keeps a subagent's paragraph out of the main agent's", () => {
+    // Its closing report arrives whole, in one nested `assistant` frame, while
+    // the main agent is midway through a sentence of its own.
+    const s = replay([
+      turnStarted("t1"),
+      laneStarted(),
+      started("t1", CALL, "Agent", {}),
+      text("t1", "half "),
+      text("t1", "Done. Created sub-made.txt.", AGENT),
+      text("t1", "and half"),
+    ]);
+    const paragraphs = (lane: string | null) =>
+      visibleItems(s.items, false, lane)
+        .filter((i) => i.kind === "text")
+        .map((i) => i.text);
+    expect(paragraphs(null)).toEqual(["half and half"]);
+    expect(paragraphs(AGENT)).toEqual(["Done. Created sub-made.txt."]);
   });
 
   it("keeps the lane's own record: what it is, how it ended, what it cost", () => {

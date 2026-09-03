@@ -1206,7 +1206,12 @@ mod tests {
             for text in &fragments {
                 crate::chat::transport::emit(
                     &sink.clone(),
-                    ChatEvent::TextDelta { session_id: id.into(), turn_id: "t1".into(), text: text.clone() },
+                    ChatEvent::TextDelta {
+                        session_id: id.into(),
+                        turn_id: "t1".into(),
+                        text: text.clone(),
+                        agent_id: None,
+                    },
                 );
             }
         };
