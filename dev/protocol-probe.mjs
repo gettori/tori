@@ -123,6 +123,10 @@ const DISCRETIONARY = new Set([
   "system/thinking_tokens",
   // Delivered on the CLI's own schedule, not as a step in the turn.
   "rate_limit_event",
+  // A subagent that finishes fast enough emits no progress at all: measured,
+  // it is a heartbeat on the CLI's clock and not a step in the task's life.
+  // `task_started` and `task_notification` are the steps and stay required.
+  "system/task_progress",
 ]);
 
 // The scenario's whole point, asserted every run. Without these, marking the
@@ -153,6 +157,12 @@ const REQUIRES = {
   // by measuring a turn in which nothing was ever asked.
   "permission-coverage": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
   "permission-subagent": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
+  // The lifecycle channel, which is the only thing that names a subagent, joins
+  // its `task_id` to the `Agent` call's `tool_use_id`, and says when it ended.
+  // `task_notification` is required here and nowhere else: this is the scenario
+  // whose whole point is that it lands *after* the parent's turn.
+  "subagent-background": ["system/task_started", "system/task_notification", "result/success"],
+  "subagent-parallel": ["system/task_started", "assistant/tool_use", "result/success"],
   "permission-grant": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
   // The hook must run *and* the harness must still ask, so both halves are
   // required: a run with only one of them measured the wrong thing.
@@ -586,6 +596,18 @@ const SCENARIOS = {
     const alive = p.child.exitCode === null;
     await p.close();
     if (!alive) throw new Error("child exited between turns - the long-lived-process assumption is broken");
+
+    // `total_cost_usd` and `modelUsage` accumulate across the session while the
+    // `usage` block beside them is per turn. Pinned because reading the two as
+    // one is what has `chatStore.ts:1197` and `usage.rs:86` summing a total.
+    const [first, second] = p.events.filter((e) => e.type === "result");
+    if (!second) throw new Error("only one result frame, so there is nothing to compare the second turn's cost to");
+    if (!(second.total_cost_usd > first.total_cost_usd)) {
+      throw new Error(
+        `total_cost_usd did not grow across turns (${first.total_cost_usd} then ${second.total_cost_usd}); ` +
+          "if it is per-turn now, the summing in chatStore.ts and usage.rs is correct after all",
+      );
+    }
     return p;
   },
 
@@ -606,6 +628,22 @@ const SCENARIOS = {
     p.sendTurn("/compact");
     await p.waitForResult();
     await p.close();
+
+    // Pins the negative `map_compact_boundary`'s guard rests on: the live frame
+    // carries no nesting marker, so a subagent's boundary is indistinguishable
+    // from the session's and the `isSidechain` it tests for never arrives.
+    const boundary = p.events.find((e) => e.type === "system" && e.subtype === "compact_boundary");
+    if (!boundary) throw new Error("no compact_boundary frame, so this run measured no compaction at all");
+    // `isSidechain` on presence, `parent_tool_use_id` on value: a null parent is
+    // how every main-agent frame spells itself, so presence would cry wolf.
+    const marker =
+      ("isSidechain" in boundary && "isSidechain") || (boundary.parent_tool_use_id && "parent_tool_use_id");
+    if (marker) {
+      throw new Error(
+        `compact_boundary now carries ${marker}: a subagent's boundary may be tellable apart from the ` +
+          "session's, so re-read map_compact_boundary before trusting its guard",
+      );
+    }
     return p;
   },
 
@@ -885,6 +923,65 @@ const SCENARIOS = {
         `no can_use_tool carried an agent_id; saw ${p.permissionRequests.length} request(s) from ` +
           `${p.permissionRequests.map((r) => r.tool_name).join(", ") || "nothing"}`,
       );
+    }
+    return p;
+  },
+
+  // A backgrounded subagent outlives the turn that launched it, so its terminal
+  // frame lands on a stream nobody is in a turn on. A lane settled from turn
+  // state rather than from `task_notification` would never settle at all.
+  "subagent-background": async ({ scratch }) => {
+    const p = new Probe({ cwd: scratch, extraArgs: ["--permission-mode", "bypassPermissions"] });
+    p.sendTurn(
+      "Use the Task tool with run_in_background set to true to launch one general-purpose subagent whose prompt " +
+        "is exactly: 'Use the Write tool to create bg-made.txt containing the word bg. Then report done.' " +
+        "Do not wait for it to finish. Reply with exactly the word: launched.",
+    );
+    await p.waitForResult();
+    // Waited for rather than slept through, so a run in which it never arrives
+    // fails loudly instead of capturing a stream that measures the teardown.
+    await p.waitFor((e) => e.type === "system" && e.subtype === "task_notification", 120_000);
+    await p.close();
+
+    // The only thing this scenario controls is that the call *asked* to be
+    // backgrounded. Where the notification then lands is the measurement, so it
+    // is left to the fixture rather than asserted into a pass or a fail.
+    const backgrounded = p.events.some(
+      (e) =>
+        e.type === "assistant" &&
+        (e.message?.content ?? []).some((c) => c.type === "tool_use" && c.input?.run_in_background === true),
+    );
+    if (!backgrounded) {
+      throw new Error("no tool call carried run_in_background: true, so this run measured a foreground subagent");
+    }
+    return p;
+  },
+
+  // Two subagents share one stream, so the lane a frame belongs to switches back
+  // and forth. What that costs a fold keyed on "the last item" is not measured
+  // here: neither subagent emitted text, so no two lanes ever had a block open.
+  "subagent-parallel": async ({ scratch }) => {
+    const p = new Probe({ cwd: scratch, extraArgs: ["--permission-mode", "bypassPermissions"] });
+    p.sendTurn(
+      "Use the Task tool twice in one message to launch two general-purpose subagents at the same time. " +
+        "The first subagent's prompt is exactly: 'Use the Write tool to create one.txt containing the word one. " +
+        "Then report done.' The second subagent's prompt is exactly: 'Use the Write tool to create two.txt " +
+        "containing the word two. Then report done.' Wait for both, then report what they did.",
+    );
+    await p.waitForResult();
+    await p.close();
+
+    const started = p.events.filter((e) => e.type === "system" && e.subtype === "task_started");
+    const ids = new Set(started.map((e) => e.task_id));
+    if (ids.size < 2) {
+      throw new Error(`only ${ids.size} subagent(s) started; two must run for this to measure a shared stream`);
+    }
+    // Counted rather than asserted as a boolean: one switch is a stream that
+    // ran the two in sequence, which cannot exercise per-lane folding.
+    const seq = p.events.filter((e) => e.type === "assistant").map((e) => e.parent_tool_use_id ?? "main");
+    const switches = seq.filter((lane, i) => i > 0 && seq[i - 1] !== lane).length;
+    if (switches < 2) {
+      throw new Error(`the assistant stream changed lane ${switches} time(s); per-lane folding needs it to alternate`);
     }
     return p;
   },
