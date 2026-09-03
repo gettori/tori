@@ -1,0 +1,118 @@
+/* The drawer: streaming log output, so it takes the bottom edge and the full
+   width. It overlays `.workspace` rather than splitting it, because a job is
+   something Sway started, not a pane the user arranged. */
+.drawer {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  height: min(40%, calc(360px * var(--ui-scale)));
+  background: var(--canvas-card);
+  border-top: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-xl) var(--sway-radius-xl) 0 0;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+/* Hidden, not unmounted. `TerminalView`'s cleanup kills the PTY, so a `Show`
+   here would end the clone it is reporting on. */
+.drawer.hidden {
+  display: none;
+}
+
+.drawerHead {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  background: var(--canvas-head);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.drawerTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--sway-text-xl);
+  color: var(--fg-default);
+}
+
+.drawerBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+}
+
+/* The tray: a row per job, above the sidebar's mode tabs. Rendered only when
+   there is something to say, so an idle sidebar carries no empty strip.
+
+   The insets repeat the tree's own (`--tree-inset` / `--tree-gutter` in
+   LeftSidebar.module.css) rather than reading them: they are declared on
+   `.tree`, and inheriting a name from a parent stylesheet is a coupling the
+   token guard cannot see and a move would break silently. */
+.tray {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale))
+    calc(14px * var(--ui-scale));
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  border-radius: var(--sway-radius-md);
+}
+
+.rowOpen {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border: 0;
+  border-radius: var(--sway-radius-md);
+  background: transparent;
+  color: var(--fg-default);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.rowOpen:hover {
+  background: var(--tree-row-hover);
+}
+
+.rowTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The state word carries the colour, so the row reads at a glance without a
+   second icon competing with the sidebar's own. */
+.state {
+  flex: none;
+  font-size: var(--sway-text-lg);
+  color: var(--fg-muted);
+}
+
+.state.running {
+  color: var(--status-running);
+}
+
+.state.ok {
+  color: var(--success-fg);
+}
+
+.state.failed {
+  color: var(--danger-fg);
+}

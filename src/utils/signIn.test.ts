@@ -5,7 +5,7 @@
 // forgets to carry the profile's home signs the user into the account they
 // already had, reports success, and leaves two profiles that are one account.
 import { describe, it, expect } from "vitest";
-import { loginTab, loginNote, type LoginRoute } from "./signIn";
+import { loginJob, loginNote, type LoginRoute } from "./signIn";
 
 const terminal = (home: [string, string] | null): LoginRoute => ({
   type: "terminal",
@@ -19,7 +19,7 @@ describe("the terminal rung", () => {
   // derives its Keychain service from this variable's value, so a tab spawned
   // without it writes into the default account's credentials.
   it("carries the profile's home variable into the tab", () => {
-    const tab = loginTab(
+    const tab = loginJob(
       "claude",
       "Claude",
       "work",
@@ -35,24 +35,23 @@ describe("the terminal rung", () => {
   // The default profile *is* the variable left unset. Setting it to anything at
   // all, including an empty string, would sign the user in somewhere else.
   it("sets no environment at all for the default profile", () => {
-    const tab = loginTab("claude", "Claude", "default", "Default", terminal(null), "/home/me");
+    const tab = loginJob("claude", "Claude", "default", "Default", terminal(null), "/home/me");
     expect(tab?.env).toBeUndefined();
   });
 
-  // A login is browser OAuth with no non-interactive variant, so the tab has to
-  // be a real process the user can see and type into. `command` also keeps the
-  // tab on screen after it exits, so a failed login is readable.
-  it("spawns the program directly rather than seeding a shell", () => {
-    const tab = loginTab("claude", "Claude", "work", "Work", terminal(null), "/home/me");
-    expect(tab?.kind).toBe("command");
-    expect(tab?.init).toBeUndefined();
+  // A login is browser OAuth with no non-interactive variant, so it has to be a
+  // real process the user can see and type into. Declaring it interactive is
+  // what routes the keyboard to it when its drawer opens.
+  it("takes the keyboard, because the flow has to be typed at", () => {
+    const tab = loginJob("claude", "Claude", "work", "Work", terminal(null), "/home/me");
+    expect(tab?.interactive).toBe(true);
   });
 
   // Both outcomes end the process. A finished login changes the answer; an
   // abandoned one confirms it did not, which is cheap and keeps the state from
   // going stale after a cancel.
   it("re-probes on exit, whether the login finished or was abandoned", () => {
-    const tab = loginTab("claude", "Claude", "work", "Work", terminal(null), "/home/me");
+    const tab = loginJob("claude", "Claude", "work", "Work", terminal(null), "/home/me");
     expect(tab?.recheckAgentsOnExit).toBe(true);
   });
 
@@ -60,9 +59,9 @@ describe("the terminal rung", () => {
   // it, not start a second browser flow. Two accounts are two logins and get
   // two tabs.
   it("gives one tab per account, not per press", () => {
-    const one = loginTab("claude", "Claude", "work", "Work", terminal(null), "/home/me");
-    const again = loginTab("claude", "Claude", "work", "Work", terminal(null), "/home/me");
-    const other = loginTab("claude", "Claude", "personal", "Personal", terminal(null), "/home/me");
+    const one = loginJob("claude", "Claude", "work", "Work", terminal(null), "/home/me");
+    const again = loginJob("claude", "Claude", "work", "Work", terminal(null), "/home/me");
+    const other = loginJob("claude", "Claude", "personal", "Personal", terminal(null), "/home/me");
     expect(one?.id).toBe(again?.id);
     expect(one?.id).not.toBe(other?.id);
   });
@@ -71,13 +70,13 @@ describe("the terminal rung", () => {
 describe("the rungs that open no tab", () => {
   it("opens nothing and says why for an agent that states its own method", () => {
     const route: LoginRoute = { type: "agentStates" };
-    expect(loginTab("opencode", "OpenCode", "default", "Default", route, "/")).toBeNull();
+    expect(loginJob("opencode", "OpenCode", "default", "Default", route, "/")).toBeNull();
     expect(loginNote("OpenCode", route)).toContain("OpenCode");
   });
 
   it("opens nothing and says why when the adapter declares no sign-in", () => {
     const route: LoginRoute = { type: "docs", url: "https://example.invalid/adapters" };
-    expect(loginTab("thing", "Thing", "default", "Default", route, "/")).toBeNull();
+    expect(loginJob("thing", "Thing", "default", "Default", route, "/")).toBeNull();
     expect(loginNote("Thing", route)).toContain("Thing");
   });
 

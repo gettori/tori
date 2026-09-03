@@ -22,6 +22,7 @@ import {
 } from './utils/features';
 import Terminal from './panels/Terminal/Terminal';
 import Editor from './panels/Editor/Editor';
+import Jobs from './panels/Jobs/Jobs';
 import { stageHost } from './tabs/stageHost';
 import { traceMark, tracePaint } from './utils/perfTrace';
 import { registerRecipeHost } from './utils/perfRecipe';
@@ -1083,6 +1084,9 @@ function App() {
               ref={(el) => el.appendChild(stageHost('editor-chrome'))}
             />
           </div>
+          {/* Last, and absolutely positioned inside .workspace: a job overlays
+              the work rather than rearranging a layout the user set up. */}
+          <Jobs />
         </div>
       </div>
 

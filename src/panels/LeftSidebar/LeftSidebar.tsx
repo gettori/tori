@@ -26,13 +26,13 @@ import {
   TOGGLE_SIDEBAR_MODE,
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
-  OPEN_TERMINAL,
+  OPEN_JOB,
   NEW_SESSION,
   PURGE_UNDER_PATH,
   TERMINAL_TAB_FOCUSED,
   REMOVE_BRANCH_UNIT,
   type RemoveBranchUnit,
-  type OpenTerminal,
+  type OpenJob,
   type NewSession,
   type PurgeUnderPath,
   type LiveTab,
@@ -98,6 +98,7 @@ import {
 } from "../../utils/forgeStatus";
 import { settings as appSettings } from "../Settings/settingsStore";
 import Icon from "../../components/Icon/Icon";
+import JobTray from "../Jobs/JobTray";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
@@ -1358,9 +1359,9 @@ export default function LeftSidebar(props: {
     return null;
   }
 
-  // Pre-check the target dir is free, then run the command in a terminal tab
-  // (native git progress + ambient auth, no in-app credentials). The terminal
-  // area re-discovers when the tab exits.
+  // Pre-check the target dir is free, then run the command as a job (native git
+  // progress + ambient auth, no in-app credentials), which re-discovers
+  // projects when it exits.
   async function runInTab(g: Space, name: string, kind: string, program: string, args: string[]) {
     const bad = badName(name);
     if (bad) return setError(bad);
@@ -1372,7 +1373,9 @@ export default function LeftSidebar(props: {
     // Sway is creating this folder: adopt the target path so a clone/bootstrap
     // onto a path that once held sessions is not flagged historical.
     invoke("adopt_path", { path: target }).catch(() => {});
-    emitWith<OpenTerminal>(OPEN_TERMINAL, {
+    emitWith<OpenJob>(OPEN_JOB, {
+      // A fresh id per press, unlike an install or a login: two clones into two
+      // folders are two clones, and neither should reveal the other.
       id: `${kind}:${target}:${Date.now()}`,
       title: `${kind} ${name.trim()}`,
       cwd: g.path,
@@ -2685,6 +2688,9 @@ export default function LeftSidebar(props: {
 
   return (
     <div class={styles.tree}>
+      {/* Above the head rather than inside it: the head closes the filter when
+          focus leaves it, and a tray row is not the filter being abandoned. */}
+      <JobTray />
       <div
         class={styles.treeHead}
         // Focus gone from the head is the filter abandoned. Moving inside it
