@@ -17,6 +17,7 @@ import {
   initialChat,
   isRunning,
   modePending,
+  laneStrip,
   modeRefusal,
   modelPending,
   pendingApprovals,
@@ -38,6 +39,7 @@ import {
   revertModelPick,
   seedEffort,
   selectEffort,
+  selectLane,
   selectMode,
   selectModel,
   settleBackfill,
@@ -80,7 +82,8 @@ const turnStarted = (turnId: string, model = "m"): ChatEvent => ({
   sessionId: "s1",
   turnId,
   model,
-  permissionMode: "default", agentInitiated: false
+  permissionMode: "default",
+  agentInitiated: false,
 });
 const sessionStarted = (over: Partial<Extract<ChatEvent, { type: "sessionStarted" }>> = {}): ChatEvent => ({
   type: "sessionStarted",
@@ -224,7 +227,8 @@ describe("a compaction while it is running", () => {
     postTokens: post,
     summary: "the summary",
   });
-  const notices = (s: ChatState) => s.items.filter((i): i is Extract<ChatItem, { kind: "notice" }> => i.kind === "notice");
+  const notices = (s: ChatState) =>
+    visibleItems(s.items, true, null).filter((i): i is Extract<ChatItem, { kind: "notice" }> => i.kind === "notice");
 
   it("announces itself the moment it starts, with a stamp to count from", () => {
     const s = replay([turnStarted("t1"), started]);
@@ -256,6 +260,22 @@ describe("a compaction while it is running", () => {
     // after the turn is over is the one outcome worse than no row at all.
     const s = replay([turnStarted("t1"), started, turnDone("t1", "cancelled")]);
     expect(notices(s)).toHaveLength(0);
+  });
+
+  it("drops it from the view without moving the rows above it", () => {
+    // The row used to be spliced out of `items`, which `toolIndex` holds
+    // positions into: every card pushed after the compaction started then
+    // pointed one row too far, so the wrong card took the next result.
+    const s = replay([
+      turnStarted("t1"),
+      started,
+      { type: "toolCallStarted", sessionId: "s1", turnId: "t1", toolUseId: "toolu_after", name: "Bash",
+        input: {}, kind: "execute", locations: [], title: null },
+      turnDone("t1", "cancelled"),
+    ]);
+    const card = s.items[s.toolIndex["toolu_after"]];
+    expect(card?.kind === "tool" && card.toolUseId).toBe("toolu_after");
+    expect(s.items.some((i) => i.kind === "notice")).toBe(true);
   });
 
   it("still reports a compaction it never saw start", () => {
@@ -985,6 +1005,7 @@ describe("reasoningFor", () => {
     kind: "tool",
     id: `card-${id}`,
     toolUseId: id,
+    agentId: null,
     turnId: "t1",
     name: "Edit",
     title: null,
@@ -1235,7 +1256,7 @@ describe("hook rows", () => {
       ...over,
     }) as ChatEvent;
 
-  const hookRows = (s: ChatState, show: boolean) => visibleItems(s.items, show).filter((i) => i.kind === "hook");
+  const hookRows = (s: ChatState, show: boolean) => visibleItems(s.items, show, null).filter((i) => i.kind === "hook");
 
   it("adds no visible rows for a 60-tool-call turn, and reveals all 120 when toggled", () => {
     // The plan's headline figure, measured when Sway's hook ran on every tool
@@ -1432,7 +1453,12 @@ describe("the figures the status strip reads live", () => {
   it("counts prompts and tool calls off the store, replayed history included", () => {
     const s = replay(FIXTURE);
     expect(promptsSent(s)).toBe(s.items.filter((it) => it.kind === "user").length);
-    expect(toolCallsSeen(s)).toBe(s.items.filter((it) => it.kind === "tool").length);
+    // The main agent's calls only. The fixture's permission prompt carries an
+    // `agentId`, so that card belongs to a lane and the strip does not count
+    // it - and the second assertion is what proves the fixture exercises this.
+    const cards = s.items.filter((it) => it.kind === "tool");
+    expect(toolCallsSeen(s)).toBe(cards.filter((it) => it.agentId === null).length);
+    expect(toolCallsSeen(s)).toBeLessThan(cards.length);
     expect(promptsSent(s)).toBeGreaterThan(0);
   });
 
@@ -1967,5 +1993,142 @@ describe("how long a thought took", () => {
     // Zero, which the card reads as unmeasured and renders as plain "Thought"
     // rather than as a fabricated duration.
     expect(span(s)).toBe(0);
+  });
+});
+
+// A subagent's rows arrive interleaved with the main agent's, on one wire, with
+// nothing but the ids to tell them apart. A lane is what puts each row where it
+// belongs, so the strip can offer one and the transcript can show one at a time.
+describe("subagent lanes", () => {
+  const AGENT = "acb01121756a92ca0";
+  const CALL = "toolu_agent";
+  const NESTED = "toolu_nested";
+
+  const laneStarted = (agentId = AGENT, toolUseId = CALL): ChatEvent => ({
+    type: "subagentStarted",
+    sessionId: "s1",
+    agentId,
+    toolUseId,
+    agentType: "general-purpose",
+    description: "Create sub-made.txt",
+    prompt: "Use the Write tool to create sub-made.txt",
+  });
+  const laneCall = (agentId: string, toolUseId: string): ChatEvent => ({
+    type: "subagentCall",
+    sessionId: "s1",
+    agentId,
+    toolUseId,
+  });
+  const oneSubagent = [
+    turnStarted("t1"),
+    laneStarted(),
+    started("t1", CALL, "Agent", {}),
+    laneCall(AGENT, NESTED),
+    completed("t1", NESTED),
+  ];
+
+  it("leaves the paragraph a subagent's card lands beside in one piece", () => {
+    // The bubble used to be "the last item, if it is still the open one", so a
+    // card from a lane the reader is not even looking at closed it and split
+    // one sentence across two rows.
+    const s = replay([
+      turnStarted("t1"),
+      laneStarted(),
+      started("t1", CALL, "Agent", {}),
+      text("t1", "half "),
+      laneCall(AGENT, NESTED),
+      completed("t1", NESTED),
+      text("t1", "and half"),
+    ]);
+    const paragraphs = s.items.filter((i) => i.kind === "text");
+    expect(paragraphs).toHaveLength(1);
+    expect(paragraphs[0]!.text).toBe("half and half");
+  });
+
+  it("keeps the lane's own record: what it is, how it ended, what it cost", () => {
+    const s = replay(FIXTURE);
+    const lane = s.lanes[AGENT]!;
+    expect(lane.agentType).toBe("general-purpose");
+    expect(lane.description).toBe("Create sub-made.txt");
+    expect(lane.status).toBe("completed");
+    expect(lane.lastToolName).toBe("Write");
+    // The CLI's own figures. Sway adds nothing up for a lane: a second
+    // accumulator would give one subagent two numbers that drift.
+    expect(lane.usage?.totalTokens).toBe(10371);
+    expect(lane.usage?.toolUses).toBe(1);
+  });
+
+  it("shows each lane only its own rows", () => {
+    const s = replay(oneSubagent);
+    const main = visibleItems(s.items, false, null);
+    expect(main.filter((i) => i.kind === "tool").map((i) => i.toolUseId)).toEqual([CALL]);
+    const lane = visibleItems(s.items, false, AGENT);
+    expect(lane.filter((i) => i.kind === "tool").map((i) => i.toolUseId)).toEqual([NESTED]);
+  });
+
+  it("counts the one call the session made, not the twenty it fanned out into", () => {
+    const evs: ChatEvent[] = [turnStarted("t1"), laneStarted(), started("t1", CALL, "Agent", {})];
+    for (let i = 0; i < 20; i++) evs.push(laneCall(AGENT, `n${i}`), completed("t1", `n${i}`));
+    const s = replay(evs);
+    expect(s.items.filter((i) => i.kind === "tool")).toHaveLength(21);
+    expect(toolCallsSeen(s)).toBe(1);
+  });
+
+  it("opens a lane on an id that arrives before the frame naming it", () => {
+    // A permission prompt carries the `task_id` and nothing else, and can beat
+    // `task_started` to the panel. Without this the prompt has no lane to sit
+    // in, and `task_started` would then open a second one for the same agent.
+    const s = replay([
+      turnStarted("t1"),
+      { ...prompt(NESTED, "r1"), agentId: AGENT } as ChatEvent,
+      laneStarted(),
+    ]);
+    expect(Object.keys(s.lanes)).toEqual([AGENT]);
+    expect(laneStrip(s)).toHaveLength(1);
+    expect(s.lanes[AGENT]!.description).toBe("Create sub-made.txt");
+    expect(tool(s, NESTED).agentId).toBe(AGENT);
+  });
+
+  it("folds a subagent's own subagent into the lane above it", () => {
+    const CHILD = "b3e0c11f0a2d4e5f6";
+    const s = replay([
+      turnStarted("t1"),
+      laneStarted(),
+      laneCall(AGENT, "toolu_child_agent"),
+      laneStarted(CHILD, "toolu_child_agent"),
+      laneCall(CHILD, "toolu_deep"),
+      completed("t1", "toolu_deep"),
+    ]);
+    expect(s.lanes[CHILD]!.parentId).toBe(AGENT);
+    // Flat strip: a deeper agent renders as cards inside its ancestor's lane,
+    // so the strip stays a list instead of becoming a tree.
+    expect(laneStrip(s).map((l) => l.agentId)).toEqual([AGENT]);
+    expect(tool(s, "toolu_deep").agentId).toBe(AGENT);
+  });
+
+  it("opens on main, and refuses a lane this session never had", () => {
+    expect(initialChat("s1").selectedLane).toBeNull();
+    const s = replay(oneSubagent);
+    selectLane(s, AGENT);
+    expect(s.selectedLane).toBe(AGENT);
+    // What a restored tab would name: the subagents of the session that has
+    // ended. Main is the only lane a reopened tab can honestly open on.
+    selectLane(s, "a-lane-from-a-session-that-ended");
+    expect(s.selectedLane).toBeNull();
+  });
+
+  it("folds a turn the agent opened for itself like any other", () => {
+    // The ceiling is checked when a turn completes, and a background subagent
+    // finishing makes the CLI open one Sway never authorised. Skipping it here
+    // would let that spend land uncounted.
+    const s = replay([
+      turnStarted("t1"),
+      turnDone("t1", "completed"),
+      { ...turnStarted("t2"), agentInitiated: true } as ChatEvent,
+      turnDone("t2", "completed"),
+    ]);
+    expect(s.turns["t2"]!.agentInitiated).toBe(true);
+    expect(s.turnsCompleted).toBe(2);
+    expect(s.totalCostUsd).toBeCloseTo(0.02);
   });
 });

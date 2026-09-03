@@ -16,6 +16,7 @@ const card = (over: Partial<ToolItem> = {}): ToolItem => ({
   kind: "tool",
   id: "tool1",
   toolUseId: "toolu_1",
+  agentId: null,
   turnId: "t1",
   name: "Bash",
   title: null,
