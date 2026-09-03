@@ -139,8 +139,11 @@ import {
   takeForSend,
   laneStrip,
   selectLane,
+  blockedLanes,
+  laneOf,
   toolCallsSeen,
   visibleItems,
+  type ChatItem,
   type ChatState,
   type QueuedInput,
   type QuestionItem,
@@ -366,6 +369,10 @@ export default function ChatView(props: {
    *  once the lane has left the strip. */
   const laneOpenedBy = (toolUseId: string) =>
     Object.values(state.lanes).find((l) => l.toolUseId === toolUseId)?.agentId ?? null;
+
+  /** The lane a row on screen actually belongs to, which only differs from what
+   *  the reader picked for a blocked row: those show in main too. */
+  const blockedIn = (it: ChatItem) => (state.selectedLane === null ? laneOf(it) : null);
 
   // The strip's three numbers. Derived from the transcript rather than kept as
   // counters, so a replayed history and a live session count the same way.
@@ -1807,6 +1814,7 @@ export default function ChatView(props: {
         rewindTsFor={(turnId) => (tier().rewind === "fork" ? turnStamps()[turnId] ?? null : null)}
         agentTurn={(turnId) => state.turns[turnId]?.agentInitiated === true}
         laneOpenedBy={(toolUseId) => laneOpenedBy(toolUseId)}
+        blockedIn={blockedIn}
         onOpenLane={(agentId) => edit((s) => selectLane(s, agentId))}
         onRewind={onRewind}
       />
@@ -1816,6 +1824,7 @@ export default function ChatView(props: {
 
       <LaneStrip
         lanes={laneStrip(state)}
+        blocked={blockedLanes(state)}
         selected={state.selectedLane}
         onSelect={(agentId) => edit((s) => selectLane(s, agentId))}
         active={props.active}

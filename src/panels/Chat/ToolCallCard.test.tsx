@@ -413,4 +413,44 @@ describe("the way back into a subagent's lane", () => {
     const { container } = mount(card({ name: "Bash" }));
     expect(container.textContent).not.toContain("Read what this subagent did");
   });
+
+  it("sends a blocked row to the lane it is actually in", () => {
+    // The other direction: this card is not the launcher, it is a subagent's
+    // own prompt surfaced in main so the stall is visible there.
+    const opened: string[] = [];
+    render(() => (
+      <ToolCallCard
+        card={card({ name: "Write", toolUseId: "toolu_nested", state: "awaitingApproval" })}
+        sessionId="s1"
+        cwd="/repo"
+        onAnswer={() => {}}
+        onSetMode={() => {}}
+        onRevertHunk={async () => false}
+        inLane="acb01121756a92ca0"
+        onOpenLane={(id) => opened.push(id)}
+      />
+    ));
+    fireEvent.click(screen.getByText("Read what this subagent is doing"));
+    expect(opened).toEqual(["acb01121756a92ca0"]);
+  });
+
+  it("offers the blocking lane rather than the one it launched", () => {
+    // A nested `Agent` call waiting on approval is both. One button, and it
+    // goes to the reason the row is on screen at all.
+    const { container } = render(() => (
+      <ToolCallCard
+        card={{ ...agent, state: "awaitingApproval" }}
+        sessionId="s1"
+        cwd="/repo"
+        onAnswer={() => {}}
+        onSetMode={() => {}}
+        onRevertHunk={async () => false}
+        lane="child"
+        inLane="parent"
+        onOpenLane={() => {}}
+      />
+    ));
+    expect(container.textContent).toContain("Read what this subagent is doing");
+    expect(container.textContent).not.toContain("Read what this subagent did");
+  });
 });

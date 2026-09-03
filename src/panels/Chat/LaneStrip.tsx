@@ -9,6 +9,9 @@ export default function LaneStrip(props: {
   lanes: readonly Lane[];
   /** The lane being read, or null for the main agent. */
   selected: string | null;
+  /** The lanes with a row waiting on the user. Those rows also render in main,
+   *  so this marks where answering one would take you. */
+  blocked: ReadonlySet<string>;
   onSelect: (agentId: string | null) => void;
   /** Whether this chat is the one on screen. The `Opt+N` binding is only armed
    *  for it, or every open chat would answer the same keystroke. */
@@ -52,6 +55,7 @@ export default function LaneStrip(props: {
   // the dot it was first handed and never move again.
   const Chip = (p: { lane: Lane | null; at: number }) => {
     const id = () => p.lane?.agentId ?? null;
+    const blocked = () => p.lane !== null && props.blocked.has(p.lane.agentId);
     return (
       <button
         type="button"
@@ -60,9 +64,12 @@ export default function LaneStrip(props: {
         aria-pressed={props.selected === id()}
         onClick={() => props.onSelect(id())}
       >
-        <span class={`${styles.laneDot} ${p.lane ? laneTone(p.lane) : styles.laneIdle}`} aria-hidden="true" />
+        <span
+          class={`${styles.laneDot} ${p.lane ? laneTone(p.lane, blocked()) : styles.laneIdle}`}
+          aria-hidden="true"
+        />
         <span class={styles.laneLabel}>{p.lane ? laneLabel(p.lane) : "main"}</span>
-        <Show when={p.lane && laneFigure(p.lane, now())}>
+        <Show when={p.lane && laneFigure(p.lane, now(), blocked())}>
           {(figure) => <span class={styles.laneFigure}>{figure()}</span>}
         </Show>
         <span class={styles.laneKey} aria-hidden="true">
@@ -89,22 +96,38 @@ export function laneLabel(lane: Lane): string {
   return lane.description || lane.agentType || lane.agentId.slice(0, 8);
 }
 
-/** Elapsed while it runs, its token total once it has one. One figure, because
- *  two numbers side by side on a chip this small invite being read as one. */
-function laneFigure(lane: Lane, now: number): string | null {
+/** Elapsed while it runs, its token total once it succeeded, and otherwise the
+ *  agent's own word for how it ended. One figure, because two numbers side by
+ *  side on a chip this small invite being read as one.
+ *
+ *  Every state but "running" says itself in words, so nothing the reader has to
+ *  act on is carried by a 6px dot's colour alone. */
+function laneFigure(lane: Lane, now: number, blocked: boolean): string | null {
+  if (blocked) return "waiting";
   if (lane.status === null) {
     const seconds = Math.max(0, Math.round((now - lane.startedAt) / 1000));
     return seconds >= 60 ? `${Math.floor(seconds / 60)}m${seconds % 60}s` : `${seconds}s`;
   }
+  if (lane.status !== "completed") return lane.status;
   const tokens = lane.usage?.totalTokens;
   if (tokens === undefined) return null;
   return tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : String(tokens);
 }
 
-/** Three states, not the agent's whole vocabulary. Folding `cancelled` into
- *  `completed` would hide the one outcome worth noticing, so everything that is
- *  not `completed` reads as trouble. */
-function laneTone(lane: Lane): string {
+/** What a backgrounded `Agent` call records on disk: it returned before the
+ *  work did, so the transcript says the lane started and never that it ended. */
+const LAUNCHED = "async_launched";
+
+/** Four states, not the agent's whole vocabulary, and the same four the status
+ *  strip above the transcript already uses.
+ *
+ *  Everything that is not `completed` reads as trouble, except the one status
+ *  measured to be neither: `async_launched` is what a reopened session finds on
+ *  a backgrounded call whose ending was never written, so it is an outcome
+ *  nobody recorded rather than a bad one. */
+function laneTone(lane: Lane, blocked: boolean): string {
+  if (blocked) return styles.laneBlocked;
   if (lane.status === null) return styles.laneBusy;
-  return lane.status === "completed" ? styles.laneIdle : styles.laneBad;
+  if (lane.status === "completed" || lane.status === LAUNCHED) return styles.laneIdle;
+  return styles.laneBad;
 }
