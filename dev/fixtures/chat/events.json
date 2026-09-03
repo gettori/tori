@@ -139,6 +139,7 @@
     "type": "turnStarted",
     "sessionId": "s1",
     "turnId": "t1",
+    "agentInitiated": false,
     "model": "claude-sonnet-5",
     "permissionMode": "default"
   },
@@ -389,6 +390,35 @@
         ]
       }
     ]
+  },
+  {
+    "type": "subagentStarted",
+    "sessionId": "s1",
+    "agentId": "acb01121756a92ca0",
+    "toolUseId": "toolu_5",
+    "agentType": "general-purpose",
+    "description": "Create sub-made.txt",
+    "prompt": "Use the Write tool to create sub-made.txt containing the word sub."
+  },
+  {
+    "type": "subagentCall",
+    "sessionId": "s1",
+    "agentId": "acb01121756a92ca0",
+    "toolUseId": "toolu_01V4im1SuXMxH4xRjNuCDorw"
+  },
+  {
+    "type": "subagentUpdate",
+    "sessionId": "s1",
+    "agentId": "acb01121756a92ca0",
+    "status": "completed",
+    "activity": "Writing sub-made.txt",
+    "lastToolName": "Write",
+    "usage": {
+      "totalTokens": 10371,
+      "toolUses": 1,
+      "durationMs": 4844
+    },
+    "summary": "Done. Created sub-made.txt containing the word sub."
   },
   {
     "type": "planUpdate",

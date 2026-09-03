@@ -34,9 +34,21 @@ use super::model::{
     ChatAccount, ChatConfigKind, ChatConfigOption, ChatEffortLevel, ChatEvent, ChatModelInfo,
     ChatQuestion, ChatQuestionOption, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode,
     PatchHunk, PermissionSuggestion, QuestionAnswer, SlashCommand, SuggestedRule, ToolKind, ToolStatus,
-    ToolSummary, PATCH_LINE_CAP,
+    SubagentUsage, ToolSummary, PATCH_LINE_CAP,
     TurnOutcome, Usage,
 };
+
+/// The call an event is about. Only the four a subagent can produce: measured,
+/// it never streams, so no delta variant can ever be nested.
+fn call_named_by(ev: &ChatEvent) -> Option<&str> {
+    match ev {
+        ChatEvent::ToolCallStarted { tool_use_id, .. }
+        | ChatEvent::ToolCallProgress { tool_use_id, .. }
+        | ChatEvent::ToolCallCompleted { tool_use_id, .. }
+        | ChatEvent::FileEdit { tool_use_id, .. } => Some(tool_use_id),
+        _ => None,
+    }
+}
 
 /// The one tool whose `can_use_tool` is a question rather than a request to act.
 ///
@@ -310,6 +322,13 @@ pub struct ClaudeMapper {
     /// bound as `sway_hook_ids`: the result frame arrives with nothing but a
     /// `tool_use_id` on it.
     read_only_calls: std::collections::HashSet<String>,
+    /// `Agent` call id -> the `task_id` it launched, from `task_started`. What
+    /// turns a nested frame's `parent_tool_use_id` into its lane.
+    lane_of_call: HashMap<String, String>,
+    /// Calls already announced against a lane, so the several frames one call
+    /// produces do not each repeat its membership. Bounded like the tool-call
+    /// sets above, and for the same reason.
+    announced_calls: std::collections::HashSet<String>,
     /// The adapter's measured effort levels. Empty is a mapper nobody gave any,
     /// which offers the catalogue's own list rather than guessing at more.
     effort_extras: Vec<ChatEffortExtra>,
@@ -482,6 +501,38 @@ impl ClaudeMapper {
     /// Guessing an event for such a frame would duplicate content in the
     /// transcript, which is worse than dropping it.
     pub fn map(&mut self, frame: &Value) -> Vec<ChatEvent> {
+        let events = self.map_frame(frame);
+        self.attribute_to_lane(frame, events)
+    }
+
+    /// Announce every call a nested frame introduced against the lane it ran in.
+    /// Here because `map` is the only place seeing both the parent and the
+    /// events. An unknown parent is left alone rather than guessed at.
+    fn attribute_to_lane(&mut self, frame: &Value, events: Vec<ChatEvent>) -> Vec<ChatEvent> {
+        let Some(agent_id) = frame["parent_tool_use_id"]
+            .as_str()
+            .and_then(|parent| self.lane_of_call.get(parent))
+            .cloned()
+        else {
+            return events;
+        };
+        let mut out = Vec::with_capacity(events.len());
+        for ev in events {
+            if let Some(tool_use_id) = call_named_by(&ev) {
+                if self.announced_calls.insert(tool_use_id.to_string()) {
+                    out.push(ChatEvent::SubagentCall {
+                        session_id: self.session_id.clone(),
+                        agent_id: agent_id.clone(),
+                        tool_use_id: tool_use_id.to_string(),
+                    });
+                }
+            }
+            out.push(ev);
+        }
+        out
+    }
+
+    fn map_frame(&mut self, frame: &Value) -> Vec<ChatEvent> {
         let events = match frame["type"].as_str() {
             Some("system") => self.map_system(frame),
             Some("stream_event") => self.map_stream_event(frame),
@@ -603,17 +654,69 @@ impl ClaudeMapper {
             Some("status") => self.map_status(frame),
             Some("hook_started") => self.map_hook(frame, HookPhase::Started),
             Some("hook_response") => self.map_hook(frame, HookPhase::Finished),
+            Some("task_started") => self.map_task_started(frame),
+            // Three frames, one variant: each patches the same record.
+            // `background_tasks_changed` is not mapped: it names no task.
+            Some("task_progress") | Some("task_updated") | Some("task_notification") => {
+                self.map_task_update(frame)
+            }
             _ => Vec::new(),
         }
+    }
+
+    /// The one place a subagent's two ids are joined. The `tool_use_id ->
+    /// task_id` entry is what later lets a nested frame name its lane.
+    fn map_task_started(&mut self, frame: &Value) -> Vec<ChatEvent> {
+        let (Some(agent_id), Some(tool_use_id)) =
+            (frame["task_id"].as_str(), frame["tool_use_id"].as_str())
+        else {
+            return Vec::new();
+        };
+        self.lane_of_call
+            .insert(tool_use_id.to_string(), agent_id.to_string());
+        vec![ChatEvent::SubagentStarted {
+            session_id: self.session_id.clone(),
+            agent_id: agent_id.to_string(),
+            tool_use_id: tool_use_id.to_string(),
+            agent_type: frame["subagent_type"].as_str().unwrap_or_default().to_string(),
+            description: frame["description"].as_str().unwrap_or_default().to_string(),
+            prompt: frame["prompt"].as_str().unwrap_or_default().to_string(),
+        }]
+    }
+
+    /// Status is read from two places because the frames disagree:
+    /// `task_updated` nests it under `patch`, `task_notification` does not.
+    fn map_task_update(&mut self, frame: &Value) -> Vec<ChatEvent> {
+        let Some(agent_id) = frame["task_id"].as_str() else {
+            return Vec::new();
+        };
+        let status = frame["patch"]["status"]
+            .as_str()
+            .or_else(|| frame["status"].as_str())
+            .map(str::to_string);
+        let usage = frame.get("usage").filter(|u| !u.is_null()).map(|u| SubagentUsage {
+            total_tokens: u["total_tokens"].as_u64().unwrap_or(0),
+            tool_uses: u["tool_uses"].as_u64().unwrap_or(0),
+            duration_ms: u["duration_ms"].as_u64().unwrap_or(0),
+        });
+        vec![ChatEvent::SubagentUpdate {
+            session_id: self.session_id.clone(),
+            agent_id: agent_id.to_string(),
+            status,
+            activity: frame["description"].as_str().map(str::to_string),
+            last_tool_name: frame["last_tool_name"].as_str().map(str::to_string),
+            usage,
+            summary: frame["summary"].as_str().map(str::to_string),
+        }]
     }
 
     /// A compaction boundary. The summary is not on this frame - measured, it is
     /// the *next* user message - so this reports the reclaim and leaves the
     /// summary to be stitched on by a reader that sees both.
     ///
-    /// Sidechain (subagent) boundaries are skipped: they compact a subagent's
-    /// own context, not this conversation's, and showing one would report a
-    /// reclaim the user's transcript never had.
+    /// Subagent boundaries are skipped: reporting one would claim a reclaim
+    /// this transcript never had. This read `isSidechain` until 2026-09-04,
+    /// the transcript's spelling, absent from all twenty live captures.
     ///
     /// **Both spellings, because the two surfaces disagree.** The stream frame
     /// says `compact_metadata`/`pre_tokens`/`post_tokens` (claude 2.1.251,
@@ -625,7 +728,7 @@ impl ClaudeMapper {
     /// same session, reopened and replayed off disk, read "Compacted manually
     /// (16.6k to 2k)". Neither spelling is more correct, so neither is dropped.
     fn map_compact_boundary(&mut self, frame: &Value) -> Vec<ChatEvent> {
-        if frame["isSidechain"].as_bool() == Some(true) {
+        if frame["parent_tool_use_id"].is_string() {
             return Vec::new();
         }
         let meta = match frame.get("compact_metadata") {
@@ -786,6 +889,7 @@ impl ClaudeMapper {
                 ChatEvent::TurnStarted {
                     session_id: self.session_id.clone(),
                     turn_id: self.turn_id(),
+                    agent_initiated: false,
                     model,
                     permission_mode: mode,
                     extra: Extra::new(),
@@ -804,6 +908,7 @@ impl ClaudeMapper {
         let mut out = vec![ChatEvent::TurnStarted {
             session_id: self.session_id.clone(),
             turn_id: self.turn_id(),
+            agent_initiated: false,
             model,
             permission_mode: mode,
             extra: Extra::new(),
@@ -1583,6 +1688,248 @@ mod tests {
 
     fn count(events: &[ChatEvent], pred: impl Fn(&ChatEvent) -> bool) -> usize {
         events.iter().filter(|e| pred(e)).count()
+    }
+
+    /// `task_started` alone joins the `task_id` a permission prompt names to
+    /// the `Agent` call its nested frames point at. Losing it costs both.
+    #[test]
+    fn a_subagent_reports_its_start_and_its_ending() {
+        let events = run("permission-subagent");
+
+        let started: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::SubagentStarted { agent_id, tool_use_id, agent_type, .. } => {
+                    Some((agent_id.as_str(), tool_use_id.as_str(), agent_type.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            started,
+            [("acb01121756a92ca0", "toolu_01Ec9PYYDVBe9S6DjXp4RM1s", "general-purpose")],
+            "exactly one subagent started, with both its ids and its type"
+        );
+
+        let terminal = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::SubagentUpdate { status: Some(s), .. } => Some(s.as_str()),
+                _ => None,
+            })
+            .last();
+        assert_eq!(terminal, Some("completed"), "the subagent's last reported status");
+    }
+
+    /// Both halves matter: attributing nothing leaves a subagent's work reading
+    /// as the parent's, and over-attributing puts the main agent's own calls
+    /// into a lane the user never opened.
+    #[test]
+    fn only_a_subagents_calls_are_announced_against_a_lane() {
+        let events = run("permission-subagent");
+        let announced: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::SubagentCall { agent_id, tool_use_id, .. } => {
+                    Some((agent_id.as_str(), tool_use_id.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            announced,
+            [("acb01121756a92ca0", "toolu_01V4im1SuXMxH4xRjNuCDorw")],
+            "the nested Write, once, against the subagent that ran it"
+        );
+
+        // The `Agent` call itself is the *parent's* work: it is what the main
+        // agent did, and a lane holding its own launcher would nest forever.
+        assert!(
+            !announced.iter().any(|(_, id)| *id == "toolu_01Ec9PYYDVBe9S6DjXp4RM1s"),
+            "the Agent call belongs to the main agent, not to the lane it opened"
+        );
+    }
+
+    /// A lane's tokens are the CLI's figure, not one Sway adds up: the
+    /// lifecycle frames already report a running total, and a second
+    /// accumulator would give one subagent two numbers that drift apart.
+    #[test]
+    fn a_lanes_tokens_are_reported_by_the_cli_and_kept_out_of_the_session() {
+        let events = run("permission-subagent");
+
+        let lane_total = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::SubagentUpdate { usage: Some(u), .. } => Some(u.total_tokens),
+                _ => None,
+            })
+            .max();
+        // 10371 is `task_notification`'s figure; the `Agent` result says 10429
+        // for the same work, counted later. The lane quotes the lifecycle
+        // channel because that is the one reporting mid-flight too.
+        assert_eq!(lane_total, Some(10371), "the lane carries the CLI's own figure");
+
+        // A nested `message_delta` still produces nothing, so the session meter
+        // is byte-identical to what it reported before lanes existed.
+        let nested = serde_json::json!({
+            "type": "stream_event",
+            "parent_tool_use_id": "toolu_1",
+            "event": { "type": "message_delta", "usage": { "output_tokens": 5, "input_tokens": 2 } },
+        });
+        let mut m = ClaudeMapper::new("s1");
+        assert_eq!(
+            count(&m.map(&nested), |e| matches!(e, ChatEvent::Usage { .. })),
+            0,
+            "a subagent's occupancy is not the session's"
+        );
+    }
+
+    /// The second half is what the guard is for, and it was unreachable while
+    /// the guard read a field this stream never sends.
+    #[test]
+    fn a_nested_compaction_is_not_reported_as_the_sessions() {
+        let base = serde_json::json!({
+            "type": "system", "subtype": "compact_boundary",
+            "compact_metadata": { "trigger": "auto", "pre_tokens": 500, "post_tokens": 100 },
+        });
+        let mut m = ClaudeMapper::new("s1");
+        assert_eq!(
+            count(&m.map(&base), |e| matches!(e, ChatEvent::Compacted { .. })),
+            1,
+            "the session's own compaction reaches the transcript"
+        );
+
+        let mut nested = base.clone();
+        nested["parent_tool_use_id"] = serde_json::json!("toolu_1");
+        let mut m = ClaudeMapper::new("s1");
+        assert_eq!(
+            count(&m.map(&nested), |e| matches!(e, ChatEvent::Compacted { .. })),
+            0,
+            "a subagent's compaction is its own context, not this conversation's"
+        );
+    }
+
+    /// Two subagents must not collect into one lane.
+    #[test]
+    fn parallel_subagents_keep_their_calls_apart() {
+        let events = run("subagent-parallel");
+        let mut lanes: std::collections::BTreeMap<&str, Vec<&str>> = Default::default();
+        for ev in &events {
+            if let ChatEvent::SubagentCall { agent_id, tool_use_id, .. } = ev {
+                lanes.entry(agent_id).or_default().push(tool_use_id);
+            }
+        }
+        assert_eq!(lanes.len(), 2, "one lane per subagent, got {lanes:?}");
+        let mut seen: Vec<&str> = lanes.values().flatten().copied().collect();
+        let before = seen.len();
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(before, seen.len(), "no call is announced against two lanes");
+    }
+
+    /// The failure this prevents is the one `PermissionMode` already had: an
+    /// unrecognised value folded into the nearest known one, so a cancelled
+    /// subagent reports as finished. Serde is checked too; either could fold.
+    #[test]
+    fn an_unrecognised_terminal_status_survives_unfolded() {
+        for status in ["failed", "cancelled", "a_word_this_build_has_never_seen"] {
+            let frame = serde_json::json!({
+                "type": "system",
+                "subtype": "task_updated",
+                "task_id": "acb01121756a92ca0",
+                "patch": { "status": status, "end_time": 1_786_659_154_233u64 },
+            });
+            let mut m = ClaudeMapper::new("s1");
+            let events = m.map(&frame);
+            let Some(ChatEvent::SubagentUpdate { status: Some(mapped), .. }) = events.first() else {
+                panic!("{status}: expected one SubagentUpdate carrying a status, got {events:?}");
+            };
+            assert_eq!(mapped, status, "the mapper reported the agent's own word");
+
+            let wire = serde_json::to_value(&events[0]).expect("serializes");
+            assert_eq!(wire["status"], status, "and serde carried it to the mirror unchanged");
+        }
+    }
+
+    /// `task_updated` puts the status under `patch`, `task_notification` puts it
+    /// at the top level. Reading only one leaves the other silently statusless.
+    #[test]
+    fn both_spellings_of_a_terminal_status_are_read() {
+        let patched = serde_json::json!({
+            "type": "system", "subtype": "task_updated",
+            "task_id": "a1", "patch": { "status": "completed" },
+        });
+        let top_level = serde_json::json!({
+            "type": "system", "subtype": "task_notification",
+            "task_id": "a1", "status": "completed", "summary": "Done.",
+        });
+        for frame in [patched, top_level] {
+            let mut m = ClaudeMapper::new("s1");
+            assert!(
+                matches!(
+                    m.map(&frame).first(),
+                    Some(ChatEvent::SubagentUpdate { status: Some(s), .. }) if s == "completed"
+                ),
+                "status not read from {frame}"
+            );
+        }
+    }
+
+    /// The fixture's second `system/init` is the CLI reporting the subagent
+    /// unprompted. It is a real turn and must be mapped as one; it must not be
+    /// attributed to a user who sent nothing, which only the transport knows.
+    #[test]
+    fn a_background_subagents_ending_opens_no_user_turn() {
+        let events = run("subagent-background");
+
+        // Twice, not once: both terminal frames report the status and both are
+        // carried. They patch one record, so applying both lands in one place.
+        let settled = events.iter().filter(|e| {
+            matches!(e, ChatEvent::SubagentUpdate { status: Some(s), .. } if s == "completed")
+        });
+        assert_eq!(settled.count(), 2, "both terminal frames reach the lane");
+
+        // The report *is* a turn and has to be mapped as one, or the paragraph
+        // the CLI wrote about the subagent never reaches the transcript.
+        let turns = count(&events, |e| matches!(e, ChatEvent::TurnStarted { .. }));
+        assert_eq!(turns, 2, "the launching turn, and the one the CLI opened to report");
+
+        // Attribution is not the mapper's to make: both `system/init` frames are
+        // byte-identical bar their `uuid`, so it leaves every turn at the
+        // default and the transport corrects the ones the user actually sent.
+        assert!(
+            events
+                .iter()
+                .all(|e| !matches!(e, ChatEvent::TurnStarted { agent_initiated: true, .. })),
+            "the mapper does not guess at an attribution the wire cannot support"
+        );
+    }
+
+    /// A backgrounded subagent's updates arrive after its parent's `result`, so
+    /// anything keyed on an open turn would drop every one of them.
+    #[test]
+    fn a_background_subagents_updates_survive_the_turn_that_launched_it() {
+        let frames = fixture("subagent-background");
+        let mut m = ClaudeMapper::new("s1");
+        let mut after_result = Vec::new();
+        let mut ended = false;
+        for frame in &frames {
+            let events = m.map(frame);
+            if ended {
+                after_result.extend(events);
+            } else {
+                ended = frame["type"].as_str() == Some("result");
+            }
+        }
+        let updates = count(&after_result, |e| matches!(e, ChatEvent::SubagentUpdate { .. }));
+        assert!(updates > 0, "the subagent reported after the parent's turn ended");
+        assert!(
+            after_result.iter().any(|e| matches!(
+                e,
+                ChatEvent::SubagentUpdate { status: Some(s), .. } if s == "completed"
+            )),
+            "including the one that settles its lane"
+        );
     }
 
     /// The compaction channel, off the captured run.
@@ -3761,3 +4108,4 @@ mod tests {
         }
     }
 }
+

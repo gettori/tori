@@ -176,7 +176,7 @@ describe("a live chat blocks a real tree revert", () => {
     sessionId: SESSION,
     turnId,
     model: "claude-sonnet-5",
-    permissionMode: "default",
+    permissionMode: "default", agentInitiated: false
   });
 
   function register(state: ReturnType<typeof initialChat>) {
