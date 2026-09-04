@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  attachmentSources,
   chatPlugins,
   chatTier,
   publishedCapabilities,
@@ -182,6 +183,8 @@ describe("every tier explains what it lacks", () => {
         ["diffs", tier.diffs === "none"],
         ["budgets", !tier.spendCeilings],
         ["subagents", tier.subagents === "none"],
+        ["attachmentMentions", tier.attachmentMentions.length === 0],
+        ["attachmentUploads", tier.attachmentUploads.length === 0],
       ] as const;
       for (const [key, missing] of expected) {
         if (missing) {
@@ -228,6 +231,36 @@ describe("subagent lanes, as published", () => {
   it("promises nothing at all for an agent with no chat surface", () => {
     expect(NO_CHAT_TIER.subagents).toBe("none");
     expect(publishedCapabilities(NO_CHAT_TIER)).toEqual([]);
+  });
+});
+
+describe("what each agent can be handed", () => {
+  // Two keys rather than one with a gap, because ACP is half-way: a source
+  // file it already receives as text, bytes under Sway's app data it has no
+  // measured way to reach. One key would have to be both published and
+  // explained away, which the test above forbids.
+  it("pins the kinds per transport and per source", () => {
+    const claude = chatTier("claude_stream_json");
+    expect(claude.attachmentMentions).toEqual(["image", "pdf", "file"]);
+    expect(claude.attachmentUploads).toEqual(["image", "pdf", "file"]);
+    const acp = chatTier("acp");
+    expect(acp.attachmentMentions).toEqual(["file"]);
+    expect(acp.attachmentUploads).toEqual([]);
+    expect(NO_CHAT_TIER.attachmentMentions).toEqual([]);
+    expect(NO_CHAT_TIER.attachmentUploads).toEqual([]);
+  });
+
+  it("publishes the kinds themselves, and explains a refused upload", () => {
+    expect(publishedCapabilities(chatTier("claude_stream_json"))).toContainEqual({
+      key: "attachmentUploads",
+      value: "image, pdf, file",
+      label: "attachmentUploads: image, pdf, file",
+    });
+    const acp = attachmentSources(chatTier("acp"));
+    expect(acp.mentions).toEqual({ kinds: ["file"], gap: null });
+    expect(acp.uploads.kinds).toEqual([]);
+    expect(acp.uploads.gap).toMatch(/outside its project/);
+    expect(unavailableCapabilities(chatTier("acp")).map((g) => g.key)).toContain("attachmentUploads");
   });
 });
 

@@ -2,6 +2,7 @@ mod accounts;
 mod agent_lines;
 mod agents;
 mod askpass;
+mod attachments;
 mod attempts;
 mod auth;
 mod backstop;
@@ -192,6 +193,8 @@ pub fn run() {
             pty::pty_live_ids,
             chat::commands::chat_spawn,
             chat::commands::chat_live_sessions,
+            attachments::store_attachment,
+            attachments::attachments_dir,
             catalog_probe::model_catalogs,
             catalog_probe::refresh_model_catalog,
             attempts::create_attempt,

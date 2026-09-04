@@ -374,12 +374,17 @@ pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
                 "type": "image",
                 "source": { "type": "base64", "media_type": media_type, "data": data },
             })),
-            ContentBlock::FileRef { path, start_line, end_line, text } => {
+            ContentBlock::FileRef { path, start_line, end_line, text, label } => {
                 let mut rendered = match (start_line, end_line) {
                     (Some(s), Some(e)) => format!("@{path}#L{s}-{e}"),
                     (Some(s), None) => format!("@{path}#L{s}"),
                     _ => format!("@{path}"),
                 };
+                // `[image 3]: @/abs/path`, the exact form `history.rs` reads
+                // back, so the label survives a reopen.
+                if let Some(l) = label {
+                    rendered = format!("{l}: {rendered}");
+                }
                 if let Some(t) = text {
                     rendered.push_str("\n\n");
                     rendered.push_str(t);
@@ -1308,6 +1313,7 @@ pub mod tests {
             start_line: Some(10),
             end_line: Some(20),
             text: Some("fn main() {}".into()),
+            label: None,
         }]);
         let text = frame["message"]["content"][0]["text"].as_str().unwrap();
         assert!(text.starts_with("@src/main.rs#L10-20"), "got {text}");
@@ -1321,8 +1327,26 @@ pub mod tests {
             start_line: None,
             end_line: None,
             text: None,
+            label: None,
         }]);
         assert_eq!(frame["message"]["content"][0]["text"], "@README.md");
+    }
+
+    /// An attachment is a labelled path: the token the prose names it by, then
+    /// the mention. This exact form is what `history.rs` reads back.
+    #[test]
+    fn a_labelled_reference_leads_with_its_label() {
+        let frame = turn_frame(&[ContentBlock::FileRef {
+            path: "/home/me/.config/sway/attachments/ab-shot.png".into(),
+            start_line: None,
+            end_line: None,
+            text: None,
+            label: Some("[image 3]".into()),
+        }]);
+        assert_eq!(
+            frame["message"]["content"][0]["text"],
+            "[image 3]: @/home/me/.config/sway/attachments/ab-shot.png"
+        );
     }
 
     /// Every frame the CLI reads is newline-delimited JSON, so a turn that

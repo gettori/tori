@@ -53,6 +53,10 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
   // agent needs to know theirs depends on which agent they picked.
   diffs: "A tool card can show what a write changed, either because Sway recorded the file just before it was written or because the agent sent its prior contents. An agent that sends neither gets a card with no diff.",
   budgets: "A spend limit stops the chat at a turn boundary: the running turn finishes, the next one does not start.",
+  attachmentMentions:
+    "What the agent can open when handed a path it already has: a file dragged from the tree or mentioned with @. Each becomes a labelled path like [image 1] the message can name.",
+  attachmentUploads:
+    "What the agent can open when handed a pasted or dropped file. Sway writes it under its own folder and passes the path, so the agent reads it rather than receiving the bytes.",
   history:
     "This agent can reopen a conversation it still holds, so a chat closed and reopened replays its earlier turns.",
   sessions: "This agent can list its own sessions, including ones started outside Sway.",
