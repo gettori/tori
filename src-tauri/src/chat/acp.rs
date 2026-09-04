@@ -1030,10 +1030,10 @@ pub fn prompt_blocks(blocks: &[ContentBlock]) -> Vec<AcpContentBlock> {
     use agent_client_protocol::schema::v1::{ImageContent, TextContent};
     blocks
         .iter()
-        .map(|b| match b {
-            ContentBlock::Text { text } => AcpContentBlock::Text(TextContent::new(text.clone())),
+        .filter_map(|b| match b {
+            ContentBlock::Text { text } => Some(AcpContentBlock::Text(TextContent::new(text.clone()))),
             ContentBlock::Image { media_type, data } => {
-                AcpContentBlock::Image(ImageContent::new(data.clone(), media_type.clone()))
+                Some(AcpContentBlock::Image(ImageContent::new(data.clone(), media_type.clone())))
             }
             ContentBlock::FileRef { path, start_line, end_line, text } => {
                 let mut rendered = match (start_line, end_line) {
@@ -1045,8 +1045,10 @@ pub fn prompt_blocks(blocks: &[ContentBlock]) -> Vec<AcpContentBlock> {
                     rendered.push_str("\n\n");
                     rendered.push_str(t);
                 }
-                AcpContentBlock::Text(TextContent::new(rendered))
+                Some(AcpContentBlock::Text(TextContent::new(rendered)))
             }
+            // Replay only, and it names bytes nothing kept - see `turn_frame`.
+            ContentBlock::ImageRef => None,
         })
         .collect()
 }

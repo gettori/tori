@@ -357,7 +357,9 @@ export function takeAutoSend(key: ComposerKey): string | null {
 /** How a pending block reads as a chip. */
 export function chipLabel(block: ContentBlock): string {
   if (block.type === "text") return block.text;
-  if (block.type === "image") return "image";
+  // A chip never holds an `imageRef` - one only comes out of replayed history,
+  // which no composer reads - but both are an image to anything naming one.
+  if (block.type === "image" || block.type === "imageRef") return "image";
   const name = block.path.split("/").pop() || block.path;
   if (block.startLine === null) return `@${name}`;
   return block.endLine !== null && block.endLine !== block.startLine

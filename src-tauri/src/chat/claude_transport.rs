@@ -368,12 +368,12 @@ impl ClaudeTransport {
 pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
     let content: Vec<Value> = blocks
         .iter()
-        .map(|b| match b {
-            ContentBlock::Text { text } => json!({ "type": "text", "text": text }),
-            ContentBlock::Image { media_type, data } => json!({
+        .filter_map(|b| match b {
+            ContentBlock::Text { text } => Some(json!({ "type": "text", "text": text })),
+            ContentBlock::Image { media_type, data } => Some(json!({
                 "type": "image",
                 "source": { "type": "base64", "media_type": media_type, "data": data },
-            }),
+            })),
             ContentBlock::FileRef { path, start_line, end_line, text } => {
                 let mut rendered = match (start_line, end_line) {
                     (Some(s), Some(e)) => format!("@{path}#L{s}-{e}"),
@@ -384,8 +384,12 @@ pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
                     rendered.push_str("\n\n");
                     rendered.push_str(t);
                 }
-                json!({ "type": "text", "text": rendered })
+                Some(json!({ "type": "text", "text": rendered }))
             }
+            // The one block a composer cannot make: it comes off a replayed
+            // transcript and names bytes nothing kept. Sending it would mean
+            // inventing an image, so it is left out rather than guessed at.
+            ContentBlock::ImageRef => None,
         })
         .collect();
     json!({ "type": "user", "message": { "role": "user", "content": content } })
