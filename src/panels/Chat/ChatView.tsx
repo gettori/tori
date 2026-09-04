@@ -508,8 +508,20 @@ export default function ChatView(props: {
         });
       })
       // History is an enhancement, not a precondition: a transcript that cannot
-      // be read must not stop the live session from running.
-      .catch(() => {})
+      // be read must not stop the live session from running. It must not fail
+      // *silently* either, which is what this used to do: a session with turns
+      // on disk opened blank and looked like a session with no turns, and the
+      // one fact that tells those apart went to a swallowed rejection.
+      .catch((err) => {
+        edit((s) =>
+          applyEvent(s, {
+            type: "sessionError",
+            sessionId: props.sessionId,
+            message: `Could not read this session's earlier turns: ${String(err)}`,
+            fatal: false,
+          }),
+        );
+      })
       .finally(() => {
         // Draining and flipping the flag happen in **one synchronous block**.
         // Split across two microtasks, a channel message delivered between them

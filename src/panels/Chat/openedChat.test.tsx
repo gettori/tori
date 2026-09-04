@@ -18,6 +18,9 @@ let channel: { onmessage?: (raw: unknown) => void } | null = null;
 let claim: unknown = { type: "granted", contested: false };
 /** The turns `chat_history` replays for the session under test. */
 let history: unknown[] = [];
+/** Set to make the replay reject, which is a thing that happens to real
+ *  transcripts and used to leave no trace at all. */
+let historyFails: string | null = null;
 
 vi.mock("@tauri-apps/api/core", () => ({
   Channel: class {
@@ -30,7 +33,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         channel = args.onEvent as { onmessage?: (raw: unknown) => void };
         return Promise.resolve({ ownership: claim });
       case "chat_history":
-        return Promise.resolve(history);
+        return historyFails ? Promise.reject(historyFails) : Promise.resolve(history);
       case "list_agents":
         return Promise.resolve(ADAPTERS);
       case "model_catalogs":
@@ -113,6 +116,7 @@ beforeEach(async () => {
   channel = null;
   claim = { type: "granted", contested: false };
   history = [];
+  historyFails = null;
   // Both halves: the composer's text and anything a previous test left held for
   // a first send that never happened.
   clearComposer(TAB);
@@ -164,6 +168,19 @@ describe("a restored chat opened to read", () => {
     expect(historyCalls()).toHaveLength(1);
     // The whole of the phase: a conversation on screen with no child behind it.
     expect(spawns()).toEqual([]);
+  });
+
+  it("says so when it cannot read the transcript, rather than looking empty", async () => {
+    // A session whose turns are on disk and a session with no turns render the
+    // same empty panel, and the one fact that tells them apart used to go to a
+    // swallowed rejection. Whatever went wrong, the reader gets to see that
+    // something did.
+    historyFails = "no such file";
+    mount();
+
+    await screen.findByText(/Could not read this session's earlier turns/);
+    // Still an enhancement and not a precondition: the panel is usable.
+    expect(await screen.findByRole("textbox")).toBeTruthy();
   });
 
   it("starts on its own session id, resuming rather than beginning", async () => {
