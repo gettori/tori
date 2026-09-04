@@ -93,6 +93,7 @@ const term = (id: string) => ({
   kind: "shell" as const,
   program: "",
   args: [] as string[],
+  profile: null,
 });
 
 const panes = () => document.querySelectorAll<HTMLElement>(".work-split .pane");

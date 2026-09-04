@@ -56,6 +56,15 @@ export default function SessionInfo(props: {
   /** The session's cwd, used to locate the project `.mcp.json`. Omitted in
    *  tests that only exercise the read-only rendering. */
   cwd?: string;
+  /** Which agent and which of its accounts this session runs as. Both are
+   *  needed to locate the user-scope `.claude.json`, which lives inside an
+   *  isolated home rather than beside it. */
+  agentId?: string;
+  profile?: string | null;
+  /** The user's name for that account, already resolved, or null when naming
+   *  it would say nothing (a single-account install). Resolved by the caller so
+   *  this component stays a renderer and its tests need no health sweep. */
+  profileLabel?: string | null;
 }) {
   const [open, setOpen] = createSignal(false);
   const [adding, setAdding] = createSignal(false);
@@ -67,7 +76,12 @@ export default function SessionInfo(props: {
   // collapsed panel has nothing to show for them.
   const [configured, { mutate }] = createResource(
     () => (open() && props.cwd ? props.cwd : null),
-    (cwd) => invoke<McpEntry[]>("chat_mcp_list", { cwd }),
+    (cwd) =>
+      invoke<McpEntry[]>("chat_mcp_list", {
+        cwd,
+        agentId: props.agentId ?? "claude",
+        profile: props.profile ?? null,
+      }),
   );
 
   /** Split the typed command on whitespace: the first word is the program, the
@@ -85,6 +99,8 @@ export default function SessionInfo(props: {
         cwd: props.cwd,
         name: name().trim(),
         config: { command: program, args },
+        agentId: props.agentId ?? "claude",
+        profile: props.profile ?? null,
       });
       mutate(next);
       setName("");
@@ -98,7 +114,14 @@ export default function SessionInfo(props: {
   async function removeServer(serverName: string) {
     setError(null);
     try {
-      mutate(await invoke<McpEntry[]>("chat_mcp_remove", { cwd: props.cwd, name: serverName }));
+      mutate(
+        await invoke<McpEntry[]>("chat_mcp_remove", {
+          cwd: props.cwd,
+          name: serverName,
+          agentId: props.agentId ?? "claude",
+          profile: props.profile ?? null,
+        }),
+      );
     } catch (err) {
       setError(String(err));
     }
@@ -111,6 +134,7 @@ export default function SessionInfo(props: {
     () =>
       !props.cwd &&
       !props.account &&
+      !props.profileLabel &&
       props.capabilities.length === 0 &&
       props.mcpServers.length === 0 &&
       props.skills.length === 0 &&
@@ -138,31 +162,38 @@ export default function SessionInfo(props: {
         </button>
         <Show when={open()}>
           <div class={styles.sessionInfoBody}>
-            {/* Only when the handshake answered. A session that never
-                handshook shows no Account section at all rather than a blank
-                one or a guessed tier: "we were never told" is not a plan. Each
-                line is guarded separately for the same reason, since the
-                agent can name an account without naming an organization. */}
-            <Show when={props.account}>
-              {(a) => (
-                <section>
-                  <h4>Account</h4>
-                  <p>
-                    <Show when={a().subscriptionType}>{(plan) => <strong>{plan()}</strong>}</Show>
-                    {/* The separator belongs to whichever line is not first, so
-                        it is conditioned on both: an account naming only an
-                        organization must not open with a stray "·". */}
-                    <Show when={a().organization}>
-                      {(org) => (
-                        <span>
-                          {a().subscriptionType ? " · " : ""}
-                          {org()}
-                        </span>
-                      )}
-                    </Show>
-                  </p>
-                </section>
-              )}
+            {/* Every line is guarded on its own, and the section on all of
+                them: the two sources answer at different moments and can each
+                say nothing. A session that never handshook shows no plan and no
+                guessed tier ("we were never told" is not a plan), while the
+                account's name is known before it starts. */}
+            <Show when={props.profileLabel || props.account}>
+              <section>
+                <h4>Account</h4>
+                {/* The user's own name for the account, and only when there is
+                    more than one to tell apart - the caller has already applied
+                    that rule. First, because it is the line whose words they
+                    chose, and the one that is there from the start. */}
+                <Show when={props.profileLabel}>{(name) => <p>{name()}</p>}</Show>
+                <Show when={props.account}>
+                  {(a) => (
+                    <p>
+                      <Show when={a().subscriptionType}>{(plan) => <strong>{plan()}</strong>}</Show>
+                      {/* The separator belongs to whichever line is not first,
+                          so it is conditioned on both: an account naming only an
+                          organization must not open with a stray "·". */}
+                      <Show when={a().organization}>
+                        {(org) => (
+                          <span>
+                            {a().subscriptionType ? " · " : ""}
+                            {org()}
+                          </span>
+                        )}
+                      </Show>
+                    </p>
+                  )}
+                </Show>
+              </section>
             </Show>
             {/* What this chat can do, in the same panel as what it loaded,
                 because both answer "what am I working with". Each entry is the

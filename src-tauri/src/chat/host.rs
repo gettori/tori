@@ -1156,7 +1156,7 @@ mod tests {
 
         host.registry.claim(
             "s-dies",
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert!(host.registry.snapshot().contains_key("s-dies"));
 
@@ -1307,7 +1307,7 @@ mod tests {
         for (id, tab) in [("s1", "tab-a"), ("s2", "tab-b")] {
             host.registry.claim(
                 id,
-                Claim { surface: Surface::Chat, tab_id: tab.into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+                Claim { surface: Surface::Chat, tab_id: tab.into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
             );
             let closed = closes.clone();
             host.spawn(id, tab, Box::new(|_| {}), spec(id), move || {
@@ -1333,7 +1333,7 @@ mod tests {
         let host = ChatHost::at(temp_store());
         host.registry.claim(
             "s-bad",
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
 
         struct Broken;
@@ -1415,13 +1415,13 @@ mod tests {
 
         let first = host.registry.claim(
             &id,
-            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert_eq!(first, ClaimOutcome::Granted { contested: false });
 
         let second = host.registry.claim(
             &id,
-            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert_eq!(second, ClaimOutcome::HeldByOther { surface: Surface::PtyAgent, tab_id: "pty-tab".to_string() });
 
@@ -1458,12 +1458,12 @@ mod tests {
         host.spawn(&id, "chat-tab", Box::new(|_| {}), spec(&id), || Box::<Puppet>::default()).unwrap();
         host.registry.claim(
             &id,
-            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
 
         let outcome = host.registry.claim(
             &id,
-            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert_eq!(outcome, ClaimOutcome::HeldByOther { surface: Surface::Chat, tab_id: "chat-tab".to_string() });
 
@@ -1472,7 +1472,7 @@ mod tests {
         assert_eq!(
             host.registry.claim(
                 &id,
-                Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+                Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
             ),
             ClaimOutcome::Granted { contested: false }
         );
@@ -1492,7 +1492,7 @@ mod tests {
             let id = format!("s-exit-{}-{n}", std::process::id());
             host.registry.claim(
                 &id,
-                Claim { surface: Surface::Chat, tab_id: id.clone(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+                Claim { surface: Surface::Chat, tab_id: id.clone(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
             );
             let start = StartSpec {
                 session_id: id.clone(),

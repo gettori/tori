@@ -147,6 +147,7 @@ function mount() {
       cwd="/work/repo"
       workspace="/work/repo"
       agentId="codexy"
+      profile={null}
       title="chat"
       active={true}
       resume={false}

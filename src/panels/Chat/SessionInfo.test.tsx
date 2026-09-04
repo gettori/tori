@@ -49,6 +49,49 @@ describe("SessionInfo", () => {
     expect(container.textContent).toContain("Acme");
   });
 
+  // Which account this session is on, which the caller has already decided is
+  // worth naming. It shows before the handshake has said anything, because it
+  // is the one fact about the account that is known at spawn.
+  it("names the account the session runs as, when there is more than one", () => {
+    const { container } = render(() => <SessionInfo {...props({ profileLabel: "Fonn" })} />);
+    open(container);
+    expect(container.textContent).toContain("Account");
+    expect(container.textContent).toContain("Fonn");
+  });
+
+  // A single-account install has nothing to tell apart, so `profileLabel` comes
+  // back null and this section is the handshake's alone. "Default" on every
+  // chat would be a label nobody can act on.
+  it("says nothing about the account on a single-account install", () => {
+    const { container } = render(() => (
+      <SessionInfo
+        {...props({
+          profileLabel: null,
+          account: { subscriptionType: "Claude Max", organization: "", apiProvider: "" },
+        })}
+      />
+    ));
+    open(container);
+    expect(container.textContent).toContain("Claude Max");
+    expect(container.textContent).not.toContain("Default");
+  });
+
+  it("reads the user-scope config from the session's own account", async () => {
+    const { container } = render(() => (
+      <SessionInfo {...props({ cwd: "/repo", agentId: "claude", profile: "fonn" })} />
+    ));
+    open(container);
+    // The profile id, not a resolved home: `.claude.json` lives inside an
+    // isolated home rather than beside it, and only the backend knows where.
+    await waitFor(() =>
+      expect(invoked).toHaveBeenCalledWith("chat_mcp_list", {
+        cwd: "/repo",
+        agentId: "claude",
+        profile: "fonn",
+      }),
+    );
+  });
+
   // The account has one source, the `initialize` handshake, so a session that
   // skipped it knows nothing rather than knowing a free tier. Rendering a
   // guessed or blank plan would be a claim about the user's billing.
@@ -146,7 +189,13 @@ describe("SessionInfo", () => {
       <SessionInfo {...props({ cwd: "/repo" })} />
     ));
     open(container);
-    await waitFor(() => expect(invoked).toHaveBeenCalledWith("chat_mcp_list", { cwd: "/repo" }));
+    await waitFor(() =>
+      expect(invoked).toHaveBeenCalledWith("chat_mcp_list", {
+        cwd: "/repo",
+        agentId: "claude",
+        profile: null,
+      }),
+    );
 
     fireEvent.click(getByText("Add server"));
     fireEvent.input(getByPlaceholderText("name"), { target: { value: "everything" } });
@@ -160,6 +209,8 @@ describe("SessionInfo", () => {
         cwd: "/repo",
         name: "everything",
         config: { command: "npx", args: ["-y", "@modelcontextprotocol/server-everything"] },
+        agentId: "claude",
+        profile: null,
       }),
     );
   });

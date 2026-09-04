@@ -58,6 +58,7 @@ import {
 } from "../../utils/sessionStatus";
 import { liveChatIds } from "../../utils/chatSessions";
 import { findAdapter } from "../../utils/agents";
+import { asTabProfile } from "../../utils/agentHealth";
 import {
   sessions,
   fetchSessions,
@@ -243,6 +244,10 @@ export type Selection = {
   branch: string;
   projectKind: string;
   agent?: string;
+  // Which account of `agent` the selected session belongs to; `null` is the
+  // default profile. Required so a selection that reaches a spawn cannot omit
+  // it and resume somebody else's session under the wrong login.
+  profile: string | null;
   sessionId?: string;
   sessionPath?: string;
   // What a file-addressed adapter resumes with; equals sessionPath.
@@ -462,6 +467,9 @@ export default function LeftSidebar(props: {
       folderPath: u.folderPath,
       branch: unitLabel(u),
       projectKind: u.kind,
+      // A selection persisted before accounts existed has no profile field, so
+      // it reads as the default account, which is what it ran as.
+      profile: back.profile ?? null,
     });
     return true;
   }
@@ -2210,6 +2218,9 @@ export default function LeftSidebar(props: {
       folderPath: u.folderPath,
       branch: unitLabel(u),
       projectKind: u.kind,
+      // A unit with no session selected names no account: the profile arrives
+      // with the session, since that is the thing an account belongs to.
+      profile: null,
     });
     return true;
   }
@@ -2247,6 +2258,11 @@ export default function LeftSidebar(props: {
       branch: unitLabel(u),
       projectKind: u.kind,
       agent: s.agent,
+      // The index derived this from the root the transcript was found under, so
+      // it is the account the session is actually in rather than a guess.
+      // Through `asTabProfile`, because the index spells the default account
+      // with its real id and a selection spells it `null`.
+      profile: asTabProfile(s.profile),
       sessionId: s.id,
       sessionPath: s.path,
       sessionFile: s.path,

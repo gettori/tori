@@ -908,6 +908,7 @@ export default function Editor(props: {
     return {
       sessionId: sel.sessionId,
       agent: sel.agent ?? "claude",
+      profile: sel.profile,
       folderPath: sel.folderPath,
       sessionCwd: sel.sessionCwd,
       sessionPath: sel.sessionPath,
@@ -2760,6 +2761,7 @@ export default function Editor(props: {
             <SessionPanel
               path={props.selected!.sessionPath ?? null}
               agent={props.selected!.agent ?? "claude"}
+              profile={props.selected!.profile}
               cwd={props.selected!.sessionCwd ?? null}
               projectRoot={focusRoot()}
               selfSessionId={props.selected!.sessionId ?? null}

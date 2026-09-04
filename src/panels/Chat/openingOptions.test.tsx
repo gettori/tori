@@ -123,6 +123,7 @@ function mount() {
       cwd="/work/repo"
       workspace="/work/repo"
       agentId="claude"
+      profile={null}
       title="chat"
       active={true}
       resume={false}

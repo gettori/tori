@@ -16,6 +16,7 @@ const ROOT = "/Users/dev/proj";
 const TARGET: SessionTarget = {
   sessionId: "S1",
   agent: "claude",
+  profile: null,
   folderPath: ROOT,
   sessionCwd: ROOT,
   sessionPath: `${ROOT}/.sessions/S1.jsonl`,

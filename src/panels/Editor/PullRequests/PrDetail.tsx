@@ -501,6 +501,7 @@ export default function PrDetail(props: {
     return {
       sessionId: o.session.id,
       agent: o.session.agent ?? "claude",
+      profile: o.session.profile ?? null,
       folderPath: o.folderPath,
       sessionCwd: o.session.cwd,
       sessionPath: o.session.path,

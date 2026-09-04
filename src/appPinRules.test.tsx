@@ -94,6 +94,7 @@ const term = (id: string) => ({
   kind: "shell" as const,
   program: "",
   args: [] as string[],
+  profile: null,
 });
 
 const pane = (n: number) => document.querySelectorAll<HTMLElement>(".work-split .pane")[n];

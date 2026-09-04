@@ -9,6 +9,7 @@ import PromptModal from "../../../../components/Dialogs/PromptModal";
 import { homeDir } from "@tauri-apps/api/path";
 import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
+import { forgetProfileEnvs } from "../../../../utils/profileEnv";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import styles from "../../Settings.module.css";
 
@@ -266,6 +267,10 @@ export default function AgentAccounts(props: {
     // account's root is watched after its home is gone. The command replaces
     // the watcher rather than adding a second one.
     void invoke("sessions_watch_start").catch(() => {});
+    // A tab derives its spawn environment from its profile id and memoizes the
+    // answer, so a home that has just been created, renamed away from or
+    // deleted has to stop being remembered here.
+    forgetProfileEnvs();
     void refreshAgentHealth().then(() => refetch());
   };
 

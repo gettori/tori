@@ -19,6 +19,7 @@ const tab = (over: Partial<OpenTabLike> = {}): OpenTabLike => ({
   kind: "shell",
   program: "",
   args: [],
+  profile: null,
   ...over,
 });
 
@@ -330,6 +331,50 @@ describe("parseStore", () => {
   it("round-trips a store written by toStore", () => {
     const written = toStore([tab({ kind: "agent", program: "claude", sessionId: "s" })], { "/w/a": "t1" }, 100);
     expect(parseStore(JSON.stringify(written))).toEqual(written);
+  });
+
+  it("brings a chat and an agent tab back on the account they ran as", () => {
+    const written = toStore(
+      [
+        tab({ id: "1", kind: "chat", program: "claude", sessionId: "c1", profile: "fonn" }),
+        tab({ id: "2", kind: "agent", program: "claude", sessionId: "a1", profile: "fonn" }),
+      ],
+      {},
+      100,
+    );
+    expect(written["/w/a"].tabs.map((t) => t.profile)).toEqual(["fonn", "fonn"]);
+    const back = parseStore(JSON.stringify(written));
+    expect(back["/w/a"].tabs.map((t) => t.profile)).toEqual(["fonn", "fonn"]);
+    // The home variable is never stored: it is resolved from this id at spawn,
+    // so a profile moved or renamed since cannot respawn against a dead path.
+    expect(JSON.stringify(written)).not.toContain("CONFIG_DIR");
+  });
+
+  it("reads a tab stored before accounts existed as the default profile", () => {
+    const old = JSON.stringify({
+      "/w/a": {
+        tabs: [{ id: "1", title: "shell", cwd: "/w/a", kind: "agent", program: "claude", args: [] }],
+        active: 0,
+        savedAt: 100,
+      },
+    });
+    expect(parseStore(old)["/w/a"].tabs[0].profile).toBeUndefined();
+  });
+
+  it("drops a profile a hand-edited file wrote as something other than an id", () => {
+    const bad = JSON.stringify({
+      "/w/a": {
+        tabs: [{ id: "1", title: "shell", cwd: "/w/a", kind: "agent", program: "claude", args: [], profile: 7 }],
+        active: 0,
+        savedAt: 100,
+      },
+    });
+    expect(parseStore(bad)["/w/a"].tabs[0].profile).toBeUndefined();
+  });
+
+  it("keeps the default profile out of the file, as an absent field", () => {
+    const written = toStore([tab({ kind: "agent", program: "claude", profile: null })], {}, 100);
+    expect("profile" in written["/w/a"].tabs[0]).toBe(false);
   });
 
   it("restores a chat tab, and existing kinds, unchanged", () => {
