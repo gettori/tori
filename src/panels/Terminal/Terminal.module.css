@@ -57,10 +57,14 @@
   height: var(--control-icon);
 }
 
+/* Both halves keep a border of their own, and the caret is pulled a pixel left
+   so the two overlap into one seam. The main half used to drop its right border
+   and let the caret's stand in for both, which left its hover box open on the
+   side it shares - the caret's never was, so one half of one control lit up as
+   a box and the other as three sides. */
 .termNewMain {
   padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
   border-radius: var(--sway-radius-md) 0 0 var(--sway-radius-md);
-  border-right: none;
 }
 
 /* A standalone launch button (no caret half): fully rounded, its own margin. */
@@ -74,11 +78,14 @@
 .termNewCaret {
   padding: calc(5px * var(--ui-scale)) calc(6px * var(--ui-scale));
   border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
+  margin-left: -1px;
 }
 
 /* The caret's menu trigger. It has to have a box, since a dropdown anchors on
-   its trigger's rect, so the caret gained an ancestor and the two rules that
-   reach it as `.termNewMain`'s next sibling are written through this instead. */
+   its trigger's rect, so the caret has an ancestor between it and the split.
+   Nothing styles across that any more: the halves used to reach each other as
+   siblings, and Tooltip's `whenDisabled` hover surface (a second wrapper, on
+   the main half) silently broke every such rule. */
 .termNewCaretWrap {
   display: inline-flex;
 }
@@ -143,15 +150,13 @@
   transform: rotate(180deg);
 }
 
+/* Lifted while it is lit, so the hovered half's border wins the seam the two
+   share rather than whichever of them the document happens to paint last. */
 .termNew:hover:not(:disabled) {
+  position: relative;
+  z-index: 1;
   color: var(--fg-default);
   border-color: var(--brand-default);
-}
-
-/* Keep the shared divider crisp when only one half is hovered. Reaches through
-   the caret's trigger wrapper, which sits between the two halves now. */
-.termNewMain:hover:not(:disabled) + .termNewCaretWrap > .termNewCaret:not(:hover) {
-  border-left-color: var(--brand-default);
 }
 
 .termNew:disabled {
