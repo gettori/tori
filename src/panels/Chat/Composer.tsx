@@ -3,7 +3,14 @@ import { ArrowUp, Plus, Square } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import type { QueuedInput } from "./chatStore";
-import { checkAttachment, chipLabel, readAsBase64, type PendingBlock } from "../../utils/chatCompose";
+import {
+  checkAttachment,
+  chipLabel,
+  readAsBytes,
+  type AttachmentSource,
+  type PendingBlock,
+} from "../../utils/chatCompose";
+import type { UploadFile } from "./composerAttachments";
 import { DRAG_ABS_PATH_MIME, DRAG_PATH_MIME } from "../../utils/events";
 import {
   activeToken,
@@ -19,6 +26,16 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 
 const MAX_ROWS = 9;
 const MIN_ROWS = 2;
+
+/** The picker's filter, from what this agent takes. A `file` kind is any
+ *  file, so the filter goes away rather than listing every extension. */
+function pickerAccept(uploads: AttachmentSource): string | undefined {
+  if (uploads.kinds.includes("file")) return undefined;
+  const accept: string[] = [];
+  if (uploads.kinds.includes("image")) accept.push("image/png", "image/jpeg", "image/gif", "image/webp");
+  if (uploads.kinds.includes("pdf")) accept.push("application/pdf");
+  return accept.join(",") || undefined;
+}
 
 /**
  * The input.
@@ -73,8 +90,12 @@ export default function Composer(props: {
   /** A completed `@` mention, as the path relative to the project root. The
    *  caller resolves it and makes the chip, so path policy stays in one place. */
   onAttachFile: (relPath: string) => void;
-  /** Images dropped, pasted or picked. Already checked against the limits. */
-  onAttachImages: (images: { mediaType: string; base64: string }[]) => void;
+  /** What this agent can open when handed bytes, and the words for refusing
+   *  them. The check runs here, where a file arrives, so a paste that cannot
+   *  become a chip never does. */
+  uploads: AttachmentSource;
+  /** Files dropped, pasted or picked, already checked against `uploads`. */
+  onAttachUploads: (files: UploadFile[]) => void;
   /** An attachment that was refused, for whoever owns the toast. */
   onAttachRejected: (reason: string) => void;
   /** Absolute paths dragged in from the file tree or an editor tab. Mentions,
@@ -253,26 +274,26 @@ export default function Composer(props: {
   }
 
   // Drop, paste and the picker all land here, so the limits are applied once
-  // however an image arrived. Checked against a count that grows as we go, or
+  // however a file arrived. Checked against a count that grows as we go, or
   // dropping eleven at once would let all eleven past a per-file check.
   async function attachFiles(files: readonly File[]) {
     if (props.disabled) return;
-    const accepted: { mediaType: string; base64: string }[] = [];
+    const accepted: UploadFile[] = [];
     let count = props.attachments.length;
     for (const file of files) {
-      const verdict = checkAttachment({ name: file.name, mediaType: file.type, bytes: file.size }, count);
+      const verdict = checkAttachment({ name: file.name, mediaType: file.type, bytes: file.size }, count, props.uploads);
       if (!verdict.ok) {
         props.onAttachRejected(verdict.reason);
         continue;
       }
       try {
-        accepted.push({ mediaType: file.type, base64: await readAsBase64(file) });
+        accepted.push({ name: file.name, bytes: await readAsBytes(file) });
         count += 1;
       } catch {
         props.onAttachRejected(`${file.name} could not be read.`);
       }
     }
-    if (accepted.length) props.onAttachImages(accepted);
+    if (accepted.length) props.onAttachUploads(accepted);
   }
 
   function onPaste(e: ClipboardEvent) {
@@ -566,7 +587,7 @@ export default function Composer(props: {
             ref={picker}
             class={styles.hiddenPicker}
             type="file"
-            accept="image/*"
+            accept={pickerAccept(props.uploads)}
             multiple
             onChange={(e) => {
               void attachFiles([...(e.currentTarget.files ?? [])]);

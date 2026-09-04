@@ -17,7 +17,8 @@
         "path": "/tmp/w/probe.txt",
         "startLine": 2,
         "endLine": 4,
-        "text": "beta"
+        "text": "beta",
+        "label": null
       }
     ]
   },

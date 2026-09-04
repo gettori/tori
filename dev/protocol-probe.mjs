@@ -194,6 +194,10 @@ const REQUIRES = {
   // boundary this would pass on a run where the CLI declined to compact.
   compaction: ["system/status", "system/compact_boundary", "result/success"],
   "image-turn": ["assistant/text", "result/success"],
+  // The Read must happen, and happen without a question: the claim this
+  // scenario exists for is the *absence* of `control_request/can_use_tool`,
+  // which the scenario body asserts since a required-kinds list cannot.
+  "read-add-dir": ["assistant/tool_use", "user/tool_result", "result/success"],
   // A set cannot say "twice", so this only pins that both turns' shapes are
   // here at all; that there are two inits is asserted in the scenario body.
   "fast-mode": ["system/init", "assistant/text", "result/success"],
@@ -1216,6 +1220,34 @@ const SCENARIOS = {
     ]);
     await p.waitForResult();
     await p.close();
+    return p;
+  },
+
+  // A Read outside the cwd under `--add-dir`. Measured without the flag, the
+  // same Read raises `can_use_tool` in default mode; with it, nothing asks.
+  // This is what lets Sway write a pasted file under its own app data and
+  // hand the agent a path, rather than the bytes ([[adr_attachments_are_labelled_paths]]).
+  "read-add-dir": async ({ scratch }) => {
+    const outside = mkdtempSync(join(tmpdir(), "sway-probe-outside-"));
+    const target = join(outside, "note.txt");
+    writeFileSync(target, "one\ntwo\nthree\n");
+    const p = new Probe({
+      cwd: scratch,
+      extraArgs: ["--permission-mode", "default", "--permission-prompt-tool", "stdio", "--add-dir", outside],
+      answerPermission: () => ({ behavior: "allow" }),
+    });
+    try {
+      p.sendTurn(`Use the Read tool on ${target}. Then reply with just the number of lines in it.`);
+      await p.waitForResult();
+      await p.close();
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+    assertToolsUsed(p, ["Read"]);
+    const asked = p.permissionRequests.map((r) => r.tool_name);
+    if (asked.includes("Read")) {
+      throw new Error(`Read under --add-dir raised can_use_tool; asked: ${asked.join(", ")}`);
+    }
     return p;
   },
 

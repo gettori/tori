@@ -16,6 +16,7 @@
 // reason it gets the same wire protocol.
 import type { ChatTransport } from "./agents";
 import type { ChatCapabilities, Extra } from "./chatTypes";
+import type { AttachmentKind, AttachmentSource } from "./chatCompose";
 
 export type ChatPlugin = {
   name: string;
@@ -144,6 +145,16 @@ export type ChatTier = {
    *  ever talk to one. See [`SubagentTier`]. */
   subagents: SubagentTier;
   /**
+   * What the agent can open when handed a path it already has (a tree drag,
+   * an `@` mention), and when handed bytes Sway wrote under its own app data
+   * for it (a paste, a Finder drop). Two keys because they can differ: a
+   * transport can carry a path as text and still have no measured way to read
+   * one outside its cwd, and one published key with a gap is what the tests
+   * forbid. Empty means refused, and the gap says why.
+   */
+  attachmentMentions: readonly AttachmentKind[];
+  attachmentUploads: readonly AttachmentKind[];
+  /**
    * Why each affordance this agent lacks is missing, in the words a user
    * reads.
    *
@@ -192,6 +203,10 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // lifecycle and its totals, and the sidecar transcript has the rest. Not
     // `addressable` - nothing on this wire carries a message to one.
     subagents: "observable",
+    // Measured 2026-09-04 on claude 2.1.259: Read opens all three off disk,
+    // and a path under `--add-dir` raises no prompt in default mode.
+    attachmentMentions: ["image", "pdf", "file"],
+    attachmentUploads: ["image", "pdf", "file"],
     // Nothing missing, so nothing to explain.
     gaps: {},
   },
@@ -239,7 +254,15 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // The protocol has no subagent in it: a `session/update` names the session
     // and nothing inside it, so there is no id to group a nested call under.
     subagents: "none",
+    // A mention is text the agent already receives, so a source file costs
+    // nothing new. Whether an ACP agent would read an image or a PDF off a
+    // path is unmeasured, and so is whether it can reach outside its cwd at
+    // all, which is what an upload under Sway's app data needs.
+    attachmentMentions: ["file"],
+    attachmentUploads: [],
     gaps: {
+      attachmentUploads:
+        "A pasted or dropped file would be written under Sway's own folder, and nothing has measured whether this agent can read outside its project. Drag a file from the tree instead, or mention it with @.",
       rewind:
         "Rewinding needs Sway to fork the conversation, and it has no way to ask an ACP agent to. Turn checkpoints still restore your files from the Changes panel.",
       steer:
@@ -267,10 +290,21 @@ export const NO_CHAT_TIER: ChatTier = {
   // A PTY tab's turns are not Sway's to open, so there is no boundary to hold.
   spendCeilings: false,
   subagents: "none",
+  attachmentMentions: [],
+  attachmentUploads: [],
   // Deliberately empty. Explaining each absence in turn would be that many ways
   // of saying one thing: this agent has no chat surface at all.
   gaps: {},
 };
+
+/** The two sources as `checkAttachment` reads them, with the tier's own words
+ *  for a refused one. */
+export function attachmentSources(tier: ChatTier): { mentions: AttachmentSource; uploads: AttachmentSource } {
+  return {
+    mentions: { kinds: tier.attachmentMentions, gap: tier.gaps.attachmentMentions ?? null },
+    uploads: { kinds: tier.attachmentUploads, gap: tier.gaps.attachmentUploads ?? null },
+  };
+}
 
 /** What the agent behind this chat config supports. */
 export function chatTier(transport: ChatTransport | null | undefined): ChatTier {
@@ -280,7 +314,17 @@ export function chatTier(transport: ChatTransport | null | undefined): ChatTier 
 /** One published capability, split so a caller can look up its explanation by
  *  `key` without parsing `label` back apart. */
 export type PublishedCapability = {
-  key: "rewind" | "steer" | "approvals" | "diffs" | "budgets" | "history" | "sessions" | "subagents";
+  key:
+    | "rewind"
+    | "steer"
+    | "approvals"
+    | "diffs"
+    | "budgets"
+    | "history"
+    | "sessions"
+    | "subagents"
+    | "attachmentMentions"
+    | "attachmentUploads";
   value: string;
   label: string;
 };
@@ -318,6 +362,10 @@ export function publishedCapabilities(
   // The value carries the promise, which is why it is not a bare `subagents:
   // yes`: `observable` says you can read one, not send it anything.
   if (tier.subagents !== "none") add("subagents", tier.subagents);
+  // The kinds themselves, so the listing says what can be attached rather
+  // than that something can.
+  if (tier.attachmentMentions.length) add("attachmentMentions", tier.attachmentMentions.join(", "));
+  if (tier.attachmentUploads.length) add("attachmentUploads", tier.attachmentUploads.join(", "));
   // Derived from the running agent's own handshake rather than from the
   // transport, because one generic transport carries agents that differ: the
   // same `acp` tier sits behind an agent that reopens conversations and one
@@ -357,6 +405,8 @@ export function unavailableCapabilities(tier: ChatTier): MissingCapability[] {
   add("diffs", tier.diffs === "none");
   add("budgets", !tier.spendCeilings);
   add("subagents", tier.subagents === "none");
+  add("attachmentMentions", tier.attachmentMentions.length === 0);
+  add("attachmentUploads", tier.attachmentUploads.length === 0);
   return out;
 }
 

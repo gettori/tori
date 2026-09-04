@@ -36,8 +36,8 @@ export function selectionBlocks(
 /** A whole-file `@` mention: no range, because the user named the file rather
  *  than a region of it, and inventing one would tell the agent to read less
  *  than they meant. */
-export function fileMentionBlocks(path: string): ContentBlock[] {
-  return [{ type: "fileRef", path, startLine: null, endLine: null, text: null }];
+export function fileMentionBlocks(path: string, label: string | null = null): ContentBlock[] {
+  return [{ type: "fileRef", path, startLine: null, endLine: null, text: null, ...(label ? { label } : {}) }];
 }
 
 /** A Changes-panel hunk comment: the region as structure, the comment as prose.
@@ -84,55 +84,89 @@ export function todoBlocks(path: string, line: number, tag: string, text: string
 // sent. A file that cannot be sent must never become a chip: a chip is a promise
 // that the next turn will carry it, and discovering at send time that it cannot
 // costs the user the turn rather than the file.
-//
-// The image types are the ones the Anthropic API accepts; anything else would be
-// refused at the far end, so refusing it here is the same answer sooner and with
-// a readable reason.
 export const MAX_ATTACHMENTS = 10;
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-export const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
-export type AttachCheck = { ok: true } | { ok: false; reason: string };
+/** What an attachment is to the agent that opens it. The kinds are the ones a
+ *  Read tool can take: a video or an archive is nothing to any of them. */
+export type AttachmentKind = "image" | "pdf" | "file";
+export const ATTACHMENT_KINDS: readonly AttachmentKind[] = ["image", "pdf", "file"];
+
+/** Per kind, what the agent's Read tool takes rather than one number for all. */
+export const MAX_BYTES: Record<AttachmentKind, number> = {
+  image: 5 * 1024 * 1024,
+  pdf: 32 * 1024 * 1024,
+  file: 5 * 1024 * 1024,
+};
+
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+// Bytes no Read tool opens. A short list of the obvious, so an unlisted
+// extension is a file: refusing `.lock` or `.toml` would be worse than
+// letting a rare binary through to an agent that says so itself.
+const OPAQUE_EXTENSIONS = new Set([
+  "mp4", "mov", "webm", "mkv", "avi", "m4v",
+  "mp3", "wav", "m4a", "ogg", "flac", "aac",
+  "zip", "gz", "tgz", "tar", "bz2", "xz", "7z", "rar", "dmg", "iso",
+  "exe", "dll", "so", "dylib", "bin", "o", "a", "class", "wasm",
+  "ttf", "otf", "woff", "woff2",
+  "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+]);
+
+/** The kind of a file, by extension. The MIME breaks a tie only for a name
+ *  with no extension: WebKit reports `.ts` as `video/mp2t` and most source
+ *  files as nothing at all, so it cannot be trusted where a name is there. */
+export function attachmentKind(name: string, mediaType = ""): AttachmentKind | null {
+  const base = name.split("/").pop() ?? name;
+  const dot = base.lastIndexOf(".");
+  const ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
+  if (IMAGE_EXTENSIONS.has(ext)) return "image";
+  if (ext === "pdf") return "pdf";
+  if (OPAQUE_EXTENSIONS.has(ext)) return null;
+  if (ext) return "file";
+  if (mediaType.startsWith("image/")) return "image";
+  if (mediaType === "application/pdf") return "pdf";
+  if (/^(video|audio)\//.test(mediaType)) return null;
+  return "file";
+}
+
+export type AttachCheck = { ok: true; kind: AttachmentKind } | { ok: false; reason: string };
+
+/** Where an attachment comes from decides what may be offered: a *mention* is
+ *  a path the agent already has, an *upload* is bytes Sway writes to disk for
+ *  it. `gap` is the tier's own words for a source it refuses outright. */
+export type AttachmentSource = { kinds: readonly AttachmentKind[]; gap: string | null };
 
 /** Whether one more attachment may be offered, and if not, what to tell the
- *  user. Pure, so the rule is the same wherever an attachment comes from. */
+ *  user. Pure, so the rule is the same wherever an attachment comes from.
+ *  `bytes` is null for a mention: the file is on disk and nobody read it. */
 export function checkAttachment(
-  file: { name: string; mediaType: string; bytes: number },
+  file: { name: string; mediaType: string; bytes: number | null },
   pendingCount: number,
+  source: AttachmentSource,
 ): AttachCheck {
   if (pendingCount >= MAX_ATTACHMENTS) {
     return { ok: false, reason: `That is more than ${MAX_ATTACHMENTS} attachments. Send some first.` };
   }
-  if (!ALLOWED_IMAGE_TYPES.includes(file.mediaType)) {
-    return {
-      ok: false,
-      reason: `${file.name} is ${file.mediaType || "an unknown type"}. Images only: PNG, JPEG, GIF or WebP.`,
-    };
+  const kind = attachmentKind(file.name, file.mediaType);
+  if (!kind || !source.kinds.includes(kind)) {
+    if (source.gap) return { ok: false, reason: source.gap };
+    const what = kind ? `a ${kind}` : "a kind of file";
+    const opens = source.kinds.length ? `It opens: ${source.kinds.join(", ")}.` : "It opens no attachments.";
+    return { ok: false, reason: `${file.name} is ${what} this agent cannot open. ${opens}` };
   }
-  if (file.bytes > MAX_IMAGE_BYTES) {
+  if (file.bytes !== null && file.bytes > MAX_BYTES[kind]) {
     const mb = (file.bytes / 1024 / 1024).toFixed(1);
-    return { ok: false, reason: `${file.name} is ${mb}MB, over the ${MAX_IMAGE_BYTES / 1024 / 1024}MB limit.` };
+    return { ok: false, reason: `${file.name} is ${mb}MB, over the ${MAX_BYTES[kind] / 1024 / 1024}MB limit for a ${kind}.` };
   }
-  return { ok: true };
+  return { ok: true, kind };
 }
 
-/** An image attachment, as the base64 content block the transport already
- *  knows how to put on the wire (measured working in Phase 1). */
-export function imageBlocks(mediaType: string, base64: string): ContentBlock[] {
-  return [{ type: "image", mediaType, data: base64 }];
-}
-
-/** A dropped or pasted file's bytes as base64, without the data-URI prefix the
- *  reader puts on the front. */
-export function readAsBase64(file: Blob): Promise<string> {
+/** A dropped or pasted file's bytes, for the raw-body write to disk. */
+export function readAsBytes(file: Blob): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error("could not read the file"));
-    reader.onload = () => {
-      const result = String(reader.result ?? "");
-      resolve(result.slice(result.indexOf(",") + 1));
-    };
-    reader.readAsDataURL(file);
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.readAsArrayBuffer(file);
   });
 }
 
@@ -248,6 +282,8 @@ export function clearComposer(key: ComposerKey) {
   setDrafts((prev) => dropKey(prev, key));
   setHistories((prev) => dropKey(prev, key));
   setAutoSend((prev) => dropKey(prev, key));
+  setCounters((prev) => dropKey(prev, key));
+  setSeeded((prev) => dropKey(prev, key));
 }
 
 function dropKey<T>(record: Record<string, T>, key: string): Record<string, T> {
@@ -306,14 +342,25 @@ export function markAutoSend(key: ComposerKey, text: string) {
  *  them as arguments, so what gets sent is exactly what was on screen. */
 export function seedForSend(fromKey: ComposerKey, toKey: ComposerKey) {
   const blocks = takePending(fromKey);
-  const text = draftFor(fromKey).trim();
+  let text = draftFor(fromKey).trim();
   if (!blocks.length && !text) {
     // Put back what was taken: a caller that asked at the wrong moment must not
     // cost the user their chips.
     offerToComposer(fromKey, blocks);
     return false;
   }
-  offerToComposer(toKey, blocks);
+  // Numbered again by the destination: `[image 1]` may already be taken there.
+  const renames = new Map<string, string>();
+  const moved = blocks.map((block) => {
+    if (block.type !== "fileRef" || !block.label) return block;
+    const parsed = parseLabel(block.label);
+    if (!parsed) return block;
+    const label = nextLabel(toKey, parsed.kind);
+    renames.set(block.label, label);
+    return { ...block, label };
+  });
+  text = renameTokens(text, renames);
+  offerToComposer(toKey, moved);
   // Shown as well as held, so the destination reads as the place that message
   // went even in the window before its session can take it.
   setDraft(toKey, text);
@@ -354,6 +401,84 @@ export function takeAutoSend(key: ComposerKey): string | null {
   return held;
 }
 
+// Attachment labels: `[image 3]`, numbered per composer and per kind. Filed
+// under the tab like the chips, because a draft tab attaches before it has a
+// session. A number is never reused, so one the transcript already holds is
+// never put on the wire twice: a chip only ever moves *up*.
+const [counters, setCounters] = createSignal<Record<ComposerKey, Partial<Record<AttachmentKind, number>>>>({});
+// Whether the composer's numbering has been raised above what its transcript
+// already used. A send waits for this, or a reopened chat's first attachment
+// could go out as `[image 1]` under a conversation that has one.
+const [seeded, setSeeded] = createSignal<Record<ComposerKey, true>>({});
+
+const LABEL_TOKENS = /\[(image|pdf|file) (\d+)\]/g;
+
+function attachmentLabel(kind: AttachmentKind, n: number): string {
+  return `[${kind} ${n}]`;
+}
+
+export function parseLabel(label: string): { kind: AttachmentKind; n: number } | null {
+  const m = /^\[(image|pdf|file) (\d+)\]$/.exec(label);
+  return m ? { kind: m[1] as AttachmentKind, n: Number(m[2]) } : null;
+}
+
+/** Mint the next label of `kind` for this composer. */
+export function nextLabel(key: ComposerKey, kind: AttachmentKind): string {
+  const n = (counters()[key]?.[kind] ?? 0) + 1;
+  setCounters((prev) => ({ ...prev, [key]: { ...prev[key], [kind]: n } }));
+  return attachmentLabel(kind, n);
+}
+
+function renameTokens(text: string, renames: ReadonlyMap<string, string>): string {
+  if (!renames.size) return text;
+  return text.replace(LABEL_TOKENS, (token) => renames.get(token) ?? token);
+}
+
+/** Rename one chip and every token naming it, in the draft and in a message
+ *  held to send. One primitive, so a collision is resolved the same way
+ *  wherever it is found. */
+export function relabel(key: ComposerKey, from: string, to: string) {
+  if (from === to) return;
+  const renames = new Map([[from, to]]);
+  setPending((prev) => ({
+    ...prev,
+    [key]: (prev[key] ?? []).map((p) =>
+      p.block.type === "fileRef" && p.block.label === from ? { ...p, block: { ...p.block, label: to } } : p,
+    ),
+  }));
+  setDrafts((prev) => (key in prev ? { ...prev, [key]: renameTokens(prev[key], renames) } : prev));
+  setAutoSend((prev) => (key in prev ? { ...prev, [key]: renameTokens(prev[key], renames) } : prev));
+}
+
+/** Raise this composer's numbering above the labels its transcript already
+ *  holds. A chip minted before the transcript was read may now collide; it is
+ *  renamed above the mark rather than sent as a second `[image 2]`. */
+export function seedLabels(key: ComposerKey, labels: readonly string[]) {
+  const mark: Partial<Record<AttachmentKind, number>> = {};
+  for (const label of labels) {
+    const parsed = parseLabel(label);
+    if (parsed) mark[parsed.kind] = Math.max(mark[parsed.kind] ?? 0, parsed.n);
+  }
+  setCounters((prev) => {
+    const mine = { ...prev[key] };
+    for (const kind of ATTACHMENT_KINDS) {
+      const n = Math.max(mine[kind] ?? 0, mark[kind] ?? 0);
+      if (n) mine[kind] = n;
+    }
+    return { ...prev, [key]: mine };
+  });
+  for (const { block } of pendingFor(key)) {
+    if (block.type !== "fileRef" || !block.label) continue;
+    const parsed = parseLabel(block.label);
+    if (parsed && parsed.n <= (mark[parsed.kind] ?? 0)) relabel(key, block.label, nextLabel(key, parsed.kind));
+  }
+  setSeeded((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+}
+
+export function labelsSeeded(key: ComposerKey): boolean {
+  return seeded()[key] === true;
+}
+
 /** How a pending block reads as a chip. */
 export function chipLabel(block: ContentBlock): string {
   if (block.type === "text") return block.text;
@@ -361,6 +486,7 @@ export function chipLabel(block: ContentBlock): string {
   // which no composer reads - but both are an image to anything naming one.
   if (block.type === "image" || block.type === "imageRef") return "image";
   const name = block.path.split("/").pop() || block.path;
+  if (block.label) return `${block.label} ${name}`;
   if (block.startLine === null) return `@${name}`;
   return block.endLine !== null && block.endLine !== block.startLine
     ? `@${name}#L${block.startLine}-L${block.endLine}`

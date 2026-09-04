@@ -1035,12 +1035,15 @@ pub fn prompt_blocks(blocks: &[ContentBlock]) -> Vec<AcpContentBlock> {
             ContentBlock::Image { media_type, data } => {
                 Some(AcpContentBlock::Image(ImageContent::new(data.clone(), media_type.clone())))
             }
-            ContentBlock::FileRef { path, start_line, end_line, text } => {
+            ContentBlock::FileRef { path, start_line, end_line, text, label } => {
                 let mut rendered = match (start_line, end_line) {
                     (Some(s), Some(e)) => format!("@{path}#L{s}-{e}"),
                     (Some(s), None) => format!("@{path}#L{s}"),
                     _ => format!("@{path}"),
                 };
+                if let Some(l) = label {
+                    rendered = format!("{l}: {rendered}");
+                }
                 if let Some(t) = text {
                     rendered.push_str("\n\n");
                     rendered.push_str(t);
@@ -1910,10 +1913,26 @@ mod tests {
             start_line: Some(10),
             end_line: Some(20),
             text: None,
+            label: None,
         }]);
         assert!(matches!(
             blocks.as_slice(),
             [AcpContentBlock::Text(t)] if t.text == "@src/main.rs#L10-20"
+        ));
+    }
+
+    #[test]
+    fn a_labelled_reference_leads_with_its_label() {
+        let blocks = prompt_blocks(&[ContentBlock::FileRef {
+            path: "/repo/src/main.rs".into(),
+            start_line: None,
+            end_line: None,
+            text: None,
+            label: Some("[file 1]".into()),
+        }]);
+        assert!(matches!(
+            blocks.as_slice(),
+            [AcpContentBlock::Text(t)] if t.text == "[file 1]: @/repo/src/main.rs"
         ));
     }
 

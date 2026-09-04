@@ -779,6 +779,11 @@ pub enum ContentBlock {
         end_line: Option<u32>,
         #[serde(default)]
         text: Option<String>,
+        /// `[image 3]`: the token the prose names an attachment by. Rendered
+        /// in front of the path on every wire, and read back off the
+        /// transcript, so a reopened chat draws the chip the live one did.
+        #[serde(default)]
+        label: Option<String>,
     },
 }
 
@@ -1883,6 +1888,7 @@ mod tests {
                         start_line: Some(2),
                         end_line: Some(4),
                         text: Some("beta".into()),
+                        label: None,
                     },
                 ],
             },

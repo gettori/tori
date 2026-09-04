@@ -19,6 +19,7 @@ import ConfigMirror from "./ConfigMirror";
 import ModelPicker from "./ModelPicker";
 import ModeSelector from "./ModeSelector";
 import { composerAttachments } from "./composerAttachments";
+import { attachmentSources, chatTier } from "../../utils/chatCapabilities";
 import { paletteProviders } from "./agentPaletteData";
 import { probeAgent, probeOnHighlight, recheckAgent } from "./draftProbe";
 import { dropPending, draftFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
@@ -74,9 +75,12 @@ export default function ChatDraft(props: {
   // way out, and the only thing left to stop is a second Enter landing in the
   // window before the swap has drawn.
   const [starting, setStarting] = createSignal(false);
+  const tier = () => chatTier(findAdapter(props.agentId).chat?.transport);
   const attachments = composerAttachments(
     () => props.tabId,
     () => props.cwd,
+    tier,
+    (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
   );
 
   onMount(() => {
@@ -260,7 +264,8 @@ export default function ChatDraft(props: {
         onSend={onSend}
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}
-        onAttachImages={attachments.onAttachImages}
+        uploads={attachmentSources(tier()).uploads}
+        onAttachUploads={attachments.onAttachUploads}
         onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
         onDropAttachment={(id) => dropPending(props.tabId, id)}
         // A draft has no turn to interrupt and no queue to hold one: all three

@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import {
+  attachmentKind,
+  checkAttachment,
   chipLabel,
   clearPending,
   diagnosticBlocks,
@@ -11,9 +13,13 @@ import {
   hasAutoSend,
   historyFor,
   hunkCommentBlocks,
+  labelsSeeded,
   markAutoSend,
+  nextLabel,
   pushHistory,
+  relabel,
   restoreDraft,
+  seedLabels,
   setDraft,
   offerToComposer,
   pendingFor,
@@ -23,6 +29,7 @@ import {
   selectionBlocks,
   takeAutoSend,
   takePending,
+  MAX_ATTACHMENTS,
 } from "./chatCompose";
 import { composeDiagnostic, composeHunkComment, composeSelectionMention, type SessionTarget } from "./safeSend";
 
@@ -56,6 +63,126 @@ describe("the block composers keep what the flat wire format loses", () => {
     expect(fileMentionBlocks("/work/repo/src/a.ts")).toEqual([
       { type: "fileRef", path: "/work/repo/src/a.ts", startLine: null, endLine: null, text: null },
     ]);
+  });
+
+  it("carries an attachment's label on the mention, and nothing else's", () => {
+    expect(fileMentionBlocks("/x/shot.png", "[image 1]")[0]).toMatchObject({ label: "[image 1]" });
+    expect(fileMentionBlocks("/x/a.ts")[0]).not.toHaveProperty("label");
+  });
+});
+
+describe("attachment kinds, by extension", () => {
+  it("classifies by what a Read tool opens", () => {
+    expect(attachmentKind("a.png")).toBe("image");
+    expect(attachmentKind("a.JPG")).toBe("image");
+    expect(attachmentKind("a.pdf")).toBe("pdf");
+    expect(attachmentKind("Makefile", "")).toBe("file");
+    expect(attachmentKind("/repo/src/main.rs")).toBe("file");
+  });
+
+  // WebKit's guess. The extension is what the agent would go by too.
+  it("trusts the extension over the browser's MIME", () => {
+    expect(attachmentKind("main.ts", "video/mp2t")).toBe("file");
+  });
+
+  it("uses the MIME only for a name with no extension", () => {
+    expect(attachmentKind("shot", "image/png")).toBe("image");
+    expect(attachmentKind("scan", "application/pdf")).toBe("pdf");
+    expect(attachmentKind("clip", "video/mp4")).toBeNull();
+  });
+
+  it("has no kind for bytes no Read tool opens", () => {
+    expect(attachmentKind("a.mp4")).toBeNull();
+    expect(attachmentKind("a.zip")).toBeNull();
+  });
+});
+
+describe("checkAttachment, per source", () => {
+  const CLAUDE = { kinds: ["image", "pdf", "file"] as const, gap: null };
+  const ACP_MENTIONS = { kinds: ["file"] as const, gap: null };
+  const ACP_UPLOADS = { kinds: [] as const, gap: "This agent cannot read outside its project." };
+
+  it("passes a kind the agent opens, and says which kind it was", () => {
+    expect(checkAttachment({ name: "a.pdf", mediaType: "", bytes: 100 }, 0, CLAUDE)).toEqual({ ok: true, kind: "pdf" });
+  });
+
+  it("refuses a kind nothing opens and names the ones this agent does", () => {
+    const verdict = checkAttachment({ name: "clip.mp4", mediaType: "video/mp4", bytes: 100 }, 0, CLAUDE);
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) expect(verdict.reason).toMatch(/clip\.mp4.*image, pdf, file/);
+  });
+
+  it("lets the same file through as a mention and refuses it as an upload, in the tier's words", () => {
+    expect(checkAttachment({ name: "notes.md", mediaType: "", bytes: null }, 0, ACP_MENTIONS)).toEqual({
+      ok: true,
+      kind: "file",
+    });
+    const upload = checkAttachment({ name: "notes.md", mediaType: "", bytes: 100 }, 0, ACP_UPLOADS);
+    expect(upload).toEqual({ ok: false, reason: ACP_UPLOADS.gap });
+  });
+
+  it("caps by kind, so a PDF may be what an image may not", () => {
+    const big = 10 * 1024 * 1024;
+    expect(checkAttachment({ name: "a.pdf", mediaType: "", bytes: big }, 0, CLAUDE).ok).toBe(true);
+    const image = checkAttachment({ name: "a.png", mediaType: "", bytes: big }, 0, CLAUDE);
+    expect(image.ok).toBe(false);
+    if (!image.ok) expect(image.reason).toMatch(/10\.0MB.*5MB.*image/);
+  });
+
+  it("counts the chips already there", () => {
+    expect(checkAttachment({ name: "a.png", mediaType: "", bytes: 1 }, MAX_ATTACHMENTS, CLAUDE).ok).toBe(false);
+  });
+});
+
+describe("attachment labels", () => {
+  afterEach(() => clearComposer(SESSION));
+
+  it("numbers per kind and never reuses a number", () => {
+    expect(nextLabel(SESSION, "image")).toBe("[image 1]");
+    expect(nextLabel(SESSION, "pdf")).toBe("[pdf 1]");
+    expect(nextLabel(SESSION, "image")).toBe("[image 2]");
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[image 2]"));
+    dropPending(SESSION, pendingFor(SESSION)[0].id);
+    expect(nextLabel(SESSION, "image")).toBe("[image 3]");
+  });
+
+  it("renames a chip and every token naming it, including a repeat", () => {
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[image 1]"));
+    setDraft(SESSION, "compare [image 1] with [image 10], then [image 1] again");
+    relabel(SESSION, "[image 1]", "[image 4]");
+    expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[image 4]" });
+    expect(draftFor(SESSION)).toBe("compare [image 4] with [image 10], then [image 4] again");
+  });
+
+  // A chip minted while the transcript was still being read may collide with a
+  // number the conversation already holds. It moves up, in every place it is
+  // named: the chip, the draft, and a message held to send.
+  it("seeds from the transcript and moves a colliding chip above it", () => {
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", nextLabel(SESSION, "image")));
+    setDraft(SESSION, "see [image 1]");
+    markAutoSend(SESSION, "see [image 1]");
+    expect(labelsSeeded(SESSION)).toBe(false);
+
+    seedLabels(SESSION, ["[image 2]", "[file 1]"]);
+
+    expect(labelsSeeded(SESSION)).toBe(true);
+    expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[image 3]" });
+    expect(draftFor(SESSION)).toBe("see [image 3]");
+    expect(takeAutoSend(SESSION)).toBe("see [image 3]");
+    expect(nextLabel(SESSION, "file")).toBe("[file 2]");
+  });
+
+  it("leaves a chip alone when the transcript never used its number", () => {
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", nextLabel(SESSION, "image")));
+    seedLabels(SESSION, ["[pdf 4]"]);
+    expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[image 1]" });
+    expect(nextLabel(SESSION, "pdf")).toBe("[pdf 5]");
+  });
+
+  it("is seeded even by an empty transcript, so a held send is not held forever", () => {
+    seedLabels(SESSION, []);
+    expect(labelsSeeded(SESSION)).toBe(true);
+    expect(nextLabel(SESSION, "image")).toBe("[image 1]");
   });
 
   it("splits a hunk comment into the reference and the prose", () => {
@@ -274,6 +401,20 @@ describe("send to a new session", () => {
     expect(takeAutoSend(TARGET)).toBe(null);
   });
 
+  it("numbers moved chips by the destination and rewrites the text to match", () => {
+    offerToComposer(TARGET, fileMentionBlocks("/x/first.png", nextLabel(TARGET, "image")));
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", nextLabel(SESSION, "image")));
+    offerToComposer(SESSION, fileMentionBlocks("/x/b.png", nextLabel(SESSION, "image")));
+    setDraft(SESSION, "[image 1] beside [image 2]");
+
+    expect(seedForSend(SESSION, TARGET)).toBe(true);
+
+    const labels = pendingFor(TARGET).map((p) => (p.block.type === "fileRef" ? p.block.label : null));
+    expect(labels).toEqual(["[image 1]", "[image 2]", "[image 3]"]);
+    expect(draftFor(TARGET)).toBe("[image 2] beside [image 3]");
+    expect(takeAutoSend(TARGET)).toBe("[image 2] beside [image 3]");
+  });
+
   it("seeds on attachments alone, which is a real thing to send", () => {
     offerToComposer(SESSION, selectionBlocks("/a.ts", 1, 4, "x"));
     expect(seedForSend(SESSION, TARGET)).toBe(true);
@@ -321,5 +462,9 @@ describe("chipLabel", () => {
 
   it("shows prose as itself", () => {
     expect(chipLabel({ type: "text", text: "why is this here" })).toBe("why is this here");
+  });
+
+  it("leads with the label the prose names an attachment by", () => {
+    expect(chipLabel(fileMentionBlocks("/x/deep/shot.png", "[image 2]")[0])).toBe("[image 2] shot.png");
   });
 });
