@@ -39,7 +39,7 @@ describe("a pasted file becomes a labelled path", () => {
     expect(invoke).toHaveBeenCalledWith("store_attachment", bytes, {
       headers: { [ATTACHMENT_NAME_HEADER]: "shot.png" },
     });
-    expect(labels()).toEqual([["[image 1]", "/home/me/.config/sway/attachments/abc-shot.png"]]);
+    expect(labels()).toEqual([["[Image 1]", "/home/me/.config/sway/attachments/abc-shot.png"]]);
     expect(pendingFor(KEY).some((p) => p.block.type === "image")).toBe(false);
   });
 
@@ -47,7 +47,7 @@ describe("a pasted file becomes a labelled path", () => {
     invoke.mockResolvedValueOnce("/x/a.pdf");
     await claude.onAttachUploads([{ name: "rapport été.pdf", bytes: new Uint8Array() }]);
     expect(invoke.mock.calls[0][2]).toEqual({ headers: { [ATTACHMENT_NAME_HEADER]: "rapport%20%C3%A9t%C3%A9.pdf" } });
-    expect(labels()).toEqual([["[pdf 1]", "/x/a.pdf"]]);
+    expect(labels()).toEqual([["[PDF 1]", "/x/a.pdf"]]);
   });
 
   it("numbers a batch in drop order, per kind", async () => {
@@ -57,7 +57,7 @@ describe("a pasted file becomes a labelled path", () => {
       { name: "b.pdf", bytes: new Uint8Array() },
       { name: "c.png", bytes: new Uint8Array() },
     ]);
-    expect(labels().map((l) => l?.[0])).toEqual(["[image 1]", "[pdf 1]", "[image 2]"]);
+    expect(labels().map((l) => l?.[0])).toEqual(["[Image 1]", "[PDF 1]", "[Image 2]"]);
   });
 
   it("says so when the write fails, and offers no chip for it", async () => {
@@ -73,9 +73,9 @@ describe("a dragged path is a labelled mention", () => {
     claude.onAttachPaths(["/repo/shot.png", "/repo/src/main.rs"]);
     claude.onAttachFile("docs/spec.pdf");
     expect(labels()).toEqual([
-      ["[image 1]", "/repo/shot.png"],
-      ["[file 1]", "/repo/src/main.rs"],
-      ["[pdf 1]", "/work/repo/docs/spec.pdf"],
+      ["[Image 1]", "/repo/shot.png"],
+      ["[File 1]", "/repo/src/main.rs"],
+      ["[PDF 1]", "/work/repo/docs/spec.pdf"],
     ]);
   });
 
@@ -89,7 +89,7 @@ describe("a dragged path is a labelled mention", () => {
   // whether it would open an image off a path is unmeasured.
   it("keeps a source file for an ACP agent and refuses an image", () => {
     acp.onAttachPaths(["/repo/src/main.rs", "/repo/shot.png"]);
-    expect(labels()).toEqual([["[file 1]", "/repo/src/main.rs"]]);
+    expect(labels()).toEqual([["[File 1]", "/repo/src/main.rs"]]);
     expect(rejected[0]).toMatch(/shot\.png.*It opens: file\./);
   });
 });

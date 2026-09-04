@@ -380,7 +380,7 @@ pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
                     (Some(s), None) => format!("@{path}#L{s}"),
                     _ => format!("@{path}"),
                 };
-                // `[image 3]: @/abs/path`, the exact form `history.rs` reads
+                // `[Image 3]: @/abs/path`, the exact form `history.rs` reads
                 // back, so the label survives a reopen.
                 if let Some(l) = label {
                     rendered = format!("{l}: {rendered}");
@@ -1341,11 +1341,11 @@ pub mod tests {
             start_line: None,
             end_line: None,
             text: None,
-            label: Some("[image 3]".into()),
+            label: Some("[Image 3]".into()),
         }]);
         assert_eq!(
             frame["message"]["content"][0]["text"],
-            "[image 3]: @/home/me/.config/sway/attachments/ab-shot.png"
+            "[Image 3]: @/home/me/.config/sway/attachments/ab-shot.png"
         );
     }
 

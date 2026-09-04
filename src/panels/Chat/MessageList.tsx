@@ -28,7 +28,9 @@ import { foldEdits } from "./toolRenderers";
 
 /** Every token that could name an attachment, for splitting a prompt into the
  *  parts that name one and the parts that are prose. */
-const TOKEN_SPLIT = /(\[(?:image|pdf|file) \d+\])/g;
+// Case-insensitive: a turn sent before the capitalisation still says
+// `[Image 1]`, and it named a real attachment when it was sent.
+const TOKEN_SPLIT = /(\[(?:image|pdf|file) \d+\])/gi;
 
 function blockText(blocks: readonly ContentBlock[]): string {
   const typed = blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
@@ -56,7 +58,7 @@ function promptRefs(blocks: readonly ContentBlock[]): Map<string, string> {
  * The prompt, with every token naming one of this turn's own attachments drawn
  * as a chip.
  *
- * Only its own: a user who typed `[image 9]` at an agent that never got one
+ * Only its own: a user who typed `[Image 9]` at an agent that never got one
  * meant those characters, and dressing them up as an attachment would claim
  * the turn carried something it did not.
  */

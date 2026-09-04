@@ -1449,7 +1449,7 @@ mod tests {
     }
 
     /// This transport replays over the live channel, so a reopened chat learns
-    /// what `[file 1]` already means here or nowhere.
+    /// what `[File 1]` already means here or nowhere.
     #[test]
     fn a_replayed_user_chunk_gives_a_labelled_attachment_back() {
         let sent = vec![ContentBlock::FileRef {
@@ -1457,7 +1457,7 @@ mod tests {
             start_line: None,
             end_line: None,
             text: None,
-            label: Some("[file 1]".into()),
+            label: Some("[File 1]".into()),
         }];
         let rendered = match prompt_blocks(&sent).as_slice() {
             [AcpContentBlock::Text(t)] => t.text.clone(),
@@ -1466,10 +1466,10 @@ mod tests {
         let events = map_update("s1", "t1", &SessionUpdate::UserMessageChunk(text_chunk(&rendered)), None);
         assert!(matches!(events.as_slice(), [ChatEvent::UserMessage { blocks, .. }] if blocks == &sent));
 
-        let typed = map_update("s1", "t1", &SessionUpdate::UserMessageChunk(text_chunk("about [file 1]")), None);
+        let typed = map_update("s1", "t1", &SessionUpdate::UserMessageChunk(text_chunk("about [File 1]")), None);
         assert!(matches!(
             typed.as_slice(),
-            [ChatEvent::UserMessage { blocks, .. }] if blocks == &[ContentBlock::Text { text: "about [file 1]".into() }]
+            [ChatEvent::UserMessage { blocks, .. }] if blocks == &[ContentBlock::Text { text: "about [File 1]".into() }]
         ));
     }
 
@@ -1955,11 +1955,11 @@ mod tests {
             start_line: None,
             end_line: None,
             text: None,
-            label: Some("[file 1]".into()),
+            label: Some("[File 1]".into()),
         }]);
         assert!(matches!(
             blocks.as_slice(),
-            [AcpContentBlock::Text(t)] if t.text == "[file 1]: @/repo/src/main.rs"
+            [AcpContentBlock::Text(t)] if t.text == "[File 1]: @/repo/src/main.rs"
         ));
     }
 

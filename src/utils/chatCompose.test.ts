@@ -66,7 +66,7 @@ describe("the block composers keep what the flat wire format loses", () => {
   });
 
   it("carries an attachment's label on the mention, and nothing else's", () => {
-    expect(fileMentionBlocks("/x/shot.png", "[image 1]")[0]).toMatchObject({ label: "[image 1]" });
+    expect(fileMentionBlocks("/x/shot.png", "[Image 1]")[0]).toMatchObject({ label: "[Image 1]" });
     expect(fileMentionBlocks("/x/a.ts")[0]).not.toHaveProperty("label");
   });
 });
@@ -138,20 +138,20 @@ describe("attachment labels", () => {
   afterEach(() => clearComposer(SESSION));
 
   it("numbers per kind and never reuses a number", () => {
-    expect(nextLabel(SESSION, "image")).toBe("[image 1]");
-    expect(nextLabel(SESSION, "pdf")).toBe("[pdf 1]");
-    expect(nextLabel(SESSION, "image")).toBe("[image 2]");
-    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[image 2]"));
+    expect(nextLabel(SESSION, "image")).toBe("[Image 1]");
+    expect(nextLabel(SESSION, "pdf")).toBe("[PDF 1]");
+    expect(nextLabel(SESSION, "image")).toBe("[Image 2]");
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[Image 2]"));
     dropPending(SESSION, pendingFor(SESSION)[0].id);
-    expect(nextLabel(SESSION, "image")).toBe("[image 3]");
+    expect(nextLabel(SESSION, "image")).toBe("[Image 3]");
   });
 
   it("renames a chip and every token naming it, including a repeat", () => {
-    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[image 1]"));
-    setDraft(SESSION, "compare [image 1] with [image 10], then [image 1] again");
-    relabel(SESSION, "[image 1]", "[image 4]");
-    expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[image 4]" });
-    expect(draftFor(SESSION)).toBe("compare [image 4] with [image 10], then [image 4] again");
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[Image 1]"));
+    setDraft(SESSION, "compare [Image 1] with [Image 10], then [Image 1] again");
+    relabel(SESSION, "[Image 1]", "[Image 4]");
+    expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[Image 4]" });
+    expect(draftFor(SESSION)).toBe("compare [Image 4] with [Image 10], then [Image 4] again");
   });
 
   // A chip minted while the transcript was still being read may collide with a
@@ -159,38 +159,38 @@ describe("attachment labels", () => {
   // named: the chip, the draft, and a message held to send.
   it("seeds from the transcript and moves a colliding chip above it", () => {
     offerToComposer(SESSION, fileMentionBlocks("/x/a.png", nextLabel(SESSION, "image")));
-    setDraft(SESSION, "see [image 1]");
-    markAutoSend(SESSION, "see [image 1]");
+    setDraft(SESSION, "see [Image 1]");
+    markAutoSend(SESSION, "see [Image 1]");
     expect(labelsSeeded(SESSION)).toBe(false);
 
-    seedLabels(SESSION, ["[image 2]", "[file 1]"]);
+    seedLabels(SESSION, ["[Image 2]", "[File 1]"]);
 
     expect(labelsSeeded(SESSION)).toBe(true);
-    expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[image 3]" });
-    expect(draftFor(SESSION)).toBe("see [image 3]");
-    expect(takeAutoSend(SESSION)).toBe("see [image 3]");
-    expect(nextLabel(SESSION, "file")).toBe("[file 2]");
+    expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[Image 3]" });
+    expect(draftFor(SESSION)).toBe("see [Image 3]");
+    expect(takeAutoSend(SESSION)).toBe("see [Image 3]");
+    expect(nextLabel(SESSION, "file")).toBe("[File 2]");
   });
 
   it("leaves a chip alone when the transcript never used its number", () => {
     offerToComposer(SESSION, fileMentionBlocks("/x/a.png", nextLabel(SESSION, "image")));
-    seedLabels(SESSION, ["[pdf 4]"]);
-    expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[image 1]" });
-    expect(nextLabel(SESSION, "pdf")).toBe("[pdf 5]");
+    seedLabels(SESSION, ["[PDF 4]"]);
+    expect(pendingFor(SESSION)[0].block).toMatchObject({ label: "[Image 1]" });
+    expect(nextLabel(SESSION, "pdf")).toBe("[PDF 5]");
   });
 
   // Removing the chip has to take its token with it: a sentence still saying
-  // `[image 1]` after the attachment is gone names something the turn will not
+  // `[Image 1]` after the attachment is gone names something the turn will not
   // carry, and the agent would go looking for it.
   it("takes the token out of the sentence when its chip is removed", () => {
-    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[image 1]"));
-    setDraft(SESSION, "look at [image 1] and at [image 1] again");
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[Image 1]"));
+    setDraft(SESSION, "look at [Image 1] and at [Image 1] again");
     dropPending(SESSION, pendingFor(SESSION)[0].id);
     expect(draftFor(SESSION)).toBe("look at and at again");
   });
 
   it("leaves a sentence that never named it exactly as it was", () => {
-    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[image 1]"));
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[Image 1]"));
     setDraft(SESSION, "have a look at this");
     dropPending(SESSION, pendingFor(SESSION)[0].id);
     expect(draftFor(SESSION)).toBe("have a look at this");
@@ -199,7 +199,7 @@ describe("attachment labels", () => {
   it("is seeded even by an empty transcript, so a held send is not held forever", () => {
     seedLabels(SESSION, []);
     expect(labelsSeeded(SESSION)).toBe(true);
-    expect(nextLabel(SESSION, "image")).toBe("[image 1]");
+    expect(nextLabel(SESSION, "image")).toBe("[Image 1]");
   });
 
   it("splits a hunk comment into the reference and the prose", () => {
@@ -422,14 +422,14 @@ describe("send to a new session", () => {
     offerToComposer(TARGET, fileMentionBlocks("/x/first.png", nextLabel(TARGET, "image")));
     offerToComposer(SESSION, fileMentionBlocks("/x/a.png", nextLabel(SESSION, "image")));
     offerToComposer(SESSION, fileMentionBlocks("/x/b.png", nextLabel(SESSION, "image")));
-    setDraft(SESSION, "[image 1] beside [image 2]");
+    setDraft(SESSION, "[Image 1] beside [Image 2]");
 
     expect(seedForSend(SESSION, TARGET)).toBe(true);
 
     const labels = pendingFor(TARGET).map((p) => (p.block.type === "fileRef" ? p.block.label : null));
-    expect(labels).toEqual(["[image 1]", "[image 2]", "[image 3]"]);
-    expect(draftFor(TARGET)).toBe("[image 2] beside [image 3]");
-    expect(takeAutoSend(TARGET)).toBe("[image 2] beside [image 3]");
+    expect(labels).toEqual(["[Image 1]", "[Image 2]", "[Image 3]"]);
+    expect(draftFor(TARGET)).toBe("[Image 2] beside [Image 3]");
+    expect(takeAutoSend(TARGET)).toBe("[Image 2] beside [Image 3]");
   });
 
   it("seeds on attachments alone, which is a real thing to send", () => {
@@ -482,6 +482,6 @@ describe("chipLabel", () => {
   });
 
   it("leads with the label the prose names an attachment by", () => {
-    expect(chipLabel(fileMentionBlocks("/x/deep/shot.png", "[image 2]")[0])).toBe("[image 2] shot.png");
+    expect(chipLabel(fileMentionBlocks("/x/deep/shot.png", "[Image 2]")[0])).toBe("[Image 2] shot.png");
   });
 });

@@ -18,7 +18,7 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
   const onSend = vi.fn();
   const onInterrupt = vi.fn();
   const onDropAttachment = vi.fn();
-  const onAttachFile = vi.fn((_relPath: string): string | null => "[file 1]");
+  const onAttachFile = vi.fn((_relPath: string): string | null => "[File 1]");
   const onAttachUploads = vi.fn();
   const onAttachRejected = vi.fn();
   const onAttachPaths = vi.fn();
@@ -258,7 +258,7 @@ describe("@ file completion", () => {
     await findByText("src/utils/chatCompose.ts");
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onAttachFile).toHaveBeenCalledWith("src/utils/chatCompose.ts");
-    expect(input.value).toBe("look at [file 1]");
+    expect(input.value).toBe("look at [File 1]");
   });
 
   it("drops the mention when the file was refused, since there is no token to put there", async () => {
@@ -470,29 +470,37 @@ describe("an attachment chip", () => {
   const shot: PendingBlock[] = [
     {
       id: "att-1",
-      block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[image 2]" },
+      block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[Image 2]" },
     },
   ];
   const notes: PendingBlock[] = [
     {
       id: "att-2",
-      block: { type: "fileRef", path: "/store/1a2b-1/notes.pdf", startLine: null, endLine: null, text: null, label: "[pdf 1]" },
+      block: { type: "fileRef", path: "/store/1a2b-1/notes.pdf", startLine: null, endLine: null, text: null, label: "[PDF 1]" },
     },
   ];
 
-  it("reads as its token and its filename, and draws the file itself", () => {
-    const { container, getByText } = setup({ attachments: shot });
-    expect(getByText("[image 2] shot.png")).toBeTruthy();
+  it("captions the picture with its token, and keeps the filename in its name", () => {
+    const { container, getByText, getByLabelText } = setup({ attachments: shot });
+    // The picture says which file it is, so the caption only has to say what
+    // to type. The filename is still announced, on the control.
+    expect(getByText("[Image 2]")).toBeTruthy();
+    expect(getByLabelText("Insert [Image 2] shot.png")).toBeTruthy();
     // Off disk through the asset protocol, not out of the message: the bytes
     // are on the wire nowhere now.
     expect(container.querySelector("img")?.getAttribute("src")).toBe("asset:///store/1a2b-0/shot.png");
   });
 
+  it("still reads as token and filename where there is no picture to look at", () => {
+    const { getByText } = setup({ attachments: notes });
+    expect(getByText("[PDF 1] notes.pdf")).toBeTruthy();
+  });
+
   it("puts its token in the message when the body is clicked, and does not remove it", () => {
     const { input, getByLabelText, onDropAttachment } = setup({ attachments: shot });
     type(input, "compare this");
-    fireEvent.click(getByLabelText("Insert [image 2] shot.png"));
-    expect(input.value).toBe("compare this [image 2]");
+    fireEvent.click(getByLabelText("Insert [Image 2] shot.png"));
+    expect(input.value).toBe("compare this [Image 2]");
     expect(onDropAttachment).not.toHaveBeenCalled();
   });
 
@@ -500,13 +508,13 @@ describe("an attachment chip", () => {
     const { input, getByLabelText } = setup({ attachments: notes });
     type(input, "read then answer");
     input.setSelectionRange(4, 4);
-    fireEvent.click(getByLabelText("Insert [pdf 1] notes.pdf"));
-    expect(input.value).toBe("read [pdf 1] then answer");
+    fireEvent.click(getByLabelText("Insert [PDF 1] notes.pdf"));
+    expect(input.value).toBe("read [PDF 1] then answer");
   });
 
   it("removes on Delete or Backspace, so the keyboard reaches what the button does", () => {
     const { getByLabelText, onDropAttachment } = setup({ attachments: shot });
-    fireEvent.keyDown(getByLabelText("Insert [image 2] shot.png"), { key: "Delete" });
+    fireEvent.keyDown(getByLabelText("Insert [Image 2] shot.png"), { key: "Delete" });
     expect(onDropAttachment).toHaveBeenCalledWith("att-1");
   });
 
@@ -520,7 +528,7 @@ describe("dragging a chip into the sentence", () => {
   const shot: PendingBlock[] = [
     {
       id: "att-1",
-      block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[image 1]" },
+      block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[Image 1]" },
     },
   ];
 
@@ -533,13 +541,13 @@ describe("dragging a chip into the sentence", () => {
       offsetNode: input,
       offset: 5,
     });
-    const dt = drag(getByLabelText("Insert [image 1] shot.png"));
+    const dt = drag(getByLabelText("Insert [Image 1] shot.png"));
     // Only the private type: `text/plain` would make a drop on the terminal,
     // or on this composer's own path branch, read the token as a file path.
     expect(Object.keys(dt)).toEqual([ATTACHMENT_TOKEN_MIME]);
     drop(container.firstElementChild!, { data: dt });
 
-    expect(input.value).toBe("look [image 1] here");
+    expect(input.value).toBe("look [Image 1] here");
     // The chip moved, it did not arrive: nothing was attached a second time.
     expect(onAttachPaths).not.toHaveBeenCalled();
     expect(onAttachUploads).not.toHaveBeenCalled();
@@ -550,15 +558,15 @@ describe("dragging a chip into the sentence", () => {
     const { input, container, getByLabelText } = setup({ attachments: shot });
     type(input, "look here");
     input.setSelectionRange(4, 4);
-    drop(container.firstElementChild!, { data: drag(getByLabelText("Insert [image 1] shot.png")) });
-    expect(input.value).toBe("look [image 1] here");
+    drop(container.firstElementChild!, { data: drag(getByLabelText("Insert [Image 1] shot.png")) });
+    expect(input.value).toBe("look [Image 1] here");
   });
 
   it("does not light the composer up as a drop target for its own chip", () => {
     const { container, getByLabelText } = setup({ attachments: shot });
     const composer = container.firstElementChild!;
     const before = composer.className;
-    const dt = drag(getByLabelText("Insert [image 1] shot.png"));
+    const dt = drag(getByLabelText("Insert [Image 1] shot.png"));
     fireEvent.dragOver(composer, { dataTransfer: { types: Object.keys(dt), getData: (m: string) => dt[m] ?? "" } });
     expect(composer.className).toBe(before);
   });

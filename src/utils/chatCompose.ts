@@ -206,7 +206,7 @@ export function pendingFor(key: ComposerKey): PendingBlock[] {
 }
 
 /** Take one chip away, and with it every token naming it: a sentence that
- *  still says `[image 2]` after its attachment is gone names something the
+ *  still says `[Image 2]` after its attachment is gone names something the
  *  turn will not carry. */
 export function dropPending(key: ComposerKey, id: string) {
   const gone = pendingFor(key).find((p) => p.id === id);
@@ -355,7 +355,7 @@ export function seedForSend(fromKey: ComposerKey, toKey: ComposerKey) {
     offerToComposer(fromKey, blocks);
     return false;
   }
-  // Numbered again by the destination: `[image 1]` may already be taken there.
+  // Numbered again by the destination: `[Image 1]` may already be taken there.
   const renames = new Map<string, string>();
   const moved = blocks.map((block) => {
     if (block.type !== "fileRef" || !block.label) return block;
@@ -407,25 +407,31 @@ export function takeAutoSend(key: ComposerKey): string | null {
   return held;
 }
 
-// Attachment labels: `[image 3]`, numbered per composer and per kind. Filed
+// Attachment labels: `[Image 3]`, numbered per composer and per kind. Filed
 // under the tab like the chips, because a draft tab attaches before it has a
 // session. A number is never reused, so one the transcript already holds is
 // never put on the wire twice: a chip only ever moves *up*.
 const [counters, setCounters] = createSignal<Record<ComposerKey, Partial<Record<AttachmentKind, number>>>>({});
 // Whether the composer's numbering has been raised above what its transcript
 // already used. A send waits for this, or a reopened chat's first attachment
-// could go out as `[image 1]` under a conversation that has one.
+// could go out as `[Image 1]` under a conversation that has one.
 const [seeded, setSeeded] = createSignal<Record<ComposerKey, true>>({});
 
-const LABEL_TOKENS = /\[(image|pdf|file) (\d+)\]/g;
+/** How a kind is spelled in the sentence. `PDF` is an initialism and reads as
+ *  one; the other two are ordinary words. */
+const KIND_NAMES: Record<AttachmentKind, string> = { image: "Image", pdf: "PDF", file: "File" };
+
+// Case-insensitive on the way in, capitalised on the way out: transcripts
+// written before the capitalisation still name their attachments.
+const LABEL_TOKENS = /\[(image|pdf|file) (\d+)\]/gi;
 
 function attachmentLabel(kind: AttachmentKind, n: number): string {
-  return `[${kind} ${n}]`;
+  return `[${KIND_NAMES[kind]} ${n}]`;
 }
 
 export function parseLabel(label: string): { kind: AttachmentKind; n: number } | null {
-  const m = /^\[(image|pdf|file) (\d+)\]$/.exec(label);
-  return m ? { kind: m[1] as AttachmentKind, n: Number(m[2]) } : null;
+  const m = /^\[(image|pdf|file) (\d+)\]$/i.exec(label);
+  return m ? { kind: m[1].toLowerCase() as AttachmentKind, n: Number(m[2]) } : null;
 }
 
 /** Mint the next label of `kind` for this composer. */
@@ -441,7 +447,7 @@ function renameTokens(text: string, renames: ReadonlyMap<string, string>): strin
 }
 
 /** Cut a token out of a sentence and close the gap, so removing the chip from
- *  "look at [image 1] again" does not leave two spaces behind. */
+ *  "look at [Image 1] again" does not leave two spaces behind. */
 function stripToken(text: string, token: string): string {
   return text.split(token).join("").replace(/ {2,}/g, " ").replace(/[ \t]+$/gm, "");
 }
@@ -464,7 +470,7 @@ export function relabel(key: ComposerKey, from: string, to: string) {
 
 /** Raise this composer's numbering above the labels its transcript already
  *  holds. A chip minted before the transcript was read may now collide; it is
- *  renamed above the mark rather than sent as a second `[image 2]`. */
+ *  renamed above the mark rather than sent as a second `[Image 2]`. */
 export function seedLabels(key: ComposerKey, labels: readonly string[]) {
   const mark: Partial<Record<AttachmentKind, number>> = {};
   for (const label of labels) {
