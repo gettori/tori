@@ -8,44 +8,11 @@
   position: relative;
 }
 
-/* Working.
-
-   The motion is `agentMarks`' breathe, worn on the wrapper rather than
-   redeclared here: chat already animates its mark that way, and two surfaces
-   showing the same logo for the same reason should not pulse to two different
-   rhythms. What is left here is the colour.
-
-   The tint is the brand's own, keyed on the mark actually rendered rather than
-   on the adapter id, so a session whose provider Sway cannot name (the brain)
-   keeps the neutral accent instead of borrowing a logo's colour. Only the
-   working state is tinted: at rest the strip is chrome, and a row of brand
-   colours in it would compete with the tab you are reading. */
-.working {
-  color: var(--accent-fg);
-}
-
-/* Anthropic's is the one brand hue the palettes carry, because it is worn
-   outside this strip too (the toolbar crumb) where it has to answer to the
-   theme's contrast. */
-.working[data-mark="claude"] {
-  color: var(--agent-claude);
-}
-
-.working[data-mark="gemini"] {
-  color: var(--sway-agent-gemini);
-}
-
-/* Codex, Copilot, Kimi, OpenCode and Pi are all published as monochrome black
-   (Simple Icons; Codex has no entry and OpenAI's own mark is black on light,
-   white on dark). The faithful rendering of a black-or-white brand is the
-   theme's foreground, not a fixed black that would vanish into a dark strip. */
-.working[data-mark="codex"],
-.working[data-mark="copilot"],
-.working[data-mark="kimi"],
-.working[data-mark="opencode"],
-.working[data-mark="pi"] {
-  color: var(--fg-default);
-}
+/* Working is both halves of `agentMarks`, the breathe and the tint, and neither
+   is redeclared here: the chat's lane strip wears the same two for the same
+   reason, and two surfaces showing one agent must not drift to two colours or
+   two rhythms. Only the working state is tinted - at rest the strip is chrome,
+   and a row of brand colours in it would compete with the tab you are reading. */
 
 /* Waiting on you: no motion, because nothing is running. */
 .needsYou {

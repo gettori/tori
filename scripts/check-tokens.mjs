@@ -849,8 +849,8 @@ if (!chatSource) {
     if (!rule.selectors.some((sel) => LANE_SELECTORS.includes(sel))) continue;
     const fill = /background:\s*([^;]+);/.exec(rule.body)?.[1]?.trim();
     // `currentColor` is the status dot taking its chip's own colour. It is a
-    // 6px graphic with no text on it, and the three tones it wears are roles
-    // the gate measures in their own right.
+    // 6px graphic with no text on it, and everything it wears is a role the gate
+    // measures already: the four status tones, and `agent.*` as a graphic.
     if (fill === undefined || fill === "transparent" || fill === "currentColor") continue;
     if (fill !== `var(${LANE_FILL})`) {
       laneProblems.push(

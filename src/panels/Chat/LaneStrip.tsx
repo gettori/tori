@@ -1,5 +1,6 @@
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js";
 import type { Lane } from "./chatStore";
+import agentStyles from "../../components/Icon/agentMarks.module.css";
 import styles from "./Chat.module.css";
 
 /** The row above the composer: `main`, then one lane per subagent still
@@ -13,6 +14,13 @@ export default function LaneStrip(props: {
    *  so this marks where answering one would take you. */
   blocked: ReadonlySet<string>;
   onSelect: (agentId: string | null) => void;
+  /** Whether the main agent is mid-turn. Its own chip has no `Lane` behind it,
+   *  so its state is the only one the strip has to be told. */
+  busy: boolean;
+  /** Which provider mark this chat wears, for the tint the main chip takes
+   *  while it works. Null for a session whose provider Sway cannot name, which
+   *  keeps the neutral accent rather than borrowing a logo's colour. */
+  mark: string | null;
   /** Whether this chat is the one on screen. The `Opt+N` binding is only armed
    *  for it, or every open chat would answer the same keystroke. */
   active: boolean;
@@ -21,6 +29,8 @@ export default function LaneStrip(props: {
   // figure is what this panel has watched, the same basis the status strip's
   // elapsed clock uses.
   const [now, setNow] = createSignal(Date.now());
+
+  const mainTone = () => (props.busy ? agentStyles.tint : styles.laneIdle);
 
   createEffect(
     on(
@@ -64,8 +74,12 @@ export default function LaneStrip(props: {
         aria-pressed={props.selected === id()}
         onClick={() => props.onSelect(id())}
       >
+        {/* The main agent's dot is the one that is not a status tone: it wears
+            the working agent's own hue, the way its tab already does, because
+            "main" is an identity and the four tones are outcomes. */}
         <span
-          class={`${styles.laneDot} ${p.lane ? laneTone(p.lane, blocked()) : styles.laneIdle}`}
+          class={`${styles.laneDot} ${p.lane ? laneTone(p.lane, blocked()) : mainTone()}`}
+          data-mark={p.lane === null && props.busy ? (props.mark ?? undefined) : undefined}
           aria-hidden="true"
         />
         <span class={styles.laneLabel}>{p.lane ? laneLabel(p.lane) : "main"}</span>

@@ -83,6 +83,7 @@ import { findAdapter } from "../../utils/agents";
 import { agentVersion } from "../../utils/agentHealth";
 import { revealTarget } from "../../utils/agentLines";
 import { chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
+import { providerMarkKey } from "../../components/Icon/ProviderIcon";
 import { rememberChatPrefs, settings } from "../Settings/settingsStore";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
@@ -1826,6 +1827,8 @@ export default function ChatView(props: {
         lanes={laneStrip(state)}
         blocked={blockedLanes(state)}
         selected={state.selectedLane}
+        busy={running()}
+        mark={providerMarkKey(state.model, props.agentId)}
         onSelect={(agentId) => edit((s) => selectLane(s, agentId))}
         active={props.active}
       />

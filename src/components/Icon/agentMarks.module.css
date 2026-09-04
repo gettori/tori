@@ -5,6 +5,41 @@
    Opacity and scale, never rotation: these are logos, and a spinning wordmark
    reads as broken rather than busy. */
 @layer components {
+  /* The tinted half, worn by anything that says "this agent is working": the
+     tab strip's mark and the chat's own lane strip. Keyed on the mark actually
+     rendered rather than on the adapter id, so a session whose provider Sway
+     cannot name keeps the neutral accent instead of borrowing a logo's colour.
+
+     Shared rather than declared twice. Two surfaces showing the same agent for
+     the same reason must not drift to two colours, which is the rule the
+     breathe below already follows. */
+  .tint {
+    color: var(--accent-fg);
+  }
+
+  /* Anthropic's is the one brand hue the palettes carry, because it is worn
+     outside these surfaces too (the toolbar crumb) where it has to answer to
+     the theme's contrast. */
+  .tint[data-mark="claude"] {
+    color: var(--agent-claude);
+  }
+
+  .tint[data-mark="gemini"] {
+    color: var(--sway-agent-gemini);
+  }
+
+  /* Codex, Copilot, Kimi, OpenCode and Pi are all published as monochrome black
+     (Simple Icons; Codex has no entry and OpenAI's own mark is black on light,
+     white on dark). The faithful rendering of a black-or-white brand is the
+     theme's foreground, not a fixed black that would vanish into a dark strip. */
+  .tint[data-mark="codex"],
+  .tint[data-mark="copilot"],
+  .tint[data-mark="kimi"],
+  .tint[data-mark="opencode"],
+  .tint[data-mark="pi"] {
+    color: var(--fg-default);
+  }
+
   .thinking {
     /* Not a duration token: the two we have are 80ms and 160ms, both sized for
        a state change the eye should not notice, and a breath at either reads as
