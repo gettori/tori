@@ -150,8 +150,12 @@ describe("a file tab inside a Feature", () => {
     const crumbs = within(await screen.findByRole("navigation", { name: "Breadcrumbs" }));
     await waitFor(() => expect(crumbs.getByRole("button", { name: "web" })).toBeTruthy());
     // The whole trail, not just its head: against `activeRoot` there would have
-    // been one crumb here, and it would have been the basename.
-    expect(crumbs.getAllByRole("button")).toHaveLength(3);
+    // been one crumb here, and it would have been the basename. Counted by the
+    // crumb class rather than by every button in the bar, which now ends in the
+    // file's own controls (blame, preview).
+    expect(
+      crumbs.getAllByRole("button").filter((b) => /crumb/.test(b.className)),
+    ).toHaveLength(3);
     expect(crumbs.getByRole("button", { name: "src" })).toBeTruthy();
     expect(crumbs.getByRole("button", { name: "b.txt" })).toBeTruthy();
   });

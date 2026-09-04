@@ -5,8 +5,13 @@
   display: flex;
   align-items: center;
   gap: calc(1px * var(--ui-scale));
-  min-height: calc(24px * var(--ui-scale));
-  padding: 0 calc(6px * var(--ui-scale));
+  /* 29px: a small control, 2px of air above and below it, and the rule under
+     that. Said as the sum rather than as the number, because the rule does not
+     scale with `--ui-scale` and a literal would drift from the band at zoom.
+     Four shorter than the chat's status strip, which carries the same control
+     with more room around it; the trail is the quieter of the two bands. */
+  min-height: calc(var(--control-height-sm) + 4px * var(--ui-scale) + 1px);
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
   font-size: var(--sway-text-md);
@@ -14,7 +19,7 @@
   user-select: none;
   /* A deep path in a narrow pane scrolls rather than wrapping: a second row
      would move the editor down every time you opened a nested file. The bar is
-     24px tall, so a scrollbar in it would be most of the bar. */
+     one control tall, so a scrollbar in it would be most of the bar. */
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -61,12 +66,23 @@
   color: var(--brand-default);
 }
 
+/* On the glyph, not on the button, and no fill behind it: a filled control
+   reads as one of a selected set and these two are independent switches. The
+   glyph rather than the button because the shared icon button repaints its own
+   colour on hover, and the accent has to outlive that. */
+.barToggleOn {
+  color: var(--brand-bar);
+}
+
 /* The bar's own control, pinned to its right edge. Sticky rather than
    right-aligned: the trail scrolls sideways in a narrow pane, and a control
    that scrolls away with it is a control you cannot reach. */
 .trailing {
   position: sticky;
   right: 0;
+  /* Its own gap: the bar's is 1px, which is the space between crumbs in a path
+     and far too tight for two controls to read as two. */
+  gap: calc(6px * var(--ui-scale));
   margin-left: auto;
   flex: none;
   display: inline-flex;
