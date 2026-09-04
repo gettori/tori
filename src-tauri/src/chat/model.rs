@@ -1216,6 +1216,12 @@ pub enum ChatEvent {
         session_id: String,
         agent_id: String,
         tool_use_id: String,
+        /// What kind of task this is, and the only thing telling a subagent from
+        /// the other work on this channel. Measured: `local_agent` for a
+        /// subagent, `local_bash` for a backgrounded shell command.
+        task_type: String,
+        /// Empty for anything that is not a subagent, which sends neither this
+        /// nor `prompt`.
         agent_type: String,
         description: String,
         prompt: String,
@@ -1736,6 +1742,7 @@ mod tests {
                 session_id: "s1".into(),
                 agent_id: "acb01121756a92ca0".into(),
                 tool_use_id: "toolu_5".into(),
+                task_type: "local_agent".into(),
                 agent_type: "general-purpose".into(),
                 description: "Create sub-made.txt".into(),
                 prompt: "Use the Write tool to create sub-made.txt containing the word sub.".into(),

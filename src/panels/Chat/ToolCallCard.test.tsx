@@ -384,10 +384,9 @@ describe("a call that failed", () => {
   });
 });
 
-// A lane leaves the strip above the composer once its subagent succeeds, so the
-// card that launched it is the only way back to what it did. Without this the
-// work is still in the transcript and unreachable, which is worse than not
-// having had a lane at all.
+// The strip above the composer keeps every lane, so this is not the only way
+// into one. It is the way in from where the launch actually happened, which is
+// what a reader scrolling the transcript has in front of them.
 describe("the way back into a subagent's lane", () => {
   const agent = card({ name: "Agent", toolUseId: "toolu_agent", input: { description: "Create one.txt" } });
 

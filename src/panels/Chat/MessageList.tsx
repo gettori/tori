@@ -154,7 +154,7 @@ export default function MessageList(props: {
    *  must not claim the one above it. */
   agentTurn?: (turnId: string) => boolean;
   /** The lane an `Agent` call opened, or null for an ordinary call. A finished
-   *  lane leaves the strip, so its card is the only way back into it. */
+   *  card is the way into that lane from where the launch happened. */
   laneOpenedBy?: (toolUseId: string) => string | null;
   /** The lane a row belongs to while it is showing outside that lane, which is
    *  what a blocked row does. */

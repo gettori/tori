@@ -830,7 +830,7 @@ if (blockingProblems.length > 0) {
 // its own tint puts text on a pair nothing ever measured and the gate stays
 // green. Held in both directions: the rules may name no other fill, and
 // `contrast.ts` must still measure the strip's text roles against that one.
-const LANE_SELECTORS = [".lanes", ".lane", ".lane:hover", ".laneOn", ".laneDot", ".laneLabel", ".laneFigure", ".laneKey", ".toolLane", ".toolLane:hover"];
+const LANE_SELECTORS = [".lanes", ".laneGroup", ".laneGroupName", ".lane", ".lane:hover", ".laneOn", ".laneStill", ".laneStill:hover", ".laneDot", ".laneLabel", ".laneFigure", ".laneKey", ".toolLane", ".toolLane:hover"];
 /** The one fill the strip may wear, in both spellings: the CSS var the rules
  *  name, and the role id the contrast table measures against. */
 const LANE_FILL = "--neutral-hover";

@@ -257,6 +257,9 @@ fn expand_subagent(
         session_id: session_id.to_string(),
         agent_id: sub.agent_id.clone(),
         tool_use_id: sub.tool_use_id.clone(),
+        // Only a subagent writes a sidecar, so replay reaches here for no other
+        // kind of task and does not have to read one off disk.
+        task_type: crate::chat::claude::SUBAGENT_TASK.to_string(),
         agent_type: sub.agent_type.clone(),
         description: sub.description.clone(),
         prompt: sub.prompt.clone(),

@@ -252,10 +252,22 @@ function laneKey(agentId: string | null): string {
 /** One subagent, as the lane strip reads it. Everything but `agentId` is
  *  nullable because three frames patch this a piece at a time, and `status`
  *  stays the agent's own word so `cancelled` cannot fold into "finished". */
+/** The subagent `taskType` the agent announces. Everything else on that channel
+ *  is work with no conversation to read: measured, a backgrounded `Bash` says
+ *  `local_bash` and sends neither a type nor a prompt. */
+export const SUBAGENT_TASK = "local_agent";
+
+/** One task the agent started. Only a subagent has a transcript to switch into,
+ *  so only a subagent becomes a chip you can click; see `laneStrip` against
+ *  `backgroundTasks`. Both are folded here because the wire is one channel and
+ *  the same three frames patch either. */
 export type Lane = {
   agentId: string;
+  /** `local_agent` for a subagent, and something else for work that is not one.
+   *  Empty for a lane opened before its `task_started` arrived. */
+  taskType: string;
   /** The `Agent` call that launched it: the way back into the lane from the
-   *  parent's transcript once the lane leaves the strip. */
+   *  parent's transcript, beside the call that started the work. */
   toolUseId: string | null;
   agentType: string | null;
   /** What it was asked to do. `activity` is what it is doing now. */
@@ -271,9 +283,6 @@ export type Lane = {
    *  as cards inside its ancestor's lane, so the strip stays a list. */
   parentId: string | null;
   startedAt: number;
-  /** Whether the reader has opened this lane. Only a lane that ended badly
-   *  cares: it holds the strip until then. */
-  seen: boolean;
 };
 
 /** The tool whose call is a question. Named here as well as in the Rust mapper
@@ -893,7 +902,7 @@ function ensureLane(s: ChatState, agentId: string): Lane {
     summary: null,
     parentId: null,
     startedAt: Date.now(),
-    seen: false,
+    taskType: "",
   };
   s.lanes[agentId] = lane;
   return lane;
@@ -912,33 +921,41 @@ function noteLane(s: ChatState, toolUseId: string, agentId: string) {
 }
 
 /** The lanes the strip offers: one per subagent the **main** agent launched, in
- *  start order. A deeper agent is absent by design - its rows render inside its
- *  ancestor's lane. */
+ *  start order, for the life of the session. A deeper agent is absent by design
+ *  - its rows render inside its ancestor's lane.
+ *
+ *  **A finished lane stays.** It used to retire once its `Agent` card settled,
+ *  on the reasoning that the card was then the way back in. It is, but the strip
+ *  is the only way back *out*: retiring the last lane took `main` with it and
+ *  left a reader who had opened a lane from its card with nothing to click. */
 export function laneStrip(s: ChatState): Lane[] {
-  return Object.values(s.lanes).filter((l) => l.parentId === null && !retired(s, l));
+  return Object.values(s.lanes).filter((l) => l.parentId === null && isSubagent(l));
 }
 
-/** A lane leaves the strip once it succeeded *and* its launching call settled,
- *  from which point that card is the way back in.
+/** The agent's other background work, while it is running. Not lanes: a shell
+ *  task has no conversation, so it is shown to say something is still going and
+ *  never as somewhere to click through to.
  *
- *  Anything other than success holds the strip until it has been opened. The
- *  rule that clears finished work must not clear the one outcome a reader
- *  cannot afford to miss, and a glance is what "seen" means here. */
-function retired(s: ChatState, lane: Lane): boolean {
-  if (lane.status === null) return false;
-  if (lane.status !== "completed") return lane.seen;
-  if (lane.toolUseId === null) return false;
-  const at = s.toolIndex[lane.toolUseId];
-  if (at === undefined) return false;
-  const card = s.items[at] as ToolItem;
-  return card.state !== "running" && card.state !== "awaitingApproval";
+ *  Dropped once it ends, unlike a lane, which stays because it is a record you
+ *  can still read. A finished task's own tool card is that record. */
+export function backgroundTasks(s: ChatState): Lane[] {
+  return Object.values(s.lanes).filter((l) => !isSubagent(l) && l.status === null);
+}
+
+/** A lane opened by an id alone (a permission prompt beating `task_started`)
+ *  has no type yet, and is a subagent by construction: nothing else on this
+ *  channel asks the user anything. */
+function isSubagent(lane: Lane): boolean {
+  return lane.taskType === SUBAGENT_TASK || lane.taskType === "";
 }
 
 /** Read another lane, or main with `null`. One this session never had falls
  *  back to main rather than to an empty transcript. */
 export function selectLane(s: ChatState, agentId: string | null) {
-  s.selectedLane = agentId !== null && s.lanes[agentId] ? rootLane(s, agentId) : null;
-  if (s.selectedLane !== null) s.lanes[s.selectedLane]!.seen = true;
+  const lane = agentId === null ? undefined : s.lanes[agentId];
+  // A task with no transcript is not somewhere to be: selecting one would empty
+  // the panel with no way to tell that from a subagent that did nothing.
+  s.selectedLane = lane && isSubagent(lane) ? rootLane(s, lane.agentId) : null;
 }
 
 /** The lanes with a row waiting on the user. Derived rather than flagged: the
@@ -1383,6 +1400,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
     }
     case "subagentStarted": {
       const lane = ensureLane(s, ev.agentId);
+      lane.taskType = ev.taskType;
       lane.toolUseId = ev.toolUseId;
       lane.agentType = ev.agentType;
       lane.description = ev.description;
