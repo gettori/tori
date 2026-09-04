@@ -37,16 +37,18 @@ import {
   hasAutoSend,
   hasSomethingToSend,
   historyFor,
+  labelsSeeded,
   markAutoSend,
   pendingFor,
   restoreDraft,
   seedForSend,
+  seedLabels,
   pushHistory,
   setDraft,
   takeAutoSend,
   takePending,
 } from "../../utils/chatCompose";
-import { composerAttachments } from "./composerAttachments";
+import { attachmentsDir, composerAttachments } from "./composerAttachments";
 import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
 import {
@@ -82,7 +84,7 @@ import {
 import { findAdapter } from "../../utils/agents";
 import { agentVersion } from "../../utils/agentHealth";
 import { revealTarget } from "../../utils/agentLines";
-import { chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
+import { attachmentSources, chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
 import { providerMarkKey } from "../../components/Icon/ProviderIcon";
 import { rememberChatPrefs, settings } from "../Settings/settingsStore";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
@@ -497,14 +499,22 @@ export default function ChatView(props: {
         // `handleLive`: it is finished work, so it must not re-snapshot
         // checkpoints or re-record attribution for turns that already ran.
         edit((s) => {
+          const labels: string[] = [];
           for (const item of raw) {
             const ev = parseChatEvent(item);
-            if (ev) applyEvent(s, ev);
+            if (!ev) continue;
+            applyEvent(s, ev);
+            if (ev.type === "userMessage") {
+              for (const b of ev.blocks) if (b.type === "fileRef" && b.label) labels.push(b.label);
+            }
           }
           // The transcript carries no turn boundaries, so without this the
           // last replayed turn stays "active" and the whole panel reads as
           // working on a turn that finished before the tab existed.
           settleBackfill(s);
+          // In the same edit as the turns, so no send can slip between the
+          // history landing and the numbering being raised above it.
+          seedLabels(composerKey(), labels);
         });
       })
       // History is an enhancement, not a precondition: a transcript that cannot
@@ -521,6 +531,8 @@ export default function ChatView(props: {
             fatal: false,
           }),
         );
+        // Nothing to seed from, but a send held for the seed must still go.
+        seedLabels(composerKey(), []);
       })
       .finally(() => {
         // Draining and flipping the flag happen in **one synchronous block**.
@@ -674,28 +686,37 @@ export default function ChatView(props: {
         handleLive(ev);
       };
 
-      void invoke<SpawnResult>("chat_spawn", {
-        sessionId: props.sessionId,
-        tabId: props.tabId,
-        agentId: props.agentId,
-        cwd: props.cwd,
-        resume: opts.reconnect ? true : props.resume,
-        // A reconnect is not a fork: the fork already happened, and asking for
-        // one again would branch the session a second time.
-        forkFrom: opts.reconnect ? null : (props.forkFrom ?? null),
-        // The draft's pick, as argv. A reconnect re-attaches to a session that
-        // already has these in force, so re-asserting them would be Sway
-        // overriding whatever the conversation switched to since.
-        model: opts.reconnect ? null : opening.model,
-        mode: opts.reconnect ? null : opening.mode,
-        effort: opts.reconnect ? null : opening.effort,
-        extraDirs: [],
-        // Carried at spawn as well as reported by the effect below, because a
-        // session restored into a background tab would otherwise stream at full
-        // price until the first time somebody looked at it and looked away.
-        visible: props.active,
-        onEvent: channel,
-      })
+      // Where pasted files are written, handed over as a directory the agent
+      // may read without asking. Only for a transport that takes uploads: for
+      // any other the flag has no template and the directory nothing in it.
+      const uploads = chatTier(findAdapter(props.agentId).chat?.transport).attachmentUploads.length > 0;
+      const extraDirs = uploads ? attachmentsDir().then((dir) => (dir ? [dir] : [])) : Promise.resolve([]);
+      void extraDirs
+        .then((extraDirs) =>
+          invoke<SpawnResult>("chat_spawn", {
+            sessionId: props.sessionId,
+            tabId: props.tabId,
+            agentId: props.agentId,
+            cwd: props.cwd,
+            resume: opts.reconnect ? true : props.resume,
+            // A reconnect is not a fork: the fork already happened, and asking
+            // for one again would branch the session a second time.
+            forkFrom: opts.reconnect ? null : (props.forkFrom ?? null),
+            // The draft's pick, as argv. A reconnect re-attaches to a session
+            // that already has these in force, so re-asserting them would be
+            // Sway overriding whatever the conversation switched to since.
+            model: opts.reconnect ? null : opening.model,
+            mode: opts.reconnect ? null : opening.mode,
+            effort: opts.reconnect ? null : opening.effort,
+            extraDirs,
+            // Carried at spawn as well as reported by the effect below, because
+            // a session restored into a background tab would otherwise stream
+            // at full price until the first time somebody looked at it and
+            // looked away.
+            visible: props.active,
+            onEvent: channel,
+          }),
+        )
         .then((res) => {
           setOwnership(res.ownership);
           if (res.ownership.type === "granted" && res.ownership.contested) {
@@ -840,7 +861,9 @@ export default function ChatView(props: {
   // send, or one handed over by "send to a new chat". Sent here rather than at
   // spawn, because a spawned child is not yet a session that can answer.
   createEffect(() => {
-    if (!canSend() || !pickApplied()) return;
+    // And the label seed: a held `[image 1]` may still be renamed by the
+    // transcript, and it has to go out under the name it ends up with.
+    if (!canSend() || !pickApplied() || !labelsSeeded(composerKey())) return;
     // Only readiness is tracked. `onSend` reads half the store on its way
     // through, and tracking that would re-run this on every turn boundary for
     // the rest of the session.
@@ -1063,6 +1086,14 @@ export default function ChatView(props: {
       if (!text && !pendingFor(composerKey()).length) return;
       markAutoSend(composerKey(), text);
       props.onStart();
+      return;
+    }
+    // The transcript is still being read, so an attachment numbered now may
+    // yet be renamed. Held the same way, and sent by the same effect, once
+    // the numbering is settled.
+    if (!labelsSeeded(composerKey())) {
+      if (!text && !pendingFor(composerKey()).length) return;
+      markAutoSend(composerKey(), text);
       return;
     }
     // The ceiling, enforced where Sway actually decides: the turn boundary. The
@@ -1461,7 +1492,9 @@ export default function ChatView(props: {
 
   // Shared with the draft surface, so what an `@` mention resolves to cannot
   // differ between a chat and the draft it grew out of.
-  const attachments = composerAttachments(composerKey, () => props.cwd);
+  const attachments = composerAttachments(composerKey, () => props.cwd, tier, (reason) =>
+    emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
+  );
 
   // Move what is in the composer to a brand-new chat and let it open with that
   // turn. A send the user asked for, at a session that does not exist yet.
@@ -1870,7 +1903,8 @@ export default function ChatView(props: {
         onSend={onSend}
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}
-        onAttachImages={attachments.onAttachImages}
+        uploads={attachmentSources(tier()).uploads}
+        onAttachUploads={attachments.onAttachUploads}
         onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
         onInterrupt={onInterrupt}
         onDropQueued={(id) => edit((s) => removeQueued(s, id))}

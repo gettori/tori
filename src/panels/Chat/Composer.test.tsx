@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { createSignal } from "solid-js";
 import { render, fireEvent } from "@solidjs/testing-library";
 import Composer from "./Composer";
-import type { PendingBlock } from "../../utils/chatCompose";
+import type { AttachmentSource, PendingBlock } from "../../utils/chatCompose";
 
 // The first mounted tests in the repo. Three phases shipped composer behaviour
 // that was reasoned rather than rendered; these are the things that reasoning
@@ -14,7 +14,7 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
   const onInterrupt = vi.fn();
   const onDropAttachment = vi.fn();
   const onAttachFile = vi.fn();
-  const onAttachImages = vi.fn();
+  const onAttachUploads = vi.fn();
   const onAttachRejected = vi.fn();
   const onAttachPaths = vi.fn();
   const result = render(() => (
@@ -27,7 +27,8 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
       commands={[]}
       loadFiles={async () => []}
       onAttachFile={onAttachFile}
-      onAttachImages={onAttachImages}
+      uploads={OPENS_EVERYTHING}
+      onAttachUploads={onAttachUploads}
       onAttachRejected={onAttachRejected}
       onAttachPaths={onAttachPaths}
       draft={draft()}
@@ -45,8 +46,11 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
     />
   ));
   const input = result.container.querySelector("textarea") as HTMLTextAreaElement;
-  return { ...result, input, onSend, onInterrupt, onDropAttachment, onAttachFile, onAttachImages, onAttachRejected, onAttachPaths };
+  return { ...result, input, onSend, onInterrupt, onDropAttachment, onAttachFile, onAttachUploads, onAttachRejected, onAttachPaths };
 }
+
+// Claude's upload source, which every test not about a refusal runs under.
+const OPENS_EVERYTHING: AttachmentSource = { kinds: ["image", "pdf", "file"], gap: null };
 
 // jsdom lays nothing out, so the box is handed the two numbers the arithmetic
 // reads: `clientHeight` is what the rows attribute currently buys it, and
@@ -338,24 +342,42 @@ function drop(el: Element, init: { files?: File[]; data?: Record<string, string>
   fireEvent.drop(el, { dataTransfer });
 }
 
-describe("image attachments", () => {
-  it("attaches a dropped PNG as a base64 image block", async () => {
-    const { container, onAttachImages } = setup();
+describe("file uploads", () => {
+  // Bytes and a name, nothing decoded: they are written to disk as they are
+  // and come back as a path, so no `image` block is ever offered.
+  it("hands a dropped PNG over as its bytes and its name", async () => {
+    const { container, onAttachUploads } = setup();
     drop(container.firstElementChild!, { files: [imageFile("shot.png")] });
-    await vi.waitFor(() => expect(onAttachImages).toHaveBeenCalled());
-    const [images] = onAttachImages.mock.calls[0];
-    expect(images).toHaveLength(1);
-    expect(images[0].mediaType).toBe("image/png");
-    expect(typeof images[0].base64).toBe("string");
-    expect(images[0].base64).not.toContain("data:");
+    await vi.waitFor(() => expect(onAttachUploads).toHaveBeenCalled());
+    const [files] = onAttachUploads.mock.calls[0];
+    expect(files).toHaveLength(1);
+    expect(files[0].name).toBe("shot.png");
+    expect(files[0].bytes).toBeInstanceOf(Uint8Array);
+    expect(files[0].bytes).toHaveLength(64);
   });
 
-  it("attaches a pasted image without swallowing an ordinary text paste", async () => {
-    const { input, onAttachImages } = setup();
+  it("takes a PDF and a source file the same way", async () => {
+    const { container, onAttachUploads } = setup();
+    drop(container.firstElementChild!, {
+      files: [imageFile("notes.pdf", "application/pdf"), imageFile("main.ts", "video/mp2t")],
+    });
+    await vi.waitFor(() => expect(onAttachUploads).toHaveBeenCalled());
+    expect(onAttachUploads.mock.calls[0][0].map((f: { name: string }) => f.name)).toEqual(["notes.pdf", "main.ts"]);
+  });
+
+  it("attaches a pasted file without swallowing an ordinary text paste", async () => {
+    const { input, onAttachUploads } = setup();
     fireEvent.paste(input, { clipboardData: { files: [] } });
-    expect(onAttachImages).not.toHaveBeenCalled();
+    expect(onAttachUploads).not.toHaveBeenCalled();
     fireEvent.paste(input, { clipboardData: { files: [imageFile("clip.png")] } });
-    await vi.waitFor(() => expect(onAttachImages).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onAttachUploads).toHaveBeenCalled());
+  });
+
+  it("filters the picker to what the agent opens, and not at all when that is any file", () => {
+    const any = setup().container.querySelector('input[type="file"]');
+    expect(any?.getAttribute("accept")).toBeNull();
+    const imagesOnly = setup({ uploads: { kinds: ["image"], gap: null } }).container.querySelector('input[type="file"]');
+    expect(imagesOnly?.getAttribute("accept")).toBe("image/png,image/jpeg,image/gif,image/webp");
   });
 
   it("renders an image chip as the image itself", () => {
@@ -369,51 +391,70 @@ describe("image attachments", () => {
 });
 
 describe("attachment limits, applied where a thing is offered", () => {
-  it("rejects a non-image before it can become a chip", async () => {
-    const { container, onAttachImages, onAttachRejected } = setup();
-    drop(container.firstElementChild!, { files: [imageFile("notes.pdf", "application/pdf")] });
+  it("rejects a kind nothing opens and says what this agent does", async () => {
+    const { container, onAttachUploads, onAttachRejected } = setup();
+    drop(container.firstElementChild!, { files: [imageFile("clip.mp4", "video/mp4")] });
     await vi.waitFor(() => expect(onAttachRejected).toHaveBeenCalled());
-    expect(onAttachRejected.mock.calls[0][0]).toContain("notes.pdf");
-    expect(onAttachImages).not.toHaveBeenCalled();
+    expect(onAttachRejected.mock.calls[0][0]).toMatch(/clip\.mp4.*image, pdf, file/);
+    expect(onAttachUploads).not.toHaveBeenCalled();
   });
 
   it("rejects an oversized image and says how big it was", async () => {
-    const { container, onAttachImages, onAttachRejected } = setup();
+    const { container, onAttachUploads, onAttachRejected } = setup();
     drop(container.firstElementChild!, { files: [imageFile("huge.png", "image/png", 6 * 1024 * 1024)] });
     await vi.waitFor(() => expect(onAttachRejected).toHaveBeenCalled());
     expect(onAttachRejected.mock.calls[0][0]).toMatch(/6\.0MB/);
-    expect(onAttachImages).not.toHaveBeenCalled();
+    expect(onAttachUploads).not.toHaveBeenCalled();
   });
 
   // The one a per-file check gets wrong: eleven dropped at once must not all
   // pass a limit that was only ever read before the batch started.
   it("counts a batch against the cap as it goes", async () => {
-    const { container, onAttachImages, onAttachRejected } = setup();
+    const { container, onAttachUploads, onAttachRejected } = setup();
     const many = Array.from({ length: 12 }, (_, i) => imageFile(`s${i}.png`));
     drop(container.firstElementChild!, { files: many });
-    await vi.waitFor(() => expect(onAttachImages).toHaveBeenCalled());
-    expect(onAttachImages.mock.calls[0][0]).toHaveLength(10);
+    await vi.waitFor(() => expect(onAttachUploads).toHaveBeenCalled());
+    expect(onAttachUploads.mock.calls[0][0]).toHaveLength(10);
     expect(onAttachRejected).toHaveBeenCalledTimes(2);
   });
 
   it("counts what is already pending, not just this drop", async () => {
     const pending: PendingBlock[] = Array.from({ length: 10 }, (_, i) => ({
       id: `att-${i}`,
-      block: { type: "image" as const, mediaType: "image/png", data: "AAAA" },
+      block: { type: "fileRef" as const, path: `/x/s${i}.png`, startLine: null, endLine: null, text: null },
     }));
-    const { container, onAttachImages, onAttachRejected } = setup({ attachments: pending });
+    const { container, onAttachUploads, onAttachRejected } = setup({ attachments: pending });
     drop(container.firstElementChild!, { files: [imageFile("one-more.png")] });
     await vi.waitFor(() => expect(onAttachRejected).toHaveBeenCalled());
-    expect(onAttachImages).not.toHaveBeenCalled();
+    expect(onAttachUploads).not.toHaveBeenCalled();
+  });
+});
+
+describe("under an agent that takes no uploads", () => {
+  const ACP_UPLOADS: AttachmentSource = { kinds: [], gap: "Nothing has measured whether this agent can read outside its project." };
+
+  it("still takes a tree-dragged source file, which is a mention", () => {
+    const { container, onAttachPaths, onAttachRejected } = setup({ uploads: ACP_UPLOADS });
+    drop(container.firstElementChild!, { data: { "application/x-sway-path": "/repo/src/main.rs" } });
+    expect(onAttachPaths).toHaveBeenCalledWith(["/repo/src/main.rs"]);
+    expect(onAttachRejected).not.toHaveBeenCalled();
+  });
+
+  it("refuses a pasted file in the tier's own words", async () => {
+    const { input, onAttachUploads, onAttachRejected } = setup({ uploads: ACP_UPLOADS });
+    fireEvent.paste(input, { clipboardData: { files: [imageFile("notes.md", "")] } });
+    await vi.waitFor(() => expect(onAttachRejected).toHaveBeenCalled());
+    expect(onAttachRejected).toHaveBeenCalledWith(ACP_UPLOADS.gap);
+    expect(onAttachUploads).not.toHaveBeenCalled();
   });
 });
 
 describe("dragging a path in", () => {
   it("takes a dragged file path as a mention rather than an upload", () => {
-    const { container, onAttachPaths, onAttachImages } = setup();
+    const { container, onAttachPaths, onAttachUploads } = setup();
     drop(container.firstElementChild!, { data: { "application/x-sway-path": "/repo/src/a.ts" } });
     expect(onAttachPaths).toHaveBeenCalledWith(["/repo/src/a.ts"]);
-    expect(onAttachImages).not.toHaveBeenCalled();
+    expect(onAttachUploads).not.toHaveBeenCalled();
   });
 
   it("takes every path of a multi-row drag", () => {
@@ -449,7 +490,8 @@ describe("draft and history", () => {
         onDropQueued={() => {}}
         onDropAttachment={() => {}}
         onAttachFile={() => {}}
-        onAttachImages={() => {}}
+        uploads={OPENS_EVERYTHING}
+        onAttachUploads={() => {}}
         onAttachRejected={() => {}}
         onAttachPaths={() => {}}
         onSendQueued={() => {}}
@@ -482,7 +524,8 @@ describe("draft and history", () => {
         onDropQueued={() => {}}
         onDropAttachment={() => {}}
         onAttachFile={() => {}}
-        onAttachImages={() => {}}
+        uploads={OPENS_EVERYTHING}
+        onAttachUploads={() => {}}
         onAttachRejected={() => {}}
         onAttachPaths={() => {}}
         onSendQueued={() => {}}
