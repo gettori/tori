@@ -1980,7 +1980,7 @@ button.diffHunkHeader:hover {
   border-color: var(--border-strong);
 }
 
-/* Four lines at rest, nine at most, then it scrolls. The line counts live in
+/* Three lines at rest, nine at most, then it scrolls. The line counts live in
    `Composer`'s MIN_ROWS and MAX_ROWS, written to the `rows` attribute: rows is
    measured in line boxes, so both follow the chat font size and the zoom for
    free and there is no px arithmetic here to keep in step with them.
