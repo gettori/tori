@@ -1874,35 +1874,6 @@ export default function Terminal(props: {
     const [menuOpen, setMenuOpen] = createSignal(false);
     return (
       <>
-        {/* Session navigation, at the surface the sessions run in rather than
-            in a tree you have to find them in. Before the launch control, which
-            stays the rightmost thing in the strip (phase 13). */}
-        <Tooltip
-          as="button"
-          type="button"
-          class={`${styles.termNew} ${styles.termHistory}`}
-          disabled={!activeWorkspace()}
-          label="Session history"
-          aria-label="Session history"
-          aria-haspopup="dialog"
-          aria-expanded={historyOpen()}
-          onClick={toggleHistory}
-        >
-          <Icon icon={History} />
-          <Show when={detachedLive()}>
-            <span
-              class={styles.termHistoryBadge}
-              title={
-                detachedLive() === 1
-                  ? "1 session running here with no tab open"
-                  : `${detachedLive()} sessions running here with no tab open`
-              }
-            >
-              <Icon icon={CircleDashed} />
-              <Show when={detachedLive() > 1}>{detachedLive()}</Show>
-            </span>
-          </Show>
-        </Tooltip>
         <div class={styles.termNewSplit}>
           {/* Main half: a new chat, which is a draft and so costs nothing until
               it is written in. A plus rather than a terminal icon, because the
@@ -2011,6 +1982,36 @@ export default function Terminal(props: {
             </Tooltip>
           </Dropdown>
         </div>
+        {/* Session navigation, at the surface the sessions run in rather than
+            in a tree you have to find them in. After the launch control: the
+            two are one pair, and the thing you reach for most often is the
+            one nearer the strip's edge. */}
+        <Tooltip
+          as="button"
+          type="button"
+          class={`${styles.termNew} ${styles.termHistory}`}
+          disabled={!activeWorkspace()}
+          label="Session history"
+          aria-label="Session history"
+          aria-haspopup="dialog"
+          aria-expanded={historyOpen()}
+          onClick={toggleHistory}
+        >
+          <Icon icon={History} />
+          <Show when={detachedLive()}>
+            <span
+              class={styles.termHistoryBadge}
+              title={
+                detachedLive() === 1
+                  ? "1 session running here with no tab open"
+                  : `${detachedLive()} sessions running here with no tab open`
+              }
+            >
+              <Icon icon={CircleDashed} />
+              <Show when={detachedLive() > 1}>{detachedLive()}</Show>
+            </span>
+          </Show>
+        </Tooltip>
       </>
     );
   };
