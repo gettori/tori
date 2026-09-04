@@ -285,6 +285,41 @@ describe("MessageList turn anchoring", () => {
   });
 });
 
+/** The stub the suite installs globally is a no-op; this one hands back its
+ *  callback so a test can say "the box resized" without a layout engine. */
+function captureResizeObserver() {
+  const callbacks: (() => void)[] = [];
+  const original = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    constructor(cb: () => void) {
+      callbacks.push(cb);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  return { callbacks, restore: () => (globalThis.ResizeObserver = original) };
+}
+
+/** A scroller with the geometry jsdom does not have: a viewport that can be
+ *  told to shrink, and a scrollTop that remembers what it was set to. */
+function stubScroll(el: HTMLElement, height: number) {
+  let top = 0;
+  let clientHeight = height;
+  Object.defineProperty(el, "scrollHeight", { get: () => 1000, configurable: true });
+  Object.defineProperty(el, "clientHeight", { get: () => clientHeight, configurable: true });
+  Object.defineProperty(el, "scrollTop", {
+    get: () => top,
+    set: (v: number) => (top = v),
+    configurable: true,
+  });
+  return {
+    top: () => top,
+    setTop: (v: number) => (top = v),
+    shrinkTo: (h: number) => (clientHeight = h),
+  };
+}
+
 // The other way the bottom of the conversation leaves the screen: the viewport
 // shrinks under it. The composer below grows as you type, and every pixel it
 // takes comes off this list - so the reply you were reading slides under the
@@ -292,41 +327,6 @@ describe("MessageList turn anchoring", () => {
 // position is measured from the top, so nothing about the content changed and
 // the content-driven pin never ran.
 describe("staying at the bottom when the list is made shorter", () => {
-  /** The stub the suite installs globally is a no-op; this one hands back its
-   *  callback so a test can say "the box resized" without a layout engine. */
-  function captureResizeObserver() {
-    const callbacks: (() => void)[] = [];
-    const original = globalThis.ResizeObserver;
-    globalThis.ResizeObserver = class {
-      constructor(cb: () => void) {
-        callbacks.push(cb);
-      }
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-    return { callbacks, restore: () => (globalThis.ResizeObserver = original) };
-  }
-
-  /** A scroller with the geometry jsdom does not have: a viewport that can be
-   *  told to shrink, and a scrollTop that remembers what it was set to. */
-  function stubScroll(el: HTMLElement, height: number) {
-    let top = 0;
-    let clientHeight = height;
-    Object.defineProperty(el, "scrollHeight", { get: () => 1000, configurable: true });
-    Object.defineProperty(el, "clientHeight", { get: () => clientHeight, configurable: true });
-    Object.defineProperty(el, "scrollTop", {
-      get: () => top,
-      set: (v: number) => (top = v),
-      configurable: true,
-    });
-    return {
-      top: () => top,
-      setTop: (v: number) => (top = v),
-      shrinkTo: (h: number) => (clientHeight = h),
-    };
-  }
-
   it("follows the bottom down when the composer takes the room", () => {
     const ro = captureResizeObserver();
     const { container } = render(() => list());
@@ -357,6 +357,113 @@ describe("staying at the bottom when the list is made shorter", () => {
 
     expect(geom.top()).toBe(100);
     ro.restore();
+  });
+});
+
+// Scrolling up detaches the pin, and it should: the agent talking is not a
+// reason to take the view off the turn somebody is reading. Pressing Enter is
+// the exception - the prompt lands at the tail, and a transcript that stays
+// where it was leaves it under the composer with nothing saying it went
+// anywhere.
+describe("a send takes the reader back to the bottom", () => {
+  const SENT: ChatItem = {
+    kind: "user",
+    id: "sent",
+    blocks: [{ type: "text", text: "the long prompt that was just typed" }],
+    steer: false,
+  };
+
+  /** `items` written into the JSX, so it is a prop the list re-reads rather
+   *  than a value read once: `list({ items: items() })` would tear the whole
+   *  component down and build a new one on every change, and a fresh mount
+   *  pins by itself - which is the thing these tests have to not prove. */
+  const growing = (items: () => ChatItem[]) => (
+    <MessageList
+      items={items()}
+      streaming={false}
+      sessionId="s1"
+      cwd="/tmp"
+      modelLabelFor={() => null}
+      onAnswer={() => {}}
+      onSetMode={() => {}}
+      onRevertHunk={async () => true}
+    />
+  );
+
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  /** Mounted, then scrolled up: a reader holding a position on an earlier turn.
+   *  Settled before it hands the scroller back, because mounting pins once by
+   *  itself and a spy installed before that lands would record it. */
+  async function detached() {
+    const [items, setItems] = createSignal(ITEMS);
+    const { container } = render(() => growing(items));
+    const scroller = container.firstElementChild as HTMLElement;
+    const geom = stubScroll(scroller, 400);
+    geom.setTop(100);
+    fireEvent.scroll(scroller);
+    await tick();
+    return { scroller, geom, setItems };
+  }
+
+  it("pins on the reader's own message even when they had scrolled up", async () => {
+    const { scroller, setItems } = await detached();
+    const scrollTo = vi.spyOn(scroller, "scrollTo");
+
+    setItems([...ITEMS, SENT]);
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 1000 }));
+  });
+
+  it("still leaves a scrolled-up reader alone when the agent is the one talking", async () => {
+    const { scroller, setItems } = await detached();
+    const scrollTo = vi.spyOn(scroller, "scrollTo");
+
+    setItems([...ITEMS, { kind: "text", id: "t9", turnId: "turn-9", text: "a reply", agentId: null }]);
+
+    await tick();
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  // What the composer does *after* the send moves the bottom again: the
+  // attachment chips clear, the lane strip opens when the turn spawns
+  // subagents, the queue strip appears. Each of those comes off this list, and
+  // only the resize observer sees it - which follows the bottom only while the
+  // list counts as pinned, so the send has to have restored that too.
+  it("follows the composer's height again once a send has re-pinned it", async () => {
+    const ro = captureResizeObserver();
+    const { geom, setItems } = await detached();
+
+    setItems([...ITEMS, SENT]);
+    await tick();
+
+    geom.shrinkTo(340);
+    ro.callbacks.forEach((cb) => cb());
+
+    expect(geom.top()).toBe(1000);
+    ro.restore();
+  });
+
+  // An image has no height until it has loaded, so the pin above lands against
+  // a bubble that is still going to grow by up to the 180px the transcript caps
+  // it at - which is enough to put the prompt back under the composer.
+  it("re-pins when an image in a prompt finishes loading", async () => {
+    const withImage: ChatItem[] = [
+      ...ITEMS,
+      { kind: "user", id: "shot", blocks: [{ type: "image", mediaType: "image/png", data: "AAAA" }], steer: false },
+    ];
+    const { container } = render(() => list({ items: withImage }));
+    const scroller = container.firstElementChild as HTMLElement;
+    stubScroll(scroller, 400).setTop(600);
+    await tick();
+    const scrollTo = vi.spyOn(scroller, "scrollTo");
+
+    const img = scroller.querySelector("img");
+    expect(img).not.toBeNull();
+    // `load` does not bubble; the list listens for it in the capture phase.
+    img!.dispatchEvent(new Event("load"));
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledWith({ top: 1000 }));
   });
 });
 

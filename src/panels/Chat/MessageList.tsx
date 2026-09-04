@@ -426,16 +426,54 @@ export default function MessageList(props: {
 
   onCleanup(() => props.onAnchor?.(visibleTurn()));
 
+  /** Put the tail back on screen, after the DOM has the row Solid just wrote. */
+  const pin = () => queueMicrotask(() => scroller?.scrollTo({ top: scroller.scrollHeight }));
+
   // Re-pin after the DOM has the new content, and only while pinned.
   createEffect(
     on(
       () => [shown().length, shown()[shown().length - 1]?.id, tailLength()] as const,
       () => {
         if (!stuck() || !scroller) return;
-        queueMicrotask(() => scroller?.scrollTo({ top: scroller.scrollHeight }));
+        pin();
       },
     ),
   );
+
+  // Your own message is the exception to "scrolling up detaches": Enter is the
+  // one moment the reader has asked for the tail, and a prompt sent into a
+  // transcript scrolled up lands under the composer entire.
+  createEffect(
+    on(
+      () => {
+        const last = shown()[shown().length - 1];
+        return last?.kind === "user" ? last.id : null;
+      },
+      (id) => {
+        if (!id) return;
+        // Re-pinned, not merely scrolled: the composer changes height again
+        // after a send (chips clear, a lane strip opens), and only the observer
+        // below follows that, and only while pinned.
+        setStuck(true);
+        pin();
+      },
+      // Not on mount: a restored transcript can end on a prompt, and opening it
+      // is not sending one.
+      { defer: true },
+    ),
+  );
+
+  // An image has no height until it loads, so a prompt carrying one is pinned
+  // against a bubble still about to grow by up to 180px. `load` does not bubble
+  // but does run the capture phase, so one listener covers every image.
+  onMount(() => {
+    if (!scroller) return;
+    const onLoad = () => {
+      if (stuck()) pin();
+    };
+    scroller.addEventListener("load", onLoad, true);
+    onCleanup(() => scroller?.removeEventListener("load", onLoad, true));
+  });
 
   // And re-pin when the *viewport* shrinks, which is the other way the bottom
   // of the conversation leaves the screen and the one nothing was watching.

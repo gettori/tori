@@ -27,7 +27,10 @@ import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
 const MAX_ROWS = 9;
-const MIN_ROWS = 2;
+// The floor is what the box returns to after every send, so it is the height
+// the composer is looked at for most of a session: a prompt worth writing is a
+// paragraph rather than a search box's line.
+const MIN_ROWS = 4;
 
 /**
  * A chip of this composer's own, on its way into the sentence.
@@ -188,7 +191,7 @@ export default function Composer(props: {
   // this"), so an attachment is enough on its own.
   const hasContent = () => !!text().trim() || props.attachments.length > 0;
 
-  // Auto-grow: one line at rest, nine at most, then it scrolls.
+  // Auto-grow: four lines at rest, nine at most, then it scrolls.
   //
   // The size is written as `rows`, not as a pixel height, because rows is
   // denominated in line boxes: change the chat font size (or zoom) with a draft
@@ -416,10 +419,10 @@ export default function Composer(props: {
     setHistoryIndex(-1);
     closeMenu();
     // The textarea grew with its content, so it has to be put back by hand -
-    // back to the *floor*, which is where an empty composer belongs. It went
-    // back to one row, a height the box has at no other moment: every send left
-    // it a row short of its resting size until the next keystroke measured it
-    // and snapped it up again, which is the jump that reads as the composer
+    // back to the *floor*, which is where an empty composer belongs. It used to
+    // go back to a single row, a height the box has at no other moment: every
+    // send left it short of its resting size until the next keystroke measured
+    // it and snapped it up again, which is the jump that reads as the composer
     // resizing itself while you type.
     if (input) input.rows = MIN_ROWS;
   }
