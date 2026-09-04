@@ -54,6 +54,24 @@ pub enum BinaryStatus {
     VersionDrift,
 }
 
+/// What the sweep learned about one account of one adapter.
+///
+/// Per profile because the send gate is per profile: a draft on the Fonn
+/// account must not be blocked by the personal account being signed out, and a
+/// draft on the personal one must not be let through because Fonn is signed in.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileHealth {
+    pub id: String,
+    /// The user's own name for this account, so a surface can say "Fonn"
+    /// without a second command. Carried here rather than fetched per chat
+    /// header: the sweep already reads `accounts.json` to enumerate profiles.
+    pub label: String,
+    pub sign_in: SignIn,
+    pub account: Option<String>,
+    pub api_key_source: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentHealth {
@@ -101,6 +119,15 @@ pub struct AgentHealth {
     pub needs_you: bool,
     /// Path of the user TOML overriding this adapter, when one is loaded.
     pub override_path: Option<String>,
+    /// Every account of this adapter, default first, as `profiles_for` orders
+    /// them. One bounded `whoami` each, on the sweep that already runs once per
+    /// app run and re-runs only when something could have changed the answer.
+    ///
+    /// This is what `agent_accounts` reads. Before it existed that command
+    /// spawned a probe per profile on **every call**, which is every Settings
+    /// open, so a second account made the accounts screen cost a subprocess it
+    /// had already paid for.
+    pub profiles: Vec<ProfileHealth>,
 }
 
 /// Pull a version out of a CLI's `--version` output.
@@ -177,6 +204,7 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
         (Some(path), Some(accounts)) => crate::auth::whoami(path, accounts, None),
         _ => crate::auth::Whoami::default(),
     };
+    let profiles = profile_health(adapter, resolved.as_deref(), &account);
 
     AgentHealth {
         id: adapter.id.clone(),
@@ -194,7 +222,46 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
         hooks: adapter.hooks,
         needs_you: adapter.needs_you,
         override_path: adapter.is_override().then(|| adapter.source.clone()),
+        profiles,
     }
+}
+
+/// One `whoami` per account, reusing the default's answer rather than asking
+/// twice.
+///
+/// The default profile is the home variable left unset, which is exactly the
+/// probe `check` has already run, so re-probing it here would double the
+/// subprocess cost of every sweep to learn nothing.
+fn profile_health(
+    adapter: &AgentAdapter,
+    resolved: Option<&Path>,
+    default_answer: &crate::auth::Whoami,
+) -> Vec<ProfileHealth> {
+    let file = crate::accounts::load();
+    crate::accounts::profiles_for(&file, &adapter.id)
+        .into_iter()
+        .map(|p| {
+            let answer = match (p.is_default(), resolved, adapter.accounts.as_ref()) {
+                (true, _, _) => default_answer.clone(),
+                (false, Some(path), Some(accounts)) => {
+                    // Through `spawn_env`, so the probe and the session it is
+                    // about cannot disagree about which home this profile runs
+                    // in. An incoherent profile is Unknown rather than probed
+                    // against the wrong account.
+                    let home = crate::accounts::spawn_env(accounts, &p).ok().flatten();
+                    crate::auth::whoami(path, accounts, home.as_ref())
+                }
+                _ => crate::auth::Whoami::default(),
+            };
+            ProfileHealth {
+                label: p.label,
+                id: p.id,
+                sign_in: answer.state,
+                account: answer.email,
+                api_key_source: answer.api_key_source,
+            }
+        })
+        .collect()
 }
 
 /// A memoized sweep that can be told it is wrong.
@@ -257,13 +324,24 @@ pub async fn agent_health() -> Vec<AgentHealth> {
     HEALTH.get_or_sweep(sweep)
 }
 
+/// What the cached sweep says about every account of one adapter.
+///
+/// The accounts screen's whole answer, so opening Settings costs no subprocess.
+/// It used to probe every profile on every call, which made "cached until an
+/// explicit refresh" false of exactly the accounts a user added on purpose.
+pub async fn cached_profiles(adapter_id: &str) -> Vec<ProfileHealth> {
+    HEALTH
+        .get_or_sweep(sweep)
+        .into_iter()
+        .find(|h| h.id == adapter_id)
+        .map(|h| h.profiles)
+        .unwrap_or_default()
+}
+
 /// What the cached sweep says about one adapter's **default** profile.
 ///
-/// So the accounts screen can render the profile every adapter has without
-/// probing it a second time. Every card on screen would otherwise ask the same
-/// question the sweep already answered, which is a subprocess per card on every
-/// Settings open and would make "cached until an explicit refresh" false of the
-/// one profile nobody can delete.
+/// The narrow read, for callers that only ever mean the account a session
+/// started without choosing one runs as.
 pub async fn cached_sign_in(adapter_id: &str) -> crate::auth::Whoami {
     HEALTH
         .get_or_sweep(sweep)
@@ -318,6 +396,7 @@ mod tests {
             hooks: false,
             needs_you: false,
             override_path: None,
+            profiles: Vec::new(),
         }]
     }
 
@@ -363,6 +442,28 @@ mod tests {
             BinaryStatus::VersionMatch,
             "after invalidation the newly installed binary must be visible"
         );
+    }
+
+    /// One `whoami` per account, and the default's is the one `check` already
+    /// ran. Probing it again here would double the subprocess cost of every
+    /// sweep to learn something it had just been told.
+    #[test]
+    fn the_default_accounts_row_reuses_the_answer_the_sweep_already_has() {
+        let adapter = agents::find("claude").expect("claude ships bundled");
+        let answer = crate::auth::Whoami {
+            state: SignIn::SignedIn,
+            email: Some("a@b.c".into()),
+            api_key_source: None,
+        };
+
+        // No resolved binary, so anything that probed would come back Unknown.
+        let rows = profile_health(adapter, None, &answer);
+        let default = rows
+            .iter()
+            .find(|r| r.id == crate::accounts::DEFAULT_PROFILE_ID)
+            .expect("every adapter has the default account");
+        assert_eq!(default.sign_in, SignIn::SignedIn);
+        assert_eq!(default.account.as_deref(), Some("a@b.c"));
     }
 
     /// A panic inside a sweep must not wedge the Agents panel until restart.

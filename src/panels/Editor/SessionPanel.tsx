@@ -46,6 +46,9 @@ function diffLineClass(line: string): string {
 export default function SessionPanel(props: {
   path: string | null;
   agent: AgentId;
+  /** Which account the session runs as; `null` is the default profile. Carried
+   *  because a hunk comment may have to resume it, and a resume names one. */
+  profile: string | null;
   cwd: string | null;
   projectRoot: string | null;
   selfSessionId: string | null;
@@ -152,6 +155,7 @@ export default function SessionPanel(props: {
     return {
       sessionId: props.selfSessionId,
       agent: props.agent,
+      profile: props.profile,
       folderPath: props.projectRoot,
       sessionCwd: props.cwd ?? undefined,
       sessionPath: props.path ?? undefined,

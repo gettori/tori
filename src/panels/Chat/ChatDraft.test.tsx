@@ -247,6 +247,7 @@ function setup(over: Partial<Parameters<typeof ChatDraft>[0]> = {}) {
       workspace="/work/repo"
       active={true}
       agentId="claude"
+      profile={null}
       onSelectAgent={onSelectAgent}
       onStart={onStart}
       {...over}

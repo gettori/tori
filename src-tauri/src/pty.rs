@@ -59,6 +59,31 @@ impl PtyState {
         ids.sort();
         Ok(ids)
     }
+
+    /// Tab ids of every live agent tab running one `(agent, profile)` pair.
+    ///
+    /// The second table the removal guard asks, and it cannot be replaced by the
+    /// claim registry: a **fresh** agent tab holds no claim until its session id
+    /// exists (see `pty_spawn`), so a guard built on claims alone would delete
+    /// the home of an account with an agent running in it.
+    pub fn live_agent_tabs(&self, agent: &str, profile: &str) -> Vec<String> {
+        let guard = match self.0.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        let mut ids: Vec<String> = guard
+            .iter()
+            .filter(|(_, s)| {
+                s.agent.as_deref() == Some(agent)
+                    && s.profile.as_deref().unwrap_or(crate::accounts::DEFAULT_PROFILE_ID) == profile
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        // A `HashMap` has no order, and a message naming tabs must not shuffle
+        // between two readings of the same state.
+        ids.sort();
+        ids
+    }
 }
 
 /// Where a session's raw PTY output is streamed. Swappable so a remount/
@@ -82,6 +107,15 @@ pub struct Session {
     /// `None` for a shell/command tab, and for a fresh agent tab whose session
     /// id does not exist yet (see `pty_spawn`).
     claimed_session: Option<String>,
+    /// Which agent, and which of its accounts, this tab is running.
+    ///
+    /// Recorded for **every** agent tab, claimed or not, and that is the whole
+    /// reason it is here rather than read off the claim: a fresh agent tab
+    /// holds no claim until its session id exists, so a removal guard that
+    /// asked the claim registry alone would delete the home of an account with
+    /// a live agent in it.
+    agent: Option<String>,
+    profile: Option<String>,
 }
 
 /// Last-output tracking for the working/needs-you pulse (Finding A, Tier 2):
@@ -272,6 +306,10 @@ pub fn pty_spawn(
     // that can corrupt, and it is the case that carries these.
     session_id: Option<String>,
     agent_id: Option<String>,
+    // Which account of `agent_id` this tab runs as, `None` for the default
+    // profile. Recorded rather than acted on: the env that makes it true was
+    // resolved by the caller and arrives above.
+    profile: Option<String>,
     on_output: Channel<InvokeResponseBody>,
     chat: State<crate::chat::host::ChatState>,
 ) -> Result<PtySpawnResult, String> {
@@ -299,6 +337,9 @@ pub fn pty_spawn(
                 surface: Surface::PtyAgent,
                 tab_id: id.clone(),
                 agent: agent_id.clone(),
+                profile: profile.clone().unwrap_or_else(|| {
+                    crate::accounts::DEFAULT_PROFILE_ID.to_string()
+                }),
                 // A PTY agent tab's child is a login shell, not the agent, so
                 // its pid would never match the adapter's running pattern.
                 // Recording it would make the orphan check answer "gone" for a
@@ -492,6 +533,8 @@ pub fn pty_spawn(
             child,
             sink,
             claimed_session,
+            agent: agent_id,
+            profile,
         },
     );
     Ok(PtySpawnResult { ownership: None })
@@ -594,6 +637,11 @@ mod tests {
     /// like a spawned one. `pty_spawn` itself needs an `AppHandle` and a
     /// `Channel`, neither of which exists in a unit test.
     fn live_session(claimed_session: Option<&str>) -> Session {
+        agent_session(claimed_session, None, None)
+    }
+
+    /// A live tab, optionally on a named agent and account.
+    fn agent_session(claimed_session: Option<&str>, agent: Option<&str>, profile: Option<&str>) -> Session {
         let pair = native_pty_system()
             .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
             .expect("openpty");
@@ -607,6 +655,8 @@ mod tests {
             child: Arc::new(Mutex::new(child)),
             sink: Arc::new(Mutex::new(None)),
             claimed_session: claimed_session.map(str::to_string),
+            agent: agent.map(str::to_string),
+            profile: profile.map(str::to_string),
         }
     }
 
@@ -650,6 +700,40 @@ mod tests {
 
         assert_eq!(ids, vec!["tab-agent", "tab-shell"], "sorted tab ids");
         assert!(!ids.iter().any(|id| id == "s-claimed"), "a claimed session id must not appear in the tab listing");
+    }
+
+    /// The removal guard's second table. A **fresh** agent tab holds no claim
+    /// until its session id exists, so this listing is the only thing that can
+    /// stop an account's home being deleted out from under one.
+    #[test]
+    fn live_agent_tabs_names_only_the_agent_and_account_asked_about() {
+        let state = PtyState::default();
+        {
+            let mut guard = state.0.lock().unwrap();
+            // A fresh fonn agent tab: no claimed session, and the case this
+            // whole accessor exists for.
+            guard.insert("tab-fresh-fonn".into(), agent_session(None, Some("claude"), Some("fonn")));
+            guard.insert(
+                "tab-resumed-fonn".into(),
+                agent_session(Some("s-1"), Some("claude"), Some("fonn")),
+            );
+            guard.insert("tab-default".into(), agent_session(None, Some("claude"), None));
+            guard.insert("tab-other-agent".into(), agent_session(None, Some("codex"), Some("fonn")));
+            guard.insert("tab-shell".into(), live_session(None));
+        }
+
+        let fonn = state.live_agent_tabs("claude", "fonn");
+        let default = state.live_agent_tabs("claude", "default");
+        for session in state.0.lock().unwrap().drain().map(|(_, s)| s) {
+            let _ = session.child.lock().unwrap().kill();
+        }
+
+        assert_eq!(fonn, vec!["tab-fresh-fonn", "tab-resumed-fonn"]);
+        // A tab that recorded no profile ran on the login the user already had.
+        assert_eq!(default, vec!["tab-default"]);
+        // Another agent's tab is not this account's, and a bare shell runs no
+        // agent at all, so neither can block a removal.
+        assert!(!fonn.iter().any(|id| id == "tab-other-agent" || id == "tab-shell"));
     }
 
     /// "remounting a running task's tab re-subscribes without re-typing the

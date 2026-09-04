@@ -10,7 +10,7 @@
 // work, so the honest starting set is empty and the user adds to it from
 // Settings > Agents.
 import { agents, chatCapable, findAdapter, type Adapter } from "./agents";
-import { agentHealthFor, agentReady, agentSignedOut } from "./agentHealth";
+import { agentHealthFor, agentReady, profileSignedOut } from "./agentHealth";
 import { saveSettings, settings, settingsLoaded } from "../panels/Settings/settingsStore";
 
 /** The stored answer alone, with no health folded in. */
@@ -53,21 +53,30 @@ export function enableBlockedReason(id: string): string | null {
  * second or two the sweep takes - on exactly the machines where it takes
  * longest. Turning one on is the strict question; keeping one on is not.
  */
-export function agentEnabled(id: string): boolean {
-  return agentChosen(id) && agentReady(id);
+export function agentEnabled(id: string, profile: string | null = null): boolean {
+  return agentChosen(id) && agentReady(id, profile);
 }
 
 /** Why this agent is not offered, or null when it is. What a refused action
- *  says, so the reader learns whether to flip a switch or fix an install. */
-export function agentOffReason(id: string): string | null {
+ *  says, so the reader learns whether to flip a switch or fix an install.
+ *
+ *  `profile` is the account the caller means; `null` is the default one. Being
+ *  signed out is per account, so a draft on Fonn must not be refused because
+ *  the personal login expired, and must not be let through because Fonn's did
+ *  not. Everything else here is per agent: a binary is installed or it is not,
+ *  and the Settings switch is one per agent. */
+export function agentOffReason(id: string, profile: string | null = null): string | null {
   // Silent until the file has been read. The built-in defaults enable nothing,
   // so answering from them would refuse every agent on the machine, and a
   // refusal is the one answer that must never be a guess.
   if (!settingsLoaded()) return null;
-  if (agentEnabled(id)) return null;
+  if (agentEnabled(id, profile)) return null;
   const label = findAdapter(id).label;
   if (!agentChosen(id)) return `${label} is turned off in Settings`;
-  return agentSignedOut(id) ? `${label} is signed out` : `${label} is not installed`;
+  // The same wording whichever account it is. Naming the profile here would put
+  // an id the user never chose into a sentence, and the row they pressed
+  // already says which account they are on.
+  return profileSignedOut(id, profile) ? `${label} is signed out` : `${label} is not installed`;
 }
 
 /**

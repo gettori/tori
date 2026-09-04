@@ -103,6 +103,7 @@ const term = (id: string) => ({
   kind: "shell" as const,
   program: "",
   args: [] as string[],
+  profile: null,
 });
 
 // The sidebar is a `.pane` too; the work card's own are what these are about.

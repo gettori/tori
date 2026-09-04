@@ -90,10 +90,14 @@ export default function TerminalView(props: {
   program: string;
   args: string[];
   init?: string;
-  /** Extra environment for this tab's process. Only a sign-in tab carries one:
-   *  the profile's home variable, which is what makes the agent write its
-   *  credentials into that account's home rather than the default one. */
+  /** Extra environment for this tab's process: the profile's home variable,
+   *  which is what makes the agent read and write that account rather than the
+   *  default one. Derived from `profile` by the owner, never persisted. */
   env?: Record<string, string>;
+  /** Which account this tab's agent runs as, `null` for the default profile.
+   *  Sent alongside `env` so the backend's live table can answer "is anything
+   *  still running on this account" before its home is deleted. */
+  profile?: string | null;
   // The agent session this tab resumes. Absent for shell/command tabs and for a
   // fresh agent tab, whose session id does not exist until the agent writes a
   // transcript. When present the backend claims it, so one session id can never
@@ -334,6 +338,7 @@ export default function TerminalView(props: {
       env: props.env ? Object.entries(props.env) : null,
       sessionId: props.kind === "agent" ? (props.sessionId ?? null) : null,
       agentId: props.kind === "agent" ? props.program : null,
+      profile: props.kind === "agent" ? (props.profile ?? null) : null,
       onOutput: output,
     }).catch((err) => {
       term?.writeln(`\r\n\x1b[31mfailed to start: ${err}\x1b[0m`);

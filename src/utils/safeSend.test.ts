@@ -57,7 +57,7 @@ describe("bracketedPaste", () => {
 });
 
 describe("composeHunkComment", () => {
-  const target: SessionTarget = { sessionId: "s1", agent: "claude", folderPath: "/repo", sessionCwd: "/repo" };
+  const target: SessionTarget = { sessionId: "s1", agent: "claude", profile: null, folderPath: "/repo", sessionCwd: "/repo" };
 
   it("relativizes a file inside the session's cwd", () => {
     expect(composeHunkComment(target, "/repo/src/foo.ts", 12, 15, "fix this")).toBe(
@@ -72,7 +72,7 @@ describe("composeHunkComment", () => {
   });
 
   it("falls back to folderPath when sessionCwd is unset", () => {
-    const noCwd: SessionTarget = { sessionId: "s1", agent: "claude", folderPath: "/repo" };
+    const noCwd: SessionTarget = { sessionId: "s1", agent: "claude", profile: null, folderPath: "/repo" };
     expect(composeHunkComment(noCwd, "/repo/a.ts", 3, 3, "note")).toBe("In @a.ts lines 3-3: note");
   });
 });
@@ -80,7 +80,7 @@ describe("composeHunkComment", () => {
 describe("composeSelectionMention", () => {
   // A worktree branch-unit cwd ("/repo/branch-a") is a sibling of the
   // project's ".shared" folder ("/repo/.shared"), not an ancestor of it.
-  const target: SessionTarget = { sessionId: "s1", agent: "claude", folderPath: "/repo/branch-a", sessionCwd: "/repo/branch-a" };
+  const target: SessionTarget = { sessionId: "s1", agent: "claude", profile: null, folderPath: "/repo/branch-a", sessionCwd: "/repo/branch-a" };
 
   it("mentions a file inside the session's cwd relatively, with a line range", () => {
     expect(composeSelectionMention(target, "/repo/branch-a/src/foo.ts", 5, 9)).toBe("@src/foo.ts#L5-L9");

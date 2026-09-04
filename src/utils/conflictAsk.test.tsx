@@ -16,6 +16,7 @@ const REPO = "/space/proj/main";
 const TARGET: SessionTarget = {
   sessionId: "s1",
   agent: "claude",
+  profile: null,
   folderPath: REPO,
   sessionCwd: REPO,
 };

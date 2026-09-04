@@ -91,7 +91,7 @@ const branchSelection = {
 const seed = () => seedTwoPane({ rightShare: 50, showLeft: true, showRight: true });
 
 function tab(id: string, kind: OpenTerm["kind"], sessionId?: string): OpenTerm {
-  return { id, title: id, cwd: REPO, workspace: REPO, kind, program: "claude", args: [], sessionId };
+  return { id, title: id, cwd: REPO, workspace: REPO, kind, program: "claude", args: [], profile: null, sessionId };
 }
 
 function openTab(t: OpenTerm) {

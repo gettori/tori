@@ -137,6 +137,7 @@ function mount(started = false) {
       cwd="/work/repo"
       workspace="/work/repo"
       agentId="claude"
+      profile={null}
       title="chat"
       active={true}
       // A restored chat, which is the only shape that opens unstarted.

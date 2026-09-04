@@ -250,6 +250,50 @@ pub fn spawn_env(
     Ok(Some((var.clone(), home.clone())))
 }
 
+/// One profile's spawn environment, by id, over an explicit accounts file.
+///
+/// `None` and [`DEFAULT_PROFILE_ID`] are the same request and both answer with
+/// an empty map, which is the definition of the default profile: the home
+/// variable left unset.
+///
+/// An id that names no profile is an **error**, never an empty map. Falling
+/// back would start the session on the user's own login while every label
+/// around it said otherwise, which is the one failure this whole feature exists
+/// to prevent. The reachable way here is a persisted tab naming a profile that
+/// has since been removed.
+pub fn profile_env(
+    adapter: &crate::agents::AgentAdapter,
+    file: &AccountsFile,
+    profile_id: Option<&str>,
+) -> Result<BTreeMap<String, String>, String> {
+    let id = profile_id.unwrap_or(DEFAULT_PROFILE_ID);
+    if id == DEFAULT_PROFILE_ID {
+        return Ok(BTreeMap::new());
+    }
+    let accounts = adapter.accounts.as_ref().ok_or_else(|| {
+        format!("`{}` declares no accounts, so it has no profile `{id}`", adapter.id)
+    })?;
+    let profile = profile(file, &adapter.id, id)
+        .ok_or_else(|| format!("no profile `{id}` for `{}`", adapter.id))?;
+    Ok(spawn_env(accounts, &profile)?.into_iter().collect())
+}
+
+/// The environment a PTY agent tab spawns with, so a terminal session runs as
+/// the account its tab says it does.
+///
+/// The chat path resolves this inside `chat_spawn`; a PTY tab carries an `env`
+/// map of its own and asks for one here. A tab stores the profile **id** and
+/// derives the env at every spawn rather than persisting the resolved pair:
+/// the home path belongs to `accounts.json`, and a stored copy would outlive a
+/// rename or a removal and point a shell at a directory nothing owns.
+#[tauri::command]
+pub async fn profile_spawn_env(
+    adapter_id: String,
+    profile_id: Option<String>,
+) -> Result<BTreeMap<String, String>, String> {
+    profile_env(&adapter(&adapter_id)?, &load(), profile_id.as_deref())
+}
+
 /// May the user add a second account for this adapter?
 ///
 /// Gated on the measured claim, never on merely having a `home_env`. An adapter
@@ -456,12 +500,10 @@ pub fn mark_duplicates(statuses: &mut [ProfileStatus]) {
 /// an agent mid-turn on their behalf, and they can do it themselves in one click
 /// from the tab this message points them at.
 ///
-/// Coarser than it will eventually be, and knowingly so: it blocks on any live
-/// session of the *agent*, not of the profile, because Sway does not yet
-/// record which profile a running session belongs to. Phase 4 carries the
-/// profile through `SessionMeta`, and this narrows then. Blocking too much is
-/// the safe direction: the failure it prevents is a session writing into a home
-/// that was deleted underneath it.
+/// The caller narrows `live` to the one `(agent, profile)` pair being removed.
+/// It used to be every live session of the agent, because nothing recorded
+/// which account a running session belonged to; both tables carry the profile
+/// now, so a chat on the default account no longer blocks removing another one.
 pub fn removal_refusal(live: &[String], what: &str) -> Option<String> {
     if live.is_empty() {
         return None;
@@ -540,61 +582,57 @@ fn adapter(adapter_id: &str) -> Result<crate::agents::AgentAdapter, String> {
         .ok_or_else(|| format!("no agent adapter `{adapter_id}`"))
 }
 
-/// Probe one profile, resolving its home the same way a session would.
+/// One profile row, from the sweep's cached answer about it.
 ///
-/// `cached` is the default profile's answer, already computed by the health
-/// sweep. Reusing it is what makes "cached until an explicit refresh" true of
-/// the profile every adapter has: without it, opening Settings would probe the
-/// default account a second time for every card on screen.
+/// **Nothing is probed here.** Every account's `whoami` rides the health sweep,
+/// which runs once per app run and re-runs only when something could have
+/// changed the answer. This used to spawn one subprocess per profile on every
+/// call, and this command runs on every Settings open, so adding a second
+/// account made the accounts screen pay a probe it had already paid for.
 fn status_of(
     adapter: &crate::agents::AgentAdapter,
     accounts: &crate::agents::AccountsConfig,
-    path: Option<&std::path::Path>,
     profile: &Profile,
-    cached: &crate::auth::Whoami,
+    cached: &[crate::health::ProfileHealth],
 ) -> ProfileStatus {
     // `spawn_env` is the single definition of "which home does this profile
-    // run in", so neither the probe nor the login tab can drift from the
-    // session they are about. An incoherent profile is unknown rather than
-    // probed against the wrong account, which is the failure `spawn_env`
-    // refuses for.
+    // run in", so neither the login tab nor the sweep's probe can drift from
+    // the session they are about. An incoherent profile is unknown rather than
+    // pointed at the wrong account, which is the failure `spawn_env` refuses
+    // for.
     let home = spawn_env(accounts, profile).ok().flatten();
-    let answer = match (profile.is_default(), path) {
-        (true, _) => cached.clone(),
-        (false, Some(path)) => crate::auth::whoami(path, accounts, home.as_ref()),
-        (false, None) => crate::auth::Whoami::default(),
-    };
+    let answer = cached.iter().find(|h| h.id == profile.id);
     ProfileStatus {
         id: profile.id.clone(),
         label: profile.label.clone(),
         is_default: profile.is_default(),
         home: profile.home.clone(),
-        sign_in: answer.state,
+        // A profile the sweep has no row for is one added since it last ran.
+        // `Unknown` renders neutral and blocks nothing, which is the honest
+        // answer for an account nobody has asked about yet.
+        sign_in: answer.map(|h| h.sign_in).unwrap_or_default(),
         login: crate::auth::login_route(adapter, home),
-        account: answer.email,
-        api_key_source: answer.api_key_source,
+        account: answer.and_then(|h| h.account.clone()),
+        api_key_source: answer.and_then(|h| h.api_key_source.clone()),
         duplicate_of: None,
     }
 }
 
-/// Every account this adapter has, and what its agent says about each.
-///
-/// Not cached: this is the accounts screen asking on purpose, one probe per
-/// profile, and a user who just finished a login is the main person reading it.
-/// The cached answer for the *default* profile rides `agent_health` instead,
-/// which is what the picker and the Agents cards read.
 /// The stored file read once, no probes: this renders on every Settings open,
-/// and the subprocess budget belongs to `agent_accounts`, which is only asked
-/// about one agent's page at a time.
+/// and it is a count, which the file alone answers.
 #[tauri::command(async)]
 pub fn agent_account_counts() -> BTreeMap<String, usize> {
     account_counts(&load())
 }
 
+/// Every account this adapter has, and what its agent says about each.
+///
+/// Read entirely from the health sweep's cache, so this costs no subprocess.
+/// A user who has just finished a login gets the fresh answer because the
+/// login flow invalidates the sweep, not because this command re-probes.
 #[tauri::command]
 pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> {
     let adapter = adapter(&adapter_id)?;
-    let path = crate::env::resolve_binary(&adapter.program);
     let Some(accounts) = adapter.accounts.clone() else {
         return Ok(AccountsView {
             adapter_id,
@@ -605,11 +643,11 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
         });
     };
 
-    let cached = crate::health::cached_sign_in(&adapter_id).await;
+    let cached = crate::health::cached_profiles(&adapter_id).await;
     let file = load();
     let mut profiles: Vec<ProfileStatus> = profiles_for(&file, &adapter_id)
         .iter()
-        .map(|p| status_of(&adapter, &accounts, path.as_deref(), p, &cached))
+        .map(|p| status_of(&adapter, &accounts, p, &cached))
         .collect();
     mark_duplicates(&mut profiles);
 
@@ -729,6 +767,7 @@ pub enum RemovalOutcome {
 #[tauri::command]
 pub async fn remove_agent_account(
     chat: tauri::State<'_, crate::chat::host::ChatState>,
+    ptys: tauri::State<'_, crate::pty::PtyState>,
     adapter_id: String,
     profile_id: String,
     confirmed_without_logout: bool,
@@ -739,9 +778,22 @@ pub async fn remove_agent_account(
         .clone()
         .ok_or_else(|| format!("`{adapter_id}` declares no accounts"))?;
 
-    if let Some(refusal) =
-        removal_refusal(&chat.0.registry.held_by(&adapter_id), &adapter.label)
-    {
+    // Two tables, because neither sees the other's tabs. Claims cover chat tabs
+    // and *resumed* PTY tabs; the PTY host's own table is the only thing that
+    // sees a **fresh** agent tab, which holds no claim until its session id
+    // exists. Asking one alone would delete a home with an agent running in it.
+    //
+    // Both answer in tab ids, so the sort-and-dedupe means something: a resumed
+    // PTY tab is in both, and counting it twice would tell the user to close
+    // two things that are one tab.
+    let mut live = [
+        chat.0.registry.held_by(&adapter_id, &profile_id),
+        ptys.live_agent_tabs(&adapter_id, &profile_id),
+    ]
+    .concat();
+    live.sort();
+    live.dedup();
+    if let Some(refusal) = removal_refusal(&live, &adapter.label) {
         return Err(refusal);
     }
 
@@ -1004,6 +1056,55 @@ mod tests {
         assert!(err.contains("home_env"), "{err}");
     }
 
+    /// The by-id form every spawn goes through, over an adapter value rather
+    /// than the registry, so the whole rule is testable with no `accounts.json`.
+    fn adapter_with(home_env: Option<&str>, isolation: bool) -> crate::agents::AgentAdapter {
+        let mut a = crate::agents::test_adapter("claude");
+        a.id = "claude".into();
+        a.accounts = Some(accounts_config(home_env, isolation));
+        a
+    }
+
+    #[test]
+    fn no_profile_and_the_default_profile_are_the_same_empty_environment() {
+        let a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
+        let file = AccountsFile::default();
+        assert!(profile_env(&a, &file, None).unwrap().is_empty());
+        assert!(profile_env(&a, &file, Some(DEFAULT_PROFILE_ID)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_added_profile_resolves_to_its_home_variable() {
+        let a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
+        let mut file = AccountsFile::default();
+        add_profile(&mut file, "claude", added("fonn", "/canonical/fonn")).unwrap();
+
+        let env = profile_env(&a, &file, Some("fonn")).unwrap();
+        assert_eq!(env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/canonical/fonn"));
+    }
+
+    /// A tab persisted against a profile that has since been removed. An empty
+    /// map here would start the session on the user's own login while the tab
+    /// still said "Fonn", which is the failure the whole feature exists for.
+    #[test]
+    fn an_unknown_profile_is_an_error_rather_than_the_default_account() {
+        let a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
+        let err = profile_env(&a, &AccountsFile::default(), Some("gone")).unwrap_err();
+        assert!(err.contains("gone"), "{err}");
+    }
+
+    /// `spawn_env`'s refusal is surfaced rather than swallowed: an adapter that
+    /// dropped `home_env` cannot run an added profile at all.
+    #[test]
+    fn a_missing_home_env_surfaces_as_the_spawn_envs_own_error() {
+        let a = adapter_with(None, false);
+        let mut file = AccountsFile::default();
+        add_profile(&mut file, "claude", added("fonn", "/canonical/fonn")).unwrap();
+
+        let err = profile_env(&a, &file, Some("fonn")).unwrap_err();
+        assert!(err.contains("home_env"), "{err}");
+    }
+
     /// An adapter with no verified isolation offers no "add account" action, so
     /// there is never a second profile silently sharing the first one's home.
     #[test]
@@ -1146,10 +1247,10 @@ mod tests {
     fn each_profile_carries_a_route_into_its_own_home() {
         let claude = crate::agents::find("claude").expect("claude ships bundled");
         let accounts = claude.accounts.clone().expect("claude declares accounts");
-        let cached = crate::auth::Whoami::default();
+        let cached: Vec<crate::health::ProfileHealth> = Vec::new();
         let work = added("work", "/canonical/work");
 
-        let row = status_of(claude, &accounts, None, &work, &cached);
+        let row = status_of(claude, &accounts, &work, &cached);
         match row.login {
             crate::auth::LoginRoute::Terminal { home, .. } => assert_eq!(
                 home,
@@ -1161,37 +1262,60 @@ mod tests {
 
         // And the default profile signs in with the variable unset, exactly as
         // it runs.
-        let row = status_of(claude, &accounts, None, &default_profile(), &cached);
+        let row = status_of(claude, &accounts, &default_profile(), &cached);
         match row.login {
             crate::auth::LoginRoute::Terminal { home, .. } => assert_eq!(home, None),
             other => panic!("got {other:?}"),
         }
     }
 
-    /// The default profile's answer comes from the cached sweep rather than a
-    /// second probe, which is what keeps opening Settings from asking every
-    /// agent the same question it was already asked.
+    /// **Every** profile's answer comes from the cached sweep, not just the
+    /// default's, which is what keeps opening Settings from asking each account
+    /// a question it was already asked. This command used to spawn one probe
+    /// per profile per call.
     #[test]
-    fn the_default_profile_reuses_the_answer_the_sweep_already_has() {
+    fn every_profile_reads_the_answer_the_sweep_already_has() {
         let claude = crate::agents::find("claude").expect("claude ships bundled");
         let accounts = claude.accounts.clone().expect("claude declares accounts");
-        let cached = crate::auth::Whoami {
-            state: crate::auth::SignIn::SignedIn,
-            email: Some("a@b.c".into()),
-            api_key_source: Some("ANTHROPIC_API_KEY".into()),
-        };
+        let cached = vec![
+            crate::health::ProfileHealth {
+                id: DEFAULT_PROFILE_ID.into(),
+                label: "Default".into(),
+                sign_in: crate::auth::SignIn::SignedIn,
+                account: Some("a@b.c".into()),
+                api_key_source: Some("ANTHROPIC_API_KEY".into()),
+            },
+            crate::health::ProfileHealth {
+                id: "work".into(),
+                label: "Work".into(),
+                sign_in: crate::auth::SignIn::SignedOut,
+                account: None,
+                api_key_source: None,
+            },
+        ];
 
-        // No binary path, so anything that probed would come back unknown.
-        let row = status_of(claude, &accounts, None, &default_profile(), &cached);
+        let row = status_of(claude, &accounts, &default_profile(), &cached);
         assert_eq!(row.sign_in, crate::auth::SignIn::SignedIn);
         assert_eq!(row.account.as_deref(), Some("a@b.c"));
         assert_eq!(row.api_key_source.as_deref(), Some("ANTHROPIC_API_KEY"));
 
-        // An added profile is a different account, so the cached answer must
-        // not be handed to it.
-        let row = status_of(claude, &accounts, None, &added("work", "/canonical/w"), &cached);
-        assert_eq!(row.sign_in, crate::auth::SignIn::Unknown);
+        // Its own row, never the default's: two accounts sign in and out
+        // independently, and handing one the other's answer is the failure.
+        let row = status_of(claude, &accounts, &added("work", "/canonical/w"), &cached);
+        assert_eq!(row.sign_in, crate::auth::SignIn::SignedOut);
         assert_eq!(row.account, None);
+    }
+
+    /// A profile added since the sweep last ran has no row. `Unknown` renders
+    /// neutral and blocks nothing, which is the honest answer for an account
+    /// nobody has asked about yet.
+    #[test]
+    fn a_profile_the_sweep_has_not_seen_is_unknown_rather_than_signed_out() {
+        let claude = crate::agents::find("claude").expect("claude ships bundled");
+        let accounts = claude.accounts.clone().expect("claude declares accounts");
+
+        let row = status_of(claude, &accounts, &added("fresh", "/canonical/f"), &[]);
+        assert_eq!(row.sign_in, crate::auth::SignIn::Unknown);
     }
 
     // --- removal, and what stops it ---

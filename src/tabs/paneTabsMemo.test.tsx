@@ -26,6 +26,7 @@ const shell = (n: number): OpenTerm => ({
   kind: "shell",
   program: "zsh",
   args: [],
+  profile: null,
 });
 
 beforeEach(() => {

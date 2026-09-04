@@ -543,6 +543,10 @@ export type SendToSession = {
   sessionId: string;
   text: string;
   agent: string;
+  // Which account of `agent` the target session runs as; `null` is the default
+  // profile. Carried because a safe-send may have to resume the session first,
+  // and resuming it as the wrong account writes into the wrong home.
+  profile: string | null;
   // The subset of Selection needed to resume the session into a tab if none
   // is open yet (mirrors what Terminal.tsx's focusOrResume reads).
   sessionFile?: string;

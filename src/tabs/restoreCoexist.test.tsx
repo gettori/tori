@@ -62,6 +62,10 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(liveChats);
       case "pty_live_ids":
         return Promise.resolve(livePtys);
+      case "profile_spawn_env":
+        return args.profileId === "fonn"
+          ? Promise.resolve({ CLAUDE_CONFIG_DIR: "/homes/fonn" })
+          : Promise.reject(`no profile \`${String(args.profileId)}\``);
       default:
         return Promise.resolve(null);
     }
@@ -121,6 +125,7 @@ const { envelopeFor, resetPaneLayoutModel, seedTwoPane } = await import("../layo
 const { paneOfTab, resetTabPlacement, flushTabPlacement } = await import("../layout/tabPlacement");
 const { visibleId, focusTab, setTabTitles } = await import("../panels/Terminal/terminalTabStore");
 const { closeOf } = await import("../test/tabs");
+const { forgetProfileEnvs } = await import("../utils/profileEnv");
 
 const selection = {
   spaceName: "space",
@@ -140,6 +145,7 @@ beforeEach(() => {
   missingPaths.clear();
   resetPaneLayoutModel();
   resetTabPlacement();
+  forgetProfileEnvs();
 });
 
 /** A stored chat tab, and the on-disk session it names. */
@@ -343,6 +349,52 @@ describe("restore, per pane", () => {
         "where were we",
       ),
     );
+  });
+});
+
+// An account is part of session identity, so a tab comes back on the one it ran
+// on. The home *variable* is not stored: it is derived from the profile id at
+// restore, so a profile moved or removed since cannot respawn a dead path.
+describe("restore brings a tab back on its own account", () => {
+  it("re-derives an agent tab's home variable from the stored profile id", async () => {
+    storeTabs([shell({ id: "sh:1", kind: "agent", program: "claude", args: [], profile: "fonn" })]);
+
+    await restore();
+
+    expect(open()[0].profile).toBe("fonn");
+    expect(open()[0].env).toEqual({ CLAUDE_CONFIG_DIR: "/homes/fonn" });
+    expect(invokes.some((i) => i.cmd === "profile_spawn_env" && i.args.profileId === "fonn")).toBe(true);
+  });
+
+  it("brings a chat tab back on its account, which chat_spawn resolves the env for", async () => {
+    storeTabs([{ ...chatTab(1), profile: "fonn" }]);
+
+    await restore();
+
+    expect(open()[0].profile).toBe("fonn");
+  });
+
+  it("reads a tab stored before accounts existed as the default profile, asking nothing", async () => {
+    storeTabs([shell({ id: "sh:1", kind: "agent", program: "claude", args: [] })]);
+
+    await restore();
+
+    expect(open()[0].profile).toBeNull();
+    expect(open()[0].env).toBeUndefined();
+    expect(invokes.some((i) => i.cmd === "profile_spawn_env")).toBe(false);
+  });
+
+  // The failure the whole feature exists to prevent: an empty env here would
+  // start the agent on the user's own login under a label saying otherwise.
+  it("drops a tab whose account has been removed rather than respawning it as default", async () => {
+    storeTabs([
+      shell({ id: "sh:1" }),
+      shell({ id: "sh:2", kind: "agent", program: "claude", args: [], profile: "gone" }),
+    ]);
+
+    await restore();
+
+    expect(open().map((t) => t.id)).toEqual(["sh:1"]);
   });
 });
 

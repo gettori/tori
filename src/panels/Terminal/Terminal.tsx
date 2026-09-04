@@ -46,6 +46,7 @@ import {
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
 import { agentEnabled, agentOffReason, draftChatAgent } from "../../utils/agentEnabled";
+import { asTabProfile, profileLabel } from "../../utils/agentHealth";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { isFeatureKey, selectionRoot, workspaceFolders, workspaceKey } from "../../utils/features";
 import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
@@ -71,6 +72,7 @@ import {
   activeIndex,
   type WorkspaceTabs,
 } from "../../utils/tabPersist";
+import { profileEnv } from "../../utils/profileEnv";
 import { debounce } from "../../utils/debounce";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
@@ -121,7 +123,10 @@ type TailState = "working" | "done" | "blocked-candidate";
 // The subset of Selection focusOrResume actually reads - narrowed so
 // safe-send's resume-into-tab path can call it without fabricating a full
 // Selection (spaceName, projectKind, ... it never touches).
-type ResumeTarget = Pick<Selection, "sessionId" | "agent" | "sessionFile" | "sessionTitle" | "sessionCwd" | "folderPath">;
+type ResumeTarget = Pick<
+  Selection,
+  "sessionId" | "agent" | "profile" | "sessionFile" | "sessionTitle" | "sessionCwd" | "folderPath"
+>;
 
 // `Reaped` from src-tauri/src/chat/ownership.rs. Only `orphan` reaches the
 // screen: `stale` is bookkeeping the backend already cleaned up.
@@ -135,7 +140,7 @@ type ChatOrphan = Extract<Reaped, { type: "orphan" }>;
 type RetiredRuleStore = { path: string; files: number; projectRules: number };
 
 // Minimal shape of `list_sessions`' return, just what the backfill needs.
-type BackfillSession = { id: string; cwd: string; agent?: string; created_at: number };
+type BackfillSession = { id: string; cwd: string; agent?: string; profile?: string | null; created_at: number };
 
 // The extra fields restore needs to hand a stored session back to focus-or-resume
 // (or to the transcript viewer, for a resume-less adapter).
@@ -369,6 +374,7 @@ export default function Terminal(props: {
     const sessions = await listSessionsFor<RestoreSession>(ws);
     const byId = new Map(sessions.map((s) => [s.id, s]));
     let missingSessions = 0;
+    let missingProfiles = 0;
     let relocated = 0;
     let home: string | null = null;
     const cwdFor = async (cwd: string): Promise<string> => {
@@ -440,6 +446,7 @@ export default function Terminal(props: {
             kind: "chat",
             program: storedChatAgent(d.program),
             args: [],
+            profile: d.profile ?? null,
           },
           false,
         );
@@ -470,6 +477,12 @@ export default function Terminal(props: {
           kind: "chat",
           program: d.program || "claude",
           args: [],
+          // The listing's answer wins over the stored one: both name an
+          // account, but the listing's comes from the root that actually held
+          // the transcript, which is the same authority `chat_spawn` resolves
+          // against. Preferring the store would turn a profile renamed since
+          // last launch into a refused resume.
+          profile: asTabProfile(s.profile ?? d.profile),
           sessionId: d.sessionId,
           resume: true,
           // Resumed, not re-forked: the fork happened last run and its
@@ -511,6 +524,9 @@ export default function Terminal(props: {
           {
             sessionId: s.id,
             agent: agentId,
+            // The root the transcript was found under, not the stored id: a
+            // session resumes into the home it is actually in.
+            profile: asTabProfile(s.profile ?? d.profile),
             sessionFile: s.path,
             sessionTitle: s.name || s.title,
             sessionCwd: s.cwd,
@@ -530,6 +546,19 @@ export default function Terminal(props: {
       // A plain shell, or an agent tab whose session was never attributed: come
       // back as the same shell-hosted tab, seeded again if it had an init.
       const cwd = await cwdFor(d.cwd);
+      // Derived here, not restored: a stored env would respawn against a home
+      // that may have been renamed or removed since. A profile that no longer
+      // resolves drops the tab rather than respawning it on the user's own
+      // login under a label that says otherwise.
+      const profile = d.kind === "agent" ? (d.profile ?? null) : null;
+      let env: Record<string, string> | undefined;
+      if (profile) {
+        env = await profileEnv(d.program, profile).catch(() => undefined);
+        if (!env) {
+          missingProfiles++;
+          continue;
+        }
+      }
       const id = restoredId(d.id, shellId, (id) => live.pty.has(id));
       openOrActivate({
         id,
@@ -539,6 +568,8 @@ export default function Terminal(props: {
         kind: d.kind,
         program: d.program,
         args: d.args,
+        profile,
+        ...(env ? { env } : {}),
           ...(d.kind === "agent" && d.program ? { init: agentInit(d.program, d.args) } : {}),
         },
         false,
@@ -556,6 +587,8 @@ export default function Terminal(props: {
 
     const notices: string[] = [];
     if (missingSessions) notices.push(`${missingSessions} session${missingSessions > 1 ? "s" : ""} no longer exist`);
+    if (missingProfiles)
+      notices.push(`${missingProfiles} tab${missingProfiles > 1 ? "s" : ""} ran on an account that is gone`);
     if (relocated) notices.push(`${relocated} folder${relocated > 1 ? "s" : ""} missing, opened in your home directory`);
     if (notices.length) emitWith<ToastEvent>(TOAST, { message: `Restored tabs: ${notices.join("; ")}.`, kind: "info" });
   }
@@ -848,7 +881,9 @@ export default function Terminal(props: {
     // The refused tab spawned nothing, so it is an empty shell that would sit
     // in the bar forever. Closing it also clears its refusal.
     closeId(tab.id);
-    void spawnSession(tab.program, tab.workspace, tab.workspace.split("/").pop() || tab.program);
+    // On the refused tab's own account: a fork is the same work under a new
+    // session id, and moving it to another login would be a different session.
+    void spawnSession(tab.program, tab.workspace, tab.workspace.split("/").pop() || tab.program, false, tab.workspace, tab.profile);
   }
 
   async function endRefusalOrphan(entry: { tab: OpenTerm; refusal: Refusal }) {
@@ -882,6 +917,9 @@ export default function Terminal(props: {
         kind: t.kind,
         program: t.program,
         args: t.args,
+        // A task tab hosts a login shell running a command line, not an agent
+        // signed in to anything, so it has no account to be on.
+        profile: null,
         ...(t.init ? { init: t.init } : {}),
       });
     });
@@ -1147,6 +1185,11 @@ export default function Terminal(props: {
       ...applyTemplate(a.resume_args, { id: sessionId, file: sel.sessionFile ?? "" }),
       ...(await hookArgs(agentId)),
     ];
+    // A session lives in exactly one profile home, so resuming it anywhere else
+    // would start an empty conversation wearing its name. Refuse rather than
+    // open a tab that cannot be what it says it is.
+    const env = await spawnEnvOrWarn(agentId, sel.profile ?? null);
+    if (!env) return;
     openOrActivate({
       id,
       title: sel.sessionTitle?.slice(0, 28) || sessionId.slice(0, 8),
@@ -1155,11 +1198,31 @@ export default function Terminal(props: {
       kind: "agent",
       program: a.program,
       args,
+        profile: sel.profile ?? null,
+        ...(Object.keys(env).length ? { env } : {}),
         init: agentInit(a.program, args),
         sessionId,
       },
       focus,
     );
+  }
+
+  /**
+   * The spawn env for a tab about to open, or `null` after saying why not.
+   *
+   * A profile the backend cannot resolve is a tab that must not open: an empty
+   * env would start the agent on the user's own login while every label around
+   * it named another account.
+   */
+  async function spawnEnvOrWarn(agentId: string, profile: string | null): Promise<Record<string, string> | null> {
+    if (!profile) return {};
+    return await profileEnv(agentId, profile).catch(() => {
+      emitWith<ToastEvent>(TOAST, {
+        message: "That account is no longer set up. Add it again in Settings, or start on another one.",
+        kind: "error",
+      });
+      return null;
+    });
   }
 
   // Liveness for the safe-send probe-gate: not-ready until the AGENT process
@@ -1212,6 +1275,7 @@ export default function Terminal(props: {
       await focusOrResume({
         sessionId: req.sessionId,
         agent: req.agent,
+        profile: req.profile,
         sessionFile: req.sessionFile,
         sessionTitle: req.sessionTitle,
         sessionCwd: req.sessionCwd,
@@ -1246,9 +1310,12 @@ export default function Terminal(props: {
     projectName: string,
     yolo = false,
     workspace = folderPath,
+    profile: string | null = null,
   ) {
     const a = findAdapter(agentId);
     const args = [...a.base_args, ...(yolo ? a.yolo_args : []), ...(await hookArgs(agentId))];
+    const env = await spawnEnvOrWarn(agentId, profile);
+    if (!env) return;
     openOrActivate({
       id: shellId(),
       title: `${projectName} ${agentId}`,
@@ -1257,6 +1324,8 @@ export default function Terminal(props: {
       kind: "agent",
       program: a.program,
       args,
+      profile,
+      ...(Object.keys(env).length ? { env } : {}),
       init: agentInit(a.program, args),
       // Floored to match the backend's whole-second `created_at` (epoch_secs
       // truncates): comparing a fractional spawn time against a truncated
@@ -1275,6 +1344,7 @@ export default function Terminal(props: {
     cwd: string,
     baseName: string,
     agentId: string,
+    profile: string | null = null,
     session?: { sessionId: string; forkFrom?: string; rewindTo?: number },
     // Restore hands its stored id in so the tab comes back as itself, and takes
     // the focus itself once the whole strip is back; every other caller is
@@ -1295,6 +1365,7 @@ export default function Terminal(props: {
       kind: "chat",
         program: agentId,
         args: [],
+        profile,
         ...session,
       },
       focus,
@@ -1321,8 +1392,12 @@ export default function Terminal(props: {
     agentId = "claude",
     forkFrom?: string,
     rewindTo?: number,
+    // A fork and a rewind stay on the account they came from: the transcript
+    // they replay lives in that profile's home, and a fork onto another
+    // account would have nothing to read.
+    profile: string | null = null,
   ): string {
-    return openChatTab(workspace, cwd, baseName, agentId, {
+    return openChatTab(workspace, cwd, baseName, agentId, profile, {
       sessionId: crypto.randomUUID(),
       forkFrom,
       rewindTo,
@@ -1337,8 +1412,14 @@ export default function Terminal(props: {
    * record. This is what a new chat is now - see `startChatDraft` for the other
    * half.
    */
-  function openChatDraft(workspace: string, cwd: string, baseName: string, agentId = "claude"): string {
-    return openChatTab(workspace, cwd, baseName, agentId);
+  function openChatDraft(
+    workspace: string,
+    cwd: string,
+    baseName: string,
+    agentId = "claude",
+    profile: string | null = null,
+  ): string {
+    return openChatTab(workspace, cwd, baseName, agentId, profile);
   }
 
   /**
@@ -1410,7 +1491,15 @@ export default function Terminal(props: {
     if (!tab.sessionId) return;
     const origin = tab.sessionId;
     closeId(tab.id);
-    spawnChat(tab.workspace, tab.cwd, tab.workspace.split("/").pop() || "chat", tab.program, origin, promptTs);
+    spawnChat(
+      tab.workspace,
+      tab.cwd,
+      tab.workspace.split("/").pop() || "chat",
+      tab.program,
+      origin,
+      promptTs,
+      tab.profile,
+    );
   }
 
   /**
@@ -1531,6 +1620,7 @@ export default function Terminal(props: {
       kind: "chat",
       program: agentId,
       args: [],
+      profile: sel.profile ?? null,
       sessionId,
       resume: true,
     });
@@ -1557,6 +1647,8 @@ export default function Terminal(props: {
       kind: "shell",
       program: "",
       args: [],
+      // A bare login shell runs no agent, so it is on no account.
+      profile: null,
     });
   }
 
@@ -1801,6 +1893,7 @@ export default function Terminal(props: {
         args={term.args}
         init={term.init}
         env={term.env}
+        profile={term.profile}
         sessionId={term.sessionId}
         active={active()}
         onOwnershipRefused={(refusal) => noteRefusal(term, refusal)}
@@ -1828,6 +1921,7 @@ export default function Terminal(props: {
           workspace={t.workspace}
           active={active()}
           agentId={t.program}
+          profile={t.profile}
           error={draftError(t.id)}
           onSelectAgent={(agentId) => setChatDraftAgent(t.id, agentId)}
           onStart={() => startChatDraft(t.id)}
@@ -1841,6 +1935,7 @@ export default function Terminal(props: {
         sessionId={t.sessionId!}
         tabId={t.id}
         agentId={t.program}
+        profile={t.profile}
         cwd={t.cwd}
         workspace={t.workspace}
         title={tabTitle(t)}
@@ -1852,9 +1947,19 @@ export default function Terminal(props: {
         started={tabState(t) === "live"}
         onStart={() => advanceTabState(t, "live")}
         active={active()}
-        onForkSession={() => spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program)}
+        onForkSession={() =>
+          spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program, undefined, undefined, t.profile)
+        }
         onForkFrom={() =>
-          spawnChat(t.workspace, t.cwd, t.workspace.split("/").pop() || "chat", t.program, t.sessionId)
+          spawnChat(
+            t.workspace,
+            t.cwd,
+            t.workspace.split("/").pop() || "chat",
+            t.program,
+            t.sessionId,
+            undefined,
+            t.profile,
+          )
         }
         onRewindFrom={(promptTs) => rewindChat(t, promptTs)}
         onFirstSendFailed={(reason) => revertChatDraft(t.id, reason)}
@@ -1946,7 +2051,7 @@ export default function Terminal(props: {
                       // Disabled rather than absent, and the label says why: the
                       // session exists and the reader can see it, so a row that
                       // silently vanished would read as Sway losing it.
-                      disabled: agentOffReason(props.selected.agent ?? "claude") !== null,
+                      disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
                       onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
                     },
                     // The counterpart route for a session selection, so the
@@ -1954,7 +2059,7 @@ export default function Terminal(props: {
                     // not only for a new one.
                     {
                       label: "Continue this session in terminal",
-                      disabled: agentOffReason(props.selected.agent ?? "claude") !== null,
+                      disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
                       onClick: () => void focusOrResume(props.selected!),
                     },
                   ]
@@ -2067,7 +2172,14 @@ export default function Terminal(props: {
       // so whatever has happened to the folder underneath it.
       const m = tabMember(t.cwd);
       const state = m && !m.state.usable ? `\n${m.label}: ${m.state.label}` : "";
-      return blockedTab(t) ? `${t.cwd} - waiting for your approval${state}` : `${t.cwd}${state}`;
+      // Which account this tab runs as, and only where there is more than one
+      // to tell apart - `profileLabel` applies that rule. On a single-account
+      // install every tab would otherwise say "Default", which names nothing.
+      const account = profileLabel(t.program, t.profile);
+      const on = account ? `\nAccount: ${account}` : "";
+      return blockedTab(t)
+        ? `${t.cwd} - waiting for your approval${state}${on}`
+        : `${t.cwd}${state}${on}`;
     },
     renderMenuItem: termMenuItem,
     // Where this tab could go, and how to make somewhere for it to go. The

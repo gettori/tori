@@ -16,6 +16,10 @@ import type { SessionTarget } from "./safeSend";
  *  `Selection` type itself, so a util does not depend on a panel. */
 export type SendCandidate = {
   agent?: string;
+  /** Which account of `agent` the session belongs to; `null` is the default
+   *  profile. Carried through the gate because a send may have to resume the
+   *  session first, and a resume names an account. */
+  profile: string | null;
   sessionId?: string;
   sessionPath?: string;
   sessionFile?: string;
@@ -32,7 +36,7 @@ export function sendTargetFor(selection: SendCandidate | null): SendGate {
   // The setting before the capability: an agent the user turned off is a
   // sentence they can act on, where "can't be resumed" would send them looking
   // for a limitation that is not the one in force.
-  const off = agentOffReason(selection.agent ?? "claude");
+  const off = agentOffReason(selection.agent ?? "claude", selection.profile);
   if (off) return { reason: off };
   if (findAdapter(selection.agent ?? "claude").resume_args.length === 0) {
     return { reason: "This agent's sessions can't be resumed" };
@@ -41,6 +45,7 @@ export function sendTargetFor(selection: SendCandidate | null): SendGate {
     target: {
       sessionId: selection.sessionId,
       agent: selection.agent ?? "claude",
+      profile: selection.profile,
       folderPath: selection.folderPath,
       sessionCwd: selection.sessionCwd,
       sessionPath: selection.sessionPath,
