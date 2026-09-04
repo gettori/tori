@@ -3,8 +3,8 @@ import PaneView from "../../tabs/PaneView";
 import { createEffect } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
-// The blame toggle: a button in the editor tab strip, a localStorage preference,
-// and a prop CodeEditor turns into a compartment reconfigure. The mechanism is
+// The blame toggle: a button in the pane's breadcrumb bar, a localStorage
+// preference, and a prop CodeEditor turns into a compartment reconfigure. The mechanism is
 // tested in blameGutter.test.ts; what is here is the wiring between the control
 // and the editor, which is otherwise three one-liners nothing exercises.
 
@@ -134,6 +134,18 @@ describe("the blame toggle", () => {
 
     await waitFor(() => expect(last()).toBe(false));
     expect(localStorage.getItem(BLAME_KEY)).toBe("0");
+  });
+
+  it("sits with the file's own controls, not in the strip every pane shares", async () => {
+    // A split view is two files at once, and one control in the strip could
+    // only ever mean whichever tab was in front. The breadcrumb bar belongs to
+    // the pane, so blame lands beside the preview toggle that already moved
+    // there for the same reason.
+    await mountWithFile();
+
+    const button = screen.getByLabelText(BUTTON);
+    expect(button.closest('nav[aria-label="Breadcrumbs"]')).not.toBeNull();
+    expect(button.closest(".otab-trailing")).toBeNull();
   });
 
   it("offers no toggle on a tab that is not a file", async () => {
