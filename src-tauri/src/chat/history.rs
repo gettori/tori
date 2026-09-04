@@ -605,9 +605,9 @@ mod tests {
                 start_line: None,
                 end_line: None,
                 text: None,
-                label: Some("[image 1]".into()),
+                label: Some("[Image 1]".into()),
             },
-            ContentBlock::Text { text: "what colour is [image 1]?".into() },
+            ContentBlock::Text { text: "what colour is [Image 1]?".into() },
             // A name that merely looks ranged keeps every character it had,
             // and a real range comes back as a range rather than as a path
             // with `#L2-4` buried in it.
@@ -616,14 +616,14 @@ mod tests {
                 start_line: None,
                 end_line: None,
                 text: None,
-                label: Some("[file 2]".into()),
+                label: Some("[File 2]".into()),
             },
             ContentBlock::FileRef {
                 path: "/Users/x/main.rs".into(),
                 start_line: Some(2),
                 end_line: Some(4),
                 text: None,
-                label: Some("[file 3]".into()),
+                label: Some("[File 3]".into()),
             },
         ];
         let frame = crate::chat::claude_transport::turn_frame(&sent);
@@ -637,17 +637,35 @@ mod tests {
         assert_eq!(user_blocks_of(&[turn("user", written)])[0], sent);
     }
 
+    /// The composer spelled its kinds in lower case before it capitalised
+    /// them. Those turns are on disk, and they still name an attachment.
+    #[test]
+    fn a_turn_written_before_the_labels_were_capitalised_still_replays() {
+        let blocks = user_blocks_of(&[turn("user", vec![text_block("text", "[image 1]: @/x/shot.png".into())])]);
+        assert_eq!(
+            blocks[0],
+            vec![ContentBlock::FileRef {
+                path: "/x/shot.png".into(),
+                start_line: None,
+                end_line: None,
+                text: None,
+                // Verbatim, because that is what the sentence in that turn says.
+                label: Some("[image 1]".into()),
+            }]
+        );
+    }
+
     /// Only the form the transport writes. Everything else is what the user
-    /// typed, and typing `[image 1]` is not attaching one.
+    /// typed, and typing `[Image 1]` is not attaching one.
     #[test]
     fn a_turn_that_only_looks_labelled_stays_text() {
         let typed = [
-            "[image 1] is the red one",
-            "[image 1]: /Users/x/shot.png",
-            "[image 1]: @shot.png",
+            "[Image 1] is the red one",
+            "[Image 1]: /Users/x/shot.png",
+            "[Image 1]: @shot.png",
             "[video 1]: @/Users/x/clip.mp4",
-            "[image one]: @/Users/x/shot.png",
-            "see [image 1]: @/Users/x/shot.png",
+            "[Image one]: @/Users/x/shot.png",
+            "see [Image 1]: @/Users/x/shot.png",
         ];
         for text in typed {
             let blocks = user_blocks_of(&[turn("user", vec![text_block("text", text.into())])]);

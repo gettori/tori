@@ -598,19 +598,20 @@ export default function Composer(props: {
         <div class={styles.attachments}>
           <For each={props.attachments}>
             {(a) => {
-              // The face is the same either way: the picture where there is
-              // one, and always the name, because a bare thumbnail cannot tell
-              // you the token to type.
+              // A picture is already its own name, so the tile captions itself
+              // with the token alone and leaves the filename to the control's
+              // accessible name. Everything else has only words to go on.
+              const thumb = () => thumbSrc(a.block);
               const face = () => (
                 <>
-                  <Show when={thumbSrc(a.block)}>
-                    {(src) => <img class={styles.attachmentThumb} src={src()} alt="" />}
-                  </Show>
-                  <span class={styles.attachmentName}>{chipLabel(a.block)}</span>
+                  <Show when={thumb()}>{(src) => <img class={styles.attachmentThumb} src={src()} alt="" />}</Show>
+                  <span class={styles.attachmentName}>
+                    {thumb() ? (tokenOf(a.block) ?? chipLabel(a.block)) : chipLabel(a.block)}
+                  </span>
                 </>
               );
               return (
-                <div class={styles.attachment}>
+                <div class={styles.attachment} classList={{ [styles.attachmentTile]: !!thumb() }}>
                   {/* Two controls, because the chip now means two things: put
                       the token in the message, or take the attachment away.
                       A chip with no token (a selection, a hunk comment) has

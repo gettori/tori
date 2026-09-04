@@ -258,7 +258,7 @@ const KEPT = new Map<string, Kept>([
  *  **One back down** with the composer bar's standing note about a remembered
  *  model list, which is gone and took its title with it.
  *
- *  **Up one** for a prompt's attachment chip: the token `[image 1]` is what the
+ *  **Up one** for a prompt's attachment chip: the token `[Image 1]` is what the
  *  sentence says, and the path it stands for has nowhere else to go. */
 const RAW_ELEMENT_TITLES = 67;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
@@ -374,7 +374,7 @@ describe("the title= guard", () => {
     // Up one span: the dev build's chip, which is the one span here that never
     // reaches a release - see DEV_ONLY.
     // Up one span: a prompt's attachment token, whose chip is the width of
-    // `[image 1]` and whose path is the thing a reader may want.
+    // `[Image 1]` and whose path is the thing a reader may want.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 16,
       span: 51,

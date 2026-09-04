@@ -117,21 +117,21 @@ describe("a prompt that names what it attached", () => {
     startLine: null,
     endLine: null,
     text: null,
-    label: "[image 1]",
+    label: "[Image 1]",
   };
 
   it("draws the token as a chip and the image off its path", () => {
     const items: ChatItem[] = [
-      { kind: "user", id: "u1", blocks: [shot, { type: "text", text: "what is in [image 1]?" }], steer: false },
+      { kind: "user", id: "u1", blocks: [shot, { type: "text", text: "what is in [Image 1]?" }], steer: false },
     ];
     const { container } = render(() => list({ items }));
     const chips = container.querySelectorAll('span[title="/store/1a2b-0/shot.png"]');
     expect(chips).toHaveLength(1);
-    expect(chips[0].textContent).toBe("[image 1]");
+    expect(chips[0].textContent).toBe("[Image 1]");
     expect(container.querySelector("img")?.getAttribute("src")).toBe("asset:///store/1a2b-0/shot.png");
     // The path itself is not printed beside the sentence any more: the token
     // names it and the picture shows it.
-    expect(container.textContent).toContain("what is in [image 1]?");
+    expect(container.textContent).toContain("what is in [Image 1]?");
     expect(container.textContent).not.toContain("@/store");
   });
 
@@ -139,20 +139,20 @@ describe("a prompt that names what it attached", () => {
   // carried something it never did.
   it("leaves a token the turn carries no attachment for as plain text", () => {
     const items: ChatItem[] = [
-      { kind: "user", id: "u1", blocks: [{ type: "text", text: "what about [image 9]?" }], steer: false },
+      { kind: "user", id: "u1", blocks: [{ type: "text", text: "what about [Image 9]?" }], steer: false },
     ];
     const { container } = render(() => list({ items }));
-    expect(container.textContent).toContain("what about [image 9]?");
+    expect(container.textContent).toContain("what about [Image 9]?");
     expect(container.querySelector("span[title]")).toBeNull();
   });
 
   // Attach a file, press Enter, type nothing: the turn still has to show what
   // it carried, which is the whole complaint this work started from.
   it("names an attachment the sentence never mentioned", () => {
-    const pdf = { ...shot, path: "/store/1a2b-1/spec.pdf", label: "[pdf 1]" };
+    const pdf = { ...shot, path: "/store/1a2b-1/spec.pdf", label: "[PDF 1]" };
     const items: ChatItem[] = [{ kind: "user", id: "u1", blocks: [pdf], steer: false }];
     const { container } = render(() => list({ items }));
-    expect(container.textContent).toContain("[pdf 1]");
+    expect(container.textContent).toContain("[PDF 1]");
     expect(container.querySelector('span[title="/store/1a2b-1/spec.pdf"]')).toBeTruthy();
   });
 

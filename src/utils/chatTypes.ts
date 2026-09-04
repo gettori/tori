@@ -336,7 +336,7 @@ export type ContentBlock =
       startLine: number | null;
       endLine: number | null;
       text: string | null;
-      /** `[image 3]`: the token the prose names this attachment by. Only an
+      /** `[Image 3]`: the token the prose names this attachment by. Only an
        *  attachment carries one; a selection or hunk comment never does. */
       label?: string | null;
     };

@@ -779,7 +779,7 @@ pub enum ContentBlock {
         end_line: Option<u32>,
         #[serde(default)]
         text: Option<String>,
-        /// `[image 3]`: the token the prose names an attachment by. Rendered
+        /// `[Image 3]`: the token the prose names an attachment by. Rendered
         /// in front of the path on every wire, and read back off the
         /// transcript, so a reopened chat draws the chip the live one did.
         #[serde(default)]
@@ -791,7 +791,7 @@ impl ContentBlock {
     /// A replayed user text block, read back as the attachment it was sent as.
     ///
     /// The exact form `turn_frame` and `prompt_blocks` write and nothing
-    /// looser, so a sentence that merely says `[image 1]` stays prose. The path
+    /// looser, so a sentence that merely says `[Image 1]` stays prose. The path
     /// is a transcript's word, not Sway's: an agent writes that file, so it is
     /// required to be absolute and one line, and every surface drawing it still
     /// decides for itself what it will open.
@@ -807,10 +807,14 @@ impl ContentBlock {
     }
 }
 
-/// `image 3`: one of the kinds a composer mints, then a number.
+/// `Image 3`: one of the kinds a composer mints, then a number. Case is not
+/// part of the grammar, so a turn sent before the composer capitalised its
+/// labels still replays as the attachment it was.
 fn is_label(token: &str) -> bool {
     let Some((kind, n)) = token.split_once(' ') else { return false };
-    matches!(kind, "image" | "pdf" | "file") && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+    ["image", "pdf", "file"].iter().any(|k| kind.eq_ignore_ascii_case(k))
+        && !n.is_empty()
+        && n.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// The `#L2-4` tail a ranged reference is rendered with, taken back off the
