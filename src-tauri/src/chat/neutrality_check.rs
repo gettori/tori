@@ -348,11 +348,18 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
         // Claude only reports it at init. `SessionStarted` carries the
         // catalogue, so a refresh is a re-announcement of the session's
         // capabilities rather than a new event type.
+        //
+        // The mode is Gemini's own `auto_edit`, not Claude's `acceptEdits`.
+        // While `PermissionMode` was an enum this file had to say `AcceptEdits`,
+        // because Claude's four variants were the only vocabulary the model
+        // had: a Gemini event was recorded under a Claude name and the check
+        // still passed. That substitution is what made the enum a neutrality
+        // leak rather than a neutrality guard.
         AcpSessionUpdate::AvailableCommandsUpdate => ChatEvent::SessionStarted {
             session_id: sid(),
             cwd: "/tmp/w".into(),
             model: "gemini-2.5-pro".into(),
-            permission_mode: PermissionMode::new("default"),
+            permission_mode: PermissionMode::new("auto_edit"),
             tools: vec![],
             slash_commands: vec![],
             mcp_servers: vec![],
@@ -363,22 +370,14 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             account: None,
             extra: Default::default(),
         },
-        // A mode change lands on the same field the next turn reports, which is
-        // how Claude confirms a mode switch took effect too.
-        //
-        // The mode is Gemini's own `auto_edit`, not Claude's `acceptEdits`.
-        // While `PermissionMode` was an enum this arm had to say `AcceptEdits`,
-        // because Claude's four variants were the only vocabulary the model
-        // had - a Gemini event was recorded under a Claude name and the check
-        // still passed. That substitution is what made the enum a neutrality
-        // leak rather than a neutrality guard.
-        AcpSessionUpdate::CurrentModeUpdate => ChatEvent::TurnStarted {
+        // No counterpart, honestly: `acp.rs` drops this update (pinned by its
+        // `an_update_with_no_sway_counterpart_maps_to_no_events`), and a mode is
+        // confirmed by the `set_config_option` answer, which no measured agent skips.
+        AcpSessionUpdate::CurrentModeUpdate => ChatEvent::SessionError {
             session_id: sid(),
-            turn_id: tid(),
-            agent_initiated: false,
-            model: "gemini-2.5-pro".into(),
-            permission_mode: PermissionMode::new("auto_edit"),
-            extra: Default::default(),
+            message: "acp current_mode_update is dropped; a mode is confirmed by the config option answer"
+                .into(),
+            fatal: false,
         },
     }
 }
@@ -533,7 +532,7 @@ mod tests {
             (AcpSessionUpdate::ToolCallUpdate, "toolCallCompleted"),
             (AcpSessionUpdate::Plan, "planUpdate"),
             (AcpSessionUpdate::AvailableCommandsUpdate, "sessionStarted"),
-            (AcpSessionUpdate::CurrentModeUpdate, "turnStarted"),
+            (AcpSessionUpdate::CurrentModeUpdate, "sessionError"),
         ];
         for (src, expected) in acp {
             assert_eq!(target(&map_acp(src)), expected, "acp {src:?} mapped somewhere new");
@@ -584,8 +583,10 @@ mod tests {
         .into_iter()
         .filter(|u| target(&map_acp(*u)) == "sessionError")
         .count();
+        // Two by design: the user-message echo, and `current_mode_update`, which
+        // the real mapper drops because the config option answer confirms a mode.
         assert!(
-            acp_unmapped <= 1,
+            acp_unmapped <= 2,
             "{acp_unmapped} acp variants have no normalized target; the model has drifted Claude-ward"
         );
     }
@@ -624,16 +625,16 @@ mod tests {
 
         // And the mapper above must actually be exercising a foreign one, or
         // this file could go back to Claude-only vocabulary without failing.
-        let foreign = map_acp(AcpSessionUpdate::CurrentModeUpdate);
+        let foreign = map_acp(AcpSessionUpdate::AvailableCommandsUpdate);
         match foreign {
-            ChatEvent::TurnStarted { permission_mode, .. } => {
+            ChatEvent::SessionStarted { permission_mode, .. } => {
                 assert_eq!(
                     permission_mode.as_str(),
                     "auto_edit",
                     "the ACP mapping records a Gemini mode under a Claude name"
                 );
             }
-            other => panic!("expected TurnStarted, got {other:?}"),
+            other => panic!("expected SessionStarted, got {other:?}"),
         }
     }
 

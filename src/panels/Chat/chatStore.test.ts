@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import events from "../../../dev/fixtures/chat/events.json";
 import { parseChatEvent, type ChatEvent, type ToolSummary } from "../../utils/chatTypes";
+import { selectedModel, type PickableModel } from "../../utils/chatModels";
 import { BLOCKED_REASON, sendWithProbeGate } from "../../utils/safeSend";
 import {
   answerable,
@@ -277,6 +278,117 @@ describe("the model a session opened on", () => {
     applyEvent(s, sessionStarted({ model: "claude-opus-5" }));
     expect(s.model).toBe("claude-opus-5");
     expect(s.openingModel).toBe("sonnet");
+  });
+});
+
+// An ACP agent answers every `session/set_config_option` with its whole option
+// set, and on that transport the answer is the only thing that ever says which
+// mode or model is in force: no turn boundary re-reports them the way init does.
+const configOptions = (current: { mode?: string; model?: string }): ChatEvent => ({
+  type: "configOptions",
+  sessionId: "s1",
+  options: Object.entries(current).map(([category, value]) => ({
+    id: category,
+    name: category,
+    description: "",
+    category,
+    disabled: false,
+    note: "",
+    kind: "select" as const,
+    current: value,
+    choices: [],
+  })),
+});
+// An ACP catalogue row resolves to itself: the agent publishes ids, not aliases.
+const acpModel = (value: string) => ({ value, resolvedModel: value });
+
+describe("an ACP agent's answer to a switch", () => {
+  it("settles a mode pick the answer names", () => {
+    const s = initialChat("s1");
+    applyEvent(s, sessionStarted({ permissionMode: "default" }));
+    selectMode(s, "plan");
+    expect(modePending(s)).toBe(true);
+    applyEvent(s, configOptions({ mode: "plan" }));
+    expect(shownMode(s)).toBe("plan");
+    expect(modePending(s)).toBe(false);
+    expect(pendingSwitchNotice(s)).toBe(null);
+  });
+
+  it("clears the refusal note of a mode reported in force", () => {
+    const s = initialChat("s1");
+    applyEvent(s, { type: "modeRefused", sessionId: "s1", mode: "plan", reason: "not now" });
+    expect(modeRefusal(s, "plan")).toBe("not now");
+    applyEvent(s, configOptions({ mode: "plan" }));
+    expect(modeRefusal(s, "plan")).toBe(null);
+  });
+
+  it("leaves a staged mode pick alone when an answer names the old mode", () => {
+    // A mode pick waits for the next prompt while a model pick is answered at
+    // once, so a model answer in between reports the mode still in force.
+    const s = initialChat("s1");
+    applyEvent(s, sessionStarted({ permissionMode: "default" }));
+    selectMode(s, "plan");
+    applyEvent(s, configOptions({ mode: "default", model: "gpt-5.6" }));
+    expect(s.permissionMode).toBe("default");
+    expect(modePending(s)).toBe(true);
+    expect(shownMode(s)).toBe("plan");
+  });
+
+  it("holds a staged mode pick across a reload's re-announcement", () => {
+    const s = initialChat("s1");
+    applyEvent(s, sessionStarted({ permissionMode: "default" }));
+    selectMode(s, "plan");
+    applyEvent(s, sessionStarted({ permissionMode: "default" }));
+    expect(modePending(s)).toBe(true);
+    // The first announcement still settles either way: that is claude's
+    // boundary rule, and a pick made before the session opened has no prompt
+    // staged behind it.
+    const fresh = initialChat("s1");
+    selectMode(fresh, "plan");
+    applyEvent(fresh, sessionStarted({ permissionMode: "default" }));
+    expect(modePending(fresh)).toBe(false);
+  });
+
+  it("confirms a model pick the answer names", () => {
+    const s = initialChat("s1");
+    selectModel(s, acpModel("gpt-5.6"));
+    expect(modelPending(s)).toBe(true);
+    applyEvent(s, configOptions({ model: "gpt-5.6" }));
+    expect(s.model).toBe("gpt-5.6");
+    expect(s.modelValue).toBe("gpt-5.6");
+    expect(modelPending(s)).toBe(false);
+  });
+
+  it("drops a model pick the answer names another model for, and the value with it", () => {
+    const s = initialChat("s1");
+    selectModel(s, acpModel("gpt-5.6"));
+    applyEvent(s, configOptions({ model: "gpt-5.6" }));
+    selectModel(s, acpModel("gpt-5.4-mini"));
+    applyEvent(s, configOptions({ model: "gpt-5.6" }));
+    expect(modelPending(s)).toBe(false);
+    // Nulled rather than kept: the resolver ranks a picked value above the
+    // reported id, so the old pick would keep naming a model the session left.
+    expect(s.modelValue).toBe(null);
+    const rows = [acpModel("gpt-5.6"), acpModel("gpt-5.4-mini")] as PickableModel[];
+    expect(selectedModel(rows, shownModelValue(s), s.model)?.value).toBe("gpt-5.6");
+  });
+
+  it("does nothing on claude's uncategorized options", () => {
+    const s = initialChat("s1");
+    applyEvent(s, sessionStarted({ permissionMode: "default", model: "claude-sonnet-5" }));
+    selectMode(s, "plan");
+    selectModel(s, { value: "opus", resolvedModel: "claude-opus-5" });
+    applyEvent(s, {
+      type: "configOptions",
+      sessionId: "s1",
+      options: [
+        { id: "fast_mode", name: "Fast mode", description: "", category: "", disabled: false, note: "", kind: "boolean", value: false },
+      ],
+    });
+    expect(modePending(s)).toBe(true);
+    expect(modelPending(s)).toBe(true);
+    expect(s.permissionMode).toBe("default");
+    expect(s.modelValue).toBe(null);
   });
 });
 

@@ -592,10 +592,9 @@ impl AgentTransport for AcpTransport {
     ///
     /// Refused when this session offered no model selector, rather than sent to
     /// an id Sway made up. A picker that appears to switch while the session
-    /// keeps running the old model is worse than one that says it cannot, and
-    /// that is also why the switch is *not* recorded locally as pending: the
-    /// agent answers with its whole option set, and what it says is running is
-    /// what `SessionStarted` already reported.
+    /// keeps running the old model is worse than one that says it cannot. The
+    /// pick is pending in the store like any other, and the agent's answer,
+    /// re-emitted whole as `ConfigOptions`, is what settles it.
     ///
     /// **`effort` used to be dropped here, on the belief that ACP has no notion
     /// of one.** It has: `SessionConfigOptionCategory::ThoughtLevel` is its own
@@ -940,55 +939,13 @@ async fn drive_session(
                     SessionConfigId::new(config_id.as_str()),
                     option_value(&value),
                 );
-                match conn.send_request(request).block_task().await {
-                    Err(e) => emit(
-                        sink,
-                        ChatEvent::SessionError {
-                            session_id: shared.session_id.clone(),
-                            message: format!("this agent would not switch {}: {e}", what.noun()),
-                            fatal: false,
-                        },
-                    ),
-                    // **The answer is checked, not assumed.** The agent replies
-                    // with its whole option set, so it says what is *now*
-                    // selected - which need not be what was asked for. An agent
-                    // that accepts the request and keeps running the old value is
-                    // exactly the silent mismatch these switches refuse to risk,
-                    // and it would otherwise show as a picker that switched.
-                    //
-                    // It matters more for a mode than for a model: a mode that
-                    // did not take means the agent is deciding permissions by a
-                    // rule other than the one on screen.
-                    Ok(response) => {
-                        // The answer carries the agent's whole option set, and
-                        // a switch on one option can re-cut another's choices,
-                        // so the mirror is rebuilt from it rather than left
-                        // showing the state the session opened in.
-                        emit(
-                            sink,
-                            ChatEvent::ConfigOptions {
-                                session_id: shared.session_id.clone(),
-                                options: acp::config_options(&response.config_options),
-                            },
-                        );
-                        let asked = value.as_text();
-                        let now = what.current(&response.config_options);
-                        if let Some(now) = now {
-                            if now != asked {
-                                emit(
-                                    sink,
-                                    ChatEvent::SessionError {
-                                        session_id: shared.session_id.clone(),
-                                        message: format!(
-                                            "this agent accepted the switch but reports its {} is `{now}` rather than `{asked}`.",
-                                            what.noun()
-                                        ),
-                                        fatal: false,
-                                    },
-                                );
-                            }
-                        }
-                    }
+                let answer = conn.send_request(request).block_task().await;
+                let answer = answer
+                    .as_ref()
+                    .map(|response| response.config_options.as_slice())
+                    .map_err(|e| e.to_string());
+                for event in switch_events(&shared.session_id, &what, &value.as_text(), answer) {
+                    emit(sink, event);
                 }
             }
             Command::SetMode(mode) => {
@@ -997,12 +954,14 @@ async fn drive_session(
                     SessionModeId::new(mode.as_str()),
                 );
                 if let Err(e) = conn.send_request(request).block_task().await {
+                    // A refusal rather than a plain error, so the store settles
+                    // the pick instead of promising the mode forever.
                     emit(
                         sink,
-                        ChatEvent::SessionError {
+                        ChatEvent::ModeRefused {
                             session_id: shared.session_id.clone(),
-                            message: format!("this agent would not switch mode: {e}"),
-                            fatal: false,
+                            mode,
+                            reason: format!("this agent would not switch mode: {e}"),
                         },
                     );
                 }
@@ -1011,6 +970,54 @@ async fn drive_session(
         }
     }
     Ok(())
+}
+
+/// The answer is checked, not assumed: the agent's whole option set says what is
+/// *now* selected, which need not be what was asked. The set goes out first (it
+/// is how the store confirms an ACP pick), then a mode that did not take refuses.
+fn switch_events(
+    session_id: &str,
+    what: &ConfigOption,
+    asked: &str,
+    answer: Result<&[SessionConfigOption], String>,
+) -> Vec<ChatEvent> {
+    let did_not_take = |message: String| match what {
+        ConfigOption::Mode => ChatEvent::ModeRefused {
+            session_id: session_id.to_string(),
+            mode: PermissionMode::new(asked),
+            reason: message,
+        },
+        _ => ChatEvent::SessionError {
+            session_id: session_id.to_string(),
+            message,
+            fatal: false,
+        },
+    };
+    let options = match answer {
+        Err(e) => {
+            return vec![did_not_take(format!("this agent would not switch {}: {e}", what.noun()))]
+        }
+        Ok(options) => options,
+    };
+    let mut events = vec![ChatEvent::ConfigOptions {
+        session_id: session_id.to_string(),
+        options: acp::config_options(options),
+    }];
+    match what.current(options) {
+        Some(now) if now == asked => {}
+        Some(now) => events.push(did_not_take(format!(
+            "this agent accepted the switch but reports its {} is `{now}` rather than `{asked}`.",
+            what.noun()
+        ))),
+        // Only a mode reads "unsaid" as refused: left pending it would promise
+        // the mode forever, while an unmentioned mirrored option is "cannot tell".
+        None if *what == ConfigOption::Mode => events.push(did_not_take(
+            "this agent accepted the switch but its answer does not say which mode it is in."
+                .to_string(),
+        )),
+        None => {}
+    }
+    events
 }
 
 /// Run one turn as a spawned task, so the command loop stays responsive.
@@ -1546,6 +1553,95 @@ mod tests {
         // mismatch: "we cannot tell" must not render as the agent refusing.
         let absent = ConfigOption::Mirrored { id: "verbosity".to_string() };
         assert_eq!(absent.current(&options), None);
+    }
+
+    /// A mode-category select with `current` in force, the shape both measured
+    /// agents answer `session/set_config_option` with.
+    fn mode_select(current: &str) -> SessionConfigOption {
+        use agent_client_protocol::schema::v1::{
+            SessionConfigId, SessionConfigKind, SessionConfigOptionCategory, SessionConfigSelect,
+            SessionConfigSelectOption, SessionConfigSelectOptions,
+        };
+        let entries = ["read-only", "agent"]
+            .iter()
+            .map(|id| SessionConfigSelectOption::new(SessionConfigValueId::new(*id), id.to_string()))
+            .collect();
+        let mut option = SessionConfigOption::new(
+            SessionConfigId::new("approval_policy"),
+            "Mode".to_string(),
+            SessionConfigKind::Select(SessionConfigSelect::new(
+                SessionConfigValueId::new(current),
+                SessionConfigSelectOptions::Ungrouped(entries),
+            )),
+        );
+        option.category = Some(SessionConfigOptionCategory::Mode);
+        option
+    }
+
+    fn kinds(events: &[ChatEvent]) -> Vec<&'static str> {
+        events
+            .iter()
+            .map(|e| match e {
+                ChatEvent::ConfigOptions { .. } => "configOptions",
+                ChatEvent::ModeRefused { .. } => "modeRefused",
+                ChatEvent::SessionError { .. } => "sessionError",
+                _ => "other",
+            })
+            .collect()
+    }
+
+    /// A mode that took is the option set and nothing else: the store reads the
+    /// mode's `current` off that set, which is the confirmation on this transport.
+    #[test]
+    fn a_mode_the_agent_took_is_confirmed_by_its_option_set_alone() {
+        let options = vec![mode_select("read-only")];
+        let events = switch_events("s1", &ConfigOption::Mode, "read-only", Ok(&options));
+        assert_eq!(kinds(&events), ["configOptions"]);
+    }
+
+    /// Every way a mode can fail to take is a refusal, so the store settles the
+    /// pick with the agent's reason rather than promising the mode forever.
+    #[test]
+    fn a_mode_that_did_not_take_is_a_refusal_however_it_failed() {
+        let refused = switch_events("s1", &ConfigOption::Mode, "read-only", Err("nope".into()));
+        assert_eq!(kinds(&refused), ["modeRefused"]);
+        match &refused[0] {
+            ChatEvent::ModeRefused { mode, reason, .. } => {
+                assert_eq!(mode.as_str(), "read-only");
+                assert!(reason.contains("nope"), "the agent's own words survive: {reason}");
+            }
+            other => panic!("expected ModeRefused, got {other:?}"),
+        }
+
+        // Accepted and then reported as something else: the set goes out first
+        // so the store learns the mode in force, then the pick is settled.
+        let elsewhere = vec![mode_select("agent")];
+        let mismatch = switch_events("s1", &ConfigOption::Mode, "read-only", Ok(&elsewhere));
+        assert_eq!(kinds(&mismatch), ["configOptions", "modeRefused"]);
+        match &mismatch[1] {
+            ChatEvent::ModeRefused { mode, reason, .. } => {
+                assert_eq!(mode.as_str(), "read-only");
+                assert!(reason.contains("`agent`"), "names what the agent reports: {reason}");
+            }
+            other => panic!("expected ModeRefused, got {other:?}"),
+        }
+
+        // Accepted with an answer that names no mode at all: unconfirmed, and
+        // said so, rather than a pick left pending for the rest of the session.
+        let silent: Vec<SessionConfigOption> = vec![];
+        let unsaid = switch_events("s1", &ConfigOption::Mode, "read-only", Ok(&silent));
+        assert_eq!(kinds(&unsaid), ["configOptions", "modeRefused"]);
+    }
+
+    /// A model keeps its plain error: nothing in the store settles on it, and
+    /// its pending pick is settled by the option set instead.
+    #[test]
+    fn a_model_that_did_not_take_stays_a_session_error() {
+        let refused = switch_events("s1", &ConfigOption::Model, "gpt-5.6", Err("nope".into()));
+        assert_eq!(kinds(&refused), ["sessionError"]);
+        let silent: Vec<SessionConfigOption> = vec![];
+        let unsaid = switch_events("s1", &ConfigOption::Model, "gpt-5.6", Ok(&silent));
+        assert_eq!(kinds(&unsaid), ["configOptions"], "no model select reads as unknown, not refused");
     }
 
     /// An answer must come back in the agent's own vocabulary. Sending a fixed
