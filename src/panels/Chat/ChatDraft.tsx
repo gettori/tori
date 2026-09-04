@@ -16,6 +16,7 @@
 import { Show, createEffect, createMemo, createSignal, onCleanup, onMount, untrack } from "solid-js";
 import Composer from "./Composer";
 import ConfigMirror from "./ConfigMirror";
+import FollowToggle from "./FollowToggle";
 import ModelPicker from "./ModelPicker";
 import ModeSelector from "./ModeSelector";
 import { composerAttachments } from "./composerAttachments";
@@ -309,6 +310,7 @@ export default function ChatDraft(props: {
               disabled={starting()}
               onSet={(configId, value) => setDraftOption(props.tabId, configId, value)}
             />
+            <FollowToggle />
             <Show when={blocked()}>
               {(reason) => <span class={styles.barNote}>{reason()}</span>}
             </Show>

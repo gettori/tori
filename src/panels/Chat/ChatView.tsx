@@ -11,6 +11,7 @@ import UsageReadout from "./UsageReadout";
 import StatusStrip from "./StatusStrip";
 import ModeSelector from "./ModeSelector";
 import ConfigMirror from "./ConfigMirror";
+import FollowToggle from "./FollowToggle";
 import ModelPicker from "./ModelPicker";
 import { lockedProvider } from "./agentPaletteData";
 import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
@@ -1965,6 +1966,7 @@ export default function ChatView(props: {
               disabled={refused() || state.ended}
               onSet={applyConfigOption}
             />
+            <FollowToggle />
           </>
         }
       />

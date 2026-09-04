@@ -149,6 +149,40 @@ describe("the trailing cluster", () => {
     expect(row).toEqual(["file-action", "chat-action"]);
   });
 
+  it("puts an edge cluster past every ranked one, whatever rank it holds", () => {
+    // The filetree reveal: it is about the window rather than about a tab, so
+    // it sits at the strip's edge instead of taking a rank among the kinds and
+    // having to be renumbered every time one is added.
+    registerKind("chat", {
+      icon: () => undefined,
+      title: (t) => labels[t.id],
+      tooltip: (t) => labels[t.id],
+      renderMenuItem: (t) => <span>{labels[t.id]}</span>,
+      trailing: () => <button type="button">chat-action</button>,
+      trailingRank: 20,
+      activate: (t) => activated.push(t.id),
+      close: () => {},
+    });
+    registerKind("file", {
+      icon: () => undefined,
+      title: (t) => labels[t.id],
+      tooltip: (t) => labels[t.id],
+      renderMenuItem: (t) => <span>{labels[t.id]}</span>,
+      trailing: () => <button type="button">file-action</button>,
+      // The lowest rank there is, and still drawn last: the edge is not a rank.
+      trailingRank: 10,
+      trailingEdge: () => <button type="button">edge-action</button>,
+      activate: (t) => activated.push(t.id),
+      close: () => {},
+    });
+    render(() => <UnifiedTabStrip items={MIXED} activeId="c1" onReorder={() => {}} />);
+    const row = screen
+      .getAllByRole("button")
+      .map((b) => b.textContent)
+      .filter((t) => t?.endsWith("-action"));
+    expect(row).toEqual(["file-action", "chat-action", "edge-action"]);
+  });
+
   it("still draws them while the strip is empty", () => {
     render(() => <UnifiedTabStrip items={[]} activeId={null} onReorder={() => {}} />);
     expect(screen.getByRole("button", { name: "file-action" })).toBeTruthy();

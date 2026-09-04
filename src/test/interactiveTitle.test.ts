@@ -139,6 +139,7 @@ const KEPT = new Map<string, Kept>([
   ["components/Tooltip/Tooltip.stories.tsx", { count: 1, reason: FIXTURE }],
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/Chat/agentTurnCeiling.test.tsx", { count: 1, reason: FIXTURE }],
+  ["panels/Chat/followEdits.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/ChatView.tsx", { count: 1, reason: HEADING }],
   ["panels/Chat/MessageList.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/Chat/MessageList.tsx", { count: 1, reason: TRUNCATION }],

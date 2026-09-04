@@ -261,6 +261,25 @@ function setup(over: Partial<Parameters<typeof ChatDraft>[0]> = {}) {
   return { ...result, input, pills, openPalette, onStart, onSelectAgent };
 }
 
+// The one lever on that bar that is not the session's. A draft has no session
+// at all, so a control that lived with the agent's would be missing exactly
+// where the editor is most likely to be following: the chat you just opened.
+describe("following live edits from a draft", () => {
+  it("offers the toggle, as the last lever on the bar", async () => {
+    const { setFollowEdits } = await import("../../utils/followPref");
+    setFollowEdits(false);
+    const { pills } = setup();
+
+    const pill = screen.getByLabelText("Follow live edits") as HTMLButtonElement;
+    const send = screen.getByLabelText("Send") as HTMLButtonElement;
+    expect(pills().indexOf(pill)).toBe(pills().indexOf(send) - 1);
+
+    fireEvent.click(pill);
+    expect(pill.getAttribute("aria-pressed")).toBe("true");
+    setFollowEdits(false);
+  });
+});
+
 describe("a chat draft costs nothing", () => {
   // The whole point of opening a chat lazily: a tab opened and never used spawns
   // no agent, mints no session id and claims nothing, so it cannot contend with

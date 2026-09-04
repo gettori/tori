@@ -78,7 +78,6 @@ import {
   X,
   ArrowLeft,
   ArrowRight,
-  Bot,
   FileCodeCorner,
   FileTypeCorner,
   FileHeart,
@@ -155,6 +154,7 @@ import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
 import { dropWorkspaceExpanded, mapExpandedFiles } from "../../utils/treeExpanded";
 import { dropWorkspaceWatches } from "../../utils/debugWatch";
 import { blameOn, writeBlamePref } from "../../utils/blamePref";
+import { followEdits } from "../../utils/followPref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
 import { dropStashEntry, loadPendingStash, pendingStashPaths, requestStash } from "../../utils/hotExit";
 import { closeAllowed } from "../../utils/closeGuard";
@@ -587,7 +587,6 @@ export default function Editor(props: {
   const [previewOn, setPreviewOn] = createSignal<Set<string>>(new Set());
   // Per-tab soft-wrap overrides; the rule itself lives in `softWrapTabs.ts`.
   const [wrapById, setWrapById] = createSignal<WrapOverrides>({});
-  const [follow, setFollow] = createSignal(false);
   const [gotoTarget, setGotoTarget] = createSignal<
     { path: string; line: number; col?: number; nonce: number } | null
   >(null);
@@ -2130,7 +2129,7 @@ export default function Editor(props: {
           );
         }
       }
-      if (!follow()) return;
+      if (!followEdits()) return;
       if (external.length) openFile(external[external.length - 1]);
     });
     // Unsaved-buffer guard on app close. window.confirm can't run here, so always
@@ -2282,20 +2281,14 @@ export default function Editor(props: {
           }
         />
       </Show>
-      <IconButton
-        active={follow()}
-        icon={<Icon icon={Bot} />}
-        onClick={() => setFollow(!follow())}
-        tooltip={
-          follow()
-            ? "Following live edits: auto-opening the most-recently-changed file as sessions edit. Click to stop."
-            : "Follow live edits: auto-open the most-recently-changed file as sessions edit them (skips git, build output, and your own saves)."
-        }
-      />
-      <Show when={props.onToggleFiletree && !filetreeOn()}>
-        {filetreeToggleBtn(false)}
-      </Show>
     </>
+  );
+
+  // The strip's right edge, past every kind's own controls: revealing the tree
+  // is about the window rather than about a tab, and it is also the one button
+  // whose whole job is to be findable when the thing it opens is not on screen.
+  const editorFiletreeReveal = () => (
+    <Show when={props.onToggleFiletree && !filetreeOn()}>{filetreeToggleBtn(false)}</Show>
   );
 
   // Where each column's CodeMirror view goes. Elements rather than ids, so the
@@ -2541,6 +2534,7 @@ export default function Editor(props: {
     // Before the terminal's, so the file controls and then the session ones
     // read as two groups rather than interleaving (phase 13).
     trailingRank: 10,
+    trailingEdge: editorFiletreeReveal,
     activate: (u) => setActiveId(u.id),
     close: (u) => void closeTab(u.id),
     // Pane hosting (plan phase 7): the file-pinned pane draws this panel's
