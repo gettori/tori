@@ -71,6 +71,10 @@ pub fn events_from_turns(
                         user_blocks.push(ContentBlock::Text { text: text.clone() });
                     }
                 }
+                // Without its bytes, which the transcript reader deliberately
+                // did not keep. The turn says an image was there; only the live
+                // turn that sent it can still draw it.
+                "image" if turn.role == "user" => user_blocks.push(ContentBlock::ImageRef),
                 "compaction" => {
                     events.push(ChatEvent::Compacted {
                         session_id: session_id.to_string(),
@@ -395,7 +399,7 @@ fn take_call(open: &mut Vec<(String, String)>, block: &TranscriptBlock) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sessions::{compaction_block, text_block, tool_call_block, tool_result_block};
+    use crate::sessions::{compaction_block, image_block, text_block, tool_call_block, tool_result_block};
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
@@ -551,6 +555,30 @@ mod tests {
                 _ => "other",
             })
             .collect()
+    }
+
+    #[test]
+    fn a_replayed_image_keeps_its_place_in_the_prompt() {
+        let turns = vec![
+            turn("user", vec![image_block(), text_block("text", "what colour is this?".into())]),
+            turn("user", vec![image_block()]),
+        ];
+        let blocks: Vec<Vec<ContentBlock>> = events_from_turns("s1", &turns, &[])
+            .into_iter()
+            .filter_map(|e| match e {
+                ChatEvent::UserMessage { blocks, .. } => Some(blocks),
+                _ => None,
+            })
+            .collect();
+
+        // In front of the text, which is where it was sent.
+        assert_eq!(
+            blocks[0],
+            vec![ContentBlock::ImageRef, ContentBlock::Text { text: "what colour is this?".into() }]
+        );
+        // An image-only prompt still replays as a prompt. It used to produce no
+        // user message at all, so a reopened chat lost the question entirely.
+        assert_eq!(blocks[1], vec![ContentBlock::ImageRef]);
     }
 
     #[test]

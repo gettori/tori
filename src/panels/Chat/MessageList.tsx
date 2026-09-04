@@ -13,7 +13,41 @@ import Markdown from "./Markdown";
 import { foldEdits } from "./toolRenderers";
 
 function blockText(blocks: readonly ContentBlock[]): string {
-  return blocks.map((b) => (b.type === "text" ? b.text : b.type === "fileRef" ? `@${b.path}` : "[image]")).join("\n");
+  return blocks
+    .flatMap((b) => (b.type === "text" ? [b.text] : b.type === "fileRef" ? [`@${b.path}`] : []))
+    .join("\n");
+}
+
+/** `src` is null for an image a replay knows was sent but has no bytes for. */
+type PromptImage = { nth: number; src: string | null };
+
+function promptImages(blocks: readonly ContentBlock[]): PromptImage[] {
+  const found: PromptImage[] = [];
+  for (const b of blocks) {
+    if (b.type === "image") found.push({ nth: found.length + 1, src: `data:${b.mediaType};base64,${b.data}` });
+    else if (b.type === "imageRef") found.push({ nth: found.length + 1, src: null });
+  }
+  return found;
+}
+
+/** Above the text, which is the order they were sent in and the order the
+ *  composer drew them in, so a chip does not move when it becomes a turn. A
+ *  live turn still holds its bytes; a replayed one is numbered instead. */
+function PromptImages(props: { blocks: readonly ContentBlock[] }) {
+  const images = createMemo(() => promptImages(props.blocks));
+  return (
+    <Show when={images().length}>
+      <div class={styles.promptImages}>
+        <For each={images()}>
+          {(img) => (
+            <Show when={img.src} fallback={<span class={styles.promptImageGone}>[Image #{img.nth}]</span>}>
+              {(src) => <img class={styles.promptImage} src={src()} alt={`attached image ${img.nth}`} />}
+            </Show>
+          )}
+        </For>
+      </div>
+    </Show>
+  );
 }
 
 /** The settled label: measured seconds when the span is real, plain past tense
@@ -395,6 +429,7 @@ export default function MessageList(props: {
                         </Tooltip>
                       )}
                     </Show>
+                    <PromptImages blocks={it().blocks} />
                     <Show when={it().steer}>
                       <span class={styles.steerLabel}>Steer</span>
                     </Show>
