@@ -32,6 +32,7 @@ import { rememberedWindows } from "./contextWindowMemory";
 import type { ChatConfig, ChatMode } from "./agents";
 import type { CatalogModel, ModelCatalog } from "./modelCatalog";
 import type { ChatConfigOption, ChatEffortLevel, ChatModeInfo, ChatModelInfo, Usage } from "./chatTypes";
+import { currentOf } from "./chatTypes";
 
 export type PickableModel = {
   /** What `--model` takes, and the authority for the picker's own selection:
@@ -482,8 +483,7 @@ export function cachedModes(
 
 /** The mode an ACP catalogue says the session it was probed from was in. */
 function currentModeOf(options: readonly ChatConfigOption[]): string | null {
-  const mode = options.find((o) => o.category === "mode");
-  return mode?.kind === "select" ? mode.current : null;
+  return currentOf(options, "mode");
 }
 
 /**

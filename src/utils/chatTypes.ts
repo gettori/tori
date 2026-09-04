@@ -900,6 +900,14 @@ export function mirroredOptions(options: readonly ChatConfigOption[]): ChatConfi
   return options.filter((o) => !BESPOKE_CATEGORIES.has(o.category));
 }
 
+/// The value in force for the one select of `category`, or null without one.
+/// By category and never by id: the id is the agent's own vocabulary (Codex's
+/// effort selector is `reasoning_effort`), `category` is the spec's word.
+export function currentOf(options: readonly ChatConfigOption[], category: string): string | null {
+  const option = options.find((o) => o.category === category && o.kind === "select");
+  return option?.kind === "select" ? option.current : null;
+}
+
 /// Whether this option can take this value at all. A withdrawn choice and a
 /// lever that changed shape both read as no, because sending the wrong shape is
 /// the one thing an agent answers by doing nothing at all.

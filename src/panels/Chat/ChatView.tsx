@@ -55,6 +55,8 @@ import { hunkRevertPermission } from "../../utils/hunkRevert";
 import {
   parseChatEvent,
   type ChatConfigValue,
+  currentOf,
+  type ChatConfigOption,
   type ChatEvent,
   type ContentBlock,
   type PermissionMode,
@@ -615,7 +617,9 @@ export default function ChatView(props: {
       // the user has already closed by the time the answer comes back.
       if (ev.type === "modeRefused") {
         emitWith<ToastEvent>(TOAST, { message: ev.reason, kind: "error" });
+        if (ev.mode === askedMode) askedMode = null;
       }
+      if (ev.type === "configOptions") recordConfirmed(ev.options);
       // A real turn boundary, not one inferred from a re-read prompt count.
       // Fired on `turnStarted` so the snapshot is the tree *before* this turn's
       // edits, which is the only state reverting the turn can mean.
@@ -808,11 +812,9 @@ export default function ChatView(props: {
   /**
    * Put the draft's pick to an ACP session, now that it has one.
    *
-   * Awaited before the held message goes: a stale cache row is only ever caught
-   * by the agent refusing the value, and sending on the wrong model is not
-   * something a later error can undo. A refusal therefore keeps the message
-   * held and says so - the session stays open and locked, so the model can be
-   * picked again and the send goes when a pick lands.
+   * Awaited before the held message goes, but the invoke only rejects a switch
+   * the transport refuses synchronously (`Switch::Unsupported` or `Unknown`);
+   * the agent's own refusal is an event that lands after the message has gone.
    */
   createEffect(() => {
     if (pickApplied() || !canSend() || pickTried) return;
@@ -1303,10 +1305,39 @@ export default function ChatView(props: {
     }));
   }
 
+  // What an ACP session was asked to switch to and has not answered yet. Its
+  // answer (`configOptions`) is the record's trigger: a pick it took is written
+  // to the tab and the project, one it refused or answered otherwise is dropped.
+  let askedMode: PermissionMode | null = null;
+  let askedModel: { model: string; effort: string | null } | null = null;
+  function recordConfirmed(options: readonly ChatConfigOption[]) {
+    const mode = currentOf(options, "mode");
+    if (askedMode !== null && mode === askedMode) {
+      rememberChatPrefs(props.workspace, { mode });
+      setDraftPick(props.tabId, { mode });
+      askedMode = null;
+    }
+    const model = currentOf(options, "model");
+    if (askedModel !== null && model !== null) {
+      if (model === askedModel.model) {
+        rememberChatPrefs(props.workspace, askedModel);
+        setDraftPick(props.tabId, askedModel);
+      }
+      askedModel = null;
+    }
+  }
+
   function onSelectMode(mode: PermissionMode) {
     edit((s) => selectMode(s, mode));
     void invoke("chat_set_mode", { sessionId: props.sessionId, mode })
       .then(() => {
+        // On ACP the invoke resolves on staging, so the record waits for the
+        // agent's answer (`recordConfirmed`): written here, a refused mode
+        // would reopen every later draft in this project on it.
+        if (!pickRidesArgv(findAdapter(props.agentId).chat?.transport)) {
+          askedMode = mode;
+          return;
+        }
         rememberChatPrefs(props.workspace, { mode });
         // And on the tab, which is what a restore reads: a resumed session
         // comes back on the CLI's default mode, so this is the only record of
@@ -1476,6 +1507,12 @@ export default function ChatView(props: {
       // model it agreed to.
       .then(() => {
         setPickApplied(true);
+        // Same split as the mode: an ACP answer is the acceptance, the argv
+        // transport's resolved invoke is.
+        if (!pickRidesArgv(findAdapter(props.agentId).chat?.transport)) {
+          askedModel = { model, effort };
+          return;
+        }
         // Recorded only once the agent has taken it, so the next draft here
         // opens on a model that was accepted rather than one that was refused.
         rememberChatPrefs(props.workspace, { model, effort });

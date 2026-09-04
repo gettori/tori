@@ -51,6 +51,7 @@ import type {
   ToolSummary,
   Usage,
 } from "../../utils/chatTypes";
+import { currentOf } from "../../utils/chatTypes";
 import type { ChatTransport } from "../../utils/agents";
 import { chatPlugins, stringList, type ChatPlugin } from "../../utils/chatCapabilities";
 import { contextTokens, reportedWindows } from "../../utils/chatModels";
@@ -990,6 +991,16 @@ function settleLanes(s: ChatState, status: string) {
 function noteMode(s: ChatState, mode: PermissionMode) {
   s.permissionMode = mode;
   s.pendingMode = null;
+  delete s.refusedModes[mode];
+}
+
+/** Settle a pending pick only when the reported mode is it: an ACP mode pick
+ *  waits for the next prompt while a model pick is answered at once, so an
+ *  answer in between still names the old mode. */
+function confirmMode(s: ChatState, mode: PermissionMode) {
+  s.permissionMode = mode;
+  if (s.pendingMode === mode) s.pendingMode = null;
+  delete s.refusedModes[mode];
 }
 
 /**
@@ -1117,7 +1128,10 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // `system/init` re-emits every turn; only the first is a session start,
       // and treating a later one as one would reset the transcript mid-chat.
       noteModel(s, ev.model);
-      noteMode(s, ev.permissionMode);
+      // A repeat is an ACP reload re-announcing the session, which can arrive
+      // while a mode pick is still staged for the next prompt.
+      if (s.started) confirmMode(s, ev.permissionMode);
+      else noteMode(s, ev.permissionMode);
       s.tools = ev.tools;
       s.slashCommands = ev.slashCommands;
       s.mcpServers = ev.mcpServers;
@@ -1152,6 +1166,22 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // Replaced wholesale, never merged: the agent republishes its whole set
       // on every change, and merging would keep a lever it had just withdrawn.
       s.configOptions = ev.options;
+      // On ACP this answer is how a switch is confirmed: no turn boundary ever
+      // re-reports the mode and model the way claude's init does. Claude's own
+      // options carry no category, so nothing below fires there.
+      const mode = currentOf(ev.options, "mode");
+      if (mode !== null) confirmMode(s, mode);
+      const model = currentOf(ev.options, "model");
+      if (model !== null) {
+        noteModel(s, model);
+        // Answered in order and at once, so a pick still pending after the
+        // answer is one the agent did not take. `modelValue` goes with it, or
+        // the resolver would keep showing the pick over the reported id.
+        if (s.pendingModel !== null) {
+          s.pendingModel = null;
+          s.modelValue = null;
+        }
+      }
       return;
     }
     case "turnStarted": {
