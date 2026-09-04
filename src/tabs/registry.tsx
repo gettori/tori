@@ -31,6 +31,10 @@ export type TabDescriptor = {
    *  rather than taken from registration order, which is mount order and says
    *  nothing about how the controls read left to right. */
   trailingRank?: number;
+  /** Drawn after every ranked cluster, whatever kinds are registered. For a
+   *  control that is the strip's own edge rather than any kind's: the filetree
+   *  reveal is about the pane's chrome, not about what is open in it. */
+  trailingEdge?: () => JSX.Element;
   activate: (t: UnifiedTab) => void;
   close: (t: UnifiedTab, e: Event) => void;
   /** The tab's surface on the stage (the render component of the kind). */
@@ -68,17 +72,24 @@ export function kindEntry(kind: UnifiedTabKind): TabDescriptor {
 }
 
 /** Every registered trailing cluster, in the order they are drawn: one entry
- *  per distinct cluster, so the terminal kinds' shared one appears once. */
+ *  per distinct cluster, so the terminal kinds' shared one appears once. Ranked
+ *  clusters first, then whatever asked to be the strip's edge. */
 export function trailingClusters(): (() => JSX.Element)[] {
   generation();
   const seen = new Set<() => JSX.Element>();
   const out: { rank: number; fn: () => JSX.Element }[] = [];
+  const edge: (() => JSX.Element)[] = [];
   for (const d of entries.values()) {
-    if (!d.trailing || seen.has(d.trailing)) continue;
-    seen.add(d.trailing);
-    out.push({ rank: d.trailingRank ?? 100, fn: d.trailing });
+    if (d.trailing && !seen.has(d.trailing)) {
+      seen.add(d.trailing);
+      out.push({ rank: d.trailingRank ?? 100, fn: d.trailing });
+    }
+    if (d.trailingEdge && !seen.has(d.trailingEdge)) {
+      seen.add(d.trailingEdge);
+      edge.push(d.trailingEdge);
+    }
   }
-  return out.sort((a, b) => a.rank - b.rank).map((x) => x.fn);
+  return [...out.sort((a, b) => a.rank - b.rank).map((x) => x.fn), ...edge];
 }
 
 /** For readers that must tolerate a not-yet-mounted panel (a pane's pin kind
