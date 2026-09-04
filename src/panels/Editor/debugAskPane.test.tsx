@@ -24,6 +24,7 @@ const SELECTED: Selection = {
   branch: "main",
   projectKind: "git",
   agent: "claude",
+  profile: null,
   sessionId: "s1",
   sessionCwd: REPO,
 };

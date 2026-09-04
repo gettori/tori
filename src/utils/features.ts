@@ -136,6 +136,9 @@ export function featureSelection(feature: Feature, storedActiveRoot?: string | n
     folderPath: activeRoot ?? "",
     branch: feature.branch,
     projectKind: "feature",
+    // No session selected yet, so no account: a Feature is a set of branches,
+    // and the profile arrives with the session picked inside it.
+    profile: null,
   };
 }
 

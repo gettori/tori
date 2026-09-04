@@ -733,8 +733,8 @@ const P8_CSS = `
 
 export const PaneMoveCycle: Story = {
   render: () => {
-    const term1 = { id: "sh:1", title: "one", cwd: "/tmp", workspace: P8_WS, kind: "shell" as const, program: "", args: [] };
-    const term2 = { id: "sh:2", title: "two", cwd: "/tmp", workspace: P8_WS, kind: "shell" as const, program: "", args: [] };
+    const term1 = { id: "sh:1", title: "one", cwd: "/tmp", workspace: P8_WS, kind: "shell" as const, program: "", args: [], profile: null };
+    const term2 = { id: "sh:2", title: "two", cwd: "/tmp", workspace: P8_WS, kind: "shell" as const, program: "", args: [], profile: null };
     let live: ReturnType<typeof makeTerm> | undefined;
     // The other pane's surface is a CM6 view, so the same run shows both kinds
     // of stage re-measuring as the tree changes shape around them.
@@ -865,7 +865,7 @@ const P10_WS = "drag-ws";
 
 export const TabDragCycle: Story = {
   render: () => {
-    const mk = (id: string) => ({ id, title: id, cwd: "/tmp", workspace: P10_WS, kind: "shell" as const, program: "", args: [] });
+    const mk = (id: string) => ({ id, title: id, cwd: "/tmp", workspace: P10_WS, kind: "shell" as const, program: "", args: [], profile: null });
     let live: ReturnType<typeof makeTerm> | undefined;
 
     localStorage.removeItem("sway.panes.v1");

@@ -39,6 +39,7 @@ function open() {
     <SessionPanel
       path="/proj/.session"
       agent="claude"
+      profile={null}
       cwd="/proj"
       projectRoot="/proj"
       selfSessionId="s1"

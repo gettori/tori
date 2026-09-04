@@ -902,6 +902,7 @@ export default function CodeEditor(props: {
     return {
       sessionId: sel.sessionId,
       agent: sel.agent ?? "claude",
+      profile: sel.profile,
       folderPath: sel.folderPath,
       sessionCwd: sel.sessionCwd,
       sessionPath: sel.sessionPath,

@@ -342,6 +342,7 @@ pub fn run() {
             health::refresh_agent_health,
             accounts::agent_accounts,
             accounts::agent_account_counts,
+            accounts::profile_spawn_env,
             accounts::add_agent_account,
             accounts::remove_agent_account,
             accounts::rename_agent_account,

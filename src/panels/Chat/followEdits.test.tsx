@@ -77,6 +77,7 @@ function mount(tabId = "chat:follow-1") {
       cwd="/work/repo"
       workspace="/work/repo"
       agentId="claude"
+      profile={null}
       title="chat"
       active={true}
       resume={true}

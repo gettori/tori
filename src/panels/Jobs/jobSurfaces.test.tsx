@@ -259,6 +259,7 @@ describe("what a job leaves alone", () => {
         kind: "shell",
         program: "/bin/zsh",
         args: [],
+        profile: null,
       },
     ]);
     terminals.focusTab("/space/proj/main", "sh:1");

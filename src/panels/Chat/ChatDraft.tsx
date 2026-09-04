@@ -26,7 +26,7 @@ import { probeAgent, probeOnHighlight, recheckAgent } from "./draftProbe";
 import { dropPending, draftFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
 import { draftPick, hasPick, resetDraftPick, setDraftOption, setDraftPick } from "../../utils/chatDraftPick";
 import { openAgentCard } from "../../utils/agentCard";
-import { agentReady, agentSignedOut, agentVersion, ensureAgentHealthLoaded } from "../../utils/agentHealth";
+import { agentReady, profileSignedOut, agentVersion, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
 import { agentOffReason, enabledChatAgents } from "../../utils/agentEnabled";
 import {
@@ -63,6 +63,10 @@ export default function ChatDraft(props: {
   /** The agent this draft would start. Lives on the tab record rather than here,
    *  so the tab bar and the palette cannot disagree about it. */
   agentId: string;
+  /** Which account of `agentId` it would start on; `null` is the default
+   *  profile. The send gate is per account: a draft on Fonn must not be
+   *  refused because the personal login expired. */
+  profile: string | null;
   /** Why the last first-send attempt did not reach a session. Rendered above the
    *  composer, because it is the thing that decides what the user does next. */
   error?: string;
@@ -101,8 +105,10 @@ export default function ChatDraft(props: {
       // off is absent rather than listed and refused.
       adapters: enabledChatAgents(),
       catalogs: modelCatalogs(),
-      ready: agentReady,
-      signedOut: agentSignedOut,
+      // Bound to this draft's account, not the agent's default one: the
+      // palette is a list of things this tab can start.
+      ready: (id: string) => agentReady(id, props.profile),
+      signedOut: (id: string) => profileSignedOut(id, props.profile),
       probing: isProbing,
       version: agentVersion,
     }),
@@ -185,7 +191,7 @@ export default function ChatDraft(props: {
     // The tab can outlive the setting: a draft left open while its agent was
     // turned off in another window still names it, and sending would start
     // something the user has said they do not want offered.
-    const off = agentOffReason(props.agentId);
+    const off = agentOffReason(props.agentId, props.profile);
     if (off) return off;
     const health = mine()?.health;
     if (!health || health.kind !== "fix") return null;

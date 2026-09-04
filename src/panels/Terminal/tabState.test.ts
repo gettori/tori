@@ -30,6 +30,7 @@ const tab = (over: Partial<OpenTerm> = {}): OpenTerm => ({
   kind: "shell",
   program: "",
   args: [],
+  profile: null,
   ...over,
 });
 

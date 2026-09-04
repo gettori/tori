@@ -100,6 +100,7 @@ function tab(id: string, ws: string, kind: OpenTerm["kind"] = "shell"): OpenTerm
     kind,
     program: "zsh",
     args: [],
+    profile: null,
     sessionId: kind === "chat" ? `s-${id}` : undefined,
   };
 }

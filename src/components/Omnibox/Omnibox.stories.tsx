@@ -30,6 +30,7 @@ const selection: Selection = {
   folderPath: REPO,
   branch: "main",
   projectKind: "plain",
+  profile: null,
 };
 
 const SYMBOLS = normalizeDocumentSymbols(

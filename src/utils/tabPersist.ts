@@ -41,6 +41,15 @@ export type PersistedTab = {
   kind: PersistedKind;
   program: string;
   args: string[];
+  // The account this tab ran as, absent for the default profile and for
+  // anything a build older than this one wrote. Optional here and required on
+  // the live tab exactly because those two absences read the same: as the
+  // default profile, which is what every tab was before this existed.
+  //
+  // The profile id travels, never the resolved `env`: the home path belongs to
+  // `accounts.json`, and a copy stored here would survive a profile being
+  // renamed, moved or removed and respawn against a directory nothing owns.
+  profile?: string;
   // Agent tabs that were resumed from a known session; absent for a fresh agent
   // tab whose transcript had not appeared yet, and for plain shells.
   //
@@ -87,6 +96,7 @@ export type OpenTabLike = {
   kind: string;
   program: string;
   args: string[];
+  profile: string | null;
   sessionId?: string;
   rewindTo?: number;
   /** Chat tabs: whether a child is attached right now. A restored chat opened
@@ -141,6 +151,7 @@ export function toStore(
       kind: t.kind,
       program: t.program,
       args: t.args,
+      ...(t.profile ? { profile: t.profile } : {}),
       ...(t.sessionId ? { sessionId: t.sessionId } : {}),
       ...(t.rewindTo ? { rewindTo: t.rewindTo } : {}),
       ...(draft && t.text && t.text.length <= MAX_DRAFT_TEXT ? { text: t.text } : {}),
@@ -242,7 +253,11 @@ export function parseStore(raw: string | null): TabStore {
         .map((t) => {
           // An id that is not a non-empty string is dropped rather than carried:
           // restore mints a fresh one, which is exactly what an older store gets.
-          const base = typeof t.id === "string" && t.id ? t : { ...t, id: undefined };
+          // A profile that is not one drops to the default, which is the only
+          // account a hand-edited file can name that is certain to exist.
+          const id = typeof t.id === "string" && t.id ? t.id : undefined;
+          const profile = typeof t.profile === "string" && t.profile ? t.profile : undefined;
+          const base = { ...t, id, profile };
           return base.kind === "chat" ? { ...base, ...chatFields(base) } : base;
         });
       if (tabs.length) {

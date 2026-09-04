@@ -34,7 +34,7 @@ import {
 import { composeDiagnostic, composeHunkComment, composeSelectionMention, type SessionTarget } from "./safeSend";
 
 const SESSION = "s1";
-const TARGET: SessionTarget = { sessionId: SESSION, agent: "claude", folderPath: "/work/repo" };
+const TARGET: SessionTarget = { sessionId: SESSION, agent: "claude", profile: null, folderPath: "/work/repo" };
 
 describe("routeFor", () => {
   // The whole point of the split: a chat-hosted session takes the structured

@@ -17,13 +17,23 @@ export type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "ver
 // both true.
 export type SignIn = "unknown" | "signedIn" | "signedOut";
 
+/** What the sweep learned about one account of one agent. */
+export type ProfileHealth = {
+  id: string;
+  /** The user's own name for this account. */
+  label: string;
+  signIn: SignIn;
+  account: string | null;
+  apiKeySource: string | null;
+};
+
 export type AgentHealth = {
   id: string;
   label: string;
   program: string;
   status: BinaryStatus;
   // For the **default** profile: what a session started without choosing an
-  // account runs as. Per-profile answers come from `agent_accounts`.
+  // account runs as. `profiles` below is the same answer per account.
   signIn: SignIn;
   // The account the agent named, when it names one. Only Claude does, of the
   // three measured.
@@ -42,6 +52,10 @@ export type AgentHealth = {
   hooks: boolean;
   needsYou: boolean;
   overridePath: string | null;
+  // Every account of this agent, default first. One bounded probe each on the
+  // sweep, so the send gate can ask about the account a tab is actually on
+  // without a subprocess per palette open.
+  profiles: ProfileHealth[];
 };
 
 // Null means "not asked yet", which is deliberately distinct from an empty
@@ -98,11 +112,27 @@ export function refreshAgentHealth(): Promise<AgentHealth[] | null> {
  * anyway produces a tab that asks for a login the chat surface cannot give. Only
  * a definite `signedOut` counts; `unknown` stays ready like everything else.
  */
-/** The agent's own answer that nobody is signed in, and only that: `unknown`
- *  is not a no. Told apart from `agentReady` because the two failures need
- *  different words - a missing binary is installed, a missing login is not. */
-export function agentSignedOut(id: string): boolean {
-  return rows()?.find((h) => h.id === id)?.signIn === "signedOut";
+/**
+ * The agent's own answer that nobody is signed in to one **account** of it, and
+ * only that: `unknown` is not a no. `null` is the default profile.
+ *
+ * Told apart from `agentReady` because the two failures need different words: a
+ * missing binary is installed, a missing login is signed in to.
+ *
+ * Per account because the gate is. A draft on the Fonn account blocked because
+ * the personal account is signed out is a refusal the user cannot act on from
+ * that tab, and one let through because Fonn is signed in is a session that
+ * will not start.
+ *
+ * An account with no row of its own falls back to the agent's default answer,
+ * which is what a sweep taken before that account was added holds, and is the
+ * direction that stays ready rather than blocking on ignorance.
+ */
+export function profileSignedOut(id: string, profile: string | null): boolean {
+  const row = rows()?.find((h) => h.id === id);
+  if (!row) return false;
+  const per = profile ? row.profiles?.find((p) => p.id === profile) : null;
+  return (per?.signIn ?? row.signIn) === "signedOut";
 }
 
 /** The sweep as a list, or null while there is none.
@@ -125,14 +155,53 @@ export function agentHealthFor(id: string): AgentHealth | null {
   return rows()?.find((h) => h.id === id) ?? null;
 }
 
-export function agentReady(id: string): boolean {
+export function agentReady(id: string, profile: string | null = null): boolean {
   const all = rows();
   if (!all) return true;
   const row = all.find((h) => h.id === id);
   // An adapter with no health row is one the sweep did not cover, which is
   // ignorance again rather than a verdict.
   if (!row) return true;
-  return row.status !== "notFound" && row.signIn !== "signedOut";
+  return row.status !== "notFound" && !profileSignedOut(id, profile);
+}
+
+/**
+ * The user's own name for one account, or null when naming it would say
+ * nothing.
+ *
+ * Null on a single-account install, mirroring the rule the session index
+ * already applies (`sessions.rs::profile_label`): "Default" is a word for the
+ * only thing there is, and putting it on every chat header would be a label
+ * nobody can act on. So a surface renders whatever this returns and does not
+ * have to count accounts itself.
+ */
+export function profileLabel(id: string, profile: string | null): string | null {
+  const row = rows()?.find((h) => h.id === id);
+  if (!row || (row.profiles?.length ?? 0) < 2) return null;
+  return row.profiles.find((p) => p.id === (profile ?? DEFAULT_PROFILE))?.label ?? null;
+}
+
+/** The id of the account that is the user's existing login, mirroring
+ *  `accounts::DEFAULT_PROFILE_ID`. A tab carries `null` for it, because at the
+ *  spawn boundary "unset" is what makes it the default. */
+const DEFAULT_PROFILE = "default";
+
+/**
+ * One account id in the tab model's spelling: `null` for the default account.
+ *
+ * The backend has two vocabularies for the same account and both are right
+ * where they are. A session row is tagged with the id of the **root** that held
+ * its transcript, which is a real profile id and so is the literal `"default"`;
+ * a tab spells the same account `null`, because at the spawn boundary the home
+ * variable being *unset* is what makes it the default.
+ *
+ * This is the one crossing. Without it a restored default-account tab would
+ * carry `"default"` while a fresh one carried `null`, and every later
+ * comparison (a palette row, a remembered pick) would have to know that one
+ * account has two names - the shape of [[concept_one_directory_two_spellings]].
+ */
+export function asTabProfile(id: string | null | undefined): string | null {
+  return id && id !== DEFAULT_PROFILE ? id : null;
 }
 
 /** The binary's version as the sweep measured it, or null while nothing has. */

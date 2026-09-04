@@ -29,18 +29,23 @@ vi.mock("../panels/Settings/settingsStore", () => ({
 const health = vi.hoisted(() => ({
   unswept: new Set<string>(),
   notInstalled: new Set<string>(),
+  // Keyed `<agent>:<profile>`, so a test can sign one account out and leave the
+  // other alone, which is the whole of what the per-account gate has to do.
   signedOut: new Set<string>(),
 }));
+const key = (id: string, profile: string | null = null) => `${id}:${profile ?? ""}`;
 vi.mock("./agentHealth", () => ({
-  agentReady: (id: string) => !health.notInstalled.has(id) && !health.signedOut.has(id),
-  agentSignedOut: (id: string) => health.signedOut.has(id),
+  agentReady: (id: string, profile: string | null = null) =>
+    !health.notInstalled.has(id) && !health.signedOut.has(`${id}:${profile ?? ""}`),
+  profileSignedOut: (id: string, profile: string | null = null) =>
+    health.signedOut.has(`${id}:${profile ?? ""}`),
   agentHealthFor: (id: string) =>
     health.unswept.has(id)
       ? null
       : {
           id,
           status: health.notInstalled.has(id) ? "notFound" : "versionMatch",
-          signIn: health.signedOut.has(id) ? "signedOut" : "unknown",
+          signIn: health.signedOut.has(`${id}:`) ? "signedOut" : "unknown",
         },
 }));
 
@@ -98,7 +103,7 @@ describe("what counts as enabled", () => {
   // and reading it as a refusal would make them permanently un-offerable.
   it("blocks a definite signed-out and lets unknown through", () => {
     expect(enableBlockedReason("gemini")).toBeNull();
-    health.signedOut.add("gemini");
+    health.signedOut.add(key("gemini"));
     expect(enableBlockedReason("gemini")).toBe("Sign in first");
     health.signedOut.clear();
     health.notInstalled.add("gemini");
@@ -122,8 +127,23 @@ describe("the sentence a refusal gets", () => {
     health.notInstalled.add("claude");
     expect(agentOffReason("claude")).toBe("Claude is not installed");
     health.notInstalled.clear();
-    health.signedOut.add("claude");
+    health.signedOut.add(key("claude"));
     expect(agentOffReason("claude")).toBe("Claude is signed out");
+  });
+
+  // The failure this is here for: a draft on Fonn refused because the personal
+  // login expired is a refusal the user cannot act on from that tab, and one
+  // let through because Fonn is fine is a session that will not start.
+  it("answers for the account asked about, in the same words either way", () => {
+    bench.enabled = { claude: true };
+    health.signedOut.add(key("claude"));
+    expect(agentOffReason("claude", "fonn")).toBeNull();
+    expect(agentOffReason("claude", null)).toBe("Claude is signed out");
+
+    health.signedOut.clear();
+    health.signedOut.add(key("claude", "fonn"));
+    expect(agentOffReason("claude", null)).toBeNull();
+    expect(agentOffReason("claude", "fonn")).toBe("Claude is signed out");
   });
 
   it("says nothing at all before the settings file has been read", () => {

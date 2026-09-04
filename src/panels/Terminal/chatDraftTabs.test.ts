@@ -13,6 +13,7 @@ const chat = (over: Partial<OpenTerm> = {}): OpenTerm => ({
   kind: "chat",
   program: "claude",
   args: [],
+  profile: null,
   ...over,
 });
 

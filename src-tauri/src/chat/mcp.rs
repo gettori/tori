@@ -15,6 +15,14 @@
 //! | user | `~/.claude.json` | `mcpServers` |
 //! | local | `~/.claude.json` | `projects[<cwd>].mcpServers` |
 //!
+//! The two user-scope rows are **per account**. `.claude.json` relocates
+//! asymmetrically under `CLAUDE_CONFIG_DIR`: by default it sits at
+//! `~/.claude.json`, *outside* `~/.claude`, but under an isolated home it is
+//! written *inside* that directory (see [[adr_credential_custody]]). So a
+//! session on an added profile has its own user-scope servers, and reading the
+//! default account's file for it would list servers it cannot use and hide the
+//! ones it can.
+//!
 //! ## We read all three and write only the project file
 //!
 //! `~/.claude.json` is not a config file, it is Claude's live application
@@ -99,8 +107,18 @@ pub fn project_config_path(cwd: &Path) -> PathBuf {
     cwd.join(".mcp.json")
 }
 
-fn user_config_path() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".claude.json"))
+/// Where this account's `.claude.json` is.
+///
+/// `None` for `profile_home` is the default account, whose file sits *beside*
+/// `~/.claude` rather than inside it. An isolated home inverts that: the file
+/// is written within the directory `CLAUDE_CONFIG_DIR` names. Getting this
+/// backwards is not a missing-file error, it is the wrong account's servers
+/// listed under the right account's name.
+fn user_config_path(profile_home: Option<&str>) -> Option<PathBuf> {
+    match profile_home {
+        Some(home) => Some(Path::new(home).join(".claude.json")),
+        None => dirs::home_dir().map(|h| h.join(".claude.json")),
+    }
 }
 
 /// Every MCP server configured for `cwd`, across all three scopes.
@@ -187,9 +205,9 @@ pub fn remove_server(doc: Option<Value>, name: &str) -> Option<Value> {
 
 // --- thin wrappers over the real paths ---
 
-pub fn list_for(cwd: &str) -> Vec<McpEntry> {
+pub fn list_for(cwd: &str, profile_home: Option<&str>) -> Vec<McpEntry> {
     let project = read_json(&project_config_path(Path::new(cwd)));
-    let user_state = user_config_path().and_then(|p| read_json(&p));
+    let user_state = user_config_path(profile_home).and_then(|p| read_json(&p));
     merge_scopes(project.as_ref(), user_state.as_ref(), cwd)
 }
 
@@ -202,22 +220,34 @@ fn write_project(cwd: &str, doc: &Value) -> Result<(), String> {
     std::fs::write(&path, json).map_err(|e| e.to_string())
 }
 
-pub fn add_to_project(cwd: &str, name: &str, config: Value) -> Result<Vec<McpEntry>, String> {
+/// The project file is shared by every account, so the write is not
+/// profile-scoped; `profile_home` is only for the listing this returns, which
+/// has to come back in the same terms the caller asked in.
+pub fn add_to_project(
+    cwd: &str,
+    name: &str,
+    config: Value,
+    profile_home: Option<&str>,
+) -> Result<Vec<McpEntry>, String> {
     if name.trim().is_empty() {
         return Err("A server needs a name.".into());
     }
     let path = project_config_path(Path::new(cwd));
     let doc = upsert_server(read_json(&path), name, config);
     write_project(cwd, &doc)?;
-    Ok(list_for(cwd))
+    Ok(list_for(cwd, profile_home))
 }
 
-pub fn remove_from_project(cwd: &str, name: &str) -> Result<Vec<McpEntry>, String> {
+pub fn remove_from_project(
+    cwd: &str,
+    name: &str,
+    profile_home: Option<&str>,
+) -> Result<Vec<McpEntry>, String> {
     let path = project_config_path(Path::new(cwd));
     match remove_server(read_json(&path), name) {
         Some(doc) => {
             write_project(cwd, &doc)?;
-            Ok(list_for(cwd))
+            Ok(list_for(cwd, profile_home))
         }
         // Not in the project file: either it was never there, or it is a
         // user/local server we deliberately do not write.
@@ -232,6 +262,21 @@ mod tests {
 
     fn stdio(cmd: &str) -> Value {
         json!({ "command": cmd, "args": [] })
+    }
+
+    /// The asymmetry measured in [[adr_credential_custody]], as a test rather
+    /// than a comment: `.claude.json` sits *beside* the default home and
+    /// *inside* an isolated one. Getting it backwards is not a missing file, it
+    /// is one account's servers listed under another account's name.
+    #[test]
+    fn an_isolated_home_keeps_its_claude_json_inside_it() {
+        let isolated = user_config_path(Some("/homes/fonn")).expect("an explicit home always resolves");
+        assert_eq!(isolated, Path::new("/homes/fonn/.claude.json"));
+
+        // And the default account's is a sibling of `~/.claude`, not a child.
+        let default = user_config_path(None).expect("this machine has a home directory");
+        assert!(default.ends_with(".claude.json"));
+        assert!(!default.to_string_lossy().contains("/.claude/"));
     }
 
     #[test]

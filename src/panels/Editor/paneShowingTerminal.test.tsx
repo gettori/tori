@@ -80,7 +80,7 @@ const columnHidden = () => /hidden/.test(column().className);
 
 function openShellTab(id: string) {
   store.setOpen([
-    { id, title: "zsh", cwd: REPO, workspace: REPO, kind: "shell", program: "/bin/zsh", args: [] },
+    { id, title: "zsh", cwd: REPO, workspace: REPO, kind: "shell", program: "/bin/zsh", args: [], profile: null },
   ]);
   store.focusTab(REPO, id);
 }

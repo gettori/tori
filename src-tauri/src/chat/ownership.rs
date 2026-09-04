@@ -77,10 +77,22 @@ pub struct Claim {
     /// existed, since only claude could have written one.
     #[serde(default = "default_agent")]
     pub agent: String,
+    /// Which account of `agent` this session runs as.
+    ///
+    /// Defaulted for a claim file written before accounts existed, and that
+    /// default is correct rather than a placeholder: every session claimed
+    /// before this field ran on the login the user already had, which *is* the
+    /// default profile.
+    #[serde(default = "default_profile")]
+    pub profile: String,
 }
 
 fn default_agent() -> String {
     "claude".to_string()
+}
+
+fn default_profile() -> String {
+    crate::accounts::DEFAULT_PROFILE_ID.to_string()
 }
 
 /// What a claim attempt resolved to.
@@ -337,7 +349,17 @@ fn with_live_child(
         .collect()
 }
 
-/// Session ids of `agent` held by a Sway that is still running.
+/// **Tab** ids of `agent`'s `profile` held by a Sway that is still running.
+///
+/// Tab ids, not session ids, because the caller unions this with the PTY host's
+/// own live table and that one can only answer in tab ids. A resumed PTY agent
+/// tab is in both, so two id spaces would count it twice and tell the user to
+/// close two things that are one tab. A tab is also what they can act on.
+///
+/// Narrowed to one account, because that is the question removal asks: another
+/// account's live session is not harmed by deleting this one's home, and
+/// blocking on it would make an unrelated chat in the other profile an
+/// unexplainable reason the button will not work.
 ///
 /// Deliberately the opposite test to [`with_live_child`], which asks about the
 /// *agent* child and ignores whether Sway is alive. Here the question is "would
@@ -355,14 +377,15 @@ fn with_live_child(
 fn held_by(
     claims: &HashMap<String, Claim>,
     agent: &str,
+    profile: &str,
     sway_alive: impl Fn(u32) -> bool,
 ) -> Vec<String> {
     let mut out: Vec<String> = claims
-        .iter()
-        .filter(|(_, c)| c.agent == agent && sway_alive(c.sway_pid))
-        .map(|(id, _)| id.clone())
+        .values()
+        .filter(|c| c.agent == agent && c.profile == profile && sway_alive(c.sway_pid))
+        .map(|c| c.tab_id.clone())
         .collect();
-    // A `HashMap` has no order, and a message naming sessions must not shuffle
+    // A `HashMap` has no order, and a message naming tabs must not shuffle
     // between two readings of the same state.
     out.sort();
     out
@@ -481,18 +504,19 @@ impl Registry {
         with_live_child(&guard, ids, pid_alive)
     }
 
-    /// Session ids of `agent` that a **live** Sway is holding right now.
+    /// Tab ids of one `(agent, profile)` pair that a **live** Sway is holding
+    /// right now.
     ///
     /// One bounded question again, rather than handing out the table: the caller
-    /// is the accounts screen asking whether removing something would strand a
-    /// session in flight. A claim naming a dead `sway_pid` is a crash record,
+    /// is the accounts screen asking whether removing this account would strand
+    /// a session in flight. A claim naming a dead `sway_pid` is a crash record,
     /// not a holder, so it must not block anything.
-    pub fn held_by(&self, agent: &str) -> Vec<String> {
+    pub fn held_by(&self, agent: &str, profile: &str) -> Vec<String> {
         let guard = match self.claims.lock() {
             Ok(g) => g,
             Err(e) => e.into_inner(),
         };
-        held_by(&guard, agent, pid_alive)
+        held_by(&guard, agent, profile, pid_alive)
     }
 
     /// Move an existing claim onto the tab that has just taken the session over.
@@ -617,7 +641,7 @@ mod tests {
     use super::*;
 
     fn claim(surface: Surface, tab: &str) -> Claim {
-        Claim { surface, tab_id: tab.to_string(), child_pid: Some(4242), sway_pid: 1, agent: "claude".into() }
+        Claim { surface, tab_id: tab.to_string(), child_pid: Some(4242), sway_pid: 1, agent: "claude".into(), profile: "default".into() }
     }
 
     /// A per-test claims store. Never the real one: a test run while Sway is
@@ -809,7 +833,7 @@ mod tests {
     fn claims_round_trip_through_the_on_disk_shape() {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
-        record(&mut claims, "s2", Claim { surface: Surface::PtyAgent, tab_id: "tab-b".into(), child_pid: None, sway_pid: 9, agent: "claude".into() });
+        record(&mut claims, "s2", Claim { surface: Surface::PtyAgent, tab_id: "tab-b".into(), child_pid: None, sway_pid: 9, agent: "claude".into(), profile: "default".into() });
         assert_eq!(parse_claims(&serialize_claims(&claims)), claims);
     }
 
@@ -892,25 +916,79 @@ mod tests {
     // --- what a removal would strand ---
 
     fn held(agent: &str, sway_pid: u32, child_pid: Option<u32>) -> Claim {
+        held_on(agent, DEFAULT_PROFILE, sway_pid, child_pid)
+    }
+
+    const DEFAULT_PROFILE: &str = crate::accounts::DEFAULT_PROFILE_ID;
+
+    /// The tab id is derived from the session id so the assertions below can
+    /// name what they seeded: `held_by` answers in tab ids, not session ids.
+    fn held_on(agent: &str, profile: &str, sway_pid: u32, child_pid: Option<u32>) -> Claim {
         Claim {
             surface: Surface::Chat,
             tab_id: "tab".into(),
             child_pid,
             sway_pid,
             agent: agent.into(),
+            profile: profile.into(),
         }
     }
 
+    /// One claim, with a tab id of its own.
+    fn on_tab(claim: Claim, tab_id: &str) -> Claim {
+        Claim { tab_id: tab_id.into(), ..claim }
+    }
+
     #[test]
-    fn held_by_names_only_this_agents_live_sessions() {
+    fn held_by_names_only_this_agents_live_tabs() {
         let mut claims = HashMap::new();
-        claims.insert("claude-b".to_string(), held("claude", 1, Some(9)));
-        claims.insert("claude-a".to_string(), held("claude", 1, Some(9)));
-        claims.insert("codex-1".to_string(), held("codex", 1, Some(9)));
+        claims.insert("s-b".to_string(), on_tab(held("claude", 1, Some(9)), "claude-b"));
+        claims.insert("s-a".to_string(), on_tab(held("claude", 1, Some(9)), "claude-a"));
+        claims.insert("s-1".to_string(), on_tab(held("codex", 1, Some(9)), "codex-1"));
         // Sorted, so a refusal message reads the same twice running.
-        assert_eq!(held_by(&claims, "claude", |_| true), ["claude-a", "claude-b"]);
-        assert_eq!(held_by(&claims, "codex", |_| true), ["codex-1"]);
-        assert!(held_by(&claims, "gemini", |_| true).is_empty());
+        assert_eq!(held_by(&claims, "claude", DEFAULT_PROFILE, |_| true), ["claude-a", "claude-b"]);
+        assert_eq!(held_by(&claims, "codex", DEFAULT_PROFILE, |_| true), ["codex-1"]);
+        assert!(held_by(&claims, "gemini", DEFAULT_PROFILE, |_| true).is_empty());
+    }
+
+    /// The whole reason this answers in tab ids: the removal guard unions it
+    /// with the PTY host's live table, which can only answer in tab ids. A
+    /// resumed PTY agent tab is in both, and two id spaces would count one tab
+    /// twice and tell the user to close two things.
+    #[test]
+    fn a_claims_tab_id_is_the_one_the_pty_table_would_name() {
+        let mut claims = HashMap::new();
+        claims.insert(
+            "s-1".to_string(),
+            on_tab(
+                Claim { surface: Surface::PtyAgent, ..held("claude", 1, None) },
+                "sh:7",
+            ),
+        );
+        assert_eq!(held_by(&claims, "claude", DEFAULT_PROFILE, |_| true), ["sh:7"]);
+    }
+
+    /// Removal is per account, so another account's live chat must not be the
+    /// unexplainable reason this one cannot be removed.
+    #[test]
+    fn held_by_names_only_the_account_being_removed() {
+        let mut claims = HashMap::new();
+        claims.insert(
+            "s-default".to_string(),
+            on_tab(held_on("claude", DEFAULT_PROFILE, 1, Some(9)), "on-default"),
+        );
+        claims.insert("s-fonn".to_string(), on_tab(held_on("claude", "fonn", 1, Some(9)), "on-fonn"));
+        assert_eq!(held_by(&claims, "claude", "fonn", |_| true), ["on-fonn"]);
+        assert_eq!(held_by(&claims, "claude", DEFAULT_PROFILE, |_| true), ["on-default"]);
+    }
+
+    /// A claims file written before accounts existed names no profile, and
+    /// every session in it ran on the login the user already had.
+    #[test]
+    fn a_claim_stored_before_accounts_reads_as_the_default_profile() {
+        let text = r#"{"s1":{"surface":"chat","tabId":"t","swayPid":1,"agent":"claude"}}"#;
+        let claims = parse_claims(text);
+        assert_eq!(claims["s1"].profile, DEFAULT_PROFILE);
     }
 
     /// A crash record must not block a removal forever. The user would have no
@@ -919,7 +997,7 @@ mod tests {
     fn a_session_held_by_a_dead_sway_blocks_nothing() {
         let mut claims = HashMap::new();
         claims.insert("s1".to_string(), held("claude", 4_000_000, Some(9)));
-        assert!(held_by(&claims, "claude", pid_alive).is_empty());
+        assert!(held_by(&claims, "claude", DEFAULT_PROFILE, pid_alive).is_empty());
     }
 
     /// A PTY agent tab records no `child_pid`, and a login flow produces exactly
@@ -927,8 +1005,8 @@ mod tests {
     #[test]
     fn a_pty_agent_tab_counts_even_with_no_child_pid_recorded() {
         let mut claims = HashMap::new();
-        claims.insert("s1".to_string(), held("claude", std::process::id(), None));
-        assert_eq!(held_by(&claims, "claude", pid_alive), ["s1"]);
+        claims.insert("s1".to_string(), on_tab(held("claude", std::process::id(), None), "sh:1"));
+        assert_eq!(held_by(&claims, "claude", DEFAULT_PROFILE, pid_alive), ["sh:1"]);
     }
 
     /// A claim naming a dead Sway pid must be recognised as a crash record, not
@@ -943,7 +1021,7 @@ mod tests {
         record(
             &mut claims,
             "s1",
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: dead, agent: "claude".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: dead, agent: "claude".into(), profile: "default".into() },
         );
         assert!(!pid_alive(dead));
         assert_eq!(
@@ -1041,7 +1119,7 @@ mod tests {
         let registry = Registry::at(temp_store("contested"));
         let outcome = registry.claim(
             &id,
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert_eq!(
             outcome,
@@ -1121,13 +1199,13 @@ mod tests {
         record(
             &mut leftover,
             &id,
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: Some(child_pid), sway_pid: 4_000_000, agent: "claude".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: Some(child_pid), sway_pid: 4_000_000, agent: "claude".into(), profile: "default".into() },
         );
         // Plus a record whose child did not survive, which must be swept.
         record(
             &mut leftover,
             "litter",
-            Claim { surface: Surface::Chat, tab_id: "tab-z".into(), child_pid: None, sway_pid: 4_000_000, agent: "claude".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-z".into(), child_pid: None, sway_pid: 4_000_000, agent: "claude".into(), profile: "default".into() },
         );
         save_claims_to(&store, &leftover).unwrap();
 
@@ -1148,7 +1226,7 @@ mod tests {
         assert_eq!(
             registry.claim(
                 &id,
-                Claim { surface: Surface::Chat, tab_id: "tab-new".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into() },
+                Claim { surface: Surface::Chat, tab_id: "tab-new".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
             ),
             ClaimOutcome::Orphaned { child_pid }
         );
@@ -1176,6 +1254,7 @@ mod tests {
                 child_pid: Some(4242),
                 sway_pid: 4_000_000,
                 agent: "claude".into(),
+                profile: DEFAULT_PROFILE.into(),
             },
         );
         record(
@@ -1187,6 +1266,7 @@ mod tests {
                 child_pid: Some(4343),
                 sway_pid: 4_000_000,
                 agent: "gemini".into(),
+                profile: DEFAULT_PROFILE.into(),
             },
         );
 
@@ -1228,7 +1308,7 @@ mod tests {
         record(
             &mut claims,
             "s1",
-            Claim { surface: Surface::PtyAgent, tab_id: "tab-a".into(), child_pid: None, sway_pid: 12345, agent: "claude".into() },
+            Claim { surface: Surface::PtyAgent, tab_id: "tab-a".into(), child_pid: None, sway_pid: 12345, agent: "claude".into(), profile: "default".into() },
         );
         let probe = Probe { holder_alive: false, externally_running: true, child_still_ours: true };
         assert_eq!(

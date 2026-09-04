@@ -26,12 +26,19 @@ export type OpenTerm = {
   kind: TabKind;
   program: string;
   args: string[];
+  // Which signed-in account of `program` this tab runs as. `null` is the
+  // default profile, which is the agent's home variable left unset. Required
+  // rather than optional so a new opener cannot forget it and silently spawn
+  // somebody else's account; bound at spawn and never switched afterwards.
+  profile: string | null;
   // Agent and task tabs: the command line typed into the shell once it's ready.
   // Exiting the agent, or a task finishing, drops back to the live shell rather
   // than closing the tab.
   init?: string;
-  // Sign-in tabs: the profile's home variable, so the agent writes that
-  // account's credentials rather than the default account's.
+  // The profile's home variable, so the agent reads and writes that account
+  // rather than the default one. Derived from `profile` at spawn and on
+  // restore rather than persisted: the home path is Sway's to resolve, and a
+  // stored copy would go stale the moment a profile home moved.
   env?: Record<string, string>;
   // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
   // shell tab id. Used to focus/resume in place (Phase 2), not for spawning.

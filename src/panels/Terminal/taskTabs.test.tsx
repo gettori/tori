@@ -116,9 +116,9 @@ describe("what a relaunch brings back", () => {
     // back a bare shell wearing its name. A shell tab beside them still returns.
     const stored = toStore(
       [
-        { ...TASK, kind: "task", workspace: REPO },
-        { id: "shell-1", title: "repo shell", cwd: REPO, workspace: REPO, kind: "shell", program: "", args: [] },
-        { id: "clone-1", title: "Clone", cwd: "/tmp/new", workspace: "/tmp/new", kind: "command", program: "git", args: [] },
+        { ...TASK, kind: "task", workspace: REPO, profile: null },
+        { id: "shell-1", title: "repo shell", cwd: REPO, workspace: REPO, kind: "shell", program: "", args: [], profile: null },
+        { id: "clone-1", title: "Clone", cwd: "/tmp/new", workspace: "/tmp/new", kind: "command", program: "git", args: [], profile: null },
       ],
       {},
       1,

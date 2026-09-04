@@ -1939,17 +1939,35 @@ pub(crate) fn transcript_turns(path: &str, agent: &str) -> Vec<TranscriptTurn> {
     parse_transcript_turns(path, agent)
 }
 
+/// A session's transcript, and the account whose home held it.
+pub(crate) struct Transcript {
+    pub path: String,
+    /// The profile id of the root the file was found under.
+    ///
+    /// Authoritative, and that is the point of returning it: the home a
+    /// transcript sits in **is** the account the session belongs to, so a
+    /// resume can be bound to what is on disk rather than to whatever the
+    /// caller remembered about a tab.
+    pub profile: String,
+}
+
 /// Where an agent wrote this session's transcript, or `None` before it has
 /// written one.
 ///
-/// Found by scanning the adapter's own discovery dir rather than by rebuilding
+/// Found by scanning the adapter's own discovery dirs rather than by rebuilding
 /// the path from the cwd. The encoding of a cwd into a directory name is the
 /// agent's business and has changed before; the file that is *there* is not a
 /// guess. It also means a session moved between projects still resolves.
 ///
+/// Every `(profile, root)` pair is searched, in `profiles_for` order, so the
+/// default account is asked first and an added profile's session resolves at
+/// all. Searching only the declared dir - which is what this did before
+/// multi-account - made every reader of a profile session behave as though it
+/// had no transcript: no history, no prompt count, no usage, no rewind.
+///
 /// Two filename shapes are accepted because two agents write two: claude's
 /// `<id>.jsonl`.
-pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
+pub(crate) fn transcript_of(session_id: &str, agent: &str) -> Option<Transcript> {
     let adapter = agents::find(agent)?;
     // The case this comment used to predict has arrived. It read: "when a
     // SQLite-backed agent is added (no per-session file, read through its own
@@ -1958,21 +1976,47 @@ pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
     // the agent's own and the locator is Sway's - and the answer is that such a
     // session has no transcript path at all. `chat_history` already returns
     // empty for one, so `None` here is the same fact reaching a second caller.
-    let Some(agents::Discovery::File { dir, .. }) = &adapter.discovery else { return None };
+    if !matches!(adapter.discovery, Some(agents::Discovery::File { .. })) {
+        return None;
+    }
+    let profiles = crate::accounts::profiles_for(&crate::accounts::load(), agent);
+    find_transcript(&roots_for(adapter, &profiles), session_id)
+}
+
+/// Where an agent wrote this session's transcript, for a caller that does not
+/// need to know which account it belongs to.
+pub(crate) fn transcript_path(session_id: &str, agent: &str) -> Option<String> {
+    transcript_of(session_id, agent).map(|t| t.path)
+}
+
+/// The search itself, over roots that are passed in.
+///
+/// Split out so the two-root case is a unit test rather than something only a
+/// second signed-in account can exercise.
+fn find_transcript(roots: &[Root<'_>], session_id: &str) -> Option<Transcript> {
     let matches = |name: &str| {
         let stem = name.strip_suffix(".jsonl").unwrap_or(name);
         stem == session_id || stem.ends_with(&format!("_{session_id}"))
     };
-    for project in std::fs::read_dir(dir).ok()?.flatten() {
-        if !project.path().is_dir() {
-            continue;
-        }
-        let Ok(files) = std::fs::read_dir(project.path()) else {
-            continue;
-        };
-        for f in files.flatten() {
-            if f.file_name().to_str().is_some_and(matches) {
-                return Some(f.path().to_string_lossy().into_owned());
+    for root in roots {
+        // Per root, never `?`: a profile whose home has not been written to yet
+        // is an unreadable directory, and giving up there would hide a session
+        // sitting in the next root along.
+        let Ok(projects) = std::fs::read_dir(&root.dir) else { continue };
+        for project in projects.flatten() {
+            if !project.path().is_dir() {
+                continue;
+            }
+            let Ok(files) = std::fs::read_dir(project.path()) else {
+                continue;
+            };
+            for f in files.flatten() {
+                if f.file_name().to_str().is_some_and(matches) {
+                    return Some(Transcript {
+                        path: f.path().to_string_lossy().into_owned(),
+                        profile: root.profile.clone(),
+                    });
+                }
             }
         }
     }
@@ -2629,6 +2673,47 @@ mod tests {
         assert_eq!(roots[0].profile, "default");
         assert_eq!(roots[1].dir, m.join("work/projects"), "the layout under a profile home is the same one");
         assert_eq!(roots[1].profile, "work");
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// A session in an added profile's home resolves, and says whose home it
+    /// was in. Before this, resolution stopped at the declared dir, so every
+    /// reader of a profile session behaved as though it had no transcript.
+    #[test]
+    fn a_transcript_resolves_under_a_second_profiles_root() {
+        let m = tmp_machine("find");
+        let a = adapter_at(&m, Some(&m.join("default")));
+        let profiles =
+            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+        let roots = roots_for(&a, &profiles);
+        std::fs::create_dir_all(m.join("work/projects")).unwrap();
+        let want = write_transcript(&m.join("work/projects"), "/repo", "sess-1");
+
+        let found = find_transcript(&roots, "sess-1").expect("the second root holds it");
+        assert_eq!(found.path, want.to_string_lossy());
+        assert_eq!(found.profile, "work", "the root that held it is the account it belongs to");
+
+        std::fs::remove_dir_all(&m).ok();
+    }
+
+    /// A profile home nothing has written to yet is an unreadable directory.
+    /// Giving up on it would hide every session in the roots after it.
+    #[test]
+    fn an_unreadable_root_does_not_end_the_search() {
+        let m = tmp_machine("skiproot");
+        let a = adapter_at(&m, Some(&m.join("default")));
+        // `work` comes first and has no `projects` dir at all; `late` holds the file.
+        let profiles = vec![
+            added("work", "Work", &m.join("work")),
+            added("late", "Late", &m.join("late")),
+        ];
+        let roots = roots_for(&a, &profiles);
+        std::fs::create_dir_all(m.join("late/projects")).unwrap();
+        write_transcript(&m.join("late/projects"), "/repo", "sess-2");
+
+        let found = find_transcript(&roots, "sess-2").expect("a missing root is skipped, not fatal");
+        assert_eq!(found.profile, "late");
 
         std::fs::remove_dir_all(&m).ok();
     }

@@ -85,7 +85,7 @@ import {
   type CatalogModel,
 } from "../../utils/modelCatalog";
 import { findAdapter } from "../../utils/agents";
-import { agentVersion } from "../../utils/agentHealth";
+import { agentVersion, profileLabel } from "../../utils/agentHealth";
 import { revealTarget } from "../../utils/agentLines";
 import { attachmentSources, chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
 import { providerMarkKey } from "../../components/Icon/ProviderIcon";
@@ -206,6 +206,10 @@ export default function ChatView(props: {
   sessionId: string;
   tabId: string;
   agentId: string;
+  /** Which account of `agentId` this session runs as; `null` is the default
+   *  profile. Sent at spawn, where the backend resolves it against the home the
+   *  transcript is actually in and refuses a tab naming a different one. */
+  profile: string | null;
   cwd: string;
   /** The branch-unit folder this tab groups under, which is what "another chat
    *  in this worktree" is measured against. */
@@ -723,6 +727,10 @@ export default function ChatView(props: {
             agentId: props.agentId,
             cwd: props.cwd,
             resume: opts.reconnect ? true : props.resume,
+            // A reconnect keeps the tab's account for the same reason it keeps
+            // its session: it is re-attaching to the conversation that is
+            // already there, not choosing where to start a new one.
+            profile: props.profile,
             // A reconnect is not a fork: the fork already happened, and asking
             // for one again would branch the session a second time.
             forkFrom: opts.reconnect ? null : (props.forkFrom ?? null),
@@ -1863,6 +1871,9 @@ export default function ChatView(props: {
                 account={state.account}
                 capabilities={publishedCapabilities(tier(), state.capabilities)}
                 cwd={props.cwd}
+                agentId={props.agentId}
+                profile={props.profile}
+                profileLabel={profileLabel(props.agentId, props.profile)}
               />
             </div>
           }

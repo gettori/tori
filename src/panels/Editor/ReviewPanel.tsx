@@ -284,6 +284,7 @@ export default function ReviewPanel(props: {
     return {
       sessionId: sel.sessionId,
       agent: sel.agent ?? "claude",
+      profile: sel.profile,
       folderPath: sel.folderPath,
       sessionCwd: sel.sessionCwd,
       sessionPath: sel.sessionPath,

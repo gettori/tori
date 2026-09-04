@@ -172,6 +172,7 @@ describe("a project card truncates a long branch list", () => {
       folderPath: folderOf("wt-09"),
       branch: "wt-09",
       projectKind: "worktree",
+      profile: null,
     });
 
     await waitFor(() => expect(screen.getByText("wt-09")).toBeTruthy());

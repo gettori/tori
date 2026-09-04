@@ -119,6 +119,33 @@ pub fn build_args(
     args
 }
 
+/// Which account a chat session runs as.
+///
+/// `asked` is what the caller passed (`None` for "I did not say"), `found` is
+/// the profile of the root that actually holds the transcript, which is `None`
+/// for a fresh session and for a resume of one killed before its first turn
+/// wrote a file.
+///
+/// **The disk wins.** A transcript lives in exactly one profile home, so that
+/// home *is* the account: a caller that forgets to pass the profile still
+/// resumes correctly, and one that names a different account is refused rather
+/// than pointed at a home its session is not in. Trusting the caller instead
+/// turns a single missed hop into a session silently running as somebody else.
+///
+/// A session with no transcript yet keeps the caller's value, because there is
+/// nothing on disk to be authoritative and the tab is the only thing that knows.
+pub(crate) fn resolve_profile(asked: Option<&str>, found: Option<&str>) -> Result<String, String> {
+    match (asked, found) {
+        (_, None) => Ok(asked.unwrap_or(crate::accounts::DEFAULT_PROFILE_ID).to_string()),
+        (None, Some(found)) => Ok(found.to_string()),
+        (Some(asked), Some(found)) if asked == found => Ok(found.to_string()),
+        (Some(asked), Some(found)) => Err(format!(
+            "this session's transcript is in the `{found}` account, not `{asked}`; \
+             a session cannot be resumed under a different account"
+        )),
+    }
+}
+
 /// The result of asking to open a chat session.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -150,6 +177,10 @@ pub async fn chat_spawn(
     cwd: String,
     resume: bool,
     fork_from: Option<String>,
+    // Which account to run as. `None` means the caller did not say, which on a
+    // resume or a fork is answered from the transcript and on a fresh session
+    // is the default profile.
+    profile: Option<String>,
     model: Option<String>,
     mode: Option<String>,
     effort: Option<String>,
@@ -195,6 +226,19 @@ pub async fn chat_spawn(
         return Ok(SpawnResult { ownership: ClaimOutcome::Granted { contested: false }, spawned: Some(spawned) });
     }
 
+    // Before the claim, for two reasons: a caller naming the wrong account is
+    // refused while the session is still only an idea, and the claim that is
+    // taken records the account the session will actually run as, which is what
+    // the removal guard reads. The transcript is looked up only when there is
+    // one to look up: a fresh session has no file and no opinion to overrule.
+    let source = fork_from.as_deref().unwrap_or(session_id.as_str());
+    let found = (resume || fork_from.is_some())
+        .then(|| crate::sessions::transcript_of(source, &agent_id))
+        .flatten();
+    let profile_id = resolve_profile(profile.as_deref(), found.as_ref().map(|t| t.profile.as_str()))?;
+    let profile_env =
+        crate::accounts::profile_env(adapter, &crate::accounts::load(), Some(&profile_id))?;
+
     let ownership = {
         let want = Claim {
             surface: Surface::Chat,
@@ -202,6 +246,7 @@ pub async fn chat_spawn(
             child_pid: None,
             sway_pid: std::process::id(),
             agent: agent_id.clone(),
+            profile: profile_id.clone(),
         };
         let outcome = host.registry.claim(&session_id, want);
         if !matches!(outcome, ClaimOutcome::Granted { .. }) {
@@ -254,9 +299,10 @@ pub async fn chat_spawn(
         // applies to the next session started without restarting Sway.
         program: crate::settings::agent_override(&agent_id).unwrap_or_else(|| chat.program.clone()),
         args,
-        // Empty today. The map exists so multi-account support later changes
-        // this one line rather than every signature between here and the child.
-        env: HashMap::new(),
+        // The account this session runs as, and the only thing that makes it
+        // one: the agent resolves its login from this variable, so the whole of
+        // "which account" is here rather than in a flag.
+        env: profile_env.into_iter().collect(),
     };
 
     let transport = chat.transport;
@@ -495,18 +541,52 @@ pub struct UsageTotals {
 /// to connect (which init reports) *and* ones still pending approval (which it
 /// does not connect to at all).
 #[tauri::command]
-pub async fn chat_mcp_list(cwd: String) -> Result<Vec<super::mcp::McpEntry>, String> {
-    Ok(super::mcp::list_for(&cwd))
+pub async fn chat_mcp_list(
+    cwd: String,
+    agent_id: String,
+    profile: Option<String>,
+) -> Result<Vec<super::mcp::McpEntry>, String> {
+    Ok(super::mcp::list_for(&cwd, profile_home(&agent_id, profile.as_deref()).as_deref()))
 }
 
 #[tauri::command]
-pub async fn chat_mcp_add(cwd: String, name: String, config: serde_json::Value) -> Result<Vec<super::mcp::McpEntry>, String> {
-    super::mcp::add_to_project(&cwd, &name, config)
+pub async fn chat_mcp_add(
+    cwd: String,
+    name: String,
+    config: serde_json::Value,
+    agent_id: String,
+    profile: Option<String>,
+) -> Result<Vec<super::mcp::McpEntry>, String> {
+    super::mcp::add_to_project(
+        &cwd,
+        &name,
+        config,
+        profile_home(&agent_id, profile.as_deref()).as_deref(),
+    )
 }
 
 #[tauri::command]
-pub async fn chat_mcp_remove(cwd: String, name: String) -> Result<Vec<super::mcp::McpEntry>, String> {
-    super::mcp::remove_from_project(&cwd, &name)
+pub async fn chat_mcp_remove(
+    cwd: String,
+    name: String,
+    agent_id: String,
+    profile: Option<String>,
+) -> Result<Vec<super::mcp::McpEntry>, String> {
+    super::mcp::remove_from_project(
+        &cwd,
+        &name,
+        profile_home(&agent_id, profile.as_deref()).as_deref(),
+    )
+}
+
+/// The isolated home one account runs in, or `None` for the default account.
+///
+/// `None` rather than an error for a profile that no longer exists: this is a
+/// read of somebody's config, not a spawn, so the worst a stale id can do is
+/// list the default account's servers. A spawn goes through
+/// `accounts::profile_env`, which refuses instead.
+fn profile_home(agent_id: &str, profile: Option<&str>) -> Option<String> {
+    crate::accounts::profile(&crate::accounts::load(), agent_id, profile?)?.home
 }
 
 #[tauri::command]
@@ -1116,6 +1196,34 @@ mod tests {
     fn no_mode_at_all_passes_no_mode_flag() {
         let args = build_args(claude_chat(), "s1", false, None, None, None, None, &[]);
         assert!(!args.iter().any(|a| a == "--permission-mode"));
+    }
+
+    /// A fresh session is whatever the caller said, and "nothing" is the
+    /// default account rather than a refusal.
+    #[test]
+    fn a_session_with_no_transcript_keeps_the_callers_profile() {
+        assert_eq!(resolve_profile(None, None).unwrap(), "default");
+        assert_eq!(resolve_profile(Some("default"), None).unwrap(), "default");
+        // A chat killed before its first turn wrote a file: nothing on disk to
+        // ask, so the tab is the only thing that knows which account it is on.
+        assert_eq!(resolve_profile(Some("fonn"), None).unwrap(), "fonn");
+    }
+
+    /// The root that holds the transcript is the account, so a caller that
+    /// forgot to pass one still resumes into the right home.
+    #[test]
+    fn a_resume_takes_its_profile_from_the_matched_root() {
+        assert_eq!(resolve_profile(None, Some("fonn")).unwrap(), "fonn");
+        assert_eq!(resolve_profile(Some("fonn"), Some("fonn")).unwrap(), "fonn");
+    }
+
+    /// The failure this rule exists for: a caller naming a different account is
+    /// refused, rather than resuming somebody else's session in the wrong home.
+    #[test]
+    fn a_resume_naming_a_different_account_is_refused() {
+        let err = resolve_profile(Some("default"), Some("fonn")).unwrap_err();
+        assert!(err.contains("fonn"), "the error names the account the session is actually in: {err}");
+        assert!(resolve_profile(Some("fonn"), Some("default")).is_err());
     }
 
     /// `chat_spawn` needs a Tauri `State` to run, so the flag's survival is

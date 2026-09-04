@@ -15,7 +15,7 @@
 // and the model per *turn*, which leaves the pills describing nobody from mount
 // until the first turn lands.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, waitFor, screen, fireEvent } from "@solidjs/testing-library";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -152,6 +152,7 @@ const TAB = "chat:resumed-1";
 const SESSION = "s-1";
 
 const spawn = () => invokes.find((i) => i.cmd === "chat_spawn")?.args;
+const spawns = () => invokes.filter((i) => i.cmd === "chat_spawn").map((i) => i.args);
 
 beforeEach(async () => {
   invokes.length = 0;
@@ -161,7 +162,7 @@ beforeEach(async () => {
   await ensureModelCatalogsLoaded();
 });
 
-function mount(resume: boolean, agentId = "claude") {
+function mount(resume: boolean, agentId = "claude", profile: string | null = null) {
   return render(() => (
     <ChatView
       sessionId={SESSION}
@@ -169,6 +170,7 @@ function mount(resume: boolean, agentId = "claude") {
       cwd="/work/repo"
       workspace="/work/repo"
       agentId={agentId}
+      profile={profile}
       title="chat"
       active={true}
       resume={resume}
@@ -221,6 +223,30 @@ describe("a chat restored from the store", () => {
 
 // The pills, at the one moment nothing has told the panel anything: the child
 // is spawned but no turn has run, so `system/init` has not been seen.
+// An account is part of session identity, so unlike the model, the mode and the
+// effort level, it is **not** dropped on a reconnect: a reconnect re-attaches to
+// the conversation that is already there rather than choosing where to start a
+// new one, and that conversation lives in exactly one profile home.
+describe("the account a reconnect comes back on", () => {
+  it("is the tab's own, on the first spawn and on every one after it", async () => {
+    mount(true, "claude", "fonn");
+    await waitFor(() => expect(spawn()).toBeTruthy());
+    expect(spawn()).toMatchObject({ profile: "fonn" });
+
+    // Drop the child, which is what a reload leaves behind, then take the way
+    // back the strip offers.
+    channels[channels.length - 1]?.onmessage?.({ type: "sessionEnded", sessionId: SESSION, reason: null });
+    fireEvent.click(await screen.findByText("Reconnect"));
+
+    await waitFor(() => expect(spawns()).toHaveLength(2));
+    const again = spawns()[1];
+    expect(again).toMatchObject({ resume: true, profile: "fonn" });
+    // The pick is dropped on a reconnect, so this pins that the account is not
+    // being carried by accident along with something else.
+    expect(again).toMatchObject({ model: null, mode: null, effort: null });
+  });
+});
+
 describe("the controls of a tab whose pick rode argv", () => {
   it("name the mode and the model the child was started on, on a restore", async () => {
     setDraftPick(TAB, { model: "sonnet", mode: "plan", effort: "high" });

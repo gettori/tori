@@ -60,6 +60,7 @@ const selection = {
   folderPath: REPO,
   branch: "main",
   projectKind: "plain",
+  profile: null,
 };
 
 const range = (sl: number, sc: number, el: number, ec: number) => ({
