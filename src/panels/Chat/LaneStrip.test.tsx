@@ -28,6 +28,8 @@ const strip = (over: Partial<Parameters<typeof LaneStrip>[0]> = {}) => (
     lanes={[lane()]}
     selected={null}
     blocked={new Set()}
+    busy={false}
+    mark="claude"
     onSelect={() => {}}
     active={true}
     {...over}
@@ -137,6 +139,29 @@ describe("the lane strip", () => {
     // The one that is merely running still shows its clock, so "waiting" reads
     // as the exception rather than as the row's ordinary state.
     expect(container.textContent).toContain("0s");
+  });
+
+  it("gives main the working agent's own hue, and only while it works", () => {
+    // Not a fifth status tone: the four say how work ended, and this says whose
+    // work it is, the way the tab strip already tints a working mark. Read off
+    // `data-mark`, which is what the colour keys on.
+    const dots = (c: HTMLElement) => [...c.querySelectorAll("[aria-hidden='true']")];
+    const busy = render(() => strip({ busy: true, mark: "claude" }));
+    expect(dots(busy.container)[0]!.getAttribute("data-mark")).toBe("claude");
+    // The subagent beside it keeps its status tone: one strip, two vocabularies,
+    // and only the first chip speaks the second one.
+    expect(dots(busy.container)[1]!.getAttribute("data-mark")).toBeNull();
+    busy.unmount();
+
+    // At rest main is chrome, so a quiet chat does not wear a brand colour.
+    const idle = render(() => strip({ busy: false, mark: "claude" }));
+    expect(dots(idle.container)[0]!.getAttribute("data-mark")).toBeNull();
+    idle.unmount();
+
+    // And a provider Sway cannot name keeps the neutral accent rather than
+    // borrowing a logo's.
+    const unnamed = render(() => strip({ busy: true, mark: null }));
+    expect(dots(unnamed.container)[0]!.getAttribute("data-mark")).toBeNull();
   });
 
   it("marks the lane being read", () => {
