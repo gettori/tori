@@ -127,6 +127,8 @@ import {
   revertEffortPick,
   revertModelPick,
   seedEffort,
+  seedMode,
+  seedModel,
   selectEffort,
   selectMode,
   replayFold,
@@ -359,6 +361,15 @@ export default function ChatView(props: {
   // mention it again. Without this the control read "Default" over a child
   // running `--effort high`, on a fresh session as much as on a restored one.
   if (opening.effort !== null) edit((s) => seedEffort(s, opening.effort));
+  // Mode and model only where the pick *is* argv: an ACP pick is a request sent
+  // after the session opens and may be refused, so it is not yet in force.
+  // Safe in the body: replay emits no `sessionStarted` and no `turnStarted`.
+  if (pickRidesArgv(findAdapter(props.agentId).chat?.transport)) {
+    // Read out first: narrowing a property does not survive into the closure.
+    const { mode: openedMode, model: openedModel } = opening;
+    if (openedMode !== null) edit((s) => seedMode(s, openedMode));
+    if (openedModel !== null) edit((s) => seedModel(s, openedModel));
+  }
   const running = () => isRunning(state);
 
   // Memoized, not a plain accessor. Solid props are getters and MessageList
@@ -1326,21 +1337,13 @@ export default function ChatView(props: {
   const cached = (): CatalogModel[] => cachedModels(catalogFor(props.agentId));
   const models = () => pickableModels(state.models, cached(), state.contextWindows);
 
-  // The entry the picker shows as selected. Resolved through the catalogue
-  // rather than read straight off the store, because before the first pick the
-  // only thing known is the *resolved* id the session reported, which is not a
-  // `--model` value and would leave the control blank.
-  //
-  // Three sources, most specific first. The transcript's own model is the one
-  // that matters on a resumed session: `state.model` is only set by a
-  // `system/init` this tab saw, so a chat reopened on an existing session knew
-  // nothing and fell back to naming the `default` alias - the pill read
-  // "Default (recommended)" while the toolbar, reading the same transcript,
-  // read "fable-5". Only when all three are silent is the catalogue's default
-  // entry the honest answer: a session started without `--model` is running it
-  // by definition.
+  // Four sources, most-trusted first: a pick this tab sent, the id the child
+  // reported, what this tab spawned the child with, the transcript's last turn.
+  // A spawn re-declares the model the transcript predates, so 3 outranks 4.
   const shownModel = () =>
-    selectedModel(models(), shownModelValue(state), state.model ?? detail()?.model ?? null) ??
+    selectedModel(models(), shownModelValue(state), state.model ?? null) ??
+    selectedModel(models(), state.openingModel, null) ??
+    selectedModel(models(), null, detail()?.model ?? null) ??
     models().find((m) => m.value === "default") ??
     null;
 

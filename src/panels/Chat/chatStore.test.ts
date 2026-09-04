@@ -38,6 +38,8 @@ import {
   revertEffortPick,
   revertModelPick,
   seedEffort,
+  seedMode,
+  seedModel,
   selectEffort,
   selectLane,
   backgroundTasks,
@@ -211,6 +213,70 @@ describe("the effort a session opened on", () => {
     selectEffort(s, "low");
     seedEffort(s, "high");
     expect(shownEffort(s)).toBe("low");
+  });
+});
+
+// The mode and the model are reported back, unlike effort, but only on the
+// per-turn `system/init`. So the wire is silent from mount until the first turn
+// lands, and that window is exactly when the user is deciding what to send.
+describe("the mode a session opened on", () => {
+  it("is in force from the first frame, not pending", () => {
+    const s = initialChat("s1");
+    seedMode(s, "plan");
+    expect(shownMode(s, "default")).toBe("plan");
+    expect(modePending(s)).toBe(false);
+  });
+
+  it("never overwrites a mode this session has actually picked", () => {
+    const s = initialChat("s1");
+    selectMode(s, "acceptEdits");
+    seedMode(s, "plan");
+    expect(shownMode(s, "default")).toBe("acceptEdits");
+  });
+
+  it("yields to the first mode the child declares", () => {
+    // `noteMode` writes unconditionally, so a seed that guessed wrong (an agent
+    // that left plan mode by itself) is corrected at the turn boundary.
+    const s = initialChat("s1");
+    seedMode(s, "plan");
+    applyEvent(s, sessionStarted({ permissionMode: "acceptEdits" }));
+    expect(shownMode(s, "default")).toBe("acceptEdits");
+  });
+});
+
+describe("the model a session opened on", () => {
+  it("is parked apart from a landed pick", () => {
+    // `modelValue` means "a pick this tab watched land" and has one writer.
+    // A seed stored there would outrank the child's own report for good, since
+    // `noteModel` only ever rewrites it for a pending pick that resolved.
+    const s = initialChat("s1");
+    seedModel(s, "sonnet");
+    expect(s.openingModel).toBe("sonnet");
+    expect(s.modelValue).toBe(null);
+    expect(shownModelValue(s)).toBe(null);
+    expect(modelPending(s)).toBe(false);
+  });
+
+  it("is written once and never competes with a pick", () => {
+    // It does not have to yield the way `seedEffort` does: it is a field of its
+    // own that the panel's resolver ranks *below* a pick and below the reported
+    // id, so a pick outranks it there rather than by clearing it here.
+    const s = initialChat("s1");
+    selectModel(s, { value: "haiku", resolvedModel: "claude-haiku-4-5" });
+    seedModel(s, "sonnet");
+    seedModel(s, "opus");
+    expect(s.openingModel).toBe("sonnet");
+    expect(shownModelValue(s)).toBe("haiku");
+  });
+
+  it("survives an init, because the resolver and not the store ranks the two", () => {
+    // The seed is not cleared by a report: `shownModel` in the panel puts
+    // `state.model` above it, which is where the two are actually compared.
+    const s = initialChat("s1");
+    seedModel(s, "sonnet");
+    applyEvent(s, sessionStarted({ model: "claude-opus-5" }));
+    expect(s.model).toBe("claude-opus-5");
+    expect(s.openingModel).toBe("sonnet");
   });
 });
 
