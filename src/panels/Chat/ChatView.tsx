@@ -869,7 +869,7 @@ export default function ChatView(props: {
   // send, or one handed over by "send to a new chat". Sent here rather than at
   // spawn, because a spawned child is not yet a session that can answer.
   createEffect(() => {
-    // And the label seed: a held `[image 1]` may still be renamed by the
+    // And the label seed: a held `[Image 1]` may still be renamed by the
     // transcript, and it has to go out under the name it ends up with.
     if (!canSend() || !pickApplied() || !labelsSeeded(composerKey())) return;
     // Only readiness is tracked. `onSend` reads half the store on its way

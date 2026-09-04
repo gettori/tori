@@ -2453,6 +2453,55 @@ button.attachmentBody:hover {
   color: var(--danger-fg);
 }
 
+/* An image is a preview, not a row: the picture at a size worth looking at,
+   the token captioned under it, and the remove button in the corner where it
+   costs the picture nothing until it is wanted. */
+.attachmentTile {
+  position: relative;
+  flex-direction: column;
+  align-items: stretch;
+  border-radius: var(--sway-radius-md);
+}
+
+.attachmentTile .attachmentBody {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+}
+
+.attachmentTile .attachmentThumb {
+  align-self: center;
+  width: calc(40px * var(--ui-scale));
+  height: calc(40px * var(--ui-scale));
+  border-radius: 0;
+}
+
+/* Smaller than the pill's text: the caption has to sit under 40px of picture
+   without deciding how wide the tile is. */
+.attachmentTile .attachmentName {
+  padding: calc(1px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  font-size: var(--sway-text-2xs);
+  text-align: center;
+}
+
+/* Kept in the tree at zero opacity rather than removed: the keyboard reaches
+   it by Tab, and `:focus-within` is what shows it once it gets there. */
+.attachmentTile .attachmentRemove {
+  position: absolute;
+  top: calc(2px * var(--ui-scale));
+  right: calc(2px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  background: var(--neutral-subtle);
+  opacity: 0;
+}
+
+.attachmentTile:hover .attachmentRemove,
+.attachmentTile:focus-within .attachmentRemove {
+  opacity: 1;
+}
+
 /* What this agent can take, said where the file is about to land rather than
    after it has been refused. */
 .dropHint {
