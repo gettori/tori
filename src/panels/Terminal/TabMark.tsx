@@ -60,7 +60,7 @@ export default function TabMark(props: {
     <span
       class={styles.mark}
       classList={{
-        [styles.working]: working(),
+        [agentStyles.tint]: working(),
         // The same breathe chat wears, from the marks' own stylesheet: one
         // keyframe, so the two surfaces cannot drift to two rhythms. On the
         // wrapper rather than the glyph because the fallback brain is a Lucide
