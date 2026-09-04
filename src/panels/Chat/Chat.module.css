@@ -37,7 +37,11 @@
   flex: none;
   align-items: center;
   gap: calc(12px * var(--ui-scale));
-  padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  /* Held to the same band the editor's breadcrumb bar is (Breadcrumbs.module.css
+     says the sum): the two sit under the same tab strip, and one 17px taller
+     than the other read as the panels disagreeing about where content starts. */
+  min-height: calc(var(--control-height-sm) + 8px * var(--ui-scale) + 1px);
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
   font-size: var(--sway-text-md);
   color: var(--fg-muted);
@@ -100,24 +104,12 @@
   flex: 1;
 }
 
-.stripMenuButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-height-sm);
-  height: var(--control-height-sm);
-  border: none;
-  border-radius: var(--sway-radius-sm);
-  background: transparent;
-  color: var(--fg-muted);
-  cursor: pointer;
-  transition: background var(--sway-duration-fast) var(--sway-ease);
-}
-
-.stripMenuButton:hover,
+/* The shared icon button draws the rest of it. Only the open state is this
+   button's own, and it hangs off `aria-expanded` rather than the toggle's
+   `aria-pressed`: what a menu trigger is, is open. */
 .stripMenuButton[aria-expanded='true'] {
-  background: var(--neutral-hover);
   color: var(--fg-default);
+  border-color: var(--brand-default);
 }
 
 /* The overflow menu, on the shared menuSurface recipe. */
