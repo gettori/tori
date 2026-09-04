@@ -26,6 +26,8 @@ import ProblemsPanel from "./ProblemsPanel";
 import OutlinePanel from "./OutlinePanel";
 import CallsPanel from "./CallsPanel";
 import Breadcrumbs from "./Breadcrumbs";
+// The bar's own stylesheet: these two controls belong to it, not to the editor.
+import crumbStyles from "./Breadcrumbs.module.css";
 import BookmarksPanel from "./BookmarksPanel";
 import { diagnostics } from "../../utils/diagnostics";
 import { traceSettle } from "../../utils/perfTrace";
@@ -2253,11 +2255,37 @@ export default function Editor(props: {
   // strip it appeared and vanished as you moved between tabs, re-flowing every
   // pane's row (and pushing tabs into `+N`) on a selection that changed nothing
   // about them.
+  // Blame is about the file the trail names, so it sits with the preview toggle
+  // rather than in the strip every pane shares: in the strip it was one control
+  // for whatever tab happened to be in front, which is not what a split view
+  // means by "this file".
+  const blameBtn = () => (
+    <IconButton
+      size="sm"
+      // `aria-pressed` by hand, and no `active`: the pressed look this control
+      // wants is the composer's, which accents the glyph rather than filling
+      // the button, and `active` is the fill.
+      aria-pressed={blameOn()}
+      icon={<Icon icon={UserRound} class={blameOn() ? crumbStyles.barToggleOn : undefined} />}
+      onClick={toggleBlame}
+      tooltip={
+        blameOn()
+          ? "Showing git blame: who last changed each line, shaded by age. Click to hide."
+          : "Git blame: show who last changed each line, shaded by age."
+      }
+    />
+  );
+
   const previewBtn = (id: string) => (
     <IconButton
-      size="xs"
-      active={previewingOf(id)}
-      icon={<Icon icon={previewingOf(id) ? FileCodeCorner : svgOf(id) ? FileHeart : FileTypeCorner} />}
+      size="sm"
+      aria-pressed={previewingOf(id)}
+      icon={
+        <Icon
+          icon={previewingOf(id) ? FileCodeCorner : svgOf(id) ? FileHeart : FileTypeCorner}
+          class={previewingOf(id) ? crumbStyles.barToggleOn : undefined}
+        />
+      }
       onClick={() => togglePreviewOf(id)}
       tooltip={
         previewingOf(id)
@@ -2265,23 +2293,6 @@ export default function Editor(props: {
           : `Preview: render this ${svgOf(id) ? "SVG" : "Markdown"} file instead of editing its source.`
       }
     />
-  );
-
-  const editorTrailing = () => (
-    <>
-      <Show when={activeFileTab()}>
-        <IconButton
-          active={blameOn()}
-          icon={<Icon icon={UserRound} />}
-          onClick={toggleBlame}
-          tooltip={
-            blameOn()
-              ? "Showing git blame: who last changed each line, shaded by age. Click to hide."
-              : "Git blame: show who last changed each line, shaded by age."
-          }
-        />
-      </Show>
-    </>
   );
 
   // The strip's right edge, past every kind's own controls: revealing the tree
@@ -2346,12 +2357,21 @@ export default function Editor(props: {
           member={tabMember(filePath())}
           caret={focused() ? caretHere() : null}
           trailing={
-            // Keyed, or the button freezes: non-keyed Show re-runs its child
-            // only when truthiness flips, so moving between two previewable
-            // files would leave the first one's button (and its id) in place.
-            <Show when={previewableId()} keyed>
-              {(id) => previewBtn(id)}
-            </Show>
+            <>
+              {/* Preview first, blame second, because the cluster is pinned to
+                  the bar's right edge: the one that comes and goes has to be
+                  the one on the moving side of it. */}
+              {/* Keyed, or the button freezes: non-keyed Show re-runs its child
+                  only when truthiness flips, so moving between two previewable
+                  files would leave the first one's button (and its id) in
+                  place. */}
+              <Show when={previewableId()} keyed>
+                {(id) => previewBtn(id)}
+              </Show>
+              {/* Not for a `sway://` view: a commit log has no working copy for
+                  git to blame. */}
+              <Show when={filePath() && !isSyntheticId(filePath()!)}>{blameBtn()}</Show>
+            </>
           }
         />
         {/* Above the editor rather than inside it: the file on screen is the
@@ -2530,10 +2550,8 @@ export default function Editor(props: {
         </>
       );
     },
-    trailing: editorTrailing,
-    // Before the terminal's, so the file controls and then the session ones
-    // read as two groups rather than interleaving (phase 13).
-    trailingRank: 10,
+    // No ranked cluster of its own any more: every control this panel had in
+    // the strip was about one file, and both went to the pane that holds it.
     trailingEdge: editorFiletreeReveal,
     activate: (u) => setActiveId(u.id),
     close: (u) => void closeTab(u.id),
