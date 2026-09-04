@@ -56,6 +56,56 @@ function list(
   );
 }
 
+// A reopened chat used to show a question about a screenshot with no
+// screenshot in it, and lose an image-only prompt entirely.
+describe("a prompt shows what it attached", () => {
+  const PNG = "iVBORw0KGgo=";
+
+  it("draws an image the turn still holds", () => {
+    const items: ChatItem[] = [
+      {
+        kind: "user",
+        id: "u1",
+        blocks: [
+          { type: "image", mediaType: "image/png", data: PNG },
+          { type: "text", text: "what colour is this?" },
+        ],
+        steer: false,
+      },
+    ];
+    const { container } = render(() => list({ items }));
+    const img = container.querySelector("img");
+    expect(img?.getAttribute("src")).toBe(`data:image/png;base64,${PNG}`);
+    expect(container.textContent).toContain("what colour is this?");
+    // Not "[image]", which is what the bubble used to print beside the text.
+    expect(container.textContent).not.toContain("[image]");
+  });
+
+  it("numbers a replayed image it has no bytes for", () => {
+    const items: ChatItem[] = [
+      {
+        kind: "user",
+        id: "u1",
+        blocks: [{ type: "imageRef" }, { type: "imageRef" }, { type: "text", text: "compare these" }],
+        steer: false,
+      },
+    ];
+    const { container } = render(() => list({ items }));
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("[Image #1]");
+    expect(container.textContent).toContain("[Image #2]");
+    expect(container.textContent).toContain("compare these");
+  });
+
+  it("keeps an image-only prompt visible", () => {
+    const items: ChatItem[] = [
+      { kind: "user", id: "u1", blocks: [{ type: "imageRef" }], steer: false },
+    ];
+    const { container } = render(() => list({ items }));
+    expect(container.textContent).toContain("[Image #1]");
+  });
+});
+
 // A steer is delivered *into* a running turn, so the transcript has to show it
 // as an aside within that turn rather than as the next thing asked - otherwise
 // the reply below it reads as an answer to the steer alone.

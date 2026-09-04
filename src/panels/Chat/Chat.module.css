@@ -268,6 +268,35 @@
   padding: 0.1em 0.35em;
 }
 
+/* What a prompt attached, above what it asked. Wrapped rather than laid out in
+   a row, because a turn can carry ten and the bubble is already capped. */
+.promptImages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(6px * var(--ui-scale));
+  margin-bottom: calc(6px * var(--ui-scale));
+}
+
+/* Shown, not summarised: a chip reading "image" says nothing about which one,
+   and the composer already made the same choice one line above. Capped in
+   height because a screenshot is taller than the sentence that asks about it. */
+.promptImage {
+  display: block;
+  max-width: 100%;
+  max-height: calc(180px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+}
+
+/* A replayed image, whose bytes the transcript reader left on disk. Numbered
+   the way the CLI writes one, and muted, because it is a note about the turn
+   rather than part of what was asked. */
+.promptImageGone {
+  color: var(--fg-subtle);
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-sm);
+}
+
 /* A steer: the same person's message, delivered into the turn above it rather
    than opening one of its own. Inset from the right edge and tightened so it
    reads as an aside within that turn, not as the next thing asked. */

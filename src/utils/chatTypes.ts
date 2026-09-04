@@ -326,6 +326,10 @@ export type PermissionDenial = {
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; mediaType: string; data: string }
+  /// An image a past turn carried, without the bytes: reading a transcript's
+  /// base64 back would hold every screenshot a session sent in memory. Replayed
+  /// history is the only thing that makes one, so nothing sends one.
+  | { type: "imageRef" }
   | {
       type: "fileRef";
       path: string;

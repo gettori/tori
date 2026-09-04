@@ -764,6 +764,10 @@ pub enum ContentBlock {
         media_type: String,
         data: String,
     },
+    /// An image a past turn carried, without the bytes: reading a transcript's
+    /// base64 back would hold every screenshot a session sent in memory to
+    /// redraw turns already read. Replay only, and nothing composes one.
+    ImageRef,
     /// A structured file reference from an `@`-mention, an editor selection or
     /// a Changes-panel hunk comment. Carried as structure rather than pasted
     /// text so the receiving end keeps the path and line range.

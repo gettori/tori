@@ -1757,7 +1757,7 @@ pub fn sessions_watch_start(
 
 #[derive(Serialize, Clone)]
 pub struct TranscriptBlock {
-    /// "text" | "thinking" | "tool_call" | "tool_result"
+    /// "text" | "thinking" | "tool_call" | "tool_result" | "image"
     pub kind: String,
     pub text: Option<String>,
     pub tool_name: Option<String>,
@@ -1832,6 +1832,13 @@ pub(crate) fn text_block(kind: &str, text: String) -> TranscriptBlock {
 
 /// Where the conversation's middle was replaced by a summary. The summary text
 /// itself is the *next* user message, not part of this block.
+/// An image a user turn carried, recorded without its bytes: replay redraws no
+/// screenshot, so reading them back would cost a session's worth of memory for
+/// nothing. Still a block, so an image-only prompt is still a turn.
+pub(crate) fn image_block() -> TranscriptBlock {
+    TranscriptBlock { kind: "image".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: None, pre_tokens: None, post_tokens: None, subagent: None }
+}
+
 pub(crate) fn compaction_block(trigger: Option<String>, pre_tokens: Option<u64>, post_tokens: Option<u64>) -> TranscriptBlock {
     TranscriptBlock { kind: "compaction".into(), text: None, tool_name: None, tool_input: None, is_error: None, tool_use_id: None, tool_summary: None, tool_patch: Vec::new(), compact_trigger: trigger, pre_tokens, post_tokens, subagent: None }
 }
@@ -2189,6 +2196,10 @@ fn turn_from_line(line: &str) -> Option<TranscriptTurn> {
                                     }
                                 }
                             }
+                            // Dropping it left a prompt asking about a
+                            // screenshot with no screenshot in it, and lost an
+                            // image-only prompt outright.
+                            Some("image") => blocks.push(image_block()),
                             Some("tool_result") => {
                                 let text = b.get("content").map(stringify_content).unwrap_or_default();
                                 let is_error = b.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
@@ -3576,6 +3587,31 @@ mod tests {
         let files = touched_files_cached(&index, p.to_str().unwrap(), "claude");
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "/y/real.txt"); // re-parsed the real fixture, not the stale cache
+
+        std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    // Shape taken from a real transcript: a pasted image is a top-level `image`
+    // block on the user record, beside the text, with its bytes inline.
+    #[test]
+    fn parse_transcript_turns_keeps_an_images_place_without_its_bytes() {
+        let body = r#"{"type":"user","cwd":"/p","timestamp":"2026-09-04T10:00:00.000Z","message":{"content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}},{"type":"text","text":"what colour is this?"}]}}
+{"type":"user","cwd":"/p","timestamp":"2026-09-04T10:00:05.000Z","message":{"content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}]}}
+"#;
+        let p = tmp_file("image_turn.jsonl", body);
+        let turns = parse_transcript_turns(p.to_str().unwrap(), "claude");
+
+        let kinds: Vec<&str> = turns[0].blocks.iter().map(|b| b.kind.as_str()).collect();
+        assert_eq!(kinds, vec!["image", "text"]);
+        // The bytes stay on disk: replay redraws no screenshot, so holding a
+        // session's worth of them would buy nothing.
+        assert!(turns[0].blocks[0].text.is_none());
+
+        // An image-only prompt is still a prompt. It used to parse to an empty
+        // block list and be dropped, which lost the turn outright.
+        assert_eq!(turns.len(), 2);
+        assert_eq!(turns[1].blocks.len(), 1);
+        assert_eq!(turns[1].blocks[0].kind, "image");
 
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
