@@ -84,10 +84,13 @@ pnpm tauri build --target universal-apple-darwin
 app="src-tauri/target/universal-apple-darwin/release/bundle/macos/Sway.app"
 .github/scripts/check-universal.sh "$app"
 
+# Matched on the version, not on *.dmg: the bundle dir keeps every DMG a
+# previous release left behind, and a bare glob counts those too, failing here
+# with the version commit already pushed.
 shopt -s nullglob
-dmgs=(src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+dmgs=(src-tauri/target/universal-apple-darwin/release/bundle/dmg/*_"$version"_*.dmg)
 if [ ${#dmgs[@]} -ne 1 ]; then
-  echo "error: expected one DMG, found ${#dmgs[@]}: ${dmgs[*]-none}" >&2
+  echo "error: expected one DMG for $version, found ${#dmgs[@]}: ${dmgs[*]-none}" >&2
   exit 1
 fi
 dmg="${dmgs[0]}"
