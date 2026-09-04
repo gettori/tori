@@ -2,10 +2,10 @@ import { Show, createEffect, createSignal, on, onCleanup, type JSX } from "solid
 import { Ellipsis } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
+import IconButton from "../../components/IconButton/IconButton";
 import SessionStats, { type SessionDetail } from "./SessionStats";
 import type { ConnectionHealth } from "./chatStore";
 import styles from "./Chat.module.css";
-import Tooltip from "../../components/Tooltip/Tooltip";
 
 /**
  * The one-line session readout above the transcript: what the session is doing
@@ -133,17 +133,18 @@ export default function StatusStrip(props: {
         )}
       </Show>
       <div class={styles.stripSpacer} />
-      <Tooltip
-        as="button"
-        type="button"
+      {/* No `active`: `IconButton`'s pressed look sets `aria-pressed`, and a menu
+          trigger is expanded rather than pressed. The open state is drawn off
+          `aria-expanded` instead, which is the attribute that is true. */}
+      <IconButton
+        size="sm"
         class={styles.stripMenuButton}
-        label="Session menu"
+        icon={<Icon icon={Ellipsis} />}
+        tooltip="Session menu"
         aria-label="Session menu"
         aria-expanded={menuOpen()}
         onClick={() => setMenuOpen(!menuOpen())}
-      >
-        <Icon icon={Ellipsis} />
-      </Tooltip>
+      />
       <Show when={menuOpen()}>
         <div class={styles.stripMenu}>{props.menu}</div>
       </Show>
