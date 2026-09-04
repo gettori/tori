@@ -183,6 +183,11 @@ type CheckpointFile = { path: string; shared_with?: string[]; unattributed?: boo
  */
 const FIRST_SEND_DEADLINE_MS = 60_000;
 
+/** The attachment labels a replayed turn has already spent. */
+function labelsOf(blocks: readonly ContentBlock[]): string[] {
+  return blocks.flatMap((b) => (b.type === "fileRef" && b.label ? [b.label] : []));
+}
+
 /**
  * One chat session: the transport's events folded into `chatStore`, rendered,
  * and the composer's input sent back.
@@ -504,9 +509,7 @@ export default function ChatView(props: {
             const ev = parseChatEvent(item);
             if (!ev) continue;
             applyEvent(s, ev);
-            if (ev.type === "userMessage") {
-              for (const b of ev.blocks) if (b.type === "fileRef" && b.label) labels.push(b.label);
-            }
+            if (ev.type === "userMessage") labels.push(...labelsOf(ev.blocks));
           }
           // The transcript carries no turn boundaries, so without this the
           // last replayed turn stays "active" and the whole panel reads as
@@ -579,6 +582,11 @@ export default function ChatView(props: {
           applyEvent(s, ev);
           // The replay carries no turn boundaries, exactly like a transcript.
           if (fold.as === "settle") settleBackfill(s);
+          // A transport with no transcript to read replays its user turns
+          // here, so this is the only place its spent labels can raise the
+          // numbering. `seedLabels` only ever raises, so a live turn's own
+          // labels arriving this way change nothing.
+          if (ev.type === "userMessage") seedLabels(composerKey(), labelsOf(ev.blocks));
         });
         return;
       }
