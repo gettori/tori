@@ -7,6 +7,7 @@ import type { Lane } from "./chatStore";
 function lane(over: Partial<Lane> = {}): Lane {
   return {
     agentId: "acb01121756a92ca0",
+    taskType: "local_agent",
     toolUseId: "toolu_agent",
     agentType: "general-purpose",
     description: "Create one.txt",
@@ -18,7 +19,6 @@ function lane(over: Partial<Lane> = {}): Lane {
     summary: null,
     parentId: null,
     startedAt: Date.now(),
-    seen: false,
     ...over,
   };
 }
@@ -28,6 +28,7 @@ const strip = (over: Partial<Parameters<typeof LaneStrip>[0]> = {}) => (
     lanes={[lane()]}
     selected={null}
     blocked={new Set()}
+    tasks={[]}
     busy={false}
     mark="claude"
     onSelect={() => {}}
@@ -162,6 +163,32 @@ describe("the lane strip", () => {
     // borrowing a logo's.
     const unnamed = render(() => strip({ busy: true, mark: null }));
     expect(dots(unnamed.container)[0]!.getAttribute("data-mark")).toBeNull();
+  });
+
+  it("shows background work in its own group, as text rather than a control", () => {
+    // A backgrounded shell task rides the same wire channel as a subagent and
+    // has no transcript behind it, so it says something is still running and is
+    // not somewhere to click through to.
+    const task = lane({
+      agentId: "b1dk8xyca",
+      taskType: "local_bash",
+      description: "Sleep 2 seconds then echo done",
+      agentType: null,
+      prompt: null,
+    });
+    render(() => strip({ tasks: [task] }));
+    expect(screen.getByRole("group", { name: "Background tasks" })).toBeTruthy();
+    expect(screen.getByText("Sleep 2 seconds then echo done")).toBeTruthy();
+    // One button per lane plus main, and none for the task.
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+  });
+
+  it("shows the strip for background work even with no subagent at all", () => {
+    const task = lane({ agentId: "b1dk8xyca", taskType: "local_bash", description: "counting" });
+    render(() => strip({ lanes: [], tasks: [task] }));
+    expect(screen.getByText("counting")).toBeTruthy();
+    // No lanes, so no `main` either: there is nothing to switch between.
+    expect(screen.queryByText("main")).toBeNull();
   });
 
   it("marks the lane being read", () => {
