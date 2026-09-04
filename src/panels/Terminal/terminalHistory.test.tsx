@@ -147,6 +147,17 @@ describe("the History button on the tab bar", () => {
     await waitFor(() => expect(document.querySelector('[role="listbox"]')).not.toBeNull());
   });
 
+  it("sits to the right of the launch control", () => {
+    // The pair reads left to right as "make one" then "find one you already
+    // made", and history is the one reached for oftener, so it takes the place
+    // nearer the strip's edge.
+    mount();
+    const trailing = historyBtn().closest(".otab-trailing") as HTMLElement;
+    const names = [...trailing.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
+
+    expect(names).toEqual(["New chat in repo", "Launch an agent session", "Session history"]);
+  });
+
   // The one thing a native `title` could never do, checked at the surface most
   // likely to break it: xterm claims keydown before `window` sees it (the vault
   // gotcha of that name), and this strip lives above a mounted terminal. Focus
