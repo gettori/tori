@@ -675,18 +675,27 @@ impl ClaudeMapper {
 
     /// The one place a subagent's two ids are joined. The `tool_use_id ->
     /// task_id` entry is what later lets a nested frame name its lane.
+    ///
+    /// **Not every task here is a subagent.** A backgrounded `Bash` rides the
+    /// same channel as `local_bash`, so only `local_agent` claims the call: a
+    /// shell task's own tool card belongs to the main conversation, and stamping
+    /// it with a lane would file it under a transcript that does not exist.
     fn map_task_started(&mut self, frame: &Value) -> Vec<ChatEvent> {
         let (Some(agent_id), Some(tool_use_id)) =
             (frame["task_id"].as_str(), frame["tool_use_id"].as_str())
         else {
             return Vec::new();
         };
-        self.lane_of_call
-            .insert(tool_use_id.to_string(), agent_id.to_string());
+        let task_type = frame["task_type"].as_str().unwrap_or_default().to_string();
+        if task_type == SUBAGENT_TASK {
+            self.lane_of_call
+                .insert(tool_use_id.to_string(), agent_id.to_string());
+        }
         vec![ChatEvent::SubagentStarted {
             session_id: self.session_id.clone(),
             agent_id: agent_id.to_string(),
             tool_use_id: tool_use_id.to_string(),
+            task_type,
             agent_type: frame["subagent_type"].as_str().unwrap_or_default().to_string(),
             description: frame["description"].as_str().unwrap_or_default().to_string(),
             prompt: frame["prompt"].as_str().unwrap_or_default().to_string(),
@@ -1488,6 +1497,11 @@ fn tool_result_text(raw: &Value) -> Option<String> {
 /// target under `file.filePath`, which is indistinguishable from a write's
 /// `filePath` once the frame is all that is left, so the exclusion is keyed off
 /// the call's name instead of guessing at the result's shape.
+/// The `task_type` a subagent announces, and the only one that opens a lane.
+/// Measured on claude 2.1.259: a backgrounded `Bash` says `local_bash` on the
+/// same channel and carries neither `subagent_type` nor `prompt`.
+pub(crate) const SUBAGENT_TASK: &str = "local_agent";
+
 const READ_ONLY_TOOLS: &[&str] = &["Read", "NotebookRead"];
 
 /// Claude's tool names, mapped onto the neutral vocabulary.
@@ -1777,6 +1791,42 @@ mod tests {
             })
             .last();
         assert_eq!(terminal, Some("completed"), "the subagent's last reported status");
+    }
+
+    /// Not everything on the `task_*` channel is a subagent, and the first build
+    /// that read it assumed so: a backgrounded `Bash` appeared on the lane strip
+    /// offering a transcript that does not exist.
+    #[test]
+    fn a_backgrounded_shell_is_a_task_and_not_a_lane() {
+        let events = run("background-shell");
+        let started: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::SubagentStarted { task_type, agent_type, prompt, .. } => {
+                    Some((task_type.as_str(), agent_type.as_str(), prompt.as_str()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(started, [("local_bash", "", "")], "the shell task, with neither of a subagent's fields");
+
+        // The load-bearing half: its call is the main conversation's, so nothing
+        // nested may be attributed to it.
+        assert_eq!(
+            count(&events, |e| matches!(e, ChatEvent::SubagentCall { .. })),
+            0,
+            "a shell task claimed a call"
+        );
+
+        // And the subagent fixture still reports itself as one.
+        let agent: Vec<_> = run("permission-subagent")
+            .iter()
+            .filter_map(|e| match e {
+                ChatEvent::SubagentStarted { task_type, .. } => Some(task_type.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(agent, ["local_agent"]);
     }
 
     /// Both halves matter: attributing nothing leaves a subagent's work reading

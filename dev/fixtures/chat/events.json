@@ -398,6 +398,7 @@
     "sessionId": "s1",
     "agentId": "acb01121756a92ca0",
     "toolUseId": "toolu_5",
+    "taskType": "local_agent",
     "agentType": "general-purpose",
     "description": "Create sub-made.txt",
     "prompt": "Use the Write tool to create sub-made.txt containing the word sub."

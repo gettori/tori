@@ -162,6 +162,10 @@ const REQUIRES = {
   // `task_notification` is required here and nowhere else: this is the scenario
   // whose whole point is that it lands *after* the parent's turn.
   "subagent-background": ["system/task_started", "system/task_notification", "result/success"],
+  // The same lifecycle channel a subagent uses, carrying something that is not
+  // one. Without this the `task_*` frames look like they only ever describe
+  // subagents, which is what put a shell task on the lane strip.
+  "background-shell": ["system/task_started", "system/task_notification", "result/success"],
   "subagent-parallel": ["system/task_started", "assistant/tool_use", "result/success"],
   "permission-grant": ["control_request/can_use_tool", "assistant/tool_use", "result/success"],
   // The hook must run *and* the harness must still ask, so both halves are
@@ -953,6 +957,35 @@ const SCENARIOS = {
     );
     if (!backgrounded) {
       throw new Error("no tool call carried run_in_background: true, so this run measured a foreground subagent");
+    }
+    return p;
+  },
+
+  // A backgrounded **Bash** call, not an agent. It rides the same `task_*`
+  // channel as a subagent and the whole question is what tells the two apart, so
+  // the scenario asserts only that the frames arrived and leaves the
+  // discriminating field to the fixture.
+  "background-shell": async ({ scratch }) => {
+    const p = new Probe({ cwd: scratch, extraArgs: ["--permission-mode", "bypassPermissions"] });
+    p.sendTurn(
+      "Use the Bash tool with run_in_background set to true to run exactly: sleep 2; echo done. " +
+        "Do not use the Task tool and do not launch any subagent. Reply with exactly the word: started.",
+    );
+    await p.waitForResult();
+    await p.waitFor((e) => e.type === "system" && e.subtype === "task_notification", 120_000);
+    await p.close();
+
+    const started = p.events.filter((e) => e.type === "system" && e.subtype === "task_started");
+    if (started.length === 0) {
+      throw new Error("no task_started arrived, so this run measured nothing about the task channel");
+    }
+    // The finding, stated as the thing that must not be true: if a shell task
+    // announced itself as `local_agent` there would be nothing to key on.
+    const agentish = started.filter((e) => e.task_type === "local_agent");
+    if (agentish.length > 0) {
+      throw new Error(
+        `a backgrounded Bash reported task_type "local_agent", so task_type cannot tell a shell task from a subagent`,
+      );
     }
     return p;
   },

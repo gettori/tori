@@ -62,9 +62,9 @@ export default function ToolCallCard(props: {
   /** Undo one hunk. Resolves true when the file was actually rewritten, which is
    *  when the card's diff has to be re-read. */
   onRevertHunk: (ref: HunkRef) => Promise<boolean>;
-  /** The subagent this call launched, when it launched one. A finished lane
-   *  leaves the strip above the composer, so this card is the way back to what
-   *  it did. */
+  /** The subagent this call launched, when it launched one. The strip keeps
+   *  every lane, so this is not the only way in; it is the one that starts from
+   *  where the launch happened. */
   lane?: string | null;
   /** The subagent whose lane this row belongs to, set only while it is showing
    *  outside that lane: a blocked row surfaces in main so the stall is visible

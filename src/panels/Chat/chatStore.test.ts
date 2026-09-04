@@ -40,6 +40,7 @@ import {
   seedEffort,
   selectEffort,
   selectLane,
+  backgroundTasks,
   blockedLanes,
   selectMode,
   selectModel,
@@ -2018,11 +2019,12 @@ describe("subagent lanes", () => {
   const CALL = "toolu_agent";
   const NESTED = "toolu_nested";
 
-  const laneStarted = (agentId = AGENT, toolUseId = CALL): ChatEvent => ({
+  const laneStarted = (agentId = AGENT, toolUseId = CALL, taskType = "local_agent"): ChatEvent => ({
     type: "subagentStarted",
     sessionId: "s1",
     agentId,
     toolUseId,
+    taskType,
     agentType: "general-purpose",
     description: "Create sub-made.txt",
     prompt: "Use the Write tool to create sub-made.txt",
@@ -2154,20 +2156,76 @@ describe("subagent lanes", () => {
     summary: null,
   });
 
-  it("leaves the strip once it has succeeded and its card has settled", () => {
+  it("keeps a finished lane on the strip for the life of the session", () => {
+    // It used to retire once its `Agent` card settled, on the reasoning that the
+    // card was then the way back in. It is, but the strip is the only way back
+    // *out*: retiring the last lane took `main` with it, and a reader who had
+    // opened a lane from its card was left with nothing to click.
     const s = replay([turnStarted("t1"), laneStarted(), started("t1", CALL, "Agent", {})]);
     expect(laneStrip(s)).toHaveLength(1);
 
-    // Finished, but the `Agent` call has not reported yet, so that card is not
-    // a way back in and the lane has to stay reachable.
     applyEvent(s, laneUpdate("completed"));
-    expect(laneStrip(s)).toHaveLength(1);
-
     applyEvent(s, completed("t1", CALL));
-    expect(laneStrip(s)).toHaveLength(0);
-    // Still readable, and still holding its rows: it left the strip, not the
-    // session.
+    expect(laneStrip(s).map((l) => l.agentId)).toEqual([AGENT]);
     expect(s.lanes[AGENT]!.status).toBe("completed");
+  });
+
+  it("keeps the agent's other background work off the lanes", () => {
+    // Measured: a backgrounded `Bash` rides the same `task_*` channel as a
+    // subagent and says `local_bash`. It has no transcript, so it is not a lane.
+    const TASK = "b1dk8xyca";
+    const s = replay([
+      turnStarted("t1"),
+      laneStarted(),
+      laneStarted(TASK, "toolu_bash", "local_bash"),
+    ]);
+    expect(laneStrip(s).map((l) => l.agentId)).toEqual([AGENT]);
+    expect(backgroundTasks(s).map((l) => l.agentId)).toEqual([TASK]);
+
+    // And it is not somewhere to be: selecting it falls back to main rather
+    // than emptying the panel with no way to tell that from a quiet subagent.
+    selectLane(s, TASK);
+    expect(s.selectedLane).toBeNull();
+  });
+
+  it("drops a background task once it ends, where a lane stays", () => {
+    // A lane stays because it is a record you can still read. A task's record is
+    // its own tool card, so a finished chip would say nothing twice.
+    const TASK = "b1dk8xyca";
+    const s = replay([turnStarted("t1"), laneStarted(TASK, "toolu_bash", "local_bash")]);
+    expect(backgroundTasks(s)).toHaveLength(1);
+    applyEvent(s, { ...laneUpdate("completed"), agentId: TASK } as ChatEvent);
+    expect(backgroundTasks(s)).toHaveLength(0);
+  });
+
+  it("treats a lane opened before its task_started as a subagent", () => {
+    // A permission prompt carries the `task_id` alone, and nothing but a
+    // subagent asks the user anything, so an untyped lane is one.
+    const s = replay([turnStarted("t1"), { ...prompt(NESTED, "r1"), agentId: AGENT } as ChatEvent]);
+    expect(laneStrip(s).map((l) => l.agentId)).toEqual([AGENT]);
+    expect(backgroundTasks(s)).toEqual([]);
+  });
+
+  it("never leaves a reader in a lane the strip does not offer", () => {
+    // The invariant the retirement rule broke, stated so it cannot come back:
+    // any lane you can be reading is a lane the strip can take you out of.
+    const s = replay([
+      turnStarted("t1"),
+      laneStarted(),
+      started("t1", CALL, "Agent", {}),
+      laneUpdate("completed"),
+      completed("t1", CALL),
+    ]);
+    selectLane(s, AGENT);
+    expect(s.selectedLane).toBe(AGENT);
+    expect(laneStrip(s).map((l) => l.agentId)).toContain(s.selectedLane);
+  });
+
+  it("adds a new lane after the ones already there", () => {
+    const SECOND = "b3e0c11f0a2d4e5f6";
+    const s = replay([turnStarted("t1"), laneStarted(), laneUpdate("completed")]);
+    applyEvent(s, laneStarted(SECOND, "toolu_second"));
+    expect(laneStrip(s).map((l) => l.agentId)).toEqual([AGENT, SECOND]);
   });
 
   it("keeps a lane that did not succeed, whatever the agent called it", () => {
@@ -2206,7 +2264,7 @@ describe("subagent lanes", () => {
     expect([...blockedLanes(s)]).toEqual([]);
   });
 
-  it("holds the strip for a lane that ended badly until it is opened", () => {
+  it("holds the strip for a lane that ended badly, and says so", () => {
     const s = replay([
       turnStarted("t1"),
       laneStarted(),
@@ -2214,10 +2272,11 @@ describe("subagent lanes", () => {
       laneUpdate("failed"),
       completed("t1", CALL),
     ]);
-    // Its card has settled, which retires a success; a failure it does not.
     expect(laneStrip(s)).toHaveLength(1);
+    // Reading it does not clear it either: the word stays on the chip, since
+    // nothing else in the session records that this work did not land.
     selectLane(s, AGENT);
-    expect(laneStrip(s)).toHaveLength(0);
+    expect(laneStrip(s)).toHaveLength(1);
     expect(s.lanes[AGENT]!.status).toBe("failed");
   });
 

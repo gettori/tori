@@ -14,6 +14,10 @@ export default function LaneStrip(props: {
    *  so this marks where answering one would take you. */
   blocked: ReadonlySet<string>;
   onSelect: (agentId: string | null) => void;
+  /** The agent's other background work, while it runs. Shown to say something is
+   *  still going, never as a destination: a shell task has no transcript, so
+   *  these are text and not controls. */
+  tasks: readonly Lane[];
   /** Whether the main agent is mid-turn. Its own chip has no `Lane` behind it,
    *  so its state is the only one the strip has to be told. */
   busy: boolean;
@@ -86,18 +90,46 @@ export default function LaneStrip(props: {
         <Show when={p.lane && laneFigure(p.lane, now(), blocked())}>
           {(figure) => <span class={styles.laneFigure}>{figure()}</span>}
         </Show>
-        <span class={styles.laneKey} aria-hidden="true">
-          {`⌥${p.at + 1}`}
-        </span>
+        {/* Only the nine the binding covers. Lanes are kept for the life of the
+            session now, so a tenth chip is reachable and would otherwise offer a
+            shortcut nothing answers. */}
+        <Show when={p.at < 9}>
+          <span class={styles.laneKey} aria-hidden="true">
+            {`⌥${p.at + 1}`}
+          </span>
+        </Show>
       </button>
     );
   };
 
+  // A span and not a button: there is nothing behind it to open, and a control
+  // that answers a click by doing nothing is worse than plain text. It still
+  // reads aloud, because it is text inside a named group.
+  const Task = (p: { task: Lane }) => (
+    <span class={`${styles.lane} ${styles.laneStill}`}>
+      <span class={`${styles.laneDot} ${styles.laneBusy}`} aria-hidden="true" />
+      <span class={styles.laneLabel}>{laneLabel(p.task)}</span>
+      <span class={styles.laneFigure}>{elapsed(p.task, now())}</span>
+    </span>
+  );
+
   return (
-    <Show when={props.lanes.length > 0}>
-      <div class={styles.lanes} role="group" aria-label="Subagent lanes">
-        <Chip lane={null} at={0} />
-        <For each={props.lanes}>{(lane, at) => <Chip lane={lane} at={at() + 1} />}</For>
+    <Show when={props.lanes.length > 0 || props.tasks.length > 0}>
+      <div class={styles.lanes}>
+        <Show when={props.lanes.length > 0}>
+          <div class={styles.laneGroup} role="group" aria-label="Subagent lanes">
+            <Chip lane={null} at={0} />
+            <For each={props.lanes}>{(lane, at) => <Chip lane={lane} at={at() + 1} />}</For>
+          </div>
+        </Show>
+        {/* Its own group with its own name, because the two rows answer
+            different questions and only one of them can be clicked. */}
+        <Show when={props.tasks.length > 0}>
+          <div class={styles.laneGroup} role="group" aria-label="Background tasks">
+            <span class={styles.laneGroupName}>Background</span>
+            <For each={props.tasks}>{(task) => <Task task={task} />}</For>
+          </div>
+        </Show>
       </div>
     </Show>
   );
@@ -118,14 +150,16 @@ export function laneLabel(lane: Lane): string {
  *  act on is carried by a 6px dot's colour alone. */
 function laneFigure(lane: Lane, now: number, blocked: boolean): string | null {
   if (blocked) return "waiting";
-  if (lane.status === null) {
-    const seconds = Math.max(0, Math.round((now - lane.startedAt) / 1000));
-    return seconds >= 60 ? `${Math.floor(seconds / 60)}m${seconds % 60}s` : `${seconds}s`;
-  }
+  if (lane.status === null) return elapsed(lane, now);
   if (lane.status !== "completed") return lane.status;
   const tokens = lane.usage?.totalTokens;
   if (tokens === undefined) return null;
   return tokens >= 1000 ? `${Math.round(tokens / 1000)}k` : String(tokens);
+}
+
+function elapsed(lane: Lane, now: number): string {
+  const seconds = Math.max(0, Math.round((now - lane.startedAt) / 1000));
+  return seconds >= 60 ? `${Math.floor(seconds / 60)}m${seconds % 60}s` : `${seconds}s`;
 }
 
 /** What a backgrounded `Agent` call records on disk: it returned before the

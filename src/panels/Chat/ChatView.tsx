@@ -139,6 +139,7 @@ import {
   pushQuestionAnswers,
   takeForSend,
   laneStrip,
+  backgroundTasks,
   selectLane,
   blockedLanes,
   laneOf,
@@ -366,10 +367,10 @@ export default function ChatView(props: {
     return lane ? laneLabel(lane) : null;
   };
 
-  /** The lane an `Agent` call opened, so its card can offer the way back in
-   *  once the lane has left the strip. */
+  /** The lane an `Agent` call opened, so its card can offer a way in from where
+   *  the launch actually happened rather than from a strip of equal chips. */
   const laneOpenedBy = (toolUseId: string) =>
-    Object.values(state.lanes).find((l) => l.toolUseId === toolUseId)?.agentId ?? null;
+    laneStrip(state).find((l) => l.toolUseId === toolUseId)?.agentId ?? null;
 
   /** The lane a row on screen actually belongs to, which only differs from what
    *  the reader picked for a blocked row: those show in main too. */
@@ -1825,6 +1826,7 @@ export default function ChatView(props: {
 
       <LaneStrip
         lanes={laneStrip(state)}
+        tasks={backgroundTasks(state)}
         blocked={blockedLanes(state)}
         selected={state.selectedLane}
         busy={running()}

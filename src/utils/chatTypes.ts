@@ -559,6 +559,12 @@ export type ChatEvent =
       sessionId: string;
       agentId: string;
       toolUseId: string;
+      /// What kind of task this is, and the only thing telling a subagent from
+      /// the other work on this channel: `local_agent` for a subagent,
+      /// `local_bash` for a backgrounded shell command.
+      taskType: string;
+      /// Empty for anything that is not a subagent, which sends neither this nor
+      /// `prompt`.
       agentType: string;
       description: string;
       prompt: string;
@@ -781,7 +787,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     required: ["sessionId", "toolUseId", "requestId", "agentId", "questions"],
   },
   subagentStarted: {
-    required: ["sessionId", "agentId", "toolUseId", "agentType", "description", "prompt"],
+    required: ["sessionId", "agentId", "toolUseId", "taskType", "agentType", "description", "prompt"],
   },
   subagentCall: { required: ["sessionId", "agentId", "toolUseId"] },
   subagentUpdate: {
