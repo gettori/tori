@@ -101,11 +101,11 @@ describe("the input's own height", () => {
     stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
     const seen = watchRows(input);
 
-    needed = 100; // four lines of content in a two-line box
-    fireEvent.input(input, { target: { value: "a\nb\nc\nd" } });
+    needed = 140; // six lines of content in a four-line box
+    fireEvent.input(input, { target: { value: "a\nb\nc\nd\ne\nf" } });
 
     expect(seen).not.toContain(1);
-    expect(input.rows).toBe(4);
+    expect(input.rows).toBe(6);
   });
 
   it("measures nothing at all while the text still fits", () => {
@@ -118,7 +118,7 @@ describe("the input's own height", () => {
     fireEvent.input(input, { target: { value: "hello" } });
 
     expect(seen).toEqual([]);
-    expect(input.rows).toBe(2);
+    expect(input.rows).toBe(4);
   });
 
   it("comes back to its resting height when a message goes, not below it", () => {
@@ -127,15 +127,15 @@ describe("the input's own height", () => {
     // measured it and snapped it back up, and that jump is what reads as the
     // composer resizing itself while you type.
     const { input } = setup();
-    let needed = 100;
+    let needed = 140;
     stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
-    fireEvent.input(input, { target: { value: "a\nb\nc\nd" } });
-    expect(input.rows).toBe(4);
+    fireEvent.input(input, { target: { value: "a\nb\nc\nd\ne\nf" } });
+    expect(input.rows).toBe(6);
 
     needed = 40;
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(input.rows).toBe(2);
+    expect(input.rows).toBe(4);
   });
 
   it("puts a box that is somehow under the floor back on it", () => {
@@ -148,19 +148,19 @@ describe("the input's own height", () => {
 
     fireEvent.input(input, { target: { value: "a" } });
 
-    expect(input.rows).toBe(2);
+    expect(input.rows).toBe(4);
   });
 
   it("still shrinks when the text does", () => {
     const { input } = setup();
-    let needed = 100;
+    let needed = 140;
     stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
-    fireEvent.input(input, { target: { value: "a\nb\nc\nd" } });
-    expect(input.rows).toBe(4);
+    fireEvent.input(input, { target: { value: "a\nb\nc\nd\ne\nf" } });
+    expect(input.rows).toBe(6);
 
     needed = 40;
     fireEvent.input(input, { target: { value: "a" } });
-    expect(input.rows).toBe(2);
+    expect(input.rows).toBe(4);
   });
 });
 

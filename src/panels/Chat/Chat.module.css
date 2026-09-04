@@ -1980,10 +1980,10 @@ button.diffHunkHeader:hover {
   border-color: var(--border-strong);
 }
 
-/* One line at rest, nine at most, then it scrolls. The line count itself lives
-   in `Composer`'s MAX_ROWS, written to the `rows` attribute: rows is measured in
-   line boxes, so the cap follows the chat font size and the zoom for free and
-   there is no px arithmetic here to keep in step with it.
+/* Four lines at rest, nine at most, then it scrolls. The line counts live in
+   `Composer`'s MIN_ROWS and MAX_ROWS, written to the `rows` attribute: rows is
+   measured in line boxes, so both follow the chat font size and the zoom for
+   free and there is no px arithmetic here to keep in step with them.
 
    The `40vh` is only a backstop. Nine lines is a ratio, and at high zoom it
    resolves to a box that would swallow the pane the conversation is in: at zoom
