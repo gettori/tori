@@ -288,6 +288,17 @@
   border-radius: var(--sway-radius-md);
 }
 
+/* A token in the sentence that names something this turn carried. Drawn the
+   way the composer drew it, so the prompt reads the same on both sides of
+   send. A token naming nothing the turn holds stays plain text. */
+.promptChip {
+  border-radius: var(--sway-radius-sm);
+  padding: 0.1em 0.35em;
+  background: var(--neutral-hover);
+  font-family: var(--sway-font-mono);
+  font-size: 0.9em;
+}
+
 /* A replayed image, whose bytes the transcript reader left on disk. Numbered
    the way the CLI writes one, and muted, because it is a note about the turn
    rather than part of what was asked. */
@@ -2380,39 +2391,74 @@ button.diffHunkHeader:hover {
   padding: 0 calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
 }
 
+/* A container, not a control: the chip means two things now (put the token in
+   the message, take the attachment away) and one button cannot be both. */
 .attachment {
+  display: flex;
+  align-items: center;
   max-width: 100%;
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-pill);
-  padding: calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale));
   overflow: hidden;
   background: var(--neutral-subtle);
+}
+
+.attachmentBody {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+  padding: calc(2px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
+  border: 0;
+  background: none;
   color: var(--fg-muted);
   font-family: var(--sway-font-mono);
   font-size: var(--sway-text-sm);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  cursor: pointer;
+  cursor: grab;
 }
 
-.attachment:hover {
-  border-color: var(--danger-fg);
+button.attachmentBody:hover {
   color: var(--fg-default);
 }
 
-/* An image chip shows the image: a chip reading "image" says nothing about
-   which one, and a composer can hold several. */
+.attachmentName {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* An image chip shows the image *and* its token: a picture says which file it
+   is, and only the token says what to type to name it. */
 .attachmentThumb {
   display: block;
-  width: calc(40px * var(--ui-scale));
-  height: calc(40px * var(--ui-scale));
+  flex: none;
+  width: calc(24px * var(--ui-scale));
+  height: calc(24px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
   object-fit: cover;
 }
 
-.attachment:has(.attachmentThumb) {
-  padding: 0;
-  border-radius: var(--sway-radius-md);
-  line-height: 0;
+.attachmentRemove {
+  display: flex;
+  align-items: center;
+  padding: 0 calc(8px * var(--ui-scale)) 0 calc(4px * var(--ui-scale));
+  border: 0;
+  background: none;
+  color: var(--fg-subtle);
+  cursor: pointer;
+}
+
+.attachmentRemove:hover {
+  color: var(--danger-fg);
+}
+
+/* What this agent can take, said where the file is about to land rather than
+   after it has been refused. */
+.dropHint {
+  padding: 0 calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-sm);
 }
 
 /* ---- the queue strip ---- */

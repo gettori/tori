@@ -39,14 +39,16 @@ pub fn store_attachment(request: tauri::ipc::Request<'_>) -> Result<String, Stri
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
-/// Write `bytes` under `dir` as `<id>-<safe name>`, returning the absolute
-/// path. The id keeps two pastes of `shot.png` apart; the name keeps the file
-/// recognisable to the agent and to anyone looking in the folder.
+/// Write `bytes` under `dir` as `<id>/<safe name>`, returning the absolute
+/// path. The id is a directory rather than a prefix on the name, so two pastes
+/// of `shot.png` stay apart while the file keeps the name the user gave it:
+/// that name is what the chip shows and what the agent reads in the path.
 pub(crate) fn store_in(dir: &Path, name: &str, bytes: &[u8]) -> Result<String, String> {
-    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let id = format!("{nanos:x}-{:x}", SEQ.fetch_add(1, Ordering::Relaxed));
-    let dest = dir.join(format!("{id}-{}", safe_name(name)));
+    let holder = dir.join(id);
+    std::fs::create_dir_all(&holder).map_err(|e| format!("cannot create {}: {e}", holder.display()))?;
+    let dest = holder.join(safe_name(name));
     std::fs::write(&dest, bytes).map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
     Ok(dest.to_string_lossy().into_owned())
 }
@@ -92,12 +94,14 @@ mod tests {
         std::env::temp_dir().join(format!("sway-attachments-{nanos:x}-{}", std::process::id()))
     }
 
+    /// The name the user gave it, unchanged: the id is the directory, so the
+    /// chip and the agent both read `shot.png` rather than `<id>-shot.png`.
     #[test]
-    fn round_trips_bytes_under_a_recognisable_name() {
+    fn round_trips_bytes_under_the_name_it_was_given() {
         let dir = scratch();
         let path = store_in(&dir, "shot.png", b"\x89PNG").expect("stored");
         assert!(path.starts_with(dir.to_string_lossy().as_ref()));
-        assert!(path.ends_with("-shot.png"), "{path}");
+        assert!(path.ends_with("/shot.png"), "{path}");
         assert_eq!(std::fs::read(&path).expect("read back"), b"\x89PNG");
         let _ = std::fs::remove_dir_all(&dir);
     }
