@@ -8,6 +8,88 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.904.0-alpha
+
+Subagents get lanes: a chip per helper you can switch into and read while it
+works, and again after the session is reopened. Attachments become real chips
+that survive a reload.
+
+### Subagents
+
+- Every transcript row now carries the lane that produced it, so a subagent's
+  rows no longer arrive indistinguishable from the main agent's on one wire.
+- A chip strip above the composer: main first, then one per subagent still
+  working, switchable by click or `Opt+N`. Each carries a status dot and one
+  figure, elapsed while it runs and its token total once it is done. Selecting
+  a lane narrows the transcript to that agent's rows.
+- A lane shows what its subagent actually did, with the tool name and its
+  arguments. Subagents never stream, so their calls used to reach the panel as
+  a bare result with no name on it.
+- Reopening a session reads its subagents back off disk, rather than losing
+  every lane it had shown.
+- A subagent asking for permission inside a lane nobody is watching now shows
+  that prompt in main too, with a button into the lane it came from. A lane
+  says when it is stuck or has gone wrong.
+- The main chip takes the working agent's own hue, orange for Claude, instead
+  of sitting grey through every turn.
+- The Agents card says which adapters publish `subagents: observable` and what
+  that buys you.
+
+### Attachments
+
+- A pasted or dropped file is written under `~/.config/sway/attachments` and
+  handed to the agent as a path, the same shape a tree drag or an `@` mention
+  already had. Each becomes `[image 3]`, `[pdf 1]` or `[file 2]`, numbered per
+  composer and never reused.
+- A chip is two controls: its body puts the token in the message by click or
+  drag, and the remove button takes the attachment and its token away. An
+  accepted `@` mention leaves its token where it was typed.
+- An image chip is a 40px preview with its token captioned under it. The remove
+  button sits in the top right and stays invisible until the tile is hovered or
+  something inside it takes focus.
+- A reopened chat gets its attachments back on both replays, the transcript
+  Claude writes and the live channel an ACP agent replays over.
+- Pasted images draw instead of showing a broken glyph. Tauri's fs scope
+  defaults to `require_literal_leading_dot`, so the configured `**` could not
+  match a path component starting with a dot.
+
+### Chat
+
+- Sending a prompt keeps you looking at it.
+- The composer rests at three rows rather than four.
+- Mode and model pills show what the chat was actually spawned on, not the
+  adapter's default. On codex and opencode a switch is confirmed from the
+  agent's own answer instead of staying frozen at whatever the handshake said.
+- A permission-mode pick settles at the turn boundary, and a refusal surfaces
+  rather than going quiet.
+- The status strip comes down to the height of the breadcrumb bar beside it.
+- Follow live edits moved onto the composer's bar, the history button sits past
+  the launch control, and the launch button's hover border closes.
+
+### Terminal and jobs
+
+- A pane goes back to whatever is showing in it, one home pane per kind.
+- `pty://exit` carries an exit code, so a clean run can be told from a failure.
+- A clone, a bootstrap, an install or a sign-in is no longer a tab in the tab
+  model.
+- A job can be stopped, and says when it ends.
+
+### Elsewhere
+
+- Mermaid fences render as diagrams instead of nine lines of arrow syntax, and
+  the preview gets its text back.
+- Blame moved to the bar that names the file, so it acts per file rather than
+  once for every pane sharing the strip.
+- The topbar crumb ends at the branch it names.
+- A session whose history could not be read says so with the error on it,
+  instead of looking identical to a session with no turns.
+
+### Known limitations
+
+- macOS only; unsigned, so a manual install still needs the steps in
+  [docs/INSTALL.md](docs/INSTALL.md).
+- Update checking is a notice only; Sway never installs an update for you.
+
 ## 26.830.0-alpha
 
 Features: one branch across several repositories, worked on as a single
