@@ -66,9 +66,12 @@ pub fn events_from_turns(
 
         for block in &turn.blocks {
             match block.kind.as_str() {
+                // An attachment was sent as a text block naming its path, so
+                // that is how it comes back: the same labelled `FileRef` the
+                // live turn carried, and ordinary prose otherwise.
                 "text" if turn.role == "user" => {
                     if let Some(text) = &block.text {
-                        user_blocks.push(ContentBlock::Text { text: text.clone() });
+                        user_blocks.push(ContentBlock::from_replayed_text(text));
                     }
                 }
                 // Without its bytes, which the transcript reader deliberately
@@ -579,6 +582,77 @@ mod tests {
         // An image-only prompt still replays as a prompt. It used to produce no
         // user message at all, so a reopened chat lost the question entirely.
         assert_eq!(blocks[1], vec![ContentBlock::ImageRef]);
+    }
+
+    /// One user turn's blocks, in the order they were sent.
+    fn user_blocks_of(turns: &[TranscriptTurn]) -> Vec<Vec<ContentBlock>> {
+        events_from_turns("s1", turns, &[])
+            .into_iter()
+            .filter_map(|e| match e {
+                ChatEvent::UserMessage { blocks, .. } => Some(blocks),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The round trip the label exists for: what the composer sent, written by
+    /// the transport, read back off the transcript, is the turn that was sent.
+    #[test]
+    fn a_labelled_attachment_replays_as_the_blocks_that_were_sent() {
+        let sent = vec![
+            ContentBlock::FileRef {
+                path: "/Users/x/.config/sway/attachments/19af-0/shot.png".into(),
+                start_line: None,
+                end_line: None,
+                text: None,
+                label: Some("[image 1]".into()),
+            },
+            ContentBlock::Text { text: "what colour is [image 1]?".into() },
+            // A name that merely looks ranged keeps every character it had,
+            // and a real range comes back as a range rather than as a path
+            // with `#L2-4` buried in it.
+            ContentBlock::FileRef {
+                path: "/Users/x/notes#Lx.md".into(),
+                start_line: None,
+                end_line: None,
+                text: None,
+                label: Some("[file 2]".into()),
+            },
+            ContentBlock::FileRef {
+                path: "/Users/x/main.rs".into(),
+                start_line: Some(2),
+                end_line: Some(4),
+                text: None,
+                label: Some("[file 3]".into()),
+            },
+        ];
+        let frame = crate::chat::claude_transport::turn_frame(&sent);
+        let written: Vec<TranscriptBlock> = frame["message"]["content"]
+            .as_array()
+            .expect("a user frame carries content")
+            .iter()
+            .map(|b| text_block("text", b["text"].as_str().expect("a text block").to_string()))
+            .collect();
+
+        assert_eq!(user_blocks_of(&[turn("user", written)])[0], sent);
+    }
+
+    /// Only the form the transport writes. Everything else is what the user
+    /// typed, and typing `[image 1]` is not attaching one.
+    #[test]
+    fn a_turn_that_only_looks_labelled_stays_text() {
+        let typed = [
+            "[image 1] is the red one",
+            "[image 1]: /Users/x/shot.png",
+            "[image 1]: @shot.png",
+            "[video 1]: @/Users/x/clip.mp4",
+            "[image one]: @/Users/x/shot.png",
+            "see [image 1]: @/Users/x/shot.png",
+        ];
+        for text in typed {
+            let blocks = user_blocks_of(&[turn("user", vec![text_block("text", text.into())])]);
+            assert_eq!(blocks[0], vec![ContentBlock::Text { text: text.into() }], "{text}");
+        }
     }
 
     #[test]

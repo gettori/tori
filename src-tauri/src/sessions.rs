@@ -861,10 +861,19 @@ pub fn delete_session(path: String, agent: String) -> Result<(), String> {
     // Load-modify-save on the sessions-store store: serialized behind a named
     // lock now that commands no longer queue on one IPC thread.
     let store = crate::exec::named_lock("sessions-store");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let guard = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     match agents::parser_kind_for(&agent) {
         Some(agents::ParserKind::ClaudeJsonl) => {
-            std::fs::remove_file(&path).map_err(|e| e.to_string())
+            // What this session attached, asked while its transcript is still
+            // there to ask. Swept after the delete, so the transcript being
+            // removed is not counted as a reference to itself.
+            let attached = crate::attachments::holders_named_by(Path::new(&path), &crate::attachments::dir());
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+            // The sweep reads every transcript under every root, and the store
+            // this lock serialises is already done with: the session is gone.
+            drop(guard);
+            crate::attachments::drop_unreferenced(&attached, &watch_dirs());
+            Ok(())
         }
         None => crate::chat::acp_sessions::forget(Path::new(&path)),
     }

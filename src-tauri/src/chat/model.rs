@@ -787,6 +787,55 @@ pub enum ContentBlock {
     },
 }
 
+impl ContentBlock {
+    /// A replayed user text block, read back as the attachment it was sent as.
+    ///
+    /// The exact form `turn_frame` and `prompt_blocks` write and nothing
+    /// looser, so a sentence that merely says `[image 1]` stays prose. The path
+    /// is a transcript's word, not Sway's: an agent writes that file, so it is
+    /// required to be absolute and one line, and every surface drawing it still
+    /// decides for itself what it will open.
+    pub fn from_replayed_text(text: &str) -> ContentBlock {
+        text.strip_prefix('[')
+            .and_then(|rest| rest.split_once("]: @"))
+            .filter(|(token, path)| is_label(token) && path.starts_with('/') && !path.contains('\n'))
+            .map(|(token, rendered)| {
+                let (path, start_line, end_line) = split_range(rendered);
+                ContentBlock::FileRef { path, start_line, end_line, text: None, label: Some(format!("[{token}]")) }
+            })
+            .unwrap_or_else(|| ContentBlock::Text { text: text.to_string() })
+    }
+}
+
+/// `image 3`: one of the kinds a composer mints, then a number.
+fn is_label(token: &str) -> bool {
+    let Some((kind, n)) = token.split_once(' ') else { return false };
+    matches!(kind, "image" | "pdf" | "file") && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// The `#L2-4` tail a ranged reference is rendered with, taken back off the
+/// path. No label carries a range today, and reading one back rather than
+/// leaving `#L2-4` buried in a path is what keeps that true by accident rather
+/// than by luck. A file actually named that way is the wire form's cost, and
+/// the rendering paid it first.
+fn split_range(rendered: &str) -> (String, Option<u32>, Option<u32>) {
+    let whole = || (rendered.to_string(), None, None);
+    let Some((path, range)) = rendered.rsplit_once("#L") else { return whole() };
+    if path.is_empty() {
+        return whole();
+    }
+    match range.split_once('-') {
+        Some((from, to)) => match (from.parse().ok(), to.parse().ok()) {
+            (Some(from), Some(to)) => (path.to_string(), Some(from), Some(to)),
+            _ => whole(),
+        },
+        None => match range.parse().ok() {
+            Some(from) => (path.to_string(), Some(from), None),
+            None => whole(),
+        },
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------

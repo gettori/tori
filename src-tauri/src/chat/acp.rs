@@ -525,11 +525,13 @@ pub fn map_update(
 
         // A replayed user turn. The live composer pushes its own, so this
         // matters for the turns Sway did not send: everything `session/load`
-        // replays into a reopened tab.
+        // replays into a reopened tab. Read back through the same grammar
+        // `history.rs` uses, since this transport keeps no transcript Sway can
+        // read and a chunk is all a reopened chat has to learn its labels from.
         SessionUpdate::UserMessageChunk(chunk) => vec![ChatEvent::UserMessage {
             session_id: session_id.to_string(),
             turn_id: turn_id.to_string(),
-            blocks: vec![ContentBlock::Text { text: chunk_text(chunk) }],
+            blocks: vec![ContentBlock::from_replayed_text(&chunk_text(chunk))],
         }],
 
         SessionUpdate::ToolCall(call) => {
@@ -1443,6 +1445,31 @@ mod tests {
         assert!(matches!(
             events.as_slice(),
             [ChatEvent::TextDelta { text, .. }] if text == "hi"
+        ));
+    }
+
+    /// This transport replays over the live channel, so a reopened chat learns
+    /// what `[file 1]` already means here or nowhere.
+    #[test]
+    fn a_replayed_user_chunk_gives_a_labelled_attachment_back() {
+        let sent = vec![ContentBlock::FileRef {
+            path: "/w/repo/notes.md".into(),
+            start_line: None,
+            end_line: None,
+            text: None,
+            label: Some("[file 1]".into()),
+        }];
+        let rendered = match prompt_blocks(&sent).as_slice() {
+            [AcpContentBlock::Text(t)] => t.text.clone(),
+            other => panic!("one text block, got {other:?}"),
+        };
+        let events = map_update("s1", "t1", &SessionUpdate::UserMessageChunk(text_chunk(&rendered)), None);
+        assert!(matches!(events.as_slice(), [ChatEvent::UserMessage { blocks, .. }] if blocks == &sent));
+
+        let typed = map_update("s1", "t1", &SessionUpdate::UserMessageChunk(text_chunk("about [file 1]")), None);
+        assert!(matches!(
+            typed.as_slice(),
+            [ChatEvent::UserMessage { blocks, .. }] if blocks == &[ContentBlock::Text { text: "about [file 1]".into() }]
         ));
     }
 
