@@ -26,7 +26,9 @@ export type UploadFile = { name: string; bytes: Uint8Array };
 
 export type ComposerAttachments = {
   loadProjectFiles: () => Promise<string[]>;
-  onAttachFile: (relPath: string) => void;
+  /** Answers the token the new chip is named by, so the composer can leave the
+   *  mention where it was typed; null when the file was refused. */
+  onAttachFile: (relPath: string) => string | null;
   onAttachPaths: (absPaths: string[]) => void;
   onAttachUploads: (files: UploadFile[]) => void;
 };
@@ -57,7 +59,7 @@ export function composerAttachments(
 ): ComposerAttachments {
   // A path the agent already has. Labelled by kind so the prose can name it,
   // and refused by kind when this agent's Read would not open it.
-  function mention(path: string) {
+  function mention(path: string): string | null {
     const name = path.split("/").pop() || path;
     const verdict = checkAttachment(
       { name, mediaType: "", bytes: null },
@@ -66,9 +68,11 @@ export function composerAttachments(
     );
     if (!verdict.ok) {
       onRejected(verdict.reason);
-      return;
+      return null;
     }
-    offerToComposer(key(), fileMentionBlocks(path, nextLabel(key(), verdict.kind)));
+    const label = nextLabel(key(), verdict.kind);
+    offerToComposer(key(), fileMentionBlocks(path, label));
+    return label;
   }
 
   return {

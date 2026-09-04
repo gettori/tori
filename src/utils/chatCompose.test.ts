@@ -179,6 +179,23 @@ describe("attachment labels", () => {
     expect(nextLabel(SESSION, "pdf")).toBe("[pdf 5]");
   });
 
+  // Removing the chip has to take its token with it: a sentence still saying
+  // `[image 1]` after the attachment is gone names something the turn will not
+  // carry, and the agent would go looking for it.
+  it("takes the token out of the sentence when its chip is removed", () => {
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[image 1]"));
+    setDraft(SESSION, "look at [image 1] and at [image 1] again");
+    dropPending(SESSION, pendingFor(SESSION)[0].id);
+    expect(draftFor(SESSION)).toBe("look at and at again");
+  });
+
+  it("leaves a sentence that never named it exactly as it was", () => {
+    offerToComposer(SESSION, fileMentionBlocks("/x/a.png", "[image 1]"));
+    setDraft(SESSION, "have a look at this");
+    dropPending(SESSION, pendingFor(SESSION)[0].id);
+    expect(draftFor(SESSION)).toBe("have a look at this");
+  });
+
   it("is seeded even by an empty transcript, so a held send is not held forever", () => {
     seedLabels(SESSION, []);
     expect(labelsSeeded(SESSION)).toBe(true);

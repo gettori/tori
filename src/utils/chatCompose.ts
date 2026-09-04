@@ -205,8 +205,14 @@ export function pendingFor(key: ComposerKey): PendingBlock[] {
   return pending()[key] ?? [];
 }
 
+/** Take one chip away, and with it every token naming it: a sentence that
+ *  still says `[image 2]` after its attachment is gone names something the
+ *  turn will not carry. */
 export function dropPending(key: ComposerKey, id: string) {
+  const gone = pendingFor(key).find((p) => p.id === id);
+  const label = gone?.block.type === "fileRef" ? gone.block.label : null;
   setPending((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((p) => p.id !== id) }));
+  if (label) setDrafts((prev) => (key in prev ? { ...prev, [key]: stripToken(prev[key], label) } : prev));
 }
 
 /** Take everything pending for a composer, clearing it. Called when the turn that
@@ -432,6 +438,12 @@ export function nextLabel(key: ComposerKey, kind: AttachmentKind): string {
 function renameTokens(text: string, renames: ReadonlyMap<string, string>): string {
   if (!renames.size) return text;
   return text.replace(LABEL_TOKENS, (token) => renames.get(token) ?? token);
+}
+
+/** Cut a token out of a sentence and close the gap, so removing the chip from
+ *  "look at [image 1] again" does not leave two spaces behind. */
+function stripToken(text: string, token: string): string {
+  return text.split(token).join("").replace(/ {2,}/g, " ").replace(/[ \t]+$/gm, "");
 }
 
 /** Rename one chip and every token naming it, in the draft and in a message
