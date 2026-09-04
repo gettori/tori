@@ -465,6 +465,10 @@ export type ChatState = {
    *  ids: the value is what was sent, the resolved id is what the next init has
    *  to report for the pick to count as landed. */
   pendingModel: { value: string; resolvedModel: string } | null;
+  /** The `--model` value this tab *spawned the child with*: a weaker claim than
+   *  `modelValue`, and kept apart from it so it can rank below what the child
+   *  itself reports rather than above it. See `seedModel`. */
+  openingModel: string | null;
   /** The effort level in force, and one picked but not yet applied. Unlike the
    *  model and the mode, **nothing on the wire reports effort back**, so the
    *  applied value is what was last sent rather than what was confirmed.
@@ -624,6 +628,7 @@ export function initialChat(sessionId: string, answerQuestionsInline = true): Ch
     model: null,
     modelValue: null,
     pendingModel: null,
+    openingModel: null,
     effort: null,
     pendingEffort: undefined,
     models: [],
@@ -1813,18 +1818,25 @@ export function revertEffortPick(s: ChatState, effort: string | null) {
   if (s.pendingEffort === effort) s.pendingEffort = undefined;
 }
 
-/**
- * The level the session was *opened* on, which is already in force: it rode the
- * argv the child was started with.
- *
- * Applied rather than pending, and not a pick: there is nothing to send and
- * nothing to wait for. It exists because nothing on the wire reports effort
- * back - `system/init` names the model and the permission mode and stops there
- * - so a session started at `high`, or resumed onto it after a reload, had a
- * control reading "Default" about a child running something else.
- */
+/** The level the session opened on, in force from the first frame because it
+ *  rode the argv. Applied rather than pending, and never corrected, because
+ *  nothing on the wire reports effort back at all. */
 export function seedEffort(s: ChatState, effort: string | null) {
   if (s.effort === null && s.pendingEffort === undefined) s.effort = effort;
+}
+
+/** The mode the session opened on, same rule as `seedEffort`. Here the wire
+ *  does report it, only not until the first turn's `system/init`, and `noteMode`
+ *  writes unconditionally, so a wrong seed corrects itself at that boundary. */
+export function seedMode(s: ChatState, mode: PermissionMode) {
+  if (s.permissionMode === null && s.pendingMode === null) s.permissionMode = mode;
+}
+
+/** The `--model` value the session opened on. Parked in `openingModel` and never
+ *  in `modelValue`: `noteModel` rewrites `modelValue` only for a pick it watched
+ *  land, so a seed there would outrank the child's own report for good. */
+export function seedModel(s: ChatState, value: string) {
+  if (s.openingModel === null) s.openingModel = value;
 }
 
 /** Record an effort pick. Nothing reports effort back, so there is no confirmed
