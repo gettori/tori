@@ -70,6 +70,17 @@ const unitSel = {
   projectKind: "plain",
 };
 
+const sessionSel = {
+  ...unitSel,
+  branch: "bugfix-260903",
+  agent: "claude",
+  sessionId: "s1",
+  sessionPath: "/w/api/s1.jsonl",
+  sessionCwd: "/w/api",
+  sessionTitle: "For a log prompt, when sent pressing enter it goes under the input field",
+  sessionName: null,
+};
+
 const brokenSel = {
   kind: "feature",
   featureId: "f2",
@@ -146,5 +157,16 @@ describe("Toolbar for a Feature", () => {
     expect(screen.getByText("work")).toBeTruthy();
     expect(screen.getByText("main")).toBeTruthy();
     expect(bridge.calls.some((c) => c.cmd === "list_features")).toBe(false);
+  });
+
+  it("ends the crumb at the branch when a chat is focused", () => {
+    // Focusing a chat tab puts its sessionId on the Selection, which used to add
+    // a fourth crumb repeating the tab's own agent mark and title.
+    render(() => <Toolbar selected={sessionSel as never} />);
+    expect(crumbs()).toEqual(["work", "api", "bugfix-260903"]);
+    expect(screen.queryByText(sessionSel.sessionTitle)).toBeNull();
+    expect(document.querySelector("nav[aria-label='location'] .claude-icon")).toBeNull();
+    // The launch button still knows a session is open.
+    expect(screen.getByRole("button", { name: "Resume in Ghostty" })).toBeTruthy();
   });
 });
