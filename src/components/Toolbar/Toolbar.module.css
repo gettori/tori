@@ -65,20 +65,11 @@
   color: var(--fg-subtle);
 }
 
+/* Where you actually are, so it shrinks last and carries the full weight. */
 .tbCrumb .crumb.leaf {
   flex: 0 1 auto;
-  /* Match the sidebar session row (`.tree` is 13px). */
   font-size: var(--sway-text-xl);
   color: var(--fg-default);
-  display: inline-flex;
-  align-items: center;
-  gap: calc(5px * var(--ui-scale));
-}
-
-/* The agent mark in the menubar inherits the leaf text color rather than the
-   brand tint .claude-icon sets for itself. */
-.tbCrumb :global(.claude-icon) {
-  color: inherit;
 }
 
 .tbCrumb .crumbSep {
