@@ -101,7 +101,7 @@ describe("the input's own height", () => {
     stubMetrics(input, { line: 20, padding: 20, needed: () => needed });
     const seen = watchRows(input);
 
-    needed = 140; // six lines of content in a four-line box
+    needed = 140; // six lines of content in a three-line box
     fireEvent.input(input, { target: { value: "a\nb\nc\nd\ne\nf" } });
 
     expect(seen).not.toContain(1);
@@ -118,7 +118,7 @@ describe("the input's own height", () => {
     fireEvent.input(input, { target: { value: "hello" } });
 
     expect(seen).toEqual([]);
-    expect(input.rows).toBe(4);
+    expect(input.rows).toBe(3);
   });
 
   it("comes back to its resting height when a message goes, not below it", () => {
@@ -135,7 +135,7 @@ describe("the input's own height", () => {
     needed = 40;
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(input.rows).toBe(4);
+    expect(input.rows).toBe(3);
   });
 
   it("puts a box that is somehow under the floor back on it", () => {
@@ -148,7 +148,7 @@ describe("the input's own height", () => {
 
     fireEvent.input(input, { target: { value: "a" } });
 
-    expect(input.rows).toBe(4);
+    expect(input.rows).toBe(3);
   });
 
   it("still shrinks when the text does", () => {
@@ -160,7 +160,7 @@ describe("the input's own height", () => {
 
     needed = 40;
     fireEvent.input(input, { target: { value: "a" } });
-    expect(input.rows).toBe(4);
+    expect(input.rows).toBe(3);
   });
 });
 
