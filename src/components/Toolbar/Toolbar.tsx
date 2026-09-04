@@ -1,7 +1,6 @@
 import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
-import ClaudeIcon from "../../seti/ClaudeIcon";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
@@ -12,14 +11,13 @@ import { createDragReorder } from "../../utils/dragReorder";
 import styles from "./Toolbar.module.css";
 
 // Where you are and what to open it with: the breadcrumb to the selected
-// session, and the two hand-offs out of the app. The session's figures live in
-// the chat's own status strip, next to the conversation they describe, rather
-// than being read a second time here.
+// worktree, and the two hand-offs out of the app. The trail ends at the branch:
+// the chat's own tab already wears the agent mark and the session title, and its
+// figures sit in the chat's status strip, beside the conversation they describe.
 //
 // For a Feature the crumb is its name and branch, followed by one chip per
 // member: the present ones switch the active root, the rest wear their state.
 export default function Toolbar(props: { selected: Selection | null; onActiveRoot?: (root: string) => void }) {
-  const [displayName, setDisplayName] = createSignal("");
   const [err, setErr] = createSignal("");
 
   const sel = () => props.selected;
@@ -48,16 +46,9 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
     },
   });
 
-  createEffect(
-    on(
-      () => sel()?.sessionId,
-      () => {
-        setErr("");
-        const s = sel();
-        setDisplayName(s?.sessionName || s?.sessionTitle || "");
-      },
-    ),
-  );
+  // A failed launch or reorder belongs to the selection that produced it, so it
+  // leaves with that selection rather than following you to the next one.
+  createEffect(on(() => props.selected, () => setErr("")));
 
   async function openGhostty(resume: boolean) {
     const s = sel();
@@ -85,17 +76,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
                   <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
                   <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
                   <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                  <Show
-                    when={isSession()}
-                    fallback={<span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>}
-                  >
-                    <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
-                    <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                    <span class={`${styles.crumb} ${styles.leaf}`}>
-                      <ClaudeIcon />
-                      {displayName()}
-                    </span>
-                  </Show>
+                  <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>
                 </nav>
               }
             >
