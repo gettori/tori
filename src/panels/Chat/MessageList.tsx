@@ -1,6 +1,20 @@
-import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
+import {
+  For,
+  Index,
+  Match,
+  Show,
+  Switch,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+} from "solid-js";
 import { Brain, FoldVertical, Info, TriangleAlert, Webhook } from "lucide-solid";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { hasEarlier, windowed, WINDOW_STEP, type ChatItem, type QuestionItem, type ToolItem } from "./chatStore";
+import { attachmentKind } from "../../utils/chatCompose";
 import type { ContentBlock, PermissionMode, QuestionAnswer } from "../../utils/chatTypes";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
@@ -12,20 +26,72 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import Markdown from "./Markdown";
 import { foldEdits } from "./toolRenderers";
 
+/** Every token that could name an attachment, for splitting a prompt into the
+ *  parts that name one and the parts that are prose. */
+const TOKEN_SPLIT = /(\[(?:image|pdf|file) \d+\])/g;
+
 function blockText(blocks: readonly ContentBlock[]): string {
+  const typed = blocks.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
   return blocks
-    .flatMap((b) => (b.type === "text" ? [b.text] : b.type === "fileRef" ? [`@${b.path}`] : []))
+    .flatMap((b) => {
+      if (b.type === "text") return [b.text];
+      if (b.type !== "fileRef") return [];
+      if (!b.label) return [`@${b.path}`];
+      // A labelled attachment is drawn where the sentence names it. One the
+      // sentence never named still has to appear, or attaching a file and
+      // pressing Enter would leave a turn with no sign of what it carried.
+      return typed.includes(b.label) ? [] : [b.label];
+    })
     .join("\n");
 }
 
+/** The paths this turn attached, by the token naming each. */
+function promptRefs(blocks: readonly ContentBlock[]): Map<string, string> {
+  const by = new Map<string, string>();
+  for (const b of blocks) if (b.type === "fileRef" && b.label) by.set(b.label, b.path);
+  return by;
+}
+
+/**
+ * The prompt, with every token naming one of this turn's own attachments drawn
+ * as a chip.
+ *
+ * Only its own: a user who typed `[image 9]` at an agent that never got one
+ * meant those characters, and dressing them up as an attachment would claim
+ * the turn carried something it did not.
+ */
+function PromptText(props: { blocks: readonly ContentBlock[] }) {
+  const refs = createMemo(() => promptRefs(props.blocks));
+  const parts = createMemo(() => blockText(props.blocks).split(TOKEN_SPLIT).filter((p) => p !== ""));
+  return (
+    <Index each={parts()}>
+      {(part) => (
+        <Show when={refs().get(part())} fallback={part()}>
+          {(path) => (
+            <span class={styles.promptChip} title={path()}>
+              {part()}
+            </span>
+          )}
+        </Show>
+      )}
+    </Index>
+  );
+}
+
 /** `src` is null for an image a replay knows was sent but has no bytes for. */
-type PromptImage = { nth: number; src: string | null };
+type PromptImage = { label: string | null; nth: number; src: string | null };
 
 function promptImages(blocks: readonly ContentBlock[]): PromptImage[] {
   const found: PromptImage[] = [];
   for (const b of blocks) {
-    if (b.type === "image") found.push({ nth: found.length + 1, src: `data:${b.mediaType};base64,${b.data}` });
-    else if (b.type === "imageRef") found.push({ nth: found.length + 1, src: null });
+    const nth = found.length + 1;
+    if (b.type === "image") found.push({ label: null, nth, src: `data:${b.mediaType};base64,${b.data}` });
+    else if (b.type === "imageRef") found.push({ label: null, nth, src: null });
+    // An attached image is a path now, so the picture comes off disk. The same
+    // file the composer drew, drawn again from the same place.
+    else if (b.type === "fileRef" && b.label && attachmentKind(b.path) === "image") {
+      found.push({ label: b.label, nth, src: convertFileSrc(b.path) });
+    }
   }
   return found;
 }
@@ -41,7 +107,9 @@ function PromptImages(props: { blocks: readonly ContentBlock[] }) {
         <For each={images()}>
           {(img) => (
             <Show when={img.src} fallback={<span class={styles.promptImageGone}>[Image #{img.nth}]</span>}>
-              {(src) => <img class={styles.promptImage} src={src()} alt={`attached image ${img.nth}`} />}
+              {(src) => (
+                <img class={styles.promptImage} src={src()} alt={`attached image ${img.label ?? img.nth}`} />
+              )}
             </Show>
           )}
         </For>
@@ -433,7 +501,7 @@ export default function MessageList(props: {
                     <Show when={it().steer}>
                       <span class={styles.steerLabel}>Steer</span>
                     </Show>
-                    {blockText(it().blocks)}
+                    <PromptText blocks={it().blocks} />
                   </div>
                 </div>
               )}

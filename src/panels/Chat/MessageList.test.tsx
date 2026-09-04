@@ -6,7 +6,11 @@ import MessageList from "./MessageList";
 import type { ChatItem, QuestionItem } from "./chatStore";
 import type { QuestionAnswer } from "../../utils/chatTypes";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(async () => []) }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(async () => []),
+  // An attached image is a path now, and the bubble draws it off disk.
+  convertFileSrc: (p: string) => `asset://${p}`,
+}));
 
 // The transcript and the diff view are one session read two ways, so switching
 // between them must not cost the reader their place. The list reports the turn
@@ -103,6 +107,66 @@ describe("a prompt shows what it attached", () => {
     ];
     const { container } = render(() => list({ items }));
     expect(container.textContent).toContain("[Image #1]");
+  });
+});
+
+describe("a prompt that names what it attached", () => {
+  const shot = {
+    type: "fileRef" as const,
+    path: "/store/1a2b-0/shot.png",
+    startLine: null,
+    endLine: null,
+    text: null,
+    label: "[image 1]",
+  };
+
+  it("draws the token as a chip and the image off its path", () => {
+    const items: ChatItem[] = [
+      { kind: "user", id: "u1", blocks: [shot, { type: "text", text: "what is in [image 1]?" }], steer: false },
+    ];
+    const { container } = render(() => list({ items }));
+    const chips = container.querySelectorAll('span[title="/store/1a2b-0/shot.png"]');
+    expect(chips).toHaveLength(1);
+    expect(chips[0].textContent).toBe("[image 1]");
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("asset:///store/1a2b-0/shot.png");
+    // The path itself is not printed beside the sentence any more: the token
+    // names it and the picture shows it.
+    expect(container.textContent).toContain("what is in [image 1]?");
+    expect(container.textContent).not.toContain("@/store");
+  });
+
+  // The user meant those characters. Dressing them up would claim the turn
+  // carried something it never did.
+  it("leaves a token the turn carries no attachment for as plain text", () => {
+    const items: ChatItem[] = [
+      { kind: "user", id: "u1", blocks: [{ type: "text", text: "what about [image 9]?" }], steer: false },
+    ];
+    const { container } = render(() => list({ items }));
+    expect(container.textContent).toContain("what about [image 9]?");
+    expect(container.querySelector("span[title]")).toBeNull();
+  });
+
+  // Attach a file, press Enter, type nothing: the turn still has to show what
+  // it carried, which is the whole complaint this work started from.
+  it("names an attachment the sentence never mentioned", () => {
+    const pdf = { ...shot, path: "/store/1a2b-1/spec.pdf", label: "[pdf 1]" };
+    const items: ChatItem[] = [{ kind: "user", id: "u1", blocks: [pdf], steer: false }];
+    const { container } = render(() => list({ items }));
+    expect(container.textContent).toContain("[pdf 1]");
+    expect(container.querySelector('span[title="/store/1a2b-1/spec.pdf"]')).toBeTruthy();
+  });
+
+  it("still prints an unlabelled reference as the path it is", () => {
+    const items: ChatItem[] = [
+      {
+        kind: "user",
+        id: "u1",
+        blocks: [{ type: "fileRef", path: "/repo/a.ts", startLine: 1, endLine: 4, text: null }],
+        steer: false,
+      },
+    ];
+    const { container } = render(() => list({ items }));
+    expect(container.textContent).toContain("@/repo/a.ts");
   });
 });
 

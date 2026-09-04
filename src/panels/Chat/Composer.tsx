@@ -1,9 +1,11 @@
 import { For, Show, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js";
-import { ArrowUp, Plus, Square } from "lucide-solid";
+import { ArrowUp, Plus, Square, X } from "lucide-solid";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
 import type { QueuedInput } from "./chatStore";
 import {
+  attachmentKind,
   checkAttachment,
   chipLabel,
   readAsBytes,
@@ -20,12 +22,52 @@ import {
   replaceToken,
   type CompletionToken,
 } from "../../utils/composerCompletion";
-import type { SlashCommand } from "../../utils/chatTypes";
+import type { ContentBlock, SlashCommand } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
 
 const MAX_ROWS = 9;
 const MIN_ROWS = 2;
+
+/**
+ * A chip of this composer's own, on its way into the sentence.
+ *
+ * Private, and checked before the path MIMEs: the tree marks its drags with
+ * `text/plain` as well, and a chip read as a path would attach the same file a
+ * second time under a second number.
+ */
+export const ATTACHMENT_TOKEN_MIME = "application/x-sway-attachment-token";
+
+/** What the prose names this attachment by, or null for a chip that is not one
+ *  (a selection, a hunk comment: they have no token to insert). */
+function tokenOf(block: ContentBlock): string | null {
+  return block.type === "fileRef" ? (block.label ?? null) : null;
+}
+
+/** The picture on the chip, or null for a chip that is not an image. A path is
+ *  drawn through the asset protocol; the bytes of a replayed `image` block are
+ *  drawn as they arrived. */
+function thumbSrc(block: ContentBlock): string | null {
+  if (block.type === "image") return `data:${block.mediaType};base64,${block.data}`;
+  if (block.type === "fileRef" && block.label && attachmentKind(block.path) === "image") {
+    return convertFileSrc(block.path);
+  }
+  return null;
+}
+
+/** What is about to land, said before it is refused rather than after. */
+function dropHint(uploads: AttachmentSource): string {
+  if (!uploads.kinds.length) return uploads.gap ?? "This agent takes no dropped files.";
+  return `Drop to attach: ${uploads.kinds.join(", ")}`;
+}
+
+/** What the attach control offers, named after what this agent actually takes.
+ *  It said "an image" for as long as an image was all anything took. */
+function attachLabel(uploads: AttachmentSource): string {
+  if (!uploads.kinds.length) return "This agent takes no attachments";
+  if (uploads.kinds.includes("file")) return "Attach a file";
+  return `Attach ${uploads.kinds.map((k) => (k === "image" ? "an image" : "a PDF")).join(" or ")}`;
+}
 
 /** The picker's filter, from what this agent takes. A `file` kind is any
  *  file, so the filter goes away rather than listing every extension. */
@@ -88,8 +130,10 @@ export default function Composer(props: {
   onDropQueued: (id: string) => void;
   onDropAttachment: (id: string) => void;
   /** A completed `@` mention, as the path relative to the project root. The
-   *  caller resolves it and makes the chip, so path policy stays in one place. */
-  onAttachFile: (relPath: string) => void;
+   *  caller resolves it and makes the chip, so path policy stays in one place,
+   *  and hands back the token the new chip is named by (null when it refused
+   *  the file) so the mention can keep its place in the sentence. */
+  onAttachFile: (relPath: string) => string | null;
   /** What this agent can open when handed bytes, and the words for refusing
    *  them. The check runs here, where a file arrives, so a paste that cannot
    *  become a chip never does. */
@@ -257,11 +301,13 @@ export default function Composer(props: {
     if (t.kind === "file") {
       const hit = fileHits()[menuIndex()];
       if (!hit) return;
-      // The mention leaves the text and becomes a chip, so what is sent carries
-      // the path as structure rather than as a string to be re-parsed.
-      const { text: next, caret } = dropToken(text(), t);
+      // The mention becomes a chip and keeps its place: the token is what the
+      // sentence names the attachment by, so taking the words out would leave
+      // "look at" pointing at nothing. A refused file has no token, and then
+      // the mention is dropped the way it always was.
+      const label = props.onAttachFile(hit);
+      const { text: next, caret } = label ? replaceToken(text(), t, label) : dropToken(text(), t);
       setInputText(next, caret);
-      props.onAttachFile(hit);
     } else {
       const hit = commandHits()[menuIndex()];
       if (!hit) return;
@@ -296,6 +342,31 @@ export default function Composer(props: {
     if (accepted.length) props.onAttachUploads(accepted);
   }
 
+  /** Put a chip's token in the sentence, spaced so it does not weld itself to
+   *  the word beside it. `at` is where a drop landed; without one it goes to
+   *  the caret, which is where a click means. */
+  function insertToken(token: string, at?: number) {
+    const caret = at ?? input?.selectionStart ?? text().length;
+    const before = text().slice(0, caret);
+    const after = text().slice(caret);
+    const lead = before && !/\s$/.test(before) ? " " : "";
+    const trail = after && !/^\s/.test(after) ? " " : "";
+    const insert = `${lead}${token}${trail}`;
+    setInputText(`${before}${insert}${after}`, caret + insert.length - trail.length);
+  }
+
+  // Where in the text a drop landed. Undefined when the browser cannot say or
+  // the point is outside the input, and then the caret is the answer: dropping
+  // a chip must put its token *somewhere*, and the caret is where the user was.
+  function caretAtPoint(e: DragEvent): number | undefined {
+    const doc = document as Document & {
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    };
+    const pos = doc.caretPositionFromPoint?.(e.clientX, e.clientY);
+    if (pos && input && (pos.offsetNode === input || input.contains(pos.offsetNode))) return pos.offset;
+    return undefined;
+  }
+
   function onPaste(e: ClipboardEvent) {
     const files = [...(e.clipboardData?.files ?? [])];
     // Only when the clipboard actually carries a file: a normal text paste must
@@ -306,6 +377,16 @@ export default function Composer(props: {
   }
 
   function onDrop(e: DragEvent) {
+    // One of this composer's own chips, going into the sentence. First,
+    // because it carries no file and no path: read as either it would attach
+    // the same thing again.
+    const token = e.dataTransfer?.getData(ATTACHMENT_TOKEN_MIME);
+    if (token) {
+      e.preventDefault();
+      setDragging(false);
+      insertToken(token, caretAtPoint(e));
+      return;
+    }
     const files = [...(e.dataTransfer?.files ?? [])];
     if (files.length) {
       e.preventDefault();
@@ -414,6 +495,10 @@ export default function Composer(props: {
         // actual payload, so dragging a pane splitter across does not light up.
         if (!e.dataTransfer?.types.length) return;
         e.preventDefault();
+        // A chip of its own moving into the sentence is not an attachment
+        // arriving, so the composer does not announce itself as a drop target
+        // for one - and does not offer to attach what it already holds.
+        if (e.dataTransfer.types.includes(ATTACHMENT_TOKEN_MIME)) return;
         setDragging(true);
       }}
       onDragLeave={(e) => {
@@ -512,33 +597,70 @@ export default function Composer(props: {
       <Show when={props.attachments.length}>
         <div class={styles.attachments}>
           <For each={props.attachments}>
-            {(a) => (
-              <Tooltip
-                as="button"
-                type="button"
-                class={styles.attachment}
-                label="Remove this attachment"
-                // Named after the action, and after which attachment: an image
-                // chip's own content is a thumbnail, so without this the button
-                // answers to "attached image".
-                aria-label={`Remove ${chipLabel(a.block)}`}
-                onClick={() => props.onDropAttachment(a.id)}
-              >
-                {/* An image says what it is by being shown; a label reading
-                    "image" tells the user nothing about which one. */}
-                <Show when={a.block.type === "image" && a.block} fallback={chipLabel(a.block)}>
-                  {(img) => (
-                    <img
-                      class={styles.attachmentThumb}
-                      src={`data:${img().mediaType};base64,${img().data}`}
-                      alt="attached image"
-                    />
-                  )}
-                </Show>
-              </Tooltip>
-            )}
+            {(a) => {
+              // The face is the same either way: the picture where there is
+              // one, and always the name, because a bare thumbnail cannot tell
+              // you the token to type.
+              const face = () => (
+                <>
+                  <Show when={thumbSrc(a.block)}>
+                    {(src) => <img class={styles.attachmentThumb} src={src()} alt="" />}
+                  </Show>
+                  <span class={styles.attachmentName}>{chipLabel(a.block)}</span>
+                </>
+              );
+              return (
+                <div class={styles.attachment}>
+                  {/* Two controls, because the chip now means two things: put
+                      the token in the message, or take the attachment away.
+                      A chip with no token (a selection, a hunk comment) has
+                      nothing to insert, so its face is not a control at all
+                      rather than a button that does nothing. */}
+                  <Show when={tokenOf(a.block)} fallback={<span class={styles.attachmentBody}>{face()}</span>}>
+                    {(token) => (
+                      <Tooltip
+                        as="button"
+                        type="button"
+                        class={styles.attachmentBody}
+                        label="Click or drag to put this in the message"
+                        aria-label={`Insert ${chipLabel(a.block)}`}
+                        draggable={true}
+                        onDragStart={(e: DragEvent) => {
+                          e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, token());
+                          if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        onClick={() => insertToken(token())}
+                        // The keyboard's way to the remove button's job, on the
+                        // control the focus is already on.
+                        onKeyDown={(e: KeyboardEvent) => {
+                          if (e.key !== "Delete" && e.key !== "Backspace") return;
+                          e.preventDefault();
+                          props.onDropAttachment(a.id);
+                        }}
+                      >
+                        {face()}
+                      </Tooltip>
+                    )}
+                  </Show>
+                  <button
+                    type="button"
+                    class={styles.attachmentRemove}
+                    // Named after the action and after which attachment: an
+                    // image chip's own content is a picture, so without this
+                    // the button answers to nothing.
+                    aria-label={`Remove ${chipLabel(a.block)}`}
+                    onClick={() => props.onDropAttachment(a.id)}
+                  >
+                    <Icon icon={X} size={12} aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            }}
           </For>
         </div>
+      </Show>
+      <Show when={dragging()}>
+        <div class={styles.dropHint}>{dropHint(props.uploads)}</div>
       </Show>
       <Show when={props.notice}>
         {(notice) => <div class={styles.composerNotice}>{notice()}</div>}
@@ -587,6 +709,9 @@ export default function Composer(props: {
             ref={picker}
             class={styles.hiddenPicker}
             type="file"
+            // Named as well as hidden: the button that opens it is a different
+            // element, so this one is a form control with no label of its own.
+            aria-label={attachLabel(props.uploads)}
             accept={pickerAccept(props.uploads)}
             multiple
             onChange={(e) => {
@@ -599,9 +724,12 @@ export default function Composer(props: {
             as="button"
             type="button"
             class={styles.attachButton}
-            label="Attach an image"
-            aria-label="Attach an image"
-            disabled={props.disabled}
+            label={attachLabel(props.uploads)}
+            aria-label={attachLabel(props.uploads)}
+            // Offered only where something can be attached: a picker that
+            // refuses whatever it is given is the silent nothing the tier
+            // exists to prevent.
+            disabled={props.disabled || !props.uploads.kinds.length}
             onClick={() => picker?.click()}
           >
             <Icon icon={Plus} />

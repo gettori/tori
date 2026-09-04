@@ -1,8 +1,13 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, fireEvent } from "@solidjs/testing-library";
-import Composer from "./Composer";
+import Composer, { ATTACHMENT_TOKEN_MIME } from "./Composer";
+import { expectNoAxeViolations } from "../../test/axe";
 import type { AttachmentSource, PendingBlock } from "../../utils/chatCompose";
+
+// The chip draws a stored file through the asset protocol, which needs the
+// Tauri internals the webview injects and jsdom has not.
+vi.mock("@tauri-apps/api/core", () => ({ convertFileSrc: (p: string) => `asset://${p}` }));
 
 // The first mounted tests in the repo. Three phases shipped composer behaviour
 // that was reasoned rather than rendered; these are the things that reasoning
@@ -13,7 +18,7 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
   const onSend = vi.fn();
   const onInterrupt = vi.fn();
   const onDropAttachment = vi.fn();
-  const onAttachFile = vi.fn();
+  const onAttachFile = vi.fn((_relPath: string): string | null => "[file 1]");
   const onAttachUploads = vi.fn();
   const onAttachRejected = vi.fn();
   const onAttachPaths = vi.fn();
@@ -51,6 +56,11 @@ function setup(over: Partial<Parameters<typeof Composer>[0]> = {}) {
 
 // Claude's upload source, which every test not about a refusal runs under.
 const OPENS_EVERYTHING: AttachmentSource = { kinds: ["image", "pdf", "file"], gap: null };
+
+// `stubMetrics` below spies on `getComputedStyle` with a plain object, and a
+// spy left standing breaks every later accessible-name lookup and axe scan:
+// they ask the returned style for `getPropertyValue`, which the stub has not.
+afterEach(() => vi.restoreAllMocks());
 
 // jsdom lays nothing out, so the box is handed the two numbers the arithmetic
 // reads: `clientHeight` is what the rows attribute currently buys it, and
@@ -240,12 +250,23 @@ describe("@ file completion", () => {
     expect(loadFiles).toHaveBeenCalledTimes(1);
   });
 
-  it("accepting a mention hands back the path and takes its text out of the input", async () => {
+  // The mention keeps its place, as the token the chip is named by: taking the
+  // words out would leave "look at" pointing at nothing.
+  it("accepting a mention leaves its token where the mention was", async () => {
     const { input, findByText, onAttachFile } = setup({ loadFiles: async () => FILES });
     type(input, "look at @compose");
     await findByText("src/utils/chatCompose.ts");
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onAttachFile).toHaveBeenCalledWith("src/utils/chatCompose.ts");
+    expect(input.value).toBe("look at [file 1]");
+  });
+
+  it("drops the mention when the file was refused, since there is no token to put there", async () => {
+    const onAttachFile = vi.fn((): string | null => null);
+    const { input, findByText } = setup({ loadFiles: async () => FILES, onAttachFile });
+    type(input, "look at @compose");
+    await findByText("src/utils/chatCompose.ts");
+    fireEvent.keyDown(input, { key: "Enter" });
     expect(input.value).toBe("look at");
   });
 
@@ -331,6 +352,21 @@ describe("/ slash-command completion", () => {
 // reads are the file's own rather than a stub's.
 function imageFile(name: string, type = "image/png", bytes = 64): File {
   return new File([new Uint8Array(bytes)], name, { type });
+}
+
+/** Fire a chip's dragstart and answer what it put on the drag, so the drop that
+ *  follows carries exactly what the drag set and nothing a test invented. */
+function drag(el: Element): Record<string, string> {
+  const data: Record<string, string> = {};
+  fireEvent.dragStart(el, {
+    dataTransfer: {
+      types: [],
+      setData: (mime: string, value: string) => {
+        data[mime] = value;
+      },
+    },
+  });
+  return data;
 }
 
 function drop(el: Element, init: { files?: File[]; data?: Record<string, string> }) {
@@ -430,6 +466,104 @@ describe("attachment limits, applied where a thing is offered", () => {
   });
 });
 
+describe("an attachment chip", () => {
+  const shot: PendingBlock[] = [
+    {
+      id: "att-1",
+      block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[image 2]" },
+    },
+  ];
+  const notes: PendingBlock[] = [
+    {
+      id: "att-2",
+      block: { type: "fileRef", path: "/store/1a2b-1/notes.pdf", startLine: null, endLine: null, text: null, label: "[pdf 1]" },
+    },
+  ];
+
+  it("reads as its token and its filename, and draws the file itself", () => {
+    const { container, getByText } = setup({ attachments: shot });
+    expect(getByText("[image 2] shot.png")).toBeTruthy();
+    // Off disk through the asset protocol, not out of the message: the bytes
+    // are on the wire nowhere now.
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("asset:///store/1a2b-0/shot.png");
+  });
+
+  it("puts its token in the message when the body is clicked, and does not remove it", () => {
+    const { input, getByLabelText, onDropAttachment } = setup({ attachments: shot });
+    type(input, "compare this");
+    fireEvent.click(getByLabelText("Insert [image 2] shot.png"));
+    expect(input.value).toBe("compare this [image 2]");
+    expect(onDropAttachment).not.toHaveBeenCalled();
+  });
+
+  it("inserts at the caret rather than at the end", () => {
+    const { input, getByLabelText } = setup({ attachments: notes });
+    type(input, "read then answer");
+    input.setSelectionRange(4, 4);
+    fireEvent.click(getByLabelText("Insert [pdf 1] notes.pdf"));
+    expect(input.value).toBe("read [pdf 1] then answer");
+  });
+
+  it("removes on Delete or Backspace, so the keyboard reaches what the button does", () => {
+    const { getByLabelText, onDropAttachment } = setup({ attachments: shot });
+    fireEvent.keyDown(getByLabelText("Insert [image 2] shot.png"), { key: "Delete" });
+    expect(onDropAttachment).toHaveBeenCalledWith("att-1");
+  });
+
+  it("stays clean with both of its controls on screen", async () => {
+    const { container } = setup({ attachments: [...shot, ...notes] });
+    await expectNoAxeViolations(container);
+  });
+});
+
+describe("dragging a chip into the sentence", () => {
+  const shot: PendingBlock[] = [
+    {
+      id: "att-1",
+      block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[image 1]" },
+    },
+  ];
+
+  it("lands where it was dropped, between the two words", () => {
+    const { input, container, getByLabelText, onAttachPaths, onAttachUploads } = setup({ attachments: shot });
+    type(input, "look here");
+    // What the browser answers for the point under the pointer. jsdom lays
+    // nothing out, so the offset is the thing being stubbed, not the geometry.
+    (document as unknown as { caretPositionFromPoint: unknown }).caretPositionFromPoint = () => ({
+      offsetNode: input,
+      offset: 5,
+    });
+    const dt = drag(getByLabelText("Insert [image 1] shot.png"));
+    // Only the private type: `text/plain` would make a drop on the terminal,
+    // or on this composer's own path branch, read the token as a file path.
+    expect(Object.keys(dt)).toEqual([ATTACHMENT_TOKEN_MIME]);
+    drop(container.firstElementChild!, { data: dt });
+
+    expect(input.value).toBe("look [image 1] here");
+    // The chip moved, it did not arrive: nothing was attached a second time.
+    expect(onAttachPaths).not.toHaveBeenCalled();
+    expect(onAttachUploads).not.toHaveBeenCalled();
+    delete (document as unknown as { caretPositionFromPoint?: unknown }).caretPositionFromPoint;
+  });
+
+  it("falls back to the caret where the browser cannot say where the drop landed", () => {
+    const { input, container, getByLabelText } = setup({ attachments: shot });
+    type(input, "look here");
+    input.setSelectionRange(4, 4);
+    drop(container.firstElementChild!, { data: drag(getByLabelText("Insert [image 1] shot.png")) });
+    expect(input.value).toBe("look [image 1] here");
+  });
+
+  it("does not light the composer up as a drop target for its own chip", () => {
+    const { container, getByLabelText } = setup({ attachments: shot });
+    const composer = container.firstElementChild!;
+    const before = composer.className;
+    const dt = drag(getByLabelText("Insert [image 1] shot.png"));
+    fireEvent.dragOver(composer, { dataTransfer: { types: Object.keys(dt), getData: (m: string) => dt[m] ?? "" } });
+    expect(composer.className).toBe(before);
+  });
+});
+
 describe("under an agent that takes no uploads", () => {
   const ACP_UPLOADS: AttachmentSource = { kinds: [], gap: "Nothing has measured whether this agent can read outside its project." };
 
@@ -446,6 +580,35 @@ describe("under an agent that takes no uploads", () => {
     await vi.waitFor(() => expect(onAttachRejected).toHaveBeenCalled());
     expect(onAttachRejected).toHaveBeenCalledWith(ACP_UPLOADS.gap);
     expect(onAttachUploads).not.toHaveBeenCalled();
+  });
+
+  // A picker that refuses whatever it is handed is worse than no picker.
+  it("offers no attach button at all", () => {
+    const { getByRole } = setup({ uploads: ACP_UPLOADS });
+    expect((getByRole("button", { name: "This agent takes no attachments" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe("what the composer says it can take", () => {
+  it("names the kinds where a file is about to land, not after it is refused", () => {
+    const { container, getByText } = setup();
+    fireEvent.dragOver(container.firstElementChild!, { dataTransfer: { types: ["Files"], getData: () => "" } });
+    expect(getByText("Drop to attach: image, pdf, file")).toBeTruthy();
+  });
+
+  it("says what a refusing agent will not take, in the tier's own words", () => {
+    const gap = "Nothing has measured whether this agent can read outside its project.";
+    const { container, getByText } = setup({ uploads: { kinds: [], gap } });
+    fireEvent.dragOver(container.firstElementChild!, { dataTransfer: { types: ["Files"], getData: () => "" } });
+    expect(getByText(gap)).toBeTruthy();
+  });
+
+  // It said "an image" for as long as an image was all it took.
+  it("names the attach button after what this agent opens", () => {
+    expect(setup().getByRole("button", { name: "Attach a file" })).toBeTruthy();
+    expect(
+      setup({ uploads: { kinds: ["image", "pdf"], gap: null } }).getByRole("button", { name: "Attach an image or a PDF" }),
+    ).toBeTruthy();
   });
 });
 
@@ -489,7 +652,7 @@ describe("draft and history", () => {
         onInterrupt={() => {}}
         onDropQueued={() => {}}
         onDropAttachment={() => {}}
-        onAttachFile={() => {}}
+        onAttachFile={() => null}
         uploads={OPENS_EVERYTHING}
         onAttachUploads={() => {}}
         onAttachRejected={() => {}}
@@ -523,7 +686,7 @@ describe("draft and history", () => {
         onInterrupt={() => {}}
         onDropQueued={() => {}}
         onDropAttachment={() => {}}
-        onAttachFile={() => {}}
+        onAttachFile={() => null}
         uploads={OPENS_EVERYTHING}
         onAttachUploads={() => {}}
         onAttachRejected={() => {}}
@@ -573,11 +736,18 @@ describe("Composer attachments", () => {
     expect(getByText("@b.ts#L7")).toBeTruthy();
   });
 
-  it("removes exactly the chip that was clicked", () => {
-    const { getByText, onDropAttachment } = setup({ attachments: chips });
-    fireEvent.click(getByText("@b.ts#L7"));
+  it("removes exactly the chip whose remove button was pressed", () => {
+    const { getByLabelText, onDropAttachment } = setup({ attachments: chips });
+    fireEvent.click(getByLabelText("Remove @b.ts#L7"));
     expect(onDropAttachment).toHaveBeenCalledTimes(1);
     expect(onDropAttachment).toHaveBeenCalledWith("att-2");
+  });
+
+  // A selection or a hunk comment has no token, so there is nothing to put in
+  // the sentence and its face is not a control at all.
+  it("offers no insert control for a chip that names no token", () => {
+    const { queryByLabelText } = setup({ attachments: chips });
+    expect(queryByLabelText("Insert @a.ts#L1-L4")).toBeNull();
   });
 
   // The rule the unit tests could only assert about `hasContent`: a turn of

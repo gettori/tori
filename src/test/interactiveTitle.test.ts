@@ -140,6 +140,8 @@ const KEPT = new Map<string, Kept>([
   ["components/Tooltip/Tooltip.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/Chat/agentTurnCeiling.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/ChatView.tsx", { count: 1, reason: HEADING }],
+  ["panels/Chat/MessageList.test.tsx", { count: 2, reason: FIXTURE }],
+  ["panels/Chat/MessageList.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Chat/openedChat.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/openingOptions.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/Chat/resumedPick.test.tsx", { count: 1, reason: FIXTURE }],
@@ -254,8 +256,11 @@ const KEPT = new Map<string, Kept>([
  *  went with the card layout that carried it.
  *
  *  **One back down** with the composer bar's standing note about a remembered
- *  model list, which is gone and took its title with it. */
-const RAW_ELEMENT_TITLES = 66;
+ *  model list, which is gone and took its title with it.
+ *
+ *  **Up one** for a prompt's attachment chip: the token `[image 1]` is what the
+ *  sentence says, and the path it stands for has nowhere else to go. */
+const RAW_ELEMENT_TITLES = 67;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. Down one from
  *  ten for the same reason as above, and the row itself is unchanged. */
@@ -368,9 +373,11 @@ describe("the title= guard", () => {
     // still renders; it is just no longer this census's to count.
     // Up one span: the dev build's chip, which is the one span here that never
     // reaches a release - see DEV_ONLY.
+    // Up one span: a prompt's attachment token, whose chip is the width of
+    // `[image 1]` and whose path is the thing a reader may want.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 16,
-      span: 50,
+      span: 51,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
