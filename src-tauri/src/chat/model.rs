@@ -736,6 +736,21 @@ pub enum PlanItemStatus {
     Completed,
 }
 
+/// One quota window as a source reported it.
+///
+/// `kind` is the source's own window name (`five_hour`, `seven_day`) rather than
+/// an enum: a harness is free to invent a window Sway has never seen, and a
+/// window dropped for being off a list is a limit the user finds out about from
+/// a failed turn instead.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageWindow {
+    pub kind: String,
+    pub utilization: f64,
+    #[serde(default)]
+    pub resets_at: Option<u64>,
+}
+
 /// A record of a tool call that was blocked, mirroring `result`'s
 /// `permission_denials`.
 ///
@@ -1341,6 +1356,18 @@ pub enum ChatEvent {
         resets_at: Option<u64>,
         #[serde(default)]
         limit_type: Option<String>,
+        /// The frame's own headline figure, which is about `limit_type` alone.
+        /// Kept beside `windows` rather than folded into it: a frame can carry
+        /// one without the other, and merging them would invent a window the
+        /// wire never named.
+        #[serde(default)]
+        utilization: Option<f64>,
+        #[serde(default)]
+        windows: Vec<UsageWindow>,
+        /// Whether overage spending is available, not whether a limit is hit.
+        /// Captured frames say `rejected` while `status` says `allowed`.
+        #[serde(default)]
+        overage_status: Option<String>,
     },
 
     TurnCompleted {
@@ -1848,6 +1875,20 @@ mod tests {
                 status: "allowed".into(),
                 resets_at: Some(1_785_179_400),
                 limit_type: Some("five_hour".into()),
+                utilization: Some(0.15),
+                windows: vec![
+                    UsageWindow {
+                        kind: "five_hour".into(),
+                        utilization: 0.15,
+                        resets_at: Some(1_788_519_600),
+                    },
+                    UsageWindow {
+                        kind: "seven_day".into(),
+                        utilization: 0.35,
+                        resets_at: Some(1_788_742_800),
+                    },
+                ],
+                overage_status: Some("rejected".into()),
             },
             ChatEvent::TurnCompleted {
                 session_id: "s1".into(),

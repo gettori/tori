@@ -323,6 +323,14 @@ export type PermissionDenial = {
   toolInput: unknown;
 };
 
+/// One quota window as a source reported it. `kind` is the source's own window
+/// name, not an enum: a harness may invent a window Sway has never seen.
+export type UsageWindow = {
+  kind: string;
+  utilization: number;
+  resetsAt: number | null;
+};
+
 export type ContentBlock =
   | { type: "text"; text: string }
   | { type: "image"; mediaType: string; data: string }
@@ -603,6 +611,12 @@ export type ChatEvent =
       status: string;
       resetsAt: number | null;
       limitType: string | null;
+      /// About `limitType` alone. A frame can carry this without `windows`, or
+      /// `windows` without this, so neither is derived from the other.
+      utilization: number | null;
+      windows: UsageWindow[];
+      /// Whether overage spending is available, not whether a limit is hit.
+      overageStatus: string | null;
     }
   | {
       type: "turnCompleted";
@@ -802,7 +816,9 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
   },
   planUpdate: { required: ["sessionId", "turnId", "items"] },
   usage: { required: ["sessionId", "turnId", "usage"], optional: ["extra"] },
-  rateLimit: { required: ["sessionId", "status", "resetsAt", "limitType"] },
+  rateLimit: {
+    required: ["sessionId", "status", "resetsAt", "limitType", "utilization", "windows", "overageStatus"],
+  },
   turnCompleted: {
     required: ["sessionId", "turnId", "outcome", "stopReason", "usage", "costUsd", "permissionDenials"],
     optional: ["extra"],
@@ -839,6 +855,7 @@ export const CHAT_NESTED_KEYS = {
   questionAnswer: keysOf<QuestionAnswer>({ question: true, picks: true, freeText: true }),
   toolLocation: keysOf<ToolLocation>({ path: true, line: true }),
   subagentUsage: keysOf<SubagentUsage>({ totalTokens: true, toolUses: true, durationMs: true }),
+  usageWindow: keysOf<UsageWindow>({ kind: true, utilization: true, resetsAt: true }),
   patchHunk: keysOf<PatchHunk>({ oldStart: true, oldLines: true, newStart: true, newLines: true, lines: true }),
   // One entry per `ToolSummary` variant rather than one `keysOf` over the
   // union. `Record<keyof T, true>` on a union resolves to the keys they *share*,

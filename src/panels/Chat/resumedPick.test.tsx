@@ -24,6 +24,9 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 
 const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
+/** What the backend resolves this session's account to. `resolve_profile` reads
+ *  it off the transcript on a resume, so it is not always what the tab asked. */
+let spawnProfile: string | null = "default";
 /** Every `Channel` ChatView opened, so a test can push a frame down the newest. */
 const channels: { onmessage?: (raw: unknown) => void }[] = [];
 
@@ -38,7 +41,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     invokes.push({ cmd, args });
     switch (cmd) {
       case "chat_spawn":
-        return Promise.resolve({ ownership: { type: "granted", contested: false } });
+        return Promise.resolve({ ownership: { type: "granted", contested: false }, spawned: "started", profileId: spawnProfile });
       case "chat_history":
         return Promise.resolve([]);
       case "list_agents":
@@ -158,12 +161,18 @@ const spawns = () => invokes.filter((i) => i.cmd === "chat_spawn").map((i) => i.
 beforeEach(async () => {
   invokes.length = 0;
   channels.length = 0;
+  spawnProfile = "default";
   clearDraftPick(TAB);
   await ensureAdaptersLoaded();
   await ensureModelCatalogsLoaded();
 });
 
-function mount(resume: boolean, agentId = "claude", profile: string | null = null) {
+function mount(
+  resume: boolean,
+  agentId = "claude",
+  profile: string | null = null,
+  onProfileResolved: (p: string | null) => void = () => {},
+) {
   return render(() => (
     <ChatView
       sessionId={SESSION}
@@ -181,6 +190,7 @@ function mount(resume: boolean, agentId = "claude", profile: string | null = nul
       onForkFrom={() => "chat:fork"}
       onRewindFrom={() => {}}
       onFirstSendFailed={() => {}}
+      onProfileResolved={onProfileResolved}
     />
   ));
 }
@@ -219,6 +229,29 @@ describe("a chat restored from the store", () => {
 
     await waitFor(() => expect(spawn()).toBeTruthy());
     expect(spawn()).toMatchObject({ model: null, mode: null, effort: null });
+  });
+
+  // The disk wins: a transcript lives in exactly one profile home, so a resume
+  // that named no account runs under the one that holds it. A tab that kept its
+  // `null` would file this session's readings under nobody.
+  it("takes the transcript's account when it asked for none", async () => {
+    spawnProfile = "fonn";
+    const recorded: (string | null)[] = [];
+    mount(true, "claude", null, (p) => recorded.push(p));
+
+    await waitFor(() => expect(recorded).toEqual(["fonn"]));
+  });
+
+  // The common path, and the reason this is a difference rather than an
+  // assignment: writing on every spawn would rebuild the tab record each time,
+  // and a rebuilt record remounts this whole surface.
+  it("says nothing when the account is the one the tab already had", async () => {
+    spawnProfile = "default";
+    const recorded: (string | null)[] = [];
+    mount(true, "claude", null, (p) => recorded.push(p));
+
+    await waitFor(() => expect(spawn()).toBeTruthy());
+    expect(recorded).toEqual([]);
   });
 });
 

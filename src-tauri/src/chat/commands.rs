@@ -156,6 +156,12 @@ pub struct SpawnResult {
     pub ownership: ClaimOutcome,
     /// `None` when ownership was refused, so nothing was started.
     pub spawned: Option<Spawned>,
+    /// The account the session is actually running as, which is not always the
+    /// one the caller asked for: a resume takes the profile off the transcript
+    /// (see [`resolve_profile`]), so a tab that spawned with `profile: null`
+    /// would otherwise keep believing it had no account. `None` only when
+    /// ownership was refused.
+    pub profile_id: Option<String>,
 }
 
 /// Open a chat session: create it, resume it, or fork it.
@@ -223,7 +229,13 @@ pub async fn chat_spawn(
             || unreachable!("a live session rewires rather than spawning"),
         )?;
         host.set_visible(&session_id, visible);
-        return Ok(SpawnResult { ownership: ClaimOutcome::Granted { contested: false }, spawned: Some(spawned) });
+        return Ok(SpawnResult {
+            ownership: ClaimOutcome::Granted { contested: false },
+            spawned: Some(spawned),
+            // A rewire never re-resolves, so the claim taken at the original
+            // spawn is the account of record.
+            profile_id: host.registry.profile_of(&session_id),
+        });
     }
 
     // Before the claim, for two reasons: a caller naming the wrong account is
@@ -250,7 +262,7 @@ pub async fn chat_spawn(
         };
         let outcome = host.registry.claim(&session_id, want);
         if !matches!(outcome, ClaimOutcome::Granted { .. }) {
-            return Ok(SpawnResult { ownership: outcome, spawned: None });
+            return Ok(SpawnResult { ownership: outcome, spawned: None, profile_id: None });
         }
         // Carried through rather than rebuilt: a granted-but-**contested** claim
         // means a `claude` we do not control is resuming this same id, and its
@@ -363,7 +375,7 @@ pub async fn chat_spawn(
         }
     }
 
-    Ok(SpawnResult { ownership, spawned: Some(spawned) })
+    Ok(SpawnResult { ownership, spawned: Some(spawned), profile_id: Some(profile_id) })
 }
 
 #[tauri::command]
@@ -1240,10 +1252,25 @@ mod tests {
         let result = SpawnResult {
             ownership: ClaimOutcome::Granted { contested: true },
             spawned: Some(Spawned::Started),
+            profile_id: Some("fonn".into()),
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["ownership"]["type"], "granted");
         assert_eq!(json["ownership"]["contested"], true, "the warning must reach the frontend");
+    }
+
+    /// The resolved profile is what the tab has to store: a resume passing
+    /// `None` runs under the transcript's account, and a tab that kept its own
+    /// `null` would file that session's quota readings under no account at all.
+    #[test]
+    fn the_resolved_profile_reaches_the_frontend() {
+        let resolved = resolve_profile(None, Some("fonn")).unwrap();
+        let result = SpawnResult {
+            ownership: ClaimOutcome::Granted { contested: false },
+            spawned: Some(Spawned::Started),
+            profile_id: Some(resolved),
+        };
+        assert_eq!(serde_json::to_value(&result).unwrap()["profileId"], "fonn");
     }
 
     /// A refusal is a normal answer, not an error, so the frontend can focus the
@@ -1253,11 +1280,14 @@ mod tests {
         let result = SpawnResult {
             ownership: ClaimOutcome::HeldByOther { surface: Surface::PtyAgent, tab_id: "pty-1".into() },
             spawned: None,
+            profile_id: None,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["ownership"]["type"], "heldByOther");
         assert_eq!(json["ownership"]["tabId"], "pty-1");
         assert!(json["spawned"].is_null());
+        // Nothing was started, so there is no account of record to report.
+        assert!(json["profileId"].is_null());
     }
 
     /// **The whole of what shipping an ACP agent costs**: a TOML naming the

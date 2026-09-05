@@ -1494,6 +1494,13 @@ button.diffHunkHeader:hover {
   color: var(--danger-fg);
 }
 
+/* The middle tier. Its own role rather than a dimmer danger: a heads-up and a
+   failure have to be told apart at a glance, and two shades of red cannot do
+   that in a transcript that is already mostly muted text. */
+.noticeAttention {
+  color: var(--attention-fg);
+}
+
 /* A notice for something still happening. The glyph breathes rather than
    spinning: it sits in the middle of a conversation, and a spinner in a
    transcript reads as a stuck row. Motion is the whole job here, since the
@@ -1625,6 +1632,20 @@ button.diffHunkHeader:hover {
 
 .banner {
   color: var(--attention-fg);
+}
+
+/* A limit actually in force, as against one being approached. Danger rather than
+   attention because the two say different things - "this is heading somewhere"
+   against "this is where it went" - and a user who cannot tell them apart learns
+   to read neither. The same role the stop notice wears, for the same reason.
+
+   Not the blocking tier, though this does stop the next turn: that tier belongs
+   to the prompt and the question card, which are identically framed cards that
+   wait on an answer (`check-tokens.mjs` check 10). A full-width banner cannot
+   join their agreement, and a third wearer would cost the tier its meaning. */
+.bannerReached {
+  border-bottom-color: var(--danger-fg);
+  color: var(--danger-fg);
 }
 
 /* Where a draft's transcript will be. It holds the composer down at the bottom

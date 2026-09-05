@@ -131,6 +131,7 @@ import { maybeKindEntry } from './tabs/registry';
 import { installUnifiedTabsMemo, unifiedTabs } from './tabs/unifiedTabs';
 import { chatToStop, liveChats, stoppableChats } from './utils/chatSessions';
 import { rerunLast } from './utils/runTask';
+import { loadUsageStore } from './utils/usageStore';
 import Omnibox from './components/Omnibox/Omnibox';
 import ShortcutSheet from './components/ShortcutSheet/ShortcutSheet';
 import { setPinSides } from './layout/pinRules';
@@ -502,6 +503,11 @@ function App() {
   let unlistenConfig: UnlistenFn | undefined;
   onMount(async () => {
     void resolveFeatureSelection();
+    // The quota windows the last run knew, so the strip opens with them rather
+    // than blank until the first turn of the day. The fired dedupe keys come
+    // back with them, which is what stops a restart inside an already-announced
+    // window from announcing it again.
+    void loadUsageStore();
     unlistenConfig = await listen('config://changed', () => void resolveFeatureSelection());
   });
   onCleanup(() => unlistenConfig?.());
