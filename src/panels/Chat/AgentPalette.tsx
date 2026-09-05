@@ -54,25 +54,35 @@ export default function AgentPalette(props: {
   anchorEl?: HTMLElement;
   /** The agent in force, so its row opens highlighted and marked. */
   agentId: string;
+  /** And which of its accounts, since an agent with two of them is two rows and
+   *  only one of them is the one in force. `null` is the default account. */
+  profile: string | null;
   /** The `--model` value in force, or null when nothing has been picked. */
   value: string | null;
-  onSelect: (agentId: string, model: PickableModel) => void;
+  onSelect: (agentId: string, profile: string | null, model: PickableModel) => void;
   /** A row moved under the cursor. The caller decides whether that is worth a
    *  probe; the palette never spawns anything itself. */
-  onHighlight?: (agentId: string) => void;
+  onHighlight?: (agentId: string, profile: string | null) => void;
   /** A "Fix" row was activated. Takes the reader to wherever the agent's health
-   *  is actually fixable. */
+   *  is actually fixable. Per agent, not per account: one page carries both the
+   *  install and every account's sign-in. */
   onFix?: (agentId: string) => void;
-  /** Ask this agent for its models again. Absent hides the control, which is
-   *  how a palette fed by a live session says a recheck would buy it nothing. */
-  onRecheck?: (agentId: string) => void;
+  /** Ask this account of this agent for its models again. Absent hides the
+   *  control, which is how a palette fed by a live session says a recheck would
+   *  buy it nothing. */
+  onRecheck?: (agentId: string, profile: string | null) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = createSignal('');
   const [pane, setPane] = createSignal<Pane>('models');
-  const [hiProvider, setHiProvider] = createSignal<string | null>(
-    props.agentId,
-  );
+  /** The row this chat is actually on. An agent with two accounts is two rows
+   *  and only one of them wears the marks. */
+  const isCurrent = (p: PaletteProvider) =>
+    p.agentId === props.agentId && p.profile === props.profile;
+  // Null until the reader names a row. The row in force is the fallback below
+  // rather than a seed here, because a seed is a snapshot: a palette whose
+  // provider list arrives after mount would have snapshotted nothing.
+  const [hiProvider, setHiProvider] = createSignal<string | null>(null);
   const [hiModel, setHiModel] = createSignal<string | null>(props.value);
   // Whether the reader has driven this list yet. Not derivable from `hiModel`,
   // which opens already naming the model in force.
@@ -80,12 +90,13 @@ export default function AgentPalette(props: {
   let input: HTMLInputElement | undefined;
 
   const filtered = createMemo(() => filterProviders(props.providers, query()));
-  // Falling back to the first row rather than to nothing: the filter can drop
-  // whatever was highlighted, and a palette with rows and no highlight has no
-  // answer for Enter.
+  // The row in force, then the first row, rather than nothing: the palette
+  // opens on the pair this chat is already on, and the filter can drop whatever
+  // was highlighted, leaving a list with rows and no answer for Enter.
   const provider = createMemo(
     () =>
-      filtered().find((p) => p.agentId === hiProvider()) ??
+      filtered().find((p) => p.key === hiProvider()) ??
+      filtered().find(isCurrent) ??
       filtered()[0] ??
       null,
   );
@@ -108,13 +119,13 @@ export default function AgentPalette(props: {
    *  only means "running". */
   const shownModel = () => (roved() ? namedModel() : null);
 
-  function highlightProvider(agentId: string) {
-    setHiProvider(agentId);
-    // Dropped rather than kept: the new agent's list is a different list, and a
+  function highlightProvider(p: PaletteProvider) {
+    setHiProvider(p.key);
+    // Dropped rather than kept: the new row's list is a different list, and a
     // value carried across it would highlight nothing.
     setHiModel(null);
     setRoved(false);
-    props.onHighlight?.(agentId);
+    props.onHighlight?.(p.agentId, p.profile);
   }
 
   function move(delta: number) {
@@ -122,7 +133,7 @@ export default function AgentPalette(props: {
       const rows = filtered();
       if (!rows.length) return;
       const at = rows.findIndex((p) => p === provider());
-      highlightProvider(rows[(at + delta + rows.length) % rows.length].agentId);
+      highlightProvider(rows[(at + delta + rows.length) % rows.length]);
       return;
     }
     const rows = models();
@@ -145,7 +156,7 @@ export default function AgentPalette(props: {
       return props.onFix?.(target.agentId);
     }
     const picked = model();
-    if (picked && target.selectable) props.onSelect(target.agentId, picked);
+    if (picked && target.selectable) props.onSelect(target.agentId, target.profile, picked);
   }
 
   function onKeyDown(e: KeyboardEvent) {
@@ -171,11 +182,14 @@ export default function AgentPalette(props: {
    *  the reason the list is short or empty. Bare number, since the heading's
    *  title already says what it counts. */
   const headFact = () => {
-    const health = provider()?.health;
-    if (!health) return 'nothing to show';
-    if (health.kind === 'fix') return health.reason.toLowerCase();
-    if (health.kind === 'probing') return 'probing';
-    return `${models().length}`;
+    const p = provider();
+    if (!p) return 'nothing to show';
+    if (p.health.kind === 'fix') return p.health.reason.toLowerCase();
+    if (p.health.kind === 'probing') return 'probing';
+    // The plan leads the count where there is one: it is what says whose answer
+    // this list is, which only means anything once there are two accounts to
+    // tell apart. Same rule the agent card's models pane follows.
+    return [p.plan, `${models().length}`].filter(Boolean).join(', ');
   };
 
   /** What there is to filter, over the whole hand rather than the filtered
@@ -197,19 +211,24 @@ export default function AgentPalette(props: {
   // id would make `aria-activedescendant` ambiguous.
   const id = createUniqueId();
   const paneId = (kind: Pane) => `${id}-${kind}`;
-  const rowId = (kind: Pane, key: string) => `${id}-${kind}-${key}`;
+  // Spaces are the one character a key cannot carry in here:
+  // `aria-activedescendant` is a space-separated list of ids, so a row id with
+  // one in it would name two elements. Neither an agent id nor an account id
+  // contains a space, so replacing the join is lossless.
+  const rowId = (kind: Pane, key: string) => `${id}-${kind}-${key.replace(/ /g, '-')}`;
   const activeId = () => {
     // The named row, not `model()`'s fallback: a row nothing has named carries
     // no mark of any kind, and announcing it would tell a screen reader
     // something the screen does not say. The model in force does qualify, since
     // it is marked from the moment the palette opens.
-    const key =
-      pane() === 'providers' ? provider()?.agentId : namedModel()?.value;
+    const key = pane() === 'providers' ? provider()?.key : namedModel()?.value;
     return key === undefined || key === null ? undefined : rowId(pane(), key);
   };
 
-  const inForce = (m: PickableModel) =>
-    m.value === props.value && provider()?.agentId === props.agentId;
+  const inForce = (m: PickableModel) => {
+    const p = provider();
+    return m.value === props.value && !!p && isCurrent(p);
+  };
 
   /** The row's second line: the provider's own sentence when it sent one, else
    *  the model's id, which is what an ACP catalogue has instead of prose. Empty
@@ -272,7 +291,7 @@ export default function AgentPalette(props: {
               <For each={filtered()}>
                 {(p) => (
                   <div
-                    id={rowId('providers', p.agentId)}
+                    id={rowId('providers', p.key)}
                     class={styles.row}
                     // Not gated on the pane: this row names what the list on
                     // the right is *of*, which stays true while the arrows are
@@ -280,9 +299,9 @@ export default function AgentPalette(props: {
                     // (`.agents.paneActive`), not the fill's.
                     classList={{ [styles.rowActive]: p === provider() }}
                     role="option"
-                    aria-selected={p.agentId === props.agentId}
+                    aria-selected={isCurrent(p)}
                     onClick={() => {
-                      highlightProvider(p.agentId);
+                      highlightProvider(p);
                       setPane('models');
                     }}
                   >
@@ -349,7 +368,7 @@ export default function AgentPalette(props: {
                           label="Check again"
                           disabled={p.health.kind === 'probing'}
                           onMouseDown={(e: MouseEvent) => e.preventDefault()}
-                          onClick={() => recheck()(p.agentId)}
+                          onClick={() => recheck()(p.agentId, p.profile)}
                         >
                           <Icon icon={RefreshCw} size={15} />
                         </Tooltip>
@@ -380,7 +399,8 @@ export default function AgentPalette(props: {
                     aria-disabled={!provider()?.selectable}
                     onClick={() => {
                       const target = provider();
-                      if (target?.selectable) props.onSelect(target.agentId, m);
+                      if (target?.selectable)
+                        props.onSelect(target.agentId, target.profile, m);
                     }}
                   >
                     <span class={styles.rowText}>

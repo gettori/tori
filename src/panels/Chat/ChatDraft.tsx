@@ -26,7 +26,14 @@ import { probeAgent, probeOnHighlight, recheckAgent } from "./draftProbe";
 import { dropPending, draftFor, historyFor, markAutoSend, pendingFor, setDraft } from "../../utils/chatCompose";
 import { draftPick, hasPick, resetDraftPick, setDraftOption, setDraftPick } from "../../utils/chatDraftPick";
 import { openAgentCard } from "../../utils/agentCard";
-import { agentReady, profileSignedOut, agentVersion, ensureAgentHealthLoaded } from "../../utils/agentHealth";
+import {
+  agentReady,
+  agentVersion,
+  ensureAgentHealthLoaded,
+  namedProfiles,
+  profileLabel,
+  profileSignedOut,
+} from "../../utils/agentHealth";
 import { ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
 import { agentOffReason, enabledChatAgents } from "../../utils/agentEnabled";
 import {
@@ -70,8 +77,10 @@ export default function ChatDraft(props: {
   /** Why the last first-send attempt did not reach a session. Rendered above the
    *  composer, because it is the thing that decides what the user does next. */
   error?: string;
-  /** Point the draft at a different agent. */
-  onSelectAgent: (agentId: string) => void;
+  /** Point the draft at a different agent, or at a different account of the
+   *  one it is on. Both together: a model belongs to an account, so picking one
+   *  row cannot leave the tab naming the other row's account. */
+  onSelectAgent: (agentId: string, profile: string | null) => void;
   /** Mint a session and spawn it. The held message rides along on the other
    *  side, so this takes nothing and returns nothing. */
   onStart: () => void;
@@ -98,11 +107,6 @@ export default function ChatDraft(props: {
   });
   onCleanup(() => probeOnHighlight.cancel());
 
-  /** Which account a palette row is about. This draft's for its own agent, and
-   *  the default one for every other: a profile id belongs to one agent, so
-   *  handing Fonn to codex would describe it by an account it does not have. */
-  const profileFor = (id: string) => (id === props.agentId ? props.profile : null);
-
   const providers = createMemo(() =>
     paletteProviders({
       // The agents this install offers, not every one the registry ships. The
@@ -110,14 +114,17 @@ export default function ChatDraft(props: {
       // off is absent rather than listed and refused.
       adapters: enabledChatAgents(),
       catalogs: modelCatalogs(),
-      profileFor,
+      // One row per account, so every row describes the account it would
+      // actually start on rather than borrowing this draft's.
+      profilesFor: namedProfiles,
       ready: agentReady,
       signedOut: profileSignedOut,
       probing: isProbing,
       version: agentVersion,
     }),
   );
-  const mine = () => providers().find((p) => p.agentId === props.agentId) ?? null;
+  const mine = () =>
+    providers().find((p) => p.agentId === props.agentId && p.profile === props.profile) ?? null;
   const models = () => mine()?.models ?? [];
   const pick = () => draftPick(props.tabId);
   // The palette drops the options on its way to `PickableModel`, so the mirror
@@ -202,12 +209,14 @@ export default function ChatDraft(props: {
     return `${findAdapter(props.agentId).label}: ${health.reason.toLowerCase()}`;
   };
 
-  function onPickModel(agentId: string, picked: PickableModel) {
-    if (agentId !== props.agentId) {
-      // Mode and effort name things the *old* agent published, so they go with
-      // it rather than being carried onto flags the new one never declared.
+  function onPickModel(agentId: string, profile: string | null, picked: PickableModel) {
+    if (agentId !== props.agentId || profile !== props.profile) {
+      // Mode and effort name things the *old* row published, so they go with it
+      // rather than being carried onto flags the new one never declared. A
+      // different account counts as a different row for the same reason it is a
+      // different catalogue: the two lists are two answers.
       resetDraftPick(props.tabId, picked.value);
-      props.onSelectAgent(agentId);
+      props.onSelectAgent(agentId, profile);
       return;
     }
     // A mode the new model does not offer is dropped here rather than left to
@@ -298,10 +307,12 @@ export default function ChatDraft(props: {
               modelPending={false}
               effortPending={false}
               disabled={starting()}
+              profile={props.profile}
+              profileLabel={profileLabel(props.agentId, props.profile)}
               onSelectModel={onPickModel}
               onSelectEffort={(effort) => setDraftPick(props.tabId, { effort })}
-              onHighlightAgent={(agentId) => probeOnHighlight(agentId, profileFor(agentId))}
-              onRecheckAgent={(agentId) => recheckAgent(agentId, profileFor(agentId))}
+              onHighlightAgent={(agentId, profile) => probeOnHighlight(agentId, profile)}
+              onRecheckAgent={(agentId, profile) => recheckAgent(agentId, profile)}
               onFixAgent={openAgentCard}
             />
             <Show when={offered().modes.length > 0}>

@@ -8,9 +8,9 @@ import { render, fireEvent, screen, within } from "@solidjs/testing-library";
 // property of the code instead of an observation about one run.
 const invoke = vi.fn(async (cmd: string) => {
   if (cmd === "list_agents") return ADAPTERS;
-  if (cmd === "agent_health") return HEALTH;
+  if (cmd === "agent_health" || cmd === "refresh_agent_health") return health.rows;
   if (cmd === "model_catalogs") return CATALOGS;
-  if (cmd === "refresh_model_catalog") return CATALOGS[0];
+  if (cmd === "refresh_model_catalog") return CATALOGS.find((c) => c.profileId === "default");
   // Reached through the model rows' context windows. An empty map is the honest
   // answer for a machine that has never fetched them.
   if (cmd === "model_context_caps") return {};
@@ -91,6 +91,10 @@ const ADAPTERS = [
   { id: "codex", label: "Codex", program: "codex", base_args: [], yolo_args: [], resume_args: [], parser_kind: null, running_pattern: null, pty_quiet_ms: 2000, chat: { ...chat, program: "codex", modes: [] } },
 ];
 
+/** The sweep, mutable so the one describe that needs a two-account claude can
+ *  swap it in and put it back. */
+const health = vi.hoisted(() => ({ rows: [] as Record<string, unknown>[] }));
+
 const HEALTH = [
   { id: "claude", label: "Claude", program: "claude", status: "versionMatch", signIn: "signedIn", account: null, apiKeySource: null, path: "/bin/claude", version: "1", verifiedAgainst: "1", sessionsDir: null, sessionsDirExists: false, hooks: false, needsYou: false, overridePath: null },
   { id: "codex", label: "Codex", program: "codex", status: "notFound", signIn: "unknown", account: null, apiKeySource: null, path: null, version: null, verifiedAgainst: null, sessionsDir: null, sessionsDirExists: false, hooks: false, needsYou: false, overridePath: null },
@@ -166,6 +170,21 @@ const FAST_MODE = {
 };
 
 const CATALOGS = [
+  // The Fonn account's own answer. Only reachable while the sweep says claude
+  // has two logins, so it changes nothing for the tests that say it has one.
+  {
+    agentId: "claude",
+    profileId: "fonn",
+    state: "probed",
+    catalogue: {
+      version: "1",
+      probedAtMs: 0,
+      models: [{ ...row("opus-team", "Opus Team"), options: [] }],
+      modes: [],
+      account: null,
+    },
+    lastFailure: null,
+  },
   {
     agentId: "claude",
     profileId: "default",
@@ -229,6 +248,7 @@ const chatCalls = () => invoke.mock.calls.map(([cmd]) => cmd).filter((cmd) => cm
 
 beforeEach(() => {
   __resetModelCatalogsForTests();
+  health.rows = HEALTH;
 });
 
 afterEach(() => {
@@ -558,7 +578,7 @@ describe("a chat draft's pick", () => {
     fireEvent.input(filter, { target: { value: "haiku" } });
     fireEvent.keyDown(filter, { key: "Enter" });
 
-    expect(onSelectAgent).toHaveBeenCalledWith("claude");
+    expect(onSelectAgent).toHaveBeenCalledWith("claude", null);
     expect(draftPick(TAB)).toEqual({ model: "haiku", mode: null, effort: null, optionValues: {} });
   });
 
@@ -780,3 +800,65 @@ describe("a chat draft's mirrored options", () => {
     expect(draftPick(TAB).optionValues).toEqual({});
   });
 });
+
+// Picking a row binds the tab to that row's account as well as its agent. A
+// model belongs to an account, so setting one without the other would leave the
+// tab claiming one account's model under another's login.
+describe("picking a model on another account", () => {
+  const withTwoAccounts = async () => {
+    health.rows = [
+      {
+        ...HEALTH[0],
+        profiles: [
+          { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
+          { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+        ],
+      },
+      HEALTH[1],
+    ];
+    const { refreshAgentHealth } = await import("../../utils/agentHealth");
+    await refreshAgentHealth();
+  };
+
+  afterEach(async () => {
+    health.rows = HEALTH;
+    const { refreshAgentHealth } = await import("../../utils/agentHealth");
+    await refreshAgentHealth();
+  });
+
+  it("hands the tab both the agent and the account", async () => {
+    await withTwoAccounts();
+    const { openPalette, onSelectAgent } = setup();
+    await settle();
+    const filter = openPalette();
+
+    // Down onto the Fonn row, then into its models and commit.
+    fireEvent.keyDown(filter, { key: "Tab" });
+    fireEvent.keyDown(filter, { key: "ArrowDown" });
+    fireEvent.keyDown(filter, { key: "Enter" });
+    fireEvent.keyDown(filter, { key: "Enter" });
+
+    expect(onSelectAgent).toHaveBeenCalledWith("claude", "fonn");
+    // And the model came from the Fonn list, which is the whole point of
+    // splitting the row: a model absent from that account cannot be picked here.
+    expect(draftPick(TAB).model).toBe("opus-team");
+  });
+
+  // The rows carry the account in their names, which is the only thing on
+  // screen that tells two lists of the same agent apart.
+  it("names the account on every row of an agent that has two", async () => {
+    await withTwoAccounts();
+    setup();
+    await settle();
+    openPaletteRows();
+
+    // Twice each: the row on the left and the head of the list on the right.
+    expect(screen.getAllByText("Claude / Default").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Claude / Fonn").length).toBeGreaterThan(0);
+  });
+});
+
+/** Open the palette and leave its rows on screen. */
+function openPaletteRows() {
+  fireEvent.click(screen.getByLabelText("Model"));
+}

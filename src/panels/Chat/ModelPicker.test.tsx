@@ -90,6 +90,8 @@ function setup(over: Partial<Parameters<typeof ModelPicker>[0]> = {}) {
       models={models}
       providers={[lockedProvider(claude, models)]}
       agentId="claude"
+      profile={null}
+      profileLabel={null}
       value="sonnet"
       effort={null}
       modelPending={false}
@@ -176,7 +178,7 @@ describe("ModelPicker", () => {
     expect(modelNames(list)).toEqual(["Sonnet 5"]);
     // Usable means it can actually be picked, not just that it renders.
     pickModel(list, "Sonnet 5");
-    expect(onSelectModel).toHaveBeenCalledWith("claude", expect.objectContaining({ value: "sonnet" }));
+    expect(onSelectModel).toHaveBeenCalledWith("claude", null, expect.objectContaining({ value: "sonnet" }));
   });
 
   /**
@@ -198,6 +200,26 @@ describe("ModelPicker", () => {
 
     // A row that is nobody's sibling keeps its own name, minus the aside.
     expect(setup({ value: "sonnet" }).pills()[0].textContent).toContain("Sonnet");
+  });
+
+  /**
+   * On a multi-account install the model alone stops saying what would run: the
+   * same name under two logins is two subscriptions. So the account rides on
+   * the pill, and only there - `profileLabel` is null when there is one login,
+   * which is what keeps this pill exactly as it was for everybody else.
+   */
+  it("names the account on the pill only when there is one to name", () => {
+    expect(setup({ value: "sonnet" }).pills()[0].textContent).toBe("Sonnet");
+    expect(setup({ value: "sonnet", profileLabel: "Fonn" }).pills()[0].textContent).toBe(
+      "Sonnet / Fonn",
+    );
+  });
+
+  it("names the account in the tooltip too", () => {
+    const pill = setup({ value: "sonnet", profileLabel: "Fonn" }).pills()[0];
+    pill.focus();
+    fireEvent.focus(pill);
+    expect(screen.getByRole("tooltip").textContent).toContain("on Fonn");
   });
 
   it("keeps the row's own full label in the tooltip", () => {
@@ -344,6 +366,7 @@ describe("ModelPicker", () => {
     pickModel(openPalette(), "Haiku");
     expect(onSelectModel).toHaveBeenCalledWith(
       "claude",
+      null,
       expect.objectContaining({ value: "haiku", resolvedModel: "claude-haiku-4-5-20251001" }),
     );
   });

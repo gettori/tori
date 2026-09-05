@@ -67,7 +67,15 @@ const allReady = () => true;
 const noneSignedOut = () => false;
 const noneProbing = () => false;
 // Every row is about the default account unless a test says otherwise.
-const allDefault = () => null;
+// Empty is a single-account install: `namedProfiles` withholds the list when
+// there is nothing to tell apart, so the palette renders one plain row.
+const oneAccount = () => [];
+const DEFAULT = { id: "default", label: "Default" };
+const FONN = { id: "fonn", label: "Fonn" };
+const onPlan = (c: ModelCatalog, subscriptionType: string): ModelCatalog => ({
+  ...c,
+  catalogue: { ...c.catalogue!, account: { subscriptionType, organization: "", apiProvider: "firstParty" } },
+});
 
 describe("fixReason", () => {
   it("is null for a ready agent", () => {
@@ -86,7 +94,7 @@ describe("paletteProviders", () => {
   it("offers only chat-capable agents", () => {
     const rows = paletteProviders({
       adapters,
-      profileFor: allDefault,
+      profilesFor: oneAccount,
       catalogs: [],
       ready: allReady,
       signedOut: noneSignedOut,
@@ -98,7 +106,7 @@ describe("paletteProviders", () => {
   it("counts distinct models, not catalogue rows", () => {
     const rows = paletteProviders({
       adapters,
-      profileFor: allDefault,
+      profilesFor: oneAccount,
       catalogs: [
         catalog("claude", [
           model("default", "claude-sonnet-5", "Default"),
@@ -119,7 +127,7 @@ describe("paletteProviders", () => {
   it("keeps a broken agent visible but not selectable", () => {
     const rows = paletteProviders({
       adapters,
-      profileFor: allDefault,
+      profilesFor: oneAccount,
       catalogs: [catalog("codex", [model("gpt-5", "gpt-5", "GPT-5")])],
       ready: (id) => id !== "codex",
       signedOut: () => false,
@@ -134,7 +142,7 @@ describe("paletteProviders", () => {
   it("says probing over anything else it could have said", () => {
     const rows = paletteProviders({
       adapters,
-      profileFor: allDefault,
+      profilesFor: oneAccount,
       catalogs: [catalog("claude", [model("sonnet", "claude-sonnet-5", "Sonnet")])],
       ready: () => false,
       signedOut: noneSignedOut,
@@ -143,51 +151,108 @@ describe("paletteProviders", () => {
     expect(rows[0].health).toEqual({ kind: "probing" });
   });
 
-  // A row is about one account, and a profile id belongs to one agent. So the
-  // account is asked per row: handing the draft's own to every other agent
-  // would describe each of them by an account it does not have.
-  it("reads each row's own account, and every other agent's default one", () => {
-    const rows = paletteProviders({
-      adapters,
-      catalogs: [
-        catalog("claude", [model("opus", "claude-opus-5", "Opus")]),
+  // A catalogue is an account's answer, so an agent with two logins is two
+  // rows. The provider row splits rather than the models pane sectioning,
+  // because fuzzy search over one merged list returns the same model name twice
+  // with nothing to say which account it would run on.
+  describe("an agent with two accounts", () => {
+    const twoAccounts = (id: string) => (id === "claude" ? [DEFAULT, FONN] : []);
+    const both = [
+      onPlan(catalog("claude", [model("opus", "claude-opus-5", "Opus")]), "Claude Max"),
+      onPlan(
         catalog("claude", [model("sonnet", "claude-sonnet-5", "Sonnet")], "fonn"),
-        catalog("codex", [model("gpt-5", "gpt-5", "GPT-5")]),
-      ],
-      profileFor: (id) => (id === "claude" ? "fonn" : null),
-      ready: allReady,
-      signedOut: noneSignedOut,
-      probing: noneProbing,
+        "Claude Team",
+      ),
+      catalog("codex", [model("gpt-5", "gpt-5", "GPT-5")]),
+    ];
+    const rows = () =>
+      paletteProviders({
+        adapters,
+        catalogs: both,
+        profilesFor: twoAccounts,
+        ready: allReady,
+        signedOut: noneSignedOut,
+        probing: noneProbing,
+      });
+
+    it("is one row per account, each named and keyed for itself", () => {
+      const claude = rows().filter((r) => r.agentId === "claude");
+      expect(claude.map((r) => r.label)).toEqual(["Claude / Default", "Claude / Fonn"]);
+      expect(claude.map((r) => r.profile)).toEqual([null, "fonn"]);
+      // `agentId` no longer tells the rows apart, so nothing may key on it.
+      expect(new Set(claude.map((r) => r.key)).size).toBe(2);
     });
 
-    const claude = rows.find((r) => r.agentId === "claude")!;
-    expect(claude.profile).toBe("fonn");
-    expect(claude.models.map((m) => m.value)).toEqual(["sonnet"]);
-    // Codex has no such account, so its row is the default one's, not empty.
-    const codex = rows.find((r) => r.agentId === "codex")!;
-    expect(codex.profile).toBeNull();
-    expect(codex.models.map((m) => m.value)).toEqual(["gpt-5"]);
-  });
-
-  // An account nobody has probed lists nothing rather than borrowing the
-  // default account's models, which would offer rows this account may not have.
-  it("lists no models for an account with no answer of its own", () => {
-    const rows = paletteProviders({
-      adapters,
-      catalogs: [catalog("claude", [model("opus", "claude-opus-5", "Opus")])],
-      profileFor: () => "fonn",
-      ready: allReady,
-      signedOut: noneSignedOut,
-      probing: noneProbing,
+    it("gives each row its own account's models and plan", () => {
+      const claude = rows().filter((r) => r.agentId === "claude");
+      expect(claude[0].models.map((m) => m.value)).toEqual(["opus"]);
+      expect(claude[1].models.map((m) => m.value)).toEqual(["sonnet"]);
+      expect(claude.map((r) => r.plan)).toEqual(["Claude Max", "Claude Team"]);
     });
-    expect(rows[0].models).toEqual([]);
-    expect(rows[0].health).toEqual({ kind: "count", count: 0 });
+
+    // The other agent has one login, so it is one plain row: nothing about a
+    // multi-account claude may leak into how codex is described.
+    it("leaves a single-account agent exactly as it was", () => {
+      const codex = rows().find((r) => r.agentId === "codex")!;
+      expect(codex.label).toBe("Codex");
+      expect(codex.profile).toBeNull();
+      expect(codex.plan).toBeNull();
+      expect(codex.models.map((m) => m.value)).toEqual(["gpt-5"]);
+    });
+
+    // Per account, from Phase 1's cached per-profile sign-in, and worded exactly
+    // as an agent-level failure is: the row the user can act on is the one that
+    // is broken, not both of them.
+    it("marks only the account that is signed out", () => {
+      const out = paletteProviders({
+        adapters,
+        catalogs: both,
+        profilesFor: twoAccounts,
+        ready: (_id, profile) => profile !== "fonn",
+        signedOut: (_id, profile) => profile === "fonn",
+        probing: noneProbing,
+      }).filter((r) => r.agentId === "claude");
+
+      expect(out[0].health).toEqual({ kind: "count", count: 1 });
+      expect(out[0].selectable).toBe(true);
+      expect(out[1].health).toEqual({ kind: "fix", reason: "Signed out" });
+      expect(out[1].selectable).toBe(false);
+    });
+
+    // An account nobody has probed lists nothing rather than borrowing the
+    // other one's models, which would offer rows it may not have.
+    it("lists no models for an account with no answer of its own", () => {
+      const rows = paletteProviders({
+        adapters,
+        catalogs: [catalog("claude", [model("opus", "claude-opus-5", "Opus")])],
+        profilesFor: twoAccounts,
+        ready: allReady,
+        signedOut: noneSignedOut,
+        probing: noneProbing,
+      });
+      const fonn = rows.find((r) => r.profile === "fonn")!;
+      expect(fonn.models).toEqual([]);
+      expect(fonn.health).toEqual({ kind: "count", count: 0 });
+    });
+
+    it("probes per account, so one row can be busy while the other is not", () => {
+      const rows = paletteProviders({
+        adapters,
+        catalogs: both,
+        profilesFor: twoAccounts,
+        ready: allReady,
+        signedOut: noneSignedOut,
+        probing: (_id, profile) => profile === "fonn",
+      }).filter((r) => r.agentId === "claude");
+      expect(rows[0].health).toEqual({ kind: "count", count: 1 });
+      expect(rows[1].health).toEqual({ kind: "probing" });
+    });
   });
 
   it("lists no models for an agent nobody has probed", () => {
     const rows = paletteProviders({
       adapters,
-      profileFor: allDefault,
+      profilesFor: oneAccount,
       catalogs: null,
       ready: allReady,
       signedOut: noneSignedOut,
@@ -271,7 +336,7 @@ describe("splitModelDisplay", () => {
     const input = {
       adapters: [adapter("claude", "Claude")],
       catalogs: [cat],
-      profileFor: allDefault,
+      profilesFor: oneAccount,
       ready: allReady,
       signedOut: noneSignedOut,
       probing: noneProbing,
@@ -289,7 +354,7 @@ describe("splitModelDisplay", () => {
     const rows = paletteProviders({
       adapters: [withFlag],
       catalogs: null,
-      profileFor: allDefault,
+      profilesFor: oneAccount,
       ready: allReady,
       signedOut: noneSignedOut,
       probing: noneProbing,

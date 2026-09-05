@@ -4,6 +4,7 @@
 // testable without a DOM, and so the draft (every chat-capable agent) and a
 // locked session (one agent, live models) can feed the same surface.
 import { chatCapable, type Adapter } from "../../utils/agents";
+import { asTabProfile } from "../../utils/agentHealth";
 import { pickableModels, type PickableModel } from "../../utils/chatModels";
 import { cachedModels, catalogKey, distinctModelCount, type ModelCatalog } from "../../utils/modelCatalog";
 import { fuzzyScore } from "../../utils/fuzzy";
@@ -19,12 +20,20 @@ export type ProviderHealth =
   | { kind: "fix"; reason: string };
 
 export type PaletteProvider = {
+  /** This row's identity. An agent with two accounts is two rows, so `agentId`
+   *  no longer tells them apart, and everything that names a row (the
+   *  highlight, the DOM id) keys on this instead. */
+  key: string;
   agentId: string;
   /** The account this row's models and health are about, in the tab model's
    *  spelling (`null` is the default account). Carried so picking a row can
    *  bind the tab to the account whose list it just read. */
   profile: string | null;
   label: string;
+  /** The plan the agent named for this account, e.g. `Claude Max`. Null on a
+   *  single-account install, where it tells nothing apart, and for a catalogue
+   *  that never carried one. Never a tier Sway inferred. */
+  plan: string | null;
   health: ProviderHealth;
   /** Whether a model of this agent can be picked at all. False leaves the row
    *  visible and its models listed but inert: hiding a broken agent is what
@@ -96,6 +105,9 @@ export function fixReason(
   return signedOut(agentId) ? "Signed out" : "Not installed";
 }
 
+/** One account of one agent, as much of it as a row needs. */
+export type PaletteAccount = { id: string; label: string };
+
 /**
  * Every chat-capable agent, with the models Sway already has for it.
  *
@@ -103,15 +115,21 @@ export function fixReason(
  * the models come from the last probe rather than from a handshake nobody has
  * made. An agent with no cached catalogue lists none, which is the honest answer
  * rather than the adapter's guesses.
+ *
+ * **One row per (agent, account).** A catalogue is an account's answer, so two
+ * logins of one binary are two lists and a single row would be whichever of them
+ * probed last. Splitting the provider row rather than sectioning the models pane
+ * is what keeps the filter honest: fuzzy search over one merged list returns the
+ * same model name twice with nothing to say which account it would run on.
  */
 export function paletteProviders(input: {
   adapters: readonly Adapter[];
   catalogs: readonly ModelCatalog[] | null;
-  /** Which account each agent's row is about. A profile id belongs to one
-   *  agent, so this is asked per row rather than passed once: handing the
-   *  draft's own account to every other agent would describe each of them by
-   *  an account it does not have. */
-  profileFor: (id: string) => string | null;
+  /** This agent's accounts, and **empty when there is only one**, which is what
+   *  makes a single-account install render exactly one plain row per agent.
+   *  `namedProfiles` is the rule; this is asked per agent because a profile id
+   *  belongs to one agent and means nothing to another. */
+  profilesFor: (id: string) => readonly PaletteAccount[];
   ready: (id: string, profile: string | null) => boolean;
   signedOut: (id: string, profile: string | null) => boolean;
   probing: (id: string, profile: string | null) => boolean;
@@ -123,28 +141,36 @@ export function paletteProviders(input: {
   const byPair = new Map(
     (input.catalogs ?? []).map((c) => [catalogKey(c.agentId, c.profileId), c] as const),
   );
-  return input.adapters.filter(chatCapable).map((adapter) => {
-    const profile = input.profileFor(adapter.id);
-    const catalog = byPair.get(catalogKey(adapter.id, profile));
-    const reason = fixReason(
-      adapter.id,
-      (id) => input.ready(id, profile),
-      (id) => input.signedOut(id, profile),
-    );
-    return {
-      agentId: adapter.id,
-      profile,
-      label: adapter.label,
-      health: input.probing(adapter.id, profile)
-        ? ({ kind: "probing" } as const)
-        : reason !== null
-          ? ({ kind: "fix", reason } as const)
-          : ({ kind: "count", count: distinctModelCount(catalog) } as const),
-      selectable: reason === null,
-      splitModels: adapter.chat?.split_model_names ?? false,
-      version: input.version?.(adapter.id) ?? catalog?.catalogue?.version ?? null,
-      models: pickableModels([], cachedModels(catalog)),
-    };
+  return input.adapters.filter(chatCapable).flatMap((adapter) => {
+    // `[null]` is the single-account install: one row, named after the agent
+    // alone, which is what it was before accounts existed.
+    const named = input.profilesFor(adapter.id);
+    const accounts: readonly (PaletteAccount | null)[] = named.length ? named : [null];
+    return accounts.map((account) => {
+      const profile = account ? asTabProfile(account.id) : null;
+      const catalog = byPair.get(catalogKey(adapter.id, profile));
+      const reason = fixReason(
+        adapter.id,
+        (id) => input.ready(id, profile),
+        (id) => input.signedOut(id, profile),
+      );
+      return {
+        key: catalogKey(adapter.id, profile),
+        agentId: adapter.id,
+        profile,
+        label: account ? `${adapter.label} / ${account.label}` : adapter.label,
+        plan: account ? catalog?.catalogue?.account?.subscriptionType.trim() || null : null,
+        health: input.probing(adapter.id, profile)
+          ? ({ kind: "probing" } as const)
+          : reason !== null
+            ? ({ kind: "fix", reason } as const)
+            : ({ kind: "count", count: distinctModelCount(catalog) } as const),
+        selectable: reason === null,
+        splitModels: adapter.chat?.split_model_names ?? false,
+        version: input.version?.(adapter.id) ?? catalog?.catalogue?.version ?? null,
+        models: pickableModels([], cachedModels(catalog)),
+      };
+    });
   });
 }
 
@@ -158,15 +184,18 @@ export function paletteProviders(input: {
 export function lockedProvider(
   adapter: Adapter,
   models: readonly PickableModel[],
-  /** The binary version the health sweep measured, and the account the session
-   *  is locked to. Both optional because they are display facts the palette can
-   *  go without. */
-  info: { version?: string | null; profile?: string | null } = {},
+  /** The binary version the health sweep measured, the account the session is
+   *  locked to, and that account's label when there is more than one. All
+   *  optional because they are display facts the palette can go without. */
+  info: { version?: string | null; profile?: string | null; account?: string | null } = {},
 ): PaletteProvider {
+  const profile = info.profile ?? null;
   return {
+    key: catalogKey(adapter.id, profile),
     agentId: adapter.id,
-    profile: info.profile ?? null,
-    label: adapter.label,
+    profile,
+    label: info.account ? `${adapter.label} / ${info.account}` : adapter.label,
+    plan: null,
     health: { kind: "count", count: models.length },
     selectable: true,
     splitModels: adapter.chat?.split_model_names ?? false,

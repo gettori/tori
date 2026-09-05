@@ -1462,9 +1462,9 @@ export default function ChatView(props: {
   const liveModes = () => pickableModes(state.modes, chatConfig());
   const offered = () => capabilitiesFor(shownModel(), chatConfig(), liveModes());
 
-  // The agent is ignored on purpose: a locked session is handed one provider,
-  // so the only agent the palette can name is this one.
-  function onSelectModel(_agentId: string, model: PickableModel) {
+  // The agent and the account are ignored on purpose: a locked session is
+  // handed one provider, so the only pair the palette can name is this one.
+  function onSelectModel(_agentId: string, _profile: string | null, model: PickableModel) {
     edit((s) => selectModel(s, model));
     // Effort is sent with the model because that is how the command carries it:
     // a level the new model does not offer would be rejected, so it is dropped
@@ -1991,10 +1991,13 @@ export default function ChatView(props: {
                 lockedProvider(findAdapter(props.agentId), models(), {
                   version: agentVersion(props.agentId),
                   profile: props.profile,
+                  account: profileLabel(props.agentId, props.profile),
                 }),
               ]}
               value={shownModel()?.value ?? null}
               agentId={props.agentId}
+              profile={props.profile}
+              profileLabel={profileLabel(props.agentId, props.profile)}
               effort={shownEffort(state)}
               modelPending={modelPending(state)}
               effortPending={effortPending(state)}
