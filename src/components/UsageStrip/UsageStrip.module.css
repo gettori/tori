@@ -1,0 +1,104 @@
+/* The topbar's quota strip. Sits between the toolbar and the update notice and
+   stays quiet at ok: a bar that shouts while nothing is wrong is a bar nobody
+   reads by the time something is.
+
+   Colour is the attention and danger roles, never --blocking-*. That tier says
+   "this stopped the turn" and check 10 in scripts/check-tokens.mjs holds it to
+   the permission prompt and the question card; a strip bar makes the same claim
+   the chat's reached banner does, so it wears the same role that does. */
+@layer components {
+  .strip {
+    flex: 0 1 auto;
+    min-width: 0;
+    align-self: center;
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-2);
+    margin-right: var(--sway-space-3);
+    overflow: hidden;
+  }
+
+  .cluster {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-2);
+    height: calc(20px * var(--ui-scale));
+    padding: 0 var(--sway-space-2);
+    border: var(--sway-border-thin) solid transparent;
+    border-radius: var(--sway-radius-pill);
+    background: none;
+    font: inherit;
+    font-size: var(--sway-text-xs);
+    color: var(--fg-muted);
+    cursor: pointer;
+  }
+  .cluster:hover {
+    background: var(--neutral-hover);
+    border-color: var(--border-default);
+  }
+  .tight {
+    gap: var(--sway-space-1);
+    padding: 0 var(--sway-space-1);
+  }
+
+  .name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-1);
+    white-space: nowrap;
+  }
+
+  /* The window's own name, carried on every bar so two bars in one cluster are
+     telling the reader about two different windows rather than one number
+     twice. */
+  .kind {
+    color: var(--fg-muted);
+  }
+
+  .track {
+    display: block;
+    width: calc(28px * var(--ui-scale));
+    height: calc(4px * var(--ui-scale));
+    border-radius: var(--sway-radius-pill);
+    background: var(--neutral-subtle);
+    overflow: hidden;
+  }
+
+  .fill {
+    display: block;
+    height: 100%;
+    border-radius: var(--sway-radius-pill);
+    background: currentColor;
+  }
+
+  .figure {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .approaching {
+    color: var(--attention-fg);
+  }
+  .reached {
+    color: var(--danger-fg);
+  }
+
+  /* Old but not wrong. Dimmed rather than relabelled: the number is still the
+     last thing any source said, and the title carries how long ago that was. */
+  .stale {
+    opacity: 0.55;
+  }
+
+  /* Wrong rather than old, so it loses its colour and its percentage both. The
+     word "reset" is the whole content of the bar. */
+  .expired {
+    color: var(--fg-muted);
+  }
+}

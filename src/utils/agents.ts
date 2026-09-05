@@ -112,6 +112,21 @@ export type AccountsConfig = {
   supports_isolation: boolean;
 };
 
+/** One rung of the usage source ladder. Mirrors `UsageRung` in
+ *  src-tauri/src/agents.rs, and the same three names the readings in
+ *  `usageStore.ts` are tagged with. */
+export type UsageRung = "sessions" | "cli" | "token";
+
+// Mirrors `UsageConfig` in src-tauri/src/agents.rs, schema v4's [usage].
+//
+// Declaration order is the ladder's order, so `sources[0]` is what an agent
+// resolves to when the user has chosen nothing. A rung is declared only once
+// its read path exists, which is what lets the Usage block grey out the rest
+// and say why rather than offering a control that answers nothing.
+export type UsageConfig = {
+  sources: UsageRung[];
+};
+
 export type Adapter = {
   id: string;
   label: string;
@@ -137,6 +152,12 @@ export type Adapter = {
   // "signed out": it means Sway has nothing true to say about this adapter's
   // accounts, so it renders no account controls at all rather than an inert set.
   accounts?: AccountsConfig | null;
+  // Null for an adapter Sway can read no quota from, which renders as "no usage
+  // source" rather than as a quota of zero.
+  usage?: UsageConfig | null;
+  // Why `usage` is null, in the words the Usage block shows beside the greyed
+  // control. Null exactly when `usage` is set.
+  usage_reason?: string | null;
 };
 
 // Matches the bundled TOML (src-tauri/agents/*.toml) so

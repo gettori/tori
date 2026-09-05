@@ -172,6 +172,47 @@ export function windowSentence(r: QuotaReading, warnAt: number, now: number): st
 }
 
 /**
+ * How long each window kind runs, in seconds.
+ *
+ * Needed because no source sends the window's *start*: it sends a level and a
+ * reset, and the elapsed fraction is the missing half of any rate. The two
+ * durations are in the names, which is the only reason this is derivable at
+ * all; a kind not on this list gets no projection rather than a guessed one.
+ */
+const WINDOW_SECONDS: Record<string, number> = {
+  five_hour: 5 * 60 * 60,
+  seven_day: 7 * 24 * 60 * 60,
+};
+
+/**
+ * When this window runs out at the rate it has been used so far, or null.
+ *
+ * **Null is the common answer and the useful one.** A pace line is worth
+ * showing only when the straight-line projection lands *before* the reset,
+ * because that is the case where carrying on as you are runs you out. Any
+ * projection past the reset says you are fine, which the bar already says.
+ *
+ * Null too for: a window whose duration is not known, a level of zero or none
+ * (no rate to project), a window already reached or expired (the projection is
+ * about a future that has happened), and a `now` before the window began.
+ */
+export function paceOutAt(r: QuotaReading, now: number): number | null {
+  const seconds = WINDOW_SECONDS[r.kind];
+  const at = resetsAtMs(r.resetsAt);
+  if (seconds === undefined || at === null || at <= now) return null;
+  if (r.utilization === null || r.utilization <= 0 || r.utilization >= 1) return null;
+
+  const started = at - seconds * 1000;
+  const elapsed = now - started;
+  if (elapsed <= 0) return null;
+
+  // Straight-line: `utilization` of the window took `elapsed`, so the whole of
+  // it takes `elapsed / utilization`.
+  const out = started + elapsed / r.utilization;
+  return out < at ? out : null;
+}
+
+/**
  * The windows one `rate_limit_event` reported.
  *
  * A frame carrying `unifiedWindows` names every window it knows; one without it

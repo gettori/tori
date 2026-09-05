@@ -11,6 +11,7 @@ import { homeDir } from "@tauri-apps/api/path";
 import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { asTabProfile, refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
 import { defaultProfile, setDefaultProfile } from "../../../../utils/agentEnabled";
+import { accountOnStrip, setAccountOnStrip, usageSource } from "../../../../utils/usageSettings";
 import {
   catalogFor,
   ensureModelCatalogsLoaded,
@@ -290,6 +291,24 @@ function ProfileRow(props: {
               onChange={() => setDefaultProfile(props.agentId, p().id)}
             />
             Default
+          </label>
+        </Show>
+        {/* Which accounts the titlebar strip carries. Absent on the default
+            row, and that absence is the control: the account you are signed
+            into is the strip's one stable anchor, so there is no state where
+            hiding it would be honest. Absent too where Sway can read no quota
+            for this agent, since there would be nothing to show or hide. */}
+        <Show when={!p().isDefault && usageSource(props.agentId) !== "off"}>
+          <label class={styles.accountDefault}>
+            <input
+              type="checkbox"
+              aria-label={`Show ${p().label} in the titlebar`}
+              checked={accountOnStrip(props.agentId, asTabProfile(p().id))}
+              onChange={(e) =>
+                void setAccountOnStrip(props.agentId, asTabProfile(p().id), e.currentTarget.checked)
+              }
+            />
+            Titlebar
           </label>
         </Show>
         {/* The account the agent named where it named one; its sign-in state
