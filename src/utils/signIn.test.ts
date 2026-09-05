@@ -41,7 +41,7 @@ describe("the terminal rung", () => {
 
   // A login is browser OAuth with no non-interactive variant, so it has to be a
   // real process the user can see and type into. Declaring it interactive is
-  // what routes the keyboard to it when its drawer opens.
+  // what takes the window to Shells and puts the cursor in its tab.
   it("takes the keyboard, because the flow has to be typed at", () => {
     const tab = loginJob("claude", "Claude", "work", "Work", terminal(null), "/home/me");
     expect(tab?.interactive).toBe(true);

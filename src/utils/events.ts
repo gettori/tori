@@ -107,11 +107,6 @@ export const RELOAD_APP = "sway:reload-app";
 // editor when the filetree is shown). Emitted by the topbar cluster, the view
 // hotkeys, and the command palette so all three drive one path.
 export const TOGGLE_SIDEBAR = "sway:toggle-sidebar";
-// Show the sidebar, never hide it. Its own event rather than a payload on the
-// toggle, because a caller that means "reveal" and gets a flip does the exact
-// opposite of what it asked whenever the sidebar was already open. Emitted by a
-// job's failure toast, whose tray row lives in there.
-export const REVEAL_SIDEBAR = "sway:reveal-sidebar";
 export const TOGGLE_TERMINAL = "sway:toggle-terminal";
 export const TOGGLE_EDITOR = "sway:toggle-editor";
 export const TOGGLE_FILETREE = "sway:toggle-filetree";
