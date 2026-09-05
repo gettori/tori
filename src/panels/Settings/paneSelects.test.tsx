@@ -24,7 +24,7 @@
 // what these tests add is the association, asserted by querying each control
 // *through* its visible label.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "@solidjs/testing-library";
 
 const invoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
@@ -94,6 +94,32 @@ describe("the settings pickers", () => {
       expect(screen.getByLabelText("Transcript density").textContent).toContain("Compact");
     });
 
+    // The one control that governs two mechanisms: Sway's own ceilings and the
+    // agents' quota windows. Its top stop is the off switch, so what it writes
+    // there has to be exactly 1 - a 0.999 from a rounding slip would leave the
+    // warning on at a threshold nobody could reach.
+    it("writes a whole 1 at the top stop, which is what turns the warning off", async () => {
+      render(() => <ChatPane {...paneProps} />);
+      const thumb = screen.getByRole("slider", { name: "Warn at" });
+      const step = async (key: string) => {
+        fireEvent.keyDown(thumb, { key });
+        await macrotask();
+      };
+      expect(settings.budgets.warnAtFraction).toBe(0.8);
+
+      await step("ArrowLeft");
+      expect(settings.budgets.warnAtFraction).toBeCloseTo(0.75, 5);
+      expect(screen.getByText("75%")).toBeTruthy();
+
+      // Past the top on purpose: the clamp is what has to land on a whole 1,
+      // not an arithmetic run of steps that happens to.
+      for (let i = 0; i < 7; i++) await step("ArrowRight");
+
+      expect(settings.budgets.warnAtFraction).toBe(1);
+      expect(thumb.getAttribute("aria-valuenow")).toBe("1");
+      // And says so, rather than showing a percentage that means the opposite.
+      expect(screen.getByText("off")).toBeTruthy();
+    });
   });
 
   describe("AppearancePane", () => {

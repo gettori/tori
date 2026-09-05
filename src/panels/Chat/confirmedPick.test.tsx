@@ -157,6 +157,7 @@ function mount() {
       onForkFrom={() => "chat:fork"}
       onRewindFrom={() => {}}
       onFirstSendFailed={() => {}}
+      onProfileResolved={() => {}}
     />
   ));
 }

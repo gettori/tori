@@ -16,7 +16,8 @@ import ModelPicker from "./ModelPicker";
 import { lockedProvider } from "./agentPaletteData";
 import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
-import { rateLimitMessage } from "../../utils/chatRateLimit";
+import { quotaState, rateLimitFrom, readingsOf, windowSentence } from "../../utils/chatRateLimit";
+import { recordReadings, transitionKey, windowsFor } from "../../utils/usageStore";
 import {
   approaching,
   breach,
@@ -85,7 +86,7 @@ import {
   type CatalogModel,
 } from "../../utils/modelCatalog";
 import { findAdapter } from "../../utils/agents";
-import { agentVersion, asProfileId, namedProfiles, profileLabel } from "../../utils/agentHealth";
+import { agentVersion, asProfileId, asTabProfile, namedProfiles, profileLabel } from "../../utils/agentHealth";
 import { revealTarget } from "../../utils/agentLines";
 import { attachmentSources, chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
 import { providerMarkKey } from "../../components/Icon/ProviderIcon";
@@ -143,6 +144,7 @@ import {
   turnModel,
   shownMode,
   shownModelValue,
+  pushNotice,
   pushQuestionAnswers,
   takeForSend,
   laneStrip,
@@ -171,7 +173,13 @@ import styles from "./Chat.module.css";
 
 /** `SpawnResult` from `chat/commands.rs`. A refusal is a normal answer, not an
  *  error: it names the tab that holds the session, or the orphaned child. */
-type SpawnResult = { ownership: ClaimOutcome; spawned: "started" | "rewired" | null };
+type SpawnResult = {
+  ownership: ClaimOutcome;
+  spawned: "started" | "rewired" | null;
+  /** The account the session actually runs as, in the backend's spelling. Not
+   *  always what was asked: a resume takes it off the transcript. */
+  profileId: string | null;
+};
 
 /** One changed file as `checkpoint_turn_files` reports it. */
 type CheckpointFile = { path: string; shared_with?: string[]; unattributed?: boolean };
@@ -253,6 +261,11 @@ export default function ChatView(props: {
    *  re-picked and the message sent again. Called only when there was a held
    *  message; an ordinary session's failures stay on this surface. */
   onFirstSendFailed: (reason: string) => void;
+  /** The backend resolved this session's account to something other than what
+   *  the tab asked for, which on a resume is the transcript's own account. Only
+   *  called on a difference, so the tab record is written once and never on the
+   *  common path. */
+  onProfileResolved: (profile: string | null) => void;
 }) {
   // The preference is read once, at store creation, and not tracked: a live
   // chat swapping its question cards for permission prompts mid-turn would be
@@ -263,6 +276,10 @@ export default function ChatView(props: {
   );
   const [ownership, setOwnership] = createSignal<ClaimOutcome | null>(null);
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+  /** The account this session runs as, which everything account-scoped in here
+   *  reads instead of `props.profile`: the tab's value is what was *asked* for,
+   *  and a resume can land on a different one. */
+  const [resolvedProfile, setResolvedProfile] = createSignal<string | null>(props.profile);
   // What the composer's contents are filed under. The **tab**, not the session:
   // this tab may have held what the user typed before it had a session id at
   // all, and a first send that never reaches one hands it straight back. See
@@ -624,6 +641,13 @@ export default function ChatView(props: {
         if (ev.mode === askedMode) askedMode = null;
       }
       if (ev.type === "configOptions") recordConfirmed(ev.options);
+      // Into the account's store, not just this session's: the quota belongs to
+      // the login, and three chats on it are three views of one number. The
+      // account of record is the backend's resolved one, so a resumed session
+      // files under the profile its transcript is actually in.
+      if (ev.type === "rateLimit") {
+        recordReadings(props.agentId, resolvedProfile(), "sessions", readingsOf(rateLimitFrom(ev)));
+      }
       // A real turn boundary, not one inferred from a re-read prompt count.
       // Fired on `turnStarted` so the snapshot is the tree *before* this turn's
       // edits, which is the only state reverting the turn can mean.
@@ -751,6 +775,17 @@ export default function ChatView(props: {
         )
         .then((res) => {
           setOwnership(res.ownership);
+          // The account of record is the backend's answer, not the tab's guess:
+          // a resume passing `null` runs under the transcript's own account, and
+          // a tab that kept its `null` would file this session's quota readings
+          // under nobody. Kept locally as well as pushed to the tab, since the
+          // tab record is not reactive by design (mutated in place so `<For>`
+          // does not remount this whole surface).
+          const resolved = asTabProfile(res.profileId);
+          if (res.profileId !== null && resolved !== props.profile) {
+            setResolvedProfile(resolved);
+            props.onProfileResolved(resolved);
+          }
           if (res.ownership.type === "granted" && res.ownership.contested) {
             emitWith<ToastEvent>(TOAST, { message: CONTESTED_NOTICE, kind: "error" });
           }
@@ -889,7 +924,7 @@ export default function ChatView(props: {
     remembered = true;
     rememberChatPrefs(props.workspace, {
       agent: props.agentId,
-      ...(namedProfiles(props.agentId).length ? { profile: asProfileId(props.profile) } : {}),
+      ...(namedProfiles(props.agentId).length ? { profile: asProfileId(resolvedProfile()) } : {}),
       ...(opening.model !== null ? { model: opening.model, effort: opening.effort } : {}),
       ...(opening.mode !== null ? { mode: opening.mode } : {}),
     });
@@ -1143,12 +1178,7 @@ export default function ChatView(props: {
       if (text) edit((s) => enqueue(s, text));
       if (!heldSaid()) {
         setHeldSaid(true);
-        edit((s) => applyEvent(s, {
-          type: "sessionError",
-          sessionId: props.sessionId,
-          message: heldNotice(held),
-          fatal: false,
-        }));
+        edit((s) => pushNotice(s, heldNotice(held), "error"));
       }
       return;
     }
@@ -1262,6 +1292,67 @@ export default function ChatView(props: {
     ),
   );
 
+  /**
+   * A clock the quota surfaces can depend on.
+   *
+   * `Date.now()` is not reactive, and a window expiring is the one transition
+   * nothing sends an event for: a reached limit refuses turns, so no further
+   * `rate_limit_event` arrives, and a banner recomputed only when a reading
+   * lands would still say "reached" hours after the reset that cleared it. A
+   * minute is finer than any of these windows needs.
+   */
+  const [clock, setClock] = createSignal(Date.now());
+  onMount(() => {
+    const tick = setInterval(() => setClock(Date.now()), 60_000);
+    onCleanup(() => clearInterval(tick));
+  });
+
+  /** This tab's account, its windows, and what the two thresholds make of them.
+   *  One accessor so the banner and the notice cannot disagree about `now`. */
+  const quotaWindows = () => {
+    const warnAt = settings.budgets?.warnAtFraction ?? 1;
+    const now = clock();
+    return windowsFor(props.agentId, resolvedProfile()).map((r) => ({
+      reading: r,
+      state: quotaState(r, warnAt, now),
+      sentence: () => windowSentence(r, warnAt, now),
+    }));
+  };
+
+  /**
+   * The one window of this tab's account whose limit is actually in force.
+   *
+   * Read from the account store rather than from this session's own last event,
+   * which is what makes it right in a chat that has never run a turn: the quota
+   * belongs to the login, so a sibling chat hitting the wall is news here too,
+   * and a fresh tab on a blocked account must not look open for business.
+   *
+   * `reached` only. A level merely climbing is the strip's job and, past the
+   * threshold, one notice; a banner for it would be permanently up on any busy
+   * account, which is how a banner stops being read.
+   */
+  const quotaBanner = () => quotaWindows().find((w) => w.state === "reached")?.sentence() ?? null;
+
+  /** The windows this chat has already spoken about, keyed the way the store
+   *  keys a transition. Per chat rather than shared: the news belongs in every
+   *  open chat of the account, and one shared flag would put it in whichever
+   *  one happened to render first. */
+  const said = new Set<string>();
+
+  // One attention notice per window per reset, in this chat. `approaching` only:
+  // `reached` has the banner, `expired` and `ok` have nothing to say.
+  createEffect(() => {
+    for (const w of quotaWindows()) {
+      if (w.state !== "approaching") continue;
+      const key = transitionKey(props.agentId, resolvedProfile(), w.reading.kind, w.reading.resetsAt, "approaching");
+      if (said.has(key)) continue;
+      const sentence = w.sentence();
+      if (!sentence) continue;
+      said.add(key);
+      edit((s) => pushNotice(s, sentence, "attention"));
+    }
+  });
+
   /** Arm or clear the stop, and warn once on the way up. */
   async function applyBudget() {
     // The tier still gates this, but on a different thing than it used to: not
@@ -1284,12 +1375,7 @@ export default function ChatView(props: {
       edit((st) => {
         st.budgetStopped = true;
       });
-      edit((s) => applyEvent(s, {
-        type: "sessionError",
-        sessionId: props.sessionId,
-        message: stopNotice(hit),
-        fatal: false,
-      }));
+      edit((s) => pushNotice(s, stopNotice(hit), "error"));
       return;
     }
     if (!hit && stopped()) {
@@ -1313,12 +1399,9 @@ export default function ChatView(props: {
     const near = approaching(now, budgets);
     if (!near) return;
     setWarned(ceiling);
-    edit((s) => applyEvent(s, {
-      type: "sessionError",
-      sessionId: props.sessionId,
-      message: warnNotice(near, budgets),
-      fatal: false,
-    }));
+    // The one that changes tier: a ceiling being approached is a heads-up, not
+    // a failure, and it read as one for as long as it rode `sessionError`.
+    edit((s) => pushNotice(s, warnNotice(near, budgets), "attention"));
   }
 
   // What an ACP session was asked to switch to and has not answered yet. Its
@@ -1381,7 +1464,7 @@ export default function ChatView(props: {
   // The last answer this agent gave anyone, which is what a picker has before
   // a session exists. Live wins the moment the handshake lands, so this is the
   // pre-session list and not a merge; see `pickableModels`.
-  const cached = (): CatalogModel[] => cachedModels(catalogFor(props.agentId, props.profile));
+  const cached = (): CatalogModel[] => cachedModels(catalogFor(props.agentId, resolvedProfile()));
   const models = () => pickableModels(state.models, cached(), state.contextWindows);
 
   // Four sources, most-trusted first: a pick this tab sent, the id the child
@@ -1771,12 +1854,12 @@ export default function ChatView(props: {
         </div>
       </Show>
 
-      {/* Only when a limit is actually in force. Every captured
-          `rate_limit_event` reports `allowed` and one fires per turn, so
-          rendering on the event would mean a banner that is always up. */}
-      <Show when={rateLimitMessage(state.rateLimit, Date.now())}>
+      {/* This account's quota, not this session's last frame: a sibling chat on
+          the same login hitting the wall is news here too, and a chat that has
+          never run a turn must not look open for business. */}
+      <Show when={quotaBanner()}>
         {(message) => (
-          <div class={styles.banner}>
+          <div class={`${styles.banner} ${styles.bannerReached}`}>
             <span class={styles.bannerText}>{message()}</span>
           </div>
         )}
@@ -1880,8 +1963,8 @@ export default function ChatView(props: {
                 capabilities={publishedCapabilities(tier(), state.capabilities)}
                 cwd={props.cwd}
                 agentId={props.agentId}
-                profile={props.profile}
-                profileLabel={profileLabel(props.agentId, props.profile)}
+                profile={resolvedProfile()}
+                profileLabel={profileLabel(props.agentId, resolvedProfile())}
               />
             </div>
           }
@@ -1964,7 +2047,7 @@ export default function ChatView(props: {
         // than a list that may name a command since removed - which the agent
         // refuses with a sentence. Replaced, never merged: once the session has
         // spoken, it is the only authority on what it takes.
-        commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId, props.profile))}
+        commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId, resolvedProfile()))}
         loadFiles={attachments.loadProjectFiles}
         held={state.queueHeld}
         disabled={refused() || state.ended}
@@ -1998,14 +2081,14 @@ export default function ChatView(props: {
               providers={[
                 lockedProvider(findAdapter(props.agentId), models(), {
                   version: agentVersion(props.agentId),
-                  profile: props.profile,
-                  account: profileLabel(props.agentId, props.profile),
+                  profile: resolvedProfile(),
+                  account: profileLabel(props.agentId, resolvedProfile()),
                 }),
               ]}
               value={shownModel()?.value ?? null}
               agentId={props.agentId}
-              profile={props.profile}
-              profileLabel={profileLabel(props.agentId, props.profile)}
+              profile={resolvedProfile()}
+              profileLabel={profileLabel(props.agentId, resolvedProfile())}
               effort={shownEffort(state)}
               modelPending={modelPending(state)}
               effortPending={effortPending(state)}

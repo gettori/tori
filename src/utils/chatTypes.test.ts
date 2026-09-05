@@ -371,6 +371,18 @@ describe("chatTypes mirrors the Rust chat model", () => {
     }
   });
 
+  // And for the quota windows the titlebar strip reads. `rateLimit`'s own key
+  // list stops at `windows`, so a rename inside one would pass it untouched.
+  it("agrees with Rust on every field name inside a usage window", () => {
+    const sorted = (o: object) => Object.keys(o).sort();
+    const rl = (goldenEvents as ChatEvent[]).find((e) => e.type === "rateLimit");
+    expect(rl?.type).toBe("rateLimit");
+    if (rl?.type !== "rateLimit") return;
+
+    expect(rl.windows.length).toBeGreaterThan(0);
+    for (const w of rl.windows) expect(sorted(w)).toEqual([...CHAT_NESTED_KEYS.usageWindow].sort());
+  });
+
   // The same nested check, for the summary a collapsed row is about to read.
   //
   // `toolCallCompleted`'s own key list stops at `summary`, so nothing above

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { approaching, breach, heldNotice, stopNotice, warnNotice } from "./chatBudget";
+import { quotaState } from "./chatRateLimit";
 import type { Budgets } from "../panels/Settings/settingsStore";
+
+/** Any fixed clock: nothing in the shared-threshold case below has a reset. */
+const NOW = 1_788_500_000_000;
 
 const NONE: Budgets = { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 };
 const spend = (over: Partial<{ sessionUsd: number | null; projectUsd: number | null; contextPercent: number | null }> = {}) => ({
@@ -55,6 +59,22 @@ describe("approaching", () => {
     for (const warnAtFraction of [0, 1, 1.5, -0.2]) {
       expect(approaching(spend({ sessionUsd: 9.9 }), { ...NONE, sessionUsd: 10, warnAtFraction })).toBeNull();
     }
+  });
+
+  // One threshold governs two mechanisms that look unrelated on screen: Sway's
+  // own ceilings and the agents' quota windows. 1.0 is the "off" stop on the
+  // shared control, and off has to mean the same thing on both sides - the
+  // heads-up goes, the limit itself is never silenced.
+  it("is the same off switch for a ceiling and for a quota window", () => {
+    const budgets = { ...NONE, sessionUsd: 10, warnAtFraction: 1 };
+    const window = { kind: "five_hour", utilization: 0.99, resetsAt: null, status: null, reachedType: null };
+
+    expect(approaching(spend({ sessionUsd: 9.9 }), budgets)).toBeNull();
+    expect(quotaState(window, 1, NOW)).toBe("ok");
+
+    // And neither stop is: reaching a limit is not something to opt out of.
+    expect(breach(spend({ sessionUsd: 10 }), budgets)?.kind).toBe("session");
+    expect(quotaState({ ...window, utilization: 1 }, 1, NOW)).toBe("reached");
   });
 });
 

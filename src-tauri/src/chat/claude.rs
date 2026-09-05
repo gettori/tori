@@ -35,7 +35,7 @@ use super::model::{
     ChatQuestion, ChatQuestionOption, Extra, HookPhase, McpServer, PermissionDenial, PermissionMode,
     PatchHunk, PermissionSuggestion, QuestionAnswer, SlashCommand, SuggestedRule, ToolKind, ToolStatus,
     SubagentUsage, ToolSummary, PATCH_LINE_CAP,
-    TurnOutcome, Usage,
+    TurnOutcome, Usage, UsageWindow,
 };
 
 /// The call an event is about. Only the four a subagent can produce: measured,
@@ -1169,6 +1169,9 @@ impl ClaudeMapper {
             status: info["status"].as_str().unwrap_or_default().to_string(),
             resets_at: info["resetsAt"].as_u64(),
             limit_type: info["rateLimitType"].as_str().map(str::to_string),
+            utilization: info["utilization"].as_f64(),
+            windows: unified_windows(&info["unifiedWindows"]),
+            overage_status: info["overageStatus"].as_str().map(str::to_string),
         }]
     }
 
@@ -1244,6 +1247,30 @@ impl ClaudeMapper {
 /// Claude mapper, and it is what the CLI itself falls back to.
 fn permission_mode(raw: Option<&str>) -> PermissionMode {
     PermissionMode::new(raw.unwrap_or("default"))
+}
+
+/// `unifiedWindows` as a sorted list, so two frames carrying the same windows
+/// map to the same value whatever order the map serialised in.
+///
+/// A window with no `utilization` is dropped rather than defaulted to zero: an
+/// unreported level is not a level of nothing, and a 0% bar would read as an
+/// untouched quota.
+fn unified_windows(raw: &Value) -> Vec<UsageWindow> {
+    let Some(map) = raw.as_object() else {
+        return Vec::new();
+    };
+    let mut out: Vec<UsageWindow> = map
+        .iter()
+        .filter_map(|(kind, w)| {
+            Some(UsageWindow {
+                kind: kind.clone(),
+                utilization: w["utilization"].as_f64()?,
+                resets_at: w["resetsAt"].as_u64(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.kind.cmp(&b.kind));
+    out
 }
 
 fn camel(snake: &str) -> String {
@@ -2556,6 +2583,51 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    /// The captured `unifiedWindows` map is the only place the per-window
+    /// levels exist; `rateLimitType` names one window and `utilization` is about
+    /// that one alone, so reading either as the whole picture loses a window.
+    #[test]
+    fn a_captured_unified_windows_frame_maps_to_both_windows() {
+        let events = run("read-add-dir");
+        let with_windows = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::RateLimit { windows, overage_status, .. } if !windows.is_empty() => {
+                    Some((windows.clone(), overage_status.clone()))
+                }
+                _ => None,
+            })
+            .expect("the capture carries a frame with unifiedWindows");
+        assert_eq!(
+            with_windows.0,
+            vec![
+                UsageWindow { kind: "five_hour".into(), utilization: 0.06, resets_at: Some(1_788_537_600) },
+                UsageWindow { kind: "seven_day".into(), utilization: 0.42, resets_at: Some(1_788_742_800) },
+            ]
+        );
+        // `allowed` with overage `rejected` is the common capture: overage is
+        // about spending past the ceiling, not about having reached it.
+        assert_eq!(with_windows.1.as_deref(), Some("rejected"));
+    }
+
+    /// The other captured shape: no `unifiedWindows` at all, a top-level
+    /// `utilization` about `rateLimitType`. Defaulting the missing map to a
+    /// window would report a level for a window the frame never named.
+    #[test]
+    fn a_frame_without_unified_windows_carries_its_headline_utilization_only() {
+        let events = run("read-call");
+        let warning = events
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::RateLimit { status, utilization, windows, limit_type, .. } if status == "allowed_warning" => {
+                    Some((*utilization, windows.len(), limit_type.clone()))
+                }
+                _ => None,
+            })
+            .expect("the capture carries an allowed_warning frame");
+        assert_eq!(warning, (Some(0.88), 0, Some("seven_day".into())));
     }
 
     /// Thinking is rendered separately from the answer, and its signature must
