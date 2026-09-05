@@ -87,6 +87,7 @@ function mount(tabId = "chat:follow-1") {
       onForkFrom={() => "chat:fork"}
       onRewindFrom={() => {}}
       onFirstSendFailed={() => {}}
+      onProfileResolved={() => {}}
     />
   ));
 }

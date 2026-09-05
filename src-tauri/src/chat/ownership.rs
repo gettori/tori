@@ -519,6 +519,17 @@ impl Registry {
         held_by(&guard, agent, profile, pid_alive)
     }
 
+    /// The account a held session is running as, or `None` when nothing holds
+    /// it. The claim is where the account of record lives, so a rewire (which
+    /// never re-resolves the profile) can still report it back to the tab.
+    pub fn profile_of(&self, session_id: &str) -> Option<String> {
+        let guard = match self.claims.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        guard.get(session_id).map(|c| c.profile.clone())
+    }
+
     /// Move an existing claim onto the tab that has just taken the session over.
     /// See [`retag`] for why a rewire has to do this at all.
     pub fn retag(&self, session_id: &str, tab_id: &str) {

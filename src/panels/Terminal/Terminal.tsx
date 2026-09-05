@@ -1600,6 +1600,22 @@ export default function Terminal(props: {
     setOpen(open().map((t) => (t.id === tabId ? { ...t, program: agentId, profile } : t)));
   }
 
+  /**
+   * Record the account the backend resolved this chat to, which on a resume is
+   * the transcript's own rather than whatever the tab asked for.
+   *
+   * Mutated in place + a shallow copy of the outer array, the `mergeReorder`
+   * pattern: the tab keeps its reference so `<For>` reconciles without
+   * remounting (gotcha #64). A rebuilt record would tear down the ChatView that
+   * has just spawned, and its remount would spawn again.
+   */
+  function recordChatProfile(tabId: string, profile: string | null) {
+    const tab = open().find((t) => t.id === tabId);
+    if (!tab || tab.profile === profile) return;
+    tab.profile = profile;
+    setOpen([...open()]);
+  }
+
   function startChatDraft(tabId: string) {
     clearDraftError(tabId);
     const tab = open().find((t) => t.id === tabId);
@@ -2189,6 +2205,7 @@ export default function Terminal(props: {
         }
         onRewindFrom={(promptTs) => rewindChat(t, promptTs)}
         onFirstSendFailed={(reason) => revertChatDraft(t.id, reason)}
+        onProfileResolved={(profile) => recordChatProfile(t.id, profile)}
         forkFrom={t.forkFrom}
         rewindTo={t.rewindTo}
       />

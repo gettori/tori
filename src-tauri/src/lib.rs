@@ -44,6 +44,7 @@ mod workspace_settings;
 mod themes;
 mod trace;
 mod update;
+mod usage_snapshot;
 mod worktree;
 
 use chat::host::ChatState;
@@ -203,6 +204,9 @@ pub fn run() {
             attachments::attachments_dir,
             catalog_probe::model_catalogs,
             catalog_probe::refresh_model_catalog,
+            usage_snapshot::usage_snapshot_load,
+            usage_snapshot::usage_snapshot_save,
+            usage_snapshot::usage_history,
             attempts::create_attempt,
             attempts::promote_attempt,
             attempts::list_project_attempts,

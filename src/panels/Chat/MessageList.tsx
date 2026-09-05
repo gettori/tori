@@ -570,13 +570,17 @@ export default function MessageList(props: {
             </Match>
             <Match when={item.kind === "notice" && item}>
               {(it) => (
-                <div class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""}`}>
+                <div
+                  class={`${styles.notice} ${it().level === "error" ? styles.noticeError : ""} ${
+                    it().level === "attention" ? styles.noticeAttention : ""
+                  }`}
+                >
                   <Show
                     when={it().pendingSince}
                     fallback={
                       <span class={styles.noticeLine}>
                         <Icon
-                          icon={it().level === "error" ? TriangleAlert : Info}
+                          icon={it().level === "info" ? Info : TriangleAlert}
                           size={14}
                           class={styles.noticeIcon}
                           aria-hidden="true"

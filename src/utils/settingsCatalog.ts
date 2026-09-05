@@ -375,6 +375,12 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Percent of the model's context window. Unlike the money limits this one recovers after a compaction.",
   },
   {
+    id: "warn-at",
+    section: "chat",
+    label: "Warn at",
+    hint: "How full a limit gets before Sway says so. Governs both the ceilings above and the agents' own quota windows. 100% turns the warning off; a limit actually reached is always shown.",
+  },
+  {
     id: "show-hooks",
     section: "chat",
     label: "Show every hook event",

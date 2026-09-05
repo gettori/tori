@@ -148,6 +148,7 @@ function mount(started = false) {
       onForkFrom={() => "chat:fork"}
       onRewindFrom={() => {}}
       onFirstSendFailed={() => {}}
+      onProfileResolved={() => {}}
     />
   ));
   return { ...r, started: isStarted };

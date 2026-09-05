@@ -85,6 +85,7 @@ const ADAPTERS = [
 const { default: ChatView } = await import("./ChatView");
 const { ensureAdaptersLoaded } = await import("../../utils/agents");
 const { DEFAULT_SETTINGS, loadSettings } = await import("../Settings/settingsStore");
+const { default: styles } = await import("./Chat.module.css");
 
 const TAB = "chat:ceiling-1";
 const SESSION = "s-ceiling";
@@ -142,6 +143,7 @@ function mount() {
       onForkFrom={() => "chat:fork"}
       onRewindFrom={() => {}}
       onFirstSendFailed={() => {}}
+      onProfileResolved={() => {}}
     />
   ));
 }
@@ -172,5 +174,40 @@ describe("the spend ceiling and a turn the agent opened", () => {
 
     await waitFor(() => expect(recordings()).toHaveLength(1));
     expect(screen.queryByText(/will not start another turn/)).toBeNull();
+  });
+});
+
+// The tier split. Both notices used to ride `sessionError`, which is also what a
+// dead child looks like, so a ceiling being *approached* rendered at the same
+// level as a transport failure.
+describe("what a budget notice looks like", () => {
+  /** The notice block a line sits in, which is what carries the level's class. */
+  const noticeAround = (line: HTMLElement) => line.closest("div")!;
+
+  it("renders the warning at attention rather than as an error", async () => {
+    mount();
+    await waitFor(() => expect(channel).not.toBeNull());
+
+    // Past 80% of the $1 ceiling and under it, which is the whole warn window.
+    recorded = { tokens: 15, costUsd: 0.85, turns: 1 };
+    channel!.onmessage!(turnStarted("turn-2", true));
+    channel!.onmessage!(turnCompleted("turn-2", 0.85));
+
+    const box = noticeAround(await screen.findByText(/It will stop when the limit is reached/));
+    expect(box.className).toContain(styles.noticeAttention);
+    expect(box.className).not.toContain(styles.noticeError);
+  });
+
+  it("renders the stop as an error", async () => {
+    mount();
+    await waitFor(() => expect(channel).not.toBeNull());
+
+    recorded = { tokens: 15, costUsd: 5, turns: 1 };
+    channel!.onmessage!(turnStarted("turn-2", true));
+    channel!.onmessage!(turnCompleted("turn-2", 5));
+
+    const box = noticeAround(await screen.findByText(/will not start another turn/));
+    expect(box.className).toContain(styles.noticeError);
+    expect(box.className).not.toContain(styles.noticeAttention);
   });
 });

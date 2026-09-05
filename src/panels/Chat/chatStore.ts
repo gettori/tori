@@ -111,7 +111,12 @@ export type NoticeItem = {
   kind: "notice";
   id: string;
   text: string;
-  level: "info" | "error";
+  /** Three tiers, not two. `attention` is the middle one this surface had no
+   *  word for: a heads-up that something is heading somewhere (a spend ceiling
+   *  being approached, a quota window climbing) is not news and is not a
+   *  failure, and filing it as `error` made every warning look like a broken
+   *  session. */
+  level: "info" | "attention" | "error";
   details?: string;
   /** Set while the thing the line describes is still happening, and cleared
    *  when it lands. The only one so far is a compaction, which takes half a
@@ -597,7 +602,8 @@ export type ChatState = {
   totalCostUsd: number | null;
   turnsCompleted: number;
   /** The newest `rate_limit_event`, whatever it said. Null until one arrives.
-   *  Whether it is worth a banner is `isLimited`'s decision, not this field's. */
+   *  This session's own record of the frame; what any surface *shows* is decided
+   *  from `usageStore`, which merges every chat on the account. */
   rateLimit: RateLimitState | null;
   /** Monotonic id source, so replaying the same events twice yields the same
    *  item ids and tests can assert on them. */
@@ -1476,10 +1482,9 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       return;
     }
     case "rateLimit":
-      // Recorded whatever the status, so the banner's own rule decides what is
-      // worth showing. Every captured frame says `allowed`, and rendering on
-      // the event rather than on the status would pin a permanent banner to
-      // every chat.
+      // Recorded whatever it said, and decided nowhere near here: `quotaState`
+      // owns what a reading means, and `usageStore` owns which account it is
+      // about. This is one session's copy of the last frame it saw.
       s.rateLimit = rateLimitFrom(ev);
       return;
     case "turnCompleted": {
@@ -1574,6 +1579,21 @@ export function pushQuestionAnswers(s: ChatState, toolUseId: string, answers: Qu
   // The agent was blocked on the user, not thinking. Whatever it thinks next
   // starts here.
   s.lastFrameAt = Date.now();
+}
+
+/**
+ * Put a line in the transcript that came from Sway rather than from the wire.
+ *
+ * A spend ceiling and a quota window are Sway's news, not the agent's, and they
+ * used to reach the transcript as a synthesized `sessionError`: a wire event
+ * fabricated locally so it could ride the one door that pushed a notice. That
+ * cost more than the door saved. `sessionError` is also what a dead child looks
+ * like, so every ceiling warning was filed at `error` next to real transport
+ * failures, and a `fatal` flag one line away from being set wrong would have
+ * ended the session over a budget. This is the door those notices needed.
+ */
+export function pushNotice(s: ChatState, text: string, level: NoticeItem["level"]) {
+  push(s, { kind: "notice", id: nextId(s, "note"), text, level });
 }
 
 /** Record what the user actually sent, so their turn appears immediately rather

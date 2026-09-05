@@ -454,7 +454,21 @@
     "sessionId": "s1",
     "status": "allowed",
     "resetsAt": 1785179400,
-    "limitType": "five_hour"
+    "limitType": "five_hour",
+    "utilization": 0.15,
+    "windows": [
+      {
+        "kind": "five_hour",
+        "utilization": 0.15,
+        "resetsAt": 1788519600
+      },
+      {
+        "kind": "seven_day",
+        "utilization": 0.35,
+        "resetsAt": 1788742800
+      }
+    ],
+    "overageStatus": "rejected"
   },
   {
     "type": "turnCompleted",

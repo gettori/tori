@@ -11,6 +11,7 @@ import {
 } from "../../components/paneKit";
 import { settings, type DefaultSurface, type TranscriptDensity } from "../../settingsStore";
 import Select, { type SelectOption } from "../../../../components/Select/Select";
+import Slider from "../../../../components/Slider/Slider";
 import styles from "../../Settings.module.css";
 import Switch from "../../../../components/Switch/Switch";
 
@@ -50,7 +51,19 @@ const DENSITIES: SelectOption[] = [
 ];
 
 const SAFETY = ["checkpoints"];
-const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "context-budget"];
+const SPENDING = ["max-concurrent-chats", "session-budget", "project-budget", "context-budget", "warn-at"];
+
+/** The stops the "Warn at" slider offers. 50% is as early as a warning is worth
+ *  having; the top stop is 100%, which is the off switch rather than a warning
+ *  that fires exactly as the limit lands. */
+const WARN_AT_MIN = 0.5;
+const WARN_AT_MAX = 1;
+const WARN_AT_STEP = 0.05;
+
+/** 100% reads as off, because that is what it does: `approaching` is disabled
+ *  outside (0, 1) for both the ceilings and the quota windows. Reaching a limit
+ *  is never silenced by it. */
+const warnAtLabel = (v: number) => (v >= WARN_AT_MAX ? "off" : `${Math.round(v * 100)}%`);
 
 export default function ChatPane(props: PaneProps) {
   return (
@@ -224,6 +237,29 @@ export default function ChatPane(props: PaneProps) {
             value={settings.budgets.contextPercent ?? ""}
             onChange={(e) => setBudgets({ contextPercent: optionalNumber(e.currentTarget.value, 1) })}
           />
+        </Row>
+
+        {/* One threshold for two things that look unrelated on screen and are
+            the same question: how full is too full. Splitting it would mean two
+            controls to keep in step, and a user who moved one and wondered why
+            half their warnings did not change. */}
+        <Row
+          {...props}
+          id="warn-at"
+          label="Warn at"
+          hint="How full a limit gets before Sway says so. Governs both the ceilings above and the agents' own quota windows, which the titlebar shows. At 100% nothing is warned about; a limit actually reached is always shown."
+        >
+          <div class={styles.control}>
+            <Slider
+              min={WARN_AT_MIN}
+              max={WARN_AT_MAX}
+              step={WARN_AT_STEP}
+              value={settings.budgets.warnAtFraction}
+              onChange={(v) => setBudgets({ warnAtFraction: v })}
+              aria-label="Warn at"
+            />
+            <span class={styles.numField}>{warnAtLabel(settings.budgets.warnAtFraction)}</span>
+          </div>
         </Row>
       </Group>
     </>

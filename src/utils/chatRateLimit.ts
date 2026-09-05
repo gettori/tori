@@ -1,22 +1,31 @@
-// Whether a rate limit is worth telling the user about, and what to say.
+// What a quota window is worth telling the user about, and what to say.
 //
-// Two measurements off the captures drive the whole shape of this:
+// Three measurements off the captures drive the whole shape of this:
 //
-//   1. **`rate_limit_event` fires on every turn, and its status is `allowed`.**
-//      Every frame in every capture reads
-//      `{"status":"allowed","resetsAt":1785179400,"rateLimitType":"five_hour"}`.
-//      So "surface rate limits" cannot mean "render on the event": that would
-//      pin a permanent banner to every chat announcing that nothing is wrong,
-//      which is how a warning stops being read. The banner is for a status that
-//      is *not* allowed, and the common case renders nothing.
-//   2. **`resetsAt` is in seconds, not milliseconds.** 1785179400 is 2026-07-26;
+//   1. **`rate_limit_event` fires on every turn, and its status is usually
+//      `allowed`.** So "surface rate limits" cannot mean "render on the event":
+//      that would pin a permanent banner to every chat announcing that nothing
+//      is wrong, which is how a warning stops being read.
+//   2. **`allowed_warning` is not a limit in force.** Five captured frames read
+//      `{"status":"allowed_warning","utilization":0.88,"surpassedThreshold":0.75}`.
+//      The predecessor of this module treated every status that was not
+//      `allowed` as a limit already hit, so those frames put up a banner saying
+//      the limit "has been reached (allowed_warning)" from 75% on - wrong about
+//      the state and leaking the wire's own word into the sentence.
+//   3. **`resetsAt` is in seconds, not milliseconds.** 1785179400 is 2026-07-26;
 //      read as millis it would be 1970. Both scales look equally plausible in a
 //      small fixture, which is exactly the trap
 //      `lesson_synthetic_test_values_hide_unit_bugs` describes, so the
 //      conversion happens here, once, named, and is pinned by a test using the
 //      real captured magnitude rather than a round number.
+//
+// One vocabulary, shared with Sway's own ceilings in `chatBudget.ts`: ok says
+// nothing, approaching is a heads-up, reached is a limit in force. `expired`
+// is the fourth answer this side needs and ceilings do not: a quota window
+// resets on a clock, so a level can be known to be wrong rather than merely old.
 import type { ChatEvent } from "./chatTypes";
 
+/** The newest `rate_limit_event`, whatever it said. */
 export type RateLimitState = {
   status: string;
   /** Epoch **seconds**, as the wire sends it. Converted at the one point of
@@ -24,25 +33,93 @@ export type RateLimitState = {
    *  units and cannot be silently reinterpreted by a second reader. */
   resetsAt: number | null;
   limitType: string | null;
+  /** About `limitType` alone, which is why it is not folded into `windows`. */
+  utilization: number | null;
+  windows: { kind: string; utilization: number; resetsAt: number | null }[];
+  /** Whether overage spending is available, **not** whether a limit is hit:
+   *  every captured `allowed` frame carries `overageStatus: "rejected"`. */
+  overageStatus: string | null;
 };
 
 export function rateLimitFrom(ev: Extract<ChatEvent, { type: "rateLimit" }>): RateLimitState {
-  return { status: ev.status, resetsAt: ev.resetsAt, limitType: ev.limitType };
+  return {
+    status: ev.status,
+    resetsAt: ev.resetsAt,
+    limitType: ev.limitType,
+    utilization: ev.utilization,
+    windows: ev.windows,
+    overageStatus: ev.overageStatus,
+  };
 }
 
-/** The one status observed on this transport, and the one that means "nothing
- *  to say". Anything else is surfaced, including a status we have never seen:
- *  an unrecognised limit is still a limit, and hiding it because it is not on a
- *  list is how a user finds out from a failed turn instead. */
-const ALLOWED = "allowed";
+/**
+ * One window's level as some source reported it.
+ *
+ * Source-neutral on purpose: a Claude passive frame, a Codex `app-server` read
+ * and an account-token read all land here, and the state machine below must not
+ * be able to tell them apart. `status` is the harness's own word (null for a
+ * source that has none) and `reachedType` is a source's own "you have hit this"
+ * flag, which outranks the level.
+ */
+export type QuotaReading = {
+  /** The source's own window name (`five_hour`, `seven_day`), never an enum. */
+  kind: string;
+  /** 0 to 1, or null when the source named the window without a level. */
+  utilization: number | null;
+  /** Epoch **seconds**. */
+  resetsAt: number | null;
+  status: string | null;
+  /** Codex's `rateLimitReachedType`: which limit was hit, or null for none. */
+  reachedType: string | null;
+};
 
-export function isLimited(rl: RateLimitState | null): boolean {
-  return rl !== null && rl.status !== "" && rl.status !== ALLOWED;
+export type QuotaState = "ok" | "approaching" | "reached" | "expired";
+
+/** The one status that means "nothing to say", and the two that mean something
+ *  specific. Anything else is a status no capture has shown; see `quotaState`
+ *  for why an unknown one is surfaced rather than dropped. */
+const ALLOWED = "allowed";
+const WARNING = "allowed_warning";
+const REJECTED = "rejected";
+
+/**
+ * Which of the four things this reading is.
+ *
+ * The precedence is the whole design:
+ *
+ * - **Expiry first.** A level from a window that has since reset is not a level,
+ *   it is a memory. Checked after `reached`, a 100% five-hour window would keep
+ *   a blocking banner up for the hours after the reset that cleared it.
+ * - **`reached` outranks the level.** A `rejected` status, or a source's own hit
+ *   flag, is the source saying it refused work; 100% is only Sway's arithmetic
+ *   agreeing. Either wins over the threshold below.
+ * - **The threshold applies only under that.** `warnAt` outside (0, 1) disables
+ *   `approaching` and nothing else, mirroring `chatBudget.approaching`: 100% is
+ *   the "off" stop on the shared control, and off must never silence a limit
+ *   that is already in force.
+ */
+export function quotaState(r: QuotaReading, warnAt: number, now: number): QuotaState {
+  const at = resetsAtMs(r.resetsAt);
+  if (at !== null && at <= now) return "expired";
+
+  if (r.status === REJECTED || r.reachedType) return "reached";
+  if (r.utilization !== null && r.utilization >= 1) return "reached";
+
+  if (typeof warnAt !== "number" || warnAt <= 0 || warnAt >= 1) return "ok";
+
+  if (r.utilization !== null && r.utilization >= warnAt) return "approaching";
+  if (r.status === WARNING) return "approaching";
+  // A status no capture has shown is still surfaced: a limit nobody has a name
+  // for is still a limit, and hiding it because it is not on a list is how a
+  // user finds out from a failed turn instead. Approaching rather than reached,
+  // because an unrecognised word is not evidence that anything stopped.
+  if (r.status !== null && r.status !== "" && r.status !== ALLOWED) return "approaching";
+  return "ok";
 }
 
 /** "five_hour" -> "5-hour". Wire values are snake_case identifiers meant for a
  *  machine; an unknown one falls through as-is rather than being dropped, since
- *  an unreadable limit type still beats a silent one. */
+ *  an unreadable window name still beats a silent one. */
 export function limitTypeLabel(limitType: string | null): string | null {
   if (limitType === null || limitType === "") return null;
   if (limitType === "five_hour") return "5-hour";
@@ -51,25 +128,79 @@ export function limitTypeLabel(limitType: string | null): string | null {
 }
 
 /** Epoch seconds to a wall-clock time the user can act on, or null when the
- *  wire sent no reset. */
-export function resetsAtMs(rl: RateLimitState): number | null {
-  return rl.resetsAt === null ? null : rl.resetsAt * 1000;
+ *  source sent no reset. */
+export function resetsAtMs(resetsAt: number | null): number | null {
+  return resetsAt === null ? null : resetsAt * 1000;
+}
+
+/** A weekly window resets days out, so a bare clock time would read as today.
+ *  The weekday is added only when it is not. */
+function whenLabel(at: number, now: number): string {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return d.toDateString() === new Date(now).toDateString() ? time : `${d.toLocaleDateString([], { weekday: "short" })} ${time}`;
 }
 
 /**
- * What the banner says, or null when there is nothing to say.
+ * What one window says, or null when it has nothing to say.
  *
  * `now` is passed in rather than read from the clock so the wording is testable
- * without freezing time, and so a reset already in the past reads as "any
- * moment now" instead of as a stale future promise.
+ * without freezing time. The harness's own status word never reaches the
+ * sentence: `allowed_warning` is a wire token, and a user told their limit "has
+ * been reached (allowed_warning)" has been told two wrong things at once.
  */
-export function rateLimitMessage(rl: RateLimitState | null, now: number): string | null {
-  if (!isLimited(rl) || rl === null) return null;
-  const kind = limitTypeLabel(rl.limitType);
-  const subject = kind ? `Your ${kind} limit` : "A usage limit";
-  const at = resetsAtMs(rl);
-  if (at === null) return `${subject} has been reached (${rl.status}).`;
-  if (at <= now) return `${subject} has been reached (${rl.status}). It should reset any moment now.`;
-  const when = new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return `${subject} has been reached (${rl.status}). Resets at ${when}.`;
+export function windowSentence(r: QuotaReading, warnAt: number, now: number): string | null {
+  const state = quotaState(r, warnAt, now);
+  if (state === "ok") return null;
+
+  const kind = limitTypeLabel(r.kind);
+  const subject = kind ? `your ${kind} limit` : "a usage limit";
+  const Subject = subject[0].toUpperCase() + subject.slice(1);
+
+  // No percentage: the level belongs to a window that has since reset, so
+  // reporting it would describe a quota that no longer exists.
+  if (state === "expired") return `${Subject} has reset.`;
+
+  const at = resetsAtMs(r.resetsAt);
+  const resets = at === null ? "" : ` Resets ${whenLabel(at, now)}.`;
+  if (state === "reached") return `${Subject} has been reached.${resets}`;
+
+  const pct = r.utilization === null ? null : Math.round(r.utilization * 100);
+  return pct === null
+    ? `${Subject} is close.${resets}`
+    : `You have used ${pct}% of ${subject}.${resets}`;
+}
+
+/**
+ * The windows one `rate_limit_event` reported.
+ *
+ * A frame carrying `unifiedWindows` names every window it knows; one without it
+ * names exactly one, through `rateLimitType`, and its `utilization` is about
+ * that one alone. Folding the second shape into the first would report a level
+ * for a window the frame never mentioned.
+ */
+export function readingsOf(rl: RateLimitState | null): QuotaReading[] {
+  if (rl === null) return [];
+  if (rl.windows.length) {
+    return rl.windows.map((w) => ({
+      kind: w.kind,
+      utilization: w.utilization,
+      resetsAt: w.resetsAt,
+      // The frame's status is about `limitType`, so it is carried only onto the
+      // window it is about. A `rejected` on the five-hour window must not mark
+      // the weekly one as reached.
+      status: w.kind === rl.limitType ? rl.status : null,
+      reachedType: null,
+    }));
+  }
+  if (rl.limitType === null) return [];
+  return [
+    {
+      kind: rl.limitType,
+      utilization: rl.utilization,
+      resetsAt: rl.resetsAt,
+      status: rl.status,
+      reachedType: null,
+    },
+  ];
 }
