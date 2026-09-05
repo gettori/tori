@@ -87,14 +87,19 @@ export default function Jobs() {
               <TerminalView
                 id={id}
                 cwd={job.cwd}
-                // Spawns the program directly rather than through a login
-                // shell, which keeps the output readable after a failing exit.
+                // A login shell running the command through a runner, so the
+                // shell survives the command and reports how it went here.
+                // `pty://exit` below still covers the shell itself ending.
                 kind="command"
                 program={job.program}
                 args={job.args}
                 env={job.env}
                 active={shownJob()?.id === id}
                 autoFocus={!!job.interactive}
+                onCommandExit={(code) => {
+                  const done = finishJob(id, code);
+                  if (done) announce(done);
+                }}
               />
             </Portal>
           );
