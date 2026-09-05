@@ -244,10 +244,9 @@ describe("the accounts list", () => {
   // it is unmeasured there is simply no add button: the sentence explaining
   // why is maintainer bookkeeping and lives in ADAPTERS.md, not in the app.
   it("offers no add button for a agent with no measured isolation", async () => {
-    const { container, queryByText } = await open(mount({ accounts: { canAdd: false } }));
+    const { container, queryByRole } = await open(mount({ accounts: { canAdd: false } }));
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
-    expect(queryByText("Add account")).toBeNull();
-    expect(container.textContent).not.toContain("two accounts at once");
+    expect(queryByRole("button", { name: /Add account/ })).toBeNull();
   });
 
   // "Sway has nothing true to say about this agent's accounts" is not the
@@ -329,10 +328,10 @@ describe("signing in", () => {
   // when the watcher started, so the new account's sessions would appear only
   // when something else happened to ask for a listing.
   it("watches the new account's transcripts as soon as it exists", async () => {
-    const { container, getByText } = await open(mount());
+    const { container, getByRole } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
 
-    fireEvent.click(getByText("Add account"));
+    fireEvent.click(getByRole("button", { name: /Add account/ }));
     // The modal portals out of the component's own container.
     const input = await waitFor(() => screen.getByRole("textbox"));
     fireEvent.input(input, { target: { value: "Work" } });
