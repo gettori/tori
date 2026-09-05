@@ -3,18 +3,9 @@ import { Portal } from "solid-js/web";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import TerminalView, { type PtyExit } from "../Terminal/TerminalView";
 import { stageHost } from "../../tabs/stageHost";
-import {
-  emit,
-  emitWith,
-  onWith,
-  OPEN_JOB,
-  REVEAL_SIDEBAR,
-  TOAST,
-  type OpenJob,
-  type ToastEvent,
-} from "../../utils/events";
+import { emit, emitWith, REVEAL_SIDEBAR, TOAST, type ToastEvent } from "../../utils/events";
 import JobDrawer from "./JobDrawer";
-import { finishJob, jobs, showJob, shownJob, startJob, type Job } from "./jobStore";
+import { finishJob, jobs, showJob, shownJob, type Job } from "./jobStore";
 
 /**
  * Say what happened, wherever the user is looking.
@@ -45,7 +36,9 @@ function announce(job: Job) {
 }
 
 /**
- * The Jobs host: listeners, surfaces, drawer.
+ * The Jobs host: listeners, surfaces, drawer. Nothing routes here any more:
+ * `OPEN_JOB` opens a command tab in the Shells workspace now, and phase 5 of
+ * the standalone-terminals plan deletes all of this.
  *
  * A service component like the terminal panel. Every job's `TerminalView` is
  * mounted here for as long as the job exists and portalled into its own stage
@@ -53,11 +46,9 @@ function announce(job: Job) {
  * mounting. Two jobs at once is normal; only one is on screen.
  */
 export default function Jobs() {
-  let offOpenJob: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
 
   onMount(async () => {
-    offOpenJob = onWith<OpenJob>(OPEN_JOB, startJob);
     // The same event every terminal tab listens to. An id this store does not
     // know is a tab's, and `finishJob` ignores it.
     unlistenExit = await listen<PtyExit>("pty://exit", (e) => {
@@ -67,7 +58,6 @@ export default function Jobs() {
   });
 
   onCleanup(() => {
-    offOpenJob?.();
     unlistenExit?.();
   });
 
