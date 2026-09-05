@@ -35,6 +35,7 @@ pub mod palette;
 mod patch;
 mod presence;
 mod pty;
+mod runner;
 mod scratch;
 mod search;
 mod sessions;
@@ -161,6 +162,11 @@ pub fn run() {
             // its session id with nothing on screen saying why. The frontend
             // pulls them with `chat_orphans` once it is ready.
             app.state::<chat::ownership::Orphans>().set(chat::ownership::reap_on_startup());
+
+            // A command tab's runner deletes itself when its command ends, so a
+            // runner still on disk here belongs to a run this app never saw
+            // finish. Cheap no-op when the directory is empty or missing.
+            runner::sweep_stale_runners();
 
             // Install the keychain store and restore the forge credential.
             // Non-fatal like the askpass bridge and the tray above: a keychain

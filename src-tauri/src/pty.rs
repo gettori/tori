@@ -15,7 +15,7 @@ use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::env::{augmented_path, login_shell};
+use crate::env::login_shell;
 
 // How long to wait before force-seeding an agent tab's `init` command if the
 // shell has produced no output yet. A shell that prints a prompt/banner trips
@@ -116,6 +116,10 @@ pub struct Session {
     /// a live agent in it.
     agent: Option<String>,
     profile: Option<String>,
+    /// A command tab's runner nonce (see runner.rs), handed back on a
+    /// re-subscribe so a remounted view keeps reading the running command's
+    /// report. `None` for every other kind.
+    runner_nonce: Option<String>,
 }
 
 /// Last-output tracking for the working/needs-you pulse (Finding A, Tier 2):
@@ -262,10 +266,14 @@ fn deliver_init(writer: &SharedWriter, initialized: &Arc<Mutex<bool>>, init: &st
 /// remount of a tab we already hold - and `Some(refusal)` when the claim was
 /// declined and nothing was spawned. A granted claim also reports `None`: there
 /// is nothing for the caller to do about it.
+///
+/// `runner_nonce`: the nonce a command tab's report carries (runner.rs), so the
+/// view can tell it from a replay. `None` for every other kind.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PtySpawnResult {
     pub ownership: Option<crate::chat::ownership::ClaimOutcome>,
+    pub runner_nonce: Option<String>,
 }
 
 // Sync like the rest of the pty family: the IPC thread is what serializes a
@@ -282,12 +290,13 @@ pub fn pty_spawn(
     cwd: String,
     cols: u16,
     rows: u16,
-    // "shell" | "agent" | "command". Shell/agent tabs host a login shell (the
-    // agent is seeded via `init`); command tabs (clone/bootstrap) spawn the
-    // program directly so a failure leaves a visible, inspectable dead tab.
+    // "shell" | "agent" | "command" | "task", every one a login shell. An
+    // agent/task is seeded through `init`; a command tab is seeded with a runner
+    // the backend writes (runner.rs), so it stays a live shell however it ends.
     kind: String,
-    // Agent tabs: the command line to type into the shell once, after it is
-    // ready (e.g. "claude --resume <id>\n"). Delivered backend-once.
+    // Agent/task tabs: the command line to type into the shell once, after it is
+    // ready (e.g. "claude --resume <id>\n"). Delivered backend-once. Ignored
+    // for a command tab, whose init is the runner's.
     init: Option<String>,
     // Quiet threshold (ms) for this session's pty://activity transitions; an
     // agent tab passes its adapter's own `pty_quiet_ms`, a shell/command tab
@@ -319,7 +328,7 @@ pub fn pty_spawn(
         let guard = state.0.lock().map_err(|e| e.to_string())?;
         if let Some(session) = guard.get(&id) {
             *session.sink.lock().map_err(|e| e.to_string())? = Some(on_output);
-            return Ok(PtySpawnResult { ownership: None });
+            return Ok(PtySpawnResult { ownership: None, runner_nonce: session.runner_nonce.clone() });
         }
     }
 
@@ -355,7 +364,7 @@ pub fn pty_spawn(
             // it" or "end the leftover process" if it is told which tab and
             // which pid, and it cannot parse either back out of a message.
             // Nothing is spawned either way, so the corruption stays blocked.
-            refused => return Ok(PtySpawnResult { ownership: Some(refused) }),
+            refused => return Ok(PtySpawnResult { ownership: Some(refused), runner_nonce: None }),
         }
     }
 
@@ -369,33 +378,28 @@ pub fn pty_spawn(
         })
         .map_err(|e| e.to_string())?;
 
-    let mut cmd = if kind == "command" {
-        // Direct spawn: the tab shows the program's own output and stays put on
-        // failure. Needs the augmented PATH since no login shell runs to set it.
-        let mut cmd = CommandBuilder::new(&program);
-        for a in &args {
-            cmd.arg(a);
-        }
-        cmd.cwd(&cwd);
-        cmd.env("TERM", "xterm-256color");
-        cmd.env("PATH", augmented_path());
-        cmd
-    } else {
-        // Shell-hosted tab: a login + interactive shell. `-l` re-sources the
-        // user's profile so the shell owns PATH (no augmented_path needed), and
-        // exiting a seeded agent drops back to this live prompt.
-        let mut cmd = CommandBuilder::new(login_shell());
-        cmd.arg("-l");
-        cmd.arg("-i");
-        cmd.cwd(&cwd);
-        cmd.env("TERM", "xterm-256color");
-        cmd
+    // A command tab runs its command through a runner (runner.rs) rather than as
+    // the PTY's own process, so Ctrl-C leaves a live prompt and the runner
+    // reports the status itself. Its init replaces whatever the caller sent.
+    let runner = if kind == "command" { Some(crate::runner::write_runner(&program, &args)?) } else { None };
+    let init = match &runner {
+        Some(r) => Some(crate::runner::init_line(&r.path)),
+        None => init,
     };
+    let runner_nonce = runner.map(|r| r.nonce);
 
-    // Applied to both kinds, and last, so a caller that means to point a agent
-    // at a different home wins over anything set above. A shell-hosted tab
-    // inherits it through the login shell, which is what a login tab needs: the
-    // agent it runs is a grandchild of this process.
+    // A login + interactive shell. `-l` re-sources the user's profile so the
+    // shell owns PATH, and exiting a seeded agent, or a command's runner, drops
+    // back to this live prompt.
+    let mut cmd = CommandBuilder::new(login_shell());
+    cmd.arg("-l");
+    cmd.arg("-i");
+    cmd.cwd(&cwd);
+    cmd.env("TERM", "xterm-256color");
+
+    // Applied last, so a caller pointing an agent at a different home wins over
+    // anything set above. The agent or command inherits it through the login
+    // shell, being a grandchild of this process.
     for (key, value) in env.into_iter().flatten() {
         cmd.env(key, value);
     }
@@ -483,9 +487,8 @@ pub fn pty_spawn(
                 Err(_) => break,
             }
         }
-        // Land the tail before the exit line: a command tab prints
-        // "[process exited]" on `pty://exit`, which must not overtake the last
-        // bytes the process wrote.
+        // Land the tail before the exit event, so nothing a listener does on
+        // `pty://exit` can overtake the last bytes the process wrote.
         drop(tx);
         let _ = coalescer.join();
         // EOF means nothing holds the slave open any more, so the child is
@@ -535,9 +538,10 @@ pub fn pty_spawn(
             claimed_session,
             agent: agent_id,
             profile,
+            runner_nonce: runner_nonce.clone(),
         },
     );
-    Ok(PtySpawnResult { ownership: None })
+    Ok(PtySpawnResult { ownership: None, runner_nonce })
 }
 
 /// Sync by design, and it must stay that way: keystrokes are fire-and-forget,
@@ -657,6 +661,7 @@ mod tests {
             claimed_session: claimed_session.map(str::to_string),
             agent: agent.map(str::to_string),
             profile: profile.map(str::to_string),
+            runner_nonce: None,
         }
     }
 
