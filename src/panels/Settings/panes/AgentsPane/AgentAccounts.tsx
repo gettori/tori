@@ -18,6 +18,7 @@ import {
 } from "../../../../utils/modelCatalog";
 import { forgetProfileEnvs } from "../../../../utils/profileEnv";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
+import dialogStyles from "../../../../components/Dialogs/Dialogs.module.css";
 import styles from "../../Settings.module.css";
 
 // The accounts half of an agent card: who is signed in, and the one control
@@ -527,27 +528,18 @@ export default function AgentAccounts(props: {
                 extra={
                   <>
                     <Show when={req().home}>
-                      {(path) => (
-                        <div class={styles.hint}>
-                          <code>{path()}</code>
-                        </div>
-                      )}
+                      {(path) => <div class={dialogStyles.path}>{path()}</div>}
                     </Show>
-                  <Show when={req().removable}>
-                    <Checkbox
-                      checked={alsoRemove()}
-                      onChange={setAlsoRemove}
-                      label={
-                        <>
-                          Remove the account as well
-                          <div class={styles.hint}>
-                            Sway forgets it and deletes the profile home it made for it, with the
-                            sessions inside. Signing out on its own keeps both.
-                          </div>
-                        </>
-                      }
-                    />
-                  </Show>
+                    <Show when={req().removable}>
+                      <Checkbox
+                        checked={alsoRemove()}
+                        onChange={setAlsoRemove}
+                        label="Remove the account as well"
+                      />
+                      <div class={dialogStyles.optionHint}>
+                        Sway forgets it and deletes the profile home, with the sessions inside.
+                      </div>
+                    </Show>
                   </>
                 }
                 onConfirm={() => resolveConfirm(true)}

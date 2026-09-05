@@ -25,6 +25,28 @@
   color: var(--fg-default);
   font-weight: 500;
 }
+/* A path the dialog is about: the profile home an account lives in, the file a
+   confirmation would delete. Mono and breakable, since it is long and its tail
+   is the part that identifies it. */
+.path {
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-md);
+  color: var(--fg-muted);
+  word-break: break-all;
+  margin-bottom: calc(12px * var(--ui-scale));
+}
+/* A checkbox and the sentence explaining what ticking it costs, aligned under
+   the label rather than the box. */
+.optionHint {
+  font-size: var(--sway-text-md);
+  color: var(--fg-muted);
+  line-height: 1.4;
+  margin-top: calc(4px * var(--ui-scale));
+  /* The box (16px) plus the root's own gap, so the sentence starts where the
+     label does. */
+  padding-left: calc(16px * var(--ui-scale) + var(--sway-space-4));
+}
+
 /* A control that spans the dialog, and nothing else. Layout only, because
    `Select` draws its own chrome: a call site reaching for `.input` would paint
    a second field on top of the trigger (the split `Popover` documents). */
