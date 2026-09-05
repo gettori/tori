@@ -2,13 +2,14 @@
 // through sessions.rs is now data. One adapter ships bundled
 // (agents/claude.toml, embedded at compile time); a user can add or
 // whole-replace an adapter by dropping a
-// `schema_version = 1`, `= 2` or `= 3` TOML file into `~/.config/sway/agents/`.
+// `schema_version = 1` through `= 4` TOML file into `~/.config/sway/agents/`.
 // See ADAPTERS.md for the schema. Every version so far is purely additive: v2
 // adds the optional `[chat]` table describing how to drive the agent as a
-// structured chat session rather than a PTY, and v3 adds the optional
+// structured chat session rather than a PTY, v3 adds the optional
 // `[accounts]` table describing how it signs in and whether it can hold more
-// than one account at once. An older file loads unchanged, reporting `None` for
-// the tables it predates.
+// than one account at once, and v4 adds the optional `[usage]` table naming the
+// rungs of the source ladder this agent can answer a quota reading from. An
+// older file loads unchanged, reporting `None` for the tables it predates.
 //
 // Parser kinds and chat transports stay code (an enum, not a config string): a config-driven
 // launch/discovery/running-pattern description is enough to make an agent
@@ -23,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// The newest schema this build writes and documents.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Every schema version this build still loads.
 ///
@@ -38,7 +39,7 @@ pub const SCHEMA_VERSION: u32 = 3;
 /// holding three entries, so the build stops until the new version is listed.
 /// Writing `[1, 2, SCHEMA_VERSION]` would look like it derives itself and would
 /// quietly become `[1, 2, 4]`, dropping v3 support with no error anywhere.
-pub const SUPPORTED_SCHEMA_VERSIONS: [u32; SCHEMA_VERSION as usize] = [1, 2, 3];
+pub const SUPPORTED_SCHEMA_VERSIONS: [u32; SCHEMA_VERSION as usize] = [1, 2, 3, 4];
 
 /// The version each optional table was introduced in.
 ///
@@ -49,6 +50,7 @@ pub const SUPPORTED_SCHEMA_VERSIONS: [u32; SCHEMA_VERSION as usize] = [1, 2, 3];
 /// about that table and never moves again.
 const CHAT_MIN_VERSION: u32 = 2;
 const ACCOUNTS_MIN_VERSION: u32 = 3;
+const USAGE_MIN_VERSION: u32 = 4;
 
 /// How Sway drives an agent as a structured chat session rather than a PTY.
 ///
@@ -429,6 +431,54 @@ impl ChatConfig {
     }
 }
 
+/// One rung of the usage source ladder, in the order the ladder climbs.
+///
+/// A closed enum for the same reason [`ChatTransport`] is one: a rung is a Rust
+/// read path, so a TOML can only select one that exists. The ladder is
+/// cumulative (see the `adr_usage_source_ladder` decision): a passive reading
+/// always merges, and each deeper rung fills the gaps the shallower ones leave.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageRung {
+    /// Quota windows carried by the agent's own session events, at no cost and
+    /// with no extra process: Claude's `rate_limit_event`.
+    Sessions,
+    /// A bounded read through the agent's CLI, run by Sway on a schedule.
+    Cli,
+    /// The account's own OAuth token, read from the OS credential store. Always
+    /// an explicit per-agent opt-in.
+    Token,
+}
+
+impl UsageRung {
+    /// Private: the wire spelling is `as_str`, and nothing outside this module
+    /// enumerates the ladder yet. Phase 3's Codex rungs will say if that changes.
+    const ALL: [UsageRung; 3] = [Self::Sessions, Self::Cli, Self::Token];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sessions => "sessions",
+            Self::Cli => "cli",
+            Self::Token => "token",
+        }
+    }
+
+    fn from_str(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|r| r.as_str() == s)
+    }
+}
+
+/// `[usage]`, v4's addition: which rungs this adapter can answer from.
+///
+/// Declaration order is the ladder's order, and the first entry is what an
+/// agent resolves to when the user has chosen nothing. A rung is declared only
+/// once its read path exists, so this table says what Sway can do today rather
+/// than what the agent could theoretically be asked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UsageConfig {
+    pub sources: Vec<UsageRung>,
+}
+
 /// How Sway signs this adapter in, and whether it can hold more than one
 /// account at a time.
 ///
@@ -573,6 +623,17 @@ pub struct AgentAdapter {
     /// this adapter's accounts", which is why it renders no account controls at
     /// all rather than an inert set.
     pub accounts: Option<AccountsConfig>,
+    /// The `[usage]` table, or `None` for an adapter Sway can read no quota
+    /// from. `None` renders as "no usage source", never as a quota of zero.
+    pub usage: Option<UsageConfig>,
+    /// Why `usage` is `None`, in the words the Usage settings block shows
+    /// beside the greyed-out control. `None` when `usage` is `Some`.
+    ///
+    /// Carried rather than derived at the call site because the two reasons are
+    /// not the same fact: a v3 file predates the table and needs a version bump
+    /// to gain one, while a v4 file that declares nothing is an adapter whose
+    /// read path has not been written yet. The settings pane can say which.
+    pub usage_reason: Option<String>,
     /// The `[install]` table: the vendor's own documented install command, run
     /// in a visible PTY tab by `crate::install`. `None` renders instructions
     /// instead of a button. Backend-only, like `discovery`: the frontend asks
@@ -617,7 +678,19 @@ struct AdapterToml {
     #[serde(default)]
     accounts: Option<AccountsToml>,
     #[serde(default)]
+    usage: Option<UsageToml>,
+    #[serde(default)]
     install: Option<InstallToml>,
+}
+
+/// `[usage]`, v4's addition. `deny_unknown_fields` for the reason `[accounts]`
+/// carries it: a version number gates a format only when the parser also
+/// refuses keys it does not know.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UsageToml {
+    #[serde(default)]
+    sources: Vec<String>,
 }
 
 /// `[install]`. Strict like `[accounts]` and for the same reason: a silently
@@ -782,7 +855,7 @@ fn expand_tilde(path: &str) -> PathBuf {
 /// they obey is a combination rather than a per-key requirement and lives in
 /// [`check_session_plumbing`].
 const REQUIRED_TOP_LEVEL: [&str; 4] = ["schema_version", "id", "label", "launch"];
-const KNOWN_TOP_LEVEL: [&str; 13] = [
+const KNOWN_TOP_LEVEL: [&str; 14] = [
     "schema_version",
     "id",
     "label",
@@ -795,6 +868,7 @@ const KNOWN_TOP_LEVEL: [&str; 13] = [
     "verified_against",
     "chat",
     "accounts",
+    "usage",
     "install",
 ];
 
@@ -903,6 +977,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
     for (name, declared, min) in [
         ("chat", raw.chat.is_some(), CHAT_MIN_VERSION),
         ("accounts", raw.accounts.is_some(), ACCOUNTS_MIN_VERSION),
+        ("usage", raw.usage.is_some(), USAGE_MIN_VERSION),
     ] {
         if declared && raw.schema_version < min {
             return Err(format!(
@@ -1053,6 +1128,45 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         })
         .transpose()?;
 
+    // An empty `sources` is rejected rather than folded into `None`. The two
+    // look alike from the outside and are not: no table means "this adapter has
+    // not been given a read path", while an empty list means somebody wrote the
+    // table and said nothing in it, which is a mistake with no honest reading.
+    let usage = raw
+        .usage
+        .map(|u| -> Result<UsageConfig, String> {
+            if u.sources.is_empty() {
+                return Err(format!(
+                    "{source}: [usage] declares no sources (omit the table instead; \
+                     an empty ladder and no ladder are not the same claim)"
+                ));
+            }
+            let sources = u
+                .sources
+                .iter()
+                .map(|name| {
+                    UsageRung::from_str(name).ok_or_else(|| {
+                        let known: Vec<&str> =
+                            UsageRung::ALL.iter().map(|r| r.as_str()).collect();
+                        format!(
+                            "{source}: unknown usage source `{name}` (expected one of {})",
+                            known.join(", ")
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(UsageConfig { sources })
+        })
+        .transpose()?;
+
+    let usage_reason = match (&usage, raw.schema_version < USAGE_MIN_VERSION) {
+        (Some(_), _) => None,
+        (None, true) => {
+            Some(format!("this adapter predates the usage table (schema {USAGE_MIN_VERSION})"))
+        }
+        (None, false) => Some("this adapter declares no usage source".to_string()),
+    };
+
     // Not version-gated, on the icon precedent: dropping it changes what the
     // page offers, never what a session does. An older build warns and shows
     // instructions instead of a button, which is the pre-[install] behaviour.
@@ -1088,6 +1202,8 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         verified_against: raw.verified_against,
         chat,
         accounts,
+        usage,
+        usage_reason,
         install,
         source: source.to_string(),
     })
@@ -1892,6 +2008,99 @@ supports_isolation = true
             .join("\n");
         let err = load_adapter_str(&v3_with(&table), "test").unwrap_err();
         assert!(err.contains("home_env"), "error should name what is missing: {err}");
+    }
+
+    // --- schema v4: [usage] ---
+
+    const USAGE_TABLE: &str = r#"
+[usage]
+sources = ["sessions", "token"]
+"#;
+
+    fn v4_with(table: &str) -> String {
+        format!("{}{table}", VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 4", 1))
+    }
+
+    #[test]
+    fn a_v4_adapter_resolves_its_usage_table_in_declaration_order() {
+        let a = load_adapter_str(&v4_with(USAGE_TABLE), "test").expect("v4 + usage parses");
+        let usage = a.usage.expect("usage resolved");
+        assert_eq!(usage.sources, vec![UsageRung::Sessions, UsageRung::Token]);
+        assert!(a.usage_reason.is_none(), "a declared ladder needs no reason");
+    }
+
+    /// The compatibility promise of the v4 bump, restated for the table that
+    /// prompted it: an older file keeps everything it declared and reports
+    /// `None` only for what it predates.
+    #[test]
+    fn a_v3_adapter_reports_no_usage_and_says_why() {
+        let a = load_adapter_str(&v3_with(ACCOUNTS_TABLE), "test").expect("v3 still parses");
+        assert!(a.usage.is_none(), "a v3 adapter must report usage: None");
+        assert!(a.accounts.is_some(), "and must keep the table it did declare");
+        assert_eq!(
+            a.usage_reason.as_deref(),
+            Some("this adapter predates the usage table (schema 4)"),
+            "the settings pane greys the control out with this sentence"
+        );
+    }
+
+    /// Two different facts, so two different sentences: predating the table
+    /// needs a version bump, declaring nothing needs a read path.
+    #[test]
+    fn a_v4_adapter_with_no_usage_table_says_so_in_its_own_words() {
+        let a = load_adapter_str(&v4_with(""), "test").expect("a bare v4 adapter parses");
+        assert_eq!(a.usage_reason.as_deref(), Some("this adapter declares no usage source"));
+    }
+
+    #[test]
+    fn an_unknown_usage_source_is_rejected_by_name() {
+        let table = USAGE_TABLE.replace("\"token\"", "\"keychain\"");
+        let err = load_adapter_str(&v4_with(&table), "test").unwrap_err();
+        assert!(err.contains("keychain"), "error should name the rung it refused: {err}");
+        assert!(err.contains("sessions"), "and list the rungs that exist: {err}");
+    }
+
+    /// A version number that does not gate anything is decorative, the same
+    /// rule `[chat]` and `[accounts]` obey.
+    #[test]
+    fn a_usage_table_in_a_v3_file_is_refused_rather_than_ignored() {
+        let err = load_adapter_str(&v3_with(USAGE_TABLE), "test").unwrap_err();
+        assert!(err.contains("[usage]"), "error should name the table it refused: {err}");
+        assert!(
+            err.contains(&format!("schema_version >= {USAGE_MIN_VERSION}")),
+            "error should say what version [usage] needs: {err}"
+        );
+    }
+
+    /// An empty ladder and no ladder read the same from the outside and are not
+    /// the same claim, so the one nobody can have meant is refused.
+    #[test]
+    fn an_empty_usage_source_list_is_rejected() {
+        let err = load_adapter_str(&v4_with("\n[usage]\nsources = []\n"), "test").unwrap_err();
+        assert!(err.contains("[usage]"), "error should name the table: {err}");
+    }
+
+    #[test]
+    fn an_unknown_usage_key_is_rejected_rather_than_dropped() {
+        let table = USAGE_TABLE.replace("sources", "souces");
+        let err = load_adapter_str(&v4_with(&table), "test").unwrap_err();
+        assert!(err.contains("souces"), "error should name the key: {err}");
+    }
+
+    /// Claude is the only rung Phase 1 built a read path for, and Codex's rungs
+    /// wait for the phase that implements them. A bundled adapter declaring a
+    /// rung Sway cannot climb would grey nothing out and answer nothing.
+    #[test]
+    fn only_claude_declares_a_usage_ladder_among_the_bundled_adapters() {
+        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
+        assert_eq!(
+            claude.usage.expect("claude declares usage").sources,
+            vec![UsageRung::Sessions]
+        );
+
+        let codex = load_adapter_str(BUILTIN_CODEX, "bundled:codex").expect("codex parses");
+        assert!(codex.usage.is_none(), "codex declares nothing until its probe exists");
+        assert_eq!(codex.usage_reason.as_deref(), Some("this adapter predates the usage table (schema 4)"));
     }
 
     /// The honest default. An adapter that says nothing about isolation is not

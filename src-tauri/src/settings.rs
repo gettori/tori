@@ -524,6 +524,81 @@ pub struct Agent {
     /// absence of an answer rather than a stored `"default"`.
     #[serde(default)]
     pub default_profiles: std::collections::BTreeMap<String, String>,
+    /// How deep Sway reads this agent's quota, and how loudly it says so,
+    /// keyed by adapter id.
+    ///
+    /// An adapter with **no entry** has never been answered for, and that is
+    /// not the same as `Off`: an unanswered adapter resolves to the first rung
+    /// its `[usage]` table declares, so a passive reading that costs nothing
+    /// arrives without anyone opting in, while an adapter declaring no ladder
+    /// resolves to `Off`. `Off` stored here is the user having said no, which
+    /// no later adapter bump undoes.
+    #[serde(default)]
+    pub usage: std::collections::BTreeMap<String, UsageSettings>,
+}
+
+/// Which rung of the source ladder Sway climbs for one agent.
+///
+/// `Off` is a fourth value rather than an `Option<UsageRung>` because it is a
+/// real answer the user can give, and the absence of the whole entry is the
+/// other one. Two absences with one spelling would make "never asked" and "asked
+/// and declined" indistinguishable.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum UsageSource {
+    #[default]
+    Off,
+    Sessions,
+    Cli,
+    Token,
+}
+
+/// How much of an account's quota the titlebar strip draws.
+///
+/// A level rather than per-window toggles: the windows an agent reports are its
+/// own business and change per rung, so a per-window switch would name windows
+/// that do not exist on one account and miss the ones that do.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum UsageDetail {
+    Compact,
+    #[default]
+    Standard,
+    Full,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageSettings {
+    #[serde(default)]
+    pub source: UsageSource,
+    #[serde(default)]
+    pub detail: UsageDetail,
+    /// On by default, and quiet by construction: the send path suppresses
+    /// itself while the window is focused, so what this governs is only whether
+    /// a limit reached while you were away reaches you at all. At most one per
+    /// window per reset, which is a handful a week.
+    #[serde(default = "default_true")]
+    pub notify: bool,
+    /// Accounts of this agent kept off the titlebar strip.
+    ///
+    /// Never the default profile, which is enforced on read rather than trusted:
+    /// the strip's one stable anchor is that the account you are signed into is
+    /// always on it, and a hand-edited settings file naming `"default"` here
+    /// would empty the strip for an agent that is working fine.
+    #[serde(default)]
+    pub hidden_profiles: Vec<String>,
+}
+
+impl Default for UsageSettings {
+    fn default() -> Self {
+        Self {
+            source: UsageSource::default(),
+            detail: UsageDetail::default(),
+            notify: default_true(),
+            hidden_profiles: Vec::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -625,6 +700,13 @@ fn load_from(path: &Path) -> Settings {
     // is rewritten whenever they next save.
     if settings.typography.terminal_font_family == LEGACY_TERMINAL_FONT_FAMILY {
         settings.typography.terminal_font_family = default_terminal_font_family();
+    }
+    // Same "map on read" shape again. The UI never offers this (the default row
+    // carries no hide control), so a file naming it was hand-edited or written
+    // by an older build, and honouring it would hide the one account the strip
+    // guarantees is on it.
+    for entry in settings.agent.usage.values_mut() {
+        entry.hidden_profiles.retain(|p| p != crate::accounts::DEFAULT_PROFILE_ID);
     }
     settings
 }
@@ -844,6 +926,16 @@ mod tests {
                 paths: [("codex".to_string(), "/opt/codex".to_string())].into(),
                 enabled: [("codex".to_string(), true)].into(),
                 default_profiles: [("claude".to_string(), "fonn".to_string())].into(),
+                usage: [(
+                    "claude".to_string(),
+                    UsageSettings {
+                        source: UsageSource::Sessions,
+                        detail: UsageDetail::Full,
+                        notify: true,
+                        hidden_profiles: vec!["work".to_string()],
+                    },
+                )]
+                .into(),
             },
             ..Default::default()
         };
@@ -1140,6 +1232,90 @@ mod tests {
         let _ = std::fs::remove_file(&p);
     }
 
+    /// The per-agent usage block, and the distinction the whole map turns on:
+    /// no entry is "never answered for", which the resolver reads as the
+    /// adapter's first declared rung, while a stored `Off` is the user's own no.
+    #[test]
+    fn the_usage_block_round_trips_and_an_unanswered_agent_stores_nothing() {
+        let p = tmp_file();
+        let mut s = Settings::default();
+        s.agent.usage.insert(
+            "claude".into(),
+            UsageSettings {
+                source: UsageSource::Token,
+                detail: UsageDetail::Full,
+                notify: true,
+                hidden_profiles: vec!["work".into()],
+            },
+        );
+        s.agent.usage.insert("codex".into(), UsageSettings { source: UsageSource::Off, ..Default::default() });
+        save_to(&p, &s).unwrap();
+
+        let back = load_from(&p);
+        let claude = back.agent.usage.get("claude").expect("claude's answer survives");
+        assert_eq!(claude.source, UsageSource::Token);
+        assert_eq!(claude.detail, UsageDetail::Full);
+        assert!(claude.notify);
+        assert_eq!(claude.hidden_profiles, vec!["work".to_string()]);
+        assert_eq!(back.agent.usage.get("codex").map(|u| u.source), Some(UsageSource::Off));
+        assert_eq!(back.agent.usage.get("gemini"), None, "an unanswered agent stores nothing");
+    }
+
+    /// An entry that answers only the source still gets the notify default,
+    /// which is on: the send path is silent while the window is focused, so
+    /// what the flag really governs is whether a limit reached while you were
+    /// away reaches you at all.
+    #[test]
+    fn a_usage_entry_that_names_only_its_source_takes_the_defaults_for_the_rest() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{ "agent": { "usage": { "claude": { "source": "token" } } } }"#).unwrap();
+        let u = load_from(&p).agent.usage["claude"].clone();
+        assert_eq!(u.source, UsageSource::Token);
+        assert_eq!(u.detail, UsageDetail::Standard);
+        assert!(u.notify, "notify defaults on");
+        assert!(u.hidden_profiles.is_empty());
+        let _ = std::fs::remove_file(&p);
+    }
+
+    /// The UI never offers this, so a file carrying it was hand-edited or
+    /// written by an older build. Honouring it would hide the one account the
+    /// strip guarantees is on it.
+    #[test]
+    fn hiding_the_default_account_from_the_strip_is_ignored_on_read() {
+        let p = tmp_file();
+        let mut s = Settings::default();
+        s.agent.usage.insert(
+            "claude".into(),
+            UsageSettings {
+                hidden_profiles: vec![
+                    crate::accounts::DEFAULT_PROFILE_ID.to_string(),
+                    "work".into(),
+                ],
+                ..Default::default()
+            },
+        );
+        save_to(&p, &s).unwrap();
+
+        let hidden = &load_from(&p).agent.usage["claude"].hidden_profiles;
+        assert_eq!(hidden, &vec!["work".to_string()], "the named account stays hidden, the default does not");
+    }
+
+    /// A file written before the key existed loads with an empty map rather
+    /// than failing the whole agent block back to defaults.
+    #[test]
+    fn a_settings_file_predating_the_usage_block_still_loads_its_other_agent_keys() {
+        let p = tmp_file();
+        std::fs::write(
+            &p,
+            r#"{ "agent": { "paths": { "claude": "/builds/claude" }, "enabled": { "claude": true } } }"#,
+        )
+        .unwrap();
+        let back = load_from(&p);
+        assert!(back.agent.usage.is_empty());
+        assert_eq!(back.agent.paths.get("claude").map(String::as_str), Some("/builds/claude"));
+        let _ = std::fs::remove_file(&p);
+    }
+
     /// Removing an account takes its entry out of the file, which is the half
     /// `drop_default_profile` cannot answer for: this one is the load, the
     /// edit and the save, on a settings file several other things also write.
@@ -1181,6 +1357,7 @@ mod tests {
             .into(),
             enabled: Default::default(),
             default_profiles: Default::default(),
+            usage: Default::default(),
         };
         assert_eq!(pick_override(&agent, "claude"), Some("/builds/claude-dev".into()));
         // Blank per-agent entry falls through to the global, not to nothing:

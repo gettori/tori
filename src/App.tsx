@@ -35,6 +35,7 @@ import ConfirmDialog, { type ConfirmReq } from './components/Dialogs/ConfirmDial
 import ToastRegion from './components/Toasts/Toasts';
 import Settings from './panels/Settings/Settings';
 import UpdatePill from './components/UpdatePill/UpdatePill';
+import UsageStrip from './components/UsageStrip/UsageStrip';
 import DevBadge from './components/DevBadge/DevBadge';
 import Button from './components/Button/Button';
 import Icon from './components/Icon/Icon';
@@ -132,6 +133,7 @@ import { installUnifiedTabsMemo, unifiedTabs } from './tabs/unifiedTabs';
 import { chatToStop, liveChats, stoppableChats } from './utils/chatSessions';
 import { rerunLast } from './utils/runTask';
 import { loadUsageStore } from './utils/usageStore';
+import { watchQuotaNotifications } from './utils/usageNotify';
 import Omnibox from './components/Omnibox/Omnibox';
 import ShortcutSheet from './components/ShortcutSheet/ShortcutSheet';
 import { setPinSides } from './layout/pinRules';
@@ -507,7 +509,7 @@ function App() {
     // than blank until the first turn of the day. The fired dedupe keys come
     // back with them, which is what stops a restart inside an already-announced
     // window from announcing it again.
-    void loadUsageStore();
+    void loadUsageStore().then(watchQuotaNotifications);
     unlistenConfig = await listen('config://changed', () => void resolveFeatureSelection());
   });
   onCleanup(() => unlistenConfig?.());
@@ -1041,6 +1043,7 @@ function App() {
         </div>
         <Toolbar selected={selected()} onActiveRoot={setActiveRoot} />
         <DevBadge />
+        <UsageStrip />
         <UpdatePill suppressed={welcome()} />
         <Button
           class="topbar-gear"

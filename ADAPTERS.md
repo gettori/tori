@@ -135,7 +135,7 @@ wants `needs_you = false`.
 ## Schema
 
 ```toml
-schema_version = 3   # required; 1, 2 or 3. v2 adds [chat], v3 adds [accounts] - both optional, both below
+schema_version = 4   # required; 1 to 4. v2 adds [chat], v3 adds [accounts], v4 adds [usage] - all optional, all below
 id = "..."            # required; the agent's identifier throughout Sway
 label = "..."         # required; display name (sidebar, launch buttons)
 icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
@@ -271,11 +271,12 @@ they agree.
 Three rules the loader enforces, because all three failures are otherwise
 silent:
 
-- **`[chat]` requires `schema_version >= 2`, `[accounts]` requires `>= 3`.** A
-  table in a file that predates it is refused by name rather than ignored,
-  since a silently-dropped table looks exactly like an adapter that has no chat
-  surface, or no accounts. Each gate is against that table's own minimum, never
-  against the newest version, so a later bump never invalidates a working file.
+- **`[chat]` requires `schema_version >= 2`, `[accounts]` requires `>= 3`,
+  `[usage]` requires `>= 4`.** A table in a file that predates it is refused by
+  name rather than ignored, since a silently-dropped table looks exactly like
+  an adapter that has no chat surface, no accounts, or no quota to read. Each
+  gate is against that table's own minimum, never against the newest version,
+  so a later bump never invalidates a working file.
 - **`[discovery]`, `[parser]` and `[running]` are all present or all absent.**
   See [Sessions on disk, or over a protocol](#sessions-on-disk-or-over-a-protocol).
 - **Every `effort_levels` entry must name a `[[chat.effort]]` entry.** An
@@ -341,6 +342,38 @@ table without it is rejected, because the second account would sign in
 successfully and then show an empty history forever. An agent whose sessions
 only its protocol reaches declares no `[discovery]` table and so is never asked
 for one.
+
+### The `[usage]` table
+
+Names the rungs of the usage source ladder this agent can answer a quota
+reading from, in the order the ladder climbs.
+
+```toml
+[usage]
+sources = ["sessions"]   # required when the table is present; one or more of "sessions", "cli", "token"
+```
+
+Three rungs exist, and they are cumulative rather than exclusive: a passive
+reading always merges, and each deeper rung fills the gaps the shallower ones
+leave.
+
+- **`sessions`** reads the quota windows the agent already puts on its own
+  session events. It costs nothing and needs no extra process. Claude's
+  `rate_limit_event` is the one implemented today.
+- **`cli`** runs a bounded read through the agent's own CLI on a schedule.
+- **`token`** reads the account's OAuth token from the OS credential store.
+  Always an explicit per-agent opt-in, never a default.
+
+`sources[0]` is what the agent resolves to when the user has chosen nothing, so
+declaration order is the ladder's order and not a set.
+
+**Declare a rung only once Sway has a read path for it.** An undeclared rung
+renders as a greyed control with the loader's own reason beside it, which is
+honest; a declared rung with nothing behind it renders as a control that
+answers nothing. Omitting the whole table is the normal case for an agent whose
+quota Sway cannot see, and it renders as "no usage source" rather than as a
+quota of zero. An empty `sources = []` is rejected: an empty ladder and no
+ladder are not the same claim.
 
 ### The `[install]` table
 
