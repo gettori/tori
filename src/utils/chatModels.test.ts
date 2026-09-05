@@ -449,6 +449,7 @@ describe("pickableModes", () => {
 describe("cachedModes", () => {
   const probed = (modes: ChatModeInfo[], current: string | null): ModelCatalog => ({
     agentId: "codex",
+    profileId: "default",
     state: "probed",
     catalogue: {
       version: "1.2.0",

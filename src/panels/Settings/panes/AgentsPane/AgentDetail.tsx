@@ -27,7 +27,7 @@ import {
 } from "../../../../utils/modelCatalog";
 import { fuzzyMatch, type Range } from "../../../../utils/fuzzy";
 import { Mark } from "../../components/paneKit";
-import type { AgentHealth } from "../../../../utils/agentHealth";
+import { asTabProfile, type AgentHealth } from "../../../../utils/agentHealth";
 import { setupJob, installNote, type InstallRoute, type SetupVerb } from "../../../../utils/install";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import { OPEN_JOB, emitWith, type OpenJob } from "../../../../utils/events";
@@ -103,40 +103,27 @@ function CmdLine(props: { program: string; args: string[] }) {
 }
 
 /**
- * One agent, in full: everything the table row had to drop to stay scannable.
+ * One account's answer: what this agent said it can run, signed in as this
+ * profile.
  *
- * Escape is answered here and its propagation stopped, so the panel's own
- * handler never sees it: inside this page Escape means "back to the list", and
- * letting it bubble would close the whole settings panel instead.
+ * A component per account rather than a list inside one, because everything
+ * here is that account's: the count, the filter, the failure sentence, and Ask
+ * again, which probes one account and not the agent.
  */
-export default function AgentDetail(props: {
-  agent: AgentHealth;
-  onBack: () => void;
-  onRecheck: () => Promise<unknown>;
-  rechecking: boolean;
+function ModelsPane(props: {
+  agentId: string;
+  agentLabel: string;
+  /** `null` is the default account, the tab model's spelling. */
+  profile: string | null;
+  /** This account's own label, or null on an install with only one account,
+   *  where naming it would be a word for the only thing there is. Also what
+   *  decides whether the plan is worth printing: it tells two lists apart, and
+   *  over a single list it is the footnote this page dropped on purpose. */
+  account: string | null;
 }) {
-  let backEl: HTMLButtonElement | undefined;
-  const a = () => props.agent;
-  const installed = () => a().status !== "notFound";
-  // The one drift direction worth surfacing: strictly older than the version
-  // the adapter was measured against. Ahead of it is the steady state.
-  const behind = () =>
-    a().status === "versionDrift" && behindVerified(a().version, a().verifiedAgainst);
-  // The page has two shapes. An agent that is not usable yet gets the setup
-  // steps; one that is gets its accounts. Never both: the setup page's sign-in
-  // step signs in the default profile, which is the account that decides
-  // whether the agent is offered at all.
-  const setupMode = () => !installed() || a().signIn === "signedOut";
-
-  // From the resolved adapter rather than from `agent_health`, which answers
-  // about the binary on disk and knows nothing about the chat transport.
-  const tier = () => chatTier(findAdapter(a().id).chat?.transport);
-  const capabilities = () => publishedCapabilities(tier());
-  const missing = () => (capabilities().length ? unavailableCapabilities(tier()) : []);
-
-  const catalog = () => catalogFor(a().id);
+  const catalog = () => catalogFor(props.agentId, props.profile);
   const catalogue = () => catalog()?.catalogue ?? null;
-  const probingThis = () => isProbing(a().id);
+  const probingThis = () => isProbing(props.agentId, props.profile);
   /** The agent's own words when it gave any, after Sway's sentence naming the
    *  kind of failure. Quoted rather than paraphrased, and omitted when empty. */
   const failureNote = () => {
@@ -184,6 +171,193 @@ export default function AgentDetail(props: {
   };
   const visibleModels = () => models().filter((m) => rowHit(m) !== null);
   const modelCount = () => (catalogue() ? `${visibleModels().length} of ${models().length}` : "unknown");
+
+  /** The plan the agent named for this account, as it worded it. Empty for a
+   *  catalogue that never carried one, which renders as nothing rather than as
+   *  a tier Sway guessed. */
+  const plan = () => catalogue()?.account?.subscriptionType.trim() ?? "";
+  const fact = () =>
+    props.account ? [plan(), modelCount()].filter(Boolean).join(", ") : modelCount();
+
+  return (
+    <>
+      <div class={styles.groupHead}>
+        <span class={styles.groupTitle}>{props.account ?? "Models"}</span>
+        <span class={styles.sectionRule} />
+        <span class={styles.groupFact}>{fact()}</span>
+        {/* The same chrome recipe as the Agents list title: count, filter,
+            re-ask, all on the heading so the card below is nothing but
+            rows. The filter only exists where the card scrolls: a list that
+            fits whole has nothing off screen to find. */}
+        <Show when={searchable()}>
+          <input
+            type="text"
+            class={styles.tableFilter}
+            placeholder="Search"
+            aria-label="Filter models"
+            value={modelQuery()}
+            onInput={(e) => setModelQuery(e.currentTarget.value)}
+          />
+        </Show>
+        {/* "Ask again", not "Check again": the setup head's button re-probes
+            the binary, this one re-asks the agent what it can run, and two
+            controls with one label would be two different actions under one
+            name. */}
+        <IconButton
+          size="sm"
+          icon={<Icon icon={RefreshCw} />}
+          tooltip="Ask again"
+          onClick={() => void refreshCatalog(props.agentId, props.profile)}
+          disabled={probingThis()}
+        />
+      </div>
+      {/* Every row here is something the agent itself named, on the probe
+          this page reports below. Nothing is declared: the adapter used to carry
+          a `[[chat.models]]` table shown as what the agent could run, and it
+          said 200k for two models the agent reports 1M for. */}
+      <Switch>
+        <Match when={probingThis() && !catalogue()}>
+          <div class={styles.cardMeta}>Asking {props.agentLabel} what it can run…</div>
+        </Match>
+        <Match when={catalogue()}>
+          {(cat) => (
+            <>
+              <div class={styles.modelsCard}>
+                {/* The scrollbar is drawn over the rows rather than beside
+                    them, so the effort ladders keep the full width. */}
+                <OverlayScroll class={styles.modelScroll}>
+                  <ul class={styles.modelList}>
+                  <For each={visibleModels()}>
+                    {(m) => {
+                      // The same call that kept the row on screen, so what is
+                      // marked is the actual reason it is here.
+                      const hit = () => rowHit(m) ?? { name: [], id: [], effort: [] };
+                      return (
+                        <li class={styles.modelRow}>
+                          <span class={styles.modelName}>
+                            <Mark text={rowText(m).name} ranges={hit().name} />
+                          </span>
+                          <code class={styles.modelId}>
+                            <Mark text={m.value} ranges={hit().id} />
+                          </code>
+                          {/* Said out loud, because its provenance differs: the
+                              user wrote this id in the agent's own settings and
+                              Sway passes it through unresolved. */}
+                          <Show when={m.userConfigured}>
+                            <span class={styles.chip}>yours</span>
+                          </Show>
+                          <Show when={m.supportsEffort && m.supportedEffortLevels.length}>
+                            <span class={styles.modelEffort}>
+                              <Mark text={rowText(m).effort} ranges={hit().effort} />
+                            </span>
+                          </Show>
+                        </li>
+                      );
+                    }}
+                  </For>
+                </ul>
+                  <Show when={models().length && !visibleModels().length}>
+                    <div class={styles.modelsNone}>No model matches "{modelQuery().trim()}".</div>
+                  </Show>
+                </OverlayScroll>
+              </div>
+              <Show when={!cat().models.length}>
+                <div class={styles.cardMeta}>
+                  {props.agentLabel} answered, and named no models it can run.
+                </div>
+              </Show>
+              {/* No footnotes under the list - not the probe date, not the
+                  account it answered for, not the staleness flag. All were
+                  dropped by request: the rows are the answer, and Ask again
+                  is always one press away. */}
+              {/* The rest of what the agent published: the levers with no
+                  control of Sway's own, previewed from the same probe rather
+                  than only appearing once a chat is open. Read-only here, on
+                  purpose - they are session state, and there is no session on
+                  this page to set them on. */}
+              <Show when={mirroredOptions(cat().options ?? []).length}>
+                <div class={styles.groupHead}>
+                  <span class={styles.groupTitle}>Its own options</span>
+                  <span class={styles.sectionRule} />
+                </div>
+                <ul class={styles.modelList}>
+                  <For each={mirroredOptions(cat().options ?? [])}>
+                    {(o) => (
+                      <li class={styles.modelRow}>
+                        <span class={styles.modelName}>{o.name}</span>
+                        <code class={styles.modelId}>
+                          {o.kind === "select" ? o.current : o.value ? "on" : "off"}
+                        </code>
+                        {/* A lever the agent has and will not take reads the
+                            same here as in a chat: shown, with its reason. */}
+                        <Show when={o.disabled && o.note}>
+                          {(note) => <span class={styles.modelNote}>{note()}</span>}
+                        </Show>
+                        <Show when={o.description}>
+                          <span class={styles.modelEffort}>{o.description}</span>
+                        </Show>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+                <div class={styles.hint}>
+                  Set these in a chat with {props.agentLabel}, where they mirror the agent's own
+                  controls.
+                </div>
+              </Show>
+            </>
+          )}
+        </Match>
+        <Match when={catalog()?.state === "failed"}>
+          <div class={styles.cardMeta}>{failureNote()}</div>
+        </Match>
+        <Match when={true}>
+          <div class={styles.cardMeta}>
+            Nobody has asked {props.agentLabel} what it can run. Ask again and Sway will.
+          </div>
+        </Match>
+      </Switch>
+    </>
+  );
+}
+
+/**
+ * One agent, in full: everything the table row had to drop to stay scannable.
+ *
+ * Escape is answered here and its propagation stopped, so the panel's own
+ * handler never sees it: inside this page Escape means "back to the list", and
+ * letting it bubble would close the whole settings panel instead.
+ */
+export default function AgentDetail(props: {
+  agent: AgentHealth;
+  onBack: () => void;
+  onRecheck: () => Promise<unknown>;
+  rechecking: boolean;
+}) {
+  let backEl: HTMLButtonElement | undefined;
+  const a = () => props.agent;
+  const installed = () => a().status !== "notFound";
+  // The one drift direction worth surfacing: strictly older than the version
+  // the adapter was measured against. Ahead of it is the steady state.
+  const behind = () =>
+    a().status === "versionDrift" && behindVerified(a().version, a().verifiedAgainst);
+  // The page has two shapes. An agent that is not usable yet gets the setup
+  // steps; one that is gets its accounts. Never both: the setup page's sign-in
+  // step signs in the default profile, which is the account that decides
+  // whether the agent is offered at all.
+  const setupMode = () => !installed() || a().signIn === "signedOut";
+
+  // From the resolved adapter rather than from `agent_health`, which answers
+  // about the binary on disk and knows nothing about the chat transport.
+  const tier = () => chatTier(findAdapter(a().id).chat?.transport);
+  const capabilities = () => publishedCapabilities(tier());
+  const missing = () => (capabilities().length ? unavailableCapabilities(tier()) : []);
+
+  // Straight from the sweep, which already enumerates every account of every
+  // adapter. One row means nothing to tell apart, so the models pane keeps its
+  // plain heading.
+  const accounts = () => a().profiles ?? [];
+
 
   // All of these are reads of the adapter file, no probe behind any, which is
   // what allows fetching them on every page open. Errors collapse to null: a
@@ -489,142 +663,27 @@ export default function AgentDetail(props: {
           when setup finishes, and a section whose every state is a shrug is
           not information. */}
       <Show when={!setupMode() && findAdapter(a().id).chat}>
-        <div class={styles.groupHead}>
-          <span class={styles.groupTitle}>Models</span>
-          <span class={styles.sectionRule} />
-          <span class={styles.groupFact}>{modelCount()}</span>
-          {/* The same chrome recipe as the Agents list title: count, filter,
-              re-ask, all on the heading so the card below is nothing but
-              rows. The filter only exists where the card scrolls: a list that
-              fits whole has nothing off screen to find. */}
-          <Show when={searchable()}>
-            <input
-              type="text"
-              class={styles.tableFilter}
-              placeholder="Search"
-              aria-label="Filter models"
-              value={modelQuery()}
-              onInput={(e) => setModelQuery(e.currentTarget.value)}
-            />
-          </Show>
-          {/* "Ask again", not "Check again": the setup head's button re-probes
-              the binary, this one re-asks the agent what it can run, and two
-              controls with one label would be two different actions under one
-              name. */}
-          <IconButton
-            size="sm"
-            icon={<Icon icon={RefreshCw} />}
-            tooltip="Ask again"
-            onClick={() => void refreshCatalog(a().id)}
-            disabled={probingThis()}
-          />
-        </div>
-        {/* Every row here is something the agent itself named, on the probe
-            this page reports below. Nothing is declared: the adapter used to carry
-            a `[[chat.models]]` table shown as what the agent could run, and it
-            said 200k for two models the agent reports 1M for. */}
-        <Switch>
-          <Match when={probingThis() && !catalogue()}>
-            <div class={styles.cardMeta}>Asking {a().label} what it can run…</div>
-          </Match>
-          <Match when={catalogue()}>
-            {(cat) => (
-              <>
-                <div class={styles.modelsCard}>
-                  {/* The scrollbar is drawn over the rows rather than beside
-                      them, so the effort ladders keep the full width. */}
-                  <OverlayScroll class={styles.modelScroll}>
-                    <ul class={styles.modelList}>
-                    <For each={visibleModels()}>
-                      {(m) => {
-                        // The same call that kept the row on screen, so what is
-                        // marked is the actual reason it is here.
-                        const hit = () => rowHit(m) ?? { name: [], id: [], effort: [] };
-                        return (
-                          <li class={styles.modelRow}>
-                            <span class={styles.modelName}>
-                              <Mark text={rowText(m).name} ranges={hit().name} />
-                            </span>
-                            <code class={styles.modelId}>
-                              <Mark text={m.value} ranges={hit().id} />
-                            </code>
-                            {/* Said out loud, because its provenance differs: the
-                                user wrote this id in the agent's own settings and
-                                Sway passes it through unresolved. */}
-                            <Show when={m.userConfigured}>
-                              <span class={styles.chip}>yours</span>
-                            </Show>
-                            <Show when={m.supportsEffort && m.supportedEffortLevels.length}>
-                              <span class={styles.modelEffort}>
-                                <Mark text={rowText(m).effort} ranges={hit().effort} />
-                              </span>
-                            </Show>
-                          </li>
-                        );
-                      }}
-                    </For>
-                  </ul>
-                    <Show when={models().length && !visibleModels().length}>
-                      <div class={styles.modelsNone}>No model matches "{modelQuery().trim()}".</div>
-                    </Show>
-                  </OverlayScroll>
-                </div>
-                <Show when={!cat().models.length}>
-                  <div class={styles.cardMeta}>
-                    {a().label} answered, and named no models it can run.
-                  </div>
-                </Show>
-                {/* No footnotes under the list - not the probe date, not the
-                    account it answered for, not the staleness flag. All were
-                    dropped by request: the rows are the answer, and Ask again
-                    is always one press away. */}
-                {/* The rest of what the agent published: the levers with no
-                    control of Sway's own, previewed from the same probe rather
-                    than only appearing once a chat is open. Read-only here, on
-                    purpose - they are session state, and there is no session on
-                    this page to set them on. */}
-                <Show when={mirroredOptions(cat().options ?? []).length}>
-                  <div class={styles.groupHead}>
-                    <span class={styles.groupTitle}>Its own options</span>
-                    <span class={styles.sectionRule} />
-                  </div>
-                  <ul class={styles.modelList}>
-                    <For each={mirroredOptions(cat().options ?? [])}>
-                      {(o) => (
-                        <li class={styles.modelRow}>
-                          <span class={styles.modelName}>{o.name}</span>
-                          <code class={styles.modelId}>
-                            {o.kind === "select" ? o.current : o.value ? "on" : "off"}
-                          </code>
-                          {/* A lever the agent has and will not take reads the
-                              same here as in a chat: shown, with its reason. */}
-                          <Show when={o.disabled && o.note}>
-                            {(note) => <span class={styles.modelNote}>{note()}</span>}
-                          </Show>
-                          <Show when={o.description}>
-                            <span class={styles.modelEffort}>{o.description}</span>
-                          </Show>
-                        </li>
-                      )}
-                    </For>
-                  </ul>
-                  <div class={styles.hint}>
-                    Set these in a chat with {a().label}, where they mirror the agent's own
-                    controls.
-                  </div>
-                </Show>
-              </>
+        {/* One pane per account once there are two of them. A catalogue is an
+            account's answer and not an agent's: two logins of one binary can
+            sit on different plans and offer different models, and a single
+            list would be whichever of them probed last. */}
+        <Show
+          when={accounts().length > 1}
+          fallback={
+            <ModelsPane agentId={a().id} agentLabel={a().label} profile={null} account={null} />
+          }
+        >
+          <For each={accounts()}>
+            {(account) => (
+              <ModelsPane
+                agentId={a().id}
+                agentLabel={a().label}
+                profile={asTabProfile(account.id)}
+                account={account.label}
+              />
             )}
-          </Match>
-          <Match when={catalog()?.state === "failed"}>
-            <div class={styles.cardMeta}>{failureNote()}</div>
-          </Match>
-          <Match when={true}>
-            <div class={styles.cardMeta}>
-              Nobody has asked {a().label} what it can run. Ask again and Sway will.
-            </div>
-          </Match>
-        </Switch>
+          </For>
+        </Show>
       </Show>
 
       <div class={styles.groupHead}>

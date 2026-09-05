@@ -5,7 +5,7 @@
 // locked session (one agent, live models) can feed the same surface.
 import { chatCapable, type Adapter } from "../../utils/agents";
 import { pickableModels, type PickableModel } from "../../utils/chatModels";
-import { cachedModels, distinctModelCount, type ModelCatalog } from "../../utils/modelCatalog";
+import { cachedModels, catalogKey, distinctModelCount, type ModelCatalog } from "../../utils/modelCatalog";
 import { fuzzyScore } from "../../utils/fuzzy";
 
 /** What the left pane says about one agent, on its own row.
@@ -20,6 +20,10 @@ export type ProviderHealth =
 
 export type PaletteProvider = {
   agentId: string;
+  /** The account this row's models and health are about, in the tab model's
+   *  spelling (`null` is the default account). Carried so picking a row can
+   *  bind the tab to the account whose list it just read. */
+  profile: string | null;
   label: string;
   health: ProviderHealth;
   /** Whether a model of this agent can be picked at all. False leaves the row
@@ -103,22 +107,35 @@ export function fixReason(
 export function paletteProviders(input: {
   adapters: readonly Adapter[];
   catalogs: readonly ModelCatalog[] | null;
-  ready: (id: string) => boolean;
-  signedOut: (id: string) => boolean;
-  probing: (id: string) => boolean;
+  /** Which account each agent's row is about. A profile id belongs to one
+   *  agent, so this is asked per row rather than passed once: handing the
+   *  draft's own account to every other agent would describe each of them by
+   *  an account it does not have. */
+  profileFor: (id: string) => string | null;
+  ready: (id: string, profile: string | null) => boolean;
+  signedOut: (id: string, profile: string | null) => boolean;
+  probing: (id: string, profile: string | null) => boolean;
   /** The binary's measured version, from `agentVersion`. Optional so a caller
    *  with no health sweep still gets a palette; the head then falls back to
    *  the version the probe recorded, which is the list's own vintage. */
   version?: (id: string) => string | null;
 }): PaletteProvider[] {
-  const byId = new Map((input.catalogs ?? []).map((c) => [c.agentId, c] as const));
+  const byPair = new Map(
+    (input.catalogs ?? []).map((c) => [catalogKey(c.agentId, c.profileId), c] as const),
+  );
   return input.adapters.filter(chatCapable).map((adapter) => {
-    const catalog = byId.get(adapter.id);
-    const reason = fixReason(adapter.id, input.ready, input.signedOut);
+    const profile = input.profileFor(adapter.id);
+    const catalog = byPair.get(catalogKey(adapter.id, profile));
+    const reason = fixReason(
+      adapter.id,
+      (id) => input.ready(id, profile),
+      (id) => input.signedOut(id, profile),
+    );
     return {
       agentId: adapter.id,
+      profile,
       label: adapter.label,
-      health: input.probing(adapter.id)
+      health: input.probing(adapter.id, profile)
         ? ({ kind: "probing" } as const)
         : reason !== null
           ? ({ kind: "fix", reason } as const)
@@ -141,12 +158,14 @@ export function paletteProviders(input: {
 export function lockedProvider(
   adapter: Adapter,
   models: readonly PickableModel[],
-  /** The binary version the health sweep measured. Optional because it is a
-   *  display fact the palette can go without. */
-  info: { version?: string | null } = {},
+  /** The binary version the health sweep measured, and the account the session
+   *  is locked to. Both optional because they are display facts the palette can
+   *  go without. */
+  info: { version?: string | null; profile?: string | null } = {},
 ): PaletteProvider {
   return {
     agentId: adapter.id,
+    profile: info.profile ?? null,
     label: adapter.label,
     health: { kind: "count", count: models.length },
     selectable: true,
