@@ -449,6 +449,18 @@ export default function AgentAccounts(props: {
           <div class={styles.groupHead}>
             <span class={styles.groupTitle}>Accounts</span>
             <span class={styles.sectionRule} />
+            {/* No button at all where adding is off: `canAdd` is the backend
+                saying this adapter was measured holding two logins at once. */}
+            <Show when={v().canAdd}>
+              <IconButton
+                size="sm"
+                icon={<Icon icon={Plus} />}
+                aria-label="Add account"
+                tooltip="Add account. Each account keeps its own session and model list. Pick one per chat."
+                onClick={() => void add()}
+                disabled={adding()}
+              />
+            </Show>
             <IconButton
               size="sm"
               icon={<Icon icon={RefreshCw} />}
@@ -473,25 +485,6 @@ export default function AgentAccounts(props: {
               )}
             </For>
           </div>
-          {/* No button at all where adding is off. The old rendering kept a
-              disabled button beside a sentence about unmeasured isolation -
-              a message for whoever maintains the adapters, which belongs in
-              ADAPTERS.md, not in the app. */}
-          <Show when={v().canAdd}>
-            <div class={styles.cardActions}>
-              <Button
-                size="sm"
-                icon={<Icon icon={Plus} />}
-                onClick={() => void add()}
-                disabled={adding()}
-              >
-                Add account
-              </Button>
-              <span class={styles.actionNote}>
-                Each account keeps its own session and model list. Pick one per chat.
-              </span>
-            </div>
-          </Show>
           <Show when={nameReq()}>
             <PromptModal
               title={`Name for the new ${props.agentLabel} account`}
