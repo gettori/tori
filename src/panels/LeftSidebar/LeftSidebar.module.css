@@ -767,3 +767,53 @@
   color: var(--fg-default);
   border-color: var(--brand-default);
 }
+
+/* The open-command count on the Shells segment. Part of the segment's own text,
+   so the count is in its accessible name rather than lost to a sighted-only badge. */
+.modeCount {
+  margin-left: calc(4px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The Shells list, on the tree's insets like the Feature list beside it. */
+.shellsList {
+  padding-inline: var(--tree-inset) var(--tree-gutter);
+}
+
+.shellsItems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale));
+}
+
+.shellsRow {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  border-radius: var(--radius-sm);
+  font-size: var(--sway-text-lg);
+}
+
+.shellsName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+}
+
+.shellsState {
+  flex: none;
+  font-size: var(--sway-text-md);
+  color: var(--fg-subtle);
+}
+
+.shellsState[data-state="failed"] {
+  color: var(--danger-default);
+}

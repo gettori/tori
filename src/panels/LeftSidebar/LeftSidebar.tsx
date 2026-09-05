@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onMount, onCleanup, createEffect, createMemo, on, untrack } from "solid-js";
+import { createSignal, For, Show, onMount, onCleanup, createEffect, createMemo, on, untrack, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -24,6 +24,7 @@ import {
   emitWith,
   FOCUS_SEARCH,
   TOGGLE_SIDEBAR_MODE,
+  REVEAL_SHELLS,
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
   OPEN_JOB,
@@ -133,9 +134,10 @@ import {
   type AttemptRecord,
 } from "./attempts";
 import Tooltip from "../../components/Tooltip/Tooltip";
-import SegmentedControl from "../../components/SegmentedControl/SegmentedControl";
+import SegmentedControl, { type SegmentedOption } from "../../components/SegmentedControl/SegmentedControl";
 import FeatureList from "./FeatureList";
-import { featureKey, featureSelection, tabUnderFolder, type Feature } from "../../utils/features";
+import { featureKey, featureSelection, shellsSelection, tabUnderFolder, type Feature } from "../../utils/features";
+import { commandStatus } from "../Terminal/commandStatus";
 import styles from "./LeftSidebar.module.css";
 
 // Lucide glyph for a branch-unit row, keyed by its git kind: a worktree (or an
@@ -269,18 +271,17 @@ const LS_EXPANDED = "sway.expanded.v1";
 const LS_ACTIVE_SPACE = "sway.active-space.v1";
 const LS_MODE = "sway.sidebar-mode.v1";
 
-// What the column shows: the Spaces tree, or the Feature list. The filter
-// field, the dialogs and the selection are shared; the tree and the space rail
-// are unmounted in Features mode rather than hidden.
-type SidebarMode = "spaces" | "features";
-const MODES: { value: SidebarMode; label: string }[] = [
-  { value: "spaces", label: "Spaces" },
-  { value: "features", label: "Features" },
-];
+// What the column shows: the Spaces tree, the Feature list, or the commands Sway
+// runs for itself. The filter field, the dialogs and the selection are shared;
+// the tree and the space rail are unmounted in the other two rather than hidden.
+type SidebarMode = "spaces" | "features" | "shells";
+// The order the segments sit in, which is also the order the toggle steps through.
+const MODE_VALUES: SidebarMode[] = ["spaces", "features", "shells"];
 
 function loadMode(): SidebarMode {
   try {
-    return localStorage.getItem(LS_MODE) === "features" ? "features" : "spaces";
+    const stored = localStorage.getItem(LS_MODE);
+    return MODE_VALUES.find((m) => m === stored) ?? "spaces";
   } catch {
     return "spaces";
   }
@@ -366,7 +367,37 @@ export default function LeftSidebar(props: {
     setQuery("");
     setSearching(false);
   }
-  const [mode, setMode] = createSignal<SidebarMode>(loadMode());
+  // Sway's own commands, as they are open right now.
+  const shellsTabs = () => (props.liveTabs ?? []).filter((t) => t.kind === "command");
+  const storedMode = loadMode();
+  // A command tab never persists, so a stored Shells mode with nothing running
+  // would restore onto an empty full-window pane. Spaces is what it had before.
+  const [mode, setMode] = createSignal<SidebarMode>(
+    storedMode === "shells" && shellsTabs().length === 0 ? "spaces" : storedMode,
+  );
+  /** What the filter field is filtering, which is whatever the mode is showing. */
+  const filterNoun = () => (mode() === "features" ? "features" : mode() === "shells" ? "commands" : "projects");
+  // The badge counts what is open; the list shows what the filter left.
+  const visibleShells = () => {
+    const q = query().trim().toLowerCase();
+    return q ? shellsTabs().filter((t) => (t.title || t.id).toLowerCase().includes(q)) : shellsTabs();
+  };
+  // The count is inside the element rather than in the array, so the options
+  // below stay one object apiece. Cast because Solid types every JSX expression
+  // as nullable, and the option type rejects that to catch `label={undefined}`.
+  const shellsLabel = (
+    <>
+      Shells
+      <Show when={shellsTabs().length}>{(n) => <span class={styles.modeCount}>{n()}</span>}</Show>
+    </>
+  ) as NonNullable<JSX.Element>;
+  // Built once: a fresh options array per count would make `SegmentedControl`'s
+  // `<For>` rebuild the strip (gotcha: a For over items remounts them).
+  const MODES: SegmentedOption<SidebarMode>[] = [
+    { value: "spaces", label: "Spaces" },
+    { value: "features", label: "Features" },
+    { value: "shells", label: shellsLabel },
+  ];
   createEffect(() => {
     try {
       localStorage.setItem(LS_MODE, mode());
@@ -500,6 +531,12 @@ export default function LeftSidebar(props: {
   function switchMode(next: SidebarMode) {
     setMode(next);
     if (next === "features") restoreFeature();
+    // Shells has one workspace and no memory to restore: being in the mode is
+    // being in it, the way a Feature row is its own selection. Minted once, so
+    // a second reveal does not hand every consumer a new object to react to.
+    else if (next === "shells") {
+      if (props.selected?.kind !== "shells") props.onSelect(shellsSelection());
+    }
     else {
       const g = activeSpace();
       if (g) restoreUnit(g);
@@ -1015,7 +1052,12 @@ export default function LeftSidebar(props: {
       requestAnimationFrame(() => searchEl?.select());
     }),
   );
-  onCleanup(onEvent(TOGGLE_SIDEBAR_MODE, () => switchMode(mode() === "spaces" ? "features" : "spaces")));
+  onCleanup(
+    onEvent(TOGGLE_SIDEBAR_MODE, () =>
+      switchMode(MODE_VALUES[(MODE_VALUES.indexOf(mode()) + 1) % MODE_VALUES.length]),
+    ),
+  );
+  onCleanup(onEvent(REVEAL_SHELLS, () => switchMode("shells")));
 
   function openDeleteSpace(g: Space) {
     setDeleteReq({
@@ -2742,8 +2784,8 @@ export default function LeftSidebar(props: {
             class={styles.searchInput}
             // A placeholder is not a name: it goes the moment anything is
             // typed, and this field is now mounted only while it is in use.
-            aria-label={mode() === "features" ? "Filter features" : "Filter projects"}
-            placeholder={mode() === "features" ? "Filter features (⌘⇧E)" : "Filter projects (⌘⇧E)"}
+            aria-label={`Filter ${filterNoun()}`}
+            placeholder={`Filter ${filterNoun()} (⌘⇧E)`}
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
             onKeyDown={(e) => e.key === "Escape" && closeSearch()}
@@ -2776,6 +2818,34 @@ export default function LeftSidebar(props: {
             if (props.selected?.kind === "feature" && props.selected.featureId === f.id) props.onSelect(null);
           }}
         />
+      </Show>
+
+      {/* What Sway is running for you. Informational: the tabs themselves are
+          in the Shells workspace's own strip, which selecting the mode opens. */}
+      <Show when={mode() === "shells"}>
+        <div class={styles.shellsList} data-shells-list>
+          <Show
+            when={visibleShells().length > 0}
+            fallback={
+              <div class="tree-empty">
+                <p>{shellsTabs().length ? "No command matches the filter." : "Nothing running."}</p>
+              </div>
+            }
+          >
+            <ul class={styles.shellsItems} data-no-window-drag>
+              <For each={visibleShells()}>
+                {(t) => (
+                  <li class={styles.shellsRow}>
+                    <span class={styles.shellsName}>{t.title || t.id}</span>
+                    <span class={styles.shellsState} data-state={commandStatus(t.id)}>
+                      {commandStatus(t.id)}
+                    </span>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+        </div>
       </Show>
 
       <Show when={mode() === "spaces"}>

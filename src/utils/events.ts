@@ -18,6 +18,9 @@ export type LiveTab = {
   // Where the tab was spawned. A Feature tab's `workspace` is `feature:<id>`,
   // not a folder, so the cwd is the only path a Spaces row can count it by.
   cwd?: string;
+  // What the tab calls itself, so the Shells list can name a row without
+  // holding a second copy of the tab model.
+  title?: string;
   sessionId?: string;
   // Agent program for a resumed/spawned agent tab; lets a session-row probe
   // (session_running) pick the right per-agent pgrep pattern.
@@ -113,9 +116,13 @@ export const TOGGLE_TERMINAL = "sway:toggle-terminal";
 export const TOGGLE_EDITOR = "sway:toggle-editor";
 export const TOGGLE_FILETREE = "sway:toggle-filetree";
 
-// Flip the sidebar between its Spaces tree and the Feature list. Consumed by
-// LeftSidebar, which owns and persists the mode.
+// Step the sidebar through its three modes. Consumed by LeftSidebar, which owns
+// and persists the mode.
 export const TOGGLE_SIDEBAR_MODE = "sway:toggle-sidebar-mode";
+
+// Take the window to Shells. For a panel that starts a command but cannot reach
+// the shell's `onSelect`, which is the only other way in.
+export const REVEAL_SHELLS = "sway:reveal-shells";
 
 // Pane layout edits (plan phase 8), all consumed by App.tsx, which owns the
 // tree. Emitted by the command palette and by a tab's own context menu, so a
