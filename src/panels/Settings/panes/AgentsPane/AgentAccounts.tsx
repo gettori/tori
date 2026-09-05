@@ -8,8 +8,9 @@ import ConfirmDialog, { type ConfirmReq } from "../../../../components/Dialogs/C
 import PromptModal from "../../../../components/Dialogs/PromptModal";
 import { homeDir } from "@tauri-apps/api/path";
 import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../../../utils/events";
-import { refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
-import { forgetModelCatalogs } from "../../../../utils/modelCatalog";
+import { asTabProfile, refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
+import { defaultProfile, setDefaultProfile } from "../../../../utils/agentEnabled";
+import { catalogFor, forgetModelCatalogs } from "../../../../utils/modelCatalog";
 import { forgetProfileEnvs } from "../../../../utils/profileEnv";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import styles from "../../Settings.module.css";
@@ -79,6 +80,11 @@ function ProfileRow(props: {
   view: AccountsView;
   profile: ProfileStatus;
   cwd: string;
+  /** Whether this card is choosing between accounts at all. False on a
+   *  single-account install, where "which one do new sessions start on" is a
+   *  question about one thing - the rule `namedProfiles` keeps everywhere
+   *  else, asked here of the list this card already has. */
+  chooseDefault: boolean;
   onChanged: () => void;
   /** In-app confirmation. `window.confirm` is a silent no-op in Tauri's macOS
    *  webview, which would turn "ask before removing an account that cannot be
@@ -87,6 +93,19 @@ function ProfileRow(props: {
 }) {
   const p = () => props.profile;
   const [busy, setBusy] = createSignal(false);
+
+  /** What this account answered when it was last asked what it can run: the
+   *  plan in the agent's own words and how many models came back. Empty until
+   *  it has been asked, which renders as nothing rather than as a zero. */
+  const catalogue = () => catalogFor(props.agentId, asTabProfile(p().id))?.catalogue ?? null;
+  const models = () => catalogue()?.models.length ?? 0;
+  const fact = () =>
+    [
+      catalogue()?.account?.subscriptionType.trim(),
+      models() ? `${models()} model${models() === 1 ? "" : "s"}` : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
 
   const signIn = () => {
     const job = loginJob(
@@ -168,10 +187,33 @@ function ProfileRow(props: {
         <Show when={p().isDefault}>
           <span class={styles.accountAside}>(your existing login)</span>
         </Show>
+        {/* Which account new sessions start on, where there is more than one to
+            start on. A radio rather than a switch per row, because the accounts
+            are alternatives: two switches on would be a state nothing can act
+            on. Named after the account it picks, so a reader hears which row
+            they are on rather than "Default" three times. */}
+        <Show when={props.chooseDefault}>
+          <label class={styles.accountDefault}>
+            <input
+              type="radio"
+              name={`default-account-${props.agentId}`}
+              aria-label={`Default account: ${p().label}`}
+              checked={defaultProfile(props.agentId) === p().id}
+              onChange={() => setDefaultProfile(props.agentId, p().id)}
+            />
+            Default
+          </label>
+        </Show>
         {/* The account the agent named where it named one; its sign-in state
             where it did not. One fact, never both: the email already implies
             signed in. */}
         <span class={styles.accountFact}>{p().account ?? SIGN_IN_LABEL[p().signIn]}</span>
+        {/* And what that account can run, from its own catalogue: the plan it
+            named and how many models it offered. Two accounts of one binary can
+            be on different plans, so this is the row that says which is which. */}
+        <Show when={fact()}>
+          <span class={styles.accountAside}>{fact()}</span>
+        </Show>
         <Show when={p().signIn !== "signedIn"}>
           <Button size="sm" onClick={signIn}>
             Sign in
@@ -349,6 +391,7 @@ export default function AgentAccounts(props: {
                   view={v()}
                   profile={profile}
                   cwd={cwd() ?? "/"}
+                  chooseDefault={v().profiles.length > 1}
                   onChanged={changed}
                   confirm={askConfirm}
                 />

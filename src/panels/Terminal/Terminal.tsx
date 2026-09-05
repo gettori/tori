@@ -45,8 +45,14 @@ import {
   type TerminalTabFocused,
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
-import { agentEnabled, agentOffReason, draftChatAgent } from "../../utils/agentEnabled";
 import {
+  agentEnabled,
+  agentOffReason,
+  draftChatAgent,
+  draftChatProfile,
+} from "../../utils/agentEnabled";
+import {
+  asProfileId,
   asTabProfile,
   ensureAgentHealthLoaded,
   namedProfiles,
@@ -85,7 +91,7 @@ import { clearComposer, draftFor, offerToComposer, routeFor, setDraft } from "..
 import { clearDraftPick, draftPick, setDraftPick } from "../../utils/chatDraftPick";
 import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
 import { routeSelection, restoreRoute } from "../../utils/sessionSurface";
-import { chatPrefs, settings } from "../Settings/settingsStore";
+import { chatPrefs, rememberChatPrefs, settings } from "../Settings/settingsStore";
 import {
   advanceTabState,
   canRevertToDraft,
@@ -1314,18 +1320,37 @@ export default function Terminal(props: {
   // Launch args come from the adapter: base args, plus its yolo args when asked
   // (claude's skip permission prompts; an adapter may declare none),
   // plus any Sway-launched-only hook args (Phase 3).
+  //
+  // `profile` is the account it runs as, and **`undefined` is not `null`**: a
+  // caller that names one (a fork, the launch menu's per-account rows) is
+  // obeyed, including when it names the default account, while a caller that
+  // names none gets the project's remembered account or this agent's Settings
+  // default. Two callers open a session without an account in mind, so the
+  // resolution lives here rather than at each of them.
   async function spawnSession(
     agentId: string,
     folderPath: string,
     projectName: string,
     yolo = false,
     workspace = folderPath,
-    profile: string | null = null,
+    asked?: string | null,
   ) {
     const a = findAdapter(agentId);
+    const profile = asked !== undefined ? asked : draftProfile(workspace, agentId);
     const args = [...a.base_args, ...(yolo ? a.yolo_args : []), ...(await hookArgs(agentId))];
     const env = await spawnEnvOrWarn(agentId, profile);
     if (!env) return;
+    // The account this project last used, on the same rule a chat records it:
+    // an agent tab runs as an account exactly the way a chat does. The agent
+    // itself is not recorded here - that is what locking a chat means, and a
+    // terminal opened beside one should not move which agent it opens on.
+    //
+    // Only for an agent that has accounts to tell apart. The memory is one slot
+    // per project, so a codex tab recording "the default account" would answer
+    // for claude too and quietly move a project off the login it had chosen.
+    if (namedProfiles(agentId).length) {
+      rememberChatPrefs(workspace, { profile: asProfileId(profile) });
+    }
     openOrActivate({
       id: shellId(),
       title: `${projectName} ${agentId}`,
@@ -1542,14 +1567,29 @@ export default function Terminal(props: {
    * claude's config under the other one's name. It is checked against what is
    * *offered* rather than what exists, so a project whose last chat was on an
    * agent since turned off opens on one the user still wants.
+   *
+   * Keyed by the **workspace**, which is what a chat lock writes under
+   * (`ChatView` has only the tab's workspace to write with) and what `ChatDraft`
+   * reads its remembered model under. For a plain folder the two spellings are
+   * one string; for a Feature they are `feature:<id>` and the active root, so
+   * reading by root here meant a Feature's memory was written where nothing
+   * looked for it.
    */
-  const draftAgent = (projectPath: string) => draftChatAgent(chatPrefs(projectPath).agent);
+  const draftAgent = (workspace: string) => draftChatAgent(chatPrefs(workspace).agent);
+
+  /** And the account it opens on: this project's last, that agent's Settings
+   *  default behind it. Read from the same place and checked the same way, so
+   *  an account removed since is dropped rather than spawned against. */
+  const draftProfile = (workspace: string, agentId: string) =>
+    draftChatProfile(agentId, chatPrefs(workspace).profile);
 
   /** Why a new chat cannot be started here, or null. */
   const noChatReason = () => {
     const root = selectionRoot(props.selected);
     if (!root) return "Select a branch first";
-    return draftAgent(root) ? null : "No agent enabled. Turn one on in Settings.";
+    return draftAgent(workspaceKey(props.selected))
+      ? null
+      : "No agent enabled. Turn one on in Settings.";
   };
 
   /** The menu's two agent-backed rows, each present only while its agent is
@@ -1587,9 +1627,10 @@ export default function Terminal(props: {
     const sel = props.selected;
     const root = selectionRoot(sel);
     if (!sel || !root) return;
-    const agent = agentId ?? draftAgent(root);
+    const ws = workspaceKey(sel);
+    const agent = agentId ?? draftAgent(ws);
     if (!agent) return;
-    openChatDraft(workspaceKey(sel), root, sel.projectName, agent);
+    openChatDraft(ws, root, sel.projectName, agent, draftProfile(ws, agent));
   }
 
   /**
@@ -1655,7 +1696,7 @@ export default function Terminal(props: {
     });
   }
 
-  function newSession(agentId: string, yolo = false, profile: string | null = null) {
+  function newSession(agentId: string, yolo = false, profile?: string | null) {
     const sel = props.selected;
     const root = selectionRoot(sel);
     if (!sel || !root) return;

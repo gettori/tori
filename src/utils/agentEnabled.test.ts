@@ -8,13 +8,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const bench = vi.hoisted(() => ({
   enabled: {} as Record<string, boolean>,
+  defaultProfiles: {} as Record<string, string>,
   loaded: true,
   saved: [] as unknown[],
 }));
 
 vi.mock("../panels/Settings/settingsStore", () => ({
   get settings() {
-    return { agent: { enabled: bench.enabled } };
+    return { agent: { enabled: bench.enabled, defaultProfiles: bench.defaultProfiles } };
   },
   settingsLoaded: () => bench.loaded,
   saveSettings: async (next: unknown) => {
@@ -32,9 +33,16 @@ const health = vi.hoisted(() => ({
   // Keyed `<agent>:<profile>`, so a test can sign one account out and leave the
   // other alone, which is the whole of what the per-account gate has to do.
   signedOut: new Set<string>(),
+  // The accounts the sweep still lists, per agent, in the backend's spelling.
+  // An agent with no entry is one nothing has answered for.
+  accounts: {} as Record<string, string[]>,
 }));
 const key = (id: string, profile: string | null = null) => `${id}:${profile ?? ""}`;
-vi.mock("./agentHealth", () => ({
+// The two spellings of an account are the real ones: they are pure crossings,
+// and a second copy of them in a mock is exactly the trap they exist to close.
+// The three answers this module reads are stood in for, the way the sweep is.
+vi.mock("./agentHealth", async (orig) => ({
+  ...(await orig<typeof import("./agentHealth")>()),
   agentReady: (id: string, profile: string | null = null) =>
     !health.notInstalled.has(id) && !health.signedOut.has(`${id}:${profile ?? ""}`),
   profileSignedOut: (id: string, profile: string | null = null) =>
@@ -47,6 +55,13 @@ vi.mock("./agentHealth", () => ({
           status: health.notInstalled.has(id) ? "notFound" : "versionMatch",
           signIn: health.signedOut.has(`${id}:`) ? "signedOut" : "unknown",
         },
+  knownProfile: (id: string, profile: string | null | undefined) => {
+    if (!profile) return undefined;
+    const known = health.accounts[id];
+    const spelt = profile === "default" ? null : profile;
+    if (!known) return spelt;
+    return known.includes(profile) ? spelt : undefined;
+  },
 }));
 
 const adapters = vi.hoisted(() => ({
@@ -65,19 +80,24 @@ const {
   agentChosen,
   agentEnabled,
   agentOffReason,
+  defaultProfile,
   draftChatAgent,
+  draftChatProfile,
   enableBlockedReason,
   enabledChatAgents,
   setAgentEnabled,
+  setDefaultProfile,
 } = await import("./agentEnabled");
 
 beforeEach(() => {
   bench.enabled = {};
+  bench.defaultProfiles = {};
   bench.loaded = true;
   bench.saved = [];
   health.unswept.clear();
   health.notInstalled.clear();
   health.signedOut.clear();
+  health.accounts = {};
   adapters.list = [
     { id: "claude", label: "Claude", chat: {} },
     { id: "codex", label: "Codex", chat: {} },
@@ -187,5 +207,72 @@ describe("which agent a new draft opens on", () => {
     bench.enabled = { shellish: true };
     expect(enabledChatAgents()).toEqual([]);
     expect(draftChatAgent(null)).toBeNull();
+  });
+});
+
+// Three layers: what this project last used, this agent's Settings default,
+// and the login the user already had. The order is the whole point - a
+// per-agent default that overruled a project's own answer would make the
+// per-project memory a suggestion.
+describe("which account a new session opens on", () => {
+  beforeEach(() => {
+    health.accounts = { claude: ["default", "fonn"] };
+    bench.enabled = { claude: true };
+  });
+
+  it("keeps what this project last used", () => {
+    bench.defaultProfiles = { claude: "fonn" };
+    expect(draftChatProfile("claude", "fonn")).toBe("fonn");
+    // And the default account is an answer, not a silence: a project that ran
+    // on the user's own login stays there, whatever Settings says.
+    expect(draftChatProfile("claude", "default")).toBeNull();
+  });
+
+  it("takes this agent's Settings default when the project has no memory", () => {
+    bench.defaultProfiles = { claude: "fonn" };
+    expect(draftChatProfile("claude", null)).toBe("fonn");
+    expect(draftChatProfile("claude", undefined)).toBe("fonn");
+  });
+
+  it("falls through an account that has been removed since", () => {
+    bench.defaultProfiles = { claude: "fonn" };
+    // The project named an account the sweep no longer lists, so the layer
+    // below answers rather than the spawn being handed an id nothing resolves.
+    expect(draftChatProfile("claude", "gone")).toBe("fonn");
+    // And with the Settings default gone too, the login the user already had.
+    bench.defaultProfiles = { claude: "also-gone" };
+    expect(draftChatProfile("claude", "gone")).toBeNull();
+  });
+
+  it("is the inherited login when nothing has been chosen at all", () => {
+    expect(draftChatProfile("claude", null)).toBeNull();
+  });
+
+  it("answers per agent, since an account id belongs to one of them", () => {
+    bench.defaultProfiles = { claude: "fonn" };
+    health.accounts = { claude: ["default", "fonn"], codex: ["default"] };
+    expect(draftChatProfile("codex", "fonn")).toBeNull();
+  });
+});
+
+describe("the stored default account", () => {
+  it("reads as the inherited login until one is chosen", () => {
+    expect(defaultProfile("claude")).toBe("default");
+    bench.defaultProfiles = { claude: "fonn" };
+    expect(defaultProfile("claude")).toBe("fonn");
+  });
+
+  // Absent and "default" are one answer, so only one of them is ever stored.
+  it("deletes the entry rather than storing the default account", () => {
+    bench.defaultProfiles = { claude: "fonn" };
+    setDefaultProfile("claude", "default");
+    expect((bench.saved[0] as { agent: { defaultProfiles: unknown } }).agent.defaultProfiles).toEqual(
+      {},
+    );
+
+    setDefaultProfile("claude", "fonn");
+    expect((bench.saved[1] as { agent: { defaultProfiles: unknown } }).agent.defaultProfiles).toEqual(
+      { claude: "fonn" },
+    );
   });
 });

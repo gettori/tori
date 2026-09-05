@@ -202,6 +202,14 @@ pub struct ChatPrefs {
     /// `default` like the rest: an old file loads with no harness remembered.
     #[serde(default)]
     pub agent: Option<String>,
+    /// The account that agent last ran as here, in the **stored** spelling: the
+    /// literal `"default"` for the login the user already had, and `None` only
+    /// when nothing has been remembered yet. A tab spells the default account
+    /// `null`, so writing that here would make "the default account" and
+    /// "never answered" the same value, and the per-agent Settings default
+    /// would then override a project that genuinely chose the default account.
+    #[serde(default)]
+    pub profile: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default)]
@@ -510,6 +518,12 @@ pub struct Agent {
     /// health says what *could* run, this says what the user wants offered.
     #[serde(default)]
     pub enabled: std::collections::BTreeMap<String, bool>,
+    /// Which account a new session of one agent starts on when the project has
+    /// no memory of its own, keyed by adapter id. An adapter with no entry
+    /// starts on the login the user already had, so the default account is the
+    /// absence of an answer rather than a stored `"default"`.
+    #[serde(default)]
+    pub default_profiles: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -689,6 +703,45 @@ pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, Stri
     Ok(settings)
 }
 
+/// Forget an agent's remembered default account, for a profile that has just
+/// been removed.
+///
+/// Load-modify-save rather than a value the caller hands in, because
+/// settings.json is one file several surfaces write and a removal must not
+/// revert a preference changed a moment earlier. Under the same named lock
+/// `set_settings` takes, for the same reason. The frontend hears about it
+/// through the watcher's echo, so this needs no `AppHandle`.
+pub fn forget_default_profile(adapter_id: &str, profile_id: &str) {
+    let store = crate::exec::named_lock("settings");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    forget_default_profile_in(&settings_path(), adapter_id, profile_id);
+}
+
+/// The same on an explicit path, so the read-back is testable somewhere other
+/// than the user's own settings file.
+fn forget_default_profile_in(path: &Path, adapter_id: &str, profile_id: &str) {
+    let mut settings = load_from(path);
+    if !drop_default_profile(&mut settings.agent, adapter_id, profile_id) {
+        return;
+    }
+    // A failed write leaves the entry naming a profile that is gone, which
+    // resolves to no account at all rather than to another one's home.
+    let _ = save_to(path, &settings);
+}
+
+/// The rule above, off-disk so it can be tested; true when it changed anything.
+///
+/// Only where the entry names *this* profile. Another account may have been
+/// made the default since, and clearing that would move the user's answer over
+/// a removal it has nothing to do with.
+fn drop_default_profile(agent: &mut Agent, adapter_id: &str, profile_id: &str) -> bool {
+    if agent.default_profiles.get(adapter_id).map(String::as_str) != Some(profile_id) {
+        return false;
+    }
+    agent.default_profiles.remove(adapter_id);
+    true
+}
+
 /// The VS Code theme file this install lost, returned exactly once.
 ///
 /// Sway no longer imports VS Code themes, so an install that had one is
@@ -790,6 +843,7 @@ mod tests {
                 path: Some("/opt/claude".into()),
                 paths: [("codex".to_string(), "/opt/codex".to_string())].into(),
                 enabled: [("codex".to_string(), true)].into(),
+                default_profiles: [("claude".to_string(), "fonn".to_string())].into(),
             },
             ..Default::default()
         };
@@ -1053,6 +1107,67 @@ mod tests {
         assert_eq!(back.agent.enabled.get("codex"), None);
     }
 
+    /// The account a new session starts on when the project has no memory of
+    /// its own: stored per agent, and dropped with the account it names.
+    #[test]
+    fn the_default_account_round_trips_and_goes_with_the_account_it_names() {
+        let p = tmp_file();
+        let mut s = Settings::default();
+        s.agent.default_profiles.insert("claude".into(), "fonn".into());
+        save_to(&p, &s).unwrap();
+        let back = load_from(&p);
+        assert_eq!(back.agent.default_profiles.get("claude").map(String::as_str), Some("fonn"));
+        // An agent nobody answered for starts on the login the user already
+        // had, which is the absence of an entry rather than a stored "default".
+        assert_eq!(back.agent.default_profiles.get("codex"), None);
+
+        let mut agent = back.agent;
+        // Removing another account leaves this answer alone, and removing the
+        // one it names clears it.
+        assert!(!drop_default_profile(&mut agent, "claude", "work"));
+        assert!(!drop_default_profile(&mut agent, "codex", "fonn"));
+        assert!(drop_default_profile(&mut agent, "claude", "fonn"));
+        assert_eq!(agent.default_profiles.get("claude"), None);
+        assert!(!drop_default_profile(&mut agent, "claude", "fonn"));
+
+        // A file written before the key existed loads with an empty map rather
+        // than failing the whole agent block back to defaults and losing an
+        // override with it.
+        std::fs::write(&p, r#"{"agent":{"paths":{"claude":"/builds/claude"}}}"#).unwrap();
+        let old = load_from(&p);
+        assert!(old.agent.default_profiles.is_empty());
+        assert_eq!(old.agent.paths.get("claude").map(String::as_str), Some("/builds/claude"));
+        let _ = std::fs::remove_file(&p);
+    }
+
+    /// Removing an account takes its entry out of the file, which is the half
+    /// `drop_default_profile` cannot answer for: this one is the load, the
+    /// edit and the save, on a settings file several other things also write.
+    #[test]
+    fn removing_an_account_leaves_the_rest_of_the_file_alone() {
+        let p = tmp_file();
+        let mut s = Settings::default();
+        s.agent.default_profiles.insert("claude".into(), "fonn".into());
+        s.agent.default_profiles.insert("codex".into(), "work".into());
+        s.agent.paths.insert("claude".into(), "/builds/claude".into());
+        s.chat_defaults.model = Some("opus".into());
+        save_to(&p, &s).unwrap();
+
+        // Another agent's account of the same name is not this one's.
+        forget_default_profile_in(&p, "claude", "work");
+        assert_eq!(load_from(&p).agent.default_profiles.get("claude").map(String::as_str), Some("fonn"));
+
+        forget_default_profile_in(&p, "claude", "fonn");
+        let back = load_from(&p);
+        assert_eq!(back.agent.default_profiles.get("claude"), None);
+        // Only that entry: this file holds every other preference too, and a
+        // removal that rewrote it from defaults would take them with it.
+        assert_eq!(back.agent.default_profiles.get("codex").map(String::as_str), Some("work"));
+        assert_eq!(back.agent.paths.get("claude").map(String::as_str), Some("/builds/claude"));
+        assert_eq!(back.chat_defaults.model.as_deref(), Some("opus"));
+        let _ = std::fs::remove_file(&p);
+    }
+
     /// The per-agent override wins over the legacy global path, and a blank
     /// entry means "back to discovery" rather than "run the empty string".
     #[test]
@@ -1065,6 +1180,7 @@ mod tests {
             ]
             .into(),
             enabled: Default::default(),
+            default_profiles: Default::default(),
         };
         assert_eq!(pick_override(&agent, "claude"), Some("/builds/claude-dev".into()));
         // Blank per-agent entry falls through to the global, not to nothing:
@@ -1236,6 +1352,7 @@ mod tests {
             "/repo/a".into(),
             ChatPrefs {
                 agent: Some("codex".into()),
+                profile: Some("fonn".into()),
                 model: Some("sonnet".into()),
                 effort: Some("xhigh".into()),
                 mode: Some("plan".into()),
@@ -1253,6 +1370,9 @@ mod tests {
         let back = load_from(&p);
         // Per project, so one repo's choice never overwrites another's.
         assert_eq!(back.chat["/repo/a"].agent.as_deref(), Some("codex"));
+        // The account rides with the agent: a project remembers the pair, so a
+        // draft opens on the login the last one here actually ran as.
+        assert_eq!(back.chat["/repo/a"].profile.as_deref(), Some("fonn"));
         assert_eq!(back.chat["/repo/a"].model.as_deref(), Some("sonnet"));
         assert_eq!(back.chat["/repo/a"].effort.as_deref(), Some("xhigh"));
         assert_eq!(back.chat["/repo/b"].model.as_deref(), Some("haiku"));
@@ -1266,6 +1386,10 @@ mod tests {
         let old = load_from(&p);
         assert_eq!(old.chat["/repo/a"].model.as_deref(), Some("opus"));
         assert_eq!(old.chat["/repo/a"].agent, None);
+        // And no account remembered, which is not the same answer as the
+        // default account: nothing here has been asked yet, so the per-agent
+        // default is still free to answer.
+        assert_eq!(old.chat["/repo/a"].profile, None);
 
         // A settings file predating this section loads rather than resetting
         // everything else to defaults.

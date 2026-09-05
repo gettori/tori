@@ -1227,6 +1227,21 @@
     font-size: var(--sway-text-xs);
     color: var(--fg-muted);
   }
+  /* "New sessions start here", beside the account it names. The native radio,
+     tinted: the accounts are alternatives, and the browser's own control is
+     what makes arrow keys move between the rows. */
+  .accountDefault {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-2);
+    font-size: var(--sway-text-xs);
+    color: var(--fg-muted);
+    cursor: pointer;
+  }
+  .accountDefault input {
+    accent-color: var(--accent-fg);
+    cursor: pointer;
+  }
   /* Pushed to the end, before the row's one button: the email when the agent
      named one, its sign-in state when it did not. */
   .accountFact {

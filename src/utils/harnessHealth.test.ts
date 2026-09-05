@@ -15,6 +15,7 @@ import {
   agentReady,
   agentHealth,
   asTabProfile,
+  knownProfile,
   profileSignedOut,
   ensureAgentHealthLoaded,
   type AgentHealth,
@@ -80,6 +81,14 @@ describe("agentReady before the sweep lands", () => {
   it("says yes, so a slow probe never empties the picker", () => {
     expect(agentHealth()).toBeNull();
     expect(agentReady("claude")).toBe(true);
+  });
+
+  // Same lean as `agentReady`: with no sweep there is nothing to check a
+  // remembered account against, and dropping it would move a project onto
+  // another login for the second the probe takes.
+  it("leaves a remembered account standing", () => {
+    expect(knownProfile("claude", "fonn")).toBe("fonn");
+    expect(knownProfile("claude", "default")).toBeNull();
   });
 });
 
@@ -148,5 +157,28 @@ describe("agentReady once the sweep has landed", () => {
   it("falls back to the agent's own answer for an account the sweep has no row for", () => {
     expect(profileSignedOut("signed-out", "added-since")).toBe(true);
     expect(profileSignedOut("signed-in", "added-since")).toBe(false);
+  });
+
+  // Three answers, because a remembered account has three cases and two of
+  // them would otherwise both be null: the default account is a choice, and
+  // "nothing remembered" has to leave room for the layer below to answer.
+  describe("a remembered account, checked against the sweep", () => {
+    it("comes back in the tab model's spelling", () => {
+      expect(knownProfile("split", "fonn")).toBe("fonn");
+      expect(knownProfile("split", "default")).toBeNull();
+    });
+
+    it("is dropped when the sweep no longer lists it", () => {
+      expect(knownProfile("split", "removed-since")).toBeUndefined();
+      // An agent the sweep answered for with no accounts at all is an answer,
+      // not the ignorance the pre-sweep case is.
+      expect(knownProfile("matched", "fonn")).toBeUndefined();
+    });
+
+    it("is nothing at all when nothing was remembered", () => {
+      expect(knownProfile("split", null)).toBeUndefined();
+      expect(knownProfile("split", undefined)).toBeUndefined();
+      expect(knownProfile("split", "")).toBeUndefined();
+    });
   });
 });

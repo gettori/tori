@@ -8,7 +8,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
+import { __resetModelCatalogsForTests, type ModelCatalog } from "../../../../utils/modelCatalog";
 import { OPEN_JOB, type OpenJob } from "../../../../utils/events";
+import styles from "../../Settings.module.css";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "/home/me" }));
@@ -55,11 +57,51 @@ const view = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function mount(over: { health?: Record<string, unknown>; accounts?: Record<string, unknown> } = {}) {
+/** One account's answer to "what can you run", which is where the plan and the
+ *  model count on its row come from. */
+const catalogue = (profileId: string, plan: string, models: string[]): ModelCatalog => ({
+  agentId: "claude",
+  profileId,
+  state: "probed",
+  catalogue: {
+    version: "2.1.231",
+    probedAtMs: Date.parse("2026-09-01T12:00:00Z"),
+    models: models.map((value) => ({
+      value,
+      resolvedModel: value,
+      displayName: value,
+      description: "",
+      supportsEffort: false,
+      supportedEffortLevels: [],
+      supportsAutoMode: false,
+      supportsFastMode: false,
+      supportsAdaptiveThinking: false,
+    })),
+    modes: [],
+    account: { subscriptionType: plan, organization: "", apiProvider: "firstParty" },
+  },
+  lastFailure: null,
+});
+
+function mount(
+  over: {
+    health?: Record<string, unknown>;
+    accounts?: Record<string, unknown>;
+    catalogs?: ModelCatalog[];
+  } = {},
+) {
   invoked.mockReset();
-  invoked.mockImplementation(async (cmd: string) => {
+  // The catalogue store reads once per app run and keeps the answer, so a
+  // second mount in this file would otherwise be handed the first test's.
+  __resetModelCatalogsForTests();
+  invoked.mockImplementation(async (cmd: string, args?: unknown) => {
     if (cmd === "agent_health") return [health(over.health)];
     if (cmd === "agent_accounts") return view(over.accounts);
+    if (cmd === "model_catalogs") return over.catalogs ?? [];
+    // Handed back rather than swallowed: the store applies what this returns,
+    // and an empty list here would leave the panel reading a settings object
+    // that is an array.
+    if (cmd === "set_settings") return (args as { settings?: unknown })?.settings;
     // The setup page's sign-in step, for the default profile: no home
     // variable, which is what resolves the login the user already had.
     if (cmd === "agent_login_route")
@@ -343,5 +385,91 @@ describe("signing out", () => {
     const { container, queryByRole } = await open(mount({ accounts: { canSignOut: false } }));
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     expect(queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+});
+
+// The third layer of the defaults chain, and the only one with a control: a
+// project's own memory answers first, this answers when it has none, and the
+// login the user already had answers when neither does.
+describe("which account new sessions start on", () => {
+  beforeEach(() => invoked.mockReset());
+
+  const two = {
+    profiles: [
+      profile(),
+      profile({ id: "fonn", label: "Fonn", isDefault: false, home: "/h/fonn", account: "a@fonn" }),
+    ],
+  };
+
+  // "Which of these" is a question about two things. With one account there is
+  // nothing to pick between, and a lone checked radio would be a control whose
+  // every state is the same state.
+  it("asks nothing on an install with one account", async () => {
+    const { container, queryAllByRole } = await open(mount());
+    await waitFor(() => expect(container.textContent).toContain("Accounts"));
+    expect(queryAllByRole("radio")).toHaveLength(0);
+  });
+
+  // Named after the account rather than "Default" three times over: the label
+  // is what a reader hears, and it has to say which row it is on.
+  it("offers one per account, on the inherited login until told otherwise", async () => {
+    const { container, getByRole } = await open(mount({ accounts: two }));
+    await waitFor(() => expect(container.textContent).toContain("Fonn"));
+    expect((getByRole("radio", { name: "Default account: Default" }) as HTMLInputElement).checked).toBe(true);
+    expect((getByRole("radio", { name: "Default account: Fonn" }) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("stores the account it is moved to", async () => {
+    const { container, getByRole } = await open(mount({ accounts: two }));
+    await waitFor(() => expect(container.textContent).toContain("Fonn"));
+
+    fireEvent.click(getByRole("radio", { name: "Default account: Fonn" }));
+
+    await waitFor(() => {
+      const saved = invoked.mock.calls.find(([cmd]) => cmd === "set_settings")?.[1] as
+        | { settings: { agent: { defaultProfiles: Record<string, string> } } }
+        | undefined;
+      expect(saved?.settings.agent.defaultProfiles).toEqual({ claude: "fonn" });
+    });
+  });
+});
+
+// Two logins of one binary can be on different plans and offer different
+// models, which is the whole reason the catalogue is keyed per account. The
+// rows are where that becomes visible.
+describe("what each account can run", () => {
+  beforeEach(() => invoked.mockReset());
+
+  it("names the plan and the count from that account's own catalogue", async () => {
+    const { container } = await open(
+      mount({
+        accounts: {
+          profiles: [
+            profile(),
+            profile({ id: "fonn", label: "Fonn", isDefault: false, home: "/h/fonn" }),
+          ],
+        },
+        catalogs: [
+          catalogue("default", "max", ["opus", "sonnet", "haiku", "fable", "default"]),
+          catalogue("fonn", "team", ["opus", "sonnet", "haiku", "default"]),
+        ],
+      }),
+    );
+    await waitFor(() => expect(container.textContent).toContain("max, 5 models"));
+    expect(container.textContent).toContain("team, 4 models");
+  });
+
+  // A count is a claim about what a probe answered, so an account nobody has
+  // asked says nothing rather than "0 models".
+  it("says nothing for an account nothing has asked", async () => {
+    const { container } = await open(mount());
+    await waitFor(() => expect(container.textContent).toContain("Accounts"));
+    // Read off the row itself: the page below it has a Models section of its
+    // own, so the whole card's text cannot tell the two apart.
+    const row = container.querySelector(`.${styles.accountRow}`);
+    // Asserted first, or the check below is vacuous on a selector that found
+    // nothing.
+    expect(row?.textContent).toContain("your existing login");
+    expect(row?.textContent).not.toContain("model");
   });
 });

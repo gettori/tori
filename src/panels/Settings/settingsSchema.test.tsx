@@ -105,6 +105,12 @@ describe("the shipped settings schemas", () => {
     expect(workspace.additionalProperties, WORKSPACE_FILE).toBe(false);
     expect(Object.keys(workspace.properties), WORKSPACE_FILE).toEqual(["editor"]);
     expect(user.additionalProperties, USER_FILE).toBeUndefined();
+    // Which is what makes a section this schema has never heard of valid
+    // rather than flagged. `agent.defaultProfiles` (which account a new
+    // session starts on) is the newest of them: the Settings panel writes it,
+    // so it is described where the panel is, not here. Modelling half the
+    // `agent` block would report the other half as errors.
+    expect(Object.keys(user.properties), USER_FILE).toEqual(["editorDefaults"]);
   });
 
   it("are the files the associations point at", () => {
