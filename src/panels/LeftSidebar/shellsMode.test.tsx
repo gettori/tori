@@ -65,7 +65,9 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
-const { emit, TOGGLE_SIDEBAR_MODE, REVEAL_SHELLS } = await import("../../utils/events");
+const { emit, emitWith, TOGGLE_SIDEBAR_MODE, REVEAL_SHELLS, TERMINAL_TAB_FOCUSED } = await import(
+  "../../utils/events"
+);
 const { reportCommandExit, resetCommandStatus } = await import("../Terminal/commandStatus");
 const { SHELLS_KEY } = await import("../../utils/features");
 
@@ -197,6 +199,31 @@ describe("the Shells mode", () => {
     fireEvent.input(field, { target: { value: "install" } });
     await waitFor(() => expect(rows()).toHaveLength(0));
     expect(container.textContent).toContain("No command matches the filter.");
+  });
+
+  // What an auto-close that empties the group asks for: the terminal names the
+  // folder its last command came from, and the sidebar decides.
+  it("comes back out to a branch unit the terminal points at", async () => {
+    const { sel } = mount();
+    await screen.findByText("proj");
+    fireEvent.click(segment("Shells"));
+    await waitFor(() => expect(sel()?.kind).toBe("shells"));
+
+    emitWith<{ folderPath: string }>(TERMINAL_TAB_FOCUSED, { folderPath: MAIN });
+    await waitFor(() => expect(pressed("Spaces")).toBe(true));
+    expect(sel()?.folderPath).toBe(MAIN);
+  });
+
+  it("stays where it is when that folder is gone", async () => {
+    const { sel } = mount();
+    await screen.findByText("proj");
+    fireEvent.click(segment("Shells"));
+    await waitFor(() => expect(sel()?.kind).toBe("shells"));
+
+    emitWith<{ folderPath: string }>(TERMINAL_TAB_FOCUSED, { folderPath: "/root/work/deleted" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(pressed("Shells")).toBe(true);
+    expect(sel()?.kind).toBe("shells");
   });
 
   it("says nothing is running when nothing is", async () => {

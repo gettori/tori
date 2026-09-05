@@ -49,7 +49,7 @@ vi.mock("../Terminal/TerminalView", async () => {
 
 const { default: Jobs } = await import("./Jobs");
 const { default: JobTray } = await import("./JobTray");
-const { emitWith, on, OPEN_JOB, REFIT_PANES } = await import("../../utils/events");
+const { on, REFIT_PANES } = await import("../../utils/events");
 const store = await import("./jobStore");
 const terminals = await import("../Terminal/terminalTabStore");
 type OpenJob = import("../../utils/events").OpenJob;
@@ -110,7 +110,9 @@ afterEach(() => {
 });
 
 async function start(job: OpenJob) {
-  emitWith<OpenJob>(OPEN_JOB, job);
+  // `OPEN_JOB` opens a command tab now, so the surfaces phase 5 deletes are
+  // driven through the store they were always a view of.
+  store.startJob(job);
   await waitFor(() => expect(bridge.mounted).toContain(job.id));
 }
 

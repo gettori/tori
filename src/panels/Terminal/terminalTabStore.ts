@@ -16,7 +16,7 @@ export type OpenTerm = {
   cwd: string;
   // The branch-unit anchor this tab is grouped under (the selected folderPath at
   // spawn), NOT the tab cwd: a nested session still groups with its branch unit.
-  // Command tabs (clone/bootstrap) group under their own cwd.
+  // Command tabs group under `shells:`, which is no unit's key.
   workspace: string;
   // Every shell/agent/task tab hosts a login shell; an agent or task tab is that
   // shell seeded with `init`. Command tabs (clone/bootstrap) spawn the program
@@ -40,6 +40,15 @@ export type OpenTerm = {
   // restore rather than persisted: the home path is Sway's to resolve, and a
   // stored copy would go stale the moment a profile home moved.
   env?: Record<string, string>;
+  // Command tabs: what to re-read once the command reports. A clone that never
+  // re-discovers never appears; a sign-in that never re-probes still reads as
+  // signed out. Set at open and never changed, so neither replaces the tab.
+  rediscoverOnExit?: boolean;
+  recheckAgentsOnExit?: boolean;
+  // Command tabs: the workspace that was on screen when this one opened, so an
+  // auto-close that empties the group can hand the window back. Empty for a tab
+  // opened from somewhere that is not a branch unit.
+  bornIn?: string;
   // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
   // shell tab id. Used to focus/resume in place (Phase 2), not for spawning.
   //
