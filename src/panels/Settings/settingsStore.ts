@@ -49,9 +49,17 @@ export type Github = { enabled: boolean };
  *
  *  `agent` is the adapter id the last chat here was locked to, which is what a
  *  new draft opens on. Absent in every settings file written before drafts
- *  existed, so it is read through a fallback rather than assumed. */
+ *  existed, so it is read through a fallback rather than assumed.
+ *
+ *  `profile` is the account that agent last ran as, in the **stored** spelling:
+ *  the literal `"default"` for the login the user already had, null or absent
+ *  only when nothing has been remembered. A tab spells the default account
+ *  `null`, so storing that would make "chose the default account" and "never
+ *  answered" one value, and the Settings default would then override a project
+ *  that had answered. `asProfileId` and `asTabProfile` are the crossings. */
 export type ChatPrefs = {
   agent?: string | null;
+  profile?: string | null;
   model?: string | null;
   effort?: string | null;
   mode?: string | null;
@@ -92,6 +100,11 @@ export type Agent = {
   path?: string | null;
   paths?: Record<string, string>;
   enabled?: Record<string, boolean>;
+  /** Which account a new session of one agent starts on, keyed by adapter id,
+   *  for a project that has no memory of its own. An agent with no entry starts
+   *  on the login the user already had: the default account is the absence of
+   *  an answer rather than a stored `"default"`. */
+  defaultProfiles?: Record<string, string>;
 };
 /** Editor behaviour that is a preference rather than a project fact.
  *

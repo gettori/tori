@@ -225,6 +225,28 @@ export function asProfileId(id: string | null | undefined): string {
   return id ?? DEFAULT_PROFILE;
 }
 
+/**
+ * A remembered account id in the tab model's spelling, or `undefined` when
+ * nothing was remembered and when what was remembered is gone.
+ *
+ * Three answers rather than two, because the caller has to tell "the default
+ * account" from "no answer": both would be `null` otherwise, and a `??` chain
+ * would then let a per-agent default override a project that had chosen the
+ * default account on purpose.
+ *
+ * A sweep that has not answered for this agent leaves the remembered id
+ * standing. Ignorance is not a verdict, the stance `agentReady` takes, and the
+ * spawn boundary refuses an account that really is gone: dropping it here
+ * instead would silently move a project onto another login for the second the
+ * sweep takes.
+ */
+export function knownProfile(id: string, profile: string | null | undefined): string | null | undefined {
+  if (!profile) return undefined;
+  const known = rows()?.find((h) => h.id === id)?.profiles;
+  if (!known) return asTabProfile(profile);
+  return known.some((p) => p.id === profile) ? asTabProfile(profile) : undefined;
+}
+
 /** The binary's version as the sweep measured it, or null while nothing has. */
 export function agentVersion(id: string): string | null {
   return rows()?.find((h) => h.id === id)?.version ?? null;
