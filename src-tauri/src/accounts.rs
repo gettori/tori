@@ -250,32 +250,41 @@ pub fn spawn_env(
     Ok(Some((var.clone(), home.clone())))
 }
 
-/// One profile's spawn environment, by id, over an explicit accounts file.
+/// One profile's home variable and path, by id, over an explicit accounts file.
 ///
 /// `None` and [`DEFAULT_PROFILE_ID`] are the same request and both answer with
-/// an empty map, which is the definition of the default profile: the home
-/// variable left unset.
+/// no pair, which is the definition of the default profile: the home variable
+/// left unset.
 ///
-/// An id that names no profile is an **error**, never an empty map. Falling
-/// back would start the session on the user's own login while every label
-/// around it said otherwise, which is the one failure this whole feature exists
-/// to prevent. The reachable way here is a persisted tab naming a profile that
-/// has since been removed.
-pub fn profile_env(
+/// An id that names no profile is an **error**, never no pair. Falling back
+/// would start the session on the user's own login while every label around it
+/// said otherwise, which is the one failure this whole feature exists to
+/// prevent. The reachable way here is a persisted tab naming a profile that has
+/// since been removed.
+pub fn profile_pair(
     adapter: &crate::agents::AgentAdapter,
     file: &AccountsFile,
     profile_id: Option<&str>,
-) -> Result<BTreeMap<String, String>, String> {
+) -> Result<Option<(String, String)>, String> {
     let id = profile_id.unwrap_or(DEFAULT_PROFILE_ID);
     if id == DEFAULT_PROFILE_ID {
-        return Ok(BTreeMap::new());
+        return Ok(None);
     }
     let accounts = adapter.accounts.as_ref().ok_or_else(|| {
         format!("`{}` declares no accounts, so it has no profile `{id}`", adapter.id)
     })?;
     let profile = profile(file, &adapter.id, id)
         .ok_or_else(|| format!("no profile `{id}` for `{}`", adapter.id))?;
-    Ok(spawn_env(accounts, &profile)?.into_iter().collect())
+    spawn_env(accounts, &profile)
+}
+
+/// The same answer as a map, for the spawn boundary that wants an env.
+pub fn profile_env(
+    adapter: &crate::agents::AgentAdapter,
+    file: &AccountsFile,
+    profile_id: Option<&str>,
+) -> Result<BTreeMap<String, String>, String> {
+    Ok(profile_pair(adapter, file, profile_id)?.into_iter().collect())
 }
 
 /// The environment a PTY agent tab spawns with, so a terminal session runs as
@@ -820,6 +829,9 @@ pub async fn remove_agent_account(
 
     let removed = remove_profile(&mut file, &adapter_id, &profile_id)?;
     save(&file)?;
+    // The catalogue is this account's answer, so it goes with the account. Left
+    // behind, it would be handed to the next profile minted under the same id.
+    crate::catalog_probe::forget(&adapter_id, &profile_id);
     // The home goes last, after the store no longer points at it. The other
     // order leaves a stored profile aimed at a directory that is gone, which
     // reads as a working account right up until a session starts in it.

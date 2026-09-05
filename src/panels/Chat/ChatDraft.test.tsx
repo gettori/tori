@@ -168,6 +168,7 @@ const FAST_MODE = {
 const CATALOGS = [
   {
     agentId: "claude",
+    profileId: "default",
     state: "probed",
     catalogue: {
       version: "1",
@@ -190,6 +191,7 @@ const CATALOGS = [
   },
   {
     agentId: "codex",
+    profileId: "default",
     state: "probed",
     catalogue: {
       version: "1",

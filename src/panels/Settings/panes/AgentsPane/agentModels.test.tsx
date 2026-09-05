@@ -93,6 +93,7 @@ const probed = (
   over: Partial<ModelCatalog["catalogue"] & object> = {},
 ): ModelCatalog => ({
   agentId,
+  profileId: "default",
   state: "probed",
   catalogue: {
     version: "2.1.231",
@@ -114,6 +115,7 @@ const failed = (
   keeping: ModelCatalog["catalogue"] = null,
 ): ModelCatalog => ({
   agentId,
+  profileId: "default",
   state: "failed",
   catalogue: keeping,
   lastFailure: { reason, detail, atMs: Date.parse("2026-08-15T12:00:00Z") },
@@ -121,6 +123,7 @@ const failed = (
 
 const neverProbed = (agentId: string): ModelCatalog => ({
   agentId,
+  profileId: "default",
   state: "neverProbed",
   catalogue: null,
   lastFailure: null,
@@ -407,6 +410,66 @@ describe("the model list on a agent page", () => {
     expect(container.textContent).not.toContain("the list may have moved");
     expect(container.textContent).not.toContain("Claude Max");
     expect(container.textContent).not.toContain("Asked Claude");
+  });
+
+  // A catalogue is an account's answer and not an agent's, so an agent with
+  // two logins has two lists. Which is also why the plan comes back on this
+  // page after being dropped as a footnote: over one list it said nothing,
+  // over two it is what tells them apart.
+  const twoAccounts = {
+    profiles: [
+      { id: "default", label: "Default", signIn: "signedIn", account: "me@example.com", apiKeySource: null },
+      { id: "fonn", label: "Fonn", signIn: "signedIn", account: "arif@fonngroup.com", apiKeySource: null },
+    ],
+  };
+  const onPlan = (plan: string) => ({
+    account: { subscriptionType: plan, apiProvider: "firstParty", organization: "" },
+  });
+
+  it("gives each account its own list, under its own label and plan", async () => {
+    const { container } = await open(
+      mount(twoAccounts, [
+        probed("claude", [model("opus", "claude-opus-5")], onPlan("Claude Max")),
+        {
+          ...probed("claude", [model("sonnet", "claude-sonnet-5")], onPlan("Claude Team")),
+          profileId: "fonn",
+        },
+      ]),
+      /Claude/,
+    );
+
+    const heads = [...container.querySelectorAll(`.${styles.groupTitle}`)].map((el) => el.textContent);
+    expect(heads).toContain("Default");
+    expect(heads).toContain("Fonn");
+    expect(heads).not.toContain("Models");
+    expect(container.textContent).toContain("Claude Max, 1 of 1");
+    expect(container.textContent).toContain("Claude Team, 1 of 1");
+    expect(container.textContent).toContain("opus");
+    expect(container.textContent).toContain("sonnet");
+  });
+
+  // The account is what a probe is about, so Ask again on one list must not
+  // re-probe the other. The pane that asked is the pane that answers.
+  it("asks again for the account whose button was pressed", async () => {
+    const r = await open(
+      mount(twoAccounts, [
+        probed("claude", [model("opus", "claude-opus-5")]),
+        { ...probed("claude", [model("sonnet", "claude-sonnet-5")]), profileId: "fonn" },
+      ]),
+      /Claude/,
+    );
+    invoked.mockClear();
+    fireEvent.click(r.getAllByRole("button", { name: /Ask again/ })[1]);
+
+    await waitFor(() =>
+      expect(
+        invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog"),
+      ).toHaveLength(1),
+    );
+    expect(invoked.mock.calls.find(([cmd]) => cmd === "refresh_model_catalog")?.[1]).toEqual({
+      agentId: "claude",
+      profileId: "fonn",
+    });
   });
 
   it("explains an unasked agent rather than showing an empty list", async () => {

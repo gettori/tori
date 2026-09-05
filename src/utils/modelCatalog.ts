@@ -7,7 +7,7 @@
 // session exists" a swap of source rather than a swap of shape.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { agentVersion } from "./agentHealth";
+import { agentVersion, asProfileId } from "./agentHealth";
 import type { ChatAccount, ChatConfigOption, ChatModeInfo, ChatModelInfo, SlashCommand } from "./chatTypes";
 
 // Which of the three things a agent's catalogue currently is.
@@ -68,6 +68,10 @@ export type Catalogue = {
 
 export type ModelCatalog = {
   agentId: string;
+  // Which account answered, in the backend's spelling (`"default"`, never
+  // null). Half of this row's identity: a catalogue is an account's answer, and
+  // two accounts of one agent can be on different plans.
+  profileId: string;
   state: CatalogState;
   // The last probe that answered, which outlives every failure after it. A
   // failed probe never clears this: stale-but-real beats fresh-but-empty.
@@ -208,10 +212,17 @@ export { modelCatalogs };
 
 let reading: Promise<ModelCatalog[] | null> | null = null;
 
-/** The catalogue Sway remembers for one agent, or undefined before the store
- *  has an answer at all. */
-export function catalogFor(agentId: string): ModelCatalog | undefined {
-  return modelCatalogs()?.find((c) => c.agentId === agentId);
+/** The catalogue Sway remembers for one account of one agent, or undefined
+ *  before the store has an answer at all.
+ *
+ *  **No fallback to the default account.** An account with no row of its own is
+ *  one nobody has probed, and answering with the default account's models would
+ *  offer a picker rows this account may not have - which is the confusion the
+ *  per-account key exists to end. The missing row is a never-probed one and
+ *  `refreshCatalogIfDue` fills it. */
+export function catalogFor(agentId: string, profile: string | null = null): ModelCatalog | undefined {
+  const id = asProfileId(profile);
+  return modelCatalogs()?.find((c) => c.agentId === agentId && c.profileId === id);
 }
 
 /** Read the cache. **Never probes**, so it is safe on any component's mount.
@@ -244,6 +255,21 @@ export function ensureModelCatalogsLoaded(): Promise<ModelCatalog[] | null> {
   return reading;
 }
 
+/** Forget the cache and its once-per-run read latch, so the next reader asks
+ *  the backend again.
+ *
+ *  The store holds one row per **account**, and `model_catalogs` enumerates
+ *  them from `accounts.json`, so adding or removing an account changes which
+ *  rows exist. Without this a freshly added account had no row at all, and
+ *  `refreshCatalogIfDue` (which only asks about a row it can see) would never
+ *  probe it until the app restarted. Called where the account list changes,
+ *  beside `forgetProfileEnvs` and for the same reason. */
+export function forgetModelCatalogs() {
+  reading = null;
+  setModelCatalogs(null);
+  setProbing([]);
+}
+
 /** Test-only: forget everything, including the once-per-run read latch.
  *
  *  The latch is module state that outlives a test, so without this the *second*
@@ -251,33 +277,42 @@ export function ensureModelCatalogsLoaded(): Promise<ModelCatalog[] | null> {
  *  renders whatever the first one left behind. That is a green assertion about
  *  test ordering rather than about the code. Same reason `modelCaps` has one. */
 export function __resetModelCatalogsForTests() {
-  reading = null;
-  setModelCatalogs(null);
-  setProbing([]);
+  forgetModelCatalogs();
 }
 
-/** Fold one agent's fresh answer into the store, leaving the rest alone.
+/** One account and agent, as one key. A space because neither id can contain
+ *  one, the same join `profileEnv` uses for the same pair.
+ *
+ *  Exported so anything else keying on the pair (the palette builds a map of
+ *  catalogues) joins it the same way and spells the default account once. */
+export const catalogKey = (agentId: string, profile: string | null) =>
+  `${agentId} ${asProfileId(profile)}`;
+const rowKey = (c: ModelCatalog) => catalogKey(c.agentId, c.profileId);
+
+/** Fold one account's fresh answer into the store, leaving the rest alone.
  *
  *  In place rather than moved to the end: the store's order is the adapter
- *  registry's, and re-probing one agent must not reorder the cards reading it. */
+ *  registry's, and re-probing one account must not reorder the cards reading
+ *  it. */
 function absorb(next: ModelCatalog) {
   setModelCatalogs((prev) => {
     const rows = prev ?? [];
-    return rows.some((c) => c.agentId === next.agentId)
-      ? rows.map((c) => (c.agentId === next.agentId ? next : c))
+    const key = rowKey(next);
+    return rows.some((c) => rowKey(c) === key)
+      ? rows.map((c) => (rowKey(c) === key ? next : c))
       : [...rows, next];
   });
 }
 
-// Which agents have a probe in flight right now. A signal rather than a plain
+// Which accounts have a probe in flight right now. A signal rather than a plain
 // set because a row renders from it, and it is what stops a second picker open
 // from asking again while the first answer is still on its way: the store cannot
 // say "already probed" until the probe lands.
 const [probing, setProbing] = createSignal<readonly string[]>([]);
 
-/** Whether a probe for this agent is in flight. */
-export function isProbing(agentId: string): boolean {
-  return probing().includes(agentId);
+/** Whether a probe for this account of this agent is in flight. */
+export function isProbing(agentId: string, profile: string | null = null): boolean {
+  return probing().includes(catalogKey(agentId, profile));
 }
 
 /** How many agents [`refreshDueCatalogs`] would actually ask.
@@ -289,17 +324,19 @@ export function dueCount(): number {
   return (modelCatalogs() ?? []).filter(isDue).length;
 }
 
-/** Re-ask one agent, whatever its current state. The detail page's Check
- *  again, and the only route back for a binary that reports no version. */
-export function refreshCatalog(agentId: string): Promise<ModelCatalog | null> {
-  setProbing((ids) => (ids.includes(agentId) ? ids : [...ids, agentId]));
-  return invoke<ModelCatalog>("refresh_model_catalog", { agentId })
+/** Re-ask one account of one agent, whatever its current state. The detail
+ *  page's Check again, and the only route back for a binary that reports no
+ *  version. */
+export function refreshCatalog(agentId: string, profile: string | null = null): Promise<ModelCatalog | null> {
+  const key = catalogKey(agentId, profile);
+  setProbing((ids) => (ids.includes(key) ? ids : [...ids, key]));
+  return invoke<ModelCatalog>("refresh_model_catalog", { agentId, profileId: profile })
     .then((c) => {
       absorb(c);
       return c;
     })
     .catch(() => null)
-    .finally(() => setProbing((ids) => ids.filter((id) => id !== agentId)));
+    .finally(() => setProbing((ids) => ids.filter((id) => id !== key)));
 }
 
 /** Ask every agent that has never answered or whose binary has changed.
@@ -322,19 +359,22 @@ export async function refreshDueCatalogs(): Promise<unknown> {
   // per run, so its value is the state of the world at first load; every probe
   // since has landed in the store and nowhere else. Deciding from the promise
   // re-asks a agent that answered five seconds ago.
-  return Promise.all((modelCatalogs() ?? []).filter(isDue).map((c) => refreshCatalog(c.agentId)));
+  return Promise.all(
+    (modelCatalogs() ?? []).filter(isDue).map((c) => refreshCatalog(c.agentId, c.profileId)),
+  );
 }
 
-/** Ask one agent, but only if its answer is missing or out of date.
+/** Ask one account of one agent, but only if its answer is missing or out of
+ *  date.
  *
- *  What a chat opening on a agent calls. Scoped to that one agent rather
- *  than sweeping: opening a claude chat is already launching claude, so asking
- *  it costs nothing new, while spawning every *other* agent on the machine
- *  because a chat was opened would be a real surprise. */
-export async function refreshCatalogIfDue(agentId: string): Promise<unknown> {
+ *  What a chat opening on a agent calls. Scoped to the one account it would
+ *  start: opening a claude chat is already launching claude, so asking it costs
+ *  nothing new, while spawning every *other* agent on the machine because a
+ *  chat was opened would be a real surprise. */
+export async function refreshCatalogIfDue(agentId: string, profile: string | null = null): Promise<unknown> {
   await ensureModelCatalogsLoaded();
-  const mine = catalogFor(agentId);
-  return mine && isDue(mine) ? refreshCatalog(agentId) : null;
+  const mine = catalogFor(agentId, profile);
+  return mine && isDue(mine) ? refreshCatalog(agentId, profile) : null;
 }
 
 /** Never answered, answered about a binary that has since changed, or failed in
@@ -350,7 +390,7 @@ export async function refreshCatalogIfDue(agentId: string): Promise<unknown> {
  *  again while the first answer is still on its way: the store cannot say
  *  "probed" until the probe lands. */
 function isDue(catalog: ModelCatalog): boolean {
-  if (isProbing(catalog.agentId)) return false;
+  if (isProbing(catalog.agentId, catalog.profileId)) return false;
   if (catalog.lastFailure) return catalog.lastFailure.reason !== "unsupported";
   return catalog.state === "neverProbed" || isStale(catalog, agentVersion(catalog.agentId));
 }

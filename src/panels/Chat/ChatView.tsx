@@ -450,7 +450,7 @@ export default function ChatView(props: {
     // describes a binary that has since changed. Scoped to this agent: opening
     // a chat is already launching it, so asking costs nothing new, where a sweep
     // would spawn every other agent on the machine over a chat nobody opened.
-    void refreshCatalogIfDue(props.agentId);
+    void refreshCatalogIfDue(props.agentId, props.profile);
 
     // A rewound chat opens with the announcement already in the composer, so
     // the turn the user actually wanted is that plus their instruction rather
@@ -1373,7 +1373,7 @@ export default function ChatView(props: {
   // The last answer this agent gave anyone, which is what a picker has before
   // a session exists. Live wins the moment the handshake lands, so this is the
   // pre-session list and not a merge; see `pickableModels`.
-  const cached = (): CatalogModel[] => cachedModels(catalogFor(props.agentId));
+  const cached = (): CatalogModel[] => cachedModels(catalogFor(props.agentId, props.profile));
   const models = () => pickableModels(state.models, cached(), state.contextWindows);
 
   // Four sources, most-trusted first: a pick this tab sent, the id the child
@@ -1956,7 +1956,7 @@ export default function ChatView(props: {
         // than a list that may name a command since removed - which the agent
         // refuses with a sentence. Replaced, never merged: once the session has
         // spoken, it is the only authority on what it takes.
-        commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId))}
+        commands={state.slashCommands.length ? state.slashCommands : cachedCommands(catalogFor(props.agentId, props.profile))}
         loadFiles={attachments.loadProjectFiles}
         held={state.queueHeld}
         disabled={refused() || state.ended}
@@ -1990,6 +1990,7 @@ export default function ChatView(props: {
               providers={[
                 lockedProvider(findAdapter(props.agentId), models(), {
                   version: agentVersion(props.agentId),
+                  profile: props.profile,
                 }),
               ]}
               value={shownModel()?.value ?? null}

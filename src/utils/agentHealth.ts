@@ -204,6 +204,16 @@ export function asTabProfile(id: string | null | undefined): string | null {
   return id && id !== DEFAULT_PROFILE ? id : null;
 }
 
+/** The same crossing the other way: one account id in the backend's spelling,
+ *  where the default account is the literal `"default"` rather than `null`.
+ *
+ *  What anything keyed on the account uses - a catalogue row, a probe in
+ *  flight - so a key has one shape and `undefined` cannot mean the default
+ *  account in one map and nothing at all in the next. */
+export function asProfileId(id: string | null | undefined): string {
+  return id ?? DEFAULT_PROFILE;
+}
+
 /** The binary's version as the sweep measured it, or null while nothing has. */
 export function agentVersion(id: string): string | null {
   return rows()?.find((h) => h.id === id)?.version ?? null;

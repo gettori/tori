@@ -17,8 +17,8 @@ let chain: Promise<unknown> = Promise.resolve();
  *  never answered, one whose binary changed, and one whose last probe failed for
  *  a reason a retry could fix - and refuses one that is already in flight or that
  *  Sway cannot probe at all. */
-export function probeAgent(agentId: string) {
-  chain = chain.then(() => refreshCatalogIfDue(agentId)).catch(() => null);
+export function probeAgent(agentId: string, profile: string | null = null) {
+  chain = chain.then(() => refreshCatalogIfDue(agentId, profile)).catch(() => null);
 }
 
 /** Ask again because a human pressed the button, not because anything is due.
@@ -28,9 +28,12 @@ export function probeAgent(agentId: string) {
  *  a model added to the account since the last probe, a login that happened in
  *  another window. Chained like every other probe, so pressing it while one is
  *  in flight queues rather than running a second binary. */
-export function recheckAgent(agentId: string) {
-  chain = chain.then(() => refreshCatalog(agentId)).catch(() => null);
+export function recheckAgent(agentId: string, profile: string | null = null) {
+  chain = chain.then(() => refreshCatalog(agentId, profile)).catch(() => null);
 }
 
 /** Ask once the cursor stops moving. */
-export const probeOnHighlight = debounce((agentId: string) => probeAgent(agentId), HIGHLIGHT_MS);
+export const probeOnHighlight = debounce(
+  (agentId: string, profile: string | null = null) => probeAgent(agentId, profile),
+  HIGHLIGHT_MS,
+);

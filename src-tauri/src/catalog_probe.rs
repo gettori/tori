@@ -282,6 +282,12 @@ pub struct Catalogue {
     pub commands: Vec<SlashCommand>,
 }
 
+/// What a catalogue carrying no account is: the shape from before accounts
+/// existed, which was always the user's own login.
+fn account_before_the_field() -> String {
+    crate::accounts::DEFAULT_PROFILE_ID.to_string()
+}
+
 /// Everything Sway remembers about one agent's catalogue.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -290,6 +296,11 @@ pub struct ModelCatalog {
     /// as a never-probed agent, quietly throwing away a real answer.
     #[serde(alias = "harnessId")]
     pub agent_id: String,
+    /// Which account answered. Half of this record's identity, because a
+    /// catalogue is an account's answer and not an agent's: two profiles of one
+    /// binary can be on different plans and offer different models.
+    #[serde(default = "account_before_the_field")]
+    pub profile_id: String,
     #[serde(skip_deserializing)]
     pub state: CatalogState,
     /// The last probe that answered, which outlives every failure after it.
@@ -301,17 +312,22 @@ pub struct ModelCatalog {
 impl ModelCatalog {
     /// The single funnel that computes [`Self::state`], so the three fields
     /// cannot drift. Everything that builds a record goes through here.
-    fn settled(agent_id: String, catalogue: Option<Catalogue>, last_failure: Option<ProbeFailure>) -> Self {
+    fn settled(
+        agent_id: String,
+        profile_id: String,
+        catalogue: Option<Catalogue>,
+        last_failure: Option<ProbeFailure>,
+    ) -> Self {
         let state = match (&last_failure, &catalogue) {
             (Some(_), _) => CatalogState::Failed,
             (None, Some(_)) => CatalogState::Probed,
             (None, None) => CatalogState::NeverProbed,
         };
-        Self { agent_id, state, catalogue, last_failure }
+        Self { agent_id, profile_id, state, catalogue, last_failure }
     }
 
-    pub fn never_probed(agent_id: impl Into<String>) -> Self {
-        Self::settled(agent_id.into(), None, None)
+    pub fn never_probed(agent_id: impl Into<String>, profile_id: impl Into<String>) -> Self {
+        Self::settled(agent_id.into(), profile_id.into(), None, None)
     }
 
     /// Fold a probe's outcome into this record.
@@ -321,10 +337,11 @@ impl ModelCatalog {
     /// failure would turn a signed-out moment, or one slow cold start, into a
     /// agent that suddenly offers no models at all.
     fn absorb(&mut self, outcome: Result<Catalogue, ProbeFailure>) {
+        let (agent, profile) = (self.agent_id.clone(), self.profile_id.clone());
         match outcome {
-            Ok(catalogue) => *self = Self::settled(self.agent_id.clone(), Some(catalogue), None),
+            Ok(catalogue) => *self = Self::settled(agent, profile, Some(catalogue), None),
             Err(failure) => {
-                *self = Self::settled(self.agent_id.clone(), self.catalogue.take(), Some(failure))
+                *self = Self::settled(agent, profile, self.catalogue.take(), Some(failure))
             }
         }
     }
@@ -370,31 +387,59 @@ fn sanitize_segment(value: &str) -> String {
         .collect()
 }
 
-fn catalog_path(root: &Path, agent_id: &str) -> PathBuf {
-    root.join(format!("{}.json", sanitize_segment(agent_id)))
+/// One file per (agent, account), with the default account keeping the bare
+/// `{agent}.json` it has always had, so no existing cache is orphaned by this
+/// gaining a second key.
+fn catalog_path(root: &Path, agent_id: &str, profile_id: &str) -> PathBuf {
+    let agent = sanitize_segment(agent_id);
+    if profile_id == crate::accounts::DEFAULT_PROFILE_ID {
+        return root.join(format!("{agent}.json"));
+    }
+    root.join(format!("{agent}__{}.json", sanitize_segment(profile_id)))
 }
 
-/// Read one agent's remembered catalogue.
+/// Read one account's remembered catalogue.
 ///
 /// **Every failure is "never probed".** A missing file is the ordinary state of
 /// a agent nobody has asked, and a corrupt one is derived state Sway can
 /// simply ask for again; neither is worth an error the caller would have to
 /// render. That is what makes the file safe to delete by hand.
-pub fn load_from(root: &Path, agent_id: &str) -> ModelCatalog {
-    let Ok(text) = std::fs::read_to_string(catalog_path(root, agent_id)) else {
-        return ModelCatalog::never_probed(agent_id);
+///
+/// A file whose contents name a different pair than the one asked for is one of
+/// those failures rather than an answer. `__` separates the two ids in the name
+/// and `sanitize_segment` can produce it from either, so two pairs can in
+/// principle land on one path; handing back the wrong account's models is the
+/// exact confusion this key exists to prevent.
+pub fn load_from(root: &Path, agent_id: &str, profile_id: &str) -> ModelCatalog {
+    let Ok(text) = std::fs::read_to_string(catalog_path(root, agent_id, profile_id)) else {
+        return ModelCatalog::never_probed(agent_id, profile_id);
     };
     match serde_json::from_str::<ModelCatalog>(&text) {
-        Ok(stored) => ModelCatalog::settled(stored.agent_id, stored.catalogue, stored.last_failure),
-        Err(_) => ModelCatalog::never_probed(agent_id),
+        Ok(stored) if stored.agent_id == agent_id && stored.profile_id == profile_id => {
+            ModelCatalog::settled(stored.agent_id, stored.profile_id, stored.catalogue, stored.last_failure)
+        }
+        _ => ModelCatalog::never_probed(agent_id, profile_id),
     }
 }
 
 pub fn save_to(root: &Path, catalog: &ModelCatalog) -> Result<(), String> {
     std::fs::create_dir_all(root).map_err(|e| format!("could not create {}: {e}", root.display()))?;
-    let path = catalog_path(root, &catalog.agent_id);
+    let path = catalog_path(root, &catalog.agent_id, &catalog.profile_id);
     let text = serde_json::to_string_pretty(catalog).map_err(|e| e.to_string())?;
     std::fs::write(&path, text).map_err(|e| format!("could not write {}: {e}", path.display()))
+}
+
+/// Drop one account's cached catalogue, for a profile being removed.
+///
+/// Silent on failure for the same reason [`load_from`] is: this is derived
+/// state, and a leftover file is re-read as the never-probed state of whatever
+/// profile id is minted next. The removal itself must not fail over it.
+pub fn forget(agent_id: &str, profile_id: &str) {
+    forget_in(&catalog_root(), agent_id, profile_id);
+}
+
+fn forget_in(root: &Path, agent_id: &str, profile_id: &str) {
+    let _ = std::fs::remove_file(catalog_path(root, agent_id, profile_id));
 }
 
 // --- the probe ---
@@ -958,13 +1003,46 @@ fn abandon_group(child: &mut async_process::Child) {
     let _ = child.kill();
 }
 
-/// Ask one agent, with the version the caller already knows.
+/// What the probe spawns: the adapter's own launch line, in the account's home.
+///
+/// The env is the whole of the account binding, and it is the same pair a
+/// session spawns with. Without it every probe answered as whichever login the
+/// process inherited, so one account's models were cached under another's name.
+fn probe_spec(
+    adapter: &AgentAdapter,
+    chat: &crate::agents::ChatConfig,
+    home: Option<&(String, String)>,
+) -> StartSpec {
+    StartSpec {
+        session_id: String::new(),
+        // Inherited for a claude probe, which never opens a session and so has
+        // no project for a directory to be attached to. The ACP arm replaces
+        // it, because a `session/new` in whatever directory Sway was launched
+        // from would file a phantom session inside a real project.
+        cwd: String::new(),
+        program: crate::settings::agent_override(&adapter.id).unwrap_or_else(|| chat.program.clone()),
+        args: chat.base_args.clone(),
+        env: home.cloned().into_iter().collect(),
+    }
+}
+
+/// Ask one account of one agent, with the version the caller already knows.
 ///
 /// The version is a parameter rather than probed here so that it is the *same*
 /// number the staleness check compares against. Deriving it independently would
 /// let a catalogue record one version while the invalidation rule read another,
 /// which is a cache that goes stale without ever saying so.
-pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Duration) -> Result<Catalogue, ProbeFailure> {
+///
+/// `home` is the adapter's home variable and the profile's canonical path, from
+/// [`crate::accounts::spawn_env`], and `None` is the default account. Same pair
+/// a session spawns with, so the catalogue is the answer of the account the
+/// picker is about to start rather than of whoever probed last.
+pub fn probe_with(
+    adapter: &AgentAdapter,
+    home: Option<&(String, String)>,
+    version: Option<String>,
+    deadline: Duration,
+) -> Result<Catalogue, ProbeFailure> {
     let Some(chat) = adapter.chat.as_ref() else {
         return Err(ProbeFailure::now(
             FailureReason::Unsupported,
@@ -972,24 +1050,14 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
         ));
     };
 
-    let mut spec = StartSpec {
-        session_id: String::new(),
-        // Inherited for a claude probe, which never opens a session and so has
-        // no project for a directory to be attached to. The ACP arm below
-        // replaces it, because a `session/new` in whatever directory Sway was
-        // launched from would file a phantom session inside a real project.
-        cwd: String::new(),
-        program: crate::settings::agent_override(&adapter.id).unwrap_or_else(|| chat.program.clone()),
-        args: chat.base_args.clone(),
-        env: HashMap::new(),
-    };
+    let mut spec = probe_spec(adapter, chat, home);
 
     // Exhaustive, so a new transport is a compile error here rather than a
     // agent that silently never gets a catalogue.
     let outcome = match chat.transport {
         ChatTransport::ClaudeStreamJson => {
             probe_claude(&spec, version, deadline, &chat.effort_extras).map(|mut c| {
-                let extras = user_configured_models(&claude_settings_path(), &c.models);
+                let extras = user_configured_models(&claude_settings_path(home), &c.models);
                 c.models.extend(extras);
                 c
             })
@@ -1010,7 +1078,7 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
     // question. A spawn failure has already explained itself, and a timeout has
     // said nothing about anybody's credentials.
     match outcome {
-        Err(f) if f.reason == FailureReason::NoAnswer => Err(refine_signed_out(adapter, f)),
+        Err(f) if f.reason == FailureReason::NoAnswer => Err(refine_signed_out(adapter, home, f)),
         other => other,
     }
 }
@@ -1023,12 +1091,21 @@ pub fn probe_with(adapter: &AgentAdapter, version: Option<String>, deadline: Dur
 /// stderr tail for auth-shaped words. A agent that declares no such probe
 /// keeps the original reason, because "we cannot tell" must not render as an
 /// accusation.
-fn refine_signed_out(adapter: &AgentAdapter, failure: ProbeFailure) -> ProbeFailure {
+///
+/// Asked in the same home the probe ran in. With no home it answered for the
+/// default account, so a Fonn probe that failed while the personal account was
+/// signed in kept a reason it had no evidence for, and the reverse read as an
+/// accusation against an account that was signed in.
+fn refine_signed_out(
+    adapter: &AgentAdapter,
+    home: Option<&(String, String)>,
+    failure: ProbeFailure,
+) -> ProbeFailure {
     let (Some(path), Some(accounts)) = (crate::env::resolve_binary(&adapter.program), adapter.accounts.as_ref())
     else {
         return failure;
     };
-    if crate::auth::whoami(&path, accounts, None).state == crate::auth::SignIn::SignedOut {
+    if crate::auth::whoami(&path, accounts, home).state == crate::auth::SignIn::SignedOut {
         return ProbeFailure { reason: FailureReason::SignedOut, ..failure };
     }
     failure
@@ -1036,8 +1113,17 @@ fn refine_signed_out(adapter: &AgentAdapter, failure: ProbeFailure) -> ProbeFail
 
 // --- models the user configured rather than the agent published ---
 
-/// `$CLAUDE_CONFIG_DIR/settings.json`, else `~/.claude/settings.json`.
-fn claude_settings_path() -> PathBuf {
+/// The settings file of the account being probed: `<home>/settings.json` for an
+/// added profile, and for the default one `$CLAUDE_CONFIG_DIR/settings.json`
+/// else `~/.claude/settings.json`.
+///
+/// The process's own variable is read **only** for the default account, which is
+/// the account it describes. Reading it for a profile would have credited the
+/// launching environment's pinned models to every account on the machine.
+fn claude_settings_path(home: Option<&(String, String)>) -> PathBuf {
+    if let Some((_, dir)) = home {
+        return PathBuf::from(dir).join("settings.json");
+    }
     std::env::var_os("CLAUDE_CONFIG_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".claude"))
@@ -1114,20 +1200,22 @@ fn user_configured_models(path: &Path, known: &[CatalogModel]) -> Vec<CatalogMod
 
 // --- the Tauri surface ---
 
-/// One lock per agent id, so probes are concurrent across agents and
+/// One lock per (agent, account), so probes are concurrent across pairs and
 /// sequential within one.
 ///
-/// Two sweeps overlapping on the same agent would spawn two of its binaries
-/// and race to write one file; two different agents have nothing to share and
-/// should not queue behind each other. The map only ever grows by the number of
-/// adapters, so nothing prunes it.
-fn agent_lock(agent_id: &str) -> Arc<Mutex<()>> {
-    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
+/// Two sweeps overlapping on the same pair would spawn two of its binaries
+/// and race to write one file; two different pairs write different files and
+/// should not queue behind each other. Keyed on the pair rather than the agent
+/// because that is what the file is keyed on: an agent-wide lock would make a
+/// Fonn re-check wait out a 45-second default-account timeout for nothing. The
+/// map only ever grows by the number of accounts, so nothing prunes it.
+fn agent_lock(agent_id: &str, profile_id: &str) -> Arc<Mutex<()>> {
+    static LOCKS: OnceLock<Mutex<HashMap<(String, String), Arc<Mutex<()>>>>> = OnceLock::new();
     let mut map = LOCKS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    map.entry(agent_id.to_string()).or_default().clone()
+    map.entry((agent_id.to_string(), profile_id.to_string())).or_default().clone()
 }
 
 /// Every agent that could have a catalogue, in adapter order.
@@ -1135,13 +1223,19 @@ fn probeable() -> Vec<&'static AgentAdapter> {
     crate::agents::registry().iter().filter(|a| a.chat.is_some()).collect()
 }
 
-/// Probe one agent and write the result, keeping any previous good catalogue.
-fn refresh_one(adapter: &AgentAdapter, version: Option<String>) -> ModelCatalog {
-    let lock = agent_lock(&adapter.id);
+/// Probe one account of one agent and write the result, keeping any previous
+/// good catalogue.
+fn refresh_one(
+    adapter: &AgentAdapter,
+    profile_id: &str,
+    home: Option<&(String, String)>,
+    version: Option<String>,
+) -> ModelCatalog {
+    let lock = agent_lock(&adapter.id, profile_id);
     let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
     let root = catalog_root();
-    let mut catalog = load_from(&root, &adapter.id);
-    catalog.absorb(probe_with(adapter, version, PROBE_DEADLINE));
+    let mut catalog = load_from(&root, &adapter.id, profile_id);
+    catalog.absorb(probe_with(adapter, home, version, PROBE_DEADLINE));
     // A write that fails leaves the answer correct for this call and forgotten
     // by the next one. Worth neither an error the caller must render nor a
     // silent claim that it persisted, so it is dropped and the value returned.
@@ -1156,28 +1250,49 @@ async fn versions() -> HashMap<String, Option<String>> {
     crate::health::agent_health().await.into_iter().map(|h| (h.id, h.version)).collect::<HashMap<_, _>>()
 }
 
-/// What Sway remembers, for every agent with a chat transport.
+/// What Sway remembers, one row per (agent with a chat transport, account).
+///
+/// Every account in `accounts.json`, including ones nobody has probed: a row in
+/// the never-probed state is what tells the frontend a Fonn catalogue is due,
+/// where an absent row would read as an agent that has no such account.
 ///
 /// **Reads only.** No spawn, no subprocess, nothing that could take a second:
 /// this is what a settings page or a picker calls on open, and a read that
 /// probed would make opening Settings launch every agent binary on the machine.
-/// Probing is [`refresh_model_catalog`] and [`refresh_model_catalogs`], which
-/// are separate commands for exactly that reason.
+/// Probing is [`refresh_model_catalog`], a separate command for exactly that
+/// reason.
 #[tauri::command]
 pub async fn model_catalogs() -> Vec<ModelCatalog> {
     let root = catalog_root();
-    probeable().into_iter().map(|a| load_from(&root, &a.id)).collect()
+    let file = crate::accounts::load();
+    let mut out = Vec::new();
+    for adapter in probeable() {
+        for profile in crate::accounts::profiles_for(&file, &adapter.id) {
+            out.push(load_from(&root, &adapter.id, &profile.id));
+        }
+    }
+    out
 }
 
-/// Re-ask one agent, whatever its current state.
+/// Re-ask one account of one agent, whatever its current state.
 ///
 /// Unconditional on purpose: this is the detail page's Check again, and a
 /// `versionUnknown` binary has no other route back to a fresh answer.
+///
+/// A profile that cannot be resolved is an `Err` rather than a stored failure.
+/// The row it would have been written under is gone (the reachable way here is
+/// a removal racing an open picker), so a cache file recording it would outlive
+/// the account it names.
 #[tauri::command]
-pub async fn refresh_model_catalog(agent_id: String) -> Result<ModelCatalog, String> {
+pub async fn refresh_model_catalog(
+    agent_id: String,
+    profile_id: Option<String>,
+) -> Result<ModelCatalog, String> {
     let adapter = crate::agents::find(&agent_id).ok_or_else(|| format!("unknown agent {agent_id}"))?;
+    let profile = profile_id.as_deref().unwrap_or(crate::accounts::DEFAULT_PROFILE_ID);
+    let home = crate::accounts::profile_pair(adapter, &crate::accounts::load(), Some(profile))?;
     let version = versions().await.get(&agent_id).cloned().flatten();
-    Ok(refresh_one(adapter, version))
+    Ok(refresh_one(adapter, profile, home.as_ref(), version))
 }
 
 // There is deliberately **no batch refresh command.** One existed, sweeping
@@ -1241,7 +1356,7 @@ mod tests {
     /// count here, where it would render "0 models" for a probed-but-empty one.
     #[test]
     fn a_agent_nobody_asked_is_never_probed() {
-        let catalog = ModelCatalog::never_probed("claude");
+        let catalog = ModelCatalog::never_probed("claude", "default");
         assert_eq!(catalog.state, CatalogState::NeverProbed);
         assert!(catalog.catalogue.is_none());
         assert!(catalog.last_failure.is_none());
@@ -1249,7 +1364,7 @@ mod tests {
 
     #[test]
     fn an_answered_probe_is_probed() {
-        let mut catalog = ModelCatalog::never_probed("claude");
+        let mut catalog = ModelCatalog::never_probed("claude", "default");
         catalog.absorb(Ok(a_catalogue(Some("2.1.231"))));
         assert_eq!(catalog.state, CatalogState::Probed);
         assert_eq!(catalog.catalogue.as_ref().unwrap().models.len(), 1);
@@ -1258,7 +1373,7 @@ mod tests {
 
     #[test]
     fn a_failure_carries_its_reason() {
-        let mut catalog = ModelCatalog::never_probed("claude");
+        let mut catalog = ModelCatalog::never_probed("claude", "default");
         catalog.absorb(Err(ProbeFailure::now(FailureReason::SignedOut, "not logged in")));
         assert_eq!(catalog.state, CatalogState::Failed);
         assert_eq!(catalog.last_failure.as_ref().unwrap().reason, FailureReason::SignedOut);
@@ -1269,7 +1384,7 @@ mod tests {
     /// slow cold start, must not turn a working picker into an empty one.
     #[test]
     fn a_failed_probe_never_clobbers_a_good_catalogue() {
-        let mut catalog = ModelCatalog::never_probed("claude");
+        let mut catalog = ModelCatalog::never_probed("claude", "default");
         catalog.absorb(Ok(a_catalogue(Some("2.1.231"))));
         catalog.absorb(Err(ProbeFailure::now(FailureReason::TimedOut, String::new())));
 
@@ -1283,7 +1398,7 @@ mod tests {
     /// contradicting a catalogue that has just been refreshed.
     #[test]
     fn an_answer_clears_a_previous_failure() {
-        let mut catalog = ModelCatalog::never_probed("claude");
+        let mut catalog = ModelCatalog::never_probed("claude", "default");
         catalog.absorb(Err(ProbeFailure::now(FailureReason::SpawnFailed, "no binary")));
         catalog.absorb(Ok(a_catalogue(Some("2.1.231"))));
         assert_eq!(catalog.state, CatalogState::Probed);
@@ -1295,11 +1410,11 @@ mod tests {
     #[test]
     fn the_stored_file_round_trips() {
         let root = temp_root("roundtrip");
-        let mut written = ModelCatalog::never_probed("claude");
+        let mut written = ModelCatalog::never_probed("claude", "default");
         written.absorb(Ok(a_catalogue(Some("2.1.231"))));
         save_to(&root, &written).expect("the file should write");
 
-        let read = load_from(&root, "claude");
+        let read = load_from(&root, "claude", "default");
         assert_eq!(read, written);
         assert_eq!(read.state, CatalogState::Probed, "state survives as a derived value");
         let _ = std::fs::remove_dir_all(&root);
@@ -1308,12 +1423,12 @@ mod tests {
     #[test]
     fn a_failure_round_trips_alongside_the_catalogue_it_kept() {
         let root = temp_root("roundtrip-failure");
-        let mut written = ModelCatalog::never_probed("claude");
+        let mut written = ModelCatalog::never_probed("claude", "default");
         written.absorb(Ok(a_catalogue(Some("2.1.231"))));
         written.absorb(Err(ProbeFailure::now(FailureReason::SignedOut, "run `claude auth login`")));
         save_to(&root, &written).expect("the file should write");
 
-        let read = load_from(&root, "claude");
+        let read = load_from(&root, "claude", "default");
         assert_eq!(read, written);
         assert_eq!(read.state, CatalogState::Failed);
         assert!(read.catalogue.is_some());
@@ -1325,12 +1440,12 @@ mod tests {
     #[test]
     fn a_deleted_file_degrades_to_never_probed() {
         let root = temp_root("deleted");
-        let mut written = ModelCatalog::never_probed("claude");
+        let mut written = ModelCatalog::never_probed("claude", "default");
         written.absorb(Ok(a_catalogue(Some("2.1.231"))));
         save_to(&root, &written).unwrap();
-        std::fs::remove_file(catalog_path(&root, "claude")).unwrap();
+        std::fs::remove_file(catalog_path(&root, "claude", "default")).unwrap();
 
-        let read = load_from(&root, "claude");
+        let read = load_from(&root, "claude", "default");
         assert_eq!(read.state, CatalogState::NeverProbed);
         assert_eq!(read.agent_id, "claude");
         let _ = std::fs::remove_dir_all(&root);
@@ -1340,8 +1455,8 @@ mod tests {
     fn a_corrupt_file_degrades_to_never_probed_rather_than_erroring() {
         let root = temp_root("corrupt");
         std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(catalog_path(&root, "claude"), "{ not json").unwrap();
-        assert_eq!(load_from(&root, "claude").state, CatalogState::NeverProbed);
+        std::fs::write(catalog_path(&root, "claude", "default"), "{ not json").unwrap();
+        assert_eq!(load_from(&root, "claude", "default").state, CatalogState::NeverProbed);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1349,7 +1464,108 @@ mod tests {
     #[test]
     fn a_agent_id_cannot_escape_the_catalog_directory() {
         let root = Path::new("/tmp/sway-catalogs");
-        assert_eq!(catalog_path(root, "../../etc/passwd"), root.join("______etc_passwd.json"));
+        assert_eq!(catalog_path(root, "../../etc/passwd", "default"), root.join("______etc_passwd.json"));
+    }
+
+    // --- one catalogue per account ---
+
+    /// The default account keeps the bare name it has always had, so nothing
+    /// written before accounts existed is orphaned; an added one is suffixed.
+    #[test]
+    fn the_default_account_keeps_the_bare_file_name_and_an_added_one_is_suffixed() {
+        let root = Path::new("/tmp/sway-catalogs");
+        assert_eq!(catalog_path(root, "claude", "default"), root.join("claude.json"));
+        assert_eq!(catalog_path(root, "claude", "fonn"), root.join("claude__fonn.json"));
+    }
+
+    /// And the file already on disk reads as that account's answer rather than
+    /// as a agent nobody has asked.
+    #[test]
+    fn a_cache_written_before_the_account_field_reads_as_the_default_account() {
+        let root = temp_root("pre-accounts");
+        std::fs::create_dir_all(&root).unwrap();
+        let mut written = ModelCatalog::never_probed("claude", "default");
+        written.absorb(Ok(a_catalogue(Some("2.1.231"))));
+        let mut json = serde_json::to_value(&written).unwrap();
+        json.as_object_mut().unwrap().remove("profileId");
+        std::fs::write(catalog_path(&root, "claude", "default"), json.to_string()).unwrap();
+
+        let read = load_from(&root, "claude", "default");
+        assert_eq!(read.profile_id, "default");
+        assert_eq!(read.state, CatalogState::Probed, "the answer survives the new key");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Two accounts of one agent are two files and two answers, which is the
+    /// whole point: they can be on different plans.
+    #[test]
+    fn each_account_keeps_its_own_answer() {
+        let root = temp_root("per-account");
+        let mut default = ModelCatalog::never_probed("claude", "default");
+        default.absorb(Ok(a_catalogue(Some("2.1.231"))));
+        let mut fonn = ModelCatalog::never_probed("claude", "fonn");
+        fonn.absorb(Err(ProbeFailure::now(FailureReason::SignedOut, "not logged in")));
+        save_to(&root, &default).unwrap();
+        save_to(&root, &fonn).unwrap();
+
+        assert!(root.join("claude__fonn.json").exists(), "the added account writes its own file");
+        assert_eq!(load_from(&root, "claude", "default"), default);
+        assert_eq!(load_from(&root, "claude", "fonn"), fonn);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Removing an account takes its catalogue with it, and leaves every other
+    /// account's alone.
+    #[test]
+    fn forgetting_an_account_deletes_only_its_own_catalogue() {
+        let root = temp_root("forget");
+        let mut default = ModelCatalog::never_probed("claude", "default");
+        default.absorb(Ok(a_catalogue(Some("2.1.231"))));
+        let mut fonn = ModelCatalog::never_probed("claude", "fonn");
+        fonn.absorb(Ok(a_catalogue(Some("2.1.231"))));
+        save_to(&root, &default).unwrap();
+        save_to(&root, &fonn).unwrap();
+
+        forget_in(&root, "claude", "fonn");
+        assert_eq!(load_from(&root, "claude", "fonn").state, CatalogState::NeverProbed);
+        assert_eq!(load_from(&root, "claude", "default").state, CatalogState::Probed);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `__` joins the two ids and `sanitize_segment` can produce it from either,
+    /// so one path can be reached by two pairs. Handing back the other account's
+    /// models is the confusion this key exists to prevent, so the mismatch reads
+    /// as never probed.
+    #[test]
+    fn a_file_naming_another_account_is_not_read_as_this_ones_answer() {
+        let root = temp_root("collision");
+        let mut fonn = ModelCatalog::never_probed("claude", "fonn");
+        fonn.absorb(Ok(a_catalogue(Some("2.1.231"))));
+        save_to(&root, &fonn).unwrap();
+
+        // `claude..fonn` sanitizes onto the same file the pair above wrote.
+        assert_eq!(
+            catalog_path(&root, "claude..fonn", "default"),
+            catalog_path(&root, "claude", "fonn"),
+        );
+        assert_eq!(load_from(&root, "claude..fonn", "default").state, CatalogState::NeverProbed);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Probes queue per account rather than per agent, so a Fonn re-check does
+    /// not wait out the default account's 45-second deadline.
+    #[test]
+    fn one_account_probing_does_not_hold_up_another() {
+        let held = agent_lock("claude", "default");
+        let _guard = held.lock().unwrap();
+
+        let started = std::time::Instant::now();
+        let other = agent_lock("claude", "fonn");
+        let taken = other.try_lock().is_ok();
+
+        assert!(taken, "the other account's lock is a different lock");
+        assert!(started.elapsed() < Duration::from_secs(1), "and it was not waited on");
+        assert!(agent_lock("claude", "default").try_lock().is_err(), "while this one is held");
     }
 
     // --- user-configured extras ---
@@ -1406,6 +1622,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
 
         assert!(user_configured_models(Path::new("/nonexistent/settings.json"), &[]).is_empty());
+    }
+
+    /// Which account's pinned models these are. An added profile's live inside
+    /// its own home; the process's `CLAUDE_CONFIG_DIR` describes the account
+    /// Sway inherited, so it answers for the default one and nobody else.
+    #[test]
+    fn the_configured_models_come_from_the_account_being_probed() {
+        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/sway-homes/claude-fonn".to_string());
+        assert_eq!(
+            claude_settings_path(Some(&home)),
+            Path::new("/tmp/sway-homes/claude-fonn/settings.json"),
+        );
+        assert!(claude_settings_path(None).ends_with("settings.json"));
+        assert!(!claude_settings_path(None).starts_with("/tmp/sway-homes"));
+    }
+
+    /// The probe spawns in the account's home, so the answer is that account's.
+    /// Without this every probe answered as whatever login the process
+    /// inherited, and the catalogue was filed under the account that asked.
+    #[test]
+    fn a_probe_runs_in_the_accounts_own_home() {
+        let claude = crate::agents::find("claude").expect("claude is a registered adapter");
+        let chat = claude.chat.as_ref().expect("claude has a chat transport");
+        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/sway-homes/claude-fonn".to_string());
+
+        let scoped = probe_spec(claude, chat, Some(&home));
+        assert_eq!(scoped.env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/tmp/sway-homes/claude-fonn"));
+        assert!(probe_spec(claude, chat, None).env.is_empty(), "the default account sets nothing");
     }
 
     #[test]
@@ -1703,7 +1947,7 @@ mod tests {
     #[test]
     fn the_full_option_set_round_trips_through_the_cache_file() {
         let root = temp_root("acp-options");
-        let mut written = ModelCatalog::never_probed("opencode");
+        let mut written = ModelCatalog::never_probed("opencode", "default");
         written.absorb(Ok(acp_catalogue(
             Some("1.18.3".into()),
             vec![select_option("web-search", None, &[("on", "On"), ("off", "Off")])],
@@ -1712,7 +1956,7 @@ mod tests {
         )));
         save_to(&root, &written).expect("the file should write");
 
-        let read = load_from(&root, "opencode");
+        let read = load_from(&root, "opencode", "default");
         assert_eq!(read, written);
         assert_eq!(read.catalogue.unwrap().options.len(), 1);
         let _ = std::fs::remove_dir_all(&root);
@@ -1758,7 +2002,7 @@ mod tests {
         let before = session_files();
 
         let catalogue =
-            probe_with(claude, Some("live".into()), PROBE_DEADLINE).expect("claude should answer the handshake");
+            probe_with(claude, None, Some("live".into()), PROBE_DEADLINE).expect("claude should answer the handshake");
 
         assert!(!catalogue.models.is_empty(), "an empty answer from a real binary is a bug");
         assert!(
@@ -1796,7 +2040,7 @@ mod tests {
         let opencode = crate::agents::find("opencode").expect("the bundled opencode adapter");
 
         let catalogue =
-            probe_with(opencode, Some("live".into()), PROBE_DEADLINE).expect("opencode should answer");
+            probe_with(opencode, None, Some("live".into()), PROBE_DEADLINE).expect("opencode should answer");
 
         assert!(catalogue.models.len() > 2, "a real answer names the user's providers: {:?}", catalogue.models);
         assert!(
@@ -1845,7 +2089,7 @@ mod tests {
         let codex = crate::agents::find("codex").expect("the bundled codex adapter");
 
         let catalogue =
-            probe_with(codex, Some("live".into()), PROBE_DEADLINE).expect("codex should answer");
+            probe_with(codex, None, Some("live".into()), PROBE_DEADLINE).expect("codex should answer");
 
         assert!(!catalogue.models.is_empty(), "the handshake names this account's models");
         assert!(
@@ -1918,7 +2162,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         acp_sessions::use_dir_for_tests(root.join("locators"));
 
-        probe_with(codex, None, PROBE_DEADLINE).expect("codex should answer the probe");
+        probe_with(codex, None, None, PROBE_DEADLINE).expect("codex should answer the probe");
 
         let id = "live-codex-phantom";
         let args = crate::chat::commands::build_args(chat, id, false, None, None, None, None, &[]);
@@ -1992,7 +2236,7 @@ mod tests {
     #[ignore = "drives the real `opencode` binary"]
     fn a_probe_leaves_nothing_in_the_history_sway_would_adopt() {
         let opencode = crate::agents::find("opencode").expect("the bundled opencode adapter");
-        probe_with(opencode, None, PROBE_DEADLINE).expect("opencode should answer");
+        probe_with(opencode, None, None, PROBE_DEADLINE).expect("opencode should answer");
 
         let probe_dir = probe_cwd_ready().expect("the probe directory exists after a probe");
         let listed = crate::chat::acp_sessions::ListedSession {
