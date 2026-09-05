@@ -46,7 +46,12 @@ import {
 } from "../../utils/events";
 import { homeDir } from "@tauri-apps/api/path";
 import { agentEnabled, agentOffReason, draftChatAgent } from "../../utils/agentEnabled";
-import { asTabProfile, profileLabel } from "../../utils/agentHealth";
+import {
+  asTabProfile,
+  ensureAgentHealthLoaded,
+  namedProfiles,
+  profileLabel,
+} from "../../utils/agentHealth";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { isFeatureKey, selectionRoot, workspaceFolders, workspaceKey } from "../../utils/features";
 import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
@@ -184,6 +189,11 @@ export default function Terminal(props: {
   onboarding?: boolean;
 }) {
   ensureAdaptersLoaded();
+  // The sweep too, and for the same reason: the launch menu offers the agent
+  // terminal once per account, and an unread sweep names no accounts at all -
+  // so a two-account install would get one unlabelled row until some other
+  // surface happened to load it. A cached read, no subprocess.
+  ensureAgentHealthLoaded();
   // The tab model lives in terminalTabStore (module-level, phase 4 composes
   // it); the reset keeps its lifetime tied to this panel exactly as before.
   resetTerminalTabModel();
@@ -1435,16 +1445,20 @@ export default function Terminal(props: {
    * already wrote a record against.
    */
   /**
-   * Point a draft at a different agent.
+   * Point a draft at a different agent, or at a different account of it.
    *
-   * Only a draft: `program` is what a live chat's session was started under, so
-   * changing it there would leave the tab claiming an agent that is not the one
-   * on the other end of the socket.
+   * Both in one write. A model belongs to an account, so a palette row names a
+   * pair, and setting them separately would leave a frame in which the tab
+   * claims one account's model under another's login.
+   *
+   * Only a draft: `program` and `profile` are what a live chat's session was
+   * started under, so changing them there would leave the tab claiming an agent
+   * and an account that are not the ones on the other end of the socket.
    */
-  function setChatDraftAgent(tabId: string, agentId: string) {
+  function setChatDraftAgent(tabId: string, agentId: string, profile: string | null) {
     const tab = open().find((t) => t.id === tabId);
     if (!tab || !isChatDraft(tab)) return;
-    setOpen(open().map((t) => (t.id === tabId ? { ...t, program: agentId } : t)));
+    setOpen(open().map((t) => (t.id === tabId ? { ...t, program: agentId, profile } : t)));
   }
 
   function startChatDraft(tabId: string) {
@@ -1542,15 +1556,30 @@ export default function Terminal(props: {
    *  one this install offers. Arrays so a call site can spread them in place
    *  and an absent row costs no entry rather than a hole. */
   const newChatItem = () => (noChatReason() ? [] : [{ label: "New chat", onClick: () => newChat() }]);
-  const claudeTerminalItem = (suffix?: string) =>
-    agentEnabled("claude")
-      ? [
-          {
-            label: [findAdapter("claude").label, suffix].filter(Boolean).join(" "),
-            onClick: () => newSession("claude"),
-          },
-        ]
-      : [];
+  /** The agent-terminal row, one per account once there are two of them.
+   *
+   *  An agent tab runs as an account exactly the way a chat does, so a single
+   *  row would start whichever login Sway happened to inherit while the menu
+   *  said only "Claude". `namedProfiles` is empty on a single-account install,
+   *  which is what keeps that menu exactly as it was. */
+  const claudeTerminalItem = (note?: string) => {
+    if (!agentEnabled("claude")) return [];
+    // One parenthetical, however many things go in it: the account and the
+    // "this is the terminal one" note are both asides on the same row, and two
+    // brackets in a row read as a mistake.
+    const label = (account?: string) => {
+      const name = findAdapter("claude").label;
+      const aside = [account, note].filter(Boolean).join(", ");
+      return aside ? `${name} (${aside})` : name;
+    };
+    const accounts = namedProfiles("claude");
+    return accounts.length
+      ? accounts.map((a) => ({
+          label: label(a.label),
+          onClick: () => newSession("claude", false, asTabProfile(a.id)),
+        }))
+      : [{ label: label(), onClick: () => newSession("claude") }];
+  };
 
   // A new chat is a draft: no process, no session id, no claim, until the first
   // message decides there is going to be a conversation at all.
@@ -1626,11 +1655,11 @@ export default function Terminal(props: {
     });
   }
 
-  function newSession(agentId: string, yolo = false) {
+  function newSession(agentId: string, yolo = false, profile: string | null = null) {
     const sel = props.selected;
     const root = selectionRoot(sel);
     if (!sel || !root) return;
-    spawnSession(agentId, root, sel.projectName, yolo, workspaceKey(sel));
+    spawnSession(agentId, root, sel.projectName, yolo, workspaceKey(sel), profile);
   }
 
   // A plain shell tab: the same login shell as an agent tab, just unseeded (no
@@ -1923,7 +1952,7 @@ export default function Terminal(props: {
           agentId={t.program}
           profile={t.profile}
           error={draftError(t.id)}
-          onSelectAgent={(agentId) => setChatDraftAgent(t.id, agentId)}
+          onSelectAgent={(agentId, profile) => setChatDraftAgent(t.id, agentId, profile)}
           onStart={() => startChatDraft(t.id)}
         />
       );
@@ -2025,7 +2054,7 @@ export default function Terminal(props: {
               // Sway going around its own setting.
               ...(settings.chatDefaults.defaultSurface === "agent"
                 ? [...claudeTerminalItem(), ...newChatItem()]
-                : [...newChatItem(), ...claudeTerminalItem("(terminal)")]),
+                : [...newChatItem(), ...claudeTerminalItem("terminal")]),
               // The shell the main half used to open, still one click away. No
               // agent behind it, so nothing gates it.
               { label: "Terminal", onClick: newShell },

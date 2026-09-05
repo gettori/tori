@@ -86,21 +86,29 @@ export default function ModelPicker(props: {
   /** The adapter driving this session, so the pill can still show a provider
    *  mark before any model id has been reported. */
   agentId: string;
+  /** Which of its accounts, `null` for the default one. What the palette opens
+   *  marked, and what a pick is bound to. */
+  profile: string | null;
+  /** That account's own name, or null when naming it would say nothing (a
+   *  single-account install). The pill carries it only when it is set, so
+   *  nothing changes for an install with one login. From `profileLabel`, which
+   *  owns that rule. */
+  profileLabel: string | null;
   effort: string | null;
   modelPending: boolean;
   effortPending: boolean;
   disabled: boolean;
-  onSelectModel: (agentId: string, model: PickableModel) => void;
+  onSelectModel: (agentId: string, profile: string | null, model: PickableModel) => void;
   /** `null` picks the CLI's own default, which is a choice rather than the
    *  absence of one: it is what runs when Sway sends no level at all. */
   onSelectEffort: (effort: string | null) => void;
-  /** An agent row moved under the cursor, for a caller that probes on highlight. */
-  onHighlightAgent?: (agentId: string) => void;
+  /** A row moved under the cursor, for a caller that probes on highlight. */
+  onHighlightAgent?: (agentId: string, profile: string | null) => void;
   /** A "Fix" row was activated. */
   onFixAgent?: (agentId: string) => void;
-  /** Ask an agent for its models again. Absent hides the control; see
-   *  `AgentPalette`'s own `onRecheck`. */
-  onRecheckAgent?: (agentId: string) => void;
+  /** Ask one account of an agent for its models again. Absent hides the
+   *  control; see `AgentPalette`'s own `onRecheck`. */
+  onRecheckAgent?: (agentId: string, profile: string | null) => void;
 }) {
   const [open, setOpen] = createSignal(false);
   // The pill the palette hangs off. A signal rather than a bare `let`, because
@@ -109,23 +117,36 @@ export default function ModelPicker(props: {
   const [pill, setPill] = createSignal<HTMLButtonElement>();
   const current = () => props.models.find((m) => m.value === props.value) ?? null;
   const levels = () => current()?.effortLevels ?? [];
+  /** The pill's own text. The account rides on the end of it, because on a
+   *  multi-account install the model alone no longer says what would run: the
+   *  same name under two logins is two different subscriptions. */
+  const named = () =>
+    current()
+      ? pillLabel(props.models, current()!)
+      : props.models.length === 0
+        ? "No models"
+        : "Default";
+  const shown = () => (props.profileLabel ? `${named()} / ${props.profileLabel}` : named());
 
   return (
     <>
       <PickerButton
         ref={setPill}
         icon={providerIcon(current()?.resolvedModel || props.value, props.agentId)}
-        value={
-          current()
-            ? pillLabel(props.models, current()!)
-            : props.models.length === 0
-              ? "No models"
-              : "Default"
-        }
+        value={shown()}
         ariaLabel="Model"
         // The row's own full label leads, since the pill may be showing a
-        // sibling's shorter name; the description follows it.
-        tooltip={[current()?.label, current()?.description].filter(Boolean).join(" · ") || "Model"}
+        // sibling's shorter name; then the account it would run on, then the
+        // description.
+        tooltip={
+          [
+            current()?.label,
+            props.profileLabel && `on ${props.profileLabel}`,
+            current()?.description,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "Model"
+        }
         disabled={props.disabled}
         pending={props.modelPending}
         open={open()}
@@ -137,10 +158,11 @@ export default function ModelPicker(props: {
           anchorEl={pill()}
           providers={props.providers}
           agentId={props.agentId}
+          profile={props.profile}
           value={props.value}
-          onSelect={(agentId, model) => {
+          onSelect={(agentId, profile, model) => {
             setOpen(false);
-            props.onSelectModel(agentId, model);
+            props.onSelectModel(agentId, profile, model);
           }}
           onHighlight={props.onHighlightAgent}
           onRecheck={props.onRecheckAgent}
