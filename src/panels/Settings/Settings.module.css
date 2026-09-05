@@ -1223,6 +1223,29 @@
     font-weight: 600;
     color: var(--fg-default);
   }
+  /* The name is the rename control: click it and it becomes the field. */
+  button.accountName {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-family: inherit;
+    cursor: text;
+    border-bottom: var(--sway-border-thin) dashed transparent;
+  }
+  button.accountName:hover {
+    border-bottom-color: var(--border-default);
+  }
+  .accountNameEdit {
+    width: 10rem;
+    padding: 0 var(--sway-space-2);
+    font-family: inherit;
+    font-size: var(--sway-text-sm);
+    font-weight: 600;
+    color: var(--fg-default);
+    background: var(--canvas-input);
+    border: var(--sway-border-thin) solid var(--border-strong);
+    border-radius: var(--sway-radius-sm);
+  }
   .accountAside {
     font-size: var(--sway-text-xs);
     color: var(--fg-muted);

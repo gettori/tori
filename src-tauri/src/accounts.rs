@@ -39,10 +39,16 @@ use std::path::{Path, PathBuf};
 /// The profile that is the user's existing login.
 ///
 /// Synthetic: it is never written to `accounts.json` and never comes back from
-/// it. That is what makes "the default profile cannot be deleted or renamed" a
-/// property of the shape rather than a check somebody has to remember - there
-/// is no stored record to delete, and [`remove_profile`]/[`rename_profile`]
-/// refuse the id outright.
+/// it. That is what makes "the default profile cannot be deleted" a property of
+/// the shape rather than a check somebody has to remember, and [`remove_profile`]
+/// refuses the id outright.
+///
+/// Its **label** is a different question and is storable ([`default_labels`]):
+/// the label is Sway's own name for an account, which the agent never sees, so
+/// calling the user's existing login "Personal" changes a word on screen and
+/// nothing else.
+///
+/// [`default_labels`]: AccountsFile::default_labels
 pub const DEFAULT_PROFILE_ID: &str = "default";
 
 const DEFAULT_PROFILE_LABEL: &str = "Default";
@@ -91,6 +97,19 @@ pub fn default_profile() -> Profile {
     }
 }
 
+/// The default profile as this adapter's, wearing the name the user gave it.
+///
+/// Still built rather than loaded: only the *label* is stored, so a hand-edited
+/// file that lost the entry gets the built-in name back rather than losing the
+/// account.
+pub fn default_profile_for(file: &AccountsFile, adapter_id: &str) -> Profile {
+    let mut profile = default_profile();
+    if let Some(label) = file.default_labels.get(adapter_id) {
+        profile.label = label.clone();
+    }
+    profile
+}
+
 /// `accounts.json`: the profiles the user has *added*, keyed by adapter id.
 ///
 /// `BTreeMap` rather than `HashMap` so the serialized file has a stable key
@@ -102,11 +121,20 @@ pub struct AccountsFile {
     pub version: u32,
     #[serde(default)]
     pub adapters: BTreeMap<String, Vec<Profile>>,
+    /// The user's own name for the **default** account, per adapter, where they
+    /// have given it one. Kept out of `adapters`, which holds the profiles Sway
+    /// added and every one of which has a home: a default profile stored there
+    /// would be listed twice by `profiles_for` and offered for removal.
+    ///
+    /// Absent means the built-in label, so renaming it back stores nothing and
+    /// a file whose default accounts were never renamed carries no key at all.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub default_labels: BTreeMap<String, String>,
 }
 
 impl Default for AccountsFile {
     fn default() -> Self {
-        Self { version: FILE_VERSION, adapters: BTreeMap::new() }
+        Self { version: FILE_VERSION, adapters: BTreeMap::new(), default_labels: BTreeMap::new() }
     }
 }
 
@@ -117,7 +145,7 @@ impl Default for AccountsFile {
 /// The default is prepended rather than stored, so it is present for an adapter
 /// the user has never touched and cannot go missing from a hand-edited file.
 pub fn profiles_for(file: &AccountsFile, adapter_id: &str) -> Vec<Profile> {
-    let mut out = vec![default_profile()];
+    let mut out = vec![default_profile_for(file, adapter_id)];
     if let Some(added) = file.adapters.get(adapter_id) {
         out.extend(added.iter().cloned());
     }
@@ -197,19 +225,30 @@ pub fn remove_profile(
     Ok(removed)
 }
 
-/// Relabel a profile. Refuses the default, whose label names a thing Sway does
-/// not own.
+/// Relabel a profile, including the default one: the label is Sway's own name
+/// for an account and the agent never sees it, so renaming touches a word on
+/// screen and nothing about the login behind it.
 pub fn rename_profile(
     file: &mut AccountsFile,
     adapter_id: &str,
     profile_id: &str,
     label: &str,
 ) -> Result<(), String> {
-    if profile_id == DEFAULT_PROFILE_ID {
-        return Err("the default profile is the user's existing login and cannot be renamed".into());
-    }
-    if label.trim().is_empty() {
+    let label = label.trim();
+    if label.is_empty() {
         return Err("a profile label cannot be empty".into());
+    }
+    // The default account has no stored record, so its name is stored on its
+    // own. Renaming it back to the built-in one stores nothing: absent and
+    // "Default" are one answer, and a file that recorded the second would be
+    // keeping a preference nobody expressed.
+    if profile_id == DEFAULT_PROFILE_ID {
+        if label == DEFAULT_PROFILE_LABEL {
+            file.default_labels.remove(adapter_id);
+        } else {
+            file.default_labels.insert(adapter_id.to_string(), label.to_string());
+        }
+        return Ok(());
     }
     let target = file
         .adapters
@@ -911,10 +950,32 @@ mod tests {
     }
 
     #[test]
-    fn the_default_profile_cannot_be_removed_or_renamed() {
+    fn the_default_profile_cannot_be_removed() {
         let mut file = AccountsFile::default();
         assert!(remove_profile(&mut file, "claude", DEFAULT_PROFILE_ID).is_err());
-        assert!(rename_profile(&mut file, "claude", DEFAULT_PROFILE_ID, "Mine").is_err());
+    }
+
+    /// Renaming it is a different question from removing it: the label is
+    /// Sway's own name for the account and the agent never sees it, so this
+    /// changes a word on screen and leaves the account itself alone.
+    #[test]
+    fn the_default_profile_can_be_renamed_and_stays_the_unset_variable() {
+        let mut file = AccountsFile::default();
+        rename_profile(&mut file, "claude", DEFAULT_PROFILE_ID, "  Personal  ").unwrap();
+
+        let all = profiles_for(&file, "claude");
+        assert_eq!(all[0].label, "Personal", "trimmed, and it is the name the user typed");
+        assert_eq!(all[0].id, DEFAULT_PROFILE_ID);
+        assert_eq!(all[0].home, None, "still the variable left unset");
+        // Per adapter: one agent's accounts say nothing about another's.
+        assert_eq!(profiles_for(&file, "codex")[0].label, "Default");
+
+        // Back to the built-in name stores nothing, so absent and "Default"
+        // stay one answer rather than two.
+        rename_profile(&mut file, "claude", DEFAULT_PROFILE_ID, "Default").unwrap();
+        assert!(file.default_labels.is_empty());
+
+        assert!(rename_profile(&mut file, "claude", DEFAULT_PROFILE_ID, "   ").is_err());
     }
 
     /// Shadowing the default would point the user's existing login at a
@@ -1012,6 +1073,8 @@ mod tests {
         p.label = "Work".into();
         add_profile(&mut file, "claude", p).unwrap();
         add_profile(&mut file, "codex", added("alt", "/tmp/a")).unwrap();
+        // The one thing about the default account that is stored: its name.
+        rename_profile(&mut file, "claude", DEFAULT_PROFILE_ID, "Personal").unwrap();
 
         let text = serde_json::to_string_pretty(&file).unwrap();
         let back: AccountsFile = serde_json::from_str(&text).unwrap();

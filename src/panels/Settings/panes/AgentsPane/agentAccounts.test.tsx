@@ -200,33 +200,29 @@ describe("the accounts list", () => {
 
   // There is nothing stored to remove, and "removing" it could only mean
   // signing the user out of the login they had before Sway existed.
-  it("offers no remove button for the default profile", async () => {
-    const { container, queryByText } = await open(mount());
-    await waitFor(() => expect(container.textContent).toContain("Accounts"));
-    expect(queryByText("Sign out and remove")).toBeNull();
-  });
-
-  it("offers remove for a profile Sway added", async () => {
-    const { container, getByText } = await open(mount({
+  // Signing out is the control; removing rides its dialog. Where the adapter
+  // declares no logout there is nothing to sign out of, so the control is the
+  // removal itself.
+  it("offers removal only through the sign-out control", async () => {
+    const { container, queryByRole, getByRole } = await open(mount({
       accounts: {
         profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
       },
     }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
-    expect(getByText("Sign out and remove")).toBeTruthy();
+    expect(queryByRole("button", { name: /Sign out and remove/ })).toBeNull();
+    expect(getByRole("button", { name: "Sign Work out" })).toBeTruthy();
   });
 
-  // An adapter that offers no logout has to say so at the point it matters,
-  // because removing the account there does not revoke anything.
-  it("labels removal plainly when the agent has no sign-out command", async () => {
-    const { container, getByText } = await open(mount({
+  it("removes directly when the agent has no logout command", async () => {
+    const { container, getByRole } = await open(mount({
       accounts: {
         canSignOut: false,
         profiles: [profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
       },
     }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
-    expect(getByText("Remove")).toBeTruthy();
+    expect(getByRole("button", { name: "Remove Work" })).toBeTruthy();
   });
 
   // Two profiles on one account is a thing somebody may genuinely want, so this
@@ -360,13 +356,12 @@ describe("signing in", () => {
 describe("signing out", () => {
   beforeEach(() => invoked.mockReset());
 
-  // Recoverable, so a plain button and no dialog: the agent's own logout
-  // revokes the credential and the profile stays, ready to sign back in.
-  it("signs a profile out through the agent's own logout command", async () => {
+  it("asks first, then signs out through the agent's own logout command", async () => {
     const { container, getByRole } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
 
-    fireEvent.click(getByRole("button", { name: "Sign out" }));
+    fireEvent.click(getByRole("button", { name: "Sign Default out" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
     await waitFor(() =>
       expect(
@@ -384,7 +379,33 @@ describe("signing out", () => {
   it("offers no sign-out where the adapter declares no logout command", async () => {
     const { container, queryByRole } = await open(mount({ accounts: { canSignOut: false } }));
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
-    expect(queryByRole("button", { name: "Sign out" })).toBeNull();
+    expect(queryByRole("button", { name: /Sign Default out/ })).toBeNull();
+  });
+
+  // The checkbox is the old "Sign out and remove" button: same call, asked
+  // where the consequence is written down.
+  it("removes as well when the dialog's checkbox is ticked", async () => {
+    const { container, getByRole } = await open(mount({
+      accounts: {
+        profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
+      },
+    }));
+    await waitFor(() => expect(container.textContent).toContain("Work"));
+
+    fireEvent.click(getByRole("button", { name: "Sign Work out" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Remove the account as well/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() =>
+      expect(
+        invoked.mock.calls.some(
+          ([cmd, args]) =>
+            cmd === "remove_agent_account" &&
+            (args as { profileId?: string })?.profileId === "work",
+        ),
+      ).toBe(true),
+    );
+    expect(invoked.mock.calls.some(([cmd]) => cmd === "sign_out_agent_account")).toBe(false);
   });
 });
 
@@ -471,5 +492,55 @@ describe("what each account can run", () => {
     // nothing.
     expect(row?.textContent).toContain("your existing login");
     expect(row?.textContent).not.toContain("model");
+  });
+});
+
+// The name itself is the control: click it, type, Enter. The default account
+// renames too, which is what lets "Default" become "Personal".
+describe("renaming an account", () => {
+  beforeEach(() => invoked.mockReset());
+
+  const renameTo = (row: HTMLElement, name: string) => {
+    fireEvent.click(row);
+    const field = screen.getByLabelText(`Rename ${row.textContent}`) as HTMLInputElement;
+    fireEvent.input(field, { target: { value: name } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.blur(field);
+  };
+
+  const sent = (profileId: string, label: string) =>
+    invoked.mock.calls.some(
+      ([cmd, args]) =>
+        cmd === "rename_agent_account" &&
+        (args as { profileId?: string; label?: string })?.profileId === profileId &&
+        (args as { label?: string })?.label === label,
+    );
+
+  it("sends the new name for an account Sway added", async () => {
+    const { container, getByRole } = await open(
+      mount({
+        accounts: {
+          profiles: [
+            profile(),
+            profile({ id: "fonn", label: "Fonn", isDefault: false, home: "/h/fonn" }),
+          ],
+        },
+      }),
+    );
+    await waitFor(() => expect(container.textContent).toContain("Fonn"));
+
+    renameTo(getByRole("button", { name: "Fonn" }), "Work");
+    await waitFor(() => expect(sent("fonn", "Work")).toBe(true));
+  });
+
+  it("renames the login the user already had, and sends nothing for an unchanged name", async () => {
+    const { container, getByRole } = await open(mount());
+    await waitFor(() => expect(container.textContent).toContain("your existing login"));
+
+    renameTo(getByRole("button", { name: "Default" }), "Default");
+    expect(invoked.mock.calls.some(([cmd]) => cmd === "rename_agent_account")).toBe(false);
+
+    renameTo(getByRole("button", { name: "Default" }), "Personal");
+    await waitFor(() => expect(sent("default", "Personal")).toBe(true));
   });
 });
