@@ -100,7 +100,6 @@ import {
 } from "../../utils/forgeStatus";
 import { settings as appSettings } from "../Settings/settingsStore";
 import Icon from "../../components/Icon/Icon";
-import JobTray from "../Jobs/JobTray";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
@@ -2752,9 +2751,6 @@ export default function LeftSidebar(props: {
 
   return (
     <div class={styles.tree}>
-      {/* Above the head rather than inside it: the head closes the filter when
-          focus leaves it, and a tray row is not the filter being abandoned. */}
-      <JobTray />
       <div
         class={styles.treeHead}
         // Focus gone from the head is the filter abandoned. Moving inside it
