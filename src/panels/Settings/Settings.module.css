@@ -1384,6 +1384,28 @@
     gap: var(--sway-space-5);
     margin-bottom: var(--sway-space-4);
   }
+  /* The section title, as one account at a time. Muted is unselected; the rule
+     beside them is the same one a plain title gets. */
+  .groupTabs {
+    display: flex;
+    align-items: center;
+    flex: none;
+  }
+  button.groupTab {
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    color: var(--fg-subtle);
+  }
+  button.groupTab[aria-pressed="true"] {
+    color: var(--fg-muted);
+  }
+  button.groupTab + button.groupTab {
+    margin-left: var(--sway-space-4);
+    padding-left: var(--sway-space-4);
+    border-left: var(--sway-border-thin) solid var(--border-default);
+  }
   .groupTitle {
     flex: none;
     font-family: var(--sway-font-mono);
