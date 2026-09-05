@@ -196,7 +196,6 @@ const KEPT = new Map<string, Kept>([
     "panels/Editor/SessionPanel.tsx",
     { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` },
   ],
-  ["panels/Jobs/JobDrawer.tsx", { count: 1, reason: HEADING }],
   ["panels/LeftSidebar/FeatureItem.tsx", { count: 4, reason: TRUNCATION }],
   ["panels/LeftSidebar/FeatureList.tsx", { count: 2, reason: HEADING }],
   ["panels/LeftSidebar/branchTruncation.test.tsx", { count: 3, reason: FIXTURE }],

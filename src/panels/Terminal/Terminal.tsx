@@ -962,8 +962,7 @@ export default function Terminal(props: {
       spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
     });
     // A tab whose process ends (the user typed `exit`, a task finished) is
-    // closed. Agent-exit within a live shell fires no event. Ids this panel
-    // does not own belong to a job, whose own listener answers for them.
+    // closed. Agent-exit within a live shell fires no event.
     unlistenExit = await listen<PtyExit>("pty://exit", (e) => {
       if (open().some((o) => o.id === e.payload.id)) closeId(e.payload.id);
     });
