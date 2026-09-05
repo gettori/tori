@@ -439,7 +439,10 @@ describe("which account new sessions start on", () => {
   it("asks nothing on an install with one account", async () => {
     const { container, queryAllByRole } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
-    expect(queryAllByRole("radio")).toHaveLength(0);
+    // By name, not by role: the Usage block further down the same page has a
+    // radio group of its own, and it is a question about the agent rather than
+    // about which account a session starts on.
+    expect(queryAllByRole("radio", { name: /^Default account:/ })).toHaveLength(0);
   });
 
   // Named after the account rather than "Default" three times over: the label

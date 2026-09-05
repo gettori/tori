@@ -103,6 +103,20 @@ const WHAT: Record<BudgetBreach["kind"], string> = {
  * that reported the stop without saying where to raise it would leave a dead
  * chat with no visible way back.
  */
+/**
+ * The shared threshold as a label, wherever it is printed.
+ *
+ * 100% reads as **off**, because that is what it does: `approaching` above is
+ * disabled outside (0, 1), for the ceilings and for the agents' quota windows
+ * alike. Reaching a limit is never silenced by it.
+ *
+ * Here rather than beside the slider because two screens print it now: the
+ * control in Chat, and the read-only value on each agent's Usage block.
+ */
+export function warnAtLabel(v: number | undefined): string {
+  return typeof v !== "number" || v >= 1 ? "off" : `${Math.round(v * 100)}%`;
+}
+
 export function stopNotice(b: BudgetBreach): string {
   return (
     `This chat hit ${WHAT[b.kind]} of ${UNITS[b.kind](b.limit)} (${UNITS[b.kind](b.spent)} used) ` +

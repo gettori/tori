@@ -46,6 +46,13 @@ const CARD_ENTRIES: Record<string, string> = {
   github: "GitHub",
 };
 const ANCHORED_ENTRIES = ["agents"];
+/** Entries whose control lives on **an agent's own detail page**, which the
+ *  panel reaches only once a reader picks an agent. They are in the catalogue
+ *  because that is what the filter searches and what the palette generates a
+ *  row from; they are exempt here because the pane this test renders shows the
+ *  agents table, and the page carrying them is a click away. Their own rows are
+ *  asserted in `agentUsage.test.tsx`. */
+const DETAIL_PAGE_ENTRIES = ["usage-source", "usage-detail", "usage-notify"];
 
 const tabs = () => [...document.querySelectorAll('[role="tab"]')] as HTMLElement[];
 const panes = () => [...document.querySelectorAll('[role="tabpanel"]')] as HTMLElement[];
@@ -364,6 +371,7 @@ describe("the six panes", () => {
         expect(document.getElementById(rowDomId(s.id)), s.id).toBeTruthy();
         continue;
       }
+      if (DETAIL_PAGE_ENTRIES.includes(s.id)) continue;
       if (s.id in CARD_ENTRIES) {
         expect(screen.getAllByText(CARD_ENTRIES[s.id]).length, s.id).toBeGreaterThan(0);
         continue;

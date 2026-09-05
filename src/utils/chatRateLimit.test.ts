@@ -3,6 +3,7 @@ import plainTurn from "../../dev/fixtures/claude/plain-turn.jsonl?raw";
 import readCall from "../../dev/fixtures/claude/read-call.jsonl?raw";
 import {
   limitTypeLabel,
+  paceOutAt,
   quotaState,
   readingsOf,
   resetsAtMs,
@@ -281,5 +282,56 @@ describe("the store's rate-limit state", () => {
 
     applyEvent(s, event({ status: "allowed" }));
     expect(readingsOf(s.rateLimit).map((r) => quotaState(r, WARN_AT, NOW))).toEqual(["ok"]);
+  });
+});
+
+// The pace line is the one thing on the card that is a projection rather than a
+// reading, so what it must not do is speak when it has nothing to say.
+describe("paceOutAt", () => {
+  const FIVE_HOURS = 5 * 60 * 60 * 1000;
+  const now = Date.UTC(2026, 8, 6, 12, 0, 0);
+  /** A five-hour window that started two hours ago. */
+  const resetsAt = Math.floor((now + FIVE_HOURS - 2 * 60 * 60 * 1000) / 1000);
+  const win = (utilization: number | null, kind = "five_hour", at = resetsAt): QuotaReading => ({
+    kind,
+    utilization,
+    resetsAt: at,
+    status: null,
+    reachedType: null,
+  });
+
+  // 60% of the window in the first two of its five hours: at that rate the whole
+  // of it is gone after 3h20m, an hour and forty before the reset.
+  it("projects the moment the window runs out when that lands before the reset", () => {
+    const out = paceOutAt(win(0.6), now);
+    expect(out).not.toBeNull();
+    expect(Math.round((out! - now) / 60_000)).toBe(80);
+  });
+
+  // The whole point of the line: a projection landing after the reset says you
+  // are fine, which the bar already said.
+  it("is null when the projection lands after the reset", () => {
+    expect(paceOutAt(win(0.2), now)).toBeNull();
+    // Exactly on pace is not ahead of it either.
+    expect(paceOutAt(win(0.4), now)).toBeNull();
+  });
+
+  it("is null with nothing to project from", () => {
+    expect(paceOutAt(win(null), now)).toBeNull();
+    expect(paceOutAt(win(0), now)).toBeNull();
+  });
+
+  // Already reached or already reset: the projection is about a future that has
+  // happened, and the bar says so in words.
+  it("is null once the window is full or past its reset", () => {
+    expect(paceOutAt(win(1), now)).toBeNull();
+    expect(paceOutAt(win(0.6, "five_hour", Math.floor(now / 1000) - 60), now)).toBeNull();
+  });
+
+  // No source sends the window's start, so the duration comes from the kind's
+  // own name. A kind with no known duration gets no projection rather than one
+  // built on a guessed length.
+  it("is null for a window kind whose length is not known", () => {
+    expect(paceOutAt(win(0.6, "seven_day_opus"), now)).toBeNull();
   });
 });

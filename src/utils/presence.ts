@@ -169,13 +169,29 @@ let permissionRequested = false;
 /// already applied `shouldSuppressNotification`). The session id rides in
 /// `extra` so a click can be routed back to focusing that tab - see
 /// `onNeedsYouNotificationClick`.
-export async function notifyNeedsYou(event: NeedsYouEvent) {
+async function notificationsAllowed(): Promise<boolean> {
   let granted = await isPermissionGranted().catch(() => false);
   if (!granted && !permissionRequested) {
     permissionRequested = true;
     granted = (await requestPermission().catch(() => "denied")) === "granted";
   }
-  if (!granted) return;
+  return granted;
+}
+
+/// A quota window crossing into approaching or reached, for an account rather
+/// than a session. No `extra.sessionId`: the news is about a login, and three
+/// chats may be on it, so there is no one tab a click could honestly focus.
+export async function notifyQuota(title: string, body: string) {
+  if (!(await notificationsAllowed())) return;
+  try {
+    sendNotification({ title, body });
+  } catch {
+    // Best-effort, the same as the needs-you send below.
+  }
+}
+
+export async function notifyNeedsYou(event: NeedsYouEvent) {
+  if (!(await notificationsAllowed())) return;
   try {
     sendNotification({
       title: event.sessionName,

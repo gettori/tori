@@ -169,6 +169,12 @@
       "whoami_kind": "claude_json",
       "supports_isolation": true
     },
+    "usage": {
+      "sources": [
+        "sessions"
+      ]
+    },
+    "usage_reason": null,
     "source": "bundled:claude"
   },
   {
@@ -223,6 +229,8 @@
       "whoami_kind": "exit_code",
       "supports_isolation": false
     },
+    "usage": null,
+    "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:codex"
   },
   {
@@ -271,6 +279,8 @@
       "whoami_kind": null,
       "supports_isolation": false
     },
+    "usage": null,
+    "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:copilot"
   },
   {
@@ -310,6 +320,8 @@
       }
     },
     "accounts": null,
+    "usage": null,
+    "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:gemini"
   },
   {
@@ -347,6 +359,8 @@
       }
     },
     "accounts": null,
+    "usage": null,
+    "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:kimi"
   },
   {
@@ -399,6 +413,8 @@
       "whoami_kind": "opencode_credentials",
       "supports_isolation": false
     },
+    "usage": null,
+    "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:opencode"
   },
   {
@@ -437,6 +453,8 @@
       }
     },
     "accounts": null,
+    "usage": null,
+    "usage_reason": "this adapter predates the usage table (schema 4)",
     "source": "bundled:pi"
   }
 ]

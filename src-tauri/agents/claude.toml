@@ -1,4 +1,4 @@
-schema_version = 3
+schema_version = 4
 id = "claude"
 label = "Claude"
 icon = "claude"
@@ -101,6 +101,20 @@ logout_args = ["auth", "logout"]
 whoami_args = ["auth", "status"]
 whoami_kind = "claude_json"
 supports_isolation = true
+
+# --- schema v4: the usage source ladder ---
+#
+# Declaration order is the ladder's order, and the first entry is what an agent
+# resolves to when the user has chosen nothing.
+#
+# Only `sessions` today, and that is a statement about Sway rather than about
+# the CLI: `rate_limit_event` already rides the chat transport, so the reading
+# costs nothing and needs no extra process. The `cli` and `token` rungs are
+# declared in the phases that implement their read paths, never ahead of them,
+# so a greyed-out radio here always means "not built yet" rather than "built and
+# broken".
+[usage]
+sources = ["sessions"]
 
 # --- schema v2: the structured chat transport ---
 #

@@ -60,6 +60,17 @@ const SEP = String.fromCharCode(0);
 export const accountKey = (agentId: string, profile: string | null): AccountKey =>
   `${agentId}${SEP}${asProfileId(profile)}`;
 
+/** The key read back apart, with the account in the **backend's** spelling (the
+ *  default account is the literal `"default"`, never null). A surface that
+ *  iterates the store gets an agent and an account out of it; nothing else
+ *  should take this string apart. */
+export function splitAccountKey(key: AccountKey): { agentId: string; profile: string } {
+  const at = key.indexOf(SEP);
+  return at === -1
+    ? { agentId: key, profile: asProfileId(null) }
+    : { agentId: key.slice(0, at), profile: key.slice(at + 1) };
+}
+
 /** Readings by account, then by window kind. */
 type Readings = Record<AccountKey, Record<string, WindowReading>>;
 
@@ -256,4 +267,29 @@ export function resetUsageStoreForTests() {
   saveTimer = null;
   setReadings({});
   setFired({});
+}
+
+/**
+ * Put one account's windows on record without an event. Test and story support,
+ * following `resetSessionStoreForTests`.
+ *
+ * `recordReadings` would do most of this, and deliberately does not do all of
+ * it: it stamps `sampledAt` with the clock, so a story showing what a stale
+ * reading looks like could only get one by waiting fifteen minutes. Here the
+ * stamp is an argument.
+ */
+export function seedUsageStoreForTests(
+  agentId: string,
+  profile: string | null,
+  incoming: (QuotaReading & Partial<Pick<WindowReading, "sampledAt" | "source">>)[],
+  now = Date.now(),
+) {
+  const key = accountKey(agentId, profile);
+  setReadings((prev) => {
+    const account = { ...(prev[key] ?? {}) };
+    for (const r of incoming) {
+      account[r.kind] = { ...r, sampledAt: r.sampledAt ?? now, source: r.source ?? "sessions" };
+    }
+    return { ...prev, [key]: account };
+  });
 }

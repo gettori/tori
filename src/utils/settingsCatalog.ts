@@ -167,6 +167,29 @@ export const SETTINGS: SettingEntry[] = [
     label: "Agents",
     hint: "Which agent CLIs Sway found on your PATH, their versions, and the drift from what its adapters were built against.",
   },
+  // The three usage controls live on an agent's own detail page rather than on
+  // the agents table, because what they answer is per agent: which rungs exist
+  // is a property of the adapter. Listed here anyway, because the catalogue is
+  // what the filter searches and what the palette generates a row from, and a
+  // setting missing here is invisible in both.
+  {
+    id: "usage-source",
+    section: "agents",
+    label: "Usage source",
+    hint: "How deep Sway reads an agent's quota: off, its own session events, its CLI, or the account token. Set per agent on the agent's page.",
+  },
+  {
+    id: "usage-detail",
+    section: "agents",
+    label: "Usage detail",
+    hint: "How much of an account's quota the titlebar strip draws. Set per agent on the agent's page.",
+  },
+  {
+    id: "usage-notify",
+    section: "agents",
+    label: "Usage notifications",
+    hint: "Whether a quota window approaching or reached is worth an OS notification. Never sent while Sway has focus.",
+  },
   {
     id: "language-servers",
     section: "lsp",

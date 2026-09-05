@@ -36,6 +36,7 @@ import { settings, saveSettings } from "../../settingsStore";
 import { behindVerified, verifiedVersion } from "../../../../utils/versions";
 import OverlayScroll from "../../../../components/Scrollbar/OverlayScroll";
 import AgentAccounts from "./AgentAccounts";
+import AgentUsage from "./AgentUsage";
 import styles from "../../Settings.module.css";
 
 // What each published key means, since the value alone is deliberately terse.
@@ -683,6 +684,15 @@ export default function AgentDetail(props: {
           renders itself away for an adapter that declares no `[accounts]`. */}
       <Show when={!setupMode()}>
         <AgentAccounts agentId={a().id} agentLabel={a().label} onRecheck={props.onRecheck} />
+      </Show>
+
+      {/* Below the accounts, because the per-account "show in titlebar" control
+          lives up there and this block is the agent-wide half of the same
+          question. Not gated on the adapter declaring a ladder: an agent Sway
+          can read nothing from still has to say so, and a section that
+          disappeared would leave the reader looking for it. */}
+      <Show when={!setupMode()}>
+        <AgentUsage agentId={a().id} agentLabel={a().label} />
       </Show>
 
       {/* Only for an agent Sway can actually ask, and only once it is set up.
