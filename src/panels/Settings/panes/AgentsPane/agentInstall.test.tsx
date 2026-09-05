@@ -60,7 +60,7 @@ function mount(
 ) {
   invoked.mockReset();
   invoked.mockImplementation(async (cmd: string) => {
-    if (cmd === "agent_health") return [health(over.health)];
+    if (cmd === "agent_health" || cmd === "refresh_agent_health") return [health(over.health)];
     if (cmd === "agent_install_route") return over.route ?? NPM;
     if (cmd === "agent_update_route") return over.update ?? { type: "undeclared" };
     if (cmd === "agent_uninstall_route") return over.uninstall ?? { type: "undeclared" };

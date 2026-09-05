@@ -120,6 +120,11 @@ function ModelsPane(props: {
    *  decides whether the plan is worth printing: it tells two lists apart, and
    *  over a single list it is the footnote this page dropped on purpose. */
   account: string | null;
+  /** The accounts to switch between, when there is more than one. They stand
+   *  where the section title does: one list at a time, named by which tab is
+   *  lit, rather than a block per account down the page. */
+  tabs?: readonly { id: string; label: string }[];
+  onSelect?: (id: string) => void;
 }) {
   const catalog = () => catalogFor(props.agentId, props.profile);
   const catalogue = () => catalog()?.catalogue ?? null;
@@ -182,7 +187,27 @@ function ModelsPane(props: {
   return (
     <>
       <div class={styles.groupHead}>
-        <span class={styles.groupTitle}>{props.account ?? "Models"}</span>
+        <Show
+          when={props.tabs}
+          fallback={<span class={styles.groupTitle}>{props.account ?? "Models"}</span>}
+        >
+          {(tabs) => (
+            <div class={styles.groupTabs}>
+              <For each={tabs()}>
+                {(tab) => (
+                  <button
+                    type="button"
+                    class={`${styles.groupTitle} ${styles.groupTab}`}
+                    aria-pressed={tab.label === props.account}
+                    onClick={() => props.onSelect?.(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                )}
+              </For>
+            </div>
+          )}
+        </Show>
         <span class={styles.sectionRule} />
         <span class={styles.groupFact}>{fact()}</span>
         {/* The same chrome recipe as the Agents list title: count, filter,
@@ -357,6 +382,11 @@ export default function AgentDetail(props: {
   // adapter. One row means nothing to tell apart, so the models pane keeps its
   // plain heading.
   const accounts = () => a().profiles ?? [];
+  const [modelsAccount, setModelsAccount] = createSignal<string | null>(null);
+  // The picked one while it is still there, the first otherwise, which is also
+  // what a switch to another agent lands on.
+  const shownAccount = () =>
+    accounts().find((p) => p.id === modelsAccount()) ?? accounts()[0];
 
 
   // All of these are reads of the adapter file, no probe behind any, which is
@@ -673,16 +703,20 @@ export default function AgentDetail(props: {
             <ModelsPane agentId={a().id} agentLabel={a().label} profile={null} account={null} />
           }
         >
-          <For each={accounts()}>
+          {/* Keyed, so switching accounts builds a fresh pane: the filter box
+              holds a query about the list that was on screen. */}
+          <Show when={shownAccount()} keyed>
             {(account) => (
               <ModelsPane
                 agentId={a().id}
                 agentLabel={a().label}
                 profile={asTabProfile(account.id)}
                 account={account.label}
+                tabs={accounts()}
+                onSelect={setModelsAccount}
               />
             )}
-          </For>
+          </Show>
         </Show>
       </Show>
 
