@@ -109,6 +109,28 @@ export function isFeatureKey(ws: string | null | undefined): boolean {
   return !!ws && ws.startsWith(FEATURE_KEY_PREFIX);
 }
 
+/** The one workspace key for Sway's own command tabs. Synthetic like a Feature's,
+ *  so no branch unit's strip can ever be keyed on it (adr_jobs_leave_the_tab_model). */
+export const SHELLS_KEY = "shells:";
+
+export function isShellsKey(ws: string | null | undefined): boolean {
+  return ws === SHELLS_KEY;
+}
+
+/** The Selection the Shells workspace opens as: no folder, no branch, no session. */
+export function shellsSelection(): Selection {
+  return {
+    kind: "shells",
+    spaceName: "",
+    projectName: "Shells",
+    projectPath: "",
+    folderPath: "",
+    branch: "",
+    projectKind: "shells",
+    profile: null,
+  };
+}
+
 /** The present members' worktree folders, in member order. */
 export function featureRoots(feature: Pick<Feature, "members">): string[] {
   return feature.members
@@ -162,21 +184,24 @@ export function rootOf(
   return best;
 }
 
-/** What every per-workspace store keys on: `feature:<id>` for a Feature, the
- *  branch-unit folder otherwise, empty for nothing selected. */
+/** What every per-workspace store keys on: `feature:<id>` for a Feature, `shells:`
+ *  for Shells, the branch-unit folder otherwise, empty for nothing selected. */
 export function workspaceKey(sel: Pick<Selection, "kind" | "featureId" | "folderPath"> | null | undefined): string {
   if (!sel) return "";
   if (sel.kind === "feature" && sel.featureId) return featureKey(sel.featureId);
+  if (sel.kind === "shells") return SHELLS_KEY;
   return sel.folderPath ?? "";
 }
 
 /** The folder git, settings, the watcher and a spawn run against: the active
- *  member for a Feature, the branch-unit folder otherwise. Null, never "". */
+ *  member for a Feature, none for Shells, the branch-unit folder otherwise.
+ *  Null, never "". */
 export function selectionRoot(
   sel: Pick<Selection, "kind" | "activeRoot" | "folderPath"> | null | undefined,
 ): string | null {
   if (!sel) return null;
   if (sel.kind === "feature") return sel.activeRoot ?? null;
+  if (sel.kind === "shells") return null;
   return sel.folderPath || null;
 }
 

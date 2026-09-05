@@ -59,7 +59,7 @@ import {
   profileLabel,
 } from "../../utils/agentHealth";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
-import { isFeatureKey, selectionRoot, workspaceFolders, workspaceKey } from "../../utils/features";
+import { isFeatureKey, isShellsKey, selectionRoot, workspaceFolders, workspaceKey } from "../../utils/features";
 import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
 import {
   agents,
@@ -655,6 +655,7 @@ export default function Terminal(props: {
     const sel = props.selected;
     if (sel && workspaceKey(sel) === ws) {
       if (sel.kind === "feature") return [sel.featureName ?? sel.projectName, sel.branch];
+      if (sel.kind === "shells") return [sel.projectName];
       return [sel.spaceName, sel.projectName, sel.branch];
     }
     return ws.split("/").filter(Boolean).slice(-2);
@@ -2047,8 +2048,10 @@ export default function Terminal(props: {
     // menu in all of them at once. Still portalled out, because the tab bar
     // clips overflow and would hide a menu rendered inside it.
     const [menuOpen, setMenuOpen] = createSignal(false);
+    // Nothing here applies in Shells: no branch to launch an agent or a shell
+    // in, and no session history to browse. The strip keeps only its tabs.
     return (
-      <>
+      <Show when={!isShellsKey(activeWorkspace())}>
         <div class={styles.termNewSplit}>
           {/* Main half: a new chat, which is a draft and so costs nothing until
               it is written in. A plus rather than a terminal icon, because the
@@ -2187,7 +2190,7 @@ export default function Terminal(props: {
             </span>
           </Show>
         </Tooltip>
-      </>
+      </Show>
     );
   };
 

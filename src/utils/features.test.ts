@@ -3,11 +3,14 @@ import {
   featureSelection,
   featureSlug,
   isFeatureKey,
+  isShellsKey,
   tabUnderFolder,
   memberInitials,
   memberState,
   rootOf,
   selectionRoot,
+  SHELLS_KEY,
+  shellsSelection,
   workspaceFolders,
   workspaceKey,
   type Feature,
@@ -123,6 +126,20 @@ describe("workspaceKey and selectionRoot", () => {
     expect(selectionRoot(unit)).toBe("/r/a");
     expect(selectionRoot({ kind: "unit", folderPath: "" })).toBeNull();
     expect(selectionRoot(null)).toBeNull();
+  });
+
+  it("keys Shells by its one constant and roots it nowhere", () => {
+    const sel = shellsSelection();
+    expect(sel.kind).toBe("shells");
+    expect(sel.folderPath).toBe("");
+    expect(workspaceKey(sel)).toBe(SHELLS_KEY);
+    expect(selectionRoot(sel)).toBeNull();
+    expect(isShellsKey(SHELLS_KEY)).toBe(true);
+    // A path or a Feature key never reads as Shells, and the two synthetic
+    // key spaces stay apart.
+    expect(isShellsKey("/shells:")).toBe(false);
+    expect(isShellsKey("feature:shells:")).toBe(false);
+    expect(isFeatureKey(SHELLS_KEY)).toBe(false);
   });
 
   it("spans the selected Feature's roots and nothing for an unselected one", () => {
