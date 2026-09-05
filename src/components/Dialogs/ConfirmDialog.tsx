@@ -1,3 +1,4 @@
+import type { JSX } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -36,6 +37,9 @@ export default function ConfirmDialog(props: {
   message?: string;
   confirmLabel?: string;
   danger?: boolean;
+  /** A control the answer depends on, under the message. For a confirmation
+   *  that carries an option rather than a second dialog for it. */
+  extra?: JSX.Element;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -63,8 +67,11 @@ export default function ConfirmDialog(props: {
       {/* A ternary rather than a `<Show>`: `Dialog` skips its scrollable body,
           and the tab stop that comes with it, only when `children` is actually
           nullish, and a `<Show>` element is not. */}
-      {props.message == null ? undefined : (
-        <div class={styles.msg}>{props.message}</div>
+      {props.message == null && props.extra == null ? undefined : (
+        <>
+          {props.message == null ? undefined : <div class={styles.msg}>{props.message}</div>}
+          {props.extra}
+        </>
       )}
     </Dialog>
   );

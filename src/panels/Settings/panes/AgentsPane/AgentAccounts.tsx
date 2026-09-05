@@ -1,10 +1,11 @@
 import { For, Show, createResource, createSignal } from "solid-js";
-import { Plus, RefreshCw } from "lucide-solid";
+import { LogOut, Plus, RefreshCw, Trash2 } from "lucide-solid";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
-import ConfirmDialog, { type ConfirmReq } from "../../../../components/Dialogs/ConfirmDialog";
+import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
+import Checkbox from "../../../../components/Checkbox/Checkbox";
 import PromptModal from "../../../../components/Dialogs/PromptModal";
 import { homeDir } from "@tauri-apps/api/path";
 import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../../../utils/events";
@@ -51,6 +52,17 @@ export type ProfileStatus = {
   duplicateOf: string | null;
 };
 
+/** What the card is asked to confirm. `removable` adds the "remove it too"
+ *  checkbox, whose state comes back in the answer. */
+type ConfirmAsk = {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  removable?: boolean;
+};
+type ConfirmAnswer = { ok: boolean; remove: boolean };
+
 /** Mirrors `crate::accounts::RemovalOutcome`. */
 type RemovalOutcome = { type: "removed" } | { type: "needsConfirming"; message: string };
 
@@ -89,7 +101,7 @@ function ProfileRow(props: {
   /** In-app confirmation. `window.confirm` is a silent no-op in Tauri's macOS
    *  webview, which would turn "ask before removing an account that cannot be
    *  signed out" into "never remove it". */
-  confirm: (title: string, message: string) => Promise<boolean>;
+  confirm: (ask: ConfirmAsk) => Promise<ConfirmAnswer>;
 }) {
   const p = () => props.profile;
   const [busy, setBusy] = createSignal(false);
@@ -133,17 +145,29 @@ function ProfileRow(props: {
       confirmedWithoutLogout,
     });
 
-  // Recoverable, so no confirmation step: the agent's own logout revokes the
-  // credential and the profile stays, ready to be signed back in to. Removal
-  // below is the destructive sibling and keeps its dialog.
+  const canSignOut = () => p().signIn === "signedIn" && props.view.canSignOut;
+  const canRemove = () => !p().isDefault;
+
   const signOut = async () => {
+    await invoke("sign_out_agent_account", { adapterId: props.agentId, profileId: p().id });
+    toast(`Signed ${p().label} out.`, "info");
+    props.onChanged();
+  };
+
+  const [editing, setEditing] = createSignal(false);
+  let abandoned = false;
+
+  const rename = async (value: string) => {
+    setEditing(false);
+    const label = value.trim();
+    if (abandoned || !label || label === p().label) return;
     setBusy(true);
     try {
-      await invoke("sign_out_agent_account", {
+      await invoke("rename_agent_account", {
         adapterId: props.agentId,
         profileId: p().id,
+        label,
       });
-      toast(`Signed ${p().label} out.`, "info");
       props.onChanged();
     } catch (e) {
       toast(String(e), "error");
@@ -153,23 +177,42 @@ function ProfileRow(props: {
   };
 
   const remove = async () => {
+    const first = await call(false);
+    // "Needs confirming" arrives as a value rather than an error, so this never
+    // has to tell it apart from a refusal by reading the message.
+    if (first.type === "removed") {
+      toast(`Removed ${p().label}.`, "info");
+      props.onChanged();
+      return;
+    }
+    if (!(await props.confirm({ title: `Remove ${p().label}?`, message: first.message })).ok) return;
+    await call(true);
+    toast(`Removed ${p().label}. Its tokens stay valid until they expire.`, "info");
+    props.onChanged();
+  };
+
+  const act = async () => {
+    const answer = await props.confirm(
+      canSignOut()
+        ? {
+            title: `Sign ${p().label} out?`,
+            message: `${props.agentLabel} revokes this login. You can sign back in from here.`,
+            confirmLabel: "Sign out",
+            removable: canRemove(),
+          }
+        : {
+            title: `Remove ${p().label}?`,
+            message:
+              "Sway forgets this account and deletes the profile home it made for it, with the sessions inside.",
+            confirmLabel: "Remove",
+            danger: true,
+          },
+    );
+    if (!answer.ok) return;
     setBusy(true);
     try {
-      const first = await call(false);
-      // "Needs confirming" arrives as a value rather than an error, so this
-      // never has to tell it apart from a refusal by reading the message. The
-      // other refusals are final - a session in flight, a logout the agent
-      // rejected - and offering "remove anyway?" for those would be offering
-      // something the backend will refuse again.
-      if (first.type === "removed") {
-        toast(`Removed ${p().label}.`, "info");
-        props.onChanged();
-        return;
-      }
-      if (!(await props.confirm(`Remove ${p().label}?`, first.message))) return;
-      await call(true);
-      toast(`Removed ${p().label}. Its tokens stay valid until they expire.`, "info");
-      props.onChanged();
+      if (answer.remove || !canSignOut()) await remove();
+      else await signOut();
     } catch (e) {
       toast(String(e), "error");
     } finally {
@@ -183,7 +226,36 @@ function ProfileRow(props: {
         {/* Green only for the agent's own "yes": unknown is dim, because most
             agents have no way to answer and dim must not read as broken. */}
         <span class={`${styles.dot} ${p().signIn === "signedIn" ? styles.dotOk : styles.dotOff}`} />
-        <span class={styles.accountName}>{p().label}</span>
+        <Show
+          when={editing()}
+          fallback={
+            <button
+              type="button"
+              class={styles.accountName}
+              title="Rename"
+              onClick={() => {
+                abandoned = false;
+                setEditing(true);
+              }}
+            >
+              {p().label}
+            </button>
+          }
+        >
+          <input
+            class={styles.accountNameEdit}
+            aria-label={`Rename ${p().label}`}
+            value={p().label}
+            ref={(el) => queueMicrotask(() => el.select())}
+            onBlur={(e) => void rename(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              // Escape abandons through the same blur, so the commit above has
+              // to know which of the two ways out it is on.
+              abandoned = e.key === "Escape";
+              if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+            }}
+          />
+        </Show>
         <Show when={p().isDefault}>
           <span class={styles.accountAside}>(your existing login)</span>
         </Show>
@@ -219,18 +291,17 @@ function ProfileRow(props: {
             Sign in
           </Button>
         </Show>
-        {/* Only where the adapter declares a logout command: `canSignOut` is
-            the backend saying one exists, and a button without one could only
-            pretend. */}
-        <Show when={p().signIn === "signedIn" && props.view.canSignOut}>
-          <Button size="sm" onClick={() => void signOut()} disabled={busy()}>
-            Sign out
-          </Button>
-        </Show>
-        <Show when={!p().isDefault}>
-          <Button size="sm" variant="danger" onClick={() => void remove()} disabled={busy()}>
-            {props.view.canSignOut ? "Sign out and remove" : "Remove"}
-          </Button>
+        {/* One control, because removing is signing out plus forgetting, and
+            the dialog carries that as a checkbox. Where the adapter declares no
+            logout command this is the removal on its own. */}
+        <Show when={canSignOut() || canRemove()}>
+          <IconButton
+            size="sm"
+            icon={<Icon icon={canSignOut() ? LogOut : Trash2} />}
+            tooltip={canSignOut() ? `Sign ${p().label} out` : `Remove ${p().label}`}
+            onClick={() => void act()}
+            disabled={busy()}
+          />
         </Show>
       </div>
       {/* The agent's own answer about which credential it will bill against,
@@ -286,15 +357,19 @@ export default function AgentAccounts(props: {
     setNameReq(null);
     req?.resolve(v);
   };
-  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
-  const askConfirm = (title: string, message: string) =>
-    new Promise<boolean>((resolve) =>
-      setConfirmReq({ title, message, confirmLabel: "Remove", danger: true, resolve }),
-    );
-  const resolveConfirm = (v: boolean) => {
+  const [confirmReq, setConfirmReq] = createSignal<
+    (ConfirmAsk & { resolve: (v: ConfirmAnswer) => void }) | null
+  >(null);
+  const [alsoRemove, setAlsoRemove] = createSignal(false);
+  const askConfirm = (ask: ConfirmAsk) =>
+    new Promise<ConfirmAnswer>((resolve) => {
+      setAlsoRemove(false);
+      setConfirmReq({ ...ask, resolve });
+    });
+  const resolveConfirm = (ok: boolean) => {
     const req = confirmReq();
     setConfirmReq(null);
-    req?.resolve(v);
+    req?.resolve({ ok, remove: ok && alsoRemove() });
   };
 
   // Re-probe both: this screen's per-profile answers and the cached sweep the
@@ -432,7 +507,24 @@ export default function AgentAccounts(props: {
                 title={req().title}
                 message={req().message}
                 confirmLabel={req().confirmLabel}
-                danger={req().danger}
+                danger={req().danger || alsoRemove()}
+                extra={
+                  <Show when={req().removable}>
+                    <Checkbox
+                      checked={alsoRemove()}
+                      onChange={setAlsoRemove}
+                      label={
+                        <>
+                          Remove the account as well
+                          <div class={styles.hint}>
+                            Sway forgets it and deletes the profile home it made for it, with the
+                            sessions inside. Signing out on its own keeps both.
+                          </div>
+                        </>
+                      }
+                    />
+                  </Show>
+                }
                 onConfirm={() => resolveConfirm(true)}
                 onCancel={() => resolveConfirm(false)}
               />
