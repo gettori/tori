@@ -52,6 +52,9 @@ const bridge = vi.hoisted(() => ({
   /** Which agents this install offers. Every launch route asks before it offers
    *  a row, so a bench with nothing enabled has no chat to open at all. */
   enabled: {} as Record<string, boolean>,
+  /** Claude's accounts, as the health sweep enumerates them. Two of them is
+   *  what makes the agent-terminal row a row per account. */
+  profiles: [] as { id: string; label: string; signIn: string; account: null; apiKeySource: null }[],
 }));
 
 vi.mock("../Settings/settingsStore", async (orig) => {
@@ -77,7 +80,30 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "sessions_running") return Promise.resolve([]);
     if (cmd === "session_running") return Promise.resolve(false);
     if (cmd === "chat_orphans") return Promise.resolve([]);
-    if (cmd === "refresh_agent_health") return Promise.resolve([]);
+    if (cmd === "agent_health" || cmd === "refresh_agent_health") {
+      return Promise.resolve([
+        {
+          id: "claude",
+          label: "Claude",
+          program: "claude",
+          status: "versionMatch",
+          signIn: "signedIn",
+          account: null,
+          apiKeySource: null,
+          path: "/usr/bin/claude",
+          version: "2.1.231",
+          verifiedAgainst: "claude 2.1.231",
+          sessionsDir: null,
+          sessionsDirExists: false,
+          hooks: false,
+          needsYou: false,
+          overridePath: null,
+          profiles: bridge.profiles,
+        },
+      ]);
+    }
+    if (cmd === "agent_hook_launch_args") return Promise.resolve([]);
+    if (cmd === "profile_spawn_env") return Promise.resolve({ CLAUDE_CONFIG_DIR: "/homes/fonn" });
     return Promise.resolve(null);
   },
 }));
@@ -110,6 +136,7 @@ vi.mock("../Chat/ChatDraft", () => ({
 const { default: Terminal } = await import("./Terminal");
 const { default: PaneView } = await import("../../tabs/PaneView");
 const { agents } = await import("../../utils/agents");
+const { refreshAgentHealth } = await import("../../utils/agentHealth");
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -149,11 +176,17 @@ beforeEach(() => {
   bridge.listeners.clear();
   bridge.prefs = {};
   bridge.enabled = { claude: true, codex: true };
+  bridge.profiles = [];
   localStorage.clear();
 });
 
-/** Mount, and wait for the adapters the draft's default is checked against. */
+/** Mount, and wait for the adapters the draft's default is checked against.
+ *
+ *  The sweep is re-read first because its store is module state with a
+ *  once-per-run latch: without this, whichever accounts the *first* test in the
+ *  file mounted with would answer for every test after it. */
 async function mountLoaded() {
+  await refreshAgentHealth();
   const r = mount();
   await waitFor(() => expect(agents()).toHaveLength(ADAPTERS.length));
   return r;
@@ -201,6 +234,44 @@ describe("the launch control", () => {
 
     await waitFor(() => expect(screen.getAllByTestId("draft")).toHaveLength(1));
     expect(screen.queryByTestId("chat")).toBeNull();
+  });
+
+  // An agent tab runs as an account exactly the way a chat does. One row would
+  // start whichever login Sway inherited while the menu said only "Claude".
+  it("offers the agent terminal once per account", async () => {
+    bridge.profiles = [
+      { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
+      { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+    ];
+    await mountLoaded();
+    pointerClick(screen.getByLabelText("Launch an agent session"));
+
+    expect(await screen.findByRole("menuitem", { name: "Claude (Default, terminal)" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Claude (Fonn, terminal)" })).toBeTruthy();
+  });
+
+  // And says nothing about accounts on an install with one login, where naming
+  // it would be a word for the only thing there is.
+  it("names no account when there is only one", async () => {
+    await mountLoaded();
+    pointerClick(screen.getByLabelText("Launch an agent session"));
+
+    // The note alone, with no account named: this install has one login.
+    expect(await screen.findByRole("menuitem", { name: "Claude (terminal)" })).toBeTruthy();
+  });
+
+  it("spawns the account whose row was picked", async () => {
+    bridge.profiles = [
+      { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
+      { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+    ];
+    await mountLoaded();
+    await menuItem("Claude (Fonn, terminal)");
+
+    // The env is resolved from the profile id at every spawn rather than stored
+    // on the tab, so asking for it at all is what says the account arrived.
+    await waitFor(() => expect(bridge.invoked).toContain("profile_spawn_env"));
+    await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(1));
   });
 });
 

@@ -55,6 +55,7 @@ function setup(over: Partial<Parameters<typeof AgentPalette>[0]> = {}) {
     <AgentPalette
       providers={[claude, codex]}
       agentId="claude"
+      profile={null}
       value="sonnet"
       onSelect={onSelect}
       onFix={onFix}
@@ -129,7 +130,7 @@ describe("AgentPalette", () => {
     fireEvent.keyDown(filter, { key: "ArrowDown" });
     expect(active(filter)).toBe("models-haiku");
     fireEvent.keyDown(filter, { key: "Enter" });
-    expect(onSelect).toHaveBeenCalledWith("claude", expect.objectContaining({ value: "haiku" }));
+    expect(onSelect).toHaveBeenCalledWith("claude", null, expect.objectContaining({ value: "haiku" }));
   });
 
   // The bug this pins: `model()` falls back to the first row so Enter always
@@ -180,7 +181,7 @@ describe("AgentPalette", () => {
   it("commits the first row when Enter comes before any move", () => {
     const { filter, onSelect } = setup({ value: null });
     fireEvent.keyDown(filter, { key: "Enter" });
-    expect(onSelect).toHaveBeenCalledWith("claude", expect.objectContaining({ value: "sonnet" }));
+    expect(onSelect).toHaveBeenCalledWith("claude", null, expect.objectContaining({ value: "sonnet" }));
   });
 
   it("wraps the arrows rather than stopping at the end", () => {
@@ -192,11 +193,11 @@ describe("AgentPalette", () => {
   it("switches panes on Tab, and Enter on an agent moves to its models", () => {
     const { filter, onSelect } = setup();
     fireEvent.keyDown(filter, { key: "Tab" });
-    expect(active(filter)).toBe("providers-claude");
+    expect(active(filter)).toBe("providers-claude-default");
     fireEvent.keyDown(filter, { key: "Enter" });
     expect(active(filter)).toBe("models-sonnet");
     fireEvent.keyDown(filter, { key: "Enter" });
-    expect(onSelect).toHaveBeenCalledWith("claude", expect.objectContaining({ value: "sonnet" }));
+    expect(onSelect).toHaveBeenCalledWith("claude", null, expect.objectContaining({ value: "sonnet" }));
   });
 
   // The placeholder is the inventory of the whole hand: a draft names both
@@ -224,7 +225,7 @@ describe("AgentPalette", () => {
     const { filter, onHighlight } = setup();
     fireEvent.keyDown(filter, { key: "Tab" });
     fireEvent.keyDown(filter, { key: "ArrowDown" });
-    expect(onHighlight).toHaveBeenCalledWith("codex");
+    expect(onHighlight).toHaveBeenCalledWith("codex", null);
   });
 
   it("shows a broken agent, and selects nothing from it", () => {
@@ -253,7 +254,7 @@ describe("AgentPalette", () => {
       .getAllByRole("option")
       .filter((o) => o.getAttribute("aria-selected") === "true")
       .map((o) => o.id.replace(/^.*?-(providers|models)-/, "$1-"));
-    expect(marked).toEqual(["providers-claude", "models-sonnet"]);
+    expect(marked).toEqual(["providers-claude-default", "models-sonnet"]);
   });
 
   // The bug this pins: the fill was gated on the agents pane having the
@@ -262,7 +263,7 @@ describe("AgentPalette", () => {
   it("marks the agent whose models are showing, before the arrows go near it", () => {
     const { filter } = setup();
     const rowFor = (agentId: string) =>
-      screen.getAllByRole("option").find((o) => o.id.endsWith(`providers-${agentId}`))!;
+      screen.getAllByRole("option").find((o) => o.id.includes(`providers-${agentId}`))!;
     expect(rowFor("claude").className).toContain(styles.rowActive);
     expect(rowFor("codex").className).not.toContain(styles.rowActive);
 
@@ -310,6 +311,48 @@ describe("AgentPalette", () => {
     fireEvent.keyDown(filter, { key: "Tab" });
     fireEvent.keyDown(filter, { key: "ArrowDown" });
     expect(fact()).toBe("signed out");
+  });
+
+  // A catalogue is an account's answer, so an agent with two logins is two
+  // rows. They share an `agentId`, which is why nothing here may key on it: the
+  // highlight, the marks and the recheck all have to name a pair.
+  describe("two accounts of one agent", () => {
+    const onFonn = (over: Partial<PaletteProvider> = {}): PaletteProvider => ({
+      ...lockedProvider(adapter("claude", "Claude"), [model("opus", "Opus")], {
+        profile: "fonn",
+        account: "Fonn",
+      }),
+      plan: "Claude Team",
+      ...over,
+    });
+
+    it("marks the row this chat is actually on, not the other one", () => {
+      setup({ providers: [claude, onFonn()], agentId: "claude", profile: "fonn" });
+      const rows = screen.getAllByRole("option").filter((o) => o.id.includes("providers-"));
+      expect(rows.map((r) => r.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+    });
+
+    // The plan is what says whose answer this list is, and it only means
+    // anything once there are two accounts to tell apart.
+    it("heads the list with the account's plan beside the count", () => {
+      setup({ providers: [onFonn()], agentId: "claude", profile: "fonn" });
+      expect(document.querySelector(`.${styles.headFact}`)?.textContent).toBe("Claude Team, 1");
+    });
+
+    it("selects and rechecks the pair, not the agent", () => {
+      const onRecheck = vi.fn();
+      const { onSelect, filter } = setup({
+        providers: [onFonn()],
+        agentId: "claude",
+        profile: "fonn",
+        onRecheck,
+      });
+      fireEvent.click(screen.getByRole("button", { name: /check claude \/ fonn for new models/i }));
+      expect(onRecheck).toHaveBeenCalledWith("claude", "fonn");
+
+      fireEvent.keyDown(filter, { key: "Enter" });
+      expect(onSelect).toHaveBeenCalledWith("claude", "fonn", expect.objectContaining({ value: "opus" }));
+    });
   });
 
   // The version is a claim with an owner (the health sweep, else the probe),
@@ -368,12 +411,12 @@ describe("AgentPalette", () => {
     const onRecheck = vi.fn();
     const { filter } = setup({ onRecheck });
     fireEvent.click(screen.getByRole("button", { name: /check claude for new models/i }));
-    expect(onRecheck).toHaveBeenCalledWith("claude");
+    expect(onRecheck).toHaveBeenCalledWith("claude", null);
 
     fireEvent.keyDown(filter, { key: "Tab" });
     fireEvent.keyDown(filter, { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("button", { name: /check codex for new models/i }));
-    expect(onRecheck).toHaveBeenLastCalledWith("codex");
+    expect(onRecheck).toHaveBeenLastCalledWith("codex", null);
   });
 
   it("offers no recheck when nothing can act on one", () => {

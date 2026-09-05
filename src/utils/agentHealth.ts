@@ -165,6 +165,19 @@ export function agentReady(id: string, profile: string | null = null): boolean {
   return row.status !== "notFound" && !profileSignedOut(id, profile);
 }
 
+/** The accounts of one agent that are worth naming.
+ *
+ *  **Empty on a single-account install**: "Default" is a word for the only
+ *  thing there is, so a surface that splits per account gets nothing to split
+ *  on and renders one plain row. The one place that rule lives - `profileLabel`
+ *  is this list looked up by id, and every caller that splits spreads it and
+ *  falls back to one unnamed row - rather than each of them counting accounts
+ *  and deciding again. */
+export function namedProfiles(id: string): readonly ProfileHealth[] {
+  const all = rows()?.find((h) => h.id === id)?.profiles ?? [];
+  return all.length > 1 ? all : [];
+}
+
 /**
  * The user's own name for one account, or null when naming it would say
  * nothing.
@@ -176,9 +189,7 @@ export function agentReady(id: string, profile: string | null = null): boolean {
  * have to count accounts itself.
  */
 export function profileLabel(id: string, profile: string | null): string | null {
-  const row = rows()?.find((h) => h.id === id);
-  if (!row || (row.profiles?.length ?? 0) < 2) return null;
-  return row.profiles.find((p) => p.id === (profile ?? DEFAULT_PROFILE))?.label ?? null;
+  return namedProfiles(id).find((p) => p.id === asProfileId(profile))?.label ?? null;
 }
 
 /** The id of the account that is the user's existing login, mirroring
