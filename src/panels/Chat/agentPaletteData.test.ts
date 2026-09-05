@@ -53,9 +53,10 @@ function model(value: string, resolved: string, displayName: string): CatalogMod
   };
 }
 
-function catalog(agentId: string, models: CatalogModel[]): ModelCatalog {
+function catalog(agentId: string, models: CatalogModel[], profileId = "default"): ModelCatalog {
   return {
     agentId,
+    profileId,
     state: "probed",
     catalogue: { version: "1", probedAtMs: 0, models, modes: [], account: null },
     lastFailure: null,
@@ -65,6 +66,8 @@ function catalog(agentId: string, models: CatalogModel[]): ModelCatalog {
 const allReady = () => true;
 const noneSignedOut = () => false;
 const noneProbing = () => false;
+// Every row is about the default account unless a test says otherwise.
+const allDefault = () => null;
 
 describe("fixReason", () => {
   it("is null for a ready agent", () => {
@@ -83,6 +86,7 @@ describe("paletteProviders", () => {
   it("offers only chat-capable agents", () => {
     const rows = paletteProviders({
       adapters,
+      profileFor: allDefault,
       catalogs: [],
       ready: allReady,
       signedOut: noneSignedOut,
@@ -94,6 +98,7 @@ describe("paletteProviders", () => {
   it("counts distinct models, not catalogue rows", () => {
     const rows = paletteProviders({
       adapters,
+      profileFor: allDefault,
       catalogs: [
         catalog("claude", [
           model("default", "claude-sonnet-5", "Default"),
@@ -114,6 +119,7 @@ describe("paletteProviders", () => {
   it("keeps a broken agent visible but not selectable", () => {
     const rows = paletteProviders({
       adapters,
+      profileFor: allDefault,
       catalogs: [catalog("codex", [model("gpt-5", "gpt-5", "GPT-5")])],
       ready: (id) => id !== "codex",
       signedOut: () => false,
@@ -128,6 +134,7 @@ describe("paletteProviders", () => {
   it("says probing over anything else it could have said", () => {
     const rows = paletteProviders({
       adapters,
+      profileFor: allDefault,
       catalogs: [catalog("claude", [model("sonnet", "claude-sonnet-5", "Sonnet")])],
       ready: () => false,
       signedOut: noneSignedOut,
@@ -136,9 +143,51 @@ describe("paletteProviders", () => {
     expect(rows[0].health).toEqual({ kind: "probing" });
   });
 
+  // A row is about one account, and a profile id belongs to one agent. So the
+  // account is asked per row: handing the draft's own to every other agent
+  // would describe each of them by an account it does not have.
+  it("reads each row's own account, and every other agent's default one", () => {
+    const rows = paletteProviders({
+      adapters,
+      catalogs: [
+        catalog("claude", [model("opus", "claude-opus-5", "Opus")]),
+        catalog("claude", [model("sonnet", "claude-sonnet-5", "Sonnet")], "fonn"),
+        catalog("codex", [model("gpt-5", "gpt-5", "GPT-5")]),
+      ],
+      profileFor: (id) => (id === "claude" ? "fonn" : null),
+      ready: allReady,
+      signedOut: noneSignedOut,
+      probing: noneProbing,
+    });
+
+    const claude = rows.find((r) => r.agentId === "claude")!;
+    expect(claude.profile).toBe("fonn");
+    expect(claude.models.map((m) => m.value)).toEqual(["sonnet"]);
+    // Codex has no such account, so its row is the default one's, not empty.
+    const codex = rows.find((r) => r.agentId === "codex")!;
+    expect(codex.profile).toBeNull();
+    expect(codex.models.map((m) => m.value)).toEqual(["gpt-5"]);
+  });
+
+  // An account nobody has probed lists nothing rather than borrowing the
+  // default account's models, which would offer rows this account may not have.
+  it("lists no models for an account with no answer of its own", () => {
+    const rows = paletteProviders({
+      adapters,
+      catalogs: [catalog("claude", [model("opus", "claude-opus-5", "Opus")])],
+      profileFor: () => "fonn",
+      ready: allReady,
+      signedOut: noneSignedOut,
+      probing: noneProbing,
+    });
+    expect(rows[0].models).toEqual([]);
+    expect(rows[0].health).toEqual({ kind: "count", count: 0 });
+  });
+
   it("lists no models for an agent nobody has probed", () => {
     const rows = paletteProviders({
       adapters,
+      profileFor: allDefault,
       catalogs: null,
       ready: allReady,
       signedOut: noneSignedOut,
@@ -222,6 +271,7 @@ describe("splitModelDisplay", () => {
     const input = {
       adapters: [adapter("claude", "Claude")],
       catalogs: [cat],
+      profileFor: allDefault,
       ready: allReady,
       signedOut: noneSignedOut,
       probing: noneProbing,
@@ -239,6 +289,7 @@ describe("splitModelDisplay", () => {
     const rows = paletteProviders({
       adapters: [withFlag],
       catalogs: null,
+      profileFor: allDefault,
       ready: allReady,
       signedOut: noneSignedOut,
       probing: noneProbing,

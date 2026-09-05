@@ -40,6 +40,7 @@ const model = (value: string, resolvedModel: string): CatalogModel => ({
 
 const withModels = (models: CatalogModel[], version: string | null = "2.1.231"): ModelCatalog => ({
   agentId: "claude",
+  profileId: "default",
   state: "probed",
   catalogue: { version, shape: CACHE_SHAPE, probedAtMs: 0, models, modes: [], account: null },
   lastFailure: null,
@@ -68,7 +69,7 @@ describe("counting what a agent offers", () => {
   it("answers zero for a agent with nothing remembered", () => {
     expect(distinctModelCount(undefined)).toBe(0);
     expect(
-      distinctModelCount({ agentId: "solo", state: "neverProbed", catalogue: null, lastFailure: null }),
+      distinctModelCount({ agentId: "solo", profileId: "default", state: "neverProbed", catalogue: null, lastFailure: null }),
     ).toBe(0);
   });
 });
@@ -191,6 +192,7 @@ describe("whether a remembered answer still describes the binary", () => {
 describe("the shared store", () => {
   const opencode = (): ModelCatalog => ({
     agentId: "opencode",
+    profileId: "default",
     state: "probed",
     catalogue: {
       version: "1.18.3",
@@ -204,6 +206,7 @@ describe("the shared store", () => {
   });
   const unasked = (): ModelCatalog => ({
     agentId: "claude",
+    profileId: "default",
     state: "neverProbed",
     catalogue: null,
     lastFailure: null,
@@ -228,6 +231,58 @@ describe("the shared store", () => {
     // reads as "no models" rather than as a list worth offering.
     expect(cachedModels(catalogFor("claude"))).toEqual([]);
     expect(cachedModels(catalogFor("nothing-here"))).toEqual([]);
+  });
+
+  // A catalogue is an account's answer. Two accounts of one binary can sit on
+  // different plans and offer different models, so the store is keyed on the
+  // pair and a miss is a miss.
+  describe("one answer per account", () => {
+    const fonn = (): ModelCatalog => ({
+      agentId: "claude",
+      profileId: "fonn",
+      state: "probed",
+      catalogue: {
+        // No version, so staleness cannot make this row due and what is
+        // asserted below is the account key rather than the health sweep the
+        // tests above leave behind.
+        version: null,
+        shape: CACHE_SHAPE,
+        probedAtMs: 0,
+        models: [model("sonnet", "claude-sonnet-5")],
+        modes: [],
+        account: null,
+      },
+      lastFailure: null,
+    });
+
+    beforeEach(() => {
+      invoked.mockImplementation(async (cmd: string) => {
+        if (cmd === "model_catalogs") return [unasked(), fonn()];
+        if (cmd === "refresh_model_catalog") return fonn();
+        return [];
+      });
+    });
+
+    it("hands each account its own answer", async () => {
+      await ensureModelCatalogsLoaded();
+      expect(cachedModels(catalogFor("claude", "fonn")).map((m) => m.value)).toEqual(["sonnet"]);
+      // **No fallback to the default account.** Offering its models here would
+      // list rows this account may not have, which is the confusion the
+      // per-account key exists to end.
+      expect(cachedModels(catalogFor("claude", null))).toEqual([]);
+      expect(cachedModels(catalogFor("claude", "nobody"))).toEqual([]);
+    });
+
+    it("asks about the account it was given, not the agent's default one", async () => {
+      await refreshCatalogIfDue("claude", "fonn");
+      // Fonn already answered about this binary, so nothing is due for it.
+      expect(invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog")).toHaveLength(0);
+
+      await refreshCatalogIfDue("claude", null);
+      expect(invoked.mock.calls.filter(([cmd]) => cmd === "refresh_model_catalog")).toEqual([
+        ["refresh_model_catalog", { agentId: "claude", profileId: null }],
+      ]);
+    });
   });
 
   it("reads the cache without probing anything", async () => {
@@ -270,6 +325,7 @@ describe("the shared store", () => {
 describe("the levers a draft can read before it has a session", () => {
   const acp = (): ModelCatalog => ({
     agentId: "codex",
+    profileId: "default",
     state: "probed",
     catalogue: {
       version: "1.2.0",

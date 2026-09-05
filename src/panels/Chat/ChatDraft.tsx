@@ -94,9 +94,14 @@ export default function ChatDraft(props: {
     // The cache, then one probe for the agent this draft would actually start.
     // Opening a chat on claude is already going to launch claude, so asking it
     // costs nothing new; asking every other agent on the machine would.
-    void ensureModelCatalogsLoaded().then(() => probeAgent(props.agentId));
+    void ensureModelCatalogsLoaded().then(() => probeAgent(props.agentId, props.profile));
   });
   onCleanup(() => probeOnHighlight.cancel());
+
+  /** Which account a palette row is about. This draft's for its own agent, and
+   *  the default one for every other: a profile id belongs to one agent, so
+   *  handing Fonn to codex would describe it by an account it does not have. */
+  const profileFor = (id: string) => (id === props.agentId ? props.profile : null);
 
   const providers = createMemo(() =>
     paletteProviders({
@@ -105,10 +110,9 @@ export default function ChatDraft(props: {
       // off is absent rather than listed and refused.
       adapters: enabledChatAgents(),
       catalogs: modelCatalogs(),
-      // Bound to this draft's account, not the agent's default one: the
-      // palette is a list of things this tab can start.
-      ready: (id: string) => agentReady(id, props.profile),
-      signedOut: (id: string) => profileSignedOut(id, props.profile),
+      profileFor,
+      ready: agentReady,
+      signedOut: profileSignedOut,
       probing: isProbing,
       version: agentVersion,
     }),
@@ -119,7 +123,7 @@ export default function ChatDraft(props: {
   // The palette drops the options on its way to `PickableModel`, so the mirror
   // reads the catalogue itself. Keyed on the pick because claude's levers are a
   // function of the model, which is why switching model re-cuts the set.
-  const catalog = () => catalogFor(props.agentId);
+  const catalog = () => catalogFor(props.agentId, props.profile);
   const options = () => cachedOptions(catalog(), pick().model);
 
   const model = () => models().find((m) => m.value === pick().model) ?? null;
@@ -296,8 +300,8 @@ export default function ChatDraft(props: {
               disabled={starting()}
               onSelectModel={onPickModel}
               onSelectEffort={(effort) => setDraftPick(props.tabId, { effort })}
-              onHighlightAgent={(agentId) => probeOnHighlight(agentId)}
-              onRecheckAgent={(agentId) => recheckAgent(agentId)}
+              onHighlightAgent={(agentId) => probeOnHighlight(agentId, profileFor(agentId))}
+              onRecheckAgent={(agentId) => recheckAgent(agentId, profileFor(agentId))}
               onFixAgent={openAgentCard}
             />
             <Show when={offered().modes.length > 0}>

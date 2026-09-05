@@ -197,8 +197,10 @@ function AgentRow(props: {
         <span class={styles.agentNote}>{rowNote(a().id, a().program)}</span>
       </span>
       <span class={styles.agentVersion}>{h()?.version ?? "-"}</span>
-      {/* The count is a claim about what the installed binary can run, so it
-          comes from the probe cache and nowhere else. A row nobody has asked
+      {/* The count is a claim about what the installed binary can run for the
+          **default account**, which is what a session started without choosing
+          one runs as; the agent's page lists every account. It comes from the
+          probe cache and nowhere else. A row nobody has asked
           shows "-" rather than 0, because "0 models" reads as a broken install
           rather than as an unasked question. A failed probe that still holds
           an older answer shows the answer, not the error: stale-but-real beats

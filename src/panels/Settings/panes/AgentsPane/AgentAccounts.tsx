@@ -9,6 +9,7 @@ import PromptModal from "../../../../components/Dialogs/PromptModal";
 import { homeDir } from "@tauri-apps/api/path";
 import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
+import { forgetModelCatalogs } from "../../../../utils/modelCatalog";
 import { forgetProfileEnvs } from "../../../../utils/profileEnv";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import styles from "../../Settings.module.css";
@@ -271,6 +272,11 @@ export default function AgentAccounts(props: {
     // answer, so a home that has just been created, renamed away from or
     // deleted has to stop being remembered here.
     forgetProfileEnvs();
+    // And a catalogue is an account's answer, so the set of rows the store
+    // holds changes with the set of accounts. An added one has no row until
+    // this is dropped, and nothing that only asks about rows it can see would
+    // ever probe it.
+    forgetModelCatalogs();
     void refreshAgentHealth().then(() => refetch());
   };
 

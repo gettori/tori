@@ -118,6 +118,7 @@ const model = (value: string, resolvedModel: string, displayName: string) => ({
 const CATALOGS = [
   {
     agentId: "claude",
+    profileId: "default",
     state: "ready",
     lastFailure: null,
     catalogue: {
