@@ -1,10 +1,11 @@
-// The Shells workspace's one pane admits command tabs and nothing else, and it
-// exists before anything selects it, so a command tab opened from another
-// workspace has a pane to land in.
+// The Shells workspace's one pane exists before anything selects it, so a
+// command tab opened from another workspace has a pane to land in. It takes
+// both kinds that live here: what Sway runs, and the shells you open yourself.
 import { describe, it, expect, beforeEach } from "vitest";
 import { ensureShellsWorkspace, shellsPane } from "./shellsWorkspace";
 import { layoutRoot, resetPaneLayoutModel } from "./layoutStore";
-import { placementRefusal, resetTabPlacement } from "./tabPlacement";
+import { leaves } from "./paneLayout";
+import { paneLock, placementRefusal, resetTabPlacement, setPaneLock } from "./tabPlacement";
 import { SHELLS_KEY } from "../utils/features";
 
 beforeEach(() => {
@@ -14,11 +15,12 @@ beforeEach(() => {
 });
 
 describe("the Shells workspace", () => {
-  it("is one pane that takes command tabs and refuses every other kind", () => {
+  it("is one pane that takes both a command and a shell you opened", () => {
     expect(layoutRoot(SHELLS_KEY)).toBeNull();
     ensureShellsWorkspace();
     const root = layoutRoot(SHELLS_KEY)!;
     expect(root).toBeTruthy();
+    expect(leaves(root)).toHaveLength(1);
 
     const refusal = (kind: string) =>
       placementRefusal({
@@ -28,11 +30,18 @@ describe("the Shells workspace", () => {
         root,
         tabsInWs: [],
       });
-    // The lock is compared against `tab.kind` exactly, so it is the tab kind
-    // that has to be `command`, not merely a terminal.
     expect(refusal("command")).toBeNull();
-    expect(refusal("file")).toBe("That pane only takes command tabs.");
-    expect(refusal("shell")).toBe("That pane only takes command tabs.");
+    expect(refusal("shell")).toBeNull();
+  });
+
+  // A lock names one kind, and this pane holds two since the strip's `+`. An
+  // install that ran before that has the old one persisted, so the seed has to
+  // clear it rather than merely stop writing it.
+  it("clears a command lock left behind by an earlier version", () => {
+    ensureShellsWorkspace();
+    setPaneLock(SHELLS_KEY, shellsPane()!, "command");
+    ensureShellsWorkspace();
+    expect(paneLock(SHELLS_KEY, shellsPane()!)).toBeNull();
   });
 
   it("is idempotent across launches", () => {

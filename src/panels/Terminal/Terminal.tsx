@@ -140,6 +140,7 @@ import { registerKind, kindEntry, type TabDescriptor } from "../../tabs/registry
 import styles from "./Terminal.module.css";
 import patterns from "../../styles/patterns.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
+import IconButton from "../../components/IconButton/IconButton";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
 type TailState = "working" | "done" | "blocked-candidate";
@@ -692,6 +693,7 @@ export default function Terminal(props: {
         sessionId: o.sessionId,
         agent: o.kind === "agent" || o.kind === "chat" ? agentIdForProgram(o.program) : undefined,
         state: tabState(o),
+        active: o.id === visibleId(),
       })),
     ),
   );
@@ -1834,6 +1836,22 @@ export default function Terminal(props: {
     });
   }
 
+  // A shell of your own in Shells. There is no branch behind this workspace, so
+  // it opens at home; the `+` in its strip is the only way to make one.
+  async function newShellInShells() {
+    const cwd = await homeDir().catch(() => "/");
+    openOrActivate({
+      id: shellId(),
+      title: "Shell",
+      cwd,
+      workspace: SHELLS_KEY,
+      kind: "shell",
+      program: "",
+      args: [],
+      profile: null,
+    });
+  }
+
   /**
    * Every tab in this workspace that was restored and never reached for.
    *
@@ -2185,9 +2203,23 @@ export default function Terminal(props: {
     // menu in all of them at once. Still portalled out, because the tab bar
     // clips overflow and would hide a menu rendered inside it.
     const [menuOpen, setMenuOpen] = createSignal(false);
-    // Nothing here applies in Shells: no branch to launch an agent or a shell
-    // in, and no session history to browse. The strip keeps only its tabs.
+    // Most of the cluster means nothing in Shells: no branch to launch an agent
+    // in, and no session history to browse. What survives is the one thing that
+    // still does, a plain shell with no branch behind it.
     return (
+      <>
+      <Show when={isShellsKey(activeWorkspace())}>
+        {/* The same wrapper the split button uses, for the alignment and the
+            margin; there is just one half to put in it here. */}
+        <div class={styles.termNewSplit}>
+          <IconButton
+            icon={<Icon icon={Plus} />}
+            tooltip="New shell at your home folder"
+            aria-label="New shell"
+            onClick={() => void newShellInShells()}
+          />
+        </div>
+      </Show>
       <Show when={!isShellsKey(activeWorkspace())}>
         <div class={styles.termNewSplit}>
           {/* Main half: a new chat, which is a draft and so costs nothing until
@@ -2328,6 +2360,7 @@ export default function Terminal(props: {
           </Show>
         </Tooltip>
       </Show>
+      </>
     );
   };
 

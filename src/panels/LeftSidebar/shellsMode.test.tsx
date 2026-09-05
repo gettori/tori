@@ -65,20 +65,24 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
-const { emit, emitWith, TOGGLE_SIDEBAR_MODE, REVEAL_SHELLS, TERMINAL_TAB_FOCUSED } = await import(
-  "../../utils/events"
-);
+const { emit, emitWith, onWith, TOGGLE_SIDEBAR_MODE, REVEAL_SHELLS, TERMINAL_TAB_FOCUSED, FOCUS_SESSION_TAB } =
+  await import("../../utils/events");
 const { reportCommandExit, resetCommandStatus } = await import("../Terminal/commandStatus");
 const { SHELLS_KEY } = await import("../../utils/features");
 
-const cmd = (id: string, title: string): LiveTab => ({
+const cmd = (id: string, title: string, over: Partial<LiveTab> = {}): LiveTab => ({
   id,
   workspace: SHELLS_KEY,
   kind: "command",
   cwd: MAIN,
   title,
   state: "live",
+  ...over,
 });
+
+/** A shell the user opened with the strip's `+`: same workspace, no verdict. */
+const shell = (id: string, title: string, over: Partial<LiveTab> = {}): LiveTab =>
+  cmd(id, title, { kind: "shell", cwd: "/home/me", ...over });
 
 function mount(liveTabs: LiveTab[] = []) {
   const [sel, setSel] = createSignal<Selection | null>(null);
@@ -195,10 +199,10 @@ describe("the Shells mode", () => {
     await waitFor(() => expect(rows()).toHaveLength(1));
 
     fireEvent.click(screen.getByLabelText("Filter"));
-    const field = await screen.findByLabelText("Filter commands");
+    const field = await screen.findByLabelText("Filter shells");
     fireEvent.input(field, { target: { value: "install" } });
     await waitFor(() => expect(rows()).toHaveLength(0));
-    expect(container.textContent).toContain("No command matches the filter.");
+    expect(container.textContent).toContain("Nothing matches the filter.");
   });
 
   // What an auto-close that empties the group asks for: the terminal names the
@@ -224,6 +228,75 @@ describe("the Shells mode", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(pressed("Shells")).toBe(true);
     expect(sel()?.kind).toBe("shells");
+  });
+
+  // A shell you opened yourself lives in the same workspace and belongs in the
+  // same list. It has no verdict to report, so it wears no state.
+  it("lists a shell you opened beside what Sway is running", async () => {
+    mount([cmd("job:1", "Sign in"), shell("sh:1", "Shell")]);
+    await screen.findByText("proj");
+    fireEvent.click(segment(/Shells/));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+
+    expect(rows().map((r) => r.querySelector('[class*="shellsName"]')?.textContent)).toEqual([
+      "Sign in",
+      "Shell",
+    ]);
+    expect(rows().map((r) => !!r.querySelector("[data-state]"))).toEqual([true, false]);
+  });
+
+  it("marks the row whose tab is on screen, and only that one", async () => {
+    const { container } = mount([cmd("job:1", "Sign in"), cmd("job:2", "Install claude", { active: true })]);
+    await screen.findByText("proj");
+    fireEvent.click(segment(/Shells/));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+
+    const current = () =>
+      rows().map((r) => r.querySelector("button")?.getAttribute("aria-current") ?? null);
+    expect(current()).toEqual([null, "true"]);
+    await expectNoAxeViolations(container);
+  });
+
+  // The strip is the other way in, and it is off screen while the sidebar is
+  // what you are looking at, so a row has to be able to move the window itself.
+  it("focuses a tab when its row is clicked", async () => {
+    const focused: string[] = [];
+    const off = onWith<{ tabId: string }>(FOCUS_SESSION_TAB, (d) => focused.push(d.tabId));
+    mount([cmd("job:1", "Sign in"), cmd("job:2", "Install claude")]);
+    await screen.findByText("proj");
+    fireEvent.click(segment(/Shells/));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+
+    fireEvent.click(rows()[1].querySelector("button")!);
+    expect(focused).toEqual(["job:2"]);
+    off();
+  });
+
+  // The click changes which tab is on screen, which re-emits the live-tab list.
+  // A `<For>` over freshly mapped objects would rebuild every row on that and
+  // drop the focus the click had just put on one, stranding a keyboard user.
+  it("keeps focus on the row it just moved to", async () => {
+    const [tabs, setTabs] = createSignal<LiveTab[]>([
+      cmd("job:1", "Sign in", { active: true }),
+      cmd("job:2", "Install claude"),
+    ]);
+    const [sel, setSel] = createSignal<Selection | null>(null);
+    render(() => (
+      <LeftSidebar selected={sel()} onSelect={(x) => setSel(x)} liveTabs={tabs()} />
+    ));
+    await screen.findByText("proj");
+    fireEvent.click(segment(/Shells/));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+
+    const btn = rows()[1].querySelector("button")!;
+    btn.focus();
+    fireEvent.click(btn);
+    // What Terminal.tsx does in answer: the focused tab moved, so the surface
+    // is re-emitted with fresh objects.
+    setTabs([cmd("job:1", "Sign in"), cmd("job:2", "Install claude", { active: true })]);
+
+    await waitFor(() => expect(rows()[1].querySelector("button")!.getAttribute("aria-current")).toBe("true"));
+    expect(document.activeElement).toBe(rows()[1].querySelector("button"));
   });
 
   it("says nothing is running when nothing is", async () => {
