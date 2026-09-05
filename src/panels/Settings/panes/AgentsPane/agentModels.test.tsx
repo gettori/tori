@@ -133,7 +133,7 @@ function mount(over: Record<string, unknown> = {}, catalogs: ModelCatalog[] = []
   invoked.mockReset();
   __resetModelCatalogsForTests();
   invoked.mockImplementation(async (cmd: string) => {
-    if (cmd === "agent_health") return [health(over)];
+    if (cmd === "agent_health" || cmd === "refresh_agent_health") return [health(over)];
     if (cmd === "list_agents") return ADAPTERS;
     if (cmd === "agent_accounts") return { adapterId: "claude", declared: false, profiles: [] };
     if (cmd === "model_catalogs") return catalogs;
@@ -426,8 +426,8 @@ describe("the model list on a agent page", () => {
     account: { subscriptionType: plan, apiProvider: "firstParty", organization: "" },
   });
 
-  it("gives each account its own list, under its own label and plan", async () => {
-    const { container } = await open(
+  it("gives each account its own list, one tab at a time", async () => {
+    const r = await open(
       mount(twoAccounts, [
         probed("claude", [model("opus", "claude-opus-5")], onPlan("Claude Max")),
         {
@@ -438,19 +438,23 @@ describe("the model list on a agent page", () => {
       /Claude/,
     );
 
-    const heads = [...container.querySelectorAll(`.${styles.groupTitle}`)].map((el) => el.textContent);
-    expect(heads).toContain("Default");
-    expect(heads).toContain("Fonn");
-    expect(heads).not.toContain("Models");
-    expect(container.textContent).toContain("Claude Max, 1 of 1");
-    expect(container.textContent).toContain("Claude Team, 1 of 1");
-    expect(container.textContent).toContain("opus");
-    expect(container.textContent).toContain("sonnet");
+    // Both accounts are named; the lit one is the list on screen.
+    expect(r.getByRole("button", { name: "Default", pressed: true })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Fonn", pressed: false })).toBeTruthy();
+    expect(r.container.textContent).toContain("Claude Max, 1 of 1");
+    expect(r.container.textContent).toContain("opus");
+    expect(r.container.textContent).not.toContain("sonnet");
+
+    fireEvent.click(r.getByRole("button", { name: "Fonn" }));
+
+    await waitFor(() => expect(r.container.textContent).toContain("Claude Team, 1 of 1"));
+    expect(r.container.textContent).toContain("sonnet");
+    expect(r.container.textContent).not.toContain("opus");
   });
 
   // The account is what a probe is about, so Ask again on one list must not
   // re-probe the other. The pane that asked is the pane that answers.
-  it("asks again for the account whose button was pressed", async () => {
+  it("asks again for the account whose tab is open", async () => {
     const r = await open(
       mount(twoAccounts, [
         probed("claude", [model("opus", "claude-opus-5")]),
@@ -458,8 +462,9 @@ describe("the model list on a agent page", () => {
       ]),
       /Claude/,
     );
+    fireEvent.click(r.getByRole("button", { name: "Fonn" }));
     invoked.mockClear();
-    fireEvent.click(r.getAllByRole("button", { name: /Ask again/ })[1]);
+    fireEvent.click(r.getByRole("button", { name: /Ask again/ }));
 
     await waitFor(() =>
       expect(

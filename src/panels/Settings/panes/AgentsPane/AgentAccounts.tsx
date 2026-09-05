@@ -11,7 +11,11 @@ import { homeDir } from "@tauri-apps/api/path";
 import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { asTabProfile, refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
 import { defaultProfile, setDefaultProfile } from "../../../../utils/agentEnabled";
-import { catalogFor, forgetModelCatalogs } from "../../../../utils/modelCatalog";
+import {
+  catalogFor,
+  ensureModelCatalogsLoaded,
+  forgetModelCatalogs,
+} from "../../../../utils/modelCatalog";
 import { forgetProfileEnvs } from "../../../../utils/profileEnv";
 import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import styles from "../../Settings.module.css";
@@ -404,8 +408,16 @@ export default function AgentAccounts(props: {
     // holds changes with the set of accounts. An added one has no row until
     // this is dropped, and nothing that only asks about rows it can see would
     // ever probe it.
+    // Dropped and read again: the set of rows is per account, so an added or
+    // renamed one has no row until the store is refilled, and a Models section
+    // reading a store nobody refilled says "unknown" about every account.
     forgetModelCatalogs();
-    void refreshAgentHealth().then(() => refetch());
+    void ensureModelCatalogsLoaded();
+    // Through the page's own re-check where there is one, the way "Check again"
+    // goes: the detail page holds its own copy of the sweep, so refreshing only
+    // the shared store leaves the Models tabs naming an account that has been
+    // renamed or removed until Settings is reopened.
+    void (props.onRecheck ? props.onRecheck() : refreshAgentHealth()).then(() => refetch());
   };
 
   // The heading's "Check again": the same refresh order as `changed` (probe,

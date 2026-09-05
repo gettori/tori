@@ -95,7 +95,7 @@ function mount(
   // second mount in this file would otherwise be handed the first test's.
   __resetModelCatalogsForTests();
   invoked.mockImplementation(async (cmd: string, args?: unknown) => {
-    if (cmd === "agent_health") return [health(over.health)];
+    if (cmd === "agent_health" || cmd === "refresh_agent_health") return [health(over.health)];
     if (cmd === "agent_accounts") return view(over.accounts);
     if (cmd === "model_catalogs") return over.catalogs ?? [];
     // Handed back rather than swallowed: the store applies what this returns,
@@ -542,6 +542,11 @@ describe("renaming an account", () => {
 
     renameTo(getByRole("button", { name: "Fonn" }), "Work");
     await waitFor(() => expect(sent("fonn", "Work")).toBe(true));
+    // And the page re-reads its own copy of the sweep, or the Models tabs keep
+    // the old name until Settings is closed and reopened.
+    await waitFor(() =>
+      expect(invoked.mock.calls.filter(([cmd]) => cmd === "agent_health").length).toBeGreaterThan(1),
+    );
   });
 
   it("renames the login the user already had, and sends nothing for an unchanged name", async () => {
