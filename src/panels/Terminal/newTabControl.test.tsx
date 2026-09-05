@@ -161,6 +161,7 @@ const { default: PaneView } = await import("../../tabs/PaneView");
 const { agents } = await import("../../utils/agents");
 const { refreshAgentHealth } = await import("../../utils/agentHealth");
 const { forgetProfileEnvs } = await import("../../utils/profileEnv");
+const { shellsSelection } = await import("../../utils/features");
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -313,6 +314,18 @@ describe("the launch control", () => {
     // on the tab, so asking for it at all is what says the account arrived.
     await waitFor(() => expect(bridge.invoked).toContain("profile_spawn_env"));
     await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(1));
+  });
+
+  // Shells is not a branch: nothing to launch an agent or a shell in, and no
+  // session history to browse. The strip is bare rather than a row of greyed
+  // controls that can never come back on while you are there.
+  it("draws no launch control and no session history in Shells", async () => {
+    await mountLoaded(shellsSelection());
+    expect(screen.getByRole("tablist")).toBeTruthy();
+    expect(screen.queryByLabelText("Launch an agent session")).toBeNull();
+    expect(screen.queryByLabelText(/^New chat/)).toBeNull();
+    expect(screen.queryByLabelText("Session history")).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Terminal" })).toBeNull();
   });
 });
 

@@ -68,9 +68,12 @@ vi.mock("../utils/chatSessions", () => ({
 }));
 
 const { default: Terminal } = await import("../panels/Terminal/Terminal");
-const { open, setOpen, focusTab } = await import("../panels/Terminal/terminalTabStore");
+const { open, setOpen, focusTab, activeWorkspace } = await import("../panels/Terminal/terminalTabStore");
 const { ensureEnvelope, resetPaneLayoutModel, seedOnePane } = await import("../layout/layoutStore");
 const { resetTabPlacement } = await import("../layout/tabPlacement");
+const { ensureShellsWorkspace, shellsPane } = await import("../layout/shellsWorkspace");
+const { paneTabs } = await import("./paneTabs");
+const { SHELLS_KEY } = await import("../utils/features");
 type OpenTerm = import("../panels/Terminal/terminalTabStore").OpenTerm;
 type Selection = import("../panels/LeftSidebar/LeftSidebar").Selection;
 
@@ -185,5 +188,24 @@ describe("workspace-scoped active", () => {
       expect(bridge.log.filter((l) => l.startsWith("sh:1") || l.startsWith("sh:3"))).toHaveLength(0),
     );
     expect(activeIds()).toEqual(["sh:3"]);
+  });
+
+  // adr_jobs_leave_the_tab_model, restated for the key that replaced "no
+  // workspace at all": a Shells tab is keyed on `shells:`, so it can neither
+  // join a branch unit's pane nor move the active workspace off that unit.
+  it("a shells: tab never joins, and never hides, a branch unit's strip", async () => {
+    render(() => <Terminal selected={selection} onOpenChange={() => {}} />);
+    visit(tab("sh:1", WS1));
+    await waitFor(() => expect(activeIds()).toEqual(["sh:1"]));
+    const before = paneTabs(WS1, "main").map((t) => t.id);
+    expect(before).toEqual(["sh:1"]);
+
+    ensureShellsWorkspace();
+    setOpen([...open(), tab("cmd:1", SHELLS_KEY, "command")]);
+    await waitFor(() => expect(paneTabs(SHELLS_KEY, shellsPane()!).map((t) => t.id)).toEqual(["cmd:1"]));
+
+    expect(paneTabs(WS1, "main").map((t) => t.id)).toEqual(before);
+    expect(activeWorkspace()).toBe(WS1);
+    expect(activeIds()).toEqual(["sh:1"]);
   });
 });

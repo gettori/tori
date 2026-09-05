@@ -149,7 +149,7 @@ import {
   type FsChanged,
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
-import { rootOf, selectionRoot, workspaceKey } from "../../utils/features";
+import { isShellsKey, rootOf, selectionRoot, workspaceKey } from "../../utils/features";
 import { createFeatureMembers, focusMemberRoot, memberFor, type TintedMember } from "../../utils/featureMembers";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
@@ -384,7 +384,10 @@ export default function Editor(props: {
   // The tab model lives in editorTabStore (module-level, phase 4 composes it);
   // the reset keeps its lifetime tied to this panel exactly as before.
   resetEditorTabModel();
-  const filetreeOn = () => props.showFiletree ?? true;
+  // Off in Shells whatever the flag says: there is no folder to draw a tree of,
+  // and the flag itself is left alone so it is back the moment a folder is.
+  const inShells = () => isShellsKey(workspaceKey(props.selected));
+  const filetreeOn = () => (props.showFiletree ?? true) && !inShells();
   // The file-tree show/hide button lives where the tree currently is: in the
   // right panel's own tab strip (right-aligned) while the tree is shown, and in
   // the editor tab bar (its only remaining home) once the tree is hidden.
@@ -2300,7 +2303,7 @@ export default function Editor(props: {
   // is about the window rather than about a tab, and it is also the one button
   // whose whole job is to be findable when the thing it opens is not on screen.
   const editorFiletreeReveal = () => (
-    <Show when={props.onToggleFiletree && !filetreeOn()}>{filetreeToggleBtn(false)}</Show>
+    <Show when={props.onToggleFiletree && !filetreeOn() && !inShells()}>{filetreeToggleBtn(false)}</Show>
   );
 
   // Where each column's CodeMirror view goes. Elements rather than ids, so the

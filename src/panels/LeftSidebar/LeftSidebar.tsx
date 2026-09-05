@@ -229,7 +229,8 @@ type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
 
 export type Selection = {
   // Absent means "unit": a selection persisted before Features carried no kind.
-  kind?: "unit" | "feature";
+  // "shells" is Sway's own command tabs: no folder behind it, `folderPath` is "".
+  kind?: "unit" | "feature" | "shells";
   featureId?: string;
   featureName?: string;
   // Present members' folders in order, and the one the editor, git and a spawn

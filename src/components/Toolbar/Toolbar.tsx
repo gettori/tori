@@ -23,6 +23,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
   const sel = () => props.selected;
   const isSession = () => !!sel()?.sessionId;
   const isFeature = () => sel()?.kind === "feature";
+  const isShells = () => sel()?.kind === "shells";
   const featureId = () => (isFeature() ? (sel()?.featureId ?? null) : null);
 
   // The Selection carries only the present roots; badges need every member, so
@@ -72,11 +73,19 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
               when={isFeature()}
               fallback={
                 <nav class={styles.tbCrumb} aria-label="location">
-                  <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
-                  <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                  <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
-                  <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                  <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>
+                  {/* Shells has no space and no branch: one crumb, not two
+                      empty ones around a separator. */}
+                  <Show when={!isShells()}>
+                    <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
+                    <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
+                  </Show>
+                  <span class={styles.crumb} classList={{ dim: !isShells(), [styles.leaf]: isShells() }}>
+                    {sel()!.projectName}
+                  </span>
+                  <Show when={!isShells()}>
+                    <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
+                    <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>
+                  </Show>
                 </nav>
               }
             >
@@ -133,24 +142,27 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
             </Show>
           </div>
 
-          <div class={styles.tbActions}>
-            <Button
-              size="sm"
-              onClick={() => openGhostty(isSession())}
-              tooltip={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
-              aria-label={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
-              icon={<Icon icon={SquareTerminal} class={styles.tbAppIco} />}
-              iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
-            />
-            <Button
-              size="sm"
-              onClick={openVSCode}
-              tooltip="Open in VSCode"
-              aria-label="Open in VSCode"
-              icon={<Icon icon={Code2} class={styles.tbAppIco} />}
-              iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
-            />
-          </div>
+          {/* Both hand-offs need a folder to open; Shells has none to give. */}
+          <Show when={!isShells()}>
+            <div class={styles.tbActions}>
+              <Button
+                size="sm"
+                onClick={() => openGhostty(isSession())}
+                tooltip={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
+                aria-label={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
+                icon={<Icon icon={SquareTerminal} class={styles.tbAppIco} />}
+                iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
+              />
+              <Button
+                size="sm"
+                onClick={openVSCode}
+                tooltip="Open in VSCode"
+                aria-label="Open in VSCode"
+                icon={<Icon icon={Code2} class={styles.tbAppIco} />}
+                iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
+              />
+            </div>
+          </Show>
         </div>
 
         <Show when={err()}><div class={styles.tbErr}>{err()}</div></Show>
