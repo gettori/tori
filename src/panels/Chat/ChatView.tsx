@@ -85,7 +85,7 @@ import {
   type CatalogModel,
 } from "../../utils/modelCatalog";
 import { findAdapter } from "../../utils/agents";
-import { agentVersion, profileLabel } from "../../utils/agentHealth";
+import { agentVersion, asProfileId, namedProfiles, profileLabel } from "../../utils/agentHealth";
 import { revealTarget } from "../../utils/agentLines";
 import { attachmentSources, chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
 import { providerMarkKey } from "../../components/Icon/ProviderIcon";
@@ -876,12 +876,20 @@ export default function ChatView(props: {
    * the last one actually used, whichever way the tab was opened. The picks only
    * go down when this tab made them, since a resumed session's model is the one
    * the conversation already had rather than a choice made now.
+   *
+   * The account goes down beside the agent and on the same rule, because it is
+   * the same kind of fact: what this project last ran as. Written in the stored
+   * spelling, where the default account is a value rather than a silence, and
+   * only for an agent that has two accounts to tell apart: recorded on a
+   * one-account install, "the default account" would later outrank a Settings
+   * default the user set after adding their second login.
    */
   createEffect(() => {
     if (remembered || !canSend()) return;
     remembered = true;
     rememberChatPrefs(props.workspace, {
       agent: props.agentId,
+      ...(namedProfiles(props.agentId).length ? { profile: asProfileId(props.profile) } : {}),
       ...(opening.model !== null ? { model: opening.model, effort: opening.effort } : {}),
       ...(opening.mode !== null ? { mode: opening.mode } : {}),
     });

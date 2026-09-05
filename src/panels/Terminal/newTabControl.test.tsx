@@ -48,7 +48,18 @@ const bridge = vi.hoisted(() => ({
   invoked: [] as string[],
   listeners: new Map<string, (e: { payload: unknown }) => void>(),
   /** This project's remembered chat picks, as the settings store would answer. */
-  prefs: {} as { agent?: string | null },
+  prefs: {} as { agent?: string | null; profile?: string | null },
+  /** The per-agent Settings default, the layer under the project's memory. */
+  defaultProfiles: {} as Record<string, string>,
+  /** Every call with its arguments, for the ones whose *account* is the point
+   *  rather than the fact that they happened. */
+  calls: [] as { cmd: string; args?: Record<string, unknown> }[],
+  /** What a spawn wrote back as this project's memory. */
+  remembered: [] as { path: string; prefs: Record<string, unknown> }[],
+  /** The keys that memory was looked up under. A Feature spells its workspace
+   *  and its active root differently, so which one is asked is the whole of
+   *  whether a lock is read back where it was written. */
+  prefsAsked: [] as string[],
   /** Which agents this install offers. Every launch route asks before it offers
    *  a row, so a bench with nothing enabled has no chat to open at all. */
   enabled: {} as Record<string, boolean>,
@@ -61,20 +72,30 @@ vi.mock("../Settings/settingsStore", async (orig) => {
   const actual = await orig<typeof import("../Settings/settingsStore")>();
   return {
     ...actual,
-    chatPrefs: () => bridge.prefs,
+    chatPrefs: (path: string) => {
+      bridge.prefsAsked.push(path);
+      return bridge.prefs;
+    },
     // A getter, because this factory runs once at module load and the enabled
     // map is set per test: spreading it here would freeze the first bench's
     // answer into every later one.
     get settings() {
-      return { ...actual.settings, agent: { enabled: bridge.enabled } };
+      return {
+        ...actual.settings,
+        agent: { enabled: bridge.enabled, defaultProfiles: bridge.defaultProfiles },
+      };
+    },
+    rememberChatPrefs: (path: string, prefs: Record<string, unknown>) => {
+      bridge.remembered.push({ path, prefs });
     },
     settingsLoaded: () => true,
   };
 });
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (cmd: string) => {
+  invoke: (cmd: string, args?: Record<string, unknown>) => {
     bridge.invoked.push(cmd);
+    bridge.calls.push({ cmd, args });
     if (cmd === "list_agents") return Promise.resolve(ADAPTERS);
     if (cmd === "list_sessions") return Promise.resolve([]);
     if (cmd === "sessions_running") return Promise.resolve([]);
@@ -130,13 +151,16 @@ vi.mock("./TerminalView", () => ({
 }));
 vi.mock("../Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }));
 vi.mock("../Chat/ChatDraft", () => ({
-  default: (props: { agentId: string }) => <div data-testid="draft" data-agent={props.agentId} />,
+  default: (props: { agentId: string; profile: string | null }) => (
+    <div data-testid="draft" data-agent={props.agentId} data-profile={props.profile ?? ""} />
+  ),
 }));
 
 const { default: Terminal } = await import("./Terminal");
 const { default: PaneView } = await import("../../tabs/PaneView");
 const { agents } = await import("../../utils/agents");
 const { refreshAgentHealth } = await import("../../utils/agentHealth");
+const { forgetProfileEnvs } = await import("../../utils/profileEnv");
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -155,15 +179,25 @@ const branchSelection = {
   projectKind: "plain",
 };
 
-function mount() {
+function mount(selected: unknown = branchSelection) {
   return render(() => (
     <>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <Terminal selected={branchSelection as any} onOpenChange={() => {}} />
+      <Terminal selected={selected as any} onOpenChange={() => {}} />
       <PaneView pinKind="shell" />
     </>
   ));
 }
+
+/** A Feature: the one selection whose workspace key and whose folder are
+ *  different strings. */
+const featureSelection = {
+  ...branchSelection,
+  kind: "feature",
+  featureId: "f1",
+  activeRoot: `${REPO}/.sway/worktrees/f1`,
+  roots: [`${REPO}/.sway/worktrees/f1`],
+};
 
 /** Open the launch menu and pick one of its rows by name. */
 async function menuItem(name: string) {
@@ -173,10 +207,17 @@ async function menuItem(name: string) {
 
 beforeEach(() => {
   bridge.invoked.length = 0;
+  bridge.calls.length = 0;
+  bridge.remembered.length = 0;
+  bridge.prefsAsked.length = 0;
   bridge.listeners.clear();
   bridge.prefs = {};
+  bridge.defaultProfiles = {};
   bridge.enabled = { claude: true, codex: true };
   bridge.profiles = [];
+  // The spawn env is memoized per (agent, account), so one test resolving fonn
+  // would spare the next one the call this file reads the account off.
+  forgetProfileEnvs();
   localStorage.clear();
 });
 
@@ -185,9 +226,9 @@ beforeEach(() => {
  *  The sweep is re-read first because its store is module state with a
  *  once-per-run latch: without this, whichever accounts the *first* test in the
  *  file mounted with would answer for every test after it. */
-async function mountLoaded() {
+async function mountLoaded(selected: unknown = branchSelection) {
   await refreshAgentHealth();
-  const r = mount();
+  const r = mount(selected);
   await waitFor(() => expect(agents()).toHaveLength(ADAPTERS.length));
   return r;
 }
@@ -303,5 +344,147 @@ describe("which harness a new draft opens on", () => {
 
     const draft = await screen.findByTestId("draft");
     expect(draft.dataset.agent).toBe("claude");
+  });
+});
+
+// And on which account, which is the same question one layer down: a model
+// belongs to an account, so a draft that opened on the right agent and the
+// wrong login would offer a list the send cannot run.
+describe("which account a new session opens on", () => {
+  const TWO = [
+    { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
+    { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+  ];
+
+  it("is the one this project last used", async () => {
+    bridge.profiles = TWO;
+    bridge.prefs = { agent: "claude", profile: "fonn" };
+    await mountLoaded();
+    fireEvent.click(screen.getByLabelText("New chat in repo"));
+
+    const draft = await screen.findByTestId("draft");
+    expect(draft.dataset.profile).toBe("fonn");
+  });
+
+  // The agent tab reads the same memory: it runs as an account the way a chat
+  // does, and a terminal that ignored the project's answer would be a second
+  // rule for one question.
+  it("is that account for the next agent tab too", async () => {
+    bridge.profiles = TWO;
+    bridge.prefs = { agent: "claude", profile: "fonn" };
+    await mountLoaded();
+    await menuItem("Claude (yolo)");
+
+    await waitFor(() =>
+      expect(
+        bridge.calls.some(
+          ({ cmd, args }) => cmd === "profile_spawn_env" && args?.profileId === "fonn",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("is this agent's Settings default for a project that has never chatted", async () => {
+    bridge.profiles = TWO;
+    bridge.defaultProfiles = { claude: "fonn" };
+    await mountLoaded();
+    fireEvent.click(screen.getByLabelText("New chat in repo"));
+
+    const draft = await screen.findByTestId("draft");
+    expect(draft.dataset.profile).toBe("fonn");
+  });
+
+  // The project's own answer wins, including when that answer is the login the
+  // user already had: the two are told apart on disk for exactly this case.
+  it("keeps a project on the inherited login over the Settings default", async () => {
+    bridge.profiles = TWO;
+    bridge.defaultProfiles = { claude: "fonn" };
+    bridge.prefs = { agent: "claude", profile: "default" };
+    await mountLoaded();
+    fireEvent.click(screen.getByLabelText("New chat in repo"));
+
+    const draft = await screen.findByTestId("draft");
+    expect(draft.dataset.profile).toBe("");
+  });
+
+  // Removing an account leaves every project that named it pointing at nothing.
+  // The draft falls through to the layer below rather than opening on an id no
+  // home answers to.
+  it("falls back when the remembered account is gone", async () => {
+    bridge.profiles = TWO;
+    bridge.prefs = { agent: "claude", profile: "removed-since" };
+    await mountLoaded();
+    fireEvent.click(screen.getByLabelText("New chat in repo"));
+
+    const draft = await screen.findByTestId("draft");
+    expect(draft.dataset.profile).toBe("");
+  });
+
+  // An install with one login says nothing about accounts anywhere else, and
+  // this is the same rule at the spawn boundary: no account, no env.
+  it("names no account on an install with one login", async () => {
+    bridge.prefs = { agent: "claude", profile: "default" };
+    await mountLoaded();
+    fireEvent.click(screen.getByLabelText("New chat in repo"));
+
+    const draft = await screen.findByTestId("draft");
+    expect(draft.dataset.profile).toBe("");
+  });
+});
+
+// The other half of the memory: a spawn writes what the next one reads. An
+// agent tab records only the account, never the agent - which agent a project
+// uses is what locking a chat answers, and a terminal opened beside one should
+// not move it.
+describe("what an agent tab remembers", () => {
+  it("records the account it started on", async () => {
+    bridge.profiles = [
+      { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
+      { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+    ];
+    await mountLoaded();
+    await menuItem("Claude (Fonn, terminal)");
+
+    await waitFor(() => expect(bridge.remembered).toHaveLength(1));
+    expect(bridge.remembered[0].prefs).toEqual({ profile: "fonn" });
+    expect(bridge.remembered[0].prefs).not.toHaveProperty("agent");
+  });
+
+  // One slot per project, so an agent with nothing to tell apart must not
+  // answer in it: "the default account" from a codex tab would be read back as
+  // claude's answer and move the project off the login it had chosen.
+  it("says nothing for an agent with one account", async () => {
+    await mountLoaded();
+    await menuItem("Claude (terminal)");
+
+    await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(1));
+    expect(bridge.remembered).toEqual([]);
+  });
+});
+
+// A Feature is the one workspace whose key and whose folder are different
+// strings, so it is the only place "read it back where it was written" can be
+// wrong. A chat lock has only the tab's workspace to write under, so that is
+// the key every reader asks.
+describe("where a project's memory is kept", () => {
+  it("reads a Feature's under its workspace key, not its active root", async () => {
+    await mountLoaded(featureSelection);
+    fireEvent.click(screen.getByLabelText("New chat in repo"));
+
+    await screen.findByTestId("draft");
+    expect(bridge.prefsAsked).toContain("feature:f1");
+    expect(bridge.prefsAsked).not.toContain(`${REPO}/.sway/worktrees/f1`);
+  });
+
+  it("writes an agent tab's under the same key", async () => {
+    bridge.profiles = [
+      { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
+      { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
+    ];
+    await mountLoaded(featureSelection);
+    await menuItem("Claude (Fonn, terminal)");
+
+    await waitFor(() => expect(bridge.remembered).toHaveLength(1));
+    expect(bridge.remembered[0].path).toBe("feature:f1");
   });
 });

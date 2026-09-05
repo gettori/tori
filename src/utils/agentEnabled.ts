@@ -10,7 +10,14 @@
 // work, so the honest starting set is empty and the user adds to it from
 // Settings > Agents.
 import { agents, chatCapable, findAdapter, type Adapter } from "./agents";
-import { agentHealthFor, agentReady, profileSignedOut } from "./agentHealth";
+import {
+  agentHealthFor,
+  agentReady,
+  asProfileId,
+  asTabProfile,
+  knownProfile,
+  profileSignedOut,
+} from "./agentHealth";
 import { saveSettings, settings, settingsLoaded } from "../panels/Settings/settingsStore";
 
 /** The stored answer alone, with no health folded in. */
@@ -118,4 +125,45 @@ export function draftChatAgent(preferred: string | null | undefined): string | n
   const offered = enabledChatAgents();
   if (preferred && offered.some((a) => a.id === preferred)) return preferred;
   return offered[0]?.id ?? null;
+}
+
+/**
+ * The account a new session of this agent starts on, in the tab model's
+ * spelling.
+ *
+ * Three layers, in the order the plan settled on: what this project last used,
+ * this agent's Settings default, and the login the user already had. Each
+ * remembered id is checked rather than trusted, the way `draftChatAgent` checks
+ * an agent, because an account can be removed while a project still names it.
+ *
+ * `remembered` arrives in the **stored** spelling, where the default account is
+ * the literal `"default"`. A `??` chain would be wrong here: `knownProfile`
+ * answers `null` for the default account, and falling through that would let
+ * the Settings default overrule a project that had chosen it.
+ */
+export function draftChatProfile(agentId: string, remembered?: string | null): string | null {
+  const project = knownProfile(agentId, remembered);
+  if (project !== undefined) return project;
+  return knownProfile(agentId, settings.agent?.defaultProfiles?.[agentId]) ?? null;
+}
+
+/** The account this agent's new sessions start on absent a project's own
+ *  memory, in the backend's spelling. */
+export function defaultProfile(agentId: string): string {
+  return settings.agent?.defaultProfiles?.[agentId] ?? asProfileId(null);
+}
+
+/**
+ * Set which account this agent's new sessions start on.
+ *
+ * The default account **deletes** the entry rather than storing `"default"`,
+ * the same way turning an agent off deletes its key: absent and `"default"` are
+ * one answer, and a stored one would also outlive an install that later has
+ * only the one account.
+ */
+export function setDefaultProfile(agentId: string, profileId: string): void {
+  const defaultProfiles = { ...(settings.agent?.defaultProfiles ?? {}) };
+  if (asTabProfile(profileId)) defaultProfiles[agentId] = profileId;
+  else delete defaultProfiles[agentId];
+  void saveSettings({ ...settings, agent: { ...settings.agent, defaultProfiles } }).catch(() => {});
 }

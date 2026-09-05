@@ -832,6 +832,10 @@ pub async fn remove_agent_account(
     // The catalogue is this account's answer, so it goes with the account. Left
     // behind, it would be handed to the next profile minted under the same id.
     crate::catalog_probe::forget(&adapter_id, &profile_id);
+    // Same reasoning for the default: an entry naming a profile that is gone
+    // would make every new session of this agent resolve to nothing, and a
+    // profile later minted under the same id would silently inherit the answer.
+    crate::settings::forget_default_profile(&adapter_id, &profile_id);
     // The home goes last, after the store no longer points at it. The other
     // order leaves a stored profile aimed at a directory that is gone, which
     // reads as a working account right up until a session starts in it.
