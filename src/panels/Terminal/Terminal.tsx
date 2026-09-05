@@ -16,9 +16,13 @@ import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
   onWith,
+  emit,
   emitWith,
   CLOSE_TAB,
   OPEN_TERMINAL,
+  OPEN_JOB,
+  type OpenJob,
+  REVEAL_SHELLS,
   NEW_SESSION,
   PURGE_UNDER_PATH,
   PURGE_WORKSPACE,
@@ -56,10 +60,19 @@ import {
   asTabProfile,
   ensureAgentHealthLoaded,
   namedProfiles,
+  refreshAgentHealth,
   profileLabel,
 } from "../../utils/agentHealth";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
-import { isFeatureKey, isShellsKey, selectionRoot, workspaceFolders, workspaceKey } from "../../utils/features";
+import {
+  isFeatureKey,
+  isShellsKey,
+  selectionRoot,
+  SHELLS_KEY,
+  workspaceFolders,
+  workspaceKey,
+} from "../../utils/features";
+import { commandStatus, dropCommandStatus, reportCommandExit } from "./commandStatus";
 import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
 import {
   agents,
@@ -920,6 +933,7 @@ export default function Terminal(props: {
 
   let offOpenTerminal: (() => void) | undefined;
   let offNewSession: (() => void) | undefined;
+  let offOpenJob: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
   onMount(async () => {
@@ -941,6 +955,7 @@ export default function Terminal(props: {
         ...(t.init ? { init: t.init } : {}),
       });
     });
+    offOpenJob = onWith<OpenJob>(OPEN_JOB, openCommand);
     // Sidebar "New session": matches the "+ Claude" main button (claude, non-yolo).
     // Spawns at the named folder, with no props.selected timing dependency.
     offNewSession = onWith<NewSession>(NEW_SESSION, (s) => {
@@ -997,6 +1012,7 @@ export default function Terminal(props: {
   onCleanup(() => {
     offOpenTerminal?.();
     offNewSession?.();
+    offOpenJob?.();
     unlistenExit?.();
     unlistenSessions?.();
   });
@@ -1010,6 +1026,101 @@ export default function Terminal(props: {
       setOpen([...open(), t]);
     }
     if (focus) focusTab(t.workspace, t.id);
+  }
+
+  // Where the window goes back to when the Shells group empties: the workspace
+  // the most recently opened command tab was started from. One value, not one
+  // per tab, because it is the group that empties, not a tab that closes.
+  const [lastCommandOrigin, setLastCommandOrigin] = createSignal("");
+
+  /**
+   * Sway is running something for you: a clone, a bootstrap, an install, a
+   * sign-in. It opens as a command tab in the Shells workspace.
+   *
+   * The id is the dedupe key it was minted as: pressing Install twice reaches
+   * the install in progress rather than racing two package managers over one
+   * bin directory. `interactive` decides whether the window moves, because
+   * `focusTab` writes `activeWorkspace` and that write is what
+   * [[adr_jobs_leave_the_tab_model]] exists to prevent.
+   */
+  function openCommand(j: OpenJob) {
+    const existing = open().find((o) => o.id === j.id);
+    if (existing) {
+      if (j.interactive) revealShells(existing);
+      return;
+    }
+    // A branch unit's own key, or nothing. A Feature or Shells key is not a
+    // folder, and the only route back into the sidebar takes a folder.
+    const origin = activeWorkspace() ?? "";
+    const bornIn = origin && !isFeatureKey(origin) && !isShellsKey(origin) ? origin : "";
+    // Only a real one overwrites: a second command started from inside Shells
+    // says nothing about where to go back to, and wiping it would strand the
+    // window on an empty group.
+    if (bornIn) setLastCommandOrigin(bornIn);
+    const tab: OpenTerm = {
+      id: j.id,
+      title: j.title,
+      cwd: j.cwd,
+      workspace: SHELLS_KEY,
+      kind: "command",
+      program: j.program,
+      args: j.args,
+      // A command runs as whoever started it; the account it may be signing in
+      // to arrives as `env`, not as a profile of its own.
+      profile: null,
+      ...(j.env ? { env: j.env } : {}),
+      ...(j.rediscoverOnExit ? { rediscoverOnExit: true } : {}),
+      ...(j.recheckAgentsOnExit ? { recheckAgentsOnExit: true } : {}),
+      ...(bornIn ? { bornIn } : {}),
+    };
+    if (j.interactive) revealShells(tab);
+    // Opened where you are not looking. `focusTab` would write
+    // `activeWorkspace`, which is the whole of the bug the ADR is about.
+    else openOrActivate(tab, false);
+  }
+
+  /** Take the window to Shells and put this tab in front of it. */
+  function revealShells(t: OpenTerm) {
+    emit(REVEAL_SHELLS);
+    openOrActivate(t);
+  }
+
+  /**
+   * A command reported how it went.
+   *
+   * First report wins, which is what keeps a replayed escape from re-toasting
+   * or flipping a verdict. A clean run closes its own tab: the toast is the
+   * record, and a receipt you have to dismiss is a chore. Anything else stays
+   * on screen wearing its code, which is the output worth keeping.
+   */
+  function noteCommandExit(t: OpenTerm, code: number) {
+    if (!reportCommandExit(t.id, code)) return;
+    // After the verdict is recorded, so anything watching sees the outcome even
+    // when the tab is about to go.
+    if (t.rediscoverOnExit) invoke("rediscover").catch(() => {});
+    if (t.recheckAgentsOnExit) void refreshAgentHealth();
+    const failed = code !== 0;
+    emitWith<ToastEvent>(TOAST, {
+      message: failed ? `${t.title} failed (exit ${code})` : `${t.title} finished`,
+      kind: failed ? "error" : "info",
+      ...(failed ? { action: { label: "Show", run: () => revealShells(t) } } : {}),
+    });
+    if (!failed) autoCloseCommand(t);
+  }
+
+  /**
+   * Close a command tab that reported success, and hand the window back if that
+   * emptied the group. A hand-closed last tab leaves you where you are: this is
+   * only for the close nobody asked for.
+   */
+  function autoCloseCommand(t: OpenTerm) {
+    const alone = tabsIn(SHELLS_KEY).every((o) => o.id === t.id);
+    closeId(t.id);
+    if (!alone || activeWorkspace() !== SHELLS_KEY) return;
+    const back = lastCommandOrigin();
+    // The sidebar owns the selection and knows what still exists, so it is the
+    // one that decides; a folder that has since gone leaves us put.
+    if (back) emitWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, { folderPath: back });
   }
 
   // A fresh `+Claude` tab carries no sessionId until its transcript
@@ -1773,13 +1884,24 @@ export default function Terminal(props: {
     setOpen(open().filter((o) => o.id !== id));
     if (t) forgetTab(t.workspace, id);
     dropTabState(id);
+    // Or a later tab reusing this id would inherit its verdict: command ids are
+    // minted from what they act on, so `install:claude` comes back.
+    dropCommandStatus(id);
     dropStageHost(id);
   }
 
   function close(id: string, e: Event) {
     e.stopPropagation();
+    // The one kind whose X has to ask. A bootstrap stopped part-way skips its
+    // `|| rm -rf` and leaves a `.bare` stub behind.
+    if (isRunningCommand(id)) return void closeGuarded(id);
     closeId(id);
   }
+
+  const isRunningCommand = (id: string) => {
+    const t = open().find((o) => o.id === id);
+    return !!t && t.kind === "command" && commandStatus(id) === "running";
+  };
 
   // In-app replacement for window.confirm (unimplemented in WKWebView); the
   // same shape the editor panel uses.
@@ -1799,6 +1921,20 @@ export default function Terminal(props: {
   async function closeGuarded(id: string) {
     const t = open().find((o) => o.id === id);
     if (!t) return;
+    // A running command has nothing to resume, so its message says what is lost
+    // rather than what survives: a clone or bootstrap killed half-way leaves the
+    // folder it was making behind ([[gotchas#clone-and-bootstrap-run-in-a-terminal-tab]]).
+    if (isRunningCommand(id)) {
+      const ok = await askConfirm({
+        title: `${tabTitle(t)} is still running.`,
+        message: "Stop it and close the tab? Whatever it had part-made is left as it is.",
+        confirmLabel: "Stop",
+        danger: true,
+      });
+      if (!ok) return;
+      closeId(id);
+      return;
+    }
     const busy = (t.kind === "chat" || t.kind === "agent") && tabStatus(t) === "executing";
     if (busy) {
       const ok = await askConfirm({
@@ -1969,6 +2105,7 @@ export default function Terminal(props: {
         sessionId={term.sessionId}
         active={active()}
         onOwnershipRefused={(refusal) => noteRefusal(term, refusal)}
+        onCommandExit={term.kind === "command" ? (code) => noteCommandExit(term, code) : undefined}
       />
     );
   };

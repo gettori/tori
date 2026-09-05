@@ -223,8 +223,10 @@ export function ownsCwd(cwd: string, folder: string): boolean {
 }
 
 /** Whether a live tab counts as running under a Spaces folder: a unit tab by
- *  its workspace, a Feature tab by where it was spawned. */
+ *  its workspace, a Feature or Shells tab by where it was spawned, since
+ *  neither of those keys is a path. */
 export function tabUnderFolder(tab: { workspace: string; cwd?: string }, folder: string): boolean {
-  if (isFeatureKey(tab.workspace)) return !!tab.cwd && ownsCwd(tab.cwd, folder);
+  if (isFeatureKey(tab.workspace) || isShellsKey(tab.workspace))
+    return !!tab.cwd && ownsCwd(tab.cwd, folder);
   return isUnderPath(tab.workspace, folder);
 }

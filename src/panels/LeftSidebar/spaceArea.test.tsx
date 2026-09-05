@@ -2,7 +2,7 @@
 // space's menu, and a space with nothing in it says so and offers the way out.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
-import { rightClick } from "../../test/menus";
+import { pointerClick, rightClick } from "../../test/menus";
 
 const WORK = "/root/work/proj";
 
@@ -37,6 +37,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(null);
+    if (cmd === "space_delete_preview") return Promise.resolve({ entries: [], sizeBytes: 0 });
     return Promise.resolve(null);
   },
 }));
@@ -62,7 +63,8 @@ const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 
-const mount = () => render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
+const mount = (liveTabs: unknown[] = []) =>
+  render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={liveTabs as never} />);
 const scroller = (container: HTMLElement) => container.querySelector('[class*="treeScroll"]') as HTMLElement;
 
 describe("the space's empty area", () => {
@@ -95,6 +97,32 @@ describe("the space's empty area", () => {
     rightClick(screen.getByText("proj"));
     expect(await screen.findByText("Change icon…")).toBeTruthy();
     expect(screen.queryByText("Delete space")).toBeNull();
+  });
+
+  // A clone into this space is killed by the delete exactly as a shell here is
+  // (PURGE_UNDER_PATH sweeps by cwd), so the confirm has to count it. Its
+  // workspace is `shells:`, which is no path, so only its cwd can place it.
+  it("counts a command running into the space it is about to delete", async () => {
+    const { container } = mount([
+      {
+        id: "clone:1",
+        workspace: "shells:",
+        kind: "command",
+        cwd: `${WORK}/fresh`,
+        title: "Clone repo",
+        state: "live",
+      },
+    ]);
+    await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
+
+    rightClick(scroller(container));
+    pointerClick(await screen.findByText("Delete space"));
+    // The count and its noun are separate text nodes, so this reads the line.
+    await waitFor(() =>
+      expect(
+        [...document.querySelectorAll("span")].some((el) => el.textContent === "1 agent running here"),
+      ).toBe(true),
+    );
   });
 });
 

@@ -668,17 +668,16 @@ export default function LeftSidebar(props: {
     sizeBytes: number | null;
   } | null>(null);
 
-  // Live shell/agent tabs grouped under a folder (prefix match on the tab's
-  // workspace). Command tabs (clone/bootstrap) are transient, so they don't count.
+  // Live tabs grouped under a folder (prefix match on the tab's workspace).
+  // A command tab counts by its cwd: a clone into this space is killed by the
+  // delete exactly as a shell here is, so the confirm has to say so.
   //
   // `state === "live"` is the whole of "live" now. Since lazy restore a tab is
   // no longer proof that anything is running: a restored strip is full of
   // entries with nothing behind them, and counting those would tell the user
   // twelve things are running in a folder where nothing is.
   function liveTabsUnder(path: string): LiveTab[] {
-    return (props.liveTabs ?? []).filter(
-      (t) => t.kind !== "command" && t.state === "live" && tabUnderFolder(t, path),
-    );
+    return (props.liveTabs ?? []).filter((t) => t.state === "live" && tabUnderFolder(t, path));
   }
 
   // How many things are running under `path`: every live shell/agent tab there,
@@ -696,7 +695,7 @@ export default function LeftSidebar(props: {
   // removing the repo still kills it, so the confirm has to count it.
   async function countRunningAgents(path: string): Promise<number> {
     const tabs = (props.liveTabs ?? []).filter(
-      (t) => t.kind !== "command" && t.state === "live" && isUnderPath(t.cwd ?? t.workspace, path),
+      (t) => t.state === "live" && isUnderPath(t.cwd ?? t.workspace, path),
     );
     const tabSessions = new Set(tabs.map((t) => t.sessionId).filter((x): x is string => !!x));
     const nested = await invoke<SessionMeta[]>("list_sessions", { folder: path, inclusive: true }).catch(
@@ -987,9 +986,15 @@ export default function LeftSidebar(props: {
   async function focusFromTerminalTab(d: TerminalTabFocused) {
     if (d.sessionId) {
       await fetchSessions(d.folderPath);
-      if (await selectSessionById(d.sessionId)) return;
+      if (await selectSessionById(d.sessionId)) return leaveShells();
     }
-    selectBranchByFolder(d.folderPath);
+    if (selectBranchByFolder(d.folderPath)) leaveShells();
+  }
+
+  /** The terminal has pointed the selection at a branch unit, and the tree is
+   *  where that reads. Nothing to do outside Shells. */
+  function leaveShells() {
+    if (mode() === "shells") setMode("spaces");
   }
 
   // A History row was acted on. The dropdown has no access to the selection

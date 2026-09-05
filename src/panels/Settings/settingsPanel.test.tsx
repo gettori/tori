@@ -678,10 +678,10 @@ describe("Escape", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  // Two of the panel's buttons (Sign in, Install) start a job, and the panel is
-  // a modal over the workspace: without this the job's drawer would open behind
-  // the still-open overlay, which reads as the button doing nothing.
-  it("closes when something inside it starts a job", () => {
+  // Two of the panel's buttons (Sign in, Install) start a command, and the
+  // panel is a modal over the workspace: without this the command's tab would
+  // open behind the still-open overlay, which reads as the button doing nothing.
+  it("closes when something inside it starts a command", () => {
     const onClose = vi.fn();
     render(() => <Settings onClose={onClose} />);
     emitWith<OpenJob>(OPEN_JOB, {

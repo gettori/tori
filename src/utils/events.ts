@@ -422,12 +422,11 @@ export type OpenTerminal = {
   init?: string;
 };
 
-// Payload-carrying event: run a transient command as a **Job** (clone,
-// bare-worktree bootstrap, agent install/update/uninstall, sign-in). Not a tab.
-// These run at a path that is not a branch unit, so as tabs they grouped under
-// a workspace nothing else was in: they appeared in no strip, and focusing one
-// hid the strip the user was in ([[adr_jobs_leave_the_tab_model]]). A job has
-// no workspace, a tray row, and a drawer of its own.
+// Payload-carrying event: run a transient command Sway starts for you (clone,
+// bare-worktree bootstrap, agent install/update/uninstall, sign-in). Opens a
+// `kind: "command"` tab in the Shells workspace, which is a synthetic key no
+// branch unit's strip is ever on, so it can neither join nor hide one
+// ([[adr_jobs_leave_the_tab_model]]). Consumed by Terminal.tsx.
 export const OPEN_JOB = "sway:open-job";
 export type OpenJob = {
   /** Also the dedupe key: a second start under a live id reveals that job
