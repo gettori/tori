@@ -779,6 +779,10 @@
 /* The Shells list, on the tree's insets like the Feature list beside it. */
 .shellsList {
   padding-inline: var(--tree-inset) var(--tree-gutter);
+  /* Spaces stands its first row off the mode tabs with the space header's block
+     padding, and Features with its own header row. This list has neither, so it
+     buys the same separation directly. */
+  padding-block-start: calc(8px * var(--ui-scale));
 }
 
 .shellsItems {
@@ -790,13 +794,39 @@
   gap: calc(2px * var(--ui-scale));
 }
 
+/* A button, not a plain row: clicking it focuses that tab in the workspace's
+   own strip, which is the only other way to reach one. */
 .shellsRow {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  /* The box a Spaces row has: the height carries the vertical rhythm, so the
+     padding is horizontal only and the two lists read as one column. */
+  height: var(--row-h);
+  padding: 0 calc(8px * var(--ui-scale));
+  border: 0;
   border-radius: var(--sway-radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: var(--sway-text-lg);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--sway-duration-fast) ease;
+}
+
+.shellsRow:hover {
+  background: var(--neutral-hover);
+}
+
+/* The tab on screen, marked the way a selected branch row is: the brand bar
+   down the left edge over the brand tint. */
+.shellsRowOn {
+  background:
+    linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
+      var(--sway-border-thick) calc(15px * var(--ui-scale)) no-repeat,
+    var(--brand-subtle);
 }
 
 .shellsName {
