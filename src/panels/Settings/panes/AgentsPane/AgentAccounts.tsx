@@ -60,6 +60,8 @@ type ConfirmAsk = {
   confirmLabel?: string;
   danger?: boolean;
   removable?: boolean;
+  /** The profile home the answer is about, where there is one to name. */
+  home?: string | null;
 };
 type ConfirmAnswer = { ok: boolean; remove: boolean };
 
@@ -145,6 +147,16 @@ function ProfileRow(props: {
       confirmedWithoutLogout,
     });
 
+  // The default account has no stored home: it is the variable left unset, so
+  // the agent resolves the login the user already had and Sway never names it.
+  const home = () => {
+    const path = p().home;
+    if (!path) return null;
+    return props.cwd.length > 1 && path.startsWith(props.cwd)
+      ? `~${path.slice(props.cwd.length)}`
+      : path;
+  };
+
   const canSignOut = () => p().signIn === "signedIn" && props.view.canSignOut;
   const canRemove = () => !p().isDefault;
 
@@ -199,6 +211,7 @@ function ProfileRow(props: {
             message: `${props.agentLabel} revokes this login. You can sign back in from here.`,
             confirmLabel: "Sign out",
             removable: canRemove(),
+            home: home(),
           }
         : {
             title: `Remove ${p().label}?`,
@@ -206,6 +219,7 @@ function ProfileRow(props: {
               "Sway forgets this account and deletes the profile home it made for it, with the sessions inside.",
             confirmLabel: "Remove",
             danger: true,
+            home: home(),
           },
     );
     if (!answer.ok) return;
@@ -232,7 +246,7 @@ function ProfileRow(props: {
             <button
               type="button"
               class={styles.accountName}
-              title="Rename"
+              title={home() ?? "Your existing login"}
               onClick={() => {
                 abandoned = false;
                 setEditing(true);
@@ -255,9 +269,6 @@ function ProfileRow(props: {
               if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
             }}
           />
-        </Show>
-        <Show when={p().isDefault}>
-          <span class={styles.accountAside}>(your existing login)</span>
         </Show>
         {/* Which account new sessions start on, where there is more than one to
             start on. A radio rather than a switch per row, because the accounts
@@ -502,6 +513,14 @@ export default function AgentAccounts(props: {
                 confirmLabel={req().confirmLabel}
                 danger={req().danger || alsoRemove()}
                 extra={
+                  <>
+                    <Show when={req().home}>
+                      {(path) => (
+                        <div class={styles.hint}>
+                          <code>{path()}</code>
+                        </div>
+                      )}
+                    </Show>
                   <Show when={req().removable}>
                     <Checkbox
                       checked={alsoRemove()}
@@ -517,6 +536,7 @@ export default function AgentAccounts(props: {
                       }
                     />
                   </Show>
+                  </>
                 }
                 onConfirm={() => resolveConfirm(true)}
                 onCancel={() => resolveConfirm(false)}

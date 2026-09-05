@@ -187,10 +187,22 @@ describe("the sign-in state on an agent page", () => {
 describe("the accounts list", () => {
   beforeEach(() => invoked.mockReset());
 
-  it("lists the default profile as the user's existing login", async () => {
-    const { container } = await open(mount());
+  // The row shows the name alone; where the account lives is the name's
+  // tooltip, and the default account has no path to put there.
+  it("names the default profile as the user's existing login", async () => {
+    const { container, getByRole } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
-    expect(container.textContent).toContain("your existing login");
+    expect(getByRole("button", { name: "Default" }).title).toBe("Your existing login");
+  });
+
+  it("puts an added account's profile home in its tooltip", async () => {
+    const { container, getByRole } = await open(mount({
+      accounts: {
+        profiles: [profile({ id: "work", label: "Work", isDefault: false, home: "/home/me/p/work" })],
+      },
+    }));
+    await waitFor(() => expect(container.textContent).toContain("Work"));
+    expect(getByRole("button", { name: "Work" }).title).toBe("~/p/work");
   });
 
   it("shows the account the agent named for a profile", async () => {
@@ -489,7 +501,7 @@ describe("what each account can run", () => {
     const row = container.querySelector(`.${styles.accountRow}`);
     // Asserted first, or the check below is vacuous on a selector that found
     // nothing.
-    expect(row?.textContent).toContain("your existing login");
+    expect(row?.textContent).toContain("Default");
     expect(row?.textContent).not.toContain("model");
   });
 });
@@ -534,7 +546,7 @@ describe("renaming an account", () => {
 
   it("renames the login the user already had, and sends nothing for an unchanged name", async () => {
     const { container, getByRole } = await open(mount());
-    await waitFor(() => expect(container.textContent).toContain("your existing login"));
+    await waitFor(() => expect(container.textContent).toContain("Accounts"));
 
     renameTo(getByRole("button", { name: "Default" }), "Default");
     expect(invoked.mock.calls.some(([cmd]) => cmd === "rename_agent_account")).toBe(false);
