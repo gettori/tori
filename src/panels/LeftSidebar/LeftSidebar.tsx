@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onMount, onCleanup, createEffect, createMemo, on, untrack, type JSX } from "solid-js";
+import { createSignal, For, Index, Show, onMount, onCleanup, createEffect, createMemo, on, untrack, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -27,6 +27,8 @@ import {
   REVEAL_SHELLS,
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
+  FOCUS_SESSION_TAB,
+  type FocusSessionTab,
   OPEN_JOB,
   NEW_SESSION,
   PURGE_UNDER_PATH,
@@ -135,7 +137,7 @@ import {
 import Tooltip from "../../components/Tooltip/Tooltip";
 import SegmentedControl, { type SegmentedOption } from "../../components/SegmentedControl/SegmentedControl";
 import FeatureList from "./FeatureList";
-import { featureKey, featureSelection, shellsSelection, tabUnderFolder, type Feature } from "../../utils/features";
+import { featureKey, featureSelection, isShellsKey, shellsSelection, tabUnderFolder, type Feature } from "../../utils/features";
 import { commandStatus } from "../Terminal/commandStatus";
 import styles from "./LeftSidebar.module.css";
 
@@ -367,15 +369,16 @@ export default function LeftSidebar(props: {
     setSearching(false);
   }
   // Sway's own commands, as they are open right now.
-  const shellsTabs = () => (props.liveTabs ?? []).filter((t) => t.kind === "command");
+  const shellsTabs = () => (props.liveTabs ?? []).filter((t) => isShellsKey(t.workspace));
   const storedMode = loadMode();
-  // A command tab never persists, so a stored Shells mode with nothing running
-  // would restore onto an empty full-window pane. Spaces is what it had before.
+  // A stored Shells mode with nothing in the workspace would restore onto an
+  // empty full-window pane, so Spaces is the fallback. A command never persists;
+  // a shell you opened yourself does, and coming back to it is right.
   const [mode, setMode] = createSignal<SidebarMode>(
     storedMode === "shells" && shellsTabs().length === 0 ? "spaces" : storedMode,
   );
   /** What the filter field is filtering, which is whatever the mode is showing. */
-  const filterNoun = () => (mode() === "features" ? "features" : mode() === "shells" ? "commands" : "projects");
+  const filterNoun = () => (mode() === "features" ? "features" : mode() === "shells" ? "shells" : "projects");
   // The badge counts what is open; the list shows what the filter left.
   const visibleShells = () => {
     const q = query().trim().toLowerCase();
@@ -2821,29 +2824,47 @@ export default function LeftSidebar(props: {
         />
       </Show>
 
-      {/* What Sway is running for you. Informational: the tabs themselves are
-          in the Shells workspace's own strip, which selecting the mode opens. */}
+      {/* What is open in the Shells workspace: what Sway is running for you,
+          plus any shell you opened yourself with the strip's `+`. A row is the
+          same click as its tab in that strip, which is the other way in. */}
       <Show when={mode() === "shells"}>
         <div class={styles.shellsList} data-shells-list>
           <Show
             when={visibleShells().length > 0}
             fallback={
               <div class="tree-empty">
-                <p>{shellsTabs().length ? "No command matches the filter." : "Nothing running."}</p>
+                <p>{shellsTabs().length ? "Nothing matches the filter." : "Nothing running."}</p>
               </div>
             }
           >
             <ul class={styles.shellsItems} data-no-window-drag>
-              <For each={visibleShells()}>
+              {/* `Index`, not `For`: clicking a row changes which tab is on
+                  screen, which re-emits this list as fresh objects, and a `For`
+                  keyed on identity would rebuild the row it just focused. */}
+              <Index each={visibleShells()}>
                 {(t) => (
-                  <li class={styles.shellsRow}>
-                    <span class={styles.shellsName}>{t.title || t.id}</span>
-                    <span class={styles.shellsState} data-state={commandStatus(t.id)}>
-                      {commandStatus(t.id)}
-                    </span>
+                  <li>
+                    <button
+                      type="button"
+                      class={styles.shellsRow}
+                      classList={{ [styles.shellsRowOn]: !!t().active }}
+                      // The row you are looking at, not a pressed toggle: this
+                      // is one of a set and only one of them is showing.
+                      aria-current={t().active ? "true" : undefined}
+                      onClick={() => emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: t().id })}
+                    >
+                      <span class={styles.shellsName}>{t().title || t().id}</span>
+                      {/* Only a command has a verdict to report. A shell you
+                          opened yourself is just open. */}
+                      <Show when={t().kind === "command"}>
+                        <span class={styles.shellsState} data-state={commandStatus(t().id)}>
+                          {commandStatus(t().id)}
+                        </span>
+                      </Show>
+                    </button>
                   </li>
                 )}
-              </For>
+              </Index>
             </ul>
           </Show>
         </div>

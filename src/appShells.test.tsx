@@ -76,18 +76,22 @@ beforeEach(() => {
 });
 
 describe("the shell on the Shells selection", () => {
-  it("seeds the locked Shells pane at startup", () => {
+  // Seeded at startup rather than on first visit, so a command opened from
+  // another workspace has a pane to land in. Unlocked, because the pane holds
+  // both what Sway runs and the shells the strip's `+` opens.
+  it("seeds the Shells pane at startup, taking any terminal kind", () => {
     render(() => <App />);
     expect(layoutRoot(SHELLS_KEY)).toBeTruthy();
-    expect(paneLock(SHELLS_KEY, "main")).toBe("command");
+    expect(paneLock(SHELLS_KEY, "main")).toBeNull();
   });
 
   it("draws one pane, and it is a terminal rather than the editor column", () => {
     const { container } = render(() => <App />);
     const panes = container.querySelectorAll(".work-split .pane");
     expect(panes).toHaveLength(1);
-    // `homePane` hands a kind the first pane when every pane is locked away
-    // from it, so without a guard the one command pane would wear both roles.
+    // `homePane` hands a kind the first pane when nothing else claims it, so
+    // without `filePane()` answering null here the one pane would wear both
+    // roles and the editor would dress a terminal column as its own.
     expect(panes[0].classList.contains("terminal")).toBe(true);
     expect(panes[0].classList.contains("editor")).toBe(false);
   });

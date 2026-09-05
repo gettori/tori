@@ -21,6 +21,9 @@ export type LiveTab = {
   // What the tab calls itself, so the Shells list can name a row without
   // holding a second copy of the tab model.
   title?: string;
+  // The tab on screen, so a list outside the strip can mark which row is the
+  // one you are looking at. Only ever true for the workspace that is showing.
+  active?: boolean;
   sessionId?: string;
   // Agent program for a resumed/spawned agent tab; lets a session-row probe
   // (session_running) pick the right per-agent pgrep pattern.

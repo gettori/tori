@@ -3,7 +3,7 @@
 // moves: `focusTab` writes `activeWorkspace`, and that write is the whole of the
 // bug adr_jobs_leave_the_tab_model exists to prevent.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 const REPO = "/root/work/repo";
 
@@ -101,6 +101,7 @@ function mount() {
 }
 
 const commandTabs = () => open().filter((t) => t.kind === "command");
+const shellTabs = () => open().filter((t) => t.kind === "shell");
 
 beforeEach(() => {
   resetTerminalTabModel();
@@ -153,6 +154,33 @@ describe("a command Sway runs for you", () => {
     await waitFor(() => expect(activeWorkspace()).toBe(SHELLS_KEY));
     expect(revealed).toHaveBeenCalled();
     off();
+  });
+
+  // The one control the strip keeps in Shells. There is no branch behind this
+  // workspace, so the shell it opens has nowhere to be but home.
+  it("opens a shell of your own from the strip's +, at home", async () => {
+    mount();
+    emitWith<OpenJob>(OPEN_JOB, SIGN_IN);
+    await waitFor(() => expect(activeWorkspace()).toBe(SHELLS_KEY));
+
+    fireEvent.click(await screen.findByRole("button", { name: "New shell" }));
+    await waitFor(() => expect(shellTabs()).toHaveLength(1));
+    expect(shellTabs()[0].workspace).toBe(SHELLS_KEY);
+    expect(shellTabs()[0].cwd).toBe("/home/me");
+    // A shell, not a command: nothing reports for it and nothing auto-closes it.
+    expect(shellTabs()[0].kind).toBe("shell");
+  });
+
+  it("offers that + only in Shells, where the rest of the cluster is gone", async () => {
+    mount();
+    await waitFor(() => expect(activeWorkspace()).toBe(REPO));
+    expect(screen.queryByRole("button", { name: "New shell" })).toBeNull();
+
+    emitWith<OpenJob>(OPEN_JOB, SIGN_IN);
+    await waitFor(() => expect(activeWorkspace()).toBe(SHELLS_KEY));
+    expect(await screen.findByRole("button", { name: "New shell" })).toBeTruthy();
+    // The branch-unit cluster stays hidden behind it.
+    expect(screen.queryByRole("button", { name: /Launch an agent session/ })).toBeNull();
   });
 
   // The ADR's original bug, restated for the key that replaced "no workspace at
