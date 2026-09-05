@@ -16,10 +16,12 @@ import { forgetWorkspace as forgetPlacement } from './layout/tabPlacement';
 import LeftSidebar, { type Selection } from './panels/LeftSidebar/LeftSidebar';
 import {
   featureSelection,
+  isShellsKey,
   selectionRoot,
   workspaceKey,
   type Feature,
 } from './utils/features';
+import { ensureShellsWorkspace } from './layout/shellsWorkspace';
 import Terminal from './panels/Terminal/Terminal';
 import Editor from './panels/Editor/Editor';
 import Jobs from './panels/Jobs/Jobs';
@@ -258,6 +260,7 @@ function App() {
   const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
   resetPaneLayoutModel();
   resetTabPlacement();
+  ensureShellsWorkspace();
   // Inside App's own root, so both memos are disposed with it (the module-level
   // concern documented in unifiedTabs.ts); a repeated test mount installs fresh.
   installUnifiedTabsMemo();
@@ -301,7 +304,9 @@ function App() {
   const paneLeaves = () => leaves(env().layout);
   // Where each kind opens, so the shell knows which pane is the editor (chrome
   // and role) and which the terminal, wherever a move has since put them.
-  const filePane = () => homePane(wsKey(), 'file', env().layout);
+  // Null in Shells, where homePane's fallback would dress the command pane as the editor.
+  const filePane = () =>
+    isShellsKey(wsKey()) ? null : homePane(wsKey(), 'file', env().layout);
   const termPane = () => homePane(wsKey(), 'shell', env().layout);
   const tabRefs = (): TabRef[] =>
     unifiedTabs().filter((t) => t.workspace === wsKey());
@@ -785,6 +790,9 @@ function App() {
   }
 
   function toggleFiletree() {
+    // Shells draws no tree, so the flag stays what the user set for when a
+    // folder is back on screen; flipping it here would flip nothing visible.
+    if (isShellsKey(wsKey())) return;
     const next = !showFiletree();
     setShowFiletree(next);
     if (next) revealEditorPane();
@@ -792,6 +800,9 @@ function App() {
   }
 
   function revealRightPanel() {
+    // Same reason as the toggle: Shells has no right panel to reveal, and
+    // writing the flag here would lose what the user set for a folder.
+    if (isShellsKey(wsKey())) return;
     revealEditorPane();
     setShowFiletree(true);
     persistLayout();
