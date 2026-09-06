@@ -35,6 +35,7 @@ const SESSIONS = [
   "tool-output-lines",
   "show-hooks",
   "answer-questions",
+  "attach-long-pastes",
 ];
 
 /** The two option lists, module-level so they are not rebuilt per render. The
@@ -134,6 +135,19 @@ export default function ChatPane(props: PaneProps) {
             checked={settings.chatDefaults.answerQuestionsInline}
             onChange={(answerQuestionsInline) => setChatDefaults({ answerQuestionsInline })}
             aria-label="Answer the agent's questions here"
+          />
+        </Row>
+
+        <Row
+          {...props}
+          id="attach-long-pastes"
+          label="Attach long pastes as files"
+          hint="On, a paste over 30 lines or 3000 characters becomes a file chip the agent reads off disk, and the box stays readable. Off keeps every paste in the box, for when you want to point at a line of it."
+        >
+          <Switch
+            checked={settings.chatDefaults.attachLongPastes}
+            onChange={(attachLongPastes) => setChatDefaults({ attachLongPastes })}
+            aria-label="Attach long pastes as files"
           />
         </Row>
       </Group>

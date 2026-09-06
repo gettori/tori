@@ -2291,6 +2291,15 @@ button.diffHunkHeader:hover {
   padding: 0 calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale));
 }
 
+/* One line under the box, shown only while the caret is inside an open code
+   fence: what Enter does there, and the key that still sends. */
+.composerHint {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+  line-height: 1.3;
+  padding: calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale)) 0;
+}
+
 /* Small print in the composer bar (the draft's blocked reason). */
 .barNote {
   color: var(--fg-subtle);
