@@ -1,0 +1,84 @@
+{
+  "_note": "Captured 2026-09-06 from `codex -s read-only -a never app-server` on codex-cli 0.147.0, signed in to a ChatGPT Plus account. Keys are the JSON-RPC methods and the values are their `result` verbatim, so the durations, the units of `usedPercent` and the nesting are the server's own rather than this repo's guess. The only edit is the email, replaced with an example address: the numbers are what the mapping is pinned against, and the address is not. `usage_probe.rs` reads this file in its tests, and the live `#[ignore]` test re-measures the two `windowDurationMins` values against a real server.",
+  "account/read": {
+    "account": {
+      "type": "chatgpt",
+      "email": "codex-user@example.com",
+      "planType": "plus"
+    },
+    "requiresOpenaiAuth": true
+  },
+  "account/rateLimits/read": {
+    "rateLimits": {
+      "limitId": "codex",
+      "limitName": null,
+      "primary": {
+        "usedPercent": 3,
+        "windowDurationMins": 300,
+        "resetsAt": 1788665968
+      },
+      "secondary": {
+        "usedPercent": 3,
+        "windowDurationMins": 10080,
+        "resetsAt": 1788955629
+      },
+      "credits": {
+        "hasCredits": false,
+        "unlimited": false,
+        "balance": "0"
+      },
+      "individualLimit": null,
+      "spendControlReached": false,
+      "planType": "plus",
+      "rateLimitReachedType": null
+    },
+    "rateLimitsByLimitId": {
+      "codex": {
+        "limitId": "codex",
+        "limitName": null,
+        "primary": {
+          "usedPercent": 3,
+          "windowDurationMins": 300,
+          "resetsAt": 1788665968
+        },
+        "secondary": {
+          "usedPercent": 3,
+          "windowDurationMins": 10080,
+          "resetsAt": 1788955629
+        },
+        "credits": {
+          "hasCredits": false,
+          "unlimited": false,
+          "balance": "0"
+        },
+        "individualLimit": null,
+        "spendControlReached": false,
+        "planType": "plus",
+        "rateLimitReachedType": null
+      }
+    },
+    "rateLimitResetCredits": {
+      "availableCount": 2,
+      "credits": [
+        {
+          "id": "RateLimitResetCredit_0000000000000000000000000000000000",
+          "resetType": "codexRateLimits",
+          "status": "available",
+          "grantedAt": 1788499845,
+          "expiresAt": 1791091845,
+          "title": "Full reset (Weekly + 5 hr)",
+          "description": "Thanks for using Codex! You've been granted one free rate limit reset."
+        },
+        {
+          "id": "RateLimitResetCredit_1111111111111111111111111111111111",
+          "resetType": "codexRateLimits",
+          "status": "available",
+          "grantedAt": 1788565387,
+          "expiresAt": 1791157387,
+          "title": "Full reset (Weekly + 5 hr)",
+          "description": "Thanks for using Codex! You've been granted one free rate limit reset."
+        }
+      ]
+    }
+  }
+}

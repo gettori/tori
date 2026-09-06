@@ -2403,6 +2403,77 @@ mod tests {
         assert!(edit.1.is_some(), "with the prior content addressable as a blob");
     }
 
+    /// Whether Codex can offer the `sessions` rung, which only running it says.
+    ///
+    /// Measured 2026-09-06 on `codex-acp` 1.2.0: it cannot. The wrapper receives
+    /// `account/rateLimits/updated` and answers it with `return null`, so the
+    /// snapshot reaches its own `/status` prose and never the client.
+    #[test]
+    #[ignore = "drives the real `npx @agentclientprotocol/codex-acp`: costs tokens"]
+    fn codex_forwards_no_rate_limits_over_acp() {
+        use super::super::transport::new_sink;
+
+        let adapter = crate::agents::find("codex").expect("codex ships bundled");
+        let chat = adapter.chat.as_ref().expect("with an ACP chat transport");
+        let args =
+            crate::chat::commands::build_args(chat, "live-quota", false, None, None, None, None, &[]);
+
+        let root = std::env::temp_dir()
+            .join(format!("sway-acp-quota-{}", std::process::id()))
+            .join("codex");
+        std::fs::create_dir_all(&root).unwrap();
+        acp_sessions::use_dir_for_tests(root.join("locators"));
+
+        let seen: Arc<Mutex<Vec<ChatEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let collected = seen.clone();
+        let sink = new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev)));
+
+        let mut transport = AcpTransport::new("live-quota", &adapter.id, chat.acp.clone());
+        transport
+            .start(
+                StartSpec {
+                    session_id: "live-quota".to_string(),
+                    cwd: root.to_string_lossy().into_owned(),
+                    program: chat.program.clone(),
+                    args,
+                    env: HashMap::new(),
+                },
+                sink,
+            )
+            .expect("the adapter's launch should start the agent");
+
+        wait_for(&seen, 120, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+        transport
+            .set_mode(PermissionMode::new("read-only"))
+            .expect("staging a mode the agent offered");
+        transport
+            .send(&[ContentBlock::Text {
+                text: "Reply with the single word ok. Use no tools.".to_string(),
+            }])
+            .expect("a prompt goes out");
+
+        let done = wait_for(&seen, 240, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+        });
+        let _ = transport.close();
+
+        // Without this the negative below would pass on an agent that never
+        // answered at all, which measures nothing.
+        assert!(
+            done.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. })),
+            "a real turn ran: {done:?}"
+        );
+        let quota: Vec<&ChatEvent> =
+            done.iter().filter(|e| matches!(e, ChatEvent::RateLimit { .. })).collect();
+        assert!(
+            quota.is_empty(),
+            "codex-acp 1.2.0 forwarded a rate limit after all, so the `sessions` rung is \
+             available to codex.toml and this finding needs rewriting: {quota:?}"
+        );
+    }
+
     /// The symlink case, without a live agent.
     ///
     /// This is the same fact `[[gotchas#ensure_inside returns the caller's

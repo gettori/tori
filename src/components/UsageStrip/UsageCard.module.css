@@ -21,6 +21,9 @@
   .email {
     color: var(--fg-muted);
   }
+  .plan {
+    color: var(--fg-muted);
+  }
 
   .windows {
     display: flex;
@@ -85,6 +88,10 @@
   .breakdown:disabled {
     color: var(--fg-muted);
     cursor: default;
+  }
+
+  .credits {
+    color: var(--fg-muted);
   }
 
   .source {

@@ -37,6 +37,7 @@ describe("detachedCandidates", () => {
     setLiveChat({
       sessionId: "chatted",
       sessionName: "chat",
+      agentId: "claude",
       folderPath: "/work/repo",
       tabId: "chat:1",
       visible: false,

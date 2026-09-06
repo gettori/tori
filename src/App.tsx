@@ -134,6 +134,7 @@ import { chatToStop, liveChats, stoppableChats } from './utils/chatSessions';
 import { rerunLast } from './utils/runTask';
 import { loadUsageStore } from './utils/usageStore';
 import { watchQuotaNotifications } from './utils/usageNotify';
+import { watchUsageProbe } from './utils/usageProbe';
 import Omnibox from './components/Omnibox/Omnibox';
 import ShortcutSheet from './components/ShortcutSheet/ShortcutSheet';
 import { setPinSides } from './layout/pinRules';
@@ -510,6 +511,7 @@ function App() {
     // back with them, which is what stops a restart inside an already-announced
     // window from announcing it again.
     void loadUsageStore().then(watchQuotaNotifications);
+    watchUsageProbe();
     unlistenConfig = await listen('config://changed', () => void resolveFeatureSelection());
   });
   onCleanup(() => unlistenConfig?.());

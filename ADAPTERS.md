@@ -360,7 +360,10 @@ leave.
 - **`sessions`** reads the quota windows the agent already puts on its own
   session events. It costs nothing and needs no extra process. Claude's
   `rate_limit_event` is the one implemented today.
-- **`cli`** runs a bounded read through the agent's own CLI on a schedule.
+- **`cli`** runs a bounded read through the agent's own CLI on a schedule. Codex
+  is the one implemented today: `codex app-server` answers
+  `account/rateLimits/read` with both windows, the plan and the credit balance,
+  and it is Codex's only rung because the ACP wrapper forwards no rate limits.
 - **`token`** reads the account's OAuth token from the OS credential store.
   Always an explicit per-agent opt-in, never a default.
 
