@@ -167,6 +167,7 @@ describe("a blocked agent reaches every surface from a fully collapsed tree", ()
     setLiveChat({
       sessionId: "chat-1",
       sessionName: "a chat",
+      agentId: "claude",
       folderPath: MAIN,
       tabId: "chat-tab",
       status: "waitingForApproval",

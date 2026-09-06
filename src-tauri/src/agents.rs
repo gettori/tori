@@ -2087,20 +2087,25 @@ sources = ["sessions", "token"]
         assert!(err.contains("souces"), "error should name the key: {err}");
     }
 
-    /// Claude is the only rung Phase 1 built a read path for, and Codex's rungs
-    /// wait for the phase that implements them. A bundled adapter declaring a
-    /// rung Sway cannot climb would grey nothing out and answer nothing.
+    /// A rung is declared only once Sway has a read path for it, so this is the
+    /// list of what is built, not of what the agents can do. Codex declares no
+    /// `sessions` because `codex-acp` forwards none: see its own TOML comment.
     #[test]
-    fn only_claude_declares_a_usage_ladder_among_the_bundled_adapters() {
-        let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("claude parses");
-        assert_eq!(
-            claude.usage.expect("claude declares usage").sources,
-            vec![UsageRung::Sessions]
-        );
+    fn a_bundled_adapter_declares_only_the_rungs_sway_can_climb() {
+        let declared = |text: &str, source: &str| {
+            load_adapter_str(text, source).expect("parses").usage.map(|u| u.sources)
+        };
+        assert_eq!(declared(BUILTIN_CLAUDE, "bundled:claude"), Some(vec![UsageRung::Sessions]));
+        assert_eq!(declared(BUILTIN_CODEX, "bundled:codex"), Some(vec![UsageRung::Cli]));
 
-        let codex = load_adapter_str(BUILTIN_CODEX, "bundled:codex").expect("codex parses");
-        assert!(codex.usage.is_none(), "codex declares nothing until its probe exists");
-        assert_eq!(codex.usage_reason.as_deref(), Some("this adapter predates the usage table (schema 4)"));
+        for (source, text) in BUNDLED {
+            if source == "bundled:claude" || source == "bundled:codex" {
+                continue;
+            }
+            let adapter = load_adapter_str(text, source).expect("parses");
+            assert!(adapter.usage.is_none(), "{source} declares a ladder nothing climbs");
+            assert!(adapter.usage_reason.is_some(), "{source} must say why it offers none");
+        }
     }
 
     /// The honest default. An adapter that says nothing about isolation is not

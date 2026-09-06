@@ -174,6 +174,17 @@ describe("the source radio", () => {
     expect((savedUsage()!.claude as { source: string }).source).toBe("off");
   });
 
+  // Codex's shape after Phase 3: one rung, and it is not the first one on the
+  // ladder. What is offered has to follow the adapter rather than the order.
+  it("enables whichever rungs the adapter declared, not the ones above them", async () => {
+    await mount({ usage: { sources: ["cli"] } });
+
+    expect(radio(/^CLI/).disabled).toBe(false);
+    expect(radio(/^CLI/).checked).toBe(true);
+    expect(radio(/^Sessions/).disabled).toBe(true);
+    expect(radio(/^Account token/).disabled).toBe(true);
+  });
+
   it("is refused whole, with the loader's own reason, for an adapter with no ladder", async () => {
     await mount({ usage: null, reason: "this adapter predates the usage table (schema 4)" });
 

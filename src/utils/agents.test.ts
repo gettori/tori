@@ -333,3 +333,32 @@ describe("mode/effort/model arg resolution", () => {
     }
   });
 });
+
+// Which rungs each bundled adapter declares, read off the same generated
+// fixture the fallback is checked against. A rung is declared only in the phase
+// that builds a read path for it, so this list is what Sway can climb today,
+// not what the agents are capable of.
+describe("the bundled usage ladders", () => {
+  const resolved = bundled as unknown as Adapter[];
+
+  it("gives claude the passive rung and codex the read Sway schedules", () => {
+    const ladders = Object.fromEntries(
+      resolved.filter((a) => a.usage).map((a) => [a.id, a.usage!.sources]),
+    );
+    expect(ladders).toEqual({ claude: ["sessions"], codex: ["cli"] });
+  });
+
+  // Codex forwards no rate limits over ACP, so `cli` is first because it is the
+  // only one, and an unanswered install resolves to it rather than to off.
+  it("resolves codex to its first declared rung", () => {
+    const codex = resolved.find((a) => a.id === "codex")!;
+    expect(codex.usage!.sources[0]).toBe("cli");
+    expect(codex.usage_reason ?? null).toBeNull();
+  });
+
+  it("says why for an adapter that offers none, rather than looking like a gap", () => {
+    for (const a of resolved.filter((x) => !x.usage)) {
+      expect(a.usage_reason, `${a.id} must say why it offers no source`).toBeTruthy();
+    }
+  });
+});

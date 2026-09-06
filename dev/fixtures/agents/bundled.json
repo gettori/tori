@@ -229,8 +229,12 @@
       "whoami_kind": "exit_code",
       "supports_isolation": false
     },
-    "usage": null,
-    "usage_reason": "this adapter predates the usage table (schema 4)",
+    "usage": {
+      "sources": [
+        "cli"
+      ]
+    },
+    "usage_reason": null,
     "source": "bundled:codex"
   },
   {

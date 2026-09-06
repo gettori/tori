@@ -44,6 +44,7 @@ mod workspace_settings;
 mod themes;
 mod trace;
 mod update;
+mod usage_probe;
 mod usage_snapshot;
 mod worktree;
 
@@ -207,6 +208,7 @@ pub fn run() {
             usage_snapshot::usage_snapshot_load,
             usage_snapshot::usage_snapshot_save,
             usage_snapshot::usage_history,
+            usage_probe::usage_probe_codex,
             attempts::create_attempt,
             attempts::promote_attempt,
             attempts::list_project_attempts,

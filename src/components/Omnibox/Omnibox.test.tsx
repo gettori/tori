@@ -416,6 +416,7 @@ describe("> - actions", () => {
     setLiveChat({
       sessionId: "chat-1",
       sessionName: "the running chat",
+      agentId: "claude",
       folderPath: REPO,
       tabId: "tab-1",
       status: "executing",
@@ -550,6 +551,7 @@ describe("> - actions", () => {
     setLiveChat({
       sessionId: "chat-1",
       sessionName: "the running chat",
+      agentId: "claude",
       folderPath: REPO,
       tabId: "tab-1",
       status: "waitingForApproval",

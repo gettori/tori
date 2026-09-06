@@ -183,6 +183,7 @@ describe("a live chat blocks a real tree revert", () => {
     setLiveChat({
       sessionId: SESSION,
       sessionName: "chat",
+      agentId: "claude",
       folderPath: REPO,
       tabId: "chat:1",
       visible: false,

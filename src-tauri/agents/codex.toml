@@ -1,4 +1,4 @@
-schema_version = 3
+schema_version = 4
 id = "codex"
 label = "Codex"
 icon = "codex"
@@ -60,6 +60,19 @@ login_args = ["login"]
 logout_args = ["logout"]
 whoami_args = ["login", "status"]
 whoami_kind = "exit_code"
+
+# --- schema v4: usage ---
+#
+# **No `sessions` rung, measured rather than assumed.** The `app-server`
+# underneath does send `account/rateLimits/updated` around a turn, but
+# `codex-acp` 1.2.0 files it into its own state and emits no session update
+# (`acp_transport::tests::codex_forwards_no_rate_limits_over_acp`, 2026-09-06);
+# the only way back out is `/status`, as markdown prose. So Codex's quota costs
+# a read Sway schedules for itself: `usage_probe.rs` drives
+# `codex app-server` for `account/rateLimits/read`, which answers the two
+# windows, the plan and the credit balance in one exchange.
+[usage]
+sources = ["cli"]
 
 [chat]
 transport = "acp"

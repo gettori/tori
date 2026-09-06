@@ -7,6 +7,7 @@ import { agentEnabled } from "../../utils/agentEnabled";
 import { limitTypeLabel, quotaState, type QuotaState } from "../../utils/chatRateLimit";
 import { settings } from "../../panels/Settings/settingsStore";
 import { accountOnStrip, usageDetail, usageSource } from "../../utils/usageSettings";
+import { pollUsage } from "../../utils/usageProbe";
 import {
   accountsWithReadings,
   splitAccountKey,
@@ -247,6 +248,10 @@ export default function UsageStrip() {
 
   const hover = (row: Cluster, anchor: HTMLElement) => {
     stay();
+    // A pointer on a row is somebody reading that number now, so it is the one
+    // moment a scheduled read is worth spawning a process for. Throttled in
+    // `usagePoll`, since crossing the strip fires this on every row.
+    pollUsage(row.agentId, "hover");
     // Already pinned on this account: hovering it again changes nothing, and
     // re-opening would drop the pin.
     if (opened()?.pinned && opened()?.anchor === anchor) return;

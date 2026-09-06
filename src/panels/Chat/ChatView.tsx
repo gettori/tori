@@ -1005,6 +1005,7 @@ export default function ChatView(props: {
     setLiveChat({
       sessionId: props.sessionId,
       sessionName: props.title,
+      agentId: props.agentId,
       folderPath: props.workspace,
       tabId: props.tabId,
       status: chatStatus(state),

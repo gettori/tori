@@ -177,6 +177,7 @@ describe("the two tiers in one list", () => {
     setLiveChat({
       sessionId: "c1",
       sessionName: "the chat",
+      agentId: "claude",
       folderPath: FOLDER,
       tabId: "chat:1",
       visible: false,
@@ -204,6 +205,7 @@ describe("the two tiers in one list", () => {
     setLiveChat({
       sessionId: "c1",
       sessionName: "the chat",
+      agentId: "claude",
       folderPath: FOLDER,
       tabId: "chat:1",
       visible: false,
@@ -269,6 +271,7 @@ describe("the editor's accumulated-diff gate", () => {
     setLiveChat({
       sessionId: "c1",
       sessionName: "the chat",
+      agentId: "claude",
       folderPath: FOLDER,
       tabId: "chat:1",
       visible: true,
@@ -303,6 +306,7 @@ describe("the needs-you notification", () => {
     setLiveChat({
       sessionId,
       sessionName: name,
+      agentId: "claude",
       folderPath: FOLDER,
       tabId: `chat:${sessionId}`,
       visible: false,
@@ -475,6 +479,7 @@ describe("a failing check on the branch a session owns", () => {
     setLiveChat({
       sessionId: "c-budget",
       sessionName: "the stopped chat",
+      agentId: "claude",
       folderPath: FOLDER,
       tabId: "chat:budget",
       visible: false,

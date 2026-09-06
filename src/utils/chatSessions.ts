@@ -16,6 +16,9 @@ import { awaitingUser, type SessionStatus } from "./sessionStatus";
 export type LiveChat = {
   sessionId: string;
   sessionName: string;
+  /** Which adapter is running it. Read by the usage poll, which asks an agent
+   *  for its quota on a background tick only while a chat of its own is open. */
+  agentId: string;
   /** The branch-unit folder the chat tab is grouped under. */
   folderPath: string;
   tabId: string;
