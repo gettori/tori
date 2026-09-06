@@ -191,6 +191,16 @@ describe("limitTypeLabel", () => {
     expect(limitTypeLabel("thirty_minute")).toBe("thirty_minute");
     expect(limitTypeLabel(null)).toBeNull();
   });
+
+  // The account-token rung names these after whichever model the endpoint
+  // scoped the window to, so there is no list to map them against: the suffix is
+  // the model's own name and is titled rather than looked up.
+  it("names a model-scoped weekly window after its model", () => {
+    expect(limitTypeLabel("seven_day_fable")).toBe("7-day (Fable)");
+    expect(limitTypeLabel("seven_day_opus")).toBe("7-day (Opus)");
+    expect(limitTypeLabel("seven_day_oauth_apps")).toBe("7-day (Oauth apps)");
+    expect(limitTypeLabel("extra_usage")).toBe("Extra usage");
+  });
 });
 
 describe("readingsOf", () => {

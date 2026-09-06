@@ -1,0 +1,96 @@
+{
+  "_note": "Captured 2026-09-06 from GET https://api.anthropic.com/api/oauth/usage with an OAuth bearer and anthropic-beta: oauth-2025-04-20, on a Claude Max account. Verbatim apart from this note. What the mapping is pinned against: utilization is 0 to 100 and not 0 to 1, resets_at is an ISO 8601 string with a +00:00 offset and not epoch seconds, every seven_day_* key is null on this account while the model-scoped weekly window arrives in limits[] with its display name, and the codename keys are reported as null rather than omitted. usage_token.rs reads this file in its tests, and the live #[ignore] test re-measures it against the real endpoint.",
+  "five_hour": {
+    "utilization": 7.0,
+    "resets_at": "2026-09-06T09:09:59.694749+00:00",
+    "limit_dollars": null,
+    "used_dollars": null,
+    "remaining_dollars": null,
+    "locked_reason": null
+  },
+  "seven_day": {
+    "utilization": 28.0,
+    "resets_at": "2026-09-07T00:59:59.694765+00:00",
+    "limit_dollars": null,
+    "used_dollars": null,
+    "remaining_dollars": null,
+    "locked_reason": null
+  },
+  "seven_day_oauth_apps": null,
+  "seven_day_opus": null,
+  "seven_day_sonnet": null,
+  "seven_day_cowork": null,
+  "seven_day_omelette": null,
+  "tangelo": null,
+  "iguana_necktie": null,
+  "omelette_promotional": null,
+  "nimbus_quill": {
+    "utilization": 0.0,
+    "resets_at": null,
+    "limit_dollars": null,
+    "used_dollars": null,
+    "remaining_dollars": null,
+    "locked_reason": null
+  },
+  "cinder_cove": null,
+  "copper_kite": null,
+  "amber_ladder": null,
+  "juniper_tide": null,
+  "extra_usage": {
+    "is_enabled": false,
+    "monthly_limit": null,
+    "used_credits": null,
+    "utilization": null,
+    "currency": null,
+    "decimal_places": null,
+    "disabled_reason": null,
+    "user_disabled": true,
+    "spend_limit_reached": false,
+    "credits_ever_enabled": true,
+    "daily": null,
+    "weekly": null
+  },
+  "limits": [
+    {
+      "kind": "session",
+      "group": "session",
+      "percent": 7,
+      "severity": "normal",
+      "resets_at": "2026-09-06T09:09:59.694749+00:00",
+      "scope": null,
+      "is_active": false
+    },
+    {
+      "kind": "weekly_all",
+      "group": "weekly",
+      "percent": 28,
+      "severity": "normal",
+      "resets_at": "2026-09-07T00:59:59.694765+00:00",
+      "scope": null,
+      "is_active": true
+    },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 26,
+      "severity": "normal",
+      "resets_at": "2026-09-07T00:59:59.694916+00:00",
+      "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null },
+      "is_active": false
+    }
+  ],
+  "spend": {
+    "used": { "amount_minor": 0, "currency": "USD", "exponent": 2 },
+    "limit": null,
+    "percent": 0,
+    "severity": "normal",
+    "enabled": false,
+    "disabled_reason": null,
+    "cap": null,
+    "balance": null,
+    "auto_reload": null,
+    "can_purchase_credits": false,
+    "can_toggle": false
+  },
+  "member_dashboard_available": false
+}
