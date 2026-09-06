@@ -269,11 +269,15 @@ describe("an account only the probe can name", () => {
   });
 });
 
-describe("the breakdown link", () => {
-  it("is present and refusing until the 7-day view exists", async () => {
+describe("what the card does not offer", () => {
+  // A 7-day view was built and taken out again (Phase 5): the ring records what
+  // Sway read, the window belongs to the account, and a stretch with Sway shut
+  // has no samples in it while the level goes on moving. Pinned so the link
+  // cannot drift back in without the argument being had again.
+  it("has no breakdown link, because there is no history worth linking to", async () => {
     render(() => <UsageStrip />);
     await hoverOpen();
 
-    expect(screen.getByRole("button", { name: /Breakdown/ })).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("button", { name: /Breakdown/ })).toBeNull();
   });
 });

@@ -81,20 +81,6 @@
     border-top: var(--sway-border-thin) solid var(--border-default);
   }
 
-  .breakdown {
-    padding: 0;
-    border: none;
-    background: none;
-    font: inherit;
-    font-size: var(--sway-text-xs);
-    color: var(--accent-fg);
-    cursor: pointer;
-  }
-  .breakdown:disabled {
-    color: var(--fg-muted);
-    cursor: default;
-  }
-
   .credits {
     color: var(--fg-muted);
   }

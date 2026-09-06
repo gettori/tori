@@ -208,7 +208,6 @@ pub fn run() {
             catalog_probe::refresh_model_catalog,
             usage_snapshot::usage_snapshot_load,
             usage_snapshot::usage_snapshot_save,
-            usage_snapshot::usage_history,
             usage_probe::usage_probe_codex,
             usage_token::usage_token_claude,
             attempts::create_attempt,

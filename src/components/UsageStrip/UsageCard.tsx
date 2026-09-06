@@ -166,18 +166,12 @@ export default function UsageCard(props: {
             label="Notify"
             aria-label={`Notify about ${label()} quota`}
           />
-          <button
-            type="button"
-            class={styles.breakdown}
-            // The 7-day view is Phase 5's. Present and refusing rather than
-            // absent, so the card's shape does not change when it arrives. The
-            // refusal is in the name, not a native tooltip: a disabled control
-            // never fires one, so it would say nothing to anybody.
-            disabled
-            aria-label="Breakdown, not built yet"
-          >
-            Breakdown
-          </button>
+          {/* No breakdown link. A 7-day view was built here and taken out
+              again: the snapshot ring is Sway's record of what *Sway* read, and
+              the window belongs to the account, so a stretch with Sway shut has
+              no samples in it while the level went on moving. The chart's honest
+              state on a real machine was mostly hole. What answers the question
+              is above: the level now, and when it resets. */}
           <Show when={credits()}>{(c) => <span class={styles.credits}>{c()}</span>}</Show>
           <span class={styles.source}>source: {usageSource(props.agentId)}</span>
         </footer>
