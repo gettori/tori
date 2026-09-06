@@ -146,10 +146,16 @@ describe("Toolbar for a Feature", () => {
     expect(onActiveRoot).not.toHaveBeenCalled();
   });
 
-  it("opens Ghostty and VSCode at the active member", async () => {
+  // The two hand-offs moved to the right end of the topbar
+  // (`components/HandOffs`), so the crumb row carries no launch buttons at all
+  // now. Asserted rather than assumed: a crumb that grew one back would put a
+  // second Ghostty button on the bar.
+  it("carries no launch buttons, only the crumb and its chips", async () => {
     render(() => <Toolbar selected={featureSel(B) as never} />);
-    fireEvent.click(screen.getByRole("button", { name: "Open in VSCode" }));
-    await waitFor(() => expect(bridge.calls.find((c) => c.cmd === "open_in_vscode")?.args).toEqual({ path: B }));
+    await waitFor(() => expect(chip("web")).toBeTruthy());
+
+    expect(screen.queryByRole("button", { name: /Ghostty/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /VSCode/ })).toBeNull();
   });
 
   it("keeps the unit crumb as it was and reads no Feature record for it", () => {
@@ -166,7 +172,5 @@ describe("Toolbar for a Feature", () => {
     expect(crumbs()).toEqual(["work", "api", "bugfix-260903"]);
     expect(screen.queryByText(sessionSel.sessionTitle)).toBeNull();
     expect(document.querySelector("nav[aria-label='location'] .claude-icon")).toBeNull();
-    // The launch button still knows a session is open.
-    expect(screen.getByRole("button", { name: "Resume in Ghostty" })).toBeTruthy();
   });
 });
