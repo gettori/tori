@@ -11,21 +11,4 @@
     z-index: 1000;
     pointer-events: none;
   }
-
-  .chip {
-    flex: 0 0 auto;
-    align-self: center;
-    margin-right: var(--sway-space-3);
-    padding: 0 var(--sway-space-2);
-    height: calc(18px * var(--ui-scale));
-    line-height: calc(18px * var(--ui-scale));
-    font-size: var(--sway-text-xs);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--scale-orange);
-    border: var(--sway-border-thin) solid var(--scale-orange);
-    border-radius: var(--sway-radius-pill);
-    user-select: none;
-  }
 }

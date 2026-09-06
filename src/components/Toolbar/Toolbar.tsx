@@ -1,19 +1,22 @@
 import { createSignal, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
-import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
-import { ChevronRight, SquareTerminal, Code2, ArrowUpRight } from "lucide-solid";
-import { memberInitials, selectionRoot } from "../../utils/features";
+import { ChevronRight } from "lucide-solid";
+import { memberInitials } from "../../utils/features";
 import { createFeatureMembers, type TintedMember } from "../../utils/featureMembers";
 import { createDragReorder } from "../../utils/dragReorder";
 import styles from "./Toolbar.module.css";
 
-// Where you are and what to open it with: the breadcrumb to the selected
-// worktree, and the two hand-offs out of the app. The trail ends at the branch:
-// the chat's own tab already wears the agent mark and the session title, and its
-// figures sit in the chat's status strip, beside the conversation they describe.
+// Where you are: the breadcrumb to the selected worktree. The trail ends at the
+// branch, because the chat's own tab already wears the agent mark and the
+// session title, and its figures sit in the chat's status strip beside the
+// conversation they describe.
+//
+// It used to end in the two hand-offs out of the app as well. Those are
+// `components/HandOffs` now, at the right end of the topbar: a crumb is elastic
+// and a button pinned to the end of one is never twice in the same place.
 //
 // For a Feature the crumb is its name and branch, followed by one chip per
 // member: the present ones switch the active root, the rest wear their state.
@@ -21,7 +24,6 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
   const [err, setErr] = createSignal("");
 
   const sel = () => props.selected;
-  const isSession = () => !!sel()?.sessionId;
   const isFeature = () => sel()?.kind === "feature";
   const isShells = () => sel()?.kind === "shells";
   const featureId = () => (isFeature() ? (sel()?.featureId ?? null) : null);
@@ -47,22 +49,9 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
     },
   });
 
-  // A failed launch or reorder belongs to the selection that produced it, so it
-  // leaves with that selection rather than following you to the next one.
+  // A failed reorder belongs to the selection that produced it, so it leaves
+  // with that selection rather than following you to the next one.
   createEffect(on(() => props.selected, () => setErr("")));
-
-  async function openGhostty(resume: boolean) {
-    const s = sel();
-    const cwd = selectionRoot(s);
-    if (!s || !cwd) return;
-    const args = resume && s.sessionId ? ["--resume", s.sessionId] : [];
-    // Anchor on the working folder (the worktree/session dir), not the container.
-    await invoke("open_in_ghostty", { cwd, program: "claude", args }).catch((e) => setErr(String(e)));
-  }
-  async function openVSCode() {
-    const path = selectionRoot(sel());
-    if (path) await invoke("open_in_vscode", { path }).catch((e) => setErr(String(e)));
-  }
 
   return (
     <div class={styles.toolbar}>
@@ -141,28 +130,6 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
               </div>
             </Show>
           </div>
-
-          {/* Both hand-offs need a folder to open; Shells has none to give. */}
-          <Show when={!isShells()}>
-            <div class={styles.tbActions}>
-              <Button
-                size="sm"
-                onClick={() => openGhostty(isSession())}
-                tooltip={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
-                aria-label={isSession() ? "Resume in Ghostty" : "New in Ghostty"}
-                icon={<Icon icon={SquareTerminal} class={styles.tbAppIco} />}
-                iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
-              />
-              <Button
-                size="sm"
-                onClick={openVSCode}
-                tooltip="Open in VSCode"
-                aria-label="Open in VSCode"
-                icon={<Icon icon={Code2} class={styles.tbAppIco} />}
-                iconRight={<Icon icon={ArrowUpRight} class={styles.tbArrow} />}
-              />
-            </div>
-          </Show>
         </div>
 
         <Show when={err()}><div class={styles.tbErr}>{err()}</div></Show>
