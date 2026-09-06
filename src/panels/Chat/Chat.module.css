@@ -2312,6 +2312,22 @@ button.diffHunkHeader:hover {
   padding: 0 calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale));
 }
 
+/* Floats by the transcript selection it offers to quote. Fixed, so it rides
+   above the list's own scroll and clipping. */
+.quoteButton {
+  position: fixed;
+  z-index: 900;
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-pill);
+  background: var(--canvas-card);
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--sway-text-md);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
 /* One line under the box, shown only while the caret is inside an open code
    fence: what Enter does there, and the key that still sends. */
 .composerHint {
@@ -2423,6 +2439,13 @@ button.diffHunkHeader:hover {
   border-radius: var(--sway-radius-pill);
   overflow: hidden;
   background: var(--neutral-subtle);
+}
+
+/* The file behind the chip is gone. The chip stays, since the sentence still
+   names it, and says so in colour and in its controls' names. */
+.attachmentMissing {
+  border-color: var(--danger-emphasis);
+  color: var(--danger-fg);
 }
 
 .attachmentBody {

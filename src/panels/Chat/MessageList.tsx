@@ -231,6 +231,9 @@ export default function MessageList(props: {
   streaming: boolean;
   sessionId: string;
   cwd: string;
+  /** The scrolling root, for a caller that needs to know whether a selection
+   *  sits inside this transcript. */
+  ref?: (el: HTMLDivElement) => void;
   /** Display label for the model that ran a turn, or null when the turn never
    *  named one (replayed history). The header renders the agent name alone
    *  then, rather than blaming an old turn on the current model. */
@@ -501,7 +504,14 @@ export default function MessageList(props: {
   });
 
   return (
-    <div class={styles.list} ref={scroller} onScroll={() => setStuck(atBottom())}>
+    <div
+      class={styles.list}
+      ref={(el) => {
+        scroller = el;
+        props.ref?.(el);
+      }}
+      onScroll={() => setStuck(atBottom())}
+    >
       <Show when={hasEarlier(props.items, limit())}>
         <div class={styles.loadEarlier}>
           <Button size="sm" onClick={() => setLimit(limit() + WINDOW_STEP)}>
