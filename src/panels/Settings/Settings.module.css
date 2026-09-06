@@ -1238,8 +1238,9 @@
     padding: var(--sway-space-6) var(--sway-space-7);
   }
 
-  /* Everything the collapsed card still has to answer, pushed right: what the
-     titlebar carries for this account, how loud it is, and who it is. */
+  /* Who this account is, pushed right. Nothing about what Sway does with it:
+     the quota settings had a summary here and it made the head the busiest row
+     on the screen, so they live on the card that also explains them. */
   .acctSummary {
     margin-left: auto;
     display: flex;
@@ -1247,22 +1248,6 @@
     gap: var(--sway-space-4);
     min-width: 0;
   }
-  .acctDivider {
-    width: var(--sway-border-thin);
-    height: calc(14px * var(--ui-scale));
-    background: var(--border-strong);
-  }
-  .acctWarn {
-    font-size: var(--sway-text-xs);
-    color: var(--fg-muted);
-    font-variant-numeric: tabular-nums;
-  }
-  .acctBell {
-    width: calc(14px * var(--ui-scale));
-    height: calc(14px * var(--ui-scale));
-    color: var(--fg-subtle);
-  }
-
   .acctToggle {
     display: flex;
     align-items: center;
@@ -1327,7 +1312,7 @@
     color: var(--fg-default);
   }
 
-  /* --- The titlebar preview, and the control it doubles as --- */
+  /* --- The titlebar preview control --- */
 
   .chipRow {
     display: flex;
@@ -1340,25 +1325,25 @@
     gap: var(--sway-space-2);
     height: calc(24px * var(--ui-scale));
     padding: 0 var(--sway-space-4);
-    border: var(--sway-border-thin) solid var(--border-strong);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-md);
     background: transparent;
     font: inherit;
     font-size: var(--sway-text-xs);
-    color: var(--fg-muted);
-  }
-  button.chip {
+    color: var(--fg-subtle);
     cursor: pointer;
   }
-  button.chip:hover {
-    border-color: var(--fg-subtle);
+  .chip:hover {
+    border-color: var(--border-strong);
     color: var(--fg-default);
   }
-  /* On the titlebar. The attention role, the same one the strip's own bars
-     wear, so a lit chip and the bar it promises are the same colour. */
+  /* On the titlebar. Filled rather than coloured: the attention role means a
+     limit is close, and a toggle that merely happens to be on must not make
+     the same claim as the bar it turns on. */
   .chipOn {
-    border-color: var(--attention-fg);
-    color: var(--attention-fg);
+    background: var(--neutral-subtle);
+    border-color: var(--border-strong);
+    color: var(--fg-default);
   }
   /* Nothing has answered for this window yet, which on the model chip is the
      state the Keychain permission clears. */
@@ -1475,6 +1460,12 @@
     border: var(--sway-border-thin) solid color-mix(in srgb, var(--danger-fg) 35%, transparent);
     border-radius: var(--sway-radius-lg);
     background: color-mix(in srgb, var(--danger-fg) 6%, transparent);
+  }
+  /* The label on one line. The box is a flex row and the note beside it takes
+     what it likes, which broke "Sign out" over two lines at every width. */
+  .danger button {
+    flex: none;
+    white-space: nowrap;
   }
   .dangerTitle {
     font-size: var(--sway-text-sm);

@@ -1,5 +1,5 @@
 import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
-import { Bell, BellOff, Minus, Plus, RefreshCw } from "lucide-solid";
+import { Minus, Plus, RefreshCw } from "lucide-solid";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import Chevron from "../../../../components/Chevron/Chevron";
@@ -271,18 +271,10 @@ function boxesFor(agentId: string, profile: string | null): Box[] {
   });
 }
 
-/**
- * The titlebar preview, and the control for it.
- *
- * `interactive` is false in the header, where the same chips are a summary of
- * what the card below says. Read-only rather than a second copy of the control:
- * a row of small toggles on a collapsed card is a row you change on the way to
- * the chevron.
- */
+/** The titlebar preview, and the control for it. */
 function WindowChips(props: {
   agentId: string;
   profile: string | null;
-  interactive: boolean;
   onAsk: (chip: WindowChip, on: boolean) => void;
 }) {
   const chips = () => chipsFor(props.agentId, props.profile);
@@ -300,35 +292,20 @@ function WindowChips(props: {
     <div class={styles.chipRow}>
       <For each={chips()}>
         {(c) => (
-          <Show
-            when={props.interactive}
-            fallback={
-              <span
-                class={styles.chip}
-                classList={{ [styles.chipOn]: c.lit, [styles.chipIdle]: locked(c) }}
-              >
-                {c.label}
-                <Show when={locked(c)}>
-                  <span class={styles.chipNa}>n/a</span>
-                </Show>
-              </span>
-            }
+          <Tooltip
+            as="button"
+            type="button"
+            class={styles.chip}
+            classList={{ [styles.chipOn]: c.lit, [styles.chipIdle]: locked(c) }}
+            label={why(c)}
+            aria-pressed={c.lit}
+            onClick={() => props.onAsk(c.id, !c.lit)}
           >
-            <Tooltip
-              as="button"
-              type="button"
-              class={styles.chip}
-              classList={{ [styles.chipOn]: c.lit, [styles.chipIdle]: locked(c) }}
-              label={why(c)}
-              aria-pressed={c.lit}
-              onClick={() => props.onAsk(c.id, !c.lit)}
-            >
-              {c.label}
-              <Show when={locked(c)}>
-                <span class={styles.chipNa}>n/a</span>
-              </Show>
-            </Tooltip>
-          </Show>
+            {c.label}
+            <Show when={locked(c)}>
+              <span class={styles.chipNa}>n/a</span>
+            </Show>
+          </Tooltip>
         )}
       </For>
     </div>
@@ -590,24 +567,10 @@ function AccountCard(props: {
         </Show>
 
         <div class={styles.acctSummary}>
-          {/* What the titlebar carries for this account, and the two settings
-              that decide how loud it gets: a collapsed card still answers "is
-              this one watched, and from where". */}
-          <Show when={reads()}>
-            <WindowChips
-              agentId={props.agentId}
-              profile={tab()}
-              interactive={false}
-              onAsk={askWindow}
-            />
-            <span class={styles.acctDivider} aria-hidden="true" />
-            <span class={styles.acctWarn}>{warnAtLabel(warnAt())}</span>
-            <Icon
-              icon={notify() ? Bell : BellOff}
-              class={styles.acctBell}
-              aria-label={notify() ? "Notifications on" : "Notifications off"}
-            />
-          </Show>
+          {/* Who this account is, and nothing about what Sway does with it. The
+              quota settings all had a summary here and it made the head the
+              busiest row on the screen; they are one press away, on the card
+              that also explains them. */}
           {/* The account the agent named where it named one; its sign-in state
               where it did not. One fact, never both: the email already implies
               signed in. */}
@@ -705,12 +668,7 @@ function AccountCard(props: {
 
             <div class={styles.acctRow}>
               <span class={styles.label}>Titlebar preview</span>
-              <WindowChips
-                agentId={props.agentId}
-                profile={tab()}
-                interactive={true}
-                onAsk={askWindow}
-              />
+              <WindowChips agentId={props.agentId} profile={tab()} onAsk={askWindow} />
             </div>
 
             <div class={styles.acctRow}>
@@ -754,7 +712,6 @@ function AccountCard(props: {
                   two open cards would otherwise offer two buttons called "Sign
                   out" and neither would say whose. */}
               <Button
-                size="sm"
                 variant="danger"
                 aria-label={canSignOut() ? `Sign ${p().label} out` : `Remove ${p().label}`}
                 onClick={() => void act()}
