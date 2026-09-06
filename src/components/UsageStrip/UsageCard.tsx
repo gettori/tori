@@ -6,7 +6,7 @@ import { agentHealthFor, asProfileId, asTabProfile, namedProfiles, profileLabel 
 import { limitTypeLabel, paceOutAt, quotaState, resetsAtMs } from "../../utils/chatRateLimit";
 import { settings } from "../../panels/Settings/settingsStore";
 import { setUsage, usageNotify, usageSource } from "../../utils/usageSettings";
-import { usageIdentity } from "../../utils/usageProbe";
+import { usageIdentity, usageReason } from "../../utils/usageProbe";
 import { temporalOf, windowsFor, type WindowReading } from "../../utils/usageStore";
 import styles from "./UsageCard.module.css";
 
@@ -146,6 +146,12 @@ export default function UsageCard(props: {
             )}
           </For>
         </ul>
+
+        {/* Beside the windows, never instead of them. A rung that cannot answer
+            says why while the readings a cheaper rung filled stay on screen. */}
+        <Show when={usageReason(props.agentId)}>
+          {(why) => <p class={styles.trouble}>{why()}</p>}
+        </Show>
 
         <footer class={styles.foot}>
           <Switch

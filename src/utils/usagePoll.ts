@@ -28,9 +28,9 @@ export const MIN_GAP_MS = 30_000;
 export const BASE_BACKOFF_MS = 60_000;
 export const MAX_BACKOFF_MS = 30 * 60_000;
 
-/** Why a read is being asked for. `hover` is the user pointing at the thing, so
- *  it is the only one that means "somebody is looking at this number now". */
-export type Trigger = "focus" | "hover" | "interval";
+/** Why a read is being asked for. `manual` is the user having just switched the
+ *  source on, which is the one case where the answer has to follow the click. */
+export type Trigger = "focus" | "hover" | "interval" | "manual";
 
 /** One agent's read history, plus whatever is currently blocking it. */
 export type PollClock = {
@@ -62,6 +62,10 @@ export function mayPoll(
   // The background tick is the only one that needs a reason to exist; focus and
   // hover are somebody looking at the strip, and it is on screen either way.
   if (trigger === "interval" && !ctx.chatOpen) return false;
+  // The floor is about storms of events, and a switch being turned on is not
+  // one. Turning the source on has to produce the reading it promises, even a
+  // second after the last one.
+  if (trigger === "manual") return true;
   if (clock.lastPollAt === null) return true;
 
   const since = now - clock.lastPollAt;

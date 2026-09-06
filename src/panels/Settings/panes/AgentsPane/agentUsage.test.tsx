@@ -103,6 +103,10 @@ async function mount(
   invoked.mockReset();
   __resetModelCatalogsForTests();
   stored = structuredClone(PRISTINE) as unknown as Record<string, unknown>;
+  // Claude switched on, which the built-in defaults do not do. The usage block
+  // is reachable either way, but a read is gated on the agent being enabled, so
+  // without this the probe test would pass for the wrong reason.
+  (stored.agent as { enabled: Record<string, boolean> }).enabled = { claude: true };
   writes = [];
   invoked.mockImplementation(async (cmd: string, args?: unknown) => {
     if (cmd === "agent_health" || cmd === "refresh_agent_health") return [health()];
@@ -183,6 +187,31 @@ describe("the source radio", () => {
     expect(radio(/^CLI/).checked).toBe(true);
     expect(radio(/^Sessions/).disabled).toBe(true);
     expect(radio(/^Account token/).disabled).toBe(true);
+  });
+
+  // Claude after Phase 4: the token rung is real, and the copy has to name what
+  // it costs. Measured 2026-09-06: macOS binds the allow to the exact binary, so
+  // an unsigned build asks again after every update.
+  it("says what the account token rung costs before it is switched on", async () => {
+    await mount({ usage: { sources: ["sessions", "token"] } });
+
+    const copy = screen.getByText(/login Keychain/);
+    expect(copy.textContent).toMatch(/macOS will ask/);
+    expect(copy.textContent).toMatch(/until Sway next updates/);
+    expect(radio(/^Account token/).disabled).toBe(false);
+  });
+
+  // The prompt has to follow the click. A read deferred to a background tick
+  // raises a Keychain dialog minutes later, which nobody connects to what they
+  // did in Settings.
+  it("reads immediately when the token rung is switched on, and never while it is off", async () => {
+    await mount({ usage: { sources: ["sessions", "token"] } });
+    expect(invoked.mock.calls.filter(([c]) => c === "usage_token_claude")).toHaveLength(0);
+
+    fireEvent.click(radio(/^Account token/));
+    await waitFor(() =>
+      expect(invoked.mock.calls.filter(([c]) => c === "usage_token_claude")).toHaveLength(1),
+    );
   });
 
   it("is refused whole, with the loader's own reason, for an adapter with no ladder", async () => {

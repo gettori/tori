@@ -68,6 +68,11 @@
     color: var(--attention-fg);
   }
 
+  .trouble {
+    margin: 0 0 var(--sway-space-2);
+    color: var(--attention-fg);
+  }
+
   .foot {
     display: flex;
     align-items: center;

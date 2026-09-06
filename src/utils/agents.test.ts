@@ -341,11 +341,19 @@ describe("mode/effort/model arg resolution", () => {
 describe("the bundled usage ladders", () => {
   const resolved = bundled as unknown as Adapter[];
 
-  it("gives claude the passive rung and codex the read Sway schedules", () => {
+  it("gives claude the free rung then the opt-in one, and codex the read Sway schedules", () => {
     const ladders = Object.fromEntries(
       resolved.filter((a) => a.usage).map((a) => [a.id, a.usage!.sources]),
     );
-    expect(ladders).toEqual({ claude: ["sessions"], codex: ["cli"] });
+    expect(ladders).toEqual({ claude: ["sessions", "token"], codex: ["cli"] });
+  });
+
+  // Declaration order is the ladder's order, and the free rung has to come
+  // first: `sources[0]` is what an account nobody has answered for resolves to,
+  // so a token read would otherwise happen without anybody opting in.
+  it("puts claude's free rung ahead of the one that raises a Keychain prompt", () => {
+    const claude = resolved.find((a) => a.id === "claude")!;
+    expect(claude.usage!.sources[0]).toBe("sessions");
   });
 
   // Codex forwards no rate limits over ACP, so `cli` is first because it is the

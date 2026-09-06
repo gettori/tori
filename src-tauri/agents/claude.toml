@@ -107,14 +107,17 @@ supports_isolation = true
 # Declaration order is the ladder's order, and the first entry is what an agent
 # resolves to when the user has chosen nothing.
 #
-# Only `sessions` today, and that is a statement about Sway rather than about
-# the CLI: `rate_limit_event` already rides the chat transport, so the reading
-# costs nothing and needs no extra process. The `cli` and `token` rungs are
-# declared in the phases that implement their read paths, never ahead of them,
-# so a greyed-out radio here always means "not built yet" rather than "built and
-# broken".
+# `sessions` first because it is free: `rate_limit_event` already rides the chat
+# transport, so the reading costs nothing and needs no extra process, and it is
+# what an account nobody has answered for resolves to.
+#
+# `token` is the deeper rung and the only route to the model-scoped weekly
+# window, which no passive frame carries. It reads this account's own OAuth token
+# out of the login Keychain, so it is never a default: the user turns it on
+# knowing macOS will ask. `cli` stays undeclared because claude has no
+# non-interactive usage command; that gap is the CLI's, not a phase Sway owes.
 [usage]
-sources = ["sessions"]
+sources = ["sessions", "token"]
 
 # --- schema v2: the structured chat transport ---
 #
