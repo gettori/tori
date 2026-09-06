@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   BASE_BACKOFF_MS,
+  MANUAL_GAP_MS,
   MAX_BACKOFF_MS,
   MIN_GAP_MS,
   POLL_INTERVAL_MS,
@@ -86,15 +87,19 @@ describe("switching the source on", () => {
   // The one trigger that is a decision rather than an event. Turning a rung on
   // has to produce the reading it promises, and on the token rung that is also
   // what puts the Keychain prompt next to the click that caused it.
-  it("reads even inside the floor a hover would wait out", () => {
+  it("reads inside the floor a hover would wait out, but not twice in ten seconds", () => {
     const c = clock({ lastPollAt: NOW });
-    expect(mayPoll(c, "hover", NOW + 1, ctx())).toBe(false);
-    expect(mayPoll(c, "manual", NOW + 1, ctx())).toBe(true);
+    expect(mayPoll(c, "hover", NOW + MANUAL_GAP_MS, ctx())).toBe(false);
+    expect(mayPoll(c, "manual", NOW + MANUAL_GAP_MS, ctx())).toBe(true);
+    // A refresh button hammered is the same endpoint asked back to back.
+    expect(mayPoll(c, "manual", NOW + MANUAL_GAP_MS - 1, ctx())).toBe(false);
   });
 
-  it("still does nothing behind a hidden window or a backoff", () => {
+  // A press refused for a backoff has nothing to show why; the answer is what
+  // says it. A hidden window has nobody to show it to.
+  it("runs inside a backoff, and still does nothing behind a hidden window", () => {
+    expect(mayPoll(clock({ blockedUntil: NOW + 1 }), "manual", NOW, ctx())).toBe(true);
     expect(mayPoll(clock(), "manual", NOW, ctx({ visible: false }))).toBe(false);
-    expect(mayPoll(clock({ blockedUntil: NOW + 1 }), "manual", NOW, ctx())).toBe(false);
   });
 });
 
