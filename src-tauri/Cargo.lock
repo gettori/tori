@@ -4042,6 +4042,7 @@ dependencies = [
  "json5",
  "keyring-core",
  "notify",
+ "objc2-foundation",
  "portable-pty",
  "regex",
  "rusqlite",
