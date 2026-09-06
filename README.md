@@ -1,9 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/images/logo-light.svg">
-    <img alt="Sway" src="docs/images/logo-light.svg" width="96" height="96">
-  </picture>
+  <img alt="Sway" src="docs/images/logo.png" width="96" height="96">
 </p>
 
 <h1 align="center">Sway</h1>
