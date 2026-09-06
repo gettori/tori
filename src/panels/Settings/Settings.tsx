@@ -19,6 +19,7 @@ import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { OPEN_JOB, OPEN_TERMINAL, onWith } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import Icon from "../../components/Icon/Icon";
+import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import IconButton from "../../components/IconButton/IconButton";
 import AgentsPane from "./panes/AgentsPane/AgentsPane";
 import AppearancePane from "./panes/AppearancePane/AppearancePane";
@@ -419,50 +420,55 @@ export default function Settings(props: {
                 Roving tabindex and arrow wrap come from Kobalte, so the rail
                 carries no keyboard code of its own; `orientation` on the Root
                 is what makes Up and Down the keys that move it. */}
-              <div
-                ref={railEl}
-                class={styles.rail}
-                role="tablist"
-                aria-orientation="vertical"
-                aria-label="Settings sections"
-                onKeyDown={onRailKeyDown}
-              >
-                <For each={SETTING_TABS}>
-                  {(t, i) => {
-                    const selected = () => !searching() && active() === t.id;
-                    return (
-                      <>
-                        <Show when={i() === 0 || SETTING_TABS[i() - 1].group !== t.group}>
-                          <div class={styles.railGroup}>{t.group}</div>
-                        </Show>
-                        <button
-                          type="button"
-                          role="tab"
-                          id={tabId(t.id)}
-                          class={styles.railItem}
-                          classList={{ [styles.railItemActive]: selected() }}
-                          // On the selected tab only: the attribute is what a
-                          // reader follows to jump into the panel, and while a
-                          // search is running there is no one panel to jump to.
-                          aria-controls={selected() ? paneId(t.id) : undefined}
-                          aria-selected={selected()}
-                          aria-label={tabName(t)}
-                          // Roving tabindex: one stop for the whole rail, so Tab
-                          // steps past it into the pane rather than through six.
-                          tabindex={active() === t.id ? 0 : -1}
-                          onClick={() => openTab(t.id)}
-                        >
-                          <Icon icon={TAB_ICONS[t.icon]} />
-                          <span class={styles.railLabel}>{t.label}</span>
-                          <Show when={railBadge(t.id)}>
-                            {(badge) => <span class={styles.railBadge}>{badge()}</span>}
+              {/* Sway's own bar rather than the platform's, the same one the
+                  sidebar and the models list draw: it floats over the items
+                  instead of taking a gutter out of a 206px column. */}
+              <OverlayScroll class={styles.railScroll}>
+                <div
+                  ref={railEl}
+                  class={styles.rail}
+                  role="tablist"
+                  aria-orientation="vertical"
+                  aria-label="Settings sections"
+                  onKeyDown={onRailKeyDown}
+                >
+                  <For each={SETTING_TABS}>
+                    {(t, i) => {
+                      const selected = () => !searching() && active() === t.id;
+                      return (
+                        <>
+                          <Show when={i() === 0 || SETTING_TABS[i() - 1].group !== t.group}>
+                            <div class={styles.railGroup}>{t.group}</div>
                           </Show>
-                        </button>
-                      </>
-                    );
-                  }}
-                </For>
-              </div>
+                          <button
+                            type="button"
+                            role="tab"
+                            id={tabId(t.id)}
+                            class={styles.railItem}
+                            classList={{ [styles.railItemActive]: selected() }}
+                            // On the selected tab only: the attribute is what a
+                            // reader follows to jump into the panel, and while a
+                            // search is running there is no one panel to jump to.
+                            aria-controls={selected() ? paneId(t.id) : undefined}
+                            aria-selected={selected()}
+                            aria-label={tabName(t)}
+                            // Roving tabindex: one stop for the whole rail, so Tab
+                            // steps past it into the pane rather than through six.
+                            tabindex={active() === t.id ? 0 : -1}
+                            onClick={() => openTab(t.id)}
+                          >
+                            <Icon icon={TAB_ICONS[t.icon]} />
+                            <span class={styles.railLabel}>{t.label}</span>
+                            <Show when={railBadge(t.id)}>
+                              {(badge) => <span class={styles.railBadge}>{badge()}</span>}
+                            </Show>
+                          </button>
+                        </>
+                      );
+                    }}
+                  </For>
+                </div>
+              </OverlayScroll>
 
               {/* Where a change lands, which no row on screen can say. Outside
                   the list rather than inside it: a tablist owns tabs, and a
@@ -486,7 +492,10 @@ export default function Settings(props: {
               </div>
             </div>
 
-            <div class={styles.pane}>
+            {/* The card is the frame and the padding rides the content, so the
+                thumb floats over the gutter the rows already leave rather than
+                narrowing them. */}
+            <OverlayScroll class={styles.pane} contentClass={styles.paneInner}>
               {/* Two greetings: telling somebody with no CLI installed to check
                   what was found points them at a list of misses, which reads as
                   Sway being broken rather than as a step they have not taken. */}
@@ -557,7 +566,7 @@ export default function Settings(props: {
                   </div>
                 )}
               </For>
-            </div>
+            </OverlayScroll>
           </div>
         </div>
       </div>
