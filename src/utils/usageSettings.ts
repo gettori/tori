@@ -1,113 +1,214 @@
-// How deep Sway reads each agent's quota, and how loudly it says so.
+// Which quota windows each account puts in the titlebar, how full is too full
+// for it, and whether it may say so out loud.
 //
-// Two facts again, the shape `agentEnabled` already has: the **adapter** says
-// which rungs of the ladder Sway has a read path for, and the stored answer says
-// which of them the user wants climbed. Every surface asks here rather than
-// reading either half, because neither half alone gives an answer.
+// **Per account, not per agent.** A quota window belongs to a login: two Claude
+// accounts on one machine have two five-hour windows, on two plans, and a
+// per-agent answer could only ever describe one of them.
 //
-// **The absence of an entry is not "off".** An agent nobody has answered for
-// resolves to the first rung its `[usage]` table declares, which today is a
-// passive reading that costs nothing and needs no opt-in; an agent that declares
-// no ladder resolves to `off` because there is nothing to climb. A stored `off`
-// is the user's own no, and no later adapter bump undoes it.
+// **The chips are the whole control.** There is no source ladder any more. Which
+// windows an account shows is also how deep Sway reads for it: nothing lit means
+// nothing is read, the two generic windows come off the rung the adapter offers
+// for free, and the model-scoped weekly window is the one thing only the account
+// token can answer. Lighting that chip is the opt-in, and it is the only one.
+//
+// **The absence of an answer is not "off".** An account nobody has answered for
+// shows the two generic windows, because that reading costs nothing and needs no
+// permission. An empty list is the user's own no, and no later adapter bump
+// undoes it.
 import { findAdapter, type UsageRung } from "./agents";
 import { asProfileId } from "./agentHealth";
+import { scopedModel } from "./chatRateLimit";
+import { catalogFor } from "./modelCatalog";
+import { windowsFor } from "./usageStore";
 import {
   saveSettings,
   settings,
-  type UsageDetail,
-  type UsageSettings,
+  type AccountUsage,
   type UsageSource,
 } from "../panels/Settings/settingsStore";
 
+/**
+ * The three chips, and the one that is not a window kind.
+ *
+ * `model_week` stands for whichever weekly window this account's plan scopes to
+ * a model. It cannot be stored as the kind itself (`seven_day_fable`), because
+ * the name arrives only with the first successful read, and the setting has to
+ * exist before that read to authorise it.
+ */
+export type WindowChip = "five_hour" | "seven_day" | "model_week";
+
+/** What an account shows when nobody has said otherwise: the two windows every
+ *  source reports for free. */
+export const GENERIC_CHIPS: WindowChip[] = ["five_hour", "seven_day"];
+
+const CHIPS: WindowChip[] = [...GENERIC_CHIPS, "model_week"];
+
+/** Which chip governs a window kind. Everything a deep read adds beyond the two
+ *  generic windows arrives on the same rung and is governed together. */
+export function chipFor(kind: string): WindowChip {
+  return kind === "five_hour" || kind === "seven_day" ? kind : "model_week";
+}
+
 /** The rungs this adapter has a read path for, in the order the ladder climbs.
  *  Empty for an adapter that declares none, which is every bundled agent but
- *  Claude today. */
+ *  Claude and Codex today. */
 export function declaredRungs(agentId: string): UsageRung[] {
   return findAdapter(agentId)?.usage?.sources ?? [];
 }
 
-/** Why this agent offers no source, in the loader's own words, or null when it
- *  offers one. Shown beside the greyed control rather than left to the pane to
+/** Why this agent reads no quota, in the loader's own words, or null when it
+ *  reads some. Shown where the chips would be rather than left to the pane to
  *  guess: predating the table and declaring nothing are different facts. */
 export function usageUnavailableReason(agentId: string): string | null {
   return declaredRungs(agentId).length > 0 ? null : (findAdapter(agentId)?.usage_reason ?? null);
 }
 
-/**
- * Which rung Sway climbs for this agent.
- *
- * A stored rung the adapter no longer declares falls back to the first one it
- * does, rather than to `off`. The ladder is cumulative, so the honest reading of
- * "I asked for the deepest source available" is the deepest one still available,
- * and silencing the free passive rung over a downgrade nobody made would lose a
- * reading for no reason.
- */
-export function usageSource(agentId: string): UsageSource {
-  const rungs = declaredRungs(agentId);
-  if (rungs.length === 0) return "off";
-  const stored = settings.agent?.usage?.[agentId]?.source;
-  if (stored === "off") return "off";
-  if (stored && rungs.includes(stored)) return stored;
-  return rungs[0];
+/** Whether this agent has a model-scoped weekly window to offer at all. Only the
+ *  account-token rung answers one, so an agent without that rung shows two chips
+ *  rather than a third that could never light. */
+export function offersModelWindow(agentId: string): boolean {
+  return declaredRungs(agentId).includes("token");
 }
 
-export function usageDetail(agentId: string): UsageDetail {
-  return settings.agent?.usage?.[agentId]?.detail ?? "standard";
+const entry = (agentId: string, profile: string | null): AccountUsage | undefined =>
+  settings.agent?.usage?.[agentId]?.accounts?.[asProfileId(profile)];
+
+const isChip = (v: string): v is WindowChip => (CHIPS as string[]).includes(v);
+
+/**
+ * Which windows this account puts on the strip.
+ *
+ * A stored list is taken as it is, including the empty one: that is the user
+ * turning this account off. No list at all means nobody has answered, which
+ * resolves to the free pair rather than to silence.
+ */
+export function accountWindows(agentId: string, profile: string | null): WindowChip[] {
+  if (declaredRungs(agentId).length === 0) return [];
+  const stored = entry(agentId, profile)?.windows;
+  if (!stored) return [...GENERIC_CHIPS];
+  return stored.filter(isChip);
+}
+
+export function showsWindow(agentId: string, profile: string | null, chip: WindowChip): boolean {
+  return accountWindows(agentId, profile).includes(chip);
+}
+
+/**
+ * Which rung reads this account, derived rather than stored.
+ *
+ * The token rung is reached only through the model chip, even on an adapter that
+ * declares it first: it is the one read that opens the login Keychain, and a
+ * user who asked for the five-hour bar did not ask for that.
+ */
+export function usageRungFor(agentId: string, profile: string | null): UsageSource {
+  const rungs = declaredRungs(agentId);
+  const windows = accountWindows(agentId, profile);
+  if (rungs.length === 0 || windows.length === 0) return "off";
+  if (windows.includes("model_week") && rungs.includes("token")) return "token";
+  return rungs.find((r) => r !== "token") ?? "off";
+}
+
+/**
+ * How full is too full for this account.
+ *
+ * Falls back to the one shared threshold (Chat > Warn at) until this account's
+ * own stepper moves, so an install nobody has fiddled with warns about its
+ * agents at the same point it warns about its own spending.
+ */
+export function usageWarnAt(agentId: string, profile: string | null): number {
+  const own = entry(agentId, profile)?.warnAt;
+  return typeof own === "number" ? own : (settings.budgets?.warnAtFraction ?? 1);
 }
 
 /** Whether a reached or approaching window may reach the OS. Defaults on, and
  *  quiet by construction: the send path suppresses itself while the window is
  *  focused, so this governs only what happens while you are away. */
-export function usageNotify(agentId: string): boolean {
-  return settings.agent?.usage?.[agentId]?.notify ?? true;
+export function usageNotify(agentId: string, profile: string | null): boolean {
+  return entry(agentId, profile)?.notify ?? true;
 }
 
 /**
- * Whether this account shows in the titlebar strip.
+ * Write one part of one account's answer.
  *
- * The default account always does. It is the strip's one stable anchor, so the
- * hide control is absent on that row and a settings file naming it is ignored
- * here as well as on the backend's read: two places, because the file is
- * hand-editable and this one is what the strip actually asks.
+ * Only the named part: answering "notify off" on an account nobody had answered
+ * for must not also store the window list it happened to be showing, or a later
+ * change to what the free rung reports would be frozen out by a decision the
+ * user never made.
  */
-export function accountOnStrip(agentId: string, profile: string | null): boolean {
+function patchAccount(
+  agentId: string,
+  profile: string | null,
+  patch: Partial<AccountUsage>,
+): Promise<void> {
   const id = asProfileId(profile);
-  if (id === asProfileId(null)) return true;
-  return !(settings.agent?.usage?.[agentId]?.hiddenProfiles ?? []).includes(id);
-}
-
-/** The whole entry as the surfaces read it, resolved rather than stored. */
-export function resolvedUsage(agentId: string): UsageSettings {
-  return {
-    source: usageSource(agentId),
-    detail: usageDetail(agentId),
-    notify: usageNotify(agentId),
-    hiddenProfiles: settings.agent?.usage?.[agentId]?.hiddenProfiles ?? [],
-  };
-}
-
-/**
- * Write one part of an agent's answer, filling the rest from what is resolved
- * today rather than from the type's defaults.
- *
- * Answering "notify off" on an agent nobody had answered for must not also
- * silently store `source: "off"`, which is what a `{...default, ...patch}` would
- * do. Storing what the user was looking at is the only reading that keeps the
- * control honest.
- */
-export function setUsage(agentId: string, patch: Partial<UsageSettings>): Promise<void> {
   const usage = { ...(settings.agent?.usage ?? {}) };
-  usage[agentId] = { ...resolvedUsage(agentId), ...patch };
+  const forAgent = usage[agentId] ?? {};
+  const accounts = { ...(forAgent.accounts ?? {}) };
+  accounts[id] = { ...accounts[id], ...patch };
+  usage[agentId] = { ...forAgent, accounts };
   return saveSettings({ ...settings, agent: { ...settings.agent, usage } });
 }
 
-/** Show or hide one account on the strip. The default account is never stored:
- *  it cannot be hidden, so an entry for it could only ever be a lie. */
-export function setAccountOnStrip(agentId: string, profile: string | null, shown: boolean): Promise<void> {
-  const id = asProfileId(profile);
-  if (id === asProfileId(null)) return Promise.resolve();
-  const held = settings.agent?.usage?.[agentId]?.hiddenProfiles ?? [];
-  const hiddenProfiles = shown ? held.filter((p) => p !== id) : [...new Set([...held, id])];
-  return setUsage(agentId, { hiddenProfiles });
+/** Light or unlight one chip. The list written is the resolved one, so the first
+ *  press stores what the user was looking at plus their change, rather than a
+ *  default's idea of what was on screen. */
+export function setWindowShown(
+  agentId: string,
+  profile: string | null,
+  chip: WindowChip,
+  shown: boolean,
+): Promise<void> {
+  const held = accountWindows(agentId, profile);
+  const windows = shown
+    ? CHIPS.filter((c) => c === chip || held.includes(c))
+    : held.filter((c) => c !== chip);
+  return patchAccount(agentId, profile, { windows });
+}
+
+/** Move this account's threshold, or hand it back to the shared one with null. */
+export function setUsageWarnAt(
+  agentId: string,
+  profile: string | null,
+  fraction: number | null,
+): Promise<void> {
+  return patchAccount(agentId, profile, { warnAt: fraction });
+}
+
+export function setUsageNotify(
+  agentId: string,
+  profile: string | null,
+  notify: boolean,
+): Promise<void> {
+  return patchAccount(agentId, profile, { notify });
+}
+
+/** Families in the order Anthropic's weekly window climbs them. A plan's scoped
+ *  window is for its top model, so the last one this account can run is the
+ *  guess. */
+const FAMILIES = ["haiku", "sonnet", "opus", "fable"];
+
+/**
+ * What to call the model chip, or null when nothing knows yet.
+ *
+ * A real reading names the model itself, and that answer always wins. Before the
+ * first read there is none, so the account's own model list is asked instead:
+ * the plan's top model is the one its weekly window is scoped to. Null rather
+ * than a placeholder, so a caller can pick its own words for "we do not know
+ * which model this account's week is scoped to".
+ */
+export function modelWindowLabel(agentId: string, profile: string | null): string | null {
+  const read = windowsFor(agentId, profile)
+    .map((w) => scopedModel(w.kind))
+    .find((m): m is string => m !== null);
+  if (read) return read;
+  const models = catalogFor(agentId, profile)?.catalogue?.models ?? [];
+  let best = -1;
+  for (const m of models) {
+    const hay = `${m.value} ${m.resolvedModel} ${m.displayName}`.toLowerCase();
+    FAMILIES.forEach((family, rank) => {
+      if (rank > best && hay.includes(family)) best = rank;
+    });
+  }
+  if (best === -1) return null;
+  return FAMILIES[best][0].toUpperCase() + FAMILIES[best].slice(1);
 }

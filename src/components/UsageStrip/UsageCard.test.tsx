@@ -116,9 +116,9 @@ describe("opening on hover", () => {
 
     const text = card()!.textContent!;
     expect(text).toContain("me@example.com");
-    expect(text).toContain("5-hour");
+    expect(text).toContain("Rolling 5 hours");
     expect(text).toContain("42%");
-    expect(text).toContain("7-day");
+    expect(text).toContain("Week, all models");
     expect(text).toContain("11%");
     expect(text).toContain("sessions");
   });

@@ -16,8 +16,7 @@ import { asTabProfile, profileLabel } from "./agentHealth";
 import { agentEnabled } from "./agentEnabled";
 import { quotaState, windowSentence, type QuotaState } from "./chatRateLimit";
 import { notifyQuota } from "./presence";
-import { settings } from "../panels/Settings/settingsStore";
-import { accountOnStrip, usageNotify, usageSource } from "./usageSettings";
+import { accountWindows, chipFor, usageNotify, usageWarnAt } from "./usageSettings";
 import { accountsWithReadings, shouldAnnounce, splitAccountKey, windowsFor } from "./usageStore";
 
 export type QuotaNotification = { title: string; body: string };
@@ -48,21 +47,22 @@ export function collectQuotaNotifications(
   now = Date.now(),
   focused = focusedNow(),
 ): QuotaNotification[] {
-  const warnAt = settings.budgets?.warnAtFraction ?? 1;
   const out: QuotaNotification[] = [];
 
   for (const key of accountsWithReadings()) {
     const { agentId, profile } = splitAccountKey(key);
     if (!agentEnabled(agentId)) continue;
-    if (usageSource(agentId) === "off") continue;
-    if (!usageNotify(agentId)) continue;
     const tab = asTabProfile(profile);
-    // An account the user took off the strip is one they said they do not want
-    // to hear about; a notification would be the loudest possible version of it.
-    if (!accountOnStrip(agentId, tab)) continue;
+    if (!usageNotify(agentId, tab)) continue;
+    // A window the user took off the strip is one they said they do not want to
+    // hear about; a notification would be the loudest possible version of it.
+    const shown = accountWindows(agentId, tab);
+    if (shown.length === 0) continue;
 
+    const warnAt = usageWarnAt(agentId, tab);
     const who = profileLabel(agentId, tab) ?? findAdapter(agentId).label;
     for (const w of windowsFor(agentId, tab)) {
+      if (!shown.includes(chipFor(w.kind))) continue;
       const state: QuotaState = quotaState(w, warnAt, now);
       if (state !== "approaching" && state !== "reached") continue;
       if (!shouldAnnounce(agentId, tab, w, state)) continue;
