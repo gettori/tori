@@ -409,4 +409,10 @@ export const SETTINGS: SettingEntry[] = [
     label: "Show every hook event",
     hint: "Off, the transcript shows a hook only when it fails. On reveals every execution.",
   },
+  {
+    id: "attach-long-pastes",
+    section: "chat",
+    label: "Attach long pastes as files",
+    hint: "A paste over 30 lines or 3000 characters becomes a file chip. Off keeps every paste in the box.",
+  },
 ];

@@ -2056,6 +2056,7 @@ export default function ChatView(props: {
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}
         uploads={attachmentSources(tier()).uploads}
+        attachLongPastes={settings.chatDefaults.attachLongPastes}
         onAttachUploads={attachments.onAttachUploads}
         onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
         onInterrupt={onInterrupt}
