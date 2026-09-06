@@ -60,6 +60,9 @@ export default function TabMark(props: {
     <span
       class={styles.mark}
       classList={{
+        // One colour class at a time, so the tint never has to beat the rest
+        // tone in the cascade (it could not: see TabMark.module.css).
+        [styles.rest]: !working() && !needsYou(),
         [agentStyles.tint]: working(),
         // The same breathe chat wears, from the marks' own stylesheet: one
         // keyframe, so the two surfaces cannot drift to two rhythms. On the

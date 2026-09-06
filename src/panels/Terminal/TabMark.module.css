@@ -4,15 +4,23 @@
   align-items: center;
   display: inline-flex;
   flex: none;
-  color: var(--fg-subtle);
   position: relative;
+}
+
+/* At rest the strip is chrome: a row of brand colours in it would compete with
+   the tab you are reading. Worn as its own class, swapped out while working,
+   rather than declared on `.mark` for the tint to override: the tint lives in
+   `@layer components` and this sheet is unlayered, so an unlayered colour here
+   would win the cascade whatever its specificity, and the mark would breathe
+   in grey. The lane strip swaps its idle tone the same way. */
+.rest {
+  color: var(--fg-subtle);
 }
 
 /* Working is both halves of `agentMarks`, the breathe and the tint, and neither
    is redeclared here: the chat's lane strip wears the same two for the same
    reason, and two surfaces showing one agent must not drift to two colours or
-   two rhythms. Only the working state is tinted - at rest the strip is chrome,
-   and a row of brand colours in it would compete with the tab you are reading. */
+   two rhythms. */
 
 /* Waiting on you: no motion, because nothing is running. */
 .needsYou {
