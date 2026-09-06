@@ -8,6 +8,16 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- A new mark: the sailboat replaces the S-curve tile everywhere it showed,
+  the app icon, the Dock, the menu-bar tray, the README and the dev favicon.
+  The master is `app-icon.png` at the repo root; `pnpm tauri icon` regenerates
+  the bundle set from it.
+- The bundle carries only what a macOS build uses: the Windows `.ico` and
+  Square logos are gone, and so are the Vite and Tauri scaffold SVGs.
+- The dev page is titled Sway rather than the scaffold's default.
+
 ## 26.904.0-alpha
 
 Subagents get lanes: a chip per helper you can switch into and read while it
