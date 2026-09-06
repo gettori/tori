@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type JSX } from "solid-js";
 import { ArrowUp, Plus, Square, X } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import Icon from "../../components/Icon/Icon";
@@ -23,6 +23,7 @@ import {
   type CompletionToken,
 } from "../../utils/composerCompletion";
 import { insideFence } from "../../utils/composerFence";
+import { fmtTokens } from "../../utils/chatUsage";
 import type { ContentBlock, SlashCommand } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -41,6 +42,20 @@ const LONG_PASTE_CHARS = 3000;
 function isLongPaste(text: string): boolean {
   return text.length > LONG_PASTE_CHARS || text.split("\n").length > LONG_PASTE_LINES;
 }
+
+// Four characters a token is a rough average, so the readout says "about" and
+// stays out of the way until a draft is big enough for the figure to matter.
+const TOKEN_READOUT_FROM = 500;
+
+function approxTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/** What a caller holds to put text into the composer, handed over on mount. */
+export type ComposerHandle = {
+  /** Insert at the caret, on a line of its own, and focus the input. */
+  insertBlock: (text: string) => void;
+};
 
 /**
  * A chip of this composer's own, on its way into the sentence.
@@ -160,6 +175,11 @@ export default function Composer(props: {
   /** Whether a long text paste becomes a `pasted.txt` chip rather than text in
    *  the box. Absent means on; only the setting turns it off. */
   attachLongPastes?: boolean;
+  /** Whether a mentioned file is still there. Asked per chip on mount and each
+   *  time the input regains focus; absent means no chip is ever marked. */
+  fileExists?: (path: string) => Promise<boolean>;
+  /** Receives the imperative handle on mount, for the transcript's Quote. */
+  handle?: (handle: ComposerHandle) => void;
   /** Absolute paths dragged in from the file tree or an editor tab. Mentions,
    *  not uploads: the agent reads them off disk. */
   onAttachPaths: (absPaths: string[]) => void;
@@ -202,6 +222,9 @@ export default function Composer(props: {
   // label can follow it; the keydown itself reads the textarea directly.
   const [caret, setCaret] = createSignal(0);
   const inFence = createMemo(() => insideFence(text(), caret()));
+  // Bumped when the input regains focus, so every chip re-asks whether its
+  // file is still there: coming back from the tree is when one gets deleted.
+  const [focusTick, setFocusTick] = createSignal(0);
   let picker: HTMLInputElement | undefined;
   let input: HTMLTextAreaElement | undefined;
   let filesRequested = false;
@@ -379,6 +402,15 @@ export default function Composer(props: {
     const insert = `${lead}${token}${trail}`;
     setInputText(`${before}${insert}${after}`, caret + insert.length - trail.length);
   }
+
+  /** Put a block (a quote) in at the caret, starting on its own line. */
+  function insertBlock(block: string) {
+    const caret = input?.selectionStart ?? text().length;
+    const before = text().slice(0, caret);
+    const lead = before && !before.endsWith("\n") ? "\n" : "";
+    setInputText(`${before}${lead}${block}${text().slice(caret)}`, caret + lead.length + block.length);
+  }
+  onMount(() => props.handle?.({ insertBlock }));
 
   // Where in the text a drop landed. Undefined when the browser cannot say or
   // the point is outside the input, and then the caret is the answer: dropping
@@ -648,6 +680,15 @@ export default function Composer(props: {
               // with the token alone and leaves the filename to the control's
               // accessible name. Everything else has only words to go on.
               const thumb = () => thumbSrc(a.block);
+              // Gone from disk since it was attached. The chip stays, because the
+              // sentence still names it; both controls say why it is red.
+              const [missing, setMissing] = createSignal(false);
+              const path = a.block.type === "fileRef" ? a.block.path : null;
+              if (path && props.fileExists) {
+                const ask = props.fileExists;
+                createEffect(on(focusTick, () => void ask(path).then((ok) => setMissing(!ok)).catch(() => {})));
+              }
+              const reason = () => (missing() && path ? `. No file at ${path}` : "");
               const face = () => (
                 <>
                   <Show when={thumb()}>{(src) => <img class={styles.attachmentThumb} src={src()} alt="" />}</Show>
@@ -657,7 +698,10 @@ export default function Composer(props: {
                 </>
               );
               return (
-                <div class={styles.attachment} classList={{ [styles.attachmentTile]: !!thumb() }}>
+                <div
+                  class={styles.attachment}
+                  classList={{ [styles.attachmentTile]: !!thumb(), [styles.attachmentMissing]: missing() }}
+                >
                   {/* Two controls, because the chip now means two things: put
                       the token in the message, or take the attachment away.
                       A chip with no token (a selection, a hunk comment) has
@@ -669,8 +713,8 @@ export default function Composer(props: {
                         as="button"
                         type="button"
                         class={styles.attachmentBody}
-                        label="Click or drag to put this in the message"
-                        aria-label={`Insert ${chipLabel(a.block)}`}
+                        label={missing() ? `No file at ${path}` : "Click or drag to put this in the message"}
+                        aria-label={`Insert ${chipLabel(a.block)}${reason()}`}
                         draggable={true}
                         onDragStart={(e: DragEvent) => {
                           e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, token());
@@ -695,7 +739,7 @@ export default function Composer(props: {
                     // Named after the action and after which attachment: an
                     // image chip's own content is a picture, so without this
                     // the button answers to nothing.
-                    aria-label={`Remove ${chipLabel(a.block)}`}
+                    aria-label={`Remove ${chipLabel(a.block)}${reason()}`}
                     onClick={() => props.onDropAttachment(a.id)}
                   >
                     <Icon icon={X} size={12} aria-hidden="true" />
@@ -752,6 +796,7 @@ export default function Composer(props: {
           // A click or an arrow can move the caret out of the token that opened
           // the menu without changing a character, so selection is watched too.
           onSelect={syncToken}
+          onFocus={() => setFocusTick((t) => t + 1)}
           onBlur={closeMenu}
         />
         <div class={styles.composerBar}>
@@ -788,6 +833,9 @@ export default function Composer(props: {
           </Tooltip>
           {props.controls}
           <div class={styles.composerSpacer} />
+          <Show when={approxTokens(text()) >= TOKEN_READOUT_FROM}>
+            <span class={styles.barNote}>about {fmtTokens(approxTokens(text()))} tokens</span>
+          </Show>
           <Tooltip
             as="button"
             type="button"

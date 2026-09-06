@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, fireEvent } from "@solidjs/testing-library";
-import Composer, { ATTACHMENT_TOKEN_MIME } from "./Composer";
+import Composer, { ATTACHMENT_TOKEN_MIME, type ComposerHandle } from "./Composer";
 import { expectNoAxeViolations } from "../../test/axe";
 import type { AttachmentSource, PendingBlock } from "../../utils/chatCompose";
 
@@ -615,6 +615,93 @@ describe("an attachment chip", () => {
   it("stays clean with both of its controls on screen", async () => {
     const { container } = setup({ attachments: [...shot, ...notes] });
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("a chip whose file has gone", () => {
+  const notes: PendingBlock[] = [
+    {
+      id: "att-2",
+      block: { type: "fileRef", path: "/store/1a2b-1/notes.pdf", startLine: null, endLine: null, text: null, label: "[PDF 1]" },
+    },
+  ];
+  // Asked by role and a tolerant name: the chip's name is built from adjacent
+  // nodes, which jsdom joins without a separator.
+  const insert = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Insert \[PDF 1\]/ });
+  const remove = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Remove \[PDF 1\]/ });
+
+  it("is marked missing and says where the file was, on both of its controls", async () => {
+    const r = setup({ attachments: notes, fileExists: async () => false });
+    await vi.waitFor(() => expect(insert(r).getAttribute("aria-label")).toMatch(/No file at \/store\/1a2b-1\/notes\.pdf/));
+    expect(remove(r).getAttribute("aria-label")).toMatch(/No file at \/store\/1a2b-1\/notes\.pdf/);
+    expect(r.container.querySelector("[class*='attachmentMissing']")).not.toBeNull();
+  });
+
+  it("stays plain while the file is there, and is never asked without a checker", async () => {
+    const fileExists = vi.fn(async () => true);
+    const r = setup({ attachments: notes, fileExists });
+    await vi.waitFor(() => expect(fileExists).toHaveBeenCalledWith("/store/1a2b-1/notes.pdf"));
+    expect(insert(r).getAttribute("aria-label")).toBe("Insert [PDF 1] notes.pdf");
+    expect(r.container.querySelector("[class*='attachmentMissing']")).toBeNull();
+
+    const unchecked = setup({ attachments: notes });
+    expect(insert(unchecked).getAttribute("aria-label")).toBe("Insert [PDF 1] notes.pdf");
+  });
+
+  // Coming back from the tree is when a mentioned file gets deleted.
+  it("asks again each time the input regains focus", async () => {
+    const fileExists = vi.fn(async () => true);
+    const { input } = setup({ attachments: notes, fileExists });
+    await vi.waitFor(() => expect(fileExists).toHaveBeenCalledTimes(1));
+    fireEvent.focus(input);
+    await vi.waitFor(() => expect(fileExists).toHaveBeenCalledTimes(2));
+  });
+
+  it("still lets the message send", async () => {
+    const r = setup({ attachments: notes, fileExists: async () => false });
+    await vi.waitFor(() => expect(insert(r).getAttribute("aria-label")).toMatch(/No file/));
+    type(r.input, "look at [PDF 1]");
+    fireEvent.keyDown(r.input, { key: "Enter" });
+    expect(r.onSend).toHaveBeenCalledWith("look at [PDF 1]");
+  });
+});
+
+describe("the size readout", () => {
+  const readout = (r: ReturnType<typeof setup>) => r.queryByText(/^about .* tokens$/);
+
+  it("stays out of the way under five hundred tokens, then says about how many", () => {
+    const r = setup();
+    // Four characters a token, rounded up: 1996 is 499, 1997 is already 500.
+    type(r.input, "x".repeat(1996));
+    expect(readout(r)).toBeNull();
+    type(r.input, "x".repeat(1997));
+    expect(readout(r)?.textContent).toBe("about 500 tokens");
+    type(r.input, "x".repeat(6000));
+    expect(readout(r)?.textContent).toBe("about 2k tokens");
+    type(r.input, "short again");
+    expect(readout(r)).toBeNull();
+  });
+});
+
+describe("the insert handle", () => {
+  it("puts a block in at the caret on a line of its own, and focuses the input", () => {
+    let handle: ComposerHandle | undefined;
+    const { input } = setup({ handle: (h) => (handle = h) });
+    type(input, "before after");
+    input.setSelectionRange(6, 6);
+    handle!.insertBlock("> quoted\n\n");
+    // What followed the caret follows the block, untouched.
+    expect(input.value).toBe("before\n> quoted\n\n after");
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("adds no leading newline into an empty draft or after one", () => {
+    let handle: ComposerHandle | undefined;
+    const { input } = setup({ handle: (h) => (handle = h) });
+    handle!.insertBlock("> a\n\n");
+    expect(input.value).toBe("> a\n\n");
+    handle!.insertBlock("> b\n\n");
+    expect(input.value).toBe("> a\n\n> b\n\n");
   });
 });
 
