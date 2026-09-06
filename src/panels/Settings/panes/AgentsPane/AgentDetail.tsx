@@ -686,15 +686,6 @@ export default function AgentDetail(props: {
         <AgentAccounts agentId={a().id} agentLabel={a().label} onRecheck={props.onRecheck} />
       </Show>
 
-      {/* Below the accounts, because the per-account "show in titlebar" control
-          lives up there and this block is the agent-wide half of the same
-          question. Not gated on the adapter declaring a ladder: an agent Sway
-          can read nothing from still has to say so, and a section that
-          disappeared would leave the reader looking for it. */}
-      <Show when={!setupMode()}>
-        <AgentUsage agentId={a().id} agentLabel={a().label} />
-      </Show>
-
       {/* Only for an agent Sway can actually ask, and only once it is set up.
           A terminal-only adapter declares no `[chat]` table, so the probe has
           nothing to drive and the backend never returns a row for it. During
@@ -728,6 +719,16 @@ export default function AgentDetail(props: {
             )}
           </Show>
         </Show>
+      </Show>
+
+      {/* Below the models rather than above them. The page reads as what this
+          agent is (identity, accounts, what it can run) before what Sway does
+          about it, and reading a quota is Sway's own behaviour rather than a
+          fact about the agent. Not gated on the adapter declaring a ladder: an
+          agent Sway can read nothing from still has to say so, and a section
+          that disappeared would leave the reader looking for it. */}
+      <Show when={!setupMode()}>
+        <AgentUsage agentId={a().id} agentLabel={a().label} />
       </Show>
 
       <div class={styles.groupHead}>

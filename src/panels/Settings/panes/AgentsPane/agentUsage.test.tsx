@@ -163,6 +163,37 @@ describe("the source radio", () => {
     expect(screen.getAllByText(/Not built for Claude yet/)).toHaveLength(2);
   });
 
+  // The refusal rides the option's own label, not the end of its description,
+  // so it reaches a screen reader with the option rather than a sentence later.
+  it("names the refusal as part of the option, not after it", async () => {
+    await mount();
+
+    // The name is computed from the option's label, so a refusal that had been
+    // appended to the description would not be found here.
+    expect(screen.getByRole("radio", { name: /^CLI\b.*Not built for Claude yet/ })).toBeTruthy();
+    // And the sentence about the rung is still its own, so turning it on later
+    // does not leave a description that reads as a refusal.
+    expect(screen.getByText(/bounded read through the agent's own CLI/).textContent).not.toMatch(
+      /Not built/,
+    );
+  });
+
+  // The source row is stacked: label, hint, then the ladder across the full
+  // width. Grid places the control on the next free row, so the markup order is
+  // what puts it under the hint rather than in the 196px control column, where
+  // four options with descriptions rendered as a stack of wrapped words.
+  it("puts the ladder below the hint rather than in the control column", async () => {
+    await mount();
+
+    const row = document.getElementById("settings-row-usage-source")!;
+    const kids = [...row.children].map((c) => c.className);
+    expect(kids).toHaveLength(3);
+    expect(kids[0]).toMatch(/label/);
+    expect(kids[1]).toMatch(/hint/);
+    expect(kids[2]).toMatch(/control/);
+    expect(row.querySelector("[role='radiogroup']")).toBeTruthy();
+  });
+
   // No entry is not "off": an agent nobody has answered for takes the first
   // rung its adapter declares, which is a reading that costs nothing.
   it("starts on the adapter's first declared rung with nothing stored", async () => {

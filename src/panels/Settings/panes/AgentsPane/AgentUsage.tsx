@@ -25,6 +25,13 @@ import styles from "../../Settings.module.css";
 // of them. The **threshold** goes the other way and is global, which is why it
 // is shown here as a read-only value with a pointer at its one control: how
 // full is too full is a question about the user, not about an agent.
+//
+// **The source row is stacked, and the rest of the block is not.** A settings
+// row is a label at the left and a control in a 196px column at the right,
+// which is right for a switch and wrong for a four-option ladder whose options
+// each carry a sentence. Squeezed into that column it read as a tall stack of
+// wrapped words. It takes the full width under its own label instead, boxed so
+// the four options read as one group.
 
 /** Every rung, in the ladder's order, plus the answer that is not a rung. */
 const SOURCES: { value: string; label: string; description: string }[] = [
@@ -34,7 +41,11 @@ const SOURCES: { value: string; label: string; description: string }[] = [
     label: "Sessions",
     description: "From the quota the agent already puts on its own session events. No extra process, no cost.",
   },
-  { value: "cli", label: "CLI", description: "Sway runs a bounded read through the agent's own CLI." },
+  {
+    value: "cli",
+    label: "CLI",
+    description: "A bounded read through the agent's own CLI, on Sway's schedule.",
+  },
   {
     value: "token",
     label: "Account token",
@@ -42,7 +53,7 @@ const SOURCES: { value: string; label: string; description: string }[] = [
     // exact binary, so an unsigned build asks again after every update. A user
     // who is told only "your machine will ask" reads the second prompt as a bug.
     description:
-      "Reads this account's own token from the login Keychain, the only source for the per-model weekly window. macOS will ask. Always Allow quietens it until Sway next updates, because the permission is bound to the exact build.",
+      "This account's own token from the login Keychain, the only source for the per-model weekly window. macOS will ask; Always Allow quietens it until Sway next updates, because the permission is bound to the exact build.",
   },
 ];
 
@@ -58,18 +69,33 @@ export default function AgentUsage(props: { agentId: string; agentLabel: string 
    *  the table or simply declares nothing, and those are different fixes. */
   const unavailable = () => usageUnavailableReason(props.agentId);
 
+  /** Off is always answerable. A rung Sway has no read path for is shown and
+   *  refused rather than hidden, so the ladder reads as a ladder and a user can
+   *  see what is coming. */
+  const refused = (value: string) => value !== "off" && !rungs().includes(value as UsageRung);
+
   const options = (): RadioOption[] =>
     SOURCES.map((s) => ({
       value: s.value,
-      label: s.label,
-      description:
-        s.value !== "off" && !rungs().includes(s.value as UsageRung)
-          ? `${s.description} Not built for ${props.agentLabel} yet.`
-          : s.description,
-      // Off is always answerable. A rung Sway has no read path for is shown and
-      // refused rather than hidden, so the ladder reads as a ladder and a user
-      // can see what is coming.
-      disabled: s.value !== "off" && !rungs().includes(s.value as UsageRung),
+      label: (
+        <>
+          {s.label}
+          {/* On the label rather than at the end of the description, so the
+              refusal is part of the option's name: it is read out with the
+              option, and found without reading the sentence first.
+
+              The explicit space is load bearing. The gap on screen is CSS, and
+              without a real space the accessible name computes as one word
+              ("CLINot built for Claude yet"), which is what a screen reader
+              would then say. */}
+          <Show when={refused(s.value)}>
+            {" "}
+            <span class={styles.usageSoon}>Not built for {props.agentLabel} yet</span>
+          </Show>
+        </>
+      ),
+      description: s.description,
+      disabled: refused(s.value),
     }));
 
   return (
@@ -79,12 +105,24 @@ export default function AgentUsage(props: { agentId: string; agentLabel: string 
         <span class={styles.sectionRule} />
       </div>
 
-      <div id={rowDomId("usage-source")} class={styles.row}>
+      {/* Stacked: label, then hint, then the ladder across the full width. The
+          control has to come last in the markup, since it places itself on the
+          next free grid row. */}
+      <div id={rowDomId("usage-source")} class={`${styles.row} ${styles.rowStack}`}>
         <label id="usage-source-label" class={styles.label}>
           Usage source
         </label>
+        <div class={styles.hint}>
+          <Show
+            when={unavailable()}
+            fallback="How deep Sway reads this agent's quota. Each rung fills the gaps the ones above it leave."
+          >
+            {(why) => <>Sway can read no quota for {props.agentLabel}: {why()}.</>}
+          </Show>
+        </div>
         <div class={styles.control}>
           <RadioGroup
+            class={styles.usageLadder}
             options={options()}
             value={usageSource(props.agentId)}
             // The read follows the click. Turning the token rung on raises a
@@ -98,14 +136,6 @@ export default function AgentUsage(props: { agentId: string; agentLabel: string 
             disabled={rungs().length === 0}
             aria-label={`Usage source for ${props.agentLabel}`}
           />
-        </div>
-        <div class={styles.hint}>
-          <Show
-            when={unavailable()}
-            fallback="How deep Sway reads this agent's quota. Each rung fills the gaps the ones above it leave."
-          >
-            {(why) => <>Sway can read no quota for {props.agentLabel}: {why()}.</>}
-          </Show>
         </div>
       </div>
 
@@ -150,7 +180,7 @@ export default function AgentUsage(props: { agentId: string; agentLabel: string 
       <div id={rowDomId("usage-warn-at")} class={styles.row}>
         <label class={styles.label}>Warn at</label>
         <div class={styles.control}>
-          <span>{warnAtLabel(settings.budgets?.warnAtFraction)}</span>
+          <span class={styles.usageFixed}>{warnAtLabel(settings.budgets?.warnAtFraction)}</span>
         </div>
         <div class={styles.hint}>
           Shared with Sway's own spend ceilings, and set once in Chat &gt; Warn at.
