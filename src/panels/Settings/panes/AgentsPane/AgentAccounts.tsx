@@ -1,17 +1,44 @@
-import { For, Show, createResource, createSignal } from "solid-js";
-import { LogOut, Plus, RefreshCw, Trash2 } from "lucide-solid";
+import { For, Show, createResource, createSignal, onCleanup } from "solid-js";
+import { Bell, BellOff, Minus, Plus, RefreshCw } from "lucide-solid";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
+import Chevron from "../../../../components/Chevron/Chevron";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Checkbox from "../../../../components/Checkbox/Checkbox";
 import PromptModal from "../../../../components/Dialogs/PromptModal";
+import Switch from "../../../../components/Switch/Switch";
+import Tooltip from "../../../../components/Tooltip/Tooltip";
 import { homeDir } from "@tauri-apps/api/path";
 import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../../../utils/events";
 import { asTabProfile, refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
 import { defaultProfile, setDefaultProfile } from "../../../../utils/agentEnabled";
-import { accountOnStrip, setAccountOnStrip, usageSource } from "../../../../utils/usageSettings";
+import { warnAtLabel } from "../../../../utils/chatBudget";
+import {
+  limitTypeLabel,
+  limitTypeShort,
+  quotaState,
+  resetsAtMs,
+  scopedModel,
+  type QuotaState,
+} from "../../../../utils/chatRateLimit";
+import {
+  chipFor,
+  declaredRungs,
+  modelWindowLabel,
+  offersModelWindow,
+  setUsageNotify,
+  setUsageWarnAt,
+  setWindowShown,
+  showsWindow,
+  usageNotify,
+  usageUnavailableReason,
+  usageWarnAt,
+  type WindowChip,
+} from "../../../../utils/usageSettings";
+import { pollUsage, usageReason } from "../../../../utils/usageProbe";
+import { temporalOf, windowsFor, type WindowReading } from "../../../../utils/usageStore";
 import {
   catalogFor,
   ensureModelCatalogsLoaded,
@@ -22,15 +49,28 @@ import { loginJob, loginNote, type LoginRoute } from "../../../../utils/signIn";
 import dialogStyles from "../../../../components/Dialogs/Dialogs.module.css";
 import styles from "../../Settings.module.css";
 
-// The accounts half of an agent card: who is signed in, and the one control
-// that changes it.
+// One card per account: who is signed in, what their quota is at, and every
+// control that belongs to that login rather than to the agent.
+//
+// **The account is the unit, because the quota window is.** A five-hour window
+// belongs to a login, not to an adapter and not to a chat: two Claude accounts
+// on one machine have two of them, on two plans. That is why the threshold, the
+// notification switch and the titlebar chips all live on the card rather than in
+// a section above it, and why there is no Usage section any more.
+//
+// **The chips are the whole usage control.** Which windows an account puts in
+// the titlebar is also how deep Sway reads for it: nothing lit is nothing read,
+// the two generic windows come free off the rung the adapter offers, and the
+// model-scoped weekly one is the single thing that needs the login Keychain.
+// Pressing that chip is the opt-in, so the permission is asked at the moment the
+// user asks for the thing it buys.
 //
 // Three things this deliberately does not do.
 //
-// It never reads a credential. On macOS there is nothing to read: Phase 0
-// measured that `claude` keeps its tokens in the login Keychain, keyed by config
-// dir, so a profile home holds no secret at all. Everything on this screen came
-// out of the agent's own `whoami` probe.
+// It never reads a credential itself. On macOS there is nothing here to read:
+// Phase 0 measured that `claude` keeps its tokens in the login Keychain, keyed
+// by config dir, so a profile home holds no secret at all. Everything on this
+// screen came out of the agent's own `whoami` probe or the usage read.
 //
 // It never completes a login itself. `claude auth login` is browser OAuth with
 // no non-interactive variant, so the button opens a real terminal tab and gets
@@ -90,16 +130,246 @@ const SIGN_IN_LABEL: Record<SignIn, string> = {
   unknown: "Sign-in state unknown",
 };
 
+/** The same stops the shared threshold moves in, so a per-account answer and the
+ *  global one are the same kind of number. */
+const WARN_AT_MIN = 0.5;
+const WARN_AT_MAX = 1;
+const WARN_AT_STEP = 0.05;
+
 function toast(message: string, kind: ToastEvent["kind"]) {
   emitWith<ToastEvent>(TOAST, { message, kind });
 }
 
-function ProfileRow(props: {
+/** When the window empties, in the words the reader needs: a countdown while it
+ *  is close enough to plan around, the day and time once it is not. */
+function resetLine(at: number | null, now: number): string | null {
+  if (at === null) return null;
+  const left = at - now;
+  if (left <= 0) return "reset";
+  if (left < 24 * 60 * 60 * 1000) {
+    const hours = Math.floor(left / (60 * 60 * 1000));
+    const mins = Math.floor((left % (60 * 60 * 1000)) / 60_000);
+    return hours > 0 ? `${hours}h ${mins}m left` : `${mins}m left`;
+  }
+  return new Date(at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+}
+
+/** One window's card: the level now, and when it goes back to zero. */
+function WindowCard(props: {
+  name: string;
+  reading: WindowReading | null;
+  warnAt: number;
+  now: number;
+  /** Off the titlebar: still shown here, because hiding a bar is not the same
+   *  as not wanting to know. */
+  dim: boolean;
+  note: string | null;
+}) {
+  const state = (): QuotaState | null =>
+    props.reading ? quotaState(props.reading, props.warnAt, props.now) : null;
+  const pct = () => {
+    const u = props.reading?.utilization;
+    return typeof u === "number" ? u * 100 : null;
+  };
+  // One decimal here and whole percent in the titlebar. This is the screen you
+  // come to for the number; the strip is the one you glance at.
+  const level = () => (state() === "expired" || pct() === null ? null : `${pct()!.toFixed(1)}%`);
+
+  return (
+    <div
+      class={styles.winCard}
+      classList={{ [styles.winDim]: props.dim }}
+      data-state={state() ?? "none"}
+      data-temporal={props.reading ? temporalOf(props.reading, props.now) : "none"}
+    >
+      <div class={styles.winHead}>
+        <span class={styles.winName}>{props.name}</span>
+        <span class={styles.winLevel}>{level() ?? "-"}</span>
+      </div>
+      <span class={styles.winTrack} aria-hidden="true">
+        <Show when={level() !== null}>
+          <span class={styles.winFill} style={{ width: `${Math.min(100, pct()!)}%` }} />
+        </Show>
+      </span>
+      <span class={styles.winFoot}>
+        {props.note ??
+          (props.reading ? resetLine(resetsAtMs(props.reading.resetsAt), props.now) : null) ??
+          "not read yet"}
+      </span>
+    </div>
+  );
+}
+
+/** What each chip is called, whether it is lit, and whether anything has ever
+ *  answered for it. The one place the three chips are enumerated. */
+type Chip = {
+  id: WindowChip;
+  /** Chip width: "5H", "Week", "Fable". */
+  label: string;
+  /** Box width: "Rolling 5 hours", "Week, Fable". */
+  name: string;
+  lit: boolean;
+  reading: WindowReading | null;
+};
+
+function chipsFor(agentId: string, profile: string | null): Chip[] {
+  const readings = windowsFor(agentId, profile);
+  const ids: WindowChip[] = offersModelWindow(agentId)
+    ? ["five_hour", "seven_day", "model_week"]
+    : ["five_hour", "seven_day"];
+  return ids.map((id) => {
+    // The scoped weekly window first, where a deep read returned more than one
+    // window: an account with both a Fable week and an extra-usage pot is one
+    // chip, and it is the model week that names it.
+    const reading =
+      (id === "model_week"
+        ? readings.find((w) => scopedModel(w.kind) !== null)
+        : readings.find((w) => w.kind === id)) ??
+      readings.find((w) => chipFor(w.kind) === id) ??
+      null;
+    const guess = id === "model_week" ? modelWindowLabel(agentId, profile) : null;
+    return {
+      id,
+      label: reading ? limitTypeShort(reading.kind) : (guess ?? (id === "model_week" ? "Model" : limitTypeShort(id))),
+      name: reading
+        ? (limitTypeLabel(reading.kind) ?? reading.kind)
+        : id === "model_week"
+          ? `Week, ${guess ?? "one model"}`
+          : (limitTypeLabel(id) ?? id),
+      lit: showsWindow(agentId, profile, id),
+      reading,
+    };
+  });
+}
+
+/** One box per window Sway can name for this account, plus one per chip that
+ *  has nothing to show yet. A deep read can return more windows than there are
+ *  chips (an extra-usage pot beside the model week), and a box each is how they
+ *  stay visible without a chip nobody could act on. */
+type Box = {
+  key: string;
+  name: string;
+  reading: WindowReading | null;
+  dim: boolean;
+  chip: WindowChip;
+};
+
+function boxesFor(agentId: string, profile: string | null): Box[] {
+  const readings = windowsFor(agentId, profile);
+  return chipsFor(agentId, profile).flatMap<Box>((c) => {
+    const mine = readings.filter((w) => chipFor(w.kind) === c.id);
+    if (mine.length === 0) {
+      return [{ key: c.id, name: c.name, reading: null, dim: !c.lit, chip: c.id }];
+    }
+    return mine.map((w) => ({
+      key: w.kind,
+      name: limitTypeLabel(w.kind) ?? w.kind,
+      reading: w,
+      dim: !c.lit,
+      chip: c.id,
+    }));
+  });
+}
+
+/**
+ * The titlebar preview, and the control for it.
+ *
+ * `interactive` is false in the header, where the same chips are a summary of
+ * what the card below says. Read-only rather than a second copy of the control:
+ * a row of small toggles on a collapsed card is a row you change on the way to
+ * the chevron.
+ */
+function WindowChips(props: {
+  agentId: string;
+  profile: string | null;
+  interactive: boolean;
+  onAsk: (chip: WindowChip, on: boolean) => void;
+}) {
+  const chips = () => chipsFor(props.agentId, props.profile);
+  /** The one chip that cannot answer until it is allowed to. On the other two a
+   *  missing reading is a read that has not landed yet, which the window card
+   *  below already says; marking those "n/a" too would be noise on every fresh
+   *  install. */
+  const locked = (c: Chip) => c.id === "model_week" && c.reading === null;
+  const why = (c: Chip) =>
+    locked(c)
+      ? `Sway has to read this account's token from the login Keychain to see its ${c.label} window. macOS asks the first time.`
+      : `Show the ${limitTypeLabel(c.reading ? c.reading.kind : c.id)} window in the titlebar`;
+
+  return (
+    <div class={styles.chipRow}>
+      <For each={chips()}>
+        {(c) => (
+          <Show
+            when={props.interactive}
+            fallback={
+              <span
+                class={styles.chip}
+                classList={{ [styles.chipOn]: c.lit, [styles.chipIdle]: locked(c) }}
+              >
+                {c.label}
+                <Show when={locked(c)}>
+                  <span class={styles.chipNa}>n/a</span>
+                </Show>
+              </span>
+            }
+          >
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.chip}
+              classList={{ [styles.chipOn]: c.lit, [styles.chipIdle]: locked(c) }}
+              label={why(c)}
+              aria-pressed={c.lit}
+              onClick={() => props.onAsk(c.id, !c.lit)}
+            >
+              {c.label}
+              <Show when={locked(c)}>
+                <span class={styles.chipNa}>n/a</span>
+              </Show>
+            </Tooltip>
+          </Show>
+        )}
+      </For>
+    </div>
+  );
+}
+
+/** The threshold, in the stops the shared control moves in. Its own value only
+ *  once it is moved: until then it shows, and follows, Chat > Warn at. */
+function WarnStepper(props: { value: number; label: string; onChange: (v: number) => void }) {
+  const step = (by: number) => {
+    const next = Math.round((props.value + by) * 100) / 100;
+    props.onChange(Math.min(WARN_AT_MAX, Math.max(WARN_AT_MIN, next)));
+  };
+  return (
+    <div class={styles.stepper} role="group" aria-label="Warn at">
+      <IconButton
+        size="sm"
+        icon={<Icon icon={Minus} />}
+        aria-label="Warn earlier"
+        onClick={() => step(-WARN_AT_STEP)}
+        disabled={props.value <= WARN_AT_MIN}
+      />
+      <span class={styles.stepperValue}>{props.label}</span>
+      <IconButton
+        size="sm"
+        icon={<Icon icon={Plus} />}
+        aria-label="Warn later"
+        onClick={() => step(WARN_AT_STEP)}
+        disabled={props.value >= WARN_AT_MAX}
+      />
+    </div>
+  );
+}
+
+function AccountCard(props: {
   agentId: string;
   agentLabel: string;
   view: AccountsView;
   profile: ProfileStatus;
   cwd: string;
+  now: number;
   /** Whether this card is choosing between accounts at all. False on a
    *  single-account install, where "which one do new sessions start on" is a
    *  question about one thing - the rule `namedProfiles` keeps everywhere
@@ -112,12 +382,16 @@ function ProfileRow(props: {
   confirm: (ask: ConfirmAsk) => Promise<ConfirmAnswer>;
 }) {
   const p = () => props.profile;
+  const tab = () => asTabProfile(p().id);
   const [busy, setBusy] = createSignal(false);
+  // The account you are signed into opens; the rest wait to be asked for. A
+  // three-account install is otherwise three screens of quota on arrival.
+  const [open, setOpen] = createSignal(p().isDefault);
 
   /** What this account answered when it was last asked what it can run: the
    *  plan in the agent's own words and how many models came back. Empty until
    *  it has been asked, which renders as nothing rather than as a zero. */
-  const catalogue = () => catalogFor(props.agentId, asTabProfile(p().id))?.catalogue ?? null;
+  const catalogue = () => catalogFor(props.agentId, tab())?.catalogue ?? null;
   const models = () => catalogue()?.models.length ?? 0;
   const fact = () =>
     [
@@ -126,6 +400,22 @@ function ProfileRow(props: {
     ]
       .filter(Boolean)
       .join(", ");
+
+  /** Whether this agent has any rung at all. Asked of the ladder rather than of
+   *  the reason, because an adapter can decline to explain itself and a card
+   *  that showed chips on the strength of a missing sentence would offer
+   *  controls for a read that cannot happen. */
+  const reads = () => declaredRungs(props.agentId).length > 0;
+  const warnAt = () => usageWarnAt(props.agentId, tab());
+  const notify = () => usageNotify(props.agentId, tab());
+
+  // The read follows the press. Turning the model window on raises a Keychain
+  // prompt, and a prompt that arrives minutes later on a background tick is one
+  // nobody connects to what they just did.
+  const askWindow = (chip: WindowChip, on: boolean) =>
+    void setWindowShown(props.agentId, tab(), chip, on).then(() => {
+      if (on) pollUsage(props.agentId, "manual", tab());
+    });
 
   const signIn = () => {
     const job = loginJob(
@@ -241,8 +531,8 @@ function ProfileRow(props: {
   };
 
   return (
-    <div class={styles.accountRow}>
-      <div class={styles.accountMain}>
+    <div class={styles.acctCard}>
+      <div class={styles.acctHead}>
         {/* Green only for the agent's own "yes": unknown is dim, because most
             agents have no way to answer and dim must not read as broken. */}
         <span class={`${styles.dot} ${p().signIn === "signedIn" ? styles.dotOk : styles.dotOff}`} />
@@ -252,7 +542,6 @@ function ProfileRow(props: {
             <button
               type="button"
               class={styles.accountName}
-              title={home() ?? "Your existing login"}
               onClick={() => {
                 abandoned = false;
                 setEditing(true);
@@ -282,7 +571,13 @@ function ProfileRow(props: {
             on. Named after the account it picks, so a reader hears which row
             they are on rather than "Default" three times. */}
         <Show when={props.chooseDefault}>
-          <label class={styles.accountDefault}>
+          {/* Lit from the same answer the radio is checked from, not from the
+              backend's snapshot of it: picking another account moves the
+              setting now and the snapshot only on the next refetch. */}
+          <label
+            class={styles.defaultPill}
+            classList={{ [styles.defaultOn]: defaultProfile(props.agentId) === p().id }}
+          >
             <input
               type="radio"
               name={`default-account-${props.agentId}`}
@@ -293,72 +588,183 @@ function ProfileRow(props: {
             Default
           </label>
         </Show>
-        {/* Which accounts the titlebar strip carries. Absent on the default
-            row, and that absence is the control: the account you are signed
-            into is the strip's one stable anchor, so there is no state where
-            hiding it would be honest. Absent too where Sway can read no quota
-            for this agent, since there would be nothing to show or hide. */}
-        <Show when={!p().isDefault && usageSource(props.agentId) !== "off"}>
-          <label class={styles.accountDefault}>
-            <input
-              type="checkbox"
-              aria-label={`Show ${p().label} in the titlebar`}
-              checked={accountOnStrip(props.agentId, asTabProfile(p().id))}
-              onChange={(e) =>
-                void setAccountOnStrip(props.agentId, asTabProfile(p().id), e.currentTarget.checked)
-              }
+
+        <div class={styles.acctSummary}>
+          {/* What the titlebar carries for this account, and the two settings
+              that decide how loud it gets: a collapsed card still answers "is
+              this one watched, and from where". */}
+          <Show when={reads()}>
+            <WindowChips
+              agentId={props.agentId}
+              profile={tab()}
+              interactive={false}
+              onAsk={askWindow}
             />
-            Titlebar
-          </label>
-        </Show>
-        {/* The account the agent named where it named one; its sign-in state
-            where it did not. One fact, never both: the email already implies
-            signed in. */}
-        <span class={styles.accountFact}>{p().account ?? SIGN_IN_LABEL[p().signIn]}</span>
-        {/* And what that account can run, from its own catalogue: the plan it
-            named and how many models it offered. Two accounts of one binary can
-            be on different plans, so this is the row that says which is which. */}
-        <Show when={fact()}>
-          <span class={styles.accountAside}>{fact()}</span>
-        </Show>
-        <Show when={p().signIn !== "signedIn"}>
-          <Button size="sm" onClick={signIn}>
-            Sign in
-          </Button>
-        </Show>
-        {/* One control, because removing is signing out plus forgetting, and
-            the dialog carries that as a checkbox. Where the adapter declares no
-            logout command this is the removal on its own. */}
-        <Show when={canSignOut() || canRemove()}>
-          <IconButton
-            size="sm"
-            icon={<Icon icon={canSignOut() ? LogOut : Trash2} />}
-            tooltip={canSignOut() ? `Sign ${p().label} out` : `Remove ${p().label}`}
-            onClick={() => void act()}
-            disabled={busy()}
-          />
-        </Show>
+            <span class={styles.acctDivider} aria-hidden="true" />
+            <span class={styles.acctWarn}>{warnAtLabel(warnAt())}</span>
+            <Icon
+              icon={notify() ? Bell : BellOff}
+              class={styles.acctBell}
+              aria-label={notify() ? "Notifications on" : "Notifications off"}
+            />
+          </Show>
+          {/* The account the agent named where it named one; its sign-in state
+              where it did not. One fact, never both: the email already implies
+              signed in. */}
+          <span class={styles.accountFact}>{p().account ?? SIGN_IN_LABEL[p().signIn]}</span>
+          {/* And what that account can run, from its own catalogue: the plan it
+              named and how many models it offered. Two accounts of one binary
+              can be on different plans, so this is what says which is which. */}
+          <Show when={fact()}>
+            <span class={styles.accountAside}>{fact()}</span>
+          </Show>
+          <Show when={p().signIn !== "signedIn"}>
+            <Button size="sm" onClick={signIn}>
+              Sign in
+            </Button>
+          </Show>
+          <button
+            type="button"
+            class={styles.acctToggle}
+            aria-expanded={open()}
+            aria-label={open() ? `Collapse ${p().label}` : `Expand ${p().label}`}
+            onClick={() => setOpen(!open())}
+          >
+            <Chevron open={open()} />
+          </button>
+        </div>
       </div>
-      {/* The agent's own answer about which credential it will bill against,
-          not Sway reading its environment and guessing which variables matter
-          to which agent. A notice, never a block: the session still runs. */}
-      <Show when={p().apiKeySource}>
-        {(source) => (
-          <div class={styles.hint}>
-            <code>{source()}</code> is set, so this account bills against that API key rather than
-            its subscription. Unset it to go back to the subscription.
-          </div>
-        )}
-      </Show>
-      {/* Two profiles on one account is a thing somebody may genuinely want, so
-          this says what it sees and leaves the decision alone. */}
-      <Show when={p().duplicateOf}>
-        {(first) => (
-          <div class={styles.hint}>
-            Signed in to the same account as {first()}, so the two are indistinguishable except by
-            name.
-          </div>
-        )}
+
+      <Show when={open()}>
+        <div class={styles.acctBody}>
+          {/* Where this account lives. On the card rather than as hover text on
+              the name, which is where it used to be: a native `title` is
+              mouse-only, and the guard in src/test/interactiveTitle.test.ts
+              exists to stop exactly that shape. The default account has no path
+              to show, because it is the variable left unset. */}
+          <div class={styles.acctHome}>{home() ?? "Your existing login"}</div>
+          {/* The agent's own answer about which credential it will bill against,
+              not Sway reading its environment and guessing which variables
+              matter to which agent. A notice, never a block: sessions run. */}
+          <Show when={p().apiKeySource}>
+            {(source) => (
+              <div class={styles.hint}>
+                <code>{source()}</code> is set, so this account bills against that API key rather
+                than its subscription. Unset it to go back to the subscription.
+              </div>
+            )}
+          </Show>
+          {/* Two profiles on one account is a thing somebody may genuinely want,
+              so this says what it sees and leaves the decision alone. */}
+          <Show when={p().duplicateOf}>
+            {(first) => (
+              <div class={styles.hint}>
+                Signed in to the same account as {first()}, so the two are indistinguishable except
+                by name.
+              </div>
+            )}
+          </Show>
+
+          <Show
+            when={reads()}
+            fallback={
+              <div class={styles.hint}>
+                Sway reads no quota for {props.agentLabel}
+                <Show when={usageUnavailableReason(props.agentId)}>{(why) => <>: {why()}</>}</Show>.
+              </div>
+            }
+          >
+            {/* Every window Sway can name for this account, whether or not the
+                titlebar carries it: hiding a bar is not the same as not wanting
+                to know, and the one that needs permission has to be visible to
+                be asked for. */}
+            <div class={styles.winRow}>
+              <For each={boxesFor(props.agentId, tab())}>
+                {(b) => (
+                  <WindowCard
+                    name={b.name}
+                    reading={b.reading}
+                    warnAt={warnAt()}
+                    now={props.now}
+                    dim={b.dim}
+                    note={
+                      b.chip === "model_week" && b.reading === null
+                        ? "needs the account token"
+                        : null
+                    }
+                  />
+                )}
+              </For>
+            </div>
+
+            {/* Beside the windows, never instead of them: a read that failed has
+                to say so while whatever a cheaper rung filled stays on screen. */}
+            <Show when={usageReason(props.agentId)}>
+              {(why) => <div class={styles.hint}>{why()}</div>}
+            </Show>
+
+            <div class={styles.acctRow}>
+              <span class={styles.label}>Titlebar preview</span>
+              <WindowChips
+                agentId={props.agentId}
+                profile={tab()}
+                interactive={true}
+                onAsk={askWindow}
+              />
+            </div>
+
+            <div class={styles.acctRow}>
+              <span class={styles.label}>Warn at</span>
+              <WarnStepper
+                value={warnAt()}
+                label={warnAtLabel(warnAt())}
+                onChange={(v) => void setUsageWarnAt(props.agentId, tab(), v)}
+              />
+            </div>
+
+            <div class={styles.acctRow}>
+              <span class={styles.label}>Notify at the warn point and when spent</span>
+              <Switch
+                checked={notify()}
+                onChange={(on) => void setUsageNotify(props.agentId, tab(), on)}
+                aria-label={`Notify about ${p().label} quota`}
+              />
+            </div>
+          </Show>
+
+          {/* Its own box, and the last thing on the card. One control, because
+              removing is signing out plus forgetting and the dialog carries that
+              as a checkbox; where the adapter declares no logout command this is
+              the removal on its own. */}
+          <Show when={canSignOut() || canRemove()}>
+            <div class={styles.danger}>
+              <div>
+                <div class={styles.dangerTitle}>Danger area</div>
+                <div class={styles.dangerNote}>
+                  <Show
+                    when={canSignOut()}
+                    fallback={`Removing ${p().label} deletes the profile home Sway made for it, with the sessions inside.`}
+                  >
+                    Signing out drops {p().label}'s token and its group leaves the titlebar. Chats
+                    already running on it keep going.
+                  </Show>
+                </div>
+              </div>
+              {/* Named after the account it acts on, not after the word on it:
+                  two open cards would otherwise offer two buttons called "Sign
+                  out" and neither would say whose. */}
+              <Button
+                size="sm"
+                variant="danger"
+                aria-label={canSignOut() ? `Sign ${p().label} out` : `Remove ${p().label}`}
+                onClick={() => void act()}
+                disabled={busy()}
+              >
+                {canSignOut() ? "Sign out" : "Remove"}
+              </Button>
+            </div>
+          </Show>
+        </div>
       </Show>
     </div>
   );
@@ -381,6 +787,12 @@ export default function AgentAccounts(props: {
   // a reason that has nothing to do with the workspace.
   const [cwd] = createResource(() => homeDir().catch(() => "/"));
   const [adding, setAdding] = createSignal(false);
+  // The one transition nothing sends an event for: a window resets on a clock,
+  // so without this a card left open would keep counting down past the reset it
+  // is counting down to. Same 60s tick the strip runs on, and the same reason.
+  const [now, setNow] = createSignal(Date.now());
+  const tick = setInterval(() => setNow(Date.now()), 60_000);
+  onCleanup(() => clearInterval(tick));
 
   // Both modals are the in-app ones. Tauri's macOS webview implements neither
   // `window.confirm` nor `window.prompt`, so the browser versions would silently
@@ -515,12 +927,13 @@ export default function AgentAccounts(props: {
           <div class={styles.accountsCard}>
             <For each={v().profiles}>
               {(profile) => (
-                <ProfileRow
+                <AccountCard
                   agentId={props.agentId}
                   agentLabel={props.agentLabel}
                   view={v()}
                   profile={profile}
                   cwd={cwd() ?? "/"}
+                  now={now()}
                   chooseDefault={v().profiles.length > 1}
                   onChanged={changed}
                   confirm={askConfirm}

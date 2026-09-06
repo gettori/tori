@@ -167,28 +167,28 @@ export const SETTINGS: SettingEntry[] = [
     label: "Agents",
     hint: "Which agent CLIs Sway found on your PATH, their versions, and the drift from what its adapters were built against.",
   },
-  // The three usage controls live on an agent's own detail page rather than on
-  // the agents table, because what they answer is per agent: which rungs exist
-  // is a property of the adapter. Listed here anyway, because the catalogue is
-  // what the filter searches and what the palette generates a row from, and a
-  // setting missing here is invisible in both.
+  // The usage controls live on an account's own card, on the agent's detail
+  // page, because what they answer is per account: a quota window belongs to a
+  // login. Listed here anyway, because the catalogue is what the filter
+  // searches and what the palette generates a row from, and a setting missing
+  // here is invisible in both.
   {
-    id: "usage-source",
+    id: "titlebar-preview",
     section: "agents",
-    label: "Usage source",
-    hint: "How deep Sway reads an agent's quota: off, its own session events, its CLI, or the account token. Set per agent on the agent's page.",
+    label: "Titlebar preview",
+    hint: "Which of an account's quota windows the titlebar carries, and how deep Sway reads for it. Nothing lit means nothing read. Set per account on the agent's page.",
   },
   {
-    id: "usage-detail",
+    id: "usage-warn-at",
     section: "agents",
-    label: "Usage detail",
-    hint: "How much of an account's quota the titlebar strip draws. Set per agent on the agent's page.",
+    label: "Warn at",
+    hint: "How full one account's quota gets before Sway says so. Follows the shared threshold in Chat until you move it. Set per account on the agent's page.",
   },
   {
     id: "usage-notify",
     section: "agents",
     label: "Usage notifications",
-    hint: "Whether a quota window approaching or reached is worth an OS notification. Never sent while Sway has focus.",
+    hint: "Whether a quota window approaching or reached is worth an OS notification. Never sent while Sway has focus. Set per account on the agent's page.",
   },
   {
     id: "language-servers",

@@ -117,23 +117,51 @@ export function quotaState(r: QuotaReading, warnAt: number, now: number): QuotaS
   return "ok";
 }
 
-/** "five_hour" -> "5-hour". Wire values are snake_case identifiers meant for a
- *  machine; an unknown one falls through as-is rather than being dropped, since
- *  an unreadable window name still beats a silent one. */
+/**
+ * One vocabulary for the windows, in the three lengths the surfaces need.
+ *
+ * `label` is the name a card has room for, `short` is what fits in the titlebar,
+ * and `inline` is the form a sentence can carry: "your Week, all models limit"
+ * is not English, and the chat's notice is the one place these names have to be
+ * read rather than scanned.
+ */
+const NAMES: Record<string, { label: string; short: string; inline: string }> = {
+  five_hour: { label: "Rolling 5 hours", short: "5H", inline: "rolling 5-hour" },
+  seven_day: { label: "Week, all models", short: "Week", inline: "weekly all-model" },
+  extra_usage: { label: "Extra usage", short: "Extra", inline: "extra usage" },
+};
+
+/** The model a weekly window is scoped to, titled, or null for a window that is
+ *  not one. The suffix is the model's own name, so it is read rather than
+ *  mapped: the account-token rung learns those names at read time and no list
+ *  here could stay current with them. */
+export function scopedModel(limitType: string): string | null {
+  if (!limitType.startsWith("seven_day_")) return null;
+  const words = limitType.slice("seven_day_".length).replace(/_/g, " ");
+  return words === "" ? null : `${words[0].toUpperCase()}${words.slice(1)}`;
+}
+
+/** "five_hour" -> "Rolling 5 hours". Wire values are snake_case identifiers
+ *  meant for a machine; an unknown one falls through as-is rather than being
+ *  dropped, since an unreadable window name still beats a silent one. */
 export function limitTypeLabel(limitType: string | null): string | null {
   if (limitType === null || limitType === "") return null;
-  if (limitType === "five_hour") return "5-hour";
-  if (limitType === "seven_day") return "7-day";
-  if (limitType === "extra_usage") return "Extra usage";
-  // A weekly window scoped to one model. The suffix is the model's own name, so
-  // it is titled rather than mapped: the account-token rung learns those names
-  // at read time and no list here could stay current with them.
-  const scoped = limitType.startsWith("seven_day_") ? limitType.slice("seven_day_".length) : null;
-  if (scoped) {
-    const words = scoped.replace(/_/g, " ");
-    return `7-day (${words[0].toUpperCase()}${words.slice(1)})`;
-  }
-  return limitType;
+  const known = NAMES[limitType];
+  if (known) return known.label;
+  const model = scopedModel(limitType);
+  return model ? `Week, ${model}` : limitType;
+}
+
+/** The same window, in the width the titlebar has: "5H", "Week", "Fable". */
+export function limitTypeShort(limitType: string): string {
+  const model = scopedModel(limitType);
+  return NAMES[limitType]?.short ?? model ?? limitType;
+}
+
+/** The same window as a sentence carries it, lower case and singular. */
+export function limitTypeInline(limitType: string): string {
+  const model = scopedModel(limitType);
+  return NAMES[limitType]?.inline ?? (model ? `weekly ${model}` : limitType);
 }
 
 /** Epoch seconds to a wall-clock time the user can act on, or null when the
@@ -162,7 +190,7 @@ export function windowSentence(r: QuotaReading, warnAt: number, now: number): st
   const state = quotaState(r, warnAt, now);
   if (state === "ok") return null;
 
-  const kind = limitTypeLabel(r.kind);
+  const kind = r.kind ? limitTypeInline(r.kind) : null;
   const subject = kind ? `your ${kind} limit` : "a usage limit";
   const Subject = subject[0].toUpperCase() + subject.slice(1);
 

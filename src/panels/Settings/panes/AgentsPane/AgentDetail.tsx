@@ -36,7 +36,6 @@ import { settings, saveSettings } from "../../settingsStore";
 import { behindVerified, verifiedVersion } from "../../../../utils/versions";
 import OverlayScroll from "../../../../components/Scrollbar/OverlayScroll";
 import AgentAccounts from "./AgentAccounts";
-import AgentUsage from "./AgentUsage";
 import styles from "../../Settings.module.css";
 
 // What each published key means, since the value alone is deliberately terse.
@@ -719,16 +718,6 @@ export default function AgentDetail(props: {
             )}
           </Show>
         </Show>
-      </Show>
-
-      {/* Below the models rather than above them. The page reads as what this
-          agent is (identity, accounts, what it can run) before what Sway does
-          about it, and reading a quota is Sway's own behaviour rather than a
-          fact about the agent. Not gated on the adapter declaring a ladder: an
-          agent Sway can read nothing from still has to say so, and a section
-          that disappeared would leave the reader looking for it. */}
-      <Show when={!setupMode()}>
-        <AgentUsage agentId={a().id} agentLabel={a().label} />
       </Show>
 
       <div class={styles.groupHead}>

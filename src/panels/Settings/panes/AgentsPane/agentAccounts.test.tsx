@@ -9,12 +9,28 @@ import { render, waitFor, fireEvent, screen } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import AgentsSection from "./AgentsSection";
 import { __resetModelCatalogsForTests, type ModelCatalog } from "../../../../utils/modelCatalog";
+import { resetUsageStoreForTests, seedUsageStoreForTests } from "../../../../utils/usageStore";
+import { DEFAULT_SETTINGS, applySettings } from "../../settingsStore";
 import { OPEN_JOB, type OpenJob } from "../../../../utils/events";
 import styles from "../../Settings.module.css";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: async () => "/home/me" }));
 const invoked = vi.mocked(invoke);
+
+// Claude's `[usage]` table. The fallback adapter this harness paints from
+// carries none, and without one the card has no windows to offer: the chips
+// under test would not exist at all.
+vi.mock("../../../../utils/agents", async (orig) => {
+  const actual = await orig<typeof import("../../../../utils/agents")>();
+  return {
+    ...actual,
+    findAdapter: (id: string) => {
+      const a = actual.findAdapter(id);
+      return id === "claude" ? { ...a, usage: { sources: ["sessions", "token"] } } : a;
+    },
+  };
+});
 
 const health = (over: Record<string, unknown> = {}) => ({
   id: "claude",
@@ -187,22 +203,26 @@ describe("the sign-in state on an agent page", () => {
 describe("the accounts list", () => {
   beforeEach(() => invoked.mockReset());
 
-  // The row shows the name alone; where the account lives is the name's
-  // tooltip, and the default account has no path to put there.
+  // The head shows the name alone; where the account lives is on the card, and
+  // the default account has no path to put there.
   it("names the default profile as the user's existing login", async () => {
-    const { container, getByRole } = await open(mount());
+    const { container } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
-    expect(getByRole("button", { name: "Default" }).title).toBe("Your existing login");
+    expect(container.textContent).toContain("Your existing login");
   });
 
-  it("puts an added account's profile home in its tooltip", async () => {
+  it("shows an added account's profile home on its card", async () => {
     const { container, getByRole } = await open(mount({
       accounts: {
         profiles: [profile({ id: "work", label: "Work", isDefault: false, home: "/home/me/p/work" })],
       },
     }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
-    expect(getByRole("button", { name: "Work" }).title).toBe("~/p/work");
+    // A card nobody is signed into on opens closed, so the path is a press
+    // away rather than on screen.
+    expect(container.textContent).not.toContain("~/p/work");
+    fireEvent.click(getByRole("button", { name: "Expand Work" }));
+    expect(container.textContent).toContain("~/p/work");
   });
 
   it("shows the account the agent named for a profile", async () => {
@@ -223,6 +243,7 @@ describe("the accounts list", () => {
     }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
     expect(queryByRole("button", { name: /Sign out and remove/ })).toBeNull();
+    fireEvent.click(getByRole("button", { name: "Expand Work" }));
     expect(getByRole("button", { name: "Sign Work out" })).toBeTruthy();
   });
 
@@ -234,13 +255,15 @@ describe("the accounts list", () => {
       },
     }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
+    fireEvent.click(getByRole("button", { name: "Expand Work" }));
     expect(getByRole("button", { name: "Remove Work" })).toBeTruthy();
+    expect(container.textContent).toContain("Danger area");
   });
 
   // Two profiles on one account is a thing somebody may genuinely want, so this
   // says what it sees rather than refusing.
   it("warns about a second profile signed in to the same account", async () => {
-    const { container } = await open(mount({
+    const { container, getByRole } = await open(mount({
       accounts: {
         profiles: [
           profile(),
@@ -249,6 +272,7 @@ describe("the accounts list", () => {
       },
     }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
+    fireEvent.click(getByRole("button", { name: "Expand Work" }));
     expect(container.textContent).toContain("same account as Default");
   });
 
@@ -371,6 +395,8 @@ describe("signing out", () => {
     const { container, getByRole } = await open(mount());
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
 
+    // The account you are signed into opens with the card, so its danger area
+    // is already on screen.
     fireEvent.click(getByRole("button", { name: "Sign Default out" }));
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
@@ -403,6 +429,7 @@ describe("signing out", () => {
     }));
     await waitFor(() => expect(container.textContent).toContain("Work"));
 
+    fireEvent.click(getByRole("button", { name: "Expand Work" }));
     fireEvent.click(getByRole("button", { name: "Sign Work out" }));
     fireEvent.click(screen.getByRole("checkbox", { name: /Remove the account as well/ }));
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
@@ -501,11 +528,132 @@ describe("what each account can run", () => {
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
     // Read off the row itself: the page below it has a Models section of its
     // own, so the whole card's text cannot tell the two apart.
-    const row = container.querySelector(`.${styles.accountRow}`);
+    const row = container.querySelector(`.${styles.acctCard}`);
     // Asserted first, or the check below is vacuous on a selector that found
     // nothing.
     expect(row?.textContent).toContain("Default");
-    expect(row?.textContent).not.toContain("model");
+    // The count, not the word: the card names a "Week, all models" window.
+    expect(row?.textContent).not.toMatch(/\d+ models?/);
+  });
+});
+
+
+// The quota half of the card. The account is the unit because the window is: a
+// five-hour window belongs to a login, so the chips, the threshold and the
+// switch are all per account rather than per agent.
+describe("the quota on an account card", () => {
+  const NOW = Date.UTC(2026, 8, 6, 12, 0, 0);
+  const win = (kind: string, utilization: number, inSeconds: number) => ({
+    kind,
+    utilization,
+    resetsAt: Math.floor(NOW / 1000) + inSeconds,
+    status: null,
+    reachedType: null,
+  });
+
+  beforeEach(() => {
+    invoked.mockReset();
+    vi.setSystemTime(NOW);
+    resetUsageStoreForTests();
+    // The settings store is module state, so without this a test inherits what
+    // the last one's chip press wrote. Cloned rather than passed: applying the
+    // shared default object hands the store a reference to it.
+    applySettings(structuredClone(DEFAULT_SETTINGS));
+  });
+
+  /** What the panel last wrote for this account, as the file would hold it. */
+  const savedWindows = (id = "default") => {
+    const writes = invoked.mock.calls.filter(([cmd]) => cmd === "set_settings");
+    const last = writes[writes.length - 1]?.[1] as
+      | { settings?: { agent?: { usage?: Record<string, { accounts?: Record<string, { windows?: string[]; warnAt?: number; notify?: boolean }> }> } } }
+      | undefined;
+    return last?.settings?.agent?.usage?.claude?.accounts?.[id];
+  };
+
+  it("draws a box per window, with the level and when it empties", async () => {
+    seedUsageStoreForTests("claude", null, [win("five_hour", 0.128, 4 * 3600 + 34 * 60)], NOW);
+    const { container } = await open(mount());
+    await waitFor(() => expect(container.textContent).toContain("Rolling 5 hours"));
+    expect(container.textContent).toContain("12.8%");
+    // A countdown while the window is close enough to plan around.
+    expect(container.textContent).toContain("4h 34m left");
+    // And a box for the window nothing has answered for yet, rather than a gap.
+    expect(container.textContent).toContain("Week, all models");
+    expect(container.textContent).toContain("not read yet");
+  });
+
+  it("shows the two free windows on the titlebar and keeps the model one off", async () => {
+    const { getByRole } = await open(mount());
+    await waitFor(() => expect(getByRole("button", { name: /^5H/ })).toBeTruthy());
+    expect(getByRole("button", { name: /^5H/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(getByRole("button", { name: /^Week/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(getByRole("button", { name: /^Model/ }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("stores the whole list when a chip is pressed, not just the chip", async () => {
+    const { getByRole } = await open(mount());
+    await waitFor(() => expect(getByRole("button", { name: /^Week/ })).toBeTruthy());
+
+    fireEvent.click(getByRole("button", { name: /^Week/ }));
+    await waitFor(() => expect(savedWindows()?.windows).toEqual(["five_hour"]));
+  });
+
+  // The chip is the permission. The stored list is what the backend's own gate
+  // reads before it opens the login Keychain, so lighting it here is the whole
+  // of the opt-in.
+  it("asks for the model window by storing the chip that authorises the read", async () => {
+    const { container, getByRole } = await open(mount());
+    // Nothing knows which model this account's week is scoped to until a read
+    // lands, and the card says that rather than guessing a name.
+    await waitFor(() => expect(getByRole("button", { name: /^Model/ })).toBeTruthy());
+    expect(container.textContent).toContain("Week, one model");
+    expect(container.textContent).toContain("needs the account token");
+
+    fireEvent.click(getByRole("button", { name: /^Model/ }));
+    // The chip's own effect. That the rest of the list comes with it is the
+    // test above; what matters here is that the one key the backend gate reads
+    // is now in the file.
+    await waitFor(() => expect(savedWindows()?.windows).toContain("model_week"));
+  });
+
+  // Once a read has landed the chip stops asking and starts naming: the model
+  // comes from the window itself, which is the only thing that knows it.
+  it("names the model window after the model once one has answered", async () => {
+    seedUsageStoreForTests("claude", null, [win("seven_day_fable", 0.032, 3 * 86400)], NOW);
+    const { container, getByRole } = await open(mount());
+    await waitFor(() => expect(container.textContent).toContain("Week, Fable"));
+    expect(getByRole("button", { name: /^Fable/ })).toBeTruthy();
+    expect(container.textContent).not.toContain("needs the account token");
+  });
+
+  it("moves this account's own threshold, in the shared control's stops", async () => {
+    const { container, getByRole } = await open(mount());
+    await waitFor(() => expect(container.textContent).toContain("Warn at"));
+
+    fireEvent.click(getByRole("button", { name: "Warn earlier" }));
+    await waitFor(() => expect(savedWindows()?.warnAt).toBeCloseTo(0.75));
+    // And the summary on the head is the same number, so a closed card still
+    // says what it will warn at.
+    await waitFor(() => expect(container.textContent).toContain("75%"));
+  });
+
+  it("keeps the notification switch per account", async () => {
+    const { getByRole } = await open(mount());
+    await waitFor(() => expect(getByRole("switch", { name: /Notify about Default/ })).toBeTruthy());
+
+    fireEvent.click(getByRole("switch", { name: /Notify about Default/ }));
+    await waitFor(() => expect(savedWindows()?.notify).toBe(false));
+  });
+
+  // An agent whose adapter declares no ladder gets no chips and no threshold,
+  // because there would be nothing behind them.
+  it("says so plainly for an agent Sway can read no quota for", async () => {
+    const { container, queryByRole } = await open(
+      mount({ health: { id: "codex", label: "Codex", program: "codex" } }),
+      "Codex",
+    );
+    await waitFor(() => expect(container.textContent).toContain("Sway reads no quota for Codex"));
+    expect(queryByRole("button", { name: /^5H/ })).toBeNull();
   });
 });
 

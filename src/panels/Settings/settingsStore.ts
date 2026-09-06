@@ -105,34 +105,34 @@ export type Agent = {
    *  on the login the user already had: the default account is the absence of
    *  an answer rather than a stored `"default"`. */
   defaultProfiles?: Record<string, string>;
-  /** How deep Sway reads each agent's quota, and how loudly it says so, keyed
-   *  by adapter id. An agent with no entry has never been answered for, which
-   *  is not the same as `"off"`: see `utils/usageSettings`, which is the only
-   *  thing that should read this field. */
+  /** What each agent's accounts say about their own quota, keyed by adapter id
+   *  and then by account. An account with no entry has never been answered for,
+   *  which is not the same as showing nothing: see `utils/usageSettings`, which
+   *  is the only thing that should read this field. */
   usage?: Record<string, UsageSettings>;
 };
 
-/** Which rung of the source ladder Sway climbs for one agent. Mirrors
- *  `UsageSource` in src-tauri/src/settings.rs.
- *
- *  `"off"` is a fourth value rather than a null rung because it is a real
- *  answer the user can give, and the absence of the whole entry is the other
- *  one. */
+/** Which rung of the source ladder reads one account. Derived from that
+ *  account's chips rather than stored: see `utils/usageSettings`. `"off"` is a
+ *  fourth value because "read nothing for this account" is a real answer. */
 export type UsageSource = "off" | "sessions" | "cli" | "token";
 
-/** How much of an account's quota the titlebar strip draws. A level rather than
- *  per-window toggles: which windows an agent reports is its own business and
- *  changes per rung. */
-export type UsageDetail = "compact" | "standard" | "full";
+/** One account's answer about its own quota. Mirrors `AccountUsage` in
+ *  src-tauri/src/settings.rs.
+ *
+ *  Every field is optional and every absence means something: no `windows` is
+ *  an account nobody has answered for (which shows the free pair), an empty
+ *  `windows` is the user's own no, no `warnAt` follows the shared threshold. */
+export type AccountUsage = {
+  windows?: string[];
+  warnAt?: number | null;
+  notify?: boolean;
+};
 
-/** Mirrors `UsageSettings` in src-tauri/src/settings.rs. `hiddenProfiles` never
- *  names the default account: the strip's one stable anchor is that the account
- *  you are signed into is always on it, and the backend drops it on read. */
+/** Mirrors `UsageSettings` in src-tauri/src/settings.rs: one agent's accounts,
+ *  keyed by the backend's profile id (`"default"`, never null). */
 export type UsageSettings = {
-  source: UsageSource;
-  detail: UsageDetail;
-  notify: boolean;
-  hiddenProfiles: string[];
+  accounts?: Record<string, AccountUsage>;
 };
 /** Editor behaviour that is a preference rather than a project fact.
  *

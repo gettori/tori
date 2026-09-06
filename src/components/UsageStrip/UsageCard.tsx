@@ -4,8 +4,14 @@ import Switch from "../Switch/Switch";
 import { findAdapter } from "../../utils/agents";
 import { agentHealthFor, asProfileId, asTabProfile, namedProfiles, profileLabel } from "../../utils/agentHealth";
 import { limitTypeLabel, paceOutAt, quotaState, resetsAtMs } from "../../utils/chatRateLimit";
-import { settings } from "../../panels/Settings/settingsStore";
-import { setUsage, usageNotify, usageSource } from "../../utils/usageSettings";
+import {
+  accountWindows,
+  chipFor,
+  setUsageNotify,
+  usageNotify,
+  usageRungFor,
+  usageWarnAt,
+} from "../../utils/usageSettings";
 import { usageIdentity, usageReason } from "../../utils/usageProbe";
 import { temporalOf, windowsFor, type WindowReading } from "../../utils/usageStore";
 import styles from "./UsageCard.module.css";
@@ -103,8 +109,15 @@ export default function UsageCard(props: {
     return c.hasCredits && c.balance ? `${c.balance} credits` : null;
   };
 
-  const warnAt = () => settings.budgets?.warnAtFraction ?? 1;
-  const lines = () => windowsFor(props.agentId, tab()).map((w) => windowLine(w, warnAt(), props.now));
+  const warnAt = () => usageWarnAt(props.agentId, tab());
+  /** Only the windows this account's chips light: the card explains the strip,
+   *  so a row here that has no bar there would be explaining nothing. */
+  const lines = () => {
+    const chips = accountWindows(props.agentId, tab());
+    return windowsFor(props.agentId, tab())
+      .filter((w) => chips.includes(chipFor(w.kind)))
+      .map((w) => windowLine(w, warnAt(), props.now));
+  };
 
   return (
     <Popover
@@ -155,13 +168,13 @@ export default function UsageCard(props: {
 
         <footer class={styles.foot}>
           <Switch
-            checked={usageNotify(props.agentId)}
+            checked={usageNotify(props.agentId, tab())}
             // Read-only until pinned, and `aria-disabled` rather than `disabled`
             // so the reason stays reachable: a hovering reader can still see what
             // the control says, they just cannot move it by passing over it.
             aria-disabled={!props.pinned}
             onChange={(on) => {
-              if (props.pinned) void setUsage(props.agentId, { notify: on });
+              if (props.pinned) void setUsageNotify(props.agentId, tab(), on);
             }}
             label="Notify"
             aria-label={`Notify about ${label()} quota`}
@@ -173,7 +186,7 @@ export default function UsageCard(props: {
               state on a real machine was mostly hole. What answers the question
               is above: the level now, and when it resets. */}
           <Show when={credits()}>{(c) => <span class={styles.credits}>{c()}</span>}</Show>
-          <span class={styles.source}>source: {usageSource(props.agentId)}</span>
+          <span class={styles.source}>source: {usageRungFor(props.agentId, tab())}</span>
         </footer>
       </div>
     </Popover>

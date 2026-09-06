@@ -149,7 +149,7 @@ describe("the reached banner", () => {
 
     chanA.onmessage!(rateLimit("s-a", 1));
 
-    const banners = await screen.findAllByText(/5-hour limit has been reached/);
+    const banners = await screen.findAllByText(/rolling 5-hour limit has been reached/);
     expect(banners).toHaveLength(2);
     for (const b of banners) expect(b.closest("div")!.className).toContain(styles.bannerReached);
   });
@@ -206,7 +206,7 @@ describe("the approaching notice", () => {
     const { chanA } = await mountTwo();
 
     chanA.onmessage!(rateLimit("s-a", 0.85));
-    await waitFor(() => expect(screen.getAllByText(/You have used 85% of your 5-hour limit/)).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText(/You have used 85% of your rolling 5-hour limit/)).toHaveLength(2));
 
     chanA.onmessage!(rateLimit("s-a", 0.86));
     chanA.onmessage!(rateLimit("s-a", 0.87));
@@ -214,7 +214,7 @@ describe("the approaching notice", () => {
     // One notice per chat, and the newer levels do not add a second: the notice
     // is about the window, and the window has not reset.
     await waitFor(() => expect(invokes.length).toBeGreaterThan(0));
-    expect(screen.getAllByText(/You have used 85% of your 5-hour limit/)).toHaveLength(2);
+    expect(screen.getAllByText(/You have used 85% of your rolling 5-hour limit/)).toHaveLength(2);
     expect(screen.queryByText(/You have used 87%/)).toBeNull();
   });
 
@@ -223,7 +223,7 @@ describe("the approaching notice", () => {
 
     chanA.onmessage!(rateLimit("s-a", 0.85));
 
-    const [line] = await screen.findAllByText(/You have used 85% of your 5-hour limit/);
+    const [line] = await screen.findAllByText(/You have used 85% of your rolling 5-hour limit/);
     const box = line.closest("div")!;
     expect(box.className).toContain(styles.noticeAttention);
     expect(box.className).not.toContain(styles.noticeError);

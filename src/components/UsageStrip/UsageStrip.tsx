@@ -4,9 +4,8 @@ import UsageCard from "./UsageCard";
 import { findAdapter } from "../../utils/agents";
 import { asProfileId, asTabProfile, profileLabel } from "../../utils/agentHealth";
 import { agentEnabled } from "../../utils/agentEnabled";
-import { limitTypeLabel, quotaState, type QuotaState } from "../../utils/chatRateLimit";
-import { settings } from "../../panels/Settings/settingsStore";
-import { accountOnStrip, usageDetail, usageSource } from "../../utils/usageSettings";
+import { limitTypeLabel, limitTypeShort, quotaState, type QuotaState } from "../../utils/chatRateLimit";
+import { accountWindows, chipFor, usageWarnAt } from "../../utils/usageSettings";
 import { pollUsage } from "../../utils/usageProbe";
 import {
   accountsWithReadings,
@@ -36,18 +35,6 @@ import styles from "./UsageStrip.module.css";
 // an account is out of quota is the same claim the chat's reached banner makes,
 // and wears the same role it does.
 
-/** How much of an account's quota the strip draws, per the Detail setting. */
-type Detail = "compact" | "standard" | "full";
-
-/**
- * The window kinds every source is normalized to.
- *
- * Anything else is a scoped window (Claude's per-model weekly one), which only
- * `full` draws: it is a second number about the same seven days, and on
- * `standard` it reads as a duplicate of the row above it.
- */
-const GENERIC_KINDS = ["five_hour", "seven_day"];
-
 /**
  * Below this the strip drops to one glyph and one bar per account.
  *
@@ -63,9 +50,12 @@ export function shouldCollapse(topbarWidth: number): boolean {
 
 /** The window with the least headroom: what a one-bar row has to show, since
  *  the reason to glance at the strip is the limit you are nearest to. */
-export function tightestWindow(windows: WindowReading[], now = Date.now()): WindowReading | null {
+export function tightestWindow(
+  windows: WindowReading[],
+  warnAt: number,
+  now = Date.now(),
+): WindowReading | null {
   const rank: Record<QuotaState, number> = { reached: 3, approaching: 2, ok: 1, expired: 0 };
-  const warnAt = settings.budgets?.warnAtFraction ?? 1;
   let best: WindowReading | null = null;
   let bestScore = -1;
   for (const w of windows) {
@@ -78,14 +68,7 @@ export function tightestWindow(windows: WindowReading[], now = Date.now()): Wind
   return best;
 }
 
-function windowsAtDetail(windows: WindowReading[], detail: Detail, now: number): WindowReading[] {
-  if (detail === "compact") {
-    const one = tightestWindow(windows, now);
-    return one ? [one] : [];
-  }
-  if (detail === "full") return windows;
-  return windows.filter((w) => GENERIC_KINDS.includes(w.kind));
-}
+
 
 /** One account with something to say, in the order the strip draws them. */
 type Cluster = {
@@ -94,6 +77,7 @@ type Cluster = {
   profile: string;
   isDefault: boolean;
   label: string;
+  warnAt: number;
   windows: WindowReading[];
 };
 
@@ -102,21 +86,24 @@ function clusters(collapsed: boolean, now: number): Cluster[] {
   for (const key of accountsWithReadings()) {
     const { agentId, profile } = splitAccountKey(key);
     if (!agentEnabled(agentId)) continue;
-    if (usageSource(agentId) === "off") continue;
     const tab = asTabProfile(profile);
-    if (!accountOnStrip(agentId, tab)) continue;
+    // The chips are the whole answer: which windows this account shows is also
+    // whether it is on the strip at all, since none lit is none drawn.
+    const chips = accountWindows(agentId, tab);
+    if (chips.length === 0) continue;
 
     const isDefault = profile === asProfileId(null);
     const adapter = findAdapter(agentId);
     // A named account is the label a reader needs (two Claude logins are two
     // rows), and the agent's own name is what identifies the default one.
     const label = (isDefault ? adapter.label : profileLabel(agentId, tab)) ?? adapter.label;
-    const all = windowsFor(agentId, tab);
-    // Collapsed and non-default rows are one bar each. That is the setting the
-    // user chose only for the default row; the rest are compact by construction,
-    // because the strip's stable anchor is the account you are signed into.
-    const detail: Detail = collapsed || !isDefault ? "compact" : usageDetail(agentId);
-    out.push({ agentId, profile, isDefault, label, windows: windowsAtDetail(all, detail, now) });
+    const warnAt = usageWarnAt(agentId, tab);
+    const lit = windowsFor(agentId, tab).filter((w) => chips.includes(chipFor(w.kind)));
+    // A narrow topbar drops every row to its tightest window. That is a fact
+    // about the space, not about the account, so it never touches what the chips
+    // say: widen the window and the other bars come back.
+    const one = collapsed ? tightestWindow(lit, warnAt, now) : null;
+    out.push({ agentId, profile, isDefault, label, warnAt, windows: one ? [one] : lit });
   }
   // Default accounts first, then by agent, so a bar does not move when a second
   // login starts reporting.
@@ -154,9 +141,8 @@ function clusterLabel(row: Cluster, now: number): string {
   return [`${row.label} usage`, ...windows].join(", ");
 }
 
-function UsageBar(props: { reading: WindowReading; now: number }) {
-  const warnAt = () => settings.budgets?.warnAtFraction ?? 1;
-  const state = () => quotaState(props.reading, warnAt(), props.now);
+function UsageBar(props: { reading: WindowReading; warnAt: number; now: number }) {
+  const state = () => quotaState(props.reading, props.warnAt, props.now);
   const temporal = () => temporalOf(props.reading, props.now);
   const pct = () =>
     props.reading.utilization === null ? null : Math.round(props.reading.utilization * 100);
@@ -176,7 +162,9 @@ function UsageBar(props: { reading: WindowReading; now: number }) {
       data-state={state()}
       data-temporal={temporal()}
     >
-      <span class={styles.kind}>{limitTypeLabel(props.reading.kind) ?? props.reading.kind}</span>
+      {/* The short name, which is the one the bar has room for. The full one
+          is in the cluster's accessible name and on the card. */}
+      <span class={styles.kind}>{limitTypeShort(props.reading.kind)}</span>
       <Show
         when={temporal() !== "expired"}
         // The level belongs to a window that has since reset, so a percentage
@@ -315,7 +303,9 @@ export default function UsageStrip() {
               <Show when={!collapsed()}>
                 <span class={styles.name}>{row().label}</span>
               </Show>
-              <Index each={row().windows}>{(w) => <UsageBar reading={w()} now={clock()} />}</Index>
+              <Index each={row().windows}>
+                {(w) => <UsageBar reading={w()} warnAt={row().warnAt} now={clock()} />}
+              </Index>
             </button>
           )}
         </Index>
