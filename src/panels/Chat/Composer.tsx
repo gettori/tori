@@ -736,6 +736,11 @@ export default function Composer(props: {
           }
           value={text()}
           disabled={props.disabled}
+          // Spelling is marked, never rewritten: autocorrect would "fix" the
+          // identifiers and paths a prompt is full of.
+          spellcheck={true}
+          autocorrect="off"
+          autocapitalize="off"
           onInput={(e) => {
             setText(e.currentTarget.value);
             setHistoryIndex(-1);
