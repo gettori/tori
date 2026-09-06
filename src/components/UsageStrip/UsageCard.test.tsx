@@ -1,8 +1,8 @@
 // The card the strip is short for, and the two states it lives in.
 //
-// The rule under test is read-only on hover, interactive on pinned. A card that
-// arrives under the pointer with live controls on it is a card you change by
-// accident on the way somewhere else, so hovering explains and clicking commits.
+// The rule under test is opens on hover, stays on click. Nothing on the card
+// writes a setting (the quota controls are on the account's settings card), so
+// the two states differ only in what closes it.
 //
 // The other half is the gap. The popover is portalled and gutter-offset, so a
 // pointer travelling from a bar to the card is briefly over neither surface; a
@@ -16,10 +16,30 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
+type Profile = {
+  id: string;
+  label: string;
+  signIn: string;
+  account: string | null;
+  apiKeySource: string | null;
+};
+
+const ONE_LOGIN: Profile[] = [
+  { id: "default", label: "Default", signIn: "signedIn", account: "me@example.com", apiKeySource: null },
+];
+
 const bench = vi.hoisted(() => ({
   enabled: new Set<string>(["claude"]),
-  usage: {} as Record<string, { source?: string; notify?: boolean }>,
+  usage: {} as Record<string, { accounts?: Record<string, { windows?: string[] }> }>,
   saved: [] as unknown[],
+  polled: [] as [string, string, string | null][],
+  profiles: [] as {
+    id: string;
+    label: string;
+    signIn: string;
+    account: string | null;
+    apiKeySource: string | null;
+  }[],
 }));
 
 vi.mock("../../panels/Settings/settingsStore", () => ({
@@ -33,6 +53,15 @@ vi.mock("../../panels/Settings/settingsStore", () => ({
 
 vi.mock("../../utils/agentEnabled", () => ({ agentEnabled: (id: string) => bench.enabled.has(id) }));
 
+// The probe is a process spawn. Its schedule is its own test; here it is a
+// record of what the card asked for.
+vi.mock("../../utils/usageProbe", async (orig) => ({
+  ...(await orig<typeof import("../../utils/usageProbe")>()),
+  pollUsage: (agentId: string, trigger: string, profile: string | null = null) => {
+    bench.polled.push([agentId, trigger, profile]);
+  },
+}));
+
 const adapters = [
   { id: "claude", label: "Claude", icon: "claude", usage: { sources: ["sessions"] }, usage_reason: null },
   { id: "codex", label: "Codex", icon: "codex", usage: { sources: ["cli"] }, usage_reason: null },
@@ -44,13 +73,15 @@ vi.mock("../../utils/agents", async (orig) => {
 
 vi.mock("../../utils/agentHealth", async (orig) => ({
   ...(await orig<typeof import("../../utils/agentHealth")>()),
-  profileLabel: () => null,
+  // Named only where naming says something, which is what the real one does:
+  // "Default" is a word for the only thing there is.
+  profileLabel: (_id: string, profile: string | null) =>
+    bench.profiles.length > 1
+      ? (bench.profiles.find((p) => p.id === (profile ?? "default"))?.label ?? null)
+      : null,
   // Claude is the one bundled agent whose `whoami` names an account. Codex's
   // answers in an exit code, so it reaches the card only through its probe.
-  namedProfiles: (id: string) =>
-    id === "claude"
-      ? [{ id: "default", label: "Default", signIn: "signedIn", account: "me@example.com", apiKeySource: null }]
-      : [],
+  namedProfiles: (id: string) => (id === "claude" ? bench.profiles : []),
 }));
 
 const { default: UsageStrip } = await import("./UsageStrip");
@@ -70,6 +101,8 @@ beforeEach(() => {
   bench.enabled = new Set(["claude"]);
   bench.usage = {};
   bench.saved = [];
+  bench.polled = [];
+  bench.profiles = [...ONE_LOGIN];
   resetUsageStoreForTests();
   resetUsageProbeForTests();
   seedUsageStoreForTests(
@@ -107,20 +140,38 @@ describe("opening on hover", () => {
 
     await vi.advanceTimersByTimeAsync(300);
     expect(card()).toBeTruthy();
-    expect(screen.getByRole("switch", { name: /Notify/ }).getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("shows the account, every window, and where each number came from", async () => {
+  it("shows the account, every window, and how old the numbers are", async () => {
     render(() => <UsageStrip />);
     await hoverOpen();
 
     const text = card()!.textContent!;
     expect(text).toContain("me@example.com");
-    expect(text).toContain("Rolling 5 hours");
-    expect(text).toContain("42%");
-    expect(text).toContain("Week, all models");
-    expect(text).toContain("11%");
-    expect(text).toContain("sessions");
+    expect(text).toContain("5h rolling");
+    expect(text).toContain("42.0%");
+    expect(text).toContain("all models");
+    expect(text).toContain("11.0%");
+    // Freshness once for the card, rather than a source and a timestamp per row.
+    expect(text).toContain("0s ago");
+  });
+});
+
+// The chips decide what the titlebar carries, and only that. The card is the
+// whole picture, so a window switched off the strip is still on it.
+describe("a window switched off the strip", () => {
+  it("stays on the card", async () => {
+    bench.usage = { claude: { accounts: { default: { windows: ["five_hour"] } } } };
+    render(() => <UsageStrip />);
+
+    const row = cluster();
+    expect(row.querySelectorAll("[data-kind]")).toHaveLength(1);
+
+    await hoverOpen();
+    const text = card()!.textContent!;
+    expect(text).toContain("5h rolling");
+    expect(text).toContain("all models");
+    expect(text).toContain("11.0%");
   });
 });
 
@@ -153,30 +204,25 @@ describe("the gap between the strip and the card", () => {
 });
 
 describe("pinning it with a click", () => {
-  it("keeps it open after the pointer leaves, and enables the controls", async () => {
+  it("keeps it open after the pointer leaves", async () => {
     render(() => <UsageStrip />);
 
     fireEvent.click(cluster());
     expect(card()).toBeTruthy();
-
-    const toggle = screen.getByRole("switch", { name: /Notify/ });
-    expect(toggle.getAttribute("aria-disabled")).not.toBe("true");
 
     fireEvent.mouseLeave(cluster());
     await vi.advanceTimersByTimeAsync(1000);
     expect(card()).toBeTruthy();
   });
 
-  it("writes the notify answer only once pinned", async () => {
+  // The settings card owns the quota controls. Pinned so a switch cannot drift
+  // back onto a surface that opens under a passing pointer.
+  it("carries no control that writes a setting", () => {
     render(() => <UsageStrip />);
 
-    await hoverOpen();
-    fireEvent.click(screen.getByRole("switch", { name: /Notify/ }));
-    expect(bench.saved).toHaveLength(0);
-
     fireEvent.click(cluster());
-    fireEvent.click(screen.getByRole("switch", { name: /Notify/ }));
-    await waitFor(() => expect(bench.saved).toHaveLength(1));
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(bench.saved).toHaveLength(0);
   });
 
   // The strip rebuilds its rows from scratch on every reading, and `For` is
@@ -254,7 +300,6 @@ describe("an account only the probe can name", () => {
     expect(text).toContain("codex-user@example.com");
     // Reshaped, not passed through: `plus` is a wire token.
     expect(text).toContain("Plus");
-    expect(text).toContain("cli");
   });
 
   it("shows a balance there is something to spend, and stays quiet otherwise", () => {
@@ -266,6 +311,76 @@ describe("an account only the probe can name", () => {
   it("says nothing about a zero balance", () => {
     withCodex({ planType: "plus", credits: { hasCredits: false, unlimited: false, balance: "0" } });
     expect(codexCard()!.textContent).not.toContain("credits");
+  });
+});
+
+// Two logins on one agent, which is the case the whole per-account shape exists
+// for: one card, an account row that switches it, and a sentence that names the
+// login in trouble even when it is not the one on screen.
+describe("two logins on one agent", () => {
+  const NEAR = 0.881;
+
+  function withTwo() {
+    bench.profiles = [
+      { id: "default", label: "Personal", signIn: "signedIn", account: "me@example.com", apiKeySource: null },
+      { id: "fonn", label: "Fonn", signIn: "signedIn", account: "arif@fonngroup.com", apiKeySource: null },
+    ];
+    seedUsageStoreForTests(
+      "claude",
+      "fonn",
+      [{ kind: "seven_day", utilization: NEAR, resetsAt: LATER, status: null, reachedType: null }],
+      NOW,
+    );
+    render(() => <UsageStrip />);
+    fireEvent.click(screen.getByRole("button", { name: /^Personal usage/ }));
+  }
+
+  it("puts both accounts in the card and switches the windows with them", () => {
+    withTwo();
+
+    const open = screen.getByRole("dialog", { name: /usage detail/ });
+    expect(open.textContent).toContain("42.0%");
+
+    fireEvent.click(screen.getByRole("button", { name: "Fonn" }));
+    // The other login's own window, not the one the strip was hovered on.
+    expect(open.textContent).toContain("88.1%");
+    expect(open.textContent).not.toContain("42.0%");
+  });
+
+  // The case a glance at the strip misses: the row you are signed into is fine
+  // and the one beside it is nearly out.
+  it("names the other login in the pace line when it is the one in trouble", () => {
+    withTwo();
+
+    const text = screen.getByRole("dialog", { name: /usage detail/ }).textContent!;
+    expect(text).toContain("Fonn is the one to watch");
+    expect(text).toContain("88.1%");
+  });
+});
+
+describe("reading again", () => {
+  // Codex has a CLI read, so the card can ask. Claude on the sessions rung
+  // cannot: its numbers ride on chat turns, and a button there would spawn
+  // nothing and say it had.
+  it("offers a refresh only where there is a read to run", async () => {
+    render(() => <UsageStrip />);
+    await hoverOpen();
+    expect(screen.queryByRole("button", { name: "Read again" })).toBeNull();
+  });
+
+  it("asks the probe straight away on a press", () => {
+    bench.enabled = new Set(["codex"]);
+    seedUsageStoreForTests(
+      "codex",
+      null,
+      [{ kind: "five_hour", utilization: 0.03, resetsAt: LATER, status: null, reachedType: null, source: "cli" }],
+      NOW,
+    );
+    render(() => <UsageStrip />);
+    fireEvent.click(screen.getByRole("button", { name: /^Codex usage/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Read again" }));
+    expect(bench.polled).toEqual([["codex", "manual", null]]);
   });
 });
 

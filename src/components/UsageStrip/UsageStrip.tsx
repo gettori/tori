@@ -4,7 +4,13 @@ import UsageCard from "./UsageCard";
 import { findAdapter } from "../../utils/agents";
 import { asProfileId, asTabProfile, profileLabel } from "../../utils/agentHealth";
 import { agentEnabled } from "../../utils/agentEnabled";
-import { limitTypeLabel, limitTypeShort, quotaState, type QuotaState } from "../../utils/chatRateLimit";
+import {
+  limitTypeLabel,
+  limitTypeShort,
+  quotaBand,
+  quotaState,
+  type QuotaState,
+} from "../../utils/chatRateLimit";
 import { accountWindows, chipFor, usageWarnAt } from "../../utils/usageSettings";
 import { pollUsage } from "../../utils/usageProbe";
 import {
@@ -79,10 +85,15 @@ type Cluster = {
   label: string;
   warnAt: number;
   windows: WindowReading[];
+  /** First of its agent: it carries the glyph, it is the one drawn in full, and
+   *  it is the one that needs no name (the glyph is the name). Every other login
+   *  on the same agent is a name and one number, which is what a second account
+   *  is usually glanced at for. */
+  lead: boolean;
 };
 
 function clusters(collapsed: boolean, now: number): Cluster[] {
-  const out: Cluster[] = [];
+  const out: Omit<Cluster, "lead">[] = [];
   for (const key of accountsWithReadings()) {
     const { agentId, profile } = splitAccountKey(key);
     if (!agentEnabled(agentId)) continue;
@@ -94,25 +105,38 @@ function clusters(collapsed: boolean, now: number): Cluster[] {
 
     const isDefault = profile === asProfileId(null);
     const adapter = findAdapter(agentId);
-    // A named account is the label a reader needs (two Claude logins are two
-    // rows), and the agent's own name is what identifies the default one.
-    const label = (isDefault ? adapter.label : profileLabel(agentId, tab)) ?? adapter.label;
+    // The account's own name wherever it has one, the default account included:
+    // two Claude logins are two rows, and the glyph beside them is what says
+    // which agent they are. A single-account install has no name to use, and
+    // there the agent's own is the one that identifies the row.
+    const label = profileLabel(agentId, tab) ?? adapter.label;
     const warnAt = usageWarnAt(agentId, tab);
     const lit = windowsFor(agentId, tab).filter((w) => chips.includes(chipFor(w.kind)));
-    // A narrow topbar drops every row to its tightest window. That is a fact
-    // about the space, not about the account, so it never touches what the chips
-    // say: widen the window and the other bars come back.
-    const one = collapsed ? tightestWindow(lit, warnAt, now) : null;
-    out.push({ agentId, profile, isDefault, label, warnAt, windows: one ? [one] : lit });
+    out.push({ agentId, profile, isDefault, label, warnAt, windows: lit });
   }
-  // Default accounts first, then by agent, so a bar does not move when a second
-  // login starts reporting.
-  return out.sort(
+  // Agent first, so the glyph on the leading row is the one thing every account
+  // under it shares. Then the default login, which is the one a single-account
+  // install has and the one a bar must not move away from when a second starts
+  // reporting.
+  out.sort(
     (a, b) =>
-      Number(b.isDefault) - Number(a.isDefault) ||
       a.agentId.localeCompare(b.agentId) ||
+      Number(b.isDefault) - Number(a.isDefault) ||
       a.profile.localeCompare(b.profile),
   );
+
+  let lastAgent: string | null = null;
+  return out.map((row) => {
+    const lead = row.agentId !== lastAgent;
+    lastAgent = row.agentId;
+    // Every row but the leading one, and every row at all on a narrow topbar,
+    // is one number: the window it is nearest to. Narrowness is a fact about
+    // the space rather than about the account, so it never touches what the
+    // chips say: widen the window and the other bars come back.
+    const full = lead && !collapsed;
+    const one = full ? null : tightestWindow(row.windows, row.warnAt, now);
+    return { ...row, lead, windows: full ? row.windows : one ? [one] : [] };
+  });
 }
 
 /** One window in words: the level, its age when that is worth saying, and where
@@ -141,18 +165,25 @@ function clusterLabel(row: Cluster, now: number): string {
   return [`${row.label} usage`, ...windows].join(", ");
 }
 
-function UsageBar(props: { reading: WindowReading; warnAt: number; now: number }) {
+function UsageBar(props: {
+  reading: WindowReading;
+  warnAt: number;
+  now: number;
+  /** A second login's row: the number alone, with no window name and no track.
+   *  It is there to be counted, not read. */
+  compact?: boolean;
+}) {
   const state = () => quotaState(props.reading, props.warnAt, props.now);
+  const band = () => quotaBand(props.reading, state());
   const temporal = () => temporalOf(props.reading, props.now);
-  const pct = () =>
-    props.reading.utilization === null ? null : Math.round(props.reading.utilization * 100);
+  const pct = () => (props.reading.utilization === null ? null : props.reading.utilization * 100);
 
   return (
     <span
       class={[
         styles.bar,
-        state() === "approaching" ? styles.approaching : "",
-        state() === "reached" ? styles.reached : "",
+        band() === "warm" ? styles.warm : "",
+        band() === "hot" ? styles.hot : "",
         temporal() === "stale" ? styles.stale : "",
         temporal() === "expired" ? styles.expired : "",
       ]
@@ -160,23 +191,31 @@ function UsageBar(props: { reading: WindowReading; warnAt: number; now: number }
         .join(" ")}
       data-kind={props.reading.kind}
       data-state={state()}
+      data-band={band()}
       data-temporal={temporal()}
     >
       {/* The short name, which is the one the bar has room for. The full one
           is in the cluster's accessible name and on the card. */}
-      <span class={styles.kind}>{limitTypeShort(props.reading.kind)}</span>
+      <Show when={!props.compact}>
+        <span class={styles.kind}>{limitTypeShort(props.reading.kind)}</span>
+      </Show>
       <Show
         when={temporal() !== "expired"}
         // The level belongs to a window that has since reset, so a percentage
         // here would describe a quota that no longer exists.
         fallback={<span class={styles.figure}>reset</span>}
       >
-        <span class={styles.track} aria-hidden="true">
-          <Show when={pct() !== null}>
-            <span class={styles.fill} style={{ width: `${Math.min(100, pct()!)}%` }} />
-          </Show>
-        </span>
-        <span class={styles.figure}>{pct() === null ? "?" : `${pct()}%`}</span>
+        <Show when={!props.compact}>
+          <span class={styles.track} aria-hidden="true">
+            <Show when={pct() !== null}>
+              <span class={styles.fill} style={{ width: `${Math.min(100, pct()!)}%` }} />
+            </Show>
+          </span>
+        </Show>
+        {/* One decimal, the same figure the settings card carries. A whole
+            percent hides the movement on a weekly window, where a day of work
+            is worth a point or two. */}
+        <span class={styles.figure}>{pct() === null ? "?" : `${pct()!.toFixed(1)}%`}</span>
       </Show>
     </span>
   );
@@ -286,27 +325,50 @@ export default function UsageStrip() {
             to, leaving the popover hanging off a removed node. Position is the
             stable key here: rows come and go with accounts, not with readings. */}
         <Index each={rows()}>
-          {(row) => (
-            <button
-              type="button"
-              class={[styles.cluster, collapsed() ? styles.tight : ""].filter(Boolean).join(" ")}
-              data-agent={row().agentId}
-              data-profile={row().profile}
-              aria-label={clusterLabel(row(), clock())}
-              onMouseEnter={(e) => hover(row(), e.currentTarget)}
-              onMouseLeave={leave}
-              onClick={(e) => pin(row(), e.currentTarget)}
-            >
-              <Show when={collapsed() || row().isDefault}>
-                <AgentGlyph id={row().agentId} label={row().label} size={14} />
+          {(row, i) => (
+            <>
+              {/* Between every two rows: a thin one between two logins of one
+                  agent, a taller one where the next agent starts. */}
+              <Show when={i > 0}>
+                <span
+                  class={styles.divider}
+                  classList={{ [styles.agentDivider]: row().lead }}
+                  aria-hidden="true"
+                />
               </Show>
-              <Show when={!collapsed()}>
-                <span class={styles.name}>{row().label}</span>
-              </Show>
-              <Index each={row().windows}>
-                {(w) => <UsageBar reading={w()} warnAt={row().warnAt} now={clock()} />}
-              </Index>
-            </button>
+              <button
+                type="button"
+                class={[styles.cluster, collapsed() ? styles.tight : ""].filter(Boolean).join(" ")}
+                data-agent={row().agentId}
+                data-profile={row().profile}
+                aria-label={clusterLabel(row(), clock())}
+                onMouseEnter={(e) => hover(row(), e.currentTarget)}
+                onMouseLeave={leave}
+                onClick={(e) => pin(row(), e.currentTarget)}
+              >
+                {/* The glyph on the leading row, and no name beside it: the
+                    mark is what says which agent this is, and spelling it out
+                    again is the widest thing on the strip saying the least.
+                    Every other login carries its own name, which is the only
+                    thing that tells two of them apart. */}
+                <Show
+                  when={row().lead}
+                  fallback={<span class={styles.name}>{row().label}</span>}
+                >
+                  <AgentGlyph id={row().agentId} label={row().label} size={18} />
+                </Show>
+                <Index each={row().windows}>
+                  {(w) => (
+                    <UsageBar
+                      reading={w()}
+                      warnAt={row().warnAt}
+                      now={clock()}
+                      compact={!row().lead}
+                    />
+                  )}
+                </Index>
+              </button>
+            </>
           )}
         </Index>
       </div>
