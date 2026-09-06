@@ -9,7 +9,10 @@ import { render, screen } from "@solidjs/testing-library";
 
 const bench = vi.hoisted(() => ({
   enabled: new Set<string>(),
-  usage: {} as Record<string, { source?: string; detail?: string; hiddenProfiles?: string[] }>,
+  usage: {} as Record<
+    string,
+    { accounts?: Record<string, { windows?: string[]; warnAt?: number }> }
+  >,
   warnAt: 0.8,
 }));
 
@@ -87,8 +90,8 @@ const clusterFor = (agentId: string, profile: string) =>
 const barsIn = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>("[data-kind]")];
 
 // The model-scoped weekly window is the whole reason the account-token rung
-// exists: no passive frame carries it. It is also the one window a reader has
-// not asked for unless they said Full, so the detail level is what gates it.
+// exists: no passive frame carries it. It is also the one window nobody gets
+// without asking, so this account's own chip is what gates it.
 describe("the model-scoped window", () => {
   const seedScoped = () =>
     seedUsageStoreForTests(
@@ -102,8 +105,10 @@ describe("the model-scoped window", () => {
       NOW,
     );
 
-  it("is drawn at Full, and named after the model rather than the wire key", () => {
-    bench.usage = { claude: { detail: "full" } };
+  it("is drawn when its chip is lit, and named after the model not the wire key", () => {
+    bench.usage = {
+      claude: { accounts: { default: { windows: ["five_hour", "seven_day", "model_week"] } } },
+    };
     seedScoped();
     render(() => <UsageStrip />);
 
@@ -113,12 +118,11 @@ describe("the model-scoped window", () => {
       "seven_day",
       "seven_day_fable",
     ]);
-    expect(row.getAttribute("aria-label")).toContain("7-day (Fable)");
+    expect(row.getAttribute("aria-label")).toContain("Week, Fable");
     expect(row.getAttribute("aria-label")).not.toContain("seven_day_fable");
   });
 
-  it("is hidden at Standard, which still draws both generic windows", () => {
-    bench.usage = { claude: { detail: "standard" } };
+  it("is left out by default, which still draws both generic windows", () => {
     seedScoped();
     render(() => <UsageStrip />);
 
@@ -164,7 +168,10 @@ describe("the full row", () => {
 });
 
 describe("a second account on the same agent", () => {
-  it("is compact: its own label and only the window it is nearest to", () => {
+  // Its own chips, and its own name. The two logins share an adapter and
+  // nothing else: one can show a window the other hides.
+  it("draws the windows its own chips light, not the default account's", () => {
+    bench.usage = { claude: { accounts: { work: { windows: ["seven_day"] } } } };
     seedUsageStoreForTests("claude", null, [win("five_hour", 0.1), win("seven_day", 0.1)], NOW);
     seedUsageStoreForTests("claude", "work", [win("five_hour", 0.2), win("seven_day", 0.9)], NOW);
     render(() => <UsageStrip />);
@@ -176,14 +183,28 @@ describe("a second account on the same agent", () => {
     expect(barsIn(clusterFor("claude", "default")!)).toHaveLength(2);
   });
 
-  it("is left off the strip when the user hid it, and the default never can be", () => {
-    bench.usage = { claude: { hiddenProfiles: ["work", "default"] } };
+  // Nothing lit is the user's own no, and it is now sayable about any account,
+  // the one you are signed into included.
+  it("is off the strip entirely when it lights no window", () => {
+    bench.usage = { claude: { accounts: { work: { windows: [] } } } };
     seedUsageStoreForTests("claude", null, [win("five_hour", 0.1)], NOW);
     seedUsageStoreForTests("claude", "work", [win("five_hour", 0.2)], NOW);
     render(() => <UsageStrip />);
 
     expect(clusterFor("claude", "work")).toBeNull();
     expect(clusterFor("claude", "default")).toBeTruthy();
+  });
+
+  // The threshold is the account's own, so one row can be warning while the
+  // other, on the same level, is not.
+  it("colours each account at its own threshold", () => {
+    bench.usage = { claude: { accounts: { work: { warnAt: 0.5 } } } };
+    seedUsageStoreForTests("claude", null, [win("five_hour", 0.6)], NOW);
+    seedUsageStoreForTests("claude", "work", [win("five_hour", 0.6)], NOW);
+    render(() => <UsageStrip />);
+
+    expect(barsIn(clusterFor("claude", "work")!)[0].className).toContain(styles.approaching);
+    expect(barsIn(clusterFor("claude", "default")!)[0].className).not.toContain(styles.approaching);
   });
 });
 
@@ -231,9 +252,9 @@ describe("which accounts reach the strip at all", () => {
     expect(screen.queryByLabelText("Agent usage")).toBeNull();
   });
 
-  it("skips an agent the user turned off and one whose source is off", () => {
+  it("skips an agent the user turned off and an account showing no windows", () => {
     bench.enabled = new Set(["claude"]);
-    bench.usage = { claude: { source: "off" } };
+    bench.usage = { claude: { accounts: { default: { windows: [] } } } };
     seedUsageStoreForTests("claude", null, [win("five_hour", 0.42)], NOW);
     seedUsageStoreForTests("codex", null, [win("five_hour", 0.42)], NOW);
     render(() => <UsageStrip />);
@@ -272,7 +293,7 @@ describe("the one window a compact row shows", () => {
       { ...win("five_hour", 0.2), sampledAt: NOW, source: "sessions" as const },
       { ...win("seven_day", 0.91), sampledAt: NOW, source: "sessions" as const },
     ];
-    expect(tightestWindow(windows)?.kind).toBe("seven_day");
+    expect(tightestWindow(windows, 0.8)?.kind).toBe("seven_day");
   });
 
   // A reset window has no headroom problem at all, so it never wins over one
@@ -282,6 +303,6 @@ describe("the one window a compact row shows", () => {
       { ...win("five_hour", 0.99, PASSED), sampledAt: NOW, source: "sessions" as const },
       { ...win("seven_day", 0.05), sampledAt: NOW, source: "sessions" as const },
     ];
-    expect(tightestWindow(windows)?.kind).toBe("seven_day");
+    expect(tightestWindow(windows, 0.8)?.kind).toBe("seven_day");
   });
 });

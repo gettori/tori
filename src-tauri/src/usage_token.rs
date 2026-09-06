@@ -302,12 +302,14 @@ fn home_of(profile_id: &str) -> Option<String> {
 pub async fn usage_token_claude(profile: Option<String>) -> Result<TokenReading, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let id = profile.unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string());
-        let source = crate::settings::get_settings()
-            .agent
-            .usage
-            .get("claude")
-            .map(|u| u.source)
-            .unwrap_or_default();
+        // The chip is the opt-in, so the gate is whether this account asked for
+        // the window only this read can answer. Anything else is `Off`, which
+        // returns before the vault is touched.
+        let source = if crate::settings::wants_model_window("claude", &id) {
+            UsageSource::Token
+        } else {
+            UsageSource::Off
+        };
         read_usage(source, home_of(&id).as_deref(), &os_account(), &Keychain, &Anthropic, now_ms())
             .map_err(|e| e.reason())
     })

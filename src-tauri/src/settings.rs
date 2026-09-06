@@ -524,25 +524,24 @@ pub struct Agent {
     /// absence of an answer rather than a stored `"default"`.
     #[serde(default)]
     pub default_profiles: std::collections::BTreeMap<String, String>,
-    /// How deep Sway reads this agent's quota, and how loudly it says so,
-    /// keyed by adapter id.
+    /// What each agent's accounts say about their own quota, keyed by adapter
+    /// id and then by account.
     ///
-    /// An adapter with **no entry** has never been answered for, and that is
-    /// not the same as `Off`: an unanswered adapter resolves to the first rung
-    /// its `[usage]` table declares, so a passive reading that costs nothing
-    /// arrives without anyone opting in, while an adapter declaring no ladder
-    /// resolves to `Off`. `Off` stored here is the user having said no, which
-    /// no later adapter bump undoes.
+    /// An account with **no entry** has never been answered for, and that is
+    /// not the same as showing nothing: it resolves to the two windows every
+    /// source reports for free, so a reading that costs nothing arrives without
+    /// anyone opting in. An entry naming no windows is the user having said no,
+    /// which no later adapter bump undoes.
     #[serde(default)]
     pub usage: std::collections::BTreeMap<String, UsageSettings>,
 }
 
-/// Which rung of the source ladder Sway climbs for one agent.
+/// Which rung of the source ladder reads one account.
 ///
-/// `Off` is a fourth value rather than an `Option<UsageRung>` because it is a
-/// real answer the user can give, and the absence of the whole entry is the
-/// other one. Two absences with one spelling would make "never asked" and "asked
-/// and declined" indistinguishable.
+/// **Derived, never stored.** The chips are what the user answers, and the rung
+/// falls out of them: nothing lit is `Off`, the model-scoped weekly window is
+/// `Token`, anything else is whatever the adapter offers for free. Kept as a
+/// type because the read itself still has to be told which rung it is on.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum UsageSource {
@@ -553,52 +552,54 @@ pub enum UsageSource {
     Token,
 }
 
-/// How much of an account's quota the titlebar strip draws.
+/// The chip that stands for "the weekly window this plan scopes to a model".
 ///
-/// A level rather than per-window toggles: the windows an agent reports are its
-/// own business and change per rung, so a per-window switch would name windows
-/// that do not exist on one account and miss the ones that do.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Stored rather than the window kind itself (`seven_day_fable`), because the
+/// model's name arrives only with the first successful read and the setting has
+/// to exist before that read to authorise it.
+pub const MODEL_WEEK: &str = "model_week";
+
+/// One account's answer about its own quota.
+///
+/// Every field is optional and every absence carries a meaning. No `windows` is
+/// an account nobody has answered for, which resolves to the two windows that
+/// cost nothing to read; an **empty** `windows` is the user's own no. No
+/// `warn_at` follows the one shared threshold. No `notify` is on, which is quiet
+/// by construction: the send path suppresses itself while Sway has focus, so
+/// what it governs is only a limit reached while you were away.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub enum UsageDetail {
-    Compact,
-    #[default]
-    Standard,
-    Full,
+pub struct AccountUsage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub windows: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warn_at: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notify: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+/// One agent's accounts, keyed by profile id (`"default"`, never absent).
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageSettings {
     #[serde(default)]
-    pub source: UsageSource,
-    #[serde(default)]
-    pub detail: UsageDetail,
-    /// On by default, and quiet by construction: the send path suppresses
-    /// itself while the window is focused, so what this governs is only whether
-    /// a limit reached while you were away reaches you at all. At most one per
-    /// window per reset, which is a handful a week.
-    #[serde(default = "default_true")]
-    pub notify: bool,
-    /// Accounts of this agent kept off the titlebar strip.
-    ///
-    /// Never the default profile, which is enforced on read rather than trusted:
-    /// the strip's one stable anchor is that the account you are signed into is
-    /// always on it, and a hand-edited settings file naming `"default"` here
-    /// would empty the strip for an agent that is working fine.
-    #[serde(default)]
-    pub hidden_profiles: Vec<String>,
+    pub accounts: std::collections::BTreeMap<String, AccountUsage>,
 }
 
-impl Default for UsageSettings {
-    fn default() -> Self {
-        Self {
-            source: UsageSource::default(),
-            detail: UsageDetail::default(),
-            notify: default_true(),
-            hidden_profiles: Vec::new(),
-        }
-    }
+/// Whether this account asked for the model-scoped weekly window.
+///
+/// The gate on the one read that opens the login Keychain, asked here rather
+/// than trusted from the frontend: the custody exemption rests on the vault not
+/// being touched until the user has said so, and a settings file is the only
+/// record of them saying it.
+pub fn wants_model_window(agent: &str, profile_id: &str) -> bool {
+    get_settings()
+        .agent
+        .usage
+        .get(agent)
+        .and_then(|u| u.accounts.get(profile_id))
+        .and_then(|a| a.windows.as_ref())
+        .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -700,13 +701,6 @@ fn load_from(path: &Path) -> Settings {
     // is rewritten whenever they next save.
     if settings.typography.terminal_font_family == LEGACY_TERMINAL_FONT_FAMILY {
         settings.typography.terminal_font_family = default_terminal_font_family();
-    }
-    // Same "map on read" shape again. The UI never offers this (the default row
-    // carries no hide control), so a file naming it was hand-edited or written
-    // by an older build, and honouring it would hide the one account the strip
-    // guarantees is on it.
-    for entry in settings.agent.usage.values_mut() {
-        entry.hidden_profiles.retain(|p| p != crate::accounts::DEFAULT_PROFILE_ID);
     }
     settings
 }
@@ -929,10 +923,15 @@ mod tests {
                 usage: [(
                     "claude".to_string(),
                     UsageSettings {
-                        source: UsageSource::Sessions,
-                        detail: UsageDetail::Full,
-                        notify: true,
-                        hidden_profiles: vec!["work".to_string()],
+                        accounts: [(
+                            "work".to_string(),
+                            AccountUsage {
+                                windows: Some(vec!["five_hour".into()]),
+                                warn_at: Some(0.6),
+                                notify: Some(true),
+                            },
+                        )]
+                        .into(),
                     },
                 )]
                 .into(),
@@ -1232,72 +1231,104 @@ mod tests {
         let _ = std::fs::remove_file(&p);
     }
 
-    /// The per-agent usage block, and the distinction the whole map turns on:
-    /// no entry is "never answered for", which the resolver reads as the
-    /// adapter's first declared rung, while a stored `Off` is the user's own no.
+    /// The per-account usage block, and the distinction the whole map turns on:
+    /// no entry is "never answered for", which the resolver reads as the two
+    /// free windows, while an entry naming none is the user's own no.
     #[test]
-    fn the_usage_block_round_trips_and_an_unanswered_agent_stores_nothing() {
+    fn the_usage_block_round_trips_per_account_and_an_unanswered_one_stores_nothing() {
         let p = tmp_file();
         let mut s = Settings::default();
         s.agent.usage.insert(
             "claude".into(),
             UsageSettings {
-                source: UsageSource::Token,
-                detail: UsageDetail::Full,
-                notify: true,
-                hidden_profiles: vec!["work".into()],
+                accounts: [
+                    (
+                        "default".to_string(),
+                        AccountUsage {
+                            windows: Some(vec![
+                                "five_hour".into(),
+                                "seven_day".into(),
+                                MODEL_WEEK.into(),
+                            ]),
+                            warn_at: Some(0.8),
+                            notify: Some(false),
+                        },
+                    ),
+                    ("work".to_string(), AccountUsage { windows: Some(vec![]), ..Default::default() }),
+                ]
+                .into(),
             },
         );
-        s.agent.usage.insert("codex".into(), UsageSettings { source: UsageSource::Off, ..Default::default() });
         save_to(&p, &s).unwrap();
 
         let back = load_from(&p);
         let claude = back.agent.usage.get("claude").expect("claude's answer survives");
-        assert_eq!(claude.source, UsageSource::Token);
-        assert_eq!(claude.detail, UsageDetail::Full);
-        assert!(claude.notify);
-        assert_eq!(claude.hidden_profiles, vec!["work".to_string()]);
-        assert_eq!(back.agent.usage.get("codex").map(|u| u.source), Some(UsageSource::Off));
+        let first = &claude.accounts["default"];
+        assert_eq!(first.windows.as_deref().map(<[String]>::len), Some(3));
+        assert_eq!(first.warn_at, Some(0.8));
+        assert_eq!(first.notify, Some(false));
+        assert_eq!(
+            claude.accounts["work"].windows.as_deref(),
+            Some(&[] as &[String]),
+            "a list naming no windows is a real answer, not an absent one"
+        );
         assert_eq!(back.agent.usage.get("gemini"), None, "an unanswered agent stores nothing");
     }
 
-    /// An entry that answers only the source still gets the notify default,
-    /// which is on: the send path is silent while the window is focused, so
-    /// what the flag really governs is whether a limit reached while you were
-    /// away reaches you at all.
+    /// An entry that answers one thing leaves the rest absent rather than
+    /// writing a default in, because here the absences are what carry the
+    /// meaning: no `windows` is "never asked", no `warnAt` is "follow the
+    /// shared threshold".
     #[test]
-    fn a_usage_entry_that_names_only_its_source_takes_the_defaults_for_the_rest() {
+    fn a_usage_entry_that_names_one_field_leaves_the_others_absent() {
         let p = tmp_file();
-        std::fs::write(&p, r#"{ "agent": { "usage": { "claude": { "source": "token" } } } }"#).unwrap();
-        let u = load_from(&p).agent.usage["claude"].clone();
-        assert_eq!(u.source, UsageSource::Token);
-        assert_eq!(u.detail, UsageDetail::Standard);
-        assert!(u.notify, "notify defaults on");
-        assert!(u.hidden_profiles.is_empty());
+        std::fs::write(
+            &p,
+            r#"{ "agent": { "usage": { "claude": { "accounts": { "default": { "notify": false } } } } } }"#,
+        )
+        .unwrap();
+        let a = load_from(&p).agent.usage["claude"].accounts["default"].clone();
+        assert_eq!(a.notify, Some(false));
+        assert_eq!(a.windows, None, "no answer about windows is not an empty list");
+        assert_eq!(a.warn_at, None);
+
+        // And what is absent stays absent through a save, so the file never
+        // grows an answer the user did not give.
+        save_to(&p, &load_from(&p)).unwrap();
+        let raw = std::fs::read_to_string(&p).unwrap();
+        // The quoted key, not the bare word: the budgets block carries
+        // `warnAtFraction`, which a substring match would hit every time.
+        assert!(!raw.contains("\"warnAt\""), "an unanswered threshold is not written");
         let _ = std::fs::remove_file(&p);
     }
 
-    /// The UI never offers this, so a file carrying it was hand-edited or
-    /// written by an older build. Honouring it would hide the one account the
-    /// strip guarantees is on it.
+    /// The gate on the one read that opens the login Keychain. Asked of the
+    /// settings file rather than of the caller, because the custody exemption
+    /// rests on the vault staying shut until the user has said otherwise.
     #[test]
-    fn hiding_the_default_account_from_the_strip_is_ignored_on_read() {
-        let p = tmp_file();
-        let mut s = Settings::default();
-        s.agent.usage.insert(
-            "claude".into(),
-            UsageSettings {
-                hidden_profiles: vec![
-                    crate::accounts::DEFAULT_PROFILE_ID.to_string(),
-                    "work".into(),
-                ],
+    fn only_a_stored_model_week_chip_asks_for_the_token_read() {
+        let mut u = UsageSettings::default();
+        u.accounts.insert(
+            "default".into(),
+            AccountUsage { windows: Some(vec!["five_hour".into()]), ..Default::default() },
+        );
+        let asked = |u: &UsageSettings, id: &str| {
+            u.accounts
+                .get(id)
+                .and_then(|a| a.windows.as_ref())
+                .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK))
+        };
+        assert!(!asked(&u, "default"), "the five-hour chip is not consent to a vault read");
+        assert!(!asked(&u, "work"), "an account with no entry has asked for nothing");
+
+        u.accounts.insert(
+            "default".into(),
+            AccountUsage {
+                windows: Some(vec!["five_hour".into(), MODEL_WEEK.into()]),
                 ..Default::default()
             },
         );
-        save_to(&p, &s).unwrap();
-
-        let hidden = &load_from(&p).agent.usage["claude"].hidden_profiles;
-        assert_eq!(hidden, &vec!["work".to_string()], "the named account stays hidden, the default does not");
+        assert!(asked(&u, "default"));
     }
 
     /// A file written before the key existed loads with an empty map rather

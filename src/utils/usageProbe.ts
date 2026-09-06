@@ -12,7 +12,7 @@ import { ensureAdaptersLoaded } from "./agents";
 import { asTabProfile, namedProfiles } from "./agentHealth";
 import { liveChats } from "./chatSessions";
 import type { QuotaReading } from "./chatRateLimit";
-import { usageSource } from "./usageSettings";
+import { usageRungFor } from "./usageSettings";
 import type { UsageSource } from "../panels/Settings/settingsStore";
 import {
   accountKey,
@@ -43,10 +43,14 @@ const PROBE_COMMAND: Record<string, Partial<Record<UsageSource, string>>> = {
   claude: { token: "usage_token_claude" },
 };
 
-/** The command for this agent's resolved rung, or null when it has none. The
- *  rung travels with it because it is what the reading gets filed under. */
-function readPath(agentId: string): { command: string; rung: StoreSource } | null {
-  const rung = usageSource(agentId);
+/** The command for this account's resolved rung, or null when it has none. The
+ *  rung travels with it because it is what the reading gets filed under.
+ *
+ *  Per account, not per agent: two logins of one agent can want different
+ *  depths, and the deeper of the two must not drag the other into a Keychain
+ *  prompt it never asked for. */
+function readPath(agentId: string, profile: string | null): { command: string; rung: StoreSource } | null {
+  const rung = usageRungFor(agentId, profile);
   const command = PROBE_COMMAND[agentId]?.[rung];
   return command === undefined || rung === "off" ? null : { command, rung };
 }
@@ -127,7 +131,7 @@ async function runProbe(agentId: string, profile: string | null, command: string
  * raising a second Keychain prompt in the same breath.
  */
 export function pollUsage(agentId: string, trigger: Trigger, profile: string | null = null) {
-  const path = readPath(agentId);
+  const path = readPath(agentId, profile);
   if (path === null) return;
   if (!agentEnabled(agentId, profile)) return;
   const ctx = { visible: visibleNow(), chatOpen: chatOpenFor(agentId) };

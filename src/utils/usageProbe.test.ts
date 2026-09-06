@@ -1,14 +1,14 @@
 // The half that spawns a process, and the three things that stop it.
 //
 // `usagePoll.test.ts` covers the schedule itself. What is held here is the
-// wiring around it: an agent nobody enabled, an agent the user turned the source
-// off for, and a read that failed are all reasons not to spawn anything, and
-// none of them are the scheduler's business.
+// wiring around it: an agent nobody enabled, an account showing no windows, and
+// a read that failed are all reasons not to spawn anything, and none of them are
+// the scheduler's business.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const bench = vi.hoisted(() => ({
   enabled: new Set<string>(["codex"]),
-  usage: {} as Record<string, { source?: string }>,
+  usage: {} as Record<string, { accounts?: Record<string, { windows?: string[] }> }>,
   chats: [] as { agentId: string }[],
   answer: null as unknown,
   fails: false,
@@ -104,13 +104,21 @@ describe("what never spawns a process", () => {
     expect(bench.calls).toBe(0);
   });
 
-  // A stored `off` is the user's own no, and it has to reach the thing that
-  // does the spawning, not only the thing that draws a bar.
-  it("an agent whose source the user set to off", async () => {
-    bench.usage = { codex: { source: "off" } };
+  // An account with no chip lit is the user's own no, and it has to reach the
+  // thing that does the spawning, not only the thing that draws a bar.
+  it("an account showing no windows at all", async () => {
+    bench.usage = { codex: { accounts: { default: { windows: [] } } } };
     pollUsage("codex", "hover");
     await settle();
     expect(bench.calls).toBe(0);
+  });
+
+  // Per account, so one login saying no does not silence the other.
+  it("only the account that said no", async () => {
+    bench.usage = { codex: { accounts: { default: { windows: [] } } } };
+    pollUsage("codex", "hover", "work");
+    await settle();
+    expect(bench.calls).toBe(1);
   });
 });
 

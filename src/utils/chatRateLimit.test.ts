@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import plainTurn from "../../dev/fixtures/claude/plain-turn.jsonl?raw";
 import readCall from "../../dev/fixtures/claude/read-call.jsonl?raw";
 import {
+  limitTypeInline,
   limitTypeLabel,
+  limitTypeShort,
   paceOutAt,
   quotaState,
   readingsOf,
@@ -156,7 +158,7 @@ describe("windowSentence", () => {
     const r = reading({ kind: "seven_day", status: warn.status, utilization: warn.utilization, resetsAt: warn.resetsAt });
     const msg = windowSentence(r, WARN_AT, warn.resetsAt * 1000 - 1000);
     expect(msg).toContain("88%");
-    expect(msg).toContain("7-day");
+    expect(msg).toContain("weekly all-model");
     expect(msg).not.toContain("allowed_warning");
     expect(msg).not.toContain("reached");
   });
@@ -166,13 +168,13 @@ describe("windowSentence", () => {
   it("reports a reset without the level it used to hold", () => {
     const past = captured().resetsAt * 1000 + 1000;
     const msg = windowSentence(reading({ utilization: 0.75 }), WARN_AT, past);
-    expect(msg).toBe("Your 5-hour limit has reset.");
+    expect(msg).toBe("Your rolling 5-hour limit has reset.");
     expect(msg).not.toContain("75");
   });
 
   it("still says something useful when the source sent no reset time", () => {
     const msg = windowSentence(reading({ status: "rejected", resetsAt: null }), WARN_AT, NOW);
-    expect(msg).toContain("5-hour");
+    expect(msg).toContain("rolling 5-hour");
     expect(msg).not.toContain("Resets");
   });
 
@@ -183,8 +185,18 @@ describe("windowSentence", () => {
 
 describe("limitTypeLabel", () => {
   it("spells out the wire's machine identifiers", () => {
-    expect(limitTypeLabel("five_hour")).toBe("5-hour");
-    expect(limitTypeLabel("seven_day")).toBe("7-day");
+    expect(limitTypeLabel("five_hour")).toBe("Rolling 5 hours");
+    expect(limitTypeLabel("seven_day")).toBe("Week, all models");
+  });
+
+  // Three lengths of one vocabulary. The titlebar has room for none of the long
+  // ones, and "your Week, all models limit" is not a sentence.
+  it("has a titlebar-width name and a sentence-shaped one for the same window", () => {
+    expect(limitTypeShort("five_hour")).toBe("5H");
+    expect(limitTypeShort("seven_day")).toBe("Week");
+    expect(limitTypeShort("seven_day_fable")).toBe("Fable");
+    expect(limitTypeInline("five_hour")).toBe("rolling 5-hour");
+    expect(limitTypeInline("seven_day_fable")).toBe("weekly Fable");
   });
 
   it("passes an unknown one through rather than dropping it", () => {
@@ -196,9 +208,9 @@ describe("limitTypeLabel", () => {
   // scoped the window to, so there is no list to map them against: the suffix is
   // the model's own name and is titled rather than looked up.
   it("names a model-scoped weekly window after its model", () => {
-    expect(limitTypeLabel("seven_day_fable")).toBe("7-day (Fable)");
-    expect(limitTypeLabel("seven_day_opus")).toBe("7-day (Opus)");
-    expect(limitTypeLabel("seven_day_oauth_apps")).toBe("7-day (Oauth apps)");
+    expect(limitTypeLabel("seven_day_fable")).toBe("Week, Fable");
+    expect(limitTypeLabel("seven_day_opus")).toBe("Week, Opus");
+    expect(limitTypeLabel("seven_day_oauth_apps")).toBe("Week, Oauth apps");
     expect(limitTypeLabel("extra_usage")).toBe("Extra usage");
   });
 });

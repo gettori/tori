@@ -1215,52 +1215,279 @@
 
   /* --- The accounts list --- */
 
-  /* The usage source ladder, boxed so four options with descriptions read as
-     one group rather than as four loose paragraphs under a label. Transparent
-     and bordered like .accountsCard below: a filled card here would compete
-     with the pane it sits on. */
-  .usageLadder {
-    width: 100%;
-    padding: var(--sway-space-5) var(--sway-space-6);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
-  }
-
-  /* The refusal on a rung Sway has no read path for. It rides the option's own
-     label rather than the end of its description, so it is part of the choice's
-     name: a screen reader reads it with the option, and an eye finds it without
-     reading the sentence first. */
-  .usageSoon {
-    margin-left: var(--sway-space-3);
-    font-size: var(--sway-text-xs);
-    color: var(--fg-subtle);
-  }
-
-  /* A value, not a control that stopped working. One threshold governs Sway's
-     ceilings and every agent's windows, so this row shows the number and points
-     at its one control instead of offering a second way to move it. */
-  .usageFixed {
-    color: var(--fg-muted);
-    font-variant-numeric: tabular-nums;
-  }
-
+  /* One card per account. The account is the unit because the quota window is:
+     a five-hour window belongs to a login, so the threshold, the notification
+     switch and the titlebar chips all sit on the card rather than in a section
+     above it. */
   .accountsCard {
     border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-lg);
     background: transparent;
   }
-  .accountRow {
-    padding: var(--sway-space-6) var(--sway-space-7);
+  .acctCard {
     border-bottom: var(--sway-border-thin) solid var(--border-default);
   }
-  .accountRow:last-child {
+  .acctCard:last-child {
     border-bottom: 0;
   }
-  .accountMain {
+
+  .acctHead {
     display: flex;
     align-items: center;
     gap: var(--sway-space-4);
+    padding: var(--sway-space-6) var(--sway-space-7);
   }
+
+  /* Everything the collapsed card still has to answer, pushed right: what the
+     titlebar carries for this account, how loud it is, and who it is. */
+  .acctSummary {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-4);
+    min-width: 0;
+  }
+  .acctDivider {
+    width: var(--sway-border-thin);
+    height: calc(14px * var(--ui-scale));
+    background: var(--border-strong);
+  }
+  .acctWarn {
+    font-size: var(--sway-text-xs);
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .acctBell {
+    width: calc(14px * var(--ui-scale));
+    height: calc(14px * var(--ui-scale));
+    color: var(--fg-subtle);
+  }
+
+  .acctToggle {
+    display: flex;
+    align-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--fg-subtle);
+    cursor: pointer;
+  }
+  .acctToggle:hover {
+    color: var(--fg-default);
+  }
+
+  .acctBody {
+    padding: 0 var(--sway-space-7) var(--sway-space-6);
+  }
+  .acctHome {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+  }
+
+  /* One control per line, label left. Not the pane's own .row grid: the chip
+     row and the stepper are both wider than its 196px control column, and a
+     control that overflows its column is what made this screen feel broken. */
+  .acctRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sway-space-5);
+    padding: var(--sway-space-5) 0;
+    border-top: var(--sway-border-thin) solid var(--border-default);
+  }
+
+  /* "New sessions start here", as a pill rather than a radio dot: the accounts
+     are alternatives, so the native radio is still underneath and still what
+     makes arrow keys move between the cards. */
+  .defaultPill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 var(--sway-space-4);
+    height: calc(22px * var(--ui-scale));
+    border: var(--sway-border-thin) solid var(--border-strong);
+    border-radius: var(--sway-radius-pill);
+    font-size: var(--sway-text-xs);
+    color: var(--fg-muted);
+    cursor: pointer;
+  }
+  .defaultPill input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .defaultPill:has(input:focus-visible) {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--brand-ring);
+  }
+  .defaultOn {
+    border-color: var(--attention-fg);
+    color: var(--fg-default);
+  }
+
+  /* --- The titlebar preview, and the control it doubles as --- */
+
+  .chipRow {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-3);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sway-space-2);
+    height: calc(24px * var(--ui-scale));
+    padding: 0 var(--sway-space-4);
+    border: var(--sway-border-thin) solid var(--border-strong);
+    border-radius: var(--sway-radius-md);
+    background: transparent;
+    font: inherit;
+    font-size: var(--sway-text-xs);
+    color: var(--fg-muted);
+  }
+  button.chip {
+    cursor: pointer;
+  }
+  button.chip:hover {
+    border-color: var(--fg-subtle);
+    color: var(--fg-default);
+  }
+  /* On the titlebar. The attention role, the same one the strip's own bars
+     wear, so a lit chip and the bar it promises are the same colour. */
+  .chipOn {
+    border-color: var(--attention-fg);
+    color: var(--attention-fg);
+  }
+  /* Nothing has answered for this window yet, which on the model chip is the
+     state the Keychain permission clears. */
+  .chipIdle {
+    opacity: 0.6;
+  }
+  .chipNa {
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+  }
+
+  /* --- One box per window --- */
+
+  .winRow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(calc(180px * var(--ui-scale)), 1fr));
+    gap: var(--sway-space-5);
+    padding: var(--sway-space-5) 0;
+  }
+  .winCard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sway-space-3);
+    padding: var(--sway-space-5) var(--sway-space-6);
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-lg);
+  }
+  /* Off the titlebar, still on this screen: hiding a bar is not the same as not
+     wanting to know. */
+  .winDim {
+    opacity: 0.55;
+  }
+  .winHead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sway-space-4);
+  }
+  .winName {
+    font-size: var(--sway-text-sm);
+    color: var(--fg-default);
+  }
+  /* Green while there is room, and the two warning roles above that. Never the
+     blocking tier: check 10 in scripts/check-tokens.mjs holds that to the two
+     chat surfaces that mean "this stopped the turn". */
+  .winLevel {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-md);
+    color: var(--success-fg);
+    font-variant-numeric: tabular-nums;
+  }
+  .winCard[data-state="approaching"] .winLevel {
+    color: var(--attention-fg);
+  }
+  .winCard[data-state="reached"] .winLevel {
+    color: var(--danger-fg);
+  }
+  .winCard[data-state="expired"] .winLevel,
+  .winCard[data-state="none"] .winLevel {
+    color: var(--fg-muted);
+  }
+  .winTrack {
+    display: block;
+    height: calc(4px * var(--ui-scale));
+    border-radius: var(--sway-radius-pill);
+    background: var(--neutral-subtle);
+    overflow: hidden;
+  }
+  .winFill {
+    display: block;
+    height: 100%;
+    border-radius: var(--sway-radius-pill);
+    background: var(--success-fg);
+  }
+  .winCard[data-state="approaching"] .winFill {
+    background: var(--attention-fg);
+  }
+  .winCard[data-state="reached"] .winFill {
+    background: var(--danger-fg);
+  }
+  .winFoot {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+  }
+
+  /* --- The threshold, in the stops the shared control moves in --- */
+
+  .stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sway-space-2);
+    padding: var(--sway-space-1);
+    border: var(--sway-border-thin) solid var(--border-strong);
+    border-radius: var(--sway-radius-md);
+  }
+  .stepperValue {
+    min-width: calc(44px * var(--ui-scale));
+    text-align: center;
+    font-size: var(--sway-text-sm);
+    color: var(--fg-default);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --- Signing out, boxed because it is the one thing here you cannot undo --- */
+
+  .danger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sway-space-5);
+    margin-top: var(--sway-space-5);
+    padding: var(--sway-space-5) var(--sway-space-6);
+    border: var(--sway-border-thin) solid color-mix(in srgb, var(--danger-fg) 35%, transparent);
+    border-radius: var(--sway-radius-lg);
+    background: color-mix(in srgb, var(--danger-fg) 6%, transparent);
+  }
+  .dangerTitle {
+    font-size: var(--sway-text-sm);
+    color: var(--danger-fg);
+  }
+  .dangerNote {
+    margin-top: var(--sway-space-2);
+    font-size: var(--sway-text-xs);
+    line-height: 1.5;
+    color: var(--fg-muted);
+    text-wrap: pretty;
+  }
+
   .accountName {
     font-size: var(--sway-text-sm);
     font-weight: 600;
@@ -1292,30 +1519,18 @@
   .accountAside {
     font-size: var(--sway-text-xs);
     color: var(--fg-muted);
+    white-space: nowrap;
   }
-  /* "New sessions start here", beside the account it names. The native radio,
-     tinted: the accounts are alternatives, and the browser's own control is
-     what makes arrow keys move between the rows. */
-  .accountDefault {
-    display: flex;
-    align-items: center;
-    gap: var(--sway-space-2);
-    font-size: var(--sway-text-xs);
-    color: var(--fg-muted);
-    cursor: pointer;
-  }
-  .accountDefault input {
-    accent-color: var(--accent-fg);
-    cursor: pointer;
-  }
-  /* Pushed to the end, before the row's one button: the email when the agent
-     named one, its sign-in state when it did not. */
+  /* The email when the agent named one, its sign-in state when it did not. */
   .accountFact {
-    margin-left: auto;
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-xs);
     color: var(--fg-subtle);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
+
   /* The sentence beside an action button, explaining it or its absence. */
   .actionNote {
     font-size: var(--sway-text-xs);

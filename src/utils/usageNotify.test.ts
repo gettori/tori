@@ -10,7 +10,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const bench = vi.hoisted(() => ({
   focused: false,
   enabled: new Set<string>(["claude"]),
-  usage: {} as Record<string, { source?: string; notify?: boolean; hiddenProfiles?: string[] }>,
+  usage: {} as Record<
+    string,
+    { accounts?: Record<string, { windows?: string[]; warnAt?: number; notify?: boolean }> }
+  >,
   /** What the backend would hand back on the next load. */
   stored: null as unknown,
 }));
@@ -83,7 +86,7 @@ describe("what earns a notification", () => {
     seedUsageStoreForTests("claude", null, [win(0.85)], NOW);
     const [n] = collectQuotaNotifications(NOW, bench.focused);
     expect(n.title).toBe("Claude");
-    expect(n.body).toContain("You have used 85% of your 5-hour limit");
+    expect(n.body).toContain("You have used 85% of your rolling 5-hour limit");
   });
 
   it("uses the account's own name when it has one", () => {
@@ -166,18 +169,18 @@ describe("saying it once", () => {
 
 describe("what the settings silence", () => {
   it("sends nothing when notify is off, and does not burn the key doing it", () => {
-    bench.usage = { claude: { notify: false } };
+    bench.usage = { claude: { accounts: { default: { notify: false } } } };
     seedUsageStoreForTests("claude", null, [win(1)], NOW);
     expect(collectQuotaNotifications(NOW, bench.focused)).toEqual([]);
 
     // Turning it back on still has the crossing to report: the window has not
     // reset, and nothing recorded it as said.
-    bench.usage = { claude: { notify: true } };
+    bench.usage = { claude: { accounts: { default: { notify: true } } } };
     expect(collectQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
   });
 
-  it("sends nothing for an agent whose source is off or that is turned off", () => {
-    bench.usage = { claude: { source: "off" } };
+  it("sends nothing for an account showing no windows, or an agent turned off", () => {
+    bench.usage = { claude: { accounts: { default: { windows: [] } } } };
     seedUsageStoreForTests("claude", null, [win(1)], NOW);
     expect(collectQuotaNotifications(NOW, bench.focused)).toEqual([]);
 
@@ -186,11 +189,26 @@ describe("what the settings silence", () => {
     expect(collectQuotaNotifications(NOW, bench.focused)).toEqual([]);
   });
 
-  // Taking an account off the strip is saying you do not want to hear about it,
+  // Taking a window off the strip is saying you do not want to hear about it,
   // and a notification is the loudest possible version of hearing about it.
-  it("sends nothing for an account the user hid from the strip", () => {
-    bench.usage = { claude: { hiddenProfiles: ["work"] } };
+  it("sends nothing about a window this account keeps off the titlebar", () => {
+    bench.usage = { claude: { accounts: { work: { windows: ["seven_day"] } } } };
     seedUsageStoreForTests("claude", "work", [win(1)], NOW);
     expect(collectQuotaNotifications(NOW, bench.focused)).toEqual([]);
+
+    // The other window on the same account still speaks: this is per window,
+    // not per account.
+    seedUsageStoreForTests("claude", "work", [win(1, "seven_day")], NOW);
+    expect(collectQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
+  });
+
+  // The threshold is the account's own, so two logins can warn at two points.
+  it("warns at this account's own threshold", () => {
+    bench.usage = { claude: { accounts: { default: { warnAt: 0.9 } } } };
+    seedUsageStoreForTests("claude", null, [win(0.85)], NOW);
+    expect(collectQuotaNotifications(NOW, bench.focused)).toEqual([]);
+
+    seedUsageStoreForTests("claude", null, [win(0.92)], NOW);
+    expect(collectQuotaNotifications(NOW, bench.focused)).toHaveLength(1);
   });
 });
