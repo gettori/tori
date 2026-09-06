@@ -350,6 +350,20 @@
     gap: var(--sway-space-4);
   }
 
+  /* A row whose control will not fit the 196px column.
+     The usage ladder is four options each carrying a sentence of its own, and
+     in that column it rendered as a tall stack of wrapped words rather than as
+     a list of choices. Here the label and hint stay on top and the control
+     takes the full width beneath them, so the row still reads left to right at
+     the top and top to bottom below it. Markup order is label, hint, control:
+     the control places itself on the next free row, so it has to come last. */
+  .rowStack .control {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-content: flex-start;
+    margin-top: var(--sway-space-4);
+  }
+
   /* A note between groups, outside the row grid. */
   .note {
     max-width: calc(520px * var(--ui-scale));
@@ -1200,6 +1214,35 @@
   }
 
   /* --- The accounts list --- */
+
+  /* The usage source ladder, boxed so four options with descriptions read as
+     one group rather than as four loose paragraphs under a label. Transparent
+     and bordered like .accountsCard below: a filled card here would compete
+     with the pane it sits on. */
+  .usageLadder {
+    width: 100%;
+    padding: var(--sway-space-5) var(--sway-space-6);
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-lg);
+  }
+
+  /* The refusal on a rung Sway has no read path for. It rides the option's own
+     label rather than the end of its description, so it is part of the choice's
+     name: a screen reader reads it with the option, and an eye finds it without
+     reading the sentence first. */
+  .usageSoon {
+    margin-left: var(--sway-space-3);
+    font-size: var(--sway-text-xs);
+    color: var(--fg-subtle);
+  }
+
+  /* A value, not a control that stopped working. One threshold governs Sway's
+     ceilings and every agent's windows, so this row shows the number and points
+     at its one control instead of offering a second way to move it. */
+  .usageFixed {
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
 
   .accountsCard {
     border: var(--sway-border-thin) solid var(--border-default);
