@@ -54,6 +54,18 @@ describe("a chat tab's provider mark", () => {
     expect(at("some-adapter-with-no-logo")).toBeNull();
   });
 
+  // The rest tone and the tint must never both be on the element: the tint is
+  // layered and the rest tone is not, so the rest tone would win the cascade
+  // and the mark would breathe in grey. That is what the strip did for two days
+  // after the tint moved into `agentMarks`.
+  it("takes off the rest tone while working, so the tint has nothing to lose to", () => {
+    const rest = (status: SessionStatus) =>
+      Array.from(mark(status).classList).filter((c) => c.includes("rest"));
+    expect(rest("idle").length).toBe(1);
+    expect(rest("executing").length).toBe(0);
+    expect(rest("waitingForApproval").length).toBe(0);
+  });
+
   it("names only the states worth interrupting a screen reader for", () => {
     expect(mark("executing").getAttribute("aria-label")).toBe("Executing");
     expect(mark("waitingForApproval").getAttribute("aria-label")).toBe("Waiting for approval");

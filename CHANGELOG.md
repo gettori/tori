@@ -17,6 +17,9 @@ unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 - The bundle carries only what a macOS build uses: the Windows `.ico` and
   Square logos are gone, and so are the Vite and Tauri scaffold SVGs.
 - The dev page is titled Sway rather than the scaffold's default.
+- A working chat tab breathes in its agent's colour again. Since 26.904.0 it
+  pulsed in grey: the tint had moved into a cascade layer, and the tab's own
+  unlayered rest tone outranked it.
 
 ## 26.904.0-alpha
 
