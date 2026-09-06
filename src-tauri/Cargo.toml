@@ -63,6 +63,10 @@ async-io = "2"
 # other credential the user has); `protected` is the data-protection keychain,
 # which needs an app-group entitlement Sway does not have.
 apple-native-keyring-store = { version = "1", features = ["keychain"] }
+# The Keychain service name `claude` derives for a non-default CLAUDE_CONFIG_DIR
+# is `sha256(dir)[:8]`, so the token rung has to compute one. Already in the
+# lock file as a tauri build dependency; this makes it a runtime one too.
+sha2 = "0.10"
 # `com.apple.quarantine` on a downloaded agent: read to decide whether Gatekeeper
 # will even be asked, and cleared only when the user says so.
 xattr = "1"

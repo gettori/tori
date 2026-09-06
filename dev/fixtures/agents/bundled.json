@@ -171,7 +171,8 @@
     },
     "usage": {
       "sources": [
-        "sessions"
+        "sessions",
+        "token"
       ]
     },
     "usage_reason": null,

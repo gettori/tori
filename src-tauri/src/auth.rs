@@ -725,19 +725,57 @@ mod tests {
     /// contiguous literal in this file. Otherwise the test would have to exempt
     /// its own source, and an exempted file is the one place a violation could
     /// then hide.
-    #[test]
-    fn sway_never_reaches_into_the_keychain() {
-        let needles = [
+    ///
+    /// **One file is exempt, by name.** `usage_token.rs` reads the item on an
+    /// explicit per-agent opt-in, so it has to name the service. Exempting it
+    /// openly is the honest form of that: the alternative is a needle list
+    /// quietly narrowed until it stops catching anything. What the exemption
+    /// costs is covered by a different test in that module, which counts vault
+    /// lookups and requires zero of them while the setting is off. A static scan
+    /// cannot make a claim about when code runs; that one can.
+    const CUSTODY_EXEMPT: &str = "usage_token.rs";
+
+    fn keychain_needles() -> [&'static str; 6] {
+        [
             concat!("Command::new(\"", "security", "\")"),
             concat!("\"/usr/bin/", "security", "\""),
             concat!("Claude Code", "-credentials"),
             concat!("find-generic", "-password"),
             concat!(".creden", "tials.json"),
             concat!("\"auth", ".json\""),
-        ];
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        ]
+    }
+
+    /// Every line of `files` that reaches for a credential, as `path:line`.
+    ///
+    /// Takes its files rather than reading them, so the scan itself can be
+    /// driven against a second reader that does not exist on disk.
+    fn keychain_offenders<'a>(files: impl Iterator<Item = (String, &'a str)>) -> Vec<String> {
+        let needles = keychain_needles();
         let mut offenders = Vec::new();
-        let mut stack = vec![root];
+        for (path, text) in files {
+            if std::path::Path::new(&path).file_name().is_some_and(|f| f == CUSTODY_EXEMPT) {
+                continue;
+            }
+            for (n, line) in text.lines().enumerate() {
+                // Comments are where the measurement is written down, and
+                // writing down where a agent keeps its tokens is the
+                // opposite of reaching for them. The claim is about code.
+                if line.trim_start().starts_with("//") {
+                    continue;
+                }
+                if needles.iter().any(|needle| line.contains(needle)) {
+                    offenders.push(format!("{path}:{}", n + 1));
+                }
+            }
+        }
+        offenders
+    }
+
+    /// Every `.rs` under `src`, read once so the scan can be run twice.
+    fn rust_sources() -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        let mut stack = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).expect("src is readable").flatten() {
                 let path = entry.path();
@@ -748,23 +786,54 @@ mod tests {
                 if path.extension().is_none_or(|e| e != "rs") {
                     continue;
                 }
-                let text = std::fs::read_to_string(&path).unwrap_or_default();
-                for (n, line) in text.lines().enumerate() {
-                    // Comments are where the measurement is written down, and
-                    // writing down where a agent keeps its tokens is the
-                    // opposite of reaching for them. The claim is about code.
-                    if line.trim_start().starts_with("//") {
-                        continue;
-                    }
-                    if needles.iter().any(|needle| line.contains(needle)) {
-                        offenders.push(format!("{}:{}", path.display(), n + 1));
-                    }
-                }
+                out.push((path.display().to_string(), std::fs::read_to_string(&path).unwrap_or_default()));
             }
         }
+        out
+    }
+
+    #[test]
+    fn sway_never_reaches_into_the_keychain() {
+        let files = rust_sources();
+        let offenders = keychain_offenders(files.iter().map(|(p, t)| (p.clone(), t.as_str())));
         assert!(
             offenders.is_empty(),
             "Sway must never read the agent's credentials: {offenders:?}"
         );
+    }
+
+    /// The exemption is worth exactly one file, and the scan still works.
+    ///
+    /// Without this the guard could be passing because the needles stopped
+    /// matching anything rather than because nothing matches them, which is the
+    /// failure mode a scan with an exemption in it invites.
+    #[test]
+    fn the_scan_catches_a_second_reader_and_lets_the_one_exempt_file_through() {
+        let reaching = format!("let s = \"{}\";", concat!("Claude Code", "-credentials"));
+
+        let caught = keychain_offenders(
+            [("src/somewhere_else.rs".to_string(), reaching.as_str())].into_iter(),
+        );
+        assert_eq!(caught, ["src/somewhere_else.rs:1"], "a second reader is not allowed in");
+
+        let allowed = keychain_offenders(
+            [(format!("src/{CUSTODY_EXEMPT}"), reaching.as_str())].into_iter(),
+        );
+        assert!(allowed.is_empty(), "the one file the opt-in lives in is exempt: {allowed:?}");
+
+        // The exemption is on the file name, not on a path fragment, so a file
+        // that merely sits beside it or is named after it gains nothing.
+        let nearly = keychain_offenders(
+            [("src/usage_token_helpers.rs".to_string(), reaching.as_str())].into_iter(),
+        );
+        assert_eq!(nearly.len(), 1, "only the exact name is exempt: {nearly:?}");
+    }
+
+    /// The exempt file exists. Otherwise the exemption would outlive the code it
+    /// was granted for and quietly widen the guard's blind spot.
+    #[test]
+    fn the_exempt_file_is_a_real_one() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join(CUSTODY_EXEMPT);
+        assert!(path.exists(), "{} names a file that is not there", CUSTODY_EXEMPT);
     }
 }

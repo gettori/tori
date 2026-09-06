@@ -124,6 +124,15 @@ export function limitTypeLabel(limitType: string | null): string | null {
   if (limitType === null || limitType === "") return null;
   if (limitType === "five_hour") return "5-hour";
   if (limitType === "seven_day") return "7-day";
+  if (limitType === "extra_usage") return "Extra usage";
+  // A weekly window scoped to one model. The suffix is the model's own name, so
+  // it is titled rather than mapped: the account-token rung learns those names
+  // at read time and no list here could stay current with them.
+  const scoped = limitType.startsWith("seven_day_") ? limitType.slice("seven_day_".length) : null;
+  if (scoped) {
+    const words = scoped.replace(/_/g, " ");
+    return `7-day (${words[0].toUpperCase()}${words.slice(1)})`;
+  }
   return limitType;
 }
 

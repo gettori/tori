@@ -82,6 +82,22 @@ describe("focus and hover", () => {
   });
 });
 
+describe("switching the source on", () => {
+  // The one trigger that is a decision rather than an event. Turning a rung on
+  // has to produce the reading it promises, and on the token rung that is also
+  // what puts the Keychain prompt next to the click that caused it.
+  it("reads even inside the floor a hover would wait out", () => {
+    const c = clock({ lastPollAt: NOW });
+    expect(mayPoll(c, "hover", NOW + 1, ctx())).toBe(false);
+    expect(mayPoll(c, "manual", NOW + 1, ctx())).toBe(true);
+  });
+
+  it("still does nothing behind a hidden window or a backoff", () => {
+    expect(mayPoll(clock(), "manual", NOW, ctx({ visible: false }))).toBe(false);
+    expect(mayPoll(clock({ blockedUntil: NOW + 1 }), "manual", NOW, ctx())).toBe(false);
+  });
+});
+
 describe("a block", () => {
   // A hover during a backoff is how a throttle becomes a longer one, and the
   // thing being backed off from is usually not going to answer sooner.

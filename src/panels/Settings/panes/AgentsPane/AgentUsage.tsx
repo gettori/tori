@@ -11,6 +11,7 @@ import {
   usageSource,
   usageUnavailableReason,
 } from "../../../../utils/usageSettings";
+import { pollUsage } from "../../../../utils/usageProbe";
 import { settings, type UsageDetail, type UsageSource } from "../../settingsStore";
 import { rowDomId } from "../../components/paneKit";
 import { warnAtLabel } from "../../../../utils/chatBudget";
@@ -37,7 +38,11 @@ const SOURCES: { value: string; label: string; description: string }[] = [
   {
     value: "token",
     label: "Account token",
-    description: "Reads this account's token from the OS credential store. Your machine will ask.",
+    // Measured 2026-09-06 and worth the words: macOS binds the allow to the
+    // exact binary, so an unsigned build asks again after every update. A user
+    // who is told only "your machine will ask" reads the second prompt as a bug.
+    description:
+      "Reads this account's own token from the login Keychain, the only source for the per-model weekly window. macOS will ask. Always Allow quietens it until Sway next updates, because the permission is bound to the exact build.",
   },
 ];
 
@@ -82,7 +87,14 @@ export default function AgentUsage(props: { agentId: string; agentLabel: string 
           <RadioGroup
             options={options()}
             value={usageSource(props.agentId)}
-            onChange={(v) => void setUsage(props.agentId, { source: v as UsageSource })}
+            // The read follows the click. Turning the token rung on raises a
+            // Keychain prompt, and a prompt that arrives minutes later on a
+            // background tick is one nobody connects to what they just did.
+            onChange={(v) =>
+              void setUsage(props.agentId, { source: v as UsageSource }).then(() =>
+                pollUsage(props.agentId, "manual"),
+              )
+            }
             disabled={rungs().length === 0}
             aria-label={`Usage source for ${props.agentLabel}`}
           />

@@ -86,6 +86,48 @@ const clusterFor = (agentId: string, profile: string) =>
   document.querySelector<HTMLElement>(`[data-agent="${agentId}"][data-profile="${profile}"]`);
 const barsIn = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>("[data-kind]")];
 
+// The model-scoped weekly window is the whole reason the account-token rung
+// exists: no passive frame carries it. It is also the one window a reader has
+// not asked for unless they said Full, so the detail level is what gates it.
+describe("the model-scoped window", () => {
+  const seedScoped = () =>
+    seedUsageStoreForTests(
+      "claude",
+      null,
+      [
+        { ...win("five_hour", 0.07), source: "token" as const },
+        { ...win("seven_day", 0.28), source: "token" as const },
+        { ...win("seven_day_fable", 0.26), source: "token" as const },
+      ],
+      NOW,
+    );
+
+  it("is drawn at Full, and named after the model rather than the wire key", () => {
+    bench.usage = { claude: { detail: "full" } };
+    seedScoped();
+    render(() => <UsageStrip />);
+
+    const row = clusterFor("claude", "default")!;
+    expect(barsIn(row).map((b) => b.dataset.kind)).toEqual([
+      "five_hour",
+      "seven_day",
+      "seven_day_fable",
+    ]);
+    expect(row.getAttribute("aria-label")).toContain("7-day (Fable)");
+    expect(row.getAttribute("aria-label")).not.toContain("seven_day_fable");
+  });
+
+  it("is hidden at Standard, which still draws both generic windows", () => {
+    bench.usage = { claude: { detail: "standard" } };
+    seedScoped();
+    render(() => <UsageStrip />);
+
+    const row = clusterFor("claude", "default")!;
+    expect(barsIn(row).map((b) => b.dataset.kind)).toEqual(["five_hour", "seven_day"]);
+    expect(row.getAttribute("aria-label")).not.toContain("Fable");
+  });
+});
+
 describe("the full row", () => {
   it("draws every generic window of the account you are signed into", () => {
     seedUsageStoreForTests("claude", null, [win("five_hour", 0.42), win("seven_day", 0.11)], NOW);

@@ -1405,11 +1405,14 @@ fn classify_claude_tool(name: &str, input: Option<&serde_json::Value>) -> Option
     }
 }
 
-/// Parse a `timestamp` field (RFC3339, always `Z`-suffixed in both agents'
-/// transcripts) into epoch seconds. No chrono/time dependency: a minimal
-/// fixed-format parser using the standard civil-to-days-since-epoch algorithm
-/// (Howard Hinnant's `days_from_civil`).
-fn parse_rfc3339_secs(s: &str) -> Option<u64> {
+/// Parse a `timestamp` field (RFC3339) into epoch seconds. No chrono/time
+/// dependency: a minimal fixed-format parser using the standard
+/// civil-to-days-since-epoch algorithm (Howard Hinnant's `days_from_civil`).
+///
+/// Everything after the seconds is ignored, so an offset that is not UTC would
+/// be read as if it were. Both callers only ever see UTC: transcripts are
+/// `Z`-suffixed, and Claude's usage endpoint sends `+00:00`.
+pub(crate) fn parse_rfc3339_secs(s: &str) -> Option<u64> {
     let b = s.as_bytes();
     if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T' || b[13] != b':' || b[16] != b':' {
         return None;

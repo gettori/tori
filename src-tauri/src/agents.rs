@@ -2095,7 +2095,10 @@ sources = ["sessions", "token"]
         let declared = |text: &str, source: &str| {
             load_adapter_str(text, source).expect("parses").usage.map(|u| u.sources)
         };
-        assert_eq!(declared(BUILTIN_CLAUDE, "bundled:claude"), Some(vec![UsageRung::Sessions]));
+        assert_eq!(
+            declared(BUILTIN_CLAUDE, "bundled:claude"),
+            Some(vec![UsageRung::Sessions, UsageRung::Token])
+        );
         assert_eq!(declared(BUILTIN_CODEX, "bundled:codex"), Some(vec![UsageRung::Cli]));
 
         for (source, text) in BUNDLED {
