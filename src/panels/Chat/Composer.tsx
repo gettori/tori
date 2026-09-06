@@ -22,6 +22,7 @@ import {
   replaceToken,
   type CompletionToken,
 } from "../../utils/composerCompletion";
+import { insideFence } from "../../utils/composerFence";
 import type { ContentBlock, SlashCommand } from "../../utils/chatTypes";
 import styles from "./Chat.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -31,6 +32,15 @@ const MAX_ROWS = 9;
 // the composer is looked at for most of a session: a prompt worth writing is a
 // paragraph rather than a search box's line.
 const MIN_ROWS = 3;
+
+// A paste past either of these is a document, not a sentence: it becomes a
+// file chip so the box stays readable and the agent reads it off disk.
+const LONG_PASTE_LINES = 30;
+const LONG_PASTE_CHARS = 3000;
+
+function isLongPaste(text: string): boolean {
+  return text.length > LONG_PASTE_CHARS || text.split("\n").length > LONG_PASTE_LINES;
+}
 
 /**
  * A chip of this composer's own, on its way into the sentence.
@@ -87,7 +97,9 @@ function pickerAccept(uploads: AttachmentSource): string | undefined {
  *
  * Enter sends, Shift+Enter is a newline, Escape interrupts a running turn. The
  * send button becomes a stop button while a turn runs, so there is one control
- * in one place rather than two that disagree.
+ * in one place rather than two that disagree. Inside an open code fence Enter
+ * adds a line instead, since sending half a block is the one thing a fence
+ * announces you do not want; Cmd+Enter sends from anywhere, menu open or not.
  *
  * Typing during a turn never drops input. Once the turn is acknowledged the
  * message *steers* it: sent straight away, picked up at the agent's next step.
@@ -145,6 +157,9 @@ export default function Composer(props: {
   onAttachUploads: (files: UploadFile[]) => void;
   /** An attachment that was refused, for whoever owns the toast. */
   onAttachRejected: (reason: string) => void;
+  /** Whether a long text paste becomes a `pasted.txt` chip rather than text in
+   *  the box. Absent means on; only the setting turns it off. */
+  attachLongPastes?: boolean;
   /** Absolute paths dragged in from the file tree or an editor tab. Mentions,
    *  not uploads: the agent reads them off disk. */
   onAttachPaths: (absPaths: string[]) => void;
@@ -183,6 +198,10 @@ export default function Composer(props: {
   const [files, setFiles] = createSignal<string[]>([]);
   const [menuIndex, setMenuIndex] = createSignal(0);
   const [dragging, setDragging] = createSignal(false);
+  // Where the caret is, kept as a signal so the fence notice and the send
+  // label can follow it; the keydown itself reads the textarea directly.
+  const [caret, setCaret] = createSignal(0);
+  const inFence = createMemo(() => insideFence(text(), caret()));
   let picker: HTMLInputElement | undefined;
   let input: HTMLTextAreaElement | undefined;
   let filesRequested = false;
@@ -279,7 +298,9 @@ export default function Composer(props: {
   // wrong span.
   function syncToken() {
     if (!input) return;
-    const next = activeToken(input.value, input.selectionStart ?? input.value.length);
+    const at = input.selectionStart ?? input.value.length;
+    setCaret(at);
+    const next = activeToken(input.value, at);
     setToken(next);
     setMenuIndex(0);
     if (next?.kind === "file" && !filesRequested) {
@@ -291,6 +312,7 @@ export default function Composer(props: {
   function setInputText(next: string, caret: number) {
     setText(next);
     setHistoryIndex(-1);
+    setCaret(caret);
     if (!input) return;
     input.value = next;
     input.setSelectionRange(caret, caret);
@@ -372,11 +394,20 @@ export default function Composer(props: {
 
   function onPaste(e: ClipboardEvent) {
     const files = [...(e.clipboardData?.files ?? [])];
-    // Only when the clipboard actually carries a file: a normal text paste must
-    // keep working, and an image copied alongside text is still an image.
-    if (!files.length) return;
+    // A clipboard that carries a file attaches it; an image copied alongside
+    // text is still an image.
+    if (files.length) {
+      e.preventDefault();
+      void attachFiles(files);
+      return;
+    }
+    // A long text paste becomes a file too, through the same checks a dropped
+    // file gets, so the cap and the tier apply unchanged. A tier with no file
+    // uploads, or a user who turned this off, gets the textarea's own paste.
+    const pasted = e.clipboardData?.getData("text/plain") ?? "";
+    if (props.attachLongPastes === false || !props.uploads.kinds.includes("file") || !isLongPaste(pasted)) return;
     e.preventDefault();
-    void attachFiles(files);
+    void attachFiles([new File([pasted], "pasted.txt", { type: "text/plain" })]);
   }
 
   function onDrop(e: DragEvent) {
@@ -417,6 +448,7 @@ export default function Composer(props: {
     props.onSend(value);
     setText("");
     setHistoryIndex(-1);
+    setCaret(0);
     closeMenu();
     // The textarea grew with its content, so it has to be put back by hand -
     // back to the *floor*, which is where an empty composer belongs. It used to
@@ -438,6 +470,7 @@ export default function Composer(props: {
     setHistoryIndex(next);
     const value = next === -1 ? "" : entries[next];
     setText(value);
+    setCaret(value.length);
     if (input) {
       input.value = value;
       input.setSelectionRange(value.length, value.length);
@@ -447,6 +480,14 @@ export default function Composer(props: {
   }
 
   function onKeyDown(e: KeyboardEvent) {
+    // The one key that always sends: over an open menu, inside a fence, from
+    // anywhere. So nobody is ever stuck behind a fence they did not mean to open.
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      closeMenu();
+      submit();
+      return;
+    }
     if (!menuOpen() && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       const atStart = (input?.selectionStart ?? 0) === 0 && (input?.selectionEnd ?? 0) === 0;
       // Once a walk has started it continues, because recall leaves the caret at
@@ -479,6 +520,8 @@ export default function Composer(props: {
       }
     }
     if (e.key === "Enter" && !e.shiftKey) {
+      // Inside an open fence the newline is the point; the textarea inserts it.
+      if (input && insideFence(input.value, input.selectionStart ?? input.value.length)) return;
       e.preventDefault();
       submit();
       return;
@@ -744,7 +787,7 @@ export default function Composer(props: {
             as="button"
             type="button"
             class={styles.sendButton}
-            label={props.running ? "Stop this turn (Esc)" : "Send (Enter)"}
+            label={props.running ? "Stop this turn (Esc)" : inFence() ? "Send (Cmd+Enter)" : "Send (Enter)"}
             aria-label={props.running ? "Stop" : "Send"}
             disabled={props.disabled || (!props.running && !hasContent())}
             onClick={() => (props.running ? props.onInterrupt() : submit())}
@@ -753,6 +796,9 @@ export default function Composer(props: {
           </Tooltip>
         </div>
       </div>
+      <Show when={inFence()}>
+        <div class={styles.composerHint}>Enter adds a line inside the code block. Cmd+Enter sends.</div>
+      </Show>
     </div>
   );
 }

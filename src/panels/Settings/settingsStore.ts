@@ -84,6 +84,9 @@ export type ChatDefaults = {
    *  restores the permission card it used to be, where the only answers are
    *  allow and deny and allowing makes the CLI answer for the user. */
   answerQuestionsInline: boolean;
+  /** A paste over 30 lines or 3000 characters becomes a `pasted.txt` chip
+   *  rather than text in the box. Off keeps every paste inline. */
+  attachLongPastes: boolean;
   /** How many live chats before Sway says the cost is adding up. **Zero means
    *  no cap.** It warns rather than refusing: several chats at once is the
    *  point of the surface, and how many is too many is a property of the
@@ -286,6 +289,7 @@ export const DEFAULT_SETTINGS: Settings = {
     toolOutputLines: 20,
     showSwayHooks: false,
     answerQuestionsInline: true,
+    attachLongPastes: true,
     maxConcurrentChats: 4,
   },
   budgets: { sessionUsd: null, projectUsd: null, contextPercent: null, warnAtFraction: 0.8 },
