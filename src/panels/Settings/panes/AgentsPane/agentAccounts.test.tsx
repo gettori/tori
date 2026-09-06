@@ -138,6 +138,14 @@ async function open(r: ReturnType<typeof render>, label = "Claude") {
   return r;
 }
 
+/** Every account card arrives closed. This opens one, for the tests that read
+ *  its body. */
+async function expand(r: ReturnType<typeof render>, label = "Default") {
+  const toggle = await r.findByRole("button", { name: `Expand ${label}` });
+  fireEvent.click(toggle);
+  return r;
+}
+
 /** Terminal tabs the component asked for, in order. */
 function openedJobs(): OpenJob[] {
   const seen: OpenJob[] = [];
@@ -206,9 +214,10 @@ describe("the accounts list", () => {
   // The head shows the name alone; where the account lives is on the card, and
   // the default account has no path to put there.
   it("names the default profile as the user's existing login", async () => {
-    const { container } = await open(mount());
-    await waitFor(() => expect(container.textContent).toContain("Accounts"));
-    expect(container.textContent).toContain("Your existing login");
+    const r = await open(mount());
+    await waitFor(() => expect(r.container.textContent).toContain("Accounts"));
+    await expand(r);
+    expect(r.container.textContent).toContain("Your existing login");
   });
 
   it("shows an added account's profile home on its card", async () => {
@@ -392,11 +401,12 @@ describe("signing out", () => {
   beforeEach(() => invoked.mockReset());
 
   it("asks first, then signs out through the agent's own logout command", async () => {
-    const { container, getByRole } = await open(mount());
+    const r = await open(mount());
+    const { container, getByRole } = r;
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
 
-    // The account you are signed into opens with the card, so its danger area
-    // is already on screen.
+    // The danger area is in the body, which is a press away.
+    await expand(r);
     fireEvent.click(getByRole("button", { name: "Sign Default out" }));
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
 
@@ -572,7 +582,7 @@ describe("the quota on an account card", () => {
 
   it("draws a box per window, with the level and when it empties", async () => {
     seedUsageStoreForTests("claude", null, [win("five_hour", 0.128, 4 * 3600 + 34 * 60)], NOW);
-    const { container } = await open(mount());
+    const { container } = await expand(await open(mount()));
     await waitFor(() => expect(container.textContent).toContain("5h rolling"));
     expect(container.textContent).toContain("12.8%");
     // A countdown while the window is close enough to plan around.
@@ -583,7 +593,7 @@ describe("the quota on an account card", () => {
   });
 
   it("shows the two free windows on the titlebar and keeps the model one off", async () => {
-    const { getByRole } = await open(mount());
+    const { getByRole } = await expand(await open(mount()));
     await waitFor(() => expect(getByRole("button", { name: /^5H$/ })).toBeTruthy());
     expect(getByRole("button", { name: /^5H$/ }).getAttribute("aria-pressed")).toBe("true");
     expect(getByRole("button", { name: /^Week$/ }).getAttribute("aria-pressed")).toBe("true");
@@ -591,7 +601,7 @@ describe("the quota on an account card", () => {
   });
 
   it("stores the whole list when a chip is pressed, not just the chip", async () => {
-    const { getByRole } = await open(mount());
+    const { getByRole } = await expand(await open(mount()));
     await waitFor(() => expect(getByRole("button", { name: /^Week$/ })).toBeTruthy());
 
     fireEvent.click(getByRole("button", { name: /^Week$/ }));
@@ -602,7 +612,7 @@ describe("the quota on an account card", () => {
   // reads before it opens the login Keychain, so lighting it here is the whole
   // of the opt-in.
   it("asks for the model window by storing the chip that authorises the read", async () => {
-    const { container, getByRole } = await open(mount());
+    const { container, getByRole } = await expand(await open(mount()));
     // Nothing knows which model this account's week is scoped to until a read
     // lands, and the card says that rather than guessing a name.
     await waitFor(() => expect(getByRole("button", { name: /^Model/ })).toBeTruthy());
@@ -620,14 +630,14 @@ describe("the quota on an account card", () => {
   // comes from the window itself, which is the only thing that knows it.
   it("names the model window after the model once one has answered", async () => {
     seedUsageStoreForTests("claude", null, [win("seven_day_fable", 0.032, 3 * 86400)], NOW);
-    const { container, getByRole } = await open(mount());
+    const { container, getByRole } = await expand(await open(mount()));
     await waitFor(() => expect(container.textContent).toContain("Fable only"));
     expect(getByRole("button", { name: /^Fable$/ })).toBeTruthy();
     expect(container.textContent).not.toContain("needs the account token");
   });
 
   it("moves this account's own threshold, in the shared control's stops", async () => {
-    const { container, getByRole } = await open(mount());
+    const { container, getByRole } = await expand(await open(mount()));
     await waitFor(() => expect(container.textContent).toContain("Warn at"));
 
     fireEvent.click(getByRole("button", { name: "Warn earlier" }));
@@ -638,7 +648,7 @@ describe("the quota on an account card", () => {
   });
 
   it("keeps the notification switch per account", async () => {
-    const { getByRole } = await open(mount());
+    const { getByRole } = await expand(await open(mount()));
     await waitFor(() => expect(getByRole("switch", { name: /Notify about Default/ })).toBeTruthy());
 
     fireEvent.click(getByRole("switch", { name: /Notify about Default/ }));
@@ -648,9 +658,8 @@ describe("the quota on an account card", () => {
   // An agent whose adapter declares no ladder gets no chips and no threshold,
   // because there would be nothing behind them.
   it("says so plainly for an agent Sway can read no quota for", async () => {
-    const { container, queryByRole } = await open(
-      mount({ health: { id: "codex", label: "Codex", program: "codex" } }),
-      "Codex",
+    const { container, queryByRole } = await expand(
+      await open(mount({ health: { id: "codex", label: "Codex", program: "codex" } }), "Codex"),
     );
     await waitFor(() => expect(container.textContent).toContain("Sway reads no quota for Codex"));
     expect(queryByRole("button", { name: /^5H$/ })).toBeNull();
@@ -701,7 +710,7 @@ describe("renaming an account", () => {
   });
 
   it("renames the login the user already had, and sends nothing for an unchanged name", async () => {
-    const { container, getByRole } = await open(mount());
+    const { container, getByRole } = await expand(await open(mount()));
     await waitFor(() => expect(container.textContent).toContain("Accounts"));
 
     renameTo(getByRole("button", { name: "Default" }), "Default");

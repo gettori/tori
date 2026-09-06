@@ -365,9 +365,11 @@ function AccountCard(props: {
   const p = () => props.profile;
   const tab = () => asTabProfile(p().id);
   const [busy, setBusy] = createSignal(false);
-  // The account you are signed into opens; the rest wait to be asked for. A
-  // three-account install is otherwise three screens of quota on arrival.
-  const [open, setOpen] = createSignal(p().isDefault);
+  // Every account arrives closed and waits to be asked for. The head says who
+  // the account is, which is what the list is scanned for; the quota below it
+  // is a screen of its own, and an install with three logins was three of them
+  // on arrival.
+  const [open, setOpen] = createSignal(false);
 
   /** What this account answered when it was last asked what it can run: the
    *  plan in the agent's own words and how many models came back. Empty until
