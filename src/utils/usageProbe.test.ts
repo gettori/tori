@@ -43,7 +43,7 @@ vi.mock("./agents", async (orig) => {
 
 const { pollUsage, resetUsageProbeForTests, usageIdentity } = await import("./usageProbe");
 const { resetUsageStoreForTests, windowsFor } = await import("./usageStore");
-const { BASE_BACKOFF_MS } = await import("./usagePoll");
+const { BASE_BACKOFF_MS, MANUAL_GAP_MS } = await import("./usagePoll");
 
 const NOW = Date.UTC(2026, 8, 6, 12, 0, 0);
 
@@ -122,6 +122,52 @@ describe("what never spawns a process", () => {
   });
 });
 
+// The floor is per account. It was per agent, and that starved every login but
+// the first: the sweep read the default, stamped the shared clock, and the second
+// was refused for the whole interval, on every sweep, forever.
+describe("two accounts on one agent", () => {
+  it("are both read on one sweep, one after the other", async () => {
+    pollUsage("codex", "focus");
+    pollUsage("codex", "focus", "work");
+    await settle();
+
+    expect(bench.calls).toBe(2);
+    expect(windowsFor("codex", null)).toHaveLength(1);
+    expect(windowsFor("codex", "work")).toHaveLength(1);
+  });
+
+  it("keep their own floors, so the first does not spend the second's", async () => {
+    pollUsage("codex", "focus");
+    await settle();
+    vi.setSystemTime(NOW + 1000);
+    pollUsage("codex", "focus");
+    pollUsage("codex", "focus", "work");
+    await settle();
+
+    // The default is inside its own floor; the second account has never run.
+    expect(bench.calls).toBe(2);
+  });
+});
+
+// `manual` skips the rate floor, which is right for one press and wrong for
+// three: a refresh button hammered is the same endpoint asked back to back,
+// and the endpoint answers 429.
+describe("a press while a read is already running", () => {
+  it("is dropped rather than queued", async () => {
+    pollUsage("codex", "manual");
+    pollUsage("codex", "manual");
+    pollUsage("codex", "manual");
+    await settle();
+
+    expect(bench.calls).toBe(1);
+    // And once it has landed and the press floor has passed, the next runs.
+    vi.setSystemTime(NOW + MANUAL_GAP_MS);
+    pollUsage("codex", "manual");
+    await settle();
+    expect(bench.calls).toBe(2);
+  });
+});
+
 describe("a read that failed", () => {
   it("backs off, and keeps whatever the last good one said", async () => {
     pollUsage("codex", "hover");
@@ -137,16 +183,28 @@ describe("a read that failed", () => {
     // error replacing it.
     expect(windowsFor("codex", null)).toHaveLength(1);
 
-    // Inside the backoff, even for a hover, which is the user asking directly.
+    // Inside the backoff, even for a hover, which is the user looking.
     vi.setSystemTime(NOW + 60_000 + BASE_BACKOFF_MS - 1);
     pollUsage("codex", "hover");
     await settle();
     expect(bench.calls).toBe(2);
 
-    bench.fails = false;
-    vi.setSystemTime(NOW + 60_000 + BASE_BACKOFF_MS);
-    pollUsage("codex", "hover");
+    // A press is the user asking, and it runs inside the backoff: refused, it
+    // would have nothing to show for itself, and the answer is what says why.
+    pollUsage("codex", "manual");
     await settle();
     expect(bench.calls).toBe(3);
+    // But not twice in ten seconds.
+    vi.setSystemTime(NOW + 60_000 + BASE_BACKOFF_MS + 5_000);
+    pollUsage("codex", "manual");
+    await settle();
+    expect(bench.calls).toBe(3);
+
+    // Three failures in a row, so the wait is four times the base by now.
+    bench.fails = false;
+    vi.setSystemTime(NOW + 60_000 + 6 * BASE_BACKOFF_MS);
+    pollUsage("codex", "hover");
+    await settle();
+    expect(bench.calls).toBe(4);
   });
 });

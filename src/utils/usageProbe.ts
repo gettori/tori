@@ -55,25 +55,56 @@ function readPath(agentId: string, profile: string | null): { command: string; r
   return command === undefined || rung === "off" ? null : { command, rung };
 }
 
+/** Whether anything can go and ask for this account's quota now, as against
+ *  waiting for a chat turn to report it. What a refresh control keys on: a
+ *  button that spawns nothing is a button that lies. */
+export function canPollUsage(agentId: string, profile: string | null = null): boolean {
+  return readPath(agentId, profile) !== null;
+}
+
 /** How often the tick wakes up. Well under the poll interval itself, which
  *  would otherwise drift a whole period past a chat opening. */
 const TICK_MS = 60_000;
 
 const [identities, setIdentities] = createSignal<Record<AccountKey, ProbeIdentity>>({});
 
-/** Why the last read failed, per agent, or null when it did not. Kept because a
- *  rung that cannot answer has to say so: an expired token and a signed-out
- *  account look identical as an absence. */
-const [reasons, setReasons] = createSignal<Record<string, string | null>>({});
+/** Why the last read failed, per account, or null when it did not. Kept because
+ *  a rung that cannot answer has to say so: an expired token and a signed-out
+ *  account look identical as an absence. Per account because the answer is: one
+ *  login can be signed out while the other reads fine. */
+const [reasons, setReasons] = createSignal<Record<AccountKey, string | null>>({});
 
-export function usageReason(agentId: string): string | null {
-  return reasons()[agentId] ?? null;
+export function usageReason(agentId: string, profile: string | null = null): string | null {
+  return reasons()[accountKey(agentId, profile)] ?? null;
 }
 
-/** Per agent, because the clock belongs to the process being spawned and Codex
- *  holds one account. */
-const clocks: Record<string, PollClock> = {};
-const failures: Record<string, number> = {};
+/**
+ * Per account, and this is load bearing.
+ *
+ * It was per agent, on the reasoning that what the floor protects is the process
+ * being spawned. That starved every account but the first: the sweep reads the
+ * default login, stamps the shared clock, and the second login is refused for
+ * the rest of the interval. The next sweep starts at the default again, so the
+ * second account was never read at all and never reached the strip.
+ */
+const clocks: Record<AccountKey, PollClock> = {};
+const failures: Record<AccountKey, number> = {};
+
+/** One read at a time per agent. The floor moved to the account; the thing it
+ *  used to protect is still per agent (a spawned process, and on Claude a
+ *  Keychain prompt), so two accounts queue behind each other rather than raising
+ *  two prompts in the same breath. */
+const queues: Record<string, Promise<void>> = {};
+
+/** Which accounts have a read queued or running. A second ask for one of them
+ *  is dropped rather than queued: `manual` skips the rate floor on purpose, and
+ *  without this a refresh button pressed three times was three reads of the
+ *  same endpoint back to back, which is how it answered 429. */
+const [pending, setPending] = createSignal<Record<AccountKey, boolean>>({});
+
+export function usageReading(agentId: string, profile: string | null = null): boolean {
+  return pending()[accountKey(agentId, profile)] === true;
+}
 
 export function usageIdentity(agentId: string, profile: string | null): ProbeIdentity | null {
   return identities()[accountKey(agentId, profile)] ?? null;
@@ -83,16 +114,18 @@ const visibleNow = () => (typeof document === "undefined" ? true : !document.hid
 
 const chatOpenFor = (agentId: string) => liveChats().some((c) => c.agentId === agentId);
 
-function clockFor(agentId: string): PollClock {
-  return (clocks[agentId] ??= { lastPollAt: null, blockedUntil: null });
+function clockFor(key: AccountKey): PollClock {
+  return (clocks[key] ??= { lastPollAt: null, blockedUntil: null });
 }
 
-async function runProbe(agentId: string, profile: string | null, command: string, rung: StoreSource) {
-  const clock = clockFor(agentId);
-  // Stamped before the await, not after. The floor is about how often Sway
-  // spawns a server, and a focus and a hover landing before the first answer
-  // would otherwise both pass the schedule and start one each.
-  clock.lastPollAt = Date.now();
+async function runProbe(
+  key: AccountKey,
+  agentId: string,
+  profile: string | null,
+  command: string,
+  rung: StoreSource,
+) {
+  const clock = clockFor(key);
   try {
     const answer = await invoke<ProbeAnswer>(command, { profile });
     // Only when the answer carries one. Claude's token read returns windows and
@@ -109,34 +142,44 @@ async function runProbe(agentId: string, profile: string | null, command: string
       }));
     }
     recordReadings(agentId, profile, rung, answer.windows ?? []);
-    failures[agentId] = 0;
+    failures[key] = 0;
     clock.blockedUntil = null;
-    setReasons((prev) => ({ ...prev, [agentId]: null }));
+    setReasons((prev) => ({ ...prev, [key]: null }));
   } catch (e) {
     // The readings are left alone: a stale number showing its age beats an error
     // replacing it. What the failure buys is a sentence, which the card shows
     // beside whatever a cheaper rung already filled in.
-    failures[agentId] = (failures[agentId] ?? 0) + 1;
-    clock.blockedUntil = backoffUntil(failures[agentId], Date.now());
-    setReasons((prev) => ({ ...prev, [agentId]: String(e) }));
+    failures[key] = (failures[key] ?? 0) + 1;
+    clock.blockedUntil = backoffUntil(failures[key], Date.now());
+    setReasons((prev) => ({ ...prev, [key]: String(e) }));
+  } finally {
+    setPending((prev) => ({ ...prev, [key]: false }));
   }
 }
 
 /**
  * Ask this agent for one account's quota, if the schedule allows it.
  *
- * The clock is per agent rather than per account, because what the floor is
- * protecting is the process being spawned. Two accounts on one agent share it,
- * which on Claude means the second one waits for the next trigger rather than
- * raising a second Keychain prompt in the same breath.
+ * The read joins the agent's queue rather than starting straight away, so two
+ * logins are read one after the other. The floor is stamped here, at the ask,
+ * rather than where the process starts: a read can wait behind another
+ * account's, and a second trigger landing in that gap would otherwise pass the
+ * schedule and queue the same read twice.
  */
 export function pollUsage(agentId: string, trigger: Trigger, profile: string | null = null) {
   const path = readPath(agentId, profile);
   if (path === null) return;
   if (!agentEnabled(agentId, profile)) return;
+  const key = accountKey(agentId, profile);
+  const clock = clockFor(key);
   const ctx = { visible: visibleNow(), chatOpen: chatOpenFor(agentId) };
-  if (!mayPoll(clockFor(agentId), trigger, Date.now(), ctx)) return;
-  void runProbe(agentId, profile, path.command, path.rung);
+  if (!mayPoll(clock, trigger, Date.now(), ctx)) return;
+  if (pending()[key]) return;
+  clock.lastPollAt = Date.now();
+  setPending((prev) => ({ ...prev, [key]: true }));
+  queues[agentId] = (queues[agentId] ?? Promise.resolve()).then(() =>
+    runProbe(key, agentId, profile, path.command, path.rung),
+  );
 }
 
 let watching = false;
@@ -184,6 +227,8 @@ export function seedUsageIdentityForTests(
 export function resetUsageProbeForTests() {
   setIdentities({});
   setReasons({});
+  setPending({});
   for (const key of Object.keys(clocks)) delete clocks[key];
   for (const key of Object.keys(failures)) delete failures[key];
+  for (const key of Object.keys(queues)) delete queues[key];
 }

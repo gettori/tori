@@ -64,6 +64,9 @@ impl TokenFailure {
             Self::NotALogin => "the Keychain item holds no Claude login".to_string(),
             Self::Expired => "the stored token has expired, run a turn to refresh it".to_string(),
             Self::Refused(401 | 403) => "Claude refused the token".to_string(),
+            // The endpoint's own floor, not a fault in the token. Said as such,
+            // and the poll's backoff is what honours it.
+            Self::Refused(429) => "Claude is rate limiting usage reads, trying again later".to_string(),
             Self::Refused(code) => format!("Claude answered {code}"),
             Self::Transport(e) => e.clone(),
         }

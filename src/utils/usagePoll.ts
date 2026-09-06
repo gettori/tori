@@ -28,8 +28,14 @@ export const MIN_GAP_MS = 30_000;
 export const BASE_BACKOFF_MS = 60_000;
 export const MAX_BACKOFF_MS = 30 * 60_000;
 
-/** Why a read is being asked for. `manual` is the user having just switched the
- *  source on, which is the one case where the answer has to follow the click. */
+/** The shortest gap between two presses of a refresh control. Long enough that
+ *  a press cannot repeat itself before the last answer has landed, short enough
+ *  that a second press is not refused for a reason the user cannot see. */
+export const MANUAL_GAP_MS = 10_000;
+
+/** Why a read is being asked for. `manual` is the user asking: a source just
+ *  switched on, or a refresh pressed. The one case where the answer has to
+ *  follow the click. */
 export type Trigger = "focus" | "hover" | "interval" | "manual";
 
 /** One agent's read history, plus whatever is currently blocking it. */
@@ -58,14 +64,17 @@ export function mayPoll(
   // First and unconditional. A hidden window has no strip to update and no
   // notification the user would see sooner for it.
   if (!ctx.visible) return false;
+  // The user's own ask outranks the backoff: a failure's wait is for the timer,
+  // and a press that is refused for it has nothing to show why. What a press
+  // still cannot do is repeat itself faster than an answer can land, which is
+  // how a refresh button hammered turned into a 429.
+  if (trigger === "manual") {
+    return clock.lastPollAt === null || now - clock.lastPollAt >= MANUAL_GAP_MS;
+  }
   if (clock.blockedUntil !== null && now < clock.blockedUntil) return false;
   // The background tick is the only one that needs a reason to exist; focus and
   // hover are somebody looking at the strip, and it is on screen either way.
   if (trigger === "interval" && !ctx.chatOpen) return false;
-  // The floor is about storms of events, and a switch being turned on is not
-  // one. Turning the source on has to produce the reading it promises, even a
-  // second after the last one.
-  if (trigger === "manual") return true;
   if (clock.lastPollAt === null) return true;
 
   const since = now - clock.lastPollAt;
