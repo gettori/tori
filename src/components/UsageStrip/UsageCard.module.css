@@ -1,91 +1,171 @@
 /* The strip's card. Popover owns the surface (background, border, shadow,
-   z-index); this owns what sits on it. */
+   z-index); this owns what sits on it.
+
+   Names read, numbers scan: the window names are the UI font and every figure
+   beside them is monospaced and tabular, so a column of levels lines up and a
+   countdown does not shuffle sideways every minute. */
 @layer components {
   .card {
-    width: calc(280px * var(--ui-scale));
-    padding: var(--sway-space-3);
-    font-size: var(--sway-text-xs);
+    width: calc(400px * var(--ui-scale));
+    padding: var(--sway-space-6);
+    font-size: var(--sway-text-md);
     color: var(--fg-default);
   }
 
   .head {
     display: flex;
-    flex-direction: column;
-    gap: calc(var(--sway-space-1) / 2);
-    padding-bottom: var(--sway-space-2);
-    border-bottom: var(--sway-border-thin) solid var(--border-default);
+    align-items: center;
+    gap: var(--sway-space-3);
   }
   .who {
+    font-size: var(--sway-text-2xl);
     font-weight: 600;
   }
-  .email {
+  /* Freshness, once, for the whole card: what a reader is checking is whether
+     the numbers are current, not which rung fetched each one. */
+  .ago {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-2);
+    margin-left: auto;
+    font-family: var(--sway-font-mono);
     color: var(--fg-muted);
   }
-  .plan {
+
+  .accounts {
+    display: flex;
+    align-items: center;
+    gap: var(--sway-space-3);
+    margin-top: var(--sway-space-6);
+    font-size: var(--sway-text-sm);
+  }
+
+  .tab {
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    font-family: var(--sway-font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+    cursor: pointer;
+  }
+  .tab:hover {
     color: var(--fg-muted);
+  }
+  .tabOn {
+    color: var(--fg-default);
+  }
+  .tabOn:hover {
+    color: var(--fg-default);
+  }
+  .tab + .tab {
+    padding-left: var(--sway-space-3);
+    border-left: var(--sway-border-thin) solid var(--border-default);
+  }
+  /* Between the last account and the plan. A rule rather than a gap, so the two
+     halves of the row read as two different kinds of fact. */
+  .rule {
+    flex: 1;
+    height: var(--sway-border-thin);
+    background: var(--border-default);
+  }
+
+  .email,
+  .plan {
+    font-family: var(--sway-font-mono);
+    color: var(--fg-muted);
+    white-space: nowrap;
   }
 
   .windows {
     display: flex;
     flex-direction: column;
-    gap: var(--sway-space-2);
-    margin: var(--sway-space-2) 0;
+    gap: var(--sway-space-6);
+    margin: var(--sway-space-6) 0;
     padding: 0;
     list-style: none;
   }
 
   .window {
     display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0 var(--sway-space-2);
+    grid-template-columns: auto auto 1fr;
+    align-items: baseline;
+    gap: var(--sway-space-3) var(--sway-space-3);
   }
   .kind {
-    font-weight: 600;
+    font-weight: 500;
   }
   .level {
+    font-family: var(--sway-font-mono);
     font-variant-numeric: tabular-nums;
+    color: var(--fg-default);
   }
-  /* The whole row takes the tone, so a reader scanning the card sees the same
-     colours the strip used. Attention and danger, matching the bar. */
-  .window[data-state="approaching"] .level {
+  .when {
+    justify-self: end;
+    font-family: var(--sway-font-mono);
+    color: var(--fg-muted);
+  }
+
+  /* The same three bands the strip paints, so a reader crossing from one to
+     the other sees one scale. Green is the bar alone; warm and hot take the
+     figure with them. */
+  .window[data-band="warm"] .level,
+  .window[data-band="warm"] .fill {
     color: var(--attention-fg);
   }
-  .window[data-state="reached"] .level {
+  .window[data-band="hot"] .level,
+  .window[data-band="hot"] .fill {
     color: var(--danger-fg);
+  }
+  .window[data-band="none"] .level {
+    color: var(--fg-muted);
   }
   .window[data-temporal="stale"] {
     opacity: 0.7;
   }
 
-  .resets,
-  .provenance,
-  .pace,
-  .source {
+  .track {
     grid-column: 1 / -1;
-    color: var(--fg-muted);
+    height: calc(6px * var(--ui-scale));
+    border-radius: var(--sway-radius-pill);
+    background: var(--neutral-subtle);
+    overflow: hidden;
   }
+  .fill {
+    display: block;
+    height: 100%;
+    border-radius: var(--sway-radius-pill);
+    background: currentColor;
+    color: var(--success-fg);
+  }
+
+  /* The projection, boxed: it is the one line on the card that is Sway's own
+     arithmetic rather than a number some source reported. */
   .pace {
-    color: var(--attention-fg);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sway-space-3);
+    margin: 0;
+    padding: var(--sway-space-5);
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-md);
+    color: var(--fg-muted);
+    line-height: 1.5;
+  }
+  .pace svg {
+    flex: none;
+    margin-top: calc(2px * var(--ui-scale));
+  }
+
+  .empty {
+    margin: var(--sway-space-6) 0;
+    color: var(--fg-muted);
   }
 
   .trouble {
-    margin: 0 0 var(--sway-space-2);
+    margin: var(--sway-space-5) 0 0;
     color: var(--attention-fg);
-  }
-
-  .foot {
-    display: flex;
-    align-items: center;
-    gap: var(--sway-space-2);
-    padding-top: var(--sway-space-2);
-    border-top: var(--sway-border-thin) solid var(--border-default);
-  }
-
-  .credits {
-    color: var(--fg-muted);
-  }
-
-  .source {
-    margin-left: auto;
   }
 }
