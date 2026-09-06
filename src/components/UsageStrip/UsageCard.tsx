@@ -6,6 +6,7 @@ import { agentHealthFor, asProfileId, asTabProfile, namedProfiles, profileLabel 
 import { limitTypeLabel, paceOutAt, quotaState, resetsAtMs } from "../../utils/chatRateLimit";
 import { settings } from "../../panels/Settings/settingsStore";
 import { setUsage, usageNotify, usageSource } from "../../utils/usageSettings";
+import { usageIdentity } from "../../utils/usageProbe";
 import { temporalOf, windowsFor, type WindowReading } from "../../utils/usageStore";
 import styles from "./UsageCard.module.css";
 
@@ -21,6 +22,15 @@ import styles from "./UsageCard.module.css";
 // hover timing belongs to the strip (it is the thing the pointer is on and off);
 // what a popover owns is dismissal, focus and portalling, which is the same here
 // as it is for the history dropdown.
+
+/** A plan as a reader would write it. The wire sends enum tokens (`plus`,
+ *  `self_serve_business_prolite`), and an unknown one is reshaped rather than
+ *  dropped: a plan Sway has not heard of is still this account's plan. */
+function planLabel(planType: string | null): string | null {
+  if (!planType || planType === "unknown") return null;
+  const words = planType.replace(/_/g, " ");
+  return words[0].toUpperCase() + words.slice(1);
+}
 
 /** How long the card is, per row, from a source's own reading. */
 function windowLine(w: WindowReading, warnAt: number, now: number) {
@@ -65,19 +75,32 @@ export default function UsageCard(props: {
   const label = () => profileLabel(props.agentId, tab()) ?? adapter().label;
 
   /**
-   * The email the agent's own `whoami` named, when it names one. Claude is the
-   * only bundled agent that does.
+   * The email, from whichever of the three things knows it.
    *
-   * Two places to look, because `namedProfiles` is empty on a one-account
-   * install by design ("Default" is a word for the only thing there is). That
-   * install is the common case, so reading only the per-account list would leave
-   * the card with no identity line at all for most users; the sweep's top-level
-   * answer is the same probe, for the default account.
+   * `namedProfiles` is empty on a one-account install by design ("Default" is a
+   * word for the only thing there is), and that install is the common case, so
+   * the sweep's top-level answer is the same probe asked for the default
+   * account. Codex answers neither, and reaches the card through its usage
+   * probe instead.
    */
   const account = () => {
     const named = namedProfiles(props.agentId).find((p) => p.id === props.profile)?.account;
     if (named) return named;
-    return props.profile === asProfileId(null) ? (agentHealthFor(props.agentId)?.account ?? null) : null;
+    if (props.profile !== asProfileId(null)) return null;
+    // Third place, and for Codex the only one: its `login status` answers in an
+    // exit code and names nobody, so the email exists solely on the same
+    // exchange the windows came from.
+    return agentHealthFor(props.agentId)?.account ?? identity()?.email ?? null;
+  };
+
+  const identity = () => usageIdentity(props.agentId, tab());
+  const credits = () => {
+    const c = identity()?.credits;
+    if (!c) return null;
+    if (c.unlimited) return "unlimited credits";
+    // A balance nobody has is not news, and every account without credits
+    // reports the same "0". Only a balance there is something to spend.
+    return c.hasCredits && c.balance ? `${c.balance} credits` : null;
   };
 
   const warnAt = () => settings.budgets?.warnAtFraction ?? 1;
@@ -95,6 +118,9 @@ export default function UsageCard(props: {
         <header class={styles.head}>
           <span class={styles.who}>{label()}</span>
           <Show when={account()}>{(email) => <span class={styles.email}>{email()}</span>}</Show>
+          <Show when={planLabel(identity()?.planType ?? null)}>
+            {(plan) => <span class={styles.plan}>{plan()}</span>}
+          </Show>
         </header>
 
         <ul class={styles.windows}>
@@ -146,6 +172,7 @@ export default function UsageCard(props: {
           >
             Breakdown
           </button>
+          <Show when={credits()}>{(c) => <span class={styles.credits}>{c()}</span>}</Show>
           <span class={styles.source}>source: {usageSource(props.agentId)}</span>
         </footer>
       </div>

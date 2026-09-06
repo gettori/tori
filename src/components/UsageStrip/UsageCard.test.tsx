@@ -33,7 +33,10 @@ vi.mock("../../panels/Settings/settingsStore", () => ({
 
 vi.mock("../../utils/agentEnabled", () => ({ agentEnabled: (id: string) => bench.enabled.has(id) }));
 
-const adapters = [{ id: "claude", label: "Claude", icon: "claude", usage: { sources: ["sessions"] }, usage_reason: null }];
+const adapters = [
+  { id: "claude", label: "Claude", icon: "claude", usage: { sources: ["sessions"] }, usage_reason: null },
+  { id: "codex", label: "Codex", icon: "codex", usage: { sources: ["cli"] }, usage_reason: null },
+];
 vi.mock("../../utils/agents", async (orig) => {
   const actual = await orig<typeof import("../../utils/agents")>();
   return { ...actual, agents: () => adapters, findAdapter: (id: string) => adapters.find((a) => a.id === id) ?? { id, label: id } };
@@ -42,12 +45,17 @@ vi.mock("../../utils/agents", async (orig) => {
 vi.mock("../../utils/agentHealth", async (orig) => ({
   ...(await orig<typeof import("../../utils/agentHealth")>()),
   profileLabel: () => null,
-  // Claude is the one bundled agent whose `whoami` names an account.
-  namedProfiles: () => [{ id: "default", label: "Default", signIn: "signedIn", account: "me@example.com", apiKeySource: null }],
+  // Claude is the one bundled agent whose `whoami` names an account. Codex's
+  // answers in an exit code, so it reaches the card only through its probe.
+  namedProfiles: (id: string) =>
+    id === "claude"
+      ? [{ id: "default", label: "Default", signIn: "signedIn", account: "me@example.com", apiKeySource: null }]
+      : [],
 }));
 
 const { default: UsageStrip } = await import("./UsageStrip");
 const { resetUsageStoreForTests, seedUsageStoreForTests } = await import("../../utils/usageStore");
+const { resetUsageProbeForTests, seedUsageIdentityForTests } = await import("../../utils/usageProbe");
 
 const NOW = Date.UTC(2026, 8, 6, 12, 0, 0);
 const LATER = Math.floor(NOW / 1000) + 3 * 60 * 60;
@@ -63,6 +71,7 @@ beforeEach(() => {
   bench.usage = {};
   bench.saved = [];
   resetUsageStoreForTests();
+  resetUsageProbeForTests();
   seedUsageStoreForTests(
     "claude",
     null,
@@ -217,6 +226,46 @@ describe("pinning it with a click", () => {
     fireEvent.pointerDown(document.body);
     fireEvent.mouseDown(document.body);
     await waitFor(() => expect(card()).toBeNull());
+  });
+});
+
+// Codex answers `login status` with an exit code and no name, so the probe's
+// own `account/read` is the only place an email or a plan for it exists.
+describe("an account only the probe can name", () => {
+  const codexCard = () => screen.queryByRole("dialog", { name: /Codex usage detail/ });
+
+  function withCodex(identity: Parameters<typeof seedUsageIdentityForTests>[2]) {
+    bench.enabled = new Set(["codex"]);
+    seedUsageStoreForTests(
+      "codex",
+      null,
+      [{ kind: "five_hour", utilization: 0.03, resetsAt: LATER, status: null, reachedType: null, source: "cli" }],
+      NOW,
+    );
+    seedUsageIdentityForTests("codex", null, identity);
+    render(() => <UsageStrip />);
+    fireEvent.click(screen.getByRole("button", { name: /^Codex usage/ }));
+  }
+
+  it("renders the email and the plan the probe read", () => {
+    withCodex({ email: "codex-user@example.com", planType: "plus" });
+
+    const text = codexCard()!.textContent!;
+    expect(text).toContain("codex-user@example.com");
+    // Reshaped, not passed through: `plus` is a wire token.
+    expect(text).toContain("Plus");
+    expect(text).toContain("cli");
+  });
+
+  it("shows a balance there is something to spend, and stays quiet otherwise", () => {
+    withCodex({ planType: "plus", credits: { hasCredits: true, unlimited: false, balance: "42" } });
+    expect(codexCard()!.textContent).toContain("42 credits");
+  });
+
+  // Every account without credits reports the same "0", which is not news.
+  it("says nothing about a zero balance", () => {
+    withCodex({ planType: "plus", credits: { hasCredits: false, unlimited: false, balance: "0" } });
+    expect(codexCard()!.textContent).not.toContain("credits");
   });
 });
 

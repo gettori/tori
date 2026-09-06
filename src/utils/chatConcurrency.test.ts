@@ -6,7 +6,7 @@ import { chatsInFolder, dropLiveChat, setLiveChat } from "./chatSessions";
 const REPO = "/work/repo";
 
 const chat = (sessionId: string, folderPath = REPO) =>
-  setLiveChat({ sessionId, sessionName: sessionId, folderPath, tabId: `tab:${sessionId}`, status: "idle", visible: false });
+  setLiveChat({ sessionId, sessionName: sessionId, agentId: "claude", folderPath, tabId: `tab:${sessionId}`, status: "idle", visible: false });
 
 describe("shouldNotice", () => {
   it("says nothing for the first chat on a worktree", () => {

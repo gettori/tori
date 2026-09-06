@@ -58,6 +58,7 @@ describe("a chat's own turn blocks reverting its own edits", () => {
     setLiveChat({
       sessionId: SESSION,
       sessionName: "chat",
+      agentId: "claude",
       folderPath: REPO,
       tabId: "chat:1",
       visible: true,

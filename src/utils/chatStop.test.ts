@@ -6,6 +6,7 @@ import type { ChatEvent } from "./chatTypes";
 
 const chat = (over: Partial<LiveChat> & { sessionId: string }): LiveChat => ({
   sessionName: over.sessionId,
+  agentId: "claude",
   folderPath: "/work/repo",
   tabId: `chat:${over.sessionId}`,
   status: "executing",
