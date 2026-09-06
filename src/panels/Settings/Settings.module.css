@@ -1405,17 +1405,18 @@
   .winLevel {
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-md);
-    color: var(--success-fg);
+    color: var(--fg-default);
     font-variant-numeric: tabular-nums;
   }
-  .winCard[data-state="approaching"] .winLevel {
+  /* The three bands every level wears: green paints the bar alone, warm and
+     hot paint the figure too. */
+  .winCard[data-band="warm"] .winLevel {
     color: var(--attention-fg);
   }
-  .winCard[data-state="reached"] .winLevel {
+  .winCard[data-band="hot"] .winLevel {
     color: var(--danger-fg);
   }
-  .winCard[data-state="expired"] .winLevel,
-  .winCard[data-state="none"] .winLevel {
+  .winCard[data-band="none"] .winLevel {
     color: var(--fg-muted);
   }
   .winTrack {
@@ -1431,10 +1432,10 @@
     border-radius: var(--sway-radius-pill);
     background: var(--success-fg);
   }
-  .winCard[data-state="approaching"] .winFill {
+  .winCard[data-band="warm"] .winFill {
     background: var(--attention-fg);
   }
-  .winCard[data-state="reached"] .winFill {
+  .winCard[data-band="hot"] .winFill {
     background: var(--danger-fg);
   }
   .winFoot {
@@ -1470,15 +1471,23 @@
     gap: var(--sway-space-5);
     margin-top: var(--sway-space-5);
     padding: var(--sway-space-5) var(--sway-space-6);
-    border: var(--sway-border-thin) solid color-mix(in srgb, var(--danger-fg) 35%, transparent);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-lg);
-    background: color-mix(in srgb, var(--danger-fg) 6%, transparent);
   }
   /* The label on one line. The box is a flex row and the note beside it takes
-     what it likes, which broke "Sign out" over two lines at every width. */
+     what it likes, which broke "Sign out" over two lines at every width.
+
+     Red on the word and nothing else. The box used to wear a red wash, a red
+     border and a filled red button, which is three alarms for a control that
+     sits on every account card; the title names the area and the button's
+     text says what it does, and that is as loud as a resting control gets. */
   .danger button {
     flex: none;
     white-space: nowrap;
+    color: var(--danger-fg);
+  }
+  .danger button:hover {
+    border-color: var(--danger-fg);
   }
   .dangerTitle {
     font-size: var(--sway-text-sm);
