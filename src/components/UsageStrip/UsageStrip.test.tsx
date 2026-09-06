@@ -118,7 +118,7 @@ describe("the model-scoped window", () => {
       "seven_day",
       "seven_day_fable",
     ]);
-    expect(row.getAttribute("aria-label")).toContain("Week, Fable");
+    expect(row.getAttribute("aria-label")).toContain("Fable only");
     expect(row.getAttribute("aria-label")).not.toContain("seven_day_fable");
   });
 
@@ -139,10 +139,14 @@ describe("the full row", () => {
 
     const row = clusterFor("claude", "default")!;
     expect(row).toBeTruthy();
-    expect(row.textContent).toContain("Claude");
+    // The glyph is the name on the leading row. The word reaches a screen
+    // reader through the accessible name and nobody else, which is on purpose:
+    // spelled out it was the widest thing on the strip saying the least.
+    expect(row.getAttribute("aria-label")).toMatch(/^Claude usage/);
+    expect(row.textContent).not.toContain("Claude");
     expect(barsIn(row).map((b) => b.dataset.kind)).toEqual(["five_hour", "seven_day"]);
-    expect(row.textContent).toContain("42%");
-    expect(row.textContent).toContain("11%");
+    expect(row.textContent).toContain("42.0%");
+    expect(row.textContent).toContain("11.0%");
   });
 
   // Absence is a property of the source, never a level of zero: a window no
@@ -156,14 +160,34 @@ describe("the full row", () => {
     expect(row.textContent).not.toContain("7-day");
   });
 
-  it("wears the attention role approaching and the danger role reached", () => {
-    seedUsageStoreForTests("claude", null, [win("five_hour", 0.85), win("seven_day", 1)], NOW);
+  // Three bands on a fixed ladder, not the account's warn point: green to 59,
+  // orange to 79, red from 80. Green paints the bar alone; the other two take
+  // the figure with them.
+  it("paints the level in one of three bands", () => {
+    seedUsageStoreForTests(
+      "claude",
+      null,
+      [win("five_hour", 0.42), win("seven_day", 0.65), win("seven_day_fable", 0.85)],
+      NOW,
+    );
+    bench.usage = {
+      claude: { accounts: { default: { windows: ["five_hour", "seven_day", "model_week"] } } },
+    };
     render(() => <UsageStrip />);
 
-    const [five, seven] = barsIn(clusterFor("claude", "default")!);
-    expect(five.className).toContain(styles.approaching);
-    expect(five.className).not.toContain(styles.reached);
-    expect(seven.className).toContain(styles.reached);
+    const [five, seven, fable] = barsIn(clusterFor("claude", "default")!);
+    expect(five.dataset.band).toBe("clear");
+    expect(five.className).not.toContain(styles.warm);
+    expect(seven.className).toContain(styles.warm);
+    expect(fable.className).toContain(styles.hot);
+  });
+
+  // The source's own refusal is the top band whatever number came with it.
+  it("is in the hot band once the source says the limit is in force", () => {
+    seedUsageStoreForTests("claude", null, [{ ...win("five_hour", 0.3), status: "rejected" }], NOW);
+    render(() => <UsageStrip />);
+
+    expect(barsIn(clusterFor("claude", "default")!)[0].className).toContain(styles.hot);
   });
 });
 
@@ -183,6 +207,24 @@ describe("a second account on the same agent", () => {
     expect(barsIn(clusterFor("claude", "default")!)).toHaveLength(2);
   });
 
+  // One row in full and the rest as a figure. A second login is glanced at to
+  // see whether it is in trouble, and the row you are working on is the one
+  // worth three bars.
+  it("draws the leading login in full and the second as one number", () => {
+    seedUsageStoreForTests("claude", null, [win("five_hour", 0.1), win("seven_day", 0.2)], NOW);
+    seedUsageStoreForTests("claude", "work", [win("five_hour", 0.3), win("seven_day", 0.91)], NOW);
+    render(() => <UsageStrip />);
+
+    const lead = clusterFor("claude", "default")!;
+    const second = clusterFor("claude", "work")!;
+    expect(lead.querySelectorAll(`.${styles.track}`)).toHaveLength(2);
+    expect(barsIn(second).map((b) => b.dataset.kind)).toEqual(["seven_day"]);
+    expect(second.querySelector(`.${styles.track}`)).toBeNull();
+    expect(second.textContent).toBe("Work91.0%");
+    // And a rule between them, so the second name reads as another account.
+    expect(document.querySelectorAll(`.${styles.divider}`)).toHaveLength(1);
+  });
+
   // Nothing lit is the user's own no, and it is now sayable about any account,
   // the one you are signed into included.
   it("is off the strip entirely when it lights no window", () => {
@@ -196,15 +238,18 @@ describe("a second account on the same agent", () => {
   });
 
   // The threshold is the account's own, so one row can be warning while the
-  // other, on the same level, is not.
-  it("colours each account at its own threshold", () => {
+  // other, on the same level, is not. That is the state the notification and
+  // the card's sentence read; the paint is the fixed ladder, and the same for
+  // both.
+  it("judges each account at its own threshold", () => {
     bench.usage = { claude: { accounts: { work: { warnAt: 0.5 } } } };
-    seedUsageStoreForTests("claude", null, [win("five_hour", 0.6)], NOW);
-    seedUsageStoreForTests("claude", "work", [win("five_hour", 0.6)], NOW);
+    seedUsageStoreForTests("claude", null, [win("five_hour", 0.55)], NOW);
+    seedUsageStoreForTests("claude", "work", [win("five_hour", 0.55)], NOW);
     render(() => <UsageStrip />);
 
-    expect(barsIn(clusterFor("claude", "work")!)[0].className).toContain(styles.approaching);
-    expect(barsIn(clusterFor("claude", "default")!)[0].className).not.toContain(styles.approaching);
+    expect(barsIn(clusterFor("claude", "work")!)[0].dataset.state).toBe("approaching");
+    expect(barsIn(clusterFor("claude", "default")!)[0].dataset.state).toBe("ok");
+    expect(barsIn(clusterFor("claude", "work")!)[0].dataset.band).toBe("clear");
   });
 });
 
@@ -220,7 +265,7 @@ describe("how old the number is", () => {
     // The age reaches a keyboard user, not just a pointer resting on the bar.
     expect(row.getAttribute("aria-label")).toContain("last read 30 min ago");
     // Old, not wrong: the number it last had is still what it last had.
-    expect(bar.textContent).toContain("42%");
+    expect(bar.textContent).toContain("42.0%");
   });
 
   // The one case a dimmed number would be a lie. Both windows are gone, and the

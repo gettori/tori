@@ -1,20 +1,28 @@
-/* The topbar's quota strip. Sits between the toolbar and the update notice and
-   stays quiet at ok: a bar that shouts while nothing is wrong is a bar nobody
-   reads by the time something is.
+/* The topbar's quota strip. One surface between the toolbar and the update
+   notice, holding every account that has something to say, and staying quiet at
+   ok: a bar that shouts while nothing is wrong is a bar nobody reads by the time
+   something is.
+
+   Monospaced, and figures before names in the visual weight. The strip is
+   scanned rather than read: what a glance is after is a number, and tabular
+   digits keep it from shifting under the eye every time it moves.
 
    Colour is the attention and danger roles, never --blocking-*. That tier says
    "this stopped the turn" and check 10 in scripts/check-tokens.mjs holds it to
    the permission prompt and the question card; a strip bar makes the same claim
    the chat's reached banner does, so it wears the same role that does. */
 @layer components {
+  /* No surface of its own. The strip sits on the topbar the way the toolbar
+     does, and the dividers are what give it structure. */
   .strip {
     flex: 0 1 auto;
     min-width: 0;
     align-self: center;
     display: flex;
     align-items: center;
-    gap: var(--sway-space-2);
-    margin-right: var(--sway-space-3);
+    gap: var(--sway-space-4);
+    margin-right: var(--sway-space-4);
+    font-family: var(--sway-font-mono);
     overflow: hidden;
   }
 
@@ -23,24 +31,38 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: var(--sway-space-2);
-    height: calc(20px * var(--ui-scale));
-    padding: 0 var(--sway-space-2);
-    border: var(--sway-border-thin) solid transparent;
-    border-radius: var(--sway-radius-pill);
+    gap: var(--sway-space-4);
+    height: calc(26px * var(--ui-scale));
+    padding: 0 var(--sway-space-3);
+    border: none;
+    border-radius: var(--sway-radius-md);
     background: none;
     font: inherit;
-    font-size: var(--sway-text-xs);
+    font-size: var(--sway-text-sm);
     color: var(--fg-muted);
     cursor: pointer;
   }
   .cluster:hover {
     background: var(--neutral-hover);
-    border-color: var(--border-default);
   }
   .tight {
-    gap: var(--sway-space-1);
-    padding: 0 var(--sway-space-1);
+    gap: var(--sway-space-3);
+    padding: 0 var(--sway-space-2);
+  }
+
+  /* Between every two rows. Not a border on the cluster: that would also draw
+     at the ends of the strip, where the surface's own edge already is. A thin
+     one between two logins of one agent; where the next agent starts it is
+     taller and stronger, so the glyph after it reads as a new group. */
+  .divider {
+    flex: none;
+    width: var(--sway-border-thin);
+    height: calc(14px * var(--ui-scale));
+    background: var(--border-default);
+  }
+  .agentDivider {
+    height: calc(20px * var(--ui-scale));
+    background: var(--border-strong);
   }
 
   .name {
@@ -52,7 +74,7 @@
   .bar {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-1);
+    gap: var(--sway-space-3);
     white-space: nowrap;
   }
 
@@ -60,38 +82,55 @@
      telling the reader about two different windows rather than one number
      twice. */
   .kind {
+    font-size: var(--sway-text-sm);
     color: var(--fg-muted);
   }
 
   .track {
     display: block;
-    width: calc(28px * var(--ui-scale));
+    width: calc(24px * var(--ui-scale));
     height: calc(4px * var(--ui-scale));
+    margin-right: var(--sway-space-1);
     border-radius: var(--sway-radius-pill);
     background: var(--neutral-subtle);
     overflow: hidden;
   }
 
+  /* Three bands, one ladder. Green paints the bar alone: fine needs no second
+     signal. From the warm band up the figure takes the colour too, since that
+     is the number a glance is reading. */
   .fill {
     display: block;
     height: 100%;
     border-radius: var(--sway-radius-pill);
-    background: currentColor;
+    background: var(--success-fg);
   }
 
+  /* The one thing the strip exists to carry, so it is the one thing with weight
+     on it. */
   .figure {
+    font-size: var(--sway-text-sm);
     font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--fg-default);
   }
 
-  .approaching {
+  .warm .fill {
+    background: var(--attention-fg);
+  }
+  .warm .figure {
     color: var(--attention-fg);
   }
-  .reached {
+  .hot .fill {
+    background: var(--danger-fg);
+  }
+  .hot .figure {
     color: var(--danger-fg);
   }
 
   /* Old but not wrong. Dimmed rather than relabelled: the number is still the
-     last thing any source said, and the title carries how long ago that was. */
+     last thing any source said, and the cluster's name carries how long ago
+     that was. */
   .stale {
     opacity: 0.55;
   }
@@ -99,6 +138,10 @@
   /* Wrong rather than old, so it loses its colour and its percentage both. The
      word "reset" is the whole content of the bar. */
   .expired {
+    color: var(--fg-muted);
+  }
+  .expired .figure {
+    font-weight: 400;
     color: var(--fg-muted);
   }
 }
