@@ -79,38 +79,6 @@
   color: var(--fg-subtle);
 }
 
-.tbActions {
-  display: flex;
-  gap: calc(4px * var(--ui-scale));
-  flex: 0 0 auto;
-}
-
-/* Ghostty/VSCode icon buttons: a fixed 24px pill holding a bigger app glyph
-   plus a small, dimmed launch arrow. Overrides the Button's iconOnly square
-   (these carry an icon + a trailing arrow, no text label) and its --control-icon
-   svg sizing. The .tbRow prefix lifts specificity above `.iconOnly.sm`. */
-.tbRow .tbActions button {
-  box-sizing: border-box;
-  height: calc(24px * var(--ui-scale));
-  padding: 0 calc(4px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
-  aspect-ratio: auto;
-  gap: calc(4px * var(--ui-scale));
-  /* Rest at the faint icon color (quiet chrome), brighten on hover. */
-  color: var(--fg-subtle);
-}
-.tbRow .tbActions button:hover {
-  color: var(--fg-default);
-}
-.tbActions .tbAppIco {
-  width: calc(17px * var(--ui-scale));
-  height: calc(17px * var(--ui-scale));
-}
-.tbActions .tbArrow {
-  width: calc(10px * var(--ui-scale));
-  height: calc(10px * var(--ui-scale));
-  opacity: 0.5;
-}
-
 .tbErr {
   margin-top: calc(6px * var(--ui-scale));
   color: var(--danger-fg);
