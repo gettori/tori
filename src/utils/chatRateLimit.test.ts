@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import plainTurn from "../../dev/fixtures/claude/plain-turn.jsonl?raw";
 import readCall from "../../dev/fixtures/claude/read-call.jsonl?raw";
 import {
+  limitTypeChip,
   limitTypeInline,
   limitTypeLabel,
   limitTypeShort,
@@ -184,19 +185,28 @@ describe("windowSentence", () => {
 });
 
 describe("limitTypeLabel", () => {
+  const DOT = " \u00b7 ";
+
   it("spells out the wire's machine identifiers", () => {
-    expect(limitTypeLabel("five_hour")).toBe("Rolling 5 hours");
-    expect(limitTypeLabel("seven_day")).toBe("Week, all models");
+    expect(limitTypeLabel("five_hour")).toBe(`Session${DOT}5h rolling`);
+    expect(limitTypeLabel("seven_day")).toBe(`Week${DOT}all models`);
   });
 
   // Three lengths of one vocabulary. The titlebar has room for none of the long
-  // ones, and "your Week, all models limit" is not a sentence.
+  // ones, and no card name survives being dropped into "your ... limit".
   it("has a titlebar-width name and a sentence-shaped one for the same window", () => {
     expect(limitTypeShort("five_hour")).toBe("5H");
-    expect(limitTypeShort("seven_day")).toBe("Week");
-    expect(limitTypeShort("seven_day_fable")).toBe("Fable");
+    expect(limitTypeShort("seven_day")).toBe("W");
+    // A letter, because the strip draws three of these beside three bars and the
+    // bar is what carries the meaning.
+    expect(limitTypeShort("seven_day_fable")).toBe("F");
     expect(limitTypeInline("five_hour")).toBe("rolling 5-hour");
     expect(limitTypeInline("seven_day_fable")).toBe("weekly Fable");
+    // The settings chip is a word: it is the control, and has to read before
+    // the strip's letters have been learned.
+    expect(limitTypeChip("seven_day")).toBe("Week");
+    expect(limitTypeChip("seven_day_fable")).toBe("Fable");
+    expect(limitTypeChip("five_hour")).toBe("5H");
   });
 
   it("passes an unknown one through rather than dropping it", () => {
@@ -208,9 +218,9 @@ describe("limitTypeLabel", () => {
   // scoped the window to, so there is no list to map them against: the suffix is
   // the model's own name and is titled rather than looked up.
   it("names a model-scoped weekly window after its model", () => {
-    expect(limitTypeLabel("seven_day_fable")).toBe("Week, Fable");
-    expect(limitTypeLabel("seven_day_opus")).toBe("Week, Opus");
-    expect(limitTypeLabel("seven_day_oauth_apps")).toBe("Week, Oauth apps");
+    expect(limitTypeLabel("seven_day_fable")).toBe(`Week${DOT}Fable only`);
+    expect(limitTypeLabel("seven_day_opus")).toBe(`Week${DOT}Opus only`);
+    expect(limitTypeLabel("seven_day_oauth_apps")).toBe(`Week${DOT}Oauth apps only`);
     expect(limitTypeLabel("extra_usage")).toBe("Extra usage");
   });
 });

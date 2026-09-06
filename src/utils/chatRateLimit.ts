@@ -118,16 +118,44 @@ export function quotaState(r: QuotaReading, warnAt: number, now: number): QuotaS
 }
 
 /**
+ * The three bands a level is painted in, on every surface that draws one.
+ *
+ * Fixed rather than read off the account's Warn at, which governs when Sway
+ * *says* something (the chat's banner, the notification). Colour is a scale the
+ * eye reads without a legend: green is fine and paints only the bar, orange is
+ * worth knowing and paints the figure too, red is nearly out. A user who moved
+ * their warn point to 90% still wants a bar at 85% to look like one.
+ */
+export type QuotaBand = "none" | "clear" | "warm" | "hot";
+export const WARM_AT = 0.6;
+export const HOT_AT = 0.8;
+
+export function quotaBand(r: QuotaReading, state: QuotaState): QuotaBand {
+  // A window that has since reset has no level to paint, and a source saying
+  // it refused work is red whatever number it sent with that.
+  if (state === "expired") return "none";
+  if (state === "reached") return "hot";
+  if (r.utilization === null) return "none";
+  if (r.utilization >= HOT_AT) return "hot";
+  return r.utilization >= WARM_AT ? "warm" : "clear";
+}
+
+/** The separator the card's window names are drawn with, written as its code
+ *  point so the file itself stays ASCII. */
+const DOT = " \u00b7 ";
+
+/**
  * One vocabulary for the windows, in the three lengths the surfaces need.
  *
- * `label` is the name a card has room for, `short` is what fits in the titlebar,
- * and `inline` is the form a sentence can carry: "your Week, all models limit"
- * is not English, and the chat's notice is the one place these names have to be
- * read rather than scanned.
+ * `label` is the name a card has room for, `short` is what the titlebar has room
+ * for (one or two characters, since the strip is scanned rather than read), and
+ * `inline` is the form a sentence can carry: no card name survives being dropped
+ * into "your ... limit", and the chat's notice is the one place these names have
+ * to be read rather than scanned.
  */
 const NAMES: Record<string, { label: string; short: string; inline: string }> = {
-  five_hour: { label: "Rolling 5 hours", short: "5H", inline: "rolling 5-hour" },
-  seven_day: { label: "Week, all models", short: "Week", inline: "weekly all-model" },
+  five_hour: { label: `Session${DOT}5h rolling`, short: "5H", inline: "rolling 5-hour" },
+  seven_day: { label: `Week${DOT}all models`, short: "W", inline: "weekly all-model" },
   extra_usage: { label: "Extra usage", short: "Extra", inline: "extra usage" },
 };
 
@@ -141,7 +169,19 @@ export function scopedModel(limitType: string): string | null {
   return words === "" ? null : `${words[0].toUpperCase()}${words.slice(1)}`;
 }
 
-/** "five_hour" -> "Rolling 5 hours". Wire values are snake_case identifiers
+/** A model-scoped weekly window's full name, for a caller naming one before any
+ *  read has confirmed which model it is scoped to. */
+export function modelWeekLabel(model: string | null): string {
+  return `Week${DOT}${model === null ? "one model" : `${model} only`}`;
+}
+
+/** The same window on the strip, where a model gets one letter: the bar beside
+ *  it is what carries the meaning, and the row has three of these to fit. */
+export function modelWeekShort(model: string): string {
+  return model.slice(0, 1).toUpperCase();
+}
+
+/** "five_hour" -> "Session / 5h rolling". Wire values are snake_case identifiers
  *  meant for a machine; an unknown one falls through as-is rather than being
  *  dropped, since an unreadable window name still beats a silent one. */
 export function limitTypeLabel(limitType: string | null): string | null {
@@ -149,13 +189,22 @@ export function limitTypeLabel(limitType: string | null): string | null {
   const known = NAMES[limitType];
   if (known) return known.label;
   const model = scopedModel(limitType);
-  return model ? `Week, ${model}` : limitType;
+  return model ? modelWeekLabel(model) : limitType;
 }
 
-/** The same window, in the width the titlebar has: "5H", "Week", "Fable". */
+/** The same window, in the width the titlebar has: "5H", "W", "F". */
 export function limitTypeShort(limitType: string): string {
   const model = scopedModel(limitType);
-  return NAMES[limitType]?.short ?? model ?? limitType;
+  return NAMES[limitType]?.short ?? (model ? modelWeekShort(model) : limitType);
+}
+
+/** The same window on a settings chip: "5H", "Week", "Fable". A word rather
+ *  than the strip's letter, because a chip is the control that decides what the
+ *  strip shows and has to be readable before the reader has learned the
+ *  letters. */
+export function limitTypeChip(limitType: string): string {
+  if (limitType === "seven_day") return "Week";
+  return scopedModel(limitType) ?? limitTypeShort(limitType);
 }
 
 /** The same window as a sentence carries it, lower case and singular. */
