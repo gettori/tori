@@ -16,8 +16,10 @@ import { asTabProfile, refreshAgentHealth, type SignIn } from "../../../../utils
 import { defaultProfile, setDefaultProfile } from "../../../../utils/agentEnabled";
 import { warnAtLabel } from "../../../../utils/chatBudget";
 import {
+  limitTypeChip,
   limitTypeLabel,
-  limitTypeShort,
+  modelWeekLabel,
+  quotaBand,
   quotaState,
   resetsAtMs,
   scopedModel,
@@ -167,6 +169,7 @@ function WindowCard(props: {
 }) {
   const state = (): QuotaState | null =>
     props.reading ? quotaState(props.reading, props.warnAt, props.now) : null;
+  const band = () => (props.reading ? quotaBand(props.reading, state()!) : "none");
   const pct = () => {
     const u = props.reading?.utilization;
     return typeof u === "number" ? u * 100 : null;
@@ -180,6 +183,7 @@ function WindowCard(props: {
       class={styles.winCard}
       classList={{ [styles.winDim]: props.dim }}
       data-state={state() ?? "none"}
+      data-band={band()}
       data-temporal={props.reading ? temporalOf(props.reading, props.now) : "none"}
     >
       <div class={styles.winHead}>
@@ -206,7 +210,7 @@ type Chip = {
   id: WindowChip;
   /** Chip width: "5H", "Week", "Fable". */
   label: string;
-  /** Box width: "Rolling 5 hours", "Week, Fable". */
+  /** Box width: "Session / 5h rolling", "Week / Fable only". */
   name: string;
   lit: boolean;
   reading: WindowReading | null;
@@ -230,11 +234,11 @@ function chipsFor(agentId: string, profile: string | null): Chip[] {
     const guess = id === "model_week" ? modelWindowLabel(agentId, profile) : null;
     return {
       id,
-      label: reading ? limitTypeShort(reading.kind) : (guess ?? (id === "model_week" ? "Model" : limitTypeShort(id))),
+      label: reading ? limitTypeChip(reading.kind) : id === "model_week" ? (guess ?? "Model") : limitTypeChip(id),
       name: reading
         ? (limitTypeLabel(reading.kind) ?? reading.kind)
         : id === "model_week"
-          ? `Week, ${guess ?? "one model"}`
+          ? modelWeekLabel(guess)
           : (limitTypeLabel(id) ?? id),
       lit: showsWindow(agentId, profile, id),
       reading,
@@ -662,7 +666,7 @@ function AccountCard(props: {
 
             {/* Beside the windows, never instead of them: a read that failed has
                 to say so while whatever a cheaper rung filled stays on screen. */}
-            <Show when={usageReason(props.agentId)}>
+            <Show when={usageReason(props.agentId, tab())}>
               {(why) => <div class={styles.hint}>{why()}</div>}
             </Show>
 
@@ -712,7 +716,6 @@ function AccountCard(props: {
                   two open cards would otherwise offer two buttons called "Sign
                   out" and neither would say whose. */}
               <Button
-                variant="danger"
                 aria-label={canSignOut() ? `Sign ${p().label} out` : `Remove ${p().label}`}
                 onClick={() => void act()}
                 disabled={busy()}

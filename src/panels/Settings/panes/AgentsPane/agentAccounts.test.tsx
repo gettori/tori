@@ -532,7 +532,7 @@ describe("what each account can run", () => {
     // Asserted first, or the check below is vacuous on a selector that found
     // nothing.
     expect(row?.textContent).toContain("Default");
-    // The count, not the word: the card names a "Week, all models" window.
+    // The count, not the word: the card names a "Week / all models" window.
     expect(row?.textContent).not.toMatch(/\d+ models?/);
   });
 });
@@ -573,28 +573,28 @@ describe("the quota on an account card", () => {
   it("draws a box per window, with the level and when it empties", async () => {
     seedUsageStoreForTests("claude", null, [win("five_hour", 0.128, 4 * 3600 + 34 * 60)], NOW);
     const { container } = await open(mount());
-    await waitFor(() => expect(container.textContent).toContain("Rolling 5 hours"));
+    await waitFor(() => expect(container.textContent).toContain("5h rolling"));
     expect(container.textContent).toContain("12.8%");
     // A countdown while the window is close enough to plan around.
     expect(container.textContent).toContain("4h 34m left");
     // And a box for the window nothing has answered for yet, rather than a gap.
-    expect(container.textContent).toContain("Week, all models");
+    expect(container.textContent).toContain("all models");
     expect(container.textContent).toContain("not read yet");
   });
 
   it("shows the two free windows on the titlebar and keeps the model one off", async () => {
     const { getByRole } = await open(mount());
-    await waitFor(() => expect(getByRole("button", { name: /^5H/ })).toBeTruthy());
-    expect(getByRole("button", { name: /^5H/ }).getAttribute("aria-pressed")).toBe("true");
-    expect(getByRole("button", { name: /^Week/ }).getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() => expect(getByRole("button", { name: /^5H$/ })).toBeTruthy());
+    expect(getByRole("button", { name: /^5H$/ }).getAttribute("aria-pressed")).toBe("true");
+    expect(getByRole("button", { name: /^Week$/ }).getAttribute("aria-pressed")).toBe("true");
     expect(getByRole("button", { name: /^Model/ }).getAttribute("aria-pressed")).toBe("false");
   });
 
   it("stores the whole list when a chip is pressed, not just the chip", async () => {
     const { getByRole } = await open(mount());
-    await waitFor(() => expect(getByRole("button", { name: /^Week/ })).toBeTruthy());
+    await waitFor(() => expect(getByRole("button", { name: /^Week$/ })).toBeTruthy());
 
-    fireEvent.click(getByRole("button", { name: /^Week/ }));
+    fireEvent.click(getByRole("button", { name: /^Week$/ }));
     await waitFor(() => expect(savedWindows()?.windows).toEqual(["five_hour"]));
   });
 
@@ -606,7 +606,7 @@ describe("the quota on an account card", () => {
     // Nothing knows which model this account's week is scoped to until a read
     // lands, and the card says that rather than guessing a name.
     await waitFor(() => expect(getByRole("button", { name: /^Model/ })).toBeTruthy());
-    expect(container.textContent).toContain("Week, one model");
+    expect(container.textContent).toContain("one model");
     expect(container.textContent).toContain("needs the account token");
 
     fireEvent.click(getByRole("button", { name: /^Model/ }));
@@ -621,8 +621,8 @@ describe("the quota on an account card", () => {
   it("names the model window after the model once one has answered", async () => {
     seedUsageStoreForTests("claude", null, [win("seven_day_fable", 0.032, 3 * 86400)], NOW);
     const { container, getByRole } = await open(mount());
-    await waitFor(() => expect(container.textContent).toContain("Week, Fable"));
-    expect(getByRole("button", { name: /^Fable/ })).toBeTruthy();
+    await waitFor(() => expect(container.textContent).toContain("Fable only"));
+    expect(getByRole("button", { name: /^Fable$/ })).toBeTruthy();
     expect(container.textContent).not.toContain("needs the account token");
   });
 
@@ -653,7 +653,7 @@ describe("the quota on an account card", () => {
       "Codex",
     );
     await waitFor(() => expect(container.textContent).toContain("Sway reads no quota for Codex"));
-    expect(queryByRole("button", { name: /^5H/ })).toBeNull();
+    expect(queryByRole("button", { name: /^5H$/ })).toBeNull();
   });
 });
 
