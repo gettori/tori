@@ -38,9 +38,16 @@ export default function LaneStrip(props: {
 
   createEffect(
     on(
-      () => props.lanes.some((l) => l.status === null),
+      // Background tasks count as running too. Gated on lanes alone, a chat
+      // with a task and no subagent never started the timer, and every task
+      // wore the clock the strip mounted with: 0s, forever.
+      () => props.lanes.some((l) => l.status === null) || props.tasks.length > 0,
       (running) => {
         if (!running) return;
+        // Read the clock on the way in as well as on the tick: the signal is as
+        // stale as the gap since the last run, which a chip would wear for a
+        // second before the first tick corrected it.
+        setNow(Date.now());
         const timer = setInterval(() => setNow(Date.now()), 1000);
         onCleanup(() => clearInterval(timer));
       },
