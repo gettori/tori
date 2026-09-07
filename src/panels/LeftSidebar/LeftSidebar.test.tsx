@@ -242,10 +242,12 @@ describe("the Spaces | Features mode", () => {
   const segment = (name: string) => screen.getByRole("button", { name });
   const pressed = (name: string) => segment(name).getAttribute("aria-pressed") === "true";
 
+  // Spaces has no tile of its own: the strip lights the space you are in, and
+  // that tile being pressed IS "the tree is showing spaces".
   it("defaults to Spaces and keeps the tree mounted", async () => {
     const { container } = sidebar();
     await screen.findByText("repo");
-    expect(pressed("Spaces")).toBe(true);
+    expect(pressed("work")).toBe(true);
     expect(container.querySelector("[data-feature-list]")).toBeNull();
     await expectNoAxeViolations(container);
   });
@@ -276,7 +278,7 @@ describe("the Spaces | Features mode", () => {
     emit(TOGGLE_SIDEBAR_MODE);
     await waitFor(() => expect(pressed("Shells")).toBe(true));
     emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(pressed("Spaces")).toBe(true));
+    await waitFor(() => expect(pressed("work")).toBe(true));
     await screen.findByText("repo");
   });
 });

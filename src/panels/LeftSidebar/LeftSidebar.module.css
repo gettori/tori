@@ -41,33 +41,28 @@
   --nest-step: calc(12px * var(--ui-scale));
 }
 
-/* The Spaces | Features switcher, on the same insets as the filter below it. */
-/* Tabs, the filter's toggle, and the filter itself, in one wrapping row.
-   The wrap *is* the layout rule: the field asks for 120px and lands on the
-   next line when what the tabs leave is less than that. */
+/* The title, its menu and the filter in one wrapping row. The wrap *is* the
+   layout rule: the field asks for 120px and takes the next line when what the
+   title leaves is less than that. */
 .treeHead {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   --head-gap: calc(6px * var(--ui-scale));
   gap: var(--head-gap);
-  padding-inline: var(--tree-inset) var(--tree-gutter);
+  padding-inline: calc(8px + var(--tree-inset)) var(--tree-gutter);
 }
 
 /* The pane tab strips' own height (`.unified-strip` in App.css), so the
    sidebar's head lines up with the tabs across the window. Carried by a strut
    rather than the row's `min-height`, which a second line would spend on
-   centring both lines - lifting the tabs as the field appeared. */
+   centring both lines - lifting the title as the field appeared. */
 .headStrut {
   width: 0;
-  /* Zero wide still takes a gap, and that gap would inset the tabs past the
-     column everything below them lines up on. */
+  /* Zero wide still takes a gap, and that gap would inset the title past the
+     column everything below it lines up on. */
   margin-inline-end: calc(-1 * var(--head-gap));
   min-height: calc(40px * var(--ui-scale));
-}
-
-.modeTabs {
-  flex: none;
 }
 
 /* Holds the right edge while the field is closed, and gives way to it when it
@@ -88,7 +83,7 @@
 
 .searchInput {
   /* The 120px is the threshold itself: a field that cannot have that much
-     beside the tabs is a field on its own line. */
+     beside the title is a field on its own line. */
   flex: 1 1 calc(120px * var(--ui-scale));
   min-width: calc(120px * var(--ui-scale));
   background: transparent;
@@ -116,18 +111,17 @@
   border-color: var(--border-strong);
 }
 
-/* ---- Active space header ---- */
-/* The title over the tree: the space's name at title weight, with what kind of
-   thing it is trailing it in the quiet tone. Loud enough to be the heading,
-   which the old uppercase micro-label never was. */
+/* ---- Tree title ---- */
+/* The name at title weight with its kind trailing it, as one group inside the
+   head row so the filter can wrap under the pair rather than between them. */
 .spaceHeader {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: baseline;
   gap: calc(6px * var(--ui-scale));
   min-height: calc(26px * var(--ui-scale));
   padding-block: calc(10px * var(--ui-scale));
-  padding-inline: calc(8px + var(--tree-inset)) var(--tree-gutter);
-  margin-bottom: calc(2px * var(--ui-scale));
 }
 
 /* Truncates rather than wrapping, so a long space name cannot push the kind
@@ -741,12 +735,39 @@
 .spaceMenu[data-expanded] > .space.active {
   border-color: var(--brand-default);
 }
-/* Active space: its own hue on the glyph, nothing else - no fill, no ring.
-   Declared after :hover at equal specificity so the active tile keeps its hue
-   while the pointer is over it (it still picks up the hover border on top,
-   which is what it did before the colours existed). */
+/* The lit tile: the strip's one selection, and the only one that says its name.
+   It grows into a pill on a raised fill, so which view you are in is legible
+   without decoding twelve glyphs. Declared after :hover at equal specificity so
+   it keeps its hue while the pointer is over it. */
 .space.active {
+  width: auto;
+  gap: calc(7px * var(--ui-scale));
+  padding-inline: calc(9px * var(--ui-scale));
+  background: var(--neutral-hover);
   color: rgb(var(--space-hue-rgb));
+}
+
+/* Features and Shells are not spaces and have no hue of their own, so the lit
+   one takes the brand rather than a colour it would have to invent. */
+.modeTile.active {
+  color: var(--brand-default);
+}
+
+.tileName {
+  max-width: calc(140px * var(--ui-scale));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.tileCount {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+  font-variant-numeric: tabular-nums;
 }
 /* Drag-to-reorder feedback: dim the tile being dragged, and show a gold insertion
    bar on the side of the tile the drop would land against. */
@@ -789,20 +810,11 @@
   border-color: var(--brand-default);
 }
 
-/* The open-command count on the Shells segment. Part of the segment's own text,
-   so the count is in its accessible name rather than lost to a sighted-only badge. */
-.modeCount {
-  margin-left: calc(4px * var(--ui-scale));
-  color: var(--fg-subtle);
-  font-variant-numeric: tabular-nums;
-}
-
 /* The Shells list, on the tree's insets like the Feature list beside it. */
 .shellsList {
   padding-inline: var(--tree-inset) var(--tree-gutter);
-  /* Spaces stands its first row off the mode tabs with the space header's block
-     padding, and Features with its own header row. This list has neither, so it
-     buys the same separation directly. */
+  /* Spaces and Features each stand their first row off the title in their own
+     way. This list has neither, so it buys the same separation directly. */
   padding-block-start: calc(8px * var(--ui-scale));
 }
 

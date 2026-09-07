@@ -108,7 +108,7 @@ describe("the Shells mode", () => {
   it("is a third segment that selects the Shells workspace", async () => {
     const { sel, onSelect, container } = mount([cmd("job:1", "Sign in")]);
     await screen.findByText("proj");
-    expect(pressed("Spaces")).toBe(true);
+    expect(pressed("work")).toBe(true);
 
     fireEvent.click(segment(/Shells/));
     await waitFor(() => expect(pressed(/Shells/)).toBe(true));
@@ -123,25 +123,27 @@ describe("the Shells mode", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  it("puts all three segments in the arrow order they are drawn in", async () => {
+  // The three views live in one strip now, and the strip is read left to right:
+  // the spaces first, then the two that are not a space. Tab order follows the
+  // DOM, so drawing them out of order would also traverse them out of order.
+  it("draws the spaces first and the two mode tiles after them", async () => {
     mount();
     await screen.findByText("proj");
-    segment("Spaces").focus();
-    fireEvent.keyDown(segment("Spaces"), { key: "ArrowRight" });
-    expect(document.activeElement).toBe(segment("Features"));
-    fireEvent.keyDown(segment("Features"), { key: "ArrowRight" });
-    expect(document.activeElement).toBe(segment("Shells"));
-    fireEvent.keyDown(segment("Shells"), { key: "ArrowRight" });
-    expect(document.activeElement).toBe(segment("Spaces"));
-    // A tour, not a selection.
-    expect(pressed("Spaces")).toBe(true);
+    const order = [segment("work"), segment("Features"), segment(/Shells/)];
+    for (const [i, el] of order.slice(1).entries()) {
+      expect(
+        order[i]!.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    // A layout, not a selection.
+    expect(pressed("work")).toBe(true);
   });
 
   it("restores to Spaces when a stored Shells mode has nothing running", async () => {
     localStorage.setItem("sway.sidebar-mode.v1", "shells");
     mount();
     await screen.findByText("proj");
-    expect(pressed("Spaces")).toBe(true);
+    expect(pressed("work")).toBe(true);
     expect(pressed("Shells")).toBe(false);
   });
 
@@ -159,7 +161,7 @@ describe("the Shells mode", () => {
     emit(TOGGLE_SIDEBAR_MODE);
     await waitFor(() => expect(pressed("Shells")).toBe(true));
     emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(pressed("Spaces")).toBe(true));
+    await waitFor(() => expect(pressed("work")).toBe(true));
   });
 
   it("takes the window on REVEAL_SHELLS, for a panel that cannot reach onSelect", async () => {
@@ -188,7 +190,7 @@ describe("the Shells mode", () => {
       "failed",
     ]);
 
-    const badge = document.querySelector('[class*="modeCount"]');
+    const badge = document.querySelector('[class*="tileCount"]');
     expect(badge?.textContent).toBe("2");
   });
 
@@ -214,7 +216,7 @@ describe("the Shells mode", () => {
     await waitFor(() => expect(sel()?.kind).toBe("shells"));
 
     emitWith<{ folderPath: string }>(TERMINAL_TAB_FOCUSED, { folderPath: MAIN });
-    await waitFor(() => expect(pressed("Spaces")).toBe(true));
+    await waitFor(() => expect(pressed("work")).toBe(true));
     expect(sel()?.folderPath).toBe(MAIN);
   });
 

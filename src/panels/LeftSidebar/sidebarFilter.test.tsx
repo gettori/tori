@@ -1,5 +1,5 @@
-// The filter is behind a toggle now, sharing one row with the mode tabs.
-// Whether it opens beside them or under them is the row's own wrap (see the
+// The filter is behind a toggle now, sharing one row with the tree's title.
+// Whether it opens beside it or under it is the row's own wrap (see the
 // `.searchInput` basis, guarded in scripts/check-tokens.mjs), so what is left
 // here is when it exists at all and what closing it does.
 import { describe, it, expect, vi, beforeEach } from "vitest";
