@@ -90,6 +90,17 @@ describe("the active space header", () => {
     expect(head.compareDocumentPosition(header()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  // The name alone is a word with no category. What follows it says which of
+  // the three things in this column that word names.
+  it("says what kind of thing the name is", async () => {
+    mount();
+    await waitFor(() => expect(header()).toBeTruthy());
+    // Nothing leads the name: the tile's glyph (or its initial-letter
+    // fallback) is not repeated here, so the heading is one line of type and
+    // the space's hue lives on the window wash instead.
+    expect(header()!.textContent!.trim()).toMatch(/^work· Spaces/);
+  });
+
   it("follows the space you switch to", async () => {
     mount();
     await waitFor(() => expect(header()!.textContent).toContain("work"));

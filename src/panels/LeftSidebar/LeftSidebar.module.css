@@ -118,49 +118,38 @@
 }
 
 /* ---- Active space header ---- */
-/* The heading over the tree: uppercase and subtle, so it names the column
-   without competing with the project rows under it. */
+/* The title over the tree: the space's name at title weight, with what kind of
+   thing it is trailing it in the quiet tone. Loud enough to be the heading,
+   which the old uppercase micro-label never was. */
 .spaceHeader {
-  --space-hue-rgb: var(--shell-glow-rgb);
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: calc(6px * var(--ui-scale));
-  min-height: calc(22px * var(--ui-scale));
-  padding-block: calc(8px * var(--ui-scale));
-  padding-inline: var(--tree-inset) var(--tree-gutter);
-  margin-bottom: calc(4px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
+  min-height: calc(26px * var(--ui-scale));
+  padding-block: calc(10px * var(--ui-scale));
+  padding-inline: calc(8px + var(--tree-inset)) var(--tree-gutter);
+  margin-bottom: calc(2px * var(--ui-scale));
 }
 
-/* The space's own hue, as on its tile, so the two read as one thing. */
-.spaceHeaderIcon {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(20px * var(--ui-scale));
-  color: rgb(var(--space-hue-rgb));
-  font-weight: 600;
-}
-
-.spaceHeaderIcon > :global(svg) {
-  width: calc(16px * var(--ui-scale));
-  height: calc(16px * var(--ui-scale));
-}
-
-/* Truncates rather than wrapping, so a long space name cannot push the
-   ellipsis off the column. */
+/* Truncates rather than wrapping, so a long space name cannot push the kind
+   label and the ellipsis off the column. */
 .spaceHeaderName {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--fg-default);
+  font-size: var(--sway-text-3xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: capitalize;
+}
+
+.spaceHeaderKind {
+  flex: none;
   color: var(--fg-subtle);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: var(--sway-text-lg);
 }
 
 /* The trigger wraps the button rather than being it (Dropdown's `wrapper`), so
@@ -169,6 +158,9 @@
 .spaceHeaderMenu {
   flex: none;
   margin-left: auto;
+  /* The row aligns its two labels on their baseline; an icon button has no
+     baseline worth sharing, so it centres against them instead. */
+  align-self: center;
   display: inline-flex;
   opacity: 0;
   transition: opacity var(--sway-duration-fast) ease;
