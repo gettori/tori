@@ -49,7 +49,7 @@ vi.mock("./pdfjsRuntime", () => {
         };
       },
     },
-    workerUrl: "/assets/pdf.worker.min.mjs",
+    workerUrl: "/pdfjs/pdf.worker.min.mjs",
     runtimeUrls: { cMapUrl: "/pdfjs/cmaps/" },
   };
 });
@@ -105,7 +105,7 @@ describe("the document store", () => {
 
   it("points pdf.js at the bundled worker script", async () => {
     await loadPdf(A);
-    expect(spy.workerSrc).toBe("/assets/pdf.worker.min.mjs");
+    expect(spy.workerSrc).toBe("/pdfjs/pdf.worker.min.mjs");
   });
 
   it("releases the documents no open tab names any more, and only those", async () => {
