@@ -102,6 +102,23 @@ fn set_webkit_text_defaults() {
     }
 }
 
+/// macOS 26 draws a plain `.icns` shrunk onto a system tile, in the Dock and in
+/// Finder alike. An icon set on the running app is drawn as-is (VLC's bare cone
+/// is this call), and Tauri makes it only in dev, so the release build repeats it.
+#[cfg(target_os = "macos")]
+fn set_dock_icon() {
+    use objc2::{AllocAnyThread, MainThreadMarker};
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    let data = NSData::with_bytes(include_bytes!("../icons/icon.icns"));
+    if let Some(icon) = NSImage::initWithData(NSImage::alloc(), &data) {
+        unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&icon)) };
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Same-binary re-exec as the askpass helper: git/ssh invoke this exe with the
@@ -497,6 +514,10 @@ pub fn run() {
         // outlive the window that started it: still writing to the transcript,
         // still holding its session id unclaimable on the next launch.
         .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Ready = event {
+                set_dock_icon();
+            }
             if let tauri::RunEvent::Exit = event {
                 app.state::<ChatState>().0.shutdown();
                 // And every debug adapter. A language server is a plain child

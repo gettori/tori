@@ -8,6 +8,14 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+- The Dock shows the sailboat on its own again, transparent background and
+  all, instead of shrunk onto a light tile. macOS Tahoe puts that tile on
+  every plain `.icns`, so Sway now sets its icon on the running app the way
+  `pnpm tauri dev` and VLC do. Finder and a Dock entry for the closed app
+  still show the tile; only an Icon Composer asset can change those.
+
 ## 26.907.0-alpha
 
 Accounts: sign in more than once per agent, and every session says which login
