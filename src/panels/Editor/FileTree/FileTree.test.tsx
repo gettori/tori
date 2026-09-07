@@ -286,7 +286,9 @@ describe("the editable project tree", () => {
     expect(screen.queryByLabelText("New File")).toBeNull();
     fireEvent.contextMenu(screen.getByText("README.md"));
 
-    await waitFor(() => expect(screen.queryByText("Rename")).toBeNull());
+    // The menu still opens, because revealing mutates nothing.
+    await screen.findByText("Reveal in Finder");
+    expect(screen.queryByText("Rename")).toBeNull();
     expect(sent("fs_rename")).toHaveLength(0);
   });
 });
@@ -529,6 +531,36 @@ describe("selecting and revealing", () => {
     expect(sent("fs_delete").map((c) => c.args.path)).toEqual([`${ROOT}/README.md`, `${ROOT}/docs`]);
     // The count has to be in the prompt, or the dialog understates the damage.
     expect((askConfirm.mock.calls[0][0] as { title: string }).title).toContain("2");
+  });
+
+  it("hands the row's path to the system file manager", async () => {
+    mountProject();
+    await screen.findByText("README.md");
+
+    fireEvent.contextMenu(screen.getByText("README.md"));
+    pointerClick(await screen.findByText("Reveal in Finder"));
+
+    await waitFor(() => expect(sent("plugin:opener|reveal_item_in_dir")).toHaveLength(1));
+    // A list even for one, which is the shape the plugin's command takes.
+    expect(sent("plugin:opener|reveal_item_in_dir")[0].args).toEqual({
+      paths: [`${ROOT}/README.md`],
+    });
+  });
+
+  it("reveals every selected row in one go, not just the one the menu opened on", async () => {
+    mountProject();
+    await screen.findByText("README.md");
+
+    cmdClick("README.md");
+    cmdClick("docs");
+
+    fireEvent.contextMenu(screen.getByText("README.md"));
+    pointerClick(await screen.findByText("Reveal in Finder"));
+
+    await waitFor(() => expect(sent("plugin:opener|reveal_item_in_dir")).toHaveLength(1));
+    expect(sent("plugin:opener|reveal_item_in_dir")[0].args).toEqual({
+      paths: [`${ROOT}/README.md`, `${ROOT}/docs`],
+    });
   });
 
   it("acts on the clicked row alone when it is outside the selection", async () => {
