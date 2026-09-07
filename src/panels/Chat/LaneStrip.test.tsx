@@ -118,6 +118,23 @@ describe("the lane strip", () => {
     }
   });
 
+  it("keeps a background task's clock moving with no subagent beside it", () => {
+    // The ticker was gated on the lanes alone, so a chat whose only work was a
+    // backgrounded shell task never started it and every task read 0s forever.
+    vi.useFakeTimers();
+    try {
+      const now = Date.now();
+      vi.setSystemTime(now);
+      const task = lane({ agentId: "b1dk8xyca", taskType: "local_bash", description: "counting", startedAt: now });
+      const { container } = render(() => strip({ lanes: [], tasks: [task] }));
+      expect(container.textContent).toContain("0s");
+      vi.advanceTimersByTime(3000);
+      expect(container.textContent).toContain("3s");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("says how a lane ended rather than only tinting a dot", () => {
     // Six pixels of colour is not a way to learn that work you were counting on
     // failed, and the agent's own word is the one the reader can act on.
