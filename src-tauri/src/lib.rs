@@ -67,11 +67,15 @@ use tauri::{Emitter, Manager};
 /// can be handled the same non-fatal way as the askpass bridge, without a
 /// panic-on-missing-icon or a `?` that would abort the whole app.
 fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
-    let icon = app.default_window_icon().cloned().ok_or("no default window icon configured")?;
+    // A template image (black on transparent), not the app icon: macOS paints
+    // it black or white to match the menu bar and dims it when the bar is
+    // inactive, which the coloured mark would never do.
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
     let empty_menu = Menu::new(app)?;
     let tray_app = app.handle().clone();
     let tray = TrayIconBuilder::new()
         .icon(icon)
+        .icon_as_template(true)
         .menu(&empty_menu)
         .tooltip("Sway")
         .on_menu_event(move |_tray, event| {
