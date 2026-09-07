@@ -2312,22 +2312,6 @@ button.diffHunkHeader:hover {
   padding: 0 calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale));
 }
 
-/* Floats by the transcript selection it offers to quote. Fixed, so it rides
-   above the list's own scroll and clipping. */
-.quoteButton {
-  position: fixed;
-  z-index: 900;
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-pill);
-  background: var(--canvas-card);
-  color: var(--fg-default);
-  font: inherit;
-  font-size: var(--sway-text-md);
-  line-height: 1.4;
-  cursor: pointer;
-}
-
 /* One line under the box: what Enter does inside an open code fence, or which
    scratch tab holds the draft while it is being edited in the editor. */
 .composerHint {

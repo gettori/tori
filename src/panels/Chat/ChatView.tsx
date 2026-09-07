@@ -2,7 +2,7 @@ import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, u
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import MessageList from "./MessageList";
-import QuoteSelection, { quoteBlock } from "./QuoteSelection";
+import QuoteSelection, { quoteBlock } from "../../components/QuoteSelection/QuoteSelection";
 import { mirrorSaved, openDraftInEditor, scratchTabClosed, unlinkScratch } from "./composerScratch";
 import { liveBufferText } from "../Editor/liveBuffers";
 import SessionDiffView from "./SessionDiffView";
