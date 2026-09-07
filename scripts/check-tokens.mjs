@@ -15,7 +15,7 @@
 //   8b. Both text cells of a tool call's row can shrink, so one long command
 //      cannot scroll the whole transcript sideways.
 //   8c. The sidebar's filter row wraps, and the field states the width it
-//      needs, which is what puts it beside the tabs or under them.
+//      needs, which is what puts it beside the title or under it.
 //   9. The palette's own heading still matches Dialog's title recipe.
 //  10. The two blocking surfaces in the chat wear one tier, and nothing else
 //      wears it.
@@ -652,10 +652,10 @@ if (rowProblems.length > 0) {
   process.exit(1);
 }
 
-// ---- Check 8c: the sidebar filter opens beside the tabs or under them ----
+// ---- Check 8c: the sidebar filter opens beside the title or under it ----
 //
 // The rule is the row's wrap: the field asks for a 120px basis and takes the
-// next line when the tabs leave it less. Both halves are CSS, and jsdom lays
+// next line when the title leaves it less. Both halves are CSS, and jsdom lays
 // nothing out, so this is the only place the pair can be held together.
 const SIDEBAR_CSS = "src/panels/LeftSidebar/LeftSidebar.module.css";
 const sidebarRules = cssRules(sources.get(SIDEBAR_CSS));
@@ -665,13 +665,13 @@ if (!sources.get(SIDEBAR_CSS)) {
 } else {
   if (!declares(sidebarRules, ".treeHead", "flex-wrap")) {
     filterProblems.push(
-      ".treeHead does not declare flex-wrap, so the filter is squeezed onto the tabs' line at every width",
+      ".treeHead does not declare flex-wrap, so the filter is squeezed onto the title's line at every width",
     );
   }
   for (const property of ["flex", "min-width"]) {
     if (!declares(sidebarRules, ".searchInput", property)) {
       filterProblems.push(
-        `.searchInput does not declare ${property}, so nothing states the width below which it moves under the tabs`,
+        `.searchInput does not declare ${property}, so nothing states the width below which it moves under the title`,
       );
     }
   }
@@ -680,7 +680,7 @@ if (!sources.get(SIDEBAR_CSS)) {
 if (filterProblems.length > 0) {
   console.error(`${filterProblems.length} problem(s) in the sidebar filter's row:\n`);
   for (const problem of filterProblems) console.error(`  ${problem}`);
-  console.error("\nBeside the tabs or under them is a wrap, and a wrap needs both a wrapping row and a basis.");
+  console.error("\nBeside the title or under it is a wrap, and a wrap needs both a wrapping row and a basis.");
   process.exit(1);
 }
 
@@ -1000,7 +1000,7 @@ console.log(
     `all ${SEMANTIC_ROLES.length} semantic-token roles backed by syntax roles, ` +
     `the command palette bounding its own height, ` +
     `a tool row's 2 text cells able to shrink, ` +
-    `the sidebar filter's row able to wrap under its tabs, ` +
+    `the sidebar filter's row able to wrap under its title, ` +
     `its heading matching a dialog title on all ${TITLE_RECIPE.length} recipe properties, ` +
     `the blocking tier's ${tierRoles.length} roles worn by the ${BLOCKING.length} surfaces that interrupt the user, ` +
     `the lane strip painting only the one surface its ${LANE_TEXT.length} text roles are measured against, ` +

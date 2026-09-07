@@ -109,7 +109,7 @@ describe("switching between Spaces and Features", () => {
     click("Auth");
     await waitFor(() => expect(sel()?.kind).toBe("feature"));
 
-    segment("Spaces");
+    segment("work");
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
     expect(sel()?.kind).toBe("unit");
 

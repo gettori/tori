@@ -1,4 +1,4 @@
-import { createSignal, For, Index, Match, Show, Switch, onMount, onCleanup, createEffect, createMemo, on, untrack, type JSX } from "solid-js";
+import { createSignal, For, Index, Match, Show, Switch, onMount, onCleanup, createEffect, createMemo, on, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -119,6 +119,9 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Waypoints,
+  SquareTerminal,
+  type LucideIcon,
   Plus,
   ChevronsLeftRightEllipsis,
   MessageCircleQuestion,
@@ -134,7 +137,6 @@ import {
   type AttemptRecord,
 } from "./attempts";
 import Tooltip from "../../components/Tooltip/Tooltip";
-import SegmentedControl, { type SegmentedOption } from "../../components/SegmentedControl/SegmentedControl";
 import FeatureList from "./FeatureList";
 import { featureKey, featureSelection, isShellsKey, shellsSelection, tabUnderFolder, type Feature } from "../../utils/features";
 import { commandStatus } from "../Terminal/commandStatus";
@@ -399,22 +401,9 @@ export default function LeftSidebar(props: {
     const q = query().trim().toLowerCase();
     return q ? shellsTabs().filter((t) => (t.title || t.id).toLowerCase().includes(q)) : shellsTabs();
   };
-  // The count is inside the element rather than in the array, so the options
-  // below stay one object apiece. Cast because Solid types every JSX expression
-  // as nullable, and the option type rejects that to catch `label={undefined}`.
-  const shellsLabel = (
-    <>
-      Shells
-      <Show when={shellsTabs().length}>{(n) => <span class={styles.modeCount}>{n()}</span>}</Show>
-    </>
-  ) as NonNullable<JSX.Element>;
-  // Built once: a fresh options array per count would make `SegmentedControl`'s
-  // `<For>` rebuild the strip (gotcha: a For over items remounts them).
-  const MODES: SegmentedOption<SidebarMode>[] = [
-    { value: "spaces", label: "Spaces" },
-    { value: "features", label: "Features" },
-    { value: "shells", label: shellsLabel },
-  ];
+  /** What the tree's heading says, which is whatever the strip has lit. */
+  const headingName = () =>
+    mode() === "features" ? "Features" : mode() === "shells" ? "Shells" : (activeSpace()?.name ?? "Spaces");
   createEffect(() => {
     try {
       localStorage.setItem(LS_MODE, mode());
@@ -541,6 +530,15 @@ export default function LeftSidebar(props: {
     if (activeSpaceName() === g.name) return;
     setActiveSpaceName(g.name);
     if (!restoreUnit(g)) props.onSelect(null);
+  }
+
+  // The strip lights one thing at a time, so a space tile answers for both axes:
+  // it names the space AND says the tree is showing spaces. From another mode
+  // the space is set first, and `switchMode` restores into it.
+  function openSpace(g: Space) {
+    if (mode() === "spaces") return switchSpace(g);
+    setActiveSpaceName(g.name);
+    switchMode("spaces");
   }
 
   // The mode is how you browse, not which work is open, so an empty memory
@@ -2713,7 +2711,12 @@ export default function LeftSidebar(props: {
   // a `display: contents` wrapper: layout-neutral, and it still receives the
   // right-click on its way up. Nothing is lost positionally either, since a
   // context menu anchors on the cursor and never on its trigger's box.
-  const spaceTile = (g: Space) => (
+  const spaceTile = (g: Space) => {
+    // Lit only while the tree is actually showing this space. In Features or
+    // Shells the strip has moved on, and a second lit tile would say the
+    // sidebar is showing two things.
+    const on = () => mode() === "spaces" && activeSpace()?.name === g.name;
+    return (
     <ContextMenu class={styles.spaceMenu} items={spaceMenu(g)}>
       <Tooltip
         as="button"
@@ -2721,14 +2724,15 @@ export default function LeftSidebar(props: {
         class={styles.space}
         style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}
         classList={{
-          [styles.active]: activeSpace()?.name === g.name,
+          [styles.active]: on(),
           [styles.dragging]: dragSpace() === g.name,
           [styles.dropBefore]: dropHint()?.name === g.name && !dropHint()!.after,
           [styles.dropAfter]: dropHint()?.name === g.name && dropHint()!.after,
         }}
         label={g.external ? `${g.name} (pinned)` : g.name}
         aria-label={g.external ? `${g.name} (pinned)` : g.name}
-        onClick={() => switchSpace(g)}
+        aria-pressed={on()}
+        onClick={() => openSpace(g)}
         draggable={true}
         onDragStart={(e) => {
           startAbsDrag(e, g.projects.map((p) => p.path));
@@ -2744,10 +2748,44 @@ export default function LeftSidebar(props: {
         <Show when={resolveIcon(g.icon)} fallback={g.name.trim().charAt(0).toUpperCase() || "?"}>
           {(glyph) => <Icon icon={glyph()} />}
         </Show>
+        <Show when={on()}>
+          <span class={styles.tileName}>{g.name}</span>
+        </Show>
         {spaceBubble(g)}
       </Tooltip>
     </ContextMenu>
-  );
+    );
+  };
+
+  // Features and Shells, as tiles in the same strip and on the same rules as a
+  // space: bare glyph at rest, name and pill when the tree is showing it.
+  const modeTile = (m: SidebarMode, label: string, glyph: LucideIcon, count?: number) => {
+    const on = () => mode() === m;
+    return (
+      <Tooltip
+        as="button"
+        type="button"
+        class={`${styles.space} ${styles.modeTile}`}
+        classList={{ [styles.active]: on() }}
+        label={label}
+        aria-label={label}
+        aria-pressed={on()}
+        onClick={() => switchMode(m)}
+      >
+        <Icon icon={glyph} />
+        <Show when={on()}>
+          <span class={styles.tileName}>{label}</span>
+        </Show>
+        {/* Shown lit as well as dark: the count is how many are open, not a
+            call for attention, and dropping it on click made the tile jump. */}
+        <Show when={!!count}>
+          <span class={styles.spaceBubble}>
+            <span class={styles.tileCount}>{count}</span>
+          </span>
+        </Show>
+      </Tooltip>
+    );
+  };
 
   // A space tile's own rollup badge: for the inactive spaces, their whole tree
   // is structurally hidden (Arc-style, only the active space renders), so
@@ -2756,7 +2794,9 @@ export default function LeftSidebar(props: {
   // only a project the search filter hid entirely (never rendered, so no row
   // to bubble to) still needs to surface on the tile.
   function spaceBubble(g: Space) {
-    const isActive = activeSpace()?.name === g.name;
+    // "Active" here means its tree is on screen. In Features or Shells nothing
+    // of it is rendered, so all of its sessions bubble to the tile.
+    const isActive = mode() === "spaces" && activeSpace()?.name === g.name;
     const r = isActive
       ? bubbleFor((s) => {
           if (s.spaceName !== g.name) return false;
@@ -2782,18 +2822,44 @@ export default function LeftSidebar(props: {
           closeSearch();
         }}
       >
-        {/* A strut, zero wide: it holds the first line at the strip's height,
-            so the field taking a second one grows the head downward instead of
-            lifting the tabs. */}
+        {/* A strut, zero wide: it holds the first line at the pane strips'
+            height, so the field taking a second one grows the head downward
+            instead of lifting the title. */}
         <span class={styles.headStrut} aria-hidden="true" />
-        <SegmentedControl
-          class={styles.modeTabs}
-          variant="plain"
-          options={MODES}
-          value={mode()}
-          onChange={switchMode}
-          aria-label="Sidebar mode"
-        />
+        {/* The title, and in Spaces mode the space's own menu with it. Right-
+            click anywhere on it is the same menu, which is why the handler sits
+            on the group rather than on the name. Withheld until there is a
+            space to name, or it would read "Spaces" at every cold start. */}
+        <Show when={mode() !== "spaces" || activeSpace()}>
+        <div
+          class={styles.spaceHeader}
+          onContextMenu={mode() === "spaces" ? onSpaceAreaMenu : undefined}
+        >
+          <span class={styles.spaceHeaderName}>{headingName()}</span>
+          <Show when={mode() === "spaces"}>
+            <span class={styles.spaceHeaderKind}>· Spaces</span>
+          </Show>
+          <Show when={mode() === "spaces" && activeSpace()}>
+            {(g) => (
+              <Dropdown
+                as="span"
+                wrapper
+                class={styles.spaceHeaderMenu}
+                items={spaceMenu(g())}
+                placement="bottom-end"
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class={styles.spaceHeaderMenuBtn}
+                  tooltip={`Actions for ${g().name}`}
+                  icon={<Icon icon={Ellipsis} />}
+                />
+              </Dropdown>
+            )}
+          </Show>
+        </div>
+        </Show>
         <Show when={searching()}>
           <input
             ref={(el) => {
@@ -2888,38 +2954,6 @@ export default function LeftSidebar(props: {
       </Show>
 
       <Show when={mode() === "spaces"}>
-      {/* Which space you are in, said in words. The rail says it too, but only
-          as one lit icon among twelve, which is a legend you have to learn. */}
-      <Show when={activeSpace()}>
-        {(g) => (
-          <div class={styles.spaceHeader} onContextMenu={onSpaceAreaMenu}>
-            {/* The name at title weight, and what kind of thing it is beside
-                it in the quiet tone - the tile's glyph is gone from here, so
-                the heading is one line of type rather than a badge and a
-                label. The hue lives on in the window tint. */}
-            <span class={styles.spaceHeaderName}>{g().name}</span>
-            <span class={styles.spaceHeaderKind}>· Spaces</span>
-            {/* The tile's own menu, reachable without the right-click that is
-                the only way to it today. Hidden until hover, but focusable
-                throughout: an action only a pointer can find is not an action. */}
-            <Dropdown
-              as="span"
-              wrapper
-              class={styles.spaceHeaderMenu}
-              items={spaceMenu(g())}
-              placement="bottom-end"
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                class={styles.spaceHeaderMenuBtn}
-                tooltip={`Actions for ${g().name}`}
-                icon={<Icon icon={Ellipsis} />}
-              />
-            </Dropdown>
-          </div>
-        )}
-      </Show>
       <OverlayScroll class={styles.treeScroll} onContextMenu={onSpaceAreaMenu}>
         <For each={activeProjects()}>
           {(p) => {
@@ -3074,7 +3108,10 @@ export default function LeftSidebar(props: {
           />
         )}
       </Show>
+      </Show>
 
+      {/* Outside the mode gate: the strip is how you leave a mode, so it has to
+          render in all three. */}
       <Show when={config()}>
         <div class={styles.spaceBar}>
           <div class={styles.gearWrap} ref={gearEl}>
@@ -3120,6 +3157,13 @@ export default function LeftSidebar(props: {
             <For each={extSpaces()}>{(g) => spaceTile(g)}</For>
           </div>
 
+          {/* The two views that are not a space, past a rule so the strip reads
+              as spaces first. Outside the scroller: they are how you get back
+              out of a mode, and a long space list must not carry them off. */}
+          <div class={styles.spaceDivider} />
+          {modeTile("features", "Features", Waypoints)}
+          {modeTile("shells", "Shells", SquareTerminal, shellsTabs().length)}
+
           <Show when={hasRoot()}>
             <Tooltip
               as="button"
@@ -3133,7 +3177,6 @@ export default function LeftSidebar(props: {
             </Tooltip>
           </Show>
         </div>
-      </Show>
       </Show>
 
       <Show when={promptReq()}>
