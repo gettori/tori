@@ -242,6 +242,25 @@ describe("the Spaces | Features mode", () => {
   const segment = (name: string) => screen.getByRole("button", { name });
   const pressed = (name: string) => segment(name).getAttribute("aria-pressed") === "true";
 
+  // The strip's names are spent from a width budget the sidebar may not have,
+  // so a hidden probe measures the widest name there could be and the names go
+  // together when it will not fit. jsdom lays nothing out, so every width reads
+  // 0 and the fitting branch is what runs here; what this pins is the wiring.
+  it("names the lit tile, and keeps its measuring probe out of the a11y tree", async () => {
+    const { container } = sidebar();
+    await screen.findByText("repo");
+
+    const lit = screen.getByRole("button", { name: "work" });
+    expect(lit.className).toMatch(/titled/);
+    expect(lit.textContent).toContain("work");
+
+    // One probe, never a control, never announced.
+    const probes = container.querySelectorAll('[class*="tileProbe"]');
+    expect(probes).toHaveLength(1);
+    expect(probes[0]!.getAttribute("aria-hidden")).toBe("true");
+    expect(probes[0]!.tagName).toBe("SPAN");
+  });
+
   // Spaces has no tile of its own: the strip lights the space you are in, and
   // that tile being pressed IS "the tree is showing spaces".
   it("defaults to Spaces and keeps the tree mounted", async () => {

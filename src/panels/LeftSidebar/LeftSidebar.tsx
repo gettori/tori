@@ -2699,6 +2699,70 @@ export default function LeftSidebar(props: {
   });
   onCleanup(() => applySpaceTint(null));
 
+  // ---- Does the strip have room for a name? ----
+  //
+  // The lit tile is the only thing in the row whose width is not fixed, so when
+  // the sidebar is narrow the names go rather than the row scrolling. The test
+  // runs against the WIDEST name any tile could show, never the one currently
+  // showing: asking about the current one would resize the whole strip on every
+  // switch between a short space and a long one.
+  //
+  // Everything is measured, nothing derived. A hidden probe tile carries the
+  // real `.titled` CSS, and the delta it reports is against a real collapsed
+  // tile, so the predicate is the same quantity whether names are on or off -
+  // which is what stops it flipping between the two forever.
+  const [namesFit, setNamesFit] = createSignal(true);
+  let barEl: HTMLDivElement | undefined;
+  let scrollEl: HTMLDivElement | undefined;
+  let probeEl: HTMLSpanElement | undefined;
+  let probeNameEl: HTMLSpanElement | undefined;
+
+  function measureNames() {
+    if (!barEl || !scrollEl || !probeEl || !probeNameEl) return;
+    const cs = getComputedStyle(barEl);
+    const gap = parseFloat(cs.columnGap) || 0;
+    const kids = [...barEl.children].filter((k) => k !== probeEl);
+    // The scroller may already be compressed, so its natural width is its
+    // content's; every other child is fixed and reports its own.
+    let natural =
+      parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + gap * Math.max(0, kids.length - 1);
+    for (const k of kids) {
+      natural += k === scrollEl ? scrollEl.scrollWidth : k.getBoundingClientRect().width;
+    }
+    const width = (el: Element | null | undefined) => el?.getBoundingClientRect().width ?? 0;
+    const collapsed = width(barEl.querySelector(`.${styles.space}:not(.${styles.titled})`));
+    // Back out whichever tile is titled right now, leaving an all-collapsed row.
+    const lit = barEl.querySelector(`.${styles.titled}:not(.${styles.tileProbe})`);
+    if (lit) natural -= width(lit) - collapsed;
+
+    let widest = collapsed;
+    for (const name of [...visibleSpaces().map((g) => g.name), "Features", "Shells"]) {
+      probeNameEl.textContent = name;
+      widest = Math.max(widest, width(probeEl));
+    }
+    setNamesFit(natural + (widest - collapsed) <= barEl.clientWidth);
+  }
+
+  // Observed from the ref callback, not from `onMount`: the strip lives inside
+  // `<Show when={config()}>` and config arrives asynchronously, so at mount these
+  // elements do not exist yet and an observer set up there watches nothing for
+  // the rest of the session. `observe` also delivers an initial callback, which
+  // is what takes the first measurement.
+  let stripRO: ResizeObserver | undefined;
+  function watchStrip(el: HTMLElement) {
+    if (typeof ResizeObserver === "undefined") return;
+    stripRO ??= new ResizeObserver(() => measureNames());
+    stripRO.observe(el);
+  }
+  onCleanup(() => stripRO?.disconnect());
+  // The set of names is the other input. After paint, or the probe has no box.
+  createEffect(
+    on(
+      () => visibleSpaces().map((g) => g.name).join(" "),
+      () => requestAnimationFrame(() => measureNames()),
+    ),
+  );
+
   // One space tile for the bottom bar: its icon when set, else the name's
   // initial; active-marked, with its context menu and drag payload (all of the
   // space's project paths). It carries its own hue too, so the whole set of
@@ -2725,6 +2789,7 @@ export default function LeftSidebar(props: {
         style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}
         classList={{
           [styles.active]: on(),
+          [styles.titled]: on() && namesFit(),
           [styles.dragging]: dragSpace() === g.name,
           [styles.dropBefore]: dropHint()?.name === g.name && !dropHint()!.after,
           [styles.dropAfter]: dropHint()?.name === g.name && dropHint()!.after,
@@ -2748,7 +2813,7 @@ export default function LeftSidebar(props: {
         <Show when={resolveIcon(g.icon)} fallback={g.name.trim().charAt(0).toUpperCase() || "?"}>
           {(glyph) => <Icon icon={glyph()} />}
         </Show>
-        <Show when={on()}>
+        <Show when={on() && namesFit()}>
           <span class={styles.tileName}>{g.name}</span>
         </Show>
         {spaceBubble(g)}
@@ -2766,14 +2831,14 @@ export default function LeftSidebar(props: {
         as="button"
         type="button"
         class={`${styles.space} ${styles.modeTile}`}
-        classList={{ [styles.active]: on() }}
+        classList={{ [styles.active]: on(), [styles.titled]: on() && namesFit() }}
         label={label}
         aria-label={label}
         aria-pressed={on()}
         onClick={() => switchMode(m)}
       >
         <Icon icon={glyph} />
-        <Show when={on()}>
+        <Show when={on() && namesFit()}>
           <span class={styles.tileName}>{label}</span>
         </Show>
         {/* Shown lit as well as dark: the count is how many are open, not a
@@ -3113,8 +3178,15 @@ export default function LeftSidebar(props: {
       {/* Outside the mode gate: the strip is how you leave a mode, so it has to
           render in all three. */}
       <Show when={config()}>
-        <div class={styles.spaceBar}>
-          <div class={styles.spaceScroll}>
+        <div class={styles.spaceBar} ref={(el) => { barEl = el; watchStrip(el); }} data-names={namesFit() ? "on" : "off"}>
+          {/* Out of flow and never seen: the ruler `measureNames` runs each
+              candidate name through, wearing the real lit-tile CSS so what it
+              reports is what the row would actually take. */}
+          <span class={`${styles.space} ${styles.titled} ${styles.tileProbe}`} aria-hidden="true" ref={probeEl}>
+            <Icon icon={Waypoints} />
+            <span class={styles.tileName} ref={probeNameEl} />
+          </span>
+          <div class={styles.spaceScroll} ref={(el) => { scrollEl = el; watchStrip(el); }}>
             <For each={rootSpaces()}>{(g) => spaceTile(g)}</For>
             <Show when={rootSpaces().length > 0 && extSpaces().length > 0}>
               <div class={styles.spaceDivider} />
