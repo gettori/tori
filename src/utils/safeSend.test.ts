@@ -89,6 +89,14 @@ describe("composeSelectionMention", () => {
   it("mentions a Shared-tree buffer (outside the session's cwd) absolutely", () => {
     expect(composeSelectionMention(target, "/repo/.shared/notes.md", 2, 2)).toBe("@/repo/.shared/notes.md#L2-L2");
   });
+
+  // Inside Sway a PDF's line is its page, because the chips and the jump list
+  // already speak in lines. To the agent it is not: it opens the file with a PDF
+  // reader, where `#L3` names a third line of text that does not exist.
+  it("spells a PDF out by page, singular or plural", () => {
+    expect(composeSelectionMention(target, "/repo/branch-a/docs/manual.pdf", 3, 3)).toBe("@docs/manual.pdf (page 3)");
+    expect(composeSelectionMention(target, "/repo/branch-a/docs/manual.PDF", 3, 4)).toBe("@docs/manual.PDF (pages 3-4)");
+  });
 });
 
 // A fake clock lets the timeout/poll paths run without real wall-clock time.

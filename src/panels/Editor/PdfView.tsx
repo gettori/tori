@@ -1,7 +1,8 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
-import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
+import type { PDFDocumentProxy, PDFPageProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
-import { loadPdf, pdfFailureMessage, pdfView, setPdfView } from "./pdfDocument";
+import QuoteSelection, { selectionWithin } from "../../components/QuoteSelection/QuoteSelection";
+import { loadPdf, pdfFailureMessage, pdfTextLayer, pdfView, setPdfView } from "./pdfDocument";
 import {
   clampPage,
   clampPercent,
@@ -32,13 +33,17 @@ const REPAINT_SETTLE_MS = 120;
 export default function PdfView(props: {
   path: string;
   goto?: { path: string; line: number; nonce: number } | null;
+  /** Selected text on its way to the agent, with the pages it spans. The view
+   *  knows which pages the selection touches and nothing about sessions, so the
+   *  send itself belongs to `Editor.tsx`. */
+  onQuote?: (text: string, firstPage: number, lastPage: number) => void;
 }) {
   // Keyed, so switching from one PDF tab to another in the same pane rebuilds
   // the view rather than leaving a component holding the previous document's
   // page sizes, render tasks and scroll position.
   return (
     <Show when={props.path} keyed>
-      {(path) => <PdfDocumentView path={path} goto={props.goto} />}
+      {(path) => <PdfDocumentView path={path} goto={props.goto} onQuote={props.onQuote} />}
     </Show>
   );
 }
@@ -46,6 +51,7 @@ export default function PdfView(props: {
 function PdfDocumentView(props: {
   path: string;
   goto?: { path: string; line: number; nonce: number } | null;
+  onQuote?: (text: string, firstPage: number, lastPage: number) => void;
 }) {
   const [doc, setDoc] = createSignal<PDFDocumentProxy | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
@@ -85,6 +91,33 @@ function PdfDocumentView(props: {
   const pageCount = createMemo(() => sizes().length);
   const pageIndexes = createMemo(() => Array.from({ length: pageCount() }, (_, i) => i));
   const win = createMemo(() => pageWindow(scrollTop(), height(), heights()));
+
+  /** The pages a standing selection reaches across, as a half-open range of
+   *  indexes, or null when there is no selection in this view. */
+  const [selected, setSelected] = createSignal<{ first: number; last: number } | null>(null);
+
+  /** Text layers still streaming their page's words. A quote waits on these;
+   *  see `quote` for why. Not a signal: nothing renders from it. */
+  const streaming = new Set<Promise<unknown>>();
+
+  /**
+   * Whether a page needs selectable text: it is being drawn, or the selection
+   * reaches it. Two ranges rather than one spanning both, because a selection on
+   * page 3 read from page 300 would otherwise mount every page between them.
+   *
+   * Both halves matter. Evicting the page holding an end of the selection
+   * deletes the node the range is anchored to, and a range whose boundary is
+   * removed collapses - so scrolling from page 3 to page 6 would silently lose
+   * the selection on the way. Evicting a page *between* the ends leaves the
+   * range intact but empties it: `toString()` walks the DOM as it is now, so the
+   * quote would come back missing its middle.
+   */
+  function needsText(i: number): boolean {
+    const w = win();
+    if (i >= w.first && i < w.last) return true;
+    const s = selected();
+    return !!s && i >= s.first && i < s.last;
+  }
 
   // The scale canvases are actually rasterised at, which trails the layout
   // scale through a resize. `createMemo` above dedupes by value, so this only
@@ -131,6 +164,18 @@ function PdfDocumentView(props: {
     el.addEventListener("scroll", onScroll, { passive: true });
     onCleanup(() => el.removeEventListener("scroll", onScroll));
     installPinch(el);
+    // On the document, because that is where a selection lives: the anchor and
+    // the focus can be in two different pages, and there is no element between
+    // them but this view's own scroller.
+    document.addEventListener("selectionchange", readSelection);
+    onCleanup(() => document.removeEventListener("selectionchange", readSelection));
+    // Focusable, so the chord below is the focused pane's and the browser's own
+    // routing is what says which pane that is. Set here rather than passed to
+    // `OverlayScroll`, whose extra props land on the frame and not on the
+    // scroller. Arrow-key scrolling comes with it, which a reader wants anyway.
+    el.tabIndex = 0;
+    el.addEventListener("keydown", onQuoteKey);
+    onCleanup(() => el.removeEventListener("keydown", onQuoteKey));
     // Guarded the way OverlayScroll guards its own: jsdom implements neither
     // ResizeObserver nor layout, so there is nothing to observe and nothing is
     // lost by not observing it.
@@ -373,6 +418,111 @@ function PdfDocumentView(props: {
     }
   }
 
+  /**
+   * The selectable text over a page: pdf.js's own `TextLayer`, transparent
+   * absolutely-positioned spans laid over the canvas from the same stream
+   * `getTextContent` reads.
+   *
+   * Built once and then only re-placed. `update` moves the spans it already has
+   * to a new scale, where a rebuild would stream the page's text again on every
+   * zoom step and - worse - delete the nodes a standing selection is anchored
+   * to, collapsing it.
+   */
+  function layText(container: HTMLDivElement, i: number) {
+    let live = true;
+    let layer: TextLayer | null = null;
+    // `doc()` is the only tracked read in the effect below and it transitions
+    // once, so nothing in the dependencies says "build this once". This does.
+    let started = false;
+    const [laid, setLaid] = createSignal<PDFPageProxy | null>(null);
+
+    createEffect(() => {
+      const d = doc();
+      if (!d || started) return;
+      started = true;
+      const done = build(d).catch(() => {});
+      streaming.add(done);
+      void done.finally(() => streaming.delete(done));
+    });
+
+    async function build(d: PDFDocumentProxy) {
+      const [Layer, page] = await Promise.all([pdfTextLayer(), d.getPage(i + 1)]);
+      if (!live) return;
+      layer = new Layer({
+        textContentSource: page.streamTextContent(),
+        container,
+        viewport: page.getViewport({ scale: scale() }),
+      });
+      setLaid(page);
+      // Rejected by `cancel()` below, which is how most of these end in a
+      // document being scrolled.
+      await layer.render().catch(() => {});
+    }
+
+    // Reads both, so a layer that lands after a zoom is placed at the scale on
+    // screen rather than the one it was built at. pdf.js ignores an update that
+    // does not move the scale, so every other run of this costs nothing.
+    createEffect(() => {
+      const page = laid();
+      const s = scale();
+      if (page && layer) layer.update({ viewport: page.getViewport({ scale: s }) });
+    });
+
+    onCleanup(() => {
+      live = false;
+      layer?.cancel();
+      layer = null;
+    });
+  }
+
+  /** The 1-based page a node sits in, or null for a node outside every page. */
+  function pageAt(node: Node | null): number | null {
+    const el = node?.nodeType === Node.ELEMENT_NODE ? (node as Element) : (node?.parentElement ?? null);
+    const page = el?.closest("[data-pdf-page]")?.getAttribute("data-pdf-page");
+    const n = page ? Number(page) : NaN;
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** Which pages the selection covers, once it is one this view owns. Read off
+   *  the range rather than off the anchor and focus, which is what puts the two
+   *  ends in document order: a selection dragged upwards anchors at the bottom,
+   *  and page 6 to page 3 is not a range. */
+  function readSelection() {
+    const el = scroller;
+    const range = el ? selectionWithin(el, document.getSelection()) : null;
+    const from = range && pageAt(range.startContainer);
+    const to = range && pageAt(range.endContainer);
+    if (!from || !to) return setSelected(null);
+    setSelected({ first: from - 1, last: to });
+  }
+
+  async function quote(text: string) {
+    const s = selected();
+    if (!s) return;
+    // A shift-click at the far end widens the window, and the pages it just
+    // reached are still fetching their words. `toString()` walks the DOM as it
+    // is now, so a quote read before they land comes back with a hole in it -
+    // which is why the text the button already read is re-read here rather than
+    // trusted, and kept only as the fallback if the selection has since gone.
+    if (streaming.size) {
+      await Promise.all([...streaming]);
+      text = document.getSelection()?.toString() || text;
+    }
+    props.onQuote?.(text, s.first + 1, s.last);
+  }
+
+  /** The same send as the Quote button, for a reader whose hands are on the
+   *  keyboard. On the scroller rather than on the document, so it is the focused
+   *  pane's chord: a selection left standing in a PDF must not answer for a
+   *  keystroke typed in the composer. */
+  function onQuoteKey(e: KeyboardEvent) {
+    if (!e.metaKey || !e.shiftKey || e.ctrlKey || e.altKey || e.key.toLowerCase() !== "m") return;
+    const text = document.getSelection()?.toString();
+    if (!selected() || !text) return;
+    e.preventDefault();
+    void quote(text);
+  }
+
   return (
     <OverlayScroll class={styles.pdfView} viewportRef={(el) => (scroller = el)}>
       <Show
@@ -390,19 +540,31 @@ function PdfDocumentView(props: {
             {(i) => (
               <div
                 class={styles.page}
+                data-pdf-page={i + 1}
                 style={{
                   top: `${tops()[i]}px`,
                   width: `${(sizeOf(i)?.width ?? 0) * scale()}px`,
                   height: `${heights()[i]}px`,
+                  // What pdf.js sizes the text layer from; see PdfView.module.css.
+                  "--total-scale-factor": `${scale()}`,
                 }}
               >
                 <Show when={i >= win().first && i < win().last}>
                   <canvas class={styles.canvas} ref={(el) => paint(el, i)} />
                 </Show>
+                {/* Outlives the canvas by as much as the selection needs: a page
+                    scrolled away from keeps its words while it holds an end of
+                    the selection, even once it has given up its picture. */}
+                <Show when={needsText(i)}>
+                  <div class={styles.textLayer} ref={(el) => layText(el, i)} />
+                </Show>
               </div>
             )}
           </For>
         </div>
+        {/* The same button the chat transcript floats by a selection, scoped to
+            this view's scroller so a second PDF pane does not draw its own. */}
+        <QuoteSelection root={() => scroller} onQuote={quote} />
       </Show>
     </OverlayScroll>
   );

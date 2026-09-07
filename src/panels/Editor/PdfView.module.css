@@ -22,6 +22,14 @@
   left: 0;
   right: 0;
   margin-inline: auto;
+  /* pdf.js sizes a text layer with `round(down, var(--total-scale-factor) *
+     <page>px, var(--scale-round-x))`, so the box it lands in is decided here
+     rather than by the layer. The scale is written inline per page; these are
+     the defaults for the frame before one is, and the rounding step pdf.js's own
+     viewer uses. */
+  --total-scale-factor: 1;
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
   /* A page is white because the paper is white. Inverting it would turn every
      embedded photograph into a negative, so the chrome is themed and the page
      is not. */
@@ -46,4 +54,72 @@
   color: var(--fg-muted);
   font-size: var(--sway-text-sm);
   line-height: var(--sway-line-normal);
+}
+
+/* The selectable text over a rendered page.
+ *
+ * Copied from pdf.js 6.3.289's `pdf_viewer.css`, not imported from it: that
+ * sheet carries colour literals, `color-scheme: only light` and two thousand
+ * lines of viewer chrome nothing here mounts. What is copied is a *contract* -
+ * `TextLayer` writes `--font-height`, `--scale-x` and `--rotate` on each span
+ * and reads `--total-scale-factor` back through `setLayerDimensions` - so it is
+ * pinned to that version and has to be re-read when pdf.js moves.
+ *
+ * `.markedContent` and `.highlight` are left out with the rest of the chrome:
+ * marked content only appears when `streamTextContent({includeMarkedContent})`
+ * asks for it, and nothing here does. */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  text-align: initial;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+  /* pdf.js's own default, overwritten inline by the `TextLayer` constructor with
+     the smallest font size the browser will actually render. */
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+/* Transparent, because the canvas under it is the page: these spans exist to be
+   selected, copied and hit-tested, not to be read. A `br` is here too - pdf.js
+   appends one per line break so a copied selection keeps its lines. */
+.textLayer span,
+.textLayer br {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  /* The app root turns selection off everywhere; this is the one surface that
+     has to turn it back on. */
+  -webkit-user-select: text;
+  user-select: text;
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+/* An image pdf.js could name but not put words to. Not text, so not selectable. */
+.textLayer span[role="img"] {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+/* The glyphs are transparent, so the highlight has to let the canvas through or
+   a selection would paint a solid block over the page. `--ansi-selection` is the
+   app's one selection tint and is already translucent for the same reason; the
+   code editor states none of its own, so there was nothing nearer to match. */
+.textLayer ::selection {
+  background: var(--ansi-selection);
+  color: transparent;
 }

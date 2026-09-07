@@ -6,7 +6,7 @@
 // panels call, routed to Terminal.tsx (the only owner of `pty_write` and
 // tab/session state) via the SEND_TO_SESSION event pair.
 import { emitWith, onWith, SEND_TO_SESSION, SEND_TO_SESSION_RESULT, type SendToSession, type SendToSessionResult } from "./events";
-import { mentionPath } from "./pathScope";
+import { isPdfPath, mentionPath } from "./pathScope";
 
 // The routing/resume fields every safe-send caller needs to name a target
 // session, split out of SendToSession (which also carries the per-request
@@ -26,9 +26,17 @@ export function composeHunkComment(target: SessionTarget, filePath: string, star
 // `@<file>#L<start>-L<end>`, the editor-selection mention wire format (plan
 // phase 1, task 4). Same relativity rule as composeHunkComment: inside the
 // target's cwd, relative; outside it (a Shared-tree buffer), absolute.
+//
+// A PDF is spelled out by page instead. Inside Sway a PDF's "line" is its page,
+// because the chips and the jump list already speak in lines; to the agent it is
+// not, and `#L3` would send it looking for a third line of text in a file it
+// opens by page.
 export function composeSelectionMention(target: SessionTarget, filePath: string, startLine: number, endLine: number): string {
   const cwd = target.sessionCwd || target.folderPath;
   const mention = mentionPath(filePath, cwd);
+  if (isPdfPath(filePath)) {
+    return startLine === endLine ? `@${mention} (page ${startLine})` : `@${mention} (pages ${startLine}-${endLine})`;
+  }
   return `@${mention}#L${startLine}-L${endLine}`;
 }
 
