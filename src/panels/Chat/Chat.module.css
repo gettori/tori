@@ -2459,6 +2459,13 @@ button.diffHunkHeader:hover {
   color: var(--danger-fg);
 }
 
+/* The body sets its own colour, so the state has to reach past it or the chip
+   says it in the border alone. */
+.attachmentMissing .attachmentBody,
+.attachmentMissing .attachmentNote {
+  color: var(--danger-fg);
+}
+
 .attachmentBody {
   display: flex;
   align-items: center;
@@ -2471,7 +2478,7 @@ button.diffHunkHeader:hover {
   color: var(--fg-muted);
   font-family: var(--sway-font-mono);
   font-size: var(--sway-text-sm);
-  cursor: grab;
+  cursor: default;
 }
 
 button.attachmentBody:hover {
@@ -2484,14 +2491,34 @@ button.attachmentBody:hover {
   text-overflow: ellipsis;
 }
 
-/* An image chip shows the image *and* its token: a picture says which file it
-   is, and only the token says what to type to name it. */
+/* The preview box, one height whatever fills it, so a row of tiles has one
+   baseline whether it holds a screenshot or a `.yml`. */
+.attachmentPreview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(40px * var(--ui-scale));
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--canvas-default);
+}
+
+/* The Seti icon's own slot is a 16px column, for a tree that lines glyphs up.
+   Here it is the whole picture, so it fills the box instead. */
+.attachmentPreview :global(.seti-icon) {
+  width: auto;
+}
+
+/* Out of flow on purpose: in flow, a 1920px screenshot's intrinsic width is
+   what `max-content` measures, so every picture would pin its tile to the cap
+   while a `.yml` beside it sized to its name. */
 .attachmentThumb {
+  position: absolute;
+  inset: 0;
   display: block;
-  flex: none;
-  width: calc(24px * var(--ui-scale));
-  height: calc(24px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 
@@ -2509,13 +2536,19 @@ button.attachmentBody:hover {
   color: var(--danger-fg);
 }
 
-/* An image is a preview, not a row: the picture at a size worth looking at,
-   the token captioned under it, and the remove button in the corner where it
-   costs the picture nothing until it is wanted. */
+/* A file is a preview, not a row: the picture at a size worth looking at, the
+   name captioned under it, and the remove button in the corner where it costs
+   the picture nothing until it is wanted.
+
+   Sized by its caption between a floor and a ceiling, so `a.ts` does not get a
+   tile built for `adapter_request.yml` and neither one sets the strip's width. */
 .attachmentTile {
   position: relative;
   flex-direction: column;
   align-items: stretch;
+  width: max-content;
+  min-width: calc(88px * var(--ui-scale));
+  max-width: calc(168px * var(--ui-scale));
   border-radius: var(--sway-radius-md);
 }
 
@@ -2526,19 +2559,37 @@ button.attachmentBody:hover {
   padding: 0;
 }
 
-.attachmentTile .attachmentThumb {
-  align-self: center;
-  width: calc(40px * var(--ui-scale));
-  height: calc(40px * var(--ui-scale));
-  border-radius: 0;
+/* It opens the file now. Drag still works, and the tooltip is what says so: a
+   grab cursor on the one control whose click does something else is a lie told
+   at exactly the moment the user is deciding. */
+.attachmentTile button.attachmentBody {
+  cursor: pointer;
 }
 
-/* Smaller than the pill's text: the caption has to sit under 40px of picture
-   without deciding how wide the tile is. */
+/* The whole tile, not the caption strip: the picture keeps its own recessed
+   field, so a hover painted under it alone would look like half a control. */
+.attachmentTile:hover {
+  background: var(--neutral-hover);
+}
+
+/* Smaller than the pill's text: the caption sits under 40px of picture, and it
+   is what the tile is sized by, so it has to stay narrow enough to be one. */
 .attachmentTile .attachmentName {
-  padding: calc(1px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale)) 0;
   font-size: var(--sway-text-2xs);
   text-align: center;
+}
+
+/* What the message calls it, or which lines a selection covers: the handle
+   rather than the identity, so it sits under the name and dimmer than it. */
+.attachmentNote {
+  overflow: hidden;
+  padding: 0 calc(6px * var(--ui-scale)) calc(3px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-2xs);
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Kept in the tree at zero opacity rather than removed: the keyboard reaches

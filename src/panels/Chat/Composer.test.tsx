@@ -4,6 +4,7 @@ import { render, fireEvent } from "@solidjs/testing-library";
 import Composer, { ATTACHMENT_TOKEN_MIME, type ComposerHandle } from "./Composer";
 import { expectNoAxeViolations } from "../../test/axe";
 import type { AttachmentSource, PendingBlock } from "../../utils/chatCompose";
+import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 
 // The chip draws a stored file through the asset protocol, which needs the
 // Tauri internals the webview injects and jsdom has not.
@@ -520,6 +521,44 @@ describe("file uploads", () => {
   });
 });
 
+// The token is what the sentence names an attachment by, and the chip used to
+// be the only way to get one: a dropped file was attached and unnamed until it
+// was clicked, which is a step nobody took.
+describe("naming a new attachment in the message", () => {
+  it("puts a dropped path's token in at the caret", () => {
+    const { input, container } = setup({ onAttachPaths: () => ["[File 1]"] });
+    type(input, "look here");
+    input.setSelectionRange(4, 4);
+    drop(container.firstElementChild!, { data: { "application/x-sway-path": "/repo/src/a.ts" } });
+    expect(input.value).toBe("look [File 1] here");
+  });
+
+  it("puts an upload's token in once it has been stored", async () => {
+    const { input } = setup({ onAttachUploads: async () => ["[Image 1]"] });
+    type(input, "compare");
+    fireEvent.paste(input, { clipboardData: { files: [imageFile("shot.png")] } });
+    await vi.waitFor(() => expect(input.value).toBe("compare [Image 1]"));
+  });
+
+  // The document goes to disk and its name takes its place, so the sentence
+  // still reads as one written around what was pasted into it.
+  it("leaves a long paste's token where the text would have gone", async () => {
+    const { input } = setup({ onAttachUploads: async () => ["[File 1]"] });
+    type(input, "summarise this");
+    fireEvent.paste(input, pasteOf(LONG_PASTE));
+    await vi.waitFor(() => expect(input.value).toBe("summarise this [File 1]"));
+  });
+
+  // Two files, one drop: one run of tokens rather than two placed at a caret
+  // the first one moved.
+  it("names every file of a multi-file drop, in the order they arrived", async () => {
+    const { input, container } = setup({ onAttachUploads: async () => ["[Image 1]", "[File 2]"] });
+    type(input, "these");
+    drop(container.firstElementChild!, { files: [imageFile("shot.png"), imageFile("main.ts", "video/mp2t")] });
+    await vi.waitFor(() => expect(input.value).toBe("these [Image 1] [File 2]"));
+  });
+});
+
 describe("attachment limits, applied where a thing is offered", () => {
   it("rejects a kind nothing opens and says what this agent does", async () => {
     const { container, onAttachUploads, onAttachRejected } = setup();
@@ -574,41 +613,55 @@ describe("an attachment chip", () => {
     },
   ];
 
-  it("captions the picture with its token, and keeps the filename in its name", () => {
+  it("shows the picture, the file's own name, and the token the message says", () => {
     const { container, getByText, getByLabelText } = setup({ attachments: shot });
-    // The picture says which file it is, so the caption only has to say what
-    // to type. The filename is still announced, on the control.
+    expect(getByText("shot.png")).toBeTruthy();
     expect(getByText("[Image 2]")).toBeTruthy();
-    expect(getByLabelText("Insert [Image 2] shot.png")).toBeTruthy();
+    expect(getByLabelText("Open [Image 2] shot.png")).toBeTruthy();
     // Off disk through the asset protocol, not out of the message: the bytes
     // are on the wire nowhere now.
     expect(container.querySelector("img")?.getAttribute("src")).toBe("asset:///store/1a2b-0/shot.png");
   });
 
-  it("still reads as token and filename where there is no picture to look at", () => {
-    const { getByText } = setup({ attachments: notes });
-    expect(getByText("[PDF 1] notes.pdf")).toBeTruthy();
+  // One shape for every file: a picture where there is one, and the file's own
+  // Seti icon where there is not, rather than a pill beside a tile.
+  it("gives a file with no picture its type icon, and the same caption", () => {
+    const { container, getByText } = setup({ attachments: notes });
+    expect(getByText("notes.pdf")).toBeTruthy();
+    expect(getByText("[PDF 1]")).toBeTruthy();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".seti-icon")).not.toBeNull();
   });
 
-  it("puts its token in the message when the body is clicked, and does not remove it", () => {
+  it("opens the file when the body is clicked, and does not remove it", () => {
+    const opens: OpenInEditor[] = [];
+    const off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opens.push(d));
     const { input, getByLabelText, onDropAttachment } = setup({ attachments: shot });
     type(input, "compare this");
-    fireEvent.click(getByLabelText("Insert [Image 2] shot.png"));
-    expect(input.value).toBe("compare this [Image 2]");
+    fireEvent.click(getByLabelText("Open [Image 2] shot.png"));
+    off();
+    expect(opens).toEqual([{ path: "/store/1a2b-0/shot.png" }]);
+    // The chip is a way into the file, not a way to edit the sentence: what
+    // was typed is untouched.
+    expect(input.value).toBe("compare this");
     expect(onDropAttachment).not.toHaveBeenCalled();
   });
 
-  it("inserts at the caret rather than at the end", () => {
+  it("still puts its token in the message on Cmd+click, at the caret", () => {
+    const opens: OpenInEditor[] = [];
+    const off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opens.push(d));
     const { input, getByLabelText } = setup({ attachments: notes });
     type(input, "read then answer");
     input.setSelectionRange(4, 4);
-    fireEvent.click(getByLabelText("Insert [PDF 1] notes.pdf"));
+    fireEvent.click(getByLabelText("Open [PDF 1] notes.pdf"), { metaKey: true });
+    off();
     expect(input.value).toBe("read [PDF 1] then answer");
+    expect(opens).toEqual([]);
   });
 
   it("removes on Delete or Backspace, so the keyboard reaches what the button does", () => {
     const { getByLabelText, onDropAttachment } = setup({ attachments: shot });
-    fireEvent.keyDown(getByLabelText("Insert [Image 2] shot.png"), { key: "Delete" });
+    fireEvent.keyDown(getByLabelText("Open [Image 2] shot.png"), { key: "Delete" });
     expect(onDropAttachment).toHaveBeenCalledWith("att-1");
   });
 
@@ -627,7 +680,7 @@ describe("a chip whose file has gone", () => {
   ];
   // Asked by role and a tolerant name: the chip's name is built from adjacent
   // nodes, which jsdom joins without a separator.
-  const insert = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Insert \[PDF 1\]/ });
+  const insert = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Open \[PDF 1\]/ });
   const remove = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Remove \[PDF 1\]/ });
 
   it("is marked missing and says where the file was, on both of its controls", async () => {
@@ -641,11 +694,11 @@ describe("a chip whose file has gone", () => {
     const fileExists = vi.fn(async () => true);
     const r = setup({ attachments: notes, fileExists });
     await vi.waitFor(() => expect(fileExists).toHaveBeenCalledWith("/store/1a2b-1/notes.pdf"));
-    expect(insert(r).getAttribute("aria-label")).toBe("Insert [PDF 1] notes.pdf");
+    expect(insert(r).getAttribute("aria-label")).toBe("Open [PDF 1] notes.pdf");
     expect(r.container.querySelector("[class*='attachmentMissing']")).toBeNull();
 
     const unchecked = setup({ attachments: notes });
-    expect(insert(unchecked).getAttribute("aria-label")).toBe("Insert [PDF 1] notes.pdf");
+    expect(insert(unchecked).getAttribute("aria-label")).toBe("Open [PDF 1] notes.pdf");
   });
 
   // Coming back from the tree is when a mentioned file gets deleted.
@@ -655,6 +708,16 @@ describe("a chip whose file has gone", () => {
     await vi.waitFor(() => expect(fileExists).toHaveBeenCalledTimes(1));
     fireEvent.focus(input);
     await vi.waitFor(() => expect(fileExists).toHaveBeenCalledTimes(2));
+  });
+
+  it("is not opened when it is gone: the toast says where it was", async () => {
+    const opens: OpenInEditor[] = [];
+    const off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opens.push(d));
+    const r = setup({ attachments: notes, fileExists: async () => false });
+    await vi.waitFor(() => expect(insert(r).getAttribute("aria-label")).toMatch(/No file/));
+    fireEvent.click(insert(r));
+    off();
+    expect(opens).toEqual([]);
   });
 
   it("still lets the message send", async () => {
@@ -751,7 +814,7 @@ describe("dragging a chip into the sentence", () => {
       offsetNode: input,
       offset: 5,
     });
-    const dt = drag(getByLabelText("Insert [Image 1] shot.png"));
+    const dt = drag(getByLabelText("Open [Image 1] shot.png"));
     // Only the private type: `text/plain` would make a drop on the terminal,
     // or on this composer's own path branch, read the token as a file path.
     expect(Object.keys(dt)).toEqual([ATTACHMENT_TOKEN_MIME]);
@@ -768,7 +831,7 @@ describe("dragging a chip into the sentence", () => {
     const { input, container, getByLabelText } = setup({ attachments: shot });
     type(input, "look here");
     input.setSelectionRange(4, 4);
-    drop(container.firstElementChild!, { data: drag(getByLabelText("Insert [Image 1] shot.png")) });
+    drop(container.firstElementChild!, { data: drag(getByLabelText("Open [Image 1] shot.png")) });
     expect(input.value).toBe("look [Image 1] here");
   });
 
@@ -776,7 +839,7 @@ describe("dragging a chip into the sentence", () => {
     const { container, getByLabelText } = setup({ attachments: shot });
     const composer = container.firstElementChild!;
     const before = composer.className;
-    const dt = drag(getByLabelText("Insert [Image 1] shot.png"));
+    const dt = drag(getByLabelText("Open [Image 1] shot.png"));
     fireEvent.dragOver(composer, { dataTransfer: { types: Object.keys(dt), getData: (m: string) => dt[m] ?? "" } });
     expect(composer.className).toBe(before);
   });
@@ -872,9 +935,9 @@ describe("draft and history", () => {
         onDropAttachment={() => {}}
         onAttachFile={() => null}
         uploads={OPENS_EVERYTHING}
-        onAttachUploads={() => {}}
+        onAttachUploads={async () => []}
         onAttachRejected={() => {}}
-        onAttachPaths={() => {}}
+        onAttachPaths={() => []}
         onSendQueued={() => {}}
         onDiscardQueued={() => {}}
       />
@@ -906,9 +969,9 @@ describe("draft and history", () => {
         onDropAttachment={() => {}}
         onAttachFile={() => null}
         uploads={OPENS_EVERYTHING}
-        onAttachUploads={() => {}}
+        onAttachUploads={async () => []}
         onAttachRejected={() => {}}
-        onAttachPaths={() => {}}
+        onAttachPaths={() => []}
         onSendQueued={() => {}}
         onDiscardQueued={() => {}}
       />
@@ -948,10 +1011,12 @@ describe("Composer attachments", () => {
     { id: "att-2", block: { type: "fileRef", path: "/repo/b.ts", startLine: 7, endLine: 7, text: null } },
   ];
 
-  it("renders one chip per attachment, labelled by file and range", () => {
+  it("renders one chip per attachment, named by file with its range under it", () => {
     const { getByText } = setup({ attachments: chips });
-    expect(getByText("@a.ts#L1-L4")).toBeTruthy();
-    expect(getByText("@b.ts#L7")).toBeTruthy();
+    expect(getByText("a.ts")).toBeTruthy();
+    expect(getByText("L1-L4")).toBeTruthy();
+    expect(getByText("b.ts")).toBeTruthy();
+    expect(getByText("L7")).toBeTruthy();
   });
 
   it("removes exactly the chip whose remove button was pressed", () => {
@@ -961,11 +1026,17 @@ describe("Composer attachments", () => {
     expect(onDropAttachment).toHaveBeenCalledWith("att-2");
   });
 
-  // A selection or a hunk comment has no token, so there is nothing to put in
-  // the sentence and its face is not a control at all.
-  it("offers no insert control for a chip that names no token", () => {
-    const { queryByLabelText } = setup({ attachments: chips });
-    expect(queryByLabelText("Insert @a.ts#L1-L4")).toBeNull();
+  // A selection has no token, so there is nothing to put in the sentence. It
+  // does have a file, and a line worth arriving at.
+  it("opens a selection at the line it covers, and has no token to insert", () => {
+    const opens: OpenInEditor[] = [];
+    const off = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => opens.push(d));
+    const { input, getByLabelText } = setup({ attachments: chips });
+    type(input, "why");
+    fireEvent.click(getByLabelText("Open @a.ts#L1-L4"), { metaKey: true });
+    off();
+    expect(opens).toEqual([{ path: "/repo/a.ts", line: 1 }]);
+    expect(input.value).toBe("why");
   });
 
   // The rule the unit tests could only assert about `hasContent`: a turn of

@@ -13,7 +13,16 @@ import {
   type PendingBlock,
 } from "../../utils/chatCompose";
 import type { UploadFile } from "./composerAttachments";
-import { DRAG_ABS_PATH_MIME, DRAG_PATH_MIME } from "../../utils/events";
+import FileIcon from "../../seti/FileIcon";
+import {
+  DRAG_ABS_PATH_MIME,
+  DRAG_PATH_MIME,
+  OPEN_IN_EDITOR,
+  TOAST,
+  emitWith,
+  type OpenInEditor,
+  type ToastEvent,
+} from "../../utils/events";
 import {
   activeToken,
   dropToken,
@@ -81,6 +90,24 @@ function thumbSrc(block: ContentBlock): string | null {
     return convertFileSrc(block.path);
   }
   return null;
+}
+
+/** What a tile is captioned by. A tile is looked at rather than read, so the
+ *  file's own name leads and the label goes under it. */
+function tileName(block: ContentBlock): string {
+  if (block.type !== "fileRef") return chipLabel(block);
+  return block.path.split("/").pop() || block.path;
+}
+
+/** The line under the name: the token the prose says this attachment by, or
+ *  the region a selection covers. Null when the chip is neither. */
+function tileNote(block: ContentBlock): string | null {
+  if (block.type !== "fileRef") return null;
+  if (block.label) return block.label;
+  if (block.startLine === null) return null;
+  return block.endLine !== null && block.endLine !== block.startLine
+    ? `L${block.startLine}-L${block.endLine}`
+    : `L${block.startLine}`;
 }
 
 /** What is about to land, said before it is refused rather than after. */
@@ -168,8 +195,9 @@ export default function Composer(props: {
    *  them. The check runs here, where a file arrives, so a paste that cannot
    *  become a chip never does. */
   uploads: AttachmentSource;
-  /** Files dropped, pasted or picked, already checked against `uploads`. */
-  onAttachUploads: (files: UploadFile[]) => void;
+  /** Files dropped, pasted or picked, already checked against `uploads`.
+   *  Answers the tokens the new chips are named by. */
+  onAttachUploads: (files: UploadFile[]) => Promise<readonly string[]>;
   /** An attachment that was refused, for whoever owns the toast. */
   onAttachRejected: (reason: string) => void;
   /** Whether a long text paste becomes a `pasted.txt` chip rather than text in
@@ -188,8 +216,8 @@ export default function Composer(props: {
   /** End the link: the tab closes and the input is the writer again. */
   onUnlink?: () => void;
   /** Absolute paths dragged in from the file tree or an editor tab. Mentions,
-   *  not uploads: the agent reads them off disk. */
-  onAttachPaths: (absPaths: string[]) => void;
+   *  not uploads: the agent reads them off disk. Answers their tokens. */
+  onAttachPaths: (absPaths: string[]) => readonly string[];
   /** The unsent draft, owned per session outside this component so it survives
    *  the tab being switched away from. */
   draft: string;
@@ -377,7 +405,11 @@ export default function Composer(props: {
   // Drop, paste and the picker all land here, so the limits are applied once
   // however a file arrived. Checked against a count that grows as we go, or
   // dropping eleven at once would let all eleven past a per-file check.
-  async function attachFiles(files: readonly File[]) {
+  //
+  // `at` is where a drop landed. The tokens go in as soon as they are minted:
+  // an attachment the sentence does not name is one the agent has to guess the
+  // place of, and waiting to be clicked made that the common case.
+  async function attachFiles(files: readonly File[], at?: number) {
     if (props.disabled) return;
     const accepted: UploadFile[] = [];
     let count = props.attachments.length;
@@ -394,7 +426,9 @@ export default function Composer(props: {
         props.onAttachRejected(`${file.name} could not be read.`);
       }
     }
-    if (accepted.length) props.onAttachUploads(accepted);
+    if (!accepted.length) return;
+    const labels = await props.onAttachUploads(accepted);
+    if (labels?.length) insertToken(labels.join(" "), at);
   }
 
   /** Put a chip's token in the sentence, spaced so it does not weld itself to
@@ -464,7 +498,7 @@ export default function Composer(props: {
     if (files.length) {
       e.preventDefault();
       setDragging(false);
-      void attachFiles(files);
+      void attachFiles(files, caretAtPoint(e));
       return;
     }
     // Not a file: a path dragged from the tree or an editor tab, which is a
@@ -478,7 +512,9 @@ export default function Composer(props: {
     if (!paths.length) return;
     e.preventDefault();
     setDragging(false);
-    props.onAttachPaths(paths);
+    const at = caretAtPoint(e);
+    const labels = props.onAttachPaths(paths);
+    if (labels?.length) insertToken(labels.join(" "), at);
   }
 
   function submit() {
@@ -683,63 +719,95 @@ export default function Composer(props: {
         <div class={styles.attachments}>
           <For each={props.attachments}>
             {(a) => {
-              // A picture is already its own name, so the tile captions itself
-              // with the token alone and leaves the filename to the control's
-              // accessible name. Everything else has only words to go on.
-              const thumb = () => thumbSrc(a.block);
+              // A chip with a file behind it is a tile: its picture, or its
+              // Seti icon in the same box, above its name. One shape, because
+              // a picture beside a pill read as two different controls. A chip
+              // that is only prose (a hunk comment, a diagnostic) has nothing
+              // to preview and stays a pill.
+              const src = thumbSrc(a.block);
+              const path = a.block.type === "fileRef" ? a.block.path : null;
+              const line = a.block.type === "fileRef" ? a.block.startLine : null;
+              const token = tokenOf(a.block);
+              const name = tileName(a.block);
+              const note = tileNote(a.block);
+              const tile = path !== null || src !== null;
               // Gone from disk since it was attached. The chip stays, because the
               // sentence still names it; both controls say why it is red.
               const [missing, setMissing] = createSignal(false);
-              const path = a.block.type === "fileRef" ? a.block.path : null;
               if (path && props.fileExists) {
                 const ask = props.fileExists;
                 createEffect(on(focusTick, () => void ask(path).then((ok) => setMissing(!ok)).catch(() => {})));
               }
               const reason = () => (missing() && path ? `. No file at ${path}` : "");
-              const face = () => (
-                <>
-                  <Show when={thumb()}>{(src) => <img class={styles.attachmentThumb} src={src()} alt="" />}</Show>
-                  <span class={styles.attachmentName}>
-                    {thumb() ? (tokenOf(a.block) ?? chipLabel(a.block)) : chipLabel(a.block)}
-                  </span>
-                </>
-              );
+              function open(e: MouseEvent, at: string) {
+                // Cmd+click keeps the chip's old job. A plain click opens the
+                // file, which is what a preview of one is expected to do, and
+                // the token is placed when the file is attached now anyway.
+                if (e.metaKey && token) {
+                  insertToken(token);
+                  return;
+                }
+                if (missing()) {
+                  emitWith<ToastEvent>(TOAST, { message: `No file at ${at}`, kind: "info" });
+                  return;
+                }
+                emitWith<OpenInEditor>(OPEN_IN_EDITOR, line === null ? { path: at } : { path: at, line });
+              }
+              const face = () =>
+                tile ? (
+                  <>
+                    <span class={styles.attachmentPreview}>
+                      {src ? <img class={styles.attachmentThumb} src={src} alt="" /> : <FileIcon name={name} />}
+                    </span>
+                    <span class={styles.attachmentName}>{name}</span>
+                    {note ? <span class={styles.attachmentNote}>{note}</span> : null}
+                  </>
+                ) : (
+                  <span class={styles.attachmentName}>{name}</span>
+                );
               return (
                 <div
                   class={styles.attachment}
-                  classList={{ [styles.attachmentTile]: !!thumb(), [styles.attachmentMissing]: missing() }}
+                  classList={{ [styles.attachmentTile]: tile, [styles.attachmentMissing]: missing() }}
                 >
-                  {/* Two controls, because the chip now means two things: put
-                      the token in the message, or take the attachment away.
-                      A chip with no token (a selection, a hunk comment) has
-                      nothing to insert, so its face is not a control at all
-                      rather than a button that does nothing. */}
-                  <Show when={tokenOf(a.block)} fallback={<span class={styles.attachmentBody}>{face()}</span>}>
-                    {(token) => (
-                      <Tooltip
-                        as="button"
-                        type="button"
-                        class={styles.attachmentBody}
-                        label={missing() ? `No file at ${path}` : "Click or drag to put this in the message"}
-                        aria-label={`Insert ${chipLabel(a.block)}${reason()}`}
-                        draggable={true}
-                        onDragStart={(e: DragEvent) => {
-                          e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, token());
-                          if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
-                        }}
-                        onClick={() => insertToken(token())}
-                        // The keyboard's way to the remove button's job, on the
-                        // control the focus is already on.
-                        onKeyDown={(e: KeyboardEvent) => {
-                          if (e.key !== "Delete" && e.key !== "Backspace") return;
-                          e.preventDefault();
-                          props.onDropAttachment(a.id);
-                        }}
-                      >
-                        {face()}
-                      </Tooltip>
-                    )}
-                  </Show>
+                  {/* Two controls, because the chip means two things: open the
+                      file, or take the attachment away. A chip with no file
+                      behind it (a hunk comment, a diagnostic) has nothing to
+                      open, so its face is not a control at all rather than a
+                      button that does nothing. */}
+                  {path === null ? (
+                    <span class={styles.attachmentBody}>{face()}</span>
+                  ) : (
+                    <Tooltip
+                      as="button"
+                      type="button"
+                      class={styles.attachmentBody}
+                      label={
+                        missing()
+                          ? `No file at ${path}`
+                          : token
+                            ? "Click to open it. Cmd+click or drag to name it in the message"
+                            : "Click to open it"
+                      }
+                      aria-label={`Open ${chipLabel(a.block)}${reason()}`}
+                      draggable={token !== null}
+                      onDragStart={(e: DragEvent) => {
+                        if (!token) return;
+                        e.dataTransfer?.setData(ATTACHMENT_TOKEN_MIME, token);
+                        if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      onClick={(e: MouseEvent) => open(e, path)}
+                      // The keyboard's way to the remove button's job, on the
+                      // control the focus is already on.
+                      onKeyDown={(e: KeyboardEvent) => {
+                        if (e.key !== "Delete" && e.key !== "Backspace") return;
+                        e.preventDefault();
+                        props.onDropAttachment(a.id);
+                      }}
+                    >
+                      {face()}
+                    </Tooltip>
+                  )}
                   <button
                     type="button"
                     class={styles.attachmentRemove}
