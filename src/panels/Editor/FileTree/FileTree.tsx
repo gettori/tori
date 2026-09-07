@@ -254,6 +254,23 @@ async function renameEntry(ctx: EditCtx, entry: Entry, reloadParent: () => Promi
   }
 }
 
+/** Show `entry` in Finder, or the whole selection when `entry` is part of one,
+ *  on the same reasoning as delete: the menu acts on what is highlighted.
+ *
+ *  Reads nothing and writes nothing, so it is offered on a read-only tree too,
+ *  and takes no `EditCtx` beyond the selection it may act on. */
+async function revealEntry(entry: Entry, ctx?: EditCtx) {
+  const chosen = ctx?.selected();
+  const paths = chosen?.has(entry.path) ? [...chosen] : [entry.path];
+  try {
+    // Singular name, plural argument: the plugin kept the old command name when
+    // it grew multi-select, and renames it only in its next major.
+    await invoke("plugin:opener|reveal_item_in_dir", { paths });
+  } catch (e) {
+    emitWith<ToastEvent>(TOAST, { message: String(e) });
+  }
+}
+
 /** Delete `entry`, or the whole selection when `entry` is part of one.
  *
  *  Deleting one of several selected rows and watching the other selected rows
@@ -460,17 +477,19 @@ function TreeNode(props: {
   // that is never right-clicked never builds a list.
   function menuItems(): MenuItem[] {
     const ctx = props.ctx;
-    if (!ctx) return [];
     const items: MenuItem[] = [];
     // Two members hold the same `src/index.ts`, and a menu that opened over one
     // of them says nothing about which. First, so it reads before the actions
     // rather than as a footnote to them.
-    if (ctx.member) items.push({ heading: ctx.member });
-    if (props.entry.is_dir) {
+    if (ctx?.member) items.push({ heading: ctx.member });
+    if (ctx && props.entry.is_dir) {
       items.push({ label: "New File", onClick: () => newFileIn(ctx, props.entry.path, reloadOpen) });
       items.push({ label: "New Folder", onClick: () => newFolderIn(ctx, props.entry.path, reloadOpen) });
       items.push({ separator: true });
     }
+    items.push({ label: "Reveal in Finder", onClick: () => revealEntry(props.entry, ctx) });
+    if (!ctx) return items;
+    items.push({ separator: true });
     items.push({ label: "Rename", onClick: () => renameEntry(ctx, props.entry, props.reloadParent) });
     items.push({ label: "Delete", danger: true, onClick: () => deleteEntry(ctx, props.entry, props.reloadParent) });
     return items;
@@ -479,10 +498,9 @@ function TreeNode(props: {
   return (
     <div>
       <ContextMenu
-        // A read-only tree has nothing to offer, so it leaves the right-click
-        // alone and the browser's own menu opens, which is what the old handler's
-        // `if (!ctx) return` did before `preventDefault`.
-        disabled={!props.ctx}
+        // Every row has a menu now, read-only ones included: revealing a file in
+        // Finder mutates nothing, and a docs tree you cannot edit is still a
+        // tree you want to get out of.
         items={menuItems()}
         ref={row}
         class={styles.treeRow}
