@@ -24,9 +24,8 @@
   /* Row height, matching the settings rail's items: their 8px·s block padding
      around a 16px icon and a 13px·s label. */
   --row-h: calc(34px * var(--ui-scale));
-  /* A branch row is shorter than the project row over it. The two depths are
-     not peers, and giving them one height made the list read as flat. */
-  --branch-row-h: calc(30px * var(--ui-scale));
+  /* A branch row is padded rather than fixed, so its height follows its label. */
+  --branch-row-pad: calc(7px * var(--ui-scale));
   --tree-inset: calc(8px * var(--ui-scale));
   --tree-gutter: calc(4px * var(--ui-scale));
   /* Dead centre of a project row's 16px·s icon slot (8px·s of row padding, then
@@ -322,13 +321,8 @@
   position: relative;
 }
 
-/* The vertical rail: one straight line on the project icon's own x, spanning
-   the node's full height so it passes behind a group's attempts and meets the
-   next branch with no gap. The elbow that used to curve out of it into every
-   row is gone - it drew a git graph over a plain list, and the list already
-   reads as nested from the indent alone.
-   Under the rows (they sit at z-index 2), so a hovered or selected row's pill
-   paints straight over it rather than having to start clear of it. */
+/* Under the rows (z-index 2), so a hovered or selected pill paints over the
+   rail rather than having to start clear of it. */
 .branchNode::before {
   content: "";
   position: absolute;
@@ -340,9 +334,8 @@
   z-index: 0;
 }
 
-/* The one gap left between projects, and it is earned: an expanded project's
-   branches need to end somewhere before the next project's name. Two collapsed
-   projects still sit on one unbroken rhythm. */
+/* An expanded project's branches need to end before the next project's name.
+   Two collapsed projects still sit on one unbroken rhythm. */
 .branchNode:last-child {
   margin-bottom: calc(8px * var(--ui-scale));
 }
@@ -359,20 +352,16 @@
   --branch-label-x: calc(28px * var(--ui-scale) + var(--nest-step));
 }
 
-/* An attempt's own rail should not start above its first row: the group header
-   it hangs off is a sibling, not an ancestor, so the segment is trimmed to the
-   rows it actually spans. */
 .attemptNode:last-child {
   margin-bottom: 0;
 }
 
-/* Branch hover and selection share one pill: it starts ON the rail, so the
-   marker bar can land exactly where the line was, and runs to the column's
-   right edge. Sits behind the content; the row's own z-index is what gives
-   that -1 pseudo-element a stacking context to sit behind, and what lifts the
-   whole row over the rail. */
+/* Hover and selection share one pill: it starts ON the rail so the marker bar
+   lands where the line was, and runs to the column's right edge. The z-index
+   gives the -1 pill a context to sit behind, and lifts the row over the rail. */
 .row.branch {
-  height: var(--branch-row-h);
+  height: auto;
+  padding-block: var(--branch-row-pad);
   z-index: 2;
 }
 .row.branch::before {
