@@ -3,23 +3,26 @@
 // keeps 2.5 MB of library and worker out of the editor chunk: a session that
 // never opens a PDF never loads this file. `lazyEditorBoundary.test.ts` fences
 // the specifier, so a static import from anywhere eager fails the suite.
-//
-// The `?url` import is here rather than beside the loader for the same reason:
-// Vite only rewrites it in a static import, which would be an eager edge if it
-// sat in a module the editor imports directly.
 import * as pdfjs from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
-// Served by `vite.config.ts`'s `sway-pdfjs-data` plugin. Absolute, so the same
-// string resolves under the dev server's http origin and the release build's
-// `tauri://` one; pdf.js needs the trailing slash and throws without it.
-const DATA_BASE = "/pdfjs/";
+// Served by `vite.config.ts`'s `sway-pdfjs-data` plugin, in the dev server and
+// in the bundle. Absolute, so the same string resolves under the dev server's
+// http origin and the release build's `tauri://` one; pdf.js needs the trailing
+// slash on the directories and throws without it.
+//
+// The worker is named here rather than imported with `?url` on purpose: `?url`
+// puts the file through Vite's dev transform, which prepends an import of
+// `/@vite/client`. That throws inside a worker, which has no `document`, and
+// pdf.js answers a failed worker by silently parsing on the main thread.
+const BASE = "/pdfjs/";
+
+export const workerUrl = `${BASE}pdf.worker.min.mjs`;
 
 export const runtimeUrls = {
-  cMapUrl: `${DATA_BASE}cmaps/`,
-  standardFontDataUrl: `${DATA_BASE}standard_fonts/`,
-  wasmUrl: `${DATA_BASE}wasm/`,
-  iccUrl: `${DATA_BASE}iccs/`,
+  cMapUrl: `${BASE}cmaps/`,
+  standardFontDataUrl: `${BASE}standard_fonts/`,
+  wasmUrl: `${BASE}wasm/`,
+  iccUrl: `${BASE}iccs/`,
 };
 
-export { pdfjs, workerUrl };
+export { pdfjs };

@@ -13,26 +13,50 @@ const PDFJS_ROOT = fileURLToPath(new URL("./node_modules/pdfjs-dist/", import.me
 // wasm decodes JBIG2/JPEG2000 images, standard_fonts backs the base-14 fonts a
 // PDF does not embed, cmaps map CJK encodings, iccs hold colour profiles.
 const PDFJS_DATA_DIRS = ["wasm", "standard_fonts", "cmaps", "iccs"];
+// The worker rides along, under its own name rather than a directory. It must
+// reach the browser byte for byte: `?url` would be the obvious way to name it,
+// but in dev Vite runs the file through its transform pipeline and prepends an
+// `import ... from "/@vite/client"`. A module worker has no `document`, so that
+// import throws, pdf.js catches the worker's `error` and quietly falls back to
+// parsing on the main thread. Rollup emits it verbatim, so this was a dev-only
+// break, which is worse than a consistent one.
+const PDFJS_FILES: Record<string, string> = { "pdf.worker.min.mjs": "build/pdf.worker.min.mjs" };
 const PDFJS_BASE = "/pdfjs/";
 
+const mimeOf = (name: string) =>
+  name.endsWith(".wasm")
+    ? "application/wasm"
+    : name.endsWith(".mjs")
+      ? "text/javascript"
+      : "application/octet-stream";
+
+/** Where a `/pdfjs/` request reads from on disk, or null if it names nothing we
+ *  serve. Everything is spelled out, which is also what keeps a `..` or an
+ *  absolute path from reaching anything else. */
+function pdfjsFile(rel: string): string | null {
+  if (rel.includes("..")) return null;
+  if (rel in PDFJS_FILES) return PDFJS_ROOT + PDFJS_FILES[rel];
+  const [dir, ...rest] = rel.split("/");
+  return PDFJS_DATA_DIRS.includes(dir) && rest.length === 1 ? PDFJS_ROOT + rel : null;
+}
+
 /**
- * Serves pdf.js's runtime data at `/pdfjs/<dir>/`, in the dev server and in the
- * bundle. It fetches these by URL rather than importing them, so they have to
- * exist as files; copying 4 MB of generated data into `public/` would commit it,
- * so this reads them out of node_modules instead.
+ * Serves pdf.js's worker and runtime data at `/pdfjs/`, in the dev server and in
+ * the bundle, untransformed in both. pdf.js fetches the data by URL rather than
+ * importing it, so it has to exist as files; copying 4 MB of generated data into
+ * `public/` would commit it, so this reads it out of node_modules instead.
  */
 const pdfjsData = (): Plugin => ({
   name: "sway-pdfjs-data",
   configureServer(server) {
-    // Connect strips the mount prefix, so `req.url` is `/cmaps/78-H.bcmap`. The
-    // first segment has to name one of the four directories, which is also what
-    // keeps a `..` or an absolute path from reaching anything else.
+    // Connect strips the mount prefix, so `req.url` is `/cmaps/78-H.bcmap`.
     server.middlewares.use(PDFJS_BASE, (req, res, next) => {
       const rel = decodeURIComponent((req.url ?? "").split("?")[0]).replace(/^\/+/, "");
-      if (rel.includes("..") || !PDFJS_DATA_DIRS.includes(rel.split("/")[0])) return next();
+      const file = pdfjsFile(rel);
+      if (!file) return next();
       try {
-        const body = readFileSync(PDFJS_ROOT + rel);
-        res.setHeader("Content-Type", rel.endsWith(".wasm") ? "application/wasm" : "application/octet-stream");
+        const body = readFileSync(file);
+        res.setHeader("Content-Type", mimeOf(rel));
         res.end(body);
       } catch {
         next();
@@ -40,14 +64,11 @@ const pdfjsData = (): Plugin => ({
     });
   },
   generateBundle() {
+    const emit = (name: string, file: string) =>
+      this.emitFile({ type: "asset", fileName: `pdfjs/${name}`, source: readFileSync(file) });
+    for (const [name, file] of Object.entries(PDFJS_FILES)) emit(name, PDFJS_ROOT + file);
     for (const dir of PDFJS_DATA_DIRS) {
-      for (const name of readdirSync(PDFJS_ROOT + dir)) {
-        this.emitFile({
-          type: "asset",
-          fileName: `pdfjs/${dir}/${name}`,
-          source: readFileSync(`${PDFJS_ROOT}${dir}/${name}`),
-        });
-      }
+      for (const name of readdirSync(PDFJS_ROOT + dir)) emit(`${dir}/${name}`, `${PDFJS_ROOT}${dir}/${name}`);
     }
   },
 });
