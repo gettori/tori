@@ -3114,6 +3114,24 @@ export default function LeftSidebar(props: {
           render in all three. */}
       <Show when={config()}>
         <div class={styles.spaceBar}>
+          <div class={styles.spaceScroll}>
+            <For each={rootSpaces()}>{(g) => spaceTile(g)}</For>
+            <Show when={rootSpaces().length > 0 && extSpaces().length > 0}>
+              <div class={styles.spaceDivider} />
+            </Show>
+            <For each={extSpaces()}>{(g) => spaceTile(g)}</For>
+          </div>
+
+          {/* The two views that are not a space, past a rule so the strip reads
+              as spaces first. Outside the scroller: they are how you get back
+              out of a mode, and a long space list must not carry them off. */}
+          <div class={styles.spaceDivider} />
+          {modeTile("features", "Features", Waypoints)}
+          {modeTile("shells", "Shells", SquareTerminal, shellsTabs().length)}
+
+          {/* The only thing on the far side. The `+` that used to live here is
+              gone: it was one route to "New space", and the menu below already
+              holds that one along with everything else. */}
           <div class={styles.gearWrap} ref={gearEl}>
             <Tooltip
               as="button"
@@ -3148,34 +3166,6 @@ export default function LeftSidebar(props: {
               </div>
             </Show>
           </div>
-
-          <div class={styles.spaceScroll}>
-            <For each={rootSpaces()}>{(g) => spaceTile(g)}</For>
-            <Show when={rootSpaces().length > 0 && extSpaces().length > 0}>
-              <div class={styles.spaceDivider} />
-            </Show>
-            <For each={extSpaces()}>{(g) => spaceTile(g)}</For>
-          </div>
-
-          {/* The two views that are not a space, past a rule so the strip reads
-              as spaces first. Outside the scroller: they are how you get back
-              out of a mode, and a long space list must not carry them off. */}
-          <div class={styles.spaceDivider} />
-          {modeTile("features", "Features", Waypoints)}
-          {modeTile("shells", "Shells", SquareTerminal, shellsTabs().length)}
-
-          <Show when={hasRoot()}>
-            <Tooltip
-              as="button"
-              type="button"
-              class={styles.spaceAdd}
-              label="New space"
-              aria-label="New space"
-              onClick={addSpace}
-            >
-              <Icon icon={Plus} />
-            </Tooltip>
-          </Show>
         </div>
       </Show>
 

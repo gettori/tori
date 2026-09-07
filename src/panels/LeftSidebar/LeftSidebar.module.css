@@ -174,15 +174,17 @@
 }
 
 /* ---- Gear dropdown (sidebar actions) ---- */
+/* Pinned to the far edge, alone: everything else in the strip is a view you can
+   be in, and this is the one thing that is not. */
 .gearWrap {
   position: relative;
   flex: none;
+  margin-left: auto;
 }
 
-/* Bottom-bar buttons (this gear, the space tiles, the new-space +) all share one
-   bare-icon variant: transparent fill and border so only the glyph shows at rest,
-   hover reveals the brand border (unchanged from before), and the selected/active
-   one drops to just a brand-tinted icon with no border or fill. */
+/* Strip buttons (this gear and the tiles) share one bare-icon variant:
+   transparent fill and border so only the glyph shows at rest, hover reveals
+   the brand border, and the lit one drops to a brand-tinted icon. */
 .gearBtn {
   display: flex;
   align-items: center;
@@ -213,7 +215,9 @@
 .gearMenu {
   position: absolute;
   bottom: calc(100% + calc(6px * var(--ui-scale)));
-  left: 0;
+  /* Anchored on the trigger's right edge, which is the sidebar's: opening
+     leftward from here would take the menu off the column. */
+  right: 0;
   z-index: 1000;
   min-width: calc(180px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale));
@@ -632,11 +636,11 @@
   background: var(--brand-muted, var(--brand-subtle));
 }
 
-/* ---- Space bar (Arc-style spaces) ----
-   The bottom strip: a settings gear pinned left, the "new space" tile pinned
-   right, and the centered, horizontally scrollable space tiles between them (one
-   tile per space; the tree above renders only the active space's projects). The
-   bar itself does not clip, so the gear menu can open upward past its top edge. */
+/* ---- The view strip ----
+   The bottom strip: every view you can be in, packed left (the spaces, then
+   Features and Shells past a rule), with the actions gear alone on the right.
+   The bar itself does not clip, so the gear menu can open upward past its top
+   edge. */
 .spaceBar {
   position: relative;
   display: flex;
@@ -660,15 +664,15 @@
   opacity: 0.5;
 }
 
-/* The centered, scrollable middle region holding the space tiles. Grows to fill
-   the gap between the fixed gear (left) and add (right) buttons; overflow scrolls
-   only the tiles, keeping the gear menu clear of the clip. */
+/* The space tiles, packed left and no wider than they need to be. It shrinks
+   and scrolls rather than growing, so the mode tiles stay next to the spaces
+   instead of being pushed to the far edge, and only the tiles are clipped,
+   which keeps the gear menu clear. */
 .spaceScroll {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: calc(3px * var(--ui-scale));
   overflow-x: auto;
 }
@@ -779,35 +783,6 @@
 }
 .space.dropAfter {
   box-shadow: inset -2px 0 0 var(--brand-default);
-}
-
-/* The "new space" tile, pinned to the trailing edge of the bar. */
-/* The new-space + keeps its dashed-outline affordance (it reads as "add a slot"),
-   unlike the fill-less gear/space tiles above. */
-.spaceAdd {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(30px * var(--ui-scale));
-  height: calc(30px * var(--ui-scale));
-  background: transparent;
-  border: 1px dashed var(--border-default);
-  border-radius: var(--sway-radius-md);
-  color: var(--fg-muted);
-  cursor: pointer;
-  transition:
-    color var(--sway-duration-fast) ease,
-    border-color var(--sway-duration-fast) ease;
-}
-/* CSS-sized "+" glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
-.spaceAdd :global(svg) {
-  width: calc(16px * var(--ui-scale));
-  height: calc(16px * var(--ui-scale));
-}
-.spaceAdd:hover {
-  color: var(--fg-default);
-  border-color: var(--brand-default);
 }
 
 /* The Shells list, on the tree's insets like the Feature list beside it. */
