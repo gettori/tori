@@ -477,6 +477,13 @@ describe("chipLabel", () => {
     expect(chipLabel(selectionBlocks("/work/repo/src/a.ts", 10, 10, "x")[0])).toBe("@a.ts#L10");
   });
 
+  // The chip says back what the message says, and a PDF's message spells the
+  // location out as a page (see composeSelectionMention).
+  it("counts a PDF in pages", () => {
+    expect(chipLabel(selectionBlocks("/work/repo/manual.pdf", 3, 3, "x")[0])).toBe("@manual.pdf p.3");
+    expect(chipLabel(selectionBlocks("/work/repo/manual.pdf", 3, 4, "x")[0])).toBe("@manual.pdf p.3-4");
+  });
+
   it("shows prose as itself", () => {
     expect(chipLabel({ type: "text", text: "why is this here" })).toBe("why is this here");
   });

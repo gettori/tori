@@ -26,7 +26,7 @@ use agent_client_protocol::schema::v1::{
 use super::model;
 use super::model::{
     ChatCapabilities, ChatConfigChoice, ChatConfigKind, ChatConfigOption, ChatEffortLevel,
-    ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, Extra, FileEditKind,
+    file_ref_locator, ChatEvent, ChatModeInfo, ChatModelInfo, ContentBlock, Extra, FileEditKind,
     PermissionSuggestion, PlanItem, PlanItemStatus, SlashCommand, ToolLocation, ToolStatus,
     ToolSummary, TurnOutcome, Usage,
 };
@@ -1038,11 +1038,7 @@ pub fn prompt_blocks(blocks: &[ContentBlock]) -> Vec<AcpContentBlock> {
                 Some(AcpContentBlock::Image(ImageContent::new(data.clone(), media_type.clone())))
             }
             ContentBlock::FileRef { path, start_line, end_line, text, label } => {
-                let mut rendered = match (start_line, end_line) {
-                    (Some(s), Some(e)) => format!("@{path}#L{s}-{e}"),
-                    (Some(s), None) => format!("@{path}#L{s}"),
-                    _ => format!("@{path}"),
-                };
+                let mut rendered = file_ref_locator(path, *start_line, *end_line);
                 if let Some(l) = label {
                     rendered = format!("{l}: {rendered}");
                 }
@@ -1945,6 +1941,51 @@ mod tests {
         assert!(matches!(
             blocks.as_slice(),
             [AcpContentBlock::Text(t)] if t.text == "@src/main.rs#L10-20"
+        ));
+    }
+
+    /// Same wire rule as the Claude transport, from the same helper: a PDF is
+    /// read by page, so `#L3` would point the agent at a line it has no way to
+    /// find.
+    #[test]
+    fn a_pdf_reference_names_pages_rather_than_lines() {
+        let one = prompt_blocks(&[ContentBlock::FileRef {
+            path: "docs/manual.pdf".into(),
+            start_line: Some(3),
+            end_line: Some(3),
+            text: None,
+            label: None,
+        }]);
+        assert!(matches!(
+            one.as_slice(),
+            [AcpContentBlock::Text(t)] if t.text == "@docs/manual.pdf (page 3)"
+        ));
+
+        let many = prompt_blocks(&[ContentBlock::FileRef {
+            path: "docs/manual.PDF".into(),
+            start_line: Some(3),
+            end_line: Some(4),
+            text: None,
+            label: None,
+        }]);
+        assert!(matches!(
+            many.as_slice(),
+            [AcpContentBlock::Text(t)] if t.text == "@docs/manual.PDF (pages 3-4)"
+        ));
+    }
+
+    #[test]
+    fn a_source_file_still_names_lines() {
+        let blocks = prompt_blocks(&[ContentBlock::FileRef {
+            path: "src/app.ts".into(),
+            start_line: Some(3),
+            end_line: Some(4),
+            text: None,
+            label: None,
+        }]);
+        assert!(matches!(
+            blocks.as_slice(),
+            [AcpContentBlock::Text(t)] if t.text == "@src/app.ts#L3-4"
         ));
     }
 

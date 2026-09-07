@@ -832,6 +832,31 @@ fn is_label(token: &str) -> bool {
         && n.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// How a [`ContentBlock::FileRef`] names its location on a wire that has no
+/// structured form for one.
+///
+/// Both transports render it, so it is one function: two copies of a wire format
+/// are two chances for the agent to be told two different things about the same
+/// selection.
+///
+/// A `.pdf` is spelled out by page. Inside Sway a PDF's "line" is its page,
+/// because the chips and the jump list already speak in lines, but an agent
+/// reads a PDF by page and would take `#L3` for the file's third line of text.
+pub fn file_ref_locator(path: &str, start_line: Option<u32>, end_line: Option<u32>) -> String {
+    if path.to_ascii_lowercase().ends_with(".pdf") {
+        return match (start_line, end_line) {
+            (Some(s), Some(e)) if e != s => format!("@{path} (pages {s}-{e})"),
+            (Some(s), _) => format!("@{path} (page {s})"),
+            _ => format!("@{path}"),
+        };
+    }
+    match (start_line, end_line) {
+        (Some(s), Some(e)) => format!("@{path}#L{s}-{e}"),
+        (Some(s), None) => format!("@{path}#L{s}"),
+        _ => format!("@{path}"),
+    }
+}
+
 /// The `#L2-4` tail a ranged reference is rendered with, taken back off the
 /// path. No label carries a range today, and reading one back rather than
 /// leaving `#L2-4` buried in a path is what keeps that true by accident rather

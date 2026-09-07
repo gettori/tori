@@ -1,4 +1,12 @@
-// Pure path-scope helpers shared by the delete-space flow.
+// Pure path helpers: scope questions, and what a path's extension makes it.
+
+// A PDF is addressed by page rather than by line wherever a path reaches the
+// agent, so the composers and the two transports all have to ask this. Here
+// rather than in the viewer, which is lazy and would drag a document store into
+// `utils` behind it.
+export function isPdfPath(path: string): boolean {
+  return path.toLowerCase().endsWith(".pdf");
+}
 
 // Is `child` the same path as, or nested under, `parent`? Trailing slashes are
 // normalized; this is the same lexical prefix rule the sidebar's worktree guard

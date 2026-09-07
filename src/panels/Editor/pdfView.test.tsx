@@ -1,8 +1,9 @@
-import { render, waitFor } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import PdfView from "./PdfView";
 import { pdfView, releasePdfsExcept, setPdfView } from "./pdfDocument";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // jsdom has no layout, so a test that wants one has to lend it: `layOut` below
 // gives the viewport a size and a scrollTop that behaves like a real one. Most
@@ -21,10 +22,14 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("./pdfjsRuntime", () => {
-  const page = {
+  const page = (n: number) => ({
     getViewport: ({ scale }: { scale: number }) => ({ width: 612 * scale, height: 792 * scale }),
     render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
-  };
+    // One line per page, naming the page: what a quote spanning pages says is
+    // the whole question, so the text has to be traceable back to where it came
+    // from. The real one answers a `ReadableStream` of positioned items.
+    streamTextContent: () => [`page ${n} text`],
+  });
   return {
     pdfjs: {
       GlobalWorkerOptions: {} as Record<string, string>,
@@ -35,9 +40,33 @@ vi.mock("./pdfjsRuntime", () => {
       getDocument: () => ({
         promise: spy.failWith
           ? Promise.reject(spy.failWith)
-          : Promise.resolve({ numPages: spy.pages, getPage: async () => page }),
+          : Promise.resolve({ numPages: spy.pages, getPage: async (n: number) => page(n) }),
         destroy: async () => {},
       }),
+      // Enough of pdf.js's `TextLayer` to select across, which is all any of
+      // this asks of it: the real one streams the page's items and positions a
+      // span per run, and jsdom has no layout to position anything in.
+      TextLayer: class {
+        container: HTMLElement;
+        source: string[];
+        constructor({ textContentSource, container }: { textContentSource: string[]; container: HTMLElement }) {
+          this.container = container;
+          this.source = textContentSource;
+        }
+        render() {
+          for (const str of this.source) {
+            const span = document.createElement("span");
+            // pdf.js's own: the span is scaffolding for a text run, not a thing
+            // in its own right, so it keeps the text and sheds the generic role.
+            span.setAttribute("role", "presentation");
+            span.textContent = str;
+            this.container.append(span);
+          }
+          return Promise.resolve();
+        }
+        update() {}
+        cancel() {}
+      },
     },
     workerUrl: "/pdfjs/pdf.worker.min.mjs",
     runtimeUrls: {},
@@ -94,6 +123,43 @@ function layOut(container: HTMLElement, width: number, height: number) {
   };
 }
 
+/**
+ * The spans of one page's text layer. CSS Modules are stubbed to the empty
+ * string under vitest, so the layer's own class is not a handle; a `span` under
+ * a page is, because nothing else in a page draws one.
+ */
+const spansOn = (container: HTMLElement, page: number) =>
+  [...container.querySelectorAll<HTMLElement>(`[data-pdf-page="${page}"] span`)];
+
+/** Select from the first word of one page to the last of another, the way a
+ *  drag (or a click then a shift-click) leaves the selection. jsdom fires no
+ *  `selectionchange` of its own, so it is dispatched here as the browser would. */
+function selectAcross(container: HTMLElement, from: number, to: number) {
+  const [a] = spansOn(container, from);
+  const [b] = spansOn(container, to);
+  if (!a || !b) throw new Error(`no text on page ${from} or page ${to}`);
+  const range = document.createRange();
+  range.setStart(a.firstChild!, 0);
+  range.setEnd(b.firstChild!, b.textContent!.length);
+  const sel = document.getSelection()!;
+  sel.removeAllRanges();
+  sel.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+}
+
+/** A 12-page document in a laid-out pane, scrolled to the top. */
+async function readyPage(onQuote?: (text: string, first: number, last: number) => void) {
+  const { container } = render(() => <PdfView path={PATH} onQuote={onQuote} />);
+  await waitFor(() => expect(pdfView(PATH).pages).toBe(12));
+  const pane = layOut(container, 612 + 32, 900);
+  await waitFor(() => expect(spansOn(container, 1).length).toBeGreaterThan(0));
+  return { container, pane };
+}
+
+/** Where the viewport has to sit for `page` to start at its top, for a 12-page
+ *  Letter document at scale 1: 16px of column padding, then 792 + 12 per page. */
+const topOf = (page: number) => 16 + (page - 1) * 804;
+
 beforeAll(() => {
   vi.stubGlobal("Worker", class {});
   vi.stubGlobal(
@@ -110,6 +176,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  document.getSelection()?.removeAllRanges();
   releasePdfsExcept([]);
   observers.length = 0;
   spy.pages = 12;
@@ -269,6 +336,152 @@ describe("PdfView", () => {
       el.dispatchEvent(scrolling);
       expect(scrolling.defaultPrevented).toBe(false);
       expect(pdfView(PATH).zoom).toBe(setting);
+    });
+  });
+
+  describe("the text layer", () => {
+    it("lays the page's words over the page it drew", async () => {
+      const { container } = await readyPage();
+      expect(spansOn(container, 1).map((n) => n.textContent)).toEqual(["page 1 text"]);
+      expect(spansOn(container, 2).map((n) => n.textContent)).toEqual(["page 2 text"]);
+    });
+
+    it("re-places the words it has on a zoom rather than building them again", async () => {
+      const { container } = await readyPage();
+      const [before] = spansOn(container, 1);
+
+      setPdfView(PATH, { zoom: 200 });
+      await waitFor(() => expect(pdfView(PATH).scale).toBeCloseTo(2 * (96 / 72), 6));
+      // The same node, still in the document. A layer rebuilt per zoom step
+      // would delete the nodes a standing selection is anchored to, and a range
+      // whose boundary is removed collapses: the selection would vanish on the
+      // first zoom after it was made.
+      expect(spansOn(container, 1)[0]).toBe(before);
+      expect(before.isConnected).toBe(true);
+    });
+
+    it("names every control it draws over the page", async () => {
+      const { container } = await readyPage();
+      selectAcross(container, 1, 2);
+      // With the Quote button showing, which is the only thing here a reader
+      // operates: the spans themselves are pdf.js's transparent text runs,
+      // marked presentational the way its own viewer marks them.
+      await expectNoAxeViolations(container);
+    });
+  });
+
+  describe("a selection that outlives the pages it started on", () => {
+    it("keeps a page's words once its canvas has gone", async () => {
+      const { container, pane } = await readyPage();
+      await waitFor(() => expect(spansOn(container, 3).length).toBe(1));
+      selectAcross(container, 3, 3);
+
+      pane.scrollTo(topOf(9));
+      await waitFor(() => expect(pdfView(PATH).page).toBe(9));
+      // The picture is gone, which is the point of the window; the words are
+      // not, because an end of the selection is anchored in them.
+      expect(container.querySelector('[data-pdf-page="3"] canvas')).toBeNull();
+      expect(spansOn(container, 3).length).toBe(1);
+    });
+
+    it("gives the pages between the ends their words before the quote is read", async () => {
+      const { container, pane } = await readyPage();
+      await waitFor(() => expect(spansOn(container, 3).length).toBe(1));
+      selectAcross(container, 3, 3);
+
+      pane.scrollTo(topOf(6));
+      await waitFor(() => expect(spansOn(container, 6).length).toBe(1));
+      // The shift-click at the far end. Pages 4 and 5 were dropped on the way
+      // past, so without the selection widening the window the quote would jump
+      // straight from page 3 to page 6.
+      selectAcross(container, 3, 6);
+      // Page 5 is in the render window from here, so page 4 is the one that has
+      // to come back from the selection alone. Waiting on 5 would pass before
+      // the layer that matters had been built.
+      await waitFor(() => expect(spansOn(container, 4).length).toBe(1));
+
+      const quoted = document.getSelection()!.toString();
+      expect(quoted).toContain("page 4 text");
+      expect(quoted).toContain("page 5 text");
+    });
+  });
+
+  describe("quoting to the agent", () => {
+    it("offers Quote for a selection and hands over the pages it spans", async () => {
+      const onQuote = vi.fn();
+      const { container } = await readyPage(onQuote);
+      selectAcross(container, 1, 2);
+
+      fireEvent.click(screen.getByRole("button", { name: "Quote" }));
+      await waitFor(() =>
+        expect(onQuote).toHaveBeenCalledWith(expect.stringContaining("page 1 text"), 1, 2),
+      );
+    });
+
+    it("waits for a page the selection only just reached before reading the quote", async () => {
+      const onQuote = vi.fn();
+      const { container, pane } = await readyPage(onQuote);
+      await waitFor(() => expect(spansOn(container, 3).length).toBe(1));
+      selectAcross(container, 3, 3);
+      pane.scrollTo(topOf(6));
+      await waitFor(() => expect(spansOn(container, 6).length).toBe(1));
+
+      // Page 4 is out of the render window and starts fetching its words only
+      // now. Quoting in the same breath is exactly the race, so the click comes
+      // with no wait in between.
+      selectAcross(container, 3, 6);
+      fireEvent.click(screen.getByRole("button", { name: "Quote" }));
+
+      await waitFor(() => expect(onQuote).toHaveBeenCalled());
+      expect(onQuote.mock.calls[0][0]).toContain("page 4 text");
+      expect(onQuote.mock.calls[0].slice(1)).toEqual([3, 6]);
+    });
+
+    it("takes Cmd+Shift+M on the focused pane for the same send", async () => {
+      const onQuote = vi.fn();
+      const { container } = await readyPage(onQuote);
+      selectAcross(container, 2, 2);
+
+      const pane = scroller(container);
+      // The chord belongs to the pane, not to the window: a selection left
+      // standing in a PDF must not answer for a keystroke typed in the
+      // composer, and being focusable is what lets the browser say which.
+      expect(pane.tabIndex).toBe(0);
+      const e = new KeyboardEvent("keydown", { key: "M", metaKey: true, shiftKey: true, cancelable: true });
+      pane.dispatchEvent(e);
+      expect(e.defaultPrevented).toBe(true);
+      await waitFor(() => expect(onQuote).toHaveBeenCalledWith("page 2 text", 2, 2));
+    });
+
+    it("ignores the chord typed anywhere but the pane", async () => {
+      const onQuote = vi.fn();
+      const { container } = await readyPage(onQuote);
+      selectAcross(container, 2, 2);
+
+      const e = new KeyboardEvent("keydown", { key: "M", metaKey: true, shiftKey: true, cancelable: true });
+      document.dispatchEvent(e);
+      expect(e.defaultPrevented).toBe(false);
+      expect(onQuote).not.toHaveBeenCalled();
+    });
+
+    it("leaves the chord alone when the selection is somewhere else", async () => {
+      const onQuote = vi.fn();
+      const { container } = await readyPage(onQuote);
+      const outside = document.createElement("p");
+      outside.textContent = "not the document";
+      document.body.append(outside);
+      const range = document.createRange();
+      range.selectNodeContents(outside);
+      const sel = document.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.dispatchEvent(new Event("selectionchange"));
+
+      const e = new KeyboardEvent("keydown", { key: "M", metaKey: true, shiftKey: true, cancelable: true });
+      scroller(container).dispatchEvent(e);
+      expect(e.defaultPrevented).toBe(false);
+      expect(onQuote).not.toHaveBeenCalled();
+      outside.remove();
     });
   });
 

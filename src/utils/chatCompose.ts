@@ -16,6 +16,7 @@
 // composer as removable chips and wait there. Nothing here sends anything.
 import { createSignal } from "solid-js";
 import type { ContentBlock } from "./chatTypes";
+import { isPdfPath } from "./pathScope";
 
 /** Where a composed message for `sessionId` should go. */
 export function routeFor(sessionId: string, chatIds: ReadonlySet<string>): "chat" | "pty" {
@@ -519,7 +520,11 @@ export function chipLabel(block: ContentBlock): string {
   const name = block.path.split("/").pop() || block.path;
   if (block.label) return `${block.label} ${name}`;
   if (block.startLine === null) return `@${name}`;
-  return block.endLine !== null && block.endLine !== block.startLine
-    ? `@${name}#L${block.startLine}-L${block.endLine}`
-    : `@${name}#L${block.startLine}`;
+  const spans = block.endLine !== null && block.endLine !== block.startLine;
+  // A page, not a line, for a PDF: the chip says back what the message says, and
+  // the message spells this one out as a page (see `composeSelectionMention`).
+  if (isPdfPath(block.path)) {
+    return spans ? `@${name} p.${block.startLine}-${block.endLine}` : `@${name} p.${block.startLine}`;
+  }
+  return spans ? `@${name}#L${block.startLine}-L${block.endLine}` : `@${name}#L${block.startLine}`;
 }
