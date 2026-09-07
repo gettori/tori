@@ -2748,6 +2748,11 @@ export default function LeftSidebar(props: {
   // elements do not exist yet and an observer set up there watches nothing for
   // the rest of the session. `observe` also delivers an initial callback, which
   // is what takes the first measurement.
+  //
+  // The bar and nothing else. Its width is the column's and its height tracks
+  // `--ui-scale`, which is both inputs; and unlike the scroller its box does not
+  // move while a tile animates open, so a measurement can never read a width
+  // that is still in flight.
   let stripRO: ResizeObserver | undefined;
   function watchStrip(el: HTMLElement) {
     if (typeof ResizeObserver === "undefined") return;
@@ -2813,9 +2818,8 @@ export default function LeftSidebar(props: {
         <Show when={resolveIcon(g.icon)} fallback={g.name.trim().charAt(0).toUpperCase() || "?"}>
           {(glyph) => <Icon icon={glyph()} />}
         </Show>
-        <Show when={on() && namesFit()}>
-          <span class={styles.tileName}>{g.name}</span>
-        </Show>
+        {/* Always mounted; the 0fr track hides it. See .tileName. */}
+        <span class={styles.tileName}>{g.name}</span>
         {spaceBubble(g)}
       </Tooltip>
     </ContextMenu>
@@ -2838,9 +2842,7 @@ export default function LeftSidebar(props: {
         onClick={() => switchMode(m)}
       >
         <Icon icon={glyph} />
-        <Show when={on() && namesFit()}>
-          <span class={styles.tileName}>{label}</span>
-        </Show>
+        <span class={styles.tileName}>{label}</span>
         {/* Shown lit as well as dark: the count is how many are open, not a
             call for attention, and dropping it on click made the tile jump. */}
         <Show when={!!count}>
@@ -3186,7 +3188,7 @@ export default function LeftSidebar(props: {
             <Icon icon={Waypoints} />
             <span class={styles.tileName} ref={probeNameEl} />
           </span>
-          <div class={styles.spaceScroll} ref={(el) => { scrollEl = el; watchStrip(el); }}>
+          <div class={styles.spaceScroll} ref={(el) => { scrollEl = el; }}>
             <For each={rootSpaces()}>{(g) => spaceTile(g)}</For>
             <Show when={rootSpaces().length > 0 && extSpaces().length > 0}>
               <div class={styles.spaceDivider} />
