@@ -704,15 +704,23 @@
    colour. No fill and no coloured border: the tile is a 30px square in a row of
    them, and giving each one a tinted box turned the bar into a set of competing
    chips. The hover border stays the brand, as it always was. */
+/* A grid, not a flex row, for one reason: `width: 30px` cannot transition to
+   `width: auto`, and a track can. The name lives in a second column that goes
+   0fr -> 1fr, so the tile opens and closes at its own real width with nothing
+   measured in JS. An engine that will not interpolate the tracks snaps between
+   the two, which is exactly what this did before. */
 .space {
   --space-hue-rgb: var(--shell-glow-rgb);
   position: relative;
   flex: none;
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: auto 0fr;
+  column-gap: 0;
   align-items: center;
   justify-content: center;
-  width: calc(30px * var(--ui-scale));
+  min-width: calc(30px * var(--ui-scale));
   height: calc(30px * var(--ui-scale));
+  padding-inline: calc(6px * var(--ui-scale));
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--sway-radius-md);
@@ -721,8 +729,20 @@
   font-weight: 600;
   cursor: pointer;
   transition:
+    grid-template-columns var(--sway-duration-med) ease,
+    column-gap var(--sway-duration-med) ease,
+    padding-inline var(--sway-duration-med) ease,
+    background var(--sway-duration-fast) ease,
     color var(--sway-duration-fast) ease,
     border-color var(--sway-duration-fast) ease;
+}
+
+/* The strip is a row of small targets; a tile sliding open under the pointer is
+   the one place here motion earns its keep, and the one place to drop it. */
+@media (prefers-reduced-motion: reduce) {
+  .space {
+    transition: none;
+  }
 }
 /* The tile's own glyph (direct child, so a nested bubble's status icons keep
    their size). CSS-sized so it tracks --ui-scale. */
@@ -758,8 +778,8 @@
    always carry its name: in a narrow sidebar the names go and the lit tile
    stays a square, still filled, still the one that is lit. */
 .space.titled {
-  width: auto;
-  gap: calc(7px * var(--ui-scale));
+  grid-template-columns: auto 1fr;
+  column-gap: calc(7px * var(--ui-scale));
   padding-inline: calc(9px * var(--ui-scale));
 }
 
@@ -769,6 +789,11 @@
   color: var(--brand-default);
 }
 
+/* Always in the DOM, clipped to nothing by its 0fr track when the tile is not
+   lit. Mounting it with the pill would give the opening something to animate
+   and the closing nothing, so the name would pop out and the tile would shrink
+   after it. The gap before it is the grid's, not this element's padding, which
+   a zero-width column would still have to find room for. */
 .tileName {
   max-width: calc(140px * var(--ui-scale));
   overflow: hidden;
