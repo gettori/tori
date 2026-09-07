@@ -5,17 +5,14 @@
    Stroke travel and node flashes, never rotation: these sit in a dense column
    of static Lucide glyphs, where a spinner would read as an error. */
 @layer components {
-  /* One travel *speed*, not one duration. The folder outline is 1.90x the
-     length of the branch path (49.68 vs 26.14 user units), so tracing both in
-     one cycle sent the worktree head across the glyph at nearly twice the pace
-     - same frequency, visibly more urgent. Each mark's cycle is scaled to its
-     own path instead, which is what makes the two read as the same animation.
-     Branch is the reference; 2200 * 1.90 rounds to the worktree's. */
+  /* The folder outline is 1.90x the branch path (49.68 vs 26.14 user units).
+     Equal cycles ran its head 1.9x faster and read as urgent; equal speed ran
+     its cycle 1.9x long and read as slow. sqrt(1.90) splits both to 1.38x. */
   .mark {
     --gm-cycle: 2200ms;
   }
   .mark[data-mark="worktree"] {
-    --gm-cycle: 4200ms;
+    --gm-cycle: 3000ms;
   }
 
   .mark .pulse {
