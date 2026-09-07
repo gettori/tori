@@ -133,10 +133,15 @@ describe("the active space header", () => {
     expect(await screen.findByText("Delete space")).toBeTruthy();
   });
 
-  it("is a Spaces-mode heading, gone with the tree in Features", async () => {
+  // With the mode tabs gone the heading is the only thing naming the view, so
+  // it follows the strip into Features rather than disappearing with the tree.
+  // What it drops there is the space's own furniture: the kind label and the
+  // menu belong to a space, and Features is not one.
+  it("names the mode instead of the space outside Spaces", async () => {
     mount();
     await waitFor(() => expect(header()).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Features" }));
-    await waitFor(() => expect(header()).toBeNull());
+    await waitFor(() => expect(header()!.textContent!.trim()).toBe("Features"));
+    expect(screen.queryByRole("button", { name: "Actions for work" })).toBeNull();
   });
 });
