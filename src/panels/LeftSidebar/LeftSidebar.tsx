@@ -1,4 +1,4 @@
-import { createSignal, For, Index, Show, onMount, onCleanup, createEffect, createMemo, on, untrack, type JSX } from "solid-js";
+import { createSignal, For, Index, Match, Show, Switch, onMount, onCleanup, createEffect, createMemo, on, untrack, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -113,8 +113,6 @@ import {
   FolderOpen,
   RotateCcw,
   Folder,
-  GitBranch,
-  GitFork,
   Layers,
   Ellipsis,
   Search,
@@ -126,7 +124,7 @@ import {
   Check,
   CircleDashed,
 } from "lucide-solid";
-import type { LucideIcon } from "lucide-solid";
+import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
   attemptFolderName,
   groupAttempts,
@@ -141,22 +139,27 @@ import { featureKey, featureSelection, isShellsKey, shellsSelection, tabUnderFol
 import { commandStatus } from "../Terminal/commandStatus";
 import styles from "./LeftSidebar.module.css";
 
-// Lucide glyph for a branch-unit row, keyed by its git kind: a worktree (or an
-// empty .bare stub) reads as a fork, a branch of a plain repo as a branch, and
-// a non-git folder as a plain folder (matching a space's folder mark). This
-// used to mark the *project* row; it sits on the branch rows now, where the
-// distinction is about the thing named on the row rather than about a container
-// whose own identity the project icon carries.
-function kindIcon(kind: string | undefined): LucideIcon {
-  switch (kind) {
-    case "worktree":
-    case "incomplete":
-      return GitFork;
-    case "plain":
-      return GitBranch;
-    default:
-      return Folder;
-  }
+// Glyph for a branch-unit row, keyed by its git kind: a worktree (or an empty
+// .bare stub) reads as a folder with a branch off it, a branch of a plain repo
+// as a branch, and a non-git folder as a plain folder (matching a space's
+// folder mark). This used to mark the *project* row; it sits on the branch rows
+// now, where the distinction is about the thing named on the row rather than
+// about a container whose own identity the project icon carries.
+//
+// The two git kinds animate while a session under them is executing, so a
+// scan down the column finds the working folder without reading a chip; a
+// non-git folder has no sessions to report and stays the static Lucide glyph.
+function UnitIcon(props: { kind: string | undefined; active: boolean }) {
+  return (
+    <Switch fallback={<Icon icon={Folder} />}>
+      <Match when={props.kind === "worktree" || props.kind === "incomplete"}>
+        <WorktreeMark active={props.active} />
+      </Match>
+      <Match when={props.kind === "plain"}>
+        <BranchMark active={props.active} />
+      </Match>
+    </Switch>
+  );
 }
 
 // Trailing disclosure chevron for sidebar rows: a Lucide chevron-down pinned to
@@ -2357,6 +2360,9 @@ export default function LeftSidebar(props: {
   // Shared by the flat worktree/branch list and by the attempts inside a group,
   // which are the same node one indent deeper.
   function unitNode(g: Space, p: Project, u: BranchUnit, attempt?: AttemptRecord) {
+    // One rollup for the row: the glyph's pulse and the status chip are two
+    // readings of the same fact, and computing it twice is how they drift.
+    const rollup = () => bubbleForUnits(p, [u]);
     return (
       <div
         class={`node ${styles.branchNode}`}
@@ -2372,7 +2378,7 @@ export default function LeftSidebar(props: {
           onDragStart={(e) => startAbsDrag(e, u.folderPath)}
           aria-current={unitSelected(u) ? "true" : undefined}
         >
-          <span class={styles.rowIcon}><Icon icon={kindIcon(u.kind)} /></span>
+          <span class={styles.rowIcon}><UnitIcon kind={u.kind} active={rollup().executing > 0} /></span>
           <span class={styles.label}>{unitLabel(u)}</span>
           <For each={featuresAt(u.folderPath)}>
             {(f) => (
@@ -2397,7 +2403,7 @@ export default function LeftSidebar(props: {
             <span class={styles.dot} title="current checkout">●</span>
           </Show>
           {forgeChipNode(g, p, u)}
-          {statusBubble(bubbleForUnits(p, [u]))}
+          {statusBubble(rollup())}
         </ContextMenu>
       </div>
     );

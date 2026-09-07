@@ -270,9 +270,12 @@ describe("the sidebar levels that outlive the session rows", () => {
     expect(notes.querySelector("img")).toBeNull();
     expect(notes.querySelector('[class*="lucide-rocket"]')).toBeTruthy();
 
-    // Both worktree rows carry the fork glyph the project row used to.
+    // Both worktree rows carry the worktree mark the project row used to, at
+    // rest: nothing is executing under either of them.
     for (const label of ["main", "feat"]) {
-      expect((await row(label)).querySelector('[class*="lucide-git-fork"]')).toBeTruthy();
+      const mark = (await row(label)).querySelector('[data-mark="worktree"]');
+      expect(mark).toBeTruthy();
+      expect(mark?.getAttribute("data-active")).toBe("false");
     }
   });
 
