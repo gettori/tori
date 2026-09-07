@@ -1,0 +1,184 @@
+/* The animated half of the git marks: while a session in that unit is mid-turn,
+   a pulse traces the same path the resting glyph draws, so the row's own icon
+   reports the work rather than a second badge appearing beside it.
+
+   Stroke travel and node flashes, never rotation: these sit in a dense column
+   of static Lucide glyphs, where a spinner would read as an error. */
+@layer components {
+  /* One travel *speed*, not one duration. The folder outline is 1.90x the
+     length of the branch path (49.68 vs 26.14 user units), so tracing both in
+     one cycle sent the worktree head across the glyph at nearly twice the pace
+     - same frequency, visibly more urgent. Each mark's cycle is scaled to its
+     own path instead, which is what makes the two read as the same animation.
+     Branch is the reference; 2200 * 1.90 rounds to the worktree's. */
+  .mark {
+    --gm-cycle: 2200ms;
+  }
+  .mark[data-mark="worktree"] {
+    --gm-cycle: 4200ms;
+  }
+
+  .mark .pulse {
+    display: none;
+  }
+
+  /* The resting glyph is left alone and the pulse rides over it in the selected
+     row's foreground, one step brighter than the icon's own `--fg-muted`. A
+     working row gains a highlight rather than losing contrast: dimming the base
+     made the busiest row in the column read as the disabled one.
+
+     `stroke` is set here rather than left to `currentColor` on the root, so the
+     colour does not depend on when a browser resolves an inherited keyword;
+     `color` carries it to the nodes, which fill from `currentColor`. */
+  .mark[data-active="true"] .pulse {
+    display: inline;
+    color: var(--fg-default);
+    stroke: var(--fg-default);
+  }
+
+  .tail {
+    stroke-dasharray: 44 200;
+    opacity: 0.55;
+  }
+  .head {
+    stroke-dasharray: 24 200;
+  }
+  .stem {
+    stroke-dasharray: 55 200;
+  }
+
+  .mark[data-active="true"] .tail {
+    animation: gm-tail var(--gm-cycle) linear infinite;
+  }
+  .mark[data-active="true"] .head {
+    animation: gm-head var(--gm-cycle) linear infinite;
+  }
+  .mark[data-active="true"] .stem {
+    animation: gm-stem var(--gm-cycle) linear infinite;
+  }
+  .mark[data-active="true"] .nodeTop {
+    animation: gm-node-top var(--gm-cycle) ease-in-out infinite;
+  }
+  .mark[data-active="true"] .nodeEnd {
+    animation: gm-node-end var(--gm-cycle) ease-in-out infinite;
+  }
+  .mark[data-active="true"] .nodeLeaf {
+    animation: gm-node-leaf var(--gm-cycle) ease-in-out infinite;
+  }
+  .mark[data-active="true"] .nodeFork {
+    animation: gm-node-fork var(--gm-cycle) ease-in-out infinite;
+  }
+
+  @keyframes gm-tail {
+    0% {
+      stroke-dashoffset: 44;
+    }
+    76%,
+    100% {
+      stroke-dashoffset: -100;
+    }
+  }
+
+  @keyframes gm-head {
+    0% {
+      stroke-dashoffset: 24;
+    }
+    76%,
+    100% {
+      stroke-dashoffset: -120;
+    }
+  }
+
+  /* Starts at 62%, where the outline trace is running out: the branch reads as
+     something the folder grew, not as a second animation sharing the box. */
+  @keyframes gm-stem {
+    0%,
+    62% {
+      stroke-dashoffset: 55;
+      opacity: 0;
+    }
+    65% {
+      opacity: 1;
+    }
+    95% {
+      stroke-dashoffset: -100;
+      opacity: 1;
+    }
+    96%,
+    100% {
+      stroke-dashoffset: -100;
+      opacity: 0;
+    }
+  }
+
+  @keyframes gm-node-top {
+    0%,
+    17%,
+    51%,
+    100% {
+      opacity: 0;
+      fill-opacity: 0;
+    }
+    26%,
+    34% {
+      opacity: 1;
+      fill-opacity: 0.7;
+    }
+  }
+
+  @keyframes gm-node-end {
+    0%,
+    47%,
+    94%,
+    100% {
+      opacity: 0;
+      fill-opacity: 0;
+    }
+    60%,
+    72% {
+      opacity: 1;
+      fill-opacity: 0.7;
+    }
+  }
+
+  @keyframes gm-node-leaf {
+    0%,
+    51%,
+    85%,
+    100% {
+      opacity: 0;
+      fill-opacity: 0;
+    }
+    61%,
+    68% {
+      opacity: 1;
+      fill-opacity: 0.7;
+    }
+  }
+
+  @keyframes gm-node-fork {
+    0%,
+    68%,
+    100% {
+      opacity: 0;
+      fill-opacity: 0;
+    }
+    79%,
+    85% {
+      opacity: 1;
+      fill-opacity: 0.7;
+    }
+  }
+
+  /* Reduced motion still has to say "working", so the pulse goes and the
+     resting glyph fills its nodes in the same brighter foreground instead: a
+     static difference, read the same way. */
+  @media (prefers-reduced-motion: reduce) {
+    .mark[data-active="true"] .base circle {
+      fill: var(--fg-default);
+    }
+    .mark[data-active="true"] .pulse {
+      display: none;
+    }
+  }
+}
