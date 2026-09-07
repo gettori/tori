@@ -17,6 +17,11 @@ const CodeEditor = lazy(() => import("./CodeEditor"));
 // the Search panel can reach them on the eager path without dragging the
 // library in behind them.
 const SearchResultsBuffer = lazy(() => import("./SearchResultsBuffer"));
+// The PDF viewer sits behind an edge of its own, and pdf.js behind a second one
+// inside it (`pdfjsRuntime`). `pdfDocument` stays on the eager path - the tab
+// predicate and the release sweep are needed whether or not the view is
+// mounted - and is deliberately free of any pdf.js *value* import.
+const PdfView = lazy(() => import("./PdfView"));
 import FileTree, { type TreeRoot } from "./FileTree/FileTree";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
@@ -65,6 +70,7 @@ import CommitDetail from "./CommitDetail";
 import ConflictView from "./ConflictView";
 import DebugSourceView from "./DebugSourceView";
 import ImageView, { isImagePath } from "./ImageView";
+import { isPdfPath, releasePdfsExcept } from "./pdfDocument";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Resizer from "../../components/Resizer/Resizer";
 import IconButton from "../../components/IconButton/IconButton";
@@ -763,6 +769,10 @@ export default function Editor(props: {
     const t = fileTabOf(id);
     return t != null && isImagePath(t.path);
   };
+  const pdfOf = (id: string | null) => {
+    const t = fileTabOf(id);
+    return t != null && isPdfPath(t.path);
+  };
   const svgOf = (id: string | null) => {
     const t = fileTabOf(id);
     return t != null && t.path.toLowerCase().endsWith(".svg");
@@ -780,7 +790,14 @@ export default function Editor(props: {
   /** What a pane's own CodeMirror view should hold: nothing at all unless the
    *  tab it shows is a file being edited rather than rendered. */
   const editablePathOf = (id: string | null) =>
-    tabOf(id) && !imageOf(id) && !previewingOf(id) && !syntheticOf(id) ? id : null;
+    tabOf(id) && !imageOf(id) && !pdfOf(id) && !previewingOf(id) && !syntheticOf(id) ? id : null;
+
+  // Parsed PDFs are released the same way CodeEditor evicts buffers: off the
+  // open-tab set, not off `PdfView`'s cleanup. A tab switch unmounts the view
+  // while the tab, and the page the reader was on, are still there - so a
+  // mount-scoped release would re-parse the file on every switch back. This one
+  // effect covers every way a tab goes away (close, purge, workspace delete).
+  createEffect(on(allOpenPaths, (paths) => releasePdfsExcept(paths)));
 
   const activeTab = () => tabs().find((t) => tabId(t) === activeId()) ?? null;
   // The active tab when it is a real file. The three suffix tests below ask
@@ -2484,6 +2501,14 @@ export default function Editor(props: {
           </Show>
           <Show when={imageOf(fileId())}>
             <ImageView path={fileId()!} />
+          </Show>
+          {/* `goto` carries a page rather than a line for a PDF: the chat, the
+              chips and the jump list already speak in `line`, and inside Sway
+              that is what a PDF's line is. */}
+          <Show when={pdfOf(fileId())}>
+            <Suspense fallback={<div class={styles.editorEmpty}>Loading viewer...</div>}>
+              <PdfView path={fileId()!} goto={gotoTarget()} />
+            </Suspense>
           </Show>
           <Show when={previewingOf(fileId())}>
             <Show when={svgOf(fileId())} fallback={<MarkdownPreview path={fileId()!} />}>

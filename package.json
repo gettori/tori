@@ -59,6 +59,7 @@
     "lucide-solid": "^1.24.0",
     "marked": "^18.0.6",
     "mermaid": "^11.17.2",
+    "pdfjs-dist": "^6.3.289",
     "shiki": "^4.4.3",
     "solid-js": "^1.9.8"
   },
