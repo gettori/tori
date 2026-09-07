@@ -18,14 +18,18 @@ const ENTRY = "../index.tsx";
 // the grammars, so the fence sits on @lezer and the lazy-only modules. Shiki
 // sits behind the same fence: the chat's highlighter reaches it only through
 // highlight.ts's dynamic import. So does mermaid, which Diagram.tsx fetches on
-// first sight of a diagram and never before.
+// first sight of a diagram and never before. And so does pdf.js, 2.5 MB of
+// library and worker that only a session opening a PDF should ever pay for:
+// `pdfjsRuntime.ts` is the one module naming it, reached by dynamic import
+// alone, so a static edge to either is the offence.
 const FORBIDDEN_SPECIFIER =
-  /^(@codemirror\/(?!view$|state$|merge$)|codemirror$|@lezer\/|shiki$|shiki\/|@shikijs\/|mermaid$|mermaid\/)/;
+  /^(@codemirror\/(?!view$|state$|merge$)|codemirror$|@lezer\/|shiki$|shiki\/|@shikijs\/|mermaid$|mermaid\/|pdfjs-dist$|pdfjs-dist\/)/;
 const FORBIDDEN_MODULES = [
   "../panels/Editor/CodeEditor",
   "../panels/Editor/SearchResultsBuffer",
   "../panels/Editor/lspClient",
   "../panels/Editor/diffGutter",
+  "../panels/Editor/pdfjsRuntime",
   "../panels/Chat/shikiEngine",
   "../utils/mermaidEngine",
 ];
@@ -34,6 +38,13 @@ const FORBIDDEN_MODULES = [
 // A dynamic `import("x")` is the lazy edge itself and must not count, and a
 // type-only import erases at build time.
 const STATIC_EDGE = /(?:^|\n)\s*((?:import|export)\s[^;'"]*?)["']([^"']+)["']/g;
+// The run above crosses newlines, because a multi-line import list has to still
+// match. That also lets a statement with no semicolon - `export class X {}` -
+// pair with the next quoted string anywhere below it, which read a
+// `typeof import("./x")` *type annotation* four lines later as a static edge to
+// `./x`. In the real grammar a specifier is preceded by `from`, or by nothing at
+// all in a side-effect `import "x"`, so require one of those.
+const SPECIFIER_HEAD = /(?:^|\s)from\s*$|^(?:import|export)\s*$/;
 
 /** Join a module key ("../panels/Editor/Editor.tsx") with a relative
  *  specifier ("../../utils/events"), staying in the glob's key space. */
@@ -67,6 +78,7 @@ describe("the CodeMirror lazy boundary", () => {
       const key = queue.pop()!;
       for (const m of SOURCES[key].matchAll(STATIC_EDGE)) {
         if (/^(?:import|export)\s+type\b/.test(m[1].trim())) continue;
+        if (!SPECIFIER_HEAD.test(m[1])) continue;
         const spec = m[2];
         if (FORBIDDEN_SPECIFIER.test(spec)) offenses.push(`${key} -> ${spec}`);
         const local = resolveLocal(key, spec);

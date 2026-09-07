@@ -1,0 +1,49 @@
+/* An OverlayScroll frame; the viewport inside is the scroller, so no overflow
+   here. min-height keeps the column able to shrink to the pane. */
+.pdfView {
+  flex: 1;
+  min-height: 0;
+  background: var(--canvas-default);
+}
+
+/* The column's geometry is computed in `pdfLayout.ts` and written as inline
+   `top`/`width`/`height`, so there is deliberately no padding or gap here: two
+   places owning the same spacing is how the scrollbar and the pages disagree. */
+.column {
+  position: relative;
+  width: 100%;
+}
+
+/* `left: 0; right: 0; margin: auto` centres a page narrower than the viewport
+   without translating it, which at a zoom wider than the viewport would push
+   the left edge out of reach of the horizontal scroll. */
+.page {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  /* A page is white because the paper is white. Inverting it would turn every
+     embedded photograph into a negative, so the chrome is themed and the page
+     is not. */
+  background: var(--sway-white);
+  border: var(--sway-border-thin) solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  overflow: hidden;
+}
+
+/* The canvas fills its page box, so the intrinsic pixel size is free to differ
+   from the displayed size: that is what carries both the device pixel ratio and
+   the pixel ceiling, where a capped page is stretched rather than left blank. */
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.failure {
+  margin: 0;
+  padding: var(--sway-space-5);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-sm);
+  line-height: var(--sway-line-normal);
+}
