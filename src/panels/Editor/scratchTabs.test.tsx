@@ -107,6 +107,8 @@ const {
   EDITOR_NEW_SCRATCH,
   EDITOR_SAVE_AS,
   EDITOR_REOPEN_CLOSED,
+  EDITOR_TAB_CLOSED,
+  EDITOR_CLOSE_PATH,
 } = await import("../../utils/events");
 
 const LS_TABS_KEY = "sway.editor.tabs.v1";
@@ -365,6 +367,32 @@ describe("saving one under a real name", () => {
 describe("closing an untitled buffer", () => {
   const deleted = () => argsFor("fs_delete");
   const TRASHED = { root: SCRATCH_DIR, path: SCRATCH, noun: "scratch folder" };
+
+  // The chat composer's open-in-editor link lets go on this report, so it has
+  // to name the file and fire once per close.
+  it("reports the closed tab by path, once", async () => {
+    onDisk[SCRATCH] = "a draft";
+    await mountEditor();
+    await open(SCRATCH);
+    const closed: { path: string }[] = [];
+    const off = onWith<{ path: string }>(EDITOR_TAB_CLOSED, (d) => closed.push(d));
+
+    fireEvent.click(closeOf("Untitled-1"));
+    await waitFor(() => expect(code?.openPaths).toEqual([]));
+    expect(closed).toEqual([{ path: SCRATCH }]);
+    off();
+  });
+
+  it("closes the tab that holds a path when asked for it by name", async () => {
+    onDisk[SCRATCH] = "a draft";
+    await mountEditor();
+    await open(SCRATCH);
+
+    emitWith(EDITOR_CLOSE_PATH, { path: "/somewhere/else" });
+    expect(code?.openPaths).toEqual([SCRATCH]);
+    emitWith(EDITOR_CLOSE_PATH, { path: SCRATCH });
+    await waitFor(() => expect(code?.openPaths).toEqual([]));
+  });
 
   it("takes an empty one's file with it, and does not offer it back", async () => {
     // Every Cmd+N makes a file. Without this the directory fills with empties
