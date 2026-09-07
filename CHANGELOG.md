@@ -8,22 +8,104 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.907.0-alpha
 
-- A new mark: the sailboat replaces the S-curve tile everywhere it showed,
-  the app icon, the Dock, the README and the dev favicon. The master is
-  `app-icon.png` at the repo root; `pnpm tauri icon` regenerates the bundle
-  set from it.
+Accounts: sign in more than once per agent, and every session says which login
+it runs as. Quota lands in the titlebar, Sway's own commands become terminal
+tabs under a new Shells mode, and PDFs open as real pages you can quote from.
+
+### Accounts
+
+- An account is part of what a session is, the same way the agent is. A chat or
+  agent tab is bound to the account it runs as, and a new tab opens on the
+  account this project last used.
+- Every account carries its own model catalogue, because a catalogue is an
+  account's answer rather than an agent's: two logins of one binary can offer
+  different models. The model palette splits the provider row accordingly and
+  is wide enough for an account name.
+- Rename an account in place by clicking its name. Signing one out asks first,
+  and says where that account's profile home is.
+- The Models section reads as tabs, one account at a time, and stays live.
+- Account cards all start closed, and "Add account" sits in the Accounts
+  heading beside "Check again".
+
+### Quota
+
+- Every account gets a quota bar in the titlebar, per account rather than per
+  agent, with each agent saying how deep its limits can be read.
+- Claude's own rate limit frames now keep everything they carry, including the
+  per-model weekly window read off its token once you ask for it. All limits
+  share one vocabulary.
+- Codex is asked for its quota directly, since it never volunteers it on the
+  wire the way Claude does.
+- Windows are named as the design names them: `Session, 5h rolling`,
+  `Week, all models`, `Week, Fable only`, with a settings chip each.
+- The poll reads every account, not just the first one.
+- The Usage section and its history ring are gone, replaced by a quota card per
+  account.
+
+### Shells and commands
+
+- A third sidebar mode, Shells, beside Spaces and Features, carrying a count of
+  what is running.
+- Sway's own commands (clone, bootstrap, install, sign-in) run as terminal tabs
+  in a workspace of their own rather than as opaque jobs. Each runs from a login
+  shell with a runner reporting its exit, so `Ctrl-C` leaves you at a prompt
+  instead of killing the tab.
+- Open your own shell in Shells, with the row you are looking at marked.
+- The Jobs tray, drawer and store are deleted; nothing routed to them any more.
+
+### Composer
+
+- `Enter` inside an open code fence adds a line instead of sending half a block.
+  `Cmd+Enter` always sends, even with the completion menu open, and a hint under
+  the box says so while you are inside a fence.
+- Spell check is on, autocorrect and smart dashes and quotes are off, so a
+  misspelt word gets marked but identifiers and paths are never rewritten.
+- A long paste becomes a file chip.
+- A mention chip checks whether its file is still there, on mount and whenever
+  you click back into the box. A missing one goes red and says where the file
+  was. It carries a rough token count, and can quote from the transcript.
+- A pen button writes the draft to a scratch file and opens it in the editor.
+  The composer goes read only while that tab is open and says which tab holds
+  the draft; every `Cmd+S` lands back in the box.
+- Attachments draw as tiles, and clicking one opens the file it names.
+
+### PDF
+
+- A `.pdf` opens as scrollable pages in its own editor tab, rather than falling
+  through to the text editor and being read as UTF-8.
+- Zoom out, an editable percentage, zoom in and page controls in the editor bar.
+- Select a PDF's text and quote it to the agent by page, over a pdf.js text
+  layer laid on each page.
+
+### Interface
+
+- A new mark: the sailboat replaces the S-curve tile everywhere it showed, the
+  app icon, the Dock, the README and the dev favicon. The master is
+  `app-icon.png` at the repo root; `pnpm tauri icon` regenerates the bundle set
+  from it.
 - The menu-bar item is a template glyph now, the boat's silhouette in
-  `src-tauri/icons/tray.png`, so macOS paints it black or white with the bar
-  and dims it when the bar is inactive, the way its neighbours behave. It used
-  to be the coloured app icon.
-- The bundle carries only what a macOS build uses: the Windows `.ico` and
-  Square logos are gone, and so are the Vite and Tauri scaffold SVGs.
-- The dev page is titled Sway rather than the scaffold's default.
+  `src-tauri/icons/tray.png`, so macOS paints it black or white with the bar and
+  dims it when the bar is inactive, the way its neighbours behave. It used to be
+  the coloured app icon.
+- The bundle carries only what a macOS build uses: the Windows `.ico` and Square
+  logos are gone, and so are the Vite and Tauri scaffold SVGs. The dev page is
+  titled Sway rather than the scaffold's default.
+- Settings draws its own scrollbars in both places it scrolls.
+- The Ghostty and VS Code hand-offs moved to the right of the bar, and the dev
+  tag is gone.
 - A working chat tab breathes in its agent's colour again. Since 26.904.0 it
   pulsed in grey: the tint had moved into a cascade layer, and the tab's own
   unlayered rest tone outranked it.
+- Right-click any file tree row to reveal it in Finder, selection and all.
+- The background task ticker runs with no lane beside it.
+
+### Known limitations
+
+- macOS only; unsigned, so a manual install still needs the steps in
+  [docs/INSTALL.md](docs/INSTALL.md).
+- Update checking is a notice only; Sway never installs an update for you.
 
 ## 26.904.0-alpha
 
