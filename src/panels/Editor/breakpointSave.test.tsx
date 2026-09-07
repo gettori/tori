@@ -98,7 +98,7 @@ vi.mock("./lspClient", async () => {
 
 const { default: CodeEditor } = await import("./CodeEditor");
 const { pathToUri } = await import("./swayWorkspace");
-const { emit, EDITOR_SAVE } = await import("../../utils/events");
+const { emit, onWith, EDITOR_SAVE, EDITOR_FILE_SAVED } = await import("../../utils/events");
 const { saveSettings, DEFAULT_SETTINGS } = await import("../Settings/settingsStore");
 
 /** An organize-imports answer that adds a line, so every line below it moves. */
@@ -160,6 +160,19 @@ afterEach(async () => {
 });
 
 describe("a save that rewrites the file", () => {
+  // The chat composer mirrors a scratch draft off this report, so it has to
+  // carry the bytes as written, after the rewrite, and fire exactly once.
+  it("reports the saved file once, with the bytes that landed on disk", async () => {
+    await mount();
+    const saved: { path: string; contents: string }[] = [];
+    const off = onWith<{ path: string; contents: string }>(EDITOR_FILE_SAVED, (d) => saved.push(d));
+
+    emit(EDITOR_SAVE);
+    await waitFor(() => expect(written).toHaveLength(1));
+    expect(saved).toEqual([{ path: FILE, contents: ORGANIZED }]);
+    off();
+  });
+
   it("reports the moved line before it reports the file clean", async () => {
     await mount();
 

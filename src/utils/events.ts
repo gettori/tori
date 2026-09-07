@@ -193,6 +193,19 @@ export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
 export const EDITOR_NEW_SCRATCH = "sway:editor-new-scratch";
 export const EDITOR_SAVE_AS = "sway:editor-save-as";
 
+// Reports back out of the editor, for a caller that put a file there and needs
+// to know what became of it: the chat composer's open-in-editor link mirrors
+// each save into the draft and lets go when the tab closes.
+export const EDITOR_FILE_SAVED = "sway:editor-file-saved";
+export type EditorFileSaved = { path: string; contents: string };
+export const EDITOR_TAB_CLOSED = "sway:editor-tab-closed";
+export type EditorTabClosed = { path: string };
+/** Close whichever tab holds `path`, if one does. Unlike CLOSE_TAB it names
+ *  the file rather than acting on the active tab. `discard` skips the unsaved
+ *  changes confirm, for a caller that has already taken the buffer's text. */
+export const EDITOR_CLOSE_PATH = "sway:editor-close-path";
+export type EditorClosePath = { path: string; discard?: boolean };
+
 // Back and forward through the jump list. Consumed by Editor.tsx, which is
 // where the list lives: it is bucketed by workspace exactly as the tab strip is,
 // and this pane is the only thing that knows which workspace is selected.

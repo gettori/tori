@@ -387,6 +387,7 @@ pub fn run() {
             hot_exit::hot_exit_save,
             scratch::scratch_dir,
             scratch::scratch_new,
+            scratch::scratch_remove,
             update::check_for_update,
             update::open_releases_page,
             sessions::list_sessions,
