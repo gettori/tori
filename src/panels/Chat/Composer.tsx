@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, type JSX } from "solid-js";
-import { ArrowUp, Plus, Square, X } from "lucide-solid";
+import { ArrowUp, Plus, Square, SquarePen, X } from "lucide-solid";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import Icon from "../../components/Icon/Icon";
 import Button from "../../components/Button/Button";
@@ -180,6 +180,13 @@ export default function Composer(props: {
   fileExists?: (path: string) => Promise<boolean>;
   /** Receives the imperative handle on mount, for the transcript's Quote. */
   handle?: (handle: ComposerHandle) => void;
+  /** The scratch file's name while the draft is being edited in the editor.
+   *  The input is read only then; the editor writes, the composer sends. */
+  linked?: string | null;
+  /** Lift the draft into a scratch tab. Absent, no control is offered. */
+  onOpenInEditor?: () => void;
+  /** End the link: the tab closes and the input is the writer again. */
+  onUnlink?: () => void;
   /** Absolute paths dragged in from the file tree or an editor tab. Mentions,
    *  not uploads: the agent reads them off disk. */
   onAttachPaths: (absPaths: string[]) => void;
@@ -780,6 +787,9 @@ export default function Composer(props: {
           }
           value={text()}
           disabled={props.disabled}
+          // One writer at a time: while a scratch tab holds the draft, typing
+          // here would be overwritten by the next save.
+          readOnly={!!props.linked}
           // Spelling is marked, never rewritten: autocorrect would "fix" the
           // identifiers and paths a prompt is full of.
           spellcheck={true}
@@ -831,6 +841,19 @@ export default function Composer(props: {
           >
             <Icon icon={Plus} />
           </Tooltip>
+          <Show when={props.onOpenInEditor}>
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.attachButton}
+              label="Open the draft in the editor"
+              aria-label="Open in editor"
+              disabled={props.disabled || !!props.linked}
+              onClick={() => props.onOpenInEditor?.()}
+            >
+              <Icon icon={SquarePen} />
+            </Tooltip>
+          </Show>
           {props.controls}
           <div class={styles.composerSpacer} />
           <Show when={approxTokens(text()) >= TOKEN_READOUT_FROM}>
@@ -849,8 +872,23 @@ export default function Composer(props: {
           </Tooltip>
         </div>
       </div>
-      <Show when={inFence()}>
-        <div class={styles.composerHint}>Enter adds a line inside the code block. Cmd+Enter sends.</div>
+      <Show
+        when={props.linked}
+        fallback={
+          <Show when={inFence()}>
+            <div class={styles.composerHint}>Enter adds a line inside the code block. Cmd+Enter sends.</div>
+          </Show>
+        }
+      >
+        {(name) => (
+          <div class={styles.composerHint}>
+            Editing in {name()}. Save there to update this draft, or{" "}
+            <button type="button" class={styles.inlineAction} onClick={() => props.onUnlink?.()}>
+              edit here
+            </button>
+            .
+          </div>
+        )}
       </Show>
     </div>
   );

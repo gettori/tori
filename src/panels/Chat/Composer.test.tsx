@@ -683,6 +683,35 @@ describe("the size readout", () => {
   });
 });
 
+describe("a draft being edited in the editor", () => {
+  it("offers the editor only when a caller can open it, and not while linked", () => {
+    expect(setup().queryByLabelText("Open in editor")).toBeNull();
+    const onOpenInEditor = vi.fn();
+    const r = setup({ onOpenInEditor });
+    fireEvent.click(r.getByLabelText("Open in editor"));
+    expect(onOpenInEditor).toHaveBeenCalledTimes(1);
+    expect((setup({ onOpenInEditor, linked: "Untitled-3" }).getByLabelText("Open in editor") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // One writer at a time. The browser refuses typing into a read-only box;
+  // the send stays here, and sends what the last save mirrored in.
+  it("goes read only, says which tab has the draft, and still sends it on Cmd+Enter", () => {
+    const { input, onSend, getByText } = setup({ linked: "Untitled-3", draft: "saved from the editor" });
+    expect(input.readOnly).toBe(true);
+    expect(getByText(/Editing in Untitled-3/)).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    expect(onSend).toHaveBeenCalledWith("saved from the editor");
+  });
+
+  it("hands the writing back on edit here", () => {
+    const onUnlink = vi.fn();
+    const { getByRole } = setup({ linked: "Untitled-3", onUnlink });
+    fireEvent.click(getByRole("button", { name: "edit here" }));
+    expect(onUnlink).toHaveBeenCalledTimes(1);
+    expect(setup().input.readOnly).toBe(false);
+  });
+});
+
 describe("the insert handle", () => {
   it("puts a block in at the caret on a line of its own, and focuses the input", () => {
     let handle: ComposerHandle | undefined;

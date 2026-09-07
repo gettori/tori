@@ -80,6 +80,18 @@ fn create_in(dir: &Path) -> Result<PathBuf, String> {
     Err("could not find a free scratch name".to_string())
 }
 
+/// Remove a scratch for good: only a file directly under `dir`, by canonical
+/// path, so nothing outside the scratch folder is reachable. No Trash, since
+/// the composer's draft store already holds the text; a copy there is litter.
+fn remove_in(dir: &Path, path: &Path) -> Result<(), String> {
+    let dir = dir.canonicalize().map_err(|e| e.to_string())?;
+    let target = path.canonicalize().map_err(|e| e.to_string())?;
+    if target.parent() != Some(dir.as_path()) {
+        return Err(format!("{} is not a scratch file", path.display()));
+    }
+    std::fs::remove_file(&target).map_err(|e| e.to_string())
+}
+
 // --- commands ---
 
 /// Where scratch files live. The frontend needs it to tell a scratch tab from
@@ -94,6 +106,11 @@ pub fn scratch_dir() -> String {
 #[tauri::command(async)]
 pub fn scratch_new() -> Result<String, String> {
     create_in(&scratch_root()).map(|p| p.to_string_lossy().into_owned())
+}
+
+#[tauri::command(async)]
+pub fn scratch_remove(path: String) -> Result<(), String> {
+    remove_in(&scratch_root(), Path::new(&path))
 }
 
 #[cfg(test)]
@@ -143,6 +160,31 @@ mod tests {
         let first = create_in(&dir).unwrap();
         let second = create_in(&dir).unwrap();
         assert_ne!(first, second);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn removes_a_scratch_it_made_and_nothing_else() {
+        let dir = tmp_dir("remove");
+        let path = create_in(&dir).unwrap();
+        std::fs::write(&path, "a draft").unwrap();
+        remove_in(&dir, &path).unwrap();
+        assert!(!path.exists());
+
+        // A file beside the scratch folder, and a file nested under it, are
+        // both outside what this may touch.
+        let outside = dir.parent().unwrap().join(format!("sway-scratch-outside-{}", std::process::id()));
+        std::fs::write(&outside, "keep").unwrap();
+        assert!(remove_in(&dir, &outside).is_err());
+        assert!(outside.exists());
+        let nested_dir = dir.join("deeper");
+        std::fs::create_dir_all(&nested_dir).unwrap();
+        let nested = nested_dir.join("Untitled-9");
+        std::fs::write(&nested, "keep").unwrap();
+        assert!(remove_in(&dir, &nested).is_err());
+        assert!(nested.exists());
+
+        let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

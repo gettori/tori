@@ -141,6 +141,8 @@ import {
   type RevealTurn,
   type ToastEvent,
   type FsChanged,
+  EDITOR_FILE_SAVED,
+  type EditorFileSaved,
 } from "../../utils/events";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import Button from "../../components/Button/Button";
@@ -871,6 +873,9 @@ export default function CodeEditor(props: {
     try {
       await invoke("fs_write_file", { path, contents: text });
       markSelfWrite(path);
+      // The bytes as written, after the formatter, for whoever mirrors this
+      // file elsewhere (the chat composer's draft).
+      emitWith<EditorFileSaved>(EDITOR_FILE_SAVED, { path, contents: text });
       // A version of the file as it was just saved, whether or not it is ever
       // committed. One blob write, deduped against the newest entry, and not
       // awaited: the save has already landed, and local history is a record of

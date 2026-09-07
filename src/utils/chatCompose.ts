@@ -250,6 +250,18 @@ const [histories, setHistories] = createSignal<Record<ComposerKey, string[]>>({}
 // carrying.
 const [drafts, setDrafts] = createSignal<Record<ComposerKey, string>>({});
 
+// The scratch file a composer's draft is being edited in, per composer. While
+// one is linked the editor is the only writer and the composer only sends.
+const [linkedScratches, setLinkedScratches] = createSignal<Record<ComposerKey, string>>({});
+
+export function linkedScratchFor(key: ComposerKey): string | null {
+  return linkedScratches()[key] ?? null;
+}
+
+export function setLinkedScratch(key: ComposerKey, path: string | null) {
+  setLinkedScratches((prev) => (path ? { ...prev, [key]: path } : dropKey(prev, key)));
+}
+
 export function draftFor(key: ComposerKey): string {
   return drafts()[key] ?? "";
 }
@@ -286,6 +298,7 @@ export function restoreDraft(key: ComposerKey, text: string) {
 export function clearComposer(key: ComposerKey) {
   clearPending(key);
   setDrafts((prev) => dropKey(prev, key));
+  setLinkedScratches((prev) => dropKey(prev, key));
   setHistories((prev) => dropKey(prev, key));
   setAutoSend((prev) => dropKey(prev, key));
   setCounters((prev) => dropKey(prev, key));

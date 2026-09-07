@@ -2328,13 +2328,24 @@ button.diffHunkHeader:hover {
   cursor: pointer;
 }
 
-/* One line under the box, shown only while the caret is inside an open code
-   fence: what Enter does there, and the key that still sends. */
+/* One line under the box: what Enter does inside an open code fence, or which
+   scratch tab holds the draft while it is being edited in the editor. */
 .composerHint {
   color: var(--fg-subtle);
   font-size: var(--sway-text-md);
   line-height: 1.3;
   padding: calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale)) 0;
+}
+
+/* A control written into a sentence of small print. */
+.inlineAction {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--brand-strong);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 /* Small print in the composer bar (the draft's blocked reason). */

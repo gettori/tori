@@ -127,6 +127,10 @@ import {
   TAB_CYCLE,
   type TabJump,
   EDITOR_CLOSE_TAB,
+  EDITOR_CLOSE_PATH,
+  EDITOR_TAB_CLOSED,
+  type EditorClosePath,
+  type EditorTabClosed,
   EDITOR_TOGGLE_PREVIEW,
   EDITOR_TOGGLE_SOFT_WRAP,
   EDITOR_GOTO_LINE,
@@ -404,6 +408,22 @@ export default function Editor(props: {
   // member folders, so its tabs live under `feature:<id>` while `root()` moves.
   const ws = () => workspaceKey(props.selected);
   const tabs = () => tabsByWs()[ws()] ?? [];
+  // One report for every way a tab can go (close, force close, purge), taken
+  // from the union across workspaces: a switch only hides tabs and reports none.
+  createEffect(
+    on(
+      tabsByWs,
+      (now, prev) => {
+        if (!prev) return;
+        const paths = (byWs: typeof now) => new Set(Object.values(byWs).flatMap((ts) => ts.map((t) => t.path)));
+        const open = paths(now);
+        for (const path of paths(prev)) {
+          if (!open.has(path)) emitWith<EditorTabClosed>(EDITOR_TAB_CLOSED, { path });
+        }
+      },
+      { defer: true },
+    ),
+  );
   // ---- Panes (plan phase 9) ----------------------------------------------
   // A column per pane holding file tabs; with no pane tree (a panel mounted
   // outside the shell, which is every panel-only suite) there is one, in the
@@ -2030,6 +2050,11 @@ export default function Editor(props: {
       onEvent(EDITOR_CLOSE_TAB, () => {
         const id = activeId();
         if (id) void closeTab(id);
+      }),
+      onWith<EditorClosePath>(EDITOR_CLOSE_PATH, ({ path, discard }) => {
+        if (discard) return forceCloseFile(path);
+        const tab = tabs().find((t) => t.path === path);
+        if (tab) void closeTab(tabId(tab));
       }),
       // Pane-scoped tab keys (plan phase 6): the same events the terminal
       // panel handles for its own tabs, gated on which pane holds focus, so
