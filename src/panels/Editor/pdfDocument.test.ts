@@ -2,14 +2,15 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   PdfRuntimeError,
   isPdfPath,
+  jumpToPdfPage,
   loadPdf,
   pdfFailureMessage,
   pdfLoadCount,
-  pdfPlace,
+  pdfView,
   releasePdf,
   releasePdfsExcept,
   retainedPdfPaths,
-  setPdfPlace,
+  setPdfView,
 } from "./pdfDocument";
 
 // What the store did to pdf.js, recorded rather than mocked away: the point of
@@ -141,24 +142,53 @@ describe("the document store", () => {
   });
 });
 
-describe("the reading position", () => {
-  it("starts at the top and survives for as long as the document does", async () => {
+describe("the shared view state", () => {
+  const place = (path: string) => ({ page: pdfView(path).page, offset: pdfView(path).offset });
+
+  it("starts at the top, fitting the width, and survives as long as the document", async () => {
     await loadPdf(A);
-    expect(pdfPlace(A)).toEqual({ page: 1, offset: 0 });
-    setPdfPlace(A, { page: 4, offset: 0.5 });
-    expect(pdfPlace(A)).toEqual({ page: 4, offset: 0.5 });
+    expect(place(A)).toEqual({ page: 1, offset: 0 });
+    expect(pdfView(A).zoom).toBe("fitWidth");
+
+    setPdfView(A, { page: 4, offset: 0.5 });
+    expect(place(A)).toEqual({ page: 4, offset: 0.5 });
   });
 
-  it("goes back to the top once the last tab on the path has closed", async () => {
+  it("keeps a zoom the toolbar set, which is what survives a tab switch", async () => {
     await loadPdf(A);
-    setPdfPlace(A, { page: 4, offset: 0.5 });
+    setPdfView(A, { zoom: 175 });
+    expect(pdfView(A).zoom).toBe(175);
+  });
+
+  it("carries a page jump as a nonce, so asking twice for one page asks twice", async () => {
+    await loadPdf(A);
+    jumpToPdfPage(A, 7);
+    const first = pdfView(A).jump;
+    jumpToPdfPage(A, 7);
+    const second = pdfView(A).jump;
+    expect(first?.page).toBe(7);
+    expect(second?.page).toBe(7);
+    expect(second?.nonce).not.toBe(first?.nonce);
+  });
+
+  it("goes back to the defaults once the last tab on the path has closed", async () => {
+    await loadPdf(A);
+    setPdfView(A, { page: 4, offset: 0.5, zoom: 200 });
     releasePdf(A);
-    expect(pdfPlace(A)).toEqual({ page: 1, offset: 0 });
+    expect(place(A)).toEqual({ page: 1, offset: 0 });
+    expect(pdfView(A).zoom).toBe("fitWidth");
   });
 
   it("is ignored for a path with no document behind it", () => {
-    setPdfPlace("/repo/never-opened.pdf", { page: 9, offset: 1 });
-    expect(pdfPlace("/repo/never-opened.pdf")).toEqual({ page: 1, offset: 0 });
+    setPdfView("/repo/never-opened.pdf", { page: 9, offset: 1 });
+    expect(place("/repo/never-opened.pdf")).toEqual({ page: 1, offset: 0 });
+  });
+
+  it("keeps two open documents' state apart", async () => {
+    await Promise.all([loadPdf(A), loadPdf(B)]);
+    setPdfView(A, { zoom: 300, page: 2 });
+    expect(pdfView(B).zoom).toBe("fitWidth");
+    expect(pdfView(B).page).toBe(1);
   });
 });
 

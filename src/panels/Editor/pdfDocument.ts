@@ -9,7 +9,9 @@
 // the open-tab set rather than off a mount, for exactly that reason.
 
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { createStore, produce } from "solid-js/store";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFWorker } from "pdfjs-dist";
+import type { PdfZoom } from "./pdfLayout";
 
 /** Which paths this subsystem owns. It lives here rather than in `PdfView` so
  *  that `Editor.tsx` can ask the question without importing the view, which is
@@ -18,9 +20,47 @@ export function isPdfPath(path: string): boolean {
   return path.toLowerCase().endsWith(".pdf");
 }
 
-/** Where the reader was: the page the viewport's top is inside (1-based) and
- *  how far down that page it sits, as a fraction of the page's height. */
-export type PdfPlace = { page: number; offset: number };
+/**
+ * What the toolbar and the view have to agree about, per path.
+ *
+ * Reactive, and not just remembered, because the two are different components
+ * in different parts of the pane: `PdfToolbar` sits in the breadcrumb bar's
+ * trailing cluster and `PdfView` below it, with no ancestor between them that
+ * could hold this. Each field has exactly one writer, which is what keeps that
+ * from becoming a loop: the toolbar owns `zoom` and `jump`, the view owns
+ * `page`, `offset`, `scale` and `pages`.
+ */
+export type PdfViewState = {
+  /** The page the reader is on, 1-based. */
+  page: number;
+  /** Where the viewport's top sits in that page, as a fraction of its height.
+   *  Negative when the page it names starts below the top edge; see `placeAt`. */
+  offset: number;
+  /** What the reader asked for. */
+  zoom: PdfZoom;
+  /** What `zoom` resolved to, in CSS px per point. Published by the view, which
+   *  is the only side that knows how wide the pane is, so the toolbar can put a
+   *  percentage on a fit mode. */
+  scale: number;
+  /** The document's page count, once it is parsed. */
+  pages: number;
+  /** A page the toolbar asked to go to. Carries a nonce rather than being
+   *  cleared, the same as the editor's `goto`: asking for the page you are
+   *  already on has to work, and a field the view writes back into is a loop. */
+  jump: { page: number; nonce: number } | null;
+};
+
+// Frozen because `pdfView` hands this same object back for every path with no
+// document behind it: one stray write through it would be every future
+// document's starting state.
+const DEFAULT_VIEW: PdfViewState = Object.freeze({
+  page: 1,
+  offset: 0,
+  zoom: "fitWidth",
+  scale: 1,
+  pages: 0,
+  jump: null,
+});
 
 type Held = {
   /** Kept beside the document because the document has no `destroy` of its own
@@ -28,11 +68,12 @@ type Held = {
    *  parse still in flight instead of waiting for it to finish first. */
   task: Promise<PDFDocumentLoadingTask>;
   load: Promise<PDFDocumentProxy>;
-  place: PdfPlace;
 };
 
 const held = new Map<string, Held>();
+const [views, setViews] = createStore<Record<string, PdfViewState>>({});
 let loads = 0;
+let jumps = 0;
 
 /** Thrown when the library itself will not load, which on this app means a
  *  WebKit too old for it rather than anything about the file. A marker: what
@@ -109,7 +150,8 @@ export function loadPdf(path: string): Promise<PDFDocumentProxy> {
   // tick), and an unobserved rejection is reported as an app-level error.
   void task.catch(() => {});
   void load.catch(() => {});
-  held.set(path, { task, load, place: { page: 1, offset: 0 } });
+  held.set(path, { task, load });
+  setViews(path, { ...DEFAULT_VIEW });
   return load;
 }
 
@@ -119,6 +161,7 @@ export function releasePdf(path: string): void {
   const entry = held.get(path);
   if (!entry) return;
   held.delete(path);
+  setViews(produce((all) => void delete all[path]));
   void entry.task.then((t) => t.destroy()).catch(() => {});
 }
 
@@ -130,13 +173,25 @@ export function releasePdfsExcept(open: Iterable<string>): void {
   for (const path of [...held.keys()]) if (!keep.has(path)) releasePdf(path);
 }
 
-export function pdfPlace(path: string): PdfPlace {
-  return held.get(path)?.place ?? { page: 1, offset: 0 };
+/** This path's shared view state, tracked: a caller reading it inside an effect
+ *  re-runs when the other side writes. A path with no document behind it reads
+ *  as the defaults rather than as nothing, so a toolbar rendering a tick before
+ *  the parse lands still has numbers to show. */
+export function pdfView(path: string): PdfViewState {
+  return views[path] ?? DEFAULT_VIEW;
 }
 
-export function setPdfPlace(path: string, place: PdfPlace): void {
-  const entry = held.get(path);
-  if (entry) entry.place = place;
+/** Write the fields this caller owns. Ignored for a path with no document: the
+ *  entry is the document's, and one created here would never be released. */
+export function setPdfView(path: string, patch: Partial<PdfViewState>): void {
+  if (held.has(path)) setViews(path, patch);
+}
+
+/** Ask the view to go to a page, from the toolbar's page field. A nonce rather
+ *  than a cleared field, so asking twice for the same page works and the view
+ *  never has to write back into what the toolbar owns. */
+export function jumpToPdfPage(path: string, page: number): void {
+  setPdfView(path, { jump: { page, nonce: ++jumps } });
 }
 
 /** The paths with a document behind them, and how many parses have been
