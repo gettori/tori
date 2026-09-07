@@ -2412,11 +2412,10 @@ export default function LeftSidebar(props: {
   // The truncation control at the foot of a long branch list: "N more branches"
   // while the list is cut, "Show less" once it is open.
   //
-  // Rendered as a branch node rather than as a footer beside them, because the
-  // rail's whole geometry is sibling-driven: `.branchNode:last-child` is what
-  // terminates the rail at the final elbow, so a plain div here would leave the
-  // last branch's rail dangling into it. Being a branch node, it takes the rail,
-  // the elbow and the hover pill for free and terminates the rail on itself.
+  // Rendered as a branch node rather than as a footer beside them, so the rail
+  // runs through it and stops on it: it is an item in the list, not a caption
+  // under one. Being a branch node it takes the rail, the hover pill and the
+  // label x for free.
   //
   // `hidden` is an accessor, not an array: the row is created once and its label,
   // glyph and badge track the disclosure from the inside, so toggling never has

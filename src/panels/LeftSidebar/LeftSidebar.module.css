@@ -22,15 +22,21 @@
      by the same amount. It is also the lane the overlay scrollbar's thumb
      floats in. */
   /* Row height, matching the settings rail's items: their 8px·s block padding
-     around a 16px icon and a 13px·s label. Named because the elbow and the rail
-     terminator are derived from it, not tuned to it. */
+     around a 16px icon and a 13px·s label. */
   --row-h: calc(34px * var(--ui-scale));
-  --tree-inset: calc(14px * var(--ui-scale));
+  /* A branch row is shorter than the project row over it. The two depths are
+     not peers, and giving them one height made the list read as flat. */
+  --branch-row-h: calc(30px * var(--ui-scale));
+  --tree-inset: calc(8px * var(--ui-scale));
   --tree-gutter: calc(4px * var(--ui-scale));
-  /* Where a branch/worktree row's CONTENT begins (sub1 indent) - its type icon
-     now, the name right after. 32px·s clears the elbow (which ends at 25px·s)
-     with the same ~8px of breathing room the hover pill was always given, and
-     lands the icon one clear indent past the project icon at 8px·s. */
+  /* Dead centre of a project row's 16px·s icon slot (8px·s of row padding, then
+     half the slot). The rail is drawn on this line, so the branches hang off
+     the icon of the project they belong to. */
+  --rail-x: calc(16px * var(--ui-scale));
+  /* Where a branch row's CONTENT begins (sub1 indent) - its git-kind glyph,
+     the name right after. One clear indent past the project icon at 8px·s, and
+     far enough right of the rail that the line reads as running beside the
+     glyph column rather than through it. */
   --branch-label-x: calc(28px * var(--ui-scale));
   /* One indent level: branch depth to attempt depth. */
   --nest-step: calc(12px * var(--ui-scale));
@@ -281,11 +287,14 @@
   padding: 0 var(--tree-gutter) calc(10px * var(--ui-scale)) 0;
 }
 
+/* A project and its branches, no longer boxed. The border and the gap between
+   every card drew fourteen frames down a column that has one job, so what is
+   left is the group's left edge and nothing else. Consecutive collapsed
+   projects now sit on one rhythm, with breathing room added only under an
+   expanded one (see `.branchNode:last-child`). */
 .projectCard {
   position: relative;
-  margin: 0 0 calc(10px * var(--ui-scale)) var(--tree-inset);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-lg);
+  margin: 0 0 0 var(--tree-inset);
 }
 
 /* Zeroed here rather than on `.row`, which would also unindent the empty-state
@@ -319,13 +328,15 @@
 
 .branchNode {
   position: relative;
-  --rail-x: calc(4px * var(--ui-scale) + 8px * var(--ui-scale));
-  --rail-x-row: calc(4px * var(--ui-scale) + 8px * var(--ui-scale));
-  --elbow-w: calc(9px * var(--ui-scale));
 }
 
-/* The vertical rail. Spans the node's full height so it passes behind a group's
-   attempts and meets the next branch with no gap. */
+/* The vertical rail: one straight line on the project icon's own x, spanning
+   the node's full height so it passes behind a group's attempts and meets the
+   next branch with no gap. The elbow that used to curve out of it into every
+   row is gone - it drew a git graph over a plain list, and the list already
+   reads as nested from the indent alone.
+   Under the rows (they sit at z-index 2), so a hovered or selected row's pill
+   paints straight over it rather than having to start clear of it. */
 .branchNode::before {
   content: "";
   position: absolute;
@@ -334,52 +345,56 @@
   bottom: 0;
   width: 1px;
   background: var(--border-rail);
-  z-index: 3;
+  z-index: 0;
 }
 
-/* The last branch terminates the rail at its own elbow (row centre), so nothing
-   dangles below the final item, even when it is expanded. */
-.branchNode:last-child::before {
-  bottom: auto;
-  /* Stops 5px·s short of the elbow's corner, where the elbow's own rounding
-     takes the line over. */
-  height: calc(var(--row-h) / 2 - 5px * var(--ui-scale));
+/* The one gap left between projects, and it is earned: an expanded project's
+   branches need to end somewhere before the next project's name. Two collapsed
+   projects still sit on one unbroken rhythm. */
+.branchNode:last-child {
+  margin-bottom: calc(8px * var(--ui-scale));
 }
 
 /* ---- Attempt groups (one level deeper than a branch) ----
    A fan-out group is a branch node whose children are branch nodes: the group
    header sits at branch depth and each attempt one step in. Nothing here
-   re-implements the rail; the branch machinery is entirely variable-driven, so
-   an attempt node just re-anchors those three variables one --nest-step to the
-   right and the same rules draw the deeper rail, elbow and hover pill. Declared
-   after .branchNode (equal specificity) so the overrides win. */
+   re-implements the rail; the branch machinery is variable-driven, so an
+   attempt node re-anchors those two variables one --nest-step to the right and
+   the same rules draw the deeper rail and pill. Declared after .branchNode
+   (equal specificity) so the overrides win. */
 .attemptNode {
-  --rail-x: calc(4px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
-  --rail-x-row: calc(4px * var(--ui-scale) + 8px * var(--ui-scale) + var(--nest-step));
+  --rail-x: calc(16px * var(--ui-scale) + var(--nest-step));
   --branch-label-x: calc(28px * var(--ui-scale) + var(--nest-step));
 }
 
-/* Branch hover: an inset fill that hugs the row's content and never reaches the
-   far left, so the rail stays in clear space. It begins exactly where the elbow
-   ends, which both keeps the two from overlapping and reads as the elbow
-   feeding into the pill. Sits behind the content; the row owns a stacking
-   context for the z-index -1 fill.
-   The selected state repurposes this same ::before as the gold rail segment.
-   The z-index is what gives that -1 pseudo-element its stacking context; it is
-   not about layering rows against each other any more, now that no header
-   pins. */
+/* An attempt's own rail should not start above its first row: the group header
+   it hangs off is a sibling, not an ancestor, so the segment is trimmed to the
+   rows it actually spans. */
+.attemptNode:last-child {
+  margin-bottom: 0;
+}
+
+/* Branch hover and selection share one pill: it starts ON the rail, so the
+   marker bar can land exactly where the line was, and runs to the column's
+   right edge. Sits behind the content; the row's own z-index is what gives
+   that -1 pseudo-element a stacking context to sit behind, and what lifts the
+   whole row over the rail. */
 .row.branch {
+  height: var(--branch-row-h);
   z-index: 2;
 }
 .row.branch::before {
   content: "";
   position: absolute;
-  left: calc(var(--rail-x-row) + var(--elbow-w));
+  left: var(--rail-x);
   right: 4px;
   top: 0;
   bottom: 0;
   z-index: -1;
-  border-radius: var(--sway-radius-md);
+  /* Square on the rail, rounded away from it: a rounded left edge would clip
+     the selection's marker bar into a lozenge, and the bar has to run the row's
+     full height to read as the rail thickening. */
+  border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
   background: transparent;
 }
 .row.branch:hover,
@@ -392,11 +407,10 @@
 }
 
 /* The "N more branches" / "Show less" row. It keeps the whole `.branch`
-   geometry - rail, elbow, hover pill - because it IS an item in the list, and
-   the rail has to run through it and terminate on it when it is the last thing
-   in the card. Only the tone differs: its label is an instruction rather than a
-   name, so it and its glyph take the dimmer subtle tone that the disclosure
-   chevrons already use. */
+   geometry - rail, pill, glyph slot - because it IS an item in the list, and
+   the rail has to run through it. Only the tone differs: its label is an
+   instruction rather than a name, so it and its glyph take the dimmer subtle
+   tone that the disclosure chevrons already use. */
 .row.moreRow .label,
 .row.moreRow .rowIcon {
   color: var(--fg-subtle);
@@ -406,40 +420,30 @@
   color: var(--fg-muted);
 }
 
-/* Rounded elbow: a left+bottom bordered box in the row's top half whose
-   bottom-left corner is rounded, curving from the rail into the row. */
-.row.branch::after {
-  content: "";
-  position: absolute;
-  left: var(--rail-x-row);
-  top: 0;
-  width: var(--elbow-w);
-  height: calc(var(--row-h) / 2);
-  border-left: 1px solid var(--border-rail);
-  border-bottom: 1px solid var(--border-rail);
-  border-bottom-left-radius: calc(8px * var(--ui-scale));
-}
-
-/* Selected branch: the same pill the hover uses, held in the brand fill rather
-   than the neutral one, so a selection reads as a state and not as "the pointer
-   happens to be here". Declared AFTER the :hover rule at equal specificity, so
-   hovering a selected row keeps the gold instead of dropping to grey - the same
-   ordering every selected row in this app depends on.
-   Geometry is inherited from the base ::before: only the fill changes.
-   On top of the fill sits the same left bar the settings rail marks its active
-   category with (`.railItemActive::before`), painted as a gradient because both
-   of this row's pseudo-elements are already spent on the pill and the elbow. It
-   lands where the elbow terminates, so the rail reads as feeding into it. */
+/* Selected branch: the hover pill's geometry held in a brand wash that fades
+   out to the right, with the same left bar the settings rail marks its active
+   category with (`.railItemActive::before`). The bar covers the rail rather
+   than sitting beside it, so the line reads as thickening into the selection.
+   Declared AFTER the :hover rule at equal specificity, so hovering a selected
+   row keeps the gold instead of dropping to grey - the same ordering every
+   selected row in this app depends on. */
 .row.branch.sel::before {
   background:
     linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
-      var(--sway-border-thick) calc(15px * var(--ui-scale)) no-repeat,
-    var(--brand-subtle);
+      var(--sway-border-thick) 100% no-repeat,
+    linear-gradient(to right, var(--brand-subtle), transparent);
 }
 
-.row.project .label,
+.row.project .label {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+/* The selected branch is the one name in the column that reads at project
+   weight: it is what the rest of the window is showing. */
 .row.branch.sel .label {
   color: var(--fg-default);
+  font-weight: 600;
 }
 
 .row.branch .label {
@@ -470,8 +474,7 @@
 }
 
 /* Leading type icon on a project / branch row, boxed to the same 16px
-   slot as `.seti-icon` so labels line up across levels. Dimmed by default;
-   brightens on the active pill alongside the label. */
+   slot as `.seti-icon` so labels line up across levels. */
 .rowIcon {
   flex: none;
   display: inline-flex;
