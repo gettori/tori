@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, fireEvent } from "@solidjs/testing-library";
-import Composer, { ATTACHMENT_TOKEN_MIME } from "./Composer";
+import Composer, { ATTACHMENT_TOKEN_MIME, type ComposerHandle } from "./Composer";
 import { expectNoAxeViolations } from "../../test/axe";
 import type { AttachmentSource, PendingBlock } from "../../utils/chatCompose";
 
@@ -195,6 +195,47 @@ describe("Composer keys", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  // Half a code block is the one message a fence says you do not want sent.
+  // Enter is left alone there (not prevented), so the textarea adds the line.
+  it("adds a line rather than sending while the caret is inside an open code fence", () => {
+    const { input, onSend } = setup();
+    type(input, "look:\n```ts\nconst a = 1;");
+    expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(true);
+    expect(onSend).not.toHaveBeenCalled();
+
+    type(input, "look:\n```ts\nconst a = 1;\n```");
+    expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false);
+    expect(onSend).toHaveBeenCalledWith("look:\n```ts\nconst a = 1;\n```");
+  });
+
+  it("sends on Cmd+Enter from inside a fence", () => {
+    const { input, onSend } = setup();
+    type(input, "```\ncode");
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    expect(onSend).toHaveBeenCalledWith("```\ncode");
+  });
+
+  // Enter over an open menu completes; Cmd+Enter is the one key that still
+  // sends, and it must not complete on the way out.
+  it("sends on Cmd+Enter over an open completion menu, without completing", async () => {
+    const { input, findByText, onSend, onAttachFile } = setup({ loadFiles: async () => FILES });
+    type(input, "look at @compose");
+    await findByText("src/utils/chatCompose.ts");
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    expect(onSend).toHaveBeenCalledWith("look at @compose");
+    expect(onAttachFile).not.toHaveBeenCalled();
+  });
+
+  it("says what Enter does while inside a fence, and only then", () => {
+    const { input, queryByText } = setup();
+    const hint = () => queryByText(/Cmd\+Enter sends/);
+    expect(hint()).toBeNull();
+    type(input, "```\n");
+    expect(hint()).not.toBeNull();
+    type(input, "```\ncode\n```");
+    expect(hint()).toBeNull();
+  });
+
   // What Enter does mid-turn changed, so the placeholder has to say which of the
   // two it will do. It also must not present a steer as instant: Phase 2 measured
   // 1.5s to 5.4s from the write to the model acting on it.
@@ -378,6 +419,14 @@ function drop(el: Element, init: { files?: File[]; data?: Record<string, string>
   fireEvent.drop(el, { dataTransfer });
 }
 
+// Thirty-one lines: one past the threshold.
+const LONG_PASTE = Array.from({ length: 31 }, (_, i) => `line ${i}`).join("\n");
+
+/** A text paste, the way the clipboard hands one over: no files, text on ask. */
+function pasteOf(text: string) {
+  return { clipboardData: { files: [], getData: () => text } };
+}
+
 describe("file uploads", () => {
   // Bytes and a name, nothing decoded: they are written to disk as they are
   // and come back as a path, so no `image` block is ever offered.
@@ -403,10 +452,55 @@ describe("file uploads", () => {
 
   it("attaches a pasted file without swallowing an ordinary text paste", async () => {
     const { input, onAttachUploads } = setup();
-    fireEvent.paste(input, { clipboardData: { files: [] } });
+    expect(fireEvent.paste(input, pasteOf("hello"))).toBe(true);
     expect(onAttachUploads).not.toHaveBeenCalled();
     fireEvent.paste(input, { clipboardData: { files: [imageFile("clip.png")] } });
     await vi.waitFor(() => expect(onAttachUploads).toHaveBeenCalled());
+  });
+
+  // A document pasted into a sentence box: it becomes a file the agent reads
+  // off disk, and the box keeps whatever was already in it.
+  it("turns a long text paste into a pasted.txt chip and leaves the box alone", async () => {
+    const { input, onAttachUploads } = setup();
+    expect(fireEvent.paste(input, pasteOf(LONG_PASTE))).toBe(false);
+    await vi.waitFor(() => expect(onAttachUploads).toHaveBeenCalled());
+    const [files] = onAttachUploads.mock.calls[0];
+    expect(files).toHaveLength(1);
+    expect(files[0].name).toBe("pasted.txt");
+    expect(new TextDecoder().decode(files[0].bytes)).toBe(LONG_PASTE);
+    expect(input.value).toBe("");
+  });
+
+  it("counts a paste as long by characters as well as by lines", async () => {
+    const { input, onAttachUploads } = setup();
+    expect(fireEvent.paste(input, pasteOf("x".repeat(3001)))).toBe(false);
+    await vi.waitFor(() => expect(onAttachUploads).toHaveBeenCalled());
+    const short = setup();
+    expect(fireEvent.paste(short.input, pasteOf("x".repeat(3000)))).toBe(true);
+    expect(short.onAttachUploads).not.toHaveBeenCalled();
+  });
+
+  it("pastes long text as text under an agent that takes no file uploads, and when turned off", () => {
+    const noFiles = setup({ uploads: { kinds: ["image", "pdf"], gap: null } });
+    expect(fireEvent.paste(noFiles.input, pasteOf(LONG_PASTE))).toBe(true);
+    expect(noFiles.onAttachUploads).not.toHaveBeenCalled();
+    expect(noFiles.onAttachRejected).not.toHaveBeenCalled();
+
+    const off = setup({ attachLongPastes: false });
+    expect(fireEvent.paste(off.input, pasteOf(LONG_PASTE))).toBe(true);
+    expect(off.onAttachUploads).not.toHaveBeenCalled();
+  });
+
+  // Through the same door as a dropped file, so the same cap applies.
+  it("counts a long paste against the attachment cap", async () => {
+    const pending: PendingBlock[] = Array.from({ length: 10 }, (_, i) => ({
+      id: `att-${i}`,
+      block: { type: "fileRef" as const, path: `/x/s${i}.png`, startLine: null, endLine: null, text: null },
+    }));
+    const { input, onAttachUploads, onAttachRejected } = setup({ attachments: pending });
+    fireEvent.paste(input, pasteOf(LONG_PASTE));
+    await vi.waitFor(() => expect(onAttachRejected).toHaveBeenCalled());
+    expect(onAttachUploads).not.toHaveBeenCalled();
   });
 
   it("filters the picker to what the agent opens, and not at all when that is any file", () => {
@@ -521,6 +615,122 @@ describe("an attachment chip", () => {
   it("stays clean with both of its controls on screen", async () => {
     const { container } = setup({ attachments: [...shot, ...notes] });
     await expectNoAxeViolations(container);
+  });
+});
+
+describe("a chip whose file has gone", () => {
+  const notes: PendingBlock[] = [
+    {
+      id: "att-2",
+      block: { type: "fileRef", path: "/store/1a2b-1/notes.pdf", startLine: null, endLine: null, text: null, label: "[PDF 1]" },
+    },
+  ];
+  // Asked by role and a tolerant name: the chip's name is built from adjacent
+  // nodes, which jsdom joins without a separator.
+  const insert = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Insert \[PDF 1\]/ });
+  const remove = (r: ReturnType<typeof setup>) => r.getByRole("button", { name: /^Remove \[PDF 1\]/ });
+
+  it("is marked missing and says where the file was, on both of its controls", async () => {
+    const r = setup({ attachments: notes, fileExists: async () => false });
+    await vi.waitFor(() => expect(insert(r).getAttribute("aria-label")).toMatch(/No file at \/store\/1a2b-1\/notes\.pdf/));
+    expect(remove(r).getAttribute("aria-label")).toMatch(/No file at \/store\/1a2b-1\/notes\.pdf/);
+    expect(r.container.querySelector("[class*='attachmentMissing']")).not.toBeNull();
+  });
+
+  it("stays plain while the file is there, and is never asked without a checker", async () => {
+    const fileExists = vi.fn(async () => true);
+    const r = setup({ attachments: notes, fileExists });
+    await vi.waitFor(() => expect(fileExists).toHaveBeenCalledWith("/store/1a2b-1/notes.pdf"));
+    expect(insert(r).getAttribute("aria-label")).toBe("Insert [PDF 1] notes.pdf");
+    expect(r.container.querySelector("[class*='attachmentMissing']")).toBeNull();
+
+    const unchecked = setup({ attachments: notes });
+    expect(insert(unchecked).getAttribute("aria-label")).toBe("Insert [PDF 1] notes.pdf");
+  });
+
+  // Coming back from the tree is when a mentioned file gets deleted.
+  it("asks again each time the input regains focus", async () => {
+    const fileExists = vi.fn(async () => true);
+    const { input } = setup({ attachments: notes, fileExists });
+    await vi.waitFor(() => expect(fileExists).toHaveBeenCalledTimes(1));
+    fireEvent.focus(input);
+    await vi.waitFor(() => expect(fileExists).toHaveBeenCalledTimes(2));
+  });
+
+  it("still lets the message send", async () => {
+    const r = setup({ attachments: notes, fileExists: async () => false });
+    await vi.waitFor(() => expect(insert(r).getAttribute("aria-label")).toMatch(/No file/));
+    type(r.input, "look at [PDF 1]");
+    fireEvent.keyDown(r.input, { key: "Enter" });
+    expect(r.onSend).toHaveBeenCalledWith("look at [PDF 1]");
+  });
+});
+
+describe("the size readout", () => {
+  const readout = (r: ReturnType<typeof setup>) => r.queryByText(/^about .* tokens$/);
+
+  it("stays out of the way under five hundred tokens, then says about how many", () => {
+    const r = setup();
+    // Four characters a token, rounded up: 1996 is 499, 1997 is already 500.
+    type(r.input, "x".repeat(1996));
+    expect(readout(r)).toBeNull();
+    type(r.input, "x".repeat(1997));
+    expect(readout(r)?.textContent).toBe("about 500 tokens");
+    type(r.input, "x".repeat(6000));
+    expect(readout(r)?.textContent).toBe("about 2k tokens");
+    type(r.input, "short again");
+    expect(readout(r)).toBeNull();
+  });
+});
+
+describe("a draft being edited in the editor", () => {
+  it("offers the editor only when a caller can open it, and not while linked", () => {
+    expect(setup().queryByLabelText("Open in editor")).toBeNull();
+    const onOpenInEditor = vi.fn();
+    const r = setup({ onOpenInEditor });
+    fireEvent.click(r.getByLabelText("Open in editor"));
+    expect(onOpenInEditor).toHaveBeenCalledTimes(1);
+    expect((setup({ onOpenInEditor, linked: "Untitled-3" }).getByLabelText("Open in editor") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // One writer at a time. The browser refuses typing into a read-only box;
+  // the send stays here, and sends what the last save mirrored in.
+  it("goes read only, says which tab has the draft, and still sends it on Cmd+Enter", () => {
+    const { input, onSend, getByText } = setup({ linked: "Untitled-3", draft: "saved from the editor" });
+    expect(input.readOnly).toBe(true);
+    expect(getByText(/Editing in Untitled-3/)).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
+    expect(onSend).toHaveBeenCalledWith("saved from the editor");
+  });
+
+  it("hands the writing back on edit here", () => {
+    const onUnlink = vi.fn();
+    const { getByRole } = setup({ linked: "Untitled-3", onUnlink });
+    fireEvent.click(getByRole("button", { name: "edit here" }));
+    expect(onUnlink).toHaveBeenCalledTimes(1);
+    expect(setup().input.readOnly).toBe(false);
+  });
+});
+
+describe("the insert handle", () => {
+  it("puts a block in at the caret on a line of its own, and focuses the input", () => {
+    let handle: ComposerHandle | undefined;
+    const { input } = setup({ handle: (h) => (handle = h) });
+    type(input, "before after");
+    input.setSelectionRange(6, 6);
+    handle!.insertBlock("> quoted\n\n");
+    // What followed the caret follows the block, untouched.
+    expect(input.value).toBe("before\n> quoted\n\n after");
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("adds no leading newline into an empty draft or after one", () => {
+    let handle: ComposerHandle | undefined;
+    const { input } = setup({ handle: (h) => (handle = h) });
+    handle!.insertBlock("> a\n\n");
+    expect(input.value).toBe("> a\n\n");
+    handle!.insertBlock("> b\n\n");
+    expect(input.value).toBe("> a\n\n> b\n\n");
   });
 });
 

@@ -2,9 +2,12 @@ import { Show, createEffect, createMemo, createSignal, on, onCleanup, onMount, u
 import { createStore, produce } from "solid-js/store";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import MessageList from "./MessageList";
+import QuoteSelection, { quoteBlock } from "./QuoteSelection";
+import { mirrorSaved, openDraftInEditor, scratchTabClosed, unlinkScratch } from "./composerScratch";
+import { liveBufferText } from "../Editor/liveBuffers";
 import SessionDiffView from "./SessionDiffView";
 import SessionInfo from "./SessionInfo";
-import Composer from "./Composer";
+import Composer, { type ComposerHandle } from "./Composer";
 import LaneStrip, { laneLabel } from "./LaneStrip";
 import PlanCard from "./PlanCard";
 import UsageReadout from "./UsageReadout";
@@ -34,6 +37,7 @@ import { type SessionDetail } from "./SessionStats";
 import ConfirmDialog, { type ConfirmOpts, type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import {
   draftFor,
+  linkedScratchFor,
   dropPending,
   handBackHeldSend,
   hasAutoSend,
@@ -96,10 +100,14 @@ import {
   emitWith,
   onWith,
   AGENT_FILES_WRITTEN,
+  EDITOR_FILE_SAVED,
+  EDITOR_TAB_CLOSED,
   FOCUS_SESSION_TAB,
   REVEAL_TURN,
   TOAST,
   type AgentFilesWritten,
+  type EditorFileSaved,
+  type EditorTabClosed,
   type FocusSessionTab,
   type RevealTurn,
   type ToastEvent,
@@ -337,6 +345,21 @@ export default function ChatView(props: {
   // the place they left, which is the whole reason to look at the diff.
   const [showDiff, setShowDiff] = createSignal(false);
   const [anchorTurn, setAnchorTurn] = createSignal<string | null>(null);
+  // The transcript's scrolling root and the composer's insert handle, for the
+  // Quote button that carries a selection from the one into the other.
+  let transcriptEl: HTMLDivElement | undefined;
+  let composer: ComposerHandle | undefined;
+  // The draft's scratch tab, while it has one: the editor reports each save
+  // and the close, and this composer answers only for its own linked path.
+  const linkedName = () => linkedScratchFor(composerKey())?.split("/").pop() ?? null;
+  onMount(() => {
+    const offSaved = onWith<EditorFileSaved>(EDITOR_FILE_SAVED, (saved) => mirrorSaved(composerKey(), saved));
+    const offClosed = onWith<EditorTabClosed>(EDITOR_TAB_CLOSED, (closed) => void scratchTabClosed(composerKey(), closed));
+    onCleanup(() => {
+      offSaved();
+      offClosed();
+    });
+  });
   // This run's first turn boundary. The diff view's attribution spans from
   // here, which is exactly the span the in-memory before-states cover: a
   // resumed session's earlier turns left no capture behind.
@@ -1149,9 +1172,14 @@ export default function ChatView(props: {
   // emptying the composer now would leave the user unable to see what the next
   // turn is going to carry.
   function onSend(text: string) {
+    // A draft being edited in a scratch tab sends what the editor holds right
+    // now, saved or not, and the tab and its file go with it.
+    const scratch = linkedScratchFor(composerKey());
+    if (scratch) text = liveBufferText(scratch) ?? text;
     // Recorded on the way out whichever path it takes, since from the user's
     // side all three are "I sent that".
     pushHistory(composerKey(), text);
+    void unlinkScratch(composerKey(), { closeTab: true });
     // A chat that was opened to read has no child yet. The message is held the
     // way a draft's first send holds one and the tab is told to start, which
     // resumes **this** session id rather than minting a fresh one; the effect
@@ -1988,6 +2016,7 @@ export default function ChatView(props: {
         }
       >
       <MessageList
+        ref={(el) => (transcriptEl = el)}
         items={shownItems()}
         streaming={running()}
         sessionId={props.sessionId}
@@ -2018,6 +2047,9 @@ export default function ChatView(props: {
         onRewind={onRewind}
       />
       </Show>
+      {/* Selected transcript text goes into the reply as a quote. Scoped to this
+          transcript's root, since every attached tab stays mounted. */}
+      <QuoteSelection root={() => transcriptEl} onQuote={(text) => composer?.insertBlock(quoteBlock(text))} />
 
       <PlanCard items={state.plan} />
 
@@ -2056,6 +2088,12 @@ export default function ChatView(props: {
         onAttachFile={attachments.onAttachFile}
         onAttachPaths={attachments.onAttachPaths}
         uploads={attachmentSources(tier()).uploads}
+        attachLongPastes={settings.chatDefaults.attachLongPastes}
+        fileExists={(path) => invoke<boolean>("file_exists", { path })}
+        handle={(h) => (composer = h)}
+        linked={linkedName()}
+        onOpenInEditor={() => void openDraftInEditor(composerKey())}
+        onUnlink={() => void unlinkScratch(composerKey(), { closeTab: true })}
         onAttachUploads={attachments.onAttachUploads}
         onAttachRejected={(reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" })}
         onInterrupt={onInterrupt}

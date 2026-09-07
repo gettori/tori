@@ -70,4 +70,7 @@ sha2 = "0.10"
 # `com.apple.quarantine` on a downloaded agent: read to decide whether Gatekeeper
 # will even be asked, and cleared only when the user says so.
 xattr = "1"
+# NSUserDefaults for WebKit's text-checking switches (spell check on, smart
+# substitutions off). Already in the tree under tauri; only the features are new.
+objc2-foundation = { version = "0.3", features = ["NSUserDefaults", "NSString"] }
 

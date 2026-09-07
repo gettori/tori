@@ -280,6 +280,11 @@ pub struct ChatDefaults {
     /// able to have the old card back without leaving the app.
     #[serde(default = "yes")]
     pub answer_questions_inline: bool,
+    /// A paste over 30 lines or 3000 characters becomes a `pasted.txt` chip
+    /// rather than text in the composer. On by default; `yes` rather than a
+    /// bare default so a file predating the switch does not read as off.
+    #[serde(default = "yes")]
+    pub attach_long_pastes: bool,
     /// How many live chats before Sway says the cost is adding up. **Zero means
     /// no cap.**
     ///
@@ -326,6 +331,7 @@ impl Default for ChatDefaults {
             tool_output_lines: default_tool_output_lines(),
             show_sway_hooks: false,
             answer_questions_inline: true,
+            attach_long_pastes: true,
             max_concurrent_chats: default_max_concurrent_chats(),
         }
     }
@@ -913,6 +919,7 @@ mod tests {
                 tool_output_lines: 5,
                 show_sway_hooks: true,
                 answer_questions_inline: false,
+                attach_long_pastes: false,
                 max_concurrent_chats: 9,
             },
             agent: Agent {
@@ -955,6 +962,8 @@ mod tests {
         // `false`, which is what a bare `#[serde(default)]` on a bool would
         // give and would silently disable the feature for every existing user.
         assert!(load_from(&p).chat_defaults.answer_questions_inline, "absent means on");
+        // Same trap for the paste switch: absent is on, not off.
+        assert!(load_from(&p).chat_defaults.attach_long_pastes, "absent means on");
         let _ = std::fs::remove_file(&p);
     }
 

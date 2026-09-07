@@ -85,6 +85,23 @@ fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Error>> 
     Ok(tray)
 }
 
+/// WebKit's text checking is a user default, not a menu item or an element
+/// attribute: continuous spell check on, and the smart dash, quote and text
+/// substitutions off, since `--` and straight quotes are what a prompt means.
+#[cfg(target_os = "macos")]
+fn set_webkit_text_defaults() {
+    use objc2_foundation::{NSString, NSUserDefaults};
+    let defaults = NSUserDefaults::standardUserDefaults();
+    for (key, on) in [
+        ("WebContinuousSpellCheckingEnabled", true),
+        ("WebAutomaticDashSubstitutionEnabled", false),
+        ("WebAutomaticQuoteSubstitutionEnabled", false),
+        ("WebAutomaticTextReplacementEnabled", false),
+    ] {
+        defaults.setBool_forKey(on, &NSString::from_str(key));
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Same-binary re-exec as the askpass helper: git/ssh invoke this exe with the
@@ -106,6 +123,12 @@ pub fn run() {
     // Before the builder: the invoke wrapper and `trace_config` both read the
     // flag, and the frontend asks for it on its first frame.
     trace::init();
+
+    // The persistent domain, written before the webview exists: WebKit reads
+    // these once, at its first text-checker use, and registers its own
+    // defaults underneath, so a registration-domain write would lose.
+    #[cfg(target_os = "macos")]
+    set_webkit_text_defaults();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -375,6 +398,7 @@ pub fn run() {
             hot_exit::hot_exit_save,
             scratch::scratch_dir,
             scratch::scratch_new,
+            scratch::scratch_remove,
             update::check_for_update,
             update::open_releases_page,
             sessions::list_sessions,
