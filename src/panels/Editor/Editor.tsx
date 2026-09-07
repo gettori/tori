@@ -245,7 +245,8 @@ import { folderActors } from "../../utils/folderActors";
 import { shouldPollAccumulatedDiff } from "../../utils/sessionActivity";
 import { askAgentToResolve } from "../../utils/conflictAsk";
 import { sendBlockedReason } from "../../utils/sendTarget";
-import type { SessionTarget } from "../../utils/safeSend";
+import { composeSelectionMention, requestSend, type SessionTarget } from "../../utils/safeSend";
+import { selectionBlocks } from "../../utils/chatCompose";
 import type { RevertCandidate } from "../../utils/revertGuard";
 import { isSelfWrite, markSelfWrite } from "../../utils/selfWrites";
 import {
@@ -984,6 +985,36 @@ export default function Editor(props: {
       await askAgentToResolve(t, r, rel);
     } finally {
       setAskingConflict(false);
+    }
+  }
+
+  /**
+   * Selected words from a PDF, on their way to the selected session as a page
+   * reference plus a chip carrying the text.
+   *
+   * Here rather than in `PdfView` because the view knows the pages and nothing
+   * about sessions, and the same gate the Problems and Conflicts surfaces ask
+   * has to answer for this one too. `line` means page throughout: the chips and
+   * the jump list already speak in lines, and the two transports spell out
+   * "page" for a `.pdf` on the wire, where the agent would read `#L3` as a line.
+   */
+  async function quoteFromPdf(path: string, text: string, firstPage: number, lastPage: number) {
+    const reason = sendDisabledReason();
+    if (reason) {
+      emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" });
+      return;
+    }
+    const t = sendTarget();
+    if (!t) return;
+    const result = await requestSend({
+      ...t,
+      text: composeSelectionMention(t, path, firstPage, lastPage),
+      blocks: selectionBlocks(path, firstPage, lastPage, text),
+    });
+    if (result.kind === "blocked") {
+      emitWith<ToastEvent>(TOAST, { message: "That session is waiting on a prompt, answer it first.", kind: "error" });
+    } else if (result.kind === "timeout") {
+      emitWith<ToastEvent>(TOAST, { message: "Couldn't reach the session, try again.", kind: "error" });
     }
   }
 
@@ -2521,7 +2552,11 @@ export default function Editor(props: {
               that is what a PDF's line is. */}
           <Show when={pdfOf(fileId())}>
             <Suspense fallback={<div class={styles.editorEmpty}>Loading viewer...</div>}>
-              <PdfView path={fileId()!} goto={gotoTarget()} />
+              <PdfView
+                path={fileId()!}
+                goto={gotoTarget()}
+                onQuote={(text, first, last) => void quoteFromPdf(fileId()!, text, first, last)}
+              />
             </Suspense>
           </Show>
           <Show when={previewingOf(fileId())}>

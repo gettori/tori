@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isUnderPath, countRunningUnder, sameCwd, mentionPath } from "./pathScope";
+import { isUnderPath, countRunningUnder, isPdfPath, sameCwd, mentionPath } from "./pathScope";
 
 describe("isUnderPath", () => {
   it("matches self and descendants, not siblings or prefixes", () => {
@@ -35,6 +35,18 @@ describe("countRunningUnder", () => {
   it("is zero when nothing runs under the space", () => {
     const running = new Set(["d"]); // only the sibling space runs
     expect(countRunningUnder(sessions, running, "/r/personal")).toBe(0);
+  });
+});
+
+describe("isPdfPath", () => {
+  it("goes by the extension, whatever case it is written in", () => {
+    expect(isPdfPath("/docs/manual.pdf")).toBe(true);
+    expect(isPdfPath("/docs/MANUAL.PDF")).toBe(true);
+    // Not a PDF: the composers and the two transports read this to decide
+    // whether a location is a page or a line, so a near miss would send the
+    // agent looking for a page in a TypeScript file.
+    expect(isPdfPath("/docs/manual.pdf.ts")).toBe(false);
+    expect(isPdfPath("/docs/pdf")).toBe(false);
   });
 });
 

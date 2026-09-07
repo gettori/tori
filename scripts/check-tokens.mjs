@@ -19,6 +19,8 @@
 //   9. The palette's own heading still matches Dialog's title recipe.
 //  10. The two blocking surfaces in the chat wear one tier, and nothing else
 //      wears it.
+//  11. The PDF text layer's copied stylesheet still names the pdf.js it was
+//      copied from, and still declares what that pdf.js writes and reads.
 //
 // All of it lives here rather than in vitest because vitest stubs CSS imports to
 // the empty string and jsdom does not resolve var(), so nothing in the test
@@ -935,6 +937,59 @@ if (toneProblems.length > 0) {
   process.exit(1);
 }
 
+// ---- Check 11: the copied pdf.js text-layer stylesheet still matches pdf.js ----
+//
+// `PdfView.module.css` copies pdf.js's `.textLayer` rules rather than importing
+// `pdf_viewer.css`, which carries colour literals, a forced light colour scheme
+// and two thousand lines of viewer chrome nothing here mounts. A copy is only
+// safe while both sides still agree, and nothing else can notice when they stop:
+// every property below is written or read by pdf.js at runtime, so check 3 above
+// cannot tell a live declaration from a dead one, and jsdom has no layout for a
+// test to measure. Bumping pdfjs-dist fails here until that sheet is re-read.
+const PDFJS_CONTRACT = [
+  // Read by `setLayerDimensions`, which is what sizes the layer's box.
+  "--total-scale-factor",
+  "--scale-round-x",
+  "--scale-round-y",
+  // Overwritten inline by the `TextLayer` constructor.
+  "--min-font-size",
+  // Written per span by its layout pass.
+  "--font-height",
+  "--scale-x",
+  "--rotate",
+];
+
+const pdfCss = sources.get("src/panels/Editor/PdfView.module.css") ?? "";
+const pdfjsPkg = join(ROOT, "node_modules/pdfjs-dist/package.json");
+const pdfProblems = [];
+if (!pdfCss) {
+  pdfProblems.push("src/panels/Editor/PdfView.module.css is missing; check 11 has nothing to read");
+} else if (!existsSync(pdfjsPkg)) {
+  pdfProblems.push("pdfjs-dist is not installed, so the version the stylesheet names cannot be checked");
+} else {
+  // The comment is stripped from `sources`, so the version is read from disk.
+  const named = readFileSync(join(SRC, "panels/Editor/PdfView.module.css"), "utf8").match(/pdf\.js (\d+\.\d+\.\d+)/)?.[1];
+  const installed = JSON.parse(readFileSync(pdfjsPkg, "utf8")).version;
+  if (named !== installed) {
+    pdfProblems.push(
+      `the stylesheet says it was copied from pdf.js ${named ?? "(no version named)"}, ` +
+        `but pdfjs-dist ${installed} is installed`,
+    );
+  }
+  for (const prop of PDFJS_CONTRACT) {
+    if (!pdfCss.includes(`${prop}:`)) {
+      pdfProblems.push(`${prop} is written or read by pdf.js and no longer has a declaration here`);
+    }
+  }
+}
+
+if (pdfProblems.length > 0) {
+  console.error(`${pdfProblems.length} problem(s) with the copied pdf.js text-layer stylesheet:\n`);
+  for (const problem of pdfProblems) console.error(`  ${problem}`);
+  console.error("\nRe-read pdf.js's pdf_viewer.css and update the copy, then move the version comment.");
+  process.exit(1);
+}
+
 console.log(
   `Token check passed: no color literals outside tokens.css ` +
     `(${ALLOWLIST.size} allowlisted files, ${ALLOWLIST_PREFIXES.size} allowlisted ` +
@@ -949,5 +1004,7 @@ console.log(
     `its heading matching a dialog title on all ${TITLE_RECIPE.length} recipe properties, ` +
     `the blocking tier's ${tierRoles.length} roles worn by the ${BLOCKING.length} surfaces that interrupt the user, ` +
     `the lane strip painting only the one surface its ${LANE_TEXT.length} text roles are measured against, ` +
-    `and the panel's two status rows agreeing on all ${TONES.length} tones.`,
+    `the panel's two status rows agreeing on all ${TONES.length} tones, ` +
+    `and the PDF text layer's copy naming the pdf.js it was taken from ` +
+    `with all ${PDFJS_CONTRACT.length} of that library's properties still declared.`,
 );

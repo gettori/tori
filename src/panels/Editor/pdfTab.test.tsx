@@ -61,10 +61,11 @@ vi.mock("@tauri-apps/api/window", () => ({
 // about releasing a document is only worth anything if a document was really
 // held in the first place.
 vi.mock("./pdfjsRuntime", () => {
-  const page = {
+  const page = (n: number) => ({
     getViewport: ({ scale }: { scale: number }) => ({ width: 612 * scale, height: 792 * scale }),
     render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
-  };
+    streamTextContent: () => [`page ${n} text`],
+  });
   return {
     pdfjs: {
       GlobalWorkerOptions: {} as Record<string, string>,
@@ -73,9 +74,31 @@ vi.mock("./pdfjsRuntime", () => {
         port = new (globalThis as unknown as { Worker: new () => unknown }).Worker();
       },
       getDocument: () => ({
-        promise: Promise.resolve({ numPages: 3, getPage: async () => page }),
+        promise: Promise.resolve({ numPages: 3, getPage: async (n: number) => page(n) }),
         destroy: async () => {},
       }),
+      // Enough of pdf.js's `TextLayer` to select across; see `pdfView.test.tsx`.
+      TextLayer: class {
+        container: HTMLElement;
+        source: string[];
+        constructor({ textContentSource, container }: { textContentSource: string[]; container: HTMLElement }) {
+          this.container = container;
+          this.source = textContentSource;
+        }
+        render() {
+          for (const str of this.source) {
+            const span = document.createElement("span");
+            // pdf.js's own: the span is scaffolding for a text run, not a thing
+            // in its own right, so it keeps the text and sheds the generic role.
+            span.setAttribute("role", "presentation");
+            span.textContent = str;
+            this.container.append(span);
+          }
+          return Promise.resolve();
+        }
+        update() {}
+        cancel() {}
+      },
     },
     workerUrl: "/pdfjs/pdf.worker.min.mjs",
     runtimeUrls: {},
@@ -95,25 +118,56 @@ vi.mock("./lspClient", () => ({
 }));
 
 const { default: Editor } = await import("./Editor");
-const { emitWith, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import("../../utils/events");
+const { emitWith, onWith, OPEN_IN_EDITOR, PURGE_UNDER_PATH, SEND_TO_SESSION, SEND_TO_SESSION_RESULT, TOAST } =
+  await import("../../utils/events");
 const { retainedPdfPaths, pdfView, pdfLoadCount } = await import("./pdfDocument");
 
 const PDF = `${REPO}/manual.pdf`;
 const CODE = `${REPO}/src/a.ts`;
 
 const selection = selectionFor(REPO);
+// The same selection with a session attached: safe-send has nowhere to land a
+// quote without one, which is a case of its own below.
+const withSession = { ...selection, sessionId: "s1", agent: "claude", sessionCwd: REPO };
 const last = () => handed[handed.length - 1];
 
 let mounted: ReturnType<typeof render> | null = null;
 
-async function mountEditor() {
+async function mountEditor(sel: Partial<typeof withSession> = selection) {
   mounted = render(() => (
     <>
-      <Editor selected={selection as never} />
+      <Editor selected={sel as never} />
       <PaneView pinKind="file" />
     </>
   ));
   await waitFor(() => expect(listening.ready).toBe(true));
+}
+
+type SentBlock = { path: string; startLine: number | null; endLine: number | null; text: string | null };
+type Sent = { requestId: string; text: string; blocks?: SentBlock[] };
+
+/** Stand in for Terminal.tsx: take the request off the bus and answer it, so
+ *  `requestSend` resolves rather than sitting out its own timeout. */
+function collectSends(): { sent: Sent[]; off: () => void } {
+  const sent: Sent[] = [];
+  const off = onWith<Sent>(SEND_TO_SESSION, (req) => {
+    sent.push(req);
+    emitWith(SEND_TO_SESSION_RESULT, { requestId: req.requestId, result: "sent" });
+  });
+  return { sent, off };
+}
+
+/** Select a page's words and offer them to the agent, the way a reader does. */
+function quotePage(page: number) {
+  const span = document.querySelector(`[data-pdf-page="${page}"] span`);
+  if (!span) throw new Error(`no text on page ${page}`);
+  const range = document.createRange();
+  range.selectNodeContents(span);
+  const sel = document.getSelection()!;
+  sel.removeAllRanges();
+  sel.addRange(range);
+  document.dispatchEvent(new Event("selectionchange"));
+  fireEvent.click(screen.getByRole("button", { name: "Quote" }));
 }
 
 async function open(path: string, line?: number) {
@@ -136,6 +190,7 @@ beforeEach(() => {
   vi.stubGlobal("Worker", class {});
 });
 afterEach(() => {
+  document.getSelection()?.removeAllRanges();
   mounted?.unmount();
   mounted = null;
 });
@@ -223,6 +278,40 @@ describe("a .pdf tab in the editor pane", () => {
     await open(PDF);
     await pdfShown();
     expect(pdfView(PDF).zoom).toBe(zoomed);
+  });
+
+  it("sends a selection to the session as a page, never as a line", async () => {
+    const { sent, off } = collectSends();
+    await mountEditor(withSession);
+    await open(PDF);
+    await pdfShown();
+    await waitFor(() => expect(document.querySelector('[data-pdf-page="1"] span')).toBeTruthy());
+
+    quotePage(1);
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    // The agent opens a PDF by page; `#L1` would send it looking for a first
+    // line of text in a file that has none.
+    expect(sent[0].text).toBe("@manual.pdf (page 1)");
+    expect(sent[0].text).not.toContain("#L");
+    // And the words themselves ride along as a block, so the agent does not
+    // have to parse the file back to see what was meant.
+    expect(sent[0].blocks?.[0]).toMatchObject({ path: PDF, startLine: 1, endLine: 1, text: "page 1 text" });
+    off();
+  });
+
+  it("says which session to pick rather than dropping the quote", async () => {
+    const toasts: { message: string }[] = [];
+    const off = onWith<{ message: string }>(TOAST, (t) => toasts.push(t));
+    await mountEditor();
+    await open(PDF);
+    await pdfShown();
+    await waitFor(() => expect(document.querySelector('[data-pdf-page="1"] span')).toBeTruthy());
+
+    quotePage(1);
+
+    await waitFor(() => expect(toasts.map((t) => t.message)).toContain("Select a session first"));
+    off();
   });
 
   it("keeps the page across a switch to another tab and back, without re-parsing", async () => {

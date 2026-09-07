@@ -13,12 +13,11 @@ import { createStore, produce } from "solid-js/store";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFWorker } from "pdfjs-dist";
 import type { PdfZoom } from "./pdfLayout";
 
-/** Which paths this subsystem owns. It lives here rather than in `PdfView` so
- *  that `Editor.tsx` can ask the question without importing the view, which is
- *  lazy and pulls the layout code with it. */
-export function isPdfPath(path: string): boolean {
-  return path.toLowerCase().endsWith(".pdf");
-}
+/** Which paths this subsystem owns. Re-exported rather than defined here: the
+ *  composers and the two transports ask the same question to spell a location as
+ *  a page, and one predicate is what keeps the viewer and the wire agreeing
+ *  about which files are PDFs. */
+export { isPdfPath } from "../../utils/pathScope";
 
 /**
  * What the toolbar and the view have to agree about, per path.
@@ -102,6 +101,13 @@ function pdfjsRuntime() {
     },
   );
   return runtime;
+}
+
+/** pdf.js's `TextLayer`, once the library has loaded. The view needs the class
+ *  itself and not only a document, and this module is the one that knows how the
+ *  library is fetched. */
+export async function pdfTextLayer() {
+  return (await pdfjsRuntime()).pdfjs.TextLayer;
 }
 
 let worker: Promise<PDFWorker> | null = null;

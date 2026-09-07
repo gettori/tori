@@ -38,8 +38,8 @@ use crate::agents::ChatEffortExtra;
 
 use super::claude::ClaudeMapper;
 use super::model::{
-    ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision, PermissionMode, PermissionScope,
-    ChatQuestion, PermissionSuggestion, QuestionAnswer,
+    file_ref_locator, ChatConfigValue, ChatEvent, ChatQuestion, ContentBlock, PermissionDecision,
+    PermissionMode, PermissionScope, PermissionSuggestion, QuestionAnswer,
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
@@ -375,11 +375,7 @@ pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
                 "source": { "type": "base64", "media_type": media_type, "data": data },
             })),
             ContentBlock::FileRef { path, start_line, end_line, text, label } => {
-                let mut rendered = match (start_line, end_line) {
-                    (Some(s), Some(e)) => format!("@{path}#L{s}-{e}"),
-                    (Some(s), None) => format!("@{path}#L{s}"),
-                    _ => format!("@{path}"),
-                };
+                let mut rendered = file_ref_locator(path, *start_line, *end_line);
                 // `[Image 3]: @/abs/path`, the exact form `history.rs` reads
                 // back, so the label survives a reopen.
                 if let Some(l) = label {
@@ -1330,6 +1326,44 @@ pub mod tests {
             label: None,
         }]);
         assert_eq!(frame["message"]["content"][0]["text"], "@README.md");
+    }
+
+    /// A PDF is addressed by page, not by line: the agent opens it with a PDF
+    /// reader, and `#L3` would send it looking for a third line of text.
+    #[test]
+    fn a_pdf_reference_names_pages_rather_than_lines() {
+        let one = turn_frame(&[ContentBlock::FileRef {
+            path: "docs/manual.pdf".into(),
+            start_line: Some(3),
+            end_line: Some(3),
+            text: None,
+            label: None,
+        }]);
+        assert_eq!(one["message"]["content"][0]["text"], "@docs/manual.pdf (page 3)");
+
+        let many = turn_frame(&[ContentBlock::FileRef {
+            path: "docs/manual.PDF".into(),
+            start_line: Some(3),
+            end_line: Some(4),
+            text: None,
+            label: None,
+        }]);
+        assert_eq!(many["message"]["content"][0]["text"], "@docs/manual.PDF (pages 3-4)");
+    }
+
+    /// The other half of the same claim: nothing but a `.pdf` moved off `#L`.
+    #[test]
+    fn a_source_file_still_names_lines() {
+        for path in ["src/main.rs", "src/app.ts", "notes.pdf.ts"] {
+            let frame = turn_frame(&[ContentBlock::FileRef {
+                path: path.into(),
+                start_line: Some(3),
+                end_line: Some(4),
+                text: None,
+                label: None,
+            }]);
+            assert_eq!(frame["message"]["content"][0]["text"], format!("@{path}#L3-4"));
+        }
     }
 
     /// An attachment is a labelled path: the token the prose names it by, then
