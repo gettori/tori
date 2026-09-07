@@ -39,7 +39,7 @@ vi.mock("./pdfjsRuntime", () => {
         destroy: async () => {},
       }),
     },
-    workerUrl: "/assets/pdf.worker.min.mjs",
+    workerUrl: "/pdfjs/pdf.worker.min.mjs",
     runtimeUrls: {},
   };
 });
