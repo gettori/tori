@@ -70,6 +70,7 @@ import CommitDetail from "./CommitDetail";
 import ConflictView from "./ConflictView";
 import DebugSourceView from "./DebugSourceView";
 import ImageView, { isImagePath } from "./ImageView";
+import PdfToolbar from "./PdfToolbar";
 import { isPdfPath, releasePdfsExcept } from "./pdfDocument";
 import OverflowTabBar from "../../components/OverflowTabBar";
 import Resizer from "../../components/Resizer/Resizer";
@@ -2383,6 +2384,12 @@ export default function Editor(props: {
       const id = fileId();
       return id && (markdownOf(id) || svgOf(id)) ? id : null;
     };
+    /** This pane's file when it is a PDF, which is what earns the bar its zoom
+     *  and page controls and costs it the blame toggle. */
+    const pdfId = () => {
+      const id = fileId();
+      return id && pdfOf(id) ? id : null;
+    };
     return (
       <div
         class={styles.editorMain}
@@ -2414,9 +2421,16 @@ export default function Editor(props: {
               <Show when={previewableId()} keyed>
                 {(id) => previewBtn(id)}
               </Show>
+              {/* Keyed for the same reason the preview toggle is: the toolbar
+                  reads one path's shared view state, so moving between two PDF
+                  tabs has to rebuild it rather than leave it on the first. */}
+              <Show when={pdfId()} keyed>
+                {(id) => <PdfToolbar path={id} />}
+              </Show>
               {/* Not for a `sway://` view: a commit log has no working copy for
-                  git to blame. */}
-              <Show when={filePath() && !isSyntheticId(filePath()!)}>{blameBtn()}</Show>
+                  git to blame. Not for a PDF either: blame is per line, and a
+                  PDF has none - it is not even read as text. */}
+              <Show when={filePath() && !isSyntheticId(filePath()!) && !pdfId()}>{blameBtn()}</Show>
             </>
           }
         />

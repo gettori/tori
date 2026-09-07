@@ -1,0 +1,40 @@
+/* Sits in the breadcrumb bar's trailing cluster, so it inherits that row's
+   height and only has to lay its own controls out along it. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-1);
+  min-width: 0;
+}
+
+/* Wide enough for "400" and for a four-digit page number, and no wider: this
+   row shares its width with the file's path, which is the thing worth keeping. */
+.field {
+  width: 4ch;
+  padding: 0 var(--sway-space-1);
+  border: var(--sway-border-thin) solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-input);
+  color: var(--fg-default);
+  font-family: var(--sway-font-ui);
+  font-size: var(--sway-text-xs);
+  line-height: var(--sway-line-tight);
+  text-align: right;
+}
+
+.field:focus-visible {
+  outline: var(--sway-border-thick) solid var(--accent-fg);
+  outline-offset: 1px;
+}
+
+.unit {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+  white-space: nowrap;
+}
+
+.pages {
+  display: flex;
+  align-items: center;
+  gap: var(--sway-space-1);
+}
