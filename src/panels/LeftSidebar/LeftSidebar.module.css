@@ -503,9 +503,46 @@
   border-radius: calc(3px * var(--ui-scale));
 }
 
+/* ---- The icon slot's two states ----
+   At rest the slot says what the project is; under the pointer it says what
+   clicking it does. One slot, cross-faded, so the row keeps a single glyph and
+   the disclosure costs no width at the right edge.
+   `[data-expanded]` mirrors :hover the way every other row here does: it is on
+   the row while its context menu is open. */
+.projectIcon {
+  position: relative;
+}
+
+.projectIconArt,
+.iconChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity var(--sway-duration-fast) ease;
+}
+
+.iconChevron {
+  position: absolute;
+  inset: 0;
+  color: var(--fg-subtle);
+  opacity: 0;
+}
+
+.row.project:hover .projectIconArt,
+.row.project[data-expanded] .projectIconArt {
+  opacity: 0;
+}
+
+.row.project:hover .iconChevron,
+.row.project[data-expanded] .iconChevron {
+  opacity: 1;
+}
+
 /* Trailing disclosure chevron: a Lucide chevron-down at the row's right edge
    that rotates 180° into a chevron-up when the row is expanded. Because the
-   label grows (flex:1), it always sits flush right after any badges/dot. */
+   label grows (flex:1), it always sits flush right after any badges/dot.
+   A project row's disclosure moved into its icon slot (see `.iconChevron`);
+   this is what a fan-out group header still uses, having no icon to swap. */
 .rowChevron {
   flex: none;
   display: inline-flex;

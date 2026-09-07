@@ -117,6 +117,7 @@ import {
   Ellipsis,
   Search,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Plus,
   ChevronsLeftRightEllipsis,
@@ -168,6 +169,17 @@ function RowChevron(props: { open: boolean }) {
   return (
     <span class={styles.rowChevron} classList={{ [styles.open]: props.open }}>
       <Icon icon={ChevronDown} />
+    </span>
+  );
+}
+
+// A project row's disclosure, drawn *in* the icon slot rather than beside it:
+// at rest the row shows what the project is, and under the pointer it shows
+// what clicking does. One slot, two jobs, and the row keeps a single glyph.
+function IconChevron(props: { open: boolean }) {
+  return (
+    <span class={styles.iconChevron} aria-hidden="true">
+      <Icon icon={props.open ? ChevronDown : ChevronRight} />
     </span>
   );
 }
@@ -2974,12 +2986,20 @@ export default function LeftSidebar(props: {
                   onDragStart={(e) => startAbsDrag(e, p.path)}
                 >
                   <span class={`${styles.rowIcon} ${styles.projectIcon}`}>
-                    <ProjectIcon
-                      seed={p.path}
-                      icon={p.icon}
-                      iconFile={p.iconFile}
-                      favicon={p.favicon}
-                    />
+                    <span class={styles.projectIconArt}>
+                      <ProjectIcon
+                        seed={p.path}
+                        icon={p.icon}
+                        iconFile={p.iconFile}
+                        favicon={p.favicon}
+                      />
+                    </span>
+                    {/* The disclosure takes over this slot on hover. A folder
+                        with no branches under it has nothing to disclose, so
+                        it keeps its icon throughout. */}
+                    <Show when={!plainDir()}>
+                      <IconChevron open={popen()} />
+                    </Show>
                   </span>
                   <span class={styles.label}>{p.name}</span>
                   {statusBubble(
@@ -2989,9 +3009,6 @@ export default function LeftSidebar(props: {
                         ? bubbleForUnits(p, allUnits())
                         : null,
                   )}
-                  <Show when={!plainDir()}>
-                    <RowChevron open={popen()} />
-                  </Show>
                 </ContextMenu>
                 <Show when={popen() && !plainDir()}>
                   <For
