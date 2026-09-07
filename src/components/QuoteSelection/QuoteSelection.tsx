@@ -1,5 +1,5 @@
 import { Show, createSignal, onCleanup, onMount } from "solid-js";
-import styles from "./Chat.module.css";
+import styles from "./QuoteSelection.module.css";
 
 /** Each selected line as a Markdown quote, then a blank line so what follows
  *  reads as the reply rather than as more of the quote. */
@@ -10,7 +10,7 @@ export function quoteBlock(text: string): string {
 
 // A selection that starts or ends in one of these is the user editing, not
 // reading: the question card's Other box and the permission prompt live inside
-// the transcript too.
+// the transcript too, and a PDF's toolbar has fields of its own.
 const EDITABLE = "textarea, input, select, [contenteditable]:not([contenteditable='false'])";
 
 /** The selection's range when it is non-empty and both ends sit inside `root`
@@ -26,11 +26,12 @@ export function selectionWithin(root: HTMLElement, sel: Selection | null): Range
 }
 
 /**
- * A Quote button floating by a transcript selection.
+ * A Quote button floating by a selection.
  *
- * One per `ChatView`, each answering only for its own transcript root: every
- * attached tab stays mounted, so a document-wide listener that did not check
- * containment would draw a button under every hidden chat as well.
+ * One per surface that offers quoting (a chat transcript, a PDF), each
+ * answering only for its own root: every attached tab stays mounted, so a
+ * document-wide listener that did not check containment would draw a button
+ * under every hidden chat as well.
  */
 export default function QuoteSelection(props: { root: () => HTMLElement | undefined; onQuote: (text: string) => void }) {
   const [range, setRange] = createSignal<Range | null>(null);
