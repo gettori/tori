@@ -2892,17 +2892,13 @@ export default function LeftSidebar(props: {
           as one lit icon among twelve, which is a legend you have to learn. */}
       <Show when={activeSpace()}>
         {(g) => (
-          <div
-            class={styles.spaceHeader}
-            style={{ "--space-hue-rgb": spaceHueRgb(g().name, g().color) }}
-            onContextMenu={onSpaceAreaMenu}
-          >
-            <span class={styles.spaceHeaderIcon} aria-hidden="true">
-              <Show when={resolveIcon(g().icon)} fallback={g().name.trim().charAt(0).toUpperCase() || "?"}>
-                {(glyph) => <Icon icon={glyph()} />}
-              </Show>
-            </span>
+          <div class={styles.spaceHeader} onContextMenu={onSpaceAreaMenu}>
+            {/* The name at title weight, and what kind of thing it is beside
+                it in the quiet tone - the tile's glyph is gone from here, so
+                the heading is one line of type rather than a badge and a
+                label. The hue lives on in the window tint. */}
             <span class={styles.spaceHeaderName}>{g().name}</span>
+            <span class={styles.spaceHeaderKind}>· Spaces</span>
             {/* The tile's own menu, reachable without the right-click that is
                 the only way to it today. Hidden until hover, but focusable
                 throughout: an action only a pointer can find is not an action. */}
