@@ -29,8 +29,11 @@ export type ComposerAttachments = {
   /** Answers the token the new chip is named by, so the composer can leave the
    *  mention where it was typed; null when the file was refused. */
   onAttachFile: (relPath: string) => string | null;
-  onAttachPaths: (absPaths: string[]) => void;
-  onAttachUploads: (files: UploadFile[]) => void;
+  /** Both answer the tokens the new chips are named by, in arrival order and
+   *  with the refused ones absent, so the composer can put them in the sentence
+   *  where the file landed rather than waiting to be clicked. */
+  onAttachPaths: (absPaths: string[]) => string[];
+  onAttachUploads: (files: UploadFile[]) => Promise<string[]>;
 };
 
 /** The filename rides in a header because the body is the file itself. */
@@ -86,23 +89,25 @@ export function composerAttachments(
     onAttachFile: (relPath) => mention(`${cwd()}/${relPath}`),
     // A dragged path is a mention, not an upload: the agent has the filesystem,
     // so sending the bytes would be sending it something it can already read.
-    onAttachPaths: (absPaths) => {
-      for (const path of absPaths) mention(path);
-    },
+    onAttachPaths: (absPaths) => absPaths.map(mention).filter((label) => label !== null),
     // Already checked against the upload source by the composer. Written one at
     // a time so the labels come out in the order the files were dropped.
     onAttachUploads: async (files) => {
+      const labels: string[] = [];
       for (const file of files) {
         const kind = attachmentKind(file.name) ?? "file";
         try {
           const path = await invoke<string>("store_attachment", file.bytes, {
             headers: { [ATTACHMENT_NAME_HEADER]: encodeURIComponent(file.name) },
           });
-          offerToComposer(key(), fileMentionBlocks(path, nextLabel(key(), kind)));
+          const label = nextLabel(key(), kind);
+          offerToComposer(key(), fileMentionBlocks(path, label));
+          labels.push(label);
         } catch (e) {
           onRejected(`${file.name} could not be saved: ${String(e)}`);
         }
       }
+      return labels;
     },
   };
 }
