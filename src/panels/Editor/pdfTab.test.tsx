@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import PaneView from "../../tabs/PaneView";
 import { createEffect } from "solid-js";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { closeOf } from "../../test/tabs";
 import { pointerClick } from "../../test/menus";
 
@@ -96,7 +96,7 @@ vi.mock("./lspClient", () => ({
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import("../../utils/events");
-const { retainedPdfPaths, pdfPlace, pdfLoadCount } = await import("./pdfDocument");
+const { retainedPdfPaths, pdfView, pdfLoadCount } = await import("./pdfDocument");
 
 const PDF = `${REPO}/manual.pdf`;
 const CODE = `${REPO}/src/a.ts`;
@@ -195,21 +195,51 @@ describe("a .pdf tab in the editor pane", () => {
     await waitFor(() => expect(retainedPdfPaths()).not.toContain(PDF));
   });
 
+  it("earns the bar its zoom controls, and loses it the blame toggle", async () => {
+    await mountEditor();
+    await open(CODE);
+    // Blame is per line, so a code tab has it and the PDF beside it must not:
+    // there are no lines to attribute, and the file is not even read as text.
+    expect(screen.getByRole("button", { name: /Git blame/ })).toBeTruthy();
+    expect(screen.queryByLabelText("Zoom percentage")).toBeNull();
+
+    await open(PDF);
+    await pdfShown();
+    expect(screen.queryByRole("button", { name: /Git blame/ })).toBeNull();
+    expect(screen.getByLabelText("Zoom percentage")).toBeTruthy();
+    expect(screen.getByLabelText("Page")).toBeTruthy();
+  });
+
+  it("keeps the zoom across a switch to another tab and back", async () => {
+    await mountEditor();
+    await open(PDF);
+    await pdfShown();
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    const zoomed = pdfView(PDF).zoom;
+    expect(zoomed).not.toBe("fitWidth");
+
+    await open(CODE);
+    await open(PDF);
+    await pdfShown();
+    expect(pdfView(PDF).zoom).toBe(zoomed);
+  });
+
   it("keeps the page across a switch to another tab and back, without re-parsing", async () => {
     await mountEditor();
     await open(PDF, 3);
     await pdfShown();
-    await waitFor(() => expect(pdfPlace(PDF).page).toBe(3));
+    await waitFor(() => expect(pdfView(PDF).page).toBe(3));
     const parses = pdfLoadCount();
 
     await open(CODE);
     // The view is gone with the tab switch; the document and the page are not.
     expect(retainedPdfPaths()).toContain(PDF);
-    expect(pdfPlace(PDF).page).toBe(3);
+    expect(pdfView(PDF).page).toBe(3);
 
     await open(PDF);
     await pdfShown();
-    expect(pdfPlace(PDF).page).toBe(3);
+    expect(pdfView(PDF).page).toBe(3);
     expect(pdfLoadCount()).toBe(parses);
   });
 });

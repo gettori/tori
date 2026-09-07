@@ -1,14 +1,16 @@
 import { For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
-import { loadPdf, pdfFailureMessage, pdfPlace, setPdfPlace } from "./pdfDocument";
+import { loadPdf, pdfFailureMessage, pdfView, setPdfView } from "./pdfDocument";
 import {
   clampPage,
-  fitWidthScale,
+  clampPercent,
   pageTops,
   pageWindow,
+  percentOf,
   placeAt,
   renderScale,
+  scaleFor,
   scrollTopFor,
   type PageSize,
 } from "./pdfLayout";
@@ -58,6 +60,13 @@ function PdfDocumentView(props: {
   let scroller: HTMLDivElement | undefined;
   let placed = false;
   let appliedNonce: number | null = null;
+  let appliedJump: number | null = null;
+  /** Where the next scale change has to land, when it is not the default probe
+   *  line: a pinch keeps the place under the pointer instead. */
+  let anchor: { page: number; offset: number; viewportY: number } | null = null;
+  /** The place under the probe line, recorded under the heights that were on
+   *  screen at the time, since a scale change cannot work it out afterwards. */
+  let probeAnchor = { page: 1, offset: 0 };
   const measuring = new Set<number>();
   const tasks = new Map<number, RenderTask>();
 
@@ -65,7 +74,7 @@ function PdfDocumentView(props: {
   const sizeOf = (i: number) => sizes()[i] ?? firstSize();
   const scale = createMemo(() => {
     const f = firstSize();
-    return f ? fitWidthScale(width(), f) : 1;
+    return f ? scaleFor(pdfView(props.path).zoom, { width: width(), height: height() }, f) : 1;
   });
   const heights = createMemo(() => sizes().map((_, i) => (sizeOf(i)?.height ?? 0) * scale()));
   const tops = createMemo(() => pageTops(heights()));
@@ -117,13 +126,11 @@ function PdfDocumentView(props: {
       setWidth(el.clientWidth);
       setHeight(el.clientHeight);
     };
-    const onScroll = () => {
-      setScrollTop(el.scrollTop);
-      setPdfPlace(props.path, placeAt(el.scrollTop, heights()));
-    };
+    const onScroll = () => record(el.scrollTop, el.clientHeight);
     measure();
     el.addEventListener("scroll", onScroll, { passive: true });
     onCleanup(() => el.removeEventListener("scroll", onScroll));
+    installPinch(el);
     // Guarded the way OverlayScroll guards its own: jsdom implements neither
     // ResizeObserver nor layout, so there is nothing to observe and nothing is
     // lost by not observing it.
@@ -176,34 +183,155 @@ function PdfDocumentView(props: {
     scrollToPage(clampPage(g.line, d.numPages), 0);
   });
 
+  // The page the toolbar's field asked for, applied per nonce for the same
+  // reason `goto` is: typing the page you are already on has to work.
+  createEffect(() => {
+    const jump = pdfView(props.path).jump;
+    const d = doc();
+    if (!d || !jump || jump.nonce === appliedJump) return;
+    appliedJump = jump.nonce;
+    placed = true;
+    scrollToPage(clampPage(jump.page, d.numPages), 0);
+  });
+
   // The reading position this path was left at, restored once the column has a
   // real width behind its heights.
   createEffect(() => {
     if (placed || !doc() || !width()) return;
     placed = true;
-    const { page, offset } = pdfPlace(props.path);
-    if (page > 1 || offset > 0) scrollToPage(page, offset);
+    const { page, offset } = pdfView(props.path);
+    if (page > 1 || offset !== 0) scrollToPage(page, offset);
   });
 
-  // A re-fit at a new width rewrites every page's height, so the pixel offset
-  // the viewport is sitting at stops naming the place it named a moment ago.
-  // Re-anchoring on the remembered page and fraction is what keeps a pane
-  // resize (or a pane that had no width at all when its tab opened) from moving
-  // the reader to a different page.
+  // What the toolbar needs and cannot work out: the page count, and what the
+  // zoom setting actually resolved to at this pane's width.
+  createEffect(() => setPdfView(props.path, { pages: pageCount() }));
+  createEffect(() => setPdfView(props.path, { scale: scale() }));
+
+  /**
+   * A change of scale rewrites every page's height, so the pixel offset the
+   * viewport is sitting at stops naming the place it named a moment ago. Every
+   * caller re-anchors through here; the only difference between them is which
+   * point they keep still.
+   *
+   * The default is the line the page number is read from, a third of the way
+   * down, and *not* the viewport's top. Anchoring on the top lets the reported
+   * page slip, because an offset is a fraction of a page's height while the
+   * probe is a fixed distance: a page starting 29% of a page above the fold sits
+   * 232px up at 100% and 618px up at 200%, so the probe, still 300px down, ends
+   * up on the page before. Keeping the probe still makes the page stable by
+   * construction, which is what "zoom in three times and reset" has to mean.
+   *
+   * `heights()` is already the new scale's by the time this runs, so the place
+   * cannot be worked out here: it is recorded by `record` under the heights that
+   * were on screen when the reader was looking at it.
+   */
   createEffect(
     on(scale, (s, prev) => {
       if (prev === undefined || prev === s || !placed) return;
-      const { page, offset } = pdfPlace(props.path);
-      scrollToPage(page, offset);
+      const held = anchor ?? { ...probeAnchor, viewportY: height() / 3 };
+      anchor = null;
+      scrollTo(scrollTopFor(held.page, heights(), held.offset) - held.viewportY);
     }),
   );
 
   function scrollToPage(page: number, offset: number) {
-    setPdfPlace(props.path, { page, offset });
+    setPdfView(props.path, { page, offset });
+    scrollTo(scrollTopFor(page, heights(), offset));
+  }
+
+  function scrollTo(top: number) {
     const el = scroller;
     if (!el) return;
-    el.scrollTop = scrollTopFor(page, heights(), offset);
-    setScrollTop(el.scrollTop);
+    el.scrollTop = Math.max(0, top);
+    record(el.scrollTop, el.clientHeight);
+  }
+
+  /** Where the viewport now is, in the two forms the rest of this needs: the
+   *  reading position the store carries, and the place under the probe line
+   *  that a scale change re-anchors on. */
+  function record(top: number, viewportHeight: number) {
+    const hs = heights();
+    setScrollTop(top);
+    setPdfView(props.path, placeAt(top, viewportHeight, hs));
+    probeAnchor = placeAt(top + viewportHeight / 3, 0, hs);
+  }
+
+  /**
+   * Zoom by a factor, keeping whatever is `viewportY` pixels down the viewport
+   * where it is. The scale change lands in the store; the effect above does the
+   * scrolling, because that has to happen after the heights have moved.
+   *
+   * Answers whether it took, which is what lets a caller accumulate: a factor
+   * too small to move the rounded percentage does nothing here, and a gesture
+   * that treated that as applied would throw the increment away and never zoom
+   * at all under a slow pinch.
+   */
+  function zoomAround(factor: number, viewportY: number): boolean {
+    const from = percentOf(scale());
+    const percent = clampPercent(percentOf(scale() * factor));
+    if (percent === from) return false;
+    anchor = { ...placeAt(scrollTop() + viewportY, 0, heights()), viewportY };
+    setPdfView(props.path, { zoom: percent });
+    return true;
+  }
+
+  /**
+   * A trackpad pinch, in both the forms a browser reports it.
+   *
+   * WebKit sends `gesturestart` / `gesturechange` with a cumulative `e.scale`,
+   * and the `gesturestart` has to be `preventDefault`ed or WebKit zooms the
+   * whole page underneath us. Chromium sends none of those and reports a pinch
+   * as a `wheel` with `ctrlKey` set, which is why both are here even though only
+   * the first fires in the app today.
+   *
+   * `Cmd+=` and its pair are deliberately untouched: those are the app's UI
+   * scale, and a PDF tab does not get to redefine a window-wide shortcut.
+   */
+  function installPinch(el: HTMLDivElement) {
+    // Read once per gesture rather than per event: the pane cannot move under a
+    // pinch, and this is a layout read on every frame of one otherwise.
+    let paneTop = 0;
+    const yIn = (clientY: number) => clientY - paneTop;
+    // The `e.scale` the last applied step was measured from. Not simply the
+    // previous event's: a step too small to move the rounded percentage does
+    // nothing, and advancing past it would discard the increment, so a slow
+    // pinch would never zoom.
+    let appliedScale = 1;
+
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      paneTop = el.getBoundingClientRect().top;
+      appliedScale = 1;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      const { scale: total, clientY } = e as Event & { scale: number; clientY: number };
+      if (!total) return;
+      // `e.scale` is cumulative over the gesture, so the step is the ratio
+      // against the last applied one rather than the value itself.
+      if (zoomAround(total / appliedScale, yIn(clientY))) appliedScale = total;
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      paneTop = el.getBoundingClientRect().top;
+      zoomAround(Math.exp(-e.deltaY / 100), yIn(e.clientY));
+    };
+
+    el.addEventListener("gesturestart", onGestureStart);
+    el.addEventListener("gesturechange", onGestureChange);
+    // Not passive, because a pinch has to be stopped from scrolling, which costs
+    // every ordinary wheel event a trip through this handler before the browser
+    // will scroll. Gating it on `"ongesturestart" in window` would skip it on
+    // WebKit entirely, but a wrong guess there leaves pinch silently doing
+    // nothing, and the handler is two lines.
+    el.addEventListener("wheel", onWheel, { passive: false });
+    onCleanup(() => {
+      el.removeEventListener("gesturestart", onGestureStart);
+      el.removeEventListener("gesturechange", onGestureChange);
+      el.removeEventListener("wheel", onWheel);
+    });
   }
 
   function paint(canvas: HTMLCanvasElement, i: number) {
