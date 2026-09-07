@@ -646,8 +646,10 @@
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale))
-    calc(16px * var(--ui-scale));
+  /* Right on `--tree-gutter`, like the head and the tree above it, so the gear
+     lands on the one edge the whole column ends on. */
+  padding: calc(8px * var(--ui-scale)) var(--tree-gutter) calc(16px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
 }
 
 /* Divider from the tree above, inset 8px from each edge so it does not run into
