@@ -675,6 +675,14 @@
   align-items: center;
   gap: calc(3px * var(--ui-scale));
   overflow-x: auto;
+  /* Scrollable but never drawn. Dropping the names buys room first; past that
+     there is nothing left to give, and a 30px strip is too short to spend any
+     of its height on a bar. */
+  scrollbar-width: none;
+}
+
+.spaceScroll::-webkit-scrollbar {
+  display: none;
 }
 
 /* Vertical rule between root-discovered spaces and pinned ("Other") spaces. */
@@ -739,16 +747,20 @@
 .spaceMenu[data-expanded] > .space.active {
   border-color: var(--brand-default);
 }
-/* The lit tile: the strip's one selection, and the only one that says its name.
-   It grows into a pill on a raised fill, so which view you are in is legible
-   without decoding twelve glyphs. Declared after :hover at equal specificity so
-   it keeps its hue while the pointer is over it. */
+/* The lit tile: the strip's one selection, on a raised fill. Declared after
+   :hover at equal specificity so it keeps its hue while the pointer is over it. */
 .space.active {
+  background: var(--neutral-hover);
+  color: rgb(var(--space-hue-rgb));
+}
+
+/* The pill geometry is separate from the fill because a lit tile does not
+   always carry its name: in a narrow sidebar the names go and the lit tile
+   stays a square, still filled, still the one that is lit. */
+.space.titled {
   width: auto;
   gap: calc(7px * var(--ui-scale));
   padding-inline: calc(9px * var(--ui-scale));
-  background: var(--neutral-hover);
-  color: rgb(var(--space-hue-rgb));
 }
 
 /* Features and Shells are not spaces and have no hue of their own, so the lit
@@ -772,6 +784,19 @@
   color: var(--fg-muted);
   font-size: var(--sway-text-2xs);
   font-variant-numeric: tabular-nums;
+}
+
+/* The measuring ruler. Out of flow so it costs the row nothing, `max-content`
+   so the shrink-to-fit of an absolute box cannot squeeze the answer, and
+   declared after `.titled` so that width wins. `.tileName`'s own max-width
+   still caps it, which is the cap the real pill has. */
+.tileProbe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
 }
 /* Drag-to-reorder feedback: dim the tile being dragged, and show a gold insertion
    bar on the side of the tile the drop would land against. */
