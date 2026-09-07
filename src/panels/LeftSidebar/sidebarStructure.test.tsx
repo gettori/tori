@@ -279,6 +279,21 @@ describe("the sidebar levels that outlive the session rows", () => {
     }
   });
 
+  // The disclosure lives in the project's icon slot now, so the row spends no
+  // width at its right edge on a chevron it only needs under the pointer.
+  it("puts a project's disclosure chevron in its icon slot", async () => {
+    mount(["p:work/repo"]);
+
+    const repo = await row("repo");
+    const slot = repo.querySelector('[class*="projectIcon"]')!;
+    expect(slot.querySelector('[class*="iconChevron"]')).toBeTruthy();
+    expect(repo.querySelector('[class*="rowChevron"]')).toBeNull();
+
+    // A plain folder has nothing to disclose, so it keeps its icon throughout.
+    const notes = await row("notes");
+    expect(notes.querySelector('[class*="iconChevron"]')).toBeNull();
+  });
+
   it("offers Change icon… on every project, pinned or not", async () => {
     mount();
 
