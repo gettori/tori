@@ -10,6 +10,9 @@
 // nothing is read, the two generic windows come off the rung the adapter offers
 // for free, and the model-scoped weekly window is the one thing only the account
 // token can answer. Lighting that chip is the opt-in, and it is the only one.
+// It is bought rather than rented: an account already read on the token rung
+// keeps reading there when the chip goes out, since the Keychain that read
+// would open is one it has already opened.
 //
 // **The absence of an answer is not "off".** An account nobody has answered for
 // shows the two generic windows, because that reading costs nothing and needs no
@@ -93,18 +96,33 @@ export function showsWindow(agentId: string, profile: string | null, chip: Windo
   return accountWindows(agentId, profile).includes(chip);
 }
 
+/** Whether this account has ever answered on the token rung. Evidence that the
+ *  Keychain item was opened, not that the number is current: a reading kept from
+ *  before a restart still proves the permission was given. */
+function tokenAlreadyRead(agentId: string, profile: string | null): boolean {
+  return windowsFor(agentId, profile).some((w) => w.source === "token");
+}
+
 /**
  * Which rung reads this account, derived rather than stored.
  *
- * The token rung is reached only through the model chip, even on an adapter that
+ * The token rung is reached through the model chip, even on an adapter that
  * declares it first: it is the one read that opens the login Keychain, and a
  * user who asked for the five-hour bar did not ask for that.
+ *
+ * **That gates the first read, not every one after it.** An account already read
+ * on this rung keeps it whatever the chips show, because the chips say what the
+ * titlebar draws and this says whether Sway may ask at all. Held to the chip,
+ * turning a bar off dropped the account to a rung with no read path at all, and
+ * its row sat in the titlebar going stale on numbers no trigger could refresh.
  */
 export function usageRungFor(agentId: string, profile: string | null): UsageSource {
   const rungs = declaredRungs(agentId);
   const windows = accountWindows(agentId, profile);
   if (rungs.length === 0 || windows.length === 0) return "off";
-  if (windows.includes("model_week") && rungs.includes("token")) return "token";
+  if (rungs.includes("token") && (windows.includes("model_week") || tokenAlreadyRead(agentId, profile))) {
+    return "token";
+  }
   return rungs.find((r) => r !== "token") ?? "off";
 }
 

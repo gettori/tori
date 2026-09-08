@@ -172,7 +172,9 @@ export function pollUsage(agentId: string, trigger: Trigger, profile: string | n
   if (!agentEnabled(agentId, profile)) return;
   const key = accountKey(agentId, profile);
   const clock = clockFor(key);
-  const ctx = { visible: visibleNow(), chatOpen: chatOpenFor(agentId) };
+  // Only the `cli` rung spawns anything (`codex app-server`); the token rung is
+  // one request, and is scheduled as one.
+  const ctx = { visible: visibleNow(), chatOpen: chatOpenFor(agentId), spawns: path.rung === "cli" };
   if (!mayPoll(clock, trigger, Date.now(), ctx)) return;
   if (pending()[key]) return;
   clock.lastPollAt = Date.now();

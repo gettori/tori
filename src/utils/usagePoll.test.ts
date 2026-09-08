@@ -26,6 +26,7 @@ const clock = (over: Partial<PollClock> = {}): PollClock => ({
 const ctx = (over: Partial<PollContext> = {}): PollContext => ({
   visible: true,
   chatOpen: true,
+  spawns: true,
   ...over,
 });
 
@@ -48,9 +49,24 @@ describe("a hidden window", () => {
 });
 
 describe("the background tick", () => {
-  it("needs a chat on this agent open", () => {
+  it("needs a chat on this agent open before it spawns a process for one", () => {
     expect(mayPoll(clock(), "interval", NOW, ctx({ chatOpen: false }))).toBe(false);
     expect(mayPoll(clock(), "interval", NOW, ctx({ chatOpen: true }))).toBe(true);
+  });
+
+  it("runs with no chat open when the read spawns nothing", () => {
+    // What the gate is rationing is a process. Held to it, the one-request rung
+    // stopped reading the moment the last chat closed, and the strip went grey
+    // fifteen minutes later with a live account behind it.
+    expect(mayPoll(clock(), "interval", NOW, ctx({ chatOpen: false, spawns: false }))).toBe(true);
+  });
+
+  it("still waits out the interval and the hidden window for that read", () => {
+    const quiet = ctx({ chatOpen: false, spawns: false });
+    expect(mayPoll(clock(), "interval", NOW, { ...quiet, visible: false })).toBe(false);
+    const c = clock({ lastPollAt: NOW });
+    expect(mayPoll(c, "interval", NOW + POLL_INTERVAL_MS - 1, quiet)).toBe(false);
+    expect(mayPoll(c, "interval", NOW + POLL_INTERVAL_MS, quiet)).toBe(true);
   });
 
   it("waits the full interval between runs", () => {
