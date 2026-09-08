@@ -11,6 +11,7 @@ const MAIN = `${WORK}/main`;
 const WAVE = `${WORK}/wave-3`;
 const SIDE = "/root/side/lab";
 const TRUNK = `${SIDE}/trunk`;
+const REPO = "/root/side/repo";
 
 const unit = (label: string, folderPath: string) => ({
   label,
@@ -18,6 +19,16 @@ const unit = (label: string, folderPath: string) => ({
   branch: label,
   kind: "worktree",
   isCurrent: false,
+});
+
+// A plain repo's branch-units: every one of them lives in the repo folder, which
+// is the whole reason a bookmark cannot be a folder alone.
+const branchUnit = (label: string, isCurrent = false) => ({
+  label,
+  folderPath: REPO,
+  branch: label,
+  kind: "plain",
+  isCurrent,
 });
 
 const config = {
@@ -41,7 +52,15 @@ const config = {
       name: "side",
       path: "/root/side",
       external: false,
-      projects: [{ name: "lab", path: SIDE, external: false, branchUnits: [unit("trunk", TRUNK)] }],
+      projects: [
+        { name: "lab", path: SIDE, external: false, branchUnits: [unit("trunk", TRUNK)] },
+        {
+          name: "repo",
+          path: REPO,
+          external: false,
+          branchUnits: [branchUnit("main", true), branchUnit("feat"), branchUnit("old")],
+        },
+      ],
     },
   ],
 };
@@ -120,6 +139,46 @@ describe("switching spaces", () => {
       branch: "wave-3",
       projectKind: "worktree",
     });
+  });
+
+  it("comes back to the branch a plain repo was left on, not to its first row", async () => {
+    // The bookmark is re-read against the tree by folder, and a plain repo's
+    // branches all answer to the same one. Without the branch, coming back lands
+    // on whichever branch happens to be listed first, and the row lights up there.
+    localStorage.setItem(
+      "sway.expanded.v1",
+      JSON.stringify(["p:work/proj", "p:side/lab", "p:side/repo"]),
+    );
+    localStorage.setItem(
+      "sway.selection-memory.v1",
+      JSON.stringify({
+        spaces: {
+          side: {
+            kind: "unit",
+            spaceName: "side",
+            projectName: "repo",
+            projectPath: REPO,
+            folderPath: REPO,
+            branch: "feat",
+            projectKind: "plain",
+            profile: null,
+          },
+        },
+      }),
+    );
+    const { sel } = mount();
+    await waitFor(() => expect(screen.getByText("wave-3")).toBeTruthy());
+    click("wave-3");
+    await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
+
+    clickSpace("side");
+
+    await waitFor(() => expect(sel()?.folderPath).toBe(REPO));
+    expect(sel()?.branch).toBe("feat");
+    // And the row that lights up is that one, since the highlight reads the
+    // selection back off the tree.
+    expect(screen.getByText("feat").closest("[aria-current]")).toBeTruthy();
+    expect(screen.getByText("main").closest("[aria-current]")).toBeNull();
   });
 
   it("selects nothing in a space that has never been opened", async () => {
