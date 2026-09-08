@@ -293,6 +293,20 @@
   .section:last-child {
     margin-bottom: 0;
   }
+  /* On the wrapper, not on the first heading: Chat opens on a group title,
+     Agents on a card, the detail on a back button, and each of them sat a
+     different distance from the card's edge. One padding, every pane. */
+  .paneInner > [data-pane] {
+    padding-top: var(--sway-space-5);
+  }
+  /* Agents' opening title row carries a button and a filter, so it stands a
+     small control tall and its text sits lower than a text-only title's. Every
+     pane's opening row stands the same, control or not; the later titles keep
+     their own rhythm. */
+  .paneInner > [data-pane] > .section:first-child > .sectionTitle,
+  .paneInner > [data-pane] > .cardSection:first-child > .section > .sectionTitle {
+    min-height: var(--control-height-sm);
+  }
 
   /* The rule is a span rather than a border so it starts after the words. */
   .sectionTitle {
@@ -779,6 +793,13 @@
   .cardStack {
     display: grid;
     gap: var(--sway-space-4);
+  }
+  /* Straight under a title, a card block takes the same air the agent table
+     does off its own: a title's 2px is measured for a row, which brings its
+     own padding, not for a bordered card. */
+  .sectionTitle + .cardStack,
+  .sectionTitle + .connect {
+    margin-top: var(--sway-space-5);
   }
 
   .card {
