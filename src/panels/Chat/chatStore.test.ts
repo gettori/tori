@@ -30,6 +30,7 @@ import {
   pushQuestionAnswers,
   pushSteer,
   pushUserTurn,
+  resetTranscript,
   toolCallsSeen,
   reasoningFor,
   sendCapable,
@@ -1751,6 +1752,58 @@ describe("a session that never handshook", () => {
     const s = initialChat("s1");
     applyEvent(s, sessionStarted());
     expect(s.account).toBeNull();
+  });
+});
+
+// Sway's log and the agent's own replay describe one conversation, so the panel
+// draws the log first and the replay replaces it. Replacing means the indexes go
+// with the items they point into, or the next tool frame patches a card that is
+// no longer there.
+describe("resetTranscript", () => {
+  it("leaves a chat reading as fresh, however much was in it", () => {
+    const s = initialChat("s1");
+    for (let i = 0; i < 3; i++) {
+      applyEvent(s, { type: "userMessage", sessionId: "s1", turnId: `t${i}`, blocks: [{ type: "text", text: `m${i}` }] });
+      applyEvent(s, text(`t${i}`, "answer"));
+      applyEvent(s, turnDone(`t${i}`, "completed"));
+    }
+    applyEvent(s, {
+      type: "subagentStarted",
+      sessionId: "s1",
+      agentId: "a1",
+      toolUseId: "c1",
+      taskType: "local_agent",
+      agentType: "general-purpose",
+      description: "look around",
+      prompt: "look around",
+    });
+    expect(s.items.length).toBeGreaterThan(0);
+    expect(Object.keys(s.lanes).length).toBeGreaterThan(0);
+
+    resetTranscript(s);
+
+    const fresh = initialChat("s1");
+    expect(s.items).toEqual([]);
+    expect(s.turns).toEqual(fresh.turns);
+    expect(s.lanes).toEqual(fresh.lanes);
+    expect(s.toolIndex).toEqual(fresh.toolIndex);
+    expect(s.questionIndex).toEqual(fresh.questionIndex);
+    expect(s.openText).toEqual(fresh.openText);
+    expect(s.openThinking).toEqual(fresh.openThinking);
+    expect(s.laneOfCall).toEqual(fresh.laneOfCall);
+    expect(s.selectedLane).toBeNull();
+    expect(s.activeTurnId).toBeNull();
+    expect(s.compactions).toBe(0);
+    expect(isRunning(s)).toBe(false);
+  });
+
+  it("keeps minting fresh ids rather than reusing the ones it just dropped", () => {
+    const s = initialChat("s1");
+    applyEvent(s, { type: "userMessage", sessionId: "s1", turnId: "t0", blocks: [{ type: "text", text: "before" }] });
+    const dropped = s.items[0]!.id;
+    resetTranscript(s);
+    applyEvent(s, { type: "userMessage", sessionId: "s1", turnId: "t1", blocks: [{ type: "text", text: "after" }] });
+    expect(s.items[0]!.id).not.toBe(dropped);
   });
 });
 

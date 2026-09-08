@@ -2,12 +2,14 @@ import { describe, it, expect } from "vitest";
 import goldenEvents from "../../dev/fixtures/chat/events.json";
 import goldenCommands from "../../dev/fixtures/chat/commands.json";
 import goldenToolSummaries from "../../dev/fixtures/chat/toolSummaries.json";
+import goldenConversation from "../../dev/fixtures/chat/conversationEvents.json";
 import {
   CHAT_COMMAND_KEYS,
   CHAT_COMMAND_TYPES,
   CHAT_EVENT_KEYS,
   CHAT_EVENT_TYPES,
   CHAT_NESTED_KEYS,
+  CONVERSATION_EVENTS,
   isTurnScoped,
   parseChatEvent,
   type ChatCommand,
@@ -31,6 +33,15 @@ describe("chatTypes mirrors the Rust chat model", () => {
       expect(parsed, `failed to parse ${JSON.stringify(raw).slice(0, 120)}`).not.toBeNull();
       expect(parsed?.type).toBe((raw as { type: string }).type);
     }
+  });
+
+  // Which frames are "the conversation" is one decision made in Rust and read
+  // in two places: the mirror rebuilds the log when a replay brings one, and the
+  // panel clears what it drew from that log for the same reason. A list typed
+  // out twice would eventually be two lists, and the drift would surface as a
+  // restored chat showing its history twice.
+  it("agrees with Rust on which frames are the conversation", () => {
+    expect([...goldenConversation].sort()).toEqual([...CONVERSATION_EVENTS].sort());
   });
 
   it("covers every variant the Rust model emits, with none left over", () => {
