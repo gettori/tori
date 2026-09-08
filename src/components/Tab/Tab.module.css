@@ -1,19 +1,23 @@
-/* The shared tab pill (mirrors the editor/terminal strips): a floating rounded
-   pill, transparent at rest, a subtle --card2 fill when active or hovered.
+/* The shared tab pill (mirrors the editor/terminal strips): transparent at rest,
+   a wash that fades downward under the pointer and again, in brand under a bar,
+   when the tab is the selected one. The sidebar's recipe turned ninety degrees:
+   a strip runs across, so its mark hangs from the top edge rather than standing
+   on the left, and the tab reads as the thing the pane below it is showing.
 
    The fill lives on the wrapper rather than on the button, because the close is
    a sibling of the button now (see Tab.tsx) and the two have to read as one
    pill. The wrapper is always rendered, so a strip with no close button gets
    the same box as one with. */
-/* The pill's horizontal breathing room, and the rail's inset with it. One value
-   for every shape, so an icon-only tab and a labelled one sit on the same
-   rhythm. */
+/* The pill's horizontal breathing room. One value for every shape, so an
+   icon-only tab and a labelled one sit on the same rhythm. */
 .pill {
   --tab-pad: calc(8px * var(--ui-scale));
   position: relative;
   display: inline-flex;
   align-items: center;
-  border-radius: var(--sway-radius-md);
+  /* Square on the bar's side, rounded away from it, as the sidebar's rows are on
+     theirs: a rounded top corner clips the bar into a lozenge. */
+  border-radius: 0 0 var(--sway-radius-md) var(--sway-radius-md);
   background: transparent;
   transition: background var(--sway-duration-fast) ease;
 }
@@ -21,11 +25,19 @@
 /* Selected off Kobalte's own `data-selected` rather than off a prop, so the
    highlight cannot drift from the selection the strip actually holds. */
 .pill:hover:not(:has([data-selected])) {
-  background: var(--tab-hover-bg);
+  background: linear-gradient(to bottom, var(--tab-hover-bg), transparent);
 }
 
+/* The sidebar's selected-row recipe (`.row.branch.sel`, `.railItemActive`) laid
+   on its side: the brand bar across the full top edge over a wash that fades
+   downward, so a column marks "here" along the edge it starts from and a row
+   does the same. Brand rather than `--tab-active-bg`, which resolves to the same
+   grey as the hover and left the bar to carry the whole distinction. */
 .pill:has([data-selected]) {
-  background: var(--tab-active-bg);
+  background:
+    linear-gradient(var(--brand-bar), var(--brand-bar)) center top / 100%
+      var(--sway-border-thick) no-repeat,
+    linear-gradient(to bottom, var(--brand-subtle), transparent);
 }
 
 /* A strip whose pane does not hold focus draws no selection at all: the fill and
@@ -34,27 +46,6 @@
    says which tab the pane would come back to without claiming the focus. */
 :global(.unified-strip.pane-blur) .pill:has([data-selected]) {
   background: transparent;
-}
-
-:global(.unified-strip.pane-blur) .pill:has([data-selected])::before {
-  content: none;
-}
-
-/* The selected tab's rail, along the top edge: the settings rail's marker turned
-   ninety degrees. Drawn on the pill, so a tab with a close carries it over the
-   close too and the mark reads as belonging to the whole tab. Inset by a fixed
-   amount rather than by a fraction of the width, so the gap either side is the
-   same on a narrow icon tab as on a wide one - a percentage reads as nearly full
-   width on the narrow one and as a stub on the wide one. */
-.pill:has([data-selected])::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: var(--tab-pad);
-  bottom: var(--tab-pad);
-  width: var(--sway-border-thick);
-  border-radius: var(--sway-radius-sm);
-  background: var(--brand-bar);
 }
 
 .tab {
