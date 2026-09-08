@@ -1,9 +1,9 @@
 import { For, Show, createResource, createSignal } from "solid-js";
-import { FolderOpen, Plus } from "lucide-solid";
+import { ArrowUpRight, File, Folder } from "lucide-solid";
 import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
-import IconButton from "../../../../components/IconButton/IconButton";
+import Chevron from "../../../../components/Chevron/Chevron";
 import {
   COMPOSE_DRAFT,
   OPEN_IN_EDITOR,
@@ -55,27 +55,46 @@ function toast(message: string, kind: ToastEvent["kind"]) {
   emitWith<ToastEvent>(TOAST, { message, kind });
 }
 
-/** What the row says is at its path, right of the path itself.
+/** The row's own path, relative to the account home it was resolved against.
  *
- *  The reader's words rather than the wire's four. A link says where it goes,
- *  because that is the whole reason to tell a link apart from a file, and a
- *  broken one says it in the words that make the row's disabled New make sense.
- */
+ *  The absolute one is what every action uses and what the expanded body shows;
+ *  up top it would be the same home repeated on six rows, which is noise around
+ *  the one part that differs. Directories keep a trailing slash, because
+ *  `commands/` and `commands` are a folder and a file to the eye. */
+function relPath(e: EntryView, home: string): string {
+  const prefix = home.endsWith("/") ? home : `${home}/`;
+  const rel = e.path.startsWith(prefix) ? e.path.slice(prefix.length) : e.path;
+  return e.kind === "dir" ? `${rel}/` : rel;
+}
+
+/** A link target short enough to sit on the row: its last two segments.
+ *
+ *  Two rather than one, because the leaf alone is where most of these land
+ *  (`AGENTS.md`, `prompts`) and says nothing about which tree it came from. The
+ *  full path is on the chip's tooltip and in the body, so nothing is only ever
+ *  shown abbreviated. */
+function shortTarget(target: string): string {
+  const parts = target.split("/").filter(Boolean);
+  return parts.slice(-2).join("/");
+}
+
+/** The right-hand column: what is at the path, or how much of it.
+ *
+ *  A directory answers with its size, because "on disk" about a folder is the
+ *  least interesting true thing to say about it. The link fact is not here at
+ *  all: it rides the chip beside the path, so a linked file still gets to say
+ *  whether anything is actually there. */
 function stateLine(e: EntryView): string {
-  switch (e.state) {
-    case "present":
-      return "on disk";
-    case "missing":
-      return "not created";
-    case "symlink":
-      return `link -> ${e.target ?? "?"}`;
-    case "dangling":
-      return `broken link -> ${e.target ?? "?"}`;
-  }
+  if (e.state === "missing") return "not created";
+  if (e.state === "dangling") return "broken link";
+  if (e.kind === "file") return "on disk";
+  const n = e.children.length;
+  return n === 1 ? "1 file" : `${n} files`;
 }
 
 function FileRow(props: {
   entry: EntryView;
+  home: string;
   profileId: string;
   agentId: string;
   agentLabel: string;
@@ -84,17 +103,18 @@ function FileRow(props: {
 }) {
   const e = () => props.entry;
   const rooted = () => props.projectRoot !== null;
+  const [open, setOpen] = createSignal(false);
   const [naming, setNaming] = createSignal(false);
   const [name, setName] = createSignal("");
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
 
+  const there = () => e().state === "present" || e().state === "symlink";
   // A dir row always offers "New"; a file row offers it only while there is no
   // file, because the action creates the row's own path.
-  const canCreate = () =>
-    e().state !== "dangling" && (e().kind === "dir" || e().state === "missing");
+  const canCreate = () => e().state !== "dangling" && (e().kind === "dir" || !there());
 
-  const open = (path: string) => {
+  const openPath = (path: string) => {
     if (!rooted()) return;
     emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path });
   };
@@ -114,7 +134,7 @@ function FileRow(props: {
       setNaming(false);
       setName("");
       props.onChanged();
-      open(made);
+      openPath(made);
     } catch (err) {
       // On the row rather than in a toast: the name that failed is still in the
       // box beside it, and a toast would float away from the thing to fix.
@@ -138,109 +158,143 @@ function FileRow(props: {
 
   return (
     <li class={styles.fileRow}>
-      <div class={styles.fileMain}>
-        <Show
-          when={e().state !== "missing" && rooted()}
-          fallback={<span class={styles.fileLabel}>{e().label}</span>}
-        >
-          <button type="button" class={styles.fileOpen} onClick={() => open(e().path)}>
-            {e().label}
-          </button>
+      {/* The whole header is the disclosure, so the hit area is the row and
+          there is one control rather than a row of competing ones. Nothing on
+          it opens a file: a folder has none to open, and a rule that holds for
+          some rows is a rule nobody learns. */}
+      <button
+        type="button"
+        class={styles.fileHead}
+        aria-expanded={open()}
+        onClick={() => setOpen(!open())}
+      >
+        <span class={styles.fileGlyph} aria-hidden="true">
+          <Icon icon={e().kind === "dir" ? Folder : File} />
+        </span>
+        <span class={styles.fileLabel}>{e().label}</span>
+        <span class={styles.filePath}>{relPath(e(), props.home)}</span>
+        {/* Where a link goes, beside the path it stands in for. Separate from
+            the state on the right, so a linked file still says whether there is
+            anything at the other end. */}
+        <Show when={e().target}>
+          {(target) => (
+            <span class={styles.fileLink} title={target()}>
+              <Icon icon={ArrowUpRight} />
+              {shortTarget(target())}
+            </span>
+          )}
         </Show>
-        <span class={styles.filePath}>{e().path}</span>
         <span class={styles.fileState} data-state={e().state}>
           {stateLine(e())}
         </span>
-      </div>
+        <Chevron open={open()} />
+      </button>
 
-      {/* Immediate children only. A skills folder kept in a dotfiles repo reads
-          as its skills rather than as an opaque link. */}
-      <Show when={e().children.length > 0}>
-        <ul class={styles.fileKids}>
-          <For each={e().children}>
-            {(child) => (
-              <li>
-                <button
-                  type="button"
-                  class={styles.fileOpen}
-                  disabled={!rooted()}
-                  title={rooted() ? undefined : NO_ROOT}
-                  onClick={() => open(`${e().path}/${child}`)}
-                >
-                  {child}
-                </button>
-              </li>
-            )}
-          </For>
-        </ul>
-      </Show>
+      <Show when={open()}>
+        <div class={styles.fileBody}>
+          {/* The absolute path, once, where there is room for it. */}
+          <div class={styles.fileFull}>{e().path}</div>
 
-      <div class={styles.fileActions}>
-        <Show when={canCreate()}>
-          <Show
-            when={naming() && e().kind === "dir"}
-            fallback={
+          <Show when={e().children.length > 0}>
+            <div class={styles.fileKids}>
+              <For each={e().children}>
+                {(child) => (
+                  <button
+                    type="button"
+                    class={styles.fileKid}
+                    disabled={!rooted()}
+                    title={rooted() ? undefined : NO_ROOT}
+                    onClick={() => openPath(`${e().path}/${child}`)}
+                  >
+                    {child}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+
+          <div class={styles.fileActions}>
+            <Show when={canCreate()}>
+              <Show
+                when={naming() && e().kind === "dir"}
+                fallback={
+                  <Button
+                    size="sm"
+                    disabled={!rooted() || busy()}
+                    tooltip={rooted() ? undefined : NO_ROOT}
+                    tooltipWhenDisabled
+                    onClick={() => (e().kind === "dir" ? setNaming(true) : void create())}
+                  >
+                    New
+                  </Button>
+                }
+              >
+                <input
+                  class={styles.fileName}
+                  value={name()}
+                  placeholder={e().newNameHint ?? "name"}
+                  aria-label={`New ${e().label} name`}
+                  autofocus
+                  onInput={(ev) => setName(ev.currentTarget.value)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter") void create();
+                    if (ev.key === "Escape") (setNaming(false), setError(null));
+                  }}
+                />
+                <Button size="sm" disabled={busy()} onClick={() => void create()}>
+                  Create
+                </Button>
+              </Show>
+            </Show>
+
+            {/* A folder has no single file to open, so only a file row offers
+                it; a folder's children each carry their own opener above. */}
+            <Show when={e().kind === "file" && there()}>
               <Button
                 size="sm"
                 variant="ghost"
-                icon={<Icon icon={Plus} />}
-                disabled={!rooted() || busy()}
-                tooltip={rooted() ? "New from blank" : NO_ROOT}
+                disabled={!rooted()}
+                tooltip={rooted() ? undefined : NO_ROOT}
                 tooltipWhenDisabled
-                onClick={() => (e().kind === "dir" ? setNaming(true) : void create())}
+                onClick={() => openPath(e().path)}
               >
-                New
+                Open
               </Button>
-            }
-          >
-            <input
-              class={styles.fileName}
-              value={name()}
-              placeholder={e().newNameHint ?? "name"}
-              aria-label={`New ${e().label} name`}
-              autofocus
-              onInput={(ev) => setName(ev.currentTarget.value)}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter") void create();
-                if (ev.key === "Escape") (setNaming(false), setError(null));
-              }}
-            />
-            <Button size="sm" variant="ghost" disabled={busy()} onClick={() => void create()}>
-              Create
+            </Show>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!rooted()}
+              tooltip={rooted() ? undefined : NO_ROOT}
+              tooltipWhenDisabled
+              onClick={() => draft()}
+            >
+              Write with an agent
             </Button>
+
+            {/* Every state but `missing`: there is nothing to reveal until
+                there is something at the path, and a dangling link is still an
+                entry Finder can show. */}
+            <Show when={e().state !== "missing"}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  void invoke("reveal_in_finder", { path: e().path }).catch((err) =>
+                    toast(String(err), "error"),
+                  )
+                }
+              >
+                Reveal in Finder
+              </Button>
+            </Show>
+          </div>
+
+          <Show when={error()}>
+            <div class={styles.fileError}>{error()}</div>
           </Show>
-        </Show>
-
-        {/* Every state but `missing`: there is nothing to reveal until there is
-            something at the path, and a dangling link is still an entry Finder
-            can show. */}
-        <Show when={e().state !== "missing"}>
-          <IconButton
-            size="sm"
-            icon={<Icon icon={FolderOpen} />}
-            tooltip="Reveal in Finder"
-            onClick={() =>
-              void invoke("reveal_in_finder", { path: e().path }).catch((err) =>
-                toast(String(err), "error"),
-              )
-            }
-          />
-        </Show>
-
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={!rooted()}
-          tooltip={rooted() ? undefined : NO_ROOT}
-          tooltipWhenDisabled
-          onClick={() => draft()}
-        >
-          Write it with an agent
-        </Button>
-      </div>
-
-      <Show when={error()}>
-        <div class={styles.fileError}>{error()}</div>
+        </div>
       </Show>
     </li>
   );
@@ -329,6 +383,7 @@ export default function AgentFiles(props: {
                       {(entry) => (
                         <FileRow
                           entry={entry}
+                          home={profile().home}
                           profileId={profile().profileId}
                           agentId={props.agentId}
                           agentLabel={props.agentLabel}

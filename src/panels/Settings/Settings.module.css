@@ -1783,59 +1783,77 @@
 
   /* --- The Files group: an agent's own config files, per account --- */
 
-  /* Rows rather than the pane's .row grid, for the reason .acctRow gives: a row
-     here carries a path, a state and three actions, all of which are wider than
-     the 196px control column. */
   .fileList {
     margin: 0;
-    padding: 0 var(--sway-space-7) var(--sway-space-6);
+    padding: 0;
     list-style: none;
-  }
-  .fileRow {
-    padding: var(--sway-space-3) 0;
   }
   .fileRow + .fileRow {
     border-top: var(--sway-border-thin) solid var(--border-default);
   }
 
-  .fileMain {
+  /* The whole header is the disclosure control, so it is a button laid out as
+     a row: glyph, name, path, link, state, chevron. */
+  .fileHead {
+    width: 100%;
     display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--sway-space-3);
-    font-size: var(--sway-text-xs);
-  }
-  .fileLabel {
-    color: var(--fg-default);
-  }
-  /* A link, not a button box: the row's label *is* the control, the same shape
-     the file tree and the tool cards use for a path that opens. */
-  .fileOpen {
+    align-items: center;
+    gap: var(--sway-space-4);
+    padding: var(--sway-space-5) var(--sway-space-7);
     appearance: none;
     background: none;
     border: 0;
-    padding: 0;
     font: inherit;
-    color: var(--accent-fg);
-    cursor: pointer;
+    color: inherit;
     text-align: left;
+    cursor: pointer;
   }
-  .fileOpen:hover:not(:disabled) {
-    text-decoration: underline;
+  .fileHead:hover {
+    background: var(--neutral-hover);
   }
-  .fileOpen:disabled {
+  .fileGlyph {
+    flex: none;
+    display: inline-flex;
     color: var(--fg-subtle);
-    cursor: default;
+  }
+  .fileLabel {
+    flex: none;
+    font-size: var(--sway-text-sm);
+    font-weight: 600;
+    color: var(--fg-default);
   }
   .filePath {
+    flex: none;
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-2xs);
     color: var(--fg-subtle);
   }
-  /* The state reads as prose, not as a badge: "dangling -> /gone" is a sentence
-     about the row, and a pill would crop the target that makes it useful. */
+
+  /* Where a link goes, as a chip so it reads as a second thing about the row
+     rather than as more of the path. */
+  .fileLink {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sway-space-2);
+    padding: var(--sway-space-1) var(--sway-space-3);
+    border-radius: var(--sway-radius-sm);
+    background: var(--neutral-subtle);
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Pushed right, and the only thing between the row's identity and the
+     chevron. `auto` on the margin rather than a spacer element, so a long link
+     chip shrinks instead of shoving this off the end. */
   .fileState {
     margin-left: auto;
+    flex: none;
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-2xs);
     color: var(--fg-subtle);
@@ -1844,22 +1862,49 @@
     color: var(--attention-fg);
   }
 
+  /* Indented under the header by the glyph column, so the body reads as
+     belonging to the row above rather than as a sibling of it. */
+  .fileBody {
+    padding: 0 var(--sway-space-7) var(--sway-space-6) var(--sway-space-8);
+  }
+  .fileFull {
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    color: var(--fg-subtle);
+    margin-bottom: var(--sway-space-4);
+  }
+
   .fileKids {
-    margin: var(--sway-space-2) 0 0;
-    padding: 0 0 0 var(--sway-space-5);
-    list-style: none;
     display: flex;
     flex-wrap: wrap;
-    gap: var(--sway-space-2) var(--sway-space-4);
+    gap: var(--sway-space-2);
+    margin-bottom: var(--sway-space-4);
+  }
+  .fileKid {
+    appearance: none;
+    padding: var(--sway-space-2) var(--sway-space-3);
+    border: var(--sway-border-thin) solid var(--border-default);
+    border-radius: var(--sway-radius-sm);
+    background: transparent;
+    font-family: var(--sway-font-mono);
     font-size: var(--sway-text-2xs);
+    color: var(--fg-muted);
+    cursor: pointer;
+  }
+  .fileKid:hover:not(:disabled) {
+    border-color: var(--brand-default);
+    color: var(--fg-default);
+  }
+  .fileKid:disabled {
+    color: var(--fg-subtle);
+    cursor: default;
   }
 
   .fileActions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--sway-space-2);
-    margin-top: var(--sway-space-2);
+    gap: var(--sway-space-3);
   }
   .fileName {
     min-width: 0;
@@ -1876,7 +1921,7 @@
   /* Beside the box that produced it, not in a toast: the name that failed is
      still on screen, and the fix is one edit away. */
   .fileError {
-    margin-top: var(--sway-space-2);
+    margin-top: var(--sway-space-3);
     font-size: var(--sway-text-2xs);
     color: var(--danger-fg);
   }
