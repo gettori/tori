@@ -247,8 +247,14 @@ function FileRow(props: {
 }
 
 /**
- * The files this agent reads out of each of its account homes, one sub-group
- * per account and one row per `[[config.entries]]` row of its adapter.
+ * The files this agent reads out of its account homes: one account at a time,
+ * named by which tab is lit, and one row per `[[config.entries]]` row of its
+ * adapter.
+ *
+ * One at a time rather than a block per account down the page, which is what
+ * the Models group above settled on for the same reason: the rows are the same
+ * six for every account, so stacking them reads as repetition rather than as a
+ * per-account answer.
  *
  * A sibling of `AgentAccounts` rather than more of `AgentDetail`, on the same
  * reasoning: the detail page is already long, and both of these are lists whose
@@ -273,6 +279,12 @@ export default function AgentFiles(props: {
     (key) => invoke<ConfigFilesView>("agent_config_files", { adapterId: key.split(":")[0] }),
   );
 
+  const profiles = () => view()?.profiles ?? [];
+  const [picked, setPicked] = createSignal<string | null>(null);
+  /** The picked account while it is still there, the first otherwise, which is
+   *  also what an account removed from under the tabs lands on. */
+  const shown = () => profiles().find((p) => p.profileId === picked()) ?? profiles()[0];
+
   return (
     <Show when={view()}>
       {(v) => (
@@ -280,37 +292,55 @@ export default function AgentFiles(props: {
           <div class={styles.groupHead}>
             <span class={styles.groupTitle}>Files</span>
             <span class={styles.sectionRule} />
+            {/* Only once there are two: one tab is a word for the only thing
+                there is, and the home under it already names the account. */}
+            <Show when={v().declared && profiles().length > 1}>
+              <div class={styles.groupTabs}>
+                <For each={profiles()}>
+                  {(profile) => (
+                    <button
+                      type="button"
+                      class={styles.groupTab}
+                      aria-pressed={profile.profileId === shown()?.profileId}
+                      onClick={() => setPicked(profile.profileId)}
+                    >
+                      {profile.label}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
           </div>
           <Show
             when={v().declared}
             fallback={<div class={styles.cardMeta}>This adapter declares no files.</div>}
           >
-            <div class={styles.accountsCard}>
-              <For each={v().profiles}>
-                {(profile) => (
-                  <div class={styles.acctCard}>
-                    <div class={styles.acctHead}>
-                      <span class={styles.accountName}>{profile.label}</span>
-                      <span class={styles.acctHome}>{profile.home}</span>
-                    </div>
-                    <ul class={styles.fileList}>
-                      <For each={profile.entries}>
-                        {(entry) => (
-                          <FileRow
-                            entry={entry}
-                            profileId={profile.profileId}
-                            agentId={props.agentId}
-                            agentLabel={props.agentLabel}
-                            projectRoot={props.projectRoot}
-                            onChanged={() => void refetch()}
-                          />
-                        )}
-                      </For>
-                    </ul>
+            <Show when={shown()}>
+              {(profile) => (
+                <div class={styles.accountsCard}>
+                  {/* The home, not the label: the tabs above already say which
+                      account this is, and the path is the part that is not
+                      guessable from the name. */}
+                  <div class={styles.acctHead}>
+                    <span class={styles.acctHome}>{profile().home}</span>
                   </div>
-                )}
-              </For>
-            </div>
+                  <ul class={styles.fileList}>
+                    <For each={profile().entries}>
+                      {(entry) => (
+                        <FileRow
+                          entry={entry}
+                          profileId={profile().profileId}
+                          agentId={props.agentId}
+                          agentLabel={props.agentLabel}
+                          projectRoot={props.projectRoot}
+                          onChanged={() => void refetch()}
+                        />
+                      )}
+                    </For>
+                  </ul>
+                </div>
+              )}
+            </Show>
           </Show>
         </>
       )}

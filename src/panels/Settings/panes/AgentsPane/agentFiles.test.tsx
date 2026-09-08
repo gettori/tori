@@ -166,25 +166,36 @@ function drafts(): ComposeDraft[] {
 beforeEach(() => invoked.mockReset());
 
 describe("the Files group", () => {
-  it("lists every account's rows with what is actually at each path", async () => {
-    const { container } = await open(mount());
+  it("lists one account's rows with what is actually at each path", async () => {
+    const r = await open(mount());
 
-    // Both accounts, each under its own resolved home.
-    expect(container.textContent).toContain("Default");
-    expect(container.textContent).toContain("/home/me/.claude");
-    expect(container.textContent).toContain("Work");
-    expect(container.textContent).toContain("/home/me/Library/sway/claude/work");
+    // Both accounts are offered; the first one's rows are what is on screen.
+    expect(r.getByRole("button", { name: "Default" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Work" })).toBeTruthy();
+    expect(r.container.textContent).toContain("/home/me/.claude");
+    expect(r.container.textContent).not.toContain("/home/me/Library/sway/claude/work");
 
-    // All four states, in the reader's words, and the two that point somewhere
-    // say where.
-    expect(container.textContent).toContain("on disk");
-    expect(container.textContent).toContain("not created");
-    expect(container.textContent).toContain("link -> /home/me/.dotfiles/skills");
-    expect(container.textContent).toContain("broken link -> /home/me/gone");
+    // Three of the four states, in the reader's words, and the two that point
+    // somewhere say where. The fourth is on the other account, below.
+    expect(r.container.textContent).toContain("on disk");
+    expect(r.container.textContent).toContain("link -> /home/me/.dotfiles/skills");
+    expect(r.container.textContent).toContain("broken link -> /home/me/gone");
 
     // A directory's children, listed through the link rather than hidden by it.
-    expect(container.textContent).toContain("alpha");
-    expect(container.textContent).toContain("beta");
+    expect(r.container.textContent).toContain("alpha");
+    expect(r.container.textContent).toContain("beta");
+  });
+
+  // The rows are the same six for every account and only their states differ,
+  // so what the tab changes is the answer, not the list.
+  it("swaps to the other account's homes and states on its tab", async () => {
+    const r = await open(mount());
+
+    fireEvent.click(r.getByRole("button", { name: "Work" }));
+
+    expect(r.container.textContent).toContain("/home/me/Library/sway/claude/work");
+    expect(r.container.textContent).not.toContain("/home/me/.dotfiles/skills");
+    expect(r.container.textContent).toContain("not created");
   });
 
   // Every row is resolved against one account's home, so the set of rows is a
@@ -353,9 +364,10 @@ describe("creating a file from a row", () => {
   it("offers no create on a dangling row", async () => {
     const r = await open(mount());
     const news = await r.findAllByRole("button", { name: /New/ });
-    // Instructions is present (no New), skills is a live dir, rules is
-    // dangling, and Work's instructions row is missing.
-    expect(news).toHaveLength(2);
+    // On the account shown: instructions is present (no New), skills is a live
+    // dir (New), rules is dangling (none). Work's missing file row is behind
+    // its own tab.
+    expect(news).toHaveLength(1);
   });
 });
 
