@@ -190,6 +190,48 @@ describe("Composer keys", () => {
     expect(busy.onInterrupt).toHaveBeenCalled();
   });
 
+  it("clears the draft on Ctrl+C, the way a shell prompt does", () => {
+    const { input, onSend } = setup();
+    fireEvent.input(input, { target: { value: "half a thought" } });
+
+    expect(fireEvent.keyDown(input, { key: "c", ctrlKey: true })).toBe(false);
+    expect(input.value).toBe("");
+    // Dropped, not sent: the two ways a draft stops being one, and this is the
+    // one that keeps no copy.
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("leaves Ctrl+C alone when the box is empty", () => {
+    const { input } = setup();
+    expect(fireEvent.keyDown(input, { key: "c", ctrlKey: true })).toBe(true);
+  });
+
+  it("keeps the chips when Ctrl+C drops the prose", () => {
+    // A chip is a file that was picked rather than something typed, and it has
+    // its own x. Clearing the sentence must not take the attachments with it.
+    const chip: PendingBlock[] = [
+      {
+        id: "att-1",
+        block: { type: "fileRef", path: "/store/1a2b-0/shot.png", startLine: null, endLine: null, text: null, label: "[Image 1]" },
+      },
+    ];
+    const { input, onDropAttachment } = setup({ attachments: chip });
+    fireEvent.input(input, { target: { value: "look at [Image 1]" } });
+
+    fireEvent.keyDown(input, { key: "c", ctrlKey: true });
+
+    expect(input.value).toBe("");
+    expect(onDropAttachment).not.toHaveBeenCalled();
+  });
+
+  it("leaves the draft to the scratch tab that holds it", () => {
+    // While a scratch tab is the writer, the input is read-only: clearing here
+    // would be overwritten by the tab's next save anyway.
+    const { input } = setup({ linked: "draft-1.md", draft: "held elsewhere" });
+    expect(fireEvent.keyDown(input, { key: "c", ctrlKey: true })).toBe(true);
+    expect(input.value).toBe("held elsewhere");
+  });
+
   it("sends nothing when there is nothing to send", () => {
     const { input, onSend } = setup();
     fireEvent.keyDown(input, { key: "Enter" });

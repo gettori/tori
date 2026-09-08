@@ -517,10 +517,9 @@ export default function Composer(props: {
     if (labels?.length) insertToken(labels.join(" "), at);
   }
 
-  function submit() {
-    const value = text().trim();
-    if (!hasContent() || props.disabled) return;
-    props.onSend(value);
+  // Empty the box and put it back the way an empty composer sits. Shared by the
+  // send and by Ctrl+C, which are the two ways a draft stops being one.
+  function clearDraft() {
     setText("");
     setHistoryIndex(-1);
     setCaret(0);
@@ -532,6 +531,13 @@ export default function Composer(props: {
     // it and snapped it up again, which is the jump that reads as the composer
     // resizing itself while you type.
     if (input) input.rows = MIN_ROWS;
+  }
+
+  function submit() {
+    const value = text().trim();
+    if (!hasContent() || props.disabled) return;
+    props.onSend(value);
+    clearDraft();
   }
 
   // Up at the very start of the input walks back through what was sent, the
@@ -561,6 +567,15 @@ export default function Composer(props: {
       e.preventDefault();
       closeMenu();
       submit();
+      return;
+    }
+    // Ctrl+C abandons the draft, the way it does at a shell prompt. Guarded on
+    // there being prose to drop, so an empty box leaves the key alone, and on the
+    // draft being the input's to clear rather than the scratch tab's. The chips
+    // stay: each one is a file that was picked, and each already has its own x.
+    if (e.key === "c" && e.ctrlKey && !e.metaKey && !e.altKey && !props.linked && text()) {
+      e.preventDefault();
+      clearDraft();
       return;
     }
     if (!menuOpen() && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
