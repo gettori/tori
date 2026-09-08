@@ -60,7 +60,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
-const { emit, FOCUS_SEARCH } = await import("../../utils/events");
+const { emit, on: onEvent, FOCUS_SEARCH, NEW_FEATURE, TOGGLE_SIDEBAR_MODE } = await import("../../utils/events");
 
 const mount = () => render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 const toggle = () => screen.getByRole("button", { name: "Filter" });
@@ -87,6 +87,27 @@ describe("the sidebar filter", () => {
     // The field is the affordance now; a second one beside it would only be
     // taking the room the field wants.
     expect(noToggle()).toBeNull();
+  });
+
+  // The one thing the column makes, moved out of the Feature list and into the
+  // row the filter shares: the list owns the dialog, the head owns the button,
+  // and the bus is what joins them.
+  it("offers a New Feature button in Features mode only, before the filter", async () => {
+    const asked: number[] = [];
+    const off = onEvent(NEW_FEATURE, () => asked.push(1));
+    mount();
+    await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "New Feature" })).toBeNull();
+
+    emit(TOGGLE_SIDEBAR_MODE);
+    const add = await screen.findByRole("button", { name: "New Feature" });
+    // Before the filter in the DOM, which is also the order a keyboard reaches
+    // them in.
+    expect(add.compareDocumentPosition(toggle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(add);
+    expect(asked).toHaveLength(1);
+    off();
   });
 
   it("takes the caret when it opens", async () => {

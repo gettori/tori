@@ -63,14 +63,13 @@ export const TwoMembers: Story = {
   },
 };
 
-/** The open Feature, with the files touched across every member on the row. The
- *  number arrives as a prop: the row itself reads no store, so it renders the
- *  same here as it does with the editor open on that Feature. */
-export const OpenWithChanges: Story = {
+/** The Feature the rest of the window is showing: the brand bar down the left
+ *  edge over a wash that fades out to the right, the same mark a selected
+ *  branch row wears. */
+export const Open: Story = {
   args: {
     feature: feature("Notifications", [member("/w/api", 0), member("/w/web", 1), member("/s/blog", 2)]),
     active: true,
-    changed: 7,
   },
 };
 

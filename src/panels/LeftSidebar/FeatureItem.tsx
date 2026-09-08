@@ -30,9 +30,6 @@ export default function FeatureItem(props: {
   onSelect?: (feature: Feature) => void;
   /** The Feature the shell is showing. */
   active?: boolean;
-  /** Files touched across this Feature's members. Zero shows nothing: a Feature
-   *  nobody has open reads zero, and a clean one has no news either way. */
-  changed?: number;
   /** Right-click rows; none means the row is inert. */
   menu?: MenuItem[];
   /** Right-click rows for one member row; none leaves the rows inert. */
@@ -90,13 +87,6 @@ export default function FeatureItem(props: {
         <div class={styles.name} data-name title={props.feature.branch}>
           {props.feature.name}
         </div>
-        <Show when={props.changed}>
-          {(n) => (
-            <span class={styles.count} data-changed>
-              {n()} changed
-            </span>
-          )}
-        </Show>
       </div>
       <Show
         when={open()}

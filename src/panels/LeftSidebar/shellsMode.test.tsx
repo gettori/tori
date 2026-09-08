@@ -68,6 +68,7 @@ const { resetSessionActivityForTests } = await import("../../utils/sessionActivi
 const { emit, emitWith, onWith, TOGGLE_SIDEBAR_MODE, REVEAL_SHELLS, TERMINAL_TAB_FOCUSED, FOCUS_SESSION_TAB } =
   await import("../../utils/events");
 const { reportCommandExit, resetCommandStatus } = await import("../Terminal/commandStatus");
+const { markTabUnseen, clearTabUnseen, resetTabUnseen } = await import("../Terminal/tabUnseen");
 const { SHELLS_KEY } = await import("../../utils/features");
 
 const cmd = (id: string, title: string, over: Partial<LiveTab> = {}): LiveTab => ({
@@ -94,11 +95,15 @@ function mount(liveTabs: LiveTab[] = []) {
 const segment = (name: string | RegExp) => screen.getByRole("button", { name });
 const pressed = (name: string | RegExp) => segment(name).getAttribute("aria-pressed") === "true";
 const rows = () => [...document.querySelectorAll("[data-shells-list] li")];
+/** Each row's state, which the row button wears: every row has one, and only
+ *  a run that has ended puts words beside it. */
+const state = () => rows().map((r) => r.querySelector("button")?.getAttribute("data-state"));
 
 beforeEach(() => {
   resetSessionStoreForTests();
   resetSessionActivityForTests();
   resetCommandStatus();
+  resetTabUnseen();
   Element.prototype.scrollIntoView = () => {};
   localStorage.clear();
   localStorage.setItem("sway.active-space.v1", "work");
@@ -189,10 +194,7 @@ describe("the Shells mode", () => {
       "Sign in",
       "Install claude",
     ]);
-    expect(rows().map((r) => r.querySelector("[data-state]")?.getAttribute("data-state"))).toEqual([
-      "running",
-      "failed",
-    ]);
+    expect(state()).toEqual(["running", "failed"]);
 
     expect(document.querySelector('[class*="tileCount"]')).toBeNull();
   });
@@ -236,7 +238,8 @@ describe("the Shells mode", () => {
   });
 
   // A shell you opened yourself lives in the same workspace and belongs in the
-  // same list. It has no verdict to report, so it wears no state.
+  // same list. Both are up, so both read `running`; what a shell has not got is
+  // a verdict, because it is not running a command that can end.
   it("lists a shell you opened beside what Sway is running", async () => {
     mount([cmd("job:1", "Sign in"), shell("sh:1", "Shell")]);
     await screen.findByText("proj");
@@ -247,7 +250,68 @@ describe("the Shells mode", () => {
       "Sign in",
       "Shell",
     ]);
-    expect(rows().map((r) => !!r.querySelector("[data-state]"))).toEqual([true, false]);
+    expect(state()).toEqual(["running", "running"]);
+    expect(rows().map((r) => !!r.querySelector("[data-verdict]"))).toEqual([false, false]);
+  });
+
+  // The second line: where it is running, then what it is running. A login
+  // shell has only the folder, which is the whole of what there is to say.
+  it("says where each row is running, and what", async () => {
+    mount([
+      cmd("job:1", "Install claude", { cwd: `${MAIN}/pkgs/web`, command: "pnpm install" }),
+      shell("sh:1", "Shell", { cwd: "/home/me/src" }),
+    ]);
+    await screen.findByText("proj");
+    fireEvent.click(segment(/Shells/));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+
+    // The folder's own name and no more: no tree lookup stands behind this.
+    expect(rows().map((r) => r.querySelector("[data-where]")?.textContent)).toEqual(["web", "src"]);
+    expect(rows().map((r) => r.querySelector("[data-command]")?.textContent ?? null)).toEqual([
+      "pnpm install",
+      null,
+    ]);
+  });
+
+  // A restored strip comes back with nothing behind it, and a row that says
+  // `running` about a tab with no process is the undercount's mirror image.
+  it("reads a tab nothing has spawned as stopped", async () => {
+    mount([cmd("job:1", "Sign in", { state: "inert" })]);
+    await screen.findByText("proj");
+    fireEvent.click(segment(/Shells/));
+    await waitFor(() => expect(rows()).toHaveLength(1));
+
+    expect(state()).toEqual(["stopped"]);
+    expect(rows()[0].querySelector("[data-verdict]")?.textContent).toBe("stopped");
+  });
+
+  // The code, not the word: which one it was is the news, and the store had to
+  // start keeping it for the row to be able to say.
+  it("wears a failed command's own exit code", async () => {
+    mount([cmd("job:1", "Install claude")]);
+    await screen.findByText("proj");
+    reportCommandExit("job:1", 127);
+    fireEvent.click(segment(/Shells/));
+    await waitFor(() => expect(rows()).toHaveLength(1));
+
+    expect(state()).toEqual(["failed"]);
+    expect(rows()[0].querySelector("[data-verdict]")?.textContent).toBe("exit 127");
+  });
+
+  // Driven by the terminal, which is the only thing that knows what is on
+  // screen; the row just draws what the store says.
+  it("dots a row that printed while you were somewhere else", async () => {
+    mount([cmd("job:1", "Sign in"), cmd("job:2", "Install claude")]);
+    await screen.findByText("proj");
+    fireEvent.click(segment(/Shells/));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+    expect(rows().map((r) => !!r.querySelector("[data-unseen]"))).toEqual([false, false]);
+
+    markTabUnseen("job:2");
+    await waitFor(() => expect(rows().map((r) => !!r.querySelector("[data-unseen]"))).toEqual([false, true]));
+
+    clearTabUnseen("job:2");
+    await waitFor(() => expect(rows().map((r) => !!r.querySelector("[data-unseen]"))).toEqual([false, false]));
   });
 
   it("marks the row whose tab is on screen, and only that one", async () => {

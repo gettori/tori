@@ -21,9 +21,3 @@
   font-size: var(--sway-text-sm);
   color: var(--danger-fg);
 }
-
-.header {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: calc(6px * var(--ui-scale));
-}
