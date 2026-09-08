@@ -185,30 +185,31 @@
     cursor: pointer;
   }
   .railItem:hover {
-    background: var(--neutral-hover);
+    background: linear-gradient(to right, var(--neutral-hover), transparent);
+    border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
   }
   .railItem:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px var(--brand-ring);
   }
 
-  /* A bar, not a dot: the panes are full of state dots. Brand rather than
-     accent, which is already spoken for here as the search-match colour. */
-  .railItemActive {
-    background: var(--brand-wash);
+  /* The sidebar's selected-row recipe (`.row.branch.sel`, `.shellsRowOn`): the
+     brand bar down the left edge over a wash that fades out to the right, so
+     the rail and the sidebar mark "here" the same way. Brand rather than
+     accent, which is already spoken for here as the search-match colour.
+     Declared with :hover at equal specificity, so hovering the active row
+     keeps the gold instead of dropping to grey. */
+  .railItemActive,
+  .railItemActive:hover {
+    background:
+      linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
+        var(--sway-border-thick) 100% no-repeat,
+      linear-gradient(to right, var(--brand-subtle), transparent);
+    /* Square on the bar's side, rounded away from it, as the sidebar's rows
+       are: a rounded left corner clips the bar into a lozenge. */
+    border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
     color: var(--fg-default);
     font-weight: 500;
-  }
-  .railItemActive::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: var(--sway-border-thick);
-    height: calc(15px * var(--ui-scale));
-    border-radius: var(--sway-radius-sm);
-    background: var(--brand-bar);
   }
 
   .railLabel {
