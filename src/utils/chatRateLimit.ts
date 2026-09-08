@@ -159,14 +159,45 @@ const NAMES: Record<string, { label: string; short: string; inline: string }> = 
   extra_usage: { label: "Extra usage", short: "Extra", inline: "extra usage" },
 };
 
-/** The model a weekly window is scoped to, titled, or null for a window that is
- *  not one. The suffix is the model's own name, so it is read rather than
- *  mapped: the account-token rung learns those names at read time and no list
- *  here could stay current with them. */
-export function scopedModel(limitType: string): string | null {
+/**
+ * The model families a weekly window can be scoped to, weakest first (the order
+ * a catalogue is ranked in when no read has named one yet).
+ *
+ * The one list here, and it exists because the endpoint spells its non-model
+ * weeks exactly like its model ones. A capture of a Max account carries
+ * `seven_day_oauth_apps`, `seven_day_cowork` and `seven_day_omelette` beside
+ * `seven_day_opus` and `seven_day_sonnet`, so "starts with `seven_day_`" reads
+ * `seven_day_overage_included` as a model called "Overage included". A family
+ * word in the suffix is what tells the two apart; a model whose family is not
+ * yet listed degrades to the qualifier below, which is the harmless direction.
+ */
+export const MODEL_FAMILIES = ["haiku", "sonnet", "opus", "fable"];
+
+/** The words after `seven_day_`, spaced, or null when there are none. */
+function weekSuffix(limitType: string): string | null {
   if (!limitType.startsWith("seven_day_")) return null;
-  const words = limitType.slice("seven_day_".length).replace(/_/g, " ");
-  return words === "" ? null : `${words[0].toUpperCase()}${words.slice(1)}`;
+  const words = limitType.slice("seven_day_".length).replace(/_/g, " ").trim();
+  return words === "" ? null : words;
+}
+
+const titled = (words: string) => `${words[0].toUpperCase()}${words.slice(1)}`;
+
+/** The model a weekly window is scoped to, titled, or null for a window that is
+ *  not one. Titled rather than looked up: the endpoint names the window after
+ *  the model's own display name, so the family word confirms it is a model and
+ *  the suffix supplies what it is called. */
+export function scopedModel(limitType: string): string | null {
+  const words = weekSuffix(limitType);
+  if (words === null) return null;
+  return words.split(" ").some((w) => MODEL_FAMILIES.includes(w)) ? titled(words) : null;
+}
+
+/** What else a weekly window is scoped to, in the endpoint's own words, or null
+ *  for one scoped to a model or to nothing. Kept lower case and read as a
+ *  qualifier ("Week - overage included"), never as a name, since the thing on
+ *  the other end of it is not something anyone can chat with. */
+export function weekQualifier(limitType: string): string | null {
+  return scopedModel(limitType) === null ? weekSuffix(limitType) : null;
 }
 
 /** A model-scoped weekly window's full name, for a caller naming one before any
@@ -189,13 +220,21 @@ export function limitTypeLabel(limitType: string | null): string | null {
   const known = NAMES[limitType];
   if (known) return known.label;
   const model = scopedModel(limitType);
-  return model ? modelWeekLabel(model) : limitType;
+  if (model) return modelWeekLabel(model);
+  const qualifier = weekQualifier(limitType);
+  return qualifier ? `Week${DOT}${qualifier}` : limitType;
 }
 
-/** The same window, in the width the titlebar has: "5H", "W", "F". */
+/** The same window, in the width the titlebar has: "5H", "W", "F". A window
+ *  scoped to something that is not a model still gets its letter: the strip has
+ *  room for one either way, and the bar beside it is what carries the meaning. */
 export function limitTypeShort(limitType: string): string {
+  const known = NAMES[limitType]?.short;
+  if (known) return known;
   const model = scopedModel(limitType);
-  return NAMES[limitType]?.short ?? (model ? modelWeekShort(model) : limitType);
+  if (model) return modelWeekShort(model);
+  const qualifier = weekQualifier(limitType);
+  return qualifier ? qualifier[0].toUpperCase() : limitType;
 }
 
 /** The same window on a settings chip: "5H", "Week", "Fable". A word rather
@@ -204,13 +243,18 @@ export function limitTypeShort(limitType: string): string {
  *  letters. */
 export function limitTypeChip(limitType: string): string {
   if (limitType === "seven_day") return "Week";
-  return scopedModel(limitType) ?? limitTypeShort(limitType);
+  const qualifier = weekQualifier(limitType);
+  return scopedModel(limitType) ?? (qualifier ? titled(qualifier) : limitTypeShort(limitType));
 }
 
 /** The same window as a sentence carries it, lower case and singular. */
 export function limitTypeInline(limitType: string): string {
+  const known = NAMES[limitType]?.inline;
+  if (known) return known;
   const model = scopedModel(limitType);
-  return NAMES[limitType]?.inline ?? (model ? `weekly ${model}` : limitType);
+  if (model) return `weekly ${model}`;
+  const qualifier = weekQualifier(limitType);
+  return qualifier ? `weekly ${qualifier}` : limitType;
 }
 
 /** Epoch seconds to a wall-clock time the user can act on, or null when the
