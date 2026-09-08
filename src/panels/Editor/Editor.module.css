@@ -86,9 +86,9 @@
   color: var(--brand-default);
 }
 
-/* Editor tab bar. Tabs are floating rounded pills, centered in the strip (mirrors
-   the terminal strip): transparent at rest, a subtle --card2 fill when active or
-   hovered. No folder dividers or accent bar. */
+/* Editor tab bar. Tabs are rounded pills, centered in the strip (mirrors the
+   terminal strip): transparent at rest, a wash that fades downward when hovered
+   or selected. No folder dividers. */
 .editorTabs {
   display: flex;
   flex: none;
@@ -181,7 +181,7 @@
 }
 
 /* The mode tabs (Files / Changes / ...) are icon-only <Tab> pills; the selected
-   one's top rail is the shared Tab's, see Tab.module.css. */
+   one's brand bar and wash are the shared Tab's, see Tab.module.css. */
 
 /* Which member the pane below is about, above Outline, Calls, Session and
    Debug. Only inside a Feature: those four follow the file in front, so without
