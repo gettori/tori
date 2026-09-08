@@ -2699,60 +2699,31 @@ export default function LeftSidebar(props: {
   });
   onCleanup(() => applySpaceTint(null));
 
-  // ---- Does the strip have room for a name? ----
+  // ---- Each name's own width ----
   //
-  // The lit tile is the only thing in the row whose width is not fixed, so when
-  // the sidebar is narrow the names go rather than the row scrolling. The test
-  // runs against the WIDEST name any tile could show, never the one currently
-  // showing: asking about the current one would resize the whole strip on every
-  // switch between a short space and a long one.
-  //
-  // Everything is measured, nothing derived. A hidden probe tile carries the
-  // real `.titled` CSS, and the delta it reports is against a real collapsed
-  // tile, so the predicate is the same quantity whether names are on or off -
-  // which is what stops it flipping between the two forever.
-  const [namesFit, setNamesFit] = createSignal(true);
+  // The lit tile does not decide whether it has room; it just takes what is
+  // there and ellipsizes. What this measures is only the target its name
+  // animates OUT to, one per name: a shared target makes a short name's box
+  // reach full width early and then stall for the rest of the duration.
   const [nameW, setNameW] = createSignal<Record<string, number>>({});
-  let barEl: HTMLDivElement | undefined;
-  let scrollEl: HTMLDivElement | undefined;
   let probeEl: HTMLSpanElement | undefined;
   let probeNameEl: HTMLSpanElement | undefined;
+  let probeTextEl: HTMLSpanElement | undefined;
 
   function measureNames() {
-    if (!barEl || !scrollEl || !probeEl || !probeNameEl) return;
-    const cs = getComputedStyle(barEl);
-    const gap = parseFloat(cs.columnGap) || 0;
-    const kids = [...barEl.children].filter((k) => k !== probeEl);
-    // The scroller may already be compressed, so its natural width is its
-    // content's; every other child is fixed and reports its own.
-    let natural =
-      parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + gap * Math.max(0, kids.length - 1);
-    for (const k of kids) {
-      natural += k === scrollEl ? scrollEl.scrollWidth : k.getBoundingClientRect().width;
-    }
-    const width = (el: Element | null | undefined) => el?.getBoundingClientRect().width ?? 0;
-    const collapsed = width(barEl.querySelector(`.${styles.space}:not(.${styles.titled})`));
-    // Back out whichever tile is titled right now, leaving an all-collapsed row.
-    const lit = barEl.querySelector(`.${styles.titled}:not(.${styles.tileProbe})`);
-    if (lit) natural -= width(lit) - collapsed;
-
-    // One pass over every name the strip could show: the widest decides whether
-    // names fit at all, and each one's own width becomes the target its tile
-    // animates to. A shared target would make the box stop opening early on a
-    // short name and stall for the rest of the duration.
-    let widest = collapsed;
+    if (!probeEl || !probeNameEl || !probeTextEl) return;
     const each: Record<string, number> = {};
     for (const name of [...visibleSpaces().map((g) => g.name), "Features", "Shells"]) {
-      probeNameEl.textContent = name;
-      each[name] = width(probeNameEl);
-      widest = Math.max(widest, width(probeEl));
+      probeTextEl.textContent = name;
+      // Rounded up, with a pixel to spare: a fractional target is a target the
+      // text does not quite fit into, and the tile clips its own last letter.
+      each[name] = Math.ceil(probeNameEl.getBoundingClientRect().width) + 1;
     }
     const prev = nameW();
     const same =
       Object.keys(each).length === Object.keys(prev).length &&
       Object.entries(each).every(([n, w]) => prev[n] === w);
     if (!same) setNameW(each);
-    setNamesFit(natural + (widest - collapsed) <= barEl.clientWidth);
   }
 
   /** The measured target for one tile's name, or nothing while unmeasured -
@@ -2762,27 +2733,23 @@ export default function LeftSidebar(props: {
     return w ? `${w}px` : undefined;
   };
 
-  // Observed from the ref callback, not from `onMount`: the strip lives inside
-  // `<Show when={config()}>` and config arrives asynchronously, so at mount these
-  // elements do not exist yet and an observer set up there watches nothing for
-  // the rest of the session. `observe` also delivers an initial callback, which
-  // is what takes the first measurement.
-  //
-  // The bar and nothing else. Its width is the column's and its height tracks
-  // `--ui-scale`, which is both inputs; and unlike the scroller its box does not
-  // move while a tile animates open, so a measurement can never read a width
-  // that is still in flight.
-  let stripRO: ResizeObserver | undefined;
-  function watchStrip(el: HTMLElement) {
-    if (typeof ResizeObserver === "undefined") return;
-    stripRO ??= new ResizeObserver(() => measureNames());
-    stripRO.observe(el);
-  }
-  onCleanup(() => stripRO?.disconnect());
+  // Inter is a webfont, so the first measurement can land in the fallback face
+  // and report a narrower name than the one that ends up on screen - which the
+  // tile then clips, because the target it was given is too small. `loadingdone`
+  // as well as `ready`: the set resolves once, and a face can arrive later.
+  onMount(() => {
+    const fonts = document.fonts;
+    if (!fonts) return;
+    void fonts.ready.then(() => measureNames());
+    const remeasure = () => measureNames();
+    fonts.addEventListener("loadingdone", remeasure);
+    onCleanup(() => fonts.removeEventListener("loadingdone", remeasure));
+  });
+
   // The set of names is the other input. After paint, or the probe has no box.
   createEffect(
     on(
-      () => visibleSpaces().map((g) => g.name).join(" "),
+      () => visibleSpaces().map((g) => g.name).join(" "),
       () => requestAnimationFrame(() => measureNames()),
     ),
   );
@@ -2813,7 +2780,7 @@ export default function LeftSidebar(props: {
         style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color), "--name-w": nameTarget(g.name) }}
         classList={{
           [styles.active]: on(),
-          [styles.titled]: on() && namesFit(),
+          [styles.titled]: on(),
           [styles.dragging]: dragSpace() === g.name,
           [styles.dropBefore]: dropHint()?.name === g.name && !dropHint()!.after,
           [styles.dropAfter]: dropHint()?.name === g.name && dropHint()!.after,
@@ -2838,7 +2805,7 @@ export default function LeftSidebar(props: {
           {(glyph) => <Icon icon={glyph()} />}
         </Show>
         {/* Always mounted; the 0fr track hides it. See .tileName. */}
-        <span class={styles.tileName}>{g.name}</span>
+        <span class={styles.tileName}><span class={styles.tileNameText}>{g.name}</span></span>
         {spaceBubble(g)}
       </Tooltip>
     </ContextMenu>
@@ -2855,14 +2822,14 @@ export default function LeftSidebar(props: {
         type="button"
         class={`${styles.space} ${styles.modeTile}`}
         style={{ "--name-w": nameTarget(label) }}
-        classList={{ [styles.active]: on(), [styles.titled]: on() && namesFit() }}
+        classList={{ [styles.active]: on(), [styles.titled]: on() }}
         label={label}
         aria-label={label}
         aria-pressed={on()}
         onClick={() => switchMode(m)}
       >
         <Icon icon={glyph} />
-        <span class={styles.tileName}>{label}</span>
+        <span class={styles.tileName}><span class={styles.tileNameText}>{label}</span></span>
         {/* Only while you are somewhere else. Pinned to a 30px square's corner
             it reads as a badge on an icon; pinned to an open pill's it reads as
             a number floating beside it, and by then the list below is naming
@@ -3202,15 +3169,15 @@ export default function LeftSidebar(props: {
       {/* Outside the mode gate: the strip is how you leave a mode, so it has to
           render in all three. */}
       <Show when={config()}>
-        <div class={styles.spaceBar} ref={(el) => { barEl = el; watchStrip(el); }} data-names={namesFit() ? "on" : "off"}>
+        <div class={styles.spaceBar}>
           {/* Out of flow and never seen: the ruler `measureNames` runs each
               candidate name through, wearing the real lit-tile CSS so what it
               reports is what the row would actually take. */}
           <span class={`${styles.space} ${styles.titled} ${styles.tileProbe}`} aria-hidden="true" ref={probeEl}>
             <Icon icon={Waypoints} />
-            <span class={styles.tileName} ref={probeNameEl} />
+            <span class={styles.tileName} ref={probeNameEl}><span class={styles.tileNameText} ref={probeTextEl} /></span>
           </span>
-          <div class={styles.spaceScroll} ref={(el) => { scrollEl = el; }}>
+          <div class={styles.spaceScroll}>
             <For each={rootSpaces()}>{(g) => spaceTile(g)}</For>
             <Show when={rootSpaces().length > 0 && extSpaces().length > 0}>
               <div class={styles.spaceDivider} />

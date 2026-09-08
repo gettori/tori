@@ -726,11 +726,12 @@
 .space {
   --space-hue-rgb: var(--shell-glow-rgb);
   position: relative;
-  flex: none;
+  /* A tile with no name has nothing to give: it is already a square, and
+     letting flex try to take room off it only squashes the glyph. */
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0;
   min-width: calc(30px * var(--ui-scale));
   height: calc(30px * var(--ui-scale));
   padding-inline: calc(6px * var(--ui-scale));
@@ -742,7 +743,6 @@
   font-weight: 600;
   cursor: pointer;
   transition:
-    gap var(--sway-duration-med) var(--tile-ease),
     padding-inline var(--sway-duration-med) var(--tile-ease),
     background var(--sway-duration-fast) ease,
     color var(--sway-duration-fast) ease,
@@ -761,6 +761,9 @@
 /* The tile's own glyph (direct child, so a nested bubble's status icons keep
    their size). CSS-sized so it tracks --ui-scale. */
 .space > :global(svg) {
+  /* The tile shrinks; its glyph does not. A flex item shrinks by default, and
+     a squashed icon is worse than a truncated name. */
+  flex: none;
   width: calc(18px * var(--ui-scale));
   height: calc(18px * var(--ui-scale));
 }
@@ -788,11 +791,21 @@
   color: rgb(var(--space-hue-rgb));
 }
 
-/* The pill geometry is separate from the fill because a lit tile does not
-   always carry its name: in a narrow sidebar the names go and the lit tile
-   stays a square, still filled, still the one that is lit. */
+/* The pill geometry, separate from the fill: the fill says which tile is lit,
+   this says it has a name to show. */
 .space.titled {
-  gap: calc(7px * var(--ui-scale));
+  /* The one thing in the strip that can give room back, and the first thing
+     asked for it. The huge shrink factor is an ordering trick: flex hands out
+     shrinkage in proportion to factor x basis, so against the scroller's 1 this
+     tile absorbs effectively all of it until it hits its floor, and only then
+     does the space list start to scroll. Without it the squeeze lands on the
+     scroller and the spaces slide away with the name still at full width. */
+  flex-shrink: 1000;
+  /* Padding plus the glyph, stated rather than `min-content`: nowrap text has a
+     min-content width equal to its full width, so `min-content` here would
+     include the whole name and the tile could not shrink at all. At this floor
+     the glyph is centred, so a squeezed-out name leaves a clean square. */
+  min-width: calc(36px * var(--ui-scale));
   padding-inline: calc(9px * var(--ui-scale));
 }
 
@@ -811,6 +824,9 @@
    an opening that finishes early once. */
 .tileName {
   max-width: 0;
+  /* Flex would otherwise refuse to take it below its text; `overflow: hidden`
+     already zeroes the automatic minimum, and this says so outright. */
+  min-width: 0;
   opacity: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -824,11 +840,22 @@
     opacity var(--sway-duration-fast) ease;
 }
 
+/* The gap between glyph and name, carried inside the clipped box rather than by
+   the tile. A flex `gap` survives its neighbour shrinking to nothing, so the
+   squeezed-out pill would keep 7px of empty space and sit the glyph off centre;
+   a margin in here is clipped away with the text it belongs to. */
+.tileNameText {
+  margin-inline-start: calc(7px * var(--ui-scale));
+}
+
 /* Opening, the name waits for the box to be most of the way there and then
    fades in over the rest. Closing, it goes first and fast, so the box is never
    seen shrinking with text still in it. */
 .space.titled .tileName {
-  max-width: var(--name-w, calc(140px * var(--ui-scale)));
+  /* The cap reaches the measured targets too: the probe measures under this
+     same rule with no `--name-w` of its own, so nothing it reports exceeds it.
+     It is a ceiling, not a floor - the column takes room off this freely. */
+  max-width: var(--name-w, calc(90px * var(--ui-scale)));
   opacity: 1;
   transition:
     max-width var(--sway-duration-med) var(--tile-ease),
