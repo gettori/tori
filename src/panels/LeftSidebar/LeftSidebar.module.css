@@ -369,7 +369,10 @@
   content: "";
   position: absolute;
   left: var(--rail-x);
-  right: 4px;
+  /* Not droppable: with `left` set and `right` auto this shrink-to-fits its own
+     empty content and vanishes. Zero runs it to the row's edge, where the
+     project rows above already paint theirs. */
+  right: 0;
   top: 0;
   bottom: 0;
   z-index: -1;
