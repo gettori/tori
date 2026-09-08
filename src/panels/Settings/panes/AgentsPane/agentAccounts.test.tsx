@@ -636,6 +636,34 @@ describe("the quota on an account card", () => {
     expect(container.textContent).not.toContain("needs the account token");
   });
 
+  // The endpoint scopes a week to things that are not models, and those used to
+  // ride into the titlebar on the model chip: turning Fable on turned overage on
+  // with it, and nothing could separate them.
+  it("gives a week scoped to something other than a model its own chip", async () => {
+    seedUsageStoreForTests(
+      "claude",
+      null,
+      [win("seven_day_fable", 0.28, 3 * 86400), win("seven_day_overage_included", 0.28, 3 * 86400)],
+      NOW,
+    );
+    const { container, getByRole } = await expand(await open(mount()));
+
+    await waitFor(() => expect(getByRole("button", { name: /^Fable$/ })).toBeTruthy());
+    const model = getByRole("button", { name: /^Fable$/ });
+    const held = model.getAttribute("aria-pressed");
+    const other = getByRole("button", { name: /^Overage included$/ });
+    // Off until it is asked for, and named as the qualifier it is rather than
+    // as a model. Its card is on the screen either way.
+    expect(other.getAttribute("aria-pressed")).toBe("false");
+    expect(container.textContent).toContain("overage included");
+
+    fireEvent.click(other);
+
+    await waitFor(() => expect(savedWindows()?.windows).toContain("week_other"));
+    // And the model chip is where it was, which is the whole point of the split.
+    expect(model.getAttribute("aria-pressed")).toBe(held);
+  });
+
   it("moves this account's own threshold, in the shared control's stops", async () => {
     const { container, getByRole } = await expand(await open(mount()));
     await waitFor(() => expect(container.textContent).toContain("Warn at"));

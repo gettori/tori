@@ -99,6 +99,10 @@ describe("which windows an account shows", () => {
     expect(chipFor("seven_day")).toBe("seven_day");
     expect(chipFor("seven_day_fable")).toBe("model_week");
     expect(chipFor("extra_usage")).toBe("model_week");
+    // A week scoped to something nobody can pick and run is not the model
+    // switch: folded under it, lighting Fable put an overage bar on the strip.
+    expect(chipFor("seven_day_overage_included")).toBe("week_other");
+    expect(chipFor("seven_day_cowork")).toBe("week_other");
   });
 
   it("carries the loader's reason only while there is no rung to offer", () => {
@@ -161,6 +165,13 @@ describe("the rung the chips imply", () => {
       { kind: "seven_day", utilization: 0.31, resetsAt: null, status: null, reachedType: null, source: "sessions" },
     ]);
     expect(usageRungFor("claude", null)).toBe("sessions");
+  });
+
+  it("climbs to the account token for the other deep window too", () => {
+    // Same rung, same opt-in: nothing but the token read answers a scoped week,
+    // whether the thing it is scoped to is a model or not.
+    bench.usage = { claude: { accounts: { default: { windows: ["five_hour", "week_other"] } } } };
+    expect(usageRungFor("claude", null)).toBe("token");
   });
 
   it("offers the model window only where a rung can answer one", () => {
