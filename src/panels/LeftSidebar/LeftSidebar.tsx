@@ -1028,6 +1028,22 @@ export default function LeftSidebar(props: {
     return false;
   }
 
+  // Select a unit inside `project`, reading the tree loadConfig has just
+  // re-discovered rather than the caller's copy of it. A plain repo's branch
+  // units all share one folder, so callers there match on the branch.
+  function selectUnitIn(project: Project, pick: (u: BranchUnit) => boolean): boolean {
+    for (const g of config()?.spaces ?? []) {
+      for (const p of g.projects) {
+        if (!samePath(p.path, project.path)) continue;
+        const u = p.branchUnits.find(pick);
+        if (!u) return false;
+        void selectUnit(g, p, u);
+        return true;
+      }
+    }
+    return false;
+  }
+
   // The reverse of a sidebar selection driving the terminal: the user clicked a
   // terminal tab, so move our selection to match. Load the owning folder's
   // sessions first (the store may not hold a folder outside the active space
@@ -1771,6 +1787,7 @@ export default function LeftSidebar(props: {
     const value = await pick;
     if (!value) return; // cancelled
     const entry = map.get(value);
+    let created: string | null = null;
     try {
       if (entry?.kind === "remote") {
         await invoke("attach_remote_branch", { repo: p.path, branch: entry.branch });
@@ -1780,8 +1797,13 @@ export default function LeftSidebar(props: {
         // Matches nothing: create the branch at HEAD and switch to it.
         await invoke("new_branch", { repo: p.path, branch: value });
         await invoke("git_checkout", { repoPath: p.path, branch: value });
+        created = value;
       }
       await loadConfig();
+      // Naming a branch that did not exist is asking to work on it, and git is
+      // already on it: land the selection there too. Attaching an existing
+      // branch is not, and selecting it would raise the checkout confirm.
+      if (created) selectUnitIn(p, (u) => u.branch === created);
     } catch (e) {
       setError(String(e));
     }
@@ -1826,8 +1848,12 @@ export default function LeftSidebar(props: {
     // A remote row's label is `origin/<name>`; the map carries the bare branch.
     const branch = map.get(value)?.branch ?? value;
     try {
-      await invoke("create_worktree", { repoPath: p.path, branch });
+      // The command answers the folder it made (or reused), which is the only
+      // thing that tells one worktree row from another: the selection lands on
+      // that unit, the way clicking its row would.
+      const folder = await invoke<string>("create_worktree", { repoPath: p.path, branch });
       await loadConfig();
+      selectUnitIn(p, (u) => samePath(u.folderPath, folder));
     } catch (e) {
       setError(String(e));
     }
