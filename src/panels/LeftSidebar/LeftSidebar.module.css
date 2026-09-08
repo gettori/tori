@@ -39,6 +39,9 @@
   --branch-label-x: calc(28px * var(--ui-scale));
   /* One indent level: branch depth to attempt depth. */
   --nest-step: calc(12px * var(--ui-scale));
+  /* A strip tile opening or closing. Decelerating rather than `ease`, which
+     eases in as well and reads as the box hesitating before it moves. */
+  --tile-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* The title, its menu and the filter in one wrapping row. The wrap *is* the
@@ -706,20 +709,21 @@
    colour. No fill and no coloured border: the tile is a 30px square in a row of
    them, and giving each one a tinted box turned the bar into a set of competing
    chips. The hover border stays the brand, as it always was. */
-/* A grid, not a flex row, for one reason: `width: 30px` cannot transition to
-   `width: auto`, and a track can. The name lives in a second column that goes
-   0fr -> 1fr, so the tile opens and closes at its own real width with nothing
-   measured in JS. An engine that will not interpolate the tracks snaps between
-   the two, which is exactly what this did before. */
+/* The tile never animates its own width. It is shrink-to-fit, so it follows
+   whatever `.tileName` is doing, and the name animates a plain measured length
+   which every engine interpolates - unlike `width: auto`, which none do, and
+   unlike a grid `fr` track, whose interpolation relayouts the whole strip every
+   frame where it is supported at all.
+   No `overflow: hidden` here on purpose: the name clips itself, and clipping at
+   this level would take the status bubble off the tile's corner with it. */
 .space {
   --space-hue-rgb: var(--shell-glow-rgb);
   position: relative;
   flex: none;
-  display: inline-grid;
-  grid-template-columns: auto 0fr;
-  column-gap: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0;
   min-width: calc(30px * var(--ui-scale));
   height: calc(30px * var(--ui-scale));
   padding-inline: calc(6px * var(--ui-scale));
@@ -731,9 +735,8 @@
   font-weight: 600;
   cursor: pointer;
   transition:
-    grid-template-columns var(--sway-duration-med) ease,
-    column-gap var(--sway-duration-med) ease,
-    padding-inline var(--sway-duration-med) ease,
+    gap var(--sway-duration-med) var(--tile-ease),
+    padding-inline var(--sway-duration-med) var(--tile-ease),
     background var(--sway-duration-fast) ease,
     color var(--sway-duration-fast) ease,
     border-color var(--sway-duration-fast) ease;
@@ -742,7 +745,9 @@
 /* The strip is a row of small targets; a tile sliding open under the pointer is
    the one place here motion earns its keep, and the one place to drop it. */
 @media (prefers-reduced-motion: reduce) {
-  .space {
+  .space,
+  .space .tileName,
+  .space.titled .tileName {
     transition: none;
   }
 }
@@ -780,8 +785,7 @@
    always carry its name: in a narrow sidebar the names go and the lit tile
    stays a square, still filled, still the one that is lit. */
 .space.titled {
-  grid-template-columns: auto 1fr;
-  column-gap: calc(7px * var(--ui-scale));
+  gap: calc(7px * var(--ui-scale));
   padding-inline: calc(9px * var(--ui-scale));
 }
 
@@ -791,13 +795,16 @@
   color: var(--brand-default);
 }
 
-/* Always in the DOM, clipped to nothing by its 0fr track when the tile is not
-   lit. Mounting it with the pill would give the opening something to animate
-   and the closing nothing, so the name would pop out and the tile would shrink
-   after it. The gap before it is the grid's, not this element's padding, which
-   a zero-width column would still have to find room for. */
+/* Always in the DOM at zero width, because this element IS the animation: the
+   tile is shrink-to-fit and follows it. Mounting it with the pill would give
+   the opening something to animate and the closing nothing, so the name would
+   pop out and the tile would shrink after it.
+   `--name-w` is that name's own measured width, set per tile by `measureNames`.
+   The stylesheet's cap stands in until the first pass lands, which only costs
+   an opening that finishes early once. */
 .tileName {
-  max-width: calc(140px * var(--ui-scale));
+  max-width: 0;
+  opacity: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -805,6 +812,20 @@
   font-size: var(--sway-text-lg);
   font-weight: 600;
   text-transform: capitalize;
+  transition:
+    max-width var(--sway-duration-med) var(--tile-ease),
+    opacity var(--sway-duration-fast) ease;
+}
+
+/* Opening, the name waits for the box to be most of the way there and then
+   fades in over the rest. Closing, it goes first and fast, so the box is never
+   seen shrinking with text still in it. */
+.space.titled .tileName {
+  max-width: var(--name-w, calc(140px * var(--ui-scale)));
+  opacity: 1;
+  transition:
+    max-width var(--sway-duration-med) var(--tile-ease),
+    opacity var(--sway-duration-fast) ease var(--sway-duration-fast);
 }
 
 .tileCount {
