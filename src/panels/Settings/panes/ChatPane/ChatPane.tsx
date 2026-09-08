@@ -257,7 +257,7 @@ export default function ChatPane(props: PaneProps) {
           {...props}
           id="warn-at"
           label="Warn at"
-          hint="How full a limit gets before Sway says so. Governs both the ceilings above and the agents' own quota windows, which the titlebar shows. At 100% nothing is warned about; a limit actually reached is always shown."
+          hint="How full a limit gets before Sway says so. Governs the ceilings above, and is the default for each account's quota windows until that account sets its own under Agents. At 100% nothing is warned about; a limit actually reached is always shown."
         >
           <div class={styles.control}>
             <Slider

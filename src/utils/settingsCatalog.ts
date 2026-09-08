@@ -401,7 +401,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "warn-at",
     section: "chat",
     label: "Warn at",
-    hint: "How full a limit gets before Sway says so. Governs both the ceilings above and the agents' own quota windows. 100% turns the warning off; a limit actually reached is always shown.",
+    hint: "How full a limit gets before Sway says so. Governs the ceilings above, and is the default for each account's quota windows until that account sets its own under Agents. 100% turns the warning off; a limit actually reached is always shown.",
   },
   {
     id: "show-hooks",

@@ -21,6 +21,7 @@ import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/cha
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { quotaState, rateLimitFrom, readingsOf, windowSentence } from "../../utils/chatRateLimit";
 import { recordReadings, transitionKey, windowsFor } from "../../utils/usageStore";
+import { usageWarnAt } from "../../utils/usageSettings";
 import {
   approaching,
   breach,
@@ -1339,7 +1340,7 @@ export default function ChatView(props: {
   /** This tab's account, its windows, and what the two thresholds make of them.
    *  One accessor so the banner and the notice cannot disagree about `now`. */
   const quotaWindows = () => {
-    const warnAt = settings.budgets?.warnAtFraction ?? 1;
+    const warnAt = usageWarnAt(props.agentId, resolvedProfile());
     const now = clock();
     return windowsFor(props.agentId, resolvedProfile()).map((r) => ({
       reading: r,
