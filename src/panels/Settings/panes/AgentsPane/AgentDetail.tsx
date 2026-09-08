@@ -188,17 +188,20 @@ function ModelsPane(props: {
   return (
     <>
       <div class={styles.groupHead}>
-        <Show
-          when={props.tabs}
-          fallback={<span class={styles.groupTitle}>{props.account ?? "Models"}</span>}
-        >
+        {/* The section keeps its own name, and the accounts sit past the rule
+            with the facts they qualify. The tabs used to *be* the title, which
+            read as the Models section disappearing the moment a second account
+            existed. */}
+        <span class={styles.groupTitle}>Models</span>
+        <span class={styles.sectionRule} />
+        <Show when={props.tabs}>
           {(tabs) => (
             <div class={styles.groupTabs}>
               <For each={tabs()}>
                 {(tab) => (
                   <button
                     type="button"
-                    class={`${styles.groupTitle} ${styles.groupTab}`}
+                    class={styles.groupTab}
                     aria-pressed={tab.label === props.account}
                     onClick={() => props.onSelect?.(tab.id)}
                   >
@@ -209,7 +212,6 @@ function ModelsPane(props: {
             </div>
           )}
         </Show>
-        <span class={styles.sectionRule} />
         <span class={styles.groupFact}>{fact()}</span>
         {/* The same chrome recipe as the Agents list title: count, filter,
             re-ask, all on the heading so the card below is nothing but
@@ -699,18 +701,6 @@ export default function AgentDetail(props: {
         />
       </Show>
 
-      {/* Below the accounts, because every row here is resolved against one of
-          them: the files are per account, so the accounts have to be on screen
-          first for the sub-headings to mean anything. */}
-      <Show when={!setupMode()}>
-        <AgentFiles
-          agentId={a().id}
-          agentLabel={a().label}
-          projectRoot={props.projectRoot}
-          accountsNonce={accountsChanged()}
-        />
-      </Show>
-
       {/* Only for an agent Sway can actually ask, and only once it is set up.
           A terminal-only adapter declares no `[chat]` table, so the probe has
           nothing to drive and the backend never returns a row for it. During
@@ -744,6 +734,20 @@ export default function AgentDetail(props: {
             )}
           </Show>
         </Show>
+      </Show>
+
+      {/* Last of the three account-scoped groups. Everything above it is what
+          the agent can *do* for an account; this is what is on disk for one,
+          which is the least urgent of the three and the longest. Still below
+          the accounts, because every row is resolved against one of them and
+          the sub-headings mean nothing until they are on screen. */}
+      <Show when={!setupMode()}>
+        <AgentFiles
+          agentId={a().id}
+          agentLabel={a().label}
+          projectRoot={props.projectRoot}
+          accountsNonce={accountsChanged()}
+        />
       </Show>
 
       <div class={styles.groupHead}>

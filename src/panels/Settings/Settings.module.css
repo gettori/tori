@@ -1690,8 +1690,11 @@
     gap: var(--sway-space-5);
     margin-bottom: var(--sway-space-4);
   }
-  /* The section title, as one account at a time. Muted is unselected; the rule
-     beside them is the same one a plain title gets. */
+  /* Which account the group below is about, past the rule rather than standing
+     in for the section's own title. Set in `.groupTitle`'s type, not
+     `.groupFact`'s: an account name is a heading for the rows under it, so it
+     reads at the same weight as the section it qualifies. Only the colour
+     separates them, which is what leaves the lit tab as the one thing moving. */
   .groupTabs {
     display: flex;
     align-items: center;
@@ -1702,10 +1705,15 @@
     border: 0;
     background: none;
     cursor: pointer;
+    font-family: var(--sway-font-mono);
+    font-size: var(--sway-text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     color: var(--fg-subtle);
   }
   button.groupTab[aria-pressed="true"] {
-    color: var(--fg-muted);
+    color: var(--fg-default);
   }
   button.groupTab + button.groupTab {
     margin-left: var(--sway-space-4);
