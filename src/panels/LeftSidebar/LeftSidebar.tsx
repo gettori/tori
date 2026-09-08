@@ -521,14 +521,27 @@ export default function LeftSidebar(props: {
   // the Feature slot.
   createEffect(() => rememberSelection(props.selected));
 
+  // Which unit of `p` a folder means. A worktree owns its folder, but a plain
+  // repo's branch-units all share the repository's, so there the branch is the
+  // identity: take the one named, else the checkout, and only then the first row.
+  function unitAt(p: Project, folderPath: string, branch?: string | null): BranchUnit | undefined {
+    const here = p.branchUnits.filter((u) => sameCwd(u.folderPath, folderPath));
+    if (here.length < 2) return here[0];
+    return (
+      (branch ? here.find((u) => unitLabel(u) === branch) : undefined) ??
+      here.find((u) => u.isCurrent) ??
+      here[0]
+    );
+  }
+
   // Re-read from the live tree, so a folder that is gone restores nothing
   // rather than a ghost. No `ensureBranch`: navigating must not check anything
   // out behind a click that only said "show me that".
   function restoreUnit(g: Space): boolean {
     const back = rememberedUnit(g.name);
     if (!back) return false;
-    const p = g.projects.find((p) => p.branchUnits.some((u) => sameCwd(u.folderPath, back.folderPath)));
-    const u = p?.branchUnits.find((u) => sameCwd(u.folderPath, back.folderPath));
+    const p = g.projects.find((p) => unitAt(p, back.folderPath, back.branch));
+    const u = p && unitAt(p, back.folderPath, back.branch);
     if (!p || !u) return false;
     if (unitSelected(u)) return true;
     traceSwitchStart("worktree", u.folderPath);
@@ -1002,7 +1015,7 @@ export default function LeftSidebar(props: {
     if (!hit) return false;
     for (const g of config()?.spaces ?? []) {
       for (const p of g.projects) {
-        const u = p.branchUnits.find((u) => u.folderPath === hit.folder);
+        const u = unitAt(p, hit.folder, hit.session.branch);
         if (u) {
           void selectSession(g, p, u, hit.session);
           return true;
@@ -1018,7 +1031,10 @@ export default function LeftSidebar(props: {
   function selectBranchByFolder(folderPath: string): boolean {
     for (const g of config()?.spaces ?? []) {
       for (const p of g.projects) {
-        const u = p.branchUnits.find((u) => u.folderPath === folderPath);
+        // No branch to go on: `unitAt` falls back to the checkout, which is the
+        // only branch of a plain repo a tab can actually be looking at. The first
+        // row would be a different one, and selecting it would ask to check it out.
+        const u = unitAt(p, folderPath);
         if (u) {
           void selectUnit(g, p, u);
           return true;
