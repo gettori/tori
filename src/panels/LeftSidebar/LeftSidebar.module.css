@@ -646,6 +646,10 @@
    edge. */
 .spaceBar {
   position: relative;
+  /* Pinned to the foot of the column in every mode. Spaces gets there anyway
+     because the tree above it grows; the other two lists are content-height,
+     and without this the strip floats up under a short list. */
+  margin-top: auto;
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
@@ -860,6 +864,11 @@
 
 /* The Shells list, on the tree's insets like the Feature list beside it. */
 .shellsList {
+  /* Takes the column the way the tree and the Feature list do, so a long list
+     scrolls here instead of pushing the strip off the bottom. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding-inline: var(--tree-inset) var(--tree-gutter);
   /* Spaces and Features each stand their first row off the title in their own
      way. This list has neither, so it buys the same separation directly. */
