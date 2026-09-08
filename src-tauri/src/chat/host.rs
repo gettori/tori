@@ -22,6 +22,7 @@ use super::model::{
     cap_output, ChatCommand, ChatConfigValue, ChatEvent, ContentBlock, PermissionDecision,
     PermissionMode, PermissionScope, QuestionAnswer,
 };
+use super::mirror::Mirror;
 use super::ownership::Registry;
 use super::pacing::{monotonic_clock, Pacer, HIDDEN_RELEASE_MS};
 use super::snapshot::SnapshotCache;
@@ -51,6 +52,14 @@ struct Entry {
     /// does that); it exists so a late callback from a previous subscription
     /// can be recognised as stale rather than acted on.
     generation: u64,
+    /// The session's own event log, for a transport whose conversation Sway
+    /// cannot otherwise read back. `None` for one that writes a transcript of
+    /// its own, which is the whole of what such a session pays for this.
+    ///
+    /// Owned here rather than by the `wrap` closure, because a rewire builds a
+    /// new closure: a mirror living in the closure would be created a second
+    /// time on every remount, and the two handles would double every turn.
+    mirror: Option<Arc<Mirror>>,
 }
 
 type Sessions = Arc<Mutex<HashMap<String, Entry>>>;
@@ -412,12 +421,18 @@ impl ChatHost {
     /// touching the child**, which is what makes a tab remount free. `make` is
     /// consumed only on the spawning path, so a caller can observe that no
     /// second process was created.
+    ///
+    /// `mirror` is the caller's decision about whether this session keeps a log
+    /// of its own, and it is read **only on the spawning path**: a rewire keeps
+    /// the mirror the entry already owns and drops whatever it was handed, so a
+    /// remount cannot open a second handle on one file.
     pub fn spawn(
         &self,
         session_id: &str,
         tab_id: &str,
         emit: Emit,
         spec: StartSpec,
+        mirror: Option<Arc<Mirror>>,
         make: impl FnOnce() -> Box<dyn AgentTransport>,
     ) -> Result<Spawned, String> {
         // Taken under the map's lock, used outside it: a listener is a caller's
@@ -433,12 +448,23 @@ impl ChatHost {
                 // webview reload - and the claim has to follow, or it names a
                 // tab that no longer exists and `close` releases nothing.
                 entry.tab_id = tab_id.to_string();
-                (entry.listener.clone(), transport)
+                (entry.listener.clone(), transport, entry.mirror.clone())
             })
         };
-        if let Some((listener, transport)) = rewired {
-            *lock(&listener) = Some(self.wrap(session_id, emit));
+        if let Some((listener, transport, mirror)) = rewired {
+            // Shadows the caller's on purpose: this session already has one, and
+            // adopting a second would write every turn from here on twice.
+            *lock(&listener) = Some(self.wrap(session_id, emit, mirror.clone()));
             self.registry.retag(session_id, tab_id);
+            // **Opened before the transport is asked, never after.** `replay`
+            // returns as soon as the command is queued and the frames it causes
+            // arrive on the connection thread, so a window opened on the answer
+            // could miss the first of them. A rewire that turns out to bring no
+            // replay closes the window again on the identity frame below,
+            // having accumulated nothing, and the log is left as it was.
+            if let Some(mirror) = &mirror {
+                mirror.expect_replay();
+            }
             // Asked **after** the listener is in place, so a replay that starts
             // immediately has somewhere to land, and before the identity is
             // sent, because the answer decides what the identity may include.
@@ -467,7 +493,7 @@ impl ChatHost {
         // transcript that looks stalled, where a session wrongly unpaced only
         // costs what it cost before this existed. `chat_spawn` corrects it
         // immediately for a tab that is not on screen.
-        let listener = new_sink(self.wrap(session_id, emit));
+        let listener = new_sink(self.wrap(session_id, emit, mirror.clone()));
         let pacer = Arc::new(Pacer::new(listener.clone(), true, HIDDEN_RELEASE_MS, monotonic_clock()));
         let into_pacer = pacer.clone();
         let sink = new_sink(Box::new(move |event| into_pacer.deliver(event)));
@@ -492,15 +518,31 @@ impl ChatHost {
                 transport: Arc::new(Mutex::new(transport)),
                 tab_id: tab_id.to_string(),
                 generation: 0,
+                mirror,
             },
         );
         Ok(Spawned::Started)
     }
 
+    /// The common shape in the host's own tests: a session that keeps no log.
+    /// The mirror is the caller's decision everywhere else, and threading `None`
+    /// through twenty call sites would say nothing twenty times.
+    #[cfg(test)]
+    fn spawn_plain(
+        &self,
+        session_id: &str,
+        tab_id: &str,
+        emit: Emit,
+        spec: StartSpec,
+        make: impl FnOnce() -> Box<dyn AgentTransport>,
+    ) -> Result<Spawned, String> {
+        self.spawn(session_id, tab_id, emit, spec, None, make)
+    }
+
     /// Wrap a caller's emit closure so a fatal event tears the session down on
     /// its way past. Every event still reaches the caller: the UI needs to see
     /// the error that killed the session, not just its absence.
-    fn wrap(&self, session_id: &str, emit: Emit) -> Emit {
+    fn wrap(&self, session_id: &str, emit: Emit, mirror: Option<Arc<Mirror>>) -> Emit {
         let sessions = self.sessions.clone();
         let registry = self.registry.clone();
         let bridges = self.bridges.clone();
@@ -536,6 +578,13 @@ impl ChatHost {
                     }
                 }
                 _ => {}
+            }
+            // **After the cut, before the UI.** The log holds what the panel
+            // holds - a card's capped extract, not the megabytes behind it -
+            // and one `if let Some` is the whole of what a session without a
+            // log pays on the delta path.
+            if let Some(mirror) = &mirror {
+                mirror.note(&event);
             }
             emit(event);
             if fatal {
@@ -805,6 +854,29 @@ mod tests {
         StartSpec { session_id: id.to_string(), ..Default::default() }
     }
 
+    /// One turn's worth of conversation, at its emptiest.
+    fn turn_text(id: &str, turn: &str) -> ChatEvent {
+        ChatEvent::TextDelta {
+            session_id: id.to_string(),
+            turn_id: turn.to_string(),
+            text: "said".into(),
+            agent_id: None,
+        }
+    }
+
+    fn turn_done(id: &str, turn: &str) -> ChatEvent {
+        ChatEvent::TurnCompleted {
+            session_id: id.to_string(),
+            turn_id: turn.to_string(),
+            outcome: crate::chat::model::TurnOutcome::Completed,
+            stop_reason: Some("end_turn".into()),
+            usage: Default::default(),
+            cost_usd: None,
+            permission_denials: Vec::new(),
+            extra: Default::default(),
+        }
+    }
+
     /// The two frames that report a session's identity, at their emptiest: what
     /// they carry is not what these tests are about, only that they come back.
     fn ready(id: &str) -> ChatEvent {
@@ -836,6 +908,95 @@ mod tests {
         }
     }
 
+    /// **The mirror belongs to the session, not to the subscriber.**
+    ///
+    /// A rewire rebuilds the `wrap` closure, so a mirror created there would be
+    /// created again on every remount: two handles on one file, and every turn
+    /// from then on written twice. Owned by the entry and cloned into each new
+    /// closure, two rewires and three turns are three turns and one handle.
+    #[test]
+    fn a_rewired_session_keeps_writing_to_the_one_log_it_started_with() {
+        use crate::chat::mirror::recorder::Handle;
+
+        let host = ChatHost::at(temp_store());
+        let log = Handle::default();
+        let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
+        let out = holder.clone();
+
+        host.spawn(
+            "s-log",
+            "tab-a",
+            Collector::default().emit(),
+            spec("s-log"),
+            Some(Arc::new(Mirror::with_writer(Box::new(log.clone())))),
+            move || Box::new(Puppet { sink_out: Some(out), ..Default::default() }),
+        )
+        .unwrap();
+        let sink = lock(&holder).clone().expect("the puppet published its sink");
+        // Opens the session, which closes the window the mirror starts in.
+        emit(&sink, started("s-log"));
+
+        for turn in ["t1", "t2", "t3"] {
+            emit(&sink, turn_text("s-log", turn));
+            emit(&sink, turn_done("s-log", turn));
+            // A webview reload between turns: same child, new subscriber.
+            if turn != "t3" {
+                host.spawn(
+                    "s-log",
+                    "tab-a",
+                    Collector::default().emit(),
+                    spec("s-log"),
+                    None,
+                    || unreachable!("a live session rewires"),
+                )
+                .unwrap();
+                emit(&sink, started("s-log"));
+            }
+        }
+
+        assert_eq!(log.count("turnCompleted"), 3, "three turns, written once each");
+        assert_eq!(log.count("textDelta"), 3);
+        let guard = lock(&log.0);
+        assert_eq!(guard.opens, 1, "one session, one handle, however often it rewires");
+        assert_eq!(guard.replaces, 0, "a rewire that replayed nothing rewrites nothing");
+    }
+
+    /// **A session whose agent writes its own transcript pays nothing.**
+    ///
+    /// The decision is the caller's - `chat_spawn` passes a mirror only for a
+    /// transport whose conversation Sway cannot read back - and this pins what
+    /// that buys: a claude-shaped session leaves no file behind at all, not an
+    /// empty one.
+    #[test]
+    fn a_session_with_no_mirror_writes_no_file() {
+        let host = ChatHost::at(temp_store());
+        let dir = std::env::temp_dir().join(format!("sway-host-logs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let mut sinks = Vec::new();
+        for (id, mirror) in [
+            ("s-claude", None),
+            ("s-acp", Some(Arc::new(Mirror::at(dir.join("s-acp.jsonl"))))),
+        ] {
+            let holder: Arc<Mutex<Option<Sink>>> = Arc::default();
+            let out = holder.clone();
+            host.spawn(id, "tab-a", Collector::default().emit(), spec(id), mirror, move || {
+                Box::new(Puppet { sink_out: Some(out), ..Default::default() })
+            })
+            .unwrap();
+            sinks.push((id, lock(&holder).clone().expect("the puppet published its sink")));
+        }
+
+        for (id, sink) in &sinks {
+            emit(sink, started(id));
+            emit(sink, turn_text(id, "t1"));
+            emit(sink, turn_done(id, "t1"));
+        }
+
+        assert!(!dir.join("s-claude.jsonl").exists(), "a claude-shaped session writes no log");
+        assert!(dir.join("s-acp.jsonl").exists(), "and the ACP-shaped one beside it does");
+    }
+
     /// The idempotent-spawn contract this host inherits from `pty.rs`: a tab
     /// remount must re-subscribe, never start a second `claude`. Two of them on
     /// one session id is precisely the transcript-corrupting case the whole
@@ -849,7 +1010,7 @@ mod tests {
         let first = Collector::default();
         let counter = spawns.clone();
         let outcome = host
-            .spawn("s1", "tab-a", first.emit(), spec("s1"), move || {
+            .spawn_plain("s1", "tab-a", first.emit(), spec("s1"), move || {
                 counter.fetch_add(1, Ordering::SeqCst);
                 Box::<Puppet>::default()
             })
@@ -861,7 +1022,7 @@ mod tests {
         let second = Collector::default();
         let counter = spawns.clone();
         let outcome = host
-            .spawn("s1", "tab-a", second.emit(), spec("s1"), move || {
+            .spawn_plain("s1", "tab-a", second.emit(), spec("s1"), move || {
                 counter.fetch_add(1, Ordering::SeqCst);
                 Box::<Puppet>::default()
             })
@@ -931,7 +1092,7 @@ mod tests {
         let seen = Collector::default();
         let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
         let out = sink_out.clone();
-        host.spawn("s1", "tab-a", seen.emit(), spec("s1"), move || {
+        host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), move || {
             Box::new(Puppet { sink_out: Some(out), ..Default::default() })
         })
         .unwrap();
@@ -964,7 +1125,7 @@ mod tests {
         let seen = Collector::default();
         let sink_out: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
         let out = sink_out.clone();
-        host.spawn("s1", "tab-a", seen.emit(), spec("s1"), move || {
+        host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), move || {
             Box::new(Puppet { sink_out: Some(out), ..Default::default() })
         })
         .unwrap();
@@ -999,7 +1160,7 @@ mod tests {
     #[test]
     fn a_replayed_conversation_is_cut_through_the_same_cache() {
         let host = ChatHost::at(temp_store());
-        host.spawn("s1", "tab-a", Collector::default().emit(), spec("s1"), || {
+        host.spawn_plain("s1", "tab-a", Collector::default().emit(), spec("s1"), || {
             Box::new(Puppet::default())
         })
         .unwrap();
@@ -1066,7 +1227,7 @@ mod tests {
 
         let before = Collector::default();
         let out = sink_out.clone();
-        host.spawn("s1", "tab-a", before.emit(), spec("s1"), move || {
+        host.spawn_plain("s1", "tab-a", before.emit(), spec("s1"), move || {
             Box::new(Puppet { sink_out: Some(out), ..Default::default() })
         })
         .unwrap();
@@ -1079,7 +1240,7 @@ mod tests {
 
         let after = Collector::default();
         let outcome = host
-            .spawn("s1", "tab-b", after.emit(), spec("s1"), || unreachable!("a live session rewires"))
+            .spawn_plain("s1", "tab-b", after.emit(), spec("s1"), || unreachable!("a live session rewires"))
             .unwrap();
         assert_eq!(outcome, Spawned::Rewired);
 
@@ -1109,7 +1270,7 @@ mod tests {
 
         let out = sink_out.clone();
         let asked = replays.clone();
-        host.spawn("s3", "tab-a", Collector::default().emit(), spec("s3"), move || {
+        host.spawn_plain("s3", "tab-a", Collector::default().emit(), spec("s3"), move || {
             Box::new(Puppet { sink_out: Some(out), can_replay: true, replays: asked, ..Default::default() })
         })
         .unwrap();
@@ -1119,7 +1280,7 @@ mod tests {
         crate::chat::transport::emit(&sink, started("s3"));
 
         let after = Collector::default();
-        host.spawn("s3", "tab-b", after.emit(), spec("s3"), || unreachable!("a live session rewires"))
+        host.spawn_plain("s3", "tab-b", after.emit(), spec("s3"), || unreachable!("a live session rewires"))
             .unwrap();
 
         assert_eq!(replays.load(Ordering::SeqCst), 1, "the transport is asked exactly once per rewire");
@@ -1135,11 +1296,11 @@ mod tests {
     #[test]
     fn a_rewire_replays_nothing_when_the_session_never_reported_itself() {
         let host = ChatHost::at(temp_store());
-        host.spawn("s2", "tab-a", Collector::default().emit(), spec("s2"), || Box::<Puppet>::default())
+        host.spawn_plain("s2", "tab-a", Collector::default().emit(), spec("s2"), || Box::<Puppet>::default())
             .unwrap();
 
         let after = Collector::default();
-        host.spawn("s2", "tab-b", after.emit(), spec("s2"), || unreachable!("a live session rewires"))
+        host.spawn_plain("s2", "tab-b", after.emit(), spec("s2"), || unreachable!("a live session rewires"))
             .unwrap();
 
         assert!(after.events().is_empty(), "nothing handshook, so there is nothing to replay");
@@ -1162,7 +1323,7 @@ mod tests {
 
         let sink_holder: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
         let holder = sink_holder.clone();
-        host.spawn("s-dies", "tab-a", seen.emit(), spec("s-dies"), move || {
+        host.spawn_plain("s-dies", "tab-a", seen.emit(), spec("s-dies"), move || {
             Box::new(Puppet { sink_out: Some(holder), ..Default::default() })
         })
         .unwrap();
@@ -1195,7 +1356,7 @@ mod tests {
         let host = ChatHost::at(temp_store());
         let (seen, holder) = (Collector::default(), Arc::new(Mutex::new(None)));
         let out = holder.clone();
-        host.spawn("s1", "tab-a", seen.emit(), spec("s1"), move || {
+        host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), move || {
             Box::new(Puppet { sink_out: Some(out), ..Default::default() })
         })
         .unwrap();
@@ -1222,7 +1383,7 @@ mod tests {
         host.close("s1").unwrap();
         let (seen, holder) = (Collector::default(), Arc::new(Mutex::new(None)));
         let out = holder.clone();
-        host.spawn("s2", "tab-b", seen.emit(), spec("s2"), move || {
+        host.spawn_plain("s2", "tab-b", seen.emit(), spec("s2"), move || {
             Box::new(Puppet { sink_out: Some(out), ..Default::default() })
         })
         .unwrap();
@@ -1259,7 +1420,7 @@ mod tests {
     fn a_non_fatal_error_leaves_the_session_live() {
         let host = ChatHost::at(temp_store());
         let seen = Collector::default();
-        host.spawn("s1", "tab-a", seen.emit(), spec("s1"), || Box::<Puppet>::default()).unwrap();
+        host.spawn_plain("s1", "tab-a", seen.emit(), spec("s1"), || Box::<Puppet>::default()).unwrap();
 
         // Emitting through the host's own wrapper is what the transport does.
         assert!(!ends_session(&ChatEvent::SessionError {
@@ -1284,7 +1445,7 @@ mod tests {
     fn live_ids_are_session_ids_not_the_tabs_hosting_them() {
         let host = ChatHost::at(temp_store());
         for (id, tab) in [("s1", "tab-a"), ("s2", "tab-b")] {
-            host.spawn(id, tab, Box::new(|_| {}), spec(id), || {
+            host.spawn_plain(id, tab, Box::new(|_| {}), spec(id), || {
                 Box::new(Puppet::default())
             })
             .unwrap();
@@ -1310,7 +1471,7 @@ mod tests {
                 Claim { surface: Surface::Chat, tab_id: tab.into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
             );
             let closed = closes.clone();
-            host.spawn(id, tab, Box::new(|_| {}), spec(id), move || {
+            host.spawn_plain(id, tab, Box::new(|_| {}), spec(id), move || {
                 Box::new(Puppet { sink_out: None, closed, ..Default::default() })
             })
             .unwrap();
@@ -1389,7 +1550,7 @@ mod tests {
         }
 
         let err = host
-            .spawn("s-bad", "tab-a", Box::new(|_| {}), spec("s-bad"), || Box::new(Broken))
+            .spawn_plain("s-bad", "tab-a", Box::new(|_| {}), spec("s-bad"), || Box::new(Broken))
             .unwrap_err();
         assert!(err.contains("no such file"));
         assert!(!host.is_live("s-bad"));
@@ -1429,7 +1590,7 @@ mod tests {
         let spawns = Arc::new(AtomicU32::new(0));
         let counter = spawns.clone();
         if matches!(second, ClaimOutcome::Granted { .. }) {
-            host.spawn(&id, "chat-tab", Box::new(|_| {}), spec(&id), move || {
+            host.spawn_plain(&id, "chat-tab", Box::new(|_| {}), spec(&id), move || {
                 counter.fetch_add(1, Ordering::SeqCst);
                 Box::<Puppet>::default()
             })
@@ -1455,7 +1616,7 @@ mod tests {
         let host = ChatHost::at(temp_store());
         let id = format!("s-chat-first-{}", std::process::id());
 
-        host.spawn(&id, "chat-tab", Box::new(|_| {}), spec(&id), || Box::<Puppet>::default()).unwrap();
+        host.spawn_plain(&id, "chat-tab", Box::new(|_| {}), spec(&id), || Box::<Puppet>::default()).unwrap();
         host.registry.claim(
             &id,
             Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
@@ -1502,7 +1663,7 @@ mod tests {
                 ..Default::default()
             };
             let factory_id = id.clone();
-            host.spawn(&id, &id, Box::new(|_| {}), start, move || Box::new(ClaudeTransport::new(factory_id)))
+            host.spawn_plain(&id, &id, Box::new(|_| {}), start, move || Box::new(ClaudeTransport::new(factory_id)))
                 .unwrap();
             ids.push(id);
         }
@@ -1596,7 +1757,7 @@ mod tests {
     #[test]
     fn dispatch_routes_each_command_to_the_transport() {
         let host = ChatHost::at(temp_store());
-        host.spawn("s1", "tab-a", Box::new(|_| {}), spec("s1"), || Box::<MockTransport>::default()).unwrap();
+        host.spawn_plain("s1", "tab-a", Box::new(|_| {}), spec("s1"), || Box::<MockTransport>::default()).unwrap();
 
         host.send("s1", vec![ContentBlock::Text { text: "hello".into() }]).unwrap();
         host.interrupt("s1").unwrap();
@@ -1620,7 +1781,7 @@ mod tests {
     #[test]
     fn a_question_is_answered_at_the_transport_that_asked_it() {
         let host = ChatHost::at(temp_store());
-        host.spawn("s-q", "tab-a", Box::new(|_| {}), spec("s-q"), || Box::<MockTransport>::default())
+        host.spawn_plain("s-q", "tab-a", Box::new(|_| {}), spec("s-q"), || Box::<MockTransport>::default())
             .unwrap();
 
         let answers = vec![QuestionAnswer {

@@ -15,10 +15,12 @@ use tauri::State;
 use crate::agents::{self, ChatConfig, ChatEffortExtra, ChatTransport};
 
 use super::acp::AcpOverrides;
+use super::acp_sessions;
 use super::acp_transport::AcpTransport;
 use super::approval;
 use super::claude_transport::ClaudeTransport;
 use super::host::{ChatState, SessionBridge, Spawned};
+use super::mirror::Mirror;
 use super::usage;
 use super::snapshot::{self, SnapshotCache, CACHE_CAP};
 use super::model::{
@@ -224,6 +226,9 @@ pub async fn chat_spawn(
                 let _ = on_event.send(event);
             }),
             StartSpec::default(),
+            // The live session already owns its mirror; the rewire path reuses
+            // that one and ignores this.
+            None,
             // Never called: the session is live, so `spawn` takes the rewire
             // path and returns before it would need a transport.
             || unreachable!("a live session rewires rather than spawning"),
@@ -323,6 +328,13 @@ pub async fn chat_spawn(
     let questions_as_permissions = !crate::settings::answer_questions_inline();
     let id_for_factory = session_id.clone();
     let agent_for_factory = agent_id.clone();
+    // **Only a transport whose conversation Sway cannot otherwise read back.**
+    // A claude session's transcript is a file `chat_history` already reads, so
+    // it gets `None` and pays one `if let Some` per event and nothing else.
+    // Keyed on the transport rather than on the agent id, so a fifth ACP adapter
+    // inherits this without a line of code.
+    let mirror = matches!(chat.transport, ChatTransport::Acp)
+        .then(|| Arc::new(Mirror::at(acp_sessions::log_path(&session_id))));
     let spawned = host.spawn(
         &session_id,
         &tab_id,
@@ -330,6 +342,7 @@ pub async fn chat_spawn(
             let _ = on_event.send(event);
         }),
         spec,
+        mirror,
         move || {
             make_transport(
                 transport,

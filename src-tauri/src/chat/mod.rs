@@ -13,6 +13,7 @@
 //! | [`acp_sessions`] | session ids and one JSON file per ACP session |
 //! | [`acp_transport`] | the seam, plus `acp`'s process and its locators |
 //! | [`ownership`] | session ids and the process table |
+//! | [`mirror`] | the model, plus the pacer's stream identity |
 //! | [`pacing`] | the model, plus the seam's sink |
 //! | [`host`] | the seam, plus ownership and pacing |
 //! | [`commands`] | all of it, plus Tauri |
@@ -34,6 +35,7 @@ pub mod commands;
 pub mod history;
 pub mod host;
 pub mod mcp;
+pub mod mirror;
 pub mod model;
 pub mod ownership;
 pub mod pacing;
