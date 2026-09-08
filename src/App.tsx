@@ -1128,6 +1128,7 @@ function App() {
           welcome={welcome()}
           query={settingsQuery()}
           entry={settingsEntry()}
+          projectRoot={selectionRoot(selected())}
           onClose={() => (
             setSettingsOpen(false),
             setWelcome(false),

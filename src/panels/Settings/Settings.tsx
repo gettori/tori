@@ -16,7 +16,7 @@ import { Bot, Braces, Columns2, FileCode, MessageSquare, Palette, Plug, X, type 
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
-import { OPEN_JOB, OPEN_TERMINAL, onWith } from "../../utils/events";
+import { COMPOSE_DRAFT, OPEN_IN_EDITOR, OPEN_JOB, OPEN_TERMINAL, onWith } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
 import Icon from "../../components/Icon/Icon";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
@@ -112,6 +112,11 @@ export default function Settings(props: {
   /** The catalogue id a `Preferences:` command pointed at, revealed on open and
    *  again whenever a later command names a different one. */
   entry?: string;
+  /** The folder the current selection resolves to, or `null` for Shells and a
+   *  Feature with no present member. Settings has no Selection of its own, so
+   *  every action that has to open a file somewhere gets handed the root
+   *  rather than looking one up. */
+  projectRoot?: string | null;
 }) {
   let firstControl: HTMLInputElement | undefined;
   let panelEl!: HTMLDivElement;
@@ -243,6 +248,11 @@ export default function Settings(props: {
   // reaches over this modal, so a task can be run from here.
   onCleanup(onWith(OPEN_JOB, () => props.onClose()));
   onCleanup(onWith(OPEN_TERMINAL, () => props.onClose()));
+  // Same rule for the Files rows: a tab opened behind this modal, or a chat
+  // draft waiting in a composer nobody can see, reads as the button doing
+  // nothing.
+  onCleanup(onWith(OPEN_IN_EDITOR, () => props.onClose()));
+  onCleanup(onWith(COMPOSE_DRAFT, () => props.onClose()));
 
   onMount(() => {
     ensureAgentHealthLoaded();
@@ -562,6 +572,7 @@ export default function Settings(props: {
                       query={query()}
                       prefix={searching() ? t.label : undefined}
                       openTab={openTab}
+                      projectRoot={props.projectRoot ?? null}
                     />
                   </div>
                 )}

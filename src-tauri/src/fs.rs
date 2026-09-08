@@ -231,6 +231,24 @@ pub fn file_exists(path: String) -> bool {
     Path::new(&path).exists()
 }
 
+/// When this file was last written, in milliseconds since the epoch, or `None`
+/// for a path that is not there or whose filesystem does not answer.
+///
+/// The editor's only way to notice an outside write to a file **no watcher
+/// covers**: `fs://changed` reaches it for anything under a workspace root, and
+/// an agent's own config home is under none of them. `None` is not "unchanged",
+/// so a caller comparing two readings treats a missing answer as "cannot tell"
+/// rather than as a match.
+#[tauri::command(async)]
+pub fn fs_mtime_ms(path: String) -> Option<u64> {
+    std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_millis() as u64)
+}
+
 /// One file in a batched write.
 #[derive(Deserialize)]
 pub struct FileWrite {

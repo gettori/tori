@@ -36,6 +36,7 @@ import { settings, saveSettings } from "../../settingsStore";
 import { behindVerified, verifiedVersion } from "../../../../utils/versions";
 import OverlayScroll from "../../../../components/Scrollbar/OverlayScroll";
 import AgentAccounts from "./AgentAccounts";
+import AgentFiles from "./AgentFiles";
 import styles from "../../Settings.module.css";
 
 // What each published key means, since the value alone is deliberately terse.
@@ -355,6 +356,10 @@ function ModelsPane(props: {
  */
 export default function AgentDetail(props: {
   agent: AgentHealth;
+  /** The folder an opened file lands in, or `null` when the workspace has no
+   *  folder (Shells, a Feature with no present member). Every action here that
+   *  opens the editor is disabled without one and says why. */
+  projectRoot: string | null;
   onBack: () => void;
   onRecheck: () => Promise<unknown>;
   rechecking: boolean;
@@ -382,6 +387,10 @@ export default function AgentDetail(props: {
   // adapter. One row means nothing to tell apart, so the models pane keeps its
   // plain heading.
   const accounts = () => a().profiles ?? [];
+  // Bumped when the accounts list gains or loses one, so the Files group below
+  // re-resolves against the new set of homes. A counter rather than the list
+  // itself: what the Files group needs is "ask again", not "which one".
+  const [accountsChanged, setAccountsChanged] = createSignal(0);
   const [modelsAccount, setModelsAccount] = createSignal<string | null>(null);
   // The picked one while it is still there, the first otherwise, which is also
   // what a switch to another agent lands on.
@@ -682,7 +691,24 @@ export default function AgentDetail(props: {
           is missing or signed out would repeat what the steps above say. It
           renders itself away for an adapter that declares no `[accounts]`. */}
       <Show when={!setupMode()}>
-        <AgentAccounts agentId={a().id} agentLabel={a().label} onRecheck={props.onRecheck} />
+        <AgentAccounts
+          agentId={a().id}
+          agentLabel={a().label}
+          onRecheck={props.onRecheck}
+          onAccountsChanged={() => setAccountsChanged((n) => n + 1)}
+        />
+      </Show>
+
+      {/* Below the accounts, because every row here is resolved against one of
+          them: the files are per account, so the accounts have to be on screen
+          first for the sub-headings to mean anything. */}
+      <Show when={!setupMode()}>
+        <AgentFiles
+          agentId={a().id}
+          agentLabel={a().label}
+          projectRoot={props.projectRoot}
+          accountsNonce={accountsChanged()}
+        />
       </Show>
 
       {/* Only for an agent Sway can actually ask, and only once it is set up.

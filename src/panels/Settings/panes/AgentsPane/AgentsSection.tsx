@@ -263,7 +263,7 @@ function orderRows(rows: CardRow[]): CardRow[] {
     .sort((x, y) => rank(x) - rank(y));
 }
 
-export default function AgentsSection() {
+export default function AgentsSection(props: { projectRoot?: string | null }) {
   const [health, { refetch }] = createResource(() => invoke<AgentHealth[]>("agent_health"));
   // Counts come from the stored accounts file, no subprocess behind them, so
   // fetching on every open is as cheap as the read it is.
@@ -472,6 +472,7 @@ export default function AgentsSection() {
         {(agent) => (
           <AgentDetail
             agent={agent()}
+            projectRoot={props.projectRoot ?? null}
             onBack={close}
             onRecheck={recheck}
             rechecking={rechecking()}

@@ -19,7 +19,15 @@ import { DEFAULT_SETTINGS, loadWorkspaceSettings, setZoom, zoom, zoomIn } from "
 import { blameOn, reloadBlamePref, writeBlamePref } from "../../utils/blamePref";
 import { reloadSideBySide, sideBySideOn, writeSideBySide } from "../../utils/sideBySide";
 import { SETTINGS, SETTING_TABS } from "../../utils/settingsCatalog";
-import { OPEN_JOB, emitWith, type OpenJob } from "../../utils/events";
+import {
+  COMPOSE_DRAFT,
+  OPEN_IN_EDITOR,
+  OPEN_JOB,
+  emitWith,
+  type ComposeDraft,
+  type OpenInEditor,
+  type OpenJob,
+} from "../../utils/events";
 import { rowDomId } from "./components/paneKit";
 import styles from "./Settings.module.css";
 
@@ -51,8 +59,21 @@ const ANCHORED_ENTRIES = ["agents"];
  *  are in the catalogue because that is what the filter searches and what the
  *  palette generates a row from; they are exempt here because the pane this
  *  test renders shows the agents table, and the page carrying them is a click
- *  away. Their own controls are asserted in `agentAccounts.test.tsx`. */
-const DETAIL_PAGE_ENTRIES = ["titlebar-preview", "usage-warn-at", "usage-notify"];
+ *  away. Their own controls are asserted in `agentAccounts.test.tsx`. *
+ *  The five `agent-*` file kinds are exempt for a sharper version of the same
+ *  reason: what they name is resolved per account *and* per adapter, so there
+ *  is no control here at all, only a row on the page listing what is on disk.
+ *  Their rows are asserted in `agentFiles.test.tsx`. */
+const DETAIL_PAGE_ENTRIES = [
+  "titlebar-preview",
+  "usage-warn-at",
+  "usage-notify",
+  "agent-instructions",
+  "agent-skills",
+  "agent-commands",
+  "agent-subagents",
+  "agent-settings-file",
+];
 
 const tabs = () => [...document.querySelectorAll('[role="tab"]')] as HTMLElement[];
 const panes = () => [...document.querySelectorAll('[role="tabpanel"]')] as HTMLElement[];
@@ -701,5 +722,19 @@ describe("Escape", () => {
       interactive: true,
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // Same rule for the Files rows. A tab opened behind the modal, or a draft
+  // waiting in a composer nobody can see, reads the same way.
+  it("closes when a row opens a file or hands a draft to an agent", () => {
+    const opened = vi.fn();
+    render(() => <Settings onClose={opened} />);
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: "/home/me/.claude/CLAUDE.md" });
+    expect(opened).toHaveBeenCalled();
+
+    const drafted = vi.fn();
+    render(() => <Settings onClose={drafted} />);
+    emitWith<ComposeDraft>(COMPOSE_DRAFT, { blocks: [{ type: "text", text: "hi" }] });
+    expect(drafted).toHaveBeenCalled();
   });
 });

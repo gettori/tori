@@ -316,6 +316,10 @@ export default function CodeEditor(props: {
   callsVisible?: boolean;
   openPaths: string[];
   projectRoot: string | null;
+  /** Every folder the fs watcher is currently covering: the workspace folder,
+   *  or a Feature's members. A file under none of them gets no `fs://changed`,
+   *  which is what the save guard below exists to make up for. */
+  watchedRoots?: string[];
   goto: { path: string; line: number; col?: number; nonce: number } | null;
   onDirty: (path: string, dirty: boolean) => void;
   // The caret crossed enough lines in one step to count as a jump rather than
@@ -588,6 +592,44 @@ export default function CodeEditor(props: {
   // An open file changed on disk (already filtered to genuine external edits).
   // Clean buffer: reload in place. Dirty buffer: stash the disk version and
   // raise a conflict banner (now if active, on activation otherwise).
+  /** Is this path outside every folder the watcher covers?
+   *
+   *  An agent's own config home (`~/.claude`) is the case this exists for: real
+   *  files, opened as ordinary tabs, that no `fs://changed` ever mentions. The
+   *  test is prefix-on-a-separator rather than `startsWith` alone, so `/a/bc`
+   *  does not read as living under `/a/b`. */
+  function outsideWatched(path: string): boolean {
+    const roots = props.watchedRoots ?? (props.projectRoot ? [props.projectRoot] : []);
+    // An empty set is not "everything is covered", it is "the watcher is
+    // running over nothing" - a Feature with no present member, or the moment
+    // before a selection lands. Every path is outside that.
+    return !roots.some((r) => path === r || path.startsWith(r.endsWith("/") ? r : `${r}/`));
+  }
+
+  /** What disk said when this out-of-root file was last read or written. Only
+   *  out-of-root paths get an entry; everything else is covered by the watcher
+   *  and would just be a second, staler answer. */
+  const unwatchedMtime = new Map<string, number>();
+
+  async function noteMtime(path: string) {
+    if (!outsideWatched(path)) return;
+    const at = await invoke<number | null>("fs_mtime_ms", { path }).catch(() => null);
+    if (at !== null && at !== undefined) unwatchedMtime.set(path, at);
+    else unwatchedMtime.delete(path);
+  }
+
+  /** Has an out-of-root file moved under us since we last looked?
+   *
+   *  `false` whenever the answer is not known (in-root, never recorded, or a
+   *  stat that failed): a guard that blocked saves on "cannot tell" would make
+   *  every unreadable stat look like somebody else's edit. */
+  async function movedSinceLastRead(path: string): Promise<boolean> {
+    const known = unwatchedMtime.get(path);
+    if (known === undefined) return false;
+    const at = await invoke<number | null>("fs_mtime_ms", { path }).catch(() => null);
+    return at !== null && at !== undefined && at !== known;
+  }
+
   async function handleExternalChange(path: string) {
     if (!buffers.has(path)) return;
     // Somebody else wrote the file, so which of its lines are uncommitted is no
@@ -617,6 +659,9 @@ export default function CodeEditor(props: {
       if (path === shown) setConflict({ path, external: "", kind: "deleted" });
       return;
     }
+    // Disk as of this read, whatever the buffer decides to do with it. Without
+    // this the guard would keep firing on a reading it has already resolved.
+    void noteMtime(path);
     const buf = buffers.get(path);
     if (!buf) return; // closed while reading
     // Compared as the buffer would hold it, not as the bytes arrived: a file
@@ -870,9 +915,25 @@ export default function CodeEditor(props: {
       if (outcome.kind === "formatted") applyFormatted(path, outcome.text);
       text = outcome.text;
     }
+    // Nothing under a watched root reaches this: there, `fs://changed` has
+    // already raised the conflict before a save could clobber anything. Out of
+    // root there is no watcher, so the check happens at the last moment it can
+    // still matter, and the write is skipped rather than merged.
+    if (await movedSinceLastRead(path)) {
+      await handleExternalChange(path);
+      return;
+    }
     try {
       await invoke("fs_write_file", { path, contents: text });
       markSelfWrite(path);
+      // Ours now, so the next save compares against what we just wrote rather
+      // than against the reading from before it. Awaited rather than fired off
+      // because the ordering against a save that follows it closely would
+      // otherwise rest on which IPC round trip lands first, which is not a
+      // thing worth resting on. No test pins this: the mocked backend resolves
+      // in one microtask, so the interleaving it guards against cannot be
+      // reproduced in the harness.
+      await noteMtime(path);
       // The bytes as written, after the formatter, for whoever mirrors this
       // file elsewhere (the chat composer's draft).
       emitWith<EditorFileSaved>(EDITOR_FILE_SAVED, { path, contents: text });
@@ -1767,6 +1828,9 @@ export default function CodeEditor(props: {
           ...conf,
         };
     buffers.set(path, buf);
+    // The baseline for the save guard, taken from the same open that produced
+    // `savedText`. Out-of-root paths only; everything else has a watcher.
+    void noteMtime(path);
     // First reading of a buffer nobody has typed in yet. Its text may differ
     // from the file already (a hot-exit stash, a reopened tab), so the preview
     // has to be told rather than left to read disk.

@@ -20,6 +20,7 @@ import {
   emitWith,
   CLOSE_TAB,
   OPEN_TERMINAL,
+  COMPOSE_DRAFT,
   OPEN_JOB,
   type OpenJob,
   REVEAL_SHELLS,
@@ -43,6 +44,7 @@ import {
   type LiveTab,
   type SendToSession,
   type SendToSessionResult,
+  type ComposeDraft,
   type ToastEvent,
   type TabJump,
   type FocusSessionTab,
@@ -947,6 +949,7 @@ export default function Terminal(props: {
   let offOpenTerminal: (() => void) | undefined;
   let offNewSession: (() => void) | undefined;
   let offOpenJob: (() => void) | undefined;
+  let offComposeDraft: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
   onMount(async () => {
@@ -969,6 +972,24 @@ export default function Terminal(props: {
       });
     });
     offOpenJob = onWith<OpenJob>(OPEN_JOB, openCommand);
+    // Settings has no Selection, so it describes a draft and this decides where
+    // it lands. Its own guard, not the sender's: the panel's copy of the root
+    // was read when it opened, and the selection can have moved since.
+    offComposeDraft = onWith<ComposeDraft>(COMPOSE_DRAFT, (d) => {
+      const sel = props.selected;
+      const root = selectionRoot(sel);
+      if (!sel || !root) {
+        emitWith<ToastEvent>(TOAST, { message: "Select a project first", kind: "info" });
+        return;
+      }
+      const ws = workspaceKey(sel);
+      const agent = draftAgent(ws);
+      if (!agent) return;
+      const tabId = openChatDraft(ws, root, sel.projectName, agent, draftProfile(ws, agent));
+      // Offered, never sent. The user reads what is in the box and decides.
+      offerToComposer(tabId, d.blocks);
+      focusTab(ws, tabId);
+    });
     // Sidebar "New session": matches the "+ Claude" main button (claude, non-yolo).
     // Spawns at the named folder, with no props.selected timing dependency.
     offNewSession = onWith<NewSession>(NEW_SESSION, (s) => {
@@ -1025,6 +1046,7 @@ export default function Terminal(props: {
     offOpenTerminal?.();
     offNewSession?.();
     offOpenJob?.();
+    offComposeDraft?.();
     unlistenExit?.();
     unlistenSessions?.();
   });
