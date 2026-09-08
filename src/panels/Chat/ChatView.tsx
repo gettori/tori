@@ -59,6 +59,7 @@ import { attachmentsDir, composerAttachments } from "./composerAttachments";
 import { folderActors } from "../../utils/folderActors";
 import { hunkRevertPermission } from "../../utils/hunkRevert";
 import {
+  isConversationEvent,
   parseChatEvent,
   type ChatConfigValue,
   currentOf,
@@ -144,6 +145,7 @@ import {
   selectEffort,
   selectMode,
   replayFold,
+  resetTranscript,
   selectModel,
   sendCapable,
   settleBackfill,
@@ -510,9 +512,22 @@ export default function ChatView(props: {
         return applyBudget();
       })
       .catch(() => {});
-    void invoke<number>("chat_prompt_count", { sessionId: props.sessionId, agentId: props.agentId })
-      .then(setPromptCount)
-      .catch(() => {});
+    // Where this agent's earlier turns come from. `session-replay` means the
+    // agent hands them back on the live channel and Sway's log is only a cache
+    // of that, which is what the reset, the notice and the prompt-count re-read
+    // all key on. Declared here rather than beside `tier` far below, because a
+    // `const` does not hoist and everything above reads it from a callback.
+    const historySource = () => chatTier(findAdapter(props.agentId).chat?.transport).historySource;
+
+    // Re-read as well as read: for an agent Sway counts from its own sidecar,
+    // the figure taken here predates the session/load that is about to rewrite
+    // it. One definition, called at open and again once the replay has landed.
+    function refreshPromptCount() {
+      void invoke<number>("chat_prompt_count", { sessionId: props.sessionId, agentId: props.agentId })
+        .then(setPromptCount)
+        .catch(() => {});
+    }
+    refreshPromptCount();
 
     // Live events arriving before the backfill has been folded in would render
     // this session's history *after* its newest turn. They are parked here
@@ -522,6 +537,15 @@ export default function ChatView(props: {
     // Only ever true for a transport whose history rides the live channel; see
     // `replayFold`. Set per connect, since a reconnect replays again.
     let replaying = false;
+    // Whether this connect's replay has already replaced what the backfill drew.
+    // Per connect for the same reason `replaying` is: a reconnect replays the
+    // conversation again, and that one supersedes the panel just as the first
+    // did.
+    let replacedBackfill = false;
+    // Whether the "this agent keeps the conversation itself" notice is the only
+    // thing on screen. Not per connect: it is pushed once, by the backfill, and
+    // cleared the first time this session says anything at all.
+    let emptyNoticeShown = false;
     const parked: ChatEvent[] = [];
     // The checkpoint timestamp of the turn currently running, so this session's
     // reported writes are filed against the same turn its snapshot is named
@@ -574,6 +598,14 @@ export default function ChatView(props: {
           // last replayed turn stays "active" and the whole panel reads as
           // working on a turn that finished before the tab existed.
           settleBackfill(s);
+          // A restored tab for an agent that keeps its own conversation, with
+          // nothing saved yet. Blank is the one thing this must not be: an
+          // inert tab does not spawn ([[adr_lazy_tab_attachment]]), so there is
+          // no way to tell "no turns" from "not loaded yet" without saying it.
+          if (historySource() === "session-replay" && s.items.length === 0 && !s.started) {
+            emptyNoticeShown = true;
+            pushNotice(s, "This agent keeps the conversation itself; it loads when the chat starts", "info");
+          }
           // In the same edit as the turns, so no send can slip between the
           // history landing and the numbering being raised above it.
           seedLabels(composerKey(), labels);
@@ -636,8 +668,39 @@ export default function ChatView(props: {
       // belong to work happening now.
       const fold = replayFold(ev, replaying);
       replaying = fold.replaying;
+      // The session has just re-read its own conversation, so anything Sway
+      // counts off that conversation was counted before it landed.
+      if (ev.type === "sessionStarted" && historySource() === "session-replay") {
+        refreshPromptCount();
+      }
+      // The chat is open now, so the notice saying its history arrives when it
+      // opens has been answered. Folded into the same edit as the frame itself,
+      // rather than a second write and a second render for one event.
+      const clearsNotice = ev.type === "sessionStarted" && emptyNoticeShown && !replacedBackfill;
+      if (clearsNotice) emptyNoticeShown = false;
+      const dropNotice = (s: ChatState) => {
+        // Only while it is still the only thing here. A turn sent from this tab
+        // before the session finished opening is real conversation, and
+        // dropping the notice must not take that with it.
+        if (clearsNotice && s.items.length === 1) resetTranscript(s);
+      };
       if (fold.as !== "live") {
         edit((s) => {
+          dropNotice(s);
+          // The backfill above drew Sway's own log of this conversation. The
+          // agent owns the conversation, so its replay is the authority and
+          // replaces that drawing rather than being folded on top of it. Keyed
+          // on the first *conversation* frame, so a replay bringing only
+          // notices and config leaves the history on screen alone - the same
+          // question, and the same seven frames, the log's own rebuild uses.
+          if (!replacedBackfill && isConversationEvent(ev)) {
+            replacedBackfill = true;
+            // The notice goes with everything else on screen, and saying so
+            // here is what stops a later reconnect from reading the flag as
+            // still-showing and clearing a conversation to match it.
+            emptyNoticeShown = false;
+            resetTranscript(s);
+          }
           applyEvent(s, ev);
           // The replay carries no turn boundaries, exactly like a transcript.
           if (fold.as === "settle") settleBackfill(s);
@@ -649,7 +712,10 @@ export default function ChatView(props: {
         });
         return;
       }
-      edit((s) => applyEvent(s, ev));
+      edit((s) => {
+        dropNotice(s);
+        applyEvent(s, ev);
+      });
       // A session that died before it could take the message being held for it.
       // Handing the message back and turning the tab into a draft again is a
       // better answer than a dead transcript with the user's words inside it:
@@ -747,6 +813,7 @@ export default function ChatView(props: {
       // Re-armed per connect, not once per panel: a reconnect re-opens the
       // session, so an agent that replays on open replays again.
       replaying = chatTier(findAdapter(props.agentId).chat?.transport).historySource === "session-replay";
+      replacedBackfill = false;
       const channel = new Channel<unknown>();
       channel.onmessage = (raw) => {
         const ev = parseChatEvent(raw);

@@ -1,0 +1,9 @@
+[
+  "userMessage",
+  "compacted",
+  "textDelta",
+  "thinkingDelta",
+  "toolCallStarted",
+  "toolCallCompleted",
+  "subagentStarted"
+]

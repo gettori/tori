@@ -2289,6 +2289,27 @@ mod tests {
         std::fs::write(dir.join("events.json"), format!("{events}\n")).expect("write events");
         std::fs::write(dir.join("commands.json"), format!("{commands}\n")).expect("write commands");
         std::fs::write(dir.join("toolSummaries.json"), format!("{summaries}\n")).expect("write summaries");
+
+        // Which of those variants are the conversation, taken from the function
+        // that already decides it for the log's own rebuild rather than typed
+        // out again here. The panel reads this file to know when a replay has
+        // brought something, and two hand-written lists would drift - the one
+        // that drifted being the panel's, which is the half nobody would notice
+        // until a restored chat rendered its history twice.
+        let conversation: Vec<String> = every_event()
+            .iter()
+            .filter(|e| crate::chat::mirror::is_conversation(e))
+            .filter_map(|e| {
+                serde_json::to_value(e)
+                    .ok()?
+                    .get("type")?
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .collect();
+        let conversation = serde_json::to_string_pretty(&conversation).expect("serialize set");
+        std::fs::write(dir.join("conversationEvents.json"), format!("{conversation}\n"))
+            .expect("write conversation set");
     }
 
     /// Agent-specific data must survive the round trip untouched, since the

@@ -28,7 +28,7 @@
 //! parsed as a session and listed as one.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use super::model::ChatEvent;
@@ -199,7 +199,12 @@ fn keep(event: &ChatEvent) -> Keep {
 /// where a replay carrying only notices and config brought nothing and must
 /// leave the log alone. The same set the panel keys its own transcript reset on,
 /// so the two cannot disagree about what "the replay brought something" means.
-fn is_conversation(event: &ChatEvent) -> bool {
+///
+/// The panel does not carry its own copy of this list. `model.rs`'s fixture
+/// emitter writes the tags out of *this* function and `chatTypes.ts` reads that
+/// file, the same contract the event model itself uses: a variant added here
+/// fails the TypeScript test until the panel agrees.
+pub(super) fn is_conversation(event: &ChatEvent) -> bool {
     matches!(
         event,
         ChatEvent::UserMessage { .. }
@@ -401,6 +406,31 @@ fn push(state: &mut State, event: ChatEvent) {
     } else {
         state.turn.push(event);
     }
+}
+
+/// Read a log back as the events it recorded, plus the number of lines that
+/// would not parse.
+///
+/// A bad line is skipped rather than failing the read, for the same reason
+/// `acp_sessions::all` skips a corrupt locator: one torn line - the tail of a
+/// turn interrupted by a crash is the likely one - must not hide every turn
+/// before it. The count is returned rather than swallowed so the caller can say
+/// so; a conversation silently missing a turn is the failure that looks like no
+/// failure at all.
+///
+/// A missing file reads as an empty conversation, which is what a session that
+/// has not spoken yet is.
+pub fn read_log(path: &Path) -> (Vec<ChatEvent>, usize) {
+    let Ok(text) = std::fs::read_to_string(path) else { return (Vec::new(), 0) };
+    let mut events = Vec::new();
+    let mut skipped = 0;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<ChatEvent>(line) {
+            Ok(event) => events.push(event),
+            Err(_) => skipped += 1,
+        }
+    }
+    (events, skipped)
 }
 
 /// One JSON object per line. An event that will not serialise is dropped rather

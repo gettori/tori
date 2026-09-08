@@ -1248,8 +1248,17 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // The ACP transport puts the prompt it was handed into the stream so the
       // log it keeps records the user's side too. `awaitingTurn` is true for
       // exactly the window between this panel's send and its acknowledgement,
-      // so a message arriving in it is the one already drawn by `pushUserTurn`.
-      if (s.awaitingTurn) return;
+      // so a message arriving in it is the echo of the one `pushUserTurn` just
+      // drew - but only if that drawing is still the row below, which a replay
+      // landing in the same window has cleared. Matched on the blocks rather
+      // than on the window alone, or a reconnect that replays while a turn is
+      // in flight would swallow one of the turns it is handing back.
+      const last = s.items[s.items.length - 1];
+      const echo =
+        s.awaitingTurn &&
+        last?.kind === "user" &&
+        JSON.stringify(last.blocks) === JSON.stringify(ev.blocks);
+      if (echo) return;
       // A user turn the panel did not send. Deliberately does **not** touch the
       // turn or set `awaitingTurn` the way `pushUserTurn` does: replayed history
       // is finished, and marking it in flight would leave a reopened tab reading
@@ -1695,6 +1704,38 @@ export function settleBackfill(s: ChatState) {
   for (const id of Object.keys(s.turns)) s.turns[id].completed = true;
   s.activeTurnId = null;
   s.awaitingTurn = false;
+}
+
+/**
+ * Throw away the conversation on screen, keeping everything the *session* is.
+ *
+ * For a transport whose history Sway reads from its own log: the backfill drew
+ * that log, and the agent's replay is the same conversation from the authority
+ * that owns it. Folding the replay on top would show every turn twice, so the
+ * first frame of it clears the cache's drawing first.
+ *
+ * The index maps go with the items they point into. `toolIndex` and its
+ * siblings are positions in `items`, so leaving one behind would have the next
+ * tool frame patch a card that is no longer there.
+ *
+ * `seq` deliberately survives. It only ever mints ids, and restarting it would
+ * hand a new item the id of one that just went, which Solid's keyed `For` reads
+ * as the same row moving rather than a different row appearing.
+ */
+export function resetTranscript(s: ChatState) {
+  s.items = [];
+  s.toolIndex = {};
+  s.questionIndex = {};
+  s.turns = {};
+  s.activeTurnId = null;
+  s.openText = {};
+  s.openThinking = {};
+  s.lanes = {};
+  s.selectedLane = null;
+  s.laneOfCall = {};
+  s.compactions = 0;
+  s.compactionReclaimed = 0;
+  s.compactingItemId = null;
 }
 
 /** How a frame arriving on the live channel should actually be folded. */

@@ -721,6 +721,30 @@ export const CHAT_COMMAND_TYPES = [
   "close",
 ] as const satisfies readonly ChatCommandType[];
 
+/// The frames that are the conversation itself, as opposed to what the session
+/// *is* or what was settled in the moment it happened.
+///
+/// Rust owns this set: `chat/mirror.rs`'s `is_conversation` decides whether a
+/// replay brought a conversation back and therefore whether the log is rebuilt
+/// from it, and the same question decides whether the panel clears what it drew
+/// from that log. Two answers would mean a restored chat showing its history
+/// twice, or not at all. `conversationEvents.json` is emitted from the Rust
+/// function and compared against this list in `chatTypes.test.ts`, the same
+/// contract `events.json` gives the wire shapes.
+export const CONVERSATION_EVENTS = [
+  "userMessage",
+  "compacted",
+  "textDelta",
+  "thinkingDelta",
+  "toolCallStarted",
+  "toolCallCompleted",
+  "subagentStarted",
+] as const satisfies readonly ChatEventType[];
+
+export function isConversationEvent(ev: ChatEvent): boolean {
+  return (CONVERSATION_EVENTS as readonly string[]).includes(ev.type);
+}
+
 // ---------------------------------------------------------------------------
 // The wire-shape table
 // ---------------------------------------------------------------------------

@@ -881,6 +881,9 @@ pub async fn chat_history(
     up_to_prompt_ts: Option<u64>,
 ) -> Result<Vec<ChatEvent>, String> {
     let source = from_session_id.as_deref().unwrap_or(&session_id);
+    if !keeps_a_transcript(&agent_id) {
+        return log_history(&state, &session_id, source).await;
+    }
     let Some(path) = crate::sessions::transcript_path(source, &agent_id) else {
         return Ok(Vec::new());
     };
@@ -899,6 +902,63 @@ pub async fn chat_history(
     // same cache so a backfilled card can fetch its remainder too.
     state.0.cut_outputs(&session_id, &mut events);
     Ok(events)
+}
+
+/// Does this agent write a transcript Sway can find on disk?
+///
+/// **Asked of the adapter, not of `transcript_path`.** Both answers are `None`
+/// for an ACP session, but `transcript_path` is also `None` for a claude session
+/// that has not written its first turn yet, and reading the ACP store for one of
+/// those would be a lookup in a different agent's history. An unknown agent is
+/// claude-shaped, matching what `parser_kind_for` assumes about one.
+fn keeps_a_transcript(agent_id: &str) -> bool {
+    agents::find(agent_id)
+        .map(|a| matches!(a.discovery, Some(agents::Discovery::File { .. })))
+        .unwrap_or(true)
+}
+
+/// The conversation for an agent that keeps none Sway can read: the log the
+/// mirror wrote beside the session's locator.
+///
+/// Off the IPC thread through `exec::blocking`, per [[adr_no_sync_ipc_commands]]:
+/// this is a file read whose size is the length of a conversation.
+///
+/// `up_to_prompt_ts` has no meaning here and is not taken. Rewind is out of
+/// scope for an ACP session, and the panel gates it on the tier, so honouring a
+/// cut nothing sends would be a branch that can only be wrong.
+async fn log_history(
+    state: &State<'_, ChatState>,
+    session_id: &str,
+    source: &str,
+) -> Result<Vec<ChatEvent>, String> {
+    let path = acp_sessions::log_path(source);
+    let id = session_id.to_string();
+    let mut events =
+        crate::exec::blocking("chat_history_log", move || history_from_log(&id, &path)).await;
+    // The mirror writes what already went through the sink wrapper's cut, so
+    // this is normally a no-op. Applied anyway: it is what makes the cap a
+    // property of the read rather than of whichever build wrote the file.
+    state.0.cut_outputs(session_id, &mut events);
+    Ok(events)
+}
+
+/// The file half of [`log_history`], split out so it is testable without a Tauri
+/// app or an async runtime, exactly as `mark_turn` is.
+fn history_from_log(session_id: &str, path: &std::path::Path) -> Vec<ChatEvent> {
+    let (mut events, skipped) = super::mirror::read_log(path);
+    // Said out loud rather than counted and dropped. A conversation quietly
+    // missing a turn looks exactly like a conversation that never had one, and
+    // the panel renders a non-fatal error as a notice under the history.
+    if skipped > 0 {
+        events.push(ChatEvent::SessionError {
+            session_id: session_id.to_string(),
+            message: format!(
+                "{skipped} line(s) of this session's saved history could not be read and were skipped."
+            ),
+            fatal: false,
+        });
+    }
+    events
 }
 
 // --- mid-turn quit recovery ------------------------------------------------
@@ -1032,6 +1092,91 @@ mod tests {
 
     fn claude_chat() -> &'static ChatConfig {
         agents::find("claude").unwrap().chat.as_ref().unwrap()
+    }
+
+    /// **Which store a session's history comes out of is the adapter's answer,
+    /// not the filesystem's.** Both a codex session and a claude session that
+    /// has not written its first turn resolve to no transcript path, and reading
+    /// the ACP store for the second would answer one agent's history with
+    /// another's.
+    #[test]
+    fn only_an_agent_that_keeps_no_transcript_reads_the_log() {
+        assert!(keeps_a_transcript("claude"), "claude writes a transcript Sway reads");
+        assert!(!keeps_a_transcript("codex"), "an ACP agent keeps its conversation itself");
+        assert!(!keeps_a_transcript("opencode"));
+        assert!(keeps_a_transcript("not-an-agent"), "an unknown agent is claude-shaped");
+    }
+
+    /// The read path end to end: what the mirror wrote comes back as events, a
+    /// torn line costs that line and says so, and an output over the cap is cut
+    /// on the way out however it got into the file.
+    #[test]
+    fn a_log_reads_back_as_its_events_with_a_torn_line_reported() {
+        use crate::chat::host::ChatHost;
+        use crate::chat::model::TOOL_OUTPUT_CAP;
+
+        let dir = std::env::temp_dir().join(format!("sway-log-read-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("s1.jsonl");
+
+        let huge = "x".repeat(100 * 1024);
+        let lines = [
+            serde_json::to_string(&ChatEvent::UserMessage {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+                blocks: vec![ContentBlock::Text { text: "ask".into() }],
+            })
+            .unwrap(),
+            "{ this line is torn".to_string(),
+            serde_json::to_string(&ChatEvent::ToolCallCompleted {
+                session_id: "s1".into(),
+                turn_id: "t1".into(),
+                tool_use_id: "c1".into(),
+                status: crate::chat::model::ToolStatus::Ok,
+                output: Some(huge),
+                files: Vec::new(),
+                duration_ms: None,
+                summary: None,
+                output_truncated: false,
+                patch: Vec::new(),
+            })
+            .unwrap(),
+        ];
+        std::fs::write(&path, format!("{}\n", lines.join("\n"))).unwrap();
+
+        let mut events = history_from_log("s1", &path);
+        ChatHost::default().cut_outputs("s1", &mut events);
+
+        assert!(
+            matches!(events.first(), Some(ChatEvent::UserMessage { .. })),
+            "the lines before the torn one survive it: {events:?}"
+        );
+        let cut = events.iter().find_map(|e| match e {
+            ChatEvent::ToolCallCompleted { output, output_truncated, .. } => {
+                Some((output.clone(), *output_truncated))
+            }
+            _ => None,
+        });
+        let (output, truncated) = cut.expect("and the lines after it too");
+        assert!(output.unwrap_or_default().len() <= TOOL_OUTPUT_CAP, "an over-cap output is cut on read");
+        assert!(truncated, "and says it was");
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                ChatEvent::SessionError { fatal: false, message, .. } if message.contains("1 line")
+            )),
+            "the torn line is reported rather than silently dropped: {events:?}"
+        );
+    }
+
+    /// A session that has never spoken reads as an empty conversation, not as an
+    /// error. There is nothing wrong with a chat nobody has used yet.
+    #[test]
+    fn a_session_with_no_log_reads_as_empty() {
+        let missing = std::env::temp_dir().join("sway-log-read-nothing-here.jsonl");
+        let _ = std::fs::remove_file(&missing);
+        assert!(history_from_log("s1", &missing).is_empty());
     }
 
     #[test]
