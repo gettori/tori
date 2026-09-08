@@ -359,28 +359,22 @@ describe("a call that failed", () => {
     expect(await diffFetches()).toHaveLength(1);
   });
 
-  it("opens itself when this tab watched the call fail", () => {
+  // The row already says "Failed" and says it in the failure colour. Opening
+  // the body on top of that moves the transcript under whatever the reader was
+  // looking at, and one bad turn does it several times over.
+  it("stays collapsed when this tab watches the call fail", async () => {
     const [live, setLive] = createStore(failed(0, { state: "running" }));
     const { container } = mount(live);
-    expect(container.querySelector('[aria-expanded="true"]')).toBeNull();
     setLive("state", "error");
-    expect(container.querySelector('[aria-expanded="true"]')).toBeTruthy();
+    expect(container.querySelector('[aria-expanded="true"]')).toBeNull();
+    expect(await diffFetches()).toHaveLength(0);
   });
 
-  it("opens itself on a denial too, which is the other way a call fails", () => {
+  it("stays collapsed on a denial too, which is the other way a call fails", () => {
     const [live, setLive] = createStore(failed(0, { state: "awaitingApproval" }));
     const { container } = mount(live);
     setLive("state", "denied");
-    expect(container.querySelector('[aria-expanded="true"]')).toBeTruthy();
-  });
-
-  // Opening is not asking: the card opened itself, and a diff is a `git diff`
-  // per file that nobody requested.
-  it("reads no diff for a card a failure opened", async () => {
-    const [live, setLive] = createStore(failed(0, { state: "running" }));
-    mount(live);
-    setLive("state", "error");
-    expect(await diffFetches()).toHaveLength(0);
+    expect(container.querySelector('[aria-expanded="true"]')).toBeNull();
   });
 });
 

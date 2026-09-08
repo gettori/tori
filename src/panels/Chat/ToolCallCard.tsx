@@ -1,4 +1,4 @@
-import { For, Show, Switch, Match, createEffect, createMemo, createSignal, createResource } from "solid-js";
+import { For, Show, Switch, Match, createMemo, createSignal, createResource } from "solid-js";
 import { ChevronRight } from "lucide-solid";
 import Icon from "../../components/Icon/Icon";
 import { invoke } from "@tauri-apps/api/core";
@@ -116,19 +116,6 @@ export default function ToolCallCard(props: {
     };
   });
   const settled = () => props.card.state === "ok" || props.card.state === "error";
-
-  // Show the plumbing when it breaks, and only when *this tab watched it
-  // break*. The card mounts already failed for a failure read off a transcript
-  // or replayed by an ACP agent on reconnect, and those were dealt with long
-  // ago: opening them would open ten cards every time the app restarts. A live
-  // failure mounts running and changes under us, which is the whole signal.
-  let lastState = props.card.state;
-  createEffect(() => {
-    const state = props.card.state;
-    const changed = state !== lastState;
-    lastState = state;
-    if (changed && (state === "error" || state === "denied")) setOpen(true);
-  });
 
   // Fetched only once the user opens the revert surface, never on every card: a
   // diff is a `git diff` per file, and a turn can make dozens of calls.
