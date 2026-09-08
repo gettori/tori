@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { installAnimationFrame } from "../../test/frames";
 import { pointerClick } from "../../test/menus";
+import {
+  COMPOSE_DRAFT,
+  TOAST,
+  emitWith,
+  type ComposeDraft,
+  type ToastEvent,
+} from "../../utils/events";
 
 // The tab strip's launch control, after the draft-first change: the main half
 // makes a chat rather than a shell, and every route the main half no longer
@@ -326,6 +333,40 @@ describe("the launch control", () => {
     expect(screen.queryByLabelText(/^New chat/)).toBeNull();
     expect(screen.queryByLabelText("Session history")).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Terminal" })).toBeNull();
+  });
+});
+
+// Settings has no Selection, so it describes a draft and Terminal decides where
+// it lands. The event is the whole seam: without it, the panel would have to be
+// told about workspaces for a reason that has nothing to do with them.
+describe("a draft handed over from Settings", () => {
+  it("opens one on the selected branch unit with the blocks already attached", async () => {
+    await mountLoaded();
+    const blocks = [
+      { type: "fileRef", path: "/home/me/.claude/CLAUDE.md", startLine: null, endLine: null, text: null, label: "Instructions" },
+      { type: "text", text: "Write my Claude instructions." },
+    ];
+
+    emitWith<ComposeDraft>(COMPOSE_DRAFT, { blocks: blocks as never });
+
+    await waitFor(() => expect(screen.getAllByTestId("draft")).toHaveLength(1));
+    // Offered, never sent: a draft with a claimed session id would have mounted
+    // ChatView and spawned.
+    expect(screen.queryByTestId("chat")).toBeNull();
+    expect(bridge.invoked).not.toContain("chat_spawn");
+  });
+
+  // Terminal keeps a guard of its own rather than trusting the sender's: the
+  // panel read its root when it opened, and the selection can have moved since.
+  it("says so and opens nothing in Shells", async () => {
+    const toasts: string[] = [];
+    window.addEventListener(TOAST, (e) => toasts.push((e as CustomEvent<ToastEvent>).detail.message));
+    await mountLoaded(shellsSelection());
+
+    emitWith<ComposeDraft>(COMPOSE_DRAFT, { blocks: [{ type: "text", text: "hi" }] as never });
+
+    await waitFor(() => expect(toasts).toContain("Select a project first"));
+    expect(screen.queryByTestId("draft")).toBeNull();
   });
 });
 

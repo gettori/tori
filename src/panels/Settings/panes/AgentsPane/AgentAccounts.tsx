@@ -742,6 +742,11 @@ export default function AgentAccounts(props: {
   /** The page-level health re-probe, run before this list's own refetch so the
    *  verdict pill above and the rows below move together. */
   onRecheck?: () => Promise<unknown>;
+  /** The set of accounts changed. The Files group below resolves its paths
+   *  against one home per account, so it is reading a stale set until it is
+   *  told - and an added account's rows would otherwise appear only when
+   *  somebody reopened the page. */
+  onAccountsChanged?: () => void;
 }) {
   const [view, { refetch }] = createResource(
     () => props.agentId,
@@ -816,6 +821,7 @@ export default function AgentAccounts(props: {
     // the shared store leaves the Models tabs naming an account that has been
     // renamed or removed until Settings is reopened.
     void (props.onRecheck ? props.onRecheck() : refreshAgentHealth()).then(() => refetch());
+    props.onAccountsChanged?.();
   };
 
   // The heading's "Check again": the same refresh order as `changed` (probe,

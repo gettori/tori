@@ -133,6 +133,20 @@ describe("Enter, the one keystroke that does navigate", () => {
     expect(rows()).toEqual(["Minimap"]);
   });
 
+  it("lands on Agents for a file kind that has no row of its own", () => {
+    // The Files rows are rendered per account on the agent's detail page, so
+    // the pane holds nothing to match. Without a catalogue entry, typing the
+    // word people actually use answers nothing anywhere, which reads as the
+    // feature not existing.
+    render(() => <Settings onClose={() => {}} />);
+    type("skills");
+    expect(activeTab()).toBeUndefined();
+
+    enter();
+
+    expect(activeTab()).toBe("Agents");
+  });
+
   it("resolves a tie to the earliest category in rail order", () => {
     // "adapters" ties Agents and Languages at one hint match each. The rule
     // falls out of a `>` scan keeping the first maximum; a `>=` would silently

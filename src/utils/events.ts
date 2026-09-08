@@ -367,6 +367,14 @@ export type FsChanged = {
 export const OPEN_IN_EDITOR = "sway:open-in-editor";
 export type OpenInEditor = { path: string; line?: number; col?: number };
 
+// Payload-carrying event: open a chat draft in the selected branch unit with
+// these blocks already attached, and send nothing. Settings needs it because it
+// has no Selection of its own: it cannot name a workspace, so it describes the
+// draft and lets Terminal (which does have one) decide where it lands, the same
+// way OPEN_JOB works. A window with no root toasts instead of guessing.
+export const COMPOSE_DRAFT = "sway:compose-draft";
+export type ComposeDraft = { blocks: ContentBlock[] };
+
 // Payload-carrying event: a file or folder the file tree just renamed or moved.
 // A rename is not a removal, so nothing closes: open tabs repoint to the new
 // path (`renameTabs.ts`) and their buffers move with them, keeping unsaved text

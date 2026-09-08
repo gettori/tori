@@ -11,7 +11,7 @@ import { CardSection, type PaneProps } from "../../components/paneKit";
 export default function AgentsPane(props: PaneProps) {
   return (
     <CardSection {...props} id="agents">
-      <AgentsSection />
+      <AgentsSection projectRoot={props.projectRoot ?? null} />
     </CardSection>
   );
 }

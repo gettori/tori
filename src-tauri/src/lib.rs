@@ -334,6 +334,7 @@ pub fn run() {
             fs::fs_read_file,
             fs::fs_write_file,
             fs::file_exists,
+            fs::fs_mtime_ms,
             fs::fs_write_files,
             fs::fs_mkdir,
             fs::fs_delete,

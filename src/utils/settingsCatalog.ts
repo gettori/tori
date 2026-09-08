@@ -190,6 +190,41 @@ export const SETTINGS: SettingEntry[] = [
     label: "Usage notifications",
     hint: "Whether a quota window approaching or reached is worth an OS notification. Never sent while Sway has focus. Set per account on the agent's page.",
   },
+  // The Files rows sit on the agent's own page too, and for a sharper version of
+  // the same reason: what they list is per account *and* per adapter, so there
+  // is nothing here for a pane to render. One entry per kind rather than one
+  // for the group, because "skills" and "subagents" are the words somebody
+  // types into the filter, and a single "Files" row answers neither.
+  {
+    id: "agent-instructions",
+    section: "agents",
+    label: "Instructions",
+    hint: "The agent's own instructions file (CLAUDE.md for Claude), per account. Open, reveal or create it on the agent's page.",
+  },
+  {
+    id: "agent-skills",
+    section: "agents",
+    label: "Skills",
+    hint: "The skills folder the agent reads at user level, per account. Listed and created on the agent's page.",
+  },
+  {
+    id: "agent-commands",
+    section: "agents",
+    label: "Commands",
+    hint: "The slash commands the agent reads at user level, per account. Listed and created on the agent's page.",
+  },
+  {
+    id: "agent-subagents",
+    section: "agents",
+    label: "Subagents",
+    hint: "The subagents the agent reads at user level, per account. Listed and created on the agent's page.",
+  },
+  {
+    id: "agent-settings-file",
+    section: "agents",
+    label: "Settings and hooks",
+    hint: "The agent's own settings file, where its hooks and permissions live. Sway lists it and never edits it for you; open it on the agent's page.",
+  },
   {
     id: "language-servers",
     section: "lsp",

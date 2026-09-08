@@ -2700,6 +2700,9 @@ export default function Editor(props: {
       <Show when={allOpenPaths().length}>
         <Suspense fallback={filePaths().length ? <div class={styles.editorEmpty}>Loading editor…</div> : null}>
           <CodeEditor
+            // What the watcher covers, so a tab on a file outside all of it
+            // knows it will hear about an outside write from nobody.
+            watchedRoots={watchRoots()}
             // The focused pane's file, which is what the solo form shows and
             // what everything outside the columns means by "the active file".
             activePath={editablePathOf(paneFileId(focusedEditorPane()))}
