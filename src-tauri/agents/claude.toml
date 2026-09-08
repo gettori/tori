@@ -1,4 +1,4 @@
-schema_version = 4
+schema_version = 5
 id = "claude"
 label = "Claude"
 icon = "claude"
@@ -118,6 +118,88 @@ supports_isolation = true
 # non-interactive usage command; that gap is the CLI's, not a phase Sway owes.
 [usage]
 sources = ["sessions", "token"]
+
+# --- schema v5: the files claude reads out of an account home ---
+#
+# Every `path` is relative to the account home: `[accounts].home_default` for
+# the default account, that profile's own home for any other. Measured against
+# 2.1.263, by reading the shipped binary's own loader rather than the docs:
+#
+#   * `rules` is read **at user level**, not only per project. The memory loader
+#     pushes `gpe({rulesDir: fge(), type: "User"})` alongside the user CLAUDE.md,
+#     where `fge()` is `join(<user config dir>, "rules")`, and the walk takes
+#     `*.md` recursively. This row is here because that was measured; it was to
+#     be left out otherwise, since a row for a directory nothing reads is worse
+#     than no row.
+#   * `skills` is a **folder** per skill: `skills/<name>/SKILL.md`, which the
+#     CLI's own help states in those words.
+#   * `agents` and `commands` are **single files**: the CLI's scaffolder writes
+#     `agents/example.md`, and its help calls commands `~/.claude/commands/*.md`.
+#     So a subagent is `agents/<name>.md`, not a folder, which is why `new_path`
+#     is declared per row rather than inferred from the row's id.
+#
+# `~/.claude.json` is deliberately absent: it is live state (session cursors,
+# project history), not something a person edits.
+[config]
+
+[[config.entries]]
+id = "instructions"
+label = "Instructions"
+path = "CLAUDE.md"
+kind = "file"
+
+[[config.entries]]
+id = "skills"
+label = "Skills"
+path = "skills"
+kind = "dir"
+new_path = "{name}/SKILL.md"
+new_name_hint = "skill-name"
+template = '''
+---
+name: {name}
+description:
+---
+'''
+
+[[config.entries]]
+id = "commands"
+label = "Commands"
+path = "commands"
+kind = "dir"
+new_path = "{name}.md"
+new_name_hint = "command-name"
+
+[[config.entries]]
+id = "agents"
+label = "Subagents"
+path = "agents"
+kind = "dir"
+new_path = "{name}.md"
+new_name_hint = "subagent-name"
+template = '''
+---
+name: {name}
+description:
+---
+'''
+
+[[config.entries]]
+id = "rules"
+label = "Rules"
+path = "rules"
+kind = "dir"
+new_path = "{name}.md"
+new_name_hint = "rule-name"
+
+# Seeded with an empty object rather than an empty file: claude parses this one
+# as JSON and reports a zero-byte file as a settings error.
+[[config.entries]]
+id = "settings"
+label = "Settings and hooks"
+path = "settings.json"
+kind = "file"
+template = "{}\n"
 
 # --- schema v2: the structured chat transport ---
 #

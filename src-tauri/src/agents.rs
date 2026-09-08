@@ -2,14 +2,16 @@
 // through sessions.rs is now data. One adapter ships bundled
 // (agents/claude.toml, embedded at compile time); a user can add or
 // whole-replace an adapter by dropping a
-// `schema_version = 1` through `= 4` TOML file into `~/.config/sway/agents/`.
+// `schema_version = 1` through `= 5` TOML file into `~/.config/sway/agents/`.
 // See ADAPTERS.md for the schema. Every version so far is purely additive: v2
 // adds the optional `[chat]` table describing how to drive the agent as a
 // structured chat session rather than a PTY, v3 adds the optional
 // `[accounts]` table describing how it signs in and whether it can hold more
-// than one account at once, and v4 adds the optional `[usage]` table naming the
-// rungs of the source ladder this agent can answer a quota reading from. An
-// older file loads unchanged, reporting `None` for the tables it predates.
+// than one account at once, v4 adds the optional `[usage]` table naming the
+// rungs of the source ladder this agent can answer a quota reading from, and v5
+// adds the optional `[config]` table naming the files this agent reads out of
+// an account home. An older file loads unchanged, reporting `None` for the
+// tables it predates.
 //
 // Parser kinds and chat transports stay code (an enum, not a config string): a config-driven
 // launch/discovery/running-pattern description is enough to make an agent
@@ -24,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// The newest schema this build writes and documents.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// Every schema version this build still loads.
 ///
@@ -39,7 +41,7 @@ pub const SCHEMA_VERSION: u32 = 4;
 /// holding three entries, so the build stops until the new version is listed.
 /// Writing `[1, 2, SCHEMA_VERSION]` would look like it derives itself and would
 /// quietly become `[1, 2, 4]`, dropping v3 support with no error anywhere.
-pub const SUPPORTED_SCHEMA_VERSIONS: [u32; SCHEMA_VERSION as usize] = [1, 2, 3, 4];
+pub const SUPPORTED_SCHEMA_VERSIONS: [u32; SCHEMA_VERSION as usize] = [1, 2, 3, 4, 5];
 
 /// The version each optional table was introduced in.
 ///
@@ -51,6 +53,7 @@ pub const SUPPORTED_SCHEMA_VERSIONS: [u32; SCHEMA_VERSION as usize] = [1, 2, 3, 
 const CHAT_MIN_VERSION: u32 = 2;
 const ACCOUNTS_MIN_VERSION: u32 = 3;
 const USAGE_MIN_VERSION: u32 = 4;
+const CONFIG_MIN_VERSION: u32 = 5;
 
 /// How Sway drives an agent as a structured chat session rather than a PTY.
 ///
@@ -537,6 +540,69 @@ pub struct AccountsConfig {
     pub supports_isolation: bool,
 }
 
+/// Whether a `[[config.entries]]` row names one file or a directory of them.
+///
+/// A closed enum for the reason `WhoamiKind` is one: the two are read by
+/// different code (a file row opens, a dir row lists and can gain children), so
+/// an unknown third spelling has no behaviour to fall back to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigKind {
+    File,
+    Dir,
+}
+
+impl ConfigKind {
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "file" => Some(Self::File),
+            "dir" => Some(Self::Dir),
+            _ => None,
+        }
+    }
+}
+
+/// One file (or directory of files) this agent reads out of an account home.
+///
+/// `path` is **relative to the account home** and validated as such by the
+/// loader: an absolute path or a `..` segment is rejected. That is the whole
+/// safety story of this table. Sway resolves the path against a home it picked
+/// (`[accounts].home_default`, or a profile's own home), so a row that could
+/// name `/etc` or climb out of the home would turn a settings page into an
+/// arbitrary-file browser, and a `template` into an arbitrary-file writer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ConfigEntry {
+    pub id: String,
+    pub label: String,
+    pub path: String,
+    pub kind: ConfigKind,
+    /// Where a new item lands under a `dir` row, relative to it, with `{name}`
+    /// as the one placeholder: `"{name}/SKILL.md"` for a skill (a folder with a
+    /// file in it), `"{name}.md"` for a command (a single file).
+    ///
+    /// Declared rather than inferred from the row's id, because the alternative
+    /// is a Rust branch that knows the word "skills" and gets it wrong for the
+    /// next agent. Required for `dir`, rejected for `file` (a file row's "new"
+    /// creates the row's own path).
+    pub new_path: Option<String>,
+    /// What a newly created file is seeded with, `{name}` substituted. `None`
+    /// creates an empty file, which is the honest default: Sway does not know
+    /// any agent's frontmatter well enough to invent one.
+    pub template: Option<String>,
+    /// Placeholder for the "new" name field, e.g. `"skill-name"`.
+    pub new_name_hint: Option<String>,
+}
+
+/// The `[config]` table: which files an agent reads out of an account home.
+///
+/// Declaring the table at all requires `[accounts].home_default`, enforced by
+/// the loader: every path here is relative to a home, so a table without one
+/// resolves against nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ConfigFiles {
+    pub entries: Vec<ConfigEntry>,
+}
+
 /// One command that installs the agent, exactly as the vendor documents it.
 ///
 /// A program plus args rather than a shell line, because it is spawned directly
@@ -634,6 +700,16 @@ pub struct AgentAdapter {
     /// to gain one, while a v4 file that declares nothing is an adapter whose
     /// read path has not been written yet. The settings pane can say which.
     pub usage_reason: Option<String>,
+    /// The `[config]` table, or `None` for an adapter whose config files nobody
+    /// has measured. `None` renders as "this adapter declares no files", never
+    /// as a guess at where they might be.
+    ///
+    /// Backend-only, like `discovery`: the rows are relative paths against a
+    /// home the frontend cannot compute, so it asks
+    /// `crate::agent_config::agent_config_files` for resolved ones instead of
+    /// mirroring the raw table.
+    #[serde(skip)]
+    pub config: Option<ConfigFiles>,
     /// The `[install]` table: the vendor's own documented install command, run
     /// in a visible PTY tab by `crate::install`. `None` renders instructions
     /// instead of a button. Backend-only, like `discovery`: the frontend asks
@@ -680,7 +756,34 @@ struct AdapterToml {
     #[serde(default)]
     usage: Option<UsageToml>,
     #[serde(default)]
+    config: Option<ConfigToml>,
+    #[serde(default)]
     install: Option<InstallToml>,
+}
+
+/// `[config]`, v5's addition. Strict for the reason `[accounts]` is: a dropped
+/// key here would resolve a different path, or write a file the author did not
+/// describe.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfigToml {
+    #[serde(default)]
+    entries: Vec<ConfigEntryToml>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConfigEntryToml {
+    id: String,
+    label: String,
+    path: String,
+    kind: String,
+    #[serde(default)]
+    new_path: Option<String>,
+    #[serde(default)]
+    template: Option<String>,
+    #[serde(default)]
+    new_name_hint: Option<String>,
 }
 
 /// `[usage]`, v4's addition. `deny_unknown_fields` for the reason `[accounts]`
@@ -855,7 +958,7 @@ fn expand_tilde(path: &str) -> PathBuf {
 /// they obey is a combination rather than a per-key requirement and lives in
 /// [`check_session_plumbing`].
 const REQUIRED_TOP_LEVEL: [&str; 4] = ["schema_version", "id", "label", "launch"];
-const KNOWN_TOP_LEVEL: [&str; 14] = [
+const KNOWN_TOP_LEVEL: [&str; 15] = [
     "schema_version",
     "id",
     "label",
@@ -869,6 +972,7 @@ const KNOWN_TOP_LEVEL: [&str; 14] = [
     "chat",
     "accounts",
     "usage",
+    "config",
     "install",
 ];
 
@@ -978,6 +1082,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         ("chat", raw.chat.is_some(), CHAT_MIN_VERSION),
         ("accounts", raw.accounts.is_some(), ACCOUNTS_MIN_VERSION),
         ("usage", raw.usage.is_some(), USAGE_MIN_VERSION),
+        ("config", raw.config.is_some(), CONFIG_MIN_VERSION),
     ] {
         if declared && raw.schema_version < min {
             return Err(format!(
@@ -1167,6 +1272,95 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         (None, false) => Some("this adapter declares no usage source".to_string()),
     };
 
+    // Every path here is relative to an account home, so the table is refused
+    // without one rather than resolved against the process's cwd - which is
+    // Sway's own bundle, and nothing under it belongs to any agent.
+    let config = raw
+        .config
+        .map(|c| -> Result<ConfigFiles, String> {
+            if c.entries.is_empty() {
+                return Err(format!(
+                    "{source}: [config] declares no entries (omit the table instead; \
+                     an empty file list and no file list are not the same claim)"
+                ));
+            }
+            if accounts.as_ref().and_then(|a| a.home_default.as_ref()).is_none() {
+                return Err(format!(
+                    "{source}: [config] requires accounts.home_default (its paths are \
+                     relative to an account home, and there is none to resolve against)"
+                ));
+            }
+            let mut seen: Vec<&str> = Vec::new();
+            let entries = c
+                .entries
+                .iter()
+                .map(|e| -> Result<ConfigEntry, String> {
+                    if e.id.trim().is_empty() {
+                        return Err(format!("{source}: a config.entries id must not be empty"));
+                    }
+                    if seen.contains(&e.id.as_str()) {
+                        return Err(format!(
+                            "{source}: duplicate config.entries id `{}`",
+                            e.id
+                        ));
+                    }
+                    seen.push(&e.id);
+                    if e.label.trim().is_empty() {
+                        return Err(format!(
+                            "{source}: config.entries `{}` has an empty label",
+                            e.id
+                        ));
+                    }
+                    let kind = ConfigKind::from_str(&e.kind).ok_or_else(|| {
+                        format!(
+                            "{source}: unknown config.entries kind `{}` (expected file or dir)",
+                            e.kind
+                        )
+                    })?;
+                    check_relative_segment_path(&e.path, &e.id, "path", source)?;
+                    let new_path = match (kind, e.new_path.as_deref()) {
+                        (ConfigKind::Dir, None) => {
+                            return Err(format!(
+                                "{source}: config.entries `{}` is a dir and needs new_path \
+                                 (where a new item lands under it, e.g. \"{{name}}.md\")",
+                                e.id
+                            ))
+                        }
+                        (ConfigKind::File, Some(_)) => {
+                            return Err(format!(
+                                "{source}: config.entries `{}` is a file, so new_path has \
+                                 nothing to land under (a file row's new creates its own path)",
+                                e.id
+                            ))
+                        }
+                        (ConfigKind::File, None) => None,
+                        (ConfigKind::Dir, Some(p)) => {
+                            check_relative_segment_path(p, &e.id, "new_path", source)?;
+                            if !p.contains("{name}") {
+                                return Err(format!(
+                                    "{source}: config.entries `{}` new_path must carry {{name}} \
+                                     (every new item under one dir would be the same path)",
+                                    e.id
+                                ));
+                            }
+                            Some(p.to_string())
+                        }
+                    };
+                    Ok(ConfigEntry {
+                        id: e.id.clone(),
+                        label: e.label.clone(),
+                        path: e.path.clone(),
+                        kind,
+                        new_path,
+                        template: e.template.clone(),
+                        new_name_hint: e.new_name_hint.clone(),
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ConfigFiles { entries })
+        })
+        .transpose()?;
+
     // Not version-gated, on the icon precedent: dropping it changes what the
     // page offers, never what a session does. An older build warns and shows
     // instructions instead of a button, which is the pre-[install] behaviour.
@@ -1204,9 +1398,42 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         accounts,
         usage,
         usage_reason,
+        config,
         install,
         source: source.to_string(),
     })
+}
+
+/// Is `value` a path that stays inside the directory it is resolved against?
+///
+/// The single gate behind every path in `[config]`, applied to `path` and to
+/// `new_path` alike. Rejects an absolute path, a `~` (the loader does *not*
+/// expand tildes here, so an unrejected one would become a literal directory
+/// called `~`), a `..` segment, and a Windows-style separator, which macOS
+/// would otherwise take as part of a filename rather than as the escape the
+/// author meant.
+fn check_relative_segment_path(
+    value: &str,
+    entry_id: &str,
+    field: &str,
+    source: &str,
+) -> Result<(), String> {
+    let refuse = |why: &str| {
+        Err(format!("{source}: config.entries `{entry_id}` {field} `{value}` {why}"))
+    };
+    if value.trim().is_empty() {
+        return refuse("must not be empty");
+    }
+    if value.starts_with('/') || value.starts_with('~') {
+        return refuse("must be relative to the account home");
+    }
+    if value.contains('\\') {
+        return refuse("must not contain a backslash");
+    }
+    if value.split('/').any(|seg| seg == "..") {
+        return refuse("must not climb out of the account home with `..`");
+    }
+    Ok(())
 }
 
 /// Substitute a chat arg template's placeholders.
@@ -1579,6 +1806,148 @@ mod tests {
         match a.discovery.as_ref().expect("a file-backed adapter declares discovery") {
             Discovery::File { filename_regex, .. } => assert!(filename_regex.is_match("abc.jsonl")),
         }
+    }
+
+    /// The bundled table, pinned to what was measured rather than to a count:
+    /// `rules` is here only because 2.1.263's loader was read and found to walk
+    /// the user-level dir, and `agents` is a file row because the CLI's own
+    /// scaffolder writes `agents/example.md` rather than a folder.
+    #[test]
+    fn the_bundled_claude_adapter_declares_its_measured_config_files() {
+        let reg = build_registry_from(&PathBuf::from("/nonexistent/agents"));
+        let claude = reg.iter().find(|a| a.id == "claude").expect("claude is bundled");
+        let config = claude.config.as_ref().expect("claude declares [config]");
+
+        let by_id = |id: &str| {
+            config.entries.iter().find(|e| e.id == id).unwrap_or_else(|| panic!("row `{id}`"))
+        };
+        assert_eq!(by_id("instructions").path, "CLAUDE.md");
+        assert_eq!(by_id("instructions").kind, ConfigKind::File);
+        assert_eq!(by_id("skills").new_path.as_deref(), Some("{name}/SKILL.md"));
+        assert_eq!(by_id("agents").new_path.as_deref(), Some("{name}.md"));
+        assert_eq!(by_id("commands").new_path.as_deref(), Some("{name}.md"));
+        assert_eq!(by_id("rules").new_path.as_deref(), Some("{name}.md"));
+        assert_eq!(by_id("settings").path, "settings.json");
+        assert_eq!(by_id("settings").template.as_deref(), Some("{}\n"));
+    }
+
+    /// A v5 adapter carrying `[config]`, built on top of `VALID_MINIMAL` so the
+    /// tests below vary one thing each.
+    fn v5_with_config(config: &str) -> String {
+        let head = VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 5", 1);
+        format!(
+            "{head}\n[accounts]\nhome_default = \"~/.x\"\n\n[config]\n{config}\n"
+        )
+    }
+
+    const ONE_ENTRY: &str = r#"
+[[config.entries]]
+id = "instructions"
+label = "Instructions"
+path = "X.md"
+kind = "file"
+
+[[config.entries]]
+id = "skills"
+label = "Skills"
+path = "skills"
+kind = "dir"
+new_path = "{name}/SKILL.md"
+template = "---\nname: {name}\n---\n"
+new_name_hint = "skill-name"
+"#;
+
+    #[test]
+    fn a_config_table_resolves_its_entries() {
+        let a = load_adapter_str(&v5_with_config(ONE_ENTRY), "test").expect("v5 config loads");
+        let config = a.config.as_ref().expect("the table is declared");
+        assert_eq!(config.entries.len(), 2);
+        assert_eq!(config.entries[0].kind, ConfigKind::File);
+        assert_eq!(config.entries[0].new_path, None);
+        assert_eq!(config.entries[1].kind, ConfigKind::Dir);
+        assert_eq!(config.entries[1].new_path.as_deref(), Some("{name}/SKILL.md"));
+        assert_eq!(config.entries[1].new_name_hint.as_deref(), Some("skill-name"));
+        assert!(config.entries[1].template.as_deref().unwrap().contains("{name}"));
+    }
+
+    /// An absolute path would resolve against the filesystem root rather than
+    /// the account home, turning the Files section into a file browser and
+    /// `agent_config_new` into an arbitrary-file writer.
+    #[test]
+    fn a_config_entry_with_an_absolute_path_is_rejected() {
+        let text = v5_with_config(&ONE_ENTRY.replace("path = \"X.md\"", "path = \"/etc/hosts\""));
+        let err = load_adapter_str(&text, "test").unwrap_err();
+        assert!(err.contains("relative to the account home"), "{err}");
+        assert!(err.contains("/etc/hosts"), "the error should name the path: {err}");
+    }
+
+    #[test]
+    fn a_config_entry_that_climbs_out_of_the_home_is_rejected() {
+        let text =
+            v5_with_config(&ONE_ENTRY.replace("path = \"X.md\"", "path = \"../.ssh/config\""));
+        let err = load_adapter_str(&text, "test").unwrap_err();
+        assert!(err.contains(".."), "the error should name the climb: {err}");
+    }
+
+    /// Every path in the table is relative to an account home, so a table
+    /// without one has nothing to resolve against and is refused rather than
+    /// silently resolved against Sway's own working directory.
+    #[test]
+    fn a_config_table_without_a_home_default_is_rejected() {
+        let head = VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 5", 1);
+        let text = format!("{head}\n[config]\n{ONE_ENTRY}\n");
+        let err = load_adapter_str(&text, "test").unwrap_err();
+        assert!(err.contains("home_default"), "{err}");
+    }
+
+    #[test]
+    fn a_config_table_predating_v5_is_rejected() {
+        let text = v5_with_config(ONE_ENTRY).replacen("schema_version = 5", "schema_version = 4", 1);
+        let err = load_adapter_str(&text, "test").unwrap_err();
+        assert!(err.contains("[config] requires schema_version >= 5"), "{err}");
+    }
+
+    /// The whole point of an additive version: nobody's working v4 file has to
+    /// change, and it reports `None` for the table it predates.
+    #[test]
+    fn a_v4_adapter_still_loads_and_declares_no_config() {
+        let text = VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 4", 1);
+        let a = load_adapter_str(&text, "test").expect("a v4 adapter still loads");
+        assert!(a.config.is_none());
+    }
+
+    /// A dir row with no `new_path` has no way to spell the item it creates,
+    /// and a file row with one has nothing to land under it.
+    #[test]
+    fn the_new_path_rule_follows_the_entry_kind() {
+        let no_new_path = ONE_ENTRY.replace("new_path = \"{name}/SKILL.md\"\n", "");
+        let err = load_adapter_str(&v5_with_config(&no_new_path), "test").unwrap_err();
+        assert!(err.contains("needs new_path"), "{err}");
+
+        let on_a_file = ONE_ENTRY.replacen(
+            "kind = \"file\"",
+            "kind = \"file\"\nnew_path = \"{name}.md\"",
+            1,
+        );
+        let err = load_adapter_str(&v5_with_config(&on_a_file), "test").unwrap_err();
+        assert!(err.contains("nothing to land under"), "{err}");
+
+        let no_placeholder = ONE_ENTRY.replace("new_path = \"{name}/SKILL.md\"", "new_path = \"new.md\"");
+        let err = load_adapter_str(&v5_with_config(&no_placeholder), "test").unwrap_err();
+        assert!(err.contains("{name}"), "{err}");
+    }
+
+    #[test]
+    fn an_empty_config_table_is_rejected_rather_than_read_as_no_table() {
+        let err = load_adapter_str(&v5_with_config(""), "test").unwrap_err();
+        assert!(err.contains("declares no entries"), "{err}");
+    }
+
+    #[test]
+    fn two_config_entries_cannot_share_an_id() {
+        let dup = format!("{ONE_ENTRY}\n[[config.entries]]\nid = \"skills\"\nlabel = \"Again\"\npath = \"other\"\nkind = \"dir\"\nnew_path = \"{{name}}.md\"\n");
+        let err = load_adapter_str(&v5_with_config(&dup), "test").unwrap_err();
+        assert!(err.contains("duplicate config.entries id"), "{err}");
     }
 
     #[test]

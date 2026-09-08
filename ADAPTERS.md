@@ -135,7 +135,7 @@ wants `needs_you = false`.
 ## Schema
 
 ```toml
-schema_version = 4   # required; 1 to 4. v2 adds [chat], v3 adds [accounts], v4 adds [usage] - all optional, all below
+schema_version = 5   # required; 1 to 5. v2 adds [chat], v3 adds [accounts], v4 adds [usage], v5 adds [config] - all optional, all below
 id = "..."            # required; the agent's identifier throughout Sway
 label = "..."         # required; display name (sidebar, launch buttons)
 icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
@@ -207,6 +207,18 @@ logout_args = []            # optional; args that sign the profile out
 whoami_args = []            # optional; bounded, non-interactive "who is signed in here" probe
 whoami_kind = "..."         # required with whoami_args; claude_json | exit_code | opencode_credentials
 supports_isolation = false  # optional, default false; whether two accounts can coexist - see below
+
+# --- v5 only; omit the whole table for an agent whose config files nobody has measured ---
+[config]
+
+[[config.entries]]
+id = "..."                # required; stable, unique within the table, never shown
+label = "..."             # required; what the row is called in Settings
+path = "..."              # required; relative to the account home - absolute, `~` and `..` are rejected
+kind = "file"             # required; "file" or "dir"
+new_path = "{name}.md"    # required for kind = "dir", rejected for "file"; where a new item lands under the dir, must carry {name}
+template = "..."          # optional, default empty file; the new file's contents, {name} substituted
+new_name_hint = "..."     # optional; placeholder text for the name field
 
 # --- optional; omit for an agent whose install path nobody has verified ---
 [install]
@@ -377,6 +389,66 @@ answers nothing. Omitting the whole table is the normal case for an agent whose
 quota Sway cannot see, and it renders as "no usage source" rather than as a
 quota of zero. An empty `sources = []` is rejected: an empty ladder and no
 ladder are not the same claim.
+
+### The `[config]` table
+
+The files this agent reads out of an account home: its instructions file, its
+skills, its commands, its subagents, its settings. Settings lists them per
+account, with open-in-editor, reveal-in-Finder and new-from-blank on each row.
+
+```toml
+[config]
+
+[[config.entries]]
+id = "skills"
+label = "Skills"
+path = "skills"
+kind = "dir"
+new_path = "{name}/SKILL.md"
+new_name_hint = "skill-name"
+template = '''
+---
+name: {name}
+---
+'''
+```
+
+**Every `path` is relative to the account home**, and the loader enforces it:
+an absolute path, a leading `~`, a backslash or a `..` segment is rejected, and
+so is the whole table on an adapter with no `[accounts].home_default` to
+resolve against. That is the safety story of this table in full. The home is
+`home_default` for the default account and the profile's own home for any
+other, so a row that could climb out of it would turn the Files section into a
+filesystem browser and `template` into an arbitrary-file writer.
+
+`kind` says what is at the path, and `new_path` says what "New" makes under it.
+A `dir` row must declare `new_path` and it must carry `{name}`, because the
+shape differs per agent and per row: a Claude skill is a folder
+(`{name}/SKILL.md`) while a Claude subagent is a single file (`{name}.md`).
+Declared rather than inferred from the row's id, so the next agent's layout is
+a line of TOML rather than a branch in Rust. A `file` row's "New" creates the
+row's own path and so declares no `new_path`.
+
+`{name}` is the only placeholder, in `new_path` and in `template` alike. It is
+the name the user typed for a `dir` row, and the file's own stem for a `file`
+row. The name is validated before it is used: empty, a path separator, a `..`
+anywhere, or a leading dot is refused with a reason rather than rewritten.
+Creating never overwrites, and a row whose path is a **dangling** symlink
+refuses to be written through, naming what it points at - writing there would
+create the missing target instead of fixing the row.
+
+**Declare a row only once somebody has measured that the agent reads it.** A
+row for a directory nothing loads is worse than no row: it invites the user to
+put work somewhere it will never be read. Claude's `rules` row is here because
+2.1.263's own loader was read and found to walk the user-level `rules` folder
+alongside the user `CLAUDE.md`; it was to be left out otherwise. Omitting the
+whole table is the normal case, and it renders as one line saying the adapter
+declares no files.
+
+Each row reports a state per account: `missing`, `present`, `symlink` (with its
+target) or `dangling` (with the target that is not there). A `present` or
+`symlink` directory also reports its immediate children, so a skills folder
+kept in a dotfiles repo lists its skills rather than reading as an opaque link.
 
 ### The `[install]` table
 
