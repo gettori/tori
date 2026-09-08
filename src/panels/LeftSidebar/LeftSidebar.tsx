@@ -2712,6 +2712,7 @@ export default function LeftSidebar(props: {
   // tile, so the predicate is the same quantity whether names are on or off -
   // which is what stops it flipping between the two forever.
   const [namesFit, setNamesFit] = createSignal(true);
+  const [nameW, setNameW] = createSignal<Record<string, number>>({});
   let barEl: HTMLDivElement | undefined;
   let scrollEl: HTMLDivElement | undefined;
   let probeEl: HTMLSpanElement | undefined;
@@ -2735,13 +2736,31 @@ export default function LeftSidebar(props: {
     const lit = barEl.querySelector(`.${styles.titled}:not(.${styles.tileProbe})`);
     if (lit) natural -= width(lit) - collapsed;
 
+    // One pass over every name the strip could show: the widest decides whether
+    // names fit at all, and each one's own width becomes the target its tile
+    // animates to. A shared target would make the box stop opening early on a
+    // short name and stall for the rest of the duration.
     let widest = collapsed;
+    const each: Record<string, number> = {};
     for (const name of [...visibleSpaces().map((g) => g.name), "Features", "Shells"]) {
       probeNameEl.textContent = name;
+      each[name] = width(probeNameEl);
       widest = Math.max(widest, width(probeEl));
     }
+    const prev = nameW();
+    const same =
+      Object.keys(each).length === Object.keys(prev).length &&
+      Object.entries(each).every(([n, w]) => prev[n] === w);
+    if (!same) setNameW(each);
     setNamesFit(natural + (widest - collapsed) <= barEl.clientWidth);
   }
+
+  /** The measured target for one tile's name, or nothing while unmeasured -
+   *  the stylesheet's own cap stands in until the first pass lands. */
+  const nameTarget = (name: string) => {
+    const w = nameW()[name];
+    return w ? `${w}px` : undefined;
+  };
 
   // Observed from the ref callback, not from `onMount`: the strip lives inside
   // `<Show when={config()}>` and config arrives asynchronously, so at mount these
@@ -2791,7 +2810,7 @@ export default function LeftSidebar(props: {
         as="button"
         type="button"
         class={styles.space}
-        style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}
+        style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color), "--name-w": nameTarget(g.name) }}
         classList={{
           [styles.active]: on(),
           [styles.titled]: on() && namesFit(),
@@ -2835,6 +2854,7 @@ export default function LeftSidebar(props: {
         as="button"
         type="button"
         class={`${styles.space} ${styles.modeTile}`}
+        style={{ "--name-w": nameTarget(label) }}
         classList={{ [styles.active]: on(), [styles.titled]: on() && namesFit() }}
         label={label}
         aria-label={label}
