@@ -82,7 +82,7 @@ const files = (over: Partial<ConfigFilesView> = {}): ConfigFilesView => ({
           kind: "dir",
           path: "/home/me/.claude/rules",
           state: "dangling",
-          target: "/home/me/gone",
+          target: "/home/me/.dotfiles/gone",
           newNameHint: "rule-name",
         }),
       ],
@@ -151,6 +151,14 @@ async function open(r: ReturnType<typeof render>) {
   return r;
 }
 
+/** Every row is collapsed on arrival: the paths and the states are the summary,
+ *  and the children and the actions are what opening one is for. */
+async function expand(r: ReturnType<typeof render>, label: string) {
+  const head = await r.findByRole("button", { name: new RegExp(`^${label}`) });
+  fireEvent.click(head);
+  return head;
+}
+
 function opened(): OpenInEditor[] {
   const seen: OpenInEditor[] = [];
   window.addEventListener(OPEN_IN_EDITOR, (e) => seen.push((e as CustomEvent<OpenInEditor>).detail));
@@ -166,24 +174,54 @@ function drafts(): ComposeDraft[] {
 beforeEach(() => invoked.mockReset());
 
 describe("the Files group", () => {
-  it("lists one account's rows with what is actually at each path", async () => {
+  it("summarises one account's rows without opening any of them", async () => {
     const r = await open(mount());
 
     // Both accounts are offered; the first one's rows are what is on screen.
     expect(r.getByRole("button", { name: "Default" })).toBeTruthy();
     expect(r.getByRole("button", { name: "Work" })).toBeTruthy();
-    expect(r.container.textContent).toContain("/home/me/.claude");
-    expect(r.container.textContent).not.toContain("/home/me/Library/sway/claude/work");
 
-    // Three of the four states, in the reader's words, and the two that point
-    // somewhere say where. The fourth is on the other account, below.
+    // The path relative to the home, with a folder marked as one. The absolute
+    // path is the same home six times over, so it waits for the body.
+    expect(r.container.textContent).toContain("CLAUDE.md");
+    expect(r.container.textContent).toContain("skills/");
+    expect(r.container.textContent).toContain("rules/");
+    expect(r.container.textContent).not.toContain("/home/me/.claude/skills");
+
+    // A link says where it goes, abbreviated, and the state column still
+    // answers separately whether anything is at the other end.
+    expect(r.container.textContent).toContain(".dotfiles/skills");
     expect(r.container.textContent).toContain("on disk");
-    expect(r.container.textContent).toContain("link -> /home/me/.dotfiles/skills");
-    expect(r.container.textContent).toContain("broken link -> /home/me/gone");
+    expect(r.container.textContent).toContain("2 files");
+    expect(r.container.textContent).toContain("broken link");
 
-    // A directory's children, listed through the link rather than hidden by it.
-    expect(r.container.textContent).toContain("alpha");
-    expect(r.container.textContent).toContain("beta");
+    // Closed: no children, no actions.
+    expect(r.queryByRole("button", { name: "alpha" })).toBeNull();
+    expect(r.queryByRole("button", { name: "Reveal in Finder" })).toBeNull();
+  });
+
+  it("shows the absolute path, the children and the actions when opened", async () => {
+    const r = await open(mount());
+
+    await expand(r, "Skills");
+
+    expect(r.container.textContent).toContain("/home/me/.claude/skills");
+    expect(r.getByRole("button", { name: "alpha" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "beta" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Reveal in Finder" })).toBeTruthy();
+    expect(r.getByRole("button", { name: "Write with an agent" })).toBeTruthy();
+  });
+
+  // A folder has no single file to open, so only a file row offers it. Its
+  // children each carry their own opener instead.
+  it("offers Open on a file row and not on a folder", async () => {
+    const r = await open(mount());
+
+    await expand(r, "Instructions");
+    expect(r.getByRole("button", { name: "Open" })).toBeTruthy();
+
+    await expand(r, "Skills");
+    expect(r.getAllByRole("button", { name: "Open" })).toHaveLength(1);
   });
 
   // The rows are the same six for every account and only their states differ,
@@ -192,10 +230,19 @@ describe("the Files group", () => {
     const r = await open(mount());
 
     fireEvent.click(r.getByRole("button", { name: "Work" }));
+    await expand(r, "Instructions");
 
     expect(r.container.textContent).toContain("/home/me/Library/sway/claude/work");
-    expect(r.container.textContent).not.toContain("/home/me/.dotfiles/skills");
     expect(r.container.textContent).toContain("not created");
+  });
+
+  // "Sway has nothing true to say about this agent's files" is not the same
+  // claim as "this agent has none", so it is said in words.
+  it("says so plainly for an adapter that declares no files", async () => {
+    const { container } = await open(
+      mount({ files: { adapterId: "claude", declared: false, profiles: [] } }),
+    );
+    expect(container.textContent).toContain("This adapter declares no files");
   });
 
   // Every row is resolved against one account's home, so the set of rows is a
@@ -217,15 +264,6 @@ describe("the Files group", () => {
       ).toBeGreaterThan(before),
     );
   });
-
-  // "Sway has nothing true to say about this agent's files" is not the same
-  // claim as "this agent has none", so it is said in words.
-  it("says so plainly for an adapter that declares no files", async () => {
-    const { container } = await open(
-      mount({ files: { adapterId: "claude", declared: false, profiles: [] } }),
-    );
-    expect(container.textContent).toContain("This adapter declares no files");
-  });
 });
 
 describe("opening a file from a row", () => {
@@ -233,7 +271,8 @@ describe("opening a file from a row", () => {
     const seen = opened();
     const r = await open(mount());
 
-    fireEvent.click(await r.findByRole("button", { name: "Instructions" }));
+    await expand(r, "Instructions");
+    fireEvent.click(r.getByRole("button", { name: "Open" }));
 
     expect(seen).toEqual([{ path: "/home/me/.claude/CLAUDE.md" }]);
   });
@@ -242,7 +281,8 @@ describe("opening a file from a row", () => {
     const seen = opened();
     const r = await open(mount());
 
-    fireEvent.click(await r.findByRole("button", { name: "alpha" }));
+    await expand(r, "Skills");
+    fireEvent.click(r.getByRole("button", { name: "alpha" }));
 
     expect(seen).toEqual([{ path: "/home/me/.claude/skills/alpha" }]);
   });
@@ -250,14 +290,12 @@ describe("opening a file from a row", () => {
   // Shells, and a Feature with no present member, both have a Selection and no
   // folder. A tab has to land somewhere, so the row says so instead of opening
   // one nowhere.
-  it("offers no opener at all with no project selected", async () => {
+  it("offers no working opener with no project selected", async () => {
     const seen = opened();
     const r = await open(mount({ projectRoot: null }));
 
-    expect(r.queryByRole("button", { name: "Instructions" })).toBeNull();
-    expect(r.container.textContent).toContain("Instructions");
-
-    const child = await r.findByRole("button", { name: "alpha" });
+    await expand(r, "Skills");
+    const child = r.getByRole("button", { name: "alpha" });
     expect((child as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(child);
     expect(seen).toEqual([]);
@@ -268,8 +306,8 @@ describe("revealing a row in Finder", () => {
   it("hands the resolved path to the backend", async () => {
     const r = await open(mount());
 
-    const buttons = await r.findAllByRole("button", { name: "Reveal in Finder" });
-    fireEvent.click(buttons[0]);
+    await expand(r, "Instructions");
+    fireEvent.click(r.getByRole("button", { name: "Reveal in Finder" }));
 
     await waitFor(() =>
       expect(invoked).toHaveBeenCalledWith("reveal_in_finder", {
@@ -278,12 +316,14 @@ describe("revealing a row in Finder", () => {
     );
   });
 
-  // There is nothing to reveal until there is something at the path. Three of
-  // the four rows in the fixture exist; the `missing` one does not.
+  // There is nothing to reveal until there is something at the path.
   it("offers nothing to reveal on a row with no file", async () => {
     const r = await open(mount());
-    const buttons = await r.findAllByRole("button", { name: "Reveal in Finder" });
-    expect(buttons).toHaveLength(3);
+
+    fireEvent.click(r.getByRole("button", { name: "Work" }));
+    await expand(r, "Instructions");
+
+    expect(r.queryByRole("button", { name: "Reveal in Finder" })).toBeNull();
   });
 });
 
@@ -298,7 +338,8 @@ describe("creating a file from a row", () => {
       return [];
     });
 
-    fireEvent.click((await r.findAllByRole("button", { name: /New/ }))[0]);
+    await expand(r, "Skills");
+    fireEvent.click(r.getByRole("button", { name: "New" }));
     const box = await r.findByLabelText("New Skills name");
     fireEvent.input(box, { target: { value: "commit" } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -329,7 +370,8 @@ describe("creating a file from a row", () => {
       return [];
     });
 
-    fireEvent.click((await r.findAllByRole("button", { name: /New/ }))[0]);
+    await expand(r, "Skills");
+    fireEvent.click(r.getByRole("button", { name: "New" }));
     const box = await r.findByLabelText("New Skills name");
     fireEvent.input(box, { target: { value: "a/b" } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -350,7 +392,8 @@ describe("creating a file from a row", () => {
       return [];
     });
 
-    fireEvent.click((await r.findAllByRole("button", { name: /New/ }))[0]);
+    await expand(r, "Skills");
+    fireEvent.click(r.getByRole("button", { name: "New" }));
     const box = await r.findByLabelText("New Skills name");
     fireEvent.input(box, { target: { value: "dup" } });
     fireEvent.keyDown(box, { key: "Enter" });
@@ -359,15 +402,14 @@ describe("creating a file from a row", () => {
   });
 
   // Writing through a broken link creates the missing target instead of fixing
-  // the row, so the row does not offer to. The fixture's `rules` row is the
-  // dangling one, and it is the only dir row without a New.
+  // the row, so the row does not offer to.
   it("offers no create on a dangling row", async () => {
     const r = await open(mount());
-    const news = await r.findAllByRole("button", { name: /New/ });
-    // On the account shown: instructions is present (no New), skills is a live
-    // dir (New), rules is dangling (none). Work's missing file row is behind
-    // its own tab.
-    expect(news).toHaveLength(1);
+
+    await expand(r, "Rules");
+
+    expect(r.queryByRole("button", { name: "New" })).toBeNull();
+    expect(r.getByRole("button", { name: "Reveal in Finder" })).toBeTruthy();
   });
 });
 
@@ -376,7 +418,8 @@ describe("handing a row to an agent", () => {
     const seen = drafts();
     const r = await open(mount());
 
-    fireEvent.click((await r.findAllByRole("button", { name: "Write it with an agent" }))[0]);
+    await expand(r, "Instructions");
+    fireEvent.click(r.getByRole("button", { name: "Write with an agent" }));
 
     expect(seen).toHaveLength(1);
     expect(seen[0].blocks[0]).toMatchObject({
@@ -391,7 +434,8 @@ describe("handing a row to an agent", () => {
     const seen = drafts();
     const r = await open(mount({ projectRoot: null }));
 
-    const button = (await r.findAllByRole("button", { name: "Write it with an agent" }))[0];
+    await expand(r, "Instructions");
+    const button = r.getByRole("button", { name: "Write with an agent" });
     expect((button as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(button);
     expect(seen).toEqual([]);
