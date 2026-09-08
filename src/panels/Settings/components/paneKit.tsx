@@ -261,7 +261,7 @@ export function Stepper(props: {
   };
 
   return (
-    <div class={styles.stepper}>
+    <div class={styles.numStepper}>
       <button
         type="button"
         class={styles.stepperBtn}
