@@ -6,6 +6,7 @@ import {
   limitTypeInline,
   limitTypeLabel,
   limitTypeShort,
+  scopedModel,
   paceOutAt,
   quotaState,
   readingsOf,
@@ -215,13 +216,32 @@ describe("limitTypeLabel", () => {
   });
 
   // The account-token rung names these after whichever model the endpoint
-  // scoped the window to, so there is no list to map them against: the suffix is
-  // the model's own name and is titled rather than looked up.
+  // scoped the window to, so the model's own name is titled rather than looked
+  // up. What is looked up is only whether it is a model at all.
   it("names a model-scoped weekly window after its model", () => {
     expect(limitTypeLabel("seven_day_fable")).toBe(`Week${DOT}Fable only`);
     expect(limitTypeLabel("seven_day_opus")).toBe(`Week${DOT}Opus only`);
-    expect(limitTypeLabel("seven_day_oauth_apps")).toBe(`Week${DOT}Oauth apps only`);
+    // A display name the endpoint slugged whole, not a bare family word.
+    expect(limitTypeLabel("seven_day_claude_opus_4_5")).toBe(`Week${DOT}Claude opus 4 5 only`);
     expect(limitTypeLabel("extra_usage")).toBe("Extra usage");
+  });
+
+  // The endpoint spells its non-model weeks exactly like its model ones, and a
+  // capture of a Max account carries three of them. Read as models they become
+  // "Week - Overage included only", a model nobody has and cannot pick.
+  it("reads a weekly window scoped to something that is not a model as a qualifier", () => {
+    expect(scopedModel("seven_day_overage_included")).toBeNull();
+    expect(limitTypeLabel("seven_day_overage_included")).toBe(`Week${DOT}overage included`);
+    expect(limitTypeLabel("seven_day_oauth_apps")).toBe(`Week${DOT}oauth apps`);
+    expect(limitTypeLabel("seven_day_cowork")).toBe(`Week${DOT}cowork`);
+  });
+
+  it("gives that window the same three lengths as any other", () => {
+    // A letter on the strip, a word on the settings chip, a phrase in a
+    // sentence: the shapes each surface has room for, whatever it is scoped to.
+    expect(limitTypeShort("seven_day_overage_included")).toBe("O");
+    expect(limitTypeChip("seven_day_overage_included")).toBe("Overage included");
+    expect(limitTypeInline("seven_day_overage_included")).toBe("weekly overage included");
   });
 });
 

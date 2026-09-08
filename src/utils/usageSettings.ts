@@ -20,7 +20,7 @@
 // undoes it.
 import { findAdapter, type UsageRung } from "./agents";
 import { asProfileId } from "./agentHealth";
-import { scopedModel } from "./chatRateLimit";
+import { MODEL_FAMILIES, scopedModel } from "./chatRateLimit";
 import { catalogFor } from "./modelCatalog";
 import { windowsFor } from "./usageStore";
 import {
@@ -202,8 +202,9 @@ export function setUsageNotify(
 
 /** Families in the order Anthropic's weekly window climbs them. A plan's scoped
  *  window is for its top model, so the last one this account can run is the
- *  guess. */
-const FAMILIES = ["haiku", "sonnet", "opus", "fable"];
+ *  guess. The same list that decides whether a `seven_day_*` window is scoped to
+ *  a model at all, so the two answers cannot drift apart. */
+const FAMILIES = MODEL_FAMILIES;
 
 /**
  * What to call the model chip, or null when nothing knows yet.
