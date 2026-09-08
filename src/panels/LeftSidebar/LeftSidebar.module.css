@@ -326,7 +326,9 @@
   height: var(--row-h);
   margin: 0 0 0 var(--tree-inset);
   padding: 0 calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-md);
+  /* Square on the left like the branch pill and the shells row, so every list
+     row in this column takes the same shape under the pointer. */
+  border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -338,7 +340,7 @@
    trigger, which IS the row, so nothing in the sidebar toggles a class for it. */
 .row:hover,
 .row[data-expanded] {
-  background: var(--neutral-hover);
+  background: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
 .branchNode {
@@ -411,7 +413,7 @@
 }
 .row.branch:hover::before,
 .row.branch[data-expanded]::before {
-  background: var(--neutral-hover);
+  background: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
 /* The "N more branches" / "Show less" row. It keeps the whole `.branch`
@@ -964,7 +966,7 @@
 }
 
 .shellsRow:hover {
-  background: var(--neutral-hover);
+  background: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
 /* The tab on screen, marked the way a selected branch row is: the brand bar
