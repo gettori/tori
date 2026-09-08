@@ -8,6 +8,74 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.908.0-alpha
+
+The sidebar stops asking two questions in two places. The mode switch moved
+into the space strip, the project tree lost its card frames and its elbows, and
+the Features and Shells lists were redrawn against the design.
+
+### The space strip
+
+- Spaces, Features and Shells left the segmented control at the top and became
+  tiles in the strip at the foot of the column. Exactly one tile is lit, and the
+  lit one grows into a pill that says its name, because a rail of twelve glyphs
+  is a legend you have to learn.
+- The tile animates between glyph and pill, and its name truncates as the column
+  narrows: Craftsmen, then Cra..., then the glyph alone. Before, one name too
+  wide dropped every name in the row at once.
+- Tiles pack left with the actions gear alone on the far right. The "new space"
+  + is gone, having been a second route to the first entry of that gear's menu.
+- The strip sits at the foot of the column in every mode, and ends on the same
+  right edge as everything above it.
+- The Shells tile carries its running count only while you are in another mode,
+  since in Shells the rows below already name every one of them.
+- Gone with the segmented control: arrow-key travel between the three modes. Tab
+  order follows the strip, and the palette's toggle still cycles all three.
+
+### The project tree
+
+- No card frames and no elbows. Fourteen projects drew fourteen borders around
+  content that needs none; a group's left edge is all that marks it now. The
+  rail runs under the rows on the project icon's own centre line, so a hovered
+  or selected row starts on the rail instead of clear of it.
+- The heading over the projects is the space's name at title weight, with what
+  kind of thing it is trailing in the quiet tone, rather than an uppercase
+  micro-label that named the column without reading as its title.
+- A project's disclosure chevron moved into the leading icon slot and cross
+  fades with the project's own icon: at rest the slot says what the project is,
+  under the pointer it says what clicking does. The right edge is the status
+  rollup's alone.
+- Branch rows are padded rather than pinned to 30px, so they size from their own
+  label and grow with `--ui-scale`, and a row's fill runs to the row's own edge
+  the way the project rows above it already did.
+- Branch and worktree glyphs are drawn here instead of imported, so a row whose
+  session is mid-turn traces its own path rather than wearing another badge.
+  Worktrees trade git-fork for a folder with a branch off it, and the two marks
+  are tuned to pulse at one tempo.
+
+### Features and Shells
+
+- A Shells row is two lines: status glyph, name, verdict and an unseen dot, then
+  the folder and the command line under it. A failed row says `exit 127` rather
+  than only that it failed, and a tab that printed while you were elsewhere
+  wears a dot.
+- A Feature row is two lines as well, and drops the "N changed" count. The
+  ahead/behind arrows and the turn ring the design puts in its place have no
+  source yet and are deliberately not drawn.
+- Repo chips are monospace in a fixed box. Initials cut from a repo name are a
+  code rather than a word, and a proportional face set them at widths that made
+  the row read as ragged.
+- New Feature moved out of the list and into the head row as a `+`, before the
+  filter.
+- Selected rows in both lists wear the mark a selected branch row already wore.
+
+### Chat
+
+- A tool card no longer opens itself the moment its call fails or is denied. In
+  a turn making a dozen calls that reads as the transcript rearranging itself
+  under you; the collapsed row already carries the whole signal, naming the tool
+  in the failure colour and reading `Failed` or `Denied`.
+
 ## 26.907.1-alpha
 
 - The Dock shows the sailboat on its own again, transparent background and
