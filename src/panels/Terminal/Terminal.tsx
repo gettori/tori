@@ -102,7 +102,8 @@ import { debounce } from "../../utils/debounce";
 import { chatTabLabel } from "../../utils/chatConcurrency";
 import { liveChatIds, liveChats } from "../../utils/chatSessions";
 import { clearComposer, draftFor, offerToComposer, routeFor, setDraft } from "../../utils/chatCompose";
-import { clearDraftPick, draftPick, setDraftPick } from "../../utils/chatDraftPick";
+import { clearDraftPick, draftPick, pickRidesArgv, setDraftPick } from "../../utils/chatDraftPick";
+import { resumedPicks } from "../../utils/chatModels";
 import { holdingTab, refusalMessage, type Refusal } from "../../utils/chatOwnership";
 import { routeSelection, restoreRoute } from "../../utils/sessionSurface";
 import { chatPrefs, rememberChatPrefs, settings } from "../Settings/settingsStore";
@@ -1815,8 +1816,16 @@ export default function Terminal(props: {
       });
       return;
     }
+    const id = `chat:${crypto.randomUUID()}`;
+    // A restore reads the pick off the tab record; a sidebar click mints a new
+    // tab id, so that record is gone and the project's memory is the only thing
+    // left that knows. Skipped on ACP, which republishes its own on session/load.
+    if (pickRidesArgv(findAdapter(agentId).chat?.transport)) {
+      const resumed = resumedPicks(chatPrefs(sel.folderPath), findAdapter(agentId).chat ?? null);
+      if (resumed.mode !== null || resumed.effort !== null) setDraftPick(id, resumed);
+    }
     openOrActivate({
-      id: `chat:${crypto.randomUUID()}`,
+      id,
       // The session's own name, not a label built from it. `chatTabLabel` is
       // for a chat that has no name yet - a draft named after its project, a
       // fork named after its folder - and appending " chat" to a session that

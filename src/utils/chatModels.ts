@@ -364,6 +364,22 @@ export function restoredPicks(
   return { model, effort, mode };
 }
 
+/**
+ * A resume keeps its model and drops its mode and effort, so this restores those
+ * two and never names a third: the project's last model may be another
+ * session's. Mode is checked with no model, which is what a resume knows.
+ */
+export function resumedPicks(
+  prefs: { effort?: string | null; mode?: string | null },
+  chat: ChatConfig | null,
+): { effort: string | null; mode: string | null } {
+  const modes = capabilitiesFor(null, chat).modes;
+  return {
+    effort: prefs.effort ?? null,
+    mode: prefs.mode && modes.some((m) => m.id === prefs.mode) ? prefs.mode : null,
+  };
+}
+
 /** What a session may be switched to, once the model has had its say. */
 export type Capabilities = {
   // No effort here. It used to restate `PickableModel.effortLevels` and nothing

@@ -12,6 +12,7 @@ import {
   pickableModes,
   reportedWindows,
   restoredPicks,
+  resumedPicks,
   selectedModel,
 } from "./chatModels";
 import type { ChatConfig, ChatMode } from "./agents";
@@ -375,6 +376,55 @@ describe("restoredPicks", () => {
     expect(
       restoredPicks(models, { model: "sonnet", mode: "read-only" }, chat, agentModes).mode,
     ).toBeNull();
+  });
+});
+
+// The bug: a sidebar click minted a fresh tab id carrying no pick, so the child
+// spawned with no `--permission-mode` and init answered `default`. It stranded
+// the one mode with no way back - the CLI refuses a runtime switch to bypass.
+describe("resumedPicks", () => {
+  it("restores the two settings a resume drops", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "bypassPermissions", label: "Bypass", hint: "", args: [] }];
+    expect(resumedPicks({ mode: "bypassPermissions", effort: "high" }, chat)).toEqual({
+      mode: "bypassPermissions",
+      effort: "high",
+    });
+  });
+
+  // The signature already refuses a `model` key; this pins the other half, that
+  // none appears in the answer either.
+  it("never names a model", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "plan", label: "Plan", hint: "", args: [] }];
+    expect(Object.keys(resumedPicks({ mode: "plan", effort: "high" }, chat)).sort()).toEqual([
+      "effort",
+      "mode",
+    ]);
+  });
+
+  it("drops a mode the adapter does not declare", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "auto_edit", label: "Auto edit", hint: "", args: [] }];
+    expect(resumedPicks({ mode: "bypassPermissions" }, chat).mode).toBeNull();
+  });
+
+  // `--permission-mode auto` on a model lacking `supportsAutoMode` exits 0 and
+  // silently runs `default`, and a resume has reported no model yet.
+  it("drops a mode gated on a capability no model has claimed", () => {
+    const chat = adapter();
+    chat.modes = [{ id: "auto", label: "Auto", hint: "", args: [], requires: "supportsAutoMode" }];
+    expect(resumedPicks({ mode: "auto" }, chat).mode).toBeNull();
+  });
+
+  it("restores nothing from a project that remembers nothing", () => {
+    expect(resumedPicks({}, adapter())).toEqual({ mode: null, effort: null });
+  });
+
+  // Nothing to check it against, since validity is per model. Kept anyway: a
+  // wrong level is one click, a pill lying about the child is invisible.
+  it("keeps an effort level even with no model to check it against", () => {
+    expect(resumedPicks({ effort: "xhigh" }, adapter()).effort).toBe("xhigh");
   });
 });
 
