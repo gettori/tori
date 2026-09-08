@@ -394,14 +394,18 @@
   /* `.select` was here beside `.input` until #106 moved the pickers onto
      `components/Select`, which draws its own trigger from the same tokens. The
      field chrome below is now the native inputs' alone. */
+  /* Frame, height and hairline are `Select`'s, so a field and a select sitting
+     in one control column read as one family. Type stays a step below the
+     select's 14px because every field here is mono, which sets heavier. */
   .input {
     background: var(--canvas-input);
     color: var(--fg-default);
-    border: var(--sway-border-thin) solid var(--border-strong);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-md);
-    padding: var(--sway-space-3) var(--sway-space-4);
+    height: var(--control-height);
+    padding: 0 var(--sway-space-4);
     font: inherit;
-    font-size: var(--sway-text-sm);
+    font-size: var(--sway-text-md);
     transition:
       border-color var(--sway-duration-fast) ease,
       box-shadow var(--sway-duration-fast) ease;
@@ -424,19 +428,27 @@
     width: calc(104px * var(--ui-scale));
     font-family: var(--sway-font-mono);
     text-align: right;
+    appearance: textfield;
+  }
+  .numField::-webkit-outer-spin-button,
+  .numField::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
   }
 
   /* The buttons nudge; the field stays a real number input so a value forty
-     steps away can still be typed. */
-  .stepper {
+     steps away can still be typed.
+     Named apart from AgentAccounts' `.stepper`: one flat CSS module, so two
+     rules on one name are one rule, and the later file won. */
+  .numStepper {
     display: flex;
     align-items: center;
-    border: var(--sway-border-thin) solid var(--border-strong);
+    border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-md);
     background: var(--neutral-subtle);
     overflow: hidden;
   }
-  .stepper:focus-within {
+  .numStepper:focus-within {
     border-color: var(--brand-default);
     box-shadow: 0 0 0 3px var(--brand-ring);
   }
@@ -473,8 +485,9 @@
     border: 0;
     border-radius: 0;
     background: transparent;
+    color: var(--fg-default);
     font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-sm);
+    font-size: var(--sway-text-md);
     text-align: center;
     appearance: textfield;
   }
@@ -1589,6 +1602,7 @@
      the section's only control, so it earns the taller box the mockup gives
      it without touching every other .input in the panel. */
   .pathInput {
+    height: auto;
     padding: var(--sway-space-4) var(--sway-space-5);
     /* The sidebar search's surface, and only its surface: transparent, so the
        field sits on the page like that bar sits on the rail, instead of
