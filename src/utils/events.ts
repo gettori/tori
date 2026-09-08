@@ -21,6 +21,10 @@ export type LiveTab = {
   // What the tab calls itself, so the Shells list can name a row without
   // holding a second copy of the tab model.
   title?: string;
+  // The line the tab is running, for the Shells row's second line. Absent on a
+  // login shell, which is not running a command, and on a chat, which hosts no
+  // PTY at all.
+  command?: string;
   // The tab on screen, so a list outside the strip can mark which row is the
   // one you are looking at. Only ever true for the workspace that is showing.
   active?: boolean;
@@ -121,6 +125,11 @@ export const TOGGLE_SIDEBAR_MODE = "sway:toggle-sidebar-mode";
 // Take the window to Shells. For a panel that starts a command but cannot reach
 // the shell's `onSelect`, which is the only other way in.
 export const REVEAL_SHELLS = "sway:reveal-shells";
+
+// Open the New Feature dialog. On the bus because the button that asks now sits
+// in the sidebar's own head row, and the dialog belongs to the Feature list
+// under it; lifting the dialog instead would move its five sibling dialogs too.
+export const NEW_FEATURE = "sway:new-feature";
 
 // Pane layout edits (plan phase 8), all consumed by App.tsx, which owns the
 // tree. Emitted by the command palette and by a tab's own context menu, so a

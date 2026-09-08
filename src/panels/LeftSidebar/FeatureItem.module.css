@@ -5,26 +5,33 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: calc(4px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-md);
+  gap: calc(3px * var(--ui-scale));
+  padding: calc(7px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  /* Square on the left, where the selection bar runs, and rounded on the
+     right: a rounded left corner would cut the bar into a lozenge. */
+  border-radius: 0 var(--sway-radius-lg) var(--sway-radius-lg) 0;
   min-width: 0;
 }
 
 .item:hover {
   background: var(--neutral-subtle);
 }
-.item.active {
-  background: var(--neutral-subtle);
-  box-shadow: inset 2px 0 0 var(--brand-default);
+
+/* The selected Feature, marked the way a selected branch row is: the brand bar
+   down the left edge over a wash that fades out to the right. Declared after
+   :hover at equal specificity, so hovering the open Feature keeps the gold. */
+.item.active,
+.item.active:hover {
+  background:
+    linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
+      var(--sway-border-thick) 100% no-repeat,
+    linear-gradient(to right, var(--brand-subtle), transparent);
 }
 
-/* The count sits beside the name rather than under it: the row's height is the
-   same for every Feature, and the count is on at most one row at a time. */
 .head {
   display: flex;
-  align-items: baseline;
-  gap: calc(6px * var(--ui-scale));
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
   min-width: 0;
 }
 
@@ -33,8 +40,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: calc(14px * var(--ui-scale));
-  height: calc(14px * var(--ui-scale));
+  width: calc(10px * var(--ui-scale));
+  height: calc(10px * var(--ui-scale));
   padding: 0;
   border: 0;
   border-radius: var(--sway-radius-sm);
@@ -48,8 +55,8 @@
 }
 
 .caret {
-  width: calc(12px * var(--ui-scale));
-  height: calc(12px * var(--ui-scale));
+  width: calc(10px * var(--ui-scale));
+  height: calc(10px * var(--ui-scale));
   transition: transform 120ms ease;
 }
 
@@ -63,21 +70,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--sway-text-xl);
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--fg-default);
-}
-
-.count {
-  flex: 0 0 auto;
-  font-size: var(--sway-text-2xs);
-  font-variant-numeric: tabular-nums;
-  color: var(--fg-muted);
 }
 
 .chips {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: calc(4px * var(--ui-scale));
+  gap: calc(5px * var(--ui-scale));
   min-width: 0;
 }
 
@@ -109,9 +111,9 @@
 
 .more {
   flex: 0 0 auto;
-  font-size: var(--sway-text-2xs);
-  color: var(--fg-muted);
-  padding-inline: calc(2px * var(--ui-scale));
+  font-size: var(--sway-text-xs);
+  color: var(--fg-subtle);
+  padding-inline: calc(3px * var(--ui-scale));
 }
 
 /* The expanded list. Uncapped, unlike the chip row: every member needs a row a

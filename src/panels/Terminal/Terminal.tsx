@@ -73,6 +73,7 @@ import {
   workspaceKey,
 } from "../../utils/features";
 import { commandStatus, dropCommandStatus, reportCommandExit } from "./commandStatus";
+import { clearTabUnseen, markTabUnseen } from "./tabUnseen";
 import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
 import {
   agents,
@@ -675,6 +676,14 @@ export default function Terminal(props: {
     return ws.split("/").filter(Boolean).slice(-2);
   };
 
+  // What the Shells row prints after the folder. A login shell is running no
+  // command, and a chat hosts no PTY; an agent or task tab is a shell seeded
+  // with `init`, so the line typed into it is the one worth showing.
+  const commandLine = (o: OpenTerm): string | undefined => {
+    if (o.kind === "shell" || o.kind === "chat") return undefined;
+    return o.init ?? ([o.program, ...o.args].join(" ").trim() || undefined);
+  };
+
   // Surface the live tabs (id + workspace + kind + soft sessionId + agent +
   // state) so the sidebar can count what's running for its confirms and probe
   // the right per-agent pgrep pattern for the status dot.
@@ -690,6 +699,7 @@ export default function Terminal(props: {
         kind: o.kind,
         cwd: o.cwd,
         title: o.title,
+        command: commandLine(o),
         sessionId: o.sessionId,
         agent: o.kind === "agent" || o.kind === "chat" ? agentIdForProgram(o.program) : undefined,
         state: tabState(o),
@@ -1920,6 +1930,7 @@ export default function Terminal(props: {
     // Or a later tab reusing this id would inherit its verdict: command ids are
     // minted from what they act on, so `install:claude` comes back.
     dropCommandStatus(id);
+    clearTabUnseen(id);
     dropStageHost(id);
   }
 
@@ -2047,6 +2058,24 @@ export default function Terminal(props: {
   // can each show a terminal); with none, the workspace's own visible tab, as
   // it was before panes could split.
   const onScreen = (t: OpenTerm) => visibleInPane(t) ?? visibleId() === t.id;
+
+  // The unseen-output dot the Shells list draws. Marked from `pty://activity`
+  // below and cleared here, because a tab coming on screen is the only thing
+  // that answers it and this panel is what moves one there. Registered after
+  // `onScreen` so both halves read the one definition of "you can see it".
+  let unlistenActivity: UnlistenFn | undefined;
+  createEffect(() => {
+    for (const t of open()) if (onScreen(t)) clearTabUnseen(t.id);
+  });
+  onMount(async () => {
+    unlistenActivity = await listen<{ id: string; state: "active" | "quiet" }>("pty://activity", (e) => {
+      if (e.payload.state !== "active") return;
+      const t = open().find((o) => o.id === e.payload.id);
+      if (t && !onScreen(t)) markTabUnseen(t.id);
+    });
+  });
+  onCleanup(() => unlistenActivity?.());
+
   // The same shared resource the editor reads, not a second one: `list_features`
   // is fetched once per generation module-wide, so two panels asking cannot end
   // up drawing two different member sets during a refetch.

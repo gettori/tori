@@ -21,10 +21,12 @@ import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import {
   on as onEvent,
   onWith,
+  emit,
   emitWith,
   FOCUS_SEARCH,
   TOGGLE_SIDEBAR_MODE,
   REVEAL_SHELLS,
+  NEW_FEATURE,
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
   FOCUS_SESSION_TAB,
@@ -127,6 +129,7 @@ import {
   MessageCircleQuestion,
   Check,
   CircleDashed,
+  X,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
@@ -139,8 +142,40 @@ import {
 import Tooltip from "../../components/Tooltip/Tooltip";
 import FeatureList from "./FeatureList";
 import { featureKey, featureSelection, isShellsKey, shellsSelection, tabUnderFolder, type Feature } from "../../utils/features";
-import { commandStatus } from "../Terminal/commandStatus";
+import { commandExitCode, commandStatus } from "../Terminal/commandStatus";
+import { tabUnseen } from "../Terminal/tabUnseen";
 import styles from "./LeftSidebar.module.css";
+
+/** What a Shells row reports. A tab short of `live` came back from a restore
+ *  with nothing behind it, which is stopped whatever it was going to run; past
+ *  that, only a command has a verdict, and one still going has none yet. */
+type ShellRowState = "running" | "ok" | "failed" | "stopped";
+
+function shellRowState(t: LiveTab): ShellRowState {
+  if (t.state !== "live") return "stopped";
+  return t.kind === "command" ? commandStatus(t.id) : "running";
+}
+
+const SHELL_STATE_LABEL: Record<ShellRowState, string> = {
+  running: "Running",
+  ok: "Finished",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
+/** The words beside the name, for a run that is over. A failure wears its own
+ *  code rather than the word "failed": which code it was is the news. */
+function shellVerdict(t: LiveTab): string | null {
+  const state = shellRowState(t);
+  if (state === "stopped") return "stopped";
+  if (state !== "failed") return null;
+  const code = commandExitCode(t.id);
+  return code === null ? "failed" : `exit ${code}`;
+}
+
+/** Where a tab is sitting, named the way a person names a folder: the last
+ *  segment of its cwd, and no tree lookup. */
+const folderName = (cwd: string | undefined): string => cwd?.split("/").filter(Boolean).pop() ?? "";
 
 // Glyph for a branch-unit row, keyed by its git kind: a worktree (or an empty
 // .bare stub) reads as a folder with a branch off it, a branch of a plain repo
@@ -2934,6 +2969,20 @@ export default function LeftSidebar(props: {
             onKeyDown={(e) => e.key === "Escape" && closeSearch()}
           />
         </Show>
+        {/* Before the filter, and only in the mode it means something in: a
+            Feature is the one thing this column makes. It carries the row's
+            auto margin so the pair sits together against the right edge. */}
+        <Show when={mode() === "features"}>
+          <Button
+            class={styles.headAdd}
+            variant="ghost"
+            size="md"
+            aria-label="New Feature"
+            tooltip="New Feature"
+            icon={<Icon icon={Plus} />}
+            onClick={() => emit(NEW_FEATURE)}
+          />
+        </Show>
         {/* Only while the field is shut: open, the field is the affordance and
             the icon would be a second one beside it, in the space it wants. */}
         <Show when={!searching()}>
@@ -2981,28 +3030,80 @@ export default function LeftSidebar(props: {
                   screen, which re-emits this list as fresh objects, and a `For`
                   keyed on identity would rebuild the row it just focused. */}
               <Index each={visibleShells()}>
-                {(t) => (
-                  <li>
-                    <button
-                      type="button"
-                      class={styles.shellsRow}
-                      classList={{ [styles.shellsRowOn]: !!t().active }}
-                      // The row you are looking at, not a pressed toggle: this
-                      // is one of a set and only one of them is showing.
-                      aria-current={t().active ? "true" : undefined}
-                      onClick={() => emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: t().id })}
-                    >
-                      <span class={styles.shellsName}>{t().title || t().id}</span>
-                      {/* Only a command has a verdict to report. A shell you
-                          opened yourself is just open. */}
-                      <Show when={t().kind === "command"}>
-                        <span class={styles.shellsState} data-state={commandStatus(t().id)}>
-                          {commandStatus(t().id)}
+                {(t) => {
+                  const state = () => shellRowState(t());
+                  const verdict = () => shellVerdict(t());
+                  return (
+                    <li>
+                      <button
+                        type="button"
+                        class={styles.shellsRow}
+                        classList={{ [styles.shellsRowOn]: !!t().active }}
+                        // The row you are looking at, not a pressed toggle: this
+                        // is one of a set and only one of them is showing.
+                        aria-current={t().active ? "true" : undefined}
+                        data-state={state()}
+                        onClick={() => emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: t().id })}
+                      >
+                        <span class={styles.shellsLine}>
+                          {/* Spoken only when nothing else says it: the verdict
+                              beside it is the fuller account where there is
+                              one, and two would be read out twice. */}
+                          <span
+                            class={styles.shellsGlyph}
+                            role={verdict() ? undefined : "img"}
+                            aria-hidden={verdict() ? "true" : undefined}
+                            aria-label={verdict() ? undefined : SHELL_STATE_LABEL[state()]}
+                          >
+                            <Switch fallback={<span class={styles.shellsMark} />}>
+                              <Match when={state() === "failed"}>
+                                <Icon icon={X} />
+                              </Match>
+                              <Match when={state() === "ok"}>
+                                <Icon icon={Check} />
+                              </Match>
+                            </Switch>
+                          </span>
+                          <span class={styles.shellsName}>{t().title || t().id}</span>
+                          {/* Only a run that has ended has anything to add to
+                              the glyph. One that is going says so by being on
+                              the list at all. */}
+                          <Show when={verdict()}>
+                            <span class={styles.shellsState} data-verdict>
+                              {verdict()}
+                            </span>
+                          </Show>
+                          {/* Printed while you were somewhere else. Cleared by
+                              the terminal the moment the tab is on screen. */}
+                          <Show when={tabUnseen(t().id)}>
+                            <span class={styles.shellsUnseen} role="img" aria-label="New output" data-unseen />
+                          </Show>
                         </span>
-                      </Show>
-                    </button>
-                  </li>
-                )}
+                        <span class={styles.shellsMeta}>
+                          <Show when={folderName(t().cwd)}>
+                            {(where) => (
+                              <span class={styles.shellsWhere} data-where>
+                                {where()}
+                              </span>
+                            )}
+                          </Show>
+                          <Show when={folderName(t().cwd) && t().command}>
+                            <span class={styles.shellsSep} aria-hidden="true">
+                              ·
+                            </span>
+                          </Show>
+                          <Show when={t().command}>
+                            {(line) => (
+                              <span class={styles.shellsCommand} data-command>
+                                {line()}
+                              </span>
+                            )}
+                          </Show>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                }}
               </Index>
             </ul>
           </Show>

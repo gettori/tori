@@ -21,10 +21,16 @@
 }
 
 /* The sidebar's Feature rows sit on a taller line and carry a state badge, so
-   the box is squarer there. */
+   the box is bigger there - and monospace, because initials cut from a repo
+   name are a code, not a word, and a proportional font sets `API` and `F` at
+   widths that make the row read as ragged rather than as a set. */
 .md {
-  min-width: calc(22px * var(--ui-scale));
-  height: calc(22px * var(--ui-scale));
+  min-width: calc(32px * var(--ui-scale));
+  height: calc(20px * var(--ui-scale));
+  padding-inline: calc(6px * var(--ui-scale));
+  font-family: var(--sway-font-mono);
+  font-size: var(--sway-text-xs);
+  letter-spacing: 0.04em;
 }
 
 /* A repo in no Space has no hue to mix, so it falls back to a flat neutral

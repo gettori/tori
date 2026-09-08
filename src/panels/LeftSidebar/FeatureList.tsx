@@ -16,7 +16,7 @@ import type { MenuItem } from "../../components/Menu/rows";
 import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
 import { memberState, type Feature, type Member, type RepairAction, featureKey, LAST_MEMBER } from "../../utils/features";
 import { moveKey } from "../../utils/dragReorder";
-import { gitStateFor } from "../../utils/gitActions";
+import { on as onEvent, NEW_FEATURE } from "../../utils/events";
 import { removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
 import styles from "./FeatureList.module.css";
@@ -108,6 +108,11 @@ export default function FeatureList(props: {
       return next;
     });
   }
+
+  // The head row's `+` lives in the sidebar, one component up, and this is what
+  // it reaches. Registered outside `onMount` so the listener exists before the
+  // first fetch resolves.
+  onCleanup(onEvent(NEW_FEATURE, () => setDialog({})));
 
   let unlistenFeatures: UnlistenFn | undefined;
   let unlistenConfig: UnlistenFn | undefined;
@@ -372,12 +377,6 @@ export default function FeatureList(props: {
     setSweepReq({ ...req, members: stuck, busy: false, failures });
   }
 
-  // Asked per member rather than of the slot map as a whole: the editor only
-  // enters the open Feature's roots, so every other row sums to nothing on its
-  // own, and no row can be handed a number the member beside it measured.
-  const changedIn = (feature: Feature) =>
-    feature.members.reduce((n, m) => n + gitStateFor(m.worktreePath).files.length, 0);
-
   const menu = (feature: Feature): MenuItem[] => [
     { label: "Rename…", onClick: () => setRenameReq(feature) },
     { label: "Add repository…", onClick: () => setDialog({ feature }) },
@@ -418,11 +417,6 @@ export default function FeatureList(props: {
 
   return (
     <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} data-feature-list>
-      <div class={styles.header}>
-        <Button size="sm" onClick={() => setDialog({})}>
-          New Feature
-        </Button>
-      </div>
       <Show when={error()}>{(msg) => <p class={styles.error}>{msg()}</p>}</Show>
       <Show
         when={visible().length > 0}
@@ -444,7 +438,6 @@ export default function FeatureList(props: {
                 feature={f}
                 spaces={props.spaces}
                 active={props.activeId === f.id}
-                changed={changedIn(f)}
                 onSelect={props.onSelect}
                 onRepair={(m, action) => void repair(f, m, action)}
                 menu={menu(f)}
