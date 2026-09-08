@@ -434,7 +434,7 @@ fn restrict_to_owner(path: &Path) -> Result<(), String> {
 /// Reduce an id to a bare path segment, for the same reason
 /// [`crate::owned_state`] does: the result is concatenated into a path, and an
 /// adapter id comes from a TOML Sway does not control.
-fn sanitize_segment(value: &str) -> String {
+pub fn sanitize_segment(value: &str) -> String {
     value
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })

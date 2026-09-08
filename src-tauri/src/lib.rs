@@ -1,4 +1,5 @@
 mod accounts;
+mod agent_config;
 mod agent_lines;
 mod agents;
 mod askpass;
@@ -466,8 +467,11 @@ pub fn run() {
             presence::update_tray,
             presence::set_badge_count,
             model::model_context_caps,
+            agent_config::agent_config_files,
+            agent_config::agent_config_new,
             launch::open_in_vscode,
             launch::open_in_ghostty,
+            launch::reveal_in_finder,
             worktree::list_worktrees,
             worktree::create_worktree,
             worktree::worktree_dirty,
