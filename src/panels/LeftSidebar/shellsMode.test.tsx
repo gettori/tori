@@ -172,12 +172,16 @@ describe("the Shells mode", () => {
     expect(sel()?.kind).toBe("shells");
   });
 
-  it("lists what is running with its verdict, and badges the segment with the count", async () => {
+  it("lists what is running with its verdict, and badges the tile with the count", async () => {
     mount([cmd("job:1", "Sign in"), cmd("job:2", "Install claude")]);
     await screen.findByText("proj");
     // A verdict before the mode is opened: the row reads the store, it does not
     // record its own state.
     reportCommandExit("job:2", 1);
+
+    // The badge is for when you are somewhere else. Inside Shells the rows name
+    // every one of them, so it goes.
+    expect(document.querySelector('[class*="tileCount"]')?.textContent).toBe("2");
 
     fireEvent.click(segment(/Shells/));
     await waitFor(() => expect(rows()).toHaveLength(2));
@@ -190,8 +194,7 @@ describe("the Shells mode", () => {
       "failed",
     ]);
 
-    const badge = document.querySelector('[class*="tileCount"]');
-    expect(badge?.textContent).toBe("2");
+    expect(document.querySelector('[class*="tileCount"]')).toBeNull();
   });
 
   it("says so when nothing is running, and filters the rows it has", async () => {

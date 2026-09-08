@@ -2863,9 +2863,11 @@ export default function LeftSidebar(props: {
       >
         <Icon icon={glyph} />
         <span class={styles.tileName}>{label}</span>
-        {/* Shown lit as well as dark: the count is how many are open, not a
-            call for attention, and dropping it on click made the tile jump. */}
-        <Show when={!!count}>
+        {/* Only while you are somewhere else. Pinned to a 30px square's corner
+            it reads as a badge on an icon; pinned to an open pill's it reads as
+            a number floating beside it, and by then the list below is naming
+            every one of them anyway. Absolute, so dropping it costs no width. */}
+        <Show when={!on() && !!count}>
           <span class={styles.spaceBubble}>
             <span class={styles.tileCount}>{count}</span>
           </span>
