@@ -500,13 +500,34 @@ pub async fn chat_record_usage(
 /// 0 for a session with no transcript yet, which reads as "not known to be
 /// complete" and keeps the caveat. A brand-new chat has nothing to be complete
 /// about.
+///
+/// For an agent that keeps no transcript at all, the resolution is the session's
+/// locator and the figure comes off the mirror's sidecar. Handed to
+/// `session_prompt_tail` as a path rather than branched on here, so the sidebar
+/// and this readout answer through the same function and cannot disagree by one
+/// about the same session.
 #[tauri::command]
 pub async fn chat_prompt_count(session_id: String, agent_id: String) -> Result<u32, String> {
-    let Some(path) = crate::sessions::transcript_path(&session_id, &agent_id) else {
+    let Some(path) = prompt_count_path(&session_id, &agent_id) else {
         return Ok(0);
     };
     let tail = crate::sessions::session_prompt_tail(path, agent_id).await?;
     Ok(tail.count)
+}
+
+/// Which file the count comes off, or `None` when there is nothing to read yet.
+///
+/// Split out so the resolution is testable without a Tauri app or an async
+/// runtime, exactly as `history_from_log` is. The locator is what an ACP session
+/// resolves to, not the sidecar itself: `session_prompt_tail` takes the path a
+/// listing row already carries, and one resolution serving both callers is what
+/// keeps the sidebar's figure and this one off two different files.
+fn prompt_count_path(session_id: &str, agent_id: &str) -> Option<String> {
+    if let Some(path) = crate::sessions::transcript_path(session_id, agent_id) {
+        return Some(path);
+    }
+    (!keeps_a_transcript(agent_id))
+        .then(|| acp_sessions::locator_path(session_id).to_string_lossy().into_owned())
 }
 
 /// This chat session's figures, resolved from its id rather than from a path.
@@ -911,7 +932,7 @@ pub async fn chat_history(
 /// that has not written its first turn yet, and reading the ACP store for one of
 /// those would be a lookup in a different agent's history. An unknown agent is
 /// claude-shaped, matching what `parser_kind_for` assumes about one.
-fn keeps_a_transcript(agent_id: &str) -> bool {
+pub(crate) fn keeps_a_transcript(agent_id: &str) -> bool {
     agents::find(agent_id)
         .map(|a| matches!(a.discovery, Some(agents::Discovery::File { .. })))
         .unwrap_or(true)
@@ -1105,6 +1126,16 @@ mod tests {
         assert!(!keeps_a_transcript("codex"), "an ACP agent keeps its conversation itself");
         assert!(!keeps_a_transcript("opencode"));
         assert!(keeps_a_transcript("not-an-agent"), "an unknown agent is claude-shaped");
+    }
+
+    /// **Only an ACP session falls back to its locator.** A claude session with
+    /// no transcript on disk yet has to answer nothing rather than go looking in
+    /// the ACP store, where the only thing it could find is another agent's.
+    #[test]
+    fn only_an_acp_session_falls_back_to_its_locator() {
+        assert_eq!(prompt_count_path("no-such-session", "claude"), None);
+        let acp = prompt_count_path("s-codex", "codex").expect("an ACP session has a locator");
+        assert!(acp.ends_with("s-codex.json"), "resolves to the locator, not the sidecar: {acp}");
     }
 
     /// The read path end to end: what the mirror wrote comes back as events, a
