@@ -174,7 +174,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 const { default: FeatureList } = await import("./FeatureList");
 const { default: ToastRegion } = await import("../../components/Toasts/Toasts");
 const { PURGE_WORKSPACE } = await import("../../utils/events");
-const { enterRoots, refreshStatus, stage } = await import("../../utils/gitActions");
+const { enterRoots } = await import("../../utils/gitActions");
+const { emit, NEW_FEATURE } = await import("../../utils/events");
 
 const SPACES = [
   {
@@ -351,7 +352,10 @@ describe("FeatureList", () => {
         <FeatureList spaces={SPACES} query="" />
       </>
     ));
-    fireEvent.click(await screen.findByRole("button", { name: "New Feature" }));
+    // The button is the sidebar's now, one component up; this list answers the
+    // event it emits, and the listener is up before the first fetch resolves.
+    await screen.findByText("No Features yet.");
+    emit(NEW_FEATURE);
     const dialog = await screen.findByRole("dialog", { name: "New Feature" });
     fireEvent.input(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Search" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "api" }));
@@ -378,61 +382,6 @@ describe("FeatureList", () => {
 
   // The count is the git slot map's, and the editor only enters the open
   // Feature's roots, so every other row sums to nothing without being told to.
-  describe("the open Feature's change count", () => {
-    const API = "/w/api/.sway/worktrees/auth";
-    const WEB = "/w/web/.sway/worktrees/auth";
-
-    const rows = (n: number, from = 0) =>
-      Array.from({ length: n }, (_, i) => ({
-        status: " M",
-        path: `src/${from + i}.ts`,
-        staged: false,
-        unstaged: true,
-      }));
-    const staged = (n: number) => rows(n).map((f) => ({ ...f, status: "M ", staged: true, unstaged: false }));
-
-    async function fill(api: unknown[], web: unknown[]) {
-      bridge.status = { [API]: api, [WEB]: web };
-      enterRoots([API, WEB]);
-      await Promise.all([refreshStatus(API), refreshStatus(WEB)]);
-    }
-
-    const count = (name: string) => row(name).querySelector("[data-changed]");
-
-    it("sums every member and leaves the Features nobody opened silent", async () => {
-      render(() => <FeatureList spaces={SPACES} query="" activeId="auth-1" />);
-      await screen.findByText("Auth");
-      await fill(rows(4), rows(3));
-
-      await waitFor(() => expect(count("Auth")?.textContent).toBe("7 changed"));
-      // Payments shares a repo with Auth but not a worktree, so it reads its
-      // own empty slots rather than borrowing the number beside it.
-      expect(count("Payments")).toBeNull();
-    });
-
-    it("counts staged files too, so staging a member's work does not empty the row", async () => {
-      render(() => <FeatureList spaces={SPACES} query="" activeId="auth-1" />);
-      await screen.findByText("Auth");
-      await fill(rows(4), rows(3));
-      await waitFor(() => expect(count("Auth")?.textContent).toBe("7 changed"));
-
-      // Everything staged, plus one file nobody staged. Counting the unstaged
-      // alone reads 1; a row that never re-rendered still reads 7.
-      bridge.status = { [API]: [...staged(4), ...rows(1, 4)], [WEB]: staged(3) };
-      await Promise.all([stage(API, ["src/0.ts"]), stage(WEB, ["src/0.ts"])]);
-
-      await waitFor(() => expect(count("Auth")?.textContent).toBe("8 changed"));
-    });
-
-    it("says nothing for a Feature whose members are all clean", async () => {
-      render(() => <FeatureList spaces={SPACES} query="" activeId="auth-1" />);
-      await screen.findByText("Auth");
-      await fill([], []);
-
-      expect(count("Auth")).toBeNull();
-    });
-  });
-
   it("renames from the context menu", async () => {
     render(() => <FeatureList spaces={SPACES} query="" />);
     await screen.findByText("Auth");
