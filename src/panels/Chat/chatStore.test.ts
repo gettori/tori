@@ -1754,6 +1754,35 @@ describe("a session that never handshook", () => {
   });
 });
 
+// The ACP transport puts the prompt it was handed into the event stream, so the
+// log it keeps beside the session records the user's side of the conversation
+// too. The panel drew that message the moment it sent it, so the echo has to be
+// recognised rather than rendered, or every ACP message reads twice.
+describe("a user message that comes back from the transport", () => {
+  it("is not drawn a second time while the turn it belongs to is in flight", () => {
+    const s = initialChat("s1");
+    pushUserTurn(s, [{ type: "text", text: "fix the bug" }]);
+    applyEvent(s, {
+      type: "userMessage",
+      sessionId: "s1",
+      turnId: "turn-1",
+      blocks: [{ type: "text", text: "fix the bug" }],
+    });
+    expect(s.items.filter((i) => i.kind === "user")).toHaveLength(1);
+  });
+
+  it("is drawn when this panel did not send it, which is what a replay is", () => {
+    const s = initialChat("s1");
+    applyEvent(s, {
+      type: "userMessage",
+      sessionId: "s1",
+      turnId: "hist-turn-1",
+      blocks: [{ type: "text", text: "asked before the restart" }],
+    });
+    expect(s.items.filter((i) => i.kind === "user")).toHaveLength(1);
+  });
+});
+
 // The transcript on disk records no turn boundaries, so a replay's turn-scoped
 // events register their `hist-turn-*` as live and nothing ever completes it.
 // Settling is what keeps a reopened tab from reading "working" about turns

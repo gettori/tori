@@ -27,7 +27,7 @@
 //!     `can_use_tool` request id, and be answered later from the command thread.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -38,7 +38,8 @@ use agent_client_protocol::schema::v1::{
     LoadSessionRequest, NewSessionRequest, PromptRequest, RequestPermissionOutcome,
     RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome, SessionId,
     SessionConfigId, SessionConfigOption, SessionConfigOptionValue, SessionConfigValueId,
-    SessionModeId, SessionNotification, SetSessionConfigOptionRequest, SetSessionModeRequest,
+    SessionModeId, SessionNotification, SessionUpdate, SetSessionConfigOptionRequest,
+    SetSessionModeRequest,
 };
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::{Agent, ByteStreams, Client, ConnectionTo, ErrorCode, Responder};
@@ -211,6 +212,11 @@ struct Shared {
     /// And about reasoning effort, which `codex-acp` publishes and `opencode
     /// acp` does not - the clearest case for keeping these apart.
     effort_switch: Mutex<Switch>,
+    /// The turn whose `UserMessage` this transport has already put in the
+    /// stream, so an agent that *does* echo the prompt back does not have it
+    /// rendered twice. Cleared before a reload, because the replay's own user
+    /// messages are the conversation and must all come through.
+    echoed_turn: Mutex<Option<String>>,
 }
 
 /// Whether a config switch has somewhere to go.
@@ -293,6 +299,25 @@ impl Shared {
             .lock()
             .map(|t| t.clone())
             .unwrap_or_default()
+    }
+
+    /// Remember that this turn's user message is already in the stream.
+    fn note_echoed(&self, turn: &str) {
+        let mut guard = self.echoed_turn.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = Some(turn.to_string());
+    }
+
+    /// Forget it, so the next reload's replayed user turns are not mistaken for
+    /// the echo of a prompt Sway sent.
+    fn forget_echoed(&self) {
+        let mut guard = self.echoed_turn.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = None;
+    }
+
+    /// Whether this turn's user message has already been emitted.
+    fn already_echoed(&self, turn: &str) -> bool {
+        let guard = self.echoed_turn.lock().unwrap_or_else(|e| e.into_inner());
+        guard.as_deref() == Some(turn)
     }
 
     /// Cancel everything still waiting.
@@ -402,6 +427,7 @@ impl AcpTransport {
                 model_switch: Mutex::new(Switch::Unknown),
                 mode_switch: Mutex::new(Switch::Unknown),
                 effort_switch: Mutex::new(Switch::Unknown),
+                echoed_turn: Mutex::new(None),
             }),
             commands: None,
             pid: None,
@@ -716,10 +742,9 @@ async fn run_session(
         .name("sway")
         .on_receive_notification(
             async move |notification: SessionNotification, _cx| {
-                let turn = notification_shared.turn();
-                for event in tool_calls.map(
-                    &notification_shared.session_id,
-                    &turn,
+                for event in update_events(
+                    &notification_shared,
+                    &mut tool_calls,
                     &notification.update,
                     Some(notification_cwd.as_path()),
                 ) {
@@ -912,6 +937,9 @@ async fn drive_session(
                 let _ = conn.send_notification(CancelNotification::new(session_id.clone()));
             }
             Command::Reload => {
+                // The whole conversation is about to come back, its user turns
+                // included, and none of those is the echo of a live prompt.
+                shared.forget_echoed();
                 let request = LoadSessionRequest::new(session_id.clone(), PathBuf::from(cwd));
                 match conn.send_request(request).block_task().await {
                     // The replayed `session/update`s have already landed by the
@@ -1020,6 +1048,28 @@ fn switch_events(
     events
 }
 
+/// What one `session/update` becomes, minus the prompt this transport has
+/// already put in the stream for the turn it belongs to.
+///
+/// A named function rather than a block inside the notification closure so the
+/// drop is testable: an agent that echoes the prompt and one that does not have
+/// to produce the same single `UserMessage`, and that is a property, not a
+/// detail of how the handler is written.
+fn update_events(
+    shared: &Shared,
+    tool_calls: &mut acp::AcpToolCalls,
+    update: &SessionUpdate,
+    cwd: Option<&Path>,
+) -> Vec<ChatEvent> {
+    let turn = shared.turn();
+    let echoed = shared.already_echoed(&turn);
+    tool_calls
+        .map(&shared.session_id, &turn, update, cwd)
+        .into_iter()
+        .filter(|event| !(echoed && matches!(event, ChatEvent::UserMessage { .. })))
+        .collect()
+}
+
 /// Run one turn as a spawned task, so the command loop stays responsive.
 ///
 /// A turn is awaited on the connection's own task pool rather than inline,
@@ -1039,6 +1089,21 @@ fn run_turn(
     if let Ok(mut current) = shared.current_turn.lock() {
         *current = turn.clone();
     }
+    // **The user's own turn enters the stream from what Sway sent**, not from
+    // what the agent hands back: measured 2026-09-08, `codex-acp` 1.2.0 echoes
+    // nothing for a live prompt, so a conversation read back later would be the
+    // assistant talking to itself. Emitted before the request goes out, so it
+    // cannot land after the answer it prompted. An agent that does echo has its
+    // copy dropped for this turn by the notification handler.
+    shared.note_echoed(&turn);
+    emit(
+        sink,
+        ChatEvent::UserMessage {
+            session_id: shared.session_id.clone(),
+            turn_id: turn.clone(),
+            blocks: blocks.clone(),
+        },
+    );
     let request = PromptRequest::new(session_id.clone(), acp::prompt_blocks(&blocks));
     let pending = conn.send_request(request).block_task();
     // Kept for the spawn-failure path below, which runs on this thread rather
@@ -1506,11 +1571,59 @@ mod tests {
             model_switch: Mutex::new(Switch::Unknown),
             mode_switch: Mutex::new(Switch::Unknown),
             effort_switch: Mutex::new(Switch::Unknown),
+            echoed_turn: Mutex::new(None),
         })
     }
 
     fn ids(values: &[&str]) -> Vec<String> {
         values.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// **One user message per turn, whichever agent is behind the session.**
+    ///
+    /// Sway emits the prompt itself because `codex-acp` 1.2.0 sends nothing back
+    /// for a live turn - see `what_codex_replays_is_what_the_log_can_hold` - and
+    /// without it the log a restored tab reads would be the assistant talking to
+    /// itself. An agent that *does* echo must not therefore have the same
+    /// message rendered and logged twice.
+    #[test]
+    fn a_live_send_puts_exactly_one_user_message_in_the_stream() {
+        use agent_client_protocol::schema::v1::{ContentBlock as AcpContentBlock, ContentChunk, TextContent};
+
+        let shared = shared();
+        let mut calls = acp::AcpToolCalls::default();
+        *shared.current_turn.lock().unwrap() = acp::turn_id(0);
+        let turn = shared.turn();
+        let chunk = |text: &str| {
+            SessionUpdate::UserMessageChunk(ContentChunk::new(AcpContentBlock::Text(
+                TextContent::new(text.to_string()),
+            )))
+        };
+
+        // What `run_turn` puts in the stream from what Sway sent.
+        let mut stream = vec![ChatEvent::UserMessage {
+            session_id: shared.session_id.clone(),
+            turn_id: turn.clone(),
+            blocks: vec![ContentBlock::Text { text: "fix the bug".to_string() }],
+        }];
+        shared.note_echoed(&turn);
+        // And what an echoing agent sends back for that same turn.
+        stream.extend(update_events(&shared, &mut calls, &chunk("fix the bug"), None));
+
+        assert_eq!(
+            stream.iter().filter(|e| matches!(e, ChatEvent::UserMessage { .. })).count(),
+            1,
+            "an echoed prompt must not become a second message: {stream:?}"
+        );
+
+        // A reload replays the conversation, and every user turn in it is one
+        // the user really sent rather than an echo of a live prompt.
+        shared.forget_echoed();
+        let replayed = update_events(&shared, &mut calls, &chunk("fix the bug"), None);
+        assert!(
+            matches!(replayed.as_slice(), [ChatEvent::UserMessage { .. }]),
+            "a replayed user turn is the conversation, not an echo: {replayed:?}"
+        );
     }
 
     /// A toggle travels as a boolean and a choice as a value id. Sending the
@@ -1986,7 +2099,7 @@ mod tests {
         program: &str,
         args: &[&str],
     ) -> ((AcpTransport, Arc<Mutex<Vec<ChatEvent>>>), String) {
-        live_session_in(session_id, program, args, "shared", &[])
+        live_session_in(session_id, "opencode", program, args, "shared", &[])
     }
 
     /// A live session in a cwd of its own, seeded with files before the agent
@@ -2001,6 +2114,7 @@ mod tests {
     #[allow(clippy::type_complexity)]
     fn live_session_in(
         session_id: &str,
+        agent: &str,
         program: &str,
         args: &[&str],
         dir_tag: &str,
@@ -2021,7 +2135,7 @@ mod tests {
         let collected = seen.clone();
         let sink = new_sink(Box::new(move |ev| collected.lock().unwrap().push(ev)));
 
-        let mut transport = AcpTransport::new(session_id, "opencode", AcpOverrides::default());
+        let mut transport = AcpTransport::new(session_id, agent, AcpOverrides::default());
         transport
             .start(
                 StartSpec {
@@ -2957,6 +3071,101 @@ mod tests {
             )
             .expect("a second answer must not error");
         assert!(!again, "a settled question must not be answerable twice");
+    }
+
+    /// Every event's wire tag with a count, read off the same `type` field the
+    /// UI narrows on rather than off a hand-written match that could disagree
+    /// with it.
+    #[cfg(test)]
+    fn kind_counts(events: &[ChatEvent]) -> Vec<(String, usize)> {
+        let mut counts: std::collections::BTreeMap<String, usize> = Default::default();
+        for event in events {
+            let tag = serde_json::to_value(event)
+                .ok()
+                .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(str::to_string))
+                .unwrap_or_else(|| "?".to_string());
+            *counts.entry(tag).or_default() += 1;
+        }
+        counts.into_iter().collect()
+    }
+
+    /// **What `codex-acp` actually hands back**, which is the whole basis for the
+    /// log Sway keeps beside an ACP session: that log is a cache of this replay,
+    /// so a frame kind the replay does not carry is a turn a restored tab can
+    /// never show, no matter how the log is written.
+    ///
+    /// Measured 2026-09-08 against `npx -y @agentclientprotocol/codex-acp@1.2.0`
+    /// driving `codex-cli 0.147.0`, on one prompt answered with one word:
+    ///
+    ///   * **`loadSession` is advertised** (`load_session = true`), so the reload
+    ///     path is open at all.
+    ///   * **a live `send` sends no `user_message_chunk` back.** The whole turn
+    ///     was `textDelta` x1, `usage` x1, `turnCompleted` x1 - the agent echoes
+    ///     nothing for the prompt Sway just handed it, which is why the transport
+    ///     emits the `UserMessage` itself rather than waiting for one. See
+    ///     [`AcpTransport::send`].
+    ///   * **the replay does carry the user's turn**: `userMessage` x1,
+    ///     `textDelta` x1, `usage` x1, plus the identity frames `sessionStarted`,
+    ///     `configOptions` and `slashCommands`, one each. So a restored
+    ///     conversation is a conversation and not a wall of assistant prose.
+    ///
+    /// The counts are not asserted - a model is free to answer in one delta or
+    /// forty - but the *kinds* are, because those are what the log's shape rests
+    /// on. Note that the live half stops being observable here once the
+    /// transport emits its own `UserMessage`: the figure above is the dated
+    /// measurement of the agent, not a live assertion about it.
+    #[test]
+    #[ignore = "drives the real codex-acp over npx: costs tokens and needs network"]
+    fn what_codex_replays_is_what_the_log_can_hold() {
+        let ((mut transport, seen), _) = live_session_in(
+            "live-codex-log",
+            "codex",
+            "npx",
+            &["-y", "@agentclientprotocol/codex-acp@1.2.0"],
+            "codex",
+            &[],
+        );
+        let opened = wait_for(&seen, 180, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+        let caps = opened
+            .iter()
+            .find_map(|e| match e {
+                ChatEvent::SessionReady { capabilities, .. } => Some(*capabilities),
+                _ => None,
+            })
+            .flatten()
+            .unwrap_or_else(|| panic!("no session ready: {opened:?}"));
+
+        seen.lock().unwrap().clear();
+        transport
+            .send(&[ContentBlock::Text { text: "Reply with exactly the word: marker".to_string() }])
+            .expect("the turn should submit");
+        let live = wait_for(&seen, 240, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::TurnCompleted { .. }))
+        });
+
+        seen.lock().unwrap().clear();
+        assert!(transport.replay().expect("the reload should submit"), "codex advertises loadSession");
+        let replayed = wait_for(&seen, 180, |e| {
+            e.iter().any(|e| matches!(e, ChatEvent::SessionStarted { .. }))
+        });
+        let _ = transport.close();
+
+        let (live_kinds, replay_kinds) = (kind_counts(&live), kind_counts(&replayed));
+        eprintln!("codex-acp 1.2.0 loadSession={}", caps.load_session);
+        eprintln!("codex-acp 1.2.0 live turn: {live_kinds:?}");
+        eprintln!("codex-acp 1.2.0 replay:    {replay_kinds:?}");
+
+        assert!(caps.load_session, "codex-acp 1.2.0 advertises loadSession");
+        assert!(
+            replay_kinds.iter().any(|(kind, _)| kind == "userMessage"),
+            "the replay must bring the user's own turns back, or a restored tab is half a conversation: {replay_kinds:?}"
+        );
+        assert!(
+            replay_kinds.iter().any(|(kind, _)| kind == "textDelta"),
+            "and the agent's answers with them: {replay_kinds:?}"
+        );
     }
 
     /// The agent's `kind` is what decides which direction an option answers in,

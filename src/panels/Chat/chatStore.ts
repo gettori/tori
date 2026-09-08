@@ -1244,7 +1244,12 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       });
       return;
     }
-    case "userMessage":
+    case "userMessage": {
+      // The ACP transport puts the prompt it was handed into the stream so the
+      // log it keeps records the user's side too. `awaitingTurn` is true for
+      // exactly the window between this panel's send and its acknowledgement,
+      // so a message arriving in it is the one already drawn by `pushUserTurn`.
+      if (s.awaitingTurn) return;
       // A user turn the panel did not send. Deliberately does **not** touch the
       // turn or set `awaitingTurn` the way `pushUserTurn` does: replayed history
       // is finished, and marking it in flight would leave a reopened tab reading
@@ -1253,6 +1258,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       // steer reads as an ordinary message rather than being guessed at.
       push(s, { kind: "user", id: nextId(s, "user"), blocks: ev.blocks, steer: false });
       return;
+    }
     case "compacted": {
       s.compactions += 1;
       // The boundary says how much it left behind, and that is the context from
