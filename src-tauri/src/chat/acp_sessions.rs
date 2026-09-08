@@ -80,6 +80,15 @@ pub fn locator_path(id: &str) -> PathBuf {
     dir().join(format!("{id}.json"))
 }
 
+/// Where one session's event log lives, beside its locator.
+///
+/// **`.jsonl`, never `.json`.** [`all`] scans this directory for locators by
+/// extension, so a log wearing the locator's would be parsed as a session and
+/// listed as one - a phantom row for every chat that ever streamed.
+pub fn log_path(id: &str) -> PathBuf {
+    dir().join(format!("{id}.jsonl"))
+}
+
 /// Sway's id for a session the *agent* named.
 ///
 /// Deterministic, so the same agent session listed on two different days is one
@@ -131,6 +140,17 @@ pub fn forget(path: &Path) -> Result<(), String> {
             "{} is not one of Sway's session records, so there is nothing here to forget",
             path.display()
         ));
+    }
+    // The event log goes with the locator. It is Sway's own derived copy of a
+    // conversation, so leaving it behind would keep a chat the user deleted
+    // readable, and orphan a file nothing will ever clean up.
+    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+        let log = log_path(stem);
+        // And the half-written rebuild a crash mid-`replace` can leave beside
+        // it. Invisible to `all` either way, but nothing else would ever
+        // collect it.
+        let _ = std::fs::remove_file(log.with_extension("jsonl.tmp"));
+        let _ = std::fs::remove_file(log);
     }
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -326,6 +346,45 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Forgetting a session forgets both of its files**, and the log is
+    /// invisible to the scan while it lives. A `.jsonl` read as a locator would
+    /// be one phantom row per chat that ever streamed; a `.jsonl` left behind
+    /// would keep a deleted conversation readable.
+    #[test]
+    fn forgetting_a_session_removes_its_log_and_the_scan_never_sees_one() {
+        let dir = std::env::temp_dir().join(format!("sway-acp-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        use_dir_for_tests(dir.clone());
+
+        let session = AcpSession {
+            id: "log-scan".to_string(),
+            agent: "codex".to_string(),
+            acp_session_id: "agent-side".to_string(),
+            cwd: "/tmp".to_string(),
+            title: "a chat".to_string(),
+            updated_at: 0,
+        };
+        record(&session).expect("the locator should write");
+        // Deliberately a *parseable* locator inside the log. If the scan ever
+        // stopped filtering by extension, this would list as a second session
+        // rather than merely failing to parse, so the filter is what the
+        // assertion below actually tests.
+        let decoy = AcpSession { id: "log-scan-decoy".to_string(), ..session.clone() };
+        std::fs::write(log_path("log-scan"), serde_json::to_string(&decoy).unwrap()).unwrap();
+
+        // Scoped to the ids this test wrote: `use_dir_for_tests` is one global
+        // for the whole process, so counting every row would count a concurrent
+        // test's as well.
+        let mine: Vec<String> =
+            all().into_iter().map(|s| s.id).filter(|id| id.starts_with("log-scan")).collect();
+        assert_eq!(mine, vec!["log-scan".to_string()], "the log must not be scanned as a locator");
+
+        forget(&locator_path("log-scan")).expect("forgetting should succeed");
+        assert!(!locator_path("log-scan").exists(), "the locator is gone");
+        assert!(!log_path("log-scan").exists(), "and so is the log beside it");
+    }
 
     #[test]
     fn a_filename_safe_agent_id_is_kept_verbatim() {

@@ -68,8 +68,12 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// Identity, not just kind: two turns' text are different streams even though
 /// both are `TextDelta`, two tool calls' arguments are different streams even
 /// within one turn, and two lanes' text are different streams within one turn.
+///
+/// Shared with [`super::mirror`] rather than copied. The mirror coalesces the
+/// same three streams under the same release rule, and two definitions of
+/// "same stream" would eventually disagree about which run a fragment joins.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Stream {
+pub(super) enum Stream {
     Text { session_id: String, turn_id: String, agent_id: Option<String> },
     Thinking { session_id: String, turn_id: String, agent_id: Option<String> },
     ToolInput { session_id: String, turn_id: String, tool_use_id: String },
@@ -79,7 +83,7 @@ impl Stream {
     /// Rebuild the event this stream's accumulated fragment stands for. The
     /// result is indistinguishable from one the transport could have emitted,
     /// which is what lets every consumer stay unaware that pacing exists.
-    fn rejoin(self, text: String) -> ChatEvent {
+    pub(super) fn rejoin(self, text: String) -> ChatEvent {
         match self {
             Stream::Text { session_id, turn_id, agent_id } => {
                 ChatEvent::TextDelta { session_id, turn_id, text, agent_id }
@@ -100,7 +104,7 @@ impl Stream {
 /// release and pass through. Deliberately exhaustive over the three streaming
 /// variants rather than a catch-all: a fourth added later should be a decision
 /// here, not silently unthrottled.
-fn split(event: &ChatEvent) -> Option<(Stream, String)> {
+pub(super) fn split(event: &ChatEvent) -> Option<(Stream, String)> {
     match event {
         ChatEvent::TextDelta { session_id, turn_id, text, agent_id } => Some((
             Stream::Text {
