@@ -234,20 +234,22 @@ pub(crate) fn link_shared(container: &Path, worktree: &Path) {
 /// attaching a remote branch works), else origin's default. Folder name is
 /// collision-safe (see
 /// `pick_worktree_folder`); shared `.shared/` files are linked in afterward.
+/// Answers the worktree's folder path, so the caller can move the selection onto
+/// the thing it just made (a reused worktree answers its existing path).
 #[tauri::command]
-pub async fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Result<(), String> {
+pub async fn create_worktree(app: AppHandle, repo_path: String, branch: String) -> Result<String, String> {
     crate::exec::git_write("create_worktree", repo_path.clone(), move || create_worktree_body(app, repo_path, branch)).await
 }
 
-pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: String) -> Result<(), String> {
+pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: String) -> Result<String, String> {
     let branch = branch.trim().to_string();
     if branch.is_empty() {
         return Err("Branch name is empty".into());
     }
 
     // Already checked out somewhere: reuse it rather than make a duplicate.
-    if branch_has_worktree(&repo_path, &branch) {
-        return Ok(());
+    if let Some(existing) = list_worktrees_body(repo_path.clone())?.into_iter().find(|w| w.branch == branch) {
+        return Ok(existing.path);
     }
 
     let target = create_worktree_in(&repo_path, &branch, Path::new(&repo_path))?;
@@ -256,7 +258,7 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
     // does not surface them as historical.
     let _ = crate::sessions::adopt(&target_str);
     let _ = app.emit("config://changed", ());
-    Ok(())
+    Ok(target_str)
 }
 
 /// The creation core, parameterised on where the folder goes: `container` is
