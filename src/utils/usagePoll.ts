@@ -11,6 +11,10 @@
 // nothing runs while the window is hidden (there is no strip to update), the
 // background tick is slow, and every trigger shares one floor so a storm of
 // focus events is still one read.
+//
+// The cost is the process, not the read. Claude's account-token rung is one
+// request carrying a token that is already in hand, so the rules that exist to
+// ration a process do not apply to it: see `spawns`.
 
 /** The background cadence while a Codex chat is open. A five-hour window moves
  *  by a percent every few minutes, so anything faster spends a process to learn
@@ -53,6 +57,11 @@ export type PollContext = {
   /** Whether a chat on this agent is open, which is the only thing that makes
    *  the background tick worth running. */
   chatOpen: boolean;
+  /** Whether this account's read spawns a process. The one that does not is a
+   *  single request against a token already in memory, and holding that to a
+   *  chat being open is what left the strip dimmed for want of a read nobody
+   *  would have noticed. */
+  spawns: boolean;
 };
 
 export function mayPoll(
@@ -74,7 +83,8 @@ export function mayPoll(
   if (clock.blockedUntil !== null && now < clock.blockedUntil) return false;
   // The background tick is the only one that needs a reason to exist; focus and
   // hover are somebody looking at the strip, and it is on screen either way.
-  if (trigger === "interval" && !ctx.chatOpen) return false;
+  // The reason is the process, so a read that spawns none does not need one.
+  if (trigger === "interval" && ctx.spawns && !ctx.chatOpen) return false;
   if (clock.lastPollAt === null) return true;
 
   const since = now - clock.lastPollAt;

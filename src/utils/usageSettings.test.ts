@@ -51,12 +51,16 @@ const {
   usageUnavailableReason,
   usageWarnAt,
 } = await import("./usageSettings");
+// The real store, not a stand-in: what "already read on this rung" means is a
+// property of the readings it holds, and a fake would be free to disagree.
+const { resetUsageStoreForTests, seedUsageStoreForTests } = await import("./usageStore");
 
 /** The last thing written, in the shape the store would hold it. */
 const lastSaved = () => bench.saved[bench.saved.length - 1]?.agent?.usage ?? {};
 const account = (agentId: string, id = "default") => lastSaved()[agentId]?.accounts?.[id];
 
 beforeEach(() => {
+  resetUsageStoreForTests();
   bench.usage = {};
   bench.saved = [];
   bench.warnAtFraction = 0.8;
@@ -123,6 +127,40 @@ describe("the rung the chips imply", () => {
 
     bench.usage = { claude: { accounts: { default: { windows: ["five_hour", "model_week"] } } } };
     expect(usageRungFor("claude", null)).toBe("token");
+  });
+
+  // The chip authorises the first read. Once the Keychain has answered, reading
+  // it again asks nobody for anything, and dropping to a rung with no read path
+  // is how a titlebar row ends up stale with a live account behind it.
+  it("keeps the account token once that read has already answered", () => {
+    bench.usage = { claude: { accounts: { default: { windows: ["five_hour", "seven_day"] } } } };
+    expect(usageRungFor("claude", null)).toBe("sessions");
+
+    seedUsageStoreForTests("claude", null, [
+      { kind: "seven_day_fable", utilization: 0.28, resetsAt: null, status: null, reachedType: null, source: "token" },
+    ]);
+
+    expect(usageRungFor("claude", null)).toBe("token");
+    // Per account, like everything else here: the other login was never read.
+    expect(usageRungFor("claude", "work")).toBe("sessions");
+  });
+
+  it("still reads nothing for an account turned off, however it was read before", () => {
+    // An empty list is the user's own no, and outranks any permission already
+    // given: "show me nothing" cannot mean "keep asking anyway".
+    bench.usage = { claude: { accounts: { default: { windows: [] } } } };
+    seedUsageStoreForTests("claude", null, [
+      { kind: "seven_day_fable", utilization: 0.28, resetsAt: null, status: null, reachedType: null, source: "token" },
+    ]);
+    expect(usageRungFor("claude", null)).toBe("off");
+  });
+
+  it("does not climb for a reading that came off a cheaper rung", () => {
+    bench.usage = { claude: { accounts: { default: { windows: ["five_hour", "seven_day"] } } } };
+    seedUsageStoreForTests("claude", null, [
+      { kind: "seven_day", utilization: 0.31, resetsAt: null, status: null, reachedType: null, source: "sessions" },
+    ]);
+    expect(usageRungFor("claude", null)).toBe("sessions");
   });
 
   it("offers the model window only where a rung can answer one", () => {
