@@ -89,6 +89,16 @@ pub fn log_path(id: &str) -> PathBuf {
     dir().join(format!("{id}.jsonl"))
 }
 
+/// Where one session's figures live: the sidecar the mirror writes beside its
+/// log, holding the prompt count a listing wants without reading a turn of it.
+///
+/// Bare `.meta`, on the same extension rule as [`log_path`], and derived
+/// through the mirror's own `meta_of` so this is not a second answer to where
+/// the sidecar is.
+pub fn meta_path(id: &str) -> PathBuf {
+    super::mirror::meta_of(&log_path(id))
+}
+
 /// Sway's id for a session the *agent* named.
 ///
 /// Deterministic, so the same agent session listed on two different days is one
@@ -141,16 +151,19 @@ pub fn forget(path: &Path) -> Result<(), String> {
             path.display()
         ));
     }
-    // The event log goes with the locator. It is Sway's own derived copy of a
-    // conversation, so leaving it behind would keep a chat the user deleted
-    // readable, and orphan a file nothing will ever clean up.
+    // The event log and its sidecar go with the locator. They are Sway's own
+    // derived copy of a conversation, so leaving them behind would keep a chat
+    // the user deleted readable, and orphan files nothing will ever clean up.
     if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
         let log = log_path(stem);
-        // And the half-written rebuild a crash mid-`replace` can leave beside
-        // it. Invisible to `all` either way, but nothing else would ever
-        // collect it.
+        let meta = meta_path(stem);
+        // And the half-written swaps a crash mid-rename can leave beside them.
+        // Invisible to `all` either way, but nothing else would ever collect
+        // them.
         let _ = std::fs::remove_file(log.with_extension("jsonl.tmp"));
+        let _ = std::fs::remove_file(meta.with_extension("meta.tmp"));
         let _ = std::fs::remove_file(log);
+        let _ = std::fs::remove_file(meta);
     }
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -347,10 +360,10 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 mod tests {
     use super::*;
 
-    /// **Forgetting a session forgets both of its files**, and the log is
-    /// invisible to the scan while it lives. A `.jsonl` read as a locator would
-    /// be one phantom row per chat that ever streamed; a `.jsonl` left behind
-    /// would keep a deleted conversation readable.
+    /// **Forgetting a session forgets all three of its files**, and neither
+    /// derived one is visible to the scan while it lives. A `.jsonl` or a
+    /// `.meta` read as a locator would be a phantom row per chat that ever
+    /// streamed; either left behind would keep a deleted conversation readable.
     #[test]
     fn forgetting_a_session_removes_its_log_and_the_scan_never_sees_one() {
         let dir = std::env::temp_dir().join(format!("sway-acp-log-{}", std::process::id()));
@@ -373,17 +386,24 @@ mod tests {
         // assertion below actually tests.
         let decoy = AcpSession { id: "log-scan-decoy".to_string(), ..session.clone() };
         std::fs::write(log_path("log-scan"), serde_json::to_string(&decoy).unwrap()).unwrap();
+        let decoy = AcpSession { id: "log-scan-meta-decoy".to_string(), ..session.clone() };
+        std::fs::write(meta_path("log-scan"), serde_json::to_string(&decoy).unwrap()).unwrap();
 
         // Scoped to the ids this test wrote: `use_dir_for_tests` is one global
         // for the whole process, so counting every row would count a concurrent
         // test's as well.
         let mine: Vec<String> =
             all().into_iter().map(|s| s.id).filter(|id| id.starts_with("log-scan")).collect();
-        assert_eq!(mine, vec!["log-scan".to_string()], "the log must not be scanned as a locator");
+        assert_eq!(
+            mine,
+            vec!["log-scan".to_string()],
+            "neither derived file may be scanned as a locator"
+        );
 
         forget(&locator_path("log-scan")).expect("forgetting should succeed");
         assert!(!locator_path("log-scan").exists(), "the locator is gone");
         assert!(!log_path("log-scan").exists(), "and so is the log beside it");
+        assert!(!meta_path("log-scan").exists(), "and the sidecar with it");
     }
 
     #[test]

@@ -31,6 +31,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use serde::{Deserialize, Serialize};
+
 use super::model::ChatEvent;
 use super::pacing::{split, Stream};
 
@@ -57,8 +59,48 @@ pub trait LogWriter: Send {
     /// Replace the whole log with these lines, as one atomic swap.
     fn replace(&mut self, lines: &[String]) -> Result<(), String>;
 
+    /// Replace the sidecar beside the log with this body.
+    fn meta(&mut self, body: &str) -> Result<(), String>;
+
     /// Force what has been appended out to disk.
     fn sync(&mut self) -> Result<(), String>;
+}
+
+/// The figures a reader wants without parsing the conversation.
+///
+/// A prompt count is the one number the sidebar and the chat's status strip
+/// both ask for, and deriving it from the log would mean reading every turn of
+/// every listed session to draw a list. So the mirror, which already knows the
+/// answer as it writes, writes it down beside the log.
+///
+/// **`.meta`, not `.json`**, for the same reason the log is `.jsonl`:
+/// `acp_sessions::all` lists this directory by extension.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogMeta {
+    /// Human prompts in the log, which is to say `userMessage` lines.
+    #[serde(default)]
+    pub prompt_count: u32,
+    /// Epoch seconds when Sway last saw a prompt go past on this session, or 0
+    /// when it never has. **Stamped from the clock**, because no `ChatEvent`
+    /// carries a time of its own; a replay therefore leaves it where it was
+    /// rather than dating an old conversation to the moment it was reopened.
+    #[serde(default)]
+    pub last_prompt_ts: u64,
+    /// The model the session last reported. Observed on `SessionStarted`, which
+    /// [`keep`] skips, so it cannot be recovered from the log.
+    #[serde(default)]
+    pub model: String,
+}
+
+/// The sidecar that belongs to a session file.
+///
+/// **The one derivation, called by everything that needs the path.** The log
+/// and the locator share a stem and a directory, so either resolves onto the
+/// same sidecar; that is a coincidence worth relying on but not worth spelling
+/// out three times, since three spellings of it would eventually disagree about
+/// an id with a dot in it.
+pub fn meta_of(file: &Path) -> PathBuf {
+    file.with_extension("meta")
 }
 
 /// The real thing: one append handle, opened on first use and kept.
@@ -126,6 +168,19 @@ impl LogWriter for FileLog {
         // read. Dropped here; the next append reopens against the new file.
         self.handle = None;
         Ok(())
+    }
+
+    /// Tmp-then-rename like [`Self::replace`], and for the sharper version of
+    /// the same reason: the sidecar is one small object, so a reader catching a
+    /// partial write gets a parse failure rather than a short count.
+    fn meta(&mut self, body: &str) -> Result<(), String> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let meta = meta_of(&self.path);
+        let tmp = meta.with_extension("meta.tmp");
+        std::fs::write(&tmp, body.as_bytes()).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &meta).map_err(|e| e.to_string())
     }
 
     fn sync(&mut self) -> Result<(), String> {
@@ -235,6 +290,11 @@ struct State {
     /// Whether any of that was conversation, which is what decides between a
     /// rebuild and leaving the file untouched.
     brought_conversation: bool,
+    /// What the sidecar will say at the next write. Seeded from the sidecar
+    /// already on disk, or a session whose replay brings nothing back would
+    /// count its new turns up from zero and understate a conversation the log
+    /// still holds in full.
+    meta: LogMeta,
 }
 
 /// One session's log, written from the sink wrapper every live event passes.
@@ -259,7 +319,10 @@ impl Mirror {
     /// log rather than double it. A spawn that turns out to be a `session/new`
     /// brings no conversation and so leaves the file alone.
     pub fn at(path: PathBuf) -> Self {
-        Self::with_writer(Box::new(FileLog::at(path)))
+        let seed = read_meta(&meta_of(&path)).unwrap_or_default();
+        let mirror = Self::with_writer(Box::new(FileLog::at(path)));
+        lock(&mirror.state).meta = seed;
+        mirror
     }
 
     pub fn with_writer(writer: Box<dyn LogWriter>) -> Self {
@@ -293,6 +356,20 @@ impl Mirror {
     /// One event on its way past, from the sink wrapper.
     pub fn note(&self, event: &ChatEvent) {
         let mut state = lock(&self.state);
+
+        // Both figures are caught here, before `keep` gets a say. `keep` skips
+        // `SessionStarted`, the only frame carrying the model, and no event
+        // carries a wall clock at all, so neither is recoverable from the log.
+        match event {
+            ChatEvent::SessionStarted { model, .. } => state.meta.model = model.clone(),
+            // Live prompts only. A replay is the agent handing back turns that
+            // already happened, and stamping those would date the whole
+            // conversation to the moment the tab was reopened.
+            ChatEvent::UserMessage { .. } if !state.replaying => {
+                state.meta.last_prompt_ts = now_secs()
+            }
+            _ => {}
+        }
 
         // The end of a replay. `SessionStarted` is what the transport emits once
         // the load has answered, so everything before it was the conversation.
@@ -353,7 +430,13 @@ impl Mirror {
             return;
         }
         let lines = encode(&replayed);
-        let _ = lock(&self.writer).replace(&lines);
+        if lock(&self.writer).replace(&lines).is_err() {
+            return;
+        }
+        // Set, not added: the replay is the whole conversation, so its prompts
+        // are the log's prompts however many the file held a moment ago.
+        state.meta.prompt_count = prompts_in(&replayed);
+        self.write_meta(state);
     }
 
     /// Write the held fragment out as the event it stands for.
@@ -371,13 +454,27 @@ impl Mirror {
             return;
         }
         let lines = encode(&turn);
-        let mut writer = lock(&self.writer);
-        if writer.append(&lines).is_err() {
-            return;
+        {
+            let mut writer = lock(&self.writer);
+            if writer.append(&lines).is_err() {
+                return;
+            }
+            if sync {
+                let _ = writer.sync();
+            }
         }
-        if sync {
-            let _ = writer.sync();
-        }
+        state.meta.prompt_count += prompts_in(&turn);
+        self.write_meta(state);
+    }
+
+    /// Put the figures beside the log, after the log itself is on disk.
+    ///
+    /// Written at each of the two write points rather than per event: it is the
+    /// same one small object every time, and a sidecar ahead of the log it
+    /// describes would promise a turn a reader cannot find.
+    fn write_meta(&self, state: &State) {
+        let Ok(body) = serde_json::to_string(&state.meta) else { return };
+        let _ = lock(&self.writer).meta(&body);
     }
 }
 
@@ -406,6 +503,28 @@ fn push(state: &mut State, event: ChatEvent) {
     } else {
         state.turn.push(event);
     }
+}
+
+/// Human prompts among these events, which is the log's whole definition of one.
+fn prompts_in(events: &[ChatEvent]) -> u32 {
+    events.iter().filter(|e| matches!(e, ChatEvent::UserMessage { .. })).count() as u32
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// The figures beside a log, or `None` when there is no sidecar to read.
+///
+/// A sidecar that will not parse reads the same as one that is absent. It is
+/// derived from the log and rewritten at the next turn, so the honest answer
+/// for a torn one is "not known yet" rather than an error a caller would have
+/// to render.
+pub fn read_meta(path: &Path) -> Option<LogMeta> {
+    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
 }
 
 /// Read a log back as the events it recorded, plus the number of lines that
@@ -469,6 +588,9 @@ pub(crate) mod recorder {
         pub appends: usize,
         pub replaces: usize,
         pub syncs: usize,
+        /// The sidecar body of each write, so a test can assert what a reader
+        /// would find without going near a filesystem.
+        pub metas: Vec<String>,
         open: bool,
     }
 
@@ -489,6 +611,11 @@ pub(crate) mod recorder {
         pub fn count(&self, kind: &str) -> usize {
             self.kinds().iter().filter(|k| *k == kind).count()
         }
+
+        /// What the last sidecar write said, as a reader would parse it.
+        pub fn meta(&self) -> Option<LogMeta> {
+            lock(&self.0).metas.last().and_then(|body| serde_json::from_str(body).ok())
+        }
     }
 
     impl LogWriter for Handle {
@@ -507,6 +634,10 @@ pub(crate) mod recorder {
             guard.replaces += 1;
             guard.lines = lines.to_vec();
             guard.open = false;
+            Ok(())
+        }
+        fn meta(&mut self, body: &str) -> Result<(), String> {
+            lock(&self.0).metas.push(body.to_string());
             Ok(())
         }
         fn sync(&mut self) -> Result<(), String> {
@@ -804,6 +935,86 @@ mod tests {
         drop(mirror);
 
         assert_eq!(log.kinds(), vec!["userMessage", "textDelta"]);
+    }
+
+    /// **The figures land beside the log, on a real filesystem.** The sidecar
+    /// exists so a listing can say how many prompts a session holds without
+    /// reading a turn of it, so what a reader would actually find is the thing
+    /// worth asserting.
+    #[test]
+    fn three_flushed_turns_leave_their_count_beside_the_log() {
+        let dir = std::env::temp_dir().join(format!("sway-mirror-meta-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let log = dir.join("s1.jsonl");
+
+        let before = now_secs();
+        let mirror = Mirror::at(log.clone());
+        mirror.note(&started());
+        for turn in ["t1", "t2", "t3"] {
+            mirror.note(&user(turn, "ask"));
+            mirror.note(&text(turn, "answer"));
+            mirror.note(&turn_done(turn));
+        }
+
+        let meta = read_meta(&dir.join("s1.meta")).expect("the sidecar is beside the log");
+        assert_eq!(meta.prompt_count, 3);
+        assert_eq!(meta.model, "m", "observed on SessionStarted, which the log itself skips");
+        assert!(meta.last_prompt_ts >= before, "the last prompt is stamped from the clock");
+        assert!(!dir.join("s1.meta.tmp").exists(), "the swap leaves nothing behind");
+    }
+
+    /// **A replay sets the count, it does not add to it.** The replay replaces
+    /// the whole log, so a count carried over from the turns it just overwrote
+    /// would double every reopened conversation. Its timestamps do not move
+    /// either: those turns already happened, and dating them to the reopen
+    /// would make every restored session look like it was just used.
+    #[test]
+    fn a_replay_sets_the_count_rather_than_adding_to_it() {
+        let (mirror, log) = mirror();
+        for turn in ["t1", "t2", "t3"] {
+            mirror.note(&user(turn, "ask"));
+            mirror.note(&turn_done(turn));
+        }
+        let live = log.meta().expect("three live turns wrote a sidecar");
+        assert_eq!(live.prompt_count, 3);
+
+        mirror.expect_replay();
+        for turn in ["r1", "r2"] {
+            mirror.note(&user(turn, "ask"));
+            mirror.note(&text(turn, "answer"));
+        }
+        mirror.note(&started());
+
+        let after = log.meta().expect("the rebuild wrote one too");
+        assert_eq!(after.prompt_count, 2, "the replay is the whole conversation, not an addition");
+        assert_eq!(after.last_prompt_ts, live.last_prompt_ts, "a replayed prompt is not a new one");
+    }
+
+    /// **A reopened session counts on from the sidecar, not from zero.** An
+    /// agent whose replay brings nothing back leaves the log in place, so a
+    /// mirror that started its count at zero would report the new turns alone
+    /// and understate a conversation the file still holds in full.
+    #[test]
+    fn a_reopened_session_counts_on_from_what_the_sidecar_held() {
+        let dir = std::env::temp_dir().join(format!("sway-mirror-seed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let log = dir.join("s1.jsonl");
+
+        let first = Mirror::at(log.clone());
+        first.note(&started());
+        for turn in ["t1", "t2"] {
+            first.note(&user(turn, "ask"));
+            first.note(&turn_done(turn));
+        }
+        drop(first);
+
+        let second = Mirror::at(log.clone());
+        second.note(&started());
+        second.note(&user("t3", "ask"));
+        second.note(&turn_done("t3"));
+
+        let meta = read_meta(&dir.join("s1.meta")).expect("the sidecar survived the reopen");
+        assert_eq!(meta.prompt_count, 3, "two turns on disk plus the one just sent");
     }
 
     /// What the session *is* never reaches the log. Read back into a restored

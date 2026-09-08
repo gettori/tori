@@ -2517,8 +2517,28 @@ fn scan_prompts(text: &str) -> (u32, u64, u64) {
     (count, last_ts, complete)
 }
 
+/// The figures for a session whose `path` is an ACP locator rather than a
+/// transcript: read out of the sidecar the mirror wrote, not counted.
+///
+/// Resolved from the path the listing row already carries, so the sidecar, the
+/// log and the locator cannot be resolved onto three different sessions the way
+/// a second lookup by id could. A session with no sidecar yet reads as zero,
+/// which is what every other "no transcript" answer here is.
+fn acp_prompt_tail(path: &str) -> PromptTail {
+    let meta = crate::chat::mirror::meta_of(Path::new(path));
+    let meta = crate::chat::mirror::read_meta(&meta).unwrap_or_default();
+    PromptTail { count: meta.prompt_count, last_ts: meta.last_prompt_ts }
+}
+
 pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<PromptTail, String> {
     use std::io::{Read, Seek, SeekFrom};
+    // An agent that keeps no transcript Sway can read keeps no file to count,
+    // so the count comes off the mirror's sidecar instead. Gated on the adapter
+    // through `keeps_a_transcript` rather than on `parser_kind_for`, which
+    // answers `ClaudeJsonl` for an agent it has never heard of.
+    if !crate::chat::commands::keeps_a_transcript(&agent) {
+        return Ok(acp_prompt_tail(&path));
+    }
     // See `extract_touched_files` on why the kind is matched exhaustively.
     match agents::parser_kind_for(&agent) {
         Some(agents::ParserKind::ClaudeJsonl) => {}
@@ -3994,6 +4014,30 @@ mod tests {
         let path = p.to_str().unwrap().to_string();
         assert_eq!(classify_tail(&tail_turns(&path, "claude")), TailState::Done);
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
+    }
+
+    /// **An ACP session's prompts are read, not counted**, out of the sidecar
+    /// the mirror wrote beside its locator. And the gate is the adapter: the
+    /// same path handed to a claude-shaped agent reads the file it names as a
+    /// transcript and finds no prompts in it, rather than answering one agent's
+    /// history out of another agent's store.
+    #[test]
+    fn an_acp_session_reads_its_prompt_count_out_of_the_sidecar() {
+        let locator = tmp_file("acp_tail.json", "{\"id\":\"acp_tail\"}\n");
+        std::fs::write(
+            locator.with_extension("meta"),
+            "{\"prompt_count\":3,\"last_prompt_ts\":1700000000,\"model\":\"gpt-5.6-terra\"}",
+        )
+        .unwrap();
+        let path = locator.to_str().unwrap().to_string();
+
+        let acp = session_prompt_tail_body(path.clone(), "codex".into()).unwrap();
+        assert_eq!(acp.count, 3);
+        assert_eq!(acp.last_ts, 1_700_000_000);
+
+        let claude = session_prompt_tail_body(path, "claude".into()).unwrap();
+        assert_eq!(claude.count, 0, "a claude agent must never read the ACP store's sidecar");
+        std::fs::remove_dir_all(locator.parent().unwrap()).ok();
     }
 
     /// A file that grew since the last call is counted from where the last one
