@@ -8,8 +8,9 @@
 // **The chips are the whole control.** There is no source ladder any more. Which
 // windows an account shows is also how deep Sway reads for it: nothing lit means
 // nothing is read, the two generic windows come off the rung the adapter offers
-// for free, and the model-scoped weekly window is the one thing only the account
-// token can answer. Lighting that chip is the opt-in, and it is the only one.
+// for free, and the weekly windows past those two (one scoped to a model, one to
+// whatever else the endpoint scopes a week to) are what only the account token
+// can answer. Lighting either of those is the opt-in, and they are the only two.
 // It is bought rather than rented: an account already read on the token rung
 // keeps reading there when the chip goes out, since the Keychain that read
 // would open is one it has already opened.
@@ -20,7 +21,7 @@
 // undoes it.
 import { findAdapter, type UsageRung } from "./agents";
 import { asProfileId } from "./agentHealth";
-import { MODEL_FAMILIES, scopedModel } from "./chatRateLimit";
+import { MODEL_FAMILIES, scopedModel, weekQualifier } from "./chatRateLimit";
 import { catalogFor } from "./modelCatalog";
 import { windowsFor } from "./usageStore";
 import {
@@ -38,18 +39,25 @@ import {
  * the name arrives only with the first successful read, and the setting has to
  * exist before that read to authorise it.
  */
-export type WindowChip = "five_hour" | "seven_day" | "model_week";
+export type WindowChip = "five_hour" | "seven_day" | "model_week" | "week_other";
 
 /** What an account shows when nobody has said otherwise: the two windows every
  *  source reports for free. */
 export const GENERIC_CHIPS: WindowChip[] = ["five_hour", "seven_day"];
 
-const CHIPS: WindowChip[] = [...GENERIC_CHIPS, "model_week"];
+const CHIPS: WindowChip[] = [...GENERIC_CHIPS, "model_week", "week_other"];
 
-/** Which chip governs a window kind. Everything a deep read adds beyond the two
- *  generic windows arrives on the same rung and is governed together. */
+/**
+ * Which chip governs a window kind.
+ *
+ * Everything a deep read adds beyond the two generic windows arrives on the same
+ * rung, but not under the same switch: a week scoped to a model is a thing you
+ * pick and run, and a week scoped to overage is not. Folded together, lighting
+ * Fable put an overage bar in the titlebar nobody asked for.
+ */
 export function chipFor(kind: string): WindowChip {
-  return kind === "five_hour" || kind === "seven_day" ? kind : "model_week";
+  if (kind === "five_hour" || kind === "seven_day") return kind;
+  return weekQualifier(kind) === null ? "model_week" : "week_other";
 }
 
 /** The rungs this adapter has a read path for, in the order the ladder climbs.
@@ -120,7 +128,8 @@ export function usageRungFor(agentId: string, profile: string | null): UsageSour
   const rungs = declaredRungs(agentId);
   const windows = accountWindows(agentId, profile);
   if (rungs.length === 0 || windows.length === 0) return "off";
-  if (rungs.includes("token") && (windows.includes("model_week") || tokenAlreadyRead(agentId, profile))) {
+  const deep = windows.some((w) => w === "model_week" || w === "week_other");
+  if (rungs.includes("token") && (deep || tokenAlreadyRead(agentId, profile))) {
     return "token";
   }
   return rungs.find((r) => r !== "token") ?? "off";

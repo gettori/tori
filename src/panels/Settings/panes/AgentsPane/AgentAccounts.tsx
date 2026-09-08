@@ -221,6 +221,10 @@ function chipsFor(agentId: string, profile: string | null): Chip[] {
   const ids: WindowChip[] = offersModelWindow(agentId)
     ? ["five_hour", "seven_day", "model_week"]
     : ["five_hour", "seven_day"];
+  // A week the endpoint scoped to something that is not a model. Listed only
+  // once one has been read: unlike the model week, whose chip is how you ask for
+  // the read in the first place, this one is named by the answer.
+  if (readings.some((w) => chipFor(w.kind) === "week_other")) ids.push("week_other");
   return ids.map((id) => {
     // The scoped weekly window first, where a deep read returned more than one
     // window: an account with both a Fable week and an extra-usage pot is one
