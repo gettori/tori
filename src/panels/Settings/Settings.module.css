@@ -103,8 +103,7 @@
   .railCol {
     display: flex;
     flex-direction: column;
-    width: calc(206px * var(--ui-scale));
-    gap: var(--sway-space-4);
+    width: calc(228px * var(--ui-scale));
     flex: none;
     min-height: 0;
     background: transparent;
@@ -156,7 +155,7 @@
 
   /* Uppercase mono, so it names a group rather than reading as pressable. */
   .railGroup {
-    padding: var(--sway-space-4);
+    padding: var(--sway-space-6) var(--sway-space-4) var(--sway-space-5);
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-2xs);
     font-weight: 600;
@@ -165,7 +164,7 @@
     color: var(--fg-subtle);
   }
   .railGroup:first-child {
-    padding-top: 0;
+    padding-top: var(--sway-space-5);
   }
 
   .railItem {
