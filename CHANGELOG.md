@@ -8,6 +8,109 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.909.0-alpha
+
+Settings grew a real page: every account's own files, listed, opened, created
+and removed from where the accounts already are. Codex sessions keep their
+conversation across a restart. And one selection recipe now runs through the
+sidebar, the settings rail and the tab strip.
+
+### Agent files
+
+- Settings > Agents lists what each account's home actually holds: the
+  instructions file, skills, commands, subagents, rules and settings. The
+  adapter names those files itself, so what a home contains is the agent's own
+  answer rather than a list hardcoded in the UI.
+- Each row says whether the thing is on disk, not created, or a link, and where
+  a broken link points. A folder answers with how many files it holds and lists
+  them.
+- A row is a summary you open rather than everything at once. The header
+  carries the kind glyph, the name, the path relative to the account home and
+  what is there; the absolute path moves into the body, where it is not the
+  same home repeated six times.
+- Rows open in the editor, reveal in Finder, create from blank with an inline
+  name, and hand their path to a chat draft. Every action that has to end in a
+  tab is off without a selection, and says why.
+- A child opens the file it actually is. A command is `commands/<name>.md` and
+  a skill is `skills/<name>/SKILL.md`, and the editor used to be handed the
+  folder. Children remove too, a skill recursively: a `skills/<name>/` left
+  behind with its SKILL.md gone is a half-skill the agent may still load.
+- Models and Files read the same way now. The section keeps its own name and
+  the accounts sit past it as tabs, one at a time. Models used to lose the word
+  "Models" the moment a second account existed, and Files used to stack the
+  same six rows per account down the page.
+
+### Codex sessions
+
+- An ACP agent keeps its conversation privately and replays it only to a
+  session that is already running, so a Codex tab restored after a restart
+  opened blank. Sway mirrors the events to a log of its own as they go past,
+  and a restored chat reads its conversation back from there.
+- Your own turn is in that stream. Codex answers with no copy of the prompt, so
+  anything reading the log later saw the assistant talking to itself. Sway
+  writes down the prompt it sent before the request goes out, and drops an
+  agent's echo where there is one.
+- The sidebar and the chat's status strip get a true prompt count for an ACP
+  session, written down by the mirror as it goes rather than parsed back out of
+  every turn of every session on screen.
+
+### Quota
+
+- A week scoped to something you cannot pick and run, like the overage week,
+  gets a chip of its own instead of riding the model chip. Turning Fable on
+  used to put an overage bar in the titlebar nobody asked for.
+- Non-model weekly windows stop being read as models. The endpoint spells
+  `seven_day_overage_included` exactly like a model week, so it showed up as a
+  model called "Overage included", and a Max capture carries two more of them.
+- The titlebar keeps reading the account it is showing. Turning the model bar
+  off used to strand that account on a rung with no read path at all, and the
+  background poll refused to run unless a chat was open.
+
+### Spaces
+
+- A folder says which branch it means. In a plain repo every branch-unit lives
+  in the repository folder, so a lookup keyed on the folder alone always
+  answered with the first row: coming back to a space lit the wrong branch, a
+  session picked by id landed beside itself, and a terminal tab click could
+  raise a checkout confirm for a branch nobody named.
+- Creating a worktree or a branch lands the selection on it, so the terminal
+  and the editor stop pointing at the old folder. Attaching an existing branch
+  still does not, since it checks nothing out.
+
+### Chat
+
+- Ctrl+C empties the composer. A prompt abandoned mid-sentence had to be
+  selected and deleted, which is the one editing gesture a shell prompt never
+  asks for. The file chips stay, each with its own x.
+- A session opened from the sidebar gets its permission mode and its effort
+  back. Only a restore carried the pick, so clicking a session in the sidebar
+  spawned a child with neither, and the Ask pill turned up over a conversation
+  that had been set to something else.
+- The transcript's banner follows the account's own Warn at rather than the
+  global one, so the accounts card and the chat stop disagreeing about where
+  the line is.
+- The steer control quotes the cost and not how it was measured. The trial
+  count and the CLI version are why the number is trusted, not something the
+  person waiting on a steer has any use for.
+
+### Look and feel
+
+- One selection recipe everywhere: the brand bar down the full left edge over a
+  wash that fades out to the right, square on the bar's side so no corner clips
+  it into a lozenge. The settings rail took the sidebar's, and a tab pill takes
+  it turned ninety degrees, bar across the top edge and the wash fading down,
+  because a strip marks along the edge its pane hangs from.
+- Row hovers fade the way their selections do, in the sidebar's project, branch
+  and shells rows and in the feature row, which had been lighting up flat in a
+  lighter grey than everything around it.
+- The settings fields wear one skin: Select's frame, height and hairline on
+  every field, no native spinners on the number fields, and a stepper whose
+  number is coloured rather than left black by the browser default.
+- The input surface sits on the card's own hue instead of a navy nearly twice
+  as saturated, so a field stops reading as a blue chip beside an amber switch.
+- Every settings pane opens on the same line, and the rail's group headings
+  have air above them.
+
 ## 26.908.0-alpha
 
 The sidebar stops asking two questions in two places. The mode switch moved
