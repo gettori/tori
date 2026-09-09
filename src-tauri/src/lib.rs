@@ -470,6 +470,7 @@ pub fn run() {
             model::model_context_caps,
             agent_config::agent_config_files,
             agent_config::agent_config_new,
+            agent_config::agent_config_delete,
             launch::open_in_vscode,
             launch::open_in_ghostty,
             launch::reveal_in_finder,

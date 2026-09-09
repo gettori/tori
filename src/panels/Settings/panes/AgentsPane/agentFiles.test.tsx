@@ -73,7 +73,11 @@ const files = (over: Partial<ConfigFilesView> = {}): ConfigFilesView => ({
           path: "/home/me/.claude/skills",
           state: "symlink",
           target: "/home/me/.dotfiles/skills",
-          children: ["alpha", "beta"],
+          children: [
+            { name: "alpha", path: "/home/me/.claude/skills/alpha/SKILL.md" },
+            // A skill folder with no SKILL.md in it: there is nothing to open.
+            { name: "beta", path: null },
+          ],
           newNameHint: "skill-name",
         }),
         entry({
@@ -284,7 +288,22 @@ describe("opening a file from a row", () => {
     await expand(r, "Skills");
     fireEvent.click(r.getByRole("button", { name: "alpha" }));
 
-    expect(seen).toEqual([{ path: "/home/me/.claude/skills/alpha" }]);
+    // The file inside the folder, not the folder. Handing the editor a
+    // directory is "Is a directory (os error 21)" in a tab.
+    expect(seen).toEqual([{ path: "/home/me/.claude/skills/alpha/SKILL.md" }]);
+  });
+
+  // Nothing in the folder is the skill, and picking some other file would open
+  // the wrong one exactly when the folder is malformed.
+  it("offers no opener for a child with no file to open", async () => {
+    const seen = opened();
+    const r = await open(mount());
+
+    await expand(r, "Skills");
+    const beta = r.getByRole("button", { name: "beta" });
+    expect((beta as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(beta);
+    expect(seen).toEqual([]);
   });
 
   // Shells, and a Feature with no present member, both have a Selection and no
@@ -410,6 +429,86 @@ describe("creating a file from a row", () => {
 
     expect(r.queryByRole("button", { name: "New" })).toBeNull();
     expect(r.getByRole("button", { name: "Reveal in Finder" })).toBeTruthy();
+  });
+});
+
+describe("removing a child", () => {
+  // A skill is a folder and this takes the folder, so a stray click on a chip
+  // in a settings panel must not be enough on its own.
+  it("asks before it deletes, naming the absolute path", async () => {
+    const r = await open(mount());
+
+    await expand(r, "Skills");
+    fireEvent.click(r.getByRole("button", { name: "Remove alpha" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("/home/me/.claude/skills/alpha");
+    expect(dialog.textContent).toContain("cannot be undone");
+    expect(invoked.mock.calls.some((c) => c[0] === "agent_config_delete")).toBe(false);
+  });
+
+  it("deletes by the name on disk and re-reads the list", async () => {
+    const r = await open(mount());
+    const before = invoked.mock.calls.filter((c) => c[0] === "agent_config_files").length;
+
+    await expand(r, "Skills");
+    fireEvent.click(r.getByRole("button", { name: "Remove alpha" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+
+    await waitFor(() =>
+      expect(invoked).toHaveBeenCalledWith("agent_config_delete", {
+        adapterId: "claude",
+        profileId: "default",
+        entryId: "skills",
+        name: "alpha",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        invoked.mock.calls.filter((c) => c[0] === "agent_config_files").length,
+      ).toBeGreaterThan(before),
+    );
+  });
+
+  it("leaves it alone on cancel", async () => {
+    const r = await open(mount());
+
+    await expand(r, "Skills");
+    fireEvent.click(r.getByRole("button", { name: "Remove alpha" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(invoked.mock.calls.some((c) => c[0] === "agent_config_delete")).toBe(false);
+  });
+
+  // The one action here that touches disk and opens nothing, so the root it
+  // would have opened a tab in is beside the point.
+  it("is offered with no project selected", async () => {
+    const r = await open(mount({ projectRoot: null }));
+
+    await expand(r, "Skills");
+    const drop = r.getByRole("button", { name: "Remove alpha" });
+
+    expect((drop as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows a refusal on the row", async () => {
+    const r = await open(mount());
+    invoked.mockImplementation(async (cmd: string) => {
+      if (cmd === "agent_health" || cmd === "refresh_agent_health") return [health()];
+      if (cmd === "agent_config_files") return files();
+      if (cmd === "agent_config_delete") throw new Error("cannot remove: Permission denied");
+      return [];
+    });
+
+    await expand(r, "Skills");
+    fireEvent.click(r.getByRole("button", { name: "Remove alpha" }));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(r.container.textContent).toContain("Permission denied"));
   });
 });
 
