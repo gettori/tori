@@ -14,7 +14,6 @@ import { copyText } from "../../../../utils/clipboard";
 import {
   chatTier,
   publishedCapabilities,
-  steerCostDetail,
   unavailableCapabilities,
   type PublishedCapability,
 } from "../../../../utils/chatCapabilities";
@@ -787,10 +786,6 @@ export default function AgentDetail(props: {
           <For each={missing()}>{(gap) => <li>{gap.why}</li>}</For>
         </ul>
       </Show>
-      <Show when={steerCostDetail(tier())}>
-        {(detail) => <div class={styles.hint}>{detail()}</div>}
-      </Show>
-
       <div class={styles.groupHead}>
         <span class={styles.groupTitle}>Sessions</span>
         <span class={styles.sectionRule} />

@@ -4,7 +4,6 @@ import {
   chatPlugins,
   chatTier,
   publishedCapabilities,
-  steerCostDetail,
   unavailableCapabilities,
   steerCostLabel,
   stringList,
@@ -150,17 +149,18 @@ describe("the chat tier", () => {
     // Phase 2's spike 5: 1468ms and 5365ms were the fastest and slowest of the
     // three valid trials.
     expect(steerCostLabel(tier)).toBe("1.5-5.4s");
-    const detail = steerCostDetail(tier);
-    expect(detail).toContain("1.5-5.4s");
-    // Provenance, so the figure ages honestly rather than reading as a promise.
-    expect(detail).toContain("3 trials");
-    expect(detail).toContain("claude 2.1.220");
-    expect(detail).toContain("rather than guaranteed");
+  });
+
+  // The trial count and the version measured against are why the figure is
+  // trusted, not something a person waiting on a steer can use. They stay in
+  // the declaration and out of every string.
+  it("quotes the figure and never how it was arrived at", () => {
+    const label = steerCostLabel(chatTier("claude_stream_json"))!;
+    expect(label).not.toMatch(/trial|measured|2\.1\.220/i);
   });
 
   it("has no cost to quote where there is no steer", () => {
     expect(steerCostLabel(NO_CHAT_TIER)).toBeNull();
-    expect(steerCostDetail(NO_CHAT_TIER)).toBeNull();
   });
 });
 

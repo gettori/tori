@@ -416,20 +416,16 @@ export function unavailableCapabilities(tier: ChatTier): MissingCapability[] {
  * Derived from `steerCost` rather than written out, so the figure on screen and
  * the figure recorded by the measurement cannot drift apart. Null when there is
  * nothing to quote.
+ *
+ * The figure only, never how it was arrived at. `trials` and `measuredAgainst`
+ * are why the number is trusted here, not something the person waiting on a
+ * steer has any use for; Settings used to print them and it read like lab notes
+ * left in the product.
  */
 export function steerCostLabel(tier: ChatTier): string | null {
   const cost = tier.steerCost;
   if (!cost) return null;
   return `${(cost.minMs / 1000).toFixed(1)}-${(cost.maxMs / 1000).toFixed(1)}s`;
-}
-
-/** The same figure with its provenance, for a surface that has room to say how
- *  much the number is worth. */
-export function steerCostDetail(tier: ChatTier): string | null {
-  const cost = tier.steerCost;
-  const label = steerCostLabel(tier);
-  if (!cost || !label) return null;
-  return `Measured at ${label} over ${cost.trials} trials against ${cost.measuredAgainst}, so treat it as typical rather than guaranteed.`;
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
