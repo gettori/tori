@@ -1800,6 +1800,12 @@
     align-items: center;
     gap: var(--sway-space-4);
     padding: var(--sway-space-5) var(--sway-space-7);
+    /* One height for every row, whatever it happens to be carrying. The link
+       chip is the reason: it is a box with its own padding and its own icon, so
+       without this the rows that have one stand taller than the rows that do
+       not and the list steps down the page. The chip is sized under this
+       height too, so the floor is what holds rather than a coincidence. */
+    min-height: calc(42px * var(--ui-scale));
     appearance: none;
     background: none;
     border: 0;
@@ -1842,10 +1848,20 @@
     background: var(--neutral-subtle);
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-2xs);
+    /* Its own line box rather than the row's, so the chip measures its text
+       and not the paragraph leading around it. */
+    line-height: 1;
     color: var(--fg-muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Sized here rather than through Lucide's numeric prop, so the glyph tracks
+     --ui-scale the way `Chevron` does. 16px is the icon default and is taller
+     than the 10px text beside it, which is what made the chip drive the row. */
+  .fileLink svg {
+    width: calc(12px * var(--ui-scale));
+    height: calc(12px * var(--ui-scale));
   }
 
   /* Pushed right, and the only thing between the row's identity and the
@@ -1880,24 +1896,49 @@
     gap: var(--sway-space-2);
     margin-bottom: var(--sway-space-4);
   }
+  /* A chip is two controls, which is why it is a span with buttons in it and
+     not a button: opening the thing and removing it are different enough that
+     nesting them would make the smaller one a trap inside the larger. */
   .fileKid {
-    appearance: none;
-    padding: var(--sway-space-2) var(--sway-space-3);
+    display: inline-flex;
+    align-items: center;
     border: var(--sway-border-thin) solid var(--border-default);
     border-radius: var(--sway-radius-sm);
-    background: transparent;
     font-family: var(--sway-font-mono);
     font-size: var(--sway-text-2xs);
+  }
+  .fileKid:hover {
+    border-color: var(--brand-default);
+  }
+  .fileKidOpen,
+  .fileKidDrop {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    font: inherit;
     color: var(--fg-muted);
     cursor: pointer;
   }
-  .fileKid:hover:not(:disabled) {
-    border-color: var(--brand-default);
+  .fileKidOpen {
+    padding: var(--sway-space-2) var(--sway-space-3);
+    border-radius: var(--sway-radius-sm);
+  }
+  .fileKidOpen:hover:not(:disabled) {
     color: var(--fg-default);
   }
-  .fileKid:disabled {
+  .fileKidOpen:disabled {
     color: var(--fg-subtle);
     cursor: default;
+  }
+  /* Dimmer than the name until it is pointed at, so a row of chips reads as
+     names with an affordance rather than as a row of delete buttons. */
+  .fileKidDrop {
+    display: inline-flex;
+    padding: var(--sway-space-2) var(--sway-space-2) var(--sway-space-2) 0;
+    color: var(--fg-subtle);
+  }
+  .fileKidDrop:hover {
+    color: var(--danger-fg);
   }
 
   .fileActions {
