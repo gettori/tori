@@ -15,7 +15,7 @@ use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::env::login_shell;
+use crate::env::{augmented_path, login_path_if_captured, login_shell};
 
 // How long to wait before force-seeding an agent tab's `init` command if the
 // shell has produced no output yet. A shell that prints a prompt/banner trips
@@ -116,10 +116,6 @@ pub struct Session {
     /// a live agent in it.
     agent: Option<String>,
     profile: Option<String>,
-    /// A command tab's runner nonce (see runner.rs), handed back on a
-    /// re-subscribe so a remounted view keeps reading the running command's
-    /// report. `None` for every other kind.
-    runner_nonce: Option<String>,
 }
 
 /// Last-output tracking for the working/needs-you pulse (Finding A, Tier 2):
@@ -259,6 +255,13 @@ fn deliver_init(writer: &SharedWriter, initialized: &Arc<Mutex<bool>>, init: &st
     }
 }
 
+fn command_tab(program: &str, args: &[String], login_path: Option<&str>) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new(program);
+    cmd.args(args);
+    cmd.env("PATH", login_path.map_or_else(augmented_path, str::to_string));
+    cmd
+}
+
 /// The result of asking to open a PTY tab.
 ///
 /// `ownership` is `None` for every tab that never took a claim - a shell tab, a
@@ -266,14 +269,10 @@ fn deliver_init(writer: &SharedWriter, initialized: &Arc<Mutex<bool>>, init: &st
 /// remount of a tab we already hold - and `Some(refusal)` when the claim was
 /// declined and nothing was spawned. A granted claim also reports `None`: there
 /// is nothing for the caller to do about it.
-///
-/// `runner_nonce`: the nonce a command tab's report carries (runner.rs), so the
-/// view can tell it from a replay. `None` for every other kind.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PtySpawnResult {
     pub ownership: Option<crate::chat::ownership::ClaimOutcome>,
-    pub runner_nonce: Option<String>,
 }
 
 // Sync like the rest of the pty family: the IPC thread is what serializes a
@@ -290,13 +289,13 @@ pub fn pty_spawn(
     cwd: String,
     cols: u16,
     rows: u16,
-    // "shell" | "agent" | "command" | "task", every one a login shell. An
-    // agent/task is seeded through `init`; a command tab is seeded with a runner
-    // the backend writes (runner.rs), so it stays a live shell however it ends.
+    // "shell" | "agent" | "command" | "task". A command tab is `program args`
+    // itself; every other kind is a login shell, and an agent/task is seeded
+    // through `init`.
     kind: String,
     // Agent/task tabs: the command line to type into the shell once, after it is
     // ready (e.g. "claude --resume <id>\n"). Delivered backend-once. Ignored
-    // for a command tab, whose init is the runner's.
+    // for a command tab, which has no shell to type into.
     init: Option<String>,
     // Quiet threshold (ms) for this session's pty://activity transitions; an
     // agent tab passes its adapter's own `pty_quiet_ms`, a shell/command tab
@@ -328,7 +327,7 @@ pub fn pty_spawn(
         let guard = state.0.lock().map_err(|e| e.to_string())?;
         if let Some(session) = guard.get(&id) {
             *session.sink.lock().map_err(|e| e.to_string())? = Some(on_output);
-            return Ok(PtySpawnResult { ownership: None, runner_nonce: session.runner_nonce.clone() });
+            return Ok(PtySpawnResult { ownership: None });
         }
     }
 
@@ -364,7 +363,7 @@ pub fn pty_spawn(
             // it" or "end the leftover process" if it is told which tab and
             // which pid, and it cannot parse either back out of a message.
             // Nothing is spawned either way, so the corruption stays blocked.
-            refused => return Ok(PtySpawnResult { ownership: Some(refused), runner_nonce: None }),
+            refused => return Ok(PtySpawnResult { ownership: Some(refused) }),
         }
     }
 
@@ -378,36 +377,39 @@ pub fn pty_spawn(
         })
         .map_err(|e| e.to_string())?;
 
-    // A command tab runs its command through a runner (runner.rs) rather than as
-    // the PTY's own process, so Ctrl-C leaves a live prompt and the runner
-    // reports the status itself. Its init replaces whatever the caller sent.
-    let runner = if kind == "command" { Some(crate::runner::write_runner(&program, &args)?) } else { None };
-    let init = match &runner {
-        Some(r) => Some(crate::runner::init_line(&r.path)),
-        None => init,
+    // A command tab never meets the user's rc, so one that attaches tmux or
+    // execs another shell cannot swallow it, and `pty://exit` is its own status.
+    let is_command = kind == "command";
+    let init = if is_command { None } else { init };
+    let mut cmd = if is_command {
+        // Not `login_path()`: this is the IPC thread, and the probe can take 5 s.
+        command_tab(&program, &args, login_path_if_captured())
+    } else {
+        // A login + interactive shell. `-l` re-sources the user's profile so the
+        // shell owns PATH, and exiting a seeded agent drops back to this prompt.
+        let mut cmd = CommandBuilder::new(login_shell());
+        cmd.arg("-l");
+        cmd.arg("-i");
+        cmd
     };
-    let runner_nonce = runner.map(|r| r.nonce);
-
-    // A login + interactive shell. `-l` re-sources the user's profile so the
-    // shell owns PATH, and exiting a seeded agent, or a command's runner, drops
-    // back to this live prompt.
-    let mut cmd = CommandBuilder::new(login_shell());
-    cmd.arg("-l");
-    cmd.arg("-i");
     cmd.cwd(&cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("TERM_PROGRAM", "Sway");
     cmd.env("TERM_PROGRAM_VERSION", app.package_info().version.to_string());
 
     // Applied last, so a caller pointing an agent at a different home wins over
-    // anything set above. The agent or command inherits it through the login
-    // shell, being a grandchild of this process.
+    // anything set above.
     for (key, value) in env.into_iter().flatten() {
         cmd.env(key, value);
     }
 
-    let child: SharedChild =
-        Arc::new(Mutex::new(pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?));
+    let spawned = pair.slave.spawn_command(cmd).map_err(|e| e.to_string());
+    if is_command && spawned.is_err() {
+        // A command that never started has still ended, and `pty://exit` is the
+        // only place its verdict is read; 127 is what a shell reports here.
+        let _ = app.emit("pty://exit", ExitEvent { id: id.clone(), code: Some(127) });
+    }
+    let child: SharedChild = Arc::new(Mutex::new(spawned?));
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
@@ -540,10 +542,9 @@ pub fn pty_spawn(
             claimed_session,
             agent: agent_id,
             profile,
-            runner_nonce: runner_nonce.clone(),
         },
     );
-    Ok(PtySpawnResult { ownership: None, runner_nonce })
+    Ok(PtySpawnResult { ownership: None })
 }
 
 /// Sync by design, and it must stay that way: keystrokes are fire-and-forget,
@@ -663,7 +664,6 @@ mod tests {
             claimed_session: claimed_session.map(str::to_string),
             agent: agent.map(str::to_string),
             profile: profile.map(str::to_string),
-            runner_nonce: None,
         }
     }
 
@@ -957,6 +957,27 @@ mod tests {
     fn the_exit_code_tells_a_clean_run_from_a_failed_one() {
         assert_eq!(ran("exit 0"), Some(0), "a clean run");
         assert_eq!(ran("exit 3"), Some(3), "a failing run keeps its status");
+    }
+
+    /// A command tab's program sees the PATH the login probe captured, with no
+    /// rc run in between to supply it.
+    #[test]
+    fn a_command_tab_runs_on_the_login_path() {
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .expect("openpty");
+        let cmd = command_tab("sh", &["-c".into(), "echo $PATH".into()], Some("/sway-login-only/bin:/usr/bin:/bin"));
+        let mut child = pair.slave.spawn_command(cmd).expect("spawn");
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().expect("reader");
+        let mut out = Vec::new();
+        let mut buf = [0u8; 1024];
+        while let Ok(n @ 1..) = reader.read(&mut buf) {
+            out.extend_from_slice(&buf[..n]);
+        }
+        let _ = child.wait();
+        let out = String::from_utf8_lossy(&out);
+        assert!(out.contains("/sway-login-only/bin"), "the program saw another PATH: {out:?}");
     }
 
     /// A child still alive when the poll expires has proved nothing, so it

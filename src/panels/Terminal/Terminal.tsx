@@ -996,9 +996,13 @@ export default function Terminal(props: {
       spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
     });
     // A tab whose process ends (the user typed `exit`, a task finished) is
-    // closed. Agent-exit within a live shell fires no event.
+    // closed. Agent-exit within a live shell fires no event. A command tab's
+    // process is the command, so its exit is the verdict instead.
     unlistenExit = await listen<PtyExit>("pty://exit", (e) => {
-      if (open().some((o) => o.id === e.payload.id)) closeId(e.payload.id);
+      const t = open().find((o) => o.id === e.payload.id);
+      if (!t) return;
+      if (t.kind === "command") noteCommandExit(t, e.payload.code);
+      else closeId(t.id);
     });
     // Pulled, not listened for. The startup reap runs inside Tauri's `setup`,
     // which finishes before this webview exists, so an event emitted there
@@ -1120,14 +1124,15 @@ export default function Terminal(props: {
   }
 
   /**
-   * A command reported how it went.
+   * A command exited. A `null` code is an exit the backend could not confirm,
+   * which counts as a failure.
    *
-   * First report wins, which is what keeps a replayed escape from re-toasting
-   * or flipping a verdict. A clean run closes its own tab: the toast is the
-   * record, and a receipt you have to dismiss is a chore. Anything else stays
-   * on screen wearing its code, which is the output worth keeping.
+   * First report wins, so nothing can re-toast or flip a verdict. A clean run
+   * closes its own tab: the toast is the record, and a receipt you have to
+   * dismiss is a chore. Anything else stays on screen wearing its code, which
+   * is the output worth keeping.
    */
-  function noteCommandExit(t: OpenTerm, code: number) {
+  function noteCommandExit(t: OpenTerm, code: number | null) {
     if (!reportCommandExit(t.id, code)) return;
     // After the verdict is recorded, so anything watching sees the outcome even
     // when the tab is about to go.
@@ -1135,7 +1140,11 @@ export default function Terminal(props: {
     if (t.recheckAgentsOnExit) void refreshAgentHealth();
     const failed = code !== 0;
     emitWith<ToastEvent>(TOAST, {
-      message: failed ? `${t.title} failed (exit ${code})` : `${t.title} finished`,
+      message: !failed
+        ? `${t.title} finished`
+        : code === null
+          ? `${t.title} ended without an exit code`
+          : `${t.title} failed (exit ${code})`,
       kind: failed ? "error" : "info",
       ...(failed ? { action: { label: "Show", run: () => revealShells(t) } } : {}),
     });
@@ -2198,7 +2207,6 @@ export default function Terminal(props: {
         sessionId={term.sessionId}
         active={active()}
         onOwnershipRefused={(refusal) => noteRefusal(term, refusal)}
-        onCommandExit={term.kind === "command" ? (code) => noteCommandExit(term, code) : undefined}
       />
     );
   };

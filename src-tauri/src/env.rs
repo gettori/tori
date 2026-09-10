@@ -104,6 +104,10 @@ pub fn login_path() -> Option<&'static str> {
     LOGIN_PATH.get_or_init(capture_login_path).as_deref()
 }
 
+pub fn login_path_if_captured() -> Option<&'static str> {
+    LOGIN_PATH.get().and_then(|p| p.as_deref())
+}
+
 fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path)

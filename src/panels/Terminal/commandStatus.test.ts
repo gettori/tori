@@ -24,8 +24,8 @@ describe("commandStatus", () => {
     expect(commandStatus("clone:x")).toBe("failed");
   });
 
-  /// A runner reports once by construction, so a second report is a replay.
-  /// Letting it through would re-toast, and here it would flip a verdict.
+  /// A tab exits once, so a second report under its id is stale. Letting it
+  /// through would re-toast, and here it would flip a verdict.
   it("keeps the first report and refuses a second", () => {
     expect(reportCommandExit("signin:claude:work", 3)).toBe(true);
     expect(reportCommandExit("signin:claude:work", 0)).toBe(false);

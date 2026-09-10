@@ -170,7 +170,7 @@ function shellVerdict(t: LiveTab): string | null {
   if (state === "stopped") return "stopped";
   if (state !== "failed") return null;
   const code = commandExitCode(t.id);
-  return code === null ? "failed" : `exit ${code}`;
+  return code === null ? "ended" : `exit ${code}`;
 }
 
 /** Where a tab is sitting, named the way a person names a folder: the last

@@ -8,7 +8,6 @@ import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { acquireWebgl, type WebglSlot } from "./webglLru";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, REFIT_PANES, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
-import { COMMAND_EXIT_OSC, parseCommandExit } from "./commandExit";
 import { dispatchHotkey } from "../../utils/hotkeys";
 import { traceMark } from "../../utils/perfTrace";
 import { findAdapter } from "../../utils/agents";
@@ -20,9 +19,8 @@ import "@xterm/xterm/css/xterm.css";
 import styles from "./Terminal.module.css";
 
 /** `PtySpawnResult` from `src-tauri/src/pty.rs`. `ownership` is null for every
- *  tab that took no claim, which is most of them; `runnerNonce` is set only for
- *  a command tab, whose report has to carry it back. */
-type PtySpawnResult = { ownership: ClaimOutcome | null; runnerNonce: string | null };
+ *  tab that took no claim, which is most of them. */
+type PtySpawnResult = { ownership: ClaimOutcome | null };
 
 /** `pty://exit`'s payload. A null `code` is an exit the backend could not
  *  confirm within its wait, so it means "no clean exit proved", not zero. */
@@ -84,9 +82,9 @@ function termColors() {
 export default function TerminalView(props: {
   id: string;
   cwd: string;
-  // Every kind hosts a login shell. `agent`/`task` are seeded with `init`,
-  // backend-once; `command` is seeded with a runner the backend writes, which
-  // runs `program args` and reports how it ended (see `onCommandExit`).
+  // `command` is `program args` itself, and `pty://exit` says how it ended.
+  // Every other kind hosts a login shell; `agent`/`task` are seeded with
+  // `init`, backend-once.
   kind: "shell" | "agent" | "command" | "task";
   program: string;
   args: string[];
@@ -115,10 +113,6 @@ export default function TerminalView(props: {
    *  was spawned. The owner renders the way out, because only it can focus
    *  another tab or open a fresh session. */
   onOwnershipRefused?: (refusal: Refusal) => void;
-  /** Command tabs: the command's exit code, as its runner reported it. The
-   *  PTY itself is a shell that outlives the command, so `pty://exit` says
-   *  nothing about how the command went; this does. */
-  onCommandExit?: (code: number) => void;
 }) {
   const takesFocus = () => props.active && props.autoFocus !== false;
   let host!: HTMLDivElement;
@@ -311,17 +305,6 @@ export default function TerminalView(props: {
       invoke("pty_write", { id: props.id, data }).catch(() => {});
     });
 
-    // A command tab's verdict arrives as an OSC from its runner, checked against
-    // the nonce the spawn hands back. Registered before the spawn so no report
-    // can slip past; one arriving before the nonce is known is refused.
-    let runnerNonce: string | null = null;
-    term.parser.registerOscHandler(COMMAND_EXIT_OSC, (payload) => {
-      const code = parseCommandExit(payload, runnerNonce);
-      if (code === null) return false;
-      props.onCommandExit?.(code);
-      return true;
-    });
-
     // Per-session output channel (replaces the global base64 pty://output event).
     // A fresh channel each mount; the Rust side rewires it to the live session.
     const output = new Channel<ArrayBuffer | Uint8Array | number[]>();
@@ -359,7 +342,6 @@ export default function TerminalView(props: {
       term?.writeln(`\r\n\x1b[33m${refusalMessage(refusal)}\x1b[0m`);
       props.onOwnershipRefused?.(refusal);
     }
-    runnerNonce = spawned?.runnerNonce ?? null;
 
     ro = new ResizeObserver(onResizeObserved);
     ro.observe(host);
