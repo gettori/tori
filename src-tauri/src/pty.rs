@@ -17,10 +17,18 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::env::{augmented_path, login_path_if_captured, login_shell};
 
-// How long to wait before force-seeding an agent tab's `init` command if the
-// shell has produced no output yet. A shell that prints a prompt/banner trips
-// the first-chunk path well before this; the timer only covers a silent shell.
+// How long a shell that prints nothing is given before its `init` is judged.
+// One that prints is judged once it has been quiet for `INIT_QUIET_MS`.
 const INIT_TIMEOUT_MS: u64 = 1000;
+
+// A banner printed before a handover is not a prompt, so a shell that printed
+// has to stay quiet this long before its foreground is trusted.
+const INIT_QUIET_MS: u64 = 250;
+
+// zsh lends the terminal to every foreground command its rc runs, so another
+// process holding it is only refused once it has held it this long.
+const INIT_SETTLE_MS: u64 = 5000;
+const INIT_POLL_MS: u64 = 25;
 
 // Fallback quiet threshold for a session with no adapter-supplied one (a
 // plain shell/command tab). Agent tabs pass their adapter's own
@@ -98,8 +106,13 @@ type SharedWriter = Arc<Mutex<Box<dyn Write + Send>>>;
 /// after EOF while `pty_kill` can still reach the same handle to kill it.
 type SharedChild = Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>;
 
+/// The master, shared so the seeder can read the terminal's foreground through
+/// it. Never the slave: macOS answers `tcgetpgrp` on a reopened slave with
+/// ENOTTY, and any slave fd Sway holds keeps the reader from seeing EOF.
+type SharedMaster = Arc<Mutex<Box<dyn MasterPty + Send>>>;
+
 pub struct Session {
-    master: Box<dyn MasterPty + Send>,
+    master: SharedMaster,
     writer: SharedWriter,
     child: SharedChild,
     sink: Sink,
@@ -135,6 +148,14 @@ struct ActivityEvent {
     id: String,
     /// "active" | "quiet"
     state: &'static str,
+}
+
+/// What `pty://init-refused` carries: the tab, and the command that held its
+/// terminal instead of the shell when the init was due.
+#[derive(Clone, Serialize)]
+struct InitRefused {
+    id: String,
+    foreground: String,
 }
 
 /// What `pty://exit` carries. A `None` code is an *unproven* exit, not a zero:
@@ -236,10 +257,8 @@ fn coalesce(rx: Receiver<Vec<u8>>, mut emit: impl FnMut(Vec<u8>), window: Durati
     }
 }
 
-// Write the seeded `init` command to the shell exactly once. Both the reader's
-// first-output-chunk trigger and the fallback timer call this; the shared flag
-// makes whichever fires first the sole delivery, so a re-subscribe (which spawns
-// no new threads) can never re-inject it.
+// Write the seeded `init` command to the shell exactly once. A refusal sets the
+// same flag, so nothing can type it after the seeder has said no.
 fn deliver_init(writer: &SharedWriter, initialized: &Arc<Mutex<bool>>, init: &str) {
     let mut done = match initialized.lock() {
         Ok(g) => g,
@@ -253,6 +272,86 @@ fn deliver_init(writer: &SharedWriter, initialized: &Arc<Mutex<bool>>, init: &st
         let _ = w.write_all(init.as_bytes());
         let _ = w.flush();
     }
+}
+
+struct SeedTimings {
+    silent: Duration,
+    quiet: Duration,
+    settle: Duration,
+    poll: Duration,
+}
+
+const SEED_TIMINGS: SeedTimings = SeedTimings {
+    silent: Duration::from_millis(INIT_TIMEOUT_MS),
+    quiet: Duration::from_millis(INIT_QUIET_MS),
+    settle: Duration::from_millis(INIT_SETTLE_MS),
+    poll: Duration::from_millis(INIT_POLL_MS),
+};
+
+#[derive(Debug, PartialEq)]
+enum Seeded {
+    Typed,
+    Refused(String),
+    Gone,
+}
+
+struct Seeder {
+    writer: SharedWriter,
+    initialized: Arc<Mutex<bool>>,
+    init: String,
+    master: SharedMaster,
+    shell_pid: Option<u32>,
+    last_output: Arc<Mutex<Option<Instant>>>,
+}
+
+impl Seeder {
+    fn run(&self, live: impl Fn() -> bool, t: &SeedTimings) -> Seeded {
+        let started = Instant::now();
+        loop {
+            thread::sleep(t.poll);
+            if !live() {
+                return Seeded::Gone;
+            }
+            let quiet = match self.last_output.lock().map(|g| *g).unwrap_or(None) {
+                None => started.elapsed() >= t.silent,
+                Some(at) => at.elapsed() >= t.quiet,
+            };
+            let settled = started.elapsed() >= t.settle;
+            if !quiet && !settled {
+                continue;
+            }
+            match self.foreign_foreground() {
+                None => {
+                    deliver_init(&self.writer, &self.initialized, &self.init);
+                    return Seeded::Typed;
+                }
+                Some(pgrp) if settled => return self.refuse(pgrp),
+                Some(_) => {}
+            }
+        }
+    }
+
+    fn refuse(&self, pgrp: i32) -> Seeded {
+        if let Ok(mut done) = self.initialized.lock() {
+            *done = true;
+        }
+        Seeded::Refused(command_name(pgrp).unwrap_or_else(|| format!("process {pgrp}")))
+    }
+
+    // A foreground that cannot be read counts as the shell's, so the init is
+    // typed as it always was rather than every agent tab being refused.
+    fn foreign_foreground(&self) -> Option<i32> {
+        let pgrp = self.master.lock().ok()?.process_group_leader()?;
+        (i64::from(pgrp) != i64::from(self.shell_pid?)).then_some(pgrp)
+    }
+}
+
+fn command_name(pid: i32) -> Option<String> {
+    let out = crate::env::output_with_timeout(
+        std::process::Command::new("ps").args(["-o", "ucomm=", "-p", &pid.to_string()]),
+    )?;
+    let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!name.is_empty()).then_some(name)
 }
 
 fn command_tab(program: &str, args: &[String], login_path: Option<&str>) -> CommandBuilder {
@@ -415,25 +514,32 @@ pub fn pty_spawn(
     let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
     let writer: SharedWriter =
         Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
+    let master: SharedMaster = Arc::new(Mutex::new(pair.master));
 
-    let initialized = Arc::new(Mutex::new(false));
-
-    // Fallback timer: seed `init` after a grace period even if the shell printed
-    // nothing (a silent rc). Races the reader's first-chunk path; `initialized`
-    // makes it exactly-once. Skipped when there is no init to deliver.
-    if let Some(init_cmd) = init.clone() {
-        let timer_writer = writer.clone();
-        let timer_initialized = initialized.clone();
+    // An rc that attaches tmux or execs another program takes the terminal from
+    // the shell, and a line typed then lands in whatever took it.
+    let last_output = init.as_ref().map(|_| Arc::new(Mutex::new(None::<Instant>)));
+    if let (Some(init), Some(last_output)) = (init.clone(), last_output.clone()) {
+        let seeder = Seeder {
+            writer: writer.clone(),
+            initialized: Arc::new(Mutex::new(false)),
+            init,
+            master: master.clone(),
+            shell_pid: child.lock().ok().and_then(|c| c.process_id()),
+            last_output,
+        };
+        let seed_app = app.clone();
+        let seed_id = id.clone();
         thread::spawn(move || {
-            thread::sleep(Duration::from_millis(INIT_TIMEOUT_MS));
-            deliver_init(&timer_writer, &timer_initialized, &init_cmd);
+            let live = || seed_app.state::<PtyState>().0.lock().map(|g| g.contains_key(&seed_id)).unwrap_or(false);
+            if let Seeded::Refused(foreground) = seeder.run(live, &SEED_TIMINGS) {
+                let _ = seed_app.emit("pty://init-refused", InitRefused { id: seed_id.clone(), foreground });
+            }
         });
     }
 
     let sink: Sink = Arc::new(Mutex::new(Some(on_output)));
-    let reader_writer = writer.clone();
-    let reader_initialized = initialized.clone();
-    let reader_init = init.clone();
+    let reader_last_output = last_output;
     let app_handle = app.clone();
     let emit_id = id.clone();
     let reader_child = child.clone();
@@ -476,10 +582,10 @@ pub fn pty_spawn(
                     if tx.send(buf[..n].to_vec()).is_err() {
                         break;
                     }
-                    // First real output means the shell is up: seed the agent
-                    // command now (once, guarded), well before the timer.
-                    if let Some(init_cmd) = &reader_init {
-                        deliver_init(&reader_writer, &reader_initialized, init_cmd);
+                    if let Some(last) = &reader_last_output {
+                        if let Ok(mut at) = last.lock() {
+                            *at = Some(Instant::now());
+                        }
                     }
                     if let Ok(mut act) = reader_activity.lock() {
                         if let Some(state) = note_output(&mut act) {
@@ -535,7 +641,7 @@ pub fn pty_spawn(
     guard.insert(
         id,
         Session {
-            master: pair.master,
+            master,
             writer,
             child,
             sink,
@@ -572,6 +678,8 @@ pub fn pty_resize(
     if let Some(session) = guard.get(&id) {
         session
             .master
+            .lock()
+            .map_err(|e| e.to_string())?
             .resize(PtySize {
                 rows,
                 cols,
@@ -657,7 +765,7 @@ mod tests {
         let child = pair.slave.spawn_command(cmd).expect("spawn");
         let writer: Box<dyn Write + Send> = pair.master.take_writer().expect("writer");
         Session {
-            master: pair.master,
+            master: Arc::new(Mutex::new(pair.master)),
             writer: Arc::new(Mutex::new(writer)),
             child: Arc::new(Mutex::new(child)),
             sink: Arc::new(Mutex::new(None)),
@@ -745,10 +853,8 @@ mod tests {
 
     /// "remounting a running task's tab re-subscribes without re-typing the
     /// command": `init` is the seam a task's command line is delivered
-    /// through, and three separate callers can reach it - the reader's
-    /// first-chunk path, the fallback timer, and every chunk after the first.
-    /// The shared flag makes whichever arrives first the sole delivery, which
-    /// is what lets a re-subscribe spawn no threads and re-type nothing.
+    /// through, and the flag makes the first delivery the only one, which is
+    /// what lets a re-subscribe spawn no threads and re-type nothing.
     #[test]
     fn init_is_delivered_exactly_once_however_many_callers_arrive() {
         let (writer, seen) = recorder();
@@ -978,6 +1084,90 @@ mod tests {
         let _ = child.wait();
         let out = String::from_utf8_lossy(&out);
         assert!(out.contains("/sway-login-only/bin"), "the program saw another PATH: {out:?}");
+    }
+
+    const FAST: SeedTimings = SeedTimings {
+        silent: Duration::from_millis(50),
+        quiet: Duration::from_millis(20),
+        settle: Duration::from_secs(1),
+        poll: Duration::from_millis(5),
+    };
+
+    /// A seeder over a real PTY running `program args`, typing into a recorder
+    /// so a test can see whether anything was typed at all.
+    fn seeded(program: &str, args: &[&str]) -> (Seeder, Arc<Mutex<Vec<u8>>>, Box<dyn portable_pty::Child + Send + Sync>) {
+        let pair = native_pty_system()
+            .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
+            .expect("openpty");
+        let mut cmd = CommandBuilder::new(program);
+        cmd.args(args);
+        let child = pair.slave.spawn_command(cmd).expect("spawn");
+        drop(pair.slave);
+        let (writer, seen) = recorder();
+        let seeder = Seeder {
+            writer,
+            initialized: Arc::new(Mutex::new(false)),
+            init: "claude\n".into(),
+            master: Arc::new(Mutex::new(pair.master)),
+            shell_pid: child.process_id(),
+            last_output: Arc::new(Mutex::new(None)),
+        };
+        (seeder, seen, child)
+    }
+
+    /// The tmux case without tmux: `set -m` gives `sleep` a process group of its
+    /// own and the terminal with it, which is what an rc that attaches tmux does
+    /// to the shell Sway spawned.
+    #[test]
+    fn a_shell_that_handed_its_terminal_on_is_not_typed_into() {
+        let (seeder, seen, mut child) = seeded("/bin/sh", &["-c", "set -m; sleep 5"]);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let handed_on = || {
+            let fg = seeder.master.lock().unwrap().process_group_leader();
+            fg.is_some_and(|p| i64::from(p) != i64::from(seeder.shell_pid.unwrap()))
+        };
+        while !handed_on() {
+            assert!(Instant::now() < deadline, "sleep never took the terminal, so this proves nothing");
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let outcome = seeder.run(|| true, &FAST);
+        let _ = child.kill();
+        assert_eq!(outcome, Seeded::Refused("sleep".into()));
+        assert!(seen.lock().unwrap().is_empty(), "typed into what took the terminal");
+    }
+
+    #[test]
+    fn a_shell_that_kept_its_terminal_gets_its_init() {
+        let (seeder, seen, mut child) = seeded("/bin/sh", &[]);
+        let outcome = seeder.run(|| true, &FAST);
+        let _ = child.kill();
+        assert_eq!(outcome, Seeded::Typed);
+        assert_eq!(String::from_utf8(seen.lock().unwrap().clone()).unwrap(), "claude\n");
+    }
+
+    /// The check reads the foreground through the master Sway already holds,
+    /// never the slave, so a shell that exits with its init still pending
+    /// reaches EOF, and so `pty://exit`, all the same.
+    #[test]
+    fn a_pending_init_does_not_keep_the_terminal_open() {
+        let (seeder, _seen, _child) = seeded("/bin/sh", &["-c", "exit 0"]);
+        let mut reader = seeder.master.lock().unwrap().try_clone_reader().expect("reader");
+        let waiting = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let still = waiting.clone();
+        let slow = SeedTimings { silent: Duration::from_secs(60), settle: Duration::from_secs(60), ..FAST };
+        let pending = thread::spawn(move || seeder.run(|| still.load(std::sync::atomic::Ordering::SeqCst), &slow));
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let mut buf = [0u8; 1024];
+            while matches!(reader.read(&mut buf), Ok(n) if n > 0) {}
+            let _ = tx.send(());
+        });
+        let eof = rx.recv_timeout(Duration::from_secs(5));
+        waiting.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(pending.join().unwrap(), Seeded::Gone);
+        assert!(eof.is_ok(), "the terminal never closed while an init was pending");
     }
 
     /// A child still alive when the poll expires has proved nothing, so it

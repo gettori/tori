@@ -9,6 +9,7 @@ import { acquireWebgl, type WebglSlot } from "./webglLru";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { on as onEvent, emitWith, FOCUS_TERMINAL, THEME_APPLIED, REFIT_PANES, OPEN_IN_EDITOR, DRAG_PATH_MIME, DRAG_ABS_PATH_MIME } from "../../utils/events";
 import { dispatchHotkey } from "../../utils/hotkeys";
+import { initRefusal } from "./initRefusal";
 import { traceMark } from "../../utils/perfTrace";
 import { findAdapter } from "../../utils/agents";
 import { refusalMessage, refusalOf, type ClaimOutcome, type Refusal } from "../../utils/chatOwnership";
@@ -115,6 +116,7 @@ export default function TerminalView(props: {
   onOwnershipRefused?: (refusal: Refusal) => void;
 }) {
   const takesFocus = () => props.active && props.autoFocus !== false;
+  const [refusalDismissed, setRefusalDismissed] = createSignal(false);
   let host!: HTMLDivElement;
   let searchInput: HTMLInputElement | undefined;
   let term: Terminal | undefined;
@@ -447,6 +449,19 @@ export default function TerminalView(props: {
           <Button variant="ghost" size="xs" aria-label="Next" tooltip="Next" onClick={() => find(true)}>↓</Button>
           <Button variant="ghost" size="xs" aria-label="Close" tooltip="Close" onClick={closeSearch}>×</Button>
         </div>
+      </Show>
+      <Show when={!refusalDismissed() && initRefusal(props.id)}>
+        {(to) => (
+          <div class={styles.termRestore} role="status">
+            <span class={styles.termRestoreText}>
+              Your shell handed this terminal to <code>{to()}</code>, so Sway did not start{" "}
+              <code>{props.program || props.init?.trim()}</code> here.
+            </span>
+            <Button size="sm" onClick={() => setRefusalDismissed(true)}>
+              Dismiss
+            </Button>
+          </div>
+        )}
       </Show>
       <div class={styles.termHost} ref={host} />
     </div>
