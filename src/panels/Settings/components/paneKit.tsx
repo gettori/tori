@@ -137,8 +137,8 @@ export type PaneProps = {
   /** Go to a category and stop searching. What a card section offers instead of
    *  unfolding its whole runtime contents into a list of search results. */
   openTab?: (tab: SettingTab) => void;
-  /** The folder the workspace is currently on, or `null` for Shells and an
-   *  empty Feature. Read by the Agents pane, whose file actions open an editor
+  /** The folder the workspace is currently on, or `null` for an empty
+   *  Feature. Read by the Agents pane, whose file actions open an editor
    *  tab and so need a workspace to open it in. */
   projectRoot?: string | null;
 };

@@ -1,4 +1,4 @@
-import { createSignal, For, Index, Match, Show, Switch, onMount, onCleanup, createEffect, createMemo, on, untrack } from "solid-js";
+import { createSignal, For, Match, Show, Switch, onMount, onCleanup, createEffect, createMemo, on, untrack } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -25,12 +25,9 @@ import {
   emitWith,
   FOCUS_SEARCH,
   TOGGLE_SIDEBAR_MODE,
-  REVEAL_SHELLS,
   NEW_FEATURE,
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
-  FOCUS_SESSION_TAB,
-  type FocusSessionTab,
   OPEN_JOB,
   NEW_SESSION,
   PURGE_UNDER_PATH,
@@ -122,14 +119,12 @@ import {
   ChevronRight,
   ChevronUp,
   Waypoints,
-  SquareTerminal,
   type LucideIcon,
   Plus,
   ChevronsLeftRightEllipsis,
   MessageCircleQuestion,
   Check,
   CircleDashed,
-  X,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
@@ -141,41 +136,8 @@ import {
 } from "./attempts";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import FeatureList from "./FeatureList";
-import { featureKey, featureSelection, isShellsKey, shellsSelection, tabUnderFolder, type Feature } from "../../utils/features";
-import { commandExitCode, commandStatus } from "../Terminal/commandStatus";
-import { tabUnseen } from "../Terminal/tabUnseen";
+import { featureKey, featureSelection, tabUnderFolder, type Feature } from "../../utils/features";
 import styles from "./LeftSidebar.module.css";
-
-/** What a Shells row reports. A tab short of `live` came back from a restore
- *  with nothing behind it, which is stopped whatever it was going to run; past
- *  that, only a command has a verdict, and one still going has none yet. */
-type ShellRowState = "running" | "ok" | "failed" | "stopped";
-
-function shellRowState(t: LiveTab): ShellRowState {
-  if (t.state !== "live") return "stopped";
-  return t.kind === "command" ? commandStatus(t.id) : "running";
-}
-
-const SHELL_STATE_LABEL: Record<ShellRowState, string> = {
-  running: "Running",
-  ok: "Finished",
-  failed: "Failed",
-  stopped: "Stopped",
-};
-
-/** The words beside the name, for a run that is over. A failure wears its own
- *  code rather than the word "failed": which code it was is the news. */
-function shellVerdict(t: LiveTab): string | null {
-  const state = shellRowState(t);
-  if (state === "stopped") return "stopped";
-  if (state !== "failed") return null;
-  const code = commandExitCode(t.id);
-  return code === null ? "ended" : `exit ${code}`;
-}
-
-/** Where a tab is sitting, named the way a person names a folder: the last
- *  segment of its cwd, and no tree lookup. */
-const folderName = (cwd: string | undefined): string => cwd?.split("/").filter(Boolean).pop() ?? "";
 
 // Glyph for a branch-unit row, keyed by its git kind: a worktree (or an empty
 // .bare stub) reads as a folder with a branch off it, a branch of a plain repo
@@ -284,8 +246,7 @@ type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
 
 export type Selection = {
   // Absent means "unit": a selection persisted before Features carried no kind.
-  // "shells" is Sway's own command tabs: no folder behind it, `folderPath` is "".
-  kind?: "unit" | "feature" | "shells";
+  kind?: "unit" | "feature";
   featureId?: string;
   featureName?: string;
   // Present members' folders in order, and the one the editor, git and a spawn
@@ -324,12 +285,12 @@ const LS_EXPANDED = "sway.expanded.v1";
 const LS_ACTIVE_SPACE = "sway.active-space.v1";
 const LS_MODE = "sway.sidebar-mode.v1";
 
-// What the column shows: the Spaces tree, the Feature list, or the commands Sway
-// runs for itself. The filter field, the dialogs and the selection are shared;
-// the tree and the space rail are unmounted in the other two rather than hidden.
-type SidebarMode = "spaces" | "features" | "shells";
+// What the column shows: the Spaces tree or the Feature list. The filter field,
+// the dialogs and the selection are shared; the tree and the space rail are
+// unmounted in the other rather than hidden.
+type SidebarMode = "spaces" | "features";
 // The order the segments sit in, which is also the order the toggle steps through.
-const MODE_VALUES: SidebarMode[] = ["spaces", "features", "shells"];
+const MODE_VALUES: SidebarMode[] = ["spaces", "features"];
 
 function loadMode(): SidebarMode {
   try {
@@ -420,25 +381,11 @@ export default function LeftSidebar(props: {
     setQuery("");
     setSearching(false);
   }
-  // Sway's own commands, as they are open right now.
-  const shellsTabs = () => (props.liveTabs ?? []).filter((t) => isShellsKey(t.workspace));
-  const storedMode = loadMode();
-  // A stored Shells mode with nothing in the workspace would restore onto an
-  // empty full-window pane, so Spaces is the fallback. A command never persists;
-  // a shell you opened yourself does, and coming back to it is right.
-  const [mode, setMode] = createSignal<SidebarMode>(
-    storedMode === "shells" && shellsTabs().length === 0 ? "spaces" : storedMode,
-  );
+  const [mode, setMode] = createSignal<SidebarMode>(loadMode());
   /** What the filter field is filtering, which is whatever the mode is showing. */
-  const filterNoun = () => (mode() === "features" ? "features" : mode() === "shells" ? "shells" : "projects");
-  // The badge counts what is open; the list shows what the filter left.
-  const visibleShells = () => {
-    const q = query().trim().toLowerCase();
-    return q ? shellsTabs().filter((t) => (t.title || t.id).toLowerCase().includes(q)) : shellsTabs();
-  };
+  const filterNoun = () => (mode() === "features" ? "features" : "projects");
   /** What the tree's heading says, which is whatever the strip has lit. */
-  const headingName = () =>
-    mode() === "features" ? "Features" : mode() === "shells" ? "Shells" : (activeSpace()?.name ?? "Spaces");
+  const headingName = () => (mode() === "features" ? "Features" : (activeSpace()?.name ?? "Spaces"));
   createEffect(() => {
     try {
       localStorage.setItem(LS_MODE, mode());
@@ -594,12 +541,6 @@ export default function LeftSidebar(props: {
   function switchMode(next: SidebarMode) {
     setMode(next);
     if (next === "features") restoreFeature();
-    // Shells has one workspace and no memory to restore: being in the mode is
-    // being in it, the way a Feature row is its own selection. Minted once, so
-    // a second reveal does not hand every consumer a new object to react to.
-    else if (next === "shells") {
-      if (props.selected?.kind !== "shells") props.onSelect(shellsSelection());
-    }
     else {
       const g = activeSpace();
       if (g) restoreUnit(g);
@@ -1068,15 +1009,9 @@ export default function LeftSidebar(props: {
   async function focusFromTerminalTab(d: TerminalTabFocused) {
     if (d.sessionId) {
       await fetchSessions(d.folderPath);
-      if (await selectSessionById(d.sessionId)) return leaveShells();
+      if (await selectSessionById(d.sessionId)) return;
     }
-    if (selectBranchByFolder(d.folderPath)) leaveShells();
-  }
-
-  /** The terminal has pointed the selection at a branch unit, and the tree is
-   *  where that reads. Nothing to do outside Shells. */
-  function leaveShells() {
-    if (mode() === "shells") setMode("spaces");
+    selectBranchByFolder(d.folderPath);
   }
 
   // A History row was acted on. The dropdown has no access to the selection
@@ -1144,7 +1079,6 @@ export default function LeftSidebar(props: {
       switchMode(MODE_VALUES[(MODE_VALUES.indexOf(mode()) + 1) % MODE_VALUES.length]),
     ),
   );
-  onCleanup(onEvent(REVEAL_SHELLS, () => switchMode("shells")));
 
   function openDeleteSpace(g: Space) {
     setDeleteReq({
@@ -2790,7 +2724,7 @@ export default function LeftSidebar(props: {
   function measureNames() {
     if (!probeEl || !probeNameEl || !probeTextEl) return;
     const each: Record<string, number> = {};
-    for (const name of [...visibleSpaces().map((g) => g.name), "Features", "Shells"]) {
+    for (const name of [...visibleSpaces().map((g) => g.name), "Features"]) {
       probeTextEl.textContent = name;
       // Rounded up, with a pixel to spare: a fractional target is a target the
       // text does not quite fit into, and the tile clips its own last letter.
@@ -2844,9 +2778,9 @@ export default function LeftSidebar(props: {
   // right-click on its way up. Nothing is lost positionally either, since a
   // context menu anchors on the cursor and never on its trigger's box.
   const spaceTile = (g: Space) => {
-    // Lit only while the tree is actually showing this space. In Features or
-    // Shells the strip has moved on, and a second lit tile would say the
-    // sidebar is showing two things.
+    // Lit only while the tree is actually showing this space. In Features the
+    // strip has moved on, and a second lit tile would say the sidebar is
+    // showing two things.
     const on = () => mode() === "spaces" && activeSpace()?.name === g.name;
     return (
     <ContextMenu class={styles.spaceMenu} items={spaceMenu(g)}>
@@ -2889,9 +2823,9 @@ export default function LeftSidebar(props: {
     );
   };
 
-  // Features and Shells, as tiles in the same strip and on the same rules as a
-  // space: bare glyph at rest, name and pill when the tree is showing it.
-  const modeTile = (m: SidebarMode, label: string, glyph: LucideIcon, count?: number) => {
+  // Features, as a tile in the same strip and on the same rules as a space: bare
+  // glyph at rest, name and pill when the tree is showing it.
+  const modeTile = (m: SidebarMode, label: string, glyph: LucideIcon) => {
     const on = () => mode() === m;
     return (
       <Tooltip
@@ -2907,15 +2841,6 @@ export default function LeftSidebar(props: {
       >
         <Icon icon={glyph} />
         <span class={styles.tileName}><span class={styles.tileNameText}>{label}</span></span>
-        {/* Only while you are somewhere else. Pinned to a 30px square's corner
-            it reads as a badge on an icon; pinned to an open pill's it reads as
-            a number floating beside it, and by then the list below is naming
-            every one of them anyway. Absolute, so dropping it costs no width. */}
-        <Show when={!on() && !!count}>
-          <span class={styles.spaceBubble}>
-            <span class={styles.tileCount}>{count}</span>
-          </span>
-        </Show>
       </Tooltip>
     );
   };
@@ -2927,8 +2852,8 @@ export default function LeftSidebar(props: {
   // only a project the search filter hid entirely (never rendered, so no row
   // to bubble to) still needs to surface on the tile.
   function spaceBubble(g: Space) {
-    // "Active" here means its tree is on screen. In Features or Shells nothing
-    // of it is rendered, so all of its sessions bubble to the tile.
+    // "Active" here means its tree is on screen. In Features nothing of it is
+    // rendered, so all of its sessions bubble to the tile.
     const isActive = mode() === "spaces" && activeSpace()?.name === g.name;
     const r = isActive
       ? bubbleFor((s) => {
@@ -3052,104 +2977,6 @@ export default function LeftSidebar(props: {
             if (props.selected?.kind === "feature" && props.selected.featureId === f.id) props.onSelect(null);
           }}
         />
-      </Show>
-
-      {/* What is open in the Shells workspace: what Sway is running for you,
-          plus any shell you opened yourself with the strip's `+`. A row is the
-          same click as its tab in that strip, which is the other way in. */}
-      <Show when={mode() === "shells"}>
-        <div class={styles.shellsList} data-shells-list>
-          <Show
-            when={visibleShells().length > 0}
-            fallback={
-              <div class="tree-empty">
-                <p>{shellsTabs().length ? "Nothing matches the filter." : "Nothing running."}</p>
-              </div>
-            }
-          >
-            <ul class={styles.shellsItems} data-no-window-drag>
-              {/* `Index`, not `For`: clicking a row changes which tab is on
-                  screen, which re-emits this list as fresh objects, and a `For`
-                  keyed on identity would rebuild the row it just focused. */}
-              <Index each={visibleShells()}>
-                {(t) => {
-                  const state = () => shellRowState(t());
-                  const verdict = () => shellVerdict(t());
-                  return (
-                    <li>
-                      <button
-                        type="button"
-                        class={styles.shellsRow}
-                        classList={{ [styles.shellsRowOn]: !!t().active }}
-                        // The row you are looking at, not a pressed toggle: this
-                        // is one of a set and only one of them is showing.
-                        aria-current={t().active ? "true" : undefined}
-                        data-state={state()}
-                        onClick={() => emitWith<FocusSessionTab>(FOCUS_SESSION_TAB, { tabId: t().id })}
-                      >
-                        <span class={styles.shellsLine}>
-                          {/* Spoken only when nothing else says it: the verdict
-                              beside it is the fuller account where there is
-                              one, and two would be read out twice. */}
-                          <span
-                            class={styles.shellsGlyph}
-                            role={verdict() ? undefined : "img"}
-                            aria-hidden={verdict() ? "true" : undefined}
-                            aria-label={verdict() ? undefined : SHELL_STATE_LABEL[state()]}
-                          >
-                            <Switch fallback={<span class={styles.shellsMark} />}>
-                              <Match when={state() === "failed"}>
-                                <Icon icon={X} />
-                              </Match>
-                              <Match when={state() === "ok"}>
-                                <Icon icon={Check} />
-                              </Match>
-                            </Switch>
-                          </span>
-                          <span class={styles.shellsName}>{t().title || t().id}</span>
-                          {/* Only a run that has ended has anything to add to
-                              the glyph. One that is going says so by being on
-                              the list at all. */}
-                          <Show when={verdict()}>
-                            <span class={styles.shellsState} data-verdict>
-                              {verdict()}
-                            </span>
-                          </Show>
-                          {/* Printed while you were somewhere else. Cleared by
-                              the terminal the moment the tab is on screen. */}
-                          <Show when={tabUnseen(t().id)}>
-                            <span class={styles.shellsUnseen} role="img" aria-label="New output" data-unseen />
-                          </Show>
-                        </span>
-                        <span class={styles.shellsMeta}>
-                          <Show when={folderName(t().cwd)}>
-                            {(where) => (
-                              <span class={styles.shellsWhere} data-where>
-                                {where()}
-                              </span>
-                            )}
-                          </Show>
-                          <Show when={folderName(t().cwd) && t().command}>
-                            <span class={styles.shellsSep} aria-hidden="true">
-                              ·
-                            </span>
-                          </Show>
-                          <Show when={t().command}>
-                            {(line) => (
-                              <span class={styles.shellsCommand} data-command>
-                                {line()}
-                              </span>
-                            )}
-                          </Show>
-                        </span>
-                      </button>
-                    </li>
-                  );
-                }}
-              </Index>
-            </ul>
-          </Show>
-        </div>
       </Show>
 
       <Show when={mode() === "spaces"}>
@@ -3333,7 +3160,6 @@ export default function LeftSidebar(props: {
               out of a mode, and a long space list must not carry them off. */}
           <div class={styles.spaceDivider} />
           {modeTile("features", "Features", Waypoints)}
-          {modeTile("shells", "Shells", SquareTerminal, shellsTabs().length)}
 
           {/* The only thing on the far side. The `+` that used to live here is
               gone: it was one route to "New space", and the menu below already

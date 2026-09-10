@@ -21,6 +21,8 @@ export default function UnifiedTabStrip(props: {
   class?: string;
   /** The pane does not hold focus, so its selection is not drawn. */
   blurred?: boolean;
+  /** Tabs and nothing else: the dock's strip, where no kind's controls apply. */
+  bare?: boolean;
 }) {
   // Every registered cluster, not the active tab's (phase 13): what a pane
   // offers should not depend on which of its tabs is in front. Keyed by the
@@ -47,7 +49,7 @@ export default function UnifiedTabStrip(props: {
       onReorder={props.onReorder}
       renderTab={(t, ghost) => renderRegistryTab(t, ghost, props.place)}
       renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
-      trailing={<For each={trailingClusters()}>{(cluster) => cluster()}</For>}
+      trailing={props.bare ? undefined : <For each={trailingClusters()}>{(cluster) => cluster()}</For>}
     />
   );
 }

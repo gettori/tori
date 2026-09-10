@@ -37,7 +37,8 @@ const unitSel = {
 
 const sessionSel = { ...unitSel, agent: "claude", sessionId: "s1", sessionPath: `${ROOT}/s1.jsonl`, sessionCwd: ROOT };
 
-const shellsSel = { kind: "shells", spaceName: "", projectName: "Shells", projectPath: "", folderPath: "", branch: "" };
+// A Feature whose members are all gone: a selection, and no folder behind it.
+const rootlessSel = { kind: "feature", featureId: "f1", roots: [], activeRoot: null, spaceName: "", projectName: "Auth", projectPath: "", folderPath: "", branch: "" };
 
 beforeEach(() => {
   bridge.calls = [];
@@ -87,7 +88,7 @@ describe("the hand-off buttons", () => {
   });
 
   it("offers nothing at all for a selection with no folder to hand over", () => {
-    render(() => <HandOffs selected={shellsSel as never} />);
+    render(() => <HandOffs selected={rootlessSel as never} />);
 
     expect(screen.queryByRole("button", { name: /Ghostty/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /VSCode/ })).toBeNull();

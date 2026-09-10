@@ -809,3 +809,33 @@ html {
 .cm-tooltip .cm-diagnostic-info {
   border-left-color: var(--diag-info);
 }
+
+/* The dock: a card of its own under the work card, sized by its Resizer. */
+.dock {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-height: 0;
+  background: var(--canvas-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-xl);
+  box-shadow: var(--shell-card-shadow);
+  overflow: clip;
+}
+
+.dock.hidden {
+  display: none;
+}
+
+.dock-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(20px * var(--ui-scale));
+  color: var(--fg-muted);
+  text-align: center;
+  pointer-events: none;
+}

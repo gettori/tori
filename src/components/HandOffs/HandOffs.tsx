@@ -27,9 +27,7 @@ import styles from "./HandOffs.module.css";
 export default function HandOffs(props: { selected: Selection | null }) {
   const sel = () => props.selected;
   const isSession = () => !!sel()?.sessionId;
-  // Shells is the one selection with no folder to hand over, so it gets no
-  // buttons rather than two that refuse.
-  const hasRoot = () => !!sel() && sel()?.kind !== "shells" && !!selectionRoot(sel());
+  const hasRoot = () => !!sel() && !!selectionRoot(sel());
 
   async function openGhostty(resume: boolean) {
     const s = sel();

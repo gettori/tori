@@ -25,13 +25,16 @@ import {
 } from "../layout/tabPlacement";
 import { maybeKindEntry } from "./registry";
 import { unifiedTabs, type UnifiedTab } from "./unifiedTabs";
-import { activeWorkspace } from "../panels/Terminal/terminalTabStore";
+import { activeWorkspace, dockActiveId } from "../panels/Terminal/terminalTabStore";
+import { dockOpen } from "../layout/dockStore";
+import { isShellsKey } from "../utils/features";
 
 type PanePlacement = {
   /** This workspace's tabs per pane, in display order. */
   byPane: Map<string, UnifiedTab[]>;
-  /** Every workspace's tabs resolved against this workspace's tree, per pane:
-   *  what a pane hosts (background surfaces included, gotcha #64). */
+  /** Every workspace's tabs on this side of the dock, resolved against this
+   *  workspace's tree, per pane: what a pane hosts (background surfaces
+   *  included, gotcha #64). */
   hostedByPane: Map<string, UnifiedTab[]>;
 };
 
@@ -50,6 +53,9 @@ function computePlacement(ws: string): PanePlacement | null {
   const byPane = new Map<string, UnifiedTab[]>();
   const hostedByPane = new Map<string, UnifiedTab[]>();
   for (const t of unifiedTabs()) {
+    // The dock and the workspace are on screen together, so a surface one of
+    // them adopted would be pulled out from under it by the other.
+    if (isShellsKey(t.workspace) !== isShellsKey(ws)) continue;
     const pane = paneOfTab(t.workspace, t, root);
     if (!pane) continue;
     const hosted = hostedByPane.get(pane);
@@ -140,7 +146,9 @@ const claimedIds = (tabs: UnifiedTab[]): string[] =>
 export function paneActiveId(ws: string, paneId: string): string | null {
   if (!layoutRoot(ws)) return null;
   const tabs = paneTabs(ws, paneId);
-  return activeIdInPane(ws, paneId, tabs.map((t) => t.id), claimedIds(tabs));
+  // The terminal kinds claim the workspace's tab, which is never the dock's.
+  const claimed = isShellsKey(ws) ? [dockActiveId()].filter((id): id is string => !!id) : claimedIds(tabs);
+  return activeIdInPane(ws, paneId, tabs.map((t) => t.id), claimed);
 }
 
 /** Does this pane speak for the kind: is it where the kind's tabs land, and so
@@ -161,11 +169,13 @@ export function kindHomePane(ws: string, kind: string): string | null {
  *  False for every tab of a background workspace: its panes still remember
  *  their picks, but nothing in them is on screen, and answering true here is
  *  what kept one surface per pane per visited worktree active (fit, focus,
- *  `pty_resize`, `chat_set_visible` never false) across a switch. */
+ *  `pty_resize`, `chat_set_visible` never false) across a switch. The dock's
+ *  tabs are on screen whenever the dock is, whatever workspace is. */
 export function visibleInPane(tab: TabRef & { workspace: string }): boolean | null {
   const root = layoutRoot(tab.workspace);
   if (!root) return null;
-  if (tab.workspace !== activeWorkspace()) return false;
+  const onScreen = isShellsKey(tab.workspace) ? dockOpen() : tab.workspace === activeWorkspace();
+  if (!onScreen) return false;
   const pane = paneOfTab(tab.workspace, tab, root);
   return pane ? paneActiveId(tab.workspace, pane) === tab.id : null;
 }
