@@ -396,6 +396,8 @@ pub fn pty_spawn(
     cmd.arg("-i");
     cmd.cwd(&cwd);
     cmd.env("TERM", "xterm-256color");
+    cmd.env("TERM_PROGRAM", "Sway");
+    cmd.env("TERM_PROGRAM_VERSION", app.package_info().version.to_string());
 
     // Applied last, so a caller pointing an agent at a different home wins over
     // anything set above. The agent or command inherits it through the login
