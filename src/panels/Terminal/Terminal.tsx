@@ -75,6 +75,7 @@ import {
   workspaceKey,
 } from "../../utils/features";
 import { commandStatus, commandVerdict, dropCommandStatus, reportCommandExit } from "./commandStatus";
+import { dropInitRefusal, initRefusal, refuseInit } from "./initRefusal";
 import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
 import {
   agents,
@@ -689,15 +690,19 @@ export default function Terminal(props: {
   // mere existence.
   createEffect(() =>
     props.onOpenChange?.(
-      open().map((o) => ({
-        id: o.id,
-        workspace: o.workspace,
-        kind: o.kind,
-        cwd: o.cwd,
-        sessionId: o.sessionId,
-        agent: o.kind === "agent" || o.kind === "chat" ? agentIdForProgram(o.program) : undefined,
-        state: tabState(o),
-      })),
+      open().map((o) => {
+        // A refused agent tab is its shell and nothing more, so it is counted as one.
+        const refused = !!initRefusal(o.id);
+        return {
+          id: o.id,
+          workspace: o.workspace,
+          kind: refused ? "shell" : o.kind,
+          cwd: o.cwd,
+          sessionId: refused ? undefined : o.sessionId,
+          agent: !refused && (o.kind === "agent" || o.kind === "chat") ? agentIdForProgram(o.program) : undefined,
+          state: tabState(o),
+        };
+      }),
     ),
   );
 
@@ -943,6 +948,7 @@ export default function Terminal(props: {
   let offRevealDock: (() => void) | undefined;
   let offComposeDraft: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
+  let unlistenRefused: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
   onMount(async () => {
     offOpenTerminal = onWith<OpenTerminal>(OPEN_TERMINAL, (t) => {
@@ -997,6 +1003,9 @@ export default function Terminal(props: {
       if (t.kind === "command") noteCommandExit(t, e.payload.code);
       else closeId(t.id);
     });
+    unlistenRefused = await listen<{ id: string; foreground: string }>("pty://init-refused", (e) =>
+      refuseInit(e.payload.id, e.payload.foreground),
+    );
     // Pulled, not listened for. The startup reap runs inside Tauri's `setup`,
     // which finishes before this webview exists, so an event emitted there
     // would reach nobody and an orphan would block its session id in silence.
@@ -1046,6 +1055,7 @@ export default function Terminal(props: {
     offRevealDock?.();
     offComposeDraft?.();
     unlistenExit?.();
+    unlistenRefused?.();
     unlistenSessions?.();
   });
 
@@ -1157,7 +1167,7 @@ export default function Terminal(props: {
       // below would then make every unclaimed session in the folder a
       // candidate - so an inert tab would not merely fail to match, it would
       // match the wrong session.
-      if (t.kind !== "agent" || t.sessionId || tabState(t) !== "live") continue;
+      if (t.kind !== "agent" || t.sessionId || tabState(t) !== "live" || initRefusal(t.id)) continue;
       byWorkspace.set(t.workspace, [...(byWorkspace.get(t.workspace) ?? []), t]);
     }
     for (const [workspace, tabs] of byWorkspace) {
@@ -1928,6 +1938,7 @@ export default function Terminal(props: {
     // Or a later tab reusing this id would inherit its verdict: command ids are
     // minted from what they act on, so `install:claude` comes back.
     dropCommandStatus(id);
+    dropInitRefusal(id);
     dropStageHost(id);
   }
 
@@ -2003,7 +2014,7 @@ export default function Terminal(props: {
 
   /** Does this tab host a session at all? Shell and command tabs do not, and
    *  get no mark rather than a resting one for a session they will never have. */
-  const marksSession = (t: OpenTerm) => t.kind === "chat" || t.kind === "agent";
+  const marksSession = (t: OpenTerm) => (t.kind === "chat" || t.kind === "agent") && !initRefusal(t.id);
 
   /** What that tab's session is doing.
    *
@@ -2017,6 +2028,8 @@ export default function Terminal(props: {
     // mark, which is the right answer for a session that is starting and the
     // wrong one for a restored tab that has not been reached for.
     if (tabState(t) !== "live") return "none";
+    // Its shell never started the agent, whatever session id the tab carries.
+    if (initRefusal(t.id)) return null;
     if (t.kind === "chat") return chatStatus(t);
     return t.sessionId ? sessionStatus(t.sessionId) : null;
   }
