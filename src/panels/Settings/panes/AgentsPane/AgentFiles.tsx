@@ -57,8 +57,8 @@ export type ConfigFilesView = {
 };
 
 /** The one reason every editor-opening action here can be off, in the words the
- *  tooltip says. Shells and a Feature with no present member both have a
- *  Selection and no folder, and a tab has to land in a workspace. */
+ *  tooltip says. A Feature with no present member has a Selection and no
+ *  folder, and a tab has to land in a workspace. */
 const NO_ROOT = "Select a project first";
 
 function toast(message: string, kind: ToastEvent["kind"]) {

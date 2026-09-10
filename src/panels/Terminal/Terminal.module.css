@@ -295,3 +295,10 @@
 .tabMenu {
   display: contents;
 }
+
+.tabVerdict {
+  flex: none;
+  font-size: var(--sway-text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--danger-fg);
+}

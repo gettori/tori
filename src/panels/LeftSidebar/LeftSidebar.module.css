@@ -99,9 +99,8 @@
 }
 
 /* The Feature list on the tree's insets, like the cards it replaces, and stood
-   off the title and the strip by the same block padding the Shells list uses.
-   It buys that directly now: the New Feature button that used to hold the gap
-   at the top has moved into the head row. */
+   off the title and the strip by block padding of its own: the New Feature
+   button that used to hold the gap at the top has moved into the head row. */
 .featureList {
   padding-inline: var(--tree-inset) var(--tree-gutter);
   padding-block: calc(8px * var(--ui-scale));
@@ -326,8 +325,8 @@
   height: var(--row-h);
   margin: 0 0 0 var(--tree-inset);
   padding: 0 calc(8px * var(--ui-scale));
-  /* Square on the left like the branch pill and the shells row, so every list
-     row in this column takes the same shape under the pointer. */
+  /* Square on the left like the branch pill, so every list row in this column
+     takes the same shape under the pointer. */
   border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
   cursor: pointer;
   white-space: nowrap;
@@ -669,7 +668,7 @@
 
 /* ---- The view strip ----
    The bottom strip: every view you can be in, packed left (the spaces, then
-   Features and Shells past a rule), with the actions gear alone on the right.
+   Features past a rule), with the actions gear alone on the right.
    The bar itself does not clip, so the gear menu can open upward past its top
    edge. */
 .spaceBar {
@@ -834,8 +833,8 @@
   padding-inline: calc(9px * var(--ui-scale));
 }
 
-/* Features and Shells are not spaces and have no hue of their own, so the lit
-   one takes the brand rather than a colour it would have to invent. */
+/* Features is not a space and has no hue of its own, so when lit it takes the
+   brand rather than a colour it would have to invent. */
 .modeTile.active {
   color: var(--brand-default);
 }
@@ -887,12 +886,6 @@
     opacity var(--sway-duration-fast) ease var(--sway-duration-fast);
 }
 
-.tileCount {
-  color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
-  font-variant-numeric: tabular-nums;
-}
-
 /* The measuring ruler. Out of flow so it costs the row nothing, `max-content`
    so the shrink-to-fit of an absolute box cannot squeeze the answer, and
    declared after `.titled` so that width wins. `.tileName`'s own max-width
@@ -917,191 +910,3 @@
   box-shadow: inset -2px 0 0 var(--brand-default);
 }
 
-/* The Shells list, on the tree's insets like the Feature list beside it. */
-.shellsList {
-  /* Takes the column the way the tree and the Feature list do, so a long list
-     scrolls here instead of pushing the strip off the bottom. */
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-inline: var(--tree-inset) var(--tree-gutter);
-  /* Neither the first row nor the last stands itself off the title or the
-     strip, so the list buys both gaps directly. The Feature list beside it
-     does the same, on the same value. */
-  padding-block: calc(8px * var(--ui-scale));
-}
-
-.shellsItems {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: calc(2px * var(--ui-scale));
-}
-
-/* A button, not a plain row: clicking it focuses that tab in the workspace's
-   own strip, which is the only other way to reach one.
-
-   Two lines: what it is called, then where it is and what it is running. The
-   second line is not indented under the name - it starts at the glyph, so the
-   row reads as one block rather than a hanging paragraph. */
-.shellsRow {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: calc(2px * var(--ui-scale));
-  padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border: 0;
-  /* Square on the left, where the selection bar runs, and rounded on the
-     right: a rounded left corner would cut the bar into a lozenge. */
-  border-radius: 0 var(--sway-radius-lg) var(--sway-radius-lg) 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background var(--sway-duration-fast) ease;
-}
-
-.shellsRow:hover {
-  background: linear-gradient(to right, var(--neutral-hover), transparent);
-}
-
-/* The tab on screen, marked the way a selected branch row is: the brand bar
-   down the left edge over a wash that fades out to the right. Declared after
-   :hover at equal specificity, so hovering the current row keeps the gold. */
-.shellsRowOn,
-.shellsRowOn:hover {
-  background:
-    linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
-      var(--sway-border-thick) 100% no-repeat,
-    linear-gradient(to right, var(--brand-subtle), transparent);
-}
-
-.shellsLine {
-  display: flex;
-  align-items: center;
-  gap: calc(7px * var(--ui-scale));
-  min-width: 0;
-}
-
-/* A fixed slot whatever is in it, so every name starts on the same column and
-   the meta line below lines up with the glyph rather than with the name. */
-.shellsGlyph {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(8px * var(--ui-scale));
-  height: calc(8px * var(--ui-scale));
-  color: var(--info-fg);
-}
-
-.shellsGlyph :global(svg) {
-  width: calc(8px * var(--ui-scale));
-  height: calc(8px * var(--ui-scale));
-  stroke-width: 3.5;
-}
-
-/* Running and stopped are shapes rather than glyphs: a filled dot for a thing
-   that is going, a square for one that has been put down. */
-.shellsMark {
-  width: calc(7px * var(--ui-scale));
-  height: calc(7px * var(--ui-scale));
-  border-radius: var(--sway-radius-pill);
-  background: currentColor;
-}
-
-.shellsRow[data-state="failed"] .shellsGlyph {
-  color: var(--danger-fg);
-}
-
-.shellsRow[data-state="stopped"] .shellsGlyph {
-  color: var(--fg-subtle);
-}
-
-.shellsRow[data-state="stopped"] .shellsMark {
-  border-radius: calc(2px * var(--ui-scale));
-}
-
-.shellsName {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--sway-text-xl);
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--fg-default);
-}
-
-.shellsState {
-  flex: none;
-  font-size: var(--sway-text-sm);
-  font-variant-numeric: tabular-nums;
-  color: var(--fg-subtle);
-}
-
-.shellsRow[data-state="failed"] .shellsState {
-  color: var(--danger-fg);
-}
-
-/* Printed while you were somewhere else. Beside the verdict rather than over
-   the glyph: the glyph says what the run is doing, this says whether you have
-   read it, and one mark cannot carry both. */
-.shellsUnseen {
-  flex: none;
-  width: calc(7px * var(--ui-scale));
-  height: calc(7px * var(--ui-scale));
-  border-radius: var(--sway-radius-pill);
-  background: var(--brand-default);
-}
-
-/* Where it is running, then what it is running. Monospace, because both are
-   things you would have typed. */
-.shellsMeta {
-  display: flex;
-  align-items: baseline;
-  gap: calc(5px * var(--ui-scale));
-  min-width: 0;
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
-  line-height: 1.35;
-}
-
-/* The folder gets the truncation and the command gets what is left: the folder
-   is the shorter of the two and the one you scan the column by. */
-.shellsWhere {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-muted);
-}
-
-/* The row you are looking at names its folder in the brand, which is the one
-   place in the column where "where you are" is worth more than "what it runs".
-   The gold on this wash is the pairing `brand.default on accent.subtle` stands
-   in for in the contrast gate: the wash is translucent and unmeasurable on its
-   own. */
-.shellsRowOn .shellsWhere {
-  color: var(--brand-default);
-}
-
-.shellsSep {
-  flex: none;
-  color: var(--fg-subtle);
-}
-
-.shellsCommand {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-muted);
-}

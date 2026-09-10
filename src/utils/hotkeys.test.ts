@@ -66,6 +66,7 @@ describe("the canonical binding table", () => {
         "tab-cycle",
         "tab-jump",
         "terminal-search",
+        "toggle-dock",
         "toggle-editor",
         "toggle-filetree",
         "toggle-sidebar",

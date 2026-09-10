@@ -68,7 +68,15 @@ vi.mock("../utils/chatSessions", () => ({
 }));
 
 const { default: Terminal } = await import("../panels/Terminal/Terminal");
-const { open, setOpen, focusTab, activeWorkspace } = await import("../panels/Terminal/terminalTabStore");
+const { default: PaneView } = await import("./PaneView");
+const { open, setOpen, focusTab, focusDockTab, activeWorkspace, dockActiveId } = await import(
+  "../panels/Terminal/terminalTabStore"
+);
+const { showDock, setFocusedSurface, resetDock } = await import("../layout/dockStore");
+const { startTabDrag, endTabDrag } = await import("./tabDrag");
+const { emit, emitWith, onWith, OPEN_JOB, REVEAL_DOCK, TAB_CYCLE, MOVE_TAB_TO_PANE, SPLIT_PANE } = await import(
+  "../utils/events"
+);
 const { ensureEnvelope, resetPaneLayoutModel, seedOnePane } = await import("../layout/layoutStore");
 const { resetTabPlacement } = await import("../layout/tabPlacement");
 const { ensureShellsWorkspace, shellsPane } = await import("../layout/shellsWorkspace");
@@ -124,6 +132,8 @@ beforeEach(() => {
   bridge.log = [];
   resetPaneLayoutModel();
   resetTabPlacement();
+  resetDock(false);
+  endTabDrag();
 });
 
 describe("workspace-scoped active", () => {
@@ -207,5 +217,78 @@ describe("workspace-scoped active", () => {
     expect(paneTabs(WS1, "main").map((t) => t.id)).toEqual(before);
     expect(activeWorkspace()).toBe(WS1);
     expect(activeIds()).toEqual(["sh:1"]);
+  });
+
+  // The dock is a second group on screen, not a place the window goes: opening,
+  // revealing, focusing, cycling and hiding it all leave the selected workspace
+  // and its surface exactly where they were.
+  it("no dock action moves the selected workspace", async () => {
+    render(() => <Terminal selected={selection} onOpenChange={() => {}} />);
+    ensureShellsWorkspace();
+    visit(tab("sh:1", WS1));
+    await waitFor(() => expect(activeIds()).toEqual(["sh:1"]));
+
+    const job = { title: "Clone", cwd: "/root/work", program: "git", args: [] };
+    emitWith(OPEN_JOB, { ...job, id: "clone:1" });
+    emitWith(OPEN_JOB, { ...job, id: "clone:2" });
+    await waitFor(() => expect(activeIds().sort()).toEqual(["clone:2", "sh:1"]));
+    expect(activeWorkspace()).toBe(WS1);
+
+    focusDockTab("clone:1");
+    setFocusedSurface("dock");
+    emit(TAB_CYCLE);
+    await waitFor(() => expect(dockActiveId()).toBe("clone:2"));
+    emitWith(REVEAL_DOCK, { tabId: "clone:1" });
+    focusTab(SHELLS_KEY, "clone:2");
+    expect(dockActiveId()).toBe("clone:1");
+    showDock(false);
+    await waitFor(() => expect(activeIds()).toEqual(["sh:1"]));
+    expect(activeWorkspace()).toBe(WS1);
+  });
+
+  // The mirror of the test above: a tab from a branch unit dragged over the dock
+  // finds no drop target, since the dock's one pane is not part of any branch's
+  // tree and a move or split there would land in the wrong one.
+  it("a branch tab cannot be dropped on the dock", async () => {
+    ensureShellsWorkspace();
+    render(() => (
+      <>
+        <Terminal selected={selection} onOpenChange={() => {}} />
+        <PaneView pinKind="command" paneId={shellsPane()!} ws={SHELLS_KEY} />
+      </>
+    ));
+    visit(tab("sh:1", WS1));
+    const moved: unknown[] = [];
+    const offMove = onWith(MOVE_TAB_TO_PANE, (m) => moved.push(m));
+    const offSplit = onWith(SPLIT_PANE, (m) => moved.push(m));
+
+    // jsdom measures every box as zero, so the dock gets the one a layout would
+    // give it; without it no zone is ever hit and the test would prove nothing.
+    const strip = document.querySelector<HTMLElement>(".otab-list")!.parentElement!;
+    const pane = strip.parentElement!;
+    const box = (el: HTMLElement, height: number) =>
+      (el.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, width: 400, height, right: 400, bottom: height, x: 0, y: 0 }) as DOMRect);
+    box(pane, 300);
+    box(strip, 40);
+    // Both panes are the seeded `main`, so this drag reads as the dock's own.
+    startTabDrag({ id: "sh:1", kind: "shell", ws: WS1, fromPane: "main" }, {} as DragEvent);
+    for (const [x, y] of [
+      [200, 20],
+      [200, 150],
+    ]) {
+      for (const type of ["dragover", "drop"]) {
+        const e = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperties(e, { clientX: { value: x }, clientY: { value: y } });
+        pane.dispatchEvent(e);
+      }
+    }
+    endTabDrag();
+    offMove();
+    offSplit();
+
+    expect(moved).toEqual([]);
+    expect(document.querySelector("[data-drop-zone]")).toBeNull();
+    expect(paneTabs(WS1, "main").map((t) => t.id)).toEqual(["sh:1"]);
   });
 });

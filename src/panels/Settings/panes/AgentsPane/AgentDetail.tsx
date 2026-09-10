@@ -358,7 +358,7 @@ function ModelsPane(props: {
 export default function AgentDetail(props: {
   agent: AgentHealth;
   /** The folder an opened file lands in, or `null` when the workspace has no
-   *  folder (Shells, a Feature with no present member). Every action here that
+   *  folder (a Feature with no present member). Every action here that
    *  opens the editor is disabled without one and says why. */
   projectRoot: string | null;
   onBack: () => void;

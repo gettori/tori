@@ -25,6 +25,8 @@ import { stageHost } from "./stageHost";
 import { draggingTab, dropAction, endTabDrag, hitTest, type DropZone } from "./tabDrag";
 import { setPaneActive } from "../layout/tabPlacement";
 import { focusedPaneId } from "../layout/layoutStore";
+import { dockOpen, focusedSurface } from "../layout/dockStore";
+import { isShellsKey } from "../utils/features";
 import { preserveScrollAndFocus } from "../utils/rowMovePreserve";
 import { traceMark } from "../utils/perfTrace";
 import {
@@ -45,10 +47,12 @@ export default function PaneView(props: {
   ws?: string;
 }) {
   const entry = () => maybeKindEntry(props.pinKind);
+  const inDock = () => isShellsKey(props.ws);
   // A strip only marks its selection while its pane holds focus: two lit tabs in
   // two panes read as two selections, and only one of them is the one every
   // command means.
   const blurred = () => {
+    if (dockOpen() && (focusedSurface() === "dock") !== inDock()) return true;
     const focused = props.paneId ? focusedPaneId(props.ws ?? "") : null;
     return !!focused && focused !== props.paneId;
   };
@@ -114,7 +118,9 @@ export default function PaneView(props: {
   /** The zone under the pointer, or null when this pane is not a target at all
    *  (no tree, or nothing in flight). */
   function zoneAt(e: DragEvent): DropZone | null {
-    if (!props.paneId || !draggingTab()) return null;
+    // A move or a split lands in the selected workspace's tree, which the dock's
+    // one pane is not part of, and a tab only ever moves within its own group.
+    if (!props.paneId || !draggingTab() || inDock() || draggingTab()!.ws !== props.ws) return null;
     const tabs = strip
       ? [...strip.querySelectorAll<HTMLElement>(".otab-list [data-tab-id]")].map((el) => ({
           id: el.dataset.tabId!,
@@ -244,6 +250,7 @@ export default function PaneView(props: {
         ref={(el) => (strip = el)}
         class={entry()?.stripClass}
         blurred={blurred()}
+        bare={inDock()}
         items={items()}
         activeId={activeId()}
         place={props.paneId ? { ws: props.ws ?? "", paneId: props.paneId } : undefined}
@@ -258,7 +265,7 @@ export default function PaneView(props: {
       <div class={styles.stage} ref={slot}>
         {/* Once per workspace, not once per pane: the restore offer and the
             empty-pane note belong to the pane the kind opens into. */}
-        <Show when={!props.paneId || isKindHome(props.ws ?? "", props.pinKind, props.paneId)}>
+        <Show when={!inDock() && (!props.paneId || isKindHome(props.ws ?? "", props.pinKind, props.paneId))}>
           {entry()?.overlay?.()}
         </Show>
       </div>

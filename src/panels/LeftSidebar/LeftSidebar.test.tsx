@@ -289,13 +289,11 @@ describe("the Spaces | Features mode", () => {
     expect(screen.queryByText("repo")).toBeNull();
   });
 
-  it("steps through all three on the palette's toggle event", async () => {
+  it("steps through both on the palette's toggle event", async () => {
     sidebar();
     await screen.findByText("repo");
     emit(TOGGLE_SIDEBAR_MODE);
     await waitFor(() => expect(pressed("Features")).toBe(true));
-    emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(pressed("Shells")).toBe(true));
     emit(TOGGLE_SIDEBAR_MODE);
     await waitFor(() => expect(pressed("work")).toBe(true));
     await screen.findByText("repo");
