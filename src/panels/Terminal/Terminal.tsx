@@ -16,14 +16,14 @@ import type { Selection } from "../LeftSidebar/LeftSidebar";
 import {
   on as onEvent,
   onWith,
-  emit,
   emitWith,
   CLOSE_TAB,
   OPEN_TERMINAL,
   COMPOSE_DRAFT,
   OPEN_JOB,
   type OpenJob,
-  REVEAL_SHELLS,
+  REVEAL_DOCK,
+  type RevealDock,
   NEW_SESSION,
   PURGE_UNDER_PATH,
   PURGE_WORKSPACE,
@@ -74,8 +74,7 @@ import {
   workspaceFolders,
   workspaceKey,
 } from "../../utils/features";
-import { commandStatus, dropCommandStatus, reportCommandExit } from "./commandStatus";
-import { clearTabUnseen, markTabUnseen } from "./tabUnseen";
+import { commandStatus, commandVerdict, dropCommandStatus, reportCommandExit } from "./commandStatus";
 import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
 import {
   agents,
@@ -126,14 +125,17 @@ import {
   activeByWorkspace,
   setActiveByWorkspace,
   tabsIn,
+  activeIdIn,
   visibleId,
   focusTab,
+  focusDockTab,
   resetTerminalTabModel,
   type OpenTerm,
   type TabKind,
 } from "./terminalTabStore";
 import { nextActiveAfterClose } from "../../layout/paneLayout";
 import { kindPaneFocused, revealKindPane } from "../../layout/layoutStore";
+import { dockFocused, showDock } from "../../layout/dockStore";
 import { stageHost, dropStageHost } from "../../tabs/stageHost";
 import { forgetTab } from "../../layout/tabPlacement";
 import { paneMenuItems, visibleInPane } from "../../tabs/paneTabs";
@@ -144,7 +146,6 @@ import { registerKind, kindEntry, type TabDescriptor } from "../../tabs/registry
 import styles from "./Terminal.module.css";
 import patterns from "../../styles/patterns.module.css";
 import Tooltip from "../../components/Tooltip/Tooltip";
-import IconButton from "../../components/IconButton/IconButton";
 
 // Mirrors src-tauri/src/sessions.rs's `TailState` (session_tail_state).
 type TailState = "working" | "done" | "blocked-candidate";
@@ -272,8 +273,9 @@ export default function Terminal(props: {
   // A session tab selects its session; a shell tab selects its branch-unit; a
   // command tab (clone/bootstrap) has no branch home, so it changes nothing.
   function selectTab(t: OpenTerm) {
+    if (isShellsKey(t.workspace)) return focusDockTab(t.id);
     focusTab(t.workspace, t.id);
-    if (t.kind === "command" || isFeatureKey(t.workspace)) return;
+    if (isFeatureKey(t.workspace)) return;
     emitWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, {
       folderPath: t.workspace,
       sessionId: isSessionTab(t) ? t.sessionId : undefined,
@@ -673,18 +675,9 @@ export default function Terminal(props: {
     const sel = props.selected;
     if (sel && workspaceKey(sel) === ws) {
       if (sel.kind === "feature") return [sel.featureName ?? sel.projectName, sel.branch];
-      if (sel.kind === "shells") return [sel.projectName];
       return [sel.spaceName, sel.projectName, sel.branch];
     }
     return ws.split("/").filter(Boolean).slice(-2);
-  };
-
-  // What the Shells row prints after the folder. A login shell is running no
-  // command, and a chat hosts no PTY; an agent or task tab is a shell seeded
-  // with `init`, so the line typed into it is the one worth showing.
-  const commandLine = (o: OpenTerm): string | undefined => {
-    if (o.kind === "shell" || o.kind === "chat") return undefined;
-    return o.init ?? ([o.program, ...o.args].join(" ").trim() || undefined);
   };
 
   // Surface the live tabs (id + workspace + kind + soft sessionId + agent +
@@ -701,12 +694,9 @@ export default function Terminal(props: {
         workspace: o.workspace,
         kind: o.kind,
         cwd: o.cwd,
-        title: o.title,
-        command: commandLine(o),
         sessionId: o.sessionId,
         agent: o.kind === "agent" || o.kind === "chat" ? agentIdForProgram(o.program) : undefined,
         state: tabState(o),
-        active: o.id === visibleId(),
       })),
     ),
   );
@@ -785,37 +775,38 @@ export default function Terminal(props: {
   // listens to the same events for its own tabs, and the focused pane is what
   // decides which listener acts, so one keystroke never lands twice.
   const paneFocused = () => kindPaneFocused(activeWorkspace() ?? "", "shell");
+  // The group the tab keys address: the dock's while it holds them.
+  const keyedGroup = () => (dockFocused() ? SHELLS_KEY : paneFocused() ? activeWorkspace() : null);
+  const focusIn = (ws: string, id: string) => (isShellsKey(ws) ? focusDockTab(id) : focusTab(ws, id));
 
   // Cmd+W. Not the strip's close button, which stays immediate: the keystroke
   // is blind (whatever happens to be active), so the busy cases ask first.
   const offClose = onEvent(CLOSE_TAB, () => {
-    if (!paneFocused()) return;
-    const id = visibleId();
+    const ws = keyedGroup();
+    const id = ws ? activeIdIn(ws) : null;
     if (id) void closeGuarded(id);
   });
   onCleanup(offClose);
 
-  // Cmd+1..9: jump to tab N (0-indexed) of the active workspace's visible bar.
-  // `tabsIn(ws)` is canonical order, already reflecting any drag-reorder the
-  // bar applied via `mergeReorder`.
+  // Cmd+1..9: jump to tab N (0-indexed) of the keyed group's bar. `tabsIn(ws)`
+  // is canonical order, already reflecting any drag-reorder the bar applied via
+  // `mergeReorder`.
   const offTabJump = onWith<TabJump>(TAB_JUMP, ({ index }) => {
-    if (!paneFocused()) return;
-    const ws = activeWorkspace();
+    const ws = keyedGroup();
     if (!ws) return;
     const tab = tabsIn(ws)[index];
-    if (tab) focusTab(ws, tab.id);
+    if (tab) focusIn(ws, tab.id);
   });
   onCleanup(offTabJump);
 
-  // Ctrl+Tab: cycle to the next tab in the active workspace, wrapping around.
+  // Ctrl+Tab: cycle to the next tab in the keyed group, wrapping around.
   const offTabCycle = onEvent(TAB_CYCLE, () => {
-    if (!paneFocused()) return;
-    const ws = activeWorkspace();
+    const ws = keyedGroup();
     if (!ws) return;
     const tabs = tabsIn(ws);
     if (!tabs.length) return;
-    const idx = tabs.findIndex((t) => t.id === visibleId());
-    focusTab(ws, tabs[(idx + 1) % tabs.length].id);
+    const idx = tabs.findIndex((t) => t.id === activeIdIn(ws));
+    focusIn(ws, tabs[(idx + 1) % tabs.length].id);
   });
   onCleanup(offTabCycle);
 
@@ -949,6 +940,7 @@ export default function Terminal(props: {
   let offOpenTerminal: (() => void) | undefined;
   let offNewSession: (() => void) | undefined;
   let offOpenJob: (() => void) | undefined;
+  let offRevealDock: (() => void) | undefined;
   let offComposeDraft: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let unlistenSessions: UnlistenFn | undefined;
@@ -972,6 +964,7 @@ export default function Terminal(props: {
       });
     });
     offOpenJob = onWith<OpenJob>(OPEN_JOB, openCommand);
+    offRevealDock = onWith<RevealDock>(REVEAL_DOCK, ({ tabId }) => revealDock(tabId));
     // Settings has no Selection, so it describes a draft and this decides where
     // it lands. Its own guard, not the sender's: the panel's copy of the root
     // was read when it opened, and the selection can have moved since.
@@ -1050,6 +1043,7 @@ export default function Terminal(props: {
     offOpenTerminal?.();
     offNewSession?.();
     offOpenJob?.();
+    offRevealDock?.();
     offComposeDraft?.();
     unlistenExit?.();
     unlistenSessions?.();
@@ -1066,35 +1060,20 @@ export default function Terminal(props: {
     if (focus) focusTab(t.workspace, t.id);
   }
 
-  // Where the window goes back to when the Shells group empties: the workspace
-  // the most recently opened command tab was started from. One value, not one
-  // per tab, because it is the group that empties, not a tab that closes.
-  const [lastCommandOrigin, setLastCommandOrigin] = createSignal("");
-
   /**
    * Sway is running something for you: a clone, a bootstrap, an install, a
-   * sign-in. It opens as a command tab in the Shells workspace.
+   * sign-in. It opens as a command tab in the dock, in front, and the dock comes
+   * up with it; the workspace underneath stays exactly where it was.
    *
    * The id is the dedupe key it was minted as: pressing Install twice reaches
    * the install in progress rather than racing two package managers over one
-   * bin directory. `interactive` decides whether the window moves, because
-   * `focusTab` writes `activeWorkspace` and that write is what
-   * [[adr_jobs_leave_the_tab_model]] exists to prevent.
+   * bin directory. `interactive` decides only whether the keyboard follows.
    */
   function openCommand(j: OpenJob) {
-    const existing = open().find((o) => o.id === j.id);
-    if (existing) {
-      if (j.interactive) revealShells(existing);
+    if (open().some((o) => o.id === j.id)) {
+      emitWith<RevealDock>(REVEAL_DOCK, { tabId: j.id });
       return;
     }
-    // A branch unit's own key, or nothing. A Feature or Shells key is not a
-    // folder, and the only route back into the sidebar takes a folder.
-    const origin = activeWorkspace() ?? "";
-    const bornIn = origin && !isFeatureKey(origin) && !isShellsKey(origin) ? origin : "";
-    // Only a real one overwrites: a second command started from inside Shells
-    // says nothing about where to go back to, and wiping it would strand the
-    // window on an empty group.
-    if (bornIn) setLastCommandOrigin(bornIn);
     const tab: OpenTerm = {
       id: j.id,
       title: j.title,
@@ -1109,19 +1088,27 @@ export default function Terminal(props: {
       ...(j.env ? { env: j.env } : {}),
       ...(j.rediscoverOnExit ? { rediscoverOnExit: true } : {}),
       ...(j.recheckAgentsOnExit ? { recheckAgentsOnExit: true } : {}),
-      ...(bornIn ? { bornIn } : {}),
+      ...(j.interactive ? { interactive: true } : {}),
     };
-    if (j.interactive) revealShells(tab);
-    // Opened where you are not looking. `focusTab` would write
-    // `activeWorkspace`, which is the whole of the bug the ADR is about.
-    else openOrActivate(tab, false);
+    setOpen([...open(), tab]);
+    revealDock(tab.id);
   }
 
-  /** Take the window to Shells and put this tab in front of it. */
-  function revealShells(t: OpenTerm) {
-    emit(REVEAL_SHELLS);
-    openOrActivate(t);
+  function revealDock(tabId: string) {
+    if (!tabsIn(SHELLS_KEY).some((t) => t.id === tabId)) return;
+    showDock(true);
+    focusDockTab(tabId);
   }
+
+  // Dock up for a command, progress, dock gone: it stays only for what is in it.
+  createEffect(
+    on(
+      () => tabsIn(SHELLS_KEY).length,
+      (count, prev) => {
+        if (count === 0 && prev) showDock(false);
+      },
+    ),
+  );
 
   /**
    * A command exited. A `null` code is an exit the backend could not confirm,
@@ -1146,24 +1133,11 @@ export default function Terminal(props: {
           ? `${t.title} ended without an exit code`
           : `${t.title} failed (exit ${code})`,
       kind: failed ? "error" : "info",
-      ...(failed ? { action: { label: "Show", run: () => revealShells(t) } } : {}),
+      ...(failed
+        ? { action: { label: "Show", run: () => emitWith<RevealDock>(REVEAL_DOCK, { tabId: t.id }) } }
+        : {}),
     });
-    if (!failed) autoCloseCommand(t);
-  }
-
-  /**
-   * Close a command tab that reported success, and hand the window back if that
-   * emptied the group. A hand-closed last tab leaves you where you are: this is
-   * only for the close nobody asked for.
-   */
-  function autoCloseCommand(t: OpenTerm) {
-    const alone = tabsIn(SHELLS_KEY).every((o) => o.id === t.id);
-    closeId(t.id);
-    if (!alone || activeWorkspace() !== SHELLS_KEY) return;
-    const back = lastCommandOrigin();
-    // The sidebar owns the selection and knows what still exists, so it is the
-    // one that decides; a folder that has since gone leaves us put.
-    if (back) emitWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, { folderPath: back });
+    if (!failed) closeId(t.id);
   }
 
   // A fresh `+Claude` tab carries no sessionId until its transcript
@@ -1902,22 +1876,6 @@ export default function Terminal(props: {
     });
   }
 
-  // A shell of your own in Shells. There is no branch behind this workspace, so
-  // it opens at home; the `+` in its strip is the only way to make one.
-  async function newShellInShells() {
-    const cwd = await homeDir().catch(() => "/");
-    openOrActivate({
-      id: shellId(),
-      title: "Shell",
-      cwd,
-      workspace: SHELLS_KEY,
-      kind: "shell",
-      program: "",
-      args: [],
-      profile: null,
-    });
-  }
-
   /**
    * Every tab in this workspace that was restored and never reached for.
    *
@@ -1970,7 +1928,6 @@ export default function Terminal(props: {
     // Or a later tab reusing this id would inherit its verdict: command ids are
     // minted from what they act on, so `install:claude` comes back.
     dropCommandStatus(id);
-    clearTabUnseen(id);
     dropStageHost(id);
   }
 
@@ -2099,23 +2056,6 @@ export default function Terminal(props: {
   // it was before panes could split.
   const onScreen = (t: OpenTerm) => visibleInPane(t) ?? visibleId() === t.id;
 
-  // The unseen-output dot the Shells list draws. Marked from `pty://activity`
-  // below and cleared here, because a tab coming on screen is the only thing
-  // that answers it and this panel is what moves one there. Registered after
-  // `onScreen` so both halves read the one definition of "you can see it".
-  let unlistenActivity: UnlistenFn | undefined;
-  createEffect(() => {
-    for (const t of open()) if (onScreen(t)) clearTabUnseen(t.id);
-  });
-  onMount(async () => {
-    unlistenActivity = await listen<{ id: string; state: "active" | "quiet" }>("pty://activity", (e) => {
-      if (e.payload.state !== "active") return;
-      const t = open().find((o) => o.id === e.payload.id);
-      if (t && !onScreen(t)) markTabUnseen(t.id);
-    });
-  });
-  onCleanup(() => unlistenActivity?.());
-
   // The same shared resource the editor reads, not a second one: `list_features`
   // is fetched once per generation module-wide, so two panels asking cannot end
   // up drawing two different member sets during a refetch.
@@ -2206,6 +2146,7 @@ export default function Terminal(props: {
         profile={term.profile}
         sessionId={term.sessionId}
         active={active()}
+        autoFocus={term.kind === "command" ? !!term.interactive : undefined}
         onOwnershipRefused={(refusal) => noteRefusal(term, refusal)}
       />
     );
@@ -2288,163 +2229,146 @@ export default function Terminal(props: {
     // menu in all of them at once. Still portalled out, because the tab bar
     // clips overflow and would hide a menu rendered inside it.
     const [menuOpen, setMenuOpen] = createSignal(false);
-    // Most of the cluster means nothing in Shells: no branch to launch an agent
-    // in, and no session history to browse. What survives is the one thing that
-    // still does, a plain shell with no branch behind it.
     return (
       <>
-      <Show when={isShellsKey(activeWorkspace())}>
-        {/* The same wrapper the split button uses, for the alignment and the
-            margin; there is just one half to put in it here. */}
-        <div class={styles.termNewSplit}>
-          <IconButton
-            icon={<Icon icon={Plus} />}
-            tooltip="New shell at your home folder"
-            aria-label="New shell"
-            onClick={() => void newShellInShells()}
-          />
-        </div>
-      </Show>
-      <Show when={!isShellsKey(activeWorkspace())}>
-        <div class={styles.termNewSplit}>
-          {/* Main half: a new chat, which is a draft and so costs nothing until
-              it is written in. A plus rather than a terminal icon, because the
-              thing it makes is no longer a shell: the shell moved into the menu
-              beside every other surface. Caret half: everything else. */}
-          {/* `whenDisabled`: with no branch picked, or with no agent enabled,
-              the label is the reason the button is greyed out, not a
-              description of what it does. */}
-          <Tooltip
-            as="button"
-            type="button"
-            class={`${styles.termNew} ${styles.termNewMain}`}
-            disabled={noChatReason() !== null}
-            whenDisabled
-            label={noChatReason() ?? `New chat in ${props.selected!.projectName}`}
-            aria-label={props.selected ? `New chat in ${props.selected.projectName}` : "New chat"}
-            onClick={() => newChat()}
-          >
-            <Icon icon={Plus} />
-          </Tooltip>
-          {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
-              wrapper keeps a box (a dropdown anchors on its trigger's rect),
-              and the two sibling rules the split button relies on are
-              written through it, see the stylesheet. */}
-          <Dropdown
-            as="span"
-            wrapper
-            class={styles.termNewCaretWrap}
-            open={menuOpen()}
-            onOpenChange={setMenuOpen}
-            placement="bottom-end"
-            items={[
-              // The user's default surface leads, and the other one sits
-              // directly under it: whichever way the setting points, the
-              // other route stays a single click from this menu.
-              //
-              // The chat entry names no agent any more. It opens a draft, and
-              // which harness that draft would start is the palette's answer
-              // (the project's last-used one), not this menu's.
-              //
-              // Every entry that would start an agent is absent unless that
-              // agent is one this install offers: a menu row is a promise, and
-              // one that starts something the user turned off in Settings is
-              // Sway going around its own setting.
-              ...(settings.chatDefaults.defaultSurface === "agent"
-                ? [...claudeTerminalItem(), ...newChatItem()]
-                : [...newChatItem(), ...claudeTerminalItem("terminal")]),
-              // The shell the main half used to open, still one click away. No
-              // agent behind it, so nothing gates it.
-              { label: "Terminal", onClick: newShell },
-              // Absent when there is nothing to close, since a row that would
-              // do nothing is worse than no row. Counted in the label: the
-              // whole point is knowing how much of the strip this clears.
-              ...(inertTabs().length
-                ? [
-                    {
-                      label: `Close ${inertTabs().length} tab${inertTabs().length > 1 ? "s" : ""} not started`,
-                      onClick: closeInert,
-                    },
-                  ]
-                : []),
-              // Only for a session selection, since there is nothing to
-              // continue from a bare branch. The session need not have been
-              // started in chat: every surface writes the transcript this
-              // resumes and backfills from.
-              ...(props.selected?.sessionId
-                ? [
-                    {
-                      label: "Continue this session in chat",
-                      // Disabled rather than absent, and the label says why: the
-                      // session exists and the reader can see it, so a row that
-                      // silently vanished would read as Sway losing it.
-                      disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
-                      onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
-                    },
-                    // The counterpart route for a session selection, so the
-                    // PTY surface is reachable for an existing session and
-                    // not only for a new one.
-                    {
-                      label: "Continue this session in terminal",
-                      disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
-                      onClick: () => void focusOrResume(props.selected!),
-                    },
-                  ]
-                : []),
-              ...(agentEnabled("claude")
-                ? [{ label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) }]
-                : []),
-            ]}
-          >
-            <Tooltip
-              as="button"
-              type="button"
-              class={`${styles.termNew} ${styles.termNewCaret}`}
-              disabled={!props.selected}
-              label="Launch an agent session"
-              aria-label="Launch an agent session"
-              // Kobalte writes these on the trigger, which is the wrapper,
-              // and they cannot be taken off it (`wrapper` removes its
-              // `role` and tab stop, not its ARIA). The button is what the
-              // keyboard reaches, so it says this too.
-              aria-haspopup="menu"
-              aria-expanded={menuOpen()}
-            >
-              <Icon icon={ChevronDown} class={styles.termNewChevron} />
-            </Tooltip>
-          </Dropdown>
-        </div>
-        {/* Session navigation, at the surface the sessions run in rather than
-            in a tree you have to find them in. After the launch control: the
-            two are one pair, and the thing you reach for most often is the
-            one nearer the strip's edge. */}
+      <div class={styles.termNewSplit}>
+        {/* Main half: a new chat, which is a draft and so costs nothing until
+            it is written in. A plus rather than a terminal icon, because the
+            thing it makes is no longer a shell: the shell moved into the menu
+            beside every other surface. Caret half: everything else. */}
+        {/* `whenDisabled`: with no branch picked, or with no agent enabled,
+            the label is the reason the button is greyed out, not a
+            description of what it does. */}
         <Tooltip
           as="button"
           type="button"
-          class={`${styles.termNew} ${styles.termHistory}`}
-          disabled={!activeWorkspace()}
-          label="Session history"
-          aria-label="Session history"
-          aria-haspopup="dialog"
-          aria-expanded={historyOpen()}
-          onClick={toggleHistory}
+          class={`${styles.termNew} ${styles.termNewMain}`}
+          disabled={noChatReason() !== null}
+          whenDisabled
+          label={noChatReason() ?? `New chat in ${props.selected!.projectName}`}
+          aria-label={props.selected ? `New chat in ${props.selected.projectName}` : "New chat"}
+          onClick={() => newChat()}
         >
-          <Icon icon={History} />
-          <Show when={detachedLive()}>
-            <span
-              class={styles.termHistoryBadge}
-              title={
-                detachedLive() === 1
-                  ? "1 session running here with no tab open"
-                  : `${detachedLive()} sessions running here with no tab open`
-              }
-            >
-              <Icon icon={CircleDashed} />
-              <Show when={detachedLive() > 1}>{detachedLive()}</Show>
-            </span>
-          </Show>
+          <Icon icon={Plus} />
         </Tooltip>
-      </Show>
+        {/* The caret belongs to its `Tooltip`, so the menu wraps it. This
+            wrapper keeps a box (a dropdown anchors on its trigger's rect),
+            and the two sibling rules the split button relies on are
+            written through it, see the stylesheet. */}
+        <Dropdown
+          as="span"
+          wrapper
+          class={styles.termNewCaretWrap}
+          open={menuOpen()}
+          onOpenChange={setMenuOpen}
+          placement="bottom-end"
+          items={[
+            // The user's default surface leads, and the other one sits
+            // directly under it: whichever way the setting points, the
+            // other route stays a single click from this menu.
+            //
+            // The chat entry names no agent any more. It opens a draft, and
+            // which harness that draft would start is the palette's answer
+            // (the project's last-used one), not this menu's.
+            //
+            // Every entry that would start an agent is absent unless that
+            // agent is one this install offers: a menu row is a promise, and
+            // one that starts something the user turned off in Settings is
+            // Sway going around its own setting.
+            ...(settings.chatDefaults.defaultSurface === "agent"
+              ? [...claudeTerminalItem(), ...newChatItem()]
+              : [...newChatItem(), ...claudeTerminalItem("terminal")]),
+            // The shell the main half used to open, still one click away. No
+            // agent behind it, so nothing gates it.
+            { label: "Terminal", onClick: newShell },
+            // Absent when there is nothing to close, since a row that would
+            // do nothing is worse than no row. Counted in the label: the
+            // whole point is knowing how much of the strip this clears.
+            ...(inertTabs().length
+              ? [
+                  {
+                    label: `Close ${inertTabs().length} tab${inertTabs().length > 1 ? "s" : ""} not started`,
+                    onClick: closeInert,
+                  },
+                ]
+              : []),
+            // Only for a session selection, since there is nothing to
+            // continue from a bare branch. The session need not have been
+            // started in chat: every surface writes the transcript this
+            // resumes and backfills from.
+            ...(props.selected?.sessionId
+              ? [
+                  {
+                    label: "Continue this session in chat",
+                    // Disabled rather than absent, and the label says why: the
+                    // session exists and the reader can see it, so a row that
+                    // silently vanished would read as Sway losing it.
+                    disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
+                    onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
+                  },
+                  // The counterpart route for a session selection, so the
+                  // PTY surface is reachable for an existing session and
+                  // not only for a new one.
+                  {
+                    label: "Continue this session in terminal",
+                    disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
+                    onClick: () => void focusOrResume(props.selected!),
+                  },
+                ]
+              : []),
+            ...(agentEnabled("claude")
+              ? [{ label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) }]
+              : []),
+          ]}
+        >
+          <Tooltip
+            as="button"
+            type="button"
+            class={`${styles.termNew} ${styles.termNewCaret}`}
+            disabled={!props.selected}
+            label="Launch an agent session"
+            aria-label="Launch an agent session"
+            // Kobalte writes these on the trigger, which is the wrapper,
+            // and they cannot be taken off it (`wrapper` removes its
+            // `role` and tab stop, not its ARIA). The button is what the
+            // keyboard reaches, so it says this too.
+            aria-haspopup="menu"
+            aria-expanded={menuOpen()}
+          >
+            <Icon icon={ChevronDown} class={styles.termNewChevron} />
+          </Tooltip>
+        </Dropdown>
+      </div>
+      {/* Session navigation, at the surface the sessions run in rather than
+          in a tree you have to find them in. After the launch control: the
+          two are one pair, and the thing you reach for most often is the
+          one nearer the strip's edge. */}
+      <Tooltip
+        as="button"
+        type="button"
+        class={`${styles.termNew} ${styles.termHistory}`}
+        disabled={!activeWorkspace()}
+        label="Session history"
+        aria-label="Session history"
+        aria-haspopup="dialog"
+        aria-expanded={historyOpen()}
+        onClick={toggleHistory}
+      >
+        <Icon icon={History} />
+        <Show when={detachedLive()}>
+          <span
+            class={styles.termHistoryBadge}
+            title={
+              detachedLive() === 1
+                ? "1 session running here with no tab open"
+                : `${detachedLive()} sessions running here with no tab open`
+            }
+          >
+            <Icon icon={CircleDashed} />
+            <Show when={detachedLive() > 1}>{detachedLive()}</Show>
+          </span>
+        </Show>
+      </Tooltip>
       </>
     );
   };
@@ -2509,6 +2433,15 @@ export default function Terminal(props: {
         ? `${t.cwd} - waiting for your approval${state}${on}`
         : `${t.cwd}${state}${on}`;
     },
+    dots: (u) => (
+      <Show when={u.kind === "command" && commandVerdict(u.id)}>
+        {(verdict) => (
+          <span class={styles.tabVerdict} data-verdict>
+            {verdict()}
+          </span>
+        )}
+      </Show>
+    ),
     renderMenuItem: termMenuItem,
     // Where this tab could go, and how to make somewhere for it to go. The
     // registry skips the wrap for the measuring ghost row.

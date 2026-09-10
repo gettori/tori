@@ -5,9 +5,9 @@ import { createSignal } from "solid-js";
 
 export type CommandStatus = "running" | "ok" | "failed";
 
-// The code, not the verdict it maps to: the Shells row says `exit 1` rather
-// than "failed", and a verdict cannot be un-derived back into a number. `null`
-// is an exit whose code never arrived.
+// The code, not the verdict it maps to: a failed tab says `exit 1` rather than
+// "failed", and a verdict cannot be un-derived back into a number. `null` is an
+// exit whose code never arrived.
 const [reported, setReported] = createSignal<Record<string, number | null>>({});
 
 /** A tab nothing has reported for is running: a command tab exists to run one. */
@@ -19,6 +19,14 @@ export const commandStatus = (id: string): CommandStatus => {
 /** What the command exited with, or null while it is still going or when its
  *  code never arrived. */
 export const commandExitCode = (id: string): number | null => reported()[id] ?? null;
+
+/** A failed command's own words for how it ended: its code, or `ended` when the
+ *  code never arrived. Null while it runs and once it has finished cleanly. */
+export const commandVerdict = (id: string): string | null => {
+  if (commandStatus(id) !== "failed") return null;
+  const code = commandExitCode(id);
+  return code === null ? "ended" : `exit ${code}`;
+};
 
 /** Record how a command exited. First report wins: a second under the same id
  *  would re-toast and could flip a verdict. Returns whether this report was the

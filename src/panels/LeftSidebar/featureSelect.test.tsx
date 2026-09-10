@@ -136,17 +136,13 @@ describe("selecting a Feature", () => {
     expect(active[0].getAttribute("data-feature")).toBe("f1");
   });
 
-  // A full cycle now passes through Shells, which is a selection of its own, so
-  // the one call below is that step and not the Feature being disturbed.
   it("leaves the selection alone across a mode cycle", async () => {
     const { onSelect } = await mounted(featureSel);
     emit(TOGGLE_SIDEBAR_MODE);
     await waitFor(() => expect(screen.queryByText("Auth")).toBeNull());
     emit(TOGGLE_SIDEBAR_MODE);
-    emit(TOGGLE_SIDEBAR_MODE);
     await waitFor(() => expect(screen.queryByText("Auth")).toBeTruthy());
-    expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect.mock.calls[0][0]).toMatchObject({ kind: "shells" });
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("deleting the selected Feature clears it and sweeps feature:<id> from every store", async () => {

@@ -3,6 +3,7 @@
 // precedent. Terminal.tsx resets it at setup: the lifetime still tracks the panel.
 import { createSignal } from "solid-js";
 import { noteTabFocus } from "../../layout/layoutStore";
+import { isShellsKey, SHELLS_KEY } from "../../utils/features";
 
 // A `task` tab is a shell tab seeded with the task's command line, kept a kind
 // of its own for one reason: `tabPersist` restores shell tabs, and restoring a
@@ -45,10 +46,9 @@ export type OpenTerm = {
   // signed out. Set at open and never changed, so neither replaces the tab.
   rediscoverOnExit?: boolean;
   recheckAgentsOnExit?: boolean;
-  // Command tabs: the workspace that was on screen when this one opened, so an
-  // auto-close that empties the group can hand the window back. Empty for a tab
-  // opened from somewhere that is not a branch unit.
-  bornIn?: string;
+  // Command tabs: whether the command is typed at (a sign-in, an install). Only
+  // those take the keyboard, on open or on any later reveal of the dock.
+  interactive?: boolean;
   // Agent tabs: the soft session id (the resumed uuid), distinct from the stable
   // shell tab id. Used to focus/resume in place (Phase 2), not for spawning.
   //
@@ -195,27 +195,38 @@ const [open, setOpen] = createSignal<OpenTerm[]>([]);
 const [tabTitles, setTabTitles] = createSignal<Record<string, string>>({});
 const tabTitle = (t: OpenTerm) => tabTitles()[t.id] ?? t.title;
 // Tabs are grouped by workspace (branch-unit folder). Only the active
-// workspace's tabs show in the bar/stage; every other group stays mounted and
-// CSS-hidden so its PTYs keep running (gotcha #64). `activeWorkspace` is the
-// group on screen; `activeByWorkspace` remembers the focused tab per group.
+// workspace's tabs show in the bar/stage, and the `shells:` group in the dock;
+// every other group stays mounted and CSS-hidden so its PTYs keep running
+// (gotcha #64). `activeWorkspace` is the workspace on screen and is never
+// `shells:`; `activeByWorkspace` remembers the focused tab per group.
 const [activeWorkspace, setActiveWorkspace] = createSignal<string | null>(null);
 const [activeByWorkspace, setActiveByWorkspace] = createSignal<Record<string, string>>({});
 
 const tabsIn = (ws: string) => open().filter((t) => t.workspace === ws);
-// The single visible tab: the active workspace's remembered tab, falling back
-// to its first tab when that record is unset or points at a closed tab.
-const visibleId = (): string | null => {
-  const ws = activeWorkspace();
-  if (!ws) return null;
+// A group's remembered tab, falling back to its first tab when that record is
+// unset or points at a closed tab.
+const activeIdIn = (ws: string): string | null => {
   const tabs = tabsIn(ws);
   const recorded = activeByWorkspace()[ws];
   if (recorded && tabs.some((t) => t.id === recorded)) return recorded;
   return tabs.length ? tabs[0].id : null;
 };
+// The single visible tab of the workspace on screen.
+const visibleId = (): string | null => {
+  const ws = activeWorkspace();
+  return ws ? activeIdIn(ws) : null;
+};
+const dockActiveId = (): string | null => activeIdIn(SHELLS_KEY);
 function focusTab(ws: string, id: string) {
+  // The dock is on screen beside a workspace, never instead of one.
+  if (isShellsKey(ws)) return;
   noteTabFocus(id);
   setActiveWorkspace(ws);
   setActiveByWorkspace({ ...activeByWorkspace(), [ws]: id });
+}
+function focusDockTab(id: string) {
+  noteTabFocus(id);
+  setActiveByWorkspace({ ...activeByWorkspace(), [SHELLS_KEY]: id });
 }
 
 export {
@@ -229,8 +240,11 @@ export {
   activeByWorkspace,
   setActiveByWorkspace,
   tabsIn,
+  activeIdIn,
   visibleId,
+  dockActiveId,
   focusTab,
+  focusDockTab,
 };
 
 // Called from Terminal.tsx's setup, nowhere else: the panel mounts once per app

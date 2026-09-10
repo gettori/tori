@@ -18,16 +18,6 @@ export type LiveTab = {
   // Where the tab was spawned. A Feature tab's `workspace` is `feature:<id>`,
   // not a folder, so the cwd is the only path a Spaces row can count it by.
   cwd?: string;
-  // What the tab calls itself, so the Shells list can name a row without
-  // holding a second copy of the tab model.
-  title?: string;
-  // The line the tab is running, for the Shells row's second line. Absent on a
-  // login shell, which is not running a command, and on a chat, which hosts no
-  // PTY at all.
-  command?: string;
-  // The tab on screen, so a list outside the strip can mark which row is the
-  // one you are looking at. Only ever true for the workspace that is showing.
-  active?: boolean;
   sessionId?: string;
   // Agent program for a resumed/spawned agent tab; lets a session-row probe
   // (session_running) pick the right per-agent pgrep pattern.
@@ -117,14 +107,16 @@ export const TOGGLE_SIDEBAR = "sway:toggle-sidebar";
 export const TOGGLE_TERMINAL = "sway:toggle-terminal";
 export const TOGGLE_EDITOR = "sway:toggle-editor";
 export const TOGGLE_FILETREE = "sway:toggle-filetree";
+export const TOGGLE_DOCK = "sway:toggle-dock";
 
-// Step the sidebar through its three modes. Consumed by LeftSidebar, which owns
-// and persists the mode.
+// Step the sidebar through its modes. Consumed by LeftSidebar, which owns and
+// persists the mode.
 export const TOGGLE_SIDEBAR_MODE = "sway:toggle-sidebar-mode";
 
-// Take the window to Shells. For a panel that starts a command but cannot reach
-// the shell's `onSelect`, which is the only other way in.
-export const REVEAL_SHELLS = "sway:reveal-shells";
+// Open the dock with this command's tab in front. The terminal panel owns the
+// tab model, so it answers for a toast's Show as well as its own dedupe.
+export const REVEAL_DOCK = "sway:reveal-dock";
+export type RevealDock = { tabId: string };
 
 // Open the New Feature dialog. On the bus because the button that asks now sits
 // in the sidebar's own head row, and the dialog belongs to the Feature list
@@ -452,7 +444,7 @@ export type OpenTerminal = {
 
 // Payload-carrying event: run a transient command Sway starts for you (clone,
 // bare-worktree bootstrap, agent install/update/uninstall, sign-in). Opens a
-// `kind: "command"` tab in the Shells workspace, which is a synthetic key no
+// `kind: "command"` tab in the dock's `shells:` group, a synthetic key no
 // branch unit's strip is ever on, so it can neither join nor hide one
 // ([[adr_jobs_leave_the_tab_model]]). Consumed by Terminal.tsx.
 export const OPEN_JOB = "sway:open-job";

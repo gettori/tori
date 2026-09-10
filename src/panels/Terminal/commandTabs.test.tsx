@@ -1,15 +1,16 @@
-// The commands Sway runs for you, as tabs. They open in the Shells workspace,
-// which is nobody's branch unit, and `interactive` decides whether the window
-// moves: `focusTab` writes `activeWorkspace`, and that write is the whole of the
-// bug adr_jobs_leave_the_tab_model exists to prevent.
+// The commands Sway runs for you, as tabs. They open in the dock's `shells:`
+// group, which is nobody's branch unit, and the window never moves: `focusTab`
+// writes `activeWorkspace`, and that write is the whole of the bug
+// adr_jobs_leave_the_tab_model exists to prevent. `interactive` decides only
+// whether the keyboard follows.
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, within } from "@solidjs/testing-library";
 
 const REPO = "/root/work/repo";
 
 const bridge = vi.hoisted(() => ({
   /** Every TerminalView mounted, which is every pty_spawn's arguments. */
-  spawned: [] as { id: string; env?: Record<string, string>; args: string[]; kind: string }[],
+  spawned: [] as { id: string; env?: Record<string, string>; args: string[]; kind: string; autoFocus?: boolean }[],
   invoked: [] as string[],
 }));
 
@@ -38,8 +39,8 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 // The props TerminalView receives *are* the pty_spawn arguments, so this is
 // where the environment can be read without a live terminal.
 vi.mock("./TerminalView", () => ({
-  default: (props: { id: string; env?: Record<string, string>; args: string[]; kind: string }) => {
-    bridge.spawned.push({ id: props.id, env: props.env, args: props.args, kind: props.kind });
+  default: (props: { id: string; env?: Record<string, string>; args: string[]; kind: string; autoFocus?: boolean }) => {
+    bridge.spawned.push({ id: props.id, env: props.env, args: props.args, kind: props.kind, autoFocus: props.autoFocus });
     return <div data-testid="pty" data-id={props.id} />;
   },
 }));
@@ -48,11 +49,12 @@ vi.mock("../Chat/ChatDraft", () => ({ default: () => <div data-testid="draft" />
 
 const { default: Terminal } = await import("./Terminal");
 const { default: PaneView } = await import("../../tabs/PaneView");
-const { activeWorkspace, open, resetTerminalTabModel } = await import("./terminalTabStore");
-const { ensureShellsWorkspace } = await import("../../layout/shellsWorkspace");
+const { activeWorkspace, dockActiveId, open, resetTerminalTabModel } = await import("./terminalTabStore");
+const { ensureShellsWorkspace, shellsPane } = await import("../../layout/shellsWorkspace");
+const { dockOpen, resetDock, showDock } = await import("../../layout/dockStore");
 const { resetPaneLayoutModel, ensureEnvelope, seedOnePane } = await import("../../layout/layoutStore");
 const { resetTabPlacement } = await import("../../layout/tabPlacement");
-const { emitWith, OPEN_JOB, REVEAL_SHELLS, on: onEvent } = await import("../../utils/events");
+const { emitWith, OPEN_JOB } = await import("../../utils/events");
 const { SHELLS_KEY } = await import("../../utils/features");
 const { resetCommandStatus } = await import("./commandStatus");
 const { loginJob } = await import("../../utils/signIn");
@@ -95,13 +97,18 @@ function mount() {
   return render(() => (
     <>
       <Terminal selected={selection} onOpenChange={() => {}} />
-      <PaneView pinKind="shell" />
+      <div data-testid="branch">
+        <PaneView pinKind="shell" />
+      </div>
+      <div data-testid="dock">
+        <PaneView pinKind="command" paneId={shellsPane()!} ws={SHELLS_KEY} />
+      </div>
     </>
   ));
 }
 
 const commandTabs = () => open().filter((t) => t.kind === "command");
-const shellTabs = () => open().filter((t) => t.kind === "shell");
+const autoFocusOf = (id: string) => bridge.spawned.find((s) => s.id === id)?.autoFocus;
 
 beforeEach(() => {
   resetTerminalTabModel();
@@ -111,6 +118,7 @@ beforeEach(() => {
   bridge.spawned.length = 0;
   bridge.invoked.length = 0;
   localStorage.clear();
+  resetDock(false);
   ensureShellsWorkspace();
   ensureEnvelope(REPO, seedOnePane);
 });
@@ -146,50 +154,50 @@ describe("a command Sway runs for you", () => {
     expect(bridge.spawned).toHaveLength(1);
   });
 
-  it("takes the window for an interactive command, which is what Settings hands over to", async () => {
-    mount();
-    const revealed = vi.fn();
-    const off = onEvent(REVEAL_SHELLS, revealed);
-    emitWith<OpenJob>(OPEN_JOB, SIGN_IN);
-    await waitFor(() => expect(activeWorkspace()).toBe(SHELLS_KEY));
-    expect(revealed).toHaveBeenCalled();
-    off();
-  });
-
-  // The one control the strip keeps in Shells. There is no branch behind this
-  // workspace, so the shell it opens has nowhere to be but home.
-  it("opens a shell of your own from the strip's +, at home", async () => {
-    mount();
-    emitWith<OpenJob>(OPEN_JOB, SIGN_IN);
-    await waitFor(() => expect(activeWorkspace()).toBe(SHELLS_KEY));
-
-    fireEvent.click(await screen.findByRole("button", { name: "New shell" }));
-    await waitFor(() => expect(shellTabs()).toHaveLength(1));
-    expect(shellTabs()[0].workspace).toBe(SHELLS_KEY);
-    expect(shellTabs()[0].cwd).toBe("/home/me");
-    // A shell, not a command: nothing reports for it and nothing auto-closes it.
-    expect(shellTabs()[0].kind).toBe("shell");
-  });
-
-  it("offers that + only in Shells, where the rest of the cluster is gone", async () => {
+  // Settings hands a sign-in over and closes: the dock is where it lands, in
+  // front, with the keyboard, and the branch underneath stays selected.
+  it("reveals the dock with an interactive command in front, keyboard and all", async () => {
     mount();
     await waitFor(() => expect(activeWorkspace()).toBe(REPO));
-    expect(screen.queryByRole("button", { name: "New shell" })).toBeNull();
-
     emitWith<OpenJob>(OPEN_JOB, SIGN_IN);
-    await waitFor(() => expect(activeWorkspace()).toBe(SHELLS_KEY));
-    expect(await screen.findByRole("button", { name: "New shell" })).toBeTruthy();
-    // The branch-unit cluster stays hidden behind it.
-    expect(screen.queryByRole("button", { name: /Launch an agent session/ })).toBeNull();
+    await waitFor(() => expect(dockOpen()).toBe(true));
+    expect(dockActiveId()).toBe(SIGN_IN.id);
+    expect(activeWorkspace()).toBe(REPO);
+    await waitFor(() => expect(autoFocusOf(SIGN_IN.id)).toBe(true));
   });
 
-  // The ADR's original bug, restated for the key that replaced "no workspace at
-  // all": a clone must not pull the window off the branch you are working in.
-  it("leaves the window where it is for a non-interactive one", async () => {
+  it("brings the dock back with the running one in front on a second start", async () => {
+    mount();
+    emitWith<OpenJob>(OPEN_JOB, SIGN_IN);
+    emitWith<OpenJob>(OPEN_JOB, CLONE);
+    await waitFor(() => expect(dockActiveId()).toBe("clone:1"));
+
+    showDock(false);
+    emitWith<OpenJob>(OPEN_JOB, SIGN_IN);
+    await waitFor(() => expect(dockOpen()).toBe(true));
+    expect(dockActiveId()).toBe(SIGN_IN.id);
+    expect(commandTabs()).toHaveLength(2);
+  });
+
+  // No kind's controls mean anything in the dock: there is no branch to launch
+  // an agent in and no history to browse. The branch's strip keeps all of them.
+  it("draws the launch controls in the branch's strip and only tabs in the dock's", async () => {
     mount();
     await waitFor(() => expect(activeWorkspace()).toBe(REPO));
-    const revealed = vi.fn();
-    const off = onEvent(REVEAL_SHELLS, revealed);
+    emitWith<OpenJob>(OPEN_JOB, SIGN_IN);
+    const dock = screen.getByTestId("dock");
+    await waitFor(() => expect(within(dock).getAllByRole("tab")).toHaveLength(1));
+    expect(within(dock).queryByRole("button", { name: "Session history" })).toBeNull();
+    expect(within(dock).queryByRole("button", { name: /New chat/ })).toBeNull();
+    expect(within(screen.getByTestId("branch")).getByRole("button", { name: "Session history" })).toBeTruthy();
+  });
+
+  // The ADR's original bug, restated for the dock: a clone must not pull the
+  // window off the branch you are working in, nor the keyboard off what you
+  // were typing in.
+  it("leaves the window and the keyboard where they are for a non-interactive one", async () => {
+    mount();
+    await waitFor(() => expect(activeWorkspace()).toBe(REPO));
 
     emitWith<OpenJob>(OPEN_JOB, CLONE);
     await waitFor(() => expect(commandTabs()).toHaveLength(1));
@@ -197,7 +205,7 @@ describe("a command Sway runs for you", () => {
     // born live, so it spawns whether or not anyone is looking at it.
     expect(bridge.spawned.map((s) => s.id)).toContain("clone:1");
     expect(activeWorkspace()).toBe(REPO);
-    expect(revealed).not.toHaveBeenCalled();
-    off();
+    expect(dockOpen()).toBe(true);
+    expect(autoFocusOf("clone:1")).toBe(false);
   });
 });

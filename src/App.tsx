@@ -16,12 +16,18 @@ import { forgetWorkspace as forgetPlacement } from './layout/tabPlacement';
 import LeftSidebar, { type Selection } from './panels/LeftSidebar/LeftSidebar';
 import {
   featureSelection,
-  isShellsKey,
   selectionRoot,
   workspaceKey,
   type Feature,
 } from './utils/features';
 import { ensureShellsWorkspace } from './layout/shellsWorkspace';
+import Dock from './layout/Dock';
+import {
+  dockOpen,
+  resetDock,
+  setFocusedSurface,
+  showDock,
+} from './layout/dockStore';
 import Terminal from './panels/Terminal/Terminal';
 import Editor from './panels/Editor/Editor';
 import { stageHost } from './tabs/stageHost';
@@ -61,6 +67,7 @@ import {
   TOGGLE_TERMINAL,
   TOGGLE_EDITOR,
   TOGGLE_FILETREE,
+  TOGGLE_DOCK,
   SPLIT_PANE,
   type SplitPane,
   CLOSE_PANE,
@@ -162,10 +169,12 @@ const LS_SELECTION = 'sway.selection.v1';
 type Layout = {
   sidebar: number;
   editor: number;
+  dock: number;
   showSidebar: boolean;
   showTerminal: boolean;
   showEditor: boolean;
   showFiletree: boolean;
+  showDock: boolean;
 };
 
 // Pane floors, in design px at `--ui-scale` 1 and scaled with it like every
@@ -175,6 +184,9 @@ type Layout = {
 // pane can take almost the whole window.
 const SIDEBAR_MIN = 240;
 const EDITOR_MIN = 180;
+const DOCK_MIN = 120;
+// What the work card keeps when the dock is dragged up into it.
+const WORK_MIN = 200;
 // Chat has no width of its own (`.pane.terminal` is the flex filler, App.css), so
 // this floor is enforced as the *ceiling* of the two dividers beside it. Without
 // it, `min-width: 0` on that pane lets a drag crush the transcript to nothing.
@@ -188,10 +200,12 @@ const WORKSPACE_PAD = 10;
 const DEFAULT_LAYOUT: Layout = {
   sidebar: 320,
   editor: 640,
+  dock: 240,
   showSidebar: true,
   showTerminal: true,
   showEditor: true,
   showFiletree: true,
+  showDock: false,
 };
 
 function loadLayout(): Layout {
@@ -213,10 +227,12 @@ function loadLayout(): Layout {
       return {
         sidebar: v.sidebar ?? DEFAULT_LAYOUT.sidebar,
         editor: v.editor ?? DEFAULT_LAYOUT.editor,
+        dock: v.dock ?? DEFAULT_LAYOUT.dock,
         showSidebar: v.showSidebar ?? true,
         showTerminal: bothHidden ? true : showTerminal,
         showEditor: bothHidden ? true : showEditor,
         showFiletree: v.showFiletree ?? true,
+        showDock: v.showDock ?? false,
       };
     }
   } catch {
@@ -230,6 +246,8 @@ function loadSelection(): Selection | null {
     const raw = localStorage.getItem(LS_SELECTION);
     if (raw) {
       const s = JSON.parse(raw) as Selection;
+      // Shells was a selection before it was the dock, and it names no folder.
+      if ((s as { kind?: string } | null)?.kind === 'shells') return null;
       // Backfill the folder anchor for selections persisted before Phase 3.
       if (s && !s.folderPath) s.folderPath = s.projectPath;
       // Backfill the space name for selections persisted under the old `groupName` key.
@@ -261,6 +279,8 @@ function App() {
   const [sidebar, setSidebar] = createSignal(initial.sidebar);
   const [showSidebar, setShowSidebar] = createSignal(initial.showSidebar);
   const [showFiletree, setShowFiletree] = createSignal(initial.showFiletree);
+  const [dock, setDock] = createSignal(initial.dock);
+  resetDock(initial.showDock);
   resetPaneLayoutModel();
   resetTabPlacement();
   ensureShellsWorkspace();
@@ -307,9 +327,7 @@ function App() {
   const paneLeaves = () => leaves(env().layout);
   // Where each kind opens, so the shell knows which pane is the editor (chrome
   // and role) and which the terminal, wherever a move has since put them.
-  // Null in Shells, where homePane's fallback would dress the command pane as the editor.
-  const filePane = () =>
-    isShellsKey(wsKey()) ? null : homePane(wsKey(), 'file', env().layout);
+  const filePane = () => homePane(wsKey(), 'file', env().layout);
   const termPane = () => homePane(wsKey(), 'shell', env().layout);
   const tabRefs = (): TabRef[] =>
     unifiedTabs().filter((t) => t.workspace === wsKey());
@@ -332,11 +350,13 @@ function App() {
   // before anything has been measured).
   let bodyEl: HTMLDivElement | undefined;
   const [bodyW, setBodyW] = createSignal(window.innerWidth);
+  const [bodyH, setBodyH] = createSignal(window.innerHeight);
   onMount(() => {
     if (!bodyEl) return;
-    const ro = new ResizeObserver(([entry]) =>
-      setBodyW(entry.contentRect.width),
-    );
+    const ro = new ResizeObserver(([entry]) => {
+      setBodyW(entry.contentRect.width);
+      setBodyH(entry.contentRect.height);
+    });
     ro.observe(bodyEl);
     onCleanup(() => ro.disconnect());
   });
@@ -392,6 +412,9 @@ function App() {
   // window squeezes the sidebar for now and widening it hands the choice back.
   const sidebarW = () =>
     Math.min(Math.max(sidebar(), px(SIDEBAR_MIN)), sidebarMax());
+  const dockMax = () =>
+    Math.max(px(DOCK_MIN), bodyH() - px(WORKSPACE_PAD) - px(GUTTER) - px(WORK_MIN));
+  const dockH = () => Math.min(Math.max(dock(), px(DOCK_MIN)), dockMax());
 
   const [selected, setSelected] = createSignal<Selection | null>(
     loadSelection(),
@@ -561,10 +584,12 @@ function App() {
         JSON.stringify({
           sidebar: sidebar(),
           editor: editor() || initial.editor,
+          dock: dock(),
           showSidebar: showSidebar(),
           showTerminal: showTerminal(),
           showEditor: showEditor(),
           showFiletree: showFiletree(),
+          showDock: dockOpen(),
         }),
       );
     } catch {
@@ -579,6 +604,19 @@ function App() {
     const el = document.activeElement as HTMLElement | null;
     if (el && el.closest(selector)) el.blur();
   }
+
+  // The dock opens and closes from outside App too (a command, its group
+  // emptying), so the write follows the state rather than the toggle.
+  createEffect(
+    on(
+      dockOpen,
+      (open) => {
+        if (!open) blurIfInside('[data-dock]');
+        persistLayout();
+      },
+      { defer: true },
+    ),
+  );
 
   function toggleSidebar() {
     if (showSidebar()) blurIfInside('.pane.sidebar');
@@ -793,9 +831,6 @@ function App() {
   }
 
   function toggleFiletree() {
-    // Shells draws no tree, so the flag stays what the user set for when a
-    // folder is back on screen; flipping it here would flip nothing visible.
-    if (isShellsKey(wsKey())) return;
     const next = !showFiletree();
     setShowFiletree(next);
     if (next) revealEditorPane();
@@ -803,9 +838,6 @@ function App() {
   }
 
   function revealRightPanel() {
-    // Same reason as the toggle: Shells has no right panel to reveal, and
-    // writing the flag here would lose what the user set for a folder.
-    if (isShellsKey(wsKey())) return;
     revealEditorPane();
     setShowFiletree(true);
     persistLayout();
@@ -816,6 +848,7 @@ function App() {
     t: boolean;
     e: boolean;
     f: boolean;
+    d: boolean;
     layout: PaneNode;
   };
   const lastGeometry = new Map<string, PaneGeometry>();
@@ -826,6 +859,7 @@ function App() {
       t: showTerminal(),
       e: showEditor(),
       f: showFiletree(),
+      d: dockOpen(),
       layout: env().layout,
     };
     const was = lastGeometry.get(ws);
@@ -835,7 +869,8 @@ function App() {
       (now.s && !was.s) ||
       (now.t && !was.t) ||
       (now.e && !was.e) ||
-      (now.f && !was.f);
+      (now.f && !was.f) ||
+      (now.d && !was.d);
     if (revealed || now.layout !== was.layout)
       requestAnimationFrame(() => emit(REFIT_PANES));
   });
@@ -854,6 +889,7 @@ function App() {
   let offToggleTerminal: (() => void) | undefined;
   let offToggleEditor: (() => void) | undefined;
   let offToggleFiletree: (() => void) | undefined;
+  let offToggleDock: (() => void) | undefined;
   let offSplitPane: (() => void) | undefined;
   let offClosePane: (() => void) | undefined;
   let offMoveTab: (() => void) | undefined;
@@ -871,8 +907,12 @@ function App() {
     // where focus does not, so one window listener sees every surface.
     const onFocusIn = (e: FocusEvent) => {
       const el = e.target instanceof HTMLElement ? e.target : null;
+      if (el?.closest('[data-dock]')) return setFocusedSurface('dock');
       const pane = el?.closest<HTMLElement>('[data-pane-id]');
-      if (pane?.dataset.paneId) setFocusedPane(wsKey(), pane.dataset.paneId);
+      if (pane?.dataset.paneId) {
+        setFocusedSurface('workspace');
+        setFocusedPane(wsKey(), pane.dataset.paneId);
+      }
     };
     window.addEventListener('focusin', onFocusIn);
     offFocusIn = () => window.removeEventListener('focusin', onFocusIn);
@@ -890,6 +930,7 @@ function App() {
     offToggleTerminal = onEvent(TOGGLE_TERMINAL, toggleTerminal);
     offToggleEditor = onEvent(TOGGLE_EDITOR, toggleEditor);
     offToggleFiletree = onEvent(TOGGLE_FILETREE, toggleFiletree);
+    offToggleDock = onEvent(TOGGLE_DOCK, () => showDock(!dockOpen()));
     offSplitPane = onEventWith<SplitPane>(SPLIT_PANE, splitPaneFor);
     offClosePane = onEvent(CLOSE_PANE, () => {
       const pane = activePane();
@@ -1020,6 +1061,7 @@ function App() {
     offToggleTerminal?.();
     offToggleEditor?.();
     offToggleFiletree?.();
+    offToggleDock?.();
     offSplitPane?.();
     offClosePane?.();
     offMoveTab?.();
@@ -1108,6 +1150,27 @@ function App() {
               class="chrome-slot"
               ref={(el) => el.appendChild(stageHost('editor-chrome'))}
             />
+          </div>
+          <Show when={dockOpen()}>
+            <Resizer
+              axis="y"
+              side="after"
+              value={dockH()}
+              min={px(DOCK_MIN)}
+              max={dockMax()}
+              onInput={setDock}
+              onCommit={persistLayout}
+            />
+          </Show>
+          {/* Hidden rather than unmounted, so a hide never detaches a running
+              command's terminal from the pane that adopted it. */}
+          <div
+            class="dock"
+            classList={{ hidden: !dockOpen() }}
+            style={{ height: `${dockH()}px` }}
+            data-dock
+          >
+            <Dock />
           </div>
         </div>
       </div>

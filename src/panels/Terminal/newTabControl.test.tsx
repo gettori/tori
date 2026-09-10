@@ -168,7 +168,6 @@ const { default: PaneView } = await import("../../tabs/PaneView");
 const { agents } = await import("../../utils/agents");
 const { refreshAgentHealth } = await import("../../utils/agentHealth");
 const { forgetProfileEnvs } = await import("../../utils/profileEnv");
-const { shellsSelection } = await import("../../utils/features");
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -322,18 +321,6 @@ describe("the launch control", () => {
     await waitFor(() => expect(bridge.invoked).toContain("profile_spawn_env"));
     await waitFor(() => expect(screen.getAllByTestId("pty")).toHaveLength(1));
   });
-
-  // Shells is not a branch: nothing to launch an agent or a shell in, and no
-  // session history to browse. The strip is bare rather than a row of greyed
-  // controls that can never come back on while you are there.
-  it("draws no launch control and no session history in Shells", async () => {
-    await mountLoaded(shellsSelection());
-    expect(screen.getByRole("tablist")).toBeTruthy();
-    expect(screen.queryByLabelText("Launch an agent session")).toBeNull();
-    expect(screen.queryByLabelText(/^New chat/)).toBeNull();
-    expect(screen.queryByLabelText("Session history")).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Terminal" })).toBeNull();
-  });
 });
 
 // Settings has no Selection, so it describes a draft and Terminal decides where
@@ -358,10 +345,10 @@ describe("a draft handed over from Settings", () => {
 
   // Terminal keeps a guard of its own rather than trusting the sender's: the
   // panel read its root when it opened, and the selection can have moved since.
-  it("says so and opens nothing in Shells", async () => {
+  it("says so and opens nothing for a selection with no folder", async () => {
     const toasts: string[] = [];
     window.addEventListener(TOAST, (e) => toasts.push((e as CustomEvent<ToastEvent>).detail.message));
-    await mountLoaded(shellsSelection());
+    await mountLoaded({ ...featureSelection, activeRoot: null, roots: [], folderPath: "" });
 
     emitWith<ComposeDraft>(COMPOSE_DRAFT, { blocks: [{ type: "text", text: "hi" }] as never });
 

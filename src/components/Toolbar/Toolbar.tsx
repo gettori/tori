@@ -25,7 +25,6 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
 
   const sel = () => props.selected;
   const isFeature = () => sel()?.kind === "feature";
-  const isShells = () => sel()?.kind === "shells";
   const featureId = () => (isFeature() ? (sel()?.featureId ?? null) : null);
 
   // The Selection carries only the present roots; badges need every member, so
@@ -62,19 +61,11 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
               when={isFeature()}
               fallback={
                 <nav class={styles.tbCrumb} aria-label="location">
-                  {/* Shells has no space and no branch: one crumb, not two
-                      empty ones around a separator. */}
-                  <Show when={!isShells()}>
-                    <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
-                    <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                  </Show>
-                  <span class={styles.crumb} classList={{ dim: !isShells(), [styles.leaf]: isShells() }}>
-                    {sel()!.projectName}
-                  </span>
-                  <Show when={!isShells()}>
-                    <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                    <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>
-                  </Show>
+                  <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
+                  <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
+                  <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
+                  <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
+                  <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>
                 </nav>
               }
             >

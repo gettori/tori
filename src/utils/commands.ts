@@ -45,6 +45,7 @@ import {
   TOGGLE_TERMINAL,
   TOGGLE_EDITOR,
   TOGGLE_FILETREE,
+  TOGGLE_DOCK,
   SPLIT_PANE,
   type SplitPane,
   CLOSE_PANE,
@@ -179,6 +180,9 @@ const ctrl = (code: string) => (e: KeyboardEvent) =>
 
 const ctrlShift = (code: string) => (e: KeyboardEvent) =>
   e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey && e.code === code;
+
+const cmdCtrl = (code: string) => (e: KeyboardEvent) =>
+  e.metaKey && e.ctrlKey && !e.altKey && !e.shiftKey && e.code === code;
 
 const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
   { mode: "files", label: "Files" },
@@ -338,6 +342,16 @@ export const COMMANDS: Command[] = [
     scope: "global",
     match: cmdOpt("KeyJ"),
     run: () => emit(TOGGLE_TERMINAL),
+  },
+  {
+    id: "toggle-dock",
+    // Not ⌘⇧J: the editor joins lines on it.
+    keys: ["⌘", "⌃", "J"],
+    label: "Show or hide the dock",
+    group: "view",
+    scope: "global",
+    match: cmdCtrl("KeyJ"),
+    run: () => emit(TOGGLE_DOCK),
   },
   {
     id: "toggle-editor",

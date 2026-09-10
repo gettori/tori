@@ -1,6 +1,5 @@
-// The Shells workspace's one pane exists before anything selects it, so a
-// command tab opened from another workspace has a pane to land in. It takes
-// both kinds that live here: what Sway runs, and the shells you open yourself.
+// The dock's one pane exists before anything opens in it, so a command started
+// from any workspace has a pane to land in, and it takes command tabs only.
 import { describe, it, expect, beforeEach } from "vitest";
 import { ensureShellsWorkspace, shellsPane } from "./shellsWorkspace";
 import { layoutRoot, resetPaneLayoutModel } from "./layoutStore";
@@ -15,7 +14,7 @@ beforeEach(() => {
 });
 
 describe("the Shells workspace", () => {
-  it("is one pane that takes both a command and a shell you opened", () => {
+  it("is one pane that takes a command and nothing else", () => {
     expect(layoutRoot(SHELLS_KEY)).toBeNull();
     ensureShellsWorkspace();
     const root = layoutRoot(SHELLS_KEY)!;
@@ -31,17 +30,16 @@ describe("the Shells workspace", () => {
         tabsInWs: [],
       });
     expect(refusal("command")).toBeNull();
-    expect(refusal("shell")).toBeNull();
+    expect(refusal("shell")).not.toBeNull();
   });
 
-  // A lock names one kind, and this pane holds two since the strip's `+`. An
-  // install that ran before that has the old one persisted, so the seed has to
-  // clear it rather than merely stop writing it.
-  it("clears a command lock left behind by an earlier version", () => {
+  // The Shells-mode build cleared the lock so its `+` could open a shell here,
+  // and that open pane is persisted. The seed has to put the lock back.
+  it("locks a pane an earlier version left open to any kind", () => {
     ensureShellsWorkspace();
-    setPaneLock(SHELLS_KEY, shellsPane()!, "command");
+    setPaneLock(SHELLS_KEY, shellsPane()!, null);
     ensureShellsWorkspace();
-    expect(paneLock(SHELLS_KEY, shellsPane()!)).toBeNull();
+    expect(paneLock(SHELLS_KEY, shellsPane()!)).toBe("command");
   });
 
   it("is idempotent across launches", () => {

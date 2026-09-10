@@ -50,7 +50,8 @@ vi.mock("../Chat/ChatDraft", () => ({ default: () => <div data-testid="draft" />
 const { default: Terminal } = await import("./Terminal");
 const { default: PaneView } = await import("../../tabs/PaneView");
 const { activeWorkspace, open, resetTerminalTabModel } = await import("./terminalTabStore");
-const { ensureShellsWorkspace } = await import("../../layout/shellsWorkspace");
+const { ensureShellsWorkspace, shellsPane } = await import("../../layout/shellsWorkspace");
+const { dockOpen, resetDock } = await import("../../layout/dockStore");
 const { resetPaneLayoutModel, ensureEnvelope, seedOnePane } = await import("../../layout/layoutStore");
 const { resetTabPlacement } = await import("../../layout/tabPlacement");
 const { emitWith, OPEN_JOB, TOAST, TERMINAL_TAB_FOCUSED, onWith } = await import("../../utils/events");
@@ -90,6 +91,7 @@ function mount(at = A) {
     <>
       <Terminal selected={selected()} onOpenChange={() => {}} />
       <PaneView pinKind="shell" />
+      <PaneView pinKind="command" paneId={shellsPane()!} ws={SHELLS_KEY} />
     </>
   ));
   return { setSelected };
@@ -108,8 +110,9 @@ const surface = (id: string) => document.querySelector(`[data-testid="pty"][data
 const commandTabs = () => open().filter((t) => t.kind === "command");
 const killed = () => bridge.invoked.filter((i) => i.cmd === "pty_kill").map((i) => i.args?.id);
 /** The X on a named tab, once the strip has drawn it. The model gains the tab
- *  a tick before the strip does, so this waits rather than reading straight. */
-const closeButton = async (name: string) =>
+ *  a tick before the strip does, so this waits rather than reading straight. A
+ *  failed tab's name carries its verdict, so callers match the start of it. */
+const closeButton = async (name: string | RegExp) =>
   (await screen.findByRole("tab", { name })).parentElement!.querySelector<HTMLElement>(
     "[data-tab-close]",
   )!;
@@ -127,6 +130,7 @@ beforeEach(() => {
   bridge.toasts.length = 0;
   bridge.focused.length = 0;
   localStorage.clear();
+  resetDock(false);
   ensureShellsWorkspace();
   ensureEnvelope(A, seedOnePane);
   ensureEnvelope(B, seedOnePane);
@@ -190,46 +194,37 @@ describe("a command that reports", () => {
   });
 });
 
-describe("the window an auto-close leaves behind", () => {
-  it("goes back to where the most recent command was started from", async () => {
+// Dock up for a command, progress, dock gone. The window never left the branch,
+// so there is nothing to hand back to the sidebar either way.
+describe("the dock an auto-close leaves behind", () => {
+  it("stays up while another command is in it, and goes with the last clean run", async () => {
     const { setSelected } = mount(A);
     await waitFor(() => expect(activeWorkspace()).toBe(A));
     emitWith<OpenJob>(OPEN_JOB, job({ id: "clone:a" }));
-    await waitFor(() => expect(commandTabs()).toHaveLength(1));
-
     setSelected(unit(B));
     await waitFor(() => expect(activeWorkspace()).toBe(B));
     emitWith<OpenJob>(OPEN_JOB, job({ id: "clone:b", interactive: true }));
-    await waitFor(() => expect(activeWorkspace()).toBe(SHELLS_KEY));
+    await waitFor(() => expect(commandTabs()).toHaveLength(2));
 
-    bridge.focused.length = 0;
     await report("clone:a", 0);
-    // One tab left, so the group is not empty and the window stays in Shells.
     await waitFor(() => expect(commandTabs()).toHaveLength(1));
-    expect(bridge.focused).toEqual([]);
+    expect(dockOpen()).toBe(true);
 
     await report("clone:b", 0);
-    await waitFor(() => expect(commandTabs()).toHaveLength(0));
-    expect(bridge.focused).toEqual([{ folderPath: B }]);
+    await waitFor(() => expect(dockOpen()).toBe(false));
+    expect(activeWorkspace()).toBe(B);
+    expect(bridge.focused).toEqual([]);
   });
 
-  // A command started from inside Shells has no branch unit behind it, so it
-  // says nothing about where to go back to. Letting it overwrite the origin
-  // would strand the window on the empty group it just made.
-  it("keeps the last branch it knew when a command is started from inside Shells", async () => {
-    mount(A);
-    await waitFor(() => expect(activeWorkspace()).toBe(A));
-    emitWith<OpenJob>(OPEN_JOB, job({ interactive: true }));
-    await waitFor(() => expect(activeWorkspace()).toBe(SHELLS_KEY));
+  it("goes when the last command in it is closed by hand, too", async () => {
+    mount();
+    emitWith<OpenJob>(OPEN_JOB, job());
+    await report("clone:1", 1);
+    await waitFor(() => expect(commandStatus("clone:1")).toBe("failed"));
+    expect(dockOpen()).toBe(true);
 
-    emitWith<OpenJob>(OPEN_JOB, job({ id: "clone:2" }));
-    await waitFor(() => expect(commandTabs()).toHaveLength(2));
-    bridge.focused.length = 0;
-
-    await report("clone:1", 0);
-    await report("clone:2", 0);
-    await waitFor(() => expect(commandTabs()).toHaveLength(0));
-    expect(bridge.focused).toEqual([{ folderPath: A }]);
+    fireEvent.click(await closeButton(/^Clone repo/));
+    await waitFor(() => expect(dockOpen()).toBe(false));
   });
 });
 
@@ -239,7 +234,7 @@ describe("closing a command that is still running", () => {
     emitWith<OpenJob>(OPEN_JOB, job({ interactive: true }));
     await waitFor(() => expect(commandTabs()).toHaveLength(1));
 
-    fireEvent.click(await closeButton("Clone repo"));
+    fireEvent.click(await closeButton(/^Clone repo/));
     await screen.findByText("Clone repo is still running.");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
@@ -253,7 +248,7 @@ describe("closing a command that is still running", () => {
     emitWith<OpenJob>(OPEN_JOB, job({ interactive: true }));
     await waitFor(() => expect(commandTabs()).toHaveLength(1));
 
-    fireEvent.click(await closeButton("Clone repo"));
+    fireEvent.click(await closeButton(/^Clone repo/));
     await screen.findByText("Clone repo is still running.");
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
 
@@ -267,7 +262,7 @@ describe("closing a command that is still running", () => {
     await report("clone:1", 1);
     await waitFor(() => expect(commandStatus("clone:1")).toBe("failed"));
 
-    fireEvent.click(await closeButton("Clone repo"));
+    fireEvent.click(await closeButton(/^Clone repo/));
     await waitFor(() => expect(commandTabs()).toHaveLength(0));
     expect(screen.queryByText("Clone repo is still running.")).toBeNull();
   });

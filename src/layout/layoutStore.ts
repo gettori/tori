@@ -10,6 +10,7 @@
 // recoverable, is patched to a visible pane.
 import { createSignal } from "solid-js";
 import { deferredWrite } from "../utils/deferredWrite";
+import { dockFocused } from "./dockStore";
 import { pinRulesFor } from "./tabPlacement";
 import {
   MAX_PANES,
@@ -179,6 +180,8 @@ export function setFocusedPane(ws: string, paneId: string) {
  *  pin side? True for terminal kinds when no envelope exists yet, so a panel
  *  mounted outside the app shell keeps its pre-pane behavior. */
 export function kindPaneFocused(ws: string, kind: string): boolean {
+  // The dock holds the keys, whichever workspace pane had them last.
+  if (dockFocused()) return false;
   const env = envelopes()[ws];
   if (!env) return kind !== "file";
   return resolvePinPane(env.layout, kind, pinRulesFor(ws, kind))?.id === env.focusedPaneId;
