@@ -1,7 +1,6 @@
-// What happens when a command reports. A clean run closes its own tab and the
+// What happens when a command exits. A clean run closes its own tab and the
 // toast is the record; anything else stays on screen wearing its code, which is
-// the output worth keeping. Ctrl-C is that second case: the runner reports 130
-// and the hosting shell is still there, so nothing here may kill it.
+// the output worth keeping.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
@@ -11,8 +10,8 @@ const B = "/root/work/repo-b";
 
 const bridge = vi.hoisted(() => ({
   invoked: [] as { cmd: string; args?: Record<string, unknown> }[],
-  /** Each mounted surface's exit callback, so a test can report like a runner. */
-  report: new Map<string, (code: number) => void>(),
+  /** Every `listen` handler by event, so a test can exit a tab like the backend. */
+  listeners: new Map<string, (e: { payload: unknown }) => void>(),
   toasts: [] as { message: string; kind?: string }[],
   focused: [] as { folderPath: string }[],
 }));
@@ -28,7 +27,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: () => Promise.resolve(() => {}),
+  listen: (event: string, handler: (e: { payload: unknown }) => void) => {
+    bridge.listeners.set(event, handler);
+    return Promise.resolve(() => {});
+  },
   emit: () => Promise.resolve(),
 }));
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: () => Promise.resolve("/home/me") }));
@@ -40,10 +42,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 }));
 
 vi.mock("./TerminalView", () => ({
-  default: (props: { id: string; onCommandExit?: (code: number) => void }) => {
-    if (props.onCommandExit) bridge.report.set(props.id, props.onCommandExit);
-    return <div data-testid="pty" data-id={props.id} />;
-  },
+  default: (props: { id: string }) => <div data-testid="pty" data-id={props.id} />,
 }));
 vi.mock("../Chat/ChatView", () => ({ default: () => <div data-testid="chat" /> }));
 vi.mock("../Chat/ChatDraft", () => ({ default: () => <div data-testid="draft" /> }));
@@ -96,11 +95,15 @@ function mount(at = A) {
   return { setSelected };
 }
 
-/** Report as the runner does, once the surface for that tab is mounted. */
+/** Exit as the backend does, once the listener is up and the tab exists. */
 async function report(id: string, code: number) {
-  await waitFor(() => expect(bridge.report.has(id)).toBe(true));
-  bridge.report.get(id)!(code);
+  await waitFor(() => {
+    expect(bridge.listeners.has("pty://exit")).toBe(true);
+    expect(open().some((t) => t.id === id)).toBe(true);
+  });
+  bridge.listeners.get("pty://exit")!({ payload: { id, code } });
 }
+const surface = (id: string) => document.querySelector(`[data-testid="pty"][data-id="${id}"]`);
 
 const commandTabs = () => open().filter((t) => t.kind === "command");
 const killed = () => bridge.invoked.filter((i) => i.cmd === "pty_kill").map((i) => i.args?.id);
@@ -120,7 +123,7 @@ beforeEach(() => {
   resetPaneLayoutModel();
   resetTabPlacement();
   bridge.invoked.length = 0;
-  bridge.report.clear();
+  bridge.listeners.clear();
   bridge.toasts.length = 0;
   bridge.focused.length = 0;
   localStorage.clear();
@@ -147,29 +150,27 @@ describe("a command that reports", () => {
     expect(bridge.toasts).toEqual([{ message: "Clone repo finished", kind: "info" }]);
   });
 
-  // The interrupt, end to end from the frontend's side: Phase 1 proved on a real
-  // tty that Ctrl-C reaches the runner as 130 and leaves the hosting shell clean.
-  it("keeps the tab, its output and its shell on an interrupt", async () => {
+  it("keeps the tab and its output on a non-zero exit", async () => {
     mount();
     emitWith<OpenJob>(OPEN_JOB, job());
-    await waitFor(() => expect(commandTabs()).toHaveLength(1));
+    await waitFor(() => expect(surface("clone:1")).not.toBeNull());
 
-    await report("clone:1", 130);
+    await report("clone:1", 1);
     await waitFor(() => expect(bridge.toasts).toHaveLength(1));
     expect(commandTabs()).toHaveLength(1);
+    expect(surface("clone:1")).not.toBeNull();
     expect(commandStatus("clone:1")).toBe("failed");
-    expect(bridge.toasts[0]).toEqual({ message: "Clone repo failed (exit 130)", kind: "error" });
-    // The shell survived the command, so nothing here may end it.
+    expect(bridge.toasts[0]).toEqual({ message: "Clone repo failed (exit 1)", kind: "error" });
     expect(killed()).not.toContain("clone:1");
   });
 
-  it("ignores a replayed report rather than toasting twice", async () => {
+  it("ignores a second exit rather than toasting twice", async () => {
     mount();
     emitWith<OpenJob>(OPEN_JOB, job());
     await report("clone:1", 1);
     await waitFor(() => expect(bridge.toasts).toHaveLength(1));
 
-    bridge.report.get("clone:1")!(0);
+    await report("clone:1", 0);
     expect(bridge.toasts).toHaveLength(1);
     expect(commandTabs()).toHaveLength(1);
     expect(commandStatus("clone:1")).toBe("failed");
