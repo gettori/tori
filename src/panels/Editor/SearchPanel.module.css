@@ -27,55 +27,18 @@
   flex: 1;
 }
 
-/* The chevron column runs the height of the query and replace fields, so it
-   reads as the switch for the second one. */
 .form {
   display: flex;
   flex: none;
-  align-items: flex-start;
-  gap: calc(2px * var(--ui-scale));
-  padding: 0 calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
-}
-
-.replaceToggle {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  align-self: stretch;
-  width: calc(18px * var(--ui-scale));
-  max-height: calc(62px * var(--ui-scale));
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: var(--sway-radius-sm);
-  color: var(--fg-muted);
-  cursor: pointer;
-}
-
-.replaceToggle:hover {
-  background: var(--neutral-hover);
-  color: var(--fg-default);
-}
-
-.fields {
-  display: flex;
-  flex: 1;
   flex-direction: column;
   gap: calc(6px * var(--ui-scale));
-  min-width: 0;
+  padding: 0 calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
 }
 
-.replaceRow {
+.queryRow {
   display: flex;
   align-items: center;
   gap: calc(4px * var(--ui-scale));
-}
-
-.detailsRow {
-  display: flex;
-  justify-content: flex-end;
-  margin: calc(-3px * var(--ui-scale)) 0;
 }
 
 /* The count line under the fields, and where a replace or a failure reports. */
@@ -215,7 +178,7 @@
   flex: none;
   flex-direction: column;
   gap: calc(4px * var(--ui-scale));
-  padding: 0 calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(22px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale));
 }
 
 .saveBar {
