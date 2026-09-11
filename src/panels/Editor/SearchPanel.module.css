@@ -32,7 +32,7 @@
 /* VS Code's view title. A Feature puts its member chips here instead. */
 .title {
   padding-left: calc(4px * var(--ui-scale));
-  color: var(--fg-default);
+  color: var(--fg-muted);
   font-size: var(--sway-text-lg);
   font-weight: 600;
 }
