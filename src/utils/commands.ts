@@ -184,13 +184,14 @@ const ctrlShift = (code: string) => (e: KeyboardEvent) =>
 const cmdCtrl = (code: string) => (e: KeyboardEvent) =>
   e.metaKey && e.ctrlKey && !e.altKey && !e.shiftKey && e.code === code;
 
-const RIGHT_MODES: { mode: SetRightMode["mode"]; label: string }[] = [
+const RIGHT_MODES: { mode: SetRightMode["mode"]; section?: SetRightMode["section"]; label: string }[] = [
   { mode: "files", label: "Files" },
+  { mode: "files", section: "scripts", label: "Scripts" },
+  { mode: "files", section: "outline", label: "Outline" },
   { mode: "changes", label: "Changes" },
   { mode: "pulls", label: "Pull requests" },
   { mode: "search", label: "Search" },
   { mode: "todos", label: "TODOs" },
-  { mode: "tasks", label: "Tasks" },
   { mode: "debug", label: "Debug" },
   { mode: "session", label: "Session" },
   { mode: "shared", label: "Shared" },
@@ -714,10 +715,10 @@ export const COMMANDS: Command[] = [
   },
   ...RIGHT_MODES.map(
     (m): Command => ({
-      id: `mode:${m.mode}`,
+      id: `mode:${m.section ?? m.mode}`,
       label: `Show ${m.label}`,
       group: "editor",
-      run: () => emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: m.mode }),
+      run: () => emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: m.mode, section: m.section }),
     }),
   ),
 

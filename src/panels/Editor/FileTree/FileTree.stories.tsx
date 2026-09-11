@@ -1,8 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import FileTree, { clearListingCache, type TreeRoot } from "./FileTree";
-import { memberState } from "../../../utils/features";
-import { spaceHue } from "../../../utils/spaceTint";
+import FileTree, { clearListingCache } from "./FileTree";
 
 const API = "/feat/api";
 const WEB = "/feat/web";
@@ -51,22 +49,6 @@ function stubHost() {
   });
 }
 
-// The tints come from the same helper the sidebar's chips use, so a swatch here
-// is the swatch a member's Space would actually paint.
-const MEMBERS: TreeRoot[] = [
-  { path: API, repoPath: "/repos/api", label: "Payments API", tint: spaceHue("backend", "Indigo") },
-  { path: WEB, repoPath: "/repos/web", label: "Web App", tint: spaceHue("frontend", "Emerald") },
-  {
-    // No worktree, so the section path is the repo itself, exactly as
-    // `tintedMember` mints it.
-    path: DOCS,
-    repoPath: DOCS,
-    label: "Docs Site",
-    tint: spaceHue("docs", "Amber"),
-    state: memberState({ kind: "worktree-missing" }),
-  },
-];
-
 const meta = {
   title: "Editor/FileTree",
   component: FileTree,
@@ -92,19 +74,18 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A Feature's three members, the last one with no worktree on disk: it keeps
- *  its header and offers the repair instead of pretending to be an empty repo. */
-export const FeatureMembers: Story = {
-  args: { roots: MEMBERS, onRepair: (path: string) => console.log("repair", path) },
+/** The Files tab's tree for one Feature member: the row menus name the member
+ *  and offer Find in Folder and file history. */
+export const FeatureMember: Story = {
+  args: { root: WEB, member: "Web App", repoPath: "/repos/web" },
 };
 
-/** Every member usable, which is the ordinary case. */
-export const AllPresent: Story = {
-  args: { roots: MEMBERS.slice(0, 2) },
-};
-
-/** One root renders headerless, exactly as a branch unit always has: no chip,
- *  no section, the create actions back in the toolbar. */
+/** One root with the tree's own toolbar, as the Shared tab draws it. */
 export const SingleRoot: Story = {
   args: { root: API },
+};
+
+/** Read-only, as the Docs tab draws it: no create, rename or delete. */
+export const ReadOnly: Story = {
+  args: { root: DOCS, editable: false },
 };

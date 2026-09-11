@@ -1,0 +1,161 @@
+/* The Files tab: member tabs (Feature only), the filter row, then the stacked
+   sections, VS Code Explorer style. */
+.filesPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--canvas-card);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.memberTabs {
+  min-height: calc(36px * var(--ui-scale));
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  /* Never scrolls, like every OverflowTabBar: the +N model owns overflow. */
+  overflow: clip;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.topBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale));
+}
+
+.stack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.section {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border-default);
+}
+
+/* Every open section takes the same share of what the headers leave. */
+.section.open {
+  flex: 1 1 0;
+}
+
+.sectionHeader {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  height: calc(30px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) 0 calc(4px * var(--ui-scale));
+}
+
+.sectionToggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--sway-text-lg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-width: 0;
+  font-weight: 600;
+}
+
+.sectionTitle > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
+}
+
+.titleText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* A section's own scroller, for the bodies that are not already one. */
+.sectionScroll {
+  flex: 1;
+  font-size: var(--sway-text-xl);
+}
+
+/* Why the member picked has no tree, and the repair beside it. */
+.unusable {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+
+/* Dim until the row is under the cursor: every row runs, so the arrow says
+   nothing until it is the one you are about to press. */
+.play {
+  flex: none;
+  display: inline-flex;
+  color: var(--fg-subtle);
+}
+
+.play > svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+:hover > .play {
+  color: var(--accent-fg);
+}
+
+.command {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: calc(8px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+  text-align: right;
+  text-overflow: ellipsis;
+}
+
+/* The ... menu's tick column, kept when empty so the labels line up. */
+.checkSlot {
+  flex: none;
+  display: inline-flex;
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+.checkSlot > svg {
+  width: 100%;
+  height: 100%;
+}

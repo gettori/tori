@@ -24,6 +24,12 @@ export type Task = {
   source: TaskSource;
   /** The shell line that runs it, ready to be typed. */
   command: string;
+  /** The package folder it runs in, relative to the workspace. Absent at the
+   *  root, which is every task that is not a workspace package's script. */
+  dir?: string;
+  /** Where it is defined, relative to the workspace, and on which 1-based line. */
+  file?: string;
+  line?: number;
 };
 
 /** Which lockfile means which runner. First match wins, in this order, so a
@@ -56,9 +62,12 @@ function shellArg(name: string): string {
   return /^[A-Za-z0-9_.:@+\-/]+$/.test(name) ? name : `'${name.replace(/'/g, `'\\''`)}'`;
 }
 
-function task(source: TaskSource, name: string, command: string): Task {
-  return { id: `${source}:${name}`, name, source, command };
+function task(source: TaskSource, name: string, command: string, file: string, line?: number, dir = ""): Task {
+  const id = dir ? `${source}:${dir}:${name}` : `${source}:${name}`;
+  return { id, name, source, command, file, ...(line ? { line } : {}), ...(dir ? { dir } : {}) };
 }
+
+const lineAt = (text: string, offset: number) => text.slice(0, offset).split("\n").length;
 
 /**
  * `package.json`'s `scripts`, in the order they are written.
@@ -66,7 +75,7 @@ function task(source: TaskSource, name: string, command: string): Task {
  * Declaration order, not alphabetical: a `scripts` block is usually written
  * with the ones you run all day at the top, and sorting it discards that.
  */
-export function parsePackageScripts(json: string, runner: string): Task[] {
+export function parsePackageScripts(json: string, runner: string, dir = ""): Task[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
@@ -77,10 +86,13 @@ export function parsePackageScripts(json: string, runner: string): Task[] {
   }
   const scripts = (parsed as { scripts?: unknown } | null)?.scripts;
   if (!scripts || typeof scripts !== "object") return [];
+  const file = dir ? `${dir}/package.json` : "package.json";
+  const block = Math.max(0, json.indexOf('"scripts"'));
   const out: Task[] = [];
   for (const [name, body] of Object.entries(scripts as Record<string, unknown>)) {
     if (typeof body !== "string" || !name) continue;
-    out.push(task("npm", name, `${runner} run ${shellArg(name)}`));
+    const at = json.indexOf(JSON.stringify(name), block);
+    out.push(task("npm", name, `${runner} run ${shellArg(name)}`, file, at >= 0 ? lineAt(json, at) : undefined, dir));
   }
   return out;
 }
@@ -93,20 +105,20 @@ export function parsePackageScripts(json: string, runner: string): Task[] {
  * the `=`-after-colon guard, pattern rules (`%.o:`) and dot targets (`.PHONY`)
  * because neither is something a person runs by name.
  */
-export function parseMakeTargets(text: string): Task[] {
+export function parseMakeTargets(text: string, file = "Makefile"): Task[] {
   const out: Task[] = [];
   const seen = new Set<string>();
-  for (const line of text.split("\n")) {
-    if (!line || /^[\s#]/.test(line)) continue;
+  text.split("\n").forEach((line, i) => {
+    if (!line || /^[\s#]/.test(line)) return;
     const m = /^([^:=]+?)\s*::?(?!=)/.exec(line);
-    if (!m) continue;
+    if (!m) return;
     for (const name of m[1].trim().split(/\s+/)) {
       if (!name || name.startsWith(".") || name.includes("%") || name.includes("$")) continue;
       if (seen.has(name)) continue;
       seen.add(name);
-      out.push(task("make", name, `make ${shellArg(name)}`));
+      out.push(task("make", name, `make ${shellArg(name)}`, file, i + 1));
     }
-  }
+  });
   return out;
 }
 
@@ -119,18 +131,18 @@ export function parseMakeTargets(text: string): Task[] {
  * leading `_` are private (`just --list` hides them), and a task list that
  * offers them offers something the project decided not to.
  */
-export function parseJustRecipes(text: string): Task[] {
+export function parseJustRecipes(text: string, file = "justfile"): Task[] {
   const out: Task[] = [];
   const seen = new Set<string>();
-  for (const line of text.split("\n")) {
-    if (!line || /^[\s#[@]/.test(line)) continue;
+  text.split("\n").forEach((line, i) => {
+    if (!line || /^[\s#[@]/.test(line)) return;
     const m = /^([A-Za-z0-9_-]+)(?:\s+[^:]*)?:(?!=)/.exec(line);
-    if (!m) continue;
+    if (!m) return;
     const name = m[1];
-    if (name.startsWith("_") || seen.has(name)) continue;
+    if (name.startsWith("_") || seen.has(name)) return;
     seen.add(name);
-    out.push(task("just", name, `just ${shellArg(name)}`));
-  }
+    out.push(task("just", name, `just ${shellArg(name)}`, file, i + 1));
+  });
   return out;
 }
 
@@ -151,14 +163,27 @@ export function taskTab(root: string, t: Task, run: number): OpenTerminal {
   return {
     id: `task:${root}:${t.id}#${run}`,
     title: run > 1 ? `${t.name} (${run})` : t.name,
+    // Still the workspace for a package's script, with a `cd` in front: the
+    // terminal groups a task tab under its cwd, and a package folder is not a
+    // workspace anything else is grouped under.
     cwd: root,
     // Shell-hosted, so the backend picks the login shell; `program` is what a
     // plain shell tab passes for the same reason (Terminal.tsx `newShell`).
     program: "",
     args: [],
     kind: "task",
-    init: `${t.command}\n`,
+    init: t.dir ? `cd ${shellArg(t.dir)} && ${t.command}\n` : `${t.command}\n`,
   };
+}
+
+/** Folders holding a `package.json` below the root, from the project's file
+ *  list. That list already honours .gitignore, which is what keeps every
+ *  `node_modules` package out. */
+export function packageDirs(files: readonly string[]): string[] {
+  return files
+    .filter((f) => f.endsWith("/package.json"))
+    .map((f) => f.slice(0, -"/package.json".length))
+    .sort();
 }
 
 /** What `fs_read_dir` reports, narrowed to what this module reads. */
@@ -176,21 +201,42 @@ type DirEntry = { name: string };
  * than about the read. Each individual file read is forgiving, since a file the
  * listing just named and cannot be opened is one task source missing, not an
  * unreadable project.
+ *
+ * `listFiles` opts into workspace packages: every nested `package.json` it
+ * names adds its scripts, run with the root's package manager.
  */
 export async function loadTasks(
   root: string,
   readDir: (path: string) => Promise<DirEntry[]>,
   readFile: (path: string) => Promise<string>,
+  listFiles?: () => Promise<string[]>,
 ): Promise<Task[]> {
   const names = ((await readDir(root)) ?? []).map((e) => e.name);
   const read = (file: string) => readFile(`${root}/${file}`).catch(() => "");
+  const runner = packageRunner(names);
   const out: Task[] = [];
   if (names.includes("package.json")) {
-    out.push(...parsePackageScripts(await read("package.json"), packageRunner(names)));
+    out.push(...parsePackageScripts(await read("package.json"), runner));
+  }
+  if (listFiles) {
+    const dirs = packageDirs(await listFiles().catch(() => []));
+    const texts = await Promise.all(dirs.map((d) => read(`${d}/package.json`)));
+    dirs.forEach((d, i) => out.push(...parsePackageScripts(texts[i], runner, d)));
   }
   const makefile = MAKEFILES.find((f) => names.includes(f));
-  if (makefile) out.push(...parseMakeTargets(await read(makefile)));
+  if (makefile) out.push(...parseMakeTargets(await read(makefile), makefile));
   const justfile = JUSTFILES.find((f) => names.includes(f));
-  if (justfile) out.push(...parseJustRecipes(await read(justfile)));
+  if (justfile) out.push(...parseJustRecipes(await read(justfile), justfile));
   return out;
+}
+
+/** Whether a changed path can change what `loadTasks` finds. */
+export function isTaskSource(path: string): boolean {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return (
+    name === "package.json" ||
+    MAKEFILES.includes(name) ||
+    JUSTFILES.includes(name) ||
+    LOCKFILES.some((l) => l.lock === name)
+  );
 }
