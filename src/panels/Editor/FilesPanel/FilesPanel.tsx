@@ -4,9 +4,8 @@ import Button from "../../../components/Button/Button";
 import Chevron from "../../../components/Chevron/Chevron";
 import Icon from "../../../components/Icon/Icon";
 import IconButton from "../../../components/IconButton/IconButton";
-import OverflowTabBar from "../../../components/OverflowTabBar";
-import Tab from "../../../components/Tab/Tab";
-import { TabMemberChip } from "../../../components/MemberChip/MemberChip";
+import MemberChipRow from "../../../components/MemberChipRow/MemberChipRow";
+import Resizer from "../../../components/Resizer/Resizer";
 import Dropdown from "../../../components/Menu/Dropdown";
 import { MenuRow, MenuSeparator } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
@@ -16,12 +15,17 @@ import type { TintedMember } from "../../../utils/featureMembers";
 import { symbolsSupported } from "../../../utils/symbols";
 import {
   OPTIONAL_SECTIONS,
+  SECTION_MIN_H,
+  saveSectionSizes,
   sectionOpen,
   sectionShown,
+  sectionSize,
   setSectionOpen,
   setSectionShown,
+  setSectionSize,
   type FilesSection,
 } from "../../../utils/filesSections";
+import { chromeScale } from "../../Settings/settingsStore";
 import FileTree, { type TreeControls } from "../FileTree/FileTree";
 import OutlinePanel from "../OutlinePanel";
 import ScriptsSection from "./ScriptsSection";
@@ -30,18 +34,45 @@ import styles from "./FilesPanel.module.css";
 
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
 
-/** One stacked section: a header that opens and closes it, then its body.
- *  Every open section takes an equal share of the height left over. */
+const ORDER: FilesSection[] = ["folders", "scripts", "outline"];
+
+/** One stacked section: a header that opens and closes it, then its body. Like
+ *  VS Code, one open section fills what is left and the rest keep a height of
+ *  their own, dragged from their top edge. */
 function Section(props: {
   id: FilesSection;
+  /** The open section that takes the leftover height. */
+  fill: boolean;
+  /** The tallest this section may be dragged to, in px. */
+  maxH: () => number;
   title: JSX.Element;
   /** Buttons at the header's right, drawn only while the section is open. */
   actions?: JSX.Element;
   children: JSX.Element;
 }) {
   const open = () => sectionOpen(props.id);
+  const fixed = () => open() && !props.fill;
+  const height = () => sectionSize(props.id) * chromeScale();
   return (
-    <section class={styles.section} classList={{ [styles.open]: open() }} data-section={props.id}>
+    <section
+      class={styles.section}
+      classList={{ [styles.fill]: open() && props.fill }}
+      style={fixed() ? { flex: `0 1 ${height()}px` } : undefined}
+      data-section={props.id}
+    >
+      <Show when={fixed()}>
+        <div class={styles.sash}>
+          <Resizer
+            axis="y"
+            side="after"
+            value={height()}
+            min={SECTION_MIN_H * chromeScale()}
+            max={Math.max(SECTION_MIN_H * chromeScale(), props.maxH())}
+            onInput={(h) => setSectionSize(props.id, h / chromeScale())}
+            onCommit={saveSectionSizes}
+          />
+        </div>
+      </Show>
       <div class={styles.sectionHeader}>
         <button
           type="button"
@@ -64,7 +95,7 @@ function Section(props: {
 /**
  * The Files tab, VS Code Explorer style: the filter and a ... menu on top, then
  * the tree under a header naming the branch, then Scripts and Outline. Inside a
- * Feature a strip of member tabs sits above it all, one tree per member.
+ * Feature the member chips lead the filter row, one tree per member.
  */
 export default function FilesPanel(props: {
   /** The folder the workspace points at: the active member inside a Feature. */
@@ -85,7 +116,7 @@ export default function FilesPanel(props: {
   const [filter, setFilter] = createSignal("");
   const [wantFiles, setWantFiles] = createSignal(false);
   const [controls, setControls] = createSignal<TreeControls | null>(null);
-  // The member tab picked by hand. Kept apart from `root` because a member
+  // The member chip picked by hand. Kept apart from `root` because a member
   // with nothing on disk can be looked at (for its repair) but not pointed at.
   const [picked, setPicked] = createSignal<string | null>(null);
 
@@ -101,7 +132,7 @@ export default function FilesPanel(props: {
   const repoPath = () => viewed()?.member.repoPath ?? props.root ?? undefined;
 
   // Pointing the workspace at another member from anywhere else wins over the
-  // tab picked here, and a new root is a new file list for the filter.
+  // chip picked here, and a new root is a new file list for the filter.
   createEffect(on(() => props.root, () => setPicked(null), { defer: true }));
   createEffect(
     on(treeRoot, () => {
@@ -123,6 +154,16 @@ export default function FilesPanel(props: {
   };
 
   const hasOutline = () => symbolsSupported(props.outlinePath);
+
+  // The tree fills while it is open; with it shut, the last open section does.
+  const filler = () => {
+    if (sectionOpen("folders")) return "folders";
+    const open = ORDER.filter((s) => sectionShown(s) && sectionOpen(s));
+    return open[open.length - 1];
+  };
+  let stackEl: HTMLDivElement | undefined;
+  // Room for the fill section's header plus a few rows, whatever is dragged.
+  const maxH = () => (stackEl?.clientHeight ?? 0) - 120 * chromeScale();
 
   const menu = () => (
     <>
@@ -154,43 +195,17 @@ export default function FilesPanel(props: {
 
   return (
     <div class={styles.filesPanel}>
-      <Show when={featured()}>
-        <OverflowTabBar
-          class={styles.memberTabs}
-          items={props.members.map((m) => m.key)}
-          activeId={viewed()?.key ?? null}
-          idOf={(k) => k}
-          onActivate={pick}
-          onReorder={() => {}}
-          renderTab={(k) => {
-            const m = memberOf(k);
-            return (
-              <Show when={m}>
-                {(mm) => (
-                  <Tab
-                    value={k}
-                    icon={<TabMemberChip member={mm()} />}
-                    tooltip={mm().state.usable ? undefined : `${mm().label}: ${mm().state.label}`}
-                  >
-                    {mm().label}
-                  </Tab>
-                )}
-              </Show>
-            );
-          }}
-          renderMenuItem={(k) => (
-            <Show when={memberOf(k)}>
-              {(mm) => (
-                <>
-                  <TabMemberChip member={mm()} />
-                  <span class="tab-name">{mm().label}</span>
-                </>
-              )}
-            </Show>
-          )}
-        />
-      </Show>
       <div class={styles.topBar}>
+        <Show when={featured()}>
+          <MemberChipRow
+            bare
+            cap={4}
+            members={props.members}
+            activeRoot={props.root}
+            activeKey={viewed()?.key ?? null}
+            onPick={(m) => pick(m.key)}
+          />
+        </Show>
         <input
           class={tree.filterBox}
           type="text"
@@ -208,9 +223,11 @@ export default function FilesPanel(props: {
           <IconButton size="md" tooltip="Views and More Actions" icon={<Icon icon={Ellipsis} />} />
         </Dropdown>
       </div>
-      <div class={styles.stack}>
+      <div class={styles.stack} ref={stackEl}>
         <Section
           id="folders"
+          fill={filler() === "folders"}
+          maxH={maxH}
           title={
             <>
               <Show when={treeRoot() && gitStateFor(treeRoot()).branch}>
@@ -277,12 +294,12 @@ export default function FilesPanel(props: {
           </Show>
         </Section>
         <Show when={sectionShown("scripts")}>
-          <Section id="scripts" title="Scripts">
+          <Section id="scripts" fill={filler() === "scripts"} maxH={maxH} title="Scripts">
             <ScriptsSection root={treeRoot()} />
           </Section>
         </Show>
         <Show when={sectionShown("outline")}>
-          <Section id="outline" title="Outline">
+          <Section id="outline" fill={filler() === "outline"} maxH={maxH} title="Outline">
             <Show
               when={hasOutline()}
               fallback={

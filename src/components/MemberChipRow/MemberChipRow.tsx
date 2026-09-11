@@ -20,9 +20,20 @@ export default function MemberChipRow(props: {
   /** The member folder the workspace is pointed at. */
   activeRoot: string | null;
   onActiveRoot?: (root: string) => void;
+  /** Picks by member instead, broken ones included, for a pane that can show
+   *  a member's repair; `activeKey` then says which chip is on. */
+  onPick?: (m: TintedMember) => void;
+  activeKey?: string | null;
+  /** Inline in another toolbar: no padding, border or background of its own. */
+  bare?: boolean;
+  cap?: number;
 }) {
   const isActive = (m: TintedMember) =>
-    !!m.member.worktreePath && m.member.worktreePath === props.activeRoot;
+    props.activeKey !== undefined
+      ? m.key === props.activeKey
+      : !!m.member.worktreePath && m.member.worktreePath === props.activeRoot;
+  const cap = () => props.cap ?? CHIP_CAP;
+  const pickable = (m: TintedMember) => !!props.onPick || m.state.usable;
 
   /** The chips the row draws, and the ones behind `+N`.
    *
@@ -32,20 +43,22 @@ export default function MemberChipRow(props: {
    *  rather than growing the row past the cap. */
   const split = createMemo(() => {
     const all = [...props.members];
-    if (all.length <= CHIP_CAP) return { shown: all, hidden: [] as TintedMember[] };
-    const shown = all.slice(0, CHIP_CAP);
+    const n = cap();
+    if (all.length <= n) return { shown: all, hidden: [] as TintedMember[] };
+    const shown = all.slice(0, n);
     const active = all.find(isActive);
-    if (active && !shown.includes(active)) shown[CHIP_CAP - 1] = active;
+    if (active && !shown.includes(active)) shown[n - 1] = active;
     return { shown, hidden: all.filter((m) => !shown.includes(m)) };
   });
 
   const nameOf = (m: TintedMember) => (m.state.usable ? m.label : `${m.label}: ${m.state.label}`);
   const switchTo = (m: TintedMember) => {
-    if (m.member.worktreePath) props.onActiveRoot?.(m.member.worktreePath);
+    if (props.onPick) props.onPick(m);
+    else if (m.member.worktreePath) props.onActiveRoot?.(m.member.worktreePath);
   };
 
   return (
-    <div class={styles.row} role="group" aria-label="Feature members">
+    <div class={styles.row} classList={{ [styles.bare]: !!props.bare }} role="group" aria-label="Feature members">
       <For each={split().shown}>
         {(m) => (
           <Tooltip
@@ -56,7 +69,7 @@ export default function MemberChipRow(props: {
             style={m.style}
             // A member with nothing on disk is not somewhere to switch to, and
             // it wears its state rather than looking merely unselected.
-            disabled={!m.state.usable}
+            disabled={!pickable(m)}
             aria-pressed={isActive(m)}
             aria-label={nameOf(m)}
             label={nameOf(m)}
@@ -73,7 +86,7 @@ export default function MemberChipRow(props: {
           aria-label={`${split().hidden.length} more members`}
           items={split().hidden.map((m) => ({
             label: nameOf(m),
-            disabled: !m.state.usable,
+            disabled: !pickable(m),
             onClick: () => switchTo(m),
           }))}
         >

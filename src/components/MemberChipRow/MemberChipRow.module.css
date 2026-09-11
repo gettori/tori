@@ -12,6 +12,12 @@
   border-bottom: 1px solid var(--border-default);
 }
 
+.row.bare {
+  padding: 0;
+  background: none;
+  border-bottom: none;
+}
+
 .chip {
   --chip-hue: var(--fg-muted);
   --chip-rgb: 128 128 128;
@@ -43,6 +49,9 @@
 /* A member with nothing on disk is not somewhere to switch to. */
 .off {
   opacity: 0.45;
+}
+
+.off:disabled {
   cursor: default;
 }
 
