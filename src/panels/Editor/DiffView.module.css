@@ -1,0 +1,111 @@
+/* One file's diff, as an editor tab. The top row borrows the Files and Search
+   tabs' rhythm (40px, sm icon buttons) so every header in the app is one
+   height. Row-level diff styling lives in DiffRows.module.css, shared with the
+   commit views. */
+.diffView {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--canvas-default);
+}
+
+.topBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-height: calc(40px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.status {
+  flex: none;
+  width: calc(16px * var(--ui-scale));
+  color: var(--diff-modified);
+  font-size: var(--sway-text-md);
+  font-weight: 600;
+  text-align: center;
+}
+
+.added {
+  color: var(--diff-added);
+}
+
+.deleted {
+  color: var(--diff-deleted);
+}
+
+.modified {
+  color: var(--diff-modified);
+}
+
+.untracked {
+  color: var(--fg-muted);
+}
+
+.name {
+  flex: none;
+  overflow: hidden;
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dir {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+}
+
+/* Which comparison this tab is: the same word the tab strip carries, because
+   two tabs on one file are told apart by nothing else. */
+.mode {
+  flex: none;
+  padding: 0 calc(6px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* An active toggle colours its icon rather than its background, as everywhere
+   else. Doubled selector to beat IconButton's own hover rule. */
+.pressable.pressable[aria-pressed="true"] {
+  color: var(--brand-default);
+}
+
+.body {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: calc(8px * var(--ui-scale));
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-md);
+  line-height: 1.4;
+}
+
+.body .diffGap {
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+  background: var(--canvas-card);
+  border-block: 1px solid var(--border-default);
+}
+
+.body .diffGap:hover {
+  color: var(--fg-default);
+}
