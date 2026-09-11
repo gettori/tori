@@ -29,6 +29,14 @@
   flex: 1;
 }
 
+/* VS Code's view title. A Feature puts its member chips here instead. */
+.title {
+  padding-left: calc(4px * var(--ui-scale));
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+}
+
 /* A pressed toolbar toggle lights its icon rather than filling the button.
    Keyed on aria-pressed: a reactive `class` on IconButton would wipe its own
    classList. Doubled to outrank IconButton's hover colour. */
