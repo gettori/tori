@@ -98,8 +98,10 @@
   color: var(--fg-muted);
 }
 
+/* The branch name, muted like the Search tab's title. */
 .titleText {
   overflow: hidden;
+  color: var(--fg-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
