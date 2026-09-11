@@ -1,11 +1,10 @@
 // Searches you named and meant to keep.
 //
 // The same (query, options) pair `searchHistory.ts` records, under a different
-// contract, and the difference is the one `bookmarks.ts` draws against
-// `frecency.ts`: history is a record of what you *did*, so it is automatic,
-// capped and ordered by recency; this is a record of what you *chose*, so
-// nothing here is capped, nothing expires, and nothing reorders itself. A saved
-// search goes away when you delete it.
+// contract: history is a record of what you *did*, so it is automatic, capped
+// and ordered by recency; this is a record of what you *chose*, so nothing here
+// is capped, nothing expires, and nothing reorders itself. A saved search goes
+// away when you delete it.
 //
 // Kept in insertion order rather than sorted by name: this is a list somebody
 // curated, and a control whose rows rearrange themselves when you rename one is

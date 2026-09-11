@@ -1,16 +1,15 @@
 // The queries you have run, per workspace, so the last one is an arrow key away.
 //
-// The fourth thing in this wave bucketed per workspace, after the jump list,
-// the frecency store and the bookmarks, and for their reason: a query is
-// answered by a project, and the same words mean different work in a different
-// worktree.
+// Bucketed per workspace, like the jump list and the frecency store, and for
+// their reason: a query is answered by a project, and the same words mean
+// different work in a different worktree.
 //
 // An entry carries its **options**, not just its text. The panel's toggles are
 // part of what was asked - "needle" with regex on is a different search from
 // "needle" without it - so recalling a query has to restore them or it hands
 // back something the user never ran.
 //
-// Pure and here rather than in the panel, following `bookmarks.ts`: the storage
+// Pure and here rather than in the panel: the storage
 // shape, the dedupe rule and the recall cursor are the decisions, and the panel
 // is the surface that renders them.
 

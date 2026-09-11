@@ -208,9 +208,9 @@ export default function SearchPanel(props: {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   // Both stores are read and written only here, so they load on mount and write
-  // through on every change rather than living in the Editor beside the
-  // bookmarks: this panel is torn down whenever another right-hand mode is
-  // picked, and re-reading them is what makes that survivable.
+  // through on every change rather than living in the Editor: this panel is torn
+  // down whenever another right-hand mode is picked, and re-reading them is what
+  // makes that survivable.
   const [history, setHistory] = createSignal<SearchHistoryStore>(loadSearchHistory());
   const [saved, setSaved] = createSignal<SavedSearchStore>(loadSavedSearches());
   onCleanup(

@@ -35,17 +35,16 @@ import {
 import { setBufferAccess } from "./liveBuffers";
 import { cmdClickDefinitionExtension } from "./lspCommands";
 import { caretListener, cursorJumpListener } from "./cursorJump";
-import { bookmarkGutter, setBookmarkMarkers } from "./bookmarkGutter";
-import type { Bookmark } from "../../utils/bookmarks";
 import { breakpointGutter, setBreakpointMarkers } from "./breakpointGutter";
 import type { BreakpointMark } from "../../utils/debugBreakpoints";
 import { frameHighlight, setFrameLineMarker } from "./frameHighlight";
+import { debugRunning } from "../../utils/debugStore";
 import { debugHover } from "./debugHover";
 import { swayRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { applyCodeAction, caretRange, wholeFileRange } from "./codeActionCommand";
 import { publishSourceActionKinds } from "../../utils/sourceActions";
-import { codeActionGutter, setCodeActionLine } from "./codeActionGutter";
+import { codeActionBulb, setCodeActionLine } from "./codeActionBulb";
 import { openPeek, selectPeekResult } from "./peekCommand";
 import { peekField, peekKeymap, peekTheme, type PeekState } from "./peekView";
 import {
@@ -80,7 +79,7 @@ import { fallbackCompletion } from "./fallbackCompletion";
 import { fromDisk, type DiskText } from "./lineEndings";
 import { rememberClosed, reviveClosed } from "./closedBuffers";
 import { saveStash, stashToWrite, takeStashEntry, type HotExitStore, type StashEntry } from "../../utils/hotExit";
-import { lintGutter, setDiagnosticsEffect } from "@codemirror/lint";
+import { setDiagnosticsEffect } from "@codemirror/lint";
 import { publishDiagnostics, dropDiagnostics, setDiagnosticFixLookup } from "../../utils/diagnostics";
 import {
   isMarkdownPath,
@@ -332,17 +331,10 @@ export default function CodeEditor(props: {
   // arrowing into the next function changes which symbol you are in without
   // being anywhere worth going Back to.
   onCaretMove?: (path: string, line: number, column: number) => void;
-  // The active file's marked lines, and the two ways they change from in here:
-  // a click on the gutter, and an edit that moved one. The pane owns the store
-  // (it is per workspace and outlives every buffer), so this component only ever
-  // renders what it is handed and says what happened.
-  bookmarks?: readonly Bookmark[];
-  onToggleBookmark?: (path: string, line: number) => void;
-  onBookmarksMoved?: (path: string, marks: Bookmark[], docLines: number) => void;
-  // The active file's breakpoints, on the same arrangement as the bookmarks
-  // above and for the same reason. The state on each one is decided by the pane
-  // (it knows what the adapter has said and whether the buffer is saved); this
-  // component only draws it.
+  // The active file's breakpoints, and the two ways they change from in here: a
+  // click on the gutter, and an edit that moved one. The pane owns the store and
+  // decides each one's state (it knows what the adapter said and whether the
+  // buffer is saved); this component only draws it and says what happened.
   breakpoints?: readonly BreakpointMark[];
   onToggleBreakpoint?: (path: string, line: number) => void;
   onBreakpointsMoved?: (path: string, lines: number[], docLines: number) => void;
@@ -1209,16 +1201,11 @@ export default function CodeEditor(props: {
       ...foldKeymap,
       indentWithTab,
     ]),
-    // Severity markers beside the line numbers. lsp-client's serverDiagnostics
-    // already self-installs the lint state field when it publishes, but the
-    // gutter is a separate extension and has to be asked for.
-    lintGutter(),
-    // The lightbulb. Its column is empty in every buffer no server has an
-    // opinion about, and an empty one takes no width - see `App.css`.
+    // The lightbulb, drawn after the caret line's text so it never moves code.
     // Clicking it asks again rather than reusing what the bulb was drawn from:
     // a click is a deliberate act, and the answer behind the bulb is up to half
     // a second old by construction.
-    codeActionGutter({ onClick: () => void openCodeActions() }),
+    codeActionBulb({ onClick: () => void openCodeActions() }),
     // What moves the bulb. Both triggers matter: typing changes what the server
     // would say, and moving the caret changes which line is being asked about.
     EditorView.updateListener.of((u) => {
@@ -1367,10 +1354,6 @@ export default function CodeEditor(props: {
       caretListener((line, column) => props.onCaretMove?.(path, line, column)),
       // Per buffer rather than in `commonExtensions`, because both handlers have
       // to name the file they are talking about and only this closure knows it.
-      bookmarkGutter({
-        onToggle: (line) => props.onToggleBookmark?.(path, line),
-        onMoved: (marks, docLines) => props.onBookmarksMoved?.(path, marks, docLines),
-      }),
       breakpointGutter({
         onToggle: (line) => props.onToggleBreakpoint?.(path, line),
         onMoved: (lines, docLines) => props.onBreakpointsMoved?.(path, lines, docLines),
@@ -1410,16 +1393,9 @@ export default function CodeEditor(props: {
     ];
   }
 
-  /** Lay the pane's marks onto the buffer on screen. Only the shown one: a
+  /** Lay the pane's breakpoints onto the buffer on screen. Only the shown one: a
    *  background buffer is not being edited, so its positions cannot have drifted
    *  and it is re-seeded when it comes back. */
-  function syncBookmarks() {
-    if (view && shown) setBookmarkMarkers(view, props.bookmarks ?? []);
-  }
-
-  /** The same, for breakpoints. Separate from the one above because the pane
-   *  changes them for different reasons: a bookmark moves only when you move it,
-   *  while a breakpoint's state changes on its own when the adapter binds it. */
   function syncBreakpoints() {
     if (view && shown) setBreakpointMarkers(view, props.breakpoints ?? []);
   }
@@ -2003,10 +1979,9 @@ export default function CodeEditor(props: {
    *  after a swap and after focus moves, since both change that answer. */
   function afterShow(path: string | null) {
     const buf = path ? buffers.get(path) : undefined;
-    // The marks the pane holds for this file, laid onto the buffer now showing
-    // it. Safe to re-seed on every swap because the field reports any edit that
-    // moved a mark straight back, so the store is never behind the buffer.
-    syncBookmarks();
+    // The breakpoints the pane holds for this file, laid onto the buffer now
+    // showing it. Safe to re-seed on every swap because the field reports any
+    // edit that moved one straight back, so the store is never behind the buffer.
     syncBreakpoints();
     syncFrameLine();
     // Surface a deferred conflict banner if this buffer changed on disk while
@@ -2559,10 +2534,9 @@ export default function CodeEditor(props: {
   // gutter and the inline widget with it in one go, so switching off leaves
   // nothing behind to clean up.
   createEffect(on(() => props.blame, () => syncBlame(), { defer: true }));
-  // The pane's answer changed: a click toggled one, a rename swept them, or the
-  // panel removed one. `defer` because the swap already seeds the buffer it
-  // shows, and doing it twice on open would be a dispatch nobody asked for.
-  createEffect(on(() => props.bookmarks, () => syncBookmarks(), { defer: true }));
+  // The pane's answer changed: a click toggled one, or a rename swept them.
+  // `defer` because the swap already seeds the buffer it shows, and doing it
+  // twice on open would be a dispatch nobody asked for.
   createEffect(on(() => props.breakpoints, () => syncBreakpoints(), { defer: true }));
   createEffect(on(() => props.frameLine, () => syncFrameLine(), { defer: true }));
   // Every editing-comfort key at once: `Object.values` reads all of them, so a
@@ -2690,7 +2664,11 @@ export default function CodeEditor(props: {
   function PaneEditor(p: { id: string }) {
     onCleanup(() => detachView(p.id));
     return (
-      <div class={styles.codeEditorWrap} style={{ display: hiddenOf(p.id) ? "none" : undefined }}>
+      <div
+        class={styles.codeEditorWrap}
+        classList={{ [styles.debugging]: debugRunning() }}
+        style={{ display: hiddenOf(p.id) ? "none" : undefined }}
+      >
         <Show when={conflict()?.path === pathOf(p.id) ? conflict() : null}>
           {(c) => (
             <div class={styles.reloadBanner}>

@@ -507,6 +507,8 @@ export const DEBUG_START = "sway:debug-start";
 
 // Stop the debug run (Shift+F5). Payload-less for the same reason.
 export const DEBUG_STOP = "sway:debug-stop";
+/** Set or clear a breakpoint on the caret's line in the file on screen. */
+export const DEBUG_TOGGLE_BREAKPOINT = "sway:debug-toggle-breakpoint";
 
 // Stop the run and start the same target again. Its own event rather than a
 // stop followed by a start from the caller, because the two have to be ordered

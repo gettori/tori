@@ -1,13 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import {
-  CODE_ACTION_GUTTER_CLASS,
-  CODE_ACTION_MARKER_CLASS,
-  codeActionGutter,
-  codeActionLine,
-  setCodeActionLine,
-} from "./codeActionGutter";
+import { CODE_ACTION_MARKER_CLASS, codeActionBulb, codeActionLine, setCodeActionLine } from "./codeActionBulb";
 
 // The bulb is a claim about one line, so the test that matters is what happens
 // to that claim when the line moves. jsdom gives every element zero size, so
@@ -17,7 +11,7 @@ let view: EditorView | null = null;
 
 function mount(doc: string) {
   view = new EditorView({
-    state: EditorState.create({ doc, extensions: [codeActionGutter({ onClick: () => {} })] }),
+    state: EditorState.create({ doc, extensions: [codeActionBulb({ onClick: () => {} })] }),
     parent: document.body,
   });
   return view;
@@ -97,7 +91,7 @@ describe("the code-action bulb", () => {
     const v = new EditorView({
       state: EditorState.create({
         doc: DOC,
-        extensions: [codeActionGutter({ onClick: (line) => clicked.push(line) })],
+        extensions: [codeActionBulb({ onClick: (line) => clicked.push(line) })],
       }),
       parent: document.body,
     });
@@ -109,25 +103,5 @@ describe("the code-action bulb", () => {
       .dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
 
     expect(clicked).toEqual([1]);
-  });
-
-  it("ignores a click on a line with no bulb on it", () => {
-    // The column is a hair wide and mostly empty; a click on the empty part is
-    // a click on nothing, not a request for the offer made about another line.
-    const clicked: number[] = [];
-    const v = new EditorView({
-      state: EditorState.create({
-        doc: DOC,
-        extensions: [codeActionGutter({ onClick: (line) => clicked.push(line) })],
-      }),
-      parent: document.body,
-    });
-    view = v;
-
-    document
-      .querySelector(`.${CODE_ACTION_GUTTER_CLASS}`)!
-      .dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-
-    expect(clicked).toEqual([]);
   });
 });

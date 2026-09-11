@@ -24,6 +24,7 @@ import {
   RUN_LAST_TASK,
   DEBUG_START,
   DEBUG_STOP,
+  DEBUG_TOGGLE_BREAKPOINT,
   DEBUG_PICK,
   type DebugPick,
   FOCUS_PROJECT_SEARCH,
@@ -744,6 +745,18 @@ export const COMMANDS: Command[] = [
     scope: "window",
     match: (e) => e.key === "F5" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey,
     run: () => emit(DEBUG_STOP),
+  },
+  {
+    // The way to set a breakpoint before a run: the gutter column that takes a
+    // click only shows while something is being debugged.
+    id: "debug-toggle-breakpoint",
+    keys: ["F9"],
+    label: "Toggle breakpoint",
+    group: "editor",
+    scope: "window",
+    match: (e) => e.key === "F9" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey,
+    run: () => emit(DEBUG_TOGGLE_BREAKPOINT),
+    requires: ["editorFile"],
   },
   // The three target kinds, each opening the picker on its own tab. Listed
   // separately rather than as one "Debug\u2026" row because they are the three
