@@ -15,12 +15,14 @@
   color: var(--fg-muted);
 }
 
+/* As tall as the Files tab's filter row, whose 28px input sets its height. */
 .topBar {
   display: flex;
   flex: none;
   align-items: center;
   gap: calc(4px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  min-height: calc(40px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale));
 }
 
 .spacer {
@@ -32,7 +34,7 @@
   flex: none;
   flex-direction: column;
   gap: calc(6px * var(--ui-scale));
-  padding: 0 calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(6px * var(--ui-scale));
 }
 
 .queryRow {
