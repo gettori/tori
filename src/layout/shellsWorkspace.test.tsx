@@ -1,5 +1,6 @@
 // The dock's one pane exists before anything opens in it, so a command started
-// from any workspace has a pane to land in, and it takes command tabs only.
+// from any workspace has a pane to land in. It takes both kinds that live there:
+// what Sway runs, and the shells you open yourself.
 import { describe, it, expect, beforeEach } from "vitest";
 import { ensureShellsWorkspace, shellsPane } from "./shellsWorkspace";
 import { layoutRoot, resetPaneLayoutModel } from "./layoutStore";
@@ -14,7 +15,7 @@ beforeEach(() => {
 });
 
 describe("the Shells workspace", () => {
-  it("is one pane that takes a command and nothing else", () => {
+  it("is one pane that takes both a command and a shell you opened", () => {
     expect(layoutRoot(SHELLS_KEY)).toBeNull();
     ensureShellsWorkspace();
     const root = layoutRoot(SHELLS_KEY)!;
@@ -30,16 +31,16 @@ describe("the Shells workspace", () => {
         tabsInWs: [],
       });
     expect(refusal("command")).toBeNull();
-    expect(refusal("shell")).not.toBeNull();
+    expect(refusal("shell")).toBeNull();
   });
 
-  // The Shells-mode build cleared the lock so its `+` could open a shell here,
-  // and that open pane is persisted. The seed has to put the lock back.
-  it("locks a pane an earlier version left open to any kind", () => {
+  // The build before the dock's `+` persisted a `command` lock, so the seed has
+  // to clear it rather than merely stop writing it.
+  it("clears a command lock left behind by an earlier version", () => {
     ensureShellsWorkspace();
-    setPaneLock(SHELLS_KEY, shellsPane()!, null);
+    setPaneLock(SHELLS_KEY, shellsPane()!, "command");
     ensureShellsWorkspace();
-    expect(paneLock(SHELLS_KEY, shellsPane()!)).toBe("command");
+    expect(paneLock(SHELLS_KEY, shellsPane()!)).toBeNull();
   });
 
   it("is idempotent across launches", () => {
