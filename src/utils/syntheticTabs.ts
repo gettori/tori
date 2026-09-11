@@ -100,8 +100,8 @@ export function syntheticTabName(id: string): string {
   // `<session>:<sourceReference>:<name>` - only the name means anything to a
   // reader, and the two ids before it exist so two runs cannot share a tab.
   if (t.kind === "dapsource") return t.arg.split(":").slice(2).join(":") || "Debug source";
-  // The query, because that is the only thing distinguishing one results buffer
-  // from another, and it is what the reader typed.
-  if (t.kind === "search") return `Search: ${t.arg}`;
+  // A Search Editor's arg is a sequence number; the strip shows its query
+  // through `searchTabTitle` once it has one.
+  if (t.kind === "search") return "Search";
   return t.arg ? `${t.kind} ${t.arg}` : t.kind;
 }

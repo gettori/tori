@@ -1,21 +1,42 @@
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { EditorView, drawSelection, highlightActiveLine, keymap } from "@codemirror/view";
-import { Annotation, EditorState, StateEffect, type Extension } from "@codemirror/state";
+import { Decoration, EditorView, drawSelection, highlightActiveLine, keymap, type DecorationSet } from "@codemirror/view";
+import { Annotation, EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from "@codemirror/state";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { Ellipsis, RefreshCw, Rows3 } from "lucide-solid";
 import Button from "../../components/Button/Button";
+import Icon from "../../components/Icon/Icon";
+import IconButton from "../../components/IconButton/IconButton";
 import { markSelfWrite } from "../../utils/selfWrites";
-import { adoptBufferText, dirtyBuffers, liveBufferText, patchBuffer } from "./liveBuffers";
-import { searchBuffer } from "./searchResultsStore";
+import { debounce } from "../../utils/debounce";
+import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
+import type { MemberRoot, TintedMember } from "../../utils/featureMembers";
 import {
+  countOccurrences,
+  mergeSearchResults,
+  openUnder,
+  truncationNotice,
+  type RootOutcome,
+  type SearchOptions,
+  type ToggleKey,
+} from "../../utils/searchOptions";
+import { adoptBufferText, dirtyBuffers, liveBufferText, patchBuffer } from "./liveBuffers";
+import { noteSearchQuery, searchBuffer, type EditorForm } from "./searchResultsStore";
+import { grepRoot, MAX_RESULTS, readHitFiles } from "./searchRun";
+import { Field, GlobFields, InlineToggle, MatchToggles, MemberToggles } from "./SearchFields";
+import {
+  buildSearchDoc,
   collectEdits,
   describeApply,
+  prefixLen,
   refusalFor,
   renderLines,
   settle,
   type ApplyOutcome,
   type DocFile,
+  type DocRoot,
   type FileEdits,
+  type ResultMatch,
   type SearchDoc,
 } from "./searchResultsDoc";
 import styles from "./SearchResultsBuffer.module.css";
@@ -27,6 +48,8 @@ type ApplyResult = { changed: string[]; skipped: { path: string; reason: string 
  *  Carried on the transaction so the guard lets it through: it is the one edit
  *  allowed to touch a header row, and it is not a user edit at all. */
 const REWRITE = Annotation.define<boolean>();
+
+const EMPTY_DOC: SearchDoc = { roots: [], query: "", rows: [], width: 1, marks: {} };
 
 /**
  * Refuse any edit the line map could not survive, and say why.
@@ -42,6 +65,43 @@ function guardEdits(doc: () => SearchDoc, refuse: (why: string) => void): Extens
     if (!why) return tr;
     refuse(why);
     return [];
+  });
+}
+
+const LINE_CLASS: Record<string, string> = {
+  note: "sr-note",
+  member: "sr-member",
+  file: "sr-file",
+  context: "sr-context",
+};
+
+/** Row styling and hit highlights, built from the rows once per document and
+ *  then carried along by the edits. */
+function rowDecorations(doc: () => SearchDoc): Extension {
+  const build = (state: EditorState): DecorationSet => {
+    const d = doc();
+    const b = new RangeSetBuilder<Decoration>();
+    const lead = prefixLen(d);
+    d.rows.forEach((row, i) => {
+      if (i >= state.doc.lines) return;
+      const line = state.doc.line(i + 1);
+      const cls = LINE_CLASS[row.kind];
+      if (cls) b.add(line.from, line.from, Decoration.line({ class: cls }));
+      if (row.kind !== "match" && row.kind !== "context") return;
+      b.add(line.from, Math.min(line.to, line.from + lead), Decoration.mark({ class: "sr-lineno" }));
+      if (row.kind !== "match") return;
+      for (const [s, e] of row.spans ?? []) {
+        const from = line.from + lead + s;
+        const to = line.from + lead + e;
+        if (to <= line.to && to > from) b.add(from, to, Decoration.mark({ class: "sr-hit" }));
+      }
+    });
+    return b.finish();
+  };
+  return StateField.define<DecorationSet>({
+    create: build,
+    update: (deco, tr) => deco.map(tr.changes),
+    provide: (f) => EditorView.decorations.from(f),
   });
 }
 
@@ -116,28 +176,48 @@ async function writeBack(groups: FileEdits[]): Promise<ApplyOutcome> {
   return { written, inBuffer, refused };
 }
 
+const HELD = "Edits not applied yet. Apply them, or press Enter to search again and drop them.";
+
 /**
- * Every match in the project as one editable buffer, with a write-back.
+ * VS Code's Search Editor: a tab with its own query, toggles, globs and context
+ * lines over every hit as one buffer, plus Sway's write-back of edited lines.
  *
  * Its own CodeMirror instance rather than a buffer inside `CodeEditor`: this
  * document has no file behind it, needs no language server, and lives under
- * rules no file buffer has (see `searchResultsDoc.ts`). The document itself is
- * held by `searchResultsStore`, because the Editor unmounts a synthetic tab's
- * view the moment another tab is selected.
+ * rules no file buffer has (see `searchResultsDoc.ts`). The state is held by
+ * `searchResultsStore`, because the Editor unmounts a synthetic tab's view the
+ * moment another tab is selected.
  */
-export default function SearchResultsBuffer(props: { id: string }) {
+export default function SearchResultsBuffer(props: {
+  id: string;
+  /** Every root the workspace searches, one per Feature member. */
+  roots: MemberRoot[];
+  /** Empty outside a Feature. */
+  members: readonly TintedMember[];
+  /** Absolute paths of the files open in editor tabs. */
+  openPaths: readonly string[];
+  confirm?: (opts: { title: string; message?: string; confirmLabel?: string }) => Promise<boolean>;
+}) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
+  let queryEl: HTMLInputElement | undefined;
   const [pending, setPending] = createSignal(0);
   const [outcome, setOutcome] = createSignal<string | null>(null);
   const [refusal, setRefusal] = createSignal<string | null>(null);
   const [applying, setApplying] = createSignal(false);
+  const [running, setRunning] = createSignal(false);
+  const [held, setHeld] = createSignal(false);
+  const [form, setForm] = createSignal<EditorForm | null>(null);
+  const [details, setDetails] = createSignal(false);
+  const [caps, setCaps] = createSignal<{ backend: string; unsupported: string[] }>({ backend: "", unsupported: [] });
+  const [hasDoc, setHasDoc] = createSignal(false);
 
   const entry = () => searchBuffer(props.id);
+  const docOf = () => searchBuffer(props.id)?.doc ?? EMPTY_DOC;
 
   function countPending() {
     const e = entry();
-    if (!e || !view) return setPending(0);
+    if (!e?.doc || !view) return setPending(0);
     setPending(collectEdits(e.doc, view.state.doc.toJSON()).length);
   }
 
@@ -146,7 +226,7 @@ export default function SearchResultsBuffer(props: { id: string }) {
    *  the selection and the undo history survive being told what happened. */
   function repaint() {
     const e = entry();
-    if (!e || !view) return;
+    if (!e?.doc || !view) return;
     const doc = view.state.doc;
     const next = renderLines(e.doc, doc.toJSON());
     const changes: { from: number; to: number; insert: string }[] = [];
@@ -159,7 +239,7 @@ export default function SearchResultsBuffer(props: { id: string }) {
 
   async function apply() {
     const e = entry();
-    if (!e || !view || applying()) return;
+    if (!e?.doc || !view || applying()) return;
     const lines = view.state.doc.toJSON();
     const groups = collectEdits(e.doc, lines);
     if (!groups.length) return;
@@ -178,14 +258,20 @@ export default function SearchResultsBuffer(props: { id: string }) {
     }
   }
 
-  function build(id: string) {
-    const e = searchBuffer(id);
-    if (!e) return;
-    const extensions = [
+  function openRow(line: number) {
+    const row = docOf().rows[line - 1];
+    if (!row || (row.kind !== "file" && row.kind !== "match" && row.kind !== "context")) return false;
+    const at = row.kind === "file" ? undefined : row.line;
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: `${row.root}/${row.file}`, line: at });
+    return true;
+  }
+
+  function extensionsFor(id: string): Extension[] {
+    const doc = () => searchBuffer(id)?.doc ?? EMPTY_DOC;
+    return [
       history(),
       drawSelection(),
       highlightActiveLine(),
-      EditorView.lineWrapping,
       // CodeMirror gives its content `role="textbox"`, so without this the pane
       // is an ARIA input field with no accessible name. Same defect axe found in
       // ConflictView, and the same fix.
@@ -203,10 +289,7 @@ export default function SearchResultsBuffer(props: { id: string }) {
         },
       ]),
       keymap.of([...defaultKeymap, ...historyKeymap]),
-      guardEdits(
-        () => searchBuffer(id)?.doc ?? e.doc,
-        (why) => setRefusal(why),
-      ),
+      guardEdits(doc, (why) => setRefusal(why)),
       // While a write is in flight the document has to hold still: `apply`
       // settles the buffer it snapshotted against what comes back, so a
       // keystroke landing in between would leave a row locked as written back
@@ -215,6 +298,13 @@ export default function SearchResultsBuffer(props: { id: string }) {
         if (!tr.docChanged || tr.annotation(REWRITE) || !applying()) return tr;
         setRefusal("Still writing the last apply back.");
         return [];
+      }),
+      rowDecorations(doc),
+      EditorView.domEventHandlers({
+        dblclick: (ev, v) => {
+          const pos = v.posAtCoords({ x: ev.clientX, y: ev.clientY });
+          return pos !== null && openRow(v.state.doc.lineAt(pos).number);
+        },
       }),
       EditorView.updateListener.of((u) => {
         const live = searchBuffer(id);
@@ -228,24 +318,147 @@ export default function SearchResultsBuffer(props: { id: string }) {
         }
       }),
     ];
+  }
+
+  /** A fresh document: new state, new undo history, nothing pending. */
+  function showDoc() {
+    const e = entry();
+    if (!e || !view) return;
+    view.setState(
+      EditorState.create({ doc: e.doc ? renderLines(e.doc).join("\n") : "", extensions: extensionsFor(props.id) }),
+    );
+    e.state = view.state;
+    setHasDoc(!!e.doc);
+    setRefusal(null);
+    countPending();
+  }
+
+  async function buildFrom(matches: ResultMatch[], roots: DocRoot[], f: EditorForm) {
+    const context =
+      f.showContext && f.context > 0 ? { lines: f.context, textOf: await readHitFiles(matches) } : undefined;
+    return buildSearchDoc(roots, f.query, matches, context);
+  }
+
+  const labelOf = (root: string) => props.roots.find((r) => r.path === root)?.label || root;
+
+  let runGen = 0;
+  /** Search with the form as it stands. With edits waiting, a search by typing
+   *  holds off; Enter asks before dropping them. */
+  async function run(how: "auto" | "ask" = "auto") {
+    const e = entry();
+    const f = form();
+    if (!e || !f) return;
+    e.form = f;
+    if (pending()) {
+      if (how === "auto") return setHeld(true);
+      const ok = props.confirm
+        ? await props.confirm({
+            title: "Drop the edits you have not applied?",
+            message: "Searching again rebuilds this buffer from disk.",
+            confirmLabel: "Search",
+          })
+        : true;
+      if (!ok) return;
+    }
+    setHeld(false);
+    noteSearchQuery(props.id, f.query);
+    const gen = ++runGen;
+    if (!f.query) {
+      e.doc = null;
+      setOutcome(null);
+      return showDoc();
+    }
+    const roots = props.roots.filter(
+      (r) => r.state?.usable !== false && (!f.repos.length || f.repos.includes(r.repoPath)),
+    );
+    setRunning(true);
+    try {
+      const legs = await Promise.all(
+        roots.map((r): Promise<RootOutcome> => {
+          const only = f.openOnly ? openUnder(r.path, props.openPaths) : undefined;
+          if (only && !only.length) {
+            return Promise.resolve({
+              root: r.path,
+              result: { matches: [], truncated: false, backend: "", unsupported: [], files: [] },
+            });
+          }
+          return grepRoot(r.path, f.query, { ...f.options, only });
+        }),
+      );
+      if (gen !== runGen) return;
+      const merged = mergeSearchResults(legs);
+      const answered = merged.sections.find((s) => s.backend);
+      setCaps({ backend: answered?.backend ?? "", unsupported: merged.unsupported });
+      const failed = merged.sections.filter((s) => s.error);
+      const matches = merged.sections.flatMap((s) => s.matches.map((m) => ({ ...m, root: s.root })));
+      const doc = await buildFrom(matches, roots.map((r) => ({ root: r.path, label: labelOf(r.path) })), f);
+      if (gen !== runGen) return;
+      e.doc = doc;
+      showDoc();
+      const notes = merged.sections
+        .map((s) => truncationNotice(s.truncated, MAX_RESULTS, countOccurrences(s.matches)))
+        .filter(Boolean);
+      setOutcome([...failed.map((s) => s.error), ...notes].join(" ") || null);
+    } finally {
+      if (gen === runGen) setRunning(false);
+    }
+  }
+  const runSoon = debounce(() => void run(), 300);
+
+  function edit(patch: Partial<EditorForm>, now = true) {
+    setForm((f) => (f ? { ...f, ...patch } : f));
+    if (now) {
+      runSoon.cancel();
+      void run();
+    } else runSoon();
+  }
+  const setOption = (patch: Partial<SearchOptions>, now = true) => {
+    const f = form();
+    if (f) edit({ options: { ...f.options, ...patch } }, now);
+  };
+
+  async function mount(id: string) {
+    const e = searchBuffer(id);
+    setForm(e ? { ...e.form } : null);
+    setDetails(!!e && !!(e.form.options.include || e.form.options.exclude || e.form.openOnly));
+    setOutcome(null);
+    setRefusal(null);
+    setHeld(false);
+    if (!e) return;
     const kept = e.state;
+    const extensions = extensionsFor(id);
     view = new EditorView({
-      state: kept ?? EditorState.create({ doc: renderLines(e.doc).join("\n"), extensions }),
+      state: kept ?? EditorState.create({ doc: e.doc ? renderLines(e.doc).join("\n") : "", extensions }),
       parent: host,
     });
     // A state carries the configuration it was built with, and the one this
     // buffer left behind on the last tab switch closes over a view that has
-    // since been destroyed and signals nothing renders any more. Reconfiguring
-    // keeps the document, the selection and the undo history while pointing
-    // every extension at the mount that is on screen now.
+    // since been destroyed. Reconfiguring keeps the document, the selection and
+    // the undo history while pointing every extension at this mount.
     if (kept) view.dispatch({ effects: StateEffect.reconfigure.of(extensions) });
     e.state = view.state;
+    setHasDoc(!!e.doc);
     countPending();
+    if (e.seed && !e.doc) {
+      const seed = e.seed;
+      e.seed = null;
+      setRunning(true);
+      e.doc = await buildFrom(seed.matches, seed.roots, e.form);
+      setRunning(false);
+      if (searchBuffer(id) === e && props.id === id) showDoc();
+    } else if (!e.doc && e.form.query) {
+      void run();
+    }
+    if (!e.form.query) requestAnimationFrame(() => queryEl?.focus());
   }
 
   function teardown(id: string) {
     const e = searchBuffer(id);
     if (e && view) e.state = view.state;
+    const f = form();
+    if (e && f) e.form = f;
+    runSoon.cancel();
+    runGen++;
     view?.destroy();
     view = undefined;
   }
@@ -259,9 +472,7 @@ export default function SearchResultsBuffer(props: { id: string }) {
       () => props.id,
       (id, prev) => {
         if (prev !== undefined) teardown(prev);
-        setOutcome(null);
-        setRefusal(null);
-        build(id);
+        void mount(id);
       },
     ),
   );
@@ -269,35 +480,100 @@ export default function SearchResultsBuffer(props: { id: string }) {
 
   return (
     <div class={styles.resultsBuffer}>
-      <div class={styles.headerBar}>
-        <span class={styles.query}>{entry()?.doc.query ?? ""}</span>
-        {/* Always rendered, empty or not: it is what holds the Apply button
-            against the right edge whether or not there is an outcome to show. */}
-        <span class={styles.meta}>{outcome() ?? ""}</span>
-        <Button
-          size="xs"
-          disabled={!pending() || applying()}
-          tooltipWhenDisabled
-          tooltip={
-            pending()
-              ? "Write every edited line back to the file it came from"
-              : "Edit a result line first"
-          }
-          onClick={() => void apply()}
-        >
-          {pending() ? `Apply to ${pending()} ${pending() === 1 ? "file" : "files"}` : "Apply"}
-        </Button>
-      </div>
-      <Show when={refusal()}>
-        <div class={styles.refusal} role="status">
-          {refusal()}
-        </div>
+      <Show when={form()} fallback={<div class="tree-empty">This search is gone. Open a new one from Search.</div>}>
+        {(f) => (
+          <div class={styles.form}>
+            <div class={styles.queryRow}>
+              <Show when={props.members.length > 1}>
+                <MemberToggles
+                  members={props.members}
+                  restricted={f().repos}
+                  onChange={(repos) => edit({ repos })}
+                />
+              </Show>
+              <Field
+                ref={(el) => (queryEl = el)}
+                value={f().query}
+                label="Search"
+                placeholder="Search"
+                onInput={(v) => edit({ query: v }, false)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  runSoon.cancel();
+                  void run("ask");
+                }}
+              >
+                <MatchToggles
+                  options={f().options}
+                  unsupported={caps().unsupported}
+                  backend={caps().backend}
+                  onToggle={(k: ToggleKey) => setOption({ [k]: !f().options[k] })}
+                />
+              </Field>
+              <input
+                class={styles.contextInput}
+                type="number"
+                min="0"
+                max="99"
+                aria-label="Context lines"
+                value={f().context}
+                disabled={!f().showContext}
+                onChange={(e) => edit({ context: Math.max(0, Math.min(99, Number(e.currentTarget.value) || 0)) })}
+              />
+              <InlineToggle
+                icon={Rows3}
+                label="Toggle Context Lines"
+                active={f().showContext}
+                onClick={() => edit({ showContext: !f().showContext })}
+              />
+              <IconButton
+                size="sm"
+                icon={<Icon icon={RefreshCw} />}
+                tooltip="Search Again"
+                disabled={running()}
+                onClick={() => void run("ask")}
+              />
+            </div>
+            <div class={styles.statusRow}>
+              <span class={styles.meta} role="status">
+                {refusal() ?? (held() ? HELD : outcome() ?? "")}
+              </span>
+              <Show when={hasDoc()}>
+                <Button
+                  size="xs"
+                  disabled={!pending() || applying()}
+                  tooltipWhenDisabled
+                  tooltip={pending() ? "Write every edited line back to the file it came from" : "Edit a result line first"}
+                  onClick={() => void apply()}
+                >
+                  {pending() ? `Apply to ${pending()} ${pending() === 1 ? "file" : "files"}` : "Apply"}
+                </Button>
+              </Show>
+              <InlineToggle
+                icon={Ellipsis}
+                label="Toggle Search Details"
+                active={details()}
+                onClick={() => setDetails((v) => !v)}
+              />
+            </div>
+            <Show when={details()}>
+              <GlobFields
+                options={f().options}
+                unsupported={caps().unsupported}
+                backend={caps().backend}
+                openOnly={f().openOnly}
+                onGlob={(k, v) => setOption({ [k]: v }, false)}
+                onOpenOnly={() => edit({ openOnly: !f().openOnly })}
+                onToggleIgnore={() => setOption({ noIgnore: !f().options.noIgnore })}
+              />
+            </Show>
+          </div>
+        )}
       </Show>
-      <Show
-        when={entry()}
-        fallback={<div class="tree-empty">This results buffer is gone. Run the search again.</div>}
-      >
-        <div class={styles.editorHost} ref={host} />
+      <div class={styles.editorHost} classList={{ [styles.blank]: !hasDoc() }} ref={host} />
+      <Show when={form() && !hasDoc()}>
+        <div class={styles.blankHint}>{running() ? "Searching..." : "Type to search. Double-click a result to open it."}</div>
       </Show>
     </div>
   );

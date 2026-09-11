@@ -32,7 +32,13 @@ import type { ChangeSet, EditorState, Text } from "@codemirror/state";
 
 /** One match, as `grep_project` reports it, tagged with the member root it was
  *  found under: a root-relative path, a 1-based line, and that line's text. */
-export type ResultMatch = { root: string; path: string; line: number; text: string };
+export type ResultMatch = {
+  root: string;
+  path: string;
+  line: number;
+  text: string;
+  submatches?: [number, number][];
+};
 
 /** One member the document covers: the absolute root its rows write into, and
  *  the name a header row shows. */
@@ -44,12 +50,25 @@ export type DocRoot = { root: string; label: string };
 export type DocFile = { root: string; file: string };
 
 /** One buffer line. `note` is chrome (the headline, the blank separators),
- *  `member` and `file` are group headers, `match` is the only editable kind. */
+ *  `member` and `file` are group headers, `context` is a line around a hit, and
+ *  `match` is the only editable kind. */
 export type Row =
   | { kind: "note"; text: string }
   | { kind: "member"; label: string }
   | { kind: "file"; root: string; file: string }
-  | { kind: "match"; root: string; file: string; line: number; original: string };
+  | { kind: "context"; root: string; file: string; line: number; text: string }
+  | {
+      kind: "match";
+      root: string;
+      file: string;
+      line: number;
+      original: string;
+      spans?: [number, number][];
+    };
+
+/** Lines around each hit: how many, and each file's text split into lines
+ *  (null for one that could not be read). */
+export type DocContext = { lines: number; textOf: (root: string, file: string) => readonly string[] | null };
 
 /** What became of a file at the last apply. `applied` covers both landings: on
  *  disk, and in an open buffer that still has to be saved. Either way this
@@ -123,6 +142,7 @@ export function buildSearchDoc(
   roots: readonly DocRoot[],
   query: string,
   matches: ResultMatch[],
+  context?: DocContext,
 ): SearchDoc {
   const order: DocFile[] = [];
   const byFile = new Map<string, ResultMatch[]>();
@@ -134,7 +154,7 @@ export function buildSearchDoc(
     }
     byFile.get(key)!.push(m);
   }
-  const width = matches.reduce((w, m) => Math.max(w, String(m.line).length), 1);
+  let widest = matches.reduce((w, m) => Math.max(w, m.line), 1);
   const labelOf = (root: string) => roots.find((r) => r.root === root)?.label || root;
   const covered = [...new Set(order.map((o) => o.root))];
 
@@ -153,17 +173,37 @@ export function buildSearchDoc(
     if (covered.length > 1 && root !== member) rows.push({ kind: "member", label: labelOf(root) });
     member = root;
     rows.push({ kind: "file", root, file });
-    for (const m of byFile.get(markKey(root, file))!) {
-      rows.push({ kind: "match", root, file, line: m.line, original: m.text });
+    const hits = byFile.get(markKey(root, file))!;
+    const text = context && context.lines > 0 ? context.textOf(root, file) : null;
+    if (!text) {
+      for (const m of hits) rows.push(matchRow(m));
+      continue;
+    }
+    const byLine = new Map(hits.map((m) => [m.line, m]));
+    const shown = new Set<number>();
+    for (const m of hits) {
+      for (let l = Math.max(1, m.line - context!.lines); l <= Math.min(text.length, m.line + context!.lines); l++) {
+        shown.add(l);
+      }
+      shown.add(m.line);
+    }
+    for (const l of [...shown].sort((a, b) => a - b)) {
+      const m = byLine.get(l);
+      rows.push(m ? matchRow(m) : { kind: "context", root, file, line: l, text: text[l - 1] ?? "" });
+      widest = Math.max(widest, l);
     }
   }
   return {
     roots: covered.map((root) => ({ root, label: labelOf(root) })),
     query,
     rows,
-    width,
+    width: String(widest).length,
     marks: {},
   };
+}
+
+function matchRow(m: ResultMatch): Row {
+  return { kind: "match", root: m.root, file: m.path, line: m.line, original: m.text, spans: m.submatches };
 }
 
 function headline(query: string, matches: number, files: number): string {
@@ -193,6 +233,8 @@ export function renderLines(doc: SearchDoc, current?: readonly string[]): string
       const mark = doc.marks[markKey(row.root, row.file)];
       return mark ? `${row.file}  ${mark.note}` : row.file;
     }
+    // Two spaces where a hit has `: `, VS Code's way of telling them apart.
+    if (row.kind === "context") return `${String(row.line).padStart(pad)}  ${row.text}`;
     const text = current ? textAt(doc, current, i) : row.original;
     return `${String(row.line).padStart(pad)}: ${text ?? row.original}`;
   });
