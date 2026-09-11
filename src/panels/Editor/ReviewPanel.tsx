@@ -43,9 +43,14 @@ import { sendBlockedReason } from "../../utils/sendTarget";
 import { comparePrUrl } from "../../utils/prUrl";
 import { composeDraftRequest, prPath } from "../../utils/createPr";
 import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils/forgeTypes";
-import { settings } from "../Settings/settingsStore";
+import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/features";
 import MemberChip from "../../components/MemberChip/MemberChip";
+import PanelSection from "../../components/PanelSection/PanelSection";
+import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
+import Dropdown from "../../components/Menu/Dropdown";
+import { MenuRow, MenuSeparator } from "../../components/Menu/rows";
+import { changesLayout, OPTIONAL_CHANGES_SECTIONS, type ChangesSection } from "../../utils/changesSections";
 import type { MemberRoot } from "../../utils/featureMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
@@ -56,7 +61,24 @@ import Checkbox from "../../components/Checkbox/Checkbox";
 import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
-import { History } from "lucide-solid";
+import {
+  Archive,
+  ArchiveRestore,
+  ArchiveX,
+  Check,
+  ChevronDown,
+  Copy,
+  Ellipsis,
+  FileCode,
+  GitBranch,
+  GitPullRequestArrow,
+  MessageSquarePlus,
+  Minus,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Undo2,
+} from "lucide-solid";
 import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
 import styles from "./ReviewPanel.module.css";
 
@@ -93,11 +115,22 @@ function statusClass(status: string): string {
   return "modified";
 }
 
-// Descriptions for the two stash/commit checkboxes. A `<label>` cannot take
-// focus, so what used to be a `title` on it is a description on the control
-// inside instead - see the call sites.
+// The include-untracked checkbox's description. A `<label>` cannot take focus,
+// so what used to be a `title` on it is a description on the control inside
+// instead - see the call site.
 const UNTRACKED_HINT_ID = "review-untracked-hint";
-const AMEND_HINT_ID = "review-amend-hint";
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+const dirName = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
+
+const SECTION_ORDER: ChangesSection[] = ["changes", "stashes", "checkpoints", "graph"];
+
+// Ahead and behind, as a pill. Escaped rather than literal so the source stays
+// ASCII.
+const UP = "\u2191";
+const DOWN = "\u2193";
 
 /** Changes panel: VS Code-style Staged / Changes sections over git_status's
  *  staged/unstaged split, with per-file stage/unstage, a manual commit box,
@@ -187,8 +220,33 @@ export default function ReviewPanel(props: {
   const [commitTarget, setCommitTarget] = createSignal<string | null>(null);
   const targetMember = () =>
     commitTarget() ?? rootOf(props.activePath, sections().map((s) => s.root)) ?? props.root;
-  const targetSection = () => sections().find((s) => s.root === targetMember());
-  const commitStagedFiles = () => stagedFiles(targetMember());
+
+  /** Members the chips have been unticked for. A set of exclusions rather than
+   *  of choices, so a member that stages something later joins the commit
+   *  instead of being silently left out of one made before it had changes. */
+  const [unticked, setUnticked] = createSignal<ReadonlySet<string>>(new Set());
+  const memberRoots = () => sections().map((s) => s.root);
+  const stagedRoots = () => memberRoots().filter((r) => stagedFiles(r).length);
+
+  /**
+   * Where Commit lands.
+   *
+   * A Feature is one branch across N repos, so a change that touched three of
+   * them is one message in each rather than three trips through the composer.
+   * Amend is the exception and takes exactly one member: the composer is
+   * prefilled from that member's HEAD, and rewriting several repos' last
+   * commits to one message would be a different operation wearing this one's
+   * button.
+   */
+  const commitRoots = () => {
+    if (amend()) {
+      const one = targetMember();
+      return one ? [one] : [];
+    }
+    const out = stagedRoots().filter((r) => !unticked().has(r));
+    return out;
+  };
+  const commitStagedFiles = () => commitRoots().flatMap((r) => stagedFiles(r));
 
   function target(): SessionTarget | null {
     const sel = props.selected;
@@ -268,6 +326,64 @@ export default function ReviewPanel(props: {
     if (paths.length) await stageFiles(root, paths);
   }
 
+  /** Unstage everything this member has in the index. */
+  async function unstageAll(root: string | null) {
+    if (!root) return;
+    const paths = stagedFiles(root).map((f) => f.path);
+    if (paths.length) await unstageFiles(root, paths);
+  }
+
+  /** Throw away every unstaged change in this member. Guarded, unlike a single
+   *  hunk: this one rewrites files across the whole worktree. */
+  async function discardAllChanges(root: string | null) {
+    if (!root) return;
+    const files = changedFiles(root).map((f) => f.path);
+    if (!files.length) return;
+    await busy(() =>
+      guarded("Discard", root, async () => {
+        const ok = await askConfirm({
+          title: `Discard changes to ${plural(files.length, "file")}?`,
+          message:
+            "Every unstaged change in this repo goes back to how it is staged. Anything already staged is kept.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.",
+          confirmLabel: "Discard changes",
+          danger: true,
+        });
+        if (!ok) return;
+        const outcome = await invoke<DiscardOutcome>("git_discard_files", {
+          projectPath: root,
+          files,
+        });
+        reportDiscarded(outcome);
+        await refreshStatus(root);
+      }),
+    );
+  }
+
+  /** Ask the remote what it has. The answer arrives as `git://fetch-done`,
+   *  which `refreshAll` is already listening for. */
+  async function fetchRemote(root: string | null) {
+    if (!root) return;
+    try {
+      await invoke("git_fetch", { repo: root });
+    } catch (e) {
+      toastError(e);
+    }
+  }
+
+  /** Whether this member has somewhere to push and something to push there. */
+  function canPushIn(root: string | null): boolean {
+    if (!root || pushingIn(root)) return false;
+    const ab = gitStateFor(root).aheadBehind;
+    if (!ab) return false;
+    return !ab.has_upstream || ab.ahead > 0;
+  }
+
+  function pushMember(root: string | null) {
+    if (!root) return;
+    const branchName = gitStateFor(root).branch;
+    if (branchName) void pushToOrigin(root, branchName);
+  }
+
   /** Point the commit box at a member and put the cursor in it, so the click
    *  that chose the member is also the click that starts the message. */
   function commitIn(root: string) {
@@ -277,16 +393,41 @@ export default function ReviewPanel(props: {
 
   /** Amend is the one form that needs nothing staged: rewriting only the
    *  message is a normal thing to want. Everything else still does. */
-  const canCommit = () => !!commitSubject().trim() && (amend() || !!commitStagedFiles().length);
+  const canCommit = () => !!commitSubject().trim() && !!commitRoots().length;
+
+  /** Every member's changed and staged rows, for the section's count badge. */
+  const totalChanged = () =>
+    sections().reduce(
+      (n, sec) =>
+        n +
+        changedFiles(sec.root).length +
+        stagedFiles(sec.root).length +
+        conflictedFiles(sec.root).length,
+      0,
+    );
+
+  /** The button says how many repos it is about, because inside a Feature one
+   *  click can land in several and the count is the only warning of that. */
+  const commitLabel = () => {
+    const n = commitRoots().length;
+    const verb = amend() ? "Amend" : "Commit";
+    return n > 1 ? `${verb} in ${n} repos` : verb;
+  };
+  const commitLabelHint = () => {
+    const roots = commitRoots();
+    if (roots.length <= 1) return "Commit staged changes";
+    const names = roots.map((r) => sections().find((x) => x.root === r)?.label ?? r);
+    return `Commit the same message in ${names.join(", ")}`;
+  };
 
   function askConfirm(opts: Omit<ConfirmReq, "resolve">): Promise<boolean> {
     return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
   }
 
-  async function commit() {
-    const root = targetMember();
+  async function commit(thenPush = false) {
+    const roots = commitRoots();
     const message = composeCommitMessage(commitSubject(), commitBody());
-    if (!root || !message || committing() || !canCommit()) return;
+    if (!roots.length || !message || committing() || !canCommit()) return;
     // Held across the confirm too, not just the invoke: the dialog is awaited,
     // and an enabled button behind it would let a second click open a second
     // dialog, orphaning the first one's promise and committing twice.
@@ -297,10 +438,10 @@ export default function ReviewPanel(props: {
       // fetch, so it asks rather than refuses - and says so, since a stale ref
       // is the reason to trust your own judgement over this warning.
       //
-      // The targeted member's own numbers, not the panel's: amending in a
-      // background member has to warn about that member's upstream.
-      const ab = gitStateFor(root).aheadBehind;
-      if (amend() && amendRewritesPushed(ab)) {
+      // Each member's own numbers, not the panel's: amending in a background
+      // member has to warn about that member's upstream. Amend is one member by
+      // construction, so this asks at most once.
+      if (amend() && roots.some((r) => amendRewritesPushed(gitStateFor(r).aheadBehind))) {
         const ok = await askConfirm({
           title: "Amend a pushed commit?",
           message:
@@ -310,13 +451,29 @@ export default function ReviewPanel(props: {
         });
         if (!ok) return;
       }
-      // The message is cleared only on success, so a rejected commit (an empty
+      // One at a time rather than in parallel: each write takes that repo's
+      // lock, and a failure part-way through has to leave the repos behind it
+      // untouched rather than half-committed under a message the user can no
+      // longer see.
+      const landed: string[] = [];
+      for (const root of roots) {
+        if (!(await commitStaged(root, message, amend()))) break;
+        landed.push(root);
+      }
+      // Cleared only when every repo took it, so a rejected commit (an empty
       // author, a failing hook) does not also lose what you typed.
-      if (await commitStaged(root, message, amend())) {
+      if (landed.length === roots.length) {
         setCommitSubject("");
         setCommitBody("");
         setPreAmendDraft(null);
         setAmend(false);
+        setUnticked(new Set<string>());
+      }
+      if (thenPush) {
+        for (const root of landed) {
+          const branchName = gitStateFor(root).branch;
+          if (branchName) void pushToOrigin(root, branchName);
+        }
       }
     } finally {
       setCommitting(false);
@@ -349,8 +506,10 @@ export default function ReviewPanel(props: {
   // agent proposes a commit message at its own prompt, unsubmitted.
   async function askAgentToDraft() {
     const t = target();
-    const root = targetMember();
-    const paths = commitStagedFiles().map((f) => f.path);
+    // The first repo the commit lands in. Naming every member's files would
+    // make the request about a diff no single checkout holds.
+    const root = commitRoots()[0] ?? targetMember();
+    const paths = root ? stagedFiles(root).map((f) => f.path) : [];
     if (!t || !root || disabledReason() || !paths.length || drafting()) return;
     setDrafting(true);
     // Named against the session's own cwd, the same rule every other mention
@@ -815,88 +974,96 @@ export default function ReviewPanel(props: {
     );
   }
 
+  /** One changed file. VS Code's shape: the name, its folder dimmed beside it,
+   *  the hover actions, then the status letter last, so a column of letters
+   *  lines up down the right edge whatever the names are doing. */
   function row(f: FileStatus, opts: { staged: boolean; root: string }) {
+    const untracked = () => f.status.includes("?");
     return (
-      <div>
-        <div
-          class={styles.reviewRow}
-          // The two rows of a partially staged file open two tabs: they are
-          // different comparisons, so one tab could only ever show one of them.
-          onClick={() =>
-            emitWith(OPEN_IN_EDITOR, { path: diffTabId(opts.root, f.path, opts.staged) })
-          }
-          title={f.path}
-        >
-          <Button
+      <div
+        class={styles.reviewRow}
+        // The two rows of a partially staged file open two tabs: they are
+        // different comparisons, so one tab could only ever show one of them.
+        onClick={() => emitWith(OPEN_IN_EDITOR, { path: diffTabId(opts.root, f.path, opts.staged) })}
+        title={f.path}
+      >
+        <span class={styles.reviewName}>
+          {/* A rename names both halves. Only `f.path` is clickable-through to
+              a file; the source is gone from the worktree by definition. */}
+          <Show when={f.orig_path}>
+            <span class={styles.renameFrom}>{f.orig_path} -&gt; </span>
+          </Show>
+          {baseName(f.path)}
+        </span>
+        <Show when={dirName(f.path)}>
+          <span class={styles.reviewDir}>{dirName(f.path)}</span>
+        </Show>
+        <span class={styles.rowEnd}>
+          <IconButton
             size="xs"
-            variant="ghost"
-            class={styles.stageToggle}
+            icon={<Icon icon={FileCode} />}
+            aria-label="Open file"
+            tooltip="Open the file itself"
+            onClick={(e) => {
+              e.stopPropagation();
+              openFile(opts.root, f.path);
+            }}
+          />
+          <IconButton
+            size="xs"
+            icon={<Icon icon={Copy} />}
+            aria-label="Copy diff"
+            tooltip="Copy diff"
+            onClick={(e) => {
+              e.stopPropagation();
+              void copyDiff(opts.root, f.path);
+            }}
+          />
+          {/* Unstaged rows only. A staged file's changes are safe in the index,
+              so there is nothing here to destroy; unstage it and the row moves
+              down to where discard lives. */}
+          <Show when={!opts.staged}>
+            <IconButton
+              size="xs"
+              icon={<Icon icon={Undo2} />}
+              disabled={applying()}
+              aria-label={untracked() ? "Delete" : "Discard"}
+              tooltip={
+                untracked()
+                  ? "Delete this file (it was never committed)"
+                  : "Throw away the unstaged changes to this file"
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                void discardFile(opts.root, f.path, untracked());
+              }}
+            />
+          </Show>
+          <IconButton
+            size="xs"
+            icon={<Icon icon={opts.staged ? Minus : Plus} />}
             aria-label={opts.staged ? "Unstage" : "Stage"}
             tooltip={opts.staged ? "Unstage" : "Stage"}
             onClick={(e) => {
               e.stopPropagation();
               void (opts.staged ? unstage(opts.root, f.path) : stage(opts.root, f.path));
             }}
-          >
-            {opts.staged ? "−" : "+"}
-          </Button>
-          <span class={`${styles.reviewStatus} ${styles[statusClass(f.status)]}`}>{f.status.trim() || "?"}</span>
-          <span
-            class={styles.reviewName}
-            onClick={(e) => {
-              e.stopPropagation();
-              openFile(opts.root, f.path);
-            }}
-          >
-            {/* A rename names both halves. Only `f.path` is clickable-through
-                to a file; the source is gone from the worktree by definition. */}
-            <Show when={f.orig_path}>
-              <span class={styles.renameFrom}>{f.orig_path} → </span>
-            </Show>
-            {f.path}
-          </span>
-          <Button
-            size="xs"
-            variant="ghost"
-            class={styles.rowAction}
-            tooltip="Copy diff"
-            onClick={(e) => {
-              e.stopPropagation();
-              void copyDiff(opts.root, f.path);
-            }}
-          >
-            Copy
-          </Button>
-          {/* Unstaged rows only. A staged file's changes are safe in the index,
-              so there is nothing here to destroy; unstage it and the row moves
-              down to where discard lives. */}
-          <Show when={!opts.staged}>
-            <Button
-              size="xs"
-              variant="ghost"
-              class={styles.rowAction}
-              disabled={applying()}
-              tooltip={
-                f.status.includes("?")
-                  ? "Delete this file (it was never committed)"
-                  : "Throw away the unstaged changes to this file"
-              }
-              onClick={(e) => {
-                e.stopPropagation();
-                void discardFile(opts.root, f.path, f.status.includes("?"));
-              }}
-            >
-              Discard
-            </Button>
-          </Show>
-        </div>
+          />
+        </span>
+        <span class={`${styles.reviewStatus} ${styles[statusClass(f.status)]}`}>
+          {f.status.trim() || "?"}
+        </span>
       </div>
     );
   }
 
-  /** A member's header: whose section this is, where that member's branch
-   *  stands, and the three things you do to one repo. A member that cannot be
-   *  opened says so here and offers its repair instead of a file list. */
+  /** A member's header: whose section this is, where its branch stands, and the
+   *  two things you do to one repo. A member that cannot be opened says so here
+   *  and offers its repair instead of a file list.
+   *
+   *  The branch name is not repeated here. A Feature checks one branch out in
+   *  every member, so the top row names it once for all of them; what differs
+   *  per member, and stays, is how far ahead that checkout is. */
   function memberHeader(sec: Section) {
     const meta = () => gitStateFor(sec.root);
     const usable = () => sec.state?.usable !== false;
@@ -928,48 +1095,43 @@ export default function ReviewPanel(props: {
             </>
           }
         >
-          <span class={styles.memberBranch} title={meta().branch ?? ""}>
-            {meta().branch}
-          </span>
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={applying() || !changedFiles(sec.root).length}
-            tooltip="Stage every change in this member"
-            onClick={() => void stageAll(sec.root)}
-          >
-            Stage all
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            // Named apart from the box's own Commit: they are two controls a
-            // word apart, and only one of them commits anything.
-            aria-label={`Commit in ${sec.label}`}
-            tooltip="Point the commit box at this member"
-            onClick={() => commitIn(sec.root)}
-          >
-            Commit
-          </Button>
           <Show when={meta().aheadBehind}>
             {(ab) => (
-              <Button
-                size="xs"
-                disabled={pushingIn(sec.root) || (ab().has_upstream && ab().ahead === 0)}
-                tooltip={ab().has_upstream ? "Push" : "Push (sets upstream)"}
-                onClick={() => {
-                  const branchName = meta().branch;
-                  if (branchName) void pushToOrigin(sec.root, branchName);
-                }}
+              <Tooltip
+                as="button"
+                type="button"
+                class={styles.aheadPill}
+                disabled={!canPushIn(sec.root)}
+                label={ab().has_upstream ? "Push" : "Push (sets upstream)"}
+                onClick={() => pushMember(sec.root)}
               >
                 {pushingIn(sec.root)
-                  ? "Pushing…"
+                  ? "Pushing"
                   : ab().has_upstream
-                    ? `↑${ab().ahead} ↓${ab().behind}`
-                    : "Unpushed branch"}
-              </Button>
+                    ? `${UP}${ab().ahead} ${DOWN}${ab().behind}`
+                    : "Unpushed"}
+              </Tooltip>
             )}
           </Show>
+          <span class={styles.rowEnd}>
+            <IconButton
+              size="xs"
+              icon={<Icon icon={Plus} />}
+              disabled={applying() || !changedFiles(sec.root).length}
+              aria-label="Stage all"
+              tooltip="Stage every change in this member"
+              onClick={() => void stageAll(sec.root)}
+            />
+            <IconButton
+              size="xs"
+              icon={<Icon icon={MessageSquarePlus} />}
+              // Named apart from the composer's own Commit: they are two
+              // controls a word apart, and only one of them commits anything.
+              aria-label={`Commit in ${sec.label}`}
+              tooltip="Point the commit box at this member"
+              onClick={() => commitIn(sec.root)}
+            />
+          </span>
         </Show>
       </div>
     );
@@ -982,15 +1144,15 @@ export default function ReviewPanel(props: {
         {/* First, because nothing below it can be finished until these are:
             git refuses to commit with unmerged paths in the index. */}
         <Show when={conflictedFiles(sec.root).length}>
-          <div class={styles.sectionHeader}>Conflicts</div>
+          <div class={styles.groupHeader}>Conflicts</div>
           <For each={conflictedFiles(sec.root)}>{(f) => conflictRow(f, sec.root)}</For>
         </Show>
         <Show when={stagedFiles(sec.root).length}>
-          <div class={styles.sectionHeader}>Staged Changes</div>
+          <div class={styles.groupHeader}>Staged Changes</div>
           <For each={stagedFiles(sec.root)}>{(f) => row(f, { staged: true, root: sec.root })}</For>
         </Show>
         <Show when={changedFiles(sec.root).length}>
-          <div class={styles.sectionHeader}>Changes</div>
+          <div class={styles.groupHeader}>Changes</div>
           <For each={changedFiles(sec.root)}>{(f) => row(f, { staged: false, root: sec.root })}</For>
         </Show>
       </>
@@ -999,190 +1161,195 @@ export default function ReviewPanel(props: {
 
   let subjectRef: HTMLInputElement | undefined;
 
+  const shown = changesLayout.shown;
+  const filler = () => {
+    if (changesLayout.open("changes")) return "changes";
+    const open = SECTION_ORDER.filter((s) => shown(s) && changesLayout.open(s));
+    return open[open.length - 1];
+  };
+  let stackEl: HTMLDivElement | undefined;
+  // Room for the fill section's header plus a few rows, whatever is dragged.
+  const maxH = () => (stackEl?.clientHeight ?? 0) - 120 * chromeScale();
+
+  /** The one-repo actions the dots offer. Inside a Feature they act on the
+   *  member the composer is pointed at, which is the member whose chip is lit
+   *  and whose branch the header names. */
+  const menuRoot = () => commitRoots()[0] ?? targetMember();
+
+  const menu = () => (
+    <>
+      <MenuRow
+        disabled={applying() || !changedFiles(menuRoot()).length}
+        onClick={() => void stageAll(menuRoot())}
+      >
+        Stage All Changes
+      </MenuRow>
+      <MenuRow
+        disabled={applying() || !stagedFiles(menuRoot()).length}
+        onClick={() => void unstageAll(menuRoot())}
+      >
+        Unstage All Changes
+      </MenuRow>
+      <MenuRow
+        disabled={applying() || !changedFiles(menuRoot()).length}
+        onClick={() => void discardAllChanges(menuRoot())}
+      >
+        Discard All Changes...
+      </MenuRow>
+      <MenuSeparator />
+      <MenuRow onClick={() => void fetchRemote(menuRoot())}>Fetch</MenuRow>
+      <MenuRow disabled={!canPushIn(menuRoot())} onClick={() => pushMember(menuRoot())}>
+        Push
+      </MenuRow>
+      <MenuSeparator />
+      <MenuRow
+        disabled={applying() || conflictedFiles(menuRoot()).length > 0}
+        onClick={() => void stashAll()}
+      >
+        Stash All Changes
+      </MenuRow>
+      <MenuSeparator />
+      <For each={OPTIONAL_CHANGES_SECTIONS}>
+        {(sec) => (
+          <MenuRow onClick={() => changesLayout.setShown(sec.id, !shown(sec.id))}>
+            <span class={styles.checkSlot}>
+              <Show when={shown(sec.id)}>
+                <Icon icon={Check} />
+              </Show>
+            </span>
+            {sec.label}
+          </MenuRow>
+        )}
+      </For>
+      <MenuSeparator />
+      <MenuRow
+        disabled={!menuRoot()}
+        onClick={() => {
+          const root = menuRoot();
+          if (root) emitWith(OPEN_IN_EDITOR, { path: syntheticId("log", root) });
+        }}
+      >
+        Show Commit Log
+      </MenuRow>
+    </>
+  );
+
+  /** What the split Commit button offers beside its own verb. */
+  const commitMenu = () => (
+    <>
+      <MenuRow disabled={!canCommit() || committing()} onClick={() => void commit()}>
+        {amend() ? "Amend" : "Commit"}
+      </MenuRow>
+      <MenuRow disabled={committing()} onClick={() => void toggleAmend(!amend())}>
+        {amend() ? "Stop amending" : "Commit (Amend)"}
+      </MenuRow>
+      <MenuSeparator />
+      <MenuRow disabled={!canCommit() || committing()} onClick={() => void commit(true)}>
+        {amend() ? "Amend & Push" : "Commit & Push"}
+      </MenuRow>
+    </>
+  );
+
   return (
     <div class={styles.reviewPanel}>
-      {/* Branch, ahead/behind and Push moved into the member headers inside a
-          Feature: they are one repo's answers, and a Feature has several. What
-          is left here is what stays one-repo either way - the diff layout, the
-          member in front's log, and the PR that follows it. */}
-      <Show when={props.root && (headed() || branch())}>
-        <div class={styles.headerBar}>
-          <Show when={!headed()}>
-            <span class={styles.branchName} title={branch() ?? ""}>
-              {branch()}
-            </span>
-          </Show>
-          <IconButton
-            size="xs"
-            icon={<Icon icon={History} />}
-            tooltip="Show this branch's commit log"
-            onClick={() =>
-              props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("log", props.root) })
-            }
-          />
-          <Show when={!headed()}>
-            <Show when={aheadBehind()} fallback={<span class={styles.aheadBehind}>-</span>}>
-              {(ab) => (
-                <Button
-                  size="xs"
-                  disabled={pushingIn(props.root) || (ab().has_upstream && ab().ahead === 0)}
-                  tooltip={ab().has_upstream ? "Push" : "Push (sets upstream)"}
-                  onClick={() => {
-                    const root = props.root;
-                    const branchName = branch();
-                    if (root && branchName) void pushToOrigin(root, branchName);
-                  }}
-                >
-                  {pushingIn(props.root)
-                    ? "Pushing…"
-                    : ab().has_upstream
-                      ? `↑${ab().ahead} ↓${ab().behind}`
-                      : "Unpushed branch"}
-                </Button>
-              )}
-            </Show>
-          </Show>
-          <Show when={origin() && baseBranch()}>
-            <Button size="xs" disabled={openingPr()} onClick={openPr}>
-              {openingPr() ? "Opening…" : "Open PR"}
-            </Button>
-          </Show>
-        </div>
-      </Show>
-      {/* Both fields, and both the target member: the refs it reads, the chats
-          it lists and the revert paths it resolves all have to name one repo,
-          and a `root` that moved while `folderPath` stayed would list the
-          member in front's sessions against another member's checkpoints. */}
-      <CheckpointTimeline
-        root={targetMember()}
-        sessionId={props.selected?.sessionId ?? null}
-        folderPath={targetMember()}
-        onReverted={(outcome) => {
-          props.onReverted?.(outcome);
-          void refreshAll();
-        }}
-      />
-      {/* A Feature keeps its member headers on a clean tree: they are where its
-          branches, their ahead/behind and their pushes live, and a panel-wide
-          empty note would take all three away. A branch unit has nothing to
-          keep, so it says so exactly as it did before. */}
-      <Show
-        when={headed() || anyFiles()}
-        fallback={
-          <div class="tree-empty">
-            <p>No changes yet. Edit a file and it shows up here to stage, commit, and push.</p>
-          </div>
-        }
-      >
-        <For each={sections()}>
-          {(sec) => (
-            <div class={styles.memberSection} data-root={sec.root}>
-              <Show when={headed()}>{memberHeader(sec)}</Show>
-              {/* A member that cannot be opened has no repo to read, so its
-                  header's state badge is the whole of its section. */}
-              <Show when={sec.state?.usable !== false}>
-                {sectionLists(sec)}
-                <Show when={headed() && !gitStateFor(sec.root).files.length}>
-                  <div class={styles.memberEmpty}>No changes</div>
-                </Show>
-              </Show>
-            </div>
-          )}
-        </For>
-      </Show>
-      {/* Outside the empty-state Show above: a clean tree can still have
-          stashes, and hiding them then would lose the only way back to them. */}
-      <Show when={stashes().length}>
-        <div class={styles.sectionHeader}>Stashes</div>
-        <For each={stashes()}>
-          {(s) => (
-            <div
-              class={styles.stashRow}
-              title={`${s.selector}${s.branch ? ` on ${s.branch}` : ""} · ${s.relative_date}`}
-            >
-              <span class={styles.reviewName}>{s.message}</span>
-              <span class={styles.stashMeta}>{s.relative_date}</span>
-              <Button
-                size="xs"
-                variant="ghost"
-                disabled={applying()}
-                tooltip="Lay this stash back down and keep it in the list"
-                onClick={() => void applyStash(s, false)}
-              >
-                Apply
-              </Button>
-              <Button
-                size="xs"
-                variant="ghost"
-                disabled={applying()}
-                tooltip="Lay this stash back down and remove it from the list"
-                onClick={() => void applyStash(s, true)}
-              >
-                Pop
-              </Button>
-              <Button
-                size="xs"
-                variant="ghost"
-                disabled={applying()}
-                tooltip="Delete this stash without applying it"
-                onClick={() => void dropStash(s)}
-              >
-                Drop
-              </Button>
-            </div>
-          )}
-        </For>
-      </Show>
-      {/* The member in front's tree, since that is the repo a stash lands in. */}
-      <Show when={gitStateFor(props.root).files.length}>
-        <div class={styles.stashBar}>
-          {/* The explanation belongs to the checkbox, not to the label: a
-              `<label>` takes no focus of its own, so a tooltip on it would open
-              on hover and never on the keyboard - the same half-measure the
-              `title` was. As a description it is announced when the checkbox is
-              focused, which is when it is wanted. */}
-          <Checkbox
-            class={styles.amendRow}
-            aria-describedby={UNTRACKED_HINT_ID}
-            checked={includeUntracked()}
-            onChange={setIncludeUntracked}
-            label="include untracked"
-          />
-          <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
-            Also stash files git has never seen, which usually means build output and local scratch
+      {/* One row, the same height the Files and Search tabs open with. A
+          Feature's members share one branch name (`feat/<slug>`, frozen at
+          creation), so it is named once here; their ahead/behind and their
+          pushes differ, and stay in the member headers. */}
+      <div class={styles.topBar}>
+        <Show when={branch()}>
+          <Icon icon={GitBranch} />
+          <span class={styles.branchName} title={branch() ?? ""}>
+            {branch()}
           </span>
-          {/* Off while anything is unmerged: `git stash` refuses such a tree
-              outright, so the button would only ever produce git's error. */}
-          <Button
-            size="xs"
-            disabled={applying() || conflictedFiles(props.root).length > 0}
-            // The label names the unresolved merge that is blocking it.
-            tooltipWhenDisabled
-            tooltip={
-              conflictedFiles(props.root).length
-                ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
-                : "Put every change aside for later, named after the Summary below if you have written one"
-            }
-            onClick={() => void stashAll()}
-          >
-            Stash all
-          </Button>
-        </div>
-      </Show>
-      <div class={styles.commitBox}>
-        {/* Which repo this message lands in. Only inside a Feature: with one
-            member there is nothing for it to disambiguate. */}
-        <Show when={headed() ? targetSection() : null}>
-          {(sec) => (
-            <div class={styles.commitTarget}>
-              <MemberChip
-                member={{ displayName: sec().label ?? "", repoPath: sec().root }}
-                tint={sec().tint}
-                decorative
-              />
-              <span>Committing in {sec().label}</span>
-            </div>
+        </Show>
+        <Show when={!headed() && aheadBehind()}>
+          {(ab) => (
+            <Tooltip
+              as="button"
+              type="button"
+              class={styles.aheadPill}
+              disabled={!canPushIn(props.root)}
+              label={ab().has_upstream ? "Push" : "Push (sets upstream)"}
+              onClick={() => pushMember(props.root)}
+            >
+              {pushingIn(props.root)
+                ? "Pushing"
+                : ab().has_upstream
+                  ? `${UP}${ab().ahead} ${DOWN}${ab().behind}`
+                  : "Unpushed"}
+            </Tooltip>
           )}
+        </Show>
+        <span class={styles.spacer} />
+        <Show when={origin() && baseBranch()}>
+          <IconButton
+            size="sm"
+            icon={<Icon icon={GitPullRequestArrow} />}
+            disabled={openingPr()}
+            aria-label="Open PR"
+            tooltip={openingPr() ? "Opening a pull request" : "Open a pull request"}
+            onClick={openPr}
+          />
+        </Show>
+        <IconButton
+          size="sm"
+          icon={<Icon icon={RefreshCw} />}
+          tooltip="Refresh"
+          onClick={() => void refreshAll()}
+        />
+        <Dropdown as="span" wrapper menu={menu()} placement="bottom-end">
+          <IconButton size="sm" tooltip="Views and More Actions" icon={<Icon icon={Ellipsis} />} />
+        </Dropdown>
+      </div>
+
+      {/* The composer first, because committing is what this tab is for. */}
+      <div class={styles.commitBox}>
+        {/* Which repos this message lands in. Only inside a Feature: with one
+            member there is nothing to pick between. Unticking is how a commit
+            is narrowed when the work in two members really is separate. */}
+        <Show when={headed() && (amend() ? memberRoots().length : stagedRoots().length) > 1}>
+          <div class={styles.commitTarget}>
+            <For each={amend() ? memberRoots() : stagedRoots()}>
+              {(root) => {
+                const sec = () => sections().find((x) => x.root === root);
+                const on = () => (amend() ? targetMember() === root : !unticked().has(root));
+                return (
+                  <Tooltip
+                    as="button"
+                    type="button"
+                    class={styles.chip}
+                    aria-pressed={on()}
+                    label={
+                      amend()
+                        ? `Amend the last commit in ${sec()?.label}`
+                        : on()
+                          ? `Leave ${sec()?.label} out of this commit`
+                          : `Include ${sec()?.label} in this commit`
+                    }
+                    onClick={() => {
+                      // Amend is one member, so a chip picks rather than toggles.
+                      if (amend()) {
+                        setCommitTarget(root);
+                        return;
+                      }
+                      setUnticked((prev) => {
+                        const next = new Set(prev);
+                        if (!next.delete(root)) next.add(root);
+                        return next;
+                      });
+                    }}
+                  >
+                    <MemberChip
+                      member={{ displayName: sec()?.label ?? "", repoPath: root }}
+                      tint={sec()?.tint}
+                      decorative
+                    />
+                  </Tooltip>
+                );
+              }}
+            </For>
+          </div>
         </Show>
         <input
           ref={subjectRef}
@@ -1207,19 +1374,10 @@ export default function ReviewPanel(props: {
           value={commitBody()}
           onInput={(e) => setCommitBody(e.currentTarget.value)}
         />
-        <Checkbox
-          class={styles.amendRow}
-          aria-describedby={AMEND_HINT_ID}
-          checked={amend()}
-          onChange={(checked) => void toggleAmend(checked)}
-          label="Amend last commit"
-        />
-        <span id={AMEND_HINT_ID} class={styles.srOnly}>
-          Rewrite the last commit instead of adding one
-        </span>
         <div class={styles.commitActions}>
           <Button
             size="sm"
+            variant="ghost"
             class={styles.draftButton}
             disabled={!commitStagedFiles().length || !!disabledReason() || drafting()}
             tooltipWhenDisabled
@@ -1228,20 +1386,206 @@ export default function ReviewPanel(props: {
           >
             Ask agent to draft
           </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            class={styles.commitButton}
-            disabled={!canCommit() || committing()}
-            // "Nothing staged" is the whole explanation for a greyed-out Commit,
-            // and it is the branch that only ever shows while disabled.
-            tooltipWhenDisabled
-            tooltip={amend() ? "Amend the last commit" : commitStagedFiles().length ? "Commit staged changes" : "Nothing staged"}
-            onClick={commit}
-          >
-            {amend() ? "Amend" : "Commit"}
-          </Button>
+          {/* A split button: the verb on the left, its variants behind the
+              chevron, so Amend and Commit & Push cost one click each without
+              standing on the row as three primary buttons. */}
+          <span class={styles.splitButton}>
+            <Button
+              variant="primary"
+              size="sm"
+              class={styles.commitButton}
+              disabled={!canCommit() || committing()}
+              // "Nothing staged" is the whole explanation for a greyed-out
+              // Commit, and it is the branch that only ever shows while it is.
+              tooltipWhenDisabled
+              tooltip={
+                amend()
+                  ? "Amend the last commit"
+                  : commitStagedFiles().length
+                    ? commitLabelHint()
+                    : "Nothing staged"
+              }
+              onClick={() => void commit()}
+            >
+              {commitLabel()}
+            </Button>
+            <Dropdown as="span" wrapper menu={commitMenu()} placement="top-end">
+              <IconButton
+                size="sm"
+                class={styles.splitMore}
+                tooltip="More commit actions"
+                icon={<Icon icon={ChevronDown} />}
+              />
+            </Dropdown>
+          </span>
         </div>
+      </div>
+
+      <div class={styles.stack} ref={stackEl}>
+        <PanelSection
+          layout={changesLayout}
+          id="changes"
+          fill={filler() === "changes"}
+          maxH={maxH}
+          title={
+            <>
+              Changes
+              <Show when={totalChanged()}>
+                <span class={styles.count}>{totalChanged()}</span>
+              </Show>
+            </>
+          }
+        >
+          {/* A Feature keeps its member headers on a clean tree: they are where
+              its branches, their ahead/behind and their pushes live, and a
+              panel-wide empty note would take all three away. */}
+          <Show
+            when={headed() || anyFiles()}
+            fallback={
+              <div class="tree-empty">
+                <p>No changes yet. Edit a file and it shows up here to stage, commit, and push.</p>
+              </div>
+            }
+          >
+            <OverlayScroll class={styles.sectionScroll}>
+              <For each={sections()}>
+                {(sec) => (
+                  <div class={styles.memberSection} data-root={sec.root}>
+                    <Show when={headed()}>{memberHeader(sec)}</Show>
+                    {/* A member that cannot be opened has no repo to read, so
+                        its header's state badge is the whole of its section. */}
+                    <Show when={sec.state?.usable !== false}>
+                      {sectionLists(sec)}
+                      <Show when={headed() && !gitStateFor(sec.root).files.length}>
+                        <div class={styles.memberEmpty}>No changes</div>
+                      </Show>
+                    </Show>
+                  </div>
+                )}
+              </For>
+            </OverlayScroll>
+          </Show>
+        </PanelSection>
+
+        <Show when={shown("stashes")}>
+          <PanelSection
+            layout={changesLayout}
+            id="stashes"
+            fill={filler() === "stashes"}
+            maxH={maxH}
+            title={
+              <>
+                Stashes
+                <Show when={stashes().length}>
+                  <span class={styles.count}>{stashes().length}</span>
+                </Show>
+              </>
+            }
+            actions={
+              <>
+                <Checkbox
+                  class={styles.untrackedBox}
+                  aria-describedby={UNTRACKED_HINT_ID}
+                  checked={includeUntracked()}
+                  onChange={setIncludeUntracked}
+                  label="untracked"
+                />
+                <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
+                  Also stash files git has never seen, which usually means build output and local
+                  scratch
+                </span>
+                {/* Off while anything is unmerged: `git stash` refuses such a
+                    tree outright, so the button would only ever produce git's
+                    error. */}
+                <IconButton
+                  size="sm"
+                  icon={<Icon icon={Archive} />}
+                  disabled={applying() || conflictedFiles(menuRoot()).length > 0}
+                  aria-label="Stash all"
+                  tooltipWhenDisabled
+                  tooltip={
+                    conflictedFiles(menuRoot()).length
+                      ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
+                      : "Put every change aside for later, named after the Summary above if you have written one"
+                  }
+                  onClick={() => void stashAll()}
+                />
+              </>
+            }
+          >
+            <Show
+              when={stashes().length}
+              fallback={<div class="tree-empty">Nothing stashed.</div>}
+            >
+              <OverlayScroll class={styles.sectionScroll}>
+                <For each={stashes()}>
+                  {(st) => (
+                    <div
+                      class={styles.stashRow}
+                      title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
+                    >
+                      <span class={styles.reviewName}>{st.message}</span>
+                      <span class={styles.stashMeta}>{st.relative_date}</span>
+                      <span class={styles.rowEnd}>
+                        <IconButton
+                          size="xs"
+                          icon={<Icon icon={ArchiveRestore} />}
+                          disabled={applying()}
+                          aria-label="Apply stash"
+                          tooltip="Lay this stash back down and keep it in the list"
+                          onClick={() => void applyStash(st, false)}
+                        />
+                        <IconButton
+                          size="xs"
+                          icon={<Icon icon={ArchiveX} />}
+                          disabled={applying()}
+                          aria-label="Pop stash"
+                          tooltip="Lay this stash back down and remove it from the list"
+                          onClick={() => void applyStash(st, true)}
+                        />
+                        <IconButton
+                          size="xs"
+                          icon={<Icon icon={Trash2} />}
+                          disabled={applying()}
+                          aria-label="Drop stash"
+                          tooltip="Delete this stash without applying it"
+                          onClick={() => void dropStash(st)}
+                        />
+                      </span>
+                    </div>
+                  )}
+                </For>
+              </OverlayScroll>
+            </Show>
+          </PanelSection>
+        </Show>
+
+        <Show when={shown("checkpoints")}>
+          <PanelSection
+            layout={changesLayout}
+            id="checkpoints"
+            fill={filler() === "checkpoints"}
+            maxH={maxH}
+            title="Checkpoints"
+          >
+            {/* Both fields name the target member: the refs it reads, the chats
+                it lists and the revert paths it resolves all have to name one
+                repo, and a `root` that moved while `folderPath` stayed would
+                list the member in front's sessions against another member's
+                checkpoints. */}
+            <OverlayScroll class={styles.sectionScroll}>
+              <CheckpointTimeline
+                root={targetMember()}
+                sessionId={props.selected?.sessionId ?? null}
+                folderPath={targetMember()}
+                onReverted={(outcome) => {
+                  props.onReverted?.(outcome);
+                  void refreshAll();
+                }}
+              />
+            </OverlayScroll>
+          </PanelSection>
+        </Show>
       </div>
       <Show when={confirmReq()}>
         <ConfirmDialog

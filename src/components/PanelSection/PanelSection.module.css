@@ -1,0 +1,82 @@
+/* One stacked panel section, shared by the Files and Changes tabs. Like VS
+   Code, one open section fills what is left and the rest keep a height of
+   their own, dragged from their top edge. */
+/* Shut, a section is its header. Open and not filling, its height arrives
+   inline from the stored size, shrinkable so a short panel keeps every header. */
+.section {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-height: calc(30px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
+}
+
+.section:first-child {
+  border-top: none;
+}
+
+.section.fill {
+  flex: 1 1 0;
+}
+
+/* The drag handle sits over the top border rather than beside it, so it adds
+   no gap between two sections. */
+.sash {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale));
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  height: calc(8px * var(--ui-scale));
+}
+
+.sectionHeader {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  height: calc(30px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) 0 calc(4px * var(--ui-scale));
+}
+
+.sectionToggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--sway-text-lg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-width: 0;
+  font-weight: 600;
+}
+
+.sectionTitle > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
+}
+
+.sectionBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

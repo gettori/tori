@@ -1,11 +1,10 @@
-import { createEffect, createSignal, on, For, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, on, For, Show } from "solid-js";
 import { Check, ChevronsDownUp, Ellipsis, FilePlus, FolderPlus, GitBranch, RefreshCw } from "lucide-solid";
 import Button from "../../../components/Button/Button";
-import Chevron from "../../../components/Chevron/Chevron";
 import Icon from "../../../components/Icon/Icon";
 import IconButton from "../../../components/IconButton/IconButton";
 import MemberChipRow from "../../../components/MemberChipRow/MemberChipRow";
-import Resizer from "../../../components/Resizer/Resizer";
+import PanelSection from "../../../components/PanelSection/PanelSection";
 import Dropdown from "../../../components/Menu/Dropdown";
 import { MenuRow, MenuSeparator } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
@@ -15,14 +14,10 @@ import type { TintedMember } from "../../../utils/featureMembers";
 import { symbolsSupported } from "../../../utils/symbols";
 import {
   OPTIONAL_SECTIONS,
-  SECTION_MIN_H,
-  saveSectionSizes,
+  filesLayout,
   sectionOpen,
   sectionShown,
-  sectionSize,
-  setSectionOpen,
   setSectionShown,
-  setSectionSize,
   type FilesSection,
 } from "../../../utils/filesSections";
 import { chromeScale } from "../../Settings/settingsStore";
@@ -37,62 +32,6 @@ import styles from "./FilesPanel.module.css";
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
 
 const ORDER: FilesSection[] = ["folders", "scripts", "outline", "todos"];
-
-/** One stacked section: a header that opens and closes it, then its body. Like
- *  VS Code, one open section fills what is left and the rest keep a height of
- *  their own, dragged from their top edge. */
-function Section(props: {
-  id: FilesSection;
-  /** The open section that takes the leftover height. */
-  fill: boolean;
-  /** The tallest this section may be dragged to, in px. */
-  maxH: () => number;
-  title: JSX.Element;
-  /** Buttons at the header's right, drawn only while the section is open. */
-  actions?: JSX.Element;
-  children: JSX.Element;
-}) {
-  const open = () => sectionOpen(props.id);
-  const fixed = () => open() && !props.fill;
-  const height = () => sectionSize(props.id) * chromeScale();
-  return (
-    <section
-      class={styles.section}
-      classList={{ [styles.fill]: open() && props.fill }}
-      style={fixed() ? { flex: `0 1 ${height()}px` } : undefined}
-      data-section={props.id}
-    >
-      <Show when={fixed()}>
-        <div class={styles.sash}>
-          <Resizer
-            axis="y"
-            side="after"
-            value={height()}
-            min={SECTION_MIN_H * chromeScale()}
-            max={Math.max(SECTION_MIN_H * chromeScale(), props.maxH())}
-            onInput={(h) => setSectionSize(props.id, h / chromeScale())}
-            onCommit={saveSectionSizes}
-          />
-        </div>
-      </Show>
-      <div class={styles.sectionHeader}>
-        <button
-          type="button"
-          class={styles.sectionToggle}
-          aria-expanded={open()}
-          onClick={() => setSectionOpen(props.id, !open())}
-        >
-          <Chevron open={open()} />
-          <span class={styles.sectionTitle}>{props.title}</span>
-        </button>
-        <Show when={open()}>{props.actions}</Show>
-      </div>
-      <Show when={open()}>
-        <div class={styles.sectionBody}>{props.children}</div>
-      </Show>
-    </section>
-  );
-}
 
 /**
  * The Files tab, VS Code Explorer style: the filter and a ... menu on top, then
@@ -228,7 +167,8 @@ export default function FilesPanel(props: {
         </Dropdown>
       </div>
       <div class={styles.stack} ref={stackEl}>
-        <Section
+        <PanelSection
+          layout={filesLayout}
           id="folders"
           fill={filler() === "folders"}
           maxH={maxH}
@@ -296,14 +236,14 @@ export default function FilesPanel(props: {
               onControls={setControls}
             />
           </Show>
-        </Section>
+        </PanelSection>
         <Show when={sectionShown("scripts")}>
-          <Section id="scripts" fill={filler() === "scripts"} maxH={maxH} title="Scripts">
+          <PanelSection layout={filesLayout} id="scripts" fill={filler() === "scripts"} maxH={maxH} title="Scripts">
             <ScriptsSection root={treeRoot()} />
-          </Section>
+          </PanelSection>
         </Show>
         <Show when={sectionShown("outline")}>
-          <Section id="outline" fill={filler() === "outline"} maxH={maxH} title="Outline">
+          <PanelSection layout={filesLayout} id="outline" fill={filler() === "outline"} maxH={maxH} title="Outline">
             <Show
               when={hasOutline()}
               fallback={
@@ -314,12 +254,12 @@ export default function FilesPanel(props: {
             >
               <OutlinePanel path={props.outlinePath} />
             </Show>
-          </Section>
+          </PanelSection>
         </Show>
         <Show when={sectionShown("todos")}>
-          <Section id="todos" fill={filler() === "todos"} maxH={maxH} title="TODOs">
+          <PanelSection layout={filesLayout} id="todos" fill={filler() === "todos"} maxH={maxH} title="TODOs">
             <TodoPanel root={treeRoot()} selected={props.selected} />
-          </Section>
+          </PanelSection>
         </Show>
       </div>
     </div>
