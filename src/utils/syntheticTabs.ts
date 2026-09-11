@@ -67,6 +67,23 @@ export function parseSyntheticId(id: string): SyntheticTab | null {
 }
 
 /**
+ * A diff tab's id. The comparison goes in front of the path because a partially
+ * staged file has two diffs open at once and they are different documents:
+ * index-vs-HEAD and worktree-vs-index, each with its own hunk fingerprints.
+ */
+export function diffTabId(workspace: string, file: string, staged: boolean): string {
+  return syntheticId("diff", workspace, `${staged ? "staged" : "unstaged"}:${file}`);
+}
+
+/** Read a diff tab's arg back. An arg with no prefix reads as unstaged, which
+ *  is the mode a bare file path meant before this carried one. */
+export function parseDiffArg(arg: string): { file: string; staged: boolean } {
+  const at = arg.indexOf(":");
+  if (at < 0) return { file: arg, staged: false };
+  return { file: arg.slice(at + 1), staged: arg.slice(0, at) === "staged" };
+}
+
+/**
  * The path a tab is scoped to, for the folder-prefix sweeps: a synthetic tab
  * answers with its workspace, a file tab with its own path.
  *
@@ -97,6 +114,12 @@ export function syntheticTabName(id: string): string {
   // told apart by the word that differs rather than by the one they share.
   if (t.kind === "localhistory") return `Local: ${t.arg.split("/").pop() || t.arg}`;
   if (t.kind === "conflict") return `Conflict: ${t.arg.split("/").pop() || t.arg}`;
+  // The mode is in the label, not just the tooltip: a partially staged file has
+  // two of these open and the file name alone does not tell them apart.
+  if (t.kind === "diff") {
+    const { file, staged } = parseDiffArg(t.arg);
+    return `${file.split("/").pop() || file} (${staged ? "Staged" : "Working tree"})`;
+  }
   // `<session>:<sourceReference>:<name>` - only the name means anything to a
   // reader, and the two ids before it exist so two runs cannot share a tab.
   if (t.kind === "dapsource") return t.arg.split(":").slice(2).join(":") || "Debug source";

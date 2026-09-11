@@ -32,11 +32,7 @@ import {
   type FileStatus,
 } from "../../utils/gitActions";
 import { amendRewritesPushed, composeCommitMessage, splitCommitMessage } from "../../utils/commitMessage";
-import { parseDiffHunks } from "../../utils/diffHunks";
-import { buildRows, hunkGaps, type Gap } from "../../utils/diffView";
-import DiffRows, { diffRowClasses } from "./DiffRows";
-import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
-import { hunkFingerprint } from "../../utils/hunkFingerprint";
+import { DIFF_CONTEXT } from "../../utils/diffHunks";
 import { copyText } from "../../utils/clipboard";
 import { mentionPath } from "../../utils/pathScope";
 import { folderActors } from "../../utils/folderActors";
@@ -52,7 +48,6 @@ import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/featu
 import MemberChip from "../../components/MemberChip/MemberChip";
 import type { MemberRoot } from "../../utils/featureMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
-import HunkCommentInput from "./HunkCommentInput";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import CreatePrDialog from "../../components/Dialogs/CreatePrDialog";
@@ -62,14 +57,8 @@ import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
 import { History } from "lucide-solid";
-import { syntheticId } from "../../utils/syntheticTabs";
-import hunkStyles from "./HunkCommentInput.module.css";
+import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
 import styles from "./ReviewPanel.module.css";
-
-// Mirrors DiffMode in src-tauri/src/git.rs. "head" (the backend default) is
-// worktree-vs-HEAD; the panel always asks for one of the other two, since a
-// partially-staged file's two rows describe different comparisons.
-type DiffMode = "staged" | "unstaged";
 
 /** What `git_discard_hunks` / `git_discard_files` report back: the backstop that
  *  makes the discard undoable, plus the paths that changed on disk. */
@@ -104,13 +93,6 @@ function statusClass(status: string): string {
   return "modified";
 }
 
-// Git's default context, and deliberately not more. Context width decides hunk
-// boundaries: at -U24 three edits 20 lines apart merge into one un-splittable
-// hunk, which would make hunk staging useless on real code. So the diff stays
-// at the granularity `git add -p` uses, and the untouched stretches it omits
-// are recovered separately (see `hunkGaps` / `expandGap`).
-const DIFF_CONTEXT = 3;
-
 // Descriptions for the two stash/commit checkboxes. A `<label>` cannot take
 // focus, so what used to be a `title` on it is a description on the control
 // inside instead - see the call sites.
@@ -119,16 +101,16 @@ const AMEND_HINT_ID = "review-amend-hint";
 
 /** Changes panel: VS Code-style Staged / Changes sections over git_status's
  *  staged/unstaged split, with per-file stage/unstage, a manual commit box,
- *  and an "ask agent to draft" button routed through safe-send. Each file's
- *  inline diff toggle (git_diff_text) still carries the per-hunk "Comment"
- *  affordance from phase 1, routed to the sidebar's selected session.
+ *  and an "ask agent to draft" button routed through safe-send. A row opens the
+ *  file's diff as an editor tab (`diffTabId`), where the hunk-level staging and
+ *  the per-hunk "Comment" affordance live.
  *
  *  The file list, branch and ahead/behind are read from the shared store in
  *  `utils/gitActions`, not fetched here: this panel is unmounted whenever the
  *  right pane shows anything else, and the command palette's git entries have to
  *  answer the same questions with it closed. Staging from either surface
- *  therefore moves the other. Everything still local (the expanded diff, its
- *  gaps, the PR base branch) is state only a mounted panel has any use for. */
+ *  therefore moves the other. What is still local (the stash list, the PR base
+ *  branch) is state only a mounted panel has any use for. */
 export default function ReviewPanel(props: {
   root: string | null;
   /** The Feature's members, in member order. Absent for a branch unit, which is
@@ -141,8 +123,6 @@ export default function ReviewPanel(props: {
   onReverted?: (outcome: RevertOutcome) => void;
   onRepair?: (path: string) => void;
 }) {
-  const [expanded, setExpanded] = createSignal<string | null>(null);
-  const [diff, setDiff] = createSignal<string>("");
   const [commitSubject, setCommitSubject] = createSignal("");
   const [commitBody, setCommitBody] = createSignal("");
   const [amend, setAmend] = createSignal(false);
@@ -172,77 +152,9 @@ export default function ReviewPanel(props: {
   const [prBase, setPrBase] = createSignal("");
   const [prDrafting, setPrDrafting] = createSignal(false);
   const [authState, setAuthState] = createSignal<AuthState>({ kind: "signedOut" });
-  // Which file the expanded diff belongs to, and which of its two sections:
-  // needed to refetch the right diff after a hunk apply or a disk change.
-  const [openDiff, setOpenDiff] = createSignal<{ root: string; path: string; staged: boolean } | null>(null);
   const [applying, setApplying] = createSignal(false);
   const [stashes, setStashes] = createSignal<StashEntry[]>([]);
   const [includeUntracked, setIncludeUntracked] = createSignal(false);
-  const [panelWidth, setPanelWidth] = createSignal(Infinity);
-  // Which collapsed regions the user opened, keyed hunk:row. Cleared whenever a
-  // different file expands, so collapse state never leaks between files.
-  const [openGaps, setOpenGaps] = createSignal<Set<string>>(new Set());
-  // Fetched contents of expanded gaps, keyed the same way.
-  const [gapLines, setGapLines] = createSignal<Record<string, string[]>>({});
-  // The lines picked for a line-level stage, and the hunk they are picked from.
-  //
-  // One hunk at a time on purpose: the patch is rebuilt from a single hunk's
-  // body, so a selection spanning two of them could not be applied as one
-  // request anyway, and picking a line in a second hunk reading as "I meant
-  // this one now" is the least surprising of the readings available.
-  const [picked, setPicked] = createSignal<{ hunk: number; lines: ReadonlySet<number> } | null>(null);
-
-  // One parse per diff change, shared by every consumer below: the hunk list,
-  // the gaps between them, and the per-hunk fingerprints.
-  const hunks = createMemo(() => parseDiffHunks(diff()));
-  const gaps = createMemo(() => hunkGaps(hunks()));
-
-  // A line selection is indices into one hunk's body, so it means nothing once
-  // the hunks move or a different file is showing. Cleared from the diff itself
-  // rather than at each of the three places that reset the view, because a
-  // fourth would otherwise be one edit away from leaving a selection pointing
-  // into lines that are no longer there.
-  createEffect(on([expanded, diff], () => setPicked(null)));
-
-  // The persisted preference only applies when there is room for two columns.
-  const twoColumn = () => sideBySide() && panelWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
-
-  function toggleSideBySide() {
-    writeSideBySide(!sideBySide());
-  }
-
-  // Fetch (once) and reveal the file lines behind a collapsed gap. Clicking an
-  // open gap closes it again; the fetched lines stay cached so reopening is
-  // instant.
-  async function expandGap(key: string, root: string, path: string, staged: boolean, gap: Gap) {
-    if (openGaps().has(key)) {
-      setOpenGaps((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
-      return;
-    }
-    if (!gapLines()[key]) {
-      try {
-        const lines = await invoke<string[]>("git_file_slice", {
-          projectPath: root,
-          file: path,
-          mode: staged ? "staged" : "unstaged",
-          start: gap.start,
-          end: gap.end,
-        });
-        // Rendered as context lines, so they carry the leading space a diff
-        // context line would have.
-        setGapLines((prev) => ({ ...prev, [key]: lines.map((l) => ` ${l}`) }));
-      } catch (e) {
-        // Say so rather than leaving a click that visibly does nothing.
-        toastError(e);
-        return;
-      }
-    }
-    setOpenGaps((prev) => new Set(prev).add(key));
-  }
 
   // One section per member inside a Feature, one unnamed section for a branch
   // unit. Member order, which is the order the tree and the search panel draw
@@ -482,168 +394,18 @@ export default function ReviewPanel(props: {
     }
   }
 
-  // Keyed by member+section+path (not path alone): a partially-staged file
-  // ("MM") has a row in both the Staged and Changes sections, and each must
-  // expand independently rather than sharing one toggle, while two members with
-  // the same relative path must not answer for each other. The two rows also
-  // show different diffs, hence the mode carried alongside.
-  //
-  // One row open panel-wide, as before: the diff, its gaps and its line
-  // selection are single, so a second open row would show the first one's body.
-  async function toggleDiff(key: string, root: string, path: string, staged: boolean) {
-    if (expanded() === key) {
-      setExpanded(null);
-      setOpenDiff(null);
-      return;
-    }
-    setOpenGaps(new Set<string>());
-    setGapLines({});
-    setOpenDiff({ root, path, staged });
-    setDiff(await fileDiff(root, path, staged ? "staged" : "unstaged"));
-    setExpanded(key);
-  }
-
-  async function fileDiff(root: string, path: string, mode?: DiffMode): Promise<string> {
+  /** The file's whole patch against HEAD, which is what Copy hands over: the
+   *  two halves of a partially staged file are the diff tab's business. */
+  async function fileDiff(root: string, path: string): Promise<string> {
     try {
       return await invoke<string>("git_diff_text", {
         projectPath: root,
         file: path,
         context: DIFF_CONTEXT,
-        mode,
       });
     } catch {
       return "";
     }
-  }
-
-  // Re-fetch whatever diff is currently expanded. Called after a hunk apply and
-  // whenever the open file changes on disk, so the rendered hunks (and the
-  // fingerprints derived from them) never lag the file.
-  async function refreshExpandedDiff() {
-    const open = openDiff();
-    if (!open) return;
-    setDiff(await fileDiff(open.root, open.path, open.staged ? "staged" : "unstaged"));
-    // The hunks just moved, so the cached gap contents no longer line up with
-    // the ranges they were fetched for.
-    setOpenGaps(new Set<string>());
-    setGapLines({});
-  }
-
-  // Stage (or unstage) a single hunk. The fingerprint is the one derived from
-  // the hunk as rendered; the backend re-reads the diff and refuses if it no
-  // longer matches, so a stale view can never apply the wrong hunk. On any
-  // failure the diff is refetched before the error surfaces, so the user is
-  // never left looking at hunks that have already moved.
-  async function applyHunk(root: string, path: string, staged: boolean, index: number, fingerprint: string) {
-    await applied(root, () =>
-      invoke("git_apply_hunks", {
-        projectPath: root,
-        file: path,
-        hunkIndices: [index],
-        fingerprints: [fingerprint],
-        reverse: staged,
-        context: DIFF_CONTEXT,
-      }),
-    );
-  }
-
-  /** Run one index-shuffling apply and put the view back in step with it.
-   *
-   *  Distinct from `busy` below, which holds the flag across a confirm dialog:
-   *  this one also refetches. Both the status and the expanded diff have moved
-   *  by the time an apply returns, and on failure the refetch happens *before*
-   *  the error surfaces, so the user is never left looking at hunks that have
-   *  already moved and inviting the same doomed click again. */
-  async function applied(root: string, run: () => Promise<unknown>) {
-    if (applying()) return;
-    setApplying(true);
-    try {
-      await run();
-      await Promise.all([refreshStatus(root), refreshExpandedDiff()]);
-    } catch (e) {
-      await refreshExpandedDiff();
-      toastError(e);
-    } finally {
-      setApplying(false);
-    }
-  }
-
-  /** Toggle one body line of one hunk into the selection.
-   *
-   *  Picking a line in a different hunk starts that hunk's selection rather than
-   *  adding to the old one; see `picked`. Emptying a selection drops it, so the
-   *  "N lines" control disappears with the last line rather than lingering as a
-   *  disabled button. */
-  function pickLine(hunk: number, line: number) {
-    setPicked((prev) => {
-      const lines = new Set(prev?.hunk === hunk ? prev.lines : []);
-      if (!lines.delete(line)) lines.add(line);
-      return lines.size ? { hunk, lines } : null;
-    });
-  }
-
-  /** Stage (or unstage) just the selected lines of one hunk.
-   *
-   *  The same guarantees as `applyHunk`, one level finer: the fingerprint proves
-   *  the hunk is still the one on screen, and the line indices are only
-   *  meaningful against that same body, which is why the two travel together. */
-  async function applyLines(
-    root: string,
-    path: string,
-    staged: boolean,
-    index: number,
-    fingerprint: string,
-    lines: number[],
-  ) {
-    await applied(root, () =>
-      invoke("git_apply_lines", {
-        projectPath: root,
-        file: path,
-        hunkIndex: index,
-        fingerprint,
-        lines,
-        reverse: staged,
-        context: DIFF_CONTEXT,
-      }),
-    );
-  }
-
-  /** Throw away one unstaged hunk.
-   *
-   *  Unlike staging, this destroys work, so it asks first and says where the
-   *  change goes. No `revertGuard` here on purpose: the blast radius is one
-   *  hunk of one file the user is looking at, and blocking that on any session
-   *  being busy anywhere in the folder would make the control unusable in the
-   *  situation it is most wanted. Whole-file discard, which is unscoped, does
-   *  consult it. */
-  async function discardHunk(root: string, path: string, index: number, fingerprint: string) {
-    await busy(async () => {
-      try {
-        const ok = await askConfirm({
-          title: "Discard this hunk?",
-          message: `This change to ${path} goes away. It is not staged, so git has no other copy of it.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
-          confirmLabel: "Discard hunk",
-          danger: true,
-        });
-        if (!ok) return;
-        const outcome = await invoke<DiscardOutcome>("git_discard_hunks", {
-          projectPath: root,
-          file: path,
-          hunkIndices: [index],
-          fingerprints: [fingerprint],
-          context: DIFF_CONTEXT,
-        });
-        reportDiscarded(outcome);
-        await Promise.all([refreshStatus(root), refreshExpandedDiff()]);
-      } catch (e) {
-        // Refetched before the error surfaces, and this is the only reason this
-        // one has its own catch rather than leaving it to `busy`: a refused
-        // discard usually means the hunks moved, so leaving the old ones on
-        // screen would invite the same doomed click again.
-        await refreshExpandedDiff();
-        throw e;
-      }
-    });
   }
 
   /** Run `action` only once no other session is mid-turn in this worktree.
@@ -714,7 +476,7 @@ export default function ReviewPanel(props: {
           files: [path],
         });
         reportDiscarded(outcome);
-        await Promise.all([refreshStatus(root), refreshExpandedDiff()]);
+        await refreshStatus(root);
       }),
     );
   }
@@ -746,7 +508,7 @@ export default function ReviewPanel(props: {
         // itself to whatever gets committed next.
         setCommitSubject("");
         setCommitBody("");
-        await Promise.all([refreshStatus(root), refreshExpandedDiff(), loadStashes()]);
+        await Promise.all([refreshStatus(root), loadStashes()]);
       }),
     );
   }
@@ -764,7 +526,7 @@ export default function ReviewPanel(props: {
         // Same channel discard and checkpoint revert use: a stash laid back down
         // over an open buffer must offer Reload / Keep mine, not lose a side.
         props.onReverted?.({ backstop_ts: null, ...outcome });
-        await Promise.all([refreshStatus(root), refreshExpandedDiff(), loadStashes()]);
+        await Promise.all([refreshStatus(root), loadStashes()]);
       }),
     );
   }
@@ -834,16 +596,12 @@ export default function ReviewPanel(props: {
 
   // Keyed on the member set rather than the member in front: moving between
   // members inside a Feature leaves every section's numbers standing, so
-  // collapsing the open diff and re-reading all of them would be a switch that
-  // did not happen. A repaired member joining is a real one.
+  // re-reading all of them would be a switch that did not happen. A repaired
+  // member joining is a real one.
   createEffect(
     on(
       () => sections().map((s) => s.root).join("\n"),
       () => {
-        setExpanded(null);
-        setOpenDiff(null);
-        setOpenGaps(new Set<string>());
-        setGapLines({});
         setCommitTarget(null);
         refreshAll();
       },
@@ -961,13 +719,10 @@ export default function ReviewPanel(props: {
   let offAgentWrites: (() => void) | undefined;
   const agentWritten = new Set<string>();
   const flushAgentWrites = debounce(() => {
-    const paths = [...agentWritten];
     agentWritten.clear();
     // Ahead of the watcher's own debounce, so this one still drives the status
     // read; it names no root, so every section takes it.
     for (const s of sections()) void refreshStatus(s.root);
-    const open = openDiff();
-    if (open && paths.some((p) => p.endsWith(open.path))) void refreshExpandedDiff();
   }, AGENT_WRITE_DEBOUNCE_MS);
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
@@ -975,26 +730,13 @@ export default function ReviewPanel(props: {
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
       const from = e.payload.root;
       // The status refresh is the store's now (`startGitWatch`), so that it
-      // happens with this panel closed and for every member at once. What is
-      // left here is the two things only a mounted panel holds.
+      // happens with this panel closed and for every member at once. The stash
+      // list is the one thing left that only a mounted panel holds.
       //
       // A `git stash` run in a terminal shows up as a working-tree burst like
       // any other, and the entry it created would otherwise stay invisible
       // until a fetch or a window focus. Reading the stash reflog is cheap.
       if (!from || from === props.root) void loadStashes();
-      // An agent writing the open file renumbers its hunks, so the expanded
-      // diff must refetch or the next stage click would carry a stale
-      // fingerprint (which the backend would refuse). Only the open file's own
-      // burst does that, and refetching is not free: it also drops the gaps the
-      // user expanded (see refreshExpandedDiff), so an unrelated burst would
-      // snap them shut. Same predicate as the agent-writes handler below.
-      //
-      // `open.path` is porcelain's field, not necessarily a path (git.rs keeps
-      // a rename's `old -> new` and git's quoting), so this is a suffix test
-      // against the watcher's absolute paths rather than a path comparison.
-      const open = openDiff();
-      if (!open || (from && from !== open.root)) return;
-      if (e.payload.paths.some((p) => p.endsWith(open.path))) void refreshExpandedDiff();
     });
     // A chat session's own report of what it just wrote, ahead of the watcher's
     // debounce. Same two refreshes the watcher drives, and both are re-entrant,
@@ -1024,40 +766,6 @@ export default function ReviewPanel(props: {
     unlistenFetchError?.();
     window.removeEventListener("focus", refreshAll);
   });
-
-  // An unchanged stretch between two hunks. Collapsed it is a single clickable
-  // row; expanded it shows the real file lines, fetched on demand because the
-  // diff (taken at git's default context so a hunk stays a stageable unit)
-  // simply does not contain them.
-  function gapRow(gap: Gap, gapKey: string, root: string, path: string, staged: boolean) {
-    const count = gap.end - gap.start + 1;
-    return (
-      <Show
-        when={openGaps().has(gapKey)}
-        fallback={
-          <div
-            class={`${diffRowClasses.line} ${styles.diffGap}`}
-            onClick={() => void expandGap(gapKey, root, path, staged, gap)}
-          >
-            {`\u22ef ${count} unchanged line${count === 1 ? "" : "s"}`}
-          </div>
-        }
-      >
-        <For each={gapLines()[gapKey] ?? []}>
-          {(text) =>
-            twoColumn() ? (
-              <div class={diffRowClasses.sideRow}>
-                <div class={diffRowClasses.line}>{text || " "}</div>
-                <div class={diffRowClasses.line}>{text || " "}</div>
-              </div>
-            ) : (
-              <div class={diffRowClasses.line}>{text || " "}</div>
-            )
-          }
-        </For>
-      </Show>
-    );
-  }
 
   /** A conflicted file's row: open the three-way view, or hand the conflict to
    *  the agent.
@@ -1108,12 +816,15 @@ export default function ReviewPanel(props: {
   }
 
   function row(f: FileStatus, opts: { staged: boolean; root: string }) {
-    const key = `${opts.staged ? "staged" : "unstaged"}:${opts.root}:${f.path}`;
     return (
       <div>
         <div
           class={styles.reviewRow}
-          onClick={() => toggleDiff(key, opts.root, f.path, opts.staged)}
+          // The two rows of a partially staged file open two tabs: they are
+          // different comparisons, so one tab could only ever show one of them.
+          onClick={() =>
+            emitWith(OPEN_IN_EDITOR, { path: diffTabId(opts.root, f.path, opts.staged) })
+          }
           title={f.path}
         >
           <Button
@@ -1179,106 +890,6 @@ export default function ReviewPanel(props: {
             </Button>
           </Show>
         </div>
-        <Show when={expanded() === key}>
-          <div class={styles.reviewDiff}>
-            {/* Gaps are keyed by the hunk they follow (-1 = before the first),
-                so they interleave with the hunks rather than living inside
-                one. */}
-            <For each={gaps().filter((g) => g.afterHunk === -1)}>
-              {(gap) => gapRow(gap, `${key}:gap-1`, opts.root, f.path, opts.staged)}
-            </For>
-            <For each={hunks()}>
-              {(hunk, hi) => (
-                <div>
-                  {/* The hunk header is the shared control anchor: it renders
-                      identically inline and side-by-side, so per-hunk actions
-                      land in one place in both modes. */}
-                  <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
-                    <span>{hunk.header}</span>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      disabled={applying()}
-                      tooltip={opts.staged ? "Unstage this hunk" : "Stage this hunk"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // The fingerprint is derived from the hunk exactly as
-                        // rendered, so the backend can prove it is still the
-                        // same hunk before applying it.
-                        void applyHunk(opts.root, f.path, opts.staged, hi(), hunkFingerprint(hunk.header, hunk.lines));
-                      }}
-                    >
-                      {opts.staged ? "Unstage hunk" : "Stage hunk"}
-                    </Button>
-                    {/* Only while this hunk has lines picked, so the header
-                        stays the same width it always was until there is
-                        something for the control to act on. */}
-                    <Show when={picked()?.hunk === hi() ? picked() : null}>
-                      {(sel) => (
-                        <Button
-                          size="xs"
-                          disabled={applying()}
-                          tooltip={
-                            opts.staged
-                              ? "Unstage only the selected lines"
-                              : "Stage only the selected lines"
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void applyLines(
-                              opts.root,
-                              f.path,
-                              opts.staged,
-                              hi(),
-                              hunkFingerprint(hunk.header, hunk.lines),
-                              [...sel().lines].sort((a, b) => a - b),
-                            );
-                          }}
-                        >
-                          {`${opts.staged ? "Unstage" : "Stage"} ${sel().lines.size} line${
-                            sel().lines.size === 1 ? "" : "s"
-                          }`}
-                        </Button>
-                      )}
-                    </Show>
-                    <Show when={!opts.staged}>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        disabled={applying()}
-                        tooltip="Throw away this hunk"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void discardHunk(opts.root, f.path, hi(), hunkFingerprint(hunk.header, hunk.lines));
-                        }}
-                      >
-                        Discard hunk
-                      </Button>
-                    </Show>
-                    <HunkCommentInput
-                      target={target()}
-                      disabledReason={disabledReason()}
-                      filePath={`${opts.root}/${f.path}`}
-                      startLine={hunk.startLine}
-                      endLine={hunk.endLine}
-                    />
-                  </div>
-                  <DiffRows
-                    rows={buildRows(hunk.lines)}
-                    twoColumn={twoColumn()}
-                    selection={{
-                      has: (i) => picked()?.hunk === hi() && picked()!.lines.has(i),
-                      toggle: (i) => pickLine(hi(), i),
-                    }}
-                  />
-                  <For each={gaps().filter((g) => g.afterHunk === hi())}>
-                    {(gap) => gapRow(gap, `${key}:gap${hi()}`, opts.root, f.path, opts.staged)}
-                  </For>
-                </div>
-              )}
-            </For>
-          </div>
-        </Show>
       </div>
     );
   }
@@ -1387,16 +998,9 @@ export default function ReviewPanel(props: {
   }
 
   let subjectRef: HTMLInputElement | undefined;
-  let panelRef: HTMLDivElement | undefined;
-  onMount(() => {
-    if (!panelRef) return;
-    const ro = new ResizeObserver(([entry]) => setPanelWidth(entry.contentRect.width));
-    ro.observe(panelRef);
-    onCleanup(() => ro.disconnect());
-  });
 
   return (
-    <div class={styles.reviewPanel} ref={panelRef}>
+    <div class={styles.reviewPanel}>
       {/* Branch, ahead/behind and Push moved into the member headers inside a
           Feature: they are one repo's answers, and a Feature has several. What
           is left here is what stays one-repo either way - the diff layout, the
@@ -1415,23 +1019,6 @@ export default function ReviewPanel(props: {
             onClick={() =>
               props.root && emitWith(OPEN_IN_EDITOR, { path: syntheticId("log", props.root) })
             }
-          />
-          <IconButton
-            size="xs"
-            active={twoColumn()}
-            icon={<span aria-hidden="true">⇹</span>}
-            disabled={panelWidth() < SIDE_BY_SIDE_MIN_WIDTH}
-            // Greyed out only because the panel is too narrow, which is exactly
-            // what the label says and nothing on screen otherwise does.
-            tooltipWhenDisabled
-            tooltip={
-              panelWidth() < SIDE_BY_SIDE_MIN_WIDTH
-                ? "Side-by-side needs a wider panel"
-                : twoColumn()
-                  ? "Switch to inline diff"
-                  : "Switch to side-by-side diff"
-            }
-            onClick={toggleSideBySide}
           />
           <Show when={!headed()}>
             <Show when={aheadBehind()} fallback={<span class={styles.aheadBehind}>-</span>}>

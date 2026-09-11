@@ -16,6 +16,11 @@ export type DiffHunk = {
   lines: string[];
 };
 
+// Git's default context, and deliberately not more. Context width decides hunk
+// boundaries: at -U24 three edits 20 lines apart merge into one un-splittable
+// hunk, which would make hunk staging useless on real code.
+export const DIFF_CONTEXT = 3;
+
 const HUNK_HEADER_RE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
 
 export function parseDiffHunks(diffText: string): DiffHunk[] {

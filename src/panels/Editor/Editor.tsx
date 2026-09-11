@@ -65,6 +65,7 @@ import CommitLog from "./CommitLog";
 import LocalHistory from "./LocalHistory";
 import CommitDetail from "./CommitDetail";
 import ConflictView from "./ConflictView";
+import DiffView from "./DiffView";
 import DebugSourceView from "./DebugSourceView";
 import ImageView, { isImagePath } from "./ImageView";
 import PdfToolbar from "./PdfToolbar";
@@ -2466,6 +2467,19 @@ export default function Editor(props: {
                 </Show>
                 <Show when={t().kind === "commit"}>
                   <CommitDetail workspace={t().workspace} sha={t().arg} />
+                </Show>
+                {/* Staging lives here rather than in the Changes panel: a hunk
+                    needs the width of a pane, and the panel's rows stay one
+                    line tall. Reports discards on the same channel a checkpoint
+                    revert does, so a buffer open on the file is offered
+                    keep-mine / take-disk. */}
+                <Show when={t().kind === "diff"}>
+                  <DiffView
+                    workspace={t().workspace}
+                    arg={t().arg}
+                    selected={props.selected}
+                    onReverted={handleReverted}
+                  />
                 </Show>
                 {/* Its own CodeMirror instance, not a buffer in CodeEditor:
                     this document has no file behind it and lives under rules no
