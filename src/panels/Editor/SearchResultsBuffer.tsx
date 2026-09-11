@@ -23,7 +23,7 @@ import {
 import { adoptBufferText, dirtyBuffers, liveBufferText, patchBuffer } from "./liveBuffers";
 import { noteSearchQuery, searchBuffer, type EditorForm } from "./searchResultsStore";
 import { grepRoot, MAX_RESULTS, readHitFiles } from "./searchRun";
-import { Field, GlobFields, InlineToggle, MatchToggles, MemberToggles } from "./SearchFields";
+import { Field, GlobFields, MatchToggles, MemberToggles } from "./SearchFields";
 import {
   buildSearchDoc,
   collectEdits,
@@ -176,6 +176,52 @@ async function writeBack(groups: FileEdits[]): Promise<ApplyOutcome> {
   return { written, inBuffer, refused };
 }
 
+const CONTEXT_MAX = 99;
+
+/** How many lines to show around each hit: a small field between a minus and a
+ *  plus, sized to sit in the query row. */
+function ContextStepper(props: { value: number; onChange: (v: number) => void }) {
+  const clamp = (v: number) => Math.max(0, Math.min(CONTEXT_MAX, Math.round(v) || 0));
+  const set = (v: number) => props.onChange(clamp(v));
+  return (
+    <div class={styles.stepper}>
+      <button
+        type="button"
+        class={styles.stepperBtn}
+        aria-label="Fewer context lines"
+        disabled={props.value <= 0}
+        onClick={() => set(props.value - 1)}
+      >
+        -
+      </button>
+      <input
+        class={styles.stepperNum}
+        type="number"
+        min="0"
+        max={CONTEXT_MAX}
+        aria-label="Context lines"
+        value={props.value}
+        onChange={(e) => {
+          // Rewritten in place, or a clamped entry that lands on the current
+          // value leaves the typed text showing.
+          const v = clamp(Number(e.currentTarget.value));
+          e.currentTarget.value = String(v);
+          props.onChange(v);
+        }}
+      />
+      <button
+        type="button"
+        class={styles.stepperBtn}
+        aria-label="More context lines"
+        disabled={props.value >= CONTEXT_MAX}
+        onClick={() => set(props.value + 1)}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 const HELD = "Edits not applied yet. Apply them, or press Enter to search again and drop them.";
 
 /**
@@ -213,6 +259,7 @@ export default function SearchResultsBuffer(props: {
   const [hasDoc, setHasDoc] = createSignal(false);
 
   const entry = () => searchBuffer(props.id);
+  const status = () => refusal() ?? (held() ? HELD : outcome() ?? "");
   const docOf = () => searchBuffer(props.id)?.doc ?? EMPTY_DOC;
 
   function countPending() {
@@ -511,52 +558,46 @@ export default function SearchResultsBuffer(props: {
                   onToggle={(k: ToggleKey) => setOption({ [k]: !f().options[k] })}
                 />
               </Field>
-              <input
-                class={styles.contextInput}
-                type="number"
-                min="0"
-                max="99"
-                aria-label="Context lines"
-                value={f().context}
-                disabled={!f().showContext}
-                onChange={(e) => edit({ context: Math.max(0, Math.min(99, Number(e.currentTarget.value) || 0)) })}
-              />
-              <InlineToggle
-                icon={Rows3}
-                label="Toggle Context Lines"
-                active={f().showContext}
+              <ContextStepper value={f().context} onChange={(context) => edit({ context, showContext: true })} />
+              <IconButton
+                icon={<Icon icon={Rows3} />}
+                class={styles.pressable}
+                aria-pressed={f().showContext}
+                tooltip="Toggle Context Lines"
                 onClick={() => edit({ showContext: !f().showContext })}
               />
               <IconButton
-                size="sm"
                 icon={<Icon icon={RefreshCw} />}
                 tooltip="Search Again"
                 disabled={running()}
                 onClick={() => void run("ask")}
               />
-            </div>
-            <div class={styles.statusRow}>
-              <span class={styles.meta} role="status">
-                {refusal() ?? (held() ? HELD : outcome() ?? "")}
-              </span>
-              <Show when={hasDoc()}>
-                <Button
-                  size="xs"
-                  disabled={!pending() || applying()}
-                  tooltipWhenDisabled
-                  tooltip={pending() ? "Write every edited line back to the file it came from" : "Edit a result line first"}
-                  onClick={() => void apply()}
-                >
-                  {pending() ? `Apply to ${pending()} ${pending() === 1 ? "file" : "files"}` : "Apply"}
-                </Button>
-              </Show>
-              <InlineToggle
-                icon={Ellipsis}
-                label="Toggle Search Details"
-                active={details()}
+              <IconButton
+                icon={<Icon icon={Ellipsis} />}
+                class={styles.pressable}
+                aria-pressed={details()}
+                aria-expanded={details()}
+                tooltip="Toggle Search Details"
                 onClick={() => setDetails((v) => !v)}
               />
             </div>
+            <Show when={status() || pending() || applying()}>
+              <div class={styles.statusRow}>
+                <span class={styles.meta} role="status">
+                  {status()}
+                </span>
+                <Show when={pending() || applying()}>
+                  <Button
+                    size="xs"
+                    disabled={applying()}
+                    tooltip="Write every edited line back to the file it came from"
+                    onClick={() => void apply()}
+                  >
+                    {`Apply to ${pending()} ${pending() === 1 ? "file" : "files"}`}
+                  </Button>
+                </Show>
+              </div>
+            </Show>
             <Show when={details()}>
               <GlobFields
                 options={f().options}
