@@ -153,7 +153,6 @@ describe("selecting a Feature", () => {
     seed("sway.editor.tabs.v1", { paths: [], active: null, savedAt: 1 });
     seed("sway.terminalTabs", { tabs: [], active: 0, savedAt: 1 });
     seed("sway.fileFrecency", {});
-    seed("sway.bookmarks", {});
     seed("sway.breakpoints", {});
     seed("sway.watches", []);
     seed("sway.debugAttachPorts", 9229);
@@ -162,7 +161,7 @@ describe("selecting a Feature", () => {
     seed("sway.searchHistory", []);
     seed("sway.savedSearches", []);
     seed("sway.treeExpanded.v1", { dirs: ["/w/api/src"], closed: [] });
-    expect(storesHolding("feature:f1").length).toBe(14);
+    expect(storesHolding("feature:f1").length).toBe(13);
 
     const { onSelect } = await mounted(featureSel);
     fireEvent.contextMenu(row("Auth"));
@@ -172,7 +171,7 @@ describe("selecting a Feature", () => {
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_feature")).toBe(true));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
     expect(storesHolding("feature:f1")).toEqual([]);
-    expect(storesHolding("/w/api").length).toBe(14);
+    expect(storesHolding("/w/api").length).toBe(13);
   });
 
   it("sweeps the debug stores under each member root, and leaves the rest of that folder alone", async () => {

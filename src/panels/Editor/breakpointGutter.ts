@@ -1,18 +1,16 @@
 // The gutter you click to set a breakpoint, and the field that keeps it
 // pointing at the right line while you type.
 //
-// Same arrangement as `bookmarkGutter.ts` and for the same reason: breakpoints
-// are *stored* as line numbers (that is what survives a restart and what goes
-// out in `setBreakpoints`) but *held* here as document positions in a
-// `RangeSet`, which CodeMirror maps through every change for free. Without that,
+// Breakpoints are *stored* as line numbers (that is what survives a restart and
+// what goes out in `setBreakpoints`) but *held* here as document positions in
+// a `RangeSet`, which CodeMirror maps through every change for free. Without that,
 // inserting ten lines at the top of a file would leave every breakpoint below
 // sitting ten lines above the code it was set on, and the debugger would stop
 // somewhere nobody chose.
 //
-// The one thing this column has that the bookmark column does not is a state per
-// mark. A breakpoint can be waiting for a save, waiting for the adapter to bind
-// it, or bound, and those are three different answers to "will this stop?". The
-// state rides in the `RangeSet` value alongside the position, so an edit that
+// Each mark also carries a state. A breakpoint can be waiting for a save,
+// waiting for the adapter to bind it, or bound, and those are three different
+// answers to "will this stop?". The state rides in the `RangeSet` value alongside the position, so an edit that
 // moves a mark moves its state with it.
 //
 // Editor-side on purpose: this imports CodeMirror, so it sits behind the lazy
@@ -22,8 +20,8 @@ import { gutter, GutterMarker, EditorView } from "@codemirror/view";
 import { StateField, StateEffect, RangeSet, type Range, type EditorState } from "@codemirror/state";
 import type { BreakpointMark, BreakpointState } from "../../utils/debugBreakpoints";
 
-/** Styled in `App.css`, beside the bookmark gutter classes, for the same
- *  reason: these end up in CodeMirror's own DOM, outside any scoped tree. */
+/** Styled in `App.css`: these end up in CodeMirror's own DOM, outside any
+ *  scoped tree. */
 export const BREAKPOINT_GUTTER_CLASS = "cm-breakpoint-gutter";
 export const BREAKPOINT_MARKER_CLASS = "cm-breakpoint";
 export const BREAKPOINT_BOUND_CLASS = "cm-breakpoint-bound";
@@ -134,9 +132,9 @@ export function breakpointsIn(state: EditorState): number[] {
   return out;
 }
 
-/** The effect that installs a file's breakpoints on a state. Mirrors
- *  `bookmarkEffect`, and for the same reason: a caller holding only a state (the
- *  mapping tests, which need no DOM) applies it to a transaction directly. */
+/** The effect that installs a file's breakpoints on a state, so a caller
+ *  holding only a state (the mapping tests, which need no DOM) can apply it to a
+ *  transaction directly. */
 export function breakpointEffect(state: EditorState, marks: readonly BreakpointMark[]) {
   return setBreakpointsEffect.of(buildMarkers(state, marks));
 }
@@ -149,8 +147,8 @@ export function setBreakpointMarkers(view: EditorView, marks: readonly Breakpoin
 /**
  * The breakpoint gutter, its field, and the reporting of moved breakpoints.
  *
- * `onToggle` is the click, for `bookmarkGutter`'s reason: the same target has to
- * be able to undo itself.
+ * `onToggle` is the click, and a toggle rather than a set: the same target has
+ * to be able to undo itself.
  *
  * `onMoved` fires only when an edit actually changed which lines are marked, not
  * on every keystroke, and carries the buffer's line count so the pane can tell

@@ -44,3 +44,7 @@
   border-bottom: 1px solid var(--brand-default);
 }
 
+/* The breakpoint column takes width only while something is being debugged. */
+.codeEditorWrap:not(.debugging) :global(.cm-breakpoint-gutter) {
+  display: none;
+}

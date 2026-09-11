@@ -8,7 +8,7 @@ import styles from "./MemberSection.module.css";
  * One member's band in a right-panel list: its chip, its name, its state when it
  * has one, and whatever the panel draws for it.
  *
- * The Problems, TODO and Bookmarks panels each list rows that belong to one repo
+ * The Problems and TODO panels each list rows that belong to one repo
  * of a Feature, and each drew the same header to say which. The tree, the Search
  * panel and the Changes panel keep their own markup for now: their headers carry
  * per-section actions this one has no place for.

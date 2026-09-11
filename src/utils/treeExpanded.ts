@@ -9,9 +9,9 @@
 //
 // Two lists, because the two defaults differ. A directory starts shut, so the
 // open ones are what gets recorded; a section header starts open, so only the
-// closed ones do. Both are swept by path like `bookmarks.ts` and
-// `breakpoints.ts`, for the same reason: an entry naming a trashed folder can
-// never be removed by hand, since there is no row left to click.
+// closed ones do. Both are swept by path like `breakpoints.ts`, for the same
+// reason: an entry naming a trashed folder can never be removed by hand, since
+// there is no row left to click.
 
 import { createSignal } from "solid-js";
 

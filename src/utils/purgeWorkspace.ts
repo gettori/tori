@@ -3,8 +3,7 @@
 // stores that hold their record live drop it on PURGE_WORKSPACE, and the ones
 // that only load at mount are rewritten here so a relaunch does not revive it.
 //
-// A Feature is swept under more than one key. Tabs, bookmarks and breakpoints
-// key on `feature:<id>`, but the three debug stores key on the *member root*
+// A Feature is swept under more than one key. Tabs and breakpoints key on `feature:<id>`, but the three debug stores key on the *member root*
 // (that is what `DebugPanel` passes and what a paused session's `projectPath`
 // is compared against), so those records survive the Feature key going. The
 // roots therefore come in from the caller: `delete_feature` has already run by
@@ -26,7 +25,6 @@ const WORKSPACE_STORES = [
   "sway.editor.tabs.v1",
   "sway.terminalTabs",
   "sway.fileFrecency",
-  "sway.bookmarks",
   "sway.breakpoints",
   "sway.watches",
   "sway.debugAttachPorts",
