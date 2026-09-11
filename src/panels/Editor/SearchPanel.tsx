@@ -1168,7 +1168,8 @@ export default function SearchPanel(props: {
         <IconButton
           size="sm"
           icon={<Icon icon={Star} />}
-          active={showSaved()}
+          class={styles.pressable}
+          aria-pressed={showSaved()}
           tooltip="Saved Searches"
           aria-expanded={showSaved()}
           aria-controls={SAVED_ID}
@@ -1192,7 +1193,8 @@ export default function SearchPanel(props: {
         <div class={styles.queryRow}>
           <IconButton
             icon={<Icon icon={Replace} />}
-            active={showReplace()}
+            class={styles.pressable}
+            aria-pressed={showReplace()}
             tooltip="Toggle Replace"
             aria-expanded={showReplace()}
             onClick={() => setShowReplace((v) => !v)}
@@ -1217,7 +1219,8 @@ export default function SearchPanel(props: {
           </Field>
           <IconButton
             icon={<Icon icon={Ellipsis} />}
-            active={showGlobs()}
+            class={styles.pressable}
+            aria-pressed={showGlobs()}
             tooltip="Toggle Search Details"
             aria-expanded={showGlobs()}
             aria-controls={GLOBS_ID}
