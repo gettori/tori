@@ -118,6 +118,10 @@ export const TOGGLE_SIDEBAR_MODE = "sway:toggle-sidebar-mode";
 export const REVEAL_DOCK = "sway:reveal-dock";
 export type RevealDock = { tabId: string };
 
+// A plain shell in the dock. The dock draws the `+`, and the terminal panel owns
+// the tab model it opens into.
+export const NEW_DOCK_SHELL = "sway:new-dock-shell";
+
 // Open the New Feature dialog. On the bus because the button that asks now sits
 // in the sidebar's own head row, and the dialog belongs to the Feature list
 // under it; lifting the dialog instead would move its five sibling dialogs too.

@@ -2,7 +2,7 @@
 // heterogeneous UnifiedTab list, every per-kind decision resolved through the
 // registry. A pane holds whatever kinds were put in it, so the list is mixed by
 // default and the trailing controls are every kind's at once (phase 13).
-import { For } from "solid-js";
+import { For, type JSX } from "solid-js";
 import OverflowTabBar from "../components/OverflowTabBar";
 import { kindEntry, renderRegistryTab, trailingClusters, type StripPlace } from "../tabs/registry";
 import { idOf, type UnifiedTab } from "./unifiedTabs";
@@ -21,8 +21,10 @@ export default function UnifiedTabStrip(props: {
   class?: string;
   /** The pane does not hold focus, so its selection is not drawn. */
   blurred?: boolean;
-  /** Tabs and nothing else: the dock's strip, where no kind's controls apply. */
+  /** Tabs and its own `trailing` only: the dock's strip, where no kind's
+   *  controls apply. */
   bare?: boolean;
+  trailing?: JSX.Element;
 }) {
   // Every registered cluster, not the active tab's (phase 13): what a pane
   // offers should not depend on which of its tabs is in front. Keyed by the
@@ -49,7 +51,7 @@ export default function UnifiedTabStrip(props: {
       onReorder={props.onReorder}
       renderTab={(t, ghost) => renderRegistryTab(t, ghost, props.place)}
       renderMenuItem={(t) => kindEntry(t.kind).renderMenuItem(t)}
-      trailing={props.bare ? undefined : <For each={trailingClusters()}>{(cluster) => cluster()}</For>}
+      trailing={props.bare ? props.trailing : <For each={trailingClusters()}>{(cluster) => cluster()}</For>}
     />
   );
 }

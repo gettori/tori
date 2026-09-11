@@ -168,10 +168,10 @@ beforeEach(() => {
 });
 
 describe("the dock", () => {
-  it("is seeded at startup as one pane that only takes command tabs", () => {
+  it("is seeded at startup as one pane that takes commands and shells", () => {
     mount();
     expect(layoutRoot(SHELLS_KEY)).toBeTruthy();
-    expect(paneLock(SHELLS_KEY, "main")).toBe("command");
+    expect(paneLock(SHELLS_KEY, "main")).toBeNull();
   });
 
   it("toggles on its own key, and says so when there is nothing in it", async () => {

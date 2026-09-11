@@ -24,6 +24,7 @@ import {
   type OpenJob,
   REVEAL_DOCK,
   type RevealDock,
+  NEW_DOCK_SHELL,
   NEW_SESSION,
   PURGE_UNDER_PATH,
   PURGE_WORKSPACE,
@@ -946,6 +947,7 @@ export default function Terminal(props: {
   let offNewSession: (() => void) | undefined;
   let offOpenJob: (() => void) | undefined;
   let offRevealDock: (() => void) | undefined;
+  let offNewDockShell: (() => void) | undefined;
   let offComposeDraft: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let unlistenRefused: UnlistenFn | undefined;
@@ -971,6 +973,7 @@ export default function Terminal(props: {
     });
     offOpenJob = onWith<OpenJob>(OPEN_JOB, openCommand);
     offRevealDock = onWith<RevealDock>(REVEAL_DOCK, ({ tabId }) => revealDock(tabId));
+    offNewDockShell = onEvent(NEW_DOCK_SHELL, () => void newShellInDock());
     // Settings has no Selection, so it describes a draft and this decides where
     // it lands. Its own guard, not the sender's: the panel's copy of the root
     // was read when it opened, and the selection can have moved since.
@@ -1053,6 +1056,7 @@ export default function Terminal(props: {
     offNewSession?.();
     offOpenJob?.();
     offRevealDock?.();
+    offNewDockShell?.();
     offComposeDraft?.();
     unlistenExit?.();
     unlistenRefused?.();
@@ -1099,6 +1103,23 @@ export default function Terminal(props: {
       ...(j.rediscoverOnExit ? { rediscoverOnExit: true } : {}),
       ...(j.recheckAgentsOnExit ? { recheckAgentsOnExit: true } : {}),
       ...(j.interactive ? { interactive: true } : {}),
+    };
+    setOpen([...open(), tab]);
+    revealDock(tab.id);
+  }
+
+  // No branch behind the dock, so a shell of your own there opens at home.
+  async function newShellInDock() {
+    const cwd = await homeDir().catch(() => "/");
+    const tab: OpenTerm = {
+      id: shellId(),
+      title: "Shell",
+      cwd,
+      workspace: SHELLS_KEY,
+      kind: "shell",
+      program: "",
+      args: [],
+      profile: null,
     };
     setOpen([...open(), tab]);
     revealDock(tab.id);

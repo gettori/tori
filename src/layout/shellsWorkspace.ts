@@ -14,5 +14,8 @@ export function shellsPane(): string | null {
 export function ensureShellsWorkspace() {
   ensureEnvelope(SHELLS_KEY, seedOnePane);
   const pane = shellsPane();
-  if (pane) setPaneLock(SHELLS_KEY, pane, "command");
+  // Cleared, not merely unset: the build before this one persisted a `command`
+  // lock, and a lock names one kind while this pane holds two, commands and the
+  // shells its `+` opens.
+  if (pane) setPaneLock(SHELLS_KEY, pane, null);
 }
