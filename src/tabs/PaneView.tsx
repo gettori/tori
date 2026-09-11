@@ -10,7 +10,7 @@
 // the pane sees those drops; the center is left to whatever is on the stage and
 // only becomes "put it in this pane" when nothing there took it, which is what
 // keeps a file tab dropped on a terminal inserting its path.
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show, type JSX } from "solid-js";
 import UnifiedTabStrip from "./UnifiedTabStrip";
 import { maybeKindEntry } from "./registry";
 import {
@@ -45,6 +45,7 @@ export default function PaneView(props: {
   pinKind: UnifiedTabKind;
   paneId?: string;
   ws?: string;
+  trailing?: JSX.Element;
 }) {
   const entry = () => maybeKindEntry(props.pinKind);
   const inDock = () => isShellsKey(props.ws);
@@ -251,6 +252,7 @@ export default function PaneView(props: {
         class={entry()?.stripClass}
         blurred={blurred()}
         bare={inDock()}
+        trailing={props.trailing}
         items={items()}
         activeId={activeId()}
         place={props.paneId ? { ws: props.ws ?? "", paneId: props.paneId } : undefined}
