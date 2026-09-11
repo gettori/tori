@@ -22,13 +22,13 @@ const SearchResultsBuffer = lazy(() => import("./SearchResultsBuffer"));
 // predicate and the release sweep are needed whether or not the view is
 // mounted - and is deliberately free of any pdf.js *value* import.
 const PdfView = lazy(() => import("./PdfView"));
-import FileTree, { type TreeRoot } from "./FileTree/FileTree";
+import FileTree from "./FileTree/FileTree";
+import FilesPanel from "./FilesPanel/FilesPanel";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
 import PullRequests from "./PullRequests/PullRequests";
 import ProblemsPanel from "./ProblemsPanel";
-import OutlinePanel from "./OutlinePanel";
 import CallsPanel from "./CallsPanel";
 import Breadcrumbs from "./Breadcrumbs";
 // The bar's own stylesheet: these two controls belong to it, not to the editor.
@@ -39,7 +39,7 @@ import { traceSettle } from "../../utils/perfTrace";
 import { isMarkdownPath } from "../../utils/liveBuffer";
 import { chromeScale, editorDefaults, loadWorkspaceSettings } from "../Settings/settingsStore";
 import { toggledWrap, withoutTab, type WrapOverrides } from "./softWrapTabs";
-import { symbolsSupported, clearSymbols } from "../../utils/symbols";
+import { clearSymbols } from "../../utils/symbols";
 import { callsSupported, clearCallRoots } from "../../utils/callHierarchy";
 import { debugRoots, stopAllDap, stopDebugRun } from "../../utils/dapSessions";
 import { clearDebugConsole, debugRunning } from "../../utils/debugStore";
@@ -60,7 +60,6 @@ import {
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
 import TodoPanel from "./TodoPanel";
-import TasksPanel from "./TasksPanel";
 import DebugPanel from "./DebugPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
@@ -95,9 +94,7 @@ import {
   GitPullRequest,
   TriangleAlert,
   ListChecks,
-  Play,
   Bug,
-  ListTree,
   // A call graph, not a telephone: `PhoneCall` reads as telephony.
   Network,
   // Aliased: `Bookmark` here is the glyph, and the type of the same name is the
@@ -123,6 +120,8 @@ import {
   DRAG_PATH_MIME,
   FOCUS_PROJECT_SEARCH,
   SET_RIGHT_MODE,
+  SEARCH_IN_FOLDER,
+  SPLIT_PANE,
   DEBUG_START,
   DEBUG_STOP,
   DEBUG_RESTART,
@@ -156,12 +155,21 @@ import {
   type PurgeUnderPath,
   type LiveTab,
   type SetRightMode,
+  type SearchInFolder,
+  type SplitPane,
   type FileRenamed,
   type FsChanged,
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
 import { rootOf, selectionRoot, workspaceKey } from "../../utils/features";
-import { createFeatureMembers, focusMemberRoot, memberFor, type TintedMember } from "../../utils/featureMembers";
+import {
+  createFeatureMembers,
+  focusMemberRoot,
+  memberFor,
+  type MemberRoot,
+  type TintedMember,
+} from "../../utils/featureMembers";
+import { revealSection } from "../../utils/filesSections";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
 import { dropWorkspaceExpanded, mapExpandedFiles } from "../../utils/treeExpanded";
@@ -296,7 +304,6 @@ type RightMode =
   | "changes"
   | "pulls"
   | "problems"
-  | "outline"
   | "calls"
   | "bookmarks"
   | "shared"
@@ -304,26 +311,23 @@ type RightMode =
   | "session"
   | "search"
   | "todos"
-  | "tasks"
   | "debug";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 /** The modes that answer for the member `activeRoot` points at, rather than for
- *  the whole Feature (Files, Changes, Search, Problems, TODOs, Bookmarks) or for
- *  the file in front (Outline, Calls, Session, Debug). These are the four the
- *  chip row switches. */
-const ACTIVE_ROOT_MODES: RightMode[] = ["pulls", "tasks", "shared", "docs"];
+ *  the whole Feature (Changes, Search, Problems, TODOs, Bookmarks) or for the
+ *  file in front (Calls, Session, Debug). These are the three the chip row
+ *  switches; Files draws member tabs of its own. */
+const ACTIVE_ROOT_MODES: RightMode[] = ["pulls", "shared", "docs"];
 
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   files: { mode: "files", label: "Files", icon: Files },
   changes: { mode: "changes", label: "Changes", icon: GitCompare },
   pulls: { mode: "pulls", label: "Pull requests", icon: GitPullRequest },
   problems: { mode: "problems", label: "Problems", icon: TriangleAlert },
-  outline: { mode: "outline", label: "Outline", icon: ListTree },
   calls: { mode: "calls", label: "Calls", icon: Network },
   bookmarks: { mode: "bookmarks", label: "Bookmarks", icon: BookmarkGlyph },
   search: { mode: "search", label: "Search", icon: Search },
   todos: { mode: "todos", label: "TODOs", icon: ListChecks },
-  tasks: { mode: "tasks", label: "Tasks", icon: Play },
   debug: { mode: "debug", label: "Debug", icon: Bug },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
   shared: { mode: "shared", label: "Shared", icon: Share2 },
@@ -548,12 +552,10 @@ export default function Editor(props: {
     "changes",
     "pulls",
     "problems",
-    "outline",
     "calls",
     "bookmarks",
     "search",
     "todos",
-    "tasks",
     "debug",
     "session",
     "shared",
@@ -572,11 +574,6 @@ export default function Editor(props: {
       // "Problems (0)" is noise on a clean tree.
       case "problems":
         return problemsHere();
-      // Only for a file whose server actually answers `documentSymbol`. A
-      // `.txt` tab, or a language with no server, has no outline to show, and
-      // an always-present empty panel reads as "this file has no symbols".
-      case "outline":
-        return symbolsSupported(activeId());
       // Same three-state rule, and the middle state is the point: hidden when
       // the server has no `callHierarchyProvider`, shown when it has one even
       // if the caret is not on anything callable - because "this language
@@ -612,6 +609,9 @@ export default function Editor(props: {
     return rs.length > 0 && Object.keys(diagnostics()).some((p) => rs.some((r) => isUnderPath(p, r)));
   };
   const [searchFocusNonce, setSearchFocusNonce] = createSignal(0);
+  // Find in Folder's narrowing, held until the Search panel has applied it.
+  const [searchScope, setSearchScope] = createSignal<(SearchInFolder & { nonce: number }) | null>(null);
+  let searchScopeNonce = 0;
   // Source-vs-render preview toggle, per tab id (so switching tabs remembers
   // each previewable file's own choice: .md renders to HTML, .svg to its image).
   const [previewOn, setPreviewOn] = createSignal<Set<string>>(new Set());
@@ -886,7 +886,7 @@ export default function Editor(props: {
     </Show>
   );
 
-  const treeRoots = (): TreeRoot[] | undefined =>
+  const treeRoots = (): MemberRoot[] | undefined =>
     featureId()
       ? members().map((m) => ({
           path: m.key,
@@ -1251,9 +1251,6 @@ export default function Editor(props: {
     if (rightMode() === "session" && !props.selected?.sessionId) setRightMode("files");
     // The Problems tab disappears once the last diagnostic clears.
     if (rightMode() === "problems" && !problemsHere()) setRightMode("files");
-    // And Outline disappears when the active tab is a file no server has
-    // symbols for, which switching tabs is enough to cause.
-    if (rightMode() === "outline" && !symbolsSupported(activeId())) setRightMode("files");
     // And Calls goes the same way when the active tab's server has no call
     // hierarchy, which switching tabs is enough to cause.
     if (rightMode() === "calls" && !callsSupported(activeId())) setRightMode("files");
@@ -2084,6 +2081,7 @@ export default function Editor(props: {
   let offFollow: UnlistenFn | undefined;
   let offProjectSearch: (() => void) | undefined;
   let offSetRightMode: (() => void) | undefined;
+  let offSearchInFolder: (() => void) | undefined;
   let offFileRenamed: (() => void) | undefined;
   let offGitWatch: (() => void) | undefined;
   let offCommands: (() => void)[] = [];
@@ -2154,6 +2152,8 @@ export default function Editor(props: {
     offOpen = onWith<OpenInEditor>(OPEN_IN_EDITOR, (d) => {
       if (!d?.path) return;
       openFile(d.path);
+      if (d.preview && !previewOn().has(d.path)) togglePreviewOf(d.path);
+      if (d.side) emitWith<SplitPane>(SPLIT_PANE, { dir: "row", tabId: d.path, kind: "file" });
       if (d.line) setGotoTarget({ path: d.path, line: d.line, col: d.col, nonce: ++gotoNonce });
       // The one place arrivals are recorded. Go-to-definition, a search hit and
       // a quick-open pick all reach the editor through this event, so recording
@@ -2176,6 +2176,11 @@ export default function Editor(props: {
     });
     offSetRightMode = onWith<SetRightMode>(SET_RIGHT_MODE, (d) => {
       if (d?.mode) setRightMode(d.mode);
+      if (d?.section) revealSection(d.section);
+    });
+    offSearchInFolder = onWith<SearchInFolder>(SEARCH_IN_FOLDER, (d) => {
+      setSearchScope({ ...d, nonce: ++searchScopeNonce });
+      setRightMode("search");
     });
     offFileRenamed = onWith<FileRenamed>(FILE_RENAMED, (d) => {
       if (d?.from && d.to) followRename(d.from, d.to);
@@ -2271,6 +2276,7 @@ export default function Editor(props: {
     offFollow?.();
     offProjectSearch?.();
     offSetRightMode?.();
+    offSearchInFolder?.();
     offFileRenamed?.();
     offGitWatch?.();
     for (const off of offCommands) off();
@@ -2792,25 +2798,21 @@ export default function Editor(props: {
         </Show>
         <Switch>
           <Match when={rightMode() === "files"}>
-            <FileTree
+            <FilesPanel
               root={root()}
-              roots={treeRoots()}
-              editable
-              noun={featureId() ? "member folder" : "project folder"}
+              members={featureId() ? members() : []}
               activePath={shownFileId()}
+              outlinePath={activeId()}
               askText={askText}
               askConfirm={askConfirm}
               onRepair={repairMember}
+              onActiveRoot={props.onActiveRoot}
               settleKey={ws()}
               persistKey={ws()}
             />
           </Match>
           <Match when={rightMode() === "problems"}>
             <ProblemsPanel selected={props.selected} roots={treeRoots()} />
-          </Match>
-          <Match when={rightMode() === "outline"}>
-            {focusMemberLine()}
-            <OutlinePanel path={activeId()} />
           </Match>
           <Match when={rightMode() === "calls"}>
             {focusMemberLine()}
@@ -2844,15 +2846,14 @@ export default function Editor(props: {
               roots={treeRoots()}
               workspace={ws()}
               focusNonce={searchFocusNonce()}
+              scope={searchScope()}
+              onScoped={() => setSearchScope(null)}
               dirty={dirty()}
               confirm={askConfirm}
             />
           </Match>
           <Match when={rightMode() === "todos"}>
             <TodoPanel root={root()} selected={props.selected} roots={treeRoots()} />
-          </Match>
-          <Match when={rightMode() === "tasks"}>
-            <TasksPanel root={root()} />
           </Match>
           <Match when={rightMode() === "debug"}>
             {focusMemberLine()}

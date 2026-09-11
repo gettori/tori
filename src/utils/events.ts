@@ -172,8 +172,21 @@ export type PrOpened = { projectPath: string };
 
 export const SET_RIGHT_MODE = "sway:set-right-mode";
 export type SetRightMode = {
-  mode: "files" | "changes" | "pulls" | "search" | "session" | "shared" | "docs" | "todos" | "tasks" | "debug";
+  mode: "files" | "changes" | "pulls" | "search" | "session" | "shared" | "docs" | "todos" | "debug";
+  /** With `files`, the section below the tree to show and open. */
+  section?: "scripts" | "outline";
 };
+
+// Payload-carrying event: the right panel's Search, narrowed to one folder of
+// one repo (the file tree's Find in Folder). Consumed by Editor.tsx.
+export const SEARCH_IN_FOLDER = "sway:search-in-folder";
+export type SearchInFolder = { repoPath: string; rel: string };
+
+// Payload-carrying event: a plain shell tab opened in `cwd`, in the selected
+// workspace (the file tree's Open in Integrated Terminal). Consumed by
+// Terminal.tsx.
+export const OPEN_SHELL_AT = "sway:open-shell-at";
+export type OpenShellAt = { cwd: string };
 
 // The command registry's editor entries (utils/commands.ts). Each acts on
 // whatever tab is active, so none of them carries a path: the editor is the only
@@ -361,7 +374,15 @@ export type FsChanged = {
 // exception is AGENT_FILES_WRITTEN below, which is not a fan-out of the watcher
 // but a report from a chat session about its own writes.)
 export const OPEN_IN_EDITOR = "sway:open-in-editor";
-export type OpenInEditor = { path: string; line?: number; col?: number };
+export type OpenInEditor = {
+  path: string;
+  line?: number;
+  col?: number;
+  /** Open a Markdown or SVG file rendered rather than as source. */
+  preview?: boolean;
+  /** Carry the tab into a new pane split off to the right. */
+  side?: boolean;
+};
 
 // Payload-carrying event: open a chat draft in the selected branch unit with
 // these blocks already attached, and send nothing. Settings needs it because it

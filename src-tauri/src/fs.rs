@@ -430,6 +430,66 @@ pub fn fs_rename(root: String, from: String, to: String, noun: Option<String>) -
     std::fs::rename(&f, &t).map_err(|e| e.to_string())
 }
 
+/// The first free name for a copy of `name` in `dir`, Finder and VS Code style:
+/// `a.ts`, then `a copy.ts`, then `a copy 2.ts`. A dotfile or a folder keeps
+/// its whole name as the stem.
+fn free_copy_name(dir: &Path, name: &str, is_dir: bool) -> PathBuf {
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) if i > 0 && !is_dir => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    };
+    let first = dir.join(name);
+    if first.symlink_metadata().is_err() {
+        return first;
+    }
+    let mut n = 1;
+    loop {
+        let suffix = if n == 1 { " copy".to_string() } else { format!(" copy {n}") };
+        let candidate = dir.join(format!("{stem}{suffix}{ext}"));
+        if candidate.symlink_metadata().is_err() {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    let meta = from.symlink_metadata()?;
+    if meta.file_type().is_symlink() {
+        std::os::unix::fs::symlink(std::fs::read_link(from)?, to)
+    } else if meta.is_dir() {
+        std::fs::create_dir(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            copy_tree(&entry.path(), &to.join(entry.file_name()))?;
+        }
+        Ok(())
+    } else {
+        std::fs::copy(from, to).map(|_| ())
+    }
+}
+
+/// Copy `from` into the directory `into`, which must stay inside `root`, and
+/// return where it landed. Never overwrites: a taken name gets a ` copy` suffix.
+#[tauri::command(async)]
+pub fn fs_copy(root: String, from: String, into: String, noun: Option<String>) -> Result<String, String> {
+    let dir = ensure_inside(&root, &into, noun.as_deref())?;
+    let src = PathBuf::from(&from);
+    let meta = src.symlink_metadata().map_err(|e| e.to_string())?;
+    let name = src
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "That path has no name to copy.".to_string())?;
+    let dest_real = resolve_existing_prefix(&dir);
+    let src_real = resolve_existing_prefix(&src);
+    if meta.is_dir() && dest_real.starts_with(&src_real) {
+        return Err("A folder cannot be copied inside itself.".into());
+    }
+    let to = free_copy_name(&dir, name, meta.is_dir());
+    copy_tree(&src, &to).map_err(|e| e.to_string())?;
+    Ok(to.to_string_lossy().into_owned())
+}
+
 /// All project files (paths relative to `project_path`) for the quick-open
 /// finder. Prefers `git ls-files` (respects .gitignore, lists tracked +
 /// untracked-not-ignored); falls back to a recursive walk skipping the churn

@@ -1,6 +1,6 @@
 // Running a task, in one place.
 //
-// Three surfaces start a run: the Tasks panel, the omnibox's rows, and the
+// Three surfaces start a run: the Scripts section, the omnibox's rows, and the
 // rerun hotkey. They must agree on all three steps (record the run, mint the
 // tab id from the run count, open the tab), because the tab id *is* the run
 // count: a surface that opened a tab without recording the run would collide
@@ -33,7 +33,7 @@ export type RerunOutcome = "ran" | "nothing-run-here" | "no-workspace";
  * Run this workspace's last task again.
  *
  * Reads storage rather than taking a store, because the hotkey fires from
- * wherever focus happens to be: the Tasks panel that recorded the run is torn
+ * wherever focus happens to be: the Scripts section that recorded the run is torn
  * down as soon as another right-hand mode is showing, so there is no live
  * signal to consult and no picker to reopen.
  */

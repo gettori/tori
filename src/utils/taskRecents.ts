@@ -93,7 +93,13 @@ export function parseRunStore(raw: string | null): TaskRunStore {
           continue;
         }
         kept.push({
-          task: { id: t.id, name: t.name, source: t.source, command: t.command },
+          task: {
+            id: t.id,
+            name: t.name,
+            source: t.source,
+            command: t.command,
+            ...(typeof t.dir === "string" && t.dir ? { dir: t.dir } : {}),
+          },
           runs: e.runs,
           lastAt: e.lastAt,
         });
