@@ -1,5 +1,5 @@
-/* The Files tab: member tabs (Feature only), the filter row, then the stacked
-   sections, VS Code Explorer style. */
+/* The Files tab: the filter row (member chips first, inside a Feature), then
+   the stacked sections, VS Code Explorer style. */
 .filesPanel {
   flex: 1;
   display: flex;
@@ -8,18 +8,6 @@
   background: var(--canvas-card);
   -webkit-user-select: none;
   user-select: none;
-}
-
-.memberTabs {
-  min-height: calc(36px * var(--ui-scale));
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: calc(2px * var(--ui-scale));
-  padding: 0 calc(6px * var(--ui-scale));
-  /* Never scrolls, like every OverflowTabBar: the +N model owns overflow. */
-  overflow: clip;
-  border-bottom: 1px solid var(--border-default);
 }
 
 .topBar {
@@ -37,17 +25,36 @@
   min-height: 0;
 }
 
+/* Shut, a section is its header. Open and not filling, its height arrives
+   inline from the stored size, shrinkable so a short panel keeps every header. */
 .section {
+  position: relative;
   display: flex;
   flex: none;
   flex-direction: column;
-  min-height: 0;
+  min-height: calc(30px * var(--ui-scale));
   border-top: 1px solid var(--border-default);
 }
 
-/* Every open section takes the same share of what the headers leave. */
-.section.open {
+.section:first-child {
+  border-top: none;
+}
+
+.section.fill {
   flex: 1 1 0;
+}
+
+/* The drag handle sits over the top border rather than beside it, so it adds
+   no gap between two sections. */
+.sash {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale));
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  height: calc(8px * var(--ui-scale));
 }
 
 .sectionHeader {
