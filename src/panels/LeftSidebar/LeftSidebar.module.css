@@ -199,18 +199,21 @@
 }
 
 /* ---- Gear dropdown (sidebar actions) ---- */
-/* Pinned to the far edge, alone: everything else in the strip is a view you can
-   be in, and this is the one thing that is not. */
 .gearWrap {
   position: relative;
   flex: none;
-  margin-left: auto;
+  justify-self: start;
 }
 
-/* Strip buttons (this gear and the tiles) share one bare-icon variant:
-   transparent fill and border so only the glyph shows at rest, hover reveals
-   the brand border, and the lit one drops to a brand-tinted icon. */
-.gearBtn {
+.dockBtn {
+  justify-self: end;
+}
+
+/* Strip buttons (this gear, the dock toggle and the tiles) share one bare-icon
+   variant: transparent fill and border so only the glyph shows at rest, hover
+   reveals the brand border, and the lit one drops to a brand-tinted icon. */
+.stripBtn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -225,13 +228,13 @@
     color var(--sway-duration-fast) ease,
     border-color var(--sway-duration-fast) ease;
 }
-.gearBtn:hover {
+.stripBtn:hover {
   color: var(--fg-default);
   border-color: var(--brand-default);
 }
-/* Active (menu open): brand-tinted icon only. Border stays transparent, so a
-   hover over the open gear still gets today's brand border on top. */
-.gearBtn.active {
+/* Active (menu or dock open): brand-tinted icon only. Border stays transparent,
+   so a hover over it still gets the brand border on top. */
+.stripBtn.active {
   color: var(--brand-default);
 }
 
@@ -240,9 +243,9 @@
 .gearMenu {
   position: absolute;
   bottom: calc(100% + calc(6px * var(--ui-scale)));
-  /* Anchored on the trigger's right edge, which is the sidebar's: opening
-     leftward from here would take the menu off the column. */
-  right: 0;
+  /* Anchored on the trigger's left edge, which is the sidebar's: opening
+     the other way from here would take the menu off the column. */
+  left: 0;
   z-index: 1000;
   min-width: calc(180px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale));
@@ -633,6 +636,12 @@
   padding: 1px calc(2px * var(--ui-scale));
 }
 
+.tileCount {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Row flag, pushed to the right: the `stub` mark on an empty .bare container
    and a fan-out group's attempt count. The generic `.hint` variant is the
    quieter of the two. */
@@ -666,24 +675,30 @@
   background: var(--brand-muted, var(--brand-subtle));
 }
 
-/* ---- The view strip ----
-   The bottom strip: every view you can be in, packed left (the spaces, then
-   Features past a rule), with the actions gear alone on the right.
-   The bar itself does not clip, so the gear menu can open upward past its top
+/* The bar itself does not clip, so the gear menu can open upward past its top
    edge. */
 .spaceBar {
   position: relative;
-  /* Pinned to the foot of the column in every mode. Spaces gets there anyway
-     because the tree above it grows; the other two lists are content-height,
-     and without this the strip floats up under a short list. */
+  /* The Features list is content-height, and without this the strip floats up
+     under it. */
   margin-top: auto;
+  display: grid;
+  /* Equal outer tracks keep the views on the centre line. A squeeze comes out of
+     the views, since each outer track keeps its button's width. */
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  /* Right on `--tree-gutter`, like the head and the tree above it, so the dock
+     button lands on the one edge the whole column ends on. */
+  padding: calc(8px * var(--ui-scale)) var(--tree-gutter) calc(16px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
+}
+
+.stripNav {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  /* Right on `--tree-gutter`, like the head and the tree above it, so the gear
-     lands on the one edge the whole column ends on. */
-  padding: calc(8px * var(--ui-scale)) var(--tree-gutter) calc(16px * var(--ui-scale))
-    calc(10px * var(--ui-scale));
 }
 
 /* Divider from the tree above, inset 8px from each edge so it does not run into
