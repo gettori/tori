@@ -66,10 +66,9 @@
   color: var(--fg-default);
 }
 
-.toggle.on {
-  background: var(--brand-subtle);
-  border-color: var(--brand-default);
-  color: var(--fg-default);
+.toggle.on,
+.toggle.on:hover:not(:disabled) {
+  color: var(--brand-default);
 }
 
 .toggle:disabled {

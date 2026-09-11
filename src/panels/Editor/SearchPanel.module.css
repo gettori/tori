@@ -29,6 +29,14 @@
   flex: 1;
 }
 
+/* A pressed toolbar toggle lights its icon rather than filling the button.
+   Keyed on aria-pressed: a reactive `class` on IconButton would wipe its own
+   classList. Doubled to outrank IconButton's hover colour. */
+.pressable.pressable[aria-pressed="true"],
+.pressable.pressable[aria-pressed="true"]:hover:not(:disabled) {
+  color: var(--brand-default);
+}
+
 .form {
   display: flex;
   flex: none;
