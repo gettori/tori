@@ -24,16 +24,22 @@ export default function MemberChipRow(props: {
    *  a member's repair; `activeKey` then says which chip is on. */
   onPick?: (m: TintedMember) => void;
   activeKey?: string | null;
+  /** Several on at once, for a pane that narrows by member. Wins over
+   *  `activeKey`. */
+  isOn?: (m: TintedMember) => boolean;
+  canPick?: (m: TintedMember) => boolean;
   /** Inline in another toolbar: no padding, border or background of its own. */
   bare?: boolean;
   cap?: number;
 }) {
   const isActive = (m: TintedMember) =>
-    props.activeKey !== undefined
+    props.isOn
+      ? props.isOn(m)
+      : props.activeKey !== undefined
       ? m.key === props.activeKey
       : !!m.member.worktreePath && m.member.worktreePath === props.activeRoot;
   const cap = () => props.cap ?? CHIP_CAP;
-  const pickable = (m: TintedMember) => !!props.onPick || m.state.usable;
+  const pickable = (m: TintedMember) => (props.canPick ? props.canPick(m) : !!props.onPick || m.state.usable);
 
   /** The chips the row draws, and the ones behind `+N`.
    *

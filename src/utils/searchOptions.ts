@@ -87,10 +87,55 @@ export function parseSearchRepos(raw: unknown): string[] | undefined {
   return kept.length ? kept : undefined;
 }
 
+/** What a call sends beyond the stored options: the open-editors restriction
+ *  and Preserve Case, which VS Code keeps out of history too. */
+export type GrepOptions = SearchOptions & { only?: string[]; preserveCase?: boolean };
+
 /** Shape the `grep_project` invoke payload. Kept here so the argument names are
  *  asserted by a test rather than only by a failing round-trip at runtime. */
-export function grepArgs(root: string, query: string, options: SearchOptions, max: number) {
+export function grepArgs(root: string, query: string, options: GrepOptions, max: number) {
   return { root, query, options, max };
+}
+
+/** Root-relative paths of the open files under `root`, for "search only in
+ *  open editors". */
+export function openUnder(root: string, open: readonly string[]): string[] {
+  const base = root.endsWith("/") ? root : `${root}/`;
+  return open.filter((p) => p.startsWith(base)).map((p) => p.slice(base.length));
+}
+
+/** A preview segment: plain text, or the text of submatch `hit`. */
+export type PreviewSegment = { text: string; hit: number | null };
+
+/** A result line as VS Code previews it: leading whitespace gone, and a long
+ *  lead-in before the first match cut to `lead` characters behind an ellipsis.
+ *  Spans are taken in order and never merged, so `hit` indexes `submatches`. */
+export function previewSegments(text: string, submatches: Submatch[], lead = 24): PreviewSegment[] {
+  const spans = submatches
+    .map(([s, e], i) => ({ s: Math.max(0, Math.min(s, text.length)), e: Math.max(0, Math.min(e, text.length)), i }))
+    .filter((x) => x.e > x.s)
+    .sort((a, b) => a.s - b.s);
+  const indent = text.length - text.trimStart().length;
+  let from = spans.length ? Math.min(indent, spans[0].s) : indent;
+  let prefix = "";
+  if (spans.length && spans[0].s - from > lead) {
+    from = spans[0].s - lead;
+    prefix = "\u2026";
+  }
+  const out: PreviewSegment[] = [];
+  let at = from;
+  for (const x of spans) {
+    if (x.s < at) continue;
+    if (x.s > at) out.push({ text: text.slice(at, x.s), hit: null });
+    out.push({ text: text.slice(x.s, x.e), hit: x.i });
+    at = x.e;
+  }
+  if (at < text.length) out.push({ text: text.slice(at), hit: null });
+  if (prefix) {
+    if (out[0]?.hit === null) out[0] = { text: prefix + out[0].text, hit: null };
+    else out.unshift({ text: prefix, hit: null });
+  }
+  return out;
 }
 
 /** True when the backend that ran cannot honour `key`, so the panel should
