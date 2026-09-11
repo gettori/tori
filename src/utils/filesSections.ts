@@ -1,7 +1,7 @@
 // Which sections the Files tab stacks under its tree, and which of them are
-// open. One layout for every workspace, like VS Code's Explorer.
+// open. The store itself is `sectionLayout.ts`, shared with the Changes tab.
 
-import { createSignal } from "solid-js";
+import { createSectionLayout, SECTION_DEFAULT_H, SECTION_MIN_H } from "./sectionLayout";
 
 export type FilesSection = "folders" | "scripts" | "outline" | "todos";
 
@@ -12,74 +12,20 @@ export const OPTIONAL_SECTIONS: { id: Exclude<FilesSection, "folders">; label: s
   { id: "todos", label: "TODOs" },
 ];
 
-/** Heights in design px (before `--ui-scale`), header included. */
-type Sizes = Partial<Record<FilesSection, number>>;
-type Layout = { hidden: FilesSection[]; closed: FilesSection[]; sizes: Sizes };
+export { SECTION_DEFAULT_H, SECTION_MIN_H };
 
-/** A section nobody has dragged yet: the header and about seven rows. */
-export const SECTION_DEFAULT_H = 230;
-export const SECTION_MIN_H = 90;
+export const filesLayout = createSectionLayout<FilesSection>({
+  key: "sway.files.sections.v1",
+  ids: ["folders", "scripts", "outline", "todos"],
+  pinned: "folders",
+});
 
-const KEY = "sway.files.sections.v1";
-const SECTIONS: unknown[] = ["folders", "scripts", "outline", "todos"];
-
-function load(): Layout {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Layout> | null;
-    const list = (v: unknown) =>
-      Array.isArray(v) ? v.filter((s): s is FilesSection => SECTIONS.includes(s)) : [];
-    const sizes: Sizes = {};
-    for (const [k, v] of Object.entries(raw?.sizes ?? {})) {
-      if (list([k]).length && typeof v === "number" && v >= SECTION_MIN_H) sizes[k as FilesSection] = v;
-    }
-    return { hidden: list(raw?.hidden).filter((s) => s !== "folders"), closed: list(raw?.closed), sizes };
-  } catch {
-    return { hidden: [], closed: [], sizes: {} };
-  }
-}
-
-const [layout, setLayout] = createSignal<Layout>(load());
-
-function write(next: Layout, persist = true) {
-  setLayout(next);
-  if (!persist) return;
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    // Storage full or blocked: the layout still holds for this run.
-  }
-}
-
-const without = (xs: FilesSection[], s: FilesSection) => xs.filter((x) => x !== s);
-
-export const sectionShown = (s: FilesSection) => !layout().hidden.includes(s);
-export const sectionOpen = (s: FilesSection) => !layout().closed.includes(s);
-
-export function setSectionShown(s: FilesSection, shown: boolean) {
-  if (s === "folders") return;
-  const l = layout();
-  write({ ...l, hidden: shown ? without(l.hidden, s) : [...without(l.hidden, s), s] });
-}
-
-export function setSectionOpen(s: FilesSection, open: boolean) {
-  const l = layout();
-  write({ ...l, closed: open ? without(l.closed, s) : [...without(l.closed, s), s] });
-}
-
+export const sectionShown = filesLayout.shown;
+export const sectionOpen = filesLayout.open;
+export const setSectionShown = filesLayout.setShown;
+export const setSectionOpen = filesLayout.setOpen;
 /** Shown and open, for the palette's Show Scripts and Show Outline. */
-export function revealSection(s: FilesSection) {
-  const l = layout();
-  write({ ...l, hidden: without(l.hidden, s), closed: without(l.closed, s) });
-}
-
-export const sectionSize = (s: FilesSection) => layout().sizes[s] ?? SECTION_DEFAULT_H;
-
-/** Mid-drag writes skip storage; the drag's end saves once. */
-export function setSectionSize(s: FilesSection, h: number) {
-  const l = layout();
-  write({ ...l, sizes: { ...l.sizes, [s]: Math.max(SECTION_MIN_H, Math.round(h)) } }, false);
-}
-
-export function saveSectionSizes() {
-  write(layout());
-}
+export const revealSection = filesLayout.reveal;
+export const sectionSize = filesLayout.size;
+export const setSectionSize = filesLayout.setSize;
+export const saveSectionSizes = filesLayout.saveSizes;

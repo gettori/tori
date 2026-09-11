@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
+import { pointerClick } from "../../test/menus";
 import type { FileStatus } from "../../utils/gitActions";
 
 // The Changes panel, driven through the real component. Hunk-level staging and
@@ -300,12 +301,11 @@ describe("a11y", () => {
   it("keeps the row controls named, and stops emitting a native title", async () => {
     await mountPanel();
 
-    // Named by their own visible text, which is why the sweep did not have to
-    // add an `aria-label` here: "Copy diff" is a *description* of the Copy
-    // button, and `Button` backfills a name from `tooltip` only when there is no
-    // text to be named by. Both halves are asserted, because the failure this
-    // phase risks is a control that still looks right and answers to nothing.
-    const copy = screen.getAllByRole("button", { name: "Copy" });
+    // The row's controls are icon-only, so each carries a short `aria-label`
+    // and keeps the sentence for its tooltip. Both halves are asserted, because
+    // the failure this risks is a control that looks right and answers to
+    // nothing.
+    const copy = screen.getAllByRole("button", { name: "Copy diff" });
     expect(copy.length).toBeGreaterThan(0);
     expect(copy[0].getAttribute("title")).toBeNull();
   });
@@ -318,11 +318,15 @@ describe("the shared git store", () => {
     // showing the file as unstaged until something happened to refresh it.
     await mountPanel();
     expect(screen.queryByText("Staged Changes")).toBeNull();
+    // Two say "Changes" to begin with: the section header and the unstaged
+    // group under it.
+    expect(screen.getAllByText("Changes")).toHaveLength(2);
 
     await stage("/proj", ["src/a.ts"]);
 
     await waitFor(() => expect(screen.getByText("Staged Changes")).toBeTruthy());
-    expect(screen.queryByText("Changes")).toBeNull();
+    // The unstaged group is gone with its last row; the section header stays.
+    expect(screen.getAllByText("Changes")).toHaveLength(1);
   });
 });
 
@@ -371,9 +375,10 @@ describe("conflicts", () => {
     // button is not clickable in its own right.
     expect(rows[0].tagName).toBe("BUTTON");
     expect(rows[0].querySelectorAll("button")).toHaveLength(0);
-    // The ordinary file beside it still gets its section and its controls, so
-    // the conflict section is an addition rather than a takeover.
-    expect(screen.getByText("Changes")).toBeTruthy();
+    // The ordinary file beside it still gets its group and its controls, so the
+    // conflict group is an addition rather than a takeover. Two now say
+    // "Changes": the section header and the group inside it.
+    expect(screen.getAllByText("Changes").length).toBeGreaterThan(1);
     expect(screen.getByTitle("src/a.ts").querySelectorAll("button").length).toBeGreaterThan(0);
   });
 
@@ -442,8 +447,7 @@ describe("conflicts", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
 
-    // `Button` puts its label in a span, so the control is the ancestor.
-    const stashAll = () => screen.getByText("Stash all").closest("button")!;
+    const stashAll = () => screen.getByRole<HTMLButtonElement>("button", { name: "Stash all" });
     expect(stashAll().disabled).toBe(true);
     // Reached through the hover surface, since a disabled button fires no
     // pointer events of its own.
@@ -485,7 +489,7 @@ describe("discard", () => {
     render(() => <ReviewPanel root="/proj" selected={null} onReverted={(o) => reverted.push(o)} />);
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
 
-    fireEvent.click(screen.getByText("Discard"));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
 
     // Blast radius and the way back, both stated before anything happens.
     const dialog = await screen.findByText(/1 file goes back to how it is staged/);
@@ -509,7 +513,7 @@ describe("discard", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
 
-    fireEvent.click(screen.getByText("Discard"));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     await confirmWith("Cancel");
 
     await waitFor(() => expect(screen.queryByText("Discard changes")).toBeNull());
@@ -521,7 +525,7 @@ describe("discard", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByTitle("src/new.ts")).toBeTruthy());
 
-    fireEvent.click(screen.getByText("Discard"));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     // An untracked file is not restored to anything, it is removed, and git has
     // no copy. Calling that "discard changes" would understate it.
     expect(await screen.findByText("Delete src/new.ts?")).toBeTruthy();
@@ -535,7 +539,7 @@ describe("discard", () => {
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
 
     const toasts = captureToasts();
-    fireEvent.click(screen.getByText("Discard"));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
 
     await waitFor(() => expect(toasts.messages.join(" ")).toContain("docs-agent"));
     toasts.stop();
@@ -557,7 +561,7 @@ describe("discard", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByTitle("src/b.ts")).toBeTruthy());
 
-    const [discardA, discardB] = screen.getAllByText("Discard");
+    const [discardA, discardB] = screen.getAllByRole("button", { name: "Discard" });
     fireEvent.click(discardA);
     expect(await screen.findByText("Discard changes to src/a.ts?")).toBeTruthy();
 
@@ -582,7 +586,7 @@ describe("discard", () => {
 
     // Staged work is safe in the index, so there is nothing here to destroy.
     // Unstaging moves the row down to where discard lives.
-    expect(screen.queryByText("Discard")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Discard" })).toBeNull();
   });
 });
 
@@ -611,7 +615,7 @@ describe("stash", () => {
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
     fireEvent.input(screen.getByPlaceholderText("Summary"), { target: { value: "half-done refactor" } });
 
-    fireEvent.click(screen.getByText("Stash all"));
+    fireEvent.click(screen.getByRole("button", { name: "Stash all" }));
 
     await waitFor(() =>
       expect(stashArgs).toEqual([
@@ -631,7 +635,7 @@ describe("stash", () => {
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
 
     fireEvent.click(screen.getByLabelText(/include untracked/i));
-    fireEvent.click(screen.getByText("Stash all"));
+    fireEvent.click(screen.getByRole("button", { name: "Stash all" }));
 
     await waitFor(() =>
       expect(stashArgs[0]).toEqual({
@@ -648,7 +652,7 @@ describe("stash", () => {
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
 
     const toasts = captureToasts();
-    fireEvent.click(screen.getByText("Stash all"));
+    fireEvent.click(screen.getByRole("button", { name: "Stash all" }));
     await waitFor(() => expect(toasts.messages.join(" ")).toContain("Nothing to stash"));
     toasts.stop();
   });
@@ -714,22 +718,30 @@ describe("stash", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await screen.findByText("Stashes");
 
-    for (const label of ["Stash all", "Apply", "Pop", "Drop"]) {
+    for (const label of ["Stash all", "Apply stash", "Pop stash", "Drop stash"]) {
       const toasts = captureToasts();
-      fireEvent.click(screen.getByText(label));
+      fireEvent.click(screen.getByRole("button", { name: label }));
       await waitFor(() => expect(toasts.messages.join(" ")).toContain("docs-agent"));
       toasts.stop();
     }
     expect(stashArgs).toEqual([]);
-    expect(screen.queryByText("Drop stash")).toBeNull();
+    expect(screen.queryByText("Drop this stash?")).toBeNull();
   });
 });
 
 describe("amend", () => {
+  /** Amend lives in the Commit button's own menu now, so switching it is two
+   *  clicks: open the split button's menu, then pick the row. */
+  async function flipAmend(row: "Commit (Amend)" | "Stop amending") {
+    pointerClick(screen.getByRole("button", { name: "More commit actions" }));
+    const item = await screen.findByRole("menuitem", { name: row });
+    pointerClick(item);
+  }
+
   /** Toggle amend on and wait for HEAD's message to land in the fields. */
   async function turnAmendOn() {
-    fireEvent.click(screen.getByLabelText(/Amend last commit/i));
-    await waitFor(() => expect(screen.getByText("Amend")).toBeTruthy());
+    await flipAmend("Commit (Amend)");
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Amend/ })).toBeTruthy());
   }
 
   it("prefills the fields from HEAD and splits subject from body", async () => {
@@ -754,9 +766,7 @@ describe("amend", () => {
       expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("previous subject"),
     );
 
-    fireEvent.click(
-      screen.getByLabelText(/Amend last commit/i),
-    );
+    await flipAmend("Stop amending");
     await waitFor(() =>
       expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("my own subject"),
     );
@@ -864,7 +874,7 @@ describe("Open PR", () => {
     defaultBase = "main";
     aheadBehind = { ahead: 0, behind: 0, has_upstream: true };
     await mountPanel();
-    return await screen.findByText("Open PR");
+    return await screen.findByRole("button", { name: "Open PR" });
   }
 
   it("opens the in-app form on a signed-in github.com remote", async () => {
@@ -946,7 +956,7 @@ describe("Open PR", () => {
     // Reopening reseeds from the panel's base, so seeing "main" again is the
     // proof that the edit never reached it. The compare-URL fallback reads that
     // same value, which is what the leak would have retargeted.
-    fireEvent.click(screen.getByText("Open PR"));
+    fireEvent.click(screen.getByRole("button", { name: "Open PR" }));
     await screen.findByText("Open a pull request");
     expect(screen.getByDisplayValue("main")).toBeTruthy();
     expect(screen.queryByDisplayValue("release")).toBeNull();
@@ -1092,7 +1102,7 @@ describe("the agent-drafted PR description", () => {
         selected={{ sessionId: "s1", agent: "claude", folderPath: "/proj" } as never}
       />
     ));
-    fireEvent.click(await screen.findByText("Open PR"));
+    fireEvent.click(await screen.findByRole("button", { name: "Open PR" }));
     await screen.findByText("Open a pull request");
 
     const toasts = captureToasts();
@@ -1191,7 +1201,7 @@ describe("inside a Feature", () => {
   it("discards in the member whose row was clicked, and leaves the other alone", async () => {
     await mountFeature();
 
-    fireEvent.click(within(rowIn(B, "src/index.ts")).getByText("Discard"));
+    fireEvent.click(within(rowIn(B, "src/index.ts")).getByRole("button", { name: "Discard" }));
     fireEvent.click(await screen.findByText("Discard changes"));
 
     await waitFor(() => expect(discardArgs).toHaveLength(1));
@@ -1205,7 +1215,7 @@ describe("inside a Feature", () => {
     await mountFeature();
 
     const header = document.querySelector(`[data-root="${B}"]`)!;
-    fireEvent.click(within(header as HTMLElement).getByText("Stage all"));
+    fireEvent.click(within(header as HTMLElement).getByRole("button", { name: "Stage all" }));
 
     await waitFor(() => expect(stageArgs).toHaveLength(1));
     expect(stageArgs[0]).toMatchObject({ projectPath: B, paths: ["src/index.ts"] });
@@ -1229,24 +1239,30 @@ describe("inside a Feature", () => {
     ]);
   });
 
-  it("keeps branch, ahead/behind and Push in the member headers, and Open PR on the member in front", async () => {
+  it("names the branch once but keeps ahead/behind and Push per member", async () => {
     branches = [{ name: "feat/auth", current: true }];
     aheadBehind = { ahead: 2, behind: 0, has_upstream: true };
     originUrl = "git@github.com:o/r.git";
     defaultBase = "main";
     await mountFeature();
 
-    // One per member, none in the top bar: a Feature has no single branch to
-    // push, and a bar-level Push could only ever mean the member in front.
-    await waitFor(() => expect(screen.getAllByText("↑2 ↓0")).toHaveLength(2));
-    for (const [i, root] of [A, B].entries()) {
+    // Escaped rather than literal so this file stays ASCII, same as the panel.
+    const PILL = "\u21912 \u21930";
+    // One pill per member, none in the top bar: a Feature has no single branch
+    // to push, and a bar-level Push could only ever mean the member in front.
+    await waitFor(() => expect(screen.getAllByText(PILL)).toHaveLength(2));
+    for (const root of [A, B]) {
       const section = document.querySelector(`[data-root="${root}"]`)! as HTMLElement;
-      expect(within(section).getAllByText("↑2 ↓0")).toHaveLength(1);
-      expect(within(section).getAllByText("feat/auth")).toHaveLength(1);
-      expect(i).toBeLessThan(2);
+      expect(within(section).getAllByText(PILL)).toHaveLength(1);
+      // The branch is not repeated per member: every member of a Feature is on
+      // the same one, so the top row names it for all of them.
+      expect(within(section).queryByText("feat/auth")).toBeNull();
     }
+    expect(screen.getAllByText("feat/auth")).toHaveLength(1);
     // The PR is still one repo's, so there is exactly one of it.
-    await waitFor(() => expect(screen.getAllByText("Open PR")).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "Open PR" })).toHaveLength(1),
+    );
   });
 
   it("says a member cannot be opened instead of listing files for it", async () => {
@@ -1266,7 +1282,7 @@ describe("inside a Feature", () => {
     expect(within(section).getByText("Recreate")).toBeTruthy();
     // No file list, and no Stage all offering to act on a repo that is not there.
     expect(within(section).queryByTitle("src/index.ts")).toBeNull();
-    expect(within(section).queryByText("Stage all")).toBeNull();
+    expect(within(section).queryByRole("button", { name: "Stage all" })).toBeNull();
   });
 
   it("re-reads every member on window focus, not just the one in front", async () => {
@@ -1279,10 +1295,10 @@ describe("inside a Feature", () => {
   });
 });
 
-// Phase 3: one member at a time. The commit box, its draft and the checkpoint
-// strip are one-repo surfaces, so which repo they mean has to be a single
-// answer, visible on screen and the same for all three.
-describe("the member a Feature commits in", () => {
+// A Feature is one branch checked out in N repos, so one message lands in every
+// member that has staged work. The chips are how that is narrowed, and amend is
+// the exception that takes exactly one member.
+describe("the members a Feature commits in", () => {
   const A = "/feat/api";
   const B = "/feat/web";
   const READY = { label: "Ready", usable: true, action: null, reason: null };
@@ -1291,12 +1307,18 @@ describe("the member a Feature commits in", () => {
     { path: B, repoPath: "/r/web", label: "web", state: READY },
   ];
   const SESSION = { sessionId: "s1", agent: "claude", folderPath: A, sessionCwd: A };
+  const STAGED_ROW = { status: "M ", path: "src/index.ts", staged: true, unstaged: false };
 
-  /** Two members, each with one staged file, and a tab open in `activePath`. */
-  async function mountWithActive(activePath: string | null, selected: unknown = null) {
+  /** Two members with staged work unless `only` names one, and a tab open in
+   *  `activePath`. */
+  async function mountWithActive(
+    activePath: string | null,
+    selected: unknown = null,
+    only?: string,
+  ) {
     statusByRoot = {
-      [A]: [{ status: "M ", path: "src/index.ts", staged: true, unstaged: false }],
-      [B]: [{ status: "M ", path: "src/index.ts", staged: true, unstaged: false }],
+      [A]: only && only !== A ? [] : [STAGED_ROW],
+      [B]: only && only !== B ? [] : [STAGED_ROW],
     };
     enterRoots([A, B], A);
     render(() => (
@@ -1306,48 +1328,58 @@ describe("the member a Feature commits in", () => {
     await waitFor(() => expect(handlers["fs://changed"]?.length).toBeGreaterThan(1));
   }
 
-  /** The commit box's own Commit, not a member header's. */
-  const commitBox = () => screen.getByPlaceholderText("Summary").parentElement!;
+  const commitButton = () => screen.getByRole("button", { name: /^(Commit|Amend)/ });
 
-  async function commitWith(message: string) {
+  async function commitWith(message: string, expected: number) {
     fireEvent.input(screen.getByPlaceholderText("Summary"), { target: { value: message } });
-    fireEvent.click(within(commitBox()).getByText("Commit"));
-    await waitFor(() => expect(commitArgs).toHaveLength(1));
+    fireEvent.click(commitButton());
+    await waitFor(() => expect(commitArgs).toHaveLength(expected));
   }
 
-  it("follows the file in front, and says which member that is", async () => {
-    // The member in front is A; the file being looked at is B's. The changes
-    // on screen are B's, so the message is about B.
+  it("lands one message in every member with staged work, and says how many", async () => {
     await mountWithActive(`${B}/src/index.ts`);
 
-    expect(screen.getByText("Committing in web")).toBeTruthy();
-    await commitWith("Say what changed");
+    // The count is the only warning that one click writes two commits.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Commit in 2 repos" })).toBeTruthy());
+    await commitWith("Say what changed", 2);
+    expect(commitArgs.map((c) => (c as { projectPath: string }).projectPath)).toEqual([A, B]);
+    // Member order, not the order they were clicked in: the two commits are one
+    // change, and the tree and search panels number the members the same way.
+    expect(commitArgs.every((c) => (c as { message: string }).message === "Say what changed")).toBe(true);
+  });
+
+  it("says plain Commit when only one member has anything staged", async () => {
+    await mountWithActive(null, null, B);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Commit" })).toBeTruthy());
+    await commitWith("Say what changed", 1);
     expect(commitArgs[0]).toMatchObject({ projectPath: B });
   });
 
-  it("falls back to the member in front with no file open", async () => {
-    await mountWithActive(null);
+  it("leaves a member out once its chip is unticked", async () => {
+    await mountWithActive(`${A}/src/index.ts`);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Commit in 2 repos" })).toBeTruthy());
 
-    expect(screen.getByText("Committing in api")).toBeTruthy();
-    await commitWith("Say what changed");
+    fireEvent.click(screen.getByRole("button", { name: "Leave web out of this commit" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Commit" })).toBeTruthy());
+    await commitWith("Say what changed", 1);
     expect(commitArgs[0]).toMatchObject({ projectPath: A });
   });
 
-  it("keeps the member a section's Commit button named, even as the file in front moves", async () => {
-    // An explicit choice is the one thing on screen saying where the message
-    // lands, so it stays put rather than moving under the reader.
-    await mountWithActive(`${A}/src/index.ts`);
-    fireEvent.click(screen.getByRole("button", { name: "Commit in web" }));
+  it("draws no chips when there is nothing to pick between", async () => {
+    // One member staged is not a choice, and a row of one chip would only ask a
+    // question with a single answer.
+    await mountWithActive(null, null, A);
 
-    await waitFor(() => expect(screen.getByText("Committing in web")).toBeTruthy());
-    await commitWith("Say what changed");
-    expect(commitArgs[0]).toMatchObject({ projectPath: B });
+    expect(screen.queryByRole("button", { name: /out of this commit$/ })).toBeNull();
   });
 
   it("names the drafted paths the way the session can resolve them", async () => {
     // The agent is running in A. A bare "src/index.ts" would name A's file
-    // while meaning B's, so the mention goes out absolute instead.
-    await mountWithActive(`${B}/src/index.ts`, SESSION);
+    // while meaning B's, so the mention goes out absolute instead. Only B is
+    // staged, so B is the repo the draft is about.
+    await mountWithActive(`${B}/src/index.ts`, SESSION, B);
     const sent: { text: string }[] = [];
     const onSend = (e: Event) => sent.push((e as CustomEvent<{ text: string }>).detail);
     window.addEventListener(SEND_TO_SESSION, onSend);
@@ -1359,12 +1391,23 @@ describe("the member a Feature commits in", () => {
     expect(sent[0].text).toContain(`${B}/src/index.ts`);
   });
 
-  it("points the checkpoint strip at the same member the box is about", async () => {
+  it("points the checkpoint strip at the member the file in front lives in", async () => {
     await mountWithActive(`${B}/src/index.ts`, SESSION);
 
     // Both of the strip's roots move together: a `root` that followed the file
     // while `folderPath` stayed would list A's sessions over B's checkpoints.
     await waitFor(() => expect(backstopRoots).toContain(B));
     expect(backstopRoots).not.toContain(A);
+  });
+
+  it("keeps the member a section's Commit button named", async () => {
+    // An explicit choice is the one thing on screen saying where an amend
+    // lands, so it stays put rather than moving under the reader.
+    await mountWithActive(`${A}/src/index.ts`);
+    fireEvent.click(screen.getByRole("button", { name: "Commit in web" }));
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByPlaceholderText("Summary")),
+    );
   });
 });

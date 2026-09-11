@@ -1,40 +1,158 @@
-/* Review panel (git changes list + inline diff), hash-scoped. The shared
+/* The Changes tab: a branch row, the commit composer, then stacked sections.
+   Section chrome is shared with the Files tab (PanelSection.module.css); the
    `.tree-empty` empty-state stays global (via :global), same as FileTree. */
 .reviewPanel {
+  display: flex;
   flex: 1;
-  overflow: auto;
+  flex-direction: column;
+  min-height: 0;
   background: var(--canvas-card);
-  padding: calc(4px * var(--ui-scale)) 0;
   font-size: var(--sway-text-xl);
   user-select: none;
 }
 
-.headerBar {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+/* Row one, the height the Files and Search tabs open with. */
+.topBar {
   display: flex;
+  flex: none;
   align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  background: var(--canvas-card);
-  border-bottom: 1px solid var(--border-default);
+  gap: calc(4px * var(--ui-scale));
+  min-height: calc(40px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale));
 }
 
-.branchName {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-default);
-  font-weight: 600;
-}
-
-.aheadBehind {
+.topBar > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
   color: var(--fg-muted);
 }
 
-/* Header push / Open-PR are shared <Button size="xs">s now. */
+/* One branch name for the whole tab: a Feature checks the same branch out in
+   every member, so naming it per member would repeat one fact N times. */
+.branchName {
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ahead/behind, and the push it invites. A control rather than a label: the
+   numbers are the reason to push, so they are the thing you press. */
+.aheadPill {
+  flex: none;
+  padding: 0 calc(6px * var(--ui-scale));
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--sway-text-xs);
+  cursor: pointer;
+}
+
+.aheadPill:hover:not(:disabled) {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
+
+.aheadPill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* The stack of sections below the composer, which is what scrolls. */
+.stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* A section's own scroller, for the bodies that are not already one. */
+.sectionScroll {
+  flex: 1;
+}
+
+/* How many rows a section holds, on its header. */
+.count {
+  flex: none;
+  min-width: calc(16px * var(--ui-scale));
+  padding: 0 calc(5px * var(--ui-scale));
+  background: var(--neutral-subtle);
+  border-radius: var(--sway-radius-pill);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Leaves room for the tick beside a section's name in the ... menu, so the
+   labels line up whether or not one is shown. */
+.checkSlot {
+  display: inline-flex;
+  flex: none;
+  justify-content: center;
+  width: var(--control-icon);
+}
+
+.checkSlot > svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+/* The verb and its variants as one control: a chevron button welded to the
+   primary button's right edge. */
+.splitButton {
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.splitButton .commitButton {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.splitMore.splitMore {
+  width: calc(20px * var(--ui-scale));
+  background: var(--brand-default);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: var(--brand-on);
+}
+
+.splitMore.splitMore:hover:not(:disabled) {
+  background: var(--brand-strong);
+}
+
+/* Included in the next commit, or not. The chip itself carries the member's
+   colour, so the button only has to say whether it is on. */
+.chip {
+  display: inline-flex;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.4;
+}
+
+.chip[aria-pressed="true"] {
+  opacity: 1;
+}
+
+/* The include-untracked box sits in a section header, where the rows around it
+   are 30px tall. */
+.untrackedBox {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+}
 
 /* One member's band inside a Feature. Nothing on a branch unit, which has one
    section and no header to separate it from anything. */
@@ -44,9 +162,11 @@
 
 /* Whose section this is, where its branch stands, and the three things you do
    to one repo. Sticky under the panel's own bar, the same as the file tree's. */
+/* Sticks to the top of the section's own scroller, which is what it is inside
+   now that the branch row above is not sticky itself. */
 .memberHeader {
   position: sticky;
-  top: calc(30px * var(--ui-scale));
+  top: 0;
   z-index: 1;
   display: flex;
   align-items: center;
@@ -60,20 +180,10 @@
    every Space leaves it at the neutral default. Same chip the tree draws. */
 
 .memberName {
+  flex: 1;
   overflow: hidden;
   color: var(--fg-default);
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The member's branch. Quiet beside its name: inside a Feature every member is
-   on the same branch, so it is confirmation rather than news. */
-.memberBranch {
-  flex: 1;
-  overflow: hidden;
-  color: var(--fg-muted);
-  font-size: var(--sway-text-md);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -89,8 +199,8 @@
   white-space: nowrap;
 }
 
-/* Which member the message below lands in. Present only inside a Feature, so
-   it is never a line explaining the one repo there is. */
+/* Which members the message below lands in. Present only inside a Feature, so
+   it is never a row explaining the one repo there is. */
 .commitTarget {
   display: flex;
   align-items: center;
@@ -112,14 +222,16 @@
   color: var(--fg-muted);
 }
 
-.sectionHeader {
+/* Conflicts / Staged / Changes inside one member. Quieter than a section
+   header, which is the thing above them. */
+.groupHeader {
   margin: calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale)) 0;
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--fg-muted);
+  text-transform: uppercase;
 }
 
 .reviewRow {
@@ -127,7 +239,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   margin: 0 calc(4px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding: calc(1px * var(--ui-scale)) calc(6px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
   cursor: pointer;
   white-space: nowrap;
@@ -138,15 +250,9 @@
   background: var(--neutral-hover);
 }
 
-/* The +/- stage toggle is a ghost <Button size="xs">; only the mono glyph is
-   kept here so the +/- reads like the diff gutter. */
-.stageToggle {
-  flex: none;
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-}
-
 .reviewStatus {
   flex: none;
+  margin-left: auto;
   width: calc(18px * var(--ui-scale));
   text-align: center;
   font-family: "SF Mono", Menlo, Monaco, monospace;
@@ -204,10 +310,26 @@
   opacity: 1;
 }
 
+/* The file's own name. Never shrinks below itself: the folder beside it is the
+   part that gives way when the panel is narrow. */
 .reviewName {
+  flex: none;
   overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 100%;
   color: var(--fg-default);
+  text-overflow: ellipsis;
+}
+
+/* The folders above the file, dimmed. Right-to-left so a long path keeps its
+   tail, which is the half that says which file this is. */
+.reviewDir {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-muted);
+  direction: rtl;
+  font-size: var(--sway-text-md);
+  text-align: left;
+  text-overflow: ellipsis;
 }
 
 /* A rename's source path. Dimmed, because the destination is the one that
@@ -216,20 +338,23 @@
   color: var(--fg-muted);
 }
 
-/* The Copy row action is a ghost <Button size="xs">; it stays hidden until the
-   row is hovered or the button is focused (so tabbing never lands on an
-   invisible control). Only that reveal behaviour is kept here. */
-.rowAction {
+/* A row's trailing controls, hidden until the row is hovered or one of them has
+   focus, so a list reads as names rather than as rows of buttons. Focus is
+   included so tabbing never lands on an invisible control. */
+.rowEnd {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  gap: calc(1px * var(--ui-scale));
   opacity: 0;
 }
-.reviewRow:hover .rowAction,
-.rowAction:focus-visible {
+
+.reviewRow:hover .rowEnd,
+.memberHeader:hover .rowEnd,
+.stashRow:hover .rowEnd,
+.rowEnd:focus-within {
   opacity: 1;
 }
-
-/* The per-hunk stage/unstage and the inline/side-by-side view toggle are shared
-   <Button>/<IconButton> controls now. */
 
 /* A stash entry. Same rhythm as a file row, but nothing to expand: the message
    takes the slack so the age and the three actions sit hard right. */
@@ -259,26 +384,13 @@
 
 /* Sits directly above the commit box, because it is the other thing you can do
    with the same pile of changes. */
-.stashBar {
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-}
-
-.stashBar .amendRow {
-  flex: 1;
-}
-
 .commitBox {
-  position: sticky;
-  bottom: 0;
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: calc(4px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-card);
-  border-top: 1px solid var(--border-default);
 }
 
 .commitInput {
@@ -298,15 +410,6 @@
   resize: vertical;
   font-family: inherit;
   line-height: 1.4;
-}
-
-.amendRow {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
-  cursor: pointer;
 }
 
 .commitActions {
