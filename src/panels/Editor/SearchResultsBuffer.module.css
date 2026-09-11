@@ -1,6 +1,6 @@
-/* The editable search-results buffer, as an editor tab. Same header rhythm as
-   the commit log (CommitLog.module.css), since both are tabs that are not files
-   and both put one bar of context above their content. */
+/* The Search Editor tab: VS Code's form on top, then every hit as one editable
+   buffer. Same header rhythm as the commit log (CommitLog.module.css), since
+   both are tabs that are not files. */
 .resultsBuffer {
   flex: 1;
   display: flex;
@@ -10,28 +10,53 @@
   background: var(--canvas-card);
 }
 
-.headerBar {
+.form {
   flex: none;
   display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  background: var(--canvas-card);
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
   font-size: var(--sway-text-lg);
 }
 
-.query {
-  flex: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-default);
-  font-weight: 600;
+.queryRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
 }
 
-/* Takes the slack, so the button stays pinned to the right however long the
-   outcome line is - and, rendered empty, so that it does when there is none. */
+.contextInput {
+  flex: none;
+  width: calc(52px * var(--ui-scale));
+  height: calc(28px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--sway-text-lg);
+  outline: none;
+}
+
+.contextInput:focus {
+  border-color: var(--brand-default);
+}
+
+.contextInput:disabled {
+  opacity: 0.45;
+}
+
+/* What the last search or apply said, with Apply and the details toggle held
+   against the right edge whatever its length. */
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  min-height: calc(22px * var(--ui-scale));
+}
+
 .meta {
   flex: 1;
   min-width: 0;
@@ -41,23 +66,22 @@
   color: var(--fg-muted);
 }
 
-/* Why a keystroke was refused. Under the header rather than in it: it appears
-   mid-typing, and a line that pushes the toolbar around as you type is worse
-   than one that pushes the text down. */
-.refusal {
-  flex: none;
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  color: var(--danger-fg);
-  background: var(--canvas-head);
-  border-bottom: 1px solid var(--border-default);
-  font-size: var(--sway-text-lg);
-}
-
 .editorHost {
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.editorHost.blank {
+  display: none;
+}
+
+.blankHint {
+  flex: 1;
+  padding: calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-lg);
 }
 
 .editorHost :global(.cm-editor) {
@@ -67,4 +91,21 @@
 .editorHost :global(.cm-scroller) {
   overflow: auto;
   font-family: var(--sway-font-mono);
+}
+
+.editorHost :global(.sr-note),
+.editorHost :global(.sr-context),
+.editorHost :global(.sr-lineno) {
+  color: var(--fg-muted);
+}
+
+.editorHost :global(.sr-file),
+.editorHost :global(.sr-member) {
+  color: var(--fg-default);
+  font-weight: 600;
+}
+
+.editorHost :global(.sr-hit) {
+  background: var(--accent-subtle);
+  border-radius: calc(2px * var(--ui-scale));
 }

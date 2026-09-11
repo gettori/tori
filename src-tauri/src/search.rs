@@ -46,6 +46,11 @@ pub struct SearchOptions {
     pub exclude: String,
     /// Search files the ignore rules would normally hide.
     pub no_ignore: bool,
+    /// Root-relative paths to keep, for "search only in open editors". Empty
+    /// means every file.
+    pub only: Vec<String>,
+    /// Replace only: shape the replacement like the text it replaces.
+    pub preserve_case: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -473,7 +478,7 @@ pub fn grep_project(
     let include = build_globs(&options.include)?;
     let exclude = build_globs(&options.exclude)?;
 
-    let candidates = if use_rg {
+    let mut candidates = if use_rg {
         run_rg(&root, &canonical_pattern(&query, &options), &options, max)?
     } else {
         let literal = longest_literal(&query, &options);
@@ -483,6 +488,10 @@ pub fn grep_project(
             plain_grep(&root, literal.as_deref(), &options)?
         }
     };
+    if !options.only.is_empty() {
+        let only: std::collections::HashSet<&str> = options.only.iter().map(String::as_str).collect();
+        candidates.retain(|c| only.contains(c.path.as_str()));
+    }
 
     let (matches, truncated) = finalize(candidates, &re, include.as_ref(), exclude.as_ref(), max);
     let files = digests_for(&root, &matches);
@@ -588,7 +597,14 @@ fn line_spans(content: &str) -> Vec<(usize, usize)> {
 /// Going through `Captures::expand` is what makes `$1` and `${name}` work, and
 /// it is also why the span has to be re-found rather than trusted: the captures
 /// only exist as a by-product of matching.
-fn expand_at(re: &Regex, line: &str, start: usize, end: usize, replacement: &str) -> Option<String> {
+fn expand_at(
+    re: &Regex,
+    line: &str,
+    start: usize,
+    end: usize,
+    replacement: &str,
+    preserve: bool,
+) -> Option<String> {
     let caps = re.captures_at(line, start)?;
     let m = caps.get(0)?;
     if m.start() != start || m.end() != end {
@@ -596,7 +612,43 @@ fn expand_at(re: &Regex, line: &str, start: usize, end: usize, replacement: &str
     }
     let mut out = String::new();
     caps.expand(replacement, &mut out);
-    Some(out)
+    Some(if preserve { case_like(m.as_str(), &out) } else { out })
+}
+
+/// VS Code's Preserve Case, ported from `buildReplaceStringWithCasePreserved`
+/// so a replace here shapes text the way the editor people know does.
+fn case_like(matched: &str, pattern: &str) -> String {
+    if matched.is_empty() || pattern.is_empty() {
+        return pattern.to_string();
+    }
+    let splits_on = |sep: char| {
+        matched.contains(sep)
+            && pattern.contains(sep)
+            && matched.split(sep).count() == pattern.split(sep).count()
+    };
+    let (hyphens, underscores) = (splits_on('-'), splits_on('_'));
+    if hyphens != underscores {
+        let sep = if hyphens { '-' } else { '_' };
+        let parts: Vec<String> = matched
+            .split(sep)
+            .zip(pattern.split(sep))
+            .map(|(m, p)| case_like(m, p))
+            .collect();
+        return parts.join(&sep.to_string());
+    }
+    let first = matched.chars().next().unwrap_or_default();
+    let (head, tail) = pattern.split_at(pattern.chars().next().map_or(0, char::len_utf8));
+    if matched.to_uppercase() == matched {
+        pattern.to_uppercase()
+    } else if matched.to_lowercase() == matched {
+        pattern.to_lowercase()
+    } else if first.is_uppercase() {
+        format!("{}{tail}", head.to_uppercase())
+    } else if first.to_uppercase().ne(std::iter::once(first)) {
+        format!("{}{tail}", head.to_lowercase())
+    } else {
+        pattern.to_string()
+    }
 }
 
 /// What a replacement produces for each displayed span, without touching disk.
@@ -618,7 +670,7 @@ pub fn preview_replace(
         .map(|s| {
             let start = utf16_to_byte(&s.text, s.start)?;
             let end = utf16_to_byte(&s.text, s.end)?;
-            expand_at(&re, &s.text, start, end, &replacement)
+            expand_at(&re, &s.text, start, end, &replacement, options.preserve_case)
         })
         .collect())
 }
@@ -686,7 +738,7 @@ pub fn replace_in_files(
                 bad = true;
                 break;
             };
-            let Some(new) = expand_at(&re, text, bs, be, &replacement) else {
+            let Some(new) = expand_at(&re, text, bs, be, &replacement, options.preserve_case) else {
                 bad = true;
                 break;
             };

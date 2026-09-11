@@ -1,129 +1,244 @@
-/* Search panel (project-wide grep results), hash-scoped. The shared
-   `.tree-empty` empty-state stays global (via :global), same as ReviewPanel. */
+/* The Search tab, VS Code's Search view: a toolbar row, the query and replace
+   fields beside the replace chevron, then the results as a list or a tree. */
 .searchPanel {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   background: var(--canvas-card);
   font-size: var(--sway-text-xl);
 }
 
 .searchPanel :global(.tree-empty) {
-  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
 }
 
-.inputBar {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  background: var(--canvas-card);
-  border-bottom: 1px solid var(--border-default);
+.topBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
 }
 
-.searchInput {
-  width: 100%;
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  background: var(--canvas-default);
-  border: 1px solid var(--border-default);
+.spacer {
+  flex: 1;
+}
+
+/* The chevron column runs the height of the query and replace fields, so it
+   reads as the switch for the second one. */
+.form {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: calc(2px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
+}
+
+.replaceToggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: calc(18px * var(--ui-scale));
+  max-height: calc(62px * var(--ui-scale));
+  padding: 0;
+  background: none;
+  border: none;
   border-radius: var(--sway-radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.replaceToggle:hover {
+  background: var(--neutral-hover);
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+}
+
+.fields {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
 }
 
 .replaceRow {
   display: flex;
   align-items: center;
   gap: calc(4px * var(--ui-scale));
-  margin-top: calc(4px * var(--ui-scale));
 }
 
-/* Reports what a replace did, including what it refused to touch. */
-.outcome {
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  color: var(--fg-default);
+.detailsRow {
+  display: flex;
+  justify-content: flex-end;
+  margin: calc(-3px * var(--ui-scale)) 0;
+}
+
+/* The count line under the fields, and where a replace or a failure reports. */
+.message {
+  flex: none;
+  padding: calc(2px * var(--ui-scale)) calc(12px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  color: var(--fg-muted);
   font-size: var(--sway-text-md);
 }
 
-/* The per-file and per-match replace buttons: present only while a replacement
-   is typed, and kept out of the row's flow so the match text still ellipsises. */
-.rowAction {
-  flex: none;
+.link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent-fg);
+  font: inherit;
+  cursor: pointer;
 }
 
-.previewText {
+.link:hover {
+  text-decoration: underline;
+}
+
+.results {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: calc(8px * var(--ui-scale));
+}
+
+.section {
   display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.row {
+  min-width: 0;
+  padding-top: calc(2px * var(--ui-scale));
+  padding-bottom: calc(2px * var(--ui-scale));
+}
+
+.memberRow {
+  font-weight: 600;
+}
+
+.fileName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fileDir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  text-overflow: ellipsis;
+}
+
+.matchText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-default);
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.rowEnd {
+  display: inline-flex;
+  flex: none;
   align-items: center;
   gap: calc(4px * var(--ui-scale));
-  flex: none;
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  margin-left: auto;
 }
 
-.previewPair {
-  display: flex;
+/* Only on the row under the cursor, VS Code's hover actions. */
+.rowActions {
+  display: none;
   align-items: center;
-  gap: calc(3px * var(--ui-scale));
+}
+
+.row:hover .rowActions {
+  display: inline-flex;
+}
+
+.badge {
+  min-width: calc(18px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  background: var(--neutral-subtle);
+  border-radius: calc(9px * var(--ui-scale));
+  color: var(--fg-default);
+  font-size: var(--sway-text-xs);
+  font-weight: 400;
+  line-height: calc(18px * var(--ui-scale));
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The matched span. `<mark>` carries a browser default yellow that ignores the
+   theme, so both colors are set explicitly. */
+.hit {
+  background: var(--accent-subtle);
+  color: var(--fg-default);
+  border-radius: calc(2px * var(--ui-scale));
 }
 
 .previewOld {
-  color: var(--fg-muted);
+  background: var(--diff-deleted-word);
+  color: var(--fg-default);
   text-decoration: line-through;
 }
 
 .previewNew {
-  background: var(--success-emphasis);
-  color: var(--fg-on-emphasis);
-  border-radius: calc(2px * var(--ui-scale));
+  background: var(--diff-added-word);
+  color: var(--fg-default);
   text-decoration: none;
 }
 
-.toggleRow {
-  display: flex;
-  align-items: center;
-  gap: calc(2px * var(--ui-scale));
-  margin-top: calc(4px * var(--ui-scale));
-}
-
-/* Pushes the glob disclosure to the far end, away from the match toggles: it
-   opens a row rather than changing what a match is. */
-.toggleSpacer {
-  flex: 1;
-}
-
-.globRow {
-  display: flex;
-  gap: calc(4px * var(--ui-scale));
-  margin-top: calc(4px * var(--ui-scale));
-}
-
-.globInput {
-  flex: 1;
-  min-width: 0;
-  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  background: var(--canvas-default);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  color: var(--fg-default);
+.truncatedNotice {
+  padding: calc(2px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
   font-size: var(--sway-text-md);
 }
 
-/* Saved searches, the second disclosure under the toggle row. Stacked rather
-   than laid out like .globRow: this one holds a list, and a list that grows
-   sideways stops being one. */
+/* Announced, never drawn: the search box's hint (see SearchPanel.tsx). */
+.srOnly {
+  composes: srOnly from "../../styles/patterns.module.css";
+}
+
+/* Saved searches, opened from the toolbar's star. */
 .savedRow {
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: calc(4px * var(--ui-scale));
-  margin-top: calc(4px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale)) calc(6px * var(--ui-scale)) calc(22px * var(--ui-scale));
 }
 
 .saveBar {
   display: flex;
   align-items: center;
   gap: calc(4px * var(--ui-scale));
+}
+
+.globInput {
+  flex: 1;
+  min-width: 0;
+  height: calc(24px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-default);
+  font-size: var(--sway-text-md);
+  outline: none;
+}
+
+.globInput:focus {
+  border-color: var(--brand-default);
 }
 
 /* Why a rename was refused, inside the row it happened in rather than in the
@@ -147,8 +262,6 @@
   gap: calc(2px * var(--ui-scale));
 }
 
-/* Takes the slack, so the rename and delete buttons line up down the list
-   however long the names are. */
 .savedName {
   flex: 1;
   min-width: 0;
@@ -166,181 +279,4 @@
 
 .savedName:hover {
   background: var(--canvas-head);
-}
-
-.truncatedNotice {
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--sway-text-md);
-}
-
-.results {
-  flex: 1;
-  overflow: auto;
-  padding: calc(4px * var(--ui-scale)) 0;
-  user-select: none;
-}
-
-.fileGroup {
-  margin-bottom: calc(4px * var(--ui-scale));
-}
-
-.fileHeader {
-  display: flex;
-  align-items: center;
-  gap: calc(6px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  color: var(--fg-default);
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.filePath {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.matchCount {
-  flex: none;
-  color: var(--fg-muted);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.matchRow {
-  display: flex;
-  gap: calc(8px * var(--ui-scale));
-  margin: 0 calc(4px * var(--ui-scale));
-  padding: calc(1px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  transition: background var(--sway-duration-fast) ease;
-}
-
-.matchRow:hover {
-  background: var(--neutral-hover);
-}
-
-.matchLine {
-  flex: none;
-  width: calc(32px * var(--ui-scale));
-  text-align: right;
-  color: var(--fg-muted);
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
-}
-
-.matchText {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: pre;
-  color: var(--fg-default);
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
-}
-
-/* The matched span. `<mark>` carries a browser default yellow that ignores the
-   theme, so both colors are set explicitly. */
-.hit {
-  background: var(--accent-subtle);
-  color: var(--fg-default);
-  border-radius: calc(2px * var(--ui-scale));
-}
-
-/* Announced, never drawn: the search box's hint, which used to be a `title`
-   that no keyboard user ever saw. A tooltip is wrong for it - it would sit over
-   the results for as long as the field has focus - so the text is a description
-   on the input instead (see SearchPanel.tsx).
-
-   The same recipe as `.srOnly` in Settings.module.css and `.titleHidden` in
-   Dialog.module.css, copied rather than shared: this cluster keeps each module
-   self-contained. */
-.srOnly {
-  composes: srOnly from "../../styles/patterns.module.css";
-}
-
-/* One member's results. Mirrors the file tree's section chrome, since the two
-   panels draw the same member list and a Feature reads as one thing only if
-   they agree on what a member looks like. */
-.section {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-/* Sticky, so the member a hit belongs to stays named while its files scroll.
-   Offset is 0: unlike the tree this list has no toolbar above it inside the
-   scroller, the input bar sits outside. */
-.sectionHeader {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: calc(4px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  background: var(--canvas-card);
-  border-bottom: 1px solid var(--border-default);
-}
-
-/* The member's Space colour arrives as one custom property; a member outside
-   every Space leaves it at the neutral default. */
-
-.sectionName {
-  flex: 1;
-  overflow: hidden;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Which members to search. Sits above the query box because it scopes the
-   query, and reads as one strip that wraps rather than scrolls: a Feature with
-   six members would otherwise hide half of them behind a gesture. */
-.memberRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: calc(4px * var(--ui-scale));
-  margin-bottom: calc(4px * var(--ui-scale));
-}
-
-/* Same chip as a section header wears, plus a pressed state. Unpressed is
-   outlined rather than tinted, so the row reads as "one of these is on" at a
-   glance instead of as five equally lit buttons. */
-.memberChip {
-  --chip-hue: var(--fg-muted);
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: calc(24px * var(--ui-scale));
-  height: calc(20px * var(--ui-scale));
-  padding-inline: calc(6px * var(--ui-scale));
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-}
-
-.memberChip:hover:not(:disabled) {
-  background: var(--neutral-hover);
-}
-
-.memberChip:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.memberOn {
-  border-color: color-mix(in srgb, var(--chip-hue) 45%, transparent);
-  background: color-mix(in srgb, var(--chip-hue) 18%, transparent);
-  color: var(--chip-hue);
 }

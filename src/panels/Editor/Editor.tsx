@@ -195,7 +195,7 @@ import {
 } from "../../utils/gitActions";
 import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
-import { searchBufferRoots } from "./searchResultsStore";
+import { searchBufferRoots, searchTabTitle } from "./searchResultsStore";
 import { renameTabsUnder, repoint } from "./renameTabs";
 import { isSyntheticId, parseSyntheticId, syntheticId, syntheticTabName } from "../../utils/syntheticTabs";
 import {
@@ -356,8 +356,11 @@ function repoRelative(path: string, root: string): string | null {
 // A synthetic view takes one glyph for the whole kind; a file keeps the seti
 // icon its extension earns it.
 function tabIcon(t: FileTab) {
-  return isSyntheticId(t.path) ? <Icon icon={History} /> : <FileIcon name={t.name} />;
+  if (!isSyntheticId(t.path)) return <FileIcon name={t.name} />;
+  return <Icon icon={parseSyntheticId(t.path)?.kind === "search" ? Search : History} />;
 }
+
+const tabName = (t: FileTab) => searchTabTitle(t.path) ?? t.name;
 
 // A file tab's tooltip is its path. A view's is the workspace it belongs to,
 // which is the one thing its label cannot say and the only thing telling two
@@ -549,12 +552,12 @@ export default function Editor(props: {
   // on every render.
   const [modeOrder, setModeOrder] = createSignal<RightMode[]>([
     "files",
+    "search",
     "changes",
     "pulls",
     "problems",
     "calls",
     "bookmarks",
-    "search",
     "todos",
     "debug",
     "session",
@@ -885,6 +888,12 @@ export default function Editor(props: {
       )}
     </Show>
   );
+
+  /** What a Search Editor tab greps: every member, or the one root. */
+  const searchRootsHere = (): MemberRoot[] => {
+    const r = root();
+    return treeRoots() ?? (r ? [{ path: r, repoPath: r, label: "" }] : []);
+  };
 
   const treeRoots = (): MemberRoot[] | undefined =>
     featureId()
@@ -2528,7 +2537,13 @@ export default function Editor(props: {
                     own text is editable). */}
                 <Show when={t().kind === "search"}>
                   <Suspense fallback={<div class={styles.editorEmpty}>Loading editor…</div>}>
-                    <SearchResultsBuffer id={fileId()!} />
+                    <SearchResultsBuffer
+                      id={fileId()!}
+                      roots={searchRootsHere()}
+                      members={featureId() ? members() : []}
+                      openPaths={filePaths()}
+                      confirm={askConfirm}
+                    />
                   </Suspense>
                 </Show>
                 {/* Code with no file behind it, fetched from the adapter by
@@ -2599,7 +2614,7 @@ export default function Editor(props: {
       return (
         <>
           {m && <span class={patterns.srOnly}>{m.label} / </span>}
-          {t.name}
+          {tabName(t)}
         </>
       );
     },
@@ -2641,7 +2656,7 @@ export default function Editor(props: {
         <>
           {m && <TabMemberChip member={m} />}
           {tabIcon(t)}
-          <span class="tab-name">{m ? `${m.label} / ${rel ?? t.name}` : t.name}</span>
+          <span class="tab-name">{m ? `${m.label} / ${rel ?? t.name}` : tabName(t)}</span>
           {fileDots(u)}
           <button
             class="tab-close"
@@ -2844,6 +2859,8 @@ export default function Editor(props: {
             <SearchPanel
               root={root()}
               roots={treeRoots()}
+              members={featureId() ? members() : undefined}
+              openPaths={filePaths()}
               workspace={ws()}
               focusNonce={searchFocusNonce()}
               scope={searchScope()}

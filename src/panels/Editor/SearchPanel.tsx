@@ -7,53 +7,72 @@ import {
   onCleanup,
   For,
   Show,
+  type JSX,
 } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
-  CaseSensitive,
+  CaseUpper,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Ellipsis,
-  EyeOff,
-  FilePen,
+  FilePlus2,
+  List,
+  ListTree,
+  ListX,
   Pencil,
-  Regex,
+  RefreshCw,
   Replace,
   ReplaceAll,
   Star,
   Trash2,
-  WholeWord,
+  X,
   type LucideIcon,
 } from "lucide-solid";
 import Button from "../../components/Button/Button";
+import Chevron from "../../components/Chevron/Chevron";
 import Icon from "../../components/Icon/Icon";
 import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
-import { emitWith, onWith, OPEN_IN_EDITOR, PURGE_WORKSPACE, type FsChanged, type PurgeWorkspace } from "../../utils/events";
+import ContextMenu from "../../components/Menu/ContextMenu";
+import { type MenuItem } from "../../components/Menu/rows";
+import FileIcon from "../../seti/FileIcon";
+import {
+  emitWith,
+  onWith,
+  OPEN_IN_EDITOR,
+  PURGE_WORKSPACE,
+  SET_RIGHT_MODE,
+  type FsChanged,
+  type OpenInEditor,
+  type PurgeWorkspace,
+  type SetRightMode,
+} from "../../utils/events";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { debounce } from "../../utils/debounce";
+import { copyText } from "../../utils/clipboard";
 import {
   DEFAULT_SEARCH_OPTIONS,
   countOccurrences,
   dirtyRelativePaths,
   grepArgs,
-  isUnsupported,
   mergeSearchResults,
+  openUnder,
+  previewSegments,
   replaceOutcome,
   replaceTargets,
-  splitHighlights,
   truncationNotice,
   unionUnsupported,
-  unsupportedReason,
+  type RootOutcome,
   type SearchMatch,
   type SearchOptions,
   type SearchResult,
   type SearchSection,
-  type Submatch,
   type ToggleKey,
 } from "../../utils/searchOptions";
-import { memberInitials } from "../../utils/features";
+import { baseName, dirName, filesUnder, folderPaths, folderTree, groupByFile, type FileGroup, type FolderNode } from "../../utils/searchTree";
 import MemberChip from "../../components/MemberChip/MemberChip";
-import { resolveMemberRestriction, type MemberRoot } from "../../utils/featureMembers";
+import { resolveMemberRestriction, type MemberRoot, type TintedMember } from "../../utils/featureMembers";
 import {
   DRAFT,
   historyFor,
@@ -75,10 +94,12 @@ import {
   type SavedSearch,
   type SavedSearchStore,
 } from "../../utils/savedSearches";
-import { openSearchResults } from "./searchResultsStore";
+import { DEFAULT_CONTEXT_LINES, openSearchEditor } from "./searchResultsStore";
+import { grepRoot, MAX_RESULTS } from "./searchRun";
+import { Field, GlobFields, InlineToggle, MatchToggles, MemberToggles } from "./SearchFields";
+import tree from "./FileTree/FileTree.module.css";
 import styles from "./SearchPanel.module.css";
 
-type FileGroup = { path: string; matches: SearchMatch[] };
 /** What the backends can do here, kept apart from `sections` so clearing results
  *  (an empty query, a workspace switch) does not also blank the toggle states.
  *  Unioned across members: a toggle one member cannot honour is disabled for
@@ -88,9 +109,6 @@ type ReplaceOutcome = { changed: string[]; skipped: { path: string; reason: stri
 /** One span to replace, as `replace_in_files` takes it. */
 type ReplaceSpan = { line: number; start: number; end: number };
 
-/** Per root, not shared across them: truncation is reported per section, and one
- *  budget split across members would let a noisy repo starve the rest. */
-const MAX_RESULTS = 500;
 const INPUT_DEBOUNCE_MS = 200;
 const FS_CHANGE_DEBOUNCE_MS = 400;
 
@@ -103,36 +121,41 @@ const NUL = "\u0000";
 const GLOBS_ID = "search-globs";
 const SAVED_ID = "search-saved";
 const QUERY_HINT_ID = "search-query-hint";
-const TOGGLES: { key: ToggleKey; icon: LucideIcon; label: string }[] = [
-  { key: "case", icon: CaseSensitive, label: "Match case" },
-  { key: "wholeWord", icon: WholeWord, label: "Match whole word" },
-  { key: "regex", icon: Regex, label: "Use regular expression" },
-  { key: "noIgnore", icon: EyeOff, label: "Search ignored files" },
-];
+const VIEW_KEY = "sway.search.view.v1";
 
-// Groups matches by file, preserving the order files were first seen in.
-function groupByFile(matches: SearchMatch[]): FileGroup[] {
-  const order: string[] = [];
-  const byPath = new Map<string, SearchMatch[]>();
-  for (const m of matches) {
-    if (!byPath.has(m.path)) {
-      order.push(m.path);
-      byPath.set(m.path, []);
-    }
-    byPath.get(m.path)!.push(m);
-  }
-  return order.map((path) => ({ path, matches: byPath.get(path)! }));
+const fileKey = (root: string, path: string) => `${root}${NUL}${path}`;
+const matchKey = (root: string, m: SearchMatch) => `${root}${NUL}${m.path}${NUL}${m.line}`;
+const folderKey = (root: string, path: string) => `${root}${NUL}${path}/`;
+const memberKey = (root: string) => `${root}${NUL}`;
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** A hover action at a row's right edge. It stops the click, since the row
+ *  under it has a click of its own. */
+function RowAction(props: { icon: LucideIcon; label: string; disabled?: boolean; onClick: () => void }) {
+  return (
+    <InlineToggle
+      icon={props.icon}
+      label={props.label}
+      disabled={props.disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        props.onClick();
+      }}
+    />
+  );
 }
 
-/** Project-wide Search mode: debounced query -> `grep_project`, results
- *  grouped by member and then by file with per-file match counts, click opens
- *  the file at the matched line. Inside a Feature every member is searched at
- *  once: `grep_project` stays single-root and this panel fans out and merges,
- *  because the sections, the per-member truncation and the per-member replace
- *  targets have to exist here whatever the backend returns. Refreshes on `fs://changed` (its own, longer debounce) only
- *  while this mode is mounted - the Editor's right-panel Switch/Match tears
- *  the component down when another mode is selected, so no background grep
- *  runs while the mode is hidden.
+/** Project-wide Search mode, VS Code's Search view: debounced query ->
+ *  `grep_project`, results grouped by member and then by file (or by folder,
+ *  as a tree), click opens the file at the matched line. Inside a Feature every
+ *  member is searched at once: `grep_project` stays single-root and this panel
+ *  fans out and merges, because the sections, the per-member truncation and the
+ *  per-member replace targets have to exist here whatever the backend returns.
+ *  Refreshes on `fs://changed` (its own, longer debounce) only while this mode
+ *  is mounted - the Editor's right-panel Switch/Match tears the component down
+ *  when another mode is selected, so no background grep runs while the mode is
+ *  hidden.
  *
  *  All match semantics live in the backend's one canonical regex; this panel
  *  only collects the options and renders the spans it is handed. Replace is the
@@ -144,6 +167,8 @@ export default function SearchPanel(props: {
   /** The multi-root form, one section per Feature member. A branch unit passes
    *  none and the panel searches `root` alone, headerless, exactly as it did. */
   roots?: MemberRoot[];
+  /** The same members with their chip colours, for the member toggles. */
+  members?: readonly TintedMember[];
   /** The store key history and saved searches live under; defaults to `root`. */
   workspace?: string;
   focusNonce: number;
@@ -153,6 +178,8 @@ export default function SearchPanel(props: {
   /** Absolute-keyed dirty record from the editor. Files with unsaved edits are
    *  left out of a replace: the buffer, not the disk, is what the user sees. */
   dirty?: Record<string, boolean>;
+  /** Absolute paths of the files open in editor tabs. */
+  openPaths?: readonly string[];
   /** Editor's `askConfirm`. It is local to that component rather than exported,
    *  so it arrives as a prop; without one, Replace All proceeds unconfirmed. */
   confirm?: (opts: { title: string; message?: string; confirmLabel?: string }) => Promise<boolean>;
@@ -160,8 +187,13 @@ export default function SearchPanel(props: {
   const [query, setQuery] = createSignal("");
   const [replacement, setReplacement] = createSignal("");
   const [showReplace, setShowReplace] = createSignal(false);
+  const [preserveCase, setPreserveCase] = createSignal(false);
   const [options, setOptions] = createSignal<SearchOptions>({ ...DEFAULT_SEARCH_OPTIONS });
+  const [openOnly, setOpenOnly] = createSignal(false);
   const [showGlobs, setShowGlobs] = createSignal(false);
+  const [asTree, setAsTree] = createSignal(localStorage.getItem(VIEW_KEY) === "tree");
+  const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
+  const [dismissed, setDismissed] = createSignal<ReadonlySet<string>>(new Set());
   /** The member **repo paths** the search is narrowed to; empty means every
    *  member. Repo paths rather than the section paths a grep takes, because
    *  this is the value that gets saved with a search and a repaired worktree
@@ -237,30 +269,42 @@ export default function SearchPanel(props: {
   const headed = () => allRoots().length > 1;
   const sectionOf = (root: string) => sections().find((s) => s.root === root);
   /** The searched root set as one comparable string, for the effects that must
-   *  re-run when the set changes. NUL-joined, not space-joined: a path may
-   *  contain a space, and two different sets must never spell the same key. */
+   *  re-run when the set changes. */
   const rootsKey = () => searchRoots().map((r) => r.path).join(NUL);
   /** Every member the panel draws, restriction ignored. What the reset effect
    *  keys on: narrowing the search with a chip changes what gets grepped, not
    *  which workspace you are in, and it must not cost the history cursor or a
    *  half-typed name. */
   const membersKey = () => allRoots().map((r) => r.path).join(NUL);
+
+  /** Each section's matches minus the ones dismissed, which every count, the
+   *  replace targets and the editor hand-off read instead of the raw set. */
+  const visibleByRoot = createMemo(() => {
+    const gone = dismissed();
+    const out = new Map<string, SearchMatch[]>();
+    for (const s of sections()) {
+      out.set(
+        s.root,
+        gone.size
+          ? s.matches.filter((m) => !gone.has(fileKey(s.root, m.path)) && !gone.has(matchKey(s.root, m)))
+          : s.matches,
+      );
+    }
+    return out;
+  });
+  const visibleOf = (root: string) => visibleByRoot().get(root) ?? [];
   /** Every match on screen, in the order it is drawn. Over `sectionRoots()`
    *  rather than `sections()` because the two disagree for as long as a fresh
    *  restriction's search is in flight, and the preview spans are read back by
    *  position: a row would show the previous member's expansion. */
-  const allMatches = () => sectionRoots().flatMap((r) => sectionOf(r.path)?.matches ?? []);
+  const allMatches = () => sectionRoots().flatMap((r) => visibleOf(r.path));
   /** The same matches, each tagged with the member it belongs to. What the
-   *  editable buffer is built from: its rows write into their own member. */
-  const rootedMatches = () =>
-    sectionRoots().flatMap((r) =>
-      (sectionOf(r.path)?.matches ?? []).map((m) => ({ ...m, root: r.path })),
-    );
+   *  Search Editor is seeded with: its rows write into their own member. */
+  const rootedMatches = () => sectionRoots().flatMap((r) => visibleOf(r.path).map((m) => ({ ...m, root: r.path })));
   /** What a member is called in prose. Falls back to its path, which is what a
    *  lone root has instead of a label. */
   const labelFor = (root: string) => allRoots().find((r) => r.path === root)?.label || root;
-  const docRootsOf = (roots: readonly string[]) =>
-    roots.map((root) => ({ root, label: labelFor(root) }));
+  const docRootsOf = (roots: readonly string[]) => roots.map((root) => ({ root, label: labelFor(root) }));
 
   // Bumped per call, so a slower in-flight request (e.g. an fs-refresh racing
   // a fresh keystroke search) can't overwrite a newer result once it resolves.
@@ -269,31 +313,33 @@ export default function SearchPanel(props: {
   // fires one per root, and the earlier root's probe can resolve last.
   let probeGen = 0;
 
-  /** One root's leg of the fan-out. It never throws: a member whose grep fails
-   *  reports in its own section, so one unreadable repo cannot blank the
-   *  members that answered. */
-  async function grepRoot(root: string, q: string) {
-    try {
-      return { root, result: await invoke<SearchResult>("grep_project", grepArgs(root, q, options(), MAX_RESULTS)) };
-    } catch (e) {
-      return { root, error: String(e) };
+  /** One root's leg. With Search Only in Open Editors on, a root holding no
+   *  open file is not searched at all. */
+  function legFor(root: string, q: string): Promise<RootOutcome> {
+    const only = openOnly() ? openUnder(root, props.openPaths ?? []) : undefined;
+    if (only && !only.length) {
+      return Promise.resolve({
+        root,
+        result: { matches: [], truncated: false, backend: caps().backend, unsupported: [], files: [] },
+      });
     }
+    return grepRoot(root, q, { ...options(), only });
   }
 
   /** `user` searches come from a query, toggle or glob change; `refresh` ones
-   *  from the fs watcher. Only the former clears results on failure.
+   *  from the fs watcher. Only the former clears results on failure, and only
+   *  the former brings dismissed and collapsed rows back.
    *
-   *  Fans out one `grep_project` per searchable root and merges. Returns the
-   *  merged sections, or `null` when there was nothing to search, every root
-   *  failed, or a newer search overtook this one. Every caller but `openSaved`
-   *  ignores the return and reads the signal; that one needs the matches in
-   *  hand, because it opens a buffer over them and the signal is only the
-   *  answer if it was not raced. */
-  async function runSearch(
-    q: string,
-    source: "user" | "refresh" = "user",
-  ): Promise<SearchSection[] | null> {
+   *  Returns the merged sections, or `null` when there was nothing to search,
+   *  every root failed, or a newer search overtook this one. Only `openSaved`
+   *  reads the return: it opens an editor over the matches, and the signal is
+   *  only the answer if it was not raced. */
+  async function runSearch(q: string, source: "user" | "refresh" = "user"): Promise<SearchSection[] | null> {
     const roots = searchRoots();
+    if (source === "user") {
+      setDismissed(new Set<string>());
+      setCollapsed(new Set<string>());
+    }
     if (!roots.length || !q) {
       searchGen++;
       setSections([]);
@@ -303,7 +349,7 @@ export default function SearchPanel(props: {
     const gen = ++searchGen;
     setLoading(true);
     try {
-      const legs = await Promise.all(roots.map((r) => grepRoot(r.path, q)));
+      const legs = await Promise.all(roots.map((r) => legFor(r.path, q)));
       if (gen !== searchGen) return null;
       const merged = mergeSearchResults(legs);
       // Only a fan-out where every root failed is a panel-level error: with one
@@ -360,7 +406,7 @@ export default function SearchPanel(props: {
     const q = query();
     if (!q || !roots.length) return;
     const gen = searchGen;
-    const legs = await Promise.all(roots.map((r) => grepRoot(r, q)));
+    const legs = await Promise.all(roots.map((r) => legFor(r, q)));
     if (gen !== searchGen) return;
     const fresh = mergeSearchResults(legs).sections;
     setSections((prev) => prev.map((s) => fresh.find((f) => f.root === s.root) ?? s));
@@ -399,11 +445,10 @@ export default function SearchPanel(props: {
   /**
    * Record the current query as one that was run.
    *
-   * On Enter and on the two acts that spend a result set (opening the editable
-   * buffer, replacing), not on every search. The box searches as you type, so
+   * On Enter and on the two acts that spend a result set (opening the Search
+   * Editor, replacing), not on every search. The box searches as you type, so
    * recording each one would fill the list with `n`, `ne`, `nee`, `need` and
-   * leave nothing worth arrowing through. Enter is the keystroke that already
-   * means "this one", and it costs nothing in a box that has already searched.
+   * leave nothing worth arrowing through.
    */
   function commitQuery() {
     const q = query();
@@ -478,14 +523,23 @@ export default function SearchPanel(props: {
     setSaved((s) => renameSearch(s, ws(), from, name));
   }
 
+  /** The Search Editor's form for what is in the panel now. */
+  const editorForm = () => ({
+    query: query(),
+    options: { ...options() },
+    repos: [...restriction()],
+    context: DEFAULT_CONTEXT_LINES,
+    showContext: true,
+    openOnly: openOnly(),
+  });
+
   /**
-   * Run a saved search and hand its hits straight to an editable buffer.
+   * Run a saved search and hand its hits straight to a Search Editor.
    *
-   * Opening a saved search means arriving at the thing it names, and after
-   * Phase 11 that thing is a buffer you can edit and write back, not a list to
-   * click through. The panel is restored too, so the toggles on screen still
-   * describe what you are looking at. A search that matches nothing opens no
-   * tab: an empty buffer would be a tab to close rather than an answer.
+   * Opening a saved search means arriving at the thing it names, which is a
+   * buffer you can edit and write back, not a list to click through. The panel
+   * is restored too, so the toggles on screen still describe what you are
+   * looking at. A search that matches nothing opens no tab.
    */
   async function openSaved(s: SavedSearch) {
     setCursor(DRAFT);
@@ -498,12 +552,9 @@ export default function SearchPanel(props: {
     setHistory((h) => noteQuery(h, ws(), s.query, s.options, repos));
     const fresh = await runSearch(s.query);
     if (!fresh) return;
-    // Read off `fresh` rather than the signal, for the reason `runSearch`
-    // returns it at all: the signal is only this search's answer if nothing
-    // overtook it.
     const matches = fresh.flatMap((sec) => sec.matches.map((m) => ({ ...m, root: sec.root })));
     if (matches.length) {
-      openSearchResults(ws(), s.query, matches, docRootsOf(fresh.map((sec) => sec.root)));
+      openSearchEditor(ws(), editorForm(), { matches, roots: docRootsOf(fresh.map((sec) => sec.root)) });
     }
   }
 
@@ -511,6 +562,11 @@ export default function SearchPanel(props: {
   // immediately instead of waiting out the input debounce.
   function toggleOption(key: ToggleKey) {
     setOptions((o) => ({ ...o, [key]: !o[key] }));
+    void runSearch(query());
+  }
+
+  function toggleOpenOnly() {
+    setOpenOnly((v) => !v);
     void runSearch(query());
   }
 
@@ -523,21 +579,9 @@ export default function SearchPanel(props: {
     else void probeCapabilities();
   }
 
-  /** Add or remove one member. Multi-select, and against the *resolved* set, so
-   *  a stale entry from a saved search cannot survive the first click. */
-  function toggleRestriction(repoPath: string) {
-    const now = restriction();
-    setRestricted(now.includes(repoPath) ? now.filter((p) => p !== repoPath) : [...now, repoPath]);
+  function restrictTo(repos: string[]) {
+    setRestricted(repos);
     afterRestrictionChange();
-  }
-
-  /** Back to every member. Clears the raw pick, not just the resolved one: a
-   *  pick naming a member that has left resolves to nothing today and would
-   *  otherwise come back the moment that member did, after All was pressed. */
-  function clearRestriction() {
-    const had = restriction().length;
-    setRestricted([]);
-    if (had) afterRestrictionChange();
   }
 
   function setGlob(key: "include" | "exclude", v: string) {
@@ -546,6 +590,8 @@ export default function SearchPanel(props: {
   }
 
   // --- replace ---
+
+  const replaceOptions = () => ({ ...options(), preserveCase: preserveCase() });
 
   /** Flat list of every displayed span, in render order, so a preview response
    *  can be read back positionally. */
@@ -575,12 +621,12 @@ export default function SearchPanel(props: {
   let previewGen = 0;
   async function runPreview() {
     const spans = flatSpans();
-    if (!replacement() || !spans.length) return setPreview([]);
+    if (!spans.length) return setPreview([]);
     const gen = ++previewGen;
     try {
       const out = await invoke<(string | null)[]>("preview_replace", {
         query: query(),
-        options: options(),
+        options: replaceOptions(),
         replacement: replacement(),
         spans,
       });
@@ -594,10 +640,10 @@ export default function SearchPanel(props: {
   const debouncedPreview = debounce(() => void runPreview(), INPUT_DEBOUNCE_MS);
 
   const dirtyPathsFor = (root: string) => dirtyRelativePaths(root, props.dirty ?? {});
-  /** One root's replace targets, built from that root's own matches and its own
-   *  digests. Keeping the fence per root is what stops a file that moved under
-   *  one member from blocking a write to another. */
-  const targetsFor = (s: SearchSection) => replaceTargets(s.matches, s.files, dirtyPathsFor(s.root));
+  /** One root's replace targets, built from that root's visible matches and its
+   *  own digests. Keeping the fence per root is what stops a file that moved
+   *  under one member from blocking a write to another. */
+  const targetsFor = (s: SearchSection) => replaceTargets(visibleOf(s.root), s.files, dirtyPathsFor(s.root));
   /** Every root that has something to replace, each carrying its own targets.
    *  A bare relative path is not an identity here: two members routinely hold
    *  the same `src/index.ts`, so nothing selects a target by path alone. */
@@ -612,20 +658,17 @@ export default function SearchPanel(props: {
    *  button reading "replace everything" that quietly means "everywhere except
    *  the repo that overflowed" is the reading worth ruling out. */
   const anyTruncated = () => sections().some((s) => s.truncated);
+  const replacing = () => showReplace();
 
   /** Why a file was skipped, phrased for the outcome line. Inside a Feature the
    *  reason alone is not actionable: two members routinely hold the same
    *  `src/index.ts`, so it has to say which one to go and deal with. */
-  const skipReason = (root: string, reason: string) =>
-    headed() ? `${reason} in ${labelFor(root)}` : reason;
+  const skipReason = (root: string, reason: string) => (headed() ? `${reason} in ${labelFor(root)}` : reason);
 
   /** Apply each root's targets against that root, then report once and
    *  re-search. The re-search matters beyond freshness: it is what proves on
    *  screen that the write landed. */
-  async function applyReplace(
-    groups: RootTargets[],
-    skippedForDirt: { root: string; path: string }[] = [],
-  ) {
+  async function applyReplace(groups: RootTargets[], skippedForDirt: { root: string; path: string }[] = []) {
     // One replace at a time. A second would find every digest already moved and
     // report "0 replaced, N skipped (changed on disk)" for work that in fact
     // succeeded, which reads as a failure.
@@ -642,7 +685,7 @@ export default function SearchPanel(props: {
         const out = await invoke<ReplaceOutcome>("replace_in_files", {
           root: g.root,
           query: query(),
-          options: options(),
+          options: replaceOptions(),
           replacement: replacement(),
           targets: g.targets,
         });
@@ -671,12 +714,12 @@ export default function SearchPanel(props: {
 
   async function replaceAll() {
     const groups = allTargets();
-    if (!groups.length || applying()) return;
+    if (!groups.length || applying() || anyTruncated()) return;
     const occurrences = groups.reduce((n, g) => n + g.targets.reduce((m, t) => m + t.matches.length, 0), 0);
     const files = targetFileCount();
     const ok = props.confirm
       ? await props.confirm({
-          title: `Replace ${occurrences} ${occurrences === 1 ? "occurrence" : "occurrences"} in ${files} ${files === 1 ? "file" : "files"}?`,
+          title: `Replace ${plural(occurrences, "occurrence")} in ${plural(files, "file")}?`,
           message: "This writes to disk and cannot be undone from here.",
           confirmLabel: "Replace",
         })
@@ -684,26 +727,295 @@ export default function SearchPanel(props: {
     if (!ok) return;
     const dirtyHits = sections().flatMap((s) =>
       dirtyPathsFor(s.root)
-        .filter((p) => s.matches.some((m) => m.path === p))
+        .filter((p) => visibleOf(s.root).some((m) => m.path === p))
         .map((path) => ({ root: s.root, path })),
     );
     await applyReplace(groups, dirtyHits);
   }
 
-  function replaceFile(root: string, path: string) {
+  function replacePaths(root: string, paths: readonly string[]) {
     const g = allTargets().find((x) => x.root === root);
-    const targets = g?.targets.filter((t) => t.path === path) ?? [];
+    const targets = g?.targets.filter((t) => paths.includes(t.path)) ?? [];
     if (targets.length) void applyReplace([{ root, targets }]);
   }
 
-  function replaceOne(root: string, m: SearchMatch, span: Submatch) {
+  // --- the result list ---
+
+  const isCollapsed = (key: string) => collapsed().has(key);
+  function toggleCollapsed(key: string) {
+    setCollapsed((c) => {
+      const next = new Set(c);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }
+
+  const fileKeys = () =>
+    sectionRoots().flatMap((r) => groupByFile(visibleOf(r.path)).map((g) => fileKey(r.path, g.path)));
+  const allCollapsed = () => {
+    const keys = fileKeys();
+    return keys.length > 0 && keys.every((k) => collapsed().has(k));
+  };
+  function collapseOrExpandAll() {
+    if (allCollapsed()) return setCollapsed(new Set<string>());
+    const keys = new Set(fileKeys());
+    for (const r of sectionRoots()) {
+      for (const p of folderPaths(folderTree(groupByFile(visibleOf(r.path))))) keys.add(folderKey(r.path, p));
+    }
+    setCollapsed(keys);
+  }
+
+  function dismiss(keys: string[]) {
+    setDismissed((d) => new Set([...d, ...keys]));
+  }
+
+  function setView(tree: boolean) {
+    setAsTree(tree);
+    try {
+      localStorage.setItem(VIEW_KEY, tree ? "tree" : "list");
+    } catch {
+      // Storage blocked: the view still holds for this run.
+    }
+  }
+
+  function clearAll() {
+    debouncedSearch.cancel();
+    setQuery("");
+    setReplacement("");
+    setOutcome(null);
+    setCursor(DRAFT);
+    void runSearch("");
+    inputEl?.focus();
+  }
+
+  const openMatch = (root: string, path: string, line: number) =>
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: `${root}/${path}`, line });
+
+  /** The results as VS Code's Copy All writes them. */
+  function resultsText(root?: string, paths?: readonly string[]) {
+    const roots = root ? [root] : sectionRoots().map((r) => r.path);
+    const blocks: string[] = [];
+    for (const r of roots) {
+      for (const g of groupByFile(visibleOf(r))) {
+        if (paths && !paths.includes(g.path)) continue;
+        const lines = g.matches.map((m) => `  ${m.line},${(m.submatches[0]?.[0] ?? 0) + 1}: ${m.text.trim()}`);
+        blocks.push([headed() ? `${labelFor(r)}/${g.path}` : g.path, ...lines].join("\n"));
+      }
+    }
+    return blocks.join("\n\n");
+  }
+
+  const copyPathItems = (root: string, rel: string): MenuItem[] => [
+    { label: "Copy Path", onClick: () => void copyText(rel ? `${root}/${rel}` : root) },
+    { label: "Copy Relative Path", onClick: () => void copyText(rel) },
+  ];
+
+  function fileMenu(root: string, g: FileGroup): MenuItem[] {
+    const abs = `${root}/${g.path}`;
+    return [
+      { label: "Open to the Side", onClick: () => emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: abs, side: true }) },
+      {
+        label: "Reveal in Files",
+        onClick: () => {
+          emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: abs });
+          emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: "files" });
+        },
+      },
+      { separator: true },
+      ...(replacing()
+        ? [{ label: "Replace All", disabled: applying(), onClick: () => replacePaths(root, [g.path]) }]
+        : []),
+      { label: "Dismiss", onClick: () => dismiss([fileKey(root, g.path)]) },
+      { separator: true },
+      ...copyPathItems(root, g.path),
+      { label: "Copy All", onClick: () => void copyText(resultsText()) },
+    ];
+  }
+
+  function folderMenu(root: string, node: FolderNode): MenuItem[] {
+    const files = filesUnder(node).map((f) => f.path);
+    return [
+      {
+        label: "Restrict Search to Folder",
+        onClick: () => {
+          setOptions((o) => ({ ...o, include: `${node.path}/**` }));
+          setShowGlobs(true);
+          void runSearch(query());
+        },
+      },
+      {
+        label: "Exclude Folder from Search",
+        onClick: () => {
+          setOptions((o) => ({ ...o, exclude: [o.exclude, `${node.path}/**`].filter(Boolean).join(", ") }));
+          setShowGlobs(true);
+          void runSearch(query());
+        },
+      },
+      { separator: true },
+      ...(replacing() ? [{ label: "Replace All", disabled: applying(), onClick: () => replacePaths(root, files) }] : []),
+      { label: "Dismiss", onClick: () => dismiss(files.map((p) => fileKey(root, p))) },
+      { separator: true },
+      ...copyPathItems(root, node.path),
+      { label: "Copy All", onClick: () => void copyText(resultsText(root, files)) },
+    ];
+  }
+
+  function matchMenu(root: string, m: SearchMatch): MenuItem[] {
+    return [
+      { label: "Copy", onClick: () => void copyText(m.text.trim()) },
+      { label: "Copy Path", onClick: () => void copyText(`${root}/${m.path}:${m.line}`) },
+      { label: "Copy All", onClick: () => void copyText(resultsText()) },
+      { separator: true },
+      ...(replacing()
+        ? [
+            {
+              label: "Replace",
+              disabled: applying() || dirtyPathsFor(root).includes(m.path),
+              onClick: () => replaceSpans(root, m),
+            },
+          ]
+        : []),
+      { label: "Dismiss", onClick: () => dismiss([matchKey(root, m)]) },
+    ];
+  }
+
+  /** Replace every span on one line, VS Code's per-match Replace. */
+  function replaceSpans(root: string, m: SearchMatch) {
     const target = allTargets()
       .find((x) => x.root === root)
       ?.targets.find((t) => t.path === m.path);
     if (!target) return;
-    void applyReplace([
-      { root, targets: [{ ...target, matches: [{ line: m.line, start: span[0], end: span[1] }] }] },
-    ]);
+    const spans = m.submatches.map(([start, end]) => ({ line: m.line, start, end }));
+    void applyReplace([{ root, targets: [{ ...target, matches: spans }] }]);
+  }
+
+  // A match sits under its file's name, past the chevron and the file icon.
+  const indent = (depth: number, extra = 0) => ({ "padding-left": `calc(${depth * 12 + 8}px + ${extra} * var(--control-icon))` });
+
+  function MatchRow(p: { root: string; m: SearchMatch; depth: number }) {
+    const segments = createMemo(() => previewSegments(p.m.text, p.m.submatches));
+    const showPreview = () => replacing() && preview().length > 0;
+    return (
+      <ContextMenu
+        items={matchMenu(p.root, p.m)}
+        class={`${tree.treeRow} ${styles.row}`}
+        style={indent(p.depth, 1.5)}
+        data-line={p.m.line}
+        onClick={() => openMatch(p.root, p.m.path, p.m.line)}
+      >
+        <span class={styles.matchText}>
+          <For each={segments()}>
+            {(seg) => {
+              if (seg.hit === null) return <>{seg.text}</>;
+              const next = () => preview()[previewIndex(p.m, seg.hit!)];
+              return (
+                <Show when={showPreview() && next() != null} fallback={<mark class={styles.hit}>{seg.text}</mark>}>
+                  <del class={styles.previewOld}>{seg.text}</del>
+                  <ins class={styles.previewNew}>{next()}</ins>
+                </Show>
+              );
+            }}
+          </For>
+        </span>
+        <span class={`${styles.rowEnd} ${styles.rowActions}`}>
+          <Show when={replacing()}>
+            <RowAction
+              icon={Replace}
+              label="Replace"
+              disabled={applying() || dirtyPathsFor(p.root).includes(p.m.path)}
+              onClick={() => replaceSpans(p.root, p.m)}
+            />
+          </Show>
+          <RowAction icon={X} label="Dismiss" onClick={() => dismiss([matchKey(p.root, p.m)])} />
+        </span>
+      </ContextMenu>
+    );
+  }
+
+  function FileBlock(p: { root: string; group: FileGroup; depth: number }) {
+    const key = () => fileKey(p.root, p.group.path);
+    const count = () => countOccurrences(p.group.matches);
+    return (
+      <>
+        <ContextMenu
+          items={fileMenu(p.root, p.group)}
+          class={`${tree.treeRow} ${styles.row}`}
+          style={indent(p.depth)}
+          data-file={p.group.path}
+          onClick={() => toggleCollapsed(key())}
+        >
+          <Chevron open={!isCollapsed(key())} />
+          <FileIcon name={baseName(p.group.path)} />
+          <span class={styles.fileName}>{baseName(p.group.path)}</span>
+          <Show when={!asTree() && dirName(p.group.path)}>
+            <span class={styles.fileDir}>{dirName(p.group.path)}</span>
+          </Show>
+          <span class={styles.rowEnd}>
+            <span class={styles.rowActions}>
+              <Show when={replacing()}>
+                <RowAction
+                  icon={ReplaceAll}
+                  label="Replace All"
+                  disabled={applying() || dirtyPathsFor(p.root).includes(p.group.path)}
+                  onClick={() => replacePaths(p.root, [p.group.path])}
+                />
+              </Show>
+              <RowAction icon={X} label="Dismiss" onClick={() => dismiss([key()])} />
+            </span>
+            <span class={styles.badge}>{count()}</span>
+          </span>
+        </ContextMenu>
+        <Show when={!isCollapsed(key())}>
+          <For each={p.group.matches}>{(m) => <MatchRow root={p.root} m={m} depth={p.depth} />}</For>
+        </Show>
+      </>
+    );
+  }
+
+  function FolderChildren(p: { root: string; node: FolderNode; depth: number }): JSX.Element {
+    return (
+      <>
+        <For each={p.node.folders}>{(f) => <FolderBlock root={p.root} node={f} depth={p.depth} />}</For>
+        <For each={p.node.files}>{(g) => <FileBlock root={p.root} group={g} depth={p.depth} />}</For>
+      </>
+    );
+  }
+
+  function FolderBlock(p: { root: string; node: FolderNode; depth: number }) {
+    const key = () => folderKey(p.root, p.node.path);
+    const files = () => filesUnder(p.node);
+    const count = () => files().reduce((n, f) => n + countOccurrences(f.matches), 0);
+    return (
+      <>
+        <ContextMenu
+          items={folderMenu(p.root, p.node)}
+          class={`${tree.treeRow} ${styles.row}`}
+          style={indent(p.depth)}
+          data-folder={p.node.path}
+          onClick={() => toggleCollapsed(key())}
+        >
+          <Chevron open={!isCollapsed(key())} />
+          <span class={styles.fileName}>{p.node.name}</span>
+          <span class={styles.rowEnd}>
+            <span class={styles.rowActions}>
+              <Show when={replacing()}>
+                <RowAction
+                  icon={ReplaceAll}
+                  label="Replace All"
+                  disabled={applying()}
+                  onClick={() => replacePaths(p.root, files().map((f) => f.path))}
+                />
+              </Show>
+              <RowAction icon={X} label="Dismiss" onClick={() => dismiss(files().map((f) => fileKey(p.root, f.path)))} />
+            </span>
+            <span class={styles.badge}>{count()}</span>
+          </span>
+        </ContextMenu>
+        <Show when={!isCollapsed(key())}>
+          <FolderChildren root={p.root} node={p.node} depth={p.depth + 1} />
+        </Show>
+      </>
+    );
   }
 
   // Keyed on the member set and the workspace, deliberately not on `props.root`
@@ -735,13 +1047,12 @@ export default function SearchPanel(props: {
     ),
   );
 
-  // Re-preview when the replacement text changes, a new result set arrives, or
-  // the replace row is reopened. Debounced, so typing a replacement does not
-  // fire a round trip per keystroke. `showReplace` has to be a dependency and
-  // not just a read: reopening the row after the results changed underneath it
-  // would otherwise show no preview until the replacement was retyped.
+  // Re-preview when the replacement text or its case rule changes, a new result
+  // set arrives, or the replace row is reopened. `showReplace` has to be a
+  // dependency and not just a read: reopening the row after the results changed
+  // underneath it would otherwise show no preview until the text was retyped.
   createEffect(
-    on([replacement, sections, showReplace], () => {
+    on([replacement, preserveCase, visibleByRoot, showReplace], () => {
       if (showReplace()) debouncedPreview();
       else setPreview([]);
     }),
@@ -750,13 +1061,7 @@ export default function SearchPanel(props: {
   // A replace outcome describes one past action. Anything that changes what is
   // on screen retires it, so a success line can never sit above results it had
   // nothing to do with.
-  createEffect(
-    on(
-      [query, options, rootsKey],
-      () => setOutcome(null),
-      { defer: true },
-    ),
-  );
+  createEffect(on([query, options, rootsKey], () => setOutcome(null), { defer: true }));
 
   createEffect(
     on(
@@ -786,19 +1091,14 @@ export default function SearchPanel(props: {
     ),
   );
 
-  function openMatch(root: string, path: string, line: number) {
-    emitWith(OPEN_IN_EDITOR, { path: `${root}/${path}`, line });
-  }
-
-  /** Hand the current results to an editable buffer, as a tab. The matches go
-   *  as they are: the buffer's whole claim is that each row is the line the
-   *  search read, so re-deriving them here would give it a second answer to be
-   *  wrong about. One tab for the whole set, keyed on the workspace: Open means
-   *  "the results on screen", and a tab per member is a tab per member to close. */
-  function openResultsBuffer() {
+  /** The results on screen as a Search Editor tab. */
+  function openInEditor() {
     if (!hitCount()) return;
     commitQuery();
-    openSearchResults(ws(), query(), rootedMatches(), docRootsOf(sectionRoots().map((r) => r.path)));
+    openSearchEditor(ws(), editorForm(), {
+      matches: rootedMatches(),
+      roots: docRootsOf(sectionRoots().map((r) => r.path)),
+    });
   }
 
   let unlistenFs: UnlistenFn | undefined;
@@ -833,317 +1133,269 @@ export default function SearchPanel(props: {
 
   /** Per section, never once for the set: a cap reached in one repo says nothing
    *  about another, and one notice over three members names none of them. */
-  const noticeFor = (s: SearchSection) =>
-    truncationNotice(s.truncated, MAX_RESULTS, countOccurrences(s.matches));
+  const noticeFor = (s: SearchSection) => truncationNotice(s.truncated, MAX_RESULTS, countOccurrences(s.matches));
   const hitCount = () => allMatches().length;
+  const fileCount = () => sectionRoots().reduce((n, r) => n + groupByFile(visibleOf(r.path)).length, 0);
 
   return (
     <div class={styles.searchPanel}>
-      <div class={styles.inputBar}>
-        {/* Which members to search, and nothing else. Deliberately not wired to
-            the Toolbar's active-member row: two chip rows on screen mean two
-            different things, and narrowing a search must not also move which
-            member the editor is showing. Multi-select, so "these two of five"
-            is expressible; none selected means all, which is why All is a
-            button rather than a chip you can also deselect into nothing. */}
-        <Show when={headed()}>
-          <div class={styles.memberRow} role="group" aria-label="Search these members">
-            <Tooltip
-              as="button"
-              type="button"
-              class={styles.memberChip}
-              classList={{ [styles.memberOn]: !restriction().length }}
-              aria-pressed={!restriction().length}
-              label="Search every member of this Feature"
-              onClick={clearRestriction}
-            >
-              All
-            </Tooltip>
-            <For each={allRoots()}>
-              {(member) => {
-                const unusable = () => member.state?.usable === false;
-                const on = () => restriction().includes(member.repoPath);
-                return (
-                  <Tooltip
-                    as="button"
-                    type="button"
-                    class={styles.memberChip}
-                    classList={{ [styles.memberOn]: on() }}
-                    style={member.tint ? { "--chip-hue": member.tint } : undefined}
-                    // The initials are the visible label; the name is the
-                    // accessible one, because "PA" announces as nothing.
-                    aria-label={member.label}
-                    aria-pressed={on()}
-                    disabled={unusable()}
-                    // Only the unusable chip needs it: it wraps the control in
-                    // a hover surface, and the ordinary chip has no reason to
-                    // carry that extra element.
-                    whenDisabled={unusable()}
-                    label={
-                      unusable()
-                        ? `${member.label}: ${member.state?.label}, nothing to search`
-                        : `Search only ${member.label}`
-                    }
-                    onClick={() => toggleRestriction(member.repoPath)}
-                  >
-                    {memberInitials({ displayName: member.label, repoPath: member.repoPath })}
-                  </Tooltip>
-                );
-              }}
-            </For>
-          </div>
+      <div class={styles.topBar}>
+        <Show when={(props.members?.length ?? 0) > 1}>
+          <MemberToggles members={props.members!} restricted={restriction()} onChange={restrictTo} />
         </Show>
-        {/* The one swept site that does not become a `Tooltip`. This text
-            describes the field rather than naming a control, and a tooltip on a
-            text box opens on focus and then sits over the results for as long as
-            you are typing into it - worse than the `title` it replaces. A
-            description is what a screen reader announces on focus, which is
-            more than the `title` ever did for a keyboard user. */}
-        <input
-          ref={inputEl}
-          class={styles.searchInput}
-          type="text"
-          placeholder="Search project"
-          aria-describedby={QUERY_HINT_ID}
-          value={query()}
-          onInput={(e) => onInput(e.currentTarget.value)}
-          onKeyDown={onQueryKeyDown}
+        <span class={styles.spacer} />
+        <IconButton
+          size="sm"
+          icon={<Icon icon={RefreshCw} />}
+          tooltip="Refresh"
+          disabled={!query()}
+          onClick={() => void runSearch(query())}
         />
-        <span id={QUERY_HINT_ID} class={styles.srOnly}>
-          Enter searches now and remembers the query; Up and Down walk what you have searched here
-        </span>
-        <Show when={showReplace()}>
-          <div class={styles.replaceRow}>
-            <input
-              class={styles.searchInput}
-              type="text"
-              aria-label="Replace with"
-              placeholder="Replace with"
-              value={replacement()}
-              onInput={(e) => setReplacement(e.currentTarget.value)}
+        <IconButton
+          size="sm"
+          icon={<Icon icon={ListX} />}
+          tooltip="Clear Search Results"
+          disabled={!query() && !replacement()}
+          onClick={clearAll}
+        />
+        <IconButton
+          size="sm"
+          icon={<Icon icon={FilePlus2} />}
+          tooltip="Open New Search Editor"
+          disabled={!ws()}
+          onClick={() => openSearchEditor(ws())}
+        />
+        <IconButton
+          size="sm"
+          icon={<Icon icon={Star} />}
+          active={showSaved()}
+          tooltip="Saved Searches"
+          aria-expanded={showSaved()}
+          aria-controls={SAVED_ID}
+          onClick={() => setShowSaved((v) => !v)}
+        />
+        <IconButton
+          size="sm"
+          icon={<Icon icon={asTree() ? List : ListTree} />}
+          tooltip={asTree() ? "View as List" : "View as Tree"}
+          onClick={() => setView(!asTree())}
+        />
+        <IconButton
+          size="sm"
+          icon={<Icon icon={allCollapsed() ? ChevronsUpDown : ChevronsDownUp} />}
+          tooltip={allCollapsed() ? "Expand All" : "Collapse All"}
+          disabled={!hitCount()}
+          onClick={collapseOrExpandAll}
+        />
+      </div>
+      <div class={styles.form}>
+        <Tooltip
+          as="button"
+          type="button"
+          class={styles.replaceToggle}
+          label="Toggle Replace"
+          aria-label="Toggle Replace"
+          aria-expanded={showReplace()}
+          onClick={() => setShowReplace((v) => !v)}
+        >
+          <Chevron open={showReplace()} />
+        </Tooltip>
+        <div class={styles.fields}>
+          {/* A description rather than a tooltip: a tooltip on a text box opens
+              on focus and sits over the results for as long as you type. */}
+          <Field
+            ref={(el) => (inputEl = el)}
+            value={query()}
+            label="Search"
+            placeholder="Search"
+            describedBy={QUERY_HINT_ID}
+            onInput={onInput}
+            onKeyDown={onQueryKeyDown}
+          >
+            <MatchToggles
+              options={options()}
+              unsupported={caps().unsupported}
+              backend={caps().backend}
+              onToggle={toggleOption}
             />
-            <IconButton
-              size="xs"
-              icon={<Icon icon={ReplaceAll} size={14} />}
-              aria-label="Replace all"
-              // The label is the answer to "why is this greyed out?", so it has
-              // to survive the control being disabled.
-              tooltipWhenDisabled
-              tooltip={
-                anyTruncated()
-                  ? "Refine the search first: Replace All is disabled while results are capped"
-                  : "Replace all"
-              }
-              // A capped result set is a subset of the real matches, so a
-              // "replace everything" that silently means "replace the first 500"
-              // is the one action that must not be offered here.
-              disabled={anyTruncated() || !allTargets().length || applying()}
-              onClick={() => void replaceAll()}
-            />
-          </div>
-        </Show>
-        <div class={styles.toggleRow}>
-          <For each={TOGGLES}>
-            {(t) => {
-              const off = () => isUnsupported(caps().unsupported, t.key);
-              return (
-                <IconButton
-                  size="xs"
-                  icon={<Icon icon={t.icon} size={14} />}
-                  active={options()[t.key]}
-                  disabled={off()}
-                  aria-label={t.label}
-                  // Disabled means the backend cannot do it, and the label says
-                  // which backend and why - unreachable exactly when it matters.
-                  tooltipWhenDisabled
-                  tooltip={off() ? `${t.label}. ${unsupportedReason(t.key, caps().backend)}` : t.label}
-                  onClick={() => toggleOption(t.key)}
-                />
-              );
-            }}
-          </For>
-          <span class={styles.toggleSpacer} />
-          {/* Replace rewrites one pattern everywhere; this hands the same hits
-              over as text and lets each one be edited on its own terms, which
-              is the thing a regex cannot express. A capped result set is still
-              offered here, unlike Replace All: the buffer writes back only the
-              lines it is showing, so "the first 500" is exactly what it says. */}
-          <IconButton
-            size="xs"
-            icon={<Icon icon={FilePen} size={14} />}
-            aria-label="Edit results in a buffer"
-            tooltipWhenDisabled
-            tooltip="Edit results in a buffer and write them back"
-            disabled={!hitCount()}
-            onClick={openResultsBuffer}
-          />
-          <IconButton
-            size="xs"
-            icon={<Icon icon={Star} size={14} />}
-            active={showSaved()}
-            aria-label="Saved searches"
-            tooltip="Saved searches"
-            aria-expanded={showSaved()}
-            aria-controls={SAVED_ID}
-            onClick={() => setShowSaved((v) => !v)}
-          />
-          <IconButton
-            size="xs"
-            icon={<Icon icon={Replace} size={14} />}
-            active={showReplace()}
-            aria-label="Toggle replace"
-            tooltip="Toggle replace"
-            aria-expanded={showReplace()}
-            onClick={() => setShowReplace((v) => !v)}
-          />
-          <IconButton
-            size="xs"
-            icon={<Icon icon={Ellipsis} size={14} />}
-            active={showGlobs()}
-            aria-label="Include and exclude globs"
-            tooltip="Include and exclude globs"
-            // It is both a toggle button (pressed) and a disclosure for the
-            // glob row (expanded); `aria-expanded` is what names the region.
-            aria-expanded={showGlobs()}
-            aria-controls={GLOBS_ID}
-            onClick={() => setShowGlobs((v) => !v)}
-          />
-        </div>
-        <Show when={showGlobs()}>
-          <div class={styles.globRow} id={GLOBS_ID}>
-            <input
-              class={styles.globInput}
-              type="text"
-              aria-label="Include files matching these globs"
-              placeholder="Include, e.g. src/**/*.ts"
-              value={options().include}
-              onInput={(e) => setGlob("include", e.currentTarget.value)}
-            />
-            <input
-              class={styles.globInput}
-              type="text"
-              aria-label="Exclude files matching these globs"
-              placeholder="Exclude, e.g. **/*.test.ts"
-              value={options().exclude}
-              onInput={(e) => setGlob("exclude", e.currentTarget.value)}
-            />
-          </div>
-        </Show>
-        <Show when={showSaved()}>
-          <div class={styles.savedRow} id={SAVED_ID}>
-            <div class={styles.saveBar}>
-              <input
-                class={styles.globInput}
-                type="text"
-                aria-label="Name this search"
-                placeholder="Name this search"
-                value={saveName()}
-                onInput={(e) => setSaveName(e.currentTarget.value)}
+          </Field>
+          <span id={QUERY_HINT_ID} class={styles.srOnly}>
+            Enter searches now and remembers the query; Up and Down walk what you have searched here
+          </span>
+          <Show when={showReplace()}>
+            <div class={styles.replaceRow}>
+              <Field
+                value={replacement()}
+                label="Replace"
+                placeholder="Replace"
+                onInput={setReplacement}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
-                    commitSave();
+                    void replaceAll();
                   }
                 }}
-              />
-              <Button
-                size="xs"
-                // A name with no query behind it would save a row that runs
-                // nothing, so the query is as required as the name is.
-                disabled={!saveName().trim() || !query()}
-                tooltip={
-                  nameTaken(saved(), ws(), saveName())
-                    ? `Update the saved search named "${saveName().trim()}"`
-                    : "Save this query and its toggles under that name"
-                }
-                onClick={commitSave}
               >
-                {nameTaken(saved(), ws(), saveName()) ? "Update" : "Save"}
-              </Button>
+                <InlineToggle
+                  icon={CaseUpper}
+                  label="Preserve Case"
+                  active={preserveCase()}
+                  onClick={() => setPreserveCase((v) => !v)}
+                />
+              </Field>
+              {/* A capped result set is a subset of the real matches, so a
+                  "replace everything" that silently means "replace the first
+                  500" is the one action that must not be offered here. */}
+              <InlineToggle
+                icon={ReplaceAll}
+                label={
+                  anyTruncated()
+                    ? "Refine the search first: Replace All is disabled while results are capped"
+                    : "Replace All"
+                }
+                disabled={anyTruncated() || !allTargets().length || applying()}
+                onClick={() => void replaceAll()}
+              />
             </div>
-            <Show when={savedNotice()}>
-              <div class={styles.savedNotice} role="status">
-                {savedNotice()}
-              </div>
-            </Show>
-            <Show
-              when={savedList().length}
-              fallback={<div class="tree-empty">No saved searches here yet</div>}
-            >
-              <ul class={styles.savedList}>
-                <For each={savedList()}>
-                  {(s) => (
-                    <li class={styles.savedItem}>
-                      <Show
-                        when={renaming() === s.name}
-                        fallback={
-                          <Tooltip
-                            as="button"
-                            type="button"
-                            class={styles.savedName}
-                            label={`${s.query} - opens as an editable results buffer`}
-                            onClick={() => void openSaved(s)}
-                          >
-                            {s.name}
-                          </Tooltip>
-                        }
-                      >
-                        <input
-                          class={styles.globInput}
-                          type="text"
-                          aria-label={`New name for ${s.name}`}
-                          value={s.name}
-                          // `autofocus` is honoured when the parser meets it,
-                          // not when a `Show` inserts the element later, so the
-                          // focus is asked for a frame after it is in the DOM -
-                          // the same deferral the panel's own focus effect uses.
-                          ref={(el) => requestAnimationFrame(() => el.select())}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              commitRename(s.name, e.currentTarget.value);
-                            } else if (e.key === "Escape") setRenaming(null);
-                          }}
-                          // Enter is the only thing that renames. Committing on
-                          // blur too would mean Escape (which unmounts this
-                          // input, and so blurs it) applied the rename it was
-                          // pressed to call off.
-                          onBlur={() => setRenaming(null)}
-                        />
-                      </Show>
-                      <IconButton
-                        size="xs"
-                        icon={<Icon icon={Pencil} size={12} />}
-                        aria-label={`Rename ${s.name}`}
-                        tooltip={`Rename ${s.name}`}
-                        onClick={() => setRenaming(s.name)}
-                      />
-                      <IconButton
-                        size="xs"
-                        icon={<Icon icon={Trash2} size={12} />}
-                        aria-label={`Delete ${s.name}`}
-                        tooltip={`Delete ${s.name}`}
-                        onClick={() => setSaved((st) => deleteSearch(st, ws(), s.name))}
-                      />
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </Show>
+          </Show>
+          <div class={styles.detailsRow}>
+            <InlineToggle
+              icon={Ellipsis}
+              label="Toggle Search Details"
+              active={showGlobs()}
+              onClick={() => setShowGlobs((v) => !v)}
+            />
           </div>
-        </Show>
+          <Show when={showGlobs()}>
+            <GlobFields
+              id={GLOBS_ID}
+              options={options()}
+              unsupported={caps().unsupported}
+              backend={caps().backend}
+              openOnly={openOnly()}
+              onGlob={setGlob}
+              onOpenOnly={toggleOpenOnly}
+              onToggleIgnore={() => toggleOption("noIgnore")}
+            />
+          </Show>
+        </div>
       </div>
-      <Show when={error()}>
-        <div class="tree-empty">{error()}</div>
-      </Show>
-      <Show when={!error() && !query()}>
-        <div class="tree-empty">Type to search the project</div>
-      </Show>
-      <Show when={!error() && query() && !loading() && !hitCount()}>
-        <div class="tree-empty">No matches</div>
+      <Show when={showSaved()}>
+        <div class={styles.savedRow} id={SAVED_ID}>
+          <div class={styles.saveBar}>
+            <input
+              class={styles.globInput}
+              type="text"
+              aria-label="Name this search"
+              placeholder="Name this search"
+              value={saveName()}
+              onInput={(e) => setSaveName(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitSave();
+                }
+              }}
+            />
+            <Button
+              size="xs"
+              // A name with no query behind it would save a row that runs
+              // nothing, so the query is as required as the name is.
+              disabled={!saveName().trim() || !query()}
+              tooltip={
+                nameTaken(saved(), ws(), saveName())
+                  ? `Update the saved search named "${saveName().trim()}"`
+                  : "Save this query and its toggles under that name"
+              }
+              onClick={commitSave}
+            >
+              {nameTaken(saved(), ws(), saveName()) ? "Update" : "Save"}
+            </Button>
+          </div>
+          <Show when={savedNotice()}>
+            <div class={styles.savedNotice} role="status">
+              {savedNotice()}
+            </div>
+          </Show>
+          <Show when={savedList().length} fallback={<div class="tree-empty">No saved searches here yet</div>}>
+            <ul class={styles.savedList}>
+              <For each={savedList()}>
+                {(s) => (
+                  <li class={styles.savedItem}>
+                    <Show
+                      when={renaming() === s.name}
+                      fallback={
+                        <Tooltip
+                          as="button"
+                          type="button"
+                          class={styles.savedName}
+                          label={`${s.query} - opens in a Search Editor`}
+                          onClick={() => void openSaved(s)}
+                        >
+                          {s.name}
+                        </Tooltip>
+                      }
+                    >
+                      <input
+                        class={styles.globInput}
+                        type="text"
+                        aria-label={`New name for ${s.name}`}
+                        value={s.name}
+                        // `autofocus` is honoured when the parser meets it,
+                        // not when a `Show` inserts the element later, so the
+                        // focus is asked for a frame after it is in the DOM.
+                        ref={(el) => requestAnimationFrame(() => el.select())}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            commitRename(s.name, e.currentTarget.value);
+                          } else if (e.key === "Escape") setRenaming(null);
+                        }}
+                        // Enter is the only thing that renames. Committing on
+                        // blur too would mean Escape (which unmounts this
+                        // input, and so blurs it) applied the rename it was
+                        // pressed to call off.
+                        onBlur={() => setRenaming(null)}
+                      />
+                    </Show>
+                    <IconButton
+                      size="xs"
+                      icon={<Icon icon={Pencil} size={12} />}
+                      aria-label={`Rename ${s.name}`}
+                      tooltip={`Rename ${s.name}`}
+                      onClick={() => setRenaming(s.name)}
+                    />
+                    <IconButton
+                      size="xs"
+                      icon={<Icon icon={Trash2} size={12} />}
+                      aria-label={`Delete ${s.name}`}
+                      tooltip={`Delete ${s.name}`}
+                      onClick={() => setSaved((st) => deleteSearch(st, ws(), s.name))}
+                    />
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+        </div>
       </Show>
       <Show when={outcome()}>
-        <div class={styles.outcome}>{outcome()}</div>
+        <div class={styles.message}>{outcome()}</div>
+      </Show>
+      <Show when={error()}>
+        <div class={styles.message}>{error()}</div>
+      </Show>
+      <Show when={!error() && query() && !loading() && !hitCount()}>
+        <div class={styles.message}>No results found.</div>
+      </Show>
+      <Show when={!error() && hitCount()}>
+        <div class={styles.message}>
+          {plural(countOccurrences(allMatches()), "result")} in {plural(fileCount(), "file")}
+          {" - "}
+          <button type="button" class={styles.link} onClick={openInEditor}>
+            Open in editor
+          </button>
+        </div>
       </Show>
       <div class={styles.results}>
         {/* Sections iterate over the roots, not over `sections()`: a member with
@@ -1153,105 +1405,52 @@ export default function SearchPanel(props: {
           {(member) => {
             const found = () => sectionOf(member.path);
             const unusable = () => member.state?.usable === false;
-            const files = () => groupByFile(found()?.matches ?? []);
+            const files = createMemo(() => groupByFile(visibleOf(member.path)));
+            const folders = createMemo(() => folderTree(files()));
+            const depth = () => (headed() ? 1 : 0);
             return (
               <div class={styles.section} data-root={member.path}>
                 <Show when={headed()}>
-                  <div class={styles.sectionHeader}>
+                  <div
+                    class={`${tree.treeRow} ${styles.row} ${styles.memberRow}`}
+                    onClick={() => toggleCollapsed(memberKey(member.path))}
+                  >
+                    <Chevron open={!isCollapsed(memberKey(member.path))} />
                     <MemberChip
                       member={{ displayName: member.label, repoPath: member.repoPath }}
                       tint={member.tint}
                       decorative
                     />
-                    <span class={styles.sectionName}>{member.label}</span>
+                    <span class={styles.fileName}>{member.label}</span>
                     <Show when={!unusable()}>
-                      <span class={styles.matchCount}>{found()?.matches.length ?? 0}</span>
+                      <span class={styles.rowEnd}>
+                        <span class={styles.badge}>{countOccurrences(visibleOf(member.path))}</span>
+                      </span>
                     </Show>
                   </div>
                 </Show>
-                {/* Three ways a section says nothing was found, and they are not
-                    the same answer: it could not be searched, it failed, or it
-                    was searched and had no hits. */}
-                <Show when={unusable()}>
-                  <div class="tree-empty">{member.state?.label}: not searched</div>
+                <Show when={!isCollapsed(memberKey(member.path))}>
+                  {/* Three ways a section says nothing was found, and they are
+                      not the same answer: it could not be searched, it failed,
+                      or it was searched and had no hits. */}
+                  <Show when={unusable()}>
+                    <div class="tree-empty">{member.state?.label}: not searched</div>
+                  </Show>
+                  <Show when={found()?.error}>
+                    <div class="tree-empty">{found()!.error}</div>
+                  </Show>
+                  <Show when={found() && noticeFor(found()!)}>
+                    <div class={styles.truncatedNotice}>{noticeFor(found()!)}</div>
+                  </Show>
+                  <Show
+                    when={asTree()}
+                    fallback={
+                      <For each={files()}>{(g) => <FileBlock root={member.path} group={g} depth={depth()} />}</For>
+                    }
+                  >
+                    <FolderChildren root={member.path} node={folders()} depth={depth()} />
+                  </Show>
                 </Show>
-                <Show when={found()?.error}>
-                  <div class="tree-empty">{found()!.error}</div>
-                </Show>
-                <Show when={found() && noticeFor(found()!)}>
-                  <div class={styles.truncatedNotice}>{noticeFor(found()!)}</div>
-                </Show>
-                <For each={files()}>
-                  {(group) => (
-                    <div class={styles.fileGroup}>
-                      <div class={styles.fileHeader} title={group.path}>
-                        <span class={styles.filePath}>{group.path}</span>
-                        <span class={styles.matchCount}>{group.matches.length}</span>
-                        <Show when={showReplace() && replacement()}>
-                          <IconButton
-                            size="xs"
-                            class={styles.rowAction}
-                            icon={<Icon icon={Replace} size={12} />}
-                            aria-label={`Replace in ${group.path}`}
-                            tooltip={`Replace in ${group.path}`}
-                            disabled={dirtyPathsFor(member.path).includes(group.path) || applying()}
-                            onClick={() => replaceFile(member.path, group.path)}
-                          />
-                        </Show>
-                      </div>
-                      <For each={group.matches}>
-                        {(m) => (
-                          <div
-                            class={styles.matchRow}
-                            onClick={() => openMatch(member.path, m.path, m.line)}
-                          >
-                            <span class={styles.matchLine}>{m.line}</span>
-                            <span class={styles.matchText}>
-                              <For each={splitHighlights(m.text, m.submatches)}>
-                                {(seg) =>
-                                  seg.hit ? <mark class={styles.hit}>{seg.text}</mark> : <>{seg.text}</>
-                                }
-                              </For>
-                            </span>
-                            <Show when={showReplace() && replacement()}>
-                              <span class={styles.previewText}>
-                                <For each={m.submatches}>
-                                  {(span, i) => {
-                                    const next = () => preview()[previewIndex(m, i())];
-                                    return (
-                                      <Show when={next() != null}>
-                                        <span class={styles.previewPair}>
-                                          <del class={styles.previewOld}>
-                                            {m.text.slice(span[0], span[1])}
-                                          </del>
-                                          <ins class={styles.previewNew}>{next()}</ins>
-                                          <IconButton
-                                            size="xs"
-                                            class={styles.rowAction}
-                                            icon={<Icon icon={Replace} size={12} />}
-                                            aria-label={`Replace this occurrence on line ${m.line}`}
-                                            tooltip="Replace this occurrence"
-                                            disabled={
-                                              dirtyPathsFor(member.path).includes(m.path) || applying()
-                                            }
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              replaceOne(member.path, m, span);
-                                            }}
-                                          />
-                                        </span>
-                                      </Show>
-                                    );
-                                  }}
-                                </For>
-                              </span>
-                            </Show>
-                          </div>
-                        )}
-                      </For>
-                    </div>
-                  )}
-                </For>
               </div>
             );
           }}
