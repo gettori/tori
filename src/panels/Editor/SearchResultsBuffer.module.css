@@ -26,26 +26,70 @@
   gap: calc(6px * var(--ui-scale));
 }
 
-.contextInput {
-  flex: none;
-  width: calc(52px * var(--ui-scale));
-  height: calc(28px * var(--ui-scale));
-  padding: 0 calc(6px * var(--ui-scale));
-  background: transparent;
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  color: var(--fg-default);
-  font-family: inherit;
-  font-size: var(--sway-text-lg);
-  outline: none;
+/* Pressed lights the icon rather than filling the button, as in the Search
+   tab. Keyed on aria-pressed: a reactive `class` would wipe IconButton's own. */
+.pressable.pressable[aria-pressed="true"],
+.pressable.pressable[aria-pressed="true"]:hover:not(:disabled) {
+  color: var(--brand-default);
 }
 
-.contextInput:focus {
+/* The context lines stepper, as tall as the search field beside it, border
+   included. The native spinners go: they ignore the theme. */
+.stepper {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: calc(28px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  overflow: hidden;
+}
+
+.stepper:focus-within {
   border-color: var(--brand-default);
 }
 
-.contextInput:disabled {
+.stepperBtn {
+  width: calc(18px * var(--ui-scale));
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--sway-text-md);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stepperBtn:hover:not(:disabled) {
+  background: var(--neutral-hover);
+  color: var(--fg-default);
+}
+
+.stepperBtn:disabled {
   opacity: 0.45;
+  cursor: default;
+}
+
+.stepperNum {
+  width: calc(24px * var(--ui-scale));
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--sway-text-md);
+  text-align: center;
+  outline: none;
+  appearance: textfield;
+}
+
+.stepperNum::-webkit-outer-spin-button,
+.stepperNum::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
 }
 
 /* What the last search or apply said, with Apply and the details toggle held
