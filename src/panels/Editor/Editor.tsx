@@ -33,7 +33,6 @@ import CallsPanel from "./CallsPanel";
 import Breadcrumbs from "./Breadcrumbs";
 // The bar's own stylesheet: these two controls belong to it, not to the editor.
 import crumbStyles from "./Breadcrumbs.module.css";
-import BookmarksPanel from "./BookmarksPanel";
 import { diagnostics } from "../../utils/diagnostics";
 import { traceSettle } from "../../utils/perfTrace";
 import { isMarkdownPath } from "../../utils/liveBuffer";
@@ -95,9 +94,6 @@ import {
   Bug,
   // A call graph, not a telephone: `PhoneCall` reads as telephony.
   Network,
-  // Aliased: `Bookmark` here is the glyph, and the type of the same name is the
-  // thing it stands for.
-  Bookmark as BookmarkGlyph,
   Search,
   MessagesSquare,
   Share2,
@@ -122,6 +118,7 @@ import {
   SPLIT_PANE,
   DEBUG_START,
   DEBUG_STOP,
+  DEBUG_TOGGLE_BREAKPOINT,
   DEBUG_RESTART,
   DEBUG_PICK,
   type DebugPick,
@@ -216,18 +213,6 @@ import {
   type FrecencyStore,
   type Touch,
 } from "../../utils/frecency";
-import {
-  bookmarkRows,
-  bookmarksFor,
-  labelBookmark,
-  loadBookmarks,
-  mapPaths as mapBookmarkPaths,
-  saveBookmarks,
-  setFileBookmarks,
-  toggleBookmark,
-  type Bookmark,
-  type BookmarkStore,
-} from "../../utils/bookmarks";
 import { frameLocation } from "../../utils/debugStack";
 import {
   breakpointMarks,
@@ -303,7 +288,6 @@ type RightMode =
   | "pulls"
   | "problems"
   | "calls"
-  | "bookmarks"
   | "shared"
   | "docs"
   | "session"
@@ -311,8 +295,8 @@ type RightMode =
   | "debug";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 /** The modes that answer for the member `activeRoot` points at, rather than for
- *  the whole Feature (Changes, Search, Problems, Bookmarks) or for the file in
- *  front (Calls, Session, Debug). These are the three the chip row switches;
+ *  the whole Feature (Changes, Search, Problems) or for the file in front
+ *  (Calls, Session, Debug). These are the three the chip row switches;
  *  Files and Search draw member chips of their own. */
 const ACTIVE_ROOT_MODES: RightMode[] = ["pulls", "shared", "docs"];
 
@@ -322,7 +306,6 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   pulls: { mode: "pulls", label: "Pull requests", icon: GitPullRequest },
   problems: { mode: "problems", label: "Problems", icon: TriangleAlert },
   calls: { mode: "calls", label: "Calls", icon: Network },
-  bookmarks: { mode: "bookmarks", label: "Bookmarks", icon: BookmarkGlyph },
   search: { mode: "search", label: "Search", icon: Search },
   debug: { mode: "debug", label: "Debug", icon: Bug },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
@@ -553,7 +536,6 @@ export default function Editor(props: {
     "pulls",
     "problems",
     "calls",
-    "bookmarks",
     "debug",
     "session",
     "shared",
@@ -586,11 +568,6 @@ export default function Editor(props: {
       // the tab is the always-on cost this gate avoids, not the pane.
       case "debug":
         return debugRunning();
-      // Bookmarks is deliberately *not* gated on having any, unlike Problems and
-      // Outline above. A mark is made by clicking a gutter column that is empty
-      // until you do, and this panel's empty state is the only place that says
-      // so; hiding it until a mark exists would hide the instructions behind the
-      // thing they explain.
       default:
         return true;
     }
@@ -644,45 +621,16 @@ export default function Editor(props: {
     return at.path === activeFileTab()?.path ? { line: at.line, column: at.column } : null;
   };
 
-  /** Mark or unmark a line, from a click on the gutter. */
-  function toggleMark(path: string, line: number) {
-    setBookmarkStore((s) => toggleBookmark(s, ws(), path, line));
-  }
-
-  /** An edit moved the marks in an open buffer, so the store follows. The buffer
-   *  is the authority for the lines it holds: its positions were mapped through
-   *  the change, and the line numbers in storage were not.
-   *
-   *  Only for the lines it holds, though. A file can be shorter than it was when
-   *  a mark was made (a checkout, a revert), and the buffer has no way to report
-   *  a mark past its own end. Taking its answer as the whole truth would delete
-   *  those on the next keystroke, which is a permanent loss of something a person
-   *  put there by hand, so they are carried across untouched. */
-  function marksMoved(path: string, marks: Bookmark[], docLines: number) {
-    setBookmarkStore((s) => {
-      const beyond = bookmarksFor(s, ws(), path).filter((b) => b.line > docLines);
-      return setFileBookmarks(s, ws(), path, [...marks, ...beyond]);
-    });
-  }
-
   /** Set or clear a breakpoint, from a click on its gutter. */
   function toggleBreak(path: string, line: number) {
     toggleBreakpointAt(ws(), path, line);
   }
 
-  /** An edit moved the breakpoints in an open buffer. Same contract as
-   *  `marksMoved` above, including the lines past the buffer's end. */
+  /** An edit moved the breakpoints in an open buffer. The buffer is the
+   *  authority for the lines it holds; ones past its end (a file shortened by a
+   *  checkout) are carried across, since it cannot report them. */
   function breaksMoved(path: string, lines: number[], docLines: number) {
     breakpointsMoved(ws(), path, lines, docLines);
-  }
-
-  /** Name a mark from the panel, or clear the name with an empty answer. The
-   *  gutter has one gesture and it is already spent on the toggle; naming is a
-   *  thing you do to a list, so it lives where the list is. */
-  async function labelMark(row: { path: string; line: number; label?: string }) {
-    const label = await askText(`Name the bookmark at line ${row.line}`, row.label ?? "");
-    if (label === null) return;
-    setBookmarkStore((s) => labelBookmark(s, ws(), row.path, row.line, label));
   }
 
   /** Note arriving somewhere. Synthetic views are skipped: a commit-log or
@@ -693,16 +641,7 @@ export default function Editor(props: {
     setJumpsByWs((s) => recordIn(s, ws(), entry));
   }
 
-  // The lines you marked, per workspace. Read once at start and written back on
-  // every change, like frecency below: nothing else needs to be plumbed for it,
-  // and a mark has to outlive the tab it was made in.
-  const [bookmarks, setBookmarkStore] = createSignal<BookmarkStore>(loadBookmarks());
-  createEffect(() => saveBookmarks(bookmarks()));
-  const marksHere = () => bookmarksFor(bookmarks(), ws(), activeFileTab()?.path ?? "");
-  const bookmarkList = () => bookmarkRows(bookmarks(), ws());
-
-  // The breakpoints in the file on screen. Unlike the bookmarks above, the store
-  // is not held here: `debugBreakpoints.ts` owns it, because a session
+  // The breakpoints in the file on screen. The store is not held here: `debugBreakpoints.ts` owns it, because a session
   // configuring itself asks for the whole workspace's set from outside any
   // component, and a signal that lived in this one would be unreachable from
   // there.
@@ -1823,10 +1762,9 @@ export default function Editor(props: {
     // dangling reference this sweep exists to stop.
     setJumpsByWs((s) => mapPathsIn(s, (p) => (isUnderPath(p, path) ? null : p)));
     setFrecency((s) => mapFrecencyPaths(s, (p) => (isUnderPath(p, path) ? null : p)));
-    setBookmarkStore((s) => mapBookmarkPaths(s, (p) => (isUnderPath(p, path) ? null : p)));
-    // Ahead of the tab sweep for the bookmarks' reason and one of its own: a
-    // breakpoint on a trashed file has no gutter left to click, so nothing could
-    // ever remove it and it would go out in every future run's `setBreakpoints`.
+    // Ahead of the tab sweep: a breakpoint on a trashed file has no gutter left
+    // to click, so nothing could ever remove it and it would go out in every
+    // future run's `setBreakpoints`.
     mapBreakpointFiles((p) => (isUnderPath(p, path) ? null : p));
     // A folder that is gone cannot be collapsed by hand: there is no row left
     // to click, so an entry naming it would sit in the store for good.
@@ -1871,7 +1809,6 @@ export default function Editor(props: {
     setClosedByWs((s) => dropWorkspaceKey(s, ws));
     setJumpsByWs((s) => dropWorkspaceKey(s, ws));
     setFrecency((s) => dropWorkspaceKey(s, ws));
-    setBookmarkStore((s) => dropWorkspaceKey(s, ws));
     setAttachPorts((s) => dropWorkspaceKey(s, ws));
     setLastTargets((s) => dropWorkspaceKey(s, ws));
     dropWorkspaceBreakpoints(ws);
@@ -1897,7 +1834,6 @@ export default function Editor(props: {
     // "did any tab move" return.
     setJumpsByWs((s) => mapPathsIn(s, (p) => repoint(p, from, to) ?? p));
     setFrecency((s) => mapFrecencyPaths(s, (p) => repoint(p, from, to) ?? p));
-    setBookmarkStore((s) => mapBookmarkPaths(s, (p) => repoint(p, from, to) ?? p));
     mapBreakpointFiles((p) => repoint(p, from, to) ?? p);
     mapExpandedFiles((p) => repoint(p, from, to) ?? p);
     setClosedByWs((s) => sweepClosed(s, (p) => repoint(p, from, to) ?? p));
@@ -1963,8 +1899,8 @@ export default function Editor(props: {
    *
    * Built as **a rename with a write in front of it**. Once the bytes are on
    * disk, `FILE_RENAMED` is the event Phase 1 already gave the tab strip,
-   * CodeEditor's buffer map (so the undo history comes along), the jump list,
-   * the bookmarks and the reopen stack, so every one of them follows the file
+   * CodeEditor's buffer map (so the undo history comes along), the jump list
+   * and the reopen stack, so every one of them follows the file
    * without being told about scratch buffers at all.
    *
    * The order is the safety: write, then repoint, then remove the old file. A
@@ -2134,6 +2070,11 @@ export default function Editor(props: {
       onEvent(EDITOR_NAV_FORWARD, () => goJump(1)),
       onEvent(DEBUG_START, startDebugging),
       onEvent(DEBUG_STOP, stopDebugging),
+      onEvent(DEBUG_TOGGLE_BREAKPOINT, () => {
+        const at = caretHere();
+        const path = activeFileTab()?.path;
+        if (at && path) toggleBreak(path, at.line);
+      }),
       onEvent(DEBUG_RESTART, () => void restartDebugging()),
       onWith<DebugPick>(DEBUG_PICK, (d) => {
         if (d?.kind) void openDebugPicker(d.kind);
@@ -2731,9 +2672,6 @@ export default function Editor(props: {
             onDirty={handleDirty}
             onCursorJump={(path, line) => recordJump({ path, line })}
             onCaretMove={noteCaret}
-            bookmarks={marksHere()}
-            onToggleBookmark={toggleMark}
-            onBookmarksMoved={marksMoved}
             breakpoints={breaksHere()}
             onToggleBreakpoint={toggleBreak}
             onBreakpointsMoved={breaksMoved}
@@ -2828,15 +2766,6 @@ export default function Editor(props: {
           <Match when={rightMode() === "calls"}>
             {focusMemberLine()}
             <CallsPanel path={activeId()} />
-          </Match>
-          <Match when={rightMode() === "bookmarks"}>
-            <BookmarksPanel
-              rows={bookmarkList()}
-              root={root()}
-              roots={treeRoots()}
-              onLabel={labelMark}
-              onRemove={(row) => toggleMark(row.path, row.line)}
-            />
           </Match>
           <Match when={rightMode() === "changes"}>
             <ReviewPanel

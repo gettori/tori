@@ -95,10 +95,10 @@ export function toggleBreakpointAt(ws: string, path: string, line: number): void
 /**
  * An edit moved the breakpoints in an open buffer, so the store follows.
  *
- * `bookmarks`' rule, for its reason: the buffer is the authority only for the
- * lines it holds. A file can be shorter than it was when a breakpoint was set (a
- * checkout, a revert), and the buffer cannot report one past its own end, so
- * those are carried across untouched rather than deleted on the next keystroke.
+ * The buffer is the authority only for the lines it holds. A file can be
+ * shorter than it was when a breakpoint was set (a checkout, a revert), and the
+ * buffer cannot report one past its own end, so those are carried across
+ * untouched rather than deleted on the next keystroke.
  *
  * Nothing is sent from here. An edit that moved a breakpoint is exactly the case
  * where the buffer and the file on disk disagree, which is what `pending` is.
@@ -189,9 +189,8 @@ function remapKeys(keys: ReadonlySet<string>, map: (path: string) => string | nu
  * future run's configuration with no gutter left to say why.
  *
  * The lines armed may reflect edits the close discarded, since an edit moves
- * them as it happens. That is the same tolerance the bookmark store already has,
- * and the alternative here is a breakpoint that never fires again and never
- * explains itself.
+ * them as it happens. The alternative is a breakpoint that never fires again
+ * and never explains itself.
  */
 export function noteBufferClosed(ws: string, path: string): void {
   if (!dirty().has(path)) return;

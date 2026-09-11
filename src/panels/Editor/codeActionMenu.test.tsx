@@ -109,7 +109,7 @@ const { offersAnySourceAction, publishSourceActionKinds, sourceActionKinds } = a
   "../../utils/sourceActions"
 );
 const { clearCodeActions, refreshCodeActions } = await import("./lspCodeActions");
-const { CODE_ACTION_GUTTER_CLASS, CODE_ACTION_MARKER_CLASS } = await import("./codeActionGutter");
+const { CODE_ACTION_MARKER_CLASS } = await import("./codeActionBulb");
 
 let mounted: ReturnType<typeof render> | null = null;
 // The toast host is App's, not the pane's, so what the pane says is read off
@@ -376,17 +376,10 @@ describe("a server that does no code actions", () => {
     expect(toasts, "not an empty answer, no answer").toEqual([]);
   });
 
-  it("reserves no gutter column, so every ordinary buffer is unchanged", async () => {
-    // Not a styling preference: this gutter is in `commonExtensions`, so it is
-    // in every buffer in the app. A column held open for it would be a stripe
-    // of empty space in files no language server has ever looked at.
+  it("draws no bulb in a buffer no server has an opinion about", async () => {
     provider = undefined;
     await mount();
 
     expect(mounted!.container.querySelectorAll(`.${CODE_ACTION_MARKER_CLASS}`)).toHaveLength(0);
-    // The gutter itself exists (it is a static extension); what must not exist
-    // is anything in it holding width.
-    const column = mounted!.container.querySelector(`.${CODE_ACTION_GUTTER_CLASS}`);
-    expect(column?.querySelector(`.${CODE_ACTION_MARKER_CLASS}`)).toBeFalsy();
   });
 });

@@ -1,17 +1,13 @@
 // Lines you asked the debugger to stop on.
 //
-// The same shape as `bookmarks.ts`, keyed by absolute path and bucketed per
-// workspace for the same reason: a path open in one worktree names nothing in
-// another. The differences are what a breakpoint is rather than how it is
-// stored: it carries no label (there is nothing to name, only a line to stop
-// at), and it has a second life outside this file, since the adapter has to be
-// told about it and can answer back.
+// Keyed by absolute path and bucketed per workspace: a path open in one worktree
+// names nothing in another. A breakpoint has a second life outside this file,
+// since the adapter has to be told about it and can answer back.
 //
 // That second life is deliberately *not* here. This module is pure and knows
 // nothing about sessions: `debugBreakpoints.ts` owns the wire, the pending and
 // bound states, and the signal the pane reads. Keeping the rules here is what
-// lets them be tested without a debug run, exactly as `bookmarks.ts` is tested
-// without an editor.
+// lets them be tested without a debug run.
 
 /** One file's lines, ascending. Kept sorted here rather than at each read, so
  *  the gutter and the `setBreakpoints` payload cannot disagree about the
@@ -97,10 +93,9 @@ export function breakpointFiles(
 /**
  * Rewrite or drop breakpoints by path, for a file that moved or is gone.
  *
- * The same contract as `bookmarks.ts`'s sweep and needed more sharply here: a
- * breakpoint on a trashed file has no gutter left to click, so nothing could
- * ever remove it, and it would go out in every future run's `setBreakpoints` for
- * a path that does not exist. A rename that left them behind would arm the old
+ * Needed because a breakpoint on a trashed file has no gutter left to click, so
+ * nothing could ever remove it, and it would go out in every future run's
+ * `setBreakpoints` for a path that does not exist. A rename that left them behind would arm the old
  * name and show the new one bare.
  *
  * Applied across *every* workspace, not only the visible one: a folder renamed

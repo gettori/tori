@@ -547,43 +547,10 @@ html {
 /* The overflow-tab dropdown (+N) renders through the shared <Menu> component;
    its container/row styling lives in Menu.module.css. */
 
-/* Bookmarks. Emitted as literal class strings by
-   src/panels/Editor/bookmarkGutter.ts, so like the two gutters below they are
-   global rather than CSS-module scoped.
-
-   A scale hue rather than a role of its own: the scale family exists to be a set
-   of colours with no meaning attached, and the contrast gate already holds every
-   one of them to the graphic floor against `canvas.card`, which is the editor's
-   own background. Orange because the two gutters beside this one own red/green
-   (diff) and one shaded hue (blame), and a mark has to be told apart from both
-   at a glance. */
-.cm-bookmark-gutter {
-  width: calc(12px * var(--ui-scale));
-  padding: 0;
-  cursor: pointer;
-  font-size: var(--sway-text-sm);
-  line-height: 1;
-  text-align: center;
-}
-
-.cm-bookmark-gutter .cm-gutterElement.cm-bookmark {
-  color: var(--scale-orange);
-}
-
-/* An empty column is a target nobody can see, and this feature has no other
-   affordance. So every unmarked line carries a dot of its own, invisible until
-   the column is hovered, which is what says a click here would do something. */
-.cm-bookmark-gutter .cm-gutterElement.cm-bookmark-hint {
-  color: transparent;
-}
-
-.cm-bookmark-gutter:hover .cm-gutterElement.cm-bookmark-hint {
-  color: var(--fg-subtle);
-}
-
 /* Breakpoints. Emitted as literal class strings by
-   src/panels/Editor/breakpointGutter.ts, so global for the bookmark column's
-   reason.
+   src/panels/Editor/breakpointGutter.ts, so global rather than CSS-module
+   scoped: they end up in CodeMirror's own DOM. Shown only while debugging (see
+   CodeEditor.module.css).
 
    Red because that is what a breakpoint has been in every debugger anyone has
    used, and the shape carries the state so the colour is not doing the work
@@ -627,22 +594,25 @@ html {
   background: var(--brand-subtle);
 }
 
-/* The code-action lightbulb. Unlike the bookmark column beside it, this one
-   holds no width of its own: the bulb appears and disappears as the caret
-   moves, and a permanently reserved column would be a stripe of empty space in
-   every buffer, including the ones no language server has ever looked at. So
-   the width lives on the marker, and an empty gutter is a zero-width one. */
-.cm-code-action-gutter {
-  padding: 0;
+/* The code-action lightbulb, a widget after the caret line's text (see
+   src/panels/Editor/codeActionBulb.ts). Inline so it never shifts the code. */
+.cm-code-action {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.75em;
+  color: var(--scale-yellow);
   cursor: pointer;
-  font-size: var(--sway-text-sm);
-  line-height: 1;
-  text-align: center;
+  vertical-align: middle;
 }
 
-.cm-code-action-gutter .cm-gutterElement.cm-code-action {
-  width: calc(12px * var(--ui-scale));
-  color: var(--scale-yellow);
+.cm-code-action svg {
+  width: 1em;
+  height: 1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Git diff gutter */
