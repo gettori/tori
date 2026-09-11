@@ -1189,18 +1189,14 @@ export default function SearchPanel(props: {
         />
       </div>
       <div class={styles.form}>
-        <Tooltip
-          as="button"
-          type="button"
-          class={styles.replaceToggle}
-          label="Toggle Replace"
-          aria-label="Toggle Replace"
-          aria-expanded={showReplace()}
-          onClick={() => setShowReplace((v) => !v)}
-        >
-          <Chevron open={showReplace()} />
-        </Tooltip>
-        <div class={styles.fields}>
+        <div class={styles.queryRow}>
+          <IconButton
+            icon={<Icon icon={Replace} />}
+            active={showReplace()}
+            tooltip="Toggle Replace"
+            aria-expanded={showReplace()}
+            onClick={() => setShowReplace((v) => !v)}
+          />
           {/* A description rather than a tooltip: a tooltip on a text box opens
               on focus and sits over the results for as long as you type. */}
           <Field
@@ -1219,66 +1215,64 @@ export default function SearchPanel(props: {
               onToggle={toggleOption}
             />
           </Field>
-          <span id={QUERY_HINT_ID} class={styles.srOnly}>
-            Enter searches now and remembers the query; Up and Down walk what you have searched here
-          </span>
-          <Show when={showReplace()}>
-            <div class={styles.replaceRow}>
-              <Field
-                value={replacement()}
-                label="Replace"
-                placeholder="Replace"
-                onInput={setReplacement}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    void replaceAll();
-                  }
-                }}
-              >
-                <InlineToggle
-                  icon={CaseUpper}
-                  label="Preserve Case"
-                  active={preserveCase()}
-                  onClick={() => setPreserveCase((v) => !v)}
-                />
-              </Field>
-              {/* A capped result set is a subset of the real matches, so a
-                  "replace everything" that silently means "replace the first
-                  500" is the one action that must not be offered here. */}
-              <InlineToggle
-                icon={ReplaceAll}
-                label={
-                  anyTruncated()
-                    ? "Refine the search first: Replace All is disabled while results are capped"
-                    : "Replace All"
-                }
-                disabled={anyTruncated() || !allTargets().length || applying()}
-                onClick={() => void replaceAll()}
-              />
-            </div>
-          </Show>
-          <div class={styles.detailsRow}>
-            <InlineToggle
-              icon={Ellipsis}
-              label="Toggle Search Details"
-              active={showGlobs()}
-              onClick={() => setShowGlobs((v) => !v)}
-            />
-          </div>
-          <Show when={showGlobs()}>
-            <GlobFields
-              id={GLOBS_ID}
-              options={options()}
-              unsupported={caps().unsupported}
-              backend={caps().backend}
-              openOnly={openOnly()}
-              onGlob={setGlob}
-              onOpenOnly={toggleOpenOnly}
-              onToggleIgnore={() => toggleOption("noIgnore")}
-            />
-          </Show>
+          <IconButton
+            icon={<Icon icon={Ellipsis} />}
+            active={showGlobs()}
+            tooltip="Toggle Search Details"
+            aria-expanded={showGlobs()}
+            aria-controls={GLOBS_ID}
+            onClick={() => setShowGlobs((v) => !v)}
+          />
         </div>
+        <span id={QUERY_HINT_ID} class={styles.srOnly}>
+          Enter searches now and remembers the query; Up and Down walk what you have searched here
+        </span>
+        <Show when={showReplace()}>
+          <Field
+            value={replacement()}
+            label="Replace"
+            placeholder="Replace"
+            onInput={setReplacement}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void replaceAll();
+              }
+            }}
+          >
+            <InlineToggle
+              icon={CaseUpper}
+              label="Preserve Case"
+              active={preserveCase()}
+              onClick={() => setPreserveCase((v) => !v)}
+            />
+            {/* A capped result set is a subset of the real matches, so a
+                "replace everything" that silently means "replace the first
+                500" is the one action that must not be offered here. */}
+            <InlineToggle
+              icon={ReplaceAll}
+              label={
+                anyTruncated()
+                  ? "Refine the search first: Replace All is disabled while results are capped"
+                  : "Replace All"
+              }
+              disabled={anyTruncated() || !allTargets().length || applying()}
+              onClick={() => void replaceAll()}
+            />
+          </Field>
+        </Show>
+        <Show when={showGlobs()}>
+          <GlobFields
+            id={GLOBS_ID}
+            options={options()}
+            unsupported={caps().unsupported}
+            backend={caps().backend}
+            openOnly={openOnly()}
+            onGlob={setGlob}
+            onOpenOnly={toggleOpenOnly}
+            onToggleIgnore={() => toggleOption("noIgnore")}
+          />
+        </Show>
       </div>
       <Show when={showSaved()}>
         <div class={styles.savedRow} id={SAVED_ID}>
