@@ -47,6 +47,7 @@ import {
   type OpenInEditor,
   SET_RIGHT_MODE,
   type SetRightMode,
+  TOGGLE_DOCK,
 } from "../../utils/events";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { traceSwitchStart } from "../../utils/perfTrace";
@@ -125,6 +126,7 @@ import {
   MessageCircleQuestion,
   Check,
   CircleDashed,
+  SquareTerminal,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
@@ -136,7 +138,8 @@ import {
 } from "./attempts";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import FeatureList from "./FeatureList";
-import { featureKey, featureSelection, tabUnderFolder, type Feature } from "../../utils/features";
+import { featureKey, featureSelection, isShellsKey, tabUnderFolder, type Feature } from "../../utils/features";
+import { dockOpen } from "../../layout/dockStore";
 import styles from "./LeftSidebar.module.css";
 
 // Glyph for a branch-unit row, keyed by its git kind: a worktree (or an empty
@@ -2823,6 +2826,8 @@ export default function LeftSidebar(props: {
     );
   };
 
+  const dockTabCount = () => (props.liveTabs ?? []).filter((t) => isShellsKey(t.workspace)).length;
+
   // Features, as a tile in the same strip and on the same rules as a space: bare
   // glyph at rest, name and pill when the tree is showing it.
   const modeTile = (m: SidebarMode, label: string, glyph: LucideIcon) => {
@@ -3137,7 +3142,7 @@ export default function LeftSidebar(props: {
       </Show>
 
       {/* Outside the mode gate: the strip is how you leave a mode, so it has to
-          render in all three. */}
+          render in every one. */}
       <Show when={config()}>
         <div class={styles.spaceBar}>
           {/* Out of flow and never seen: the ruler `measureNames` runs each
@@ -3147,28 +3152,11 @@ export default function LeftSidebar(props: {
             <Icon icon={Waypoints} />
             <span class={styles.tileName} ref={probeNameEl}><span class={styles.tileNameText} ref={probeTextEl} /></span>
           </span>
-          <div class={styles.spaceScroll}>
-            <For each={rootSpaces()}>{(g) => spaceTile(g)}</For>
-            <Show when={rootSpaces().length > 0 && extSpaces().length > 0}>
-              <div class={styles.spaceDivider} />
-            </Show>
-            <For each={extSpaces()}>{(g) => spaceTile(g)}</For>
-          </div>
-
-          {/* The two views that are not a space, past a rule so the strip reads
-              as spaces first. Outside the scroller: they are how you get back
-              out of a mode, and a long space list must not carry them off. */}
-          <div class={styles.spaceDivider} />
-          {modeTile("features", "Features", Waypoints)}
-
-          {/* The only thing on the far side. The `+` that used to live here is
-              gone: it was one route to "New space", and the menu below already
-              holds that one along with everything else. */}
           <div class={styles.gearWrap} ref={gearEl}>
             <Tooltip
               as="button"
               type="button"
-              class={styles.gearBtn}
+              class={styles.stripBtn}
               classList={{ [styles.active]: gearOpen() }}
               label="Sidebar actions"
               aria-label="Sidebar actions"
@@ -3198,6 +3186,40 @@ export default function LeftSidebar(props: {
               </div>
             </Show>
           </div>
+
+          <div class={styles.stripNav}>
+            <div class={styles.spaceScroll}>
+              <For each={rootSpaces()}>{(g) => spaceTile(g)}</For>
+              <Show when={rootSpaces().length > 0 && extSpaces().length > 0}>
+                <div class={styles.spaceDivider} />
+              </Show>
+              <For each={extSpaces()}>{(g) => spaceTile(g)}</For>
+            </div>
+
+            {/* Features, past a rule so the strip reads as spaces first. Outside
+                the scroller, so a long space list cannot carry off the way back
+                out of a mode. */}
+            <div class={styles.spaceDivider} />
+            {modeTile("features", "Features", Waypoints)}
+          </div>
+
+          <Tooltip
+            as="button"
+            type="button"
+            class={`${styles.stripBtn} ${styles.dockBtn}`}
+            classList={{ [styles.active]: dockOpen() }}
+            label={dockOpen() ? "Hide the dock (⌘⌃J)" : "Show the dock (⌘⌃J)"}
+            aria-label="Dock"
+            aria-pressed={dockOpen()}
+            onClick={() => emit(TOGGLE_DOCK)}
+          >
+            <Icon icon={SquareTerminal} />
+            <Show when={!dockOpen() && dockTabCount() > 0}>
+              <span class={styles.spaceBubble}>
+                <span class={styles.tileCount}>{dockTabCount()}</span>
+              </span>
+            </Show>
+          </Tooltip>
         </div>
       </Show>
 
