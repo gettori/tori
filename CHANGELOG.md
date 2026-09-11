@@ -8,6 +8,45 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.911.0-alpha
+
+Sway's commands get a dock, and they stop depending on your shell. The Shells
+sidebar mode is gone: a clone, bootstrap or sign-in opens in a dock at the
+bottom of whatever workspace is on screen, and an rc that attaches tmux or
+execs another shell no longer eats what Sway types.
+
+### The dock
+
+- Clone, bootstrap and sign-in open in a dock under the work card, in front,
+  and the branch you were on stays selected. Before, they opened in the Shells
+  workspace off screen, so nothing visible happened.
+- The dock hides itself when its last tab closes, so a clean clone is dock up,
+  progress, dock gone. A failed one stays with `exit N` on its tab, and the
+  toast's Show brings it back in front.
+- Cmd+Ctrl+J shows or hides it (Cmd+Shift+J is already the editor's join
+  lines). The sidebar strip has a dock button at its right end, with a count of
+  its tabs while it's hidden, and the gear moved to the left end.
+- The + for a plain shell at your home folder is back, in the dock's strip. A
+  dock shell is not restored after a restart.
+- The Shells sidebar mode, its tile and its list are gone. The dock keeps its
+  height and open state across restarts.
+
+### Shells and your rc
+
+- Every tab's shell gets `TERM_PROGRAM=Sway` and `TERM_PROGRAM_VERSION`, so an
+  rc can skip its tmux handover when it sees Sway. These replace whatever Sway
+  inherited, so a dev run started from Apple Terminal no longer makes every tab
+  source `/etc/zshrc_Apple_Terminal`.
+- Sway's own commands exec the program directly instead of typing a runner
+  script into a login shell. PATH still comes from your login shell, anything
+  else your rc exports doesn't. A failed command keeps its output and exit code
+  on screen, a program that isn't on PATH shows `exit 127` instead of a tab
+  that runs forever, and Ctrl+C shows `exit 1`.
+- An agent tab types the agent in only once the shell actually holds the
+  terminal. If something else, tmux say, still has it after 5 seconds, nothing
+  is typed and the tab shows a banner naming what took the terminal. The shell
+  stays running under it.
+
 ## 26.909.0-alpha
 
 Settings grew a real page: every account's own files, listed, opened, created
