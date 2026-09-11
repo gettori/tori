@@ -98,7 +98,7 @@ export function MatchToggles(props: {
   );
 }
 
-/** "files to include" and "files to exclude", each under its own label. */
+/** The include and exclude globs, each under its own label. */
 export function GlobFields(props: {
   id?: string;
   options: SearchOptions;
@@ -114,7 +114,7 @@ export function GlobFields(props: {
   return (
     <div class={styles.globs} id={props.id}>
       <div class={styles.globLabel}>
-        <span>files to include</span>
+        <span class={styles.globTitle}>Includes</span>
         <Field
           value={props.options.include}
           label="files to include"
@@ -130,7 +130,7 @@ export function GlobFields(props: {
         </Field>
       </div>
       <div class={styles.globLabel}>
-        <span>files to exclude</span>
+        <span class={styles.globTitle}>Excludes</span>
         <Field
           value={props.options.exclude}
           label="files to exclude"

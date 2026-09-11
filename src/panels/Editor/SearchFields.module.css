@@ -89,3 +89,11 @@
   color: var(--fg-default);
   font-size: var(--sway-text-md);
 }
+
+.globTitle {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+  padding-left: calc(4px * var(--ui-scale));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
