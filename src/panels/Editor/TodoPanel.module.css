@@ -3,9 +3,9 @@
    files, grouped, click to go there. */
 .todoPanel {
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-height: 0;
-  height: 100%;
 }
 
 .tagRow {
