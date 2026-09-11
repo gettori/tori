@@ -3,12 +3,13 @@
 
 import { createSignal } from "solid-js";
 
-export type FilesSection = "folders" | "scripts" | "outline";
+export type FilesSection = "folders" | "scripts" | "outline" | "todos";
 
 /** The sections the ... menu can hide. The tree is the tab, so it cannot go. */
 export const OPTIONAL_SECTIONS: { id: Exclude<FilesSection, "folders">; label: string }[] = [
   { id: "scripts", label: "Scripts" },
   { id: "outline", label: "Outline" },
+  { id: "todos", label: "TODOs" },
 ];
 
 /** Heights in design px (before `--ui-scale`), header included. */
@@ -20,12 +21,13 @@ export const SECTION_DEFAULT_H = 230;
 export const SECTION_MIN_H = 90;
 
 const KEY = "sway.files.sections.v1";
+const SECTIONS: unknown[] = ["folders", "scripts", "outline", "todos"];
 
 function load(): Layout {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<Layout> | null;
     const list = (v: unknown) =>
-      Array.isArray(v) ? v.filter((s): s is FilesSection => s === "folders" || s === "scripts" || s === "outline") : [];
+      Array.isArray(v) ? v.filter((s): s is FilesSection => SECTIONS.includes(s)) : [];
     const sizes: Sizes = {};
     for (const [k, v] of Object.entries(raw?.sizes ?? {})) {
       if (list([k]).length && typeof v === "number" && v >= SECTION_MIN_H) sizes[k as FilesSection] = v;

@@ -28,13 +28,15 @@ import {
 import { chromeScale } from "../../Settings/settingsStore";
 import FileTree, { type TreeControls } from "../FileTree/FileTree";
 import OutlinePanel from "../OutlinePanel";
+import TodoPanel from "../TodoPanel";
+import type { Selection } from "../../LeftSidebar/LeftSidebar";
 import ScriptsSection from "./ScriptsSection";
 import tree from "../FileTree/FileTree.module.css";
 import styles from "./FilesPanel.module.css";
 
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
 
-const ORDER: FilesSection[] = ["folders", "scripts", "outline"];
+const ORDER: FilesSection[] = ["folders", "scripts", "outline", "todos"];
 
 /** One stacked section: a header that opens and closes it, then its body. Like
  *  VS Code, one open section fills what is left and the rest keep a height of
@@ -94,7 +96,7 @@ function Section(props: {
 
 /**
  * The Files tab, VS Code Explorer style: the filter and a ... menu on top, then
- * the tree under a header naming the branch, then Scripts and Outline. Inside a
+ * the tree under a header naming the branch, then Scripts, Outline and TODOs. Inside a
  * Feature the member chips lead the filter row, one tree per member.
  */
 export default function FilesPanel(props: {
@@ -110,6 +112,8 @@ export default function FilesPanel(props: {
   askConfirm: (opts: ConfirmOpts) => Promise<boolean>;
   onRepair: (key: string) => void;
   onActiveRoot?: (root: string) => void;
+  /** Where the TODOs section's Send goes. */
+  selected: Selection | null;
   settleKey: string;
   persistKey: string;
 }) {
@@ -310,6 +314,11 @@ export default function FilesPanel(props: {
             >
               <OutlinePanel path={props.outlinePath} />
             </Show>
+          </Section>
+        </Show>
+        <Show when={sectionShown("todos")}>
+          <Section id="todos" fill={filler() === "todos"} maxH={maxH} title="TODOs">
+            <TodoPanel root={treeRoot()} selected={props.selected} />
           </Section>
         </Show>
       </div>

@@ -59,7 +59,6 @@ import {
 } from "../../utils/debugTargets";
 import type { RevertOutcome } from "./CheckpointTimeline";
 import SearchPanel from "./SearchPanel";
-import TodoPanel from "./TodoPanel";
 import DebugPanel from "./DebugPanel";
 import SessionPanel from "./SessionPanel";
 import MarkdownPreview from "./MarkdownPreview";
@@ -93,7 +92,6 @@ import {
   GitCompare,
   GitPullRequest,
   TriangleAlert,
-  ListChecks,
   Bug,
   // A call graph, not a telephone: `PhoneCall` reads as telephony.
   Network,
@@ -310,13 +308,12 @@ type RightMode =
   | "docs"
   | "session"
   | "search"
-  | "todos"
   | "debug";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 /** The modes that answer for the member `activeRoot` points at, rather than for
- *  the whole Feature (Changes, Search, Problems, TODOs, Bookmarks) or for the
- *  file in front (Calls, Session, Debug). These are the three the chip row
- *  switches; Files draws member tabs of its own. */
+ *  the whole Feature (Changes, Search, Problems, Bookmarks) or for the file in
+ *  front (Calls, Session, Debug). These are the three the chip row switches;
+ *  Files and Search draw member chips of their own. */
 const ACTIVE_ROOT_MODES: RightMode[] = ["pulls", "shared", "docs"];
 
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
@@ -327,7 +324,6 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   calls: { mode: "calls", label: "Calls", icon: Network },
   bookmarks: { mode: "bookmarks", label: "Bookmarks", icon: BookmarkGlyph },
   search: { mode: "search", label: "Search", icon: Search },
-  todos: { mode: "todos", label: "TODOs", icon: ListChecks },
   debug: { mode: "debug", label: "Debug", icon: Bug },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
   shared: { mode: "shared", label: "Shared", icon: Share2 },
@@ -558,7 +554,6 @@ export default function Editor(props: {
     "problems",
     "calls",
     "bookmarks",
-    "todos",
     "debug",
     "session",
     "shared",
@@ -2822,6 +2817,7 @@ export default function Editor(props: {
               askConfirm={askConfirm}
               onRepair={repairMember}
               onActiveRoot={props.onActiveRoot}
+              selected={props.selected}
               settleKey={ws()}
               persistKey={ws()}
             />
@@ -2868,9 +2864,6 @@ export default function Editor(props: {
               dirty={dirty()}
               confirm={askConfirm}
             />
-          </Match>
-          <Match when={rightMode() === "todos"}>
-            <TodoPanel root={root()} selected={props.selected} roots={treeRoots()} />
           </Match>
           <Match when={rightMode() === "debug"}>
             {focusMemberLine()}
