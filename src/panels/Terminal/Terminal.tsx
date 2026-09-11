@@ -25,6 +25,8 @@ import {
   REVEAL_DOCK,
   type RevealDock,
   NEW_DOCK_SHELL,
+  OPEN_SHELL_AT,
+  type OpenShellAt,
   NEW_SESSION,
   PURGE_UNDER_PATH,
   PURGE_WORKSPACE,
@@ -948,6 +950,7 @@ export default function Terminal(props: {
   let offOpenJob: (() => void) | undefined;
   let offRevealDock: (() => void) | undefined;
   let offNewDockShell: (() => void) | undefined;
+  let offShellAt: (() => void) | undefined;
   let offComposeDraft: (() => void) | undefined;
   let unlistenExit: UnlistenFn | undefined;
   let unlistenRefused: UnlistenFn | undefined;
@@ -974,6 +977,7 @@ export default function Terminal(props: {
     offOpenJob = onWith<OpenJob>(OPEN_JOB, openCommand);
     offRevealDock = onWith<RevealDock>(REVEAL_DOCK, ({ tabId }) => revealDock(tabId));
     offNewDockShell = onEvent(NEW_DOCK_SHELL, () => void newShellInDock());
+    offShellAt = onWith<OpenShellAt>(OPEN_SHELL_AT, ({ cwd }) => newShell(cwd));
     // Settings has no Selection, so it describes a draft and this decides where
     // it lands. Its own guard, not the sender's: the panel's copy of the root
     // was read when it opened, and the selection can have moved since.
@@ -1057,6 +1061,7 @@ export default function Terminal(props: {
     offOpenJob?.();
     offRevealDock?.();
     offNewDockShell?.();
+    offShellAt?.();
     offComposeDraft?.();
     unlistenExit?.();
     unlistenRefused?.();
@@ -1889,15 +1894,16 @@ export default function Terminal(props: {
   }
 
   // A plain shell tab: the same login shell as an agent tab, just unseeded (no
-  // init), opened in the selected branch-unit folder.
-  function newShell() {
+  // init), opened in the selected branch-unit folder or a folder inside it.
+  function newShell(at?: string) {
     const sel = props.selected;
     const root = selectionRoot(sel);
     if (!sel || !root) return;
+    const sub = at && at !== root ? at.slice(at.lastIndexOf("/") + 1) : null;
     openOrActivate({
       id: shellId(),
-      title: `${sel.projectName} shell`,
-      cwd: root,
+      title: sub ? `${sub} shell` : `${sel.projectName} shell`,
+      cwd: at ?? root,
       workspace: workspaceKey(sel),
       kind: "shell",
       program: "",
@@ -2314,7 +2320,7 @@ export default function Terminal(props: {
               : [...newChatItem(), ...claudeTerminalItem("terminal")]),
             // The shell the main half used to open, still one click away. No
             // agent behind it, so nothing gates it.
-            { label: "Terminal", onClick: newShell },
+            { label: "Terminal", onClick: () => newShell() },
             // Absent when there is nothing to close, since a row that would
             // do nothing is worse than no row. Counted in the label: the
             // whole point is knowing how much of the strip this clears.

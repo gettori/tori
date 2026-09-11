@@ -988,7 +988,7 @@ function App() {
       );
     });
     // Rerun the last task, from ⌘⇧B or its palette row. Handled here because the
-    // registry owns the binding but knows no workspace, and the Tasks panel is
+    // registry owns the binding but knows no workspace, and the Scripts section is
     // torn down whenever another right-hand mode is showing - a rerun that only
     // worked while its own panel was open would not be a shortcut past it.
     offRunLastTask = onEvent(RUN_LAST_TASK, () => {
@@ -998,7 +998,7 @@ function App() {
         message:
           outcome === 'no-workspace'
             ? 'Select a branch first.'
-            : 'No task has been run here yet. Pick one from the Tasks panel.',
+            : 'No task has been run here yet. Pick one from Scripts in the Files tab.',
         kind: 'info',
       });
     });

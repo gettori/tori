@@ -247,7 +247,7 @@ export default function Omnibox(props: {
   // `git check-ignore`, and ⌘P is the most-pressed key in the app while never
   // showing a task row. Read the first time the box is actually in `>` mode, and
   // once per open after that - a `scripts` block does not change while a picker
-  // is on screen, and the Tasks panel re-reads on fs changes.
+  // is on screen, and the Scripts section re-reads on fs changes.
   let tasksRead = false;
   createEffect(() => {
     const at = root();

@@ -339,6 +339,7 @@ pub fn run() {
             fs::fs_mkdir,
             fs::fs_delete,
             fs::fs_rename,
+            fs::fs_copy,
             fs::list_project_files,
             fs::fs_watch_start,
             fs::fs_watch_set,

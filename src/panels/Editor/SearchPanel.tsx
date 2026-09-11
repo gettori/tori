@@ -147,6 +147,9 @@ export default function SearchPanel(props: {
   /** The store key history and saved searches live under; defaults to `root`. */
   workspace?: string;
   focusNonce: number;
+  /** Find in Folder: one repo and one folder in it, applied once on arrival. */
+  scope?: { repoPath: string; rel: string; nonce: number } | null;
+  onScoped?: () => void;
   /** Absolute-keyed dirty record from the editor. Files with unsaved edits are
    *  left out of a replace: the buffer, not the disk, is what the user sees. */
   dirty?: Record<string, boolean>;
@@ -763,6 +766,22 @@ export default function SearchPanel(props: {
         // panel on the same event, and a synchronous focus would hit the panel
         // while it is still display:none and be dropped.
         if (prev !== undefined) requestAnimationFrame(() => inputEl?.focus());
+      },
+    ),
+  );
+
+  createEffect(
+    on(
+      () => props.scope?.nonce,
+      () => {
+        const s = props.scope;
+        if (!s) return;
+        setRestricted(allRoots().length > 1 ? [s.repoPath] : []);
+        setOptions((o) => ({ ...o, include: `${s.rel}/**` }));
+        setShowGlobs(true);
+        props.onScoped?.();
+        afterRestrictionChange();
+        requestAnimationFrame(() => inputEl?.focus());
       },
     ),
   );

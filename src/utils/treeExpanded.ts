@@ -151,10 +151,11 @@ export function setDirOpen(ws: string, path: string, open: boolean): void {
 /** Collapse-all: every directory closes, the section headers stay as they are.
  *  Closing them too would hide the members themselves, which is a different
  *  request from closing the folders inside them. */
-export function collapseDirs(ws: string): void {
+export function collapseDirs(ws: string, under?: string): void {
   const entry = entryOf(store(), ws);
-  if (!entry.dirs.length) return;
-  write(withEntry(store(), ws, { ...entry, dirs: [] }), persists(ws));
+  const dirs = under ? entry.dirs.filter((d) => !d.startsWith(`${under}/`)) : [];
+  if (dirs.length === entry.dirs.length) return;
+  write(withEntry(store(), ws, { ...entry, dirs }), persists(ws));
 }
 
 /** Sections start open, so a member that has never been closed is open, and one
