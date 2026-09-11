@@ -4,14 +4,12 @@ import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-lib
 import { expectNoAxeViolations } from "../../test/axe";
 import type { FileStatus } from "../../utils/gitActions";
 
-// The Changes panel's reaction to the filesystem watcher, driven through the
-// real component. What is asserted here is strictly the panel's own job: which
-// watcher bursts make it refetch the diff it currently has expanded. Refetching
-// is not free (it drops the gaps the user expanded), so "refetch on everything"
-// is a bug, not a conservative default.
+// The Changes panel, driven through the real component. Hunk-level staging and
+// the watcher's effect on an open diff moved to DiffView.test.tsx with the diff
+// itself; what is left here is the file lists, the commit box and the PR button.
 
-// The panel measures itself to pick side-by-side vs inline. jsdom reports every
-// width as zero, so the observer never has anything to say - it only has to exist.
+// A child measures itself, and jsdom reports every width as zero, so the
+// observer never has anything to say - it only has to exist.
 globalThis.ResizeObserver ??= class {
   observe() {}
   unobserve() {}
@@ -203,8 +201,6 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import ReviewPanel from "./ReviewPanel";
-import { parseDiffHunks } from "../../utils/diffHunks";
-import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { stage, enterRoots, refreshStatus } from "../../utils/gitActions";
 import {
   TOAST,
@@ -215,7 +211,7 @@ import {
 } from "../../utils/events";
 import { saveSettings, DEFAULT_SETTINGS } from "../Settings/settingsStore";
 import { BLOCKED_REASON } from "../../utils/safeSend";
-import { syntheticId } from "../../utils/syntheticTabs";
+import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
 
 /** Collects toast messages until `stop()`. `emitWith` is a window CustomEvent,
  *  not the Tauri event bus, so mocking the transport would never see one. */
@@ -234,13 +230,6 @@ function captureToasts() {
  *  that parent is the heading row rather than the whole panel. */
 function prDialog() {
   return within(screen.getByRole("dialog"));
-}
-
-/** One watcher burst, delivered to every registered `fs://changed` listener.
- *  The backend always names the root it happened in, and the panel now matches
- *  on it: a burst in one member must not refetch another member's diff. */
-function fsBurst(paths: string[], root = "/proj") {
-  for (const fn of handlers["fs://changed"] ?? []) fn({ payload: { root, paths } });
 }
 
 beforeEach(async () => {
@@ -299,13 +288,6 @@ async function mountPanel() {
   );
 }
 
-/** Mount and expand `src/a.ts`, leaving exactly one diff fetch spent. */
-async function mountWithOpenDiff() {
-  await mountPanel();
-  fireEvent.click(screen.getByTitle("src/a.ts"));
-  await waitFor(() => expect(calls.diff).toBe(1));
-}
-
 describe("a11y", () => {
   it("has no accessibility violations", async () => {
     const { container } = render(() => <ReviewPanel root="/proj" selected={null} />);
@@ -341,43 +323,6 @@ describe("the shared git store", () => {
 
     await waitFor(() => expect(screen.getByText("Staged Changes")).toBeTruthy());
     expect(screen.queryByText("Changes")).toBeNull();
-  });
-});
-
-describe("expanded diff refetch", () => {
-  it("ignores a burst that does not name the open file", async () => {
-    await mountWithOpenDiff();
-
-    const stashBefore = calls.stashList;
-    fsBurst(["/proj/src/other.ts"]);
-    // The stash read is the synchronisation point now that the status refresh
-    // belongs to the store: once it lands the handler has run to completion, so
-    // a diff count that has not moved is a real skip rather than a race.
-    await waitFor(() => expect(calls.stashList).toBeGreaterThan(stashBefore));
-    expect(calls.diff).toBe(1);
-  });
-
-  it("refetches when a burst names the open file", async () => {
-    await mountWithOpenDiff();
-
-    fsBurst(["/proj/src/a.ts"]);
-    await waitFor(() => expect(calls.diff).toBe(2));
-  });
-
-  it("refetches when the open file rides along in a multi-path burst", async () => {
-    await mountWithOpenDiff();
-
-    fsBurst(["/proj/src/other.ts", "/proj/src/a.ts", "/proj/README.md"]);
-    await waitFor(() => expect(calls.diff).toBe(2));
-  });
-
-  it("ignores every burst when no diff is expanded", async () => {
-    await mountPanel();
-
-    const stashBefore = calls.stashList;
-    fsBurst(["/proj/src/a.ts"]);
-    await waitFor(() => expect(calls.stashList).toBeGreaterThan(stashBefore));
-    expect(calls.diff).toBe(0);
   });
 });
 
@@ -525,84 +470,6 @@ describe("conflicts", () => {
 
     await waitFor(() => expect(screen.queryByText("Conflicts")).toBeNull());
     expect(screen.getByText("Staged Changes")).toBeTruthy();
-  });
-});
-
-describe("line-level staging", () => {
-  // The fixture is one hunk whose body is [" one", "-two", "+TWO", " three"],
-  // so 1 and 2 are the two halves of its only change.
-  const HUNK = parseDiffHunks(DIFF)[0];
-
-  it("stages only the lines picked out of the hunk", async () => {
-    await mountWithOpenDiff();
-    // Until something is picked the header offers the hunk and nothing finer.
-    expect(screen.queryByText(/Stage \d+ line/)).toBeNull();
-
-    fireEvent.click(screen.getByText("-two"));
-    fireEvent.click(screen.getByText("+TWO"));
-    await waitFor(() => expect(screen.getByText("Stage 2 lines")).toBeTruthy());
-    expect(applyLineArgs, "picking a line must not apply anything on its own").toEqual([]);
-
-    fireEvent.click(screen.getByText("Stage 2 lines"));
-    await waitFor(() => expect(applyLineArgs).toHaveLength(1));
-    // The indices are only meaningful against the body they were picked from,
-    // so the fingerprint of that exact hunk travels with them.
-    expect(applyLineArgs[0]).toMatchObject({
-      projectPath: "/proj",
-      file: "src/a.ts",
-      hunkIndex: 0,
-      fingerprint: hunkFingerprint(HUNK.header, HUNK.lines),
-      lines: [1, 2],
-      reverse: false,
-    });
-  });
-
-  it("counts one line as one, and drops the control when the last is unpicked", async () => {
-    await mountWithOpenDiff();
-    fireEvent.click(screen.getByText("+TWO"));
-    await waitFor(() => expect(screen.getByText("Stage 1 line")).toBeTruthy());
-
-    fireEvent.click(screen.getByText("+TWO"));
-    await waitFor(() => expect(screen.queryByText(/Stage \d+ line/)).toBeNull());
-  });
-
-  it("offers nothing to pick on an unchanged line", async () => {
-    await mountWithOpenDiff();
-    // Context is in both versions, so there is nothing about it to stage.
-    fireEvent.click(screen.getByText("one"));
-    fireEvent.click(screen.getByText("three"));
-    await Promise.resolve();
-    expect(screen.queryByText(/Stage \d+ line/)).toBeNull();
-  });
-
-  it("leaves the discard control acting on the whole hunk", async () => {
-    // The two live in the same header, and the finer one must not quietly
-    // narrow the destructive one.
-    await mountWithOpenDiff();
-    fireEvent.click(screen.getByText("+TWO"));
-    await waitFor(() => expect(screen.getByText("Stage 1 line")).toBeTruthy());
-
-    fireEvent.click(screen.getByText("Discard hunk"));
-    // Two now say it: the header's control and the confirm dialog's button.
-    const confirm = await screen.findAllByText("Discard hunk");
-    expect(confirm).toHaveLength(2);
-    fireEvent.click(confirm[1]);
-    await waitFor(() => expect(discardArgs).toHaveLength(1));
-    expect(discardArgs[0].args).toMatchObject({ hunkIndices: [0] });
-    expect(applyLineArgs).toEqual([]);
-  });
-
-  it("forgets the selection when the diff is collapsed", async () => {
-    await mountWithOpenDiff();
-    fireEvent.click(screen.getByText("+TWO"));
-    await waitFor(() => expect(screen.getByText("Stage 1 line")).toBeTruthy());
-
-    // Indices into a hunk body mean nothing once that body is off screen.
-    fireEvent.click(screen.getByTitle("src/a.ts"));
-    await waitFor(() => expect(screen.queryByText("+TWO")).toBeNull());
-    fireEvent.click(screen.getByTitle("src/a.ts"));
-    await waitFor(() => expect(screen.getByText("+TWO")).toBeTruthy());
-    expect(screen.queryByText(/Stage \d+ line/)).toBeNull();
   });
 });
 
@@ -1344,21 +1211,22 @@ describe("inside a Feature", () => {
     expect(stageArgs[0]).toMatchObject({ projectPath: B, paths: ["src/index.ts"] });
   });
 
-  it("expands one row panel-wide, keyed by member, and fetches that member's diff", async () => {
+  it("opens the clicked member's diff tab, not the same path in another member", async () => {
     await mountFeature();
 
+    const opened: string[] = [];
+    const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
+    window.addEventListener(OPEN_IN_EDITOR, listener);
     fireEvent.click(rowIn(A, "src/index.ts"));
-    await waitFor(() => expect(diffArgs).toHaveLength(1));
-    expect(diffArgs[0].projectPath).toBe(A);
-
-    // The same relative path in the member beside it. One row is open at a
-    // time, so this closes A's rather than showing A's diff under B's name.
     fireEvent.click(rowIn(B, "src/index.ts"));
-    await waitFor(() => expect(diffArgs).toHaveLength(2));
-    expect(diffArgs[1].projectPath).toBe(B);
-    // One diff body on screen, not two: the panel holds one diff, its gaps and
-    // its line selection, so a second open row could only show the first's.
-    expect(screen.getAllByText("Stage hunk")).toHaveLength(1);
+    window.removeEventListener(OPEN_IN_EDITOR, listener);
+
+    // Two members with the same relative path are two tabs: the id carries the
+    // workspace, so neither can answer for the other.
+    expect(opened).toEqual([
+      diffTabId(A, "src/index.ts", false),
+      diffTabId(B, "src/index.ts", false),
+    ]);
   });
 
   it("keeps branch, ahead/behind and Push in the member headers, and Open PR on the member in front", async () => {
@@ -1399,20 +1267,6 @@ describe("inside a Feature", () => {
     // No file list, and no Stage all offering to act on a repo that is not there.
     expect(within(section).queryByTitle("src/index.ts")).toBeNull();
     expect(within(section).queryByText("Stage all")).toBeNull();
-  });
-
-  it("refetches an expanded diff only for the member the burst named", async () => {
-    await mountFeature();
-    fireEvent.click(rowIn(A, "src/index.ts"));
-    await waitFor(() => expect(diffArgs).toHaveLength(1));
-
-    const stashBefore = calls.stashList;
-    fsBurst([`${B}/src/index.ts`], B);
-    // A burst in B is not the member in front either, so not even the stash
-    // read runs: nothing about B can change what this panel is showing.
-    fsBurst([`${A}/src/index.ts`], A);
-    await waitFor(() => expect(calls.stashList).toBeGreaterThan(stashBefore));
-    expect(diffArgs.map((d) => d.projectPath)).toEqual([A, A]);
   });
 
   it("re-reads every member on window focus, not just the one in front", async () => {

@@ -216,32 +216,6 @@
   color: var(--fg-muted);
 }
 
-.reviewDiff {
-  font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
-  line-height: 1.4;
-  overflow-x: auto;
-  padding: calc(4px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
-  background: var(--canvas-default);
-}
-
-/* Row-level diff styling (line, add/del/hunk/meta, word highlights, and the
-   side-by-side grid) lives in DiffRows.module.css, shared with the
-   transcript's diff view. Only what is specific to *this* panel stays here. */
-
-/* Collapsed unchanged region. Clickable, and dim so it reads as chrome
-   between the real diff lines rather than as content. */
-.reviewDiff .diffGap {
-  color: var(--fg-muted);
-  cursor: pointer;
-  user-select: none;
-  background: var(--canvas-card);
-  border-block: 1px solid var(--border-default);
-}
-.reviewDiff .diffGap:hover {
-  color: var(--fg-default);
-}
-
 /* The Copy row action is a ghost <Button size="xs">; it stays hidden until the
    row is hovered or the button is focused (so tabbing never lands on an
    invisible control). Only that reveal behaviour is kept here. */
