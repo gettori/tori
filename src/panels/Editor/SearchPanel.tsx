@@ -1140,7 +1140,10 @@ export default function SearchPanel(props: {
   return (
     <div class={styles.searchPanel}>
       <div class={styles.topBar}>
-        <Show when={(props.members?.length ?? 0) > 1}>
+        <Show
+          when={(props.members?.length ?? 0) > 1}
+          fallback={<span class={styles.title}>Search</span>}
+        >
           <MemberToggles members={props.members!} restricted={restriction()} onChange={restrictTo} />
         </Show>
         <span class={styles.spacer} />
