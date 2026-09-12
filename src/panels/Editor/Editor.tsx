@@ -25,6 +25,7 @@ const PdfView = lazy(() => import("./PdfView"));
 import FileTree from "./FileTree/FileTree";
 import FilesPanel from "./FilesPanel/FilesPanel";
 import PromptModal from "../../components/Dialogs/PromptModal";
+import PickerModal from "../../components/Dialogs/PickerModal";
 import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../components/Dialogs/ConfirmDialog";
 import ReviewPanel from "./ReviewPanel";
 import PullRequests from "./PullRequests/PullRequests";
@@ -145,6 +146,22 @@ import {
   GIT_UNSTAGE_ACTIVE,
   GIT_COMMIT,
   GIT_PUSH,
+  GIT_FETCH,
+  GIT_PULL,
+  GIT_PULL_REBASE,
+  GIT_SYNC,
+  GIT_STAGE_ALL,
+  GIT_UNSTAGE_ALL,
+  GIT_DISCARD_ALL,
+  GIT_COMMIT_SIGNOFF,
+  GIT_UNDO_COMMIT,
+  GIT_STASH_STAGED,
+  GIT_MERGE_BRANCH,
+  GIT_REBASE_BRANCH,
+  GIT_ABORT,
+  GIT_BRANCH_CREATE,
+  GIT_BRANCH_RENAME,
+  GIT_BRANCH_DELETE,
   TOAST,
   type ToastEvent,
   type OpenInEditor,
@@ -175,6 +192,7 @@ import { followEdits } from "../../utils/followPref";
 import { loadTabs, saveTabs, toStore, mergeStore, restoreFor } from "../../utils/editorTabPersist";
 import { dropStashEntry, loadPendingStash, pendingStashPaths, requestStash } from "../../utils/hotExit";
 import { closeAllowed } from "../../utils/closeGuard";
+import { mayRewrite } from "../../utils/gitGuard";
 import { flushDeferredWrites } from "../../utils/deferredWrite";
 import {
   refreshGit,
@@ -188,6 +206,21 @@ import {
   unstage as unstageFiles,
   commit as commitStaged,
   push as pushToOrigin,
+  changedFiles,
+  refreshStatus,
+  stageAll,
+  unstageAll,
+  fetchIn,
+  pull as pullIn,
+  merge,
+  rebase,
+  abortIntegrate,
+  undoLastCommit,
+  createBranch,
+  renameBranch,
+  deleteBranch,
+  stashStaged,
+  branchNames,
 } from "../../utils/gitActions";
 import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
@@ -1034,6 +1067,24 @@ export default function Editor(props: {
   function resolvePrompt(v: string | null) {
     const req = promptReq();
     setPromptReq(null);
+    req?.resolve(v);
+  }
+
+  // Single-select picker, the same shape as the sidebar's askPick: the git
+  // commands that name a branch list the repo's branches rather than asking the
+  // user to type one they have to remember exactly.
+  const [pickReq, setPickReq] = createSignal<{
+    title: string;
+    items: string[];
+    creatable: boolean;
+    resolve: (v: string | null) => void;
+  } | null>(null);
+  function askPick(title: string, items: string[], creatable = false): Promise<string | null> {
+    return new Promise((resolve) => setPickReq({ title, items, creatable, resolve }));
+  }
+  function resolvePick(v: string | null) {
+    const req = pickReq();
+    setPickReq(null);
     req?.resolve(v);
   }
 
@@ -2014,6 +2065,123 @@ export default function Editor(props: {
     if (r && branch) void pushToOrigin(r, branch);
   }
 
+  /** Pull, then push what the pull left ahead. Sequential, not parallel: a push
+   *  racing its own pull is how a non-fast-forward rejection happens. */
+  async function syncCurrentBranch() {
+    const r = gitRoot();
+    if (!r) return;
+    if (!(await pullIn(r))) return;
+    const branch = gitStateFor(r).branch;
+    if (branch) await pushToOrigin(r, branch);
+  }
+
+  /** A branch to act on, chosen from this repo's own list. */
+  async function pickBranch(title: string, { creatable = false, exceptCurrent = false } = {}) {
+    const r = gitRoot();
+    if (!r) return null;
+    const current = gitStateFor(r).branch;
+    const names = (await branchNames(r)).filter((n) => !exceptCurrent || n !== current);
+    if (!names.length && !creatable) {
+      emitWith<ToastEvent>(TOAST, { message: "No other branches in this repo.", kind: "error" });
+      return null;
+    }
+    const picked = await askPick(title, names, creatable);
+    return picked ? ({ root: r, branch: picked } as const) : null;
+  }
+
+  /** Report an integrate that stopped on a conflict. A conflict is not a
+   *  failure, so it opens the Changes tab rather than raising an error: the
+   *  unmerged files are there, and that is where they get resolved. */
+  function reportIntegrate(outcome: { conflicted: boolean; message: string } | null, verb: string) {
+    if (!outcome) return;
+    if (!outcome.conflicted) {
+      emitWith<ToastEvent>(TOAST, { message: `${verb} done.`, kind: "info" });
+      return;
+    }
+    emitWith<ToastEvent>(TOAST, {
+      message: `${verb} stopped on a conflict. Resolve the files in Changes.`,
+      kind: "error",
+    });
+    emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: "changes" });
+  }
+
+  async function undoLastCommitHere() {
+    const r = gitRoot();
+    if (!r) return;
+    const ok = await askConfirm({
+      title: "Undo the last commit?",
+      message:
+        "The commit goes away and its changes come back staged, so nothing is lost. If it was already pushed, the upstream still has it.",
+      confirmLabel: "Undo commit",
+    });
+    if (ok) await undoLastCommit(r);
+  }
+
+  async function discardAllHere() {
+    const r = gitRoot();
+    if (!r) return;
+    const files = changedFiles(r).map((f) => f.path);
+    if (!files.length) return;
+    const ok = await askConfirm({
+      title: `Discard changes to ${files.length} file${files.length === 1 ? "" : "s"}?`,
+      message:
+        "Every unstaged change in this repo goes back to how it is staged. Anything already staged is kept.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.",
+      confirmLabel: "Discard changes",
+      danger: true,
+    });
+    if (!ok) return;
+    // The same guard the Changes panel's own Discard consults: this rewrites
+    // every changed file in the worktree, so an agent mid-turn here can have
+    // its work clobbered.
+    const allowed = await mayRewrite("Discard", r, {
+      confirm: askConfirm,
+      refuse: (reason) => emitWith<ToastEvent>(TOAST, { message: reason, kind: "error" }),
+    });
+    if (!allowed) return;
+    try {
+      await invoke("git_discard_files", { projectPath: r, files });
+      await refreshStatus(r);
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
+    }
+  }
+
+  async function createBranchHere() {
+    const r = gitRoot();
+    if (!r) return;
+    const name = (await askText("New branch name", ""))?.trim();
+    if (name) await createBranch(r, name);
+  }
+
+  async function renameBranchHere() {
+    const r = gitRoot();
+    const from = gitStateFor(r).branch;
+    if (!r || !from) return;
+    const to = (await askText("Rename branch to", from))?.trim();
+    if (to && to !== from) await renameBranch(r, from, to);
+  }
+
+  async function deleteBranchHere() {
+    // The current branch is left out: git refuses to delete the one you are on,
+    // so offering it would only ever produce that refusal.
+    const chosen = await pickBranch("Delete which branch?", { exceptCurrent: true });
+    if (!chosen) return;
+    const ok = await askConfirm({
+      title: `Delete ${chosen.branch}?`,
+      message: "Unmerged commits on it would be lost. Git refuses that unless you force it.",
+      confirmLabel: "Delete branch",
+      danger: true,
+    });
+    if (ok) await deleteBranch(chosen.root, chosen.branch);
+  }
+
+  async function commitFromPromptSignedOff() {
+    const r = gitRoot();
+    if (!r || !stagedFiles(r).length) return;
+    const message = (await askText("Commit message (signed off)", ""))?.trim();
+    if (message) await commitStaged(r, message, false, true);
+  }
+
   let offTouched: UnlistenFn | undefined;
   let offOpen: (() => void) | undefined;
   let offPurge: (() => void) | undefined;
@@ -2085,6 +2253,51 @@ export default function Editor(props: {
       onEvent(GIT_UNSTAGE_ACTIVE, () => stageActive(false)),
       onEvent(GIT_COMMIT, () => void commitFromPrompt()),
       onEvent(GIT_PUSH, pushCurrentBranch),
+      onEvent(GIT_FETCH, () => {
+        const r = gitRoot();
+        if (r) void fetchIn(r);
+      }),
+      onEvent(GIT_PULL, () => {
+        const r = gitRoot();
+        if (r) void pullIn(r);
+      }),
+      onEvent(GIT_PULL_REBASE, () => {
+        const r = gitRoot();
+        if (r) void pullIn(r, true);
+      }),
+      onEvent(GIT_SYNC, () => void syncCurrentBranch()),
+      onEvent(GIT_STAGE_ALL, () => {
+        const r = gitRoot();
+        if (r) void stageAll(r);
+      }),
+      onEvent(GIT_UNSTAGE_ALL, () => {
+        const r = gitRoot();
+        if (r) void unstageAll(r);
+      }),
+      onEvent(GIT_DISCARD_ALL, () => void discardAllHere()),
+      onEvent(GIT_COMMIT_SIGNOFF, () => void commitFromPromptSignedOff()),
+      onEvent(GIT_UNDO_COMMIT, () => void undoLastCommitHere()),
+      onEvent(GIT_STASH_STAGED, () => {
+        const r = gitRoot();
+        if (r) void stashStaged(r);
+      }),
+      onEvent(GIT_MERGE_BRANCH, () => {
+        void pickBranch("Merge which branch?", { exceptCurrent: true }).then(async (c) => {
+          if (c) reportIntegrate(await merge(c.root, c.branch), "Merge");
+        });
+      }),
+      onEvent(GIT_REBASE_BRANCH, () => {
+        void pickBranch("Rebase onto which branch?", { exceptCurrent: true }).then(async (c) => {
+          if (c) reportIntegrate(await rebase(c.root, c.branch), "Rebase");
+        });
+      }),
+      onEvent(GIT_ABORT, () => {
+        const r = gitRoot();
+        if (r) void abortIntegrate(r);
+      }),
+      onEvent(GIT_BRANCH_CREATE, () => void createBranchHere()),
+      onEvent(GIT_BRANCH_RENAME, () => void renameBranchHere()),
+      onEvent(GIT_BRANCH_DELETE, () => void deleteBranchHere()),
     ];
     // `.git` is watcher-filtered, so a fetch moving the upstream emits no
     // fs://changed. Subscribed here because this component outlives the panel
@@ -2860,6 +3073,15 @@ export default function Editor(props: {
           initial={promptReq()!.initial}
           onSubmit={(v) => resolvePrompt(v)}
           onCancel={() => resolvePrompt(null)}
+        />
+      </Show>
+      <Show when={pickReq()}>
+        <PickerModal
+          title={pickReq()!.title}
+          items={pickReq()!.items}
+          creatable={pickReq()!.creatable}
+          onSubmit={(v) => resolvePick(v)}
+          onCancel={() => resolvePick(null)}
         />
       </Show>
       <Show when={confirmReq()}>
