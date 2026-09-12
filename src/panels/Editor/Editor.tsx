@@ -69,6 +69,7 @@ import CommitDiffView from "./CommitDiffView";
 import ConflictView from "./ConflictView";
 import DiffView from "./DiffView";
 import GraphView from "./GraphView";
+import WorktreeFilesView from "./WorktreeFilesView";
 import DebugSourceView from "./DebugSourceView";
 import ImageView, { isImagePath } from "./ImageView";
 import PdfToolbar from "./PdfToolbar";
@@ -92,6 +93,7 @@ import {
   FileTypeCorner,
   FileHeart,
   Files,
+  FolderSymlink,
   GitCompare,
   GitGraph,
   GitPullRequest,
@@ -381,6 +383,7 @@ const SYNTHETIC_ICONS: Record<string, LucideIcon> = {
   search: Search,
   graph: GitGraph,
   diff: GitCompare,
+  shared: FolderSymlink,
 };
 
 function tabIcon(t: FileTab) {
@@ -2729,6 +2732,11 @@ export default function Editor(props: {
                     width, and the right panel is the narrow column. */}
                 <Show when={t().kind === "graph"}>
                   <GraphView workspace={t().workspace} />
+                </Show>
+                {/* Project configuration, not a file: what every worktree of
+                    this container gets, and which ones actually got it. */}
+                <Show when={t().kind === "shared"}>
+                  <WorktreeFilesView workspace={t().workspace} />
                 </Show>
                 {/* Staging lives here rather than in the Changes panel: a hunk
                     needs the width of a pane, and the panel's rows stay one
