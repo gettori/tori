@@ -15,12 +15,16 @@ export const HISTORY_TABS: { id: HistoryTab; label: string }[] = [
 ];
 
 /** v2: the three history sections became one tabbed section, so a v1 layout
- *  named sections that no longer exist. */
-export const changesLayout = createSectionLayout<ChangesSection>({
+ *  named sections that no longer exist. The tab ids stay in the id set for one
+ *  field only, `hidden`: a tab the ... menu unticks leaves the strip. */
+export const changesLayout = createSectionLayout<ChangesSection | HistoryTab>({
   key: "sway.changes.sections.v2",
-  ids: ["changes", "history"],
+  ids: ["changes", "history", "graph", "stashes", "checkpoints"],
   pinned: "changes",
 });
+
+export const tabShown = changesLayout.shown;
+export const setTabShown = changesLayout.setShown;
 
 const TAB_KEY = "sway.changes.historyTab";
 

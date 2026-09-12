@@ -11,25 +11,35 @@
   user-select: none;
 }
 
-/* Inside a Feature only: the member chips, in the row the other tabs open
-   with. Outside one the branch row is the first thing on the panel. */
-.chipRow {
+/* Row one, the height the Files and Search tabs open with. */
+.topBar {
   display: flex;
   flex: none;
   align-items: center;
+  gap: calc(4px * var(--ui-scale));
   min-height: calc(40px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) 0;
+  padding: calc(6px * var(--ui-scale));
 }
 
-/* The repo on screen: its branch, then what you do to it. */
+/* The tab's name, outside a Feature. Inside one the member chips take this
+   spot, the same swap the Search tab makes, so the two tabs open the same way
+   and this matches Search's title exactly. */
+.title {
+  padding-left: calc(4px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+}
+
+/* Row two: the repo the chip above names. Shorter than row one, which carries
+   the tab's own title and has to match the other tabs' opening row. */
 .branchBar {
   display: flex;
   flex: none;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  min-height: calc(40px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(2px * var(--ui-scale))
-    calc(12px * var(--ui-scale));
+  min-height: calc(32px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale)) 0 calc(12px * var(--ui-scale));
 }
 
 .branchBar > svg {
@@ -134,6 +144,21 @@
   align-items: center;
   gap: calc(4px * var(--ui-scale));
   height: calc(36px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
+}
+
+/* The rule under the tabs, only while there is something under them. */
+.historyOpen .tabStrip {
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* The showing tab's own controls, on the line under the rule. */
+.tabActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-height: calc(30px * var(--ui-scale));
   padding: 0 calc(6px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
 }
 
@@ -580,6 +605,19 @@
    `title` on the surrounding `<label>`, which no keyboard user ever saw (see
    ReviewPanel.tsx). Same recipe as `.srOnly` in Settings.module.css, copied
    rather than shared so this module stays self-contained. */
+/* The ... menu's tick column, kept when empty so the labels line up. */
+.checkSlot {
+  flex: none;
+  display: inline-flex;
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+.checkSlot > svg {
+  width: 100%;
+  height: 100%;
+}
+
 .srOnly {
   composes: srOnly from "../../styles/patterns.module.css";
 }
