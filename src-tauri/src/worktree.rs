@@ -9,9 +9,15 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 /// Directory under a bare container holding files shared into every worktree
-/// (symlinked at creation, editable via the Shared tab). A bare-container
-/// convention; absent until the first shared file is added.
-const SHARED_DIR: &str = ".shared";
+/// (symlinked at creation, managed from the Worktree Files page). A
+/// bare-container convention; absent until the first shared file is added.
+pub(crate) const SHARED_DIR: &str = ".shared";
+
+/// Where a container keeps its shared entries, existing or not. Spelled once so
+/// `shared.rs` and the linker below cannot disagree about the folder's name.
+pub(crate) fn shared_dir(container: &Path) -> PathBuf {
+    container.join(SHARED_DIR)
+}
 
 #[derive(Serialize)]
 pub struct Worktree {
@@ -214,7 +220,7 @@ fn pick_worktree_folder(container: &Path, branch: &str) -> Result<String, String
 /// worktree, skipping names the worktree already has (a branch tracking the file
 /// is never clobbered). Bare-container convention; a no-op when `.shared/` is absent.
 pub(crate) fn link_shared(container: &Path, worktree: &Path) {
-    let shared_dir = container.join(SHARED_DIR);
+    let shared_dir = shared_dir(container);
     let Ok(entries) = std::fs::read_dir(&shared_dir) else {
         return; // no .shared/ convention here
     };

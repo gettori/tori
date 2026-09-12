@@ -40,6 +40,7 @@ mod scratch;
 mod search;
 mod sessions;
 mod settings;
+mod shared;
 mod workspace_settings;
 mod themes;
 mod trace;
@@ -361,6 +362,11 @@ pub fn run() {
             git::git_head_message,
             git::git_log,
             git::git_diff_stat,
+            shared::shared_overview,
+            shared::shared_drift,
+            shared::shared_link,
+            shared::shared_remove,
+            shared::shared_unlink,
             git::git_head_sha,
             blame::git_blame,
             agent_lines::agent_lines,
