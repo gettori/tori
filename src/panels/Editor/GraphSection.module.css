@@ -4,6 +4,29 @@
   flex: 1;
 }
 
+/* One commit and, when open, its files. The lane line is drawn on the entry
+   rather than on the row so it keeps running beside the nested files, and it
+   sits in the icon column, where a file row's icon and a section's chevron
+   already are. The first entry's line starts at its dot: history begins there
+   as far as this page knows. */
+.entry {
+  position: relative;
+}
+
+.entry::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(19px * var(--ui-scale));
+  width: calc(2px * var(--ui-scale));
+  background: var(--border-strong);
+}
+
+.entry:first-child::before {
+  top: calc(14px * var(--ui-scale));
+}
+
 /* The row and the open-commit control beside it, which shows on hover the
    way a file row's actions do. */
 .rowWrap {
@@ -26,10 +49,10 @@
   display: flex;
   flex: 1;
   align-items: center;
-  gap: calc(6px * var(--ui-scale));
+  gap: calc(4px * var(--ui-scale));
   min-width: 0;
   margin: 0 calc(4px * var(--ui-scale));
-  padding: calc(1px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: none;
   border: none;
   border-radius: var(--sway-radius-sm);
@@ -42,23 +65,46 @@
 }
 
 .row:hover {
-  background: var(--neutral-hover);
+  background: var(--tree-row-hover);
 }
 
-/* The lane, drawn as a dot with the line implied by the rows above and below.
-   Filled means the upstream has it; hollow and branded means it is still only
-   yours, which is the one thing about a commit you can still change. */
-.dot {
+.entry.open > .rowWrap > .row {
+  background: var(--brand-subtle);
+}
+
+/* The dot's cell: the icon column's width, so it lines up with the file
+   icons below and the line drawn on the entry passes through its centre. */
+.lane {
+  position: relative;
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px * var(--ui-scale));
+}
+
+/* Filled means the upstream has it; hollow and branded means it is still only
+   yours, which is the one thing about a commit you can still change. The
+   outer ring is the card colour, so the line stops short of the dot. */
+.dot {
   width: calc(8px * var(--ui-scale));
   height: calc(8px * var(--ui-scale));
   background: var(--fg-subtle);
   border-radius: var(--sway-radius-pill);
+  box-shadow: 0 0 0 calc(2px * var(--ui-scale)) var(--canvas-card);
 }
 
 .dot.unpushed {
   background: var(--canvas-card);
-  box-shadow: inset 0 0 0 calc(2px * var(--ui-scale)) var(--brand-default);
+  box-shadow:
+    inset 0 0 0 calc(2px * var(--ui-scale)) var(--brand-default),
+    0 0 0 calc(2px * var(--ui-scale)) var(--canvas-card);
+}
+
+.age {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
 }
 
 .subject {
@@ -95,17 +141,3 @@
   border-style: dashed;
 }
 
-/* Initials, not a fetched avatar: the graph must draw with no network. */
-.who {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: calc(18px * var(--ui-scale));
-  height: calc(18px * var(--ui-scale));
-  background: var(--neutral-subtle);
-  border-radius: var(--sway-radius-pill);
-  color: var(--fg-muted);
-  font-size: var(--sway-text-xs);
-  font-weight: 600;
-}

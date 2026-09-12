@@ -17,6 +17,8 @@ export type LogEntry = {
   subject: string;
   author: string;
   relative_date: string;
+  /** Committer time, unix seconds. */
+  committed_at: number;
   refs: string[];
   /** Full parent shas: one ordinarily, several for a merge, none for a root. */
   parents: string[];

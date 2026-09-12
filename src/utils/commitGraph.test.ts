@@ -10,6 +10,7 @@ const c = (sha: string, parents: string[] = [], unpushed = false): LogEntry => (
   subject: sha,
   author: "Sk Arif",
   relative_date: "now",
+  committed_at: 0,
   refs: [],
   parents,
   unpushed,

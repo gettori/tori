@@ -352,7 +352,7 @@
 .stashRow {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-scale));
+  gap: calc(4px * var(--ui-scale));
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
@@ -361,7 +361,27 @@
 }
 
 .stashRow:hover {
-  background: var(--neutral-hover);
+  background: var(--tree-row-hover);
+}
+
+/* Open, with its files under it. The tint is the disclosure: an icon leads
+   the row, not a chevron, so it does not read as another section header. */
+.stashRow.active {
+  background: var(--brand-subtle);
+}
+
+.stashIcon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+
+.stashIcon > svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
 }
 
 .stashRow .reviewName {
