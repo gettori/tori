@@ -1,10 +1,21 @@
 import { createEffect, createSignal, on, For, Show } from "solid-js";
-import { Check, ChevronsDownUp, Ellipsis, FilePlus, FolderPlus, GitBranch, RefreshCw } from "lucide-solid";
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ChevronsDownUp,
+  Ellipsis,
+  FilePlus,
+  FolderPlus,
+  GitBranch,
+  RefreshCw,
+} from "lucide-solid";
 import Button from "../../../components/Button/Button";
 import Icon from "../../../components/Icon/Icon";
 import IconButton from "../../../components/IconButton/IconButton";
 import MemberChipRow from "../../../components/MemberChipRow/MemberChipRow";
 import PanelSection from "../../../components/PanelSection/PanelSection";
+import Resizer from "../../../components/Resizer/Resizer";
 import Dropdown from "../../../components/Menu/Dropdown";
 import { MenuRow, MenuSeparator } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
@@ -13,12 +24,15 @@ import { REPAIR_LABEL } from "../../../utils/features";
 import type { TintedMember } from "../../../utils/featureMembers";
 import { symbolsSupported } from "../../../utils/symbols";
 import {
-  OPTIONAL_SECTIONS,
+  FILES_TABS,
+  SECTION_MIN_H,
   filesLayout,
+  filesTab,
   sectionOpen,
   sectionShown,
+  setFilesTab,
   setSectionShown,
-  type FilesSection,
+  type FilesTab,
 } from "../../../utils/filesSections";
 import { chromeScale } from "../../Settings/settingsStore";
 import FileTree, { type TreeControls } from "../FileTree/FileTree";
@@ -31,12 +45,11 @@ import styles from "./FilesPanel.module.css";
 
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
 
-const ORDER: FilesSection[] = ["folders", "scripts", "outline", "todos"];
-
 /**
  * The Files tab, VS Code Explorer style: the filter and a ... menu on top, then
- * the tree under a header naming the branch, then Scripts, Outline and TODOs. Inside a
- * Feature the member chips lead the filter row, one tree per member.
+ * the tree under a header naming the branch, then one section at the bottom
+ * showing Scripts, Outline or TODOs, one tab at a time. Inside a Feature the
+ * member chips lead the filter row, one tree per member.
  */
 export default function FilesPanel(props: {
   /** The folder the workspace points at: the active member inside a Feature. */
@@ -98,15 +111,26 @@ export default function FilesPanel(props: {
 
   const hasOutline = () => symbolsSupported(props.outlinePath);
 
-  // The tree fills while it is open; with it shut, the last open section does.
-  const filler = () => {
-    if (sectionOpen("folders")) return "folders";
-    const open = ORDER.filter((s) => sectionShown(s) && sectionOpen(s));
-    return open[open.length - 1];
-  };
   let stackEl: HTMLDivElement | undefined;
-  // Room for the fill section's header plus a few rows, whatever is dragged.
+  // Room for the tree's header plus a few rows, whatever is dragged.
   const maxH = () => (stackEl?.clientHeight ?? 0) - 120 * chromeScale();
+  const viewsOpen = () => filesLayout.open("views");
+  const viewsHeight = () => filesLayout.size("views") * chromeScale();
+  // With the tree shut the views take its room; only then is the height a
+  // drag's business no more.
+  const viewsFill = () => viewsOpen() && !sectionOpen("folders");
+
+  const shownTabs = () => FILES_TABS.filter((t) => sectionShown(t.id));
+  /** The picked tab, or the first left once the ... menu has hidden it. */
+  const tab = (): FilesTab | undefined =>
+    shownTabs().some((t) => t.id === filesTab()) ? filesTab() : shownTabs()[0]?.id;
+
+  /** A tab always opens the section: only the chevron closes it, so a click
+   *  on the tab you are on is never a surprise collapse. */
+  function showTab(id: FilesTab) {
+    setFilesTab(id);
+    filesLayout.setOpen("views", true);
+  }
 
   const menu = () => (
     <>
@@ -116,7 +140,7 @@ export default function FilesPanel(props: {
         </span>
         Folders
       </MenuRow>
-      <For each={OPTIONAL_SECTIONS}>
+      <For each={FILES_TABS}>
         {(s) => (
           <MenuRow onClick={() => setSectionShown(s.id, !sectionShown(s.id))}>
             <span class={styles.checkSlot}>
@@ -163,14 +187,14 @@ export default function FilesPanel(props: {
           }}
         />
         <Dropdown as="span" wrapper menu={menu()} placement="bottom-end">
-          <IconButton size="md" tooltip="Views and More Actions" icon={<Icon icon={Ellipsis} />} />
+          <IconButton size="sm" tooltip="Views and More Actions" icon={<Icon icon={Ellipsis} />} />
         </Dropdown>
       </div>
       <div class={styles.stack} ref={stackEl}>
         <PanelSection
           layout={filesLayout}
           id="folders"
-          fill={filler() === "folders"}
+          fill
           maxH={maxH}
           title={
             <>
@@ -237,29 +261,89 @@ export default function FilesPanel(props: {
             />
           </Show>
         </PanelSection>
-        <Show when={sectionShown("scripts")}>
-          <PanelSection layout={filesLayout} id="scripts" fill={filler() === "scripts"} maxH={maxH} title="Scripts">
-            <ScriptsSection root={treeRoot()} />
-          </PanelSection>
-        </Show>
-        <Show when={sectionShown("outline")}>
-          <PanelSection layout={filesLayout} id="outline" fill={filler() === "outline"} maxH={maxH} title="Outline">
-            <Show
-              when={hasOutline()}
-              fallback={
-                <div class={tree.empty}>
-                  {props.outlinePath ? "No outline for this file." : "Open a file to see its outline."}
-                </div>
-              }
-            >
-              <OutlinePanel path={props.outlinePath} />
+
+        {/* Scripts, Outline or TODOs, one tab at a time. The strip is the
+            section's header; collapsed, it is all that is left of the section,
+            pinned under the tree. */}
+        <Show when={shownTabs().length}>
+          <section
+            class={styles.views}
+            classList={{ [styles.viewsOpen]: viewsOpen(), [styles.fill]: viewsFill() }}
+            style={viewsOpen() && !viewsFill() ? { flex: `0 1 ${viewsHeight()}px` } : undefined}
+            data-section="views"
+          >
+            <Show when={viewsOpen() && !viewsFill()}>
+              <div class={styles.sash}>
+                <Resizer
+                  axis="y"
+                  side="after"
+                  value={viewsHeight()}
+                  min={SECTION_MIN_H * chromeScale()}
+                  max={Math.max(SECTION_MIN_H * chromeScale(), maxH())}
+                  onInput={(h) => filesLayout.setSize("views", h / chromeScale())}
+                  onCommit={filesLayout.saveSizes}
+                />
+              </div>
             </Show>
-          </PanelSection>
-        </Show>
-        <Show when={sectionShown("todos")}>
-          <PanelSection layout={filesLayout} id="todos" fill={filler() === "todos"} maxH={maxH} title="TODOs">
-            <TodoPanel root={treeRoot()} selected={props.selected} />
-          </PanelSection>
+            <div class={styles.tabStrip}>
+              <div class={styles.tabs} role="tablist" aria-label="Views">
+                <For each={shownTabs()}>
+                  {(t) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      id={`files-tab-${t.id}`}
+                      class={styles.tab}
+                      aria-selected={tab() === t.id}
+                      aria-controls={`files-panel-${t.id}`}
+                      onClick={() => showTab(t.id)}
+                    >
+                      {t.label}
+                    </button>
+                  )}
+                </For>
+              </div>
+              <span class={styles.spacer} />
+              <IconButton
+                size="sm"
+                icon={<Icon icon={viewsOpen() ? ChevronDown : ChevronUp} />}
+                aria-expanded={viewsOpen()}
+                tooltip={viewsOpen() ? "Collapse" : "Expand"}
+                onClick={() => filesLayout.setOpen("views", !viewsOpen())}
+              />
+            </div>
+            {/* Only the showing tab is mounted: TODOs greps the tree, and a
+                hidden tab is no reason to keep that running. */}
+            <Show when={viewsOpen() && tab()}>
+              {(id) => (
+                <div
+                  id={`files-panel-${id()}`}
+                  role="tabpanel"
+                  aria-labelledby={`files-tab-${id()}`}
+                  class={styles.tabPanel}
+                >
+                  <Show when={id() === "scripts"}>
+                    <ScriptsSection root={treeRoot()} />
+                  </Show>
+                  <Show when={id() === "outline"}>
+                    <Show
+                      when={hasOutline()}
+                      fallback={
+                        <div class={tree.empty}>
+                          {props.outlinePath ? "No outline for this file." : "Open a file to see its outline."}
+                        </div>
+                      }
+                    >
+                      <OutlinePanel path={props.outlinePath} />
+                    </Show>
+                  </Show>
+                  <Show when={id() === "todos"}>
+                    <TodoPanel root={treeRoot()} selected={props.selected} />
+                  </Show>
+                </div>
+              )}
+            </Show>
+          </section>
         </Show>
       </div>
     </div>

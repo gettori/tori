@@ -1156,13 +1156,6 @@ export default function SearchPanel(props: {
         />
         <IconButton
           size="sm"
-          icon={<Icon icon={ListX} />}
-          tooltip="Clear Search Results"
-          disabled={!query() && !replacement()}
-          onClick={clearAll}
-        />
-        <IconButton
-          size="sm"
           icon={<Icon icon={FilePlus2} />}
           tooltip="Open New Search Editor"
           disabled={!ws()}
@@ -1190,6 +1183,16 @@ export default function SearchPanel(props: {
           tooltip={allCollapsed() ? "Expand All" : "Collapse All"}
           disabled={!hitCount()}
           onClick={collapseOrExpandAll}
+        />
+        <IconButton
+          size="sm"
+          icon={<Icon icon={Ellipsis} />}
+          class={styles.pressable}
+          aria-pressed={showGlobs()}
+          tooltip="Toggle Search Details"
+          aria-expanded={showGlobs()}
+          aria-controls={GLOBS_ID}
+          onClick={() => setShowGlobs((v) => !v)}
         />
       </div>
       <div class={styles.form}>
@@ -1221,13 +1224,10 @@ export default function SearchPanel(props: {
             />
           </Field>
           <IconButton
-            icon={<Icon icon={Ellipsis} />}
-            class={styles.pressable}
-            aria-pressed={showGlobs()}
-            tooltip="Toggle Search Details"
-            aria-expanded={showGlobs()}
-            aria-controls={GLOBS_ID}
-            onClick={() => setShowGlobs((v) => !v)}
+            icon={<Icon icon={ListX} />}
+            tooltip="Clear Search Results"
+            disabled={!query() && !replacement()}
+            onClick={clearAll}
           />
         </div>
         <span id={QUERY_HINT_ID} class={styles.srOnly}>

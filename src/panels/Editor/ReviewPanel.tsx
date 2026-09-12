@@ -54,7 +54,15 @@ import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import Dropdown from "../../components/Menu/Dropdown";
 import { MenuRow, MenuSeparator } from "../../components/Menu/rows";
-import { changesLayout, HISTORY_TABS, historyTab, setHistoryTab, type HistoryTab } from "../../utils/changesSections";
+import {
+  changesLayout,
+  HISTORY_TABS,
+  historyTab,
+  setHistoryTab,
+  setTabShown,
+  tabShown,
+  type HistoryTab,
+} from "../../utils/changesSections";
 import { SECTION_MIN_H } from "../../utils/sectionLayout";
 import Resizer from "../../components/Resizer/Resizer";
 import type { MemberRoot, TintedMember } from "../../utils/featureMembers";
@@ -74,6 +82,7 @@ import {
   Archive,
   ArchiveRestore,
   ArchiveX,
+  Check,
   ChevronDown,
   ChevronUp,
   Copy,
@@ -1170,6 +1179,11 @@ export default function ReviewPanel(props: {
     changesLayout.setOpen("history", true);
   }
 
+  const shownTabs = () => HISTORY_TABS.filter((t) => tabShown(t.id));
+  /** The picked tab, or the first left once the ... menu has hidden it. */
+  const tab = (): HistoryTab | undefined =>
+    shownTabs().some((t) => t.id === historyTab()) ? historyTab() : shownTabs()[0]?.id;
+
   const [allBranches, setAllBranches] = createSignal(false);
   const [checkpointCount, setCheckpointCount] = createSignal(0);
   const tabCount = (tab: HistoryTab) =>
@@ -1214,6 +1228,19 @@ export default function ReviewPanel(props: {
         Stash All Changes
       </MenuRow>
       <MenuSeparator />
+      <For each={HISTORY_TABS}>
+        {(t) => (
+          <MenuRow onClick={() => setTabShown(t.id, !tabShown(t.id))}>
+            <span class={styles.checkSlot}>
+              <Show when={tabShown(t.id)}>
+                <Icon icon={Check} />
+              </Show>
+            </span>
+            {t.label}
+          </MenuRow>
+        )}
+      </For>
+      <MenuSeparator />
       <MenuRow
         disabled={!menuRoot()}
         onClick={() => {
@@ -1244,10 +1271,11 @@ export default function ReviewPanel(props: {
 
   return (
     <div class={styles.reviewPanel}>
-      {/* Inside a Feature, which member this tab is about; the file tree's
-          chips, in their own row. Outside one there is nothing to pick. */}
-      <Show when={headed()}>
-        <div class={styles.chipRow}>
+      {/* Row one, the shape the Files and Search tabs open with: who this tab
+          is about, then the dots. Inside a Feature the chips pick one member,
+          the way the file tree's do. */}
+      <div class={styles.topBar}>
+        <Show when={headed()} fallback={<span class={styles.title}>Source Control</span>}>
           <MemberChipRow
             bare
             cap={4}
@@ -1256,11 +1284,25 @@ export default function ReviewPanel(props: {
             activeKey={viewed()?.key ?? null}
             onPick={(m) => setPicked(m.key)}
           />
-        </div>
-      </Show>
+        </Show>
+        <span class={styles.spacer} />
+        <IconButton
+          size="sm"
+          icon={<Icon icon={RefreshCw} />}
+          tooltip="Refresh"
+          onClick={() => void refreshAll()}
+        />
+        <Dropdown as="span" wrapper menu={gitMenu()} placement="bottom-end">
+          <IconButton
+            size="sm"
+            tooltip="More Actions"
+            icon={<Icon icon={Ellipsis} />}
+          />
+        </Dropdown>
+      </div>
 
-      {/* The repo on screen: its branch, and what you do to it. Every answer
-          here is one repo's, and the chip above says which. */}
+      {/* Row two, the repo on screen: its branch, and what you do to it. Every
+          answer here is one repo's, and the chip above says which. */}
       <div class={styles.branchBar}>
         <Show when={branch()}>
           <Icon icon={GitBranch} />
@@ -1297,19 +1339,6 @@ export default function ReviewPanel(props: {
             onClick={openPr}
           />
         </Show>
-        <IconButton
-          size="sm"
-          icon={<Icon icon={RefreshCw} />}
-          tooltip="Refresh"
-          onClick={() => void refreshAll()}
-        />
-        <Dropdown as="span" wrapper menu={gitMenu()} placement="bottom-end">
-          <IconButton
-            size="sm"
-            tooltip="More Actions"
-            icon={<Icon icon={Ellipsis} />}
-          />
-        </Dropdown>
       </div>
 
       {/* The composer, as one card: the message, then what the commit would
@@ -1469,229 +1498,239 @@ export default function ReviewPanel(props: {
         {/* History, one tab at a time: the graph, the stashes or the
             checkpoints. The strip is the section's header; collapsed, it is
             all that is left of the section, pinned under the file list. */}
-        <section
-          class={styles.history}
-          classList={{ [styles.historyOpen]: historyOpen() }}
-          style={historyOpen() ? { flex: `0 1 ${historyHeight()}px` } : undefined}
-          data-section="history"
-        >
-          <Show when={historyOpen()}>
-            <div class={styles.sash}>
-              <Resizer
-                axis="y"
-                side="after"
-                value={historyHeight()}
-                min={SECTION_MIN_H * chromeScale()}
-                max={Math.max(SECTION_MIN_H * chromeScale(), maxH())}
-                onInput={(h) => changesLayout.setSize("history", h / chromeScale())}
-                onCommit={changesLayout.saveSizes}
-              />
-            </div>
-          </Show>
-          <div class={styles.tabStrip}>
-            <div class={styles.tabs} role="tablist" aria-label="History">
-              <For each={HISTORY_TABS}>
-                {(t) => (
-                  <button
-                    type="button"
-                    role="tab"
-                    id={`review-tab-${t.id}`}
-                    class={styles.tab}
-                    aria-selected={historyTab() === t.id}
-                    aria-controls={`review-panel-${t.id}`}
-                    onClick={() => showHistory(t.id)}
-                  >
-                    <span>{t.label}</span>
-                    <Show when={tabCount(t.id)}>
-                      <span class={styles.tabCount}>{tabCount(t.id)}</span>
-                    </Show>
-                  </button>
-                )}
-              </For>
-            </div>
-            <span class={styles.spacer} />
-            <Show when={historyOpen() && historyTab() === "graph"}>
-              <Tooltip
-                as="button"
-                type="button"
-                class={styles.stripToggle}
-                aria-pressed={allBranches()}
-                label={allBranches() ? "Show this branch only" : "Show every branch"}
-                onClick={() => setAllBranches(!allBranches())}
-              >
-                <Icon icon={GitBranch} />
-                all branches
-              </Tooltip>
-              <IconButton
-                size="sm"
-                icon={<Icon icon={GitGraph} />}
-                disabled={!menuRoot()}
-                aria-label="Open Graph"
-                tooltip="Open the full graph in the editor"
-                onClick={() => {
-                  const root = menuRoot();
-                  if (root) emitWith(OPEN_IN_EDITOR, { path: syntheticId("graph", root) });
-                }}
-              />
+        <Show when={shownTabs().length}>
+          <section
+            class={styles.history}
+            classList={{ [styles.historyOpen]: historyOpen() }}
+            style={historyOpen() ? { flex: `0 1 ${historyHeight()}px` } : undefined}
+            data-section="history"
+          >
+            <Show when={historyOpen()}>
+              <div class={styles.sash}>
+                <Resizer
+                  axis="y"
+                  side="after"
+                  value={historyHeight()}
+                  min={SECTION_MIN_H * chromeScale()}
+                  max={Math.max(SECTION_MIN_H * chromeScale(), maxH())}
+                  onInput={(h) => changesLayout.setSize("history", h / chromeScale())}
+                  onCommit={changesLayout.saveSizes}
+                />
+              </div>
             </Show>
-            <Show when={historyOpen() && historyTab() === "stashes"}>
-              <Checkbox
-                class={styles.untrackedBox}
-                aria-describedby={UNTRACKED_HINT_ID}
-                checked={includeUntracked()}
-                onChange={setIncludeUntracked}
-                label="untracked"
-              />
-              <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
-                Also stash files git has never seen, which usually means build output and local
-                scratch
-              </span>
-              {/* Off while anything is unmerged: `git stash` refuses such a
-                  tree outright, so the button would only ever produce git's
-                  error. */}
-              <IconButton
-                size="sm"
-                icon={<Icon icon={Archive} />}
-                disabled={applying() || conflictedFiles(menuRoot()).length > 0}
-                aria-label="Stash all"
-                tooltipWhenDisabled
-                tooltip={
-                  conflictedFiles(menuRoot()).length
-                    ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
-                    : "Put every change aside for later, named after the message above if you have written one"
-                }
-                onClick={() => void stashAll()}
-              />
-            </Show>
-            <IconButton
-              size="sm"
-              icon={<Icon icon={historyOpen() ? ChevronDown : ChevronUp} />}
-              aria-expanded={historyOpen()}
-              tooltip={historyOpen() ? "Collapse" : "Expand"}
-              onClick={() => changesLayout.setOpen("history", !historyOpen())}
-            />
-          </div>
-          {/* All three stay mounted: switching tabs keeps an expanded commit
-              or a picked checkpoint, and the counts on the strip are live
-              before a tab is ever shown. */}
-          <div class={styles.historyBody} hidden={!historyOpen()}>
-            <div
-              id="review-panel-graph"
-              role="tabpanel"
-              aria-labelledby="review-tab-graph"
-              class={styles.tabPanel}
-              hidden={historyTab() !== "graph"}
-            >
-              <GraphSection root={menuRoot()} all={allBranches()} />
-            </div>
-            <div
-              id="review-panel-stashes"
-              role="tabpanel"
-              aria-labelledby="review-tab-stashes"
-              class={styles.tabPanel}
-              hidden={historyTab() !== "stashes"}
-            >
-            <Show
-              when={stashes().length}
-              fallback={<div class="tree-empty">Nothing stashed.</div>}
-            >
-              <OverlayScroll class={styles.sectionScroll}>
-                <For each={stashes()}>
-                  {(st) => (
-                    <>
-                      <div
-                        class={styles.stashRow}
-                        classList={{ [styles.active]: openStashes().has(st.sha) }}
-                        title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
-                        onClick={() => toggleStash(st.sha)}
-                      >
-                        <span class={styles.stashIcon} aria-hidden="true">
-                          <Icon icon={Archive} />
-                        </span>
-                        <span class={styles.reviewName}>{st.message}</span>
-                        <span class={styles.stashMeta}>{compactAge(st.committed_at)}</span>
-                        <span class={styles.rowEnd}>
-                          {/* A stash is a commit, so the commit view shows what
-                              it holds; nothing here has to know how to diff one. */}
-                          <IconButton
-                            size="xs"
-                            icon={<Icon icon={GitCommitHorizontal} />}
-                            aria-label="Open stash"
-                            tooltip="Open this stash as a commit"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", viewedRoot()!, st.sha) });
-                            }}
-                          />
-                          <IconButton
-                            size="xs"
-                            icon={<Icon icon={ArchiveRestore} />}
-                            disabled={applying()}
-                            aria-label="Apply stash"
-                            tooltip="Lay this stash back down and keep it in the list"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void applyStash(st, false);
-                            }}
-                          />
-                          <IconButton
-                            size="xs"
-                            icon={<Icon icon={ArchiveX} />}
-                            disabled={applying()}
-                            aria-label="Pop stash"
-                            tooltip="Lay this stash back down and remove it from the list"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void applyStash(st, true);
-                            }}
-                          />
-                          <IconButton
-                            size="xs"
-                            icon={<Icon icon={Trash2} />}
-                            disabled={applying()}
-                            aria-label="Drop stash"
-                            tooltip="Delete this stash without applying it"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void dropStash(st);
-                            }}
-                          />
-                        </span>
-                      </div>
-                      <Show when={openStashes().has(st.sha)}>
-                        <CommitFiles root={viewedRoot()!} sha={st.sha} />
+            <div class={styles.tabStrip}>
+              <div class={styles.tabs} role="tablist" aria-label="History">
+                <For each={shownTabs()}>
+                  {(t) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      id={`review-tab-${t.id}`}
+                      class={styles.tab}
+                      aria-selected={tab() === t.id}
+                      aria-controls={`review-panel-${t.id}`}
+                      onClick={() => showHistory(t.id)}
+                    >
+                      <span>{t.label}</span>
+                      <Show when={tabCount(t.id)}>
+                        <span class={styles.tabCount}>{tabCount(t.id)}</span>
                       </Show>
-                    </>
+                    </button>
                   )}
                 </For>
-              </OverlayScroll>
-            </Show>
-            </div>
-            <div
-              id="review-panel-checkpoints"
-              role="tabpanel"
-              aria-labelledby="review-tab-checkpoints"
-              class={styles.tabPanel}
-              hidden={historyTab() !== "checkpoints"}
-            >
-              {/* Both fields name the target member: the refs it reads, the
-                  chats it lists and the revert paths it resolves all have to
-                  name one repo. */}
-              <OverlayScroll class={styles.sectionScroll}>
-              <CheckpointTimeline
-                root={targetMember()}
-                sessionId={props.selected?.sessionId ?? null}
-                folderPath={targetMember()}
-                onReverted={(outcome) => {
-                  props.onReverted?.(outcome);
-                  void refreshAll();
-                }}
-                onCount={setCheckpointCount}
+              </div>
+              <span class={styles.spacer} />
+              <IconButton
+                size="sm"
+                icon={<Icon icon={historyOpen() ? ChevronDown : ChevronUp} />}
+                aria-expanded={historyOpen()}
+                tooltip={historyOpen() ? "Collapse" : "Expand"}
+                onClick={() => changesLayout.setOpen("history", !historyOpen())}
               />
-              </OverlayScroll>
             </div>
-          </div>
-        </section>
+            {/* What the showing tab offers, on its own line under the strip, so
+                the tabs keep one shape whichever is up. Checkpoints offers
+                nothing, so it draws no line. */}
+            <Show when={historyOpen() && tab() !== "checkpoints"}>
+              <div class={styles.tabActions}>
+                <span class={styles.spacer} />
+                <Show when={historyOpen() && tab() === "graph"}>
+                  <Tooltip
+                    as="button"
+                    type="button"
+                    class={styles.stripToggle}
+                    aria-pressed={allBranches()}
+                    label={allBranches() ? "Show this branch only" : "Show every branch"}
+                    onClick={() => setAllBranches(!allBranches())}
+                  >
+                    <Icon icon={GitBranch} />
+                    all branches
+                  </Tooltip>
+                  <IconButton
+                    size="sm"
+                    icon={<Icon icon={GitGraph} />}
+                    disabled={!menuRoot()}
+                    aria-label="Open Graph"
+                    tooltip="Open the full graph in the editor"
+                    onClick={() => {
+                      const root = menuRoot();
+                      if (root) emitWith(OPEN_IN_EDITOR, { path: syntheticId("graph", root) });
+                    }}
+                  />
+                </Show>
+                <Show when={historyOpen() && tab() === "stashes"}>
+                  <Checkbox
+                    class={styles.untrackedBox}
+                    aria-describedby={UNTRACKED_HINT_ID}
+                    checked={includeUntracked()}
+                    onChange={setIncludeUntracked}
+                    label="untracked"
+                  />
+                  <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
+                    Also stash files git has never seen, which usually means build output and local
+                    scratch
+                  </span>
+                  {/* Off while anything is unmerged: `git stash` refuses such a
+                      tree outright, so the button would only ever produce git's
+                      error. */}
+                  <IconButton
+                    size="sm"
+                    icon={<Icon icon={Archive} />}
+                    disabled={applying() || conflictedFiles(menuRoot()).length > 0}
+                    aria-label="Stash all"
+                    tooltipWhenDisabled
+                    tooltip={
+                      conflictedFiles(menuRoot()).length
+                        ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
+                        : "Put every change aside for later, named after the message above if you have written one"
+                    }
+                    onClick={() => void stashAll()}
+                  />
+                </Show>
+              </div>
+            </Show>
+            {/* All three stay mounted: switching tabs keeps an expanded commit
+                or a picked checkpoint, and the counts on the strip are live
+                before a tab is ever shown. */}
+            <div class={styles.historyBody} hidden={!historyOpen()}>
+              <div
+                id="review-panel-graph"
+                role="tabpanel"
+                aria-labelledby="review-tab-graph"
+                class={styles.tabPanel}
+                hidden={tab() !== "graph"}
+              >
+                <GraphSection root={menuRoot()} all={allBranches()} />
+              </div>
+              <div
+                id="review-panel-stashes"
+                role="tabpanel"
+                aria-labelledby="review-tab-stashes"
+                class={styles.tabPanel}
+                hidden={tab() !== "stashes"}
+              >
+              <Show
+                when={stashes().length}
+                fallback={<div class="tree-empty">Nothing stashed.</div>}
+              >
+                <OverlayScroll class={styles.sectionScroll}>
+                  <For each={stashes()}>
+                    {(st) => (
+                      <>
+                        <div
+                          class={styles.stashRow}
+                          classList={{ [styles.active]: openStashes().has(st.sha) }}
+                          title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
+                          onClick={() => toggleStash(st.sha)}
+                        >
+                          <span class={styles.stashIcon} aria-hidden="true">
+                            <Icon icon={Archive} />
+                          </span>
+                          <span class={styles.reviewName}>{st.message}</span>
+                          <span class={styles.stashMeta}>{compactAge(st.committed_at)}</span>
+                          <span class={styles.rowEnd}>
+                            {/* A stash is a commit, so the commit view shows what
+                                it holds; nothing here has to know how to diff one. */}
+                            <IconButton
+                              size="xs"
+                              icon={<Icon icon={GitCommitHorizontal} />}
+                              aria-label="Open stash"
+                              tooltip="Open this stash as a commit"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", viewedRoot()!, st.sha) });
+                              }}
+                            />
+                            <IconButton
+                              size="xs"
+                              icon={<Icon icon={ArchiveRestore} />}
+                              disabled={applying()}
+                              aria-label="Apply stash"
+                              tooltip="Lay this stash back down and keep it in the list"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void applyStash(st, false);
+                              }}
+                            />
+                            <IconButton
+                              size="xs"
+                              icon={<Icon icon={ArchiveX} />}
+                              disabled={applying()}
+                              aria-label="Pop stash"
+                              tooltip="Lay this stash back down and remove it from the list"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void applyStash(st, true);
+                              }}
+                            />
+                            <IconButton
+                              size="xs"
+                              icon={<Icon icon={Trash2} />}
+                              disabled={applying()}
+                              aria-label="Drop stash"
+                              tooltip="Delete this stash without applying it"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void dropStash(st);
+                              }}
+                            />
+                          </span>
+                        </div>
+                        <Show when={openStashes().has(st.sha)}>
+                          <CommitFiles root={viewedRoot()!} sha={st.sha} />
+                        </Show>
+                      </>
+                    )}
+                  </For>
+                </OverlayScroll>
+              </Show>
+              </div>
+              <div
+                id="review-panel-checkpoints"
+                role="tabpanel"
+                aria-labelledby="review-tab-checkpoints"
+                class={styles.tabPanel}
+                hidden={tab() !== "checkpoints"}
+              >
+                {/* Both fields name the target member: the refs it reads, the
+                    chats it lists and the revert paths it resolves all have to
+                    name one repo. */}
+                <OverlayScroll class={styles.sectionScroll}>
+                <CheckpointTimeline
+                  root={targetMember()}
+                  sessionId={props.selected?.sessionId ?? null}
+                  folderPath={targetMember()}
+                  onReverted={(outcome) => {
+                    props.onReverted?.(outcome);
+                    void refreshAll();
+                  }}
+                  onCount={setCheckpointCount}
+                />
+                </OverlayScroll>
+              </div>
+            </div>
+          </section>
+        </Show>
       </div>
       <Show when={confirmReq()}>
         <ConfirmDialog
