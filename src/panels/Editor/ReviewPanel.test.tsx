@@ -47,8 +47,14 @@ let discardArgs: { cmd: string; args: unknown }[] = [];
 // the fingerprint they were picked against, so both are recorded.
 let applyLineArgs: unknown[] = [];
 let stashArgs: { cmd: string; args: unknown }[] = [];
-let stashRows: { selector: string; sha: string; message: string; branch: string | null; relative_date: string }[] =
-  [];
+let stashRows: {
+  selector: string;
+  sha: string;
+  message: string;
+  branch: string | null;
+  relative_date: string;
+  committed_at: number;
+}[] = [];
 let stashCreated = true;
 let stashFails = false;
 let live: { sessionId: string; sessionName: string; folderPath: string; status: string }[] = [];
@@ -598,6 +604,7 @@ describe("stash", () => {
   const ENTRY = {
     selector: "stash@{0}",
     sha: "c0ffee0000000000000000000000000000000000",
+    committed_at: 1_700_000_000,
     message: "fix: the thing: with colons",
     branch: "main",
     relative_date: "2 hours ago",
