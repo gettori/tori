@@ -9,6 +9,7 @@ import type { CommitDetailData, CommitFile } from "./CommitDetail";
 import styles from "./CommitFiles.module.css";
 
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+const dirName = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 
 /**
  * What one commit touched, as rows under it in a sidebar list. Shared by the
@@ -44,6 +45,9 @@ export default function CommitFiles(props: { root: string; sha: string }) {
                 >
                   <FileIcon name={baseName(f.path)} />
                   <span class={styles.name}>{baseName(f.path)}</span>
+                  <Show when={dirName(f.path)}>
+                    <span class={styles.dir}>{dirName(f.path)}</span>
+                  </Show>
                   <span class={styles.status} data-status={f.status}>
                     {f.status}
                   </span>

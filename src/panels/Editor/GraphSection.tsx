@@ -4,7 +4,7 @@ import { GitCommitHorizontal } from "lucide-solid";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import { gitStateFor } from "../../utils/gitActions";
-import { refPill } from "../../utils/commitGraph";
+import { authorInitials, refPill } from "../../utils/commitGraph";
 import { compactAge } from "../../utils/compactAge";
 import { syntheticId } from "../../utils/syntheticTabs";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -27,7 +27,7 @@ const ROWS = 40;
  * and this keeps the part that answers "where am I" - the order, the refs, and
  * which commits have not been pushed yet.
  */
-export default function GraphSection(props: { root: string | null }) {
+export default function GraphSection(props: { root: string | null; all?: boolean }) {
   const [entries, setEntries] = createSignal<LogEntry[]>([]);
   const [error, setError] = createSignal("");
   const [open, setOpen] = createSignal<ReadonlySet<string>>(new Set());
@@ -45,15 +45,15 @@ export default function GraphSection(props: { root: string | null }) {
   // commit, a pull or a checkout all arrive here as a new sha.
   createEffect(
     on(
-      () => [props.root, gitStateFor(props.root).head] as const,
-      async ([root]) => {
+      () => [props.root, gitStateFor(props.root).head, !!props.all] as const,
+      async ([root, , all]) => {
         setOpen(new Set<string>());
         if (!root) {
           setEntries([]);
           return;
         }
         try {
-          setEntries(await invoke<LogEntry[]>("git_log", { projectPath: root, limit: ROWS }));
+          setEntries(await invoke<LogEntry[]>("git_log", { projectPath: root, limit: ROWS, all }));
           setError("");
         } catch (e) {
           setEntries([]);
@@ -71,7 +71,10 @@ export default function GraphSection(props: { root: string | null }) {
       <OverlayScroll class={styles.scroll}>
         <For each={entries()}>
           {(c) => (
-            <div class={styles.entry} classList={{ [styles.open]: open().has(c.sha) }}>
+            <div
+              class={styles.entry}
+              classList={{ [styles.open]: open().has(c.sha), [styles.local]: c.unpushed }}
+            >
               {/* The button expands; the commit itself opens from the control
                   beside it, kept outside since a button cannot hold one. */}
               <div class={styles.rowWrap}>
@@ -93,18 +96,22 @@ export default function GraphSection(props: { root: string | null }) {
                       return <span class={`${styles.ref} ${styles[pill.kind]}`}>{pill.label}</span>;
                     }}
                   </For>
+                  <span class={styles.who} aria-hidden="true">
+                    {authorInitials(c.author)}
+                  </span>
                   <span class={styles.age}>{compactAge(c.committed_at)}</span>
                 </Tooltip>
-                <IconButton
-                  size="xs"
-                  class={styles.openCommit}
-                  icon={<Icon icon={GitCommitHorizontal} />}
-                  tooltip="Open this commit"
-                  onClick={() =>
-                    props.root &&
-                    emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", props.root, c.sha) })
-                  }
-                />
+                <span class={styles.rowEnd}>
+                  <IconButton
+                    size="xs"
+                    icon={<Icon icon={GitCommitHorizontal} />}
+                    tooltip="Open this commit"
+                    onClick={() =>
+                      props.root &&
+                      emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", props.root, c.sha) })
+                    }
+                  />
+                </span>
               </div>
               <Show when={open().has(c.sha) && props.root}>
                 <CommitFiles root={props.root!} sha={c.sha} />
