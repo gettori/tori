@@ -1620,7 +1620,7 @@ export default function ReviewPanel(props: {
                 class={styles.tabPanel}
                 hidden={tab() !== "graph"}
               >
-                <GraphSection root={menuRoot()} all={allBranches()} />
+                <GraphSection root={menuRoot()} all={allBranches()} base={baseBranch()} />
               </div>
               <div
                 id="review-panel-stashes"

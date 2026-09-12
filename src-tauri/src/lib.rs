@@ -360,6 +360,7 @@ pub fn run() {
             git::git_commit,
             git::git_head_message,
             git::git_log,
+            git::git_diff_stat,
             git::git_head_sha,
             blame::git_blame,
             agent_lines::agent_lines,

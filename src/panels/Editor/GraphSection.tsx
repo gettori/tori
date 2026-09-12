@@ -27,10 +27,33 @@ const ROWS = 40;
  * and this keeps the part that answers "where am I" - the order, the refs, and
  * which commits have not been pushed yet.
  */
-export default function GraphSection(props: { root: string | null; all?: boolean }) {
+export default function GraphSection(props: {
+  root: string | null;
+  all?: boolean;
+  /** The trunk's name, whose pill wears the trunk lane's colour. */
+  base?: string | null;
+}) {
   const [entries, setEntries] = createSignal<LogEntry[]>([]);
   const [error, setError] = createSignal("");
   const [open, setOpen] = createSignal<ReadonlySet<string>>(new Set());
+
+  const isBase = (name: string) => !!props.base && (name === props.base || name === `origin/${props.base}`);
+
+  /** One pill per branch: `x` and `origin/x` on one commit fold into `x -
+   *  origin/x`, except for HEAD, whose remote the hollow dot already speaks
+   *  for. A remote with no local branch keeps its own pill. */
+  const pills = (c: LogEntry) => {
+    const all = c.refs.map(refPill);
+    const head = all.find((p) => p.kind === "head")?.label;
+    const hasLocal = (name: string) => name === head || all.some((p) => p.kind === "branch" && p.label === name);
+    const remoteOf = (name: string) => all.find((p) => p.kind === "remote" && p.label.endsWith(`/${name}`));
+    return all.flatMap((p) => {
+      if (p.kind === "remote" && hasLocal(p.label.slice(p.label.indexOf("/") + 1))) return [];
+      const remote = p.kind === "branch" ? remoteOf(p.label) : undefined;
+      const label = remote ? `${p.label} - ${remote.label}` : p.label;
+      return [{ ...p, label, base: isBase(p.label) }];
+    });
+  };
 
   function toggle(sha: string) {
     setOpen((prev) => {
@@ -73,7 +96,7 @@ export default function GraphSection(props: { root: string | null; all?: boolean
           {(c) => (
             <div
               class={styles.entry}
-              classList={{ [styles.open]: open().has(c.sha), [styles.local]: c.unpushed }}
+              classList={{ [styles.open]: open().has(c.sha), [styles.local]: c.off_base }}
             >
               {/* The button expands; the commit itself opens from the control
                   beside it, kept outside since a button cannot hold one. */}
@@ -87,14 +110,15 @@ export default function GraphSection(props: { root: string | null; all?: boolean
                   onClick={() => toggle(c.sha)}
                 >
                   <span class={styles.lane} aria-hidden="true">
-                    <span class={styles.dot} classList={{ [styles.unpushed]: c.unpushed }} />
+                    <span class={styles.dot} classList={{ [styles.head]: pills(c).some((p) => p.kind === "head") }} />
                   </span>
                   <span class={styles.subject}>{c.subject}</span>
-                  <For each={c.refs}>
-                    {(ref) => {
-                      const pill = refPill(ref);
-                      return <span class={`${styles.ref} ${styles[pill.kind]}`}>{pill.label}</span>;
-                    }}
+                  <For each={pills(c)}>
+                    {(pill) => (
+                      <span class={`${styles.ref} ${styles[pill.kind]}`} classList={{ [styles.base]: pill.base }}>
+                        {pill.label}
+                      </span>
+                    )}
                   </For>
                   <span class={styles.who} aria-hidden="true">
                     {authorInitials(c.author)}
