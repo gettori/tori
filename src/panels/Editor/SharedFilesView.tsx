@@ -267,9 +267,6 @@ export default function SharedFilesView(props: { workspace: string }) {
                       </Show>
                     </span>
                     <span class={styles.itemFoot}>
-                      <span class={styles.bar} aria-hidden="true">
-                        <For each={e.links}>{(l) => <span class={styles.seg} data-state={l.state} />}</For>
-                      </span>
                       <span class={styles.tally}>{tally(e)}</span>
                     </span>
                   </button>
