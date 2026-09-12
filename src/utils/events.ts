@@ -330,6 +330,22 @@ export const GIT_STAGE_ACTIVE = "sway:git-stage-active";
 export const GIT_UNSTAGE_ACTIVE = "sway:git-unstage-active";
 export const GIT_COMMIT = "sway:git-commit";
 export const GIT_PUSH = "sway:git-push";
+export const GIT_FETCH = "sway:git-fetch";
+export const GIT_PULL = "sway:git-pull";
+export const GIT_PULL_REBASE = "sway:git-pull-rebase";
+export const GIT_SYNC = "sway:git-sync";
+export const GIT_STAGE_ALL = "sway:git-stage-all";
+export const GIT_UNSTAGE_ALL = "sway:git-unstage-all";
+export const GIT_DISCARD_ALL = "sway:git-discard-all";
+export const GIT_COMMIT_SIGNOFF = "sway:git-commit-signoff";
+export const GIT_UNDO_COMMIT = "sway:git-undo-commit";
+export const GIT_STASH_STAGED = "sway:git-stash-staged";
+export const GIT_MERGE_BRANCH = "sway:git-merge-branch";
+export const GIT_REBASE_BRANCH = "sway:git-rebase-branch";
+export const GIT_ABORT = "sway:git-abort";
+export const GIT_BRANCH_CREATE = "sway:git-branch-create";
+export const GIT_BRANCH_RENAME = "sway:git-branch-rename";
+export const GIT_BRANCH_DELETE = "sway:git-branch-delete";
 
 // Payload-carrying event: focus a specific live terminal tab by id (the
 // command palette's "focus session" action, when the session is already
