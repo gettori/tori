@@ -4,7 +4,8 @@ import { GitCommitHorizontal } from "lucide-solid";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import { gitStateFor } from "../../utils/gitActions";
-import { authorInitials, refPill } from "../../utils/commitGraph";
+import { refPill } from "../../utils/commitGraph";
+import { compactAge } from "../../utils/compactAge";
 import { syntheticId } from "../../utils/syntheticTabs";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import IconButton from "../../components/IconButton/IconButton";
@@ -70,7 +71,7 @@ export default function GraphSection(props: { root: string | null }) {
       <OverlayScroll class={styles.scroll}>
         <For each={entries()}>
           {(c) => (
-            <>
+            <div class={styles.entry} classList={{ [styles.open]: open().has(c.sha) }}>
               {/* The button expands; the commit itself opens from the control
                   beside it, kept outside since a button cannot hold one. */}
               <div class={styles.rowWrap}>
@@ -82,11 +83,9 @@ export default function GraphSection(props: { root: string | null }) {
                   label={`${c.short} - ${c.author}, ${c.relative_date}`}
                   onClick={() => toggle(c.sha)}
                 >
-                  <span
-                    class={styles.dot}
-                    classList={{ [styles.unpushed]: c.unpushed }}
-                    aria-hidden="true"
-                  />
+                  <span class={styles.lane} aria-hidden="true">
+                    <span class={styles.dot} classList={{ [styles.unpushed]: c.unpushed }} />
+                  </span>
                   <span class={styles.subject}>{c.subject}</span>
                   <For each={c.refs}>
                     {(ref) => {
@@ -94,9 +93,7 @@ export default function GraphSection(props: { root: string | null }) {
                       return <span class={`${styles.ref} ${styles[pill.kind]}`}>{pill.label}</span>;
                     }}
                   </For>
-                  <span class={styles.who} title={c.author}>
-                    {authorInitials(c.author)}
-                  </span>
+                  <span class={styles.age}>{compactAge(c.committed_at)}</span>
                 </Tooltip>
                 <IconButton
                   size="xs"
@@ -112,7 +109,7 @@ export default function GraphSection(props: { root: string | null }) {
               <Show when={open().has(c.sha) && props.root}>
                 <CommitFiles root={props.root!} sha={c.sha} />
               </Show>
-            </>
+            </div>
           )}
         </For>
       </OverlayScroll>

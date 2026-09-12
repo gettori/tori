@@ -37,6 +37,7 @@ import {
 } from "../../utils/gitActions";
 import { amendRewritesPushed } from "../../utils/commitMessage";
 import { DIFF_CONTEXT } from "../../utils/diffHunks";
+import { compactAge } from "../../utils/compactAge";
 import { copyText } from "../../utils/clipboard";
 import { mentionPath } from "../../utils/pathScope";
 import { mayRewrite } from "../../utils/gitGuard";
@@ -65,7 +66,6 @@ import Button from "../../components/Button/Button";
 import Checkbox from "../../components/Checkbox/Checkbox";
 import IconButton from "../../components/IconButton/IconButton";
 import FileIcon from "../../seti/FileIcon";
-import Chevron from "../../components/Chevron/Chevron";
 import CommitFiles from "./CommitFiles";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
@@ -107,6 +107,7 @@ type StashEntry = {
   message: string;
   branch: string | null;
   relative_date: string;
+  committed_at: number;
 };
 type StashOutcome = { restored: string[]; deleted: string[] };
 
@@ -1532,12 +1533,15 @@ export default function ReviewPanel(props: {
                     <>
                       <div
                         class={styles.stashRow}
+                        classList={{ [styles.active]: openStashes().has(st.sha) }}
                         title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
                         onClick={() => toggleStash(st.sha)}
                       >
-                        <Chevron open={openStashes().has(st.sha)} />
+                        <span class={styles.stashIcon} aria-hidden="true">
+                          <Icon icon={Archive} />
+                        </span>
                         <span class={styles.reviewName}>{st.message}</span>
-                        <span class={styles.stashMeta}>{st.relative_date}</span>
+                        <span class={styles.stashMeta}>{compactAge(st.committed_at)}</span>
                         <span class={styles.rowEnd}>
                           {/* A stash is a commit, so the commit view shows what
                               it holds; nothing here has to know how to diff one. */}

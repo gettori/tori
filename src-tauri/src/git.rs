@@ -809,6 +809,8 @@ pub struct StashEntry {
     /// The branch it was taken on, when git recorded one.
     pub branch: Option<String>,
     pub relative_date: String,
+    /// Commit time as unix seconds, for the panel's own short form of the age.
+    pub committed_at: i64,
 }
 
 /// Split a stash subject into its branch and the message the user actually
@@ -835,14 +837,14 @@ fn split_stash_subject(subject: &str) -> (Option<String>, String) {
 #[tauri::command(async)]
 pub fn git_stash_list(project_path: String) -> Result<Vec<StashEntry>, String> {
     // NUL-delimited fields, so neither a colon nor a newline in the message can
-    // split one entry into two. The stream is flat: four fields per entry.
+    // split one entry into two. The stream is flat: five fields per entry.
     let out = git_capture(
         &project_path,
-        &["stash", "list", "-z", "--format=%gd%x00%H%x00%s%x00%cr"],
+        &["stash", "list", "-z", "--format=%gd%x00%H%x00%s%x00%cr%x00%ct"],
     )?;
     let fields: Vec<&str> = out.split('\0').collect();
     Ok(fields
-        .chunks_exact(4)
+        .chunks_exact(5)
         .map(|c| {
             let (branch, message) = split_stash_subject(c[2]);
             StashEntry {
@@ -851,6 +853,7 @@ pub fn git_stash_list(project_path: String) -> Result<Vec<StashEntry>, String> {
                 message,
                 branch,
                 relative_date: c[3].to_string(),
+                committed_at: c[4].trim().parse().unwrap_or(0),
             }
         })
         .collect())
@@ -1062,6 +1065,9 @@ pub struct LogEntry {
     pub subject: String,
     pub author: String,
     pub relative_date: String,
+    /// Committer time as unix seconds, for the panel's own short form of the
+    /// age. The same date `%cr` words, for the reason given on LOG_FORMAT.
+    pub committed_at: i64,
     /// The branch, tag and HEAD names pointing at this commit, in git's order
     /// (`HEAD -> main` first, then the rest). Empty for the overwhelming
     /// majority of commits, which is the case the parse has to get right.
@@ -1075,7 +1081,7 @@ pub struct LogEntry {
     pub unpushed: bool,
 }
 
-/// Six NUL-terminated fields per commit. NUL rather than any printable
+/// Eight NUL-terminated fields per commit. NUL rather than any printable
 /// separator because a subject, an author name and a ref name can all contain
 /// almost anything else; and `-z` on the command side so the *records* are
 /// NUL-terminated too, leaving one flat stream to chunk.
@@ -1086,7 +1092,7 @@ pub struct LogEntry {
 /// of the top commit can be months old, and "3 months ago" beside the tip of a
 /// branch you just rebased is a lie about the branch, not a fact about the
 /// commit.
-const LOG_FORMAT: &str = "--format=%H%x00%h%x00%s%x00%an%x00%cr%x00%D%x00%P";
+const LOG_FORMAT: &str = "--format=%H%x00%h%x00%s%x00%an%x00%cr%x00%ct%x00%D%x00%P";
 
 /// Split `%D` back into names. git joins them with ", ", which no ref name can
 /// contain (git refuses a space in one), so the split cannot cut a name in half.
@@ -1105,16 +1111,17 @@ fn parse_refs(decorations: &str) -> Vec<String> {
 fn parse_log(text: &str, unpushed: &std::collections::HashSet<String>) -> Vec<LogEntry> {
     let fields: Vec<&str> = text.split('\0').collect();
     fields
-        .chunks_exact(7)
+        .chunks_exact(8)
         .map(|c| LogEntry {
             sha: c[0].to_string(),
             short: c[1].to_string(),
             subject: c[2].to_string(),
             author: c[3].to_string(),
             relative_date: c[4].to_string(),
-            refs: parse_refs(c[5]),
+            committed_at: c[5].trim().parse().unwrap_or(0),
+            refs: parse_refs(c[6]),
             // `%P` is space-separated full shas, empty for a root commit.
-            parents: c[6].split_whitespace().map(str::to_string).collect(),
+            parents: c[7].split_whitespace().map(str::to_string).collect(),
             unpushed: unpushed.contains(c[0]),
         })
         .collect()
@@ -3979,7 +3986,7 @@ diff --git a/f b/f
     // --- Commit log ---------------------------------------------------------
 
     /// The exact spelling `git log -z --format=…` emits, captured from a real
-    /// repo: seven NUL-terminated fields per commit, the final record
+    /// repo: eight NUL-terminated fields per commit, the final record
     /// terminated like the rest (so the split leaves a trailing empty field),
     /// and `%D` empty for a commit nothing points at - which is nearly every
     /// commit in a real history, and the case a naive split would misread.
@@ -3987,10 +3994,10 @@ diff --git a/f b/f
     fn log_parses_a_decorated_commit_and_an_undecorated_one() {
         let out = concat!(
             "3071c3a4410166c58587\0 3071c3a\0Let work be put aside\0",
-            "Sk Arif\011 minutes ago\0HEAD -> wave-2, origin/wave-2, tag: v1.2\0",
+            "Sk Arif\011 minutes ago\01700000000\0HEAD -> wave-2, origin/wave-2, tag: v1.2\0",
             "b42b4942daffcbee3d28 aaaa1111bbbb2222cccc\0",
             "b42b4942daffcbee3d28\0b42b494\0fix: a subject with a comma, and a colon\0",
-            "Sk Arif\054 minutes ago\0\0\0",
+            "Sk Arif\054 minutes ago\01700000000\0\0\0",
         );
         let unpushed = ["3071c3a4410166c58587".to_string()].into_iter().collect();
         let log = parse_log(out, &unpushed);
@@ -4000,6 +4007,7 @@ diff --git a/f b/f
         assert_eq!(log[0].short, " 3071c3a");
         assert_eq!(log[0].author, "Sk Arif");
         assert_eq!(log[0].relative_date, "11 minutes ago");
+        assert_eq!(log[0].committed_at, 1_700_000_000);
         assert_eq!(log[0].refs, ["HEAD -> wave-2", "origin/wave-2", "tag: v1.2"]);
         // Two parents: `%P` is space-separated, so a merge is the case that
         // proves the field is split rather than taken whole.
