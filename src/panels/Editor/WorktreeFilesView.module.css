@@ -1,0 +1,235 @@
+/* The Worktree Files page: a list of entries and where each one landed, not a
+   file tree. Rows are the tree's, so a name reads the same here as anywhere. */
+.page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--canvas-default);
+}
+
+.topBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  /* The breadcrumb bar's band (Breadcrumbs.module.css says the sum), so this
+     tab and a file tab start their content on the same line. */
+  min-height: calc(var(--control-height-sm) + 8px * var(--ui-scale) + 1px);
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.topBar > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
+}
+
+.title {
+  flex: none;
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+}
+
+.dir {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-muted);
+  direction: rtl;
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-xs);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* What the folder is. The heading names the files; only a sentence can say
+   when they are linked, which is the part nobody guesses. */
+.lede {
+  flex: none;
+  margin: 0;
+  padding: calc(10px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  line-height: 1.5;
+}
+
+.lede code {
+  padding: 0 calc(4px * var(--ui-scale));
+  background: var(--neutral-subtle);
+  border-radius: var(--sway-radius-sm);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-xs);
+}
+
+.error {
+  flex: none;
+  padding: calc(6px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  color: var(--diff-deleted);
+  font-size: var(--sway-text-md);
+}
+
+.scroll {
+  flex: 1;
+  padding-bottom: calc(16px * var(--ui-scale));
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(12px * var(--ui-scale)) calc(16px * var(--ui-scale)) calc(4px * var(--ui-scale));
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+}
+
+.count {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+}
+
+.warn {
+  color: var(--scale-orange);
+  font-size: var(--sway-text-md);
+}
+
+.empty {
+  margin: 0;
+  padding: calc(4px * var(--ui-scale)) calc(16px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+}
+
+.entry {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  margin: 0 calc(8px * var(--ui-scale));
+  padding-right: calc(6px * var(--ui-scale));
+  border-radius: var(--sway-radius-sm);
+  transition: background var(--sway-duration-fast) ease;
+}
+
+.row:hover {
+  background: var(--tree-row-hover);
+}
+
+.rowMain {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-width: 0;
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: none;
+  border: none;
+  color: var(--fg-default);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowMain > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
+}
+
+.name {
+  overflow: hidden;
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* How many worktrees hold it, or which one has it. Muted until it is the
+   number that says something is missing. */
+.where {
+  flex: none;
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+}
+
+.whereWarn {
+  color: var(--scale-orange);
+}
+
+.rowEnd {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+}
+
+/* One line per worktree, under the entry it belongs to. Indented to the
+   entry's name, so the two columns read as one list. */
+.links {
+  margin: 0 0 calc(4px * var(--ui-scale));
+  padding: 0;
+  list-style: none;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  margin: 0 calc(8px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(14px * var(--ui-scale)) calc(3px * var(--ui-scale))
+    calc(38px * var(--ui-scale));
+}
+
+/* The state as a colour, so the column scans without reading: linked is the
+   quiet one, missing is the one to act on. */
+.dot {
+  flex: none;
+  width: calc(6px * var(--ui-scale));
+  height: calc(6px * var(--ui-scale));
+  border-radius: var(--sway-radius-pill);
+  background: var(--fg-subtle);
+}
+
+.link[data-state="linked"] .dot {
+  background: var(--scale-green);
+}
+
+.link[data-state="missing"] .dot {
+  background: var(--scale-orange);
+}
+
+.wtName {
+  overflow: hidden;
+  color: var(--fg-default);
+  font-size: var(--sway-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state {
+  flex: none;
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+}
+
+.link[data-state="missing"] .state {
+  color: var(--scale-orange);
+}

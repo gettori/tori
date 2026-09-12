@@ -197,6 +197,10 @@ const KEPT = new Map<string, Kept>([
     "panels/Editor/SessionPanel.tsx",
     { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` },
   ],
+  [
+    "panels/Editor/WorktreeFilesView.tsx",
+    { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` },
+  ],
   ["panels/LeftSidebar/FeatureItem.tsx", { count: 4, reason: TRUNCATION }],
   ["panels/LeftSidebar/FeatureList.tsx", { count: 2, reason: HEADING }],
   ["panels/LeftSidebar/branchTruncation.test.tsx", { count: 3, reason: FIXTURE }],
@@ -265,8 +269,11 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Down one** with the dev build's chip. The topbar carried a "dev" tag beside
  *  the orange stripe, saying the same thing twice; the stripe stayed and the
- *  chip went, and its `title` with it. */
-const RAW_ELEMENT_TITLES = 66;
+ *  chip went, and its `title` with it.
+ *
+ *  **Up one** with the Worktree Files page, whose bar carries the container's
+ *  path, truncated from the left. */
+const RAW_ELEMENT_TITLES = 67;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. Down one from
  *  ten for the same reason as above, and the row itself is unchanged. */
@@ -384,7 +391,7 @@ describe("the title= guard", () => {
     // marker per fact is enough.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 16,
-      span: 50,
+      span: 51,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
