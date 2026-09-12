@@ -1,11 +1,10 @@
-// The four modes that answer for the member `activeRoot` points at (#160 phase
-// 3): Pull requests, Tasks, Shared and Docs.
+// The modes that answer for the member `activeRoot` points at (#160 phase 3):
+// Pull requests, Tasks and Docs.
 //
-// Shared and Docs were not merely pointed at the wrong member inside a Feature,
-// they were permanently hidden: `sharedPath` gated on the selection's
-// `projectKind`, which is "feature", and `docsPath` built its folder from a
-// `spaceName` of "" and the Feature's own name. Both resolve per member now, and
-// the chip row under the tab strip is what moves that member.
+// Docs was not merely pointed at the wrong member inside a Feature, it was
+// permanently hidden: it built its folder from a `spaceName` of "" and the
+// Feature's own name. It resolves per member now, and the chip row under the
+// tab strip is what moves that member.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
@@ -201,9 +200,9 @@ afterEach(() => {
 });
 
 describe("the member chip row", () => {
-  it("is drawn for the four modes that answer for one member, and no others", async () => {
+  it("is drawn for the modes that answer for one member, and no others", async () => {
     await mountEditor();
-    for (const mode of ["pulls", "tasks", "shared", "docs"]) {
+    for (const mode of ["pulls", "tasks", "docs"]) {
       showMode(mode);
       await waitFor(() => expect(chipRow()).toBeTruthy());
     }
@@ -290,34 +289,6 @@ describe("the chip row past its cap", () => {
     pointerClick(screen.getByRole("menuitem", { name: "r7" }));
 
     await waitFor(() => expect(screen.getByText("last")).toBeTruthy());
-  });
-});
-
-describe("the Shared tab inside a Feature", () => {
-  it("is offered for a member whose repo is a worktree container", async () => {
-    await mountEditor(API);
-    await waitFor(() => expect(tabFor("Shared")).toBeTruthy());
-  });
-
-  it("is hidden for a member whose repo is a plain checkout", async () => {
-    // Its Feature worktree lives under `.sway/worktrees`, where no `.shared/`
-    // is linked, so there is nothing to open.
-    await mountEditor(WEB);
-    await waitFor(() => expect(tabFor("Tasks")).toBeTruthy());
-    expect(tabFor("Shared")).toBeNull();
-  });
-
-  it("falls the pane back to Files when the active member has no shared folder", async () => {
-    await mountEditor(API);
-    await waitFor(() => expect(tabFor("Shared")).toBeTruthy());
-    showMode("shared");
-    await waitFor(() => expect(chipRow()).toBeTruthy());
-
-    fireEvent.click(chip(WEB_REPO)!);
-
-    await waitFor(() => expect(tabFor("Shared")).toBeNull());
-    // Not stuck on a mode the active member cannot show.
-    await waitFor(() => expect(chipRow()).toBeNull());
   });
 });
 
