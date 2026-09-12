@@ -1079,6 +1079,9 @@ pub struct LogEntry {
     /// On HEAD but not on its upstream. The graph paints these apart, since
     /// "not pushed yet" is the one thing about a commit you can still change.
     pub unpushed: bool,
+    /// On a local branch but not on the base branch: the branch's own work,
+    /// which the sidebar graph draws in its own hue above the trunk's.
+    pub off_base: bool,
 }
 
 /// Eight NUL-terminated fields per commit. NUL rather than any printable
@@ -1108,7 +1111,11 @@ fn parse_refs(decorations: &str) -> Vec<String> {
 /// Parse the flat `-z` stream. A trailing empty field is left over by the final
 /// record's terminator; `chunks_exact` drops it, along with any partial record
 /// a truncated stream would end in.
-fn parse_log(text: &str, unpushed: &std::collections::HashSet<String>) -> Vec<LogEntry> {
+fn parse_log(
+    text: &str,
+    unpushed: &std::collections::HashSet<String>,
+    off_base: &std::collections::HashSet<String>,
+) -> Vec<LogEntry> {
     let fields: Vec<&str> = text.split('\0').collect();
     fields
         .chunks_exact(8)
@@ -1123,6 +1130,7 @@ fn parse_log(text: &str, unpushed: &std::collections::HashSet<String>) -> Vec<Lo
             // `%P` is space-separated full shas, empty for a root commit.
             parents: c[7].split_whitespace().map(str::to_string).collect(),
             unpushed: unpushed.contains(c[0]),
+            off_base: off_base.contains(c[0]),
         })
         .collect()
 }
@@ -1133,6 +1141,20 @@ fn parse_log(text: &str, unpushed: &std::collections::HashSet<String>) -> Vec<Lo
 /// unpushed there would make the colour mean nothing.
 fn unpushed_shas(repo: &str) -> std::collections::HashSet<String> {
     git_capture(repo, &["rev-list", "@{u}..HEAD"])
+        .map(|out| out.split_whitespace().map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// Shas on a local branch (or a detached HEAD) that the base branch does not
+/// have: the work above the `master` pill, which is what a branch is. Empty
+/// without a base (no origin, or no conventional trunk on it), where every
+/// commit would qualify and the colour would say nothing.
+fn off_base_shas(repo: &str) -> std::collections::HashSet<String> {
+    let Ok(Some(base)) = git_default_base_branch(repo.to_string()) else {
+        return Default::default();
+    };
+    let base_ref = format!("refs/remotes/origin/{base}");
+    git_capture(repo, &["rev-list", "HEAD", "--branches", "--not", &base_ref])
         .map(|out| out.split_whitespace().map(str::to_string).collect())
         .unwrap_or_default()
 }
@@ -1180,7 +1202,7 @@ pub fn git_log(
         args.extend_from_slice(&["--follow", "--", path]);
     }
     let out = git_capture(&project_path, &args)?;
-    Ok(parse_log(&out, &unpushed_shas(&project_path)))
+    Ok(parse_log(&out, &unpushed_shas(&project_path), &off_base_shas(&project_path)))
 }
 
 /// `git diff --numstat`, summed. Binary files count as a file and no lines.
@@ -4038,7 +4060,10 @@ diff --git a/f b/f
             "Sk Arif\054 minutes ago\01700000000\0\0\0",
         );
         let unpushed = ["3071c3a4410166c58587".to_string()].into_iter().collect();
-        let log = parse_log(out, &unpushed);
+        let off_base = ["3071c3a4410166c58587".to_string(), "b42b4942daffcbee3d28".to_string()]
+            .into_iter()
+            .collect();
+        let log = parse_log(out, &unpushed, &off_base);
 
         assert_eq!(log.len(), 2, "the trailing terminator must not add a record");
         assert_eq!(log[0].sha, "3071c3a4410166c58587");
@@ -4058,6 +4083,8 @@ diff --git a/f b/f
         // A root commit has no parents, which is the other empty-field case.
         assert!(log[1].parents.is_empty(), "a root commit has no parents");
         assert!(!log[1].unpushed);
+        // Pushed and still the branch's own: the two sets are read apart.
+        assert!(log[1].off_base);
         // And the comma in its subject stayed in the subject.
         assert_eq!(log[1].subject, "fix: a subject with a comma, and a colon");
     }

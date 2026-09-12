@@ -24,6 +24,8 @@ export type LogEntry = {
   parents: string[];
   /** On HEAD but not on its upstream. */
   unpushed: boolean;
+  /** On a local branch but not on the base branch: the branch's own work. */
+  off_base: boolean;
 };
 
 /** One backend page. The list grows by this much per "Load more". */
