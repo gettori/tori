@@ -14,6 +14,7 @@ const c = (sha: string, parents: string[] = [], unpushed = false): LogEntry => (
   refs: [],
   parents,
   unpushed,
+  off_base: false,
 });
 
 describe("lane layout", () => {
