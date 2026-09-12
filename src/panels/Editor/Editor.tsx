@@ -103,7 +103,6 @@ import {
   Network,
   Search,
   MessagesSquare,
-  Share2,
   BookOpen,
   PanelRight,
   History,
@@ -333,7 +332,6 @@ type RightMode =
   | "pulls"
   | "problems"
   | "calls"
-  | "shared"
   | "docs"
   | "session"
   | "search"
@@ -341,9 +339,9 @@ type RightMode =
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 /** The modes that answer for the member `activeRoot` points at, rather than for
  *  the whole Feature (Changes, Search, Problems) or for the file in front
- *  (Calls, Session, Debug). These are the three the chip row switches;
+ *  (Calls, Session, Debug). These are the two the chip row switches;
  *  Files and Search draw member chips of their own. */
-const ACTIVE_ROOT_MODES: RightMode[] = ["pulls", "shared", "docs"];
+const ACTIVE_ROOT_MODES: RightMode[] = ["pulls", "docs"];
 
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   files: { mode: "files", label: "Files", icon: Files },
@@ -354,7 +352,6 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   search: { mode: "search", label: "Search", icon: Search },
   debug: { mode: "debug", label: "Debug", icon: Bug },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
-  shared: { mode: "shared", label: "Shared", icon: Share2 },
   docs: { mode: "docs", label: "Docs", icon: BookOpen },
 };
 
@@ -605,7 +602,7 @@ export default function Editor(props: {
   // The mode strip runs through the shared OverflowTabBar, so it collapses into
   // a +N menu on a narrow pane instead of squeezing every label. The bar can
   // reorder tabs when one is picked out of the overflow menu, so the canonical
-  // order lives in a signal; availability (session/shared/docs) still filters it
+  // order lives in a signal; availability (session/docs) still filters it
   // on every render.
   const [modeOrder, setModeOrder] = createSignal<RightMode[]>([
     "files",
@@ -616,7 +613,6 @@ export default function Editor(props: {
     "calls",
     "debug",
     "session",
-    "shared",
     "docs",
   ]);
   // Files/Changes/Search are always offered; the rest need their target to exist.
@@ -624,8 +620,6 @@ export default function Editor(props: {
     switch (m) {
       case "session":
         return !!props.selected?.sessionId;
-      case "shared":
-        return !!sharedPath();
       case "docs":
         return !!docsPath();
       // Only worth a tab when something is actually wrong; an always-present
@@ -1082,28 +1076,22 @@ export default function Editor(props: {
     );
   }
 
-  // The editable `.shared/` folder lives on the worktree container; only a
-  // worktree layout has one. Null for plain / plain-dir gates the tab.
+  // The `.shared/` folder lives on the worktree container; only a worktree
+  // layout has one. Null for plain / plain-dir gates the tree's share action.
   //
   // Inside a Feature the question is per member, and it is asked of the *repo*,
-  // not of the Feature: `projectKind` is "feature" there, which is why this tab
-  // was hidden outright before. A member's `repoPath` is its project path from
-  // discovery, so it is already the container, and `kind` says whether that
-  // container is a bare one (`create_worktree` links `.shared/` into each
-  // worktree) or a plain repo (whose Feature worktrees sit under
-  // `.sway/worktrees`, where no such folder is linked).
+  // not of the Feature: `projectKind` is "feature" there. A member's `repoPath`
+  // is its project path from discovery, so it is already the container, and
+  // `kind` says whether that container is a bare one (`create_worktree` links
+  // `.shared/` into each worktree) or a plain repo (whose Feature worktrees sit
+  // under `.sway/worktrees`, where no such folder is linked).
   const sharedContainer = () => {
     const m = activeMember();
     if (m) return m.kind === "worktree" ? m.member.repoPath : null;
     return props.selected?.projectKind === "worktree" ? props.selected.projectPath : null;
   };
-  const sharedPath = () => {
-    const c = sharedContainer();
-    return c ? `${c}/.shared` : null;
-  };
-
   // In-app replacement for window.prompt (unimplemented in WKWebView); mirrors the
-  // sidebar's askText. Threaded into the editable Shared tree for name entry.
+  // sidebar's askText. Threaded into the editable file tree for name entry.
   const [promptReq, setPromptReq] = createSignal<{
     title: string;
     initial: string;
@@ -1137,7 +1125,7 @@ export default function Editor(props: {
   }
 
   // In-app replacement for window.confirm (also unimplemented in WKWebView); mirrors
-  // askText. Threaded into the editable Shared tree for delete confirmation.
+  // askText. Threaded into the editable file tree for delete confirmation.
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
   function askConfirm(opts: ConfirmOpts): Promise<boolean> {
     return new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
@@ -1286,10 +1274,9 @@ export default function Editor(props: {
     }),
   );
 
-  // A selection without an available Shared/Docs/Session tab falls back to
-  // Files, so the pane is never stuck on a mode the current selection can't show.
+  // A selection without an available Docs/Session tab falls back to Files, so
+  // the pane is never stuck on a mode the current selection can't show.
   createEffect(() => {
-    if (rightMode() === "shared" && !sharedPath()) setRightMode("files");
     if (rightMode() === "docs" && !docsPath()) setRightMode("files");
     if (rightMode() === "session" && !props.selected?.sessionId) setRightMode("files");
     // The Problems tab disappears once the last diagnostic clears.
@@ -3098,15 +3085,6 @@ export default function Editor(props: {
               projectRoot={focusRoot()}
               selfSessionId={props.selected!.sessionId ?? null}
               liveTabs={props.liveTabs ?? []}
-            />
-          </Match>
-          <Match when={rightMode() === "shared"}>
-            <FileTree
-              root={sharedPath()}
-              editable
-              noun="shared folder"
-              askText={askText}
-              askConfirm={askConfirm}
             />
           </Match>
           <Match when={rightMode() === "docs"}>
