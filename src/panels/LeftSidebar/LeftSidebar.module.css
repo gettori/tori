@@ -598,6 +598,13 @@
   color: var(--scale-orange);
 }
 
+/* CSS-sized (the numeric Lucide size is dropped) so it tracks --ui-scale, on
+   the 14px the row's chevron and status glyph already share. */
+.driftMark :global(svg) {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+}
+
 /* Bubbled rollup badge on a collapsed branch/project row, or a hidden project's/
    space's nearest rendered ancestor. Shows all four states, each with its own
    glyph + hue, in priority order: waiting, executing, idle, running. */
