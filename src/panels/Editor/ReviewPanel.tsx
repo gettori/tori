@@ -65,6 +65,8 @@ import Button from "../../components/Button/Button";
 import Checkbox from "../../components/Checkbox/Checkbox";
 import IconButton from "../../components/IconButton/IconButton";
 import FileIcon from "../../seti/FileIcon";
+import Chevron from "../../components/Chevron/Chevron";
+import CommitFiles from "./CommitFiles";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
 import {
@@ -77,6 +79,7 @@ import {
   Ellipsis,
   FileCode,
   GitBranch,
+  GitCommitHorizontal,
   GitGraph,
   GitPullRequestArrow,
   Minus,
@@ -100,6 +103,7 @@ type DiscardOutcome = {
  *  own text with its colons intact, not the raw `On main: ...` subject. */
 type StashEntry = {
   selector: string;
+  sha: string;
   message: string;
   branch: string | null;
   relative_date: string;
@@ -198,6 +202,17 @@ export default function ReviewPanel(props: {
   const [authState, setAuthState] = createSignal<AuthState>({ kind: "signedOut" });
   const [applying, setApplying] = createSignal(false);
   const [stashes, setStashes] = createSignal<StashEntry[]>([]);
+  // Which stashes show their files, by sha: a selector shifts as entries come
+  // and go, so an open row would follow the wrong stash.
+  const [openStashes, setOpenStashes] = createSignal<ReadonlySet<string>>(new Set());
+
+  function toggleStash(sha: string) {
+    setOpenStashes((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(sha)) next.add(sha);
+      return next;
+    });
+  }
   const [includeUntracked, setIncludeUntracked] = createSignal(false);
 
   // One section per member inside a Feature, one unnamed section for a branch
@@ -1514,39 +1529,67 @@ export default function ReviewPanel(props: {
               <OverlayScroll class={styles.sectionScroll}>
                 <For each={stashes()}>
                   {(st) => (
-                    <div
-                      class={styles.stashRow}
-                      title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
-                    >
-                      <span class={styles.reviewName}>{st.message}</span>
-                      <span class={styles.stashMeta}>{st.relative_date}</span>
-                      <span class={styles.rowEnd}>
-                        <IconButton
-                          size="xs"
-                          icon={<Icon icon={ArchiveRestore} />}
-                          disabled={applying()}
-                          aria-label="Apply stash"
-                          tooltip="Lay this stash back down and keep it in the list"
-                          onClick={() => void applyStash(st, false)}
-                        />
-                        <IconButton
-                          size="xs"
-                          icon={<Icon icon={ArchiveX} />}
-                          disabled={applying()}
-                          aria-label="Pop stash"
-                          tooltip="Lay this stash back down and remove it from the list"
-                          onClick={() => void applyStash(st, true)}
-                        />
-                        <IconButton
-                          size="xs"
-                          icon={<Icon icon={Trash2} />}
-                          disabled={applying()}
-                          aria-label="Drop stash"
-                          tooltip="Delete this stash without applying it"
-                          onClick={() => void dropStash(st)}
-                        />
-                      </span>
-                    </div>
+                    <>
+                      <div
+                        class={styles.stashRow}
+                        title={`${st.selector}${st.branch ? ` on ${st.branch}` : ""} - ${st.relative_date}`}
+                        onClick={() => toggleStash(st.sha)}
+                      >
+                        <Chevron open={openStashes().has(st.sha)} />
+                        <span class={styles.reviewName}>{st.message}</span>
+                        <span class={styles.stashMeta}>{st.relative_date}</span>
+                        <span class={styles.rowEnd}>
+                          {/* A stash is a commit, so the commit view shows what
+                              it holds; nothing here has to know how to diff one. */}
+                          <IconButton
+                            size="xs"
+                            icon={<Icon icon={GitCommitHorizontal} />}
+                            aria-label="Open stash"
+                            tooltip="Open this stash as a commit"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", viewedRoot()!, st.sha) });
+                            }}
+                          />
+                          <IconButton
+                            size="xs"
+                            icon={<Icon icon={ArchiveRestore} />}
+                            disabled={applying()}
+                            aria-label="Apply stash"
+                            tooltip="Lay this stash back down and keep it in the list"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void applyStash(st, false);
+                            }}
+                          />
+                          <IconButton
+                            size="xs"
+                            icon={<Icon icon={ArchiveX} />}
+                            disabled={applying()}
+                            aria-label="Pop stash"
+                            tooltip="Lay this stash back down and remove it from the list"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void applyStash(st, true);
+                            }}
+                          />
+                          <IconButton
+                            size="xs"
+                            icon={<Icon icon={Trash2} />}
+                            disabled={applying()}
+                            aria-label="Drop stash"
+                            tooltip="Delete this stash without applying it"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void dropStash(st);
+                            }}
+                          />
+                        </span>
+                      </div>
+                      <Show when={openStashes().has(st.sha)}>
+                        <CommitFiles root={viewedRoot()!} sha={st.sha} />
+                      </Show>
+                    </>
                   )}
                 </For>
               </OverlayScroll>

@@ -1,0 +1,59 @@
+/* A commit's files, nested under its row in a sidebar section. The rows are
+   the file tree's, indented one step so they read as the commit's. */
+.files {
+  padding-bottom: calc(2px * var(--ui-scale));
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  width: calc(100% - 8px * var(--ui-scale));
+  margin: 0 calc(4px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale))
+    calc(24px * var(--ui-scale));
+  background: none;
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-default);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--sway-duration-fast) ease;
+}
+
+.row:hover {
+  background: var(--tree-row-hover);
+}
+
+.name {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.status {
+  flex: none;
+  width: calc(18px * var(--ui-scale));
+  color: var(--diff-modified);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-md);
+  text-align: center;
+}
+
+.status[data-status="A"] {
+  color: var(--diff-added);
+}
+
+.status[data-status="D"] {
+  color: var(--diff-deleted);
+}
+
+.note {
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(2px * var(--ui-scale))
+    calc(24px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}

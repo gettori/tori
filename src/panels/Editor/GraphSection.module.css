@@ -4,11 +4,30 @@
   flex: 1;
 }
 
-.row {
+/* The row and the open-commit control beside it, which shows on hover the
+   way a file row's actions do. */
+.rowWrap {
   display: flex;
   align-items: center;
+  padding-right: calc(4px * var(--ui-scale));
+}
+
+.openCommit.openCommit {
+  flex: none;
+  opacity: 0;
+}
+
+.rowWrap:hover .openCommit,
+.openCommit:focus-visible {
+  opacity: 1;
+}
+
+.row {
+  display: flex;
+  flex: 1;
+  align-items: center;
   gap: calc(6px * var(--ui-scale));
-  width: 100%;
+  min-width: 0;
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(1px * var(--ui-scale)) calc(6px * var(--ui-scale));
   background: none;

@@ -7,6 +7,7 @@ import { gitStateFor } from "../../utils/gitActions";
 import { authorInitials, buildGraph, refPill, type GraphRow } from "../../utils/commitGraph";
 import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
 import IconButton from "../../components/IconButton/IconButton";
+import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import Button from "../../components/Button/Button";
@@ -212,10 +213,11 @@ export default function GraphView(props: { workspace: string }) {
                   </span>
                   <span class={styles.author}>{row.entry.author}</span>
                   <span class={styles.when}>{row.entry.relative_date}</span>
-                  <button
+                  <Tooltip
+                    as="button"
                     type="button"
                     class={styles.sha}
-                    title="Open this commit"
+                    label="Open this commit"
                     onClick={() =>
                       emitWith(OPEN_IN_EDITOR, {
                         path: syntheticId("commit", props.workspace, row.entry.sha),
@@ -223,7 +225,7 @@ export default function GraphView(props: { workspace: string }) {
                     }
                   >
                     {row.entry.short}
-                  </button>
+                  </Tooltip>
                 </div>
                 <Show when={open().has(row.entry.sha)}>
                   <div class={styles.files}>
@@ -233,10 +235,11 @@ export default function GraphView(props: { workspace: string }) {
                     >
                       <For each={files()[row.entry.sha]}>
                         {(f) => (
-                          <button
+                          <Tooltip
+                            as="button"
                             type="button"
                             class={styles.fileRow}
-                            title={f.path}
+                            label={f.path}
                             // The working-tree diff, not this commit's: the tab
                             // kind shows a file against the index or HEAD, and
                             // a historical diff is the commit view's own.
@@ -250,7 +253,7 @@ export default function GraphView(props: { workspace: string }) {
                               {f.status}
                             </span>
                             <span class={styles.filePath}>{f.path}</span>
-                          </button>
+                          </Tooltip>
                         )}
                       </For>
                     </Show>
