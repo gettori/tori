@@ -25,6 +25,97 @@
   min-height: 0;
 }
 
+.spacer {
+  flex: 1;
+}
+
+/* The views section. Open, it has a dragged height and the strip heads it;
+   closed, the strip is the whole section, sitting at the bottom. The auto
+   margin keeps it there when the tree above is shut too. */
+.views {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  margin-top: auto;
+  min-height: calc(36px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
+}
+
+.views.viewsOpen {
+  min-height: calc(90px * var(--ui-scale));
+}
+
+.views.fill {
+  flex: 1 1 0;
+}
+
+/* The drag handle sits over the top border rather than beside it. */
+.sash {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale));
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  height: calc(8px * var(--ui-scale));
+}
+
+.tabStrip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  height: calc(36px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
+}
+
+/* The rule under the tabs, only while there is something under them. */
+.viewsOpen .tabStrip {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  min-width: 0;
+}
+
+/* A tab is a pill only while it is the one showing; the rest are muted text,
+   so the strip reads as one control rather than three buttons. */
+.tab {
+  display: inline-flex;
+  align-items: center;
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: none;
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--fg-default);
+}
+
+.tab[aria-selected="true"] {
+  background: var(--neutral-subtle);
+  color: var(--fg-default);
+}
+
+.tabPanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* The branch name, muted like the Search tab's title. */
 .titleText {
   overflow: hidden;

@@ -185,7 +185,7 @@ import {
   type MemberRoot,
   type TintedMember,
 } from "../../utils/featureMembers";
-import { revealSection } from "../../utils/filesSections";
+import { revealTab } from "../../utils/filesSections";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
 import { dropWorkspaceExpanded, mapExpandedFiles } from "../../utils/treeExpanded";
@@ -2376,7 +2376,7 @@ export default function Editor(props: {
     });
     offSetRightMode = onWith<SetRightMode>(SET_RIGHT_MODE, (d) => {
       if (d?.mode) setRightMode(d.mode);
-      if (d?.section) revealSection(d.section);
+      if (d?.section) revealTab(d.section);
     });
     offSearchInFolder = onWith<SearchInFolder>(SEARCH_IN_FOLDER, (d) => {
       setSearchScope({ ...d, nonce: ++searchScopeNonce });
