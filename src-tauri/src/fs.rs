@@ -48,10 +48,19 @@ fn read_sorted(path: &str) -> Result<Vec<DirEntry>, String> {
     for entry in std::fs::read_dir(path).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        // A symlink's own type is neither file nor directory, so it has to be
+        // followed: a shared folder linked into a worktree would otherwise draw
+        // as a file, and clicking it would try to read a directory. A broken
+        // link answers false and draws as a file, which is what it looks like.
+        let is_dir = if file_type.is_symlink() {
+            entry.path().is_dir()
+        } else {
+            file_type.is_dir()
+        };
         entries.push(DirEntry {
             name: entry.file_name().to_string_lossy().into_owned(),
             path: entry.path().to_string_lossy().into_owned(),
-            is_dir: file_type.is_dir(),
+            is_dir,
             ignored: false,
         });
     }
@@ -533,7 +542,12 @@ fn walk_files(root: &Path, dir: &Path, out: &mut Vec<String>) {
         let path = entry.path();
         if ft.is_dir() {
             walk_files(root, &path, out);
-        } else if ft.is_file() {
+        } else if ft.is_file() || (ft.is_symlink() && path.is_file()) {
+            // A link to a file is a file here: a shared `.env` is linked into
+            // every worktree, and quick-open finding it in none of them is the
+            // same bug as the tree drawing it wrong. A link to a *directory* is
+            // still not walked, since a link pointing at an ancestor would send
+            // this recursion around forever.
             if let Ok(rel) = path.strip_prefix(root) {
                 out.push(rel.to_string_lossy().into_owned());
             }
@@ -989,6 +1003,38 @@ mod tests {
         out.sort();
         assert_eq!(out, [".sway/settings.json", "main.rs", "worktrees/b.rs"]);
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// The shape a shared entry takes in a worktree: a symlink to a folder and
+    /// a symlink to a file, both living outside the tree being listed. The
+    /// symlink's own file type is neither, so an unfollowed read draws the
+    /// folder as a file and a click on it fails with "Is a directory".
+    #[test]
+    fn a_link_to_a_folder_lists_as_a_folder_and_a_dangling_one_does_not() {
+        let base = std::env::temp_dir().join(format!("sway-fs-link-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let outside = base.join("shared");
+        let inside = base.join("worktree");
+        std::fs::create_dir_all(outside.join("config")).unwrap();
+        std::fs::create_dir_all(&inside).unwrap();
+        std::fs::write(outside.join(".env"), "K=1").unwrap();
+
+        std::os::unix::fs::symlink(outside.join("config"), inside.join("config")).unwrap();
+        std::os::unix::fs::symlink(outside.join(".env"), inside.join(".env")).unwrap();
+        std::os::unix::fs::symlink(outside.join("gone"), inside.join("gone")).unwrap();
+
+        let entries = fs_read_dir_body(&inside.to_string_lossy()).unwrap();
+        let by = |n: &str| entries.iter().find(|e| e.name == n).unwrap().is_dir;
+        assert!(by("config"), "a link to a folder is a folder");
+        assert!(!by(".env"), "a link to a file is a file");
+        assert!(!by("gone"), "a link to nothing reads as a file, which is what it looks like");
+
+        // And the project file list finds the linked file, without walking the
+        // linked folder, which is the half that could loop.
+        let mut out = Vec::new();
+        walk_files(&inside, &inside, &mut out);
+        assert_eq!(out, [".env"]);
+
+        std::fs::remove_dir_all(&base).ok();
     }
 
     #[test]
