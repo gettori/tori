@@ -356,6 +356,7 @@
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
+  cursor: pointer;
   white-space: nowrap;
 }
 
