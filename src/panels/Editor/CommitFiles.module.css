@@ -28,9 +28,22 @@
 }
 
 .name {
+  flex: none;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+/* The folders above the file, dimmed and taking the slack. Right-to-left so a
+   long path keeps its tail, which is the half that says which file this is. */
+.dir {
   flex: 1;
   overflow: hidden;
   min-width: 0;
+  color: var(--fg-muted);
+  direction: rtl;
+  font-size: var(--sway-text-md);
+  text-align: left;
   text-overflow: ellipsis;
 }
 

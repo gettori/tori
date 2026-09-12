@@ -1157,6 +1157,7 @@ pub fn git_log(
     skip: Option<u32>,
     limit: Option<u32>,
     file: Option<String>,
+    all: Option<bool>,
 ) -> Result<Vec<LogEntry>, String> {
     match git_capture(&project_path, &["rev-parse", "--quiet", "--verify", "HEAD"]) {
         // `--quiet` silences exactly one failure, "HEAD names no commit", and
@@ -1169,12 +1170,49 @@ pub fn git_log(
     let skip = format!("--skip={}", skip.unwrap_or(0));
     let limit = format!("--max-count={}", limit.unwrap_or(LOG_PAGE));
     let mut args = vec!["log", "-z", LOG_FORMAT, &skip, &limit];
+    // The three ref kinds rather than `--all`, which would also walk the
+    // stash refs and put every stash in the graph as a stray merge.
+    if all.unwrap_or(false) {
+        args.extend_from_slice(&["--branches", "--remotes", "--tags"]);
+    }
     if let Some(path) = file.as_deref() {
         // `--follow` takes exactly one pathspec, and it must come after `--`.
         args.extend_from_slice(&["--follow", "--", path]);
     }
     let out = git_capture(&project_path, &args)?;
     Ok(parse_log(&out, &unpushed_shas(&project_path)))
+}
+
+/// `git diff --numstat`, summed. Binary files count as a file and no lines.
+#[derive(Serialize, Debug, PartialEq, Default)]
+pub struct DiffStat {
+    pub files: u32,
+    pub insertions: u32,
+    pub deletions: u32,
+}
+
+/// What a commit would hold: the index with `staged`, the working tree without.
+/// `--numstat` rather than `--shortstat`, whose wording follows the locale.
+#[tauri::command(async)]
+pub fn git_diff_stat(project_path: String, staged: Option<bool>) -> Result<DiffStat, String> {
+    let mut args = vec!["diff", "--numstat"];
+    if staged.unwrap_or(false) {
+        args.push("--cached");
+    }
+    let out = git_capture(&project_path, &args)?;
+    Ok(parse_numstat(&out))
+}
+
+fn parse_numstat(text: &str) -> DiffStat {
+    let mut stat = DiffStat::default();
+    for line in text.lines() {
+        let mut cols = line.split('\t');
+        let (Some(ins), Some(del)) = (cols.next(), cols.next()) else { continue };
+        stat.files += 1;
+        stat.insertions += ins.trim().parse::<u32>().unwrap_or(0);
+        stat.deletions += del.trim().parse::<u32>().unwrap_or(0);
+    }
+    stat
 }
 
 /// The commit HEAD names, or "" on an unborn branch.
@@ -4035,7 +4073,7 @@ diff --git a/f b/f
         }
         git(&dir, &["tag", "v1"]);
 
-        let all = git_log(p.clone(), None, None, None).unwrap();
+        let all = git_log(p.clone(), None, None, None, None).unwrap();
         assert_eq!(
             all.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
             ["commit 4", "commit 3", "commit 2", "init"],
@@ -4048,13 +4086,13 @@ diff --git a/f b/f
         assert!(all[0].refs.iter().any(|r| r == "tag: v1"), "refs were {:?}", all[0].refs);
         assert!(all[1].refs.is_empty());
 
-        let page = git_log(p.clone(), Some(1), Some(2), None).unwrap();
+        let page = git_log(p.clone(), Some(1), Some(2), None, None).unwrap();
         assert_eq!(
             page.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
             ["commit 3", "commit 2"],
         );
         // Past the end is an empty page, not an error.
-        assert!(git_log(p, Some(99), Some(2), None).unwrap().is_empty());
+        assert!(git_log(p, Some(99), Some(2), None, None).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -4067,9 +4105,9 @@ diff --git a/f b/f
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
 
-        assert_eq!(git_log(dir.to_string_lossy().into_owned(), None, None, None).unwrap(), vec![]);
+        assert_eq!(git_log(dir.to_string_lossy().into_owned(), None, None, None, None).unwrap(), vec![]);
         // A folder that is not a repo at all still reports the real failure.
-        assert!(git_log(dir.join("nope").to_string_lossy().into_owned(), None, None, None).is_err());
+        assert!(git_log(dir.join("nope").to_string_lossy().into_owned(), None, None, None, None).is_err());
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -4211,12 +4249,12 @@ diff --git a/f b/f
         let dir = repo_with_awkward_history();
         let p = dir.to_string_lossy().into_owned();
 
-        let followed = git_log(p.clone(), None, None, Some("moved.txt".into())).unwrap();
+        let followed = git_log(p.clone(), None, None, Some("moved.txt".into()), None).unwrap();
         let subjects: Vec<&str> = followed.iter().map(|c| c.subject.as_str()).collect();
         assert_eq!(subjects, ["rename with edit", "root"]);
 
         // Without it, the file's life starts at the commit that named it.
-        let plain = git_log(p, None, None, Some("a.txt".into())).unwrap();
+        let plain = git_log(p, None, None, Some("a.txt".into()), None).unwrap();
         assert_eq!(
             plain.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
             ["grow a", "root"],

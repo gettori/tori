@@ -11,35 +11,25 @@
   user-select: none;
 }
 
-/* Row one, the height the Files and Search tabs open with. */
-.topBar {
+/* Inside a Feature only: the member chips, in the row the other tabs open
+   with. Outside one the branch row is the first thing on the panel. */
+.chipRow {
   display: flex;
   flex: none;
   align-items: center;
-  gap: calc(4px * var(--ui-scale));
   min-height: calc(40px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) 0;
 }
 
-/* The tab's name, outside a Feature. Inside one the member chips take this
-   spot, the same swap the Search tab makes, so the two tabs open the same way
-   and this matches Search's title exactly. */
-.title {
-  padding-left: calc(4px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
-  font-weight: 600;
-}
-
-/* Row two: the repo the chip above names. Shorter than row one, which carries
-   the tab's own title and has to match the other tabs' opening row. */
+/* The repo on screen: its branch, then what you do to it. */
 .branchBar {
   display: flex;
   flex: none;
   align-items: center;
-  gap: calc(4px * var(--ui-scale));
-  min-height: calc(30px * var(--ui-scale));
-  padding: 0 calc(6px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  gap: calc(6px * var(--ui-scale));
+  min-height: calc(40px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(2px * var(--ui-scale))
+    calc(12px * var(--ui-scale));
 }
 
 .branchBar > svg {
@@ -58,11 +48,11 @@
   color: var(--fg-muted);
 }
 
-/* The branch the repo on screen is on. */
+/* The branch the repo on screen is on: the panel's title, in effect. */
 .branchName {
   overflow: hidden;
-  color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
+  color: var(--fg-default);
+  font-size: var(--sway-text-xl);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -72,19 +62,19 @@
    numbers are the reason to push, so they are the thing you press. */
 .aheadPill {
   flex: none;
-  padding: 0 calc(6px * var(--ui-scale));
-  background: none;
-  border: 1px solid var(--border-default);
+  padding: calc(1px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--brand-subtle);
+  border: none;
   border-radius: var(--sway-radius-sm);
-  color: var(--fg-muted);
+  color: var(--brand-default);
   font: inherit;
-  font-size: var(--sway-text-xs);
+  font-size: var(--sway-text-sm);
+  font-weight: 600;
   cursor: pointer;
 }
 
 .aheadPill:hover:not(:disabled) {
-  background: var(--neutral-hover);
-  color: var(--fg-default);
+  background: var(--brand-wash);
 }
 
 .aheadPill:disabled {
@@ -96,12 +86,143 @@
   flex: 1;
 }
 
-/* The stack of sections below the composer, which is what scrolls. */
+/* The file list and the history under it, which is what scrolls. */
 .stack {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
+}
+
+.changesBody {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The history section. Open, it has a dragged height and the strip heads it;
+   closed, the strip is the whole section, sitting at the bottom. */
+.history {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-height: calc(36px * var(--ui-scale));
+  border-top: 1px solid var(--border-default);
+}
+
+.history.historyOpen {
+  min-height: calc(90px * var(--ui-scale));
+}
+
+/* The drag handle sits over the top border rather than beside it. */
+.sash {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale));
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  height: calc(8px * var(--ui-scale));
+}
+
+.tabStrip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  height: calc(36px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: calc(2px * var(--ui-scale));
+  min-width: 0;
+}
+
+/* A tab is a pill only while it is the one showing; the rest are muted text,
+   so the strip reads as one control rather than three buttons. */
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: none;
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--fg-default);
+}
+
+.tab[aria-selected="true"] {
+  background: var(--neutral-subtle);
+  color: var(--fg-default);
+}
+
+.tabCount {
+  color: var(--fg-subtle);
+  font-weight: 500;
+}
+
+/* The graph tab's every-branch switch: a labelled toggle, lit while on. */
+.stripToggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale));
+  background: none;
+  border: none;
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-muted);
+  font: inherit;
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-sm);
+  cursor: pointer;
+}
+
+.stripToggle:hover {
+  color: var(--fg-default);
+}
+
+.stripToggle[aria-pressed="true"] {
+  color: var(--brand-default);
+}
+
+.stripToggle > svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+.historyBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tabPanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tabPanel[hidden],
+.historyBody[hidden] {
+  display: none;
 }
 
 /* A section's own scroller, for the bodies that are not already one. */
@@ -122,28 +243,12 @@
   text-align: center;
 }
 
-/* Leaves room for the tick beside a section's name in the ... menu, so the
-   labels line up whether or not one is shown. */
-.checkSlot {
-  display: inline-flex;
-  flex: none;
-  justify-content: center;
-  width: var(--control-icon);
-}
-
-.checkSlot > svg {
-  width: var(--control-icon);
-  height: var(--control-icon);
-}
-
 /* The verb and its variants as one control: a chevron welded to the primary
-   button's right edge. Takes the room going, up to 200px of Commit plus the
-   chevron (the cap is about the button, so the chevron is added, not taken). */
+   button's right edge. */
 .splitButton {
   display: inline-flex;
-  flex: 1;
+  flex: none;
   align-items: stretch;
-  max-width: calc(220px * var(--ui-scale));
 }
 
 .splitButton .commitButton {
@@ -310,13 +415,27 @@
 
 /* The file's own name. Never shrinks below itself: the folder beside it is the
    part that gives way when the panel is narrow. */
-/* Takes the slack and gives it back: the actions and the status letter keep
-   their width, so a long name is what shortens. */
+/* The name keeps its width while the folder beside it gives way; only when
+   the row is narrower than the name alone does the name shorten. */
 .reviewName {
-  flex: 1;
+  flex: 0 1 auto;
   overflow: hidden;
   min-width: 0;
   color: var(--fg-default);
+  text-overflow: ellipsis;
+}
+
+/* The folders above the file, dimmed, taking the slack and giving it back
+   first. Right-to-left so a long path keeps its tail, which is the half that
+   says which file this is. */
+.reviewDir {
+  flex: 1 1 0;
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-muted);
+  direction: rtl;
+  font-size: var(--sway-text-md);
+  text-align: left;
   text-overflow: ellipsis;
 }
 
@@ -394,30 +513,61 @@
   font-size: var(--sway-text-md);
 }
 
-/* Sits directly above the commit box, because it is the other thing you can do
-   with the same pile of changes. */
-.commitBox {
+/* The composer as one card: the message box's own border and background,
+   holding the message and the row of numbers and buttons under it. */
+.commitCard {
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  background: var(--canvas-card);
+  margin: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-md);
+  transition: border-color var(--sway-duration-fast) ease;
 }
 
-/* One box for the whole message, sized in rows by `fitMessage`. `resize: none`
-   because the row count is the height: a dragged box would be overwritten by
-   the next keystroke. */
+.commitCard:focus-within {
+  border-color: var(--brand-default);
+}
+
+.commitCard .commitTarget {
+  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
+}
+
+/* The message, sized in rows by `fitMessage`. The card carries the border, so
+   the box itself is bare; `resize: none` because the row count is the height
+   and a dragged box would be overwritten by the next keystroke. */
 .commitInput {
   composes: input from "../../styles/patterns.module.css";
+  background: none;
+  border: none;
   resize: none;
 }
 
-/* Right-aligned, so the pair reads as the end of the composer rather than as a
-   full-width toolbar. */
+.commitInput:focus {
+  border: none;
+}
+
+.commitFooter {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+}
+
+.commitStats {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-muted);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .commitActions {
   display: flex;
-  justify-content: flex-end;
+  flex: none;
   gap: calc(6px * var(--ui-scale));
 }
 
