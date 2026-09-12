@@ -225,12 +225,15 @@ function captureToasts() {
 
 /** The create-PR dialog's own subtree.
  *
- *  Scoped because the commit composer behind the modal carries a button with the
- *  same "Ask agent to draft" label, so an unscoped query matches both. Scoped by
- *  role rather than by the title's parent: since the dialog moved onto `Dialog`,
- *  that parent is the heading row rather than the whole panel. */
+ *  Scoped by role rather than by the title's parent: since the dialog moved onto
+ *  `Dialog`, that parent is the heading row rather than the whole panel. */
 function prDialog() {
   return within(screen.getByRole("dialog"));
+}
+
+/** The commit composer's one field: subject and body in a single box. */
+function messageBox() {
+  return screen.getByPlaceholderText("Message") as HTMLTextAreaElement;
 }
 
 beforeEach(async () => {
@@ -318,14 +321,14 @@ describe("the shared git store", () => {
     // showing the file as unstaged until something happened to refresh it.
     await mountPanel();
     expect(screen.queryByText("Staged Changes")).toBeNull();
-    // Two say "Changes" to begin with: the section header and the unstaged
-    // group under it.
-    expect(screen.getAllByText("Changes")).toHaveLength(2);
+    // One "Changes" to begin with: the section header. The unstaged group is
+    // the only group, so it does not repeat the word under it.
+    expect(screen.getAllByText("Changes")).toHaveLength(1);
 
     await stage("/proj", ["src/a.ts"]);
 
     await waitFor(() => expect(screen.getByText("Staged Changes")).toBeTruthy());
-    // The unstaged group is gone with its last row; the section header stays.
+    // Still one: the unstaged group is gone with its last row, the header stays.
     expect(screen.getAllByText("Changes")).toHaveLength(1);
   });
 });
@@ -610,10 +613,12 @@ describe("stash", () => {
     expect(screen.getByText("fix: the thing: with colons")).toBeTruthy();
   });
 
-  it("creates a stash named after the Summary, with untracked left out by default", async () => {
+  it("creates a stash named after the message's first line, untracked left out by default", async () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
-    fireEvent.input(screen.getByPlaceholderText("Summary"), { target: { value: "half-done refactor" } });
+    fireEvent.input(screen.getByPlaceholderText("Message"), {
+      target: { value: "half-done refactor\n\nthe rest of it" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "Stash all" }));
 
@@ -627,7 +632,7 @@ describe("stash", () => {
     );
     // The name moved into the stash, so leaving it in the commit box would
     // silently seed the next commit with it.
-    await waitFor(() => expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe(""));
+    await waitFor(() => expect(messageBox().value).toBe(""));
   });
 
   it("passes the include-untracked flag when it is ticked", async () => {
@@ -744,32 +749,25 @@ describe("amend", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /^Amend/ })).toBeTruthy());
   }
 
-  it("prefills the fields from HEAD and splits subject from body", async () => {
+  it("prefills the message box from HEAD, paragraph breaks and all", async () => {
     headMsg = "previous subject\n\nprevious body\n\nsecond paragraph";
     await mountPanel();
     await turnAmendOn();
 
     await waitFor(() =>
-      expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("previous subject"),
-    );
-    expect((screen.getByPlaceholderText("Description (optional)") as HTMLTextAreaElement).value).toBe(
-      "previous body\n\nsecond paragraph",
+      expect(messageBox().value).toBe("previous subject\n\nprevious body\n\nsecond paragraph"),
     );
   });
 
   it("gives back what you typed when amend is switched off again", async () => {
     headMsg = "previous subject";
     await mountPanel();
-    fireEvent.input(screen.getByPlaceholderText("Summary"), { target: { value: "my own subject" } });
+    fireEvent.input(screen.getByPlaceholderText("Message"), { target: { value: "my own subject" } });
     await turnAmendOn();
-    await waitFor(() =>
-      expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("previous subject"),
-    );
+    await waitFor(() => expect(messageBox().value).toBe("previous subject"));
 
     await flipAmend("Stop amending");
-    await waitFor(() =>
-      expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("my own subject"),
-    );
+    await waitFor(() => expect(messageBox().value).toBe("my own subject"));
   });
 
   it("asks before rewriting a commit the upstream already has", async () => {
@@ -817,7 +815,7 @@ describe("amend", () => {
     expect(screen.queryByText("Amend a pushed commit?")).toBeNull();
   });
 
-  it("clears both fields and drops back out of amend once the commit lands", async () => {
+  it("clears the message and drops back out of amend once the commit lands", async () => {
     aheadBehind = { ahead: 1, behind: 0, has_upstream: true };
     headMsg = "previous subject\n\nprevious body";
     await mountPanel();
@@ -827,8 +825,7 @@ describe("amend", () => {
     await waitFor(() => expect(commitArgs.length).toBe(1));
     // Back to "Commit": a successful amend is not a mode you stay in.
     await waitFor(() => expect(screen.getByText("Commit")).toBeTruthy());
-    expect((screen.getByPlaceholderText("Summary") as HTMLInputElement).value).toBe("");
-    expect((screen.getByPlaceholderText("Description (optional)") as HTMLTextAreaElement).value).toBe("");
+    expect(messageBox().value).toBe("");
   });
 
   it("does not ask when the branch has no upstream", async () => {
@@ -1394,7 +1391,7 @@ describe("the members a Feature commits in", () => {
   const commitButton = () => screen.getByRole("button", { name: /^(Commit|Amend)/ });
 
   async function commitWith(message: string, expected: number) {
-    fireEvent.input(screen.getByPlaceholderText("Summary"), { target: { value: message } });
+    fireEvent.input(screen.getByPlaceholderText("Message"), { target: { value: message } });
     fireEvent.click(commitButton());
     await waitFor(() => expect(commitArgs).toHaveLength(expected));
   }
@@ -1447,7 +1444,7 @@ describe("the members a Feature commits in", () => {
     const onSend = (e: Event) => sent.push((e as CustomEvent<{ text: string }>).detail);
     window.addEventListener(SEND_TO_SESSION, onSend);
 
-    fireEvent.click(screen.getByText("Ask agent to draft"));
+    fireEvent.click(screen.getByText("AI Draft"));
     await waitFor(() => expect(sent).toHaveLength(1));
     window.removeEventListener(SEND_TO_SESSION, onSend);
 

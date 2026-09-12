@@ -39,7 +39,7 @@
   align-items: center;
   gap: calc(4px * var(--ui-scale));
   min-height: calc(30px * var(--ui-scale));
-  padding: 0 calc(6px * var(--ui-scale)) calc(4px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) calc(6px * var(--ui-scale));
 }
 
 .branchBar > svg {
@@ -136,11 +136,14 @@
   height: var(--control-icon);
 }
 
-/* The verb and its variants as one control: a chevron button welded to the
-   primary button's right edge. */
+/* The verb and its variants as one control: a chevron welded to the primary
+   button's right edge. Takes the room going, up to 200px of Commit plus the
+   chevron (the cap is about the button, so the chevron is added, not taken). */
 .splitButton {
   display: inline-flex;
+  flex: 1;
   align-items: stretch;
+  max-width: calc(220px * var(--ui-scale));
 }
 
 .splitButton .commitButton {
@@ -158,6 +161,7 @@
 
 .splitMore.splitMore:hover:not(:disabled) {
   background: var(--brand-strong);
+  color: var(--brand-on);
 }
 
 /* Included in the next commit, or not. The chip itself carries the member's
@@ -189,8 +193,6 @@
   display: block;
 }
 
-/* Whose section this is, where its branch stands, and the three things you do
-   to one repo. Sticky under the panel's own bar, the same as the file tree's. */
 /* Which members the message below lands in. Present only inside a Feature, so
    it is never a row explaining the one repo there is. */
 .commitTarget {
@@ -210,7 +212,7 @@
 /* Conflicts / Staged / Changes inside one member. Quieter than a section
    header, which is the thing above them. */
 .groupHeader {
-  margin: calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale)) 0;
+  margin: calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-subtle);
   font-size: var(--sway-text-xs);
@@ -219,20 +221,31 @@
   text-transform: uppercase;
 }
 
+/* The file tree's row, so the two lists read as one kind of thing. */
 .reviewRow {
   display: flex;
   align-items: center;
-  gap: calc(6px * var(--ui-scale));
+  gap: calc(4px * var(--ui-scale));
   margin: 0 calc(4px * var(--ui-scale));
-  padding: calc(1px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
+  color: var(--fg-default);
   cursor: pointer;
   white-space: nowrap;
   transition: background var(--sway-duration-fast) ease;
 }
 
 .reviewRow:hover {
-  background: var(--neutral-hover);
+  background: var(--tree-row-hover);
+}
+
+/* The row whose diff the editor is showing, same cue as the tree's active file. */
+.reviewRow.active {
+  background: var(--brand-subtle);
+}
+
+.reviewRow.active .reviewName {
+  font-weight: 500;
 }
 
 .reviewStatus {
@@ -297,23 +310,13 @@
 
 /* The file's own name. Never shrinks below itself: the folder beside it is the
    part that gives way when the panel is narrow. */
+/* Takes the slack and gives it back: the actions and the status letter keep
+   their width, so a long name is what shortens. */
 .reviewName {
-  flex: none;
-  overflow: hidden;
-  max-width: 100%;
-  color: var(--fg-default);
-  text-overflow: ellipsis;
-}
-
-/* The folders above the file, dimmed. Right-to-left so a long path keeps its
-   tail, which is the half that says which file this is. */
-.reviewDir {
+  flex: 1;
   overflow: hidden;
   min-width: 0;
-  color: var(--fg-muted);
-  direction: rtl;
-  font-size: var(--sway-text-md);
-  text-align: left;
+  color: var(--fg-default);
   text-overflow: ellipsis;
 }
 
@@ -324,19 +327,23 @@
 }
 
 /* A row's trailing controls, hidden until the row is hovered or one of them has
-   focus, so a list reads as names rather than as rows of buttons. Focus is
-   included so tabbing never lands on an invisible control. */
+   focus, so a list reads as names rather than as rows of buttons. Zero width
+   at rest rather than `display: none`, so the name has the whole row until the
+   controls arrive and a Tab can still land on one, which then reveals them. */
 .rowEnd {
   display: inline-flex;
   flex: none;
+  overflow: hidden;
   align-items: center;
   gap: calc(1px * var(--ui-scale));
+  width: 0;
   opacity: 0;
 }
 
 .reviewRow:hover .rowEnd,
 .stashRow:hover .rowEnd,
 .rowEnd:focus-within {
+  width: auto;
   opacity: 1;
 }
 
@@ -347,7 +354,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   margin: 0 calc(4px * var(--ui-scale));
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-radius: var(--sway-radius-sm);
   white-space: nowrap;
 }
@@ -372,38 +379,28 @@
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: calc(4px * var(--ui-scale));
-  padding: 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  gap: calc(8px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
   background: var(--canvas-card);
 }
 
+/* One box for the whole message, sized in rows by `fitMessage`. `resize: none`
+   because the row count is the height: a dragged box would be overwritten by
+   the next keystroke. */
 .commitInput {
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  background: var(--canvas-default);
-  border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  composes: input from "../../styles/patterns.module.css";
+  resize: none;
 }
 
-/* The body shares the subject's box, minus the single-line constraints: it is
-   resizable vertically only, so dragging it cannot break the panel's width. */
-.commitBodyInput {
-  composes: commitInput;
-  min-height: calc(48px * var(--ui-scale));
-  resize: vertical;
-  font-family: inherit;
-  line-height: 1.4;
-}
-
+/* Right-aligned, so the pair reads as the end of the composer rather than as a
+   full-width toolbar. */
 .commitActions {
   display: flex;
+  justify-content: flex-end;
   gap: calc(6px * var(--ui-scale));
 }
 
-/* Draft / Commit are shared <Button>s (Commit is `primary`); they only need to
-   split the row evenly. */
-.draftButton,
+/* Commit fills the split button, which is what has the width. */
 .commitButton {
   flex: 1;
 }

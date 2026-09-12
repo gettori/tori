@@ -35,7 +35,7 @@ import {
   push as pushToOrigin,
   type FileStatus,
 } from "../../utils/gitActions";
-import { amendRewritesPushed, composeCommitMessage, splitCommitMessage } from "../../utils/commitMessage";
+import { amendRewritesPushed } from "../../utils/commitMessage";
 import { DIFF_CONTEXT } from "../../utils/diffHunks";
 import { copyText } from "../../utils/clipboard";
 import { mentionPath } from "../../utils/pathScope";
@@ -64,6 +64,7 @@ import CreatePrDialog from "../../components/Dialogs/CreatePrDialog";
 import Button from "../../components/Button/Button";
 import Checkbox from "../../components/Checkbox/Checkbox";
 import IconButton from "../../components/IconButton/IconButton";
+import FileIcon from "../../seti/FileIcon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
 import {
@@ -128,9 +129,12 @@ const UNTRACKED_HINT_ID = "review-untracked-hint";
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-const dirName = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 
 const SECTION_ORDER: ChangesSection[] = ["changes", "stashes", "checkpoints", "graph"];
+
+/** Where the message box stops growing and starts scrolling. Eight lines holds
+ *  a subject, a blank line and a paragraph of body. */
+const MSG_MAX_ROWS = 8;
 
 // Ahead and behind, as a pill. Escaped rather than literal so the source stays
 // ASCII.
@@ -164,12 +168,11 @@ export default function ReviewPanel(props: {
   onReverted?: (outcome: RevertOutcome) => void;
   onRepair?: (path: string) => void;
 }) {
-  const [commitSubject, setCommitSubject] = createSignal("");
-  const [commitBody, setCommitBody] = createSignal("");
+  const [commitText, setCommitText] = createSignal("");
   const [amend, setAmend] = createSignal(false);
   // What was typed before amend prefilled HEAD's message over it, so toggling
   // amend off gives it back rather than leaving HEAD's wording behind.
-  const [preAmendDraft, setPreAmendDraft] = createSignal<{ subject: string; body: string } | null>(null);
+  const [preAmendDraft, setPreAmendDraft] = createSignal<string | null>(null);
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
   const [committing, setCommitting] = createSignal(false);
   const [drafting, setDrafting] = createSignal(false);
@@ -386,10 +389,6 @@ export default function ReviewPanel(props: {
     if (branchName) void pushToOrigin(root, branchName);
   }
 
-  /** Amend is the one form that needs nothing staged: rewriting only the
-   *  message is a normal thing to want. Everything else still does. */
-  const canCommit = () => !!commitSubject().trim() && !!commitRoots().length;
-
   /** Every member's changed and staged rows, for the section's count badge. */
   const totalChanged = () =>
     sections().reduce(
@@ -421,8 +420,19 @@ export default function ReviewPanel(props: {
 
   async function commit(thenPush = false) {
     const roots = commitRoots();
-    const message = composeCommitMessage(commitSubject(), commitBody());
-    if (!roots.length || !message || committing() || !canCommit()) return;
+    const message = commitText().trim();
+    if (committing()) return;
+    // The button stays live and the click says what is missing: a greyed-out
+    // Commit with the reason in a tooltip is the control people report as broken.
+    if (!message) {
+      emitWith<ToastEvent>(TOAST, { message: "Write a commit message first.", kind: "info" });
+      msgRef?.focus();
+      return;
+    }
+    if (!roots.length) {
+      emitWith<ToastEvent>(TOAST, { message: "Nothing staged to commit.", kind: "info" });
+      return;
+    }
     // Held across the confirm too, not just the invoke: the dialog is awaited,
     // and an enabled button behind it would let a second click open a second
     // dialog, orphaning the first one's promise and committing twice.
@@ -458,8 +468,7 @@ export default function ReviewPanel(props: {
       // Cleared only when every repo took it, so a rejected commit (an empty
       // author, a failing hook) does not also lose what you typed.
       if (landed.length === roots.length) {
-        setCommitSubject("");
-        setCommitBody("");
+        setMessage("");
         setPreAmendDraft(null);
         setAmend(false);
         setUnticked(new Set<string>());
@@ -481,19 +490,16 @@ export default function ReviewPanel(props: {
     const root = targetMember();
     setAmend(on);
     if (!on) {
-      const saved = preAmendDraft();
-      setCommitSubject(saved?.subject ?? "");
-      setCommitBody(saved?.body ?? "");
+      setMessage(preAmendDraft() ?? "");
       setPreAmendDraft(null);
       return;
     }
-    setPreAmendDraft({ subject: commitSubject(), body: commitBody() });
+    setPreAmendDraft(commitText());
     if (!root) return;
-    const { subject, body } = splitCommitMessage(await headMessage(root));
+    const head = (await headMessage(root)).replace(/\r\n/g, "\n").trim();
     // A late answer must not overwrite a toggle-off that happened meanwhile.
     if (!amend()) return;
-    setCommitSubject(subject);
-    setCommitBody(body);
+    setMessage(head);
   }
 
   // Routes a draft request naming the currently staged files through
@@ -627,9 +633,11 @@ export default function ReviewPanel(props: {
 
   /** Stash the working tree.
    *
-   *  The Summary field doubles as the stash name when it has something in it: a
-   *  stash you meant to come back to needs a label, and "WIP on main" is not
-   *  one. Left empty, git writes its own subject, same as `git stash` alone. */
+   *  The message's first line doubles as the stash name when it has something in
+   *  it: a stash you meant to come back to needs a label, and "WIP on main" is
+   *  not one. Left empty, git writes its own subject, same as `git stash`
+   *  alone. The first line only, because a stash list shows one line per entry
+   *  and a whole paragraph there is unreadable. */
   async function stashAll() {
     const root = viewedRoot();
     if (!root) return;
@@ -637,7 +645,7 @@ export default function ReviewPanel(props: {
       guarded("Stash", root, async () => {
         const created = await invoke<boolean>("git_stash_push", {
           projectPath: root,
-          message: commitSubject().trim() || null,
+          message: commitText().trim().split("\n")[0] || null,
           includeUntracked: includeUntracked(),
         });
         if (!created) {
@@ -645,11 +653,10 @@ export default function ReviewPanel(props: {
           emitWith<ToastEvent>(TOAST, { message: "Nothing to stash.", kind: "info" });
           return;
         }
-        // Both fields, not just the subject: the draft described the work that
-        // has now moved into the stash, and a body left behind would attach
-        // itself to whatever gets committed next.
-        setCommitSubject("");
-        setCommitBody("");
+        // The whole message, not just the line that named the stash: the draft
+        // described the work that has now moved into the stash, and what was
+        // left behind would attach itself to whatever gets committed next.
+        setMessage("");
         await Promise.all([refreshStatus(root), loadStashes()]);
       }),
     );
@@ -968,19 +975,23 @@ export default function ReviewPanel(props: {
     );
   }
 
-  /** One changed file. VS Code's shape: the name, its folder dimmed beside it,
-   *  the hover actions, then the status letter last, so a column of letters
-   *  lines up down the right edge whatever the names are doing. */
+  /** One changed file, in the file tree's shape: icon, name, the hover actions,
+   *  then the status letter last, so a column of letters lines up down the
+   *  right edge whatever the names are doing. The folder is on the `title`,
+   *  not beside the name; a sidebar has no room for both. */
   function row(f: FileStatus, opts: { staged: boolean; root: string }) {
     const untracked = () => f.status.includes("?");
+    const tab = () => diffTabId(opts.root, f.path, opts.staged);
     return (
       <div
         class={styles.reviewRow}
+        classList={{ [styles.active]: props.activePath === tab() }}
         // The two rows of a partially staged file open two tabs: they are
         // different comparisons, so one tab could only ever show one of them.
-        onClick={() => emitWith(OPEN_IN_EDITOR, { path: diffTabId(opts.root, f.path, opts.staged) })}
+        onClick={() => emitWith(OPEN_IN_EDITOR, { path: tab() })}
         title={f.path}
       >
+        <FileIcon name={baseName(f.path)} />
         <span class={styles.reviewName}>
           {/* A rename names both halves. Only `f.path` is clickable-through to
               a file; the source is gone from the worktree by definition. */}
@@ -989,9 +1000,6 @@ export default function ReviewPanel(props: {
           </Show>
           {baseName(f.path)}
         </span>
-        <Show when={dirName(f.path)}>
-          <span class={styles.reviewDir}>{dirName(f.path)}</span>
-        </Show>
         <span class={styles.rowEnd}>
           <IconButton
             size="xs"
@@ -1066,14 +1074,51 @@ export default function ReviewPanel(props: {
           <For each={stagedFiles(sec.root)}>{(f) => row(f, { staged: true, root: sec.root })}</For>
         </Show>
         <Show when={changedFiles(sec.root).length}>
-          <div class={styles.groupHeader}>Changes</div>
+          {/* Only when there is a group above to tell it apart from: alone,
+              the section's own title already says "Changes". */}
+          <Show when={stagedFiles(sec.root).length || conflictedFiles(sec.root).length}>
+            <div class={styles.groupHeader}>Changes</div>
+          </Show>
           <For each={changedFiles(sec.root)}>{(f) => row(f, { staged: false, root: sec.root })}</For>
         </Show>
       </>
     );
   }
 
-  let subjectRef: HTMLInputElement | undefined;
+  let msgRef: HTMLTextAreaElement | undefined;
+
+  /**
+   * Grow the message box to its content, between one line and eight. Past that
+   * it scrolls: a commit message longer than eight lines is being written, not
+   * read back, and a box that keeps growing pushes the file list off screen.
+   *
+   * Shrinking is the only case that has to measure from small, so typing costs
+   * one layout rather than two (`Composer.fit` carries the same reasoning).
+   */
+  function fitMessage() {
+    const el = msgRef;
+    if (!el) return;
+    const style = getComputedStyle(el);
+    const line = parseFloat(style.lineHeight);
+    const pad = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    if (!Number.isFinite(line) || line <= 0) return;
+    const wanted = () =>
+      Math.min(MSG_MAX_ROWS, Math.max(1, Math.round((el.scrollHeight - pad) / line)));
+    if (el.scrollHeight > el.clientHeight) {
+      el.rows = wanted();
+      return;
+    }
+    if (el.rows <= 1) return;
+    el.rows = 1;
+    el.rows = wanted();
+  }
+
+  /** Set the message from code (amend, clearing after a commit or a stash) and
+   *  resize the box, which only `input` would otherwise do. */
+  function setMessage(text: string) {
+    setCommitText(text);
+    queueMicrotask(fitMessage);
+  }
 
   const shown = changesLayout.shown;
   const filler = () => {
@@ -1164,14 +1209,14 @@ export default function ReviewPanel(props: {
   /** What the split Commit button offers beside its own verb. */
   const commitMenu = () => (
     <>
-      <MenuRow disabled={!canCommit() || committing()} onClick={() => void commit()}>
+      <MenuRow disabled={committing()} onClick={() => void commit()}>
         {amend() ? "Amend" : "Commit"}
       </MenuRow>
       <MenuRow disabled={committing()} onClick={() => void toggleAmend(!amend())}>
         {amend() ? "Stop amending" : "Commit (Amend)"}
       </MenuRow>
       <MenuSeparator />
-      <MenuRow disabled={!canCommit() || committing()} onClick={() => void commit(true)}>
+      <MenuRow disabled={committing()} onClick={() => void commit(true)}>
         {amend() ? "Amend & Push" : "Commit & Push"}
       </MenuRow>
     </>
@@ -1300,40 +1345,36 @@ export default function ReviewPanel(props: {
             </For>
           </div>
         </Show>
-        <input
-          ref={subjectRef}
+        <textarea
+          ref={msgRef}
           class={styles.commitInput}
-          type="text"
-          placeholder="Summary"
-          value={commitSubject()}
-          onInput={(e) => setCommitSubject(e.currentTarget.value)}
+          rows={1}
+          placeholder="Message"
+          value={commitText()}
+          onInput={(e) => {
+            setCommitText(e.currentTarget.value);
+            fitMessage();
+          }}
           onKeyDown={(e) => {
-            // Enter commits from the subject (the one-line case, unchanged);
-            // the body is a textarea, where Enter has to mean a newline.
-            if (e.key === "Enter") {
+            // Enter still commits, as it did from the subject field, and
+            // Shift+Enter is the newline - the chat composer's bargain, so one
+            // key does not mean two things in one app.
+            if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               void commit();
             }
           }}
         />
-        <textarea
-          class={styles.commitBodyInput}
-          rows={3}
-          placeholder="Description (optional)"
-          value={commitBody()}
-          onInput={(e) => setCommitBody(e.currentTarget.value)}
-        />
         <div class={styles.commitActions}>
           <Button
             size="sm"
             variant="ghost"
-            class={styles.draftButton}
             disabled={!commitStagedFiles().length || !!disabledReason() || drafting()}
             tooltipWhenDisabled
             tooltip={disabledReason() ?? "Ask the selected session to draft a commit message"}
             onClick={askAgentToDraft}
           >
-            Ask agent to draft
+            AI Draft
           </Button>
           {/* A split button: the verb on the left, its variants behind the
               chevron, so Amend and Commit & Push cost one click each without
@@ -1343,17 +1384,8 @@ export default function ReviewPanel(props: {
               variant="primary"
               size="sm"
               class={styles.commitButton}
-              disabled={!canCommit() || committing()}
-              // "Nothing staged" is the whole explanation for a greyed-out
-              // Commit, and it is the branch that only ever shows while it is.
-              tooltipWhenDisabled
-              tooltip={
-                amend()
-                  ? "Amend the last commit"
-                  : commitStagedFiles().length
-                    ? commitLabelHint()
-                    : "Nothing staged"
-              }
+              disabled={committing()}
+              tooltip={amend() ? "Amend the last commit" : commitLabelHint()}
               onClick={() => void commit()}
             >
               {commitLabel()}
@@ -1468,7 +1500,7 @@ export default function ReviewPanel(props: {
                   tooltip={
                     conflictedFiles(menuRoot()).length
                       ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
-                      : "Put every change aside for later, named after the Summary above if you have written one"
+                      : "Put every change aside for later, named after the message above if you have written one"
                   }
                   onClick={() => void stashAll()}
                 />
