@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, RefreshCw } from "lucide-solid";
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import { gitStateFor } from "../../utils/gitActions";
 import { authorInitials, buildGraph, refPill, type GraphRow } from "../../utils/commitGraph";
-import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
+import { commitDiffTabId, syntheticId } from "../../utils/syntheticTabs";
 import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
@@ -240,12 +240,9 @@ export default function GraphView(props: { workspace: string }) {
                             type="button"
                             class={styles.fileRow}
                             label={f.path}
-                            // The working-tree diff, not this commit's: the tab
-                            // kind shows a file against the index or HEAD, and
-                            // a historical diff is the commit view's own.
                             onClick={() =>
                               emitWith(OPEN_IN_EDITOR, {
-                                path: diffTabId(props.workspace, f.path, false),
+                                path: commitDiffTabId(props.workspace, row.entry.sha, f.path),
                               })
                             }
                           >

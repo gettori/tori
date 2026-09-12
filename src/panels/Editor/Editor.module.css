@@ -205,3 +205,26 @@
   font-weight: 600;
   color: var(--fg-default);
 }
+
+/* A diff tab's two-part label. The stem shortens inside the tab's label box;
+   the suffix (a sha, or Staged / Working tree) keeps its width and its dimmer
+   colour, so a shortened tab still reads as a diff and not as the file. */
+.tabSplit {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: bottom;
+}
+
+.tabStem {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabSuffix {
+  flex: none;
+  color: var(--fg-muted);
+  white-space: pre;
+}

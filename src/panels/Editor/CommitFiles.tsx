@@ -2,8 +2,7 @@ import { createResource, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
-import { syntheticId } from "../../utils/syntheticTabs";
-import { requestCommitFile } from "../../utils/commitFocus";
+import { commitDiffTabId } from "../../utils/syntheticTabs";
 import FileIcon from "../../seti/FileIcon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import type { CommitDetailData, CommitFile } from "./CommitDetail";
@@ -14,7 +13,7 @@ const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 /**
  * What one commit touched, as rows under it in a sidebar list. Shared by the
  * Stashes and Graph sections; a stash is a commit, so one fetch serves both.
- * A row opens the commit view with that file's patch already open.
+ * A row opens that file's patch in a tab of its own.
  */
 export default function CommitFiles(props: { root: string; sha: string }) {
   const [detail] = createResource(
@@ -23,8 +22,7 @@ export default function CommitFiles(props: { root: string; sha: string }) {
   );
 
   function open(f: CommitFile) {
-    requestCommitFile(props.sha, f.path);
-    emitWith(OPEN_IN_EDITOR, { path: syntheticId("commit", props.root, props.sha) });
+    emitWith(OPEN_IN_EDITOR, { path: commitDiffTabId(props.root, props.sha, f.path) });
   }
 
   return (

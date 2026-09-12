@@ -84,6 +84,23 @@ export function parseDiffArg(arg: string): { file: string; staged: boolean } {
 }
 
 /**
+ * A commit-file diff's id: one file's patch within one commit, its own tab.
+ * The sha goes in front of the path so two commits touching one file are two
+ * tabs, the way two comparisons of a working file are.
+ */
+export function commitDiffTabId(workspace: string, sha: string, file: string): string {
+  return syntheticId("commitdiff", workspace, `${sha}:${file}`);
+}
+
+/** Read a commit-file diff's arg back. A sha holds no colon, so the first one
+ *  is the split. */
+export function parseCommitDiffArg(arg: string): { sha: string; file: string } {
+  const at = arg.indexOf(":");
+  if (at < 0) return { sha: arg, file: "" };
+  return { sha: arg.slice(0, at), file: arg.slice(at + 1) };
+}
+
+/**
  * The path a tab is scoped to, for the folder-prefix sweeps: a synthetic tab
  * answers with its workspace, a file tab with its own path.
  *
@@ -120,6 +137,12 @@ export function syntheticTabName(id: string): string {
   if (t.kind === "diff") {
     const { file, staged } = parseDiffArg(t.arg);
     return `${file.split("/").pop() || file} (${staged ? "Staged" : "Working tree"})`;
+  }
+  // The commit rather than the mode: a file's history tabs are told apart by
+  // which commit each one is.
+  if (t.kind === "commitdiff") {
+    const { sha, file } = parseCommitDiffArg(t.arg);
+    return `${file.split("/").pop() || file} (${sha.slice(0, 7)})`;
   }
   // `<session>:<sourceReference>:<name>` - only the name means anything to a
   // reader, and the two ids before it exist so two runs cannot share a tab.

@@ -65,6 +65,7 @@ import MarkdownPreview from "./MarkdownPreview";
 import CommitLog from "./CommitLog";
 import LocalHistory from "./LocalHistory";
 import CommitDetail from "./CommitDetail";
+import CommitDiffView from "./CommitDiffView";
 import ConflictView from "./ConflictView";
 import DiffView from "./DiffView";
 import GraphView from "./GraphView";
@@ -228,7 +229,13 @@ import { publishEditorState, clearEditorState } from "../../utils/editorState";
 import { purgeTabsUnder } from "./purgeTabs";
 import { searchBufferRoots, searchTabTitle } from "./searchResultsStore";
 import { renameTabsUnder, repoint } from "./renameTabs";
-import { isSyntheticId, parseSyntheticId, syntheticId, syntheticTabName } from "../../utils/syntheticTabs";
+import {
+  isSyntheticId,
+  parseCommitDiffArg,
+  parseSyntheticId,
+  syntheticId,
+  syntheticTabName,
+} from "../../utils/syntheticTabs";
 import {
   canGoBack,
   canGoForward,
@@ -378,13 +385,36 @@ const SYNTHETIC_ICONS: Record<string, LucideIcon> = {
 
 function tabIcon(t: FileTab) {
   if (!isSyntheticId(t.path)) return <FileIcon name={t.name} />;
-  const kind = parseSyntheticId(t.path)?.kind ?? "";
+  const parsed = parseSyntheticId(t.path);
+  // A commit's file is still a file: it keeps the icon its name earns, and
+  // the strip tells its tabs apart by the sha in the label.
+  if (parsed?.kind === "commitdiff") {
+    return <FileIcon name={basename(parseCommitDiffArg(parsed.arg).file)} />;
+  }
+  const kind = parsed?.kind ?? "";
   // History is the fallback because most of these views are one: the log, a
   // commit, a file's history, a conflict's three sides.
   return <Icon icon={SYNTHETIC_ICONS[kind] ?? History} />;
 }
 
 const tabName = (t: FileTab) => searchTabTitle(t.path) ?? t.name;
+
+/** A diff tab's label keeps its bracketed part in view: the name may shorten,
+ *  the sha or the mode may not, since it is the one thing saying this tab is
+ *  not the file itself. */
+function tabLabel(t: FileTab) {
+  const name = tabName(t);
+  const kind = parseSyntheticId(t.path)?.kind;
+  if (kind !== "diff" && kind !== "commitdiff") return name;
+  const at = name.lastIndexOf(" (");
+  if (at < 0) return name;
+  return (
+    <span class={styles.tabSplit}>
+      <span class={styles.tabStem}>{name.slice(0, at)}</span>
+      <span class={styles.tabSuffix}>{name.slice(at)}</span>
+    </span>
+  );
+}
 
 // A file tab's tooltip is its path. A view's is the workspace it belongs to,
 // which is the one thing its label cannot say and the only thing telling two
@@ -2692,6 +2722,9 @@ export default function Editor(props: {
                 <Show when={t().kind === "commit"}>
                   <CommitDetail workspace={t().workspace} sha={t().arg} />
                 </Show>
+                <Show when={t().kind === "commitdiff"}>
+                  <CommitDiffView workspace={t().workspace} arg={t().arg} />
+                </Show>
                 {/* The other half of the sidebar's Graph section: lanes need
                     width, and the right panel is the narrow column. */}
                 <Show when={t().kind === "graph"}>
@@ -2793,7 +2826,7 @@ export default function Editor(props: {
       return (
         <>
           {m && <span class={patterns.srOnly}>{m.label} / </span>}
-          {tabName(t)}
+          {tabLabel(t)}
         </>
       );
     },

@@ -5,13 +5,13 @@
   display: flex;
   align-items: center;
   gap: calc(1px * var(--ui-scale));
-  /* 29px: a small control, 2px of air above and below it, and the rule under
+  /* 33px: a small control, 4px of air above and below it, and the rule under
      that. Said as the sum rather than as the number, because the rule does not
      scale with `--ui-scale` and a literal would drift from the band at zoom.
-     Four shorter than the chat's status strip, which carries the same control
-     with more room around it; the trail is the quieter of the two bands. */
-  min-height: calc(var(--control-height-sm) + 4px * var(--ui-scale) + 1px);
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+     The chat's status strip and every diff tab's bar are the same sum: they
+     all sit under one tab strip, and content has to start on one line. */
+  min-height: calc(var(--control-height-sm) + 8px * var(--ui-scale) + 1px);
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
   font-size: var(--sway-text-md);
