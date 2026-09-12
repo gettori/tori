@@ -51,11 +51,12 @@ import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/features";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
-import PanelSection from "../../components/PanelSection/PanelSection";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import Dropdown from "../../components/Menu/Dropdown";
 import { MenuRow, MenuSeparator } from "../../components/Menu/rows";
-import { changesLayout, OPTIONAL_CHANGES_SECTIONS, type ChangesSection } from "../../utils/changesSections";
+import { changesLayout, HISTORY_TABS, historyTab, setHistoryTab, type HistoryTab } from "../../utils/changesSections";
+import { SECTION_MIN_H } from "../../utils/sectionLayout";
+import Resizer from "../../components/Resizer/Resizer";
 import type { MemberRoot, TintedMember } from "../../utils/featureMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
@@ -73,8 +74,8 @@ import {
   Archive,
   ArchiveRestore,
   ArchiveX,
-  Check,
   ChevronDown,
+  ChevronUp,
   Copy,
   Ellipsis,
   FileCode,
@@ -110,6 +111,8 @@ type StashEntry = {
   committed_at: number;
 };
 type StashOutcome = { restored: string[]; deleted: string[] };
+/** `git diff --numstat`, summed: what the composer's footer says. */
+type DiffStat = { files: number; insertions: number; deletions: number };
 
 /** One member's worth of the panel: its own file lists, its own branch, its own
  *  stage / commit / push. A branch unit is the one-section case, and the only
@@ -134,8 +137,7 @@ const UNTRACKED_HINT_ID = "review-untracked-hint";
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
-
-const SECTION_ORDER: ChangesSection[] = ["changes", "stashes", "checkpoints", "graph"];
+const dirName = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")));
 
 /** Where the message box stops growing and starts scrolling. Eight lines holds
  *  a subject, a blank line and a paragraph of body. */
@@ -405,16 +407,32 @@ export default function ReviewPanel(props: {
     if (branchName) void pushToOrigin(root, branchName);
   }
 
-  /** Every member's changed and staged rows, for the section's count badge. */
-  const totalChanged = () =>
-    sections().reduce(
-      (n, sec) =>
-        n +
-        changedFiles(sec.root).length +
-        stagedFiles(sec.root).length +
-        conflictedFiles(sec.root).length,
-      0,
-    );
+  // What the commit would hold: staged when anything is, else the working
+  // tree, which is what you are about to stage. Re-read whenever the member's
+  // status does, since that is the only thing that moves these numbers.
+  const [stats, setStats] = createSignal<DiffStat | null>(null);
+  createEffect(
+    on(
+      () => [viewedRoot(), gitStateFor(viewedRoot()).files, stagedFiles(viewedRoot()).length > 0] as const,
+      async ([root, , staged]) => {
+        if (!root) {
+          setStats(null);
+          return;
+        }
+        const read = await invoke<DiffStat>("git_diff_stat", { projectPath: root, staged }).catch(() => null);
+        if (root === viewedRoot()) setStats(read);
+      },
+    ),
+  );
+  const statsLabel = () => {
+    const root = viewedRoot();
+    const staged = stagedFiles(root).length;
+    const n = staged || changedFiles(root).length + conflictedFiles(root).length;
+    if (!n) return "Nothing to commit";
+    const st = stats();
+    const counts = st ? ` \u00b7 +${st.insertions} -${st.deletions}` : "";
+    return `${plural(n, "file")}${counts}`;
+  };
 
   /** The button says how many repos it is about, because inside a Feature one
    *  click can land in several and the count is the only warning of that. */
@@ -1016,6 +1034,9 @@ export default function ReviewPanel(props: {
           </Show>
           {baseName(f.path)}
         </span>
+        <Show when={dirName(f.path)}>
+          <span class={styles.reviewDir}>{dirName(f.path)}</span>
+        </Show>
         <span class={styles.rowEnd}>
           <IconButton
             size="xs"
@@ -1136,43 +1157,26 @@ export default function ReviewPanel(props: {
     queueMicrotask(fitMessage);
   }
 
-  const shown = changesLayout.shown;
-  const filler = () => {
-    if (changesLayout.open("changes")) return "changes";
-    const open = SECTION_ORDER.filter((s) => shown(s) && changesLayout.open(s));
-    return open[open.length - 1];
-  };
   let stackEl: HTMLDivElement | undefined;
-  // Room for the fill section's header plus a few rows, whatever is dragged.
+  // Room for the file list above the history: its rows plus some air.
   const maxH = () => (stackEl?.clientHeight ?? 0) - 120 * chromeScale();
+  const historyOpen = () => changesLayout.open("history");
+  const historyHeight = () => changesLayout.size("history") * chromeScale();
+
+  /** A tab always opens the section: only the chevron closes it, so a click
+   *  on the tab you are on is never a surprise collapse. */
+  function showHistory(tab: HistoryTab) {
+    setHistoryTab(tab);
+    changesLayout.setOpen("history", true);
+  }
+
+  const [allBranches, setAllBranches] = createSignal(false);
+  const [checkpointCount, setCheckpointCount] = createSignal(0);
+  const tabCount = (tab: HistoryTab) =>
+    tab === "stashes" ? stashes().length : tab === "checkpoints" ? checkpointCount() : 0;
 
   /** The repo the one-repo surfaces are about: the member the chips name. */
   const menuRoot = () => viewedRoot();
-
-  /** Row one's dots: which sections are shown, exactly what the Files tab's
-   *  dots hold. */
-  const sectionMenu = () => (
-    <>
-      <MenuRow disabled>
-        <span class={styles.checkSlot}>
-          <Icon icon={Check} />
-        </span>
-        Changes
-      </MenuRow>
-      <For each={OPTIONAL_CHANGES_SECTIONS}>
-        {(sec) => (
-          <MenuRow onClick={() => changesLayout.setShown(sec.id, !shown(sec.id))}>
-            <span class={styles.checkSlot}>
-              <Show when={shown(sec.id)}>
-                <Icon icon={Check} />
-              </Show>
-            </span>
-            {sec.label}
-          </MenuRow>
-        )}
-      </For>
-    </>
-  );
 
   /** Row two's dots: what you do to the repo on screen. The rarer commands are
    *  `Git:` entries in the palette. */
@@ -1240,11 +1244,10 @@ export default function ReviewPanel(props: {
 
   return (
     <div class={styles.reviewPanel}>
-      {/* Row one, the same shape the Files and Search tabs open with: who this
-          tab is about, then the dots that say which sections are shown. Inside
-          a Feature the chips pick one member, the way the file tree's do. */}
-      <div class={styles.topBar}>
-        <Show when={headed()} fallback={<span class={styles.title}>Source Control</span>}>
+      {/* Inside a Feature, which member this tab is about; the file tree's
+          chips, in their own row. Outside one there is nothing to pick. */}
+      <Show when={headed()}>
+        <div class={styles.chipRow}>
           <MemberChipRow
             bare
             cap={4}
@@ -1253,15 +1256,11 @@ export default function ReviewPanel(props: {
             activeKey={viewed()?.key ?? null}
             onPick={(m) => setPicked(m.key)}
           />
-        </Show>
-        <span class={styles.spacer} />
-        <Dropdown as="span" wrapper menu={sectionMenu()} placement="bottom-end">
-          <IconButton size="sm" tooltip="Views" icon={<Icon icon={Ellipsis} />} />
-        </Dropdown>
-      </div>
+        </div>
+      </Show>
 
-      {/* Row two, the repo on screen: its branch, and what you do to it. Every
-          answer here is one repo's, and the chip above says which. */}
+      {/* The repo on screen: its branch, and what you do to it. Every answer
+          here is one repo's, and the chip above says which. */}
       <div class={styles.branchBar}>
         <Show when={branch()}>
           <Icon icon={GitBranch} />
@@ -1269,6 +1268,7 @@ export default function ReviewPanel(props: {
             {branch()}
           </span>
         </Show>
+        <span class={styles.spacer} />
         <Show when={aheadBehind()}>
           {(ab) => (
             <Tooltip
@@ -1282,12 +1282,11 @@ export default function ReviewPanel(props: {
               {pushingIn(viewedRoot())
                 ? "Pushing"
                 : ab().has_upstream
-                  ? `${UP}${ab().ahead} ${DOWN}${ab().behind}`
+                  ? `${UP}${ab().ahead}${ab().behind ? ` ${DOWN}${ab().behind}` : ""}`
                   : "Unpushed"}
             </Tooltip>
           )}
         </Show>
-        <span class={styles.spacer} />
         <Show when={origin() && baseBranch()}>
           <IconButton
             size="sm"
@@ -1313,11 +1312,10 @@ export default function ReviewPanel(props: {
         </Dropdown>
       </div>
 
-      {/* The composer first, because committing is what this tab is for. */}
-      <div class={styles.commitBox}>
-        {/* Which repos this message lands in. Only inside a Feature: with one
-            member there is nothing to pick between. Unticking is how a commit
-            is narrowed when the work in two members really is separate. */}
+      {/* The composer, as one card: the message, then what the commit would
+          hold and the buttons that make it, so the numbers sit beside the
+          verb they qualify. */}
+      <div class={styles.commitCard}>
         <Show when={headed() && (amend() ? memberRoots().length : stagedRoots().length) > 1}>
           <div class={styles.commitTarget}>
             <For each={amend() ? memberRoots() : stagedRoots()}>
@@ -1381,6 +1379,9 @@ export default function ReviewPanel(props: {
             }
           }}
         />
+        <div class={styles.commitFooter}>
+          <span class={styles.commitStats}>{statsLabel()}</span>
+          <span class={styles.spacer} />
         <div class={styles.commitActions}>
           <Button
             size="sm"
@@ -1416,23 +1417,11 @@ export default function ReviewPanel(props: {
             </Dropdown>
           </span>
         </div>
+        </div>
       </div>
 
       <div class={styles.stack} ref={stackEl}>
-        <PanelSection
-          layout={changesLayout}
-          id="changes"
-          fill={filler() === "changes"}
-          maxH={maxH}
-          title={
-            <>
-              Changes
-              <Show when={totalChanged()}>
-                <span class={styles.count}>{totalChanged()}</span>
-              </Show>
-            </>
-          }
-        >
+        <div class={styles.changesBody}>
           {/* One member, the one the chips name. A member that cannot be opened
               has no repo to read, so its state and its repair are the whole of
               what this section can show. */}
@@ -1475,54 +1464,133 @@ export default function ReviewPanel(props: {
               </OverlayScroll>
             </Show>
           </Show>
-        </PanelSection>
+        </div>
 
-        <Show when={shown("stashes")}>
-          <PanelSection
-            layout={changesLayout}
-            id="stashes"
-            fill={filler() === "stashes"}
-            maxH={maxH}
-            title={
-              <>
-                Stashes
-                <Show when={stashes().length}>
-                  <span class={styles.count}>{stashes().length}</span>
-                </Show>
-              </>
-            }
-            actions={
-              <>
-                <Checkbox
-                  class={styles.untrackedBox}
-                  aria-describedby={UNTRACKED_HINT_ID}
-                  checked={includeUntracked()}
-                  onChange={setIncludeUntracked}
-                  label="untracked"
-                />
-                <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
-                  Also stash files git has never seen, which usually means build output and local
-                  scratch
-                </span>
-                {/* Off while anything is unmerged: `git stash` refuses such a
-                    tree outright, so the button would only ever produce git's
-                    error. */}
-                <IconButton
-                  size="sm"
-                  icon={<Icon icon={Archive} />}
-                  disabled={applying() || conflictedFiles(menuRoot()).length > 0}
-                  aria-label="Stash all"
-                  tooltipWhenDisabled
-                  tooltip={
-                    conflictedFiles(menuRoot()).length
-                      ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
-                      : "Put every change aside for later, named after the message above if you have written one"
-                  }
-                  onClick={() => void stashAll()}
-                />
-              </>
-            }
-          >
+        {/* History, one tab at a time: the graph, the stashes or the
+            checkpoints. The strip is the section's header; collapsed, it is
+            all that is left of the section, pinned under the file list. */}
+        <section
+          class={styles.history}
+          classList={{ [styles.historyOpen]: historyOpen() }}
+          style={historyOpen() ? { flex: `0 1 ${historyHeight()}px` } : undefined}
+          data-section="history"
+        >
+          <Show when={historyOpen()}>
+            <div class={styles.sash}>
+              <Resizer
+                axis="y"
+                side="after"
+                value={historyHeight()}
+                min={SECTION_MIN_H * chromeScale()}
+                max={Math.max(SECTION_MIN_H * chromeScale(), maxH())}
+                onInput={(h) => changesLayout.setSize("history", h / chromeScale())}
+                onCommit={changesLayout.saveSizes}
+              />
+            </div>
+          </Show>
+          <div class={styles.tabStrip}>
+            <div class={styles.tabs} role="tablist" aria-label="History">
+              <For each={HISTORY_TABS}>
+                {(t) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    id={`review-tab-${t.id}`}
+                    class={styles.tab}
+                    aria-selected={historyTab() === t.id}
+                    aria-controls={`review-panel-${t.id}`}
+                    onClick={() => showHistory(t.id)}
+                  >
+                    <span>{t.label}</span>
+                    <Show when={tabCount(t.id)}>
+                      <span class={styles.tabCount}>{tabCount(t.id)}</span>
+                    </Show>
+                  </button>
+                )}
+              </For>
+            </div>
+            <span class={styles.spacer} />
+            <Show when={historyOpen() && historyTab() === "graph"}>
+              <Tooltip
+                as="button"
+                type="button"
+                class={styles.stripToggle}
+                aria-pressed={allBranches()}
+                label={allBranches() ? "Show this branch only" : "Show every branch"}
+                onClick={() => setAllBranches(!allBranches())}
+              >
+                <Icon icon={GitBranch} />
+                all branches
+              </Tooltip>
+              <IconButton
+                size="sm"
+                icon={<Icon icon={GitGraph} />}
+                disabled={!menuRoot()}
+                aria-label="Open Graph"
+                tooltip="Open the full graph in the editor"
+                onClick={() => {
+                  const root = menuRoot();
+                  if (root) emitWith(OPEN_IN_EDITOR, { path: syntheticId("graph", root) });
+                }}
+              />
+            </Show>
+            <Show when={historyOpen() && historyTab() === "stashes"}>
+              <Checkbox
+                class={styles.untrackedBox}
+                aria-describedby={UNTRACKED_HINT_ID}
+                checked={includeUntracked()}
+                onChange={setIncludeUntracked}
+                label="untracked"
+              />
+              <span id={UNTRACKED_HINT_ID} class={styles.srOnly}>
+                Also stash files git has never seen, which usually means build output and local
+                scratch
+              </span>
+              {/* Off while anything is unmerged: `git stash` refuses such a
+                  tree outright, so the button would only ever produce git's
+                  error. */}
+              <IconButton
+                size="sm"
+                icon={<Icon icon={Archive} />}
+                disabled={applying() || conflictedFiles(menuRoot()).length > 0}
+                aria-label="Stash all"
+                tooltipWhenDisabled
+                tooltip={
+                  conflictedFiles(menuRoot()).length
+                    ? "Nothing can be stashed while a merge is unresolved. Finish the conflicts first."
+                    : "Put every change aside for later, named after the message above if you have written one"
+                }
+                onClick={() => void stashAll()}
+              />
+            </Show>
+            <IconButton
+              size="sm"
+              icon={<Icon icon={historyOpen() ? ChevronDown : ChevronUp} />}
+              aria-expanded={historyOpen()}
+              tooltip={historyOpen() ? "Collapse" : "Expand"}
+              onClick={() => changesLayout.setOpen("history", !historyOpen())}
+            />
+          </div>
+          {/* All three stay mounted: switching tabs keeps an expanded commit
+              or a picked checkpoint, and the counts on the strip are live
+              before a tab is ever shown. */}
+          <div class={styles.historyBody} hidden={!historyOpen()}>
+            <div
+              id="review-panel-graph"
+              role="tabpanel"
+              aria-labelledby="review-tab-graph"
+              class={styles.tabPanel}
+              hidden={historyTab() !== "graph"}
+            >
+              <GraphSection root={menuRoot()} all={allBranches()} />
+            </div>
+            <div
+              id="review-panel-stashes"
+              role="tabpanel"
+              aria-labelledby="review-tab-stashes"
+              class={styles.tabPanel}
+              hidden={historyTab() !== "stashes"}
+            >
             <Show
               when={stashes().length}
               fallback={<div class="tree-empty">Nothing stashed.</div>}
@@ -1598,48 +1666,18 @@ export default function ReviewPanel(props: {
                 </For>
               </OverlayScroll>
             </Show>
-          </PanelSection>
-        </Show>
-
-        <Show when={shown("graph")}>
-          <PanelSection
-            layout={changesLayout}
-            id="graph"
-            fill={filler() === "graph"}
-            maxH={maxH}
-            title="Graph"
-            actions={
-              <IconButton
-                size="sm"
-                icon={<Icon icon={GitGraph} />}
-                disabled={!menuRoot()}
-                aria-label="Open Graph"
-                tooltip="Open the full graph in the editor"
-                onClick={() => {
-                  const root = menuRoot();
-                  if (root) emitWith(OPEN_IN_EDITOR, { path: syntheticId("graph", root) });
-                }}
-              />
-            }
-          >
-            <GraphSection root={menuRoot()} />
-          </PanelSection>
-        </Show>
-
-        <Show when={shown("checkpoints")}>
-          <PanelSection
-            layout={changesLayout}
-            id="checkpoints"
-            fill={filler() === "checkpoints"}
-            maxH={maxH}
-            title="Checkpoints"
-          >
-            {/* Both fields name the target member: the refs it reads, the chats
-                it lists and the revert paths it resolves all have to name one
-                repo, and a `root` that moved while `folderPath` stayed would
-                list the member in front's sessions against another member's
-                checkpoints. */}
-            <OverlayScroll class={styles.sectionScroll}>
+            </div>
+            <div
+              id="review-panel-checkpoints"
+              role="tabpanel"
+              aria-labelledby="review-tab-checkpoints"
+              class={styles.tabPanel}
+              hidden={historyTab() !== "checkpoints"}
+            >
+              {/* Both fields name the target member: the refs it reads, the
+                  chats it lists and the revert paths it resolves all have to
+                  name one repo. */}
+              <OverlayScroll class={styles.sectionScroll}>
               <CheckpointTimeline
                 root={targetMember()}
                 sessionId={props.selected?.sessionId ?? null}
@@ -1648,10 +1686,12 @@ export default function ReviewPanel(props: {
                   props.onReverted?.(outcome);
                   void refreshAll();
                 }}
+                onCount={setCheckpointCount}
               />
-            </OverlayScroll>
-          </PanelSection>
-        </Show>
+              </OverlayScroll>
+            </div>
+          </div>
+        </section>
       </div>
       <Show when={confirmReq()}>
         <ConfirmDialog

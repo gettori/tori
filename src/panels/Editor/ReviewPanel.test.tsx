@@ -238,6 +238,11 @@ function prDialog() {
   return within(screen.getByRole("dialog"));
 }
 
+/** Bring the Stashes tab up: its actions are drawn only while it is showing. */
+async function showStashes() {
+  fireEvent.click(await screen.findByRole("tab", { name: /^Stashes/ }));
+}
+
 /** The commit composer's one field: subject and body in a single box. */
 function messageBox() {
   return screen.getByPlaceholderText("Message") as HTMLTextAreaElement;
@@ -457,6 +462,7 @@ describe("conflicts", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByText("Conflicts")).toBeTruthy());
 
+    await showStashes();
     const stashAll = () => screen.getByRole<HTMLButtonElement>("button", { name: "Stash all" });
     expect(stashAll().disabled).toBe(true);
     // Reached through the hover surface, since a disabled button fires no
@@ -629,6 +635,7 @@ describe("stash", () => {
       target: { value: "half-done refactor\n\nthe rest of it" },
     });
 
+    await showStashes();
     fireEvent.click(screen.getByRole("button", { name: "Stash all" }));
 
     await waitFor(() =>
@@ -648,6 +655,7 @@ describe("stash", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
 
+    await showStashes();
     fireEvent.click(screen.getByLabelText(/include untracked/i));
     fireEvent.click(screen.getByRole("button", { name: "Stash all" }));
 
@@ -664,6 +672,7 @@ describe("stash", () => {
     stashCreated = false;
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
+    await showStashes();
 
     const toasts = captureToasts();
     fireEvent.click(screen.getByRole("button", { name: "Stash all" }));
@@ -675,7 +684,7 @@ describe("stash", () => {
     const reverted: unknown[] = [];
     stashRows = [ENTRY];
     render(() => <ReviewPanel root="/proj" selected={null} onReverted={(o) => reverted.push(o)} />);
-    await screen.findByText("Stashes");
+    await showStashes();
 
     fireEvent.click(screen.getByText("Pop"));
 
@@ -695,7 +704,7 @@ describe("stash", () => {
     stashRows = [ENTRY];
     stashFails = true;
     render(() => <ReviewPanel root="/proj" selected={null} />);
-    await screen.findByText("Stashes");
+    await showStashes();
 
     const toasts = captureToasts();
     fireEvent.click(screen.getByText("Pop"));
@@ -706,7 +715,7 @@ describe("stash", () => {
   it("warns that dropping a stash cannot be undone from the timeline", async () => {
     stashRows = [ENTRY];
     render(() => <ReviewPanel root="/proj" selected={null} />);
-    await screen.findByText("Stashes");
+    await showStashes();
 
     fireEvent.click(screen.getByText("Drop"));
 
@@ -730,7 +739,7 @@ describe("stash", () => {
     live = [{ sessionId: "other", sessionName: "docs-agent", folderPath: "/proj", status: "executing" }];
     stashRows = [ENTRY];
     render(() => <ReviewPanel root="/proj" selected={null} />);
-    await screen.findByText("Stashes");
+    await showStashes();
 
     for (const label of ["Stash all", "Apply stash", "Pop stash", "Drop stash"]) {
       const toasts = captureToasts();
@@ -1216,11 +1225,9 @@ describe("inside a Feature", () => {
     expect(chip("api").getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("names the tab instead of drawing chips outside a Feature", async () => {
-    // The same swap the Search tab makes, and the reason the title exists.
+  it("draws no chips row outside a Feature", async () => {
     await mountPanel();
 
-    expect(screen.getByText("Source Control")).toBeTruthy();
     expect(screen.queryByRole("group", { name: "Feature members" })).toBeNull();
   });
 

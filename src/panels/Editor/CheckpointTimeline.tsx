@@ -93,8 +93,14 @@ export default function CheckpointTimeline(props: {
    *  so open buffers can reload or raise a conflict rather than silently
    *  saving over the revert later. */
   onReverted?: (outcome: RevertOutcome) => void;
+  /** How many checkpoints the list holds, for a count drawn outside it. */
+  onCount?: (n: number) => void;
 }) {
-  const [entries, setEntries] = createSignal<CheckpointEntry[]>([]);
+  const [entries, setEntriesSignal] = createSignal<CheckpointEntry[]>([]);
+  const setEntries = (list: CheckpointEntry[]) => {
+    setEntriesSignal(list);
+    props.onCount?.(list.length);
+  };
   const [picked, setPicked] = createSignal<number | null>(null);
   const [cumulative, setCumulative] = createSignal(false);
   const [files, setFiles] = createSignal<CheckpointFile[]>([]);

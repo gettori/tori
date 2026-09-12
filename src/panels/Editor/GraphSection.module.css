@@ -8,9 +8,15 @@
    rather than on the row so it keeps running beside the nested files, and it
    sits in the icon column, where a file row's icon and a section's chevron
    already are. The first entry's line starts at its dot: history begins there
-   as far as this page knows. */
+   as far as this page knows. Its colour is the dot's: the upstream's commits
+   in one hue, the ones still only yours in another. */
 .entry {
   position: relative;
+  --lane: var(--scale-orange);
+}
+
+.entry.local {
+  --lane: var(--scale-blue);
 }
 
 .entry::before {
@@ -20,28 +26,35 @@
   bottom: 0;
   left: calc(19px * var(--ui-scale));
   width: calc(2px * var(--ui-scale));
-  background: var(--border-strong);
+  background: var(--lane);
+  opacity: 0.6;
 }
 
 .entry:first-child::before {
   top: calc(14px * var(--ui-scale));
 }
 
-/* The row and the open-commit control beside it, which shows on hover the
-   way a file row's actions do. */
+/* The row and the open-commit control beside it. The control takes no width
+   until the row is hovered or it has focus, the same recipe as a file row's
+   actions, so the subject has the whole row until then. */
 .rowWrap {
   display: flex;
   align-items: center;
   padding-right: calc(4px * var(--ui-scale));
 }
 
-.openCommit.openCommit {
+.rowEnd {
+  display: inline-flex;
   flex: none;
+  overflow: hidden;
+  align-items: center;
+  width: 0;
   opacity: 0;
 }
 
-.rowWrap:hover .openCommit,
-.openCommit:focus-visible {
+.rowWrap:hover .rowEnd,
+.rowEnd:focus-within {
+  width: auto;
   opacity: 1;
 }
 
@@ -89,16 +102,33 @@
 .dot {
   width: calc(8px * var(--ui-scale));
   height: calc(8px * var(--ui-scale));
-  background: var(--fg-subtle);
+  background: var(--lane);
   border-radius: var(--sway-radius-pill);
   box-shadow: 0 0 0 calc(2px * var(--ui-scale)) var(--canvas-card);
 }
 
-.dot.unpushed {
+/* HEAD itself is hollow, as it is in the full graph. */
+.entry:first-child .dot.unpushed {
   background: var(--canvas-card);
   box-shadow:
-    inset 0 0 0 calc(2px * var(--ui-scale)) var(--brand-default),
+    inset 0 0 0 calc(2px * var(--ui-scale)) var(--lane),
     0 0 0 calc(2px * var(--ui-scale)) var(--canvas-card);
+}
+
+/* Initials, not a fetched avatar: the graph must draw with no network. The
+   full name is in the row's hover text. */
+.who {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+  background: var(--neutral-subtle);
+  border-radius: var(--sway-radius-pill);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+  font-weight: 600;
 }
 
 .age {
