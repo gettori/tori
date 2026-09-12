@@ -72,12 +72,84 @@ type EditCtx = {
   clearSelected: () => void;
 };
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** Mirrors `SharePlan` in src-tauri/src/shared.rs. */
+type SharePlan = { tracked: boolean; ignored: boolean; is_dir: boolean; links: number; taken: boolean };
+
+/**
+ * Move one file into the container's shared folder and link it into every
+ * worktree, behind a confirmation that says what is about to happen.
+ *
+ * The confirmation is the point: the action moves a file out of the worktree,
+ * and a menu row two places from Delete must not do that silently. What it says
+ * depends on the file, so the plan is read first, and a file git tracks is
+ * refused outright rather than confirmed.
+ */
+async function shareEntry(
+  ctx: EditCtx,
+  container: string,
+  worktree: string,
+  e: Entry,
+  reloadParent: () => Promise<void>,
+) {
+  const noun = e.is_dir ? "folder" : "file";
+  let plan: SharePlan;
+  try {
+    plan = await invoke<SharePlan>("shared_plan", { container, worktree, name: e.name });
+  } catch (err) {
+    emitWith<ToastEvent>(TOAST, { message: String(err), kind: "error" });
+    return;
+  }
+  if (plan.tracked) {
+    emitWith<ToastEvent>(TOAST, {
+      message: `Git carries ${e.name} on this branch, so it cannot be shared. Only files git does not track can be.`,
+      kind: "error",
+    });
+    return;
+  }
+  if (plan.taken) {
+    emitWith<ToastEvent>(TOAST, {
+      message: `The shared folder already has a ${noun} called ${e.name}.`,
+      kind: "error",
+    });
+    return;
+  }
+  const lines = [
+    `The ${noun} moves into this project's shared folder, and ${e.name} here becomes a link to it.`,
+    plan.links
+      ? `${plural(plan.links, "other worktree")} gets the same link, and so will every worktree made from now on.`
+      : "Every worktree made from now on gets the same link.",
+  ];
+  // Only when git would otherwise start reporting the new links: an ignored
+  // name is already invisible, and saying so would be noise.
+  if (!plan.ignored) {
+    lines.push(
+      "It is also hidden from git for this project only, through the repository's own exclude file. Nothing is written to .gitignore.",
+    );
+  }
+  if (!(await ctx.askConfirm({ title: `Share ${e.name}?`, message: lines.join("\n\n"), confirmLabel: "Share" }))) {
+    return;
+  }
+  try {
+    const n = await invoke<number>("shared_add", { container, worktree, name: e.name });
+    emitWith<ToastEvent>(TOAST, { message: `${e.name} is shared, in ${plural(n, "worktree")}.` });
+  } catch (err) {
+    emitWith<ToastEvent>(TOAST, { message: String(err), kind: "error" });
+  }
+  await reloadParent();
+}
+
 /** What every row's menu needs, editable tree or not. */
 type ViewCtx = {
   root: string;
   /** The repo behind the Files tab's tree, and only there: Find in Folder
    *  narrows the search to it, and file history reads it. */
   repoPath?: string;
+  /** The bare container this worktree sits in, when it is one. Only such a
+   *  project links `.shared/` into its worktrees, so only there can a file be
+   *  shared with the others. */
+  container?: string;
 };
 
 // A drag that this tree owns. `DRAG_PATH_MIME` cannot carry that meaning: the
@@ -604,6 +676,13 @@ function TreeNode(props: {
         },
     );
     group(
+      ctx &&
+        view.container && {
+          label: "Share with other worktrees…",
+          onClick: () => void shareEntry(ctx, view.container!, view.root, e, props.reloadParent),
+        },
+    );
+    group(
       ctx && { label: "Rename", onClick: () => renameEntry(ctx, e, props.reloadParent) },
       ctx && { label: "Delete", danger: true, onClick: () => deleteEntry(ctx, e, props.reloadParent) },
     );
@@ -773,6 +852,7 @@ function RootBody(props: {
   path: string;
   member?: string;
   repoPath?: string;
+  container?: string;
   expand: ExpandApi;
   editable: boolean;
   noun?: string;
@@ -800,7 +880,7 @@ function RootBody(props: {
   // Every mounted directory's reload, this root's included, so a move can
   // refresh both ends.
   const mounted = new Map<string, () => Promise<void>>();
-  const view: ViewCtx = { root: props.path, repoPath: props.repoPath };
+  const view: ViewCtx = { root: props.path, repoPath: props.repoPath, container: props.container };
 
   async function reloadRoot() {
     await listChildrenCached(props.path, props.compactFolders, setEntries);
@@ -956,6 +1036,9 @@ export default function FileTree(props: {
   member?: string;
   /** The repo behind the root, which turns on Find in Folder and file history. */
   repoPath?: string;
+  /** The bare container above this worktree, which turns on Share with the
+   *  other worktrees. Absent for a plain repo, which has no such folder. */
+  container?: string;
   /** The file the editor is showing, so the tree can walk to it on request. */
   activePath?: string | null;
   askText?: (title: string, initial?: string) => Promise<string | null>;
@@ -1139,6 +1222,7 @@ export default function FileTree(props: {
             path={path}
             member={props.member}
             repoPath={props.repoPath}
+            container={props.container}
             expand={expand}
             editable={editable()}
             noun={props.noun}

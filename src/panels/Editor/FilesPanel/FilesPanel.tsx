@@ -54,6 +54,9 @@ const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
 export default function FilesPanel(props: {
   /** The folder the workspace points at: the active member inside a Feature. */
   root: string | null;
+  /** The bare container above the root, when the project is one. Turns on Share
+   *  with other worktrees in a row's menu. */
+  container?: string | null;
   /** Empty outside a Feature. */
   members: readonly TintedMember[];
   /** The file on screen, which the tree highlights and walks to. */
@@ -250,6 +253,7 @@ export default function FilesPanel(props: {
               noun={featured() ? "member folder" : "project folder"}
               member={featured() ? viewed()?.label : undefined}
               repoPath={repoPath()}
+              container={props.container ?? undefined}
               activePath={props.activePath}
               askText={props.askText}
               askConfirm={props.askConfirm}
