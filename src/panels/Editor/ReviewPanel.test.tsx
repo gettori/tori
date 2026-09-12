@@ -1120,10 +1120,10 @@ describe("the agent-drafted PR description", () => {
   });
 });
 
-// The Feature path (#157 phase 2): one section per member, each reading and
-// writing its own repo. What is asserted here is the fencing - a click in one
-// member's section never reaches the member beside it - plus the one-repo
-// controls that stay one-repo when there are several.
+// The Feature path: one member on screen at a time, picked by the chips in row
+// one, the same way the file tree does it. What is asserted here is that every
+// surface below follows the chip, and that a click never reaches the member
+// beside the one showing.
 describe("inside a Feature", () => {
   const A = "/feat/api";
   const B = "/feat/web";
@@ -1132,8 +1132,27 @@ describe("inside a Feature", () => {
     { path: A, repoPath: "/r/api", label: "api", tint: "200", state: READY },
     { path: B, repoPath: "/r/web", label: "web", state: READY },
   ];
-  const rowIn = (root: string, name: string) =>
-    within(document.querySelector(`[data-root="${root}"]`)!).getByTitle(name);
+
+  /** The chips take the tinted member list, the same one the file tree draws. */
+  const chipsFor = (roots: typeof MEMBERS) =>
+    roots.map((r, order) => ({
+      member: {
+        repoPath: r.repoPath,
+        displayName: r.label,
+        worktreePath: r.path,
+        state: { kind: "present" },
+        order,
+      },
+      key: r.path,
+      label: r.label,
+      state: r.state,
+      hue: r.tint,
+      style: undefined,
+    }));
+
+  const chip = (label: string) => screen.getByRole("button", { name: label });
+  /** The one member's list on screen. */
+  const shownRoot = () => document.querySelector("[data-root]")!.getAttribute("data-root");
 
   /** Mount over two members, each with its own single unstaged file. */
   async function mountFeature(roots = MEMBERS) {
@@ -1142,104 +1161,131 @@ describe("inside a Feature", () => {
       [B]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
     };
     enterRoots([A, B], A);
-    render(() => <ReviewPanel root={A} roots={roots as never} selected={null} />);
-    await waitFor(() => expect(document.querySelectorAll("[data-root]").length).toBe(roots.length));
+    render(() => (
+      <ReviewPanel root={A} roots={roots as never} members={chipsFor(roots) as never} selected={null} />
+    ));
+    await waitFor(() => expect(document.querySelector("[data-root]")).toBeTruthy());
     // The panel registers its listeners from an async `onMount`; a test that
     // fires a burst or a focus before that would be testing nothing.
     await waitFor(() => expect(handlers["fs://changed"]?.length).toBeGreaterThan(1));
     return roots;
   }
 
-  it("has no accessibility violations with member sections on screen", async () => {
+  it("has no accessibility violations with a member on screen", async () => {
     statusByRoot = {
       [A]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
       [B]: [{ status: "UU", path: "src/index.ts", staged: false, unstaged: false, conflicted: true }],
     };
     enterRoots([A, B], A);
-    const { container } = render(() => <ReviewPanel root={A} roots={MEMBERS as never} selected={null} />);
-    await waitFor(() => expect(document.querySelectorAll("[data-root]").length).toBe(2));
+    const { container } = render(() => (
+      <ReviewPanel root={A} roots={MEMBERS as never} members={chipsFor(MEMBERS) as never} selected={null} />
+    ));
+    await waitFor(() => expect(document.querySelector("[data-root]")).toBeTruthy());
 
     await expectNoAxeViolations(container);
   });
 
-  it("draws one section per member, in member order, each with its own chip", async () => {
+  it("draws a chip per member but only one member's changes", async () => {
     await mountFeature();
 
-    expect(Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"))).toEqual([A, B]);
-    const chips = Array.from(document.querySelectorAll<HTMLElement>("[data-chip]"));
-    expect(chips.map((c) => c.textContent)).toEqual(["A", "W"]);
-    // The member outside every Space wears the neutral chip rather than a
-    // borrowed hue.
-    expect(chips[0].style.getPropertyValue("--chip-hue")).not.toBe("");
-    expect(chips[1].style.getPropertyValue("--chip-hue")).toBe("");
-    // Both members list the same relative path, and neither row is the other's.
-    expect(screen.getAllByTitle("src/index.ts")).toHaveLength(2);
+    // Both chips, in member order, named so a screen reader can pick one.
+    expect(chip("api")).toBeTruthy();
+    expect(chip("web")).toBeTruthy();
+    // One list, not two: a stack of every member's changes is what this
+    // replaced.
+    expect(document.querySelectorAll("[data-root]")).toHaveLength(1);
+    expect(shownRoot()).toBe(A);
+    expect(screen.getAllByTitle("src/index.ts")).toHaveLength(1);
+    expect(chip("api").getAttribute("aria-pressed")).toBe("true");
+    expect(chip("web").getAttribute("aria-pressed")).toBe("false");
   });
 
-  // A member rename and a member reorder (#159 phase 1) arrive as a new `roots`
-  // prop: the commands emit now, so the shared resource refetches and hands the
-  // panel a new array. What is pinned here is that the groups follow it.
-  it("follows a renamed and reordered roots prop", async () => {
+  it("switches the whole panel when another chip is pressed", async () => {
+    await mountFeature();
+
+    fireEvent.click(chip("web"));
+
+    await waitFor(() => expect(shownRoot()).toBe(B));
+    expect(chip("web").getAttribute("aria-pressed")).toBe("true");
+    expect(chip("api").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("names the tab instead of drawing chips outside a Feature", async () => {
+    // The same swap the Search tab makes, and the reason the title exists.
+    await mountPanel();
+
+    expect(screen.getByText("Source Control")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "Feature members" })).toBeNull();
+  });
+
+  // A member rename and a member reorder arrive as a new `roots` prop: the
+  // commands emit, the shared resource refetches, and the panel is handed a new
+  // array. What is pinned here is that the chips follow it.
+  it("follows a renamed and reordered members prop", async () => {
     const [roots, setRoots] = createSignal(MEMBERS);
     statusByRoot = {
       [A]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
       [B]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
     };
     enterRoots([A, B], A);
-    render(() => <ReviewPanel root={A} roots={roots() as never} selected={null} />);
-    const order = () => Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"));
-    await waitFor(() => expect(order()).toEqual([A, B]));
+    render(() => (
+      <ReviewPanel
+        root={A}
+        roots={roots() as never}
+        members={chipsFor(roots()) as never}
+        selected={null}
+      />
+    ));
+    await waitFor(() => expect(chip("api")).toBeTruthy());
 
     setRoots([{ ...MEMBERS[1], label: "Storefront" }, MEMBERS[0]]);
 
-    await waitFor(() => expect(order()).toEqual([B, A]));
-    expect(
-      Array.from(document.querySelectorAll<HTMLElement>("[data-chip]")).map((c) => c.textContent),
-    ).toEqual(["S", "A"]);
+    await waitFor(() => expect(chip("Storefront")).toBeTruthy());
+    expect(chip("api")).toBeTruthy();
   });
 
-  it("discards in the member whose row was clicked, and leaves the other alone", async () => {
+  it("discards in the member on screen, and leaves the other alone", async () => {
     await mountFeature();
+    fireEvent.click(chip("web"));
+    await waitFor(() => expect(shownRoot()).toBe(B));
 
-    fireEvent.click(within(rowIn(B, "src/index.ts")).getByRole("button", { name: "Discard" }));
-    fireEvent.click(await screen.findByText("Discard changes"));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    const confirm = await screen.findByText("Discard changes");
+    fireEvent.click(confirm);
 
     await waitFor(() => expect(discardArgs).toHaveLength(1));
     expect(discardArgs[0].args).toMatchObject({ projectPath: B, files: ["src/index.ts"] });
-    // A's row is still there: the discard was fenced to B, and so was the
-    // status re-read that followed it.
-    expect(rowIn(A, "src/index.ts")).toBeTruthy();
   });
 
-  it("stages every change in one member from its header, and only that member", async () => {
+  it("stages every change in the member on screen, and only that member", async () => {
     await mountFeature();
+    fireEvent.click(chip("web"));
+    await waitFor(() => expect(shownRoot()).toBe(B));
 
-    const header = document.querySelector(`[data-root="${B}"]`)!;
-    fireEvent.click(within(header as HTMLElement).getByRole("button", { name: "Stage all" }));
+    pointerClick(screen.getByRole("button", { name: "More Actions" }));
+    pointerClick(await screen.findByRole("menuitem", { name: "Stage All Changes" }));
 
     await waitFor(() => expect(stageArgs).toHaveLength(1));
     expect(stageArgs[0]).toMatchObject({ projectPath: B, paths: ["src/index.ts"] });
   });
 
-  it("opens the clicked member's diff tab, not the same path in another member", async () => {
+  it("opens the diff tab of the member on screen", async () => {
     await mountFeature();
+    fireEvent.click(chip("web"));
+    await waitFor(() => expect(shownRoot()).toBe(B));
 
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
     window.addEventListener(OPEN_IN_EDITOR, listener);
-    fireEvent.click(rowIn(A, "src/index.ts"));
-    fireEvent.click(rowIn(B, "src/index.ts"));
+    fireEvent.click(screen.getByTitle("src/index.ts"));
     window.removeEventListener(OPEN_IN_EDITOR, listener);
 
-    // Two members with the same relative path are two tabs: the id carries the
-    // workspace, so neither can answer for the other.
-    expect(opened).toEqual([
-      diffTabId(A, "src/index.ts", false),
-      diffTabId(B, "src/index.ts", false),
-    ]);
+    // Two members share this relative path, so the id carrying the workspace is
+    // the only thing keeping them apart.
+    expect(opened).toEqual([diffTabId(B, "src/index.ts", false)]);
   });
 
-  it("names the branch once but keeps ahead/behind and Push per member", async () => {
+  it("reads the branch, ahead/behind and Open PR from the member on screen", async () => {
     branches = [{ name: "feat/auth", current: true }];
     aheadBehind = { ahead: 2, behind: 0, has_upstream: true };
     originUrl = "git@github.com:o/r.git";
@@ -1248,25 +1294,16 @@ describe("inside a Feature", () => {
 
     // Escaped rather than literal so this file stays ASCII, same as the panel.
     const PILL = "\u21912 \u21930";
-    // One pill per member, none in the top bar: a Feature has no single branch
-    // to push, and a bar-level Push could only ever mean the member in front.
-    await waitFor(() => expect(screen.getAllByText(PILL)).toHaveLength(2));
-    for (const root of [A, B]) {
-      const section = document.querySelector(`[data-root="${root}"]`)! as HTMLElement;
-      expect(within(section).getAllByText(PILL)).toHaveLength(1);
-      // The branch is not repeated per member: every member of a Feature is on
-      // the same one, so the top row names it for all of them.
-      expect(within(section).queryByText("feat/auth")).toBeNull();
-    }
+    // One of each: they are one repo's answers, and the chip says which repo.
+    await waitFor(() => expect(screen.getAllByText(PILL)).toHaveLength(1));
     expect(screen.getAllByText("feat/auth")).toHaveLength(1);
-    // The PR is still one repo's, so there is exactly one of it.
     await waitFor(() =>
       expect(screen.getAllByRole("button", { name: "Open PR" })).toHaveLength(1),
     );
   });
 
   it("says a member cannot be opened instead of listing files for it", async () => {
-    const broken = [
+    const BROKEN = [
       MEMBERS[0],
       {
         path: "/r/web",
@@ -1275,17 +1312,23 @@ describe("inside a Feature", () => {
         state: { label: "Worktree missing", usable: false, action: "recreate", reason: null },
       },
     ];
-    await mountFeature(broken as never);
+    statusByRoot = { [A]: [], "/r/web": [] };
+    enterRoots([A, "/r/web"], A);
+    render(() => (
+      <ReviewPanel root={A} roots={BROKEN as never} members={chipsFor(BROKEN as never) as never} selected={null} />
+    ));
+    await waitFor(() => expect(screen.getByRole("button", { name: /web/ })).toBeTruthy());
 
-    const section = document.querySelector('[data-root="/r/web"]')! as HTMLElement;
-    expect(within(section).getByText("Worktree missing")).toBeTruthy();
-    expect(within(section).getByText("Recreate")).toBeTruthy();
-    // No file list, and no Stage all offering to act on a repo that is not there.
-    expect(within(section).queryByTitle("src/index.ts")).toBeNull();
-    expect(within(section).queryByRole("button", { name: "Stage all" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /web/ }));
+
+    // The reason reads out rather than hiding in a title: it is the only
+    // account of why this member has nothing to show.
+    await waitFor(() => expect(screen.getByText("Worktree missing")).toBeTruthy());
+    expect(screen.getByText("Recreate")).toBeTruthy();
+    expect(screen.queryByTitle("src/index.ts")).toBeNull();
   });
 
-  it("re-reads every member on window focus, not just the one in front", async () => {
+  it("re-reads every member on window focus, not just the one on screen", async () => {
     await mountFeature();
     statusArgs = [];
 
@@ -1308,6 +1351,20 @@ describe("the members a Feature commits in", () => {
   ];
   const SESSION = { sessionId: "s1", agent: "claude", folderPath: A, sessionCwd: A };
   const STAGED_ROW = { status: "M ", path: "src/index.ts", staged: true, unstaged: false };
+  const CHIPS = MEMBERS.map((r, order) => ({
+    member: {
+      repoPath: r.repoPath,
+      displayName: r.label,
+      worktreePath: r.path,
+      state: { kind: "present" },
+      order,
+    },
+    key: r.path,
+    label: r.label,
+    state: r.state,
+    hue: r.tint,
+    style: undefined,
+  }));
 
   /** Two members with staged work unless `only` names one, and a tab open in
    *  `activePath`. */
@@ -1322,9 +1379,15 @@ describe("the members a Feature commits in", () => {
     };
     enterRoots([A, B], A);
     render(() => (
-      <ReviewPanel root={A} roots={MEMBERS as never} activePath={activePath} selected={selected as never} />
+      <ReviewPanel
+        root={A}
+        roots={MEMBERS as never}
+        members={CHIPS as never}
+        activePath={activePath}
+        selected={selected as never}
+      />
     ));
-    await waitFor(() => expect(document.querySelectorAll("[data-root]").length).toBe(2));
+    await waitFor(() => expect(document.querySelector("[data-root]")).toBeTruthy());
     await waitFor(() => expect(handlers["fs://changed"]?.length).toBeGreaterThan(1));
   }
 
@@ -1398,16 +1461,5 @@ describe("the members a Feature commits in", () => {
     // while `folderPath` stayed would list A's sessions over B's checkpoints.
     await waitFor(() => expect(backstopRoots).toContain(B));
     expect(backstopRoots).not.toContain(A);
-  });
-
-  it("keeps the member a section's Commit button named", async () => {
-    // An explicit choice is the one thing on screen saying where an amend
-    // lands, so it stays put rather than moving under the reader.
-    await mountWithActive(`${A}/src/index.ts`);
-    fireEvent.click(screen.getByRole("button", { name: "Commit in web" }));
-
-    await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByPlaceholderText("Summary")),
-    );
   });
 });

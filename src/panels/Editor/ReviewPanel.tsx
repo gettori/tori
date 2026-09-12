@@ -49,12 +49,13 @@ import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils
 import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/features";
 import MemberChip from "../../components/MemberChip/MemberChip";
+import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
 import PanelSection from "../../components/PanelSection/PanelSection";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import Dropdown from "../../components/Menu/Dropdown";
 import { MenuRow, MenuSeparator } from "../../components/Menu/rows";
 import { changesLayout, OPTIONAL_CHANGES_SECTIONS, type ChangesSection } from "../../utils/changesSections";
-import type { MemberRoot } from "../../utils/featureMembers";
+import type { MemberRoot, TintedMember } from "../../utils/featureMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
 import GraphSection from "./GraphSection";
@@ -77,7 +78,6 @@ import {
   GitBranch,
   GitGraph,
   GitPullRequestArrow,
-  MessageSquarePlus,
   Minus,
   Plus,
   RefreshCw,
@@ -154,6 +154,9 @@ export default function ReviewPanel(props: {
   /** The Feature's members, in member order. Absent for a branch unit, which is
    *  the single-section case. Same list the file tree and search panel take. */
   roots?: MemberRoot[];
+  /** The same members as chips can draw them. Empty outside a Feature, which is
+   *  how the tab knows to name itself instead. */
+  members?: readonly TintedMember[];
   /** The active editor tab's path, which is what "the member you are working
    *  in" means when nothing has been chosen by hand. */
   activePath?: string | null;
@@ -204,15 +207,35 @@ export default function ReviewPanel(props: {
         ? [{ root: props.root }]
         : [],
   );
-  /** Whether sections carry a header. Only a Feature's do: with one root on
-   *  screen there is nothing for a header to distinguish it from. */
+  /** Inside a Feature, where the chips pick which member is on screen. A branch
+   *  unit has one repo and names itself instead. */
   const headed = () => !!props.roots?.length;
-  const anyFiles = () => sections().some((s) => gitStateFor(s.root).files.length);
 
-  // The header bar, the PR paths and the stash list are all one-repo surfaces,
-  // and the repo they are about is the member in front.
-  const branch = () => gitStateFor(props.root).branch;
-  const aheadBehind = () => gitStateFor(props.root).aheadBehind;
+  /** The chip the user pressed, by member key. Sticks once set: it is the one
+   *  thing on screen saying whose changes these are, so having it move under
+   *  you would be worse than having to click again. */
+  const [picked, setPicked] = createSignal<string | null>(null);
+  const memberOf = (key: string | null) => props.members?.find((m) => m.key === key);
+  /** The member on screen: the chip pressed, else the one holding the file in
+   *  front, else the first. */
+  const viewed = () =>
+    memberOf(picked()) ??
+    memberOf(rootOf(props.activePath, (props.members ?? []).map((m) => m.key))) ??
+    props.members?.[0];
+  /** The root every list below is about. One member at a time: a stack of every
+   *  member's changes is a list nobody reads.
+   *
+   *  Falls back to `root` rather than to null, because `headed()` reads `roots`
+   *  while the chips read `members`: a caller that passes one and not the other
+   *  would otherwise blank the whole panel instead of showing one repo. */
+  const viewedRoot = () => (headed() ? (viewed()?.key ?? props.root) : props.root);
+  const viewedSection = () => sections().find((sec) => sec.root === viewedRoot());
+  const anyFiles = () => !!gitStateFor(viewedRoot()).files.length;
+
+  // The branch, the PR paths and the stash list are all one-repo surfaces, and
+  // the repo they are about is the one on screen.
+  const branch = () => gitStateFor(viewedRoot()).branch;
+  const aheadBehind = () => gitStateFor(viewedRoot()).aheadBehind;
 
   // Which member the commit box, its draft request and the timeline are about.
   //
@@ -223,8 +246,7 @@ export default function ReviewPanel(props: {
   // changes you are looking at; the member in front is the fallback, and the
   // only answer a branch unit has.
   const [commitTarget, setCommitTarget] = createSignal<string | null>(null);
-  const targetMember = () =>
-    commitTarget() ?? rootOf(props.activePath, sections().map((s) => s.root)) ?? props.root;
+  const targetMember = () => commitTarget() ?? viewedRoot();
 
   /** Members the chips have been unticked for. A set of exclusions rather than
    *  of choices, so a member that stages something later joins the commit
@@ -278,7 +300,7 @@ export default function ReviewPanel(props: {
   // needs them too); origin and the PR base branch stay here, since nothing
   // outside the "Open PR" button has ever asked for them.
   async function refreshHeader() {
-    const root = props.root;
+    const root = viewedRoot();
     if (!root) {
       setOrigin(null);
       setBaseBranch(null);
@@ -362,13 +384,6 @@ export default function ReviewPanel(props: {
     if (!root) return;
     const branchName = gitStateFor(root).branch;
     if (branchName) void pushToOrigin(root, branchName);
-  }
-
-  /** Point the commit box at a member and put the cursor in it, so the click
-   *  that chose the member is also the click that starts the message. */
-  function commitIn(root: string) {
-    setCommitTarget(root);
-    subjectRef?.focus();
   }
 
   /** Amend is the one form that needs nothing staged: rewriting only the
@@ -616,7 +631,7 @@ export default function ReviewPanel(props: {
    *  stash you meant to come back to needs a label, and "WIP on main" is not
    *  one. Left empty, git writes its own subject, same as `git stash` alone. */
   async function stashAll() {
-    const root = props.root;
+    const root = viewedRoot();
     if (!root) return;
     await busy(() =>
       guarded("Stash", root, async () => {
@@ -641,7 +656,7 @@ export default function ReviewPanel(props: {
   }
 
   async function applyStash(entry: StashEntry, pop: boolean) {
-    const root = props.root;
+    const root = viewedRoot();
     if (!root) return;
     await busy(() =>
       guarded(pop ? "Pop" : "Apply", root, async () => {
@@ -662,7 +677,7 @@ export default function ReviewPanel(props: {
    *  working tree, so no snapshot of that tree contains it. The confirm says so
    *  rather than implying the safety net the discard dialogs can promise. */
   async function dropStash(entry: StashEntry) {
-    const root = props.root;
+    const root = viewedRoot();
     if (!root) return;
     await busy(() =>
       guarded("Drop", root, async () => {
@@ -680,7 +695,7 @@ export default function ReviewPanel(props: {
   }
 
   async function loadStashes() {
-    const root = props.root;
+    const root = viewedRoot();
     if (!root) {
       setStashes([]);
       return;
@@ -721,6 +736,17 @@ export default function ReviewPanel(props: {
     emitWith(OPEN_IN_EDITOR, { path: `${root}/${path}` });
   }
 
+  // A chip switch changes which repo the one-repo surfaces are about, and two
+  // of them are read here rather than from the store: the stash reflog, and the
+  // origin plus base branch the "Open PR" button needs. The file lists are the
+  // store's and every member's slot is already filled, so those just re-read.
+  createEffect(
+    on(viewedRoot, () => {
+      void refreshHeader();
+      void loadStashes();
+    }),
+  );
+
   // Keyed on the member set rather than the member in front: moving between
   // members inside a Feature leaves every section's numbers standing, so
   // re-reading all of them would be a switch that did not happen. A repaired
@@ -756,7 +782,7 @@ export default function ReviewPanel(props: {
   // The unauthenticated path, unchanged: push first if the branch is unpushed or
   // ahead, then open the provider's compare/new-MR/new-PR page for branch -> base.
   async function openCompare() {
-    const root = props.root;
+    const root = viewedRoot();
     const branchName = branch();
     const org = origin();
     const base = baseBranch();
@@ -788,7 +814,7 @@ export default function ReviewPanel(props: {
     const base = prBase();
     if (!t || disabledReason() || !branchName || !base || prDrafting()) return;
     setPrDrafting(true);
-    const paths = [...stagedFiles(props.root), ...changedFiles(props.root)].map((f) => f.path);
+    const paths = [...stagedFiles(viewedRoot()), ...changedFiles(viewedRoot())].map((f) => f.path);
     const result = await requestSend({ ...t, text: composeDraftRequest(branchName, base, paths) });
     setPrDrafting(false);
     // A blocked session is refused outright rather than queued: the user has to
@@ -806,7 +832,7 @@ export default function ReviewPanel(props: {
   // stale ahead/behind reading would open a PR against a head the remote has
   // never seen.
   async function submitPr(opts: { draft: boolean }) {
-    const root = props.root;
+    const root = viewedRoot();
     const branchName = branch();
     const base = prBase().trim();
     if (!root || !branchName || !base || openingPr()) return;
@@ -863,7 +889,7 @@ export default function ReviewPanel(props: {
       // A `git stash` run in a terminal shows up as a working-tree burst like
       // any other, and the entry it created would otherwise stay invisible
       // until a fetch or a window focus. Reading the stash reflog is cheap.
-      if (!from || from === props.root) void loadStashes();
+      if (!from || from === viewedRoot()) void loadStashes();
     });
     // A chat session's own report of what it just wrote, ahead of the watcher's
     // debounce. Same two refreshes the watcher drives, and both are re-entrant,
@@ -1025,86 +1051,6 @@ export default function ReviewPanel(props: {
     );
   }
 
-  /** A member's header: whose section this is, where its branch stands, and the
-   *  two things you do to one repo. A member that cannot be opened says so here
-   *  and offers its repair instead of a file list.
-   *
-   *  The branch name is not repeated here. A Feature checks one branch out in
-   *  every member, so the top row names it once for all of them; what differs
-   *  per member, and stays, is how far ahead that checkout is. */
-  function memberHeader(sec: Section) {
-    const meta = () => gitStateFor(sec.root);
-    const usable = () => sec.state?.usable !== false;
-    return (
-      <div class={styles.memberHeader}>
-        <MemberChip
-          member={{ displayName: sec.label ?? "", repoPath: sec.root }}
-          tint={sec.tint}
-          data-chip={sec.root}
-          decorative
-        />
-        <span class={styles.memberName}>{sec.label}</span>
-        <Show
-          when={usable()}
-          fallback={
-            <>
-              {/* The reason reads out rather than hiding in a `title`: this is
-                  the only account of why a member has no changes to show. */}
-              <span class={styles.stateBadge}>
-                {sec.state?.reason ? `${sec.state.label}: ${sec.state.reason}` : sec.state?.label}
-              </span>
-              <Show when={sec.state?.action}>
-                {(action) => (
-                  <Button size="xs" variant="ghost" data-repair={sec.root} onClick={() => props.onRepair?.(sec.root)}>
-                    {REPAIR_LABEL[action()]}
-                  </Button>
-                )}
-              </Show>
-            </>
-          }
-        >
-          <Show when={meta().aheadBehind}>
-            {(ab) => (
-              <Tooltip
-                as="button"
-                type="button"
-                class={styles.aheadPill}
-                disabled={!canPushIn(sec.root)}
-                label={ab().has_upstream ? "Push" : "Push (sets upstream)"}
-                onClick={() => pushMember(sec.root)}
-              >
-                {pushingIn(sec.root)
-                  ? "Pushing"
-                  : ab().has_upstream
-                    ? `${UP}${ab().ahead} ${DOWN}${ab().behind}`
-                    : "Unpushed"}
-              </Tooltip>
-            )}
-          </Show>
-          <span class={styles.rowEnd}>
-            <IconButton
-              size="xs"
-              icon={<Icon icon={Plus} />}
-              disabled={applying() || !changedFiles(sec.root).length}
-              aria-label="Stage all"
-              tooltip="Stage every change in this member"
-              onClick={() => void stageAll(sec.root)}
-            />
-            <IconButton
-              size="xs"
-              icon={<Icon icon={MessageSquarePlus} />}
-              // Named apart from the composer's own Commit: they are two
-              // controls a word apart, and only one of them commits anything.
-              aria-label={`Commit in ${sec.label}`}
-              tooltip="Point the commit box at this member"
-              onClick={() => commitIn(sec.root)}
-            />
-          </span>
-        </Show>
-      </div>
-    );
-  }
-
   /** One member's three lists. Empty ones draw nothing, as they always have. */
   function sectionLists(sec: Section) {
     return (
@@ -1139,12 +1085,37 @@ export default function ReviewPanel(props: {
   // Room for the fill section's header plus a few rows, whatever is dragged.
   const maxH = () => (stackEl?.clientHeight ?? 0) - 120 * chromeScale();
 
-  /** The one-repo actions the dots offer. Inside a Feature they act on the
-   *  member the composer is pointed at, which is the member whose chip is lit
-   *  and whose branch the header names. */
-  const menuRoot = () => commitRoots()[0] ?? targetMember();
+  /** The repo the one-repo surfaces are about: the member the chips name. */
+  const menuRoot = () => viewedRoot();
 
-  const menu = () => (
+  /** Row one's dots: which sections are shown, exactly what the Files tab's
+   *  dots hold. */
+  const sectionMenu = () => (
+    <>
+      <MenuRow disabled>
+        <span class={styles.checkSlot}>
+          <Icon icon={Check} />
+        </span>
+        Changes
+      </MenuRow>
+      <For each={OPTIONAL_CHANGES_SECTIONS}>
+        {(sec) => (
+          <MenuRow onClick={() => changesLayout.setShown(sec.id, !shown(sec.id))}>
+            <span class={styles.checkSlot}>
+              <Show when={shown(sec.id)}>
+                <Icon icon={Check} />
+              </Show>
+            </span>
+            {sec.label}
+          </MenuRow>
+        )}
+      </For>
+    </>
+  );
+
+  /** Row two's dots: what you do to the repo on screen. The rarer commands are
+   *  `Git:` entries in the palette. */
+  const gitMenu = () => (
     <>
       <MenuRow
         disabled={applying() || !changedFiles(menuRoot()).length}
@@ -1178,19 +1149,6 @@ export default function ReviewPanel(props: {
         Stash All Changes
       </MenuRow>
       <MenuSeparator />
-      <For each={OPTIONAL_CHANGES_SECTIONS}>
-        {(sec) => (
-          <MenuRow onClick={() => changesLayout.setShown(sec.id, !shown(sec.id))}>
-            <span class={styles.checkSlot}>
-              <Show when={shown(sec.id)}>
-                <Icon icon={Check} />
-              </Show>
-            </span>
-            {sec.label}
-          </MenuRow>
-        )}
-      </For>
-      <MenuSeparator />
       <MenuRow
         disabled={!menuRoot()}
         onClick={() => {
@@ -1221,28 +1179,46 @@ export default function ReviewPanel(props: {
 
   return (
     <div class={styles.reviewPanel}>
-      {/* One row, the same height the Files and Search tabs open with. A
-          Feature's members share one branch name (`feat/<slug>`, frozen at
-          creation), so it is named once here; their ahead/behind and their
-          pushes differ, and stay in the member headers. */}
+      {/* Row one, the same shape the Files and Search tabs open with: who this
+          tab is about, then the dots that say which sections are shown. Inside
+          a Feature the chips pick one member, the way the file tree's do. */}
       <div class={styles.topBar}>
+        <Show when={headed()} fallback={<span class={styles.title}>Source Control</span>}>
+          <MemberChipRow
+            bare
+            cap={4}
+            members={props.members ?? []}
+            activeRoot={props.root}
+            activeKey={viewed()?.key ?? null}
+            onPick={(m) => setPicked(m.key)}
+          />
+        </Show>
+        <span class={styles.spacer} />
+        <Dropdown as="span" wrapper menu={sectionMenu()} placement="bottom-end">
+          <IconButton size="sm" tooltip="Views" icon={<Icon icon={Ellipsis} />} />
+        </Dropdown>
+      </div>
+
+      {/* Row two, the repo on screen: its branch, and what you do to it. Every
+          answer here is one repo's, and the chip above says which. */}
+      <div class={styles.branchBar}>
         <Show when={branch()}>
           <Icon icon={GitBranch} />
           <span class={styles.branchName} title={branch() ?? ""}>
             {branch()}
           </span>
         </Show>
-        <Show when={!headed() && aheadBehind()}>
+        <Show when={aheadBehind()}>
           {(ab) => (
             <Tooltip
               as="button"
               type="button"
               class={styles.aheadPill}
-              disabled={!canPushIn(props.root)}
+              disabled={!canPushIn(viewedRoot())}
               label={ab().has_upstream ? "Push" : "Push (sets upstream)"}
-              onClick={() => pushMember(props.root)}
+              onClick={() => pushMember(viewedRoot())}
             >
-              {pushingIn(props.root)
+              {pushingIn(viewedRoot())
                 ? "Pushing"
                 : ab().has_upstream
                   ? `${UP}${ab().ahead} ${DOWN}${ab().behind}`
@@ -1267,8 +1243,12 @@ export default function ReviewPanel(props: {
           tooltip="Refresh"
           onClick={() => void refreshAll()}
         />
-        <Dropdown as="span" wrapper menu={menu()} placement="bottom-end">
-          <IconButton size="sm" tooltip="Views and More Actions" icon={<Icon icon={Ellipsis} />} />
+        <Dropdown as="span" wrapper menu={gitMenu()} placement="bottom-end">
+          <IconButton
+            size="sm"
+            tooltip="More Actions"
+            icon={<Icon icon={Ellipsis} />}
+          />
         </Dropdown>
       </div>
 
@@ -1405,34 +1385,47 @@ export default function ReviewPanel(props: {
             </>
           }
         >
-          {/* A Feature keeps its member headers on a clean tree: they are where
-              its branches, their ahead/behind and their pushes live, and a
-              panel-wide empty note would take all three away. */}
+          {/* One member, the one the chips name. A member that cannot be opened
+              has no repo to read, so its state and its repair are the whole of
+              what this section can show. */}
           <Show
-            when={headed() || anyFiles()}
+            when={viewedSection()?.state?.usable !== false}
             fallback={
-              <div class="tree-empty">
-                <p>No changes yet. Edit a file and it shows up here to stage, commit, and push.</p>
+              <div class={styles.unusable}>
+                <span>
+                  {viewedSection()?.state?.reason
+                    ? `${viewedSection()?.state?.label}: ${viewedSection()?.state?.reason}`
+                    : viewedSection()?.state?.label}
+                </span>
+                <Show when={viewedSection()?.state?.action}>
+                  {(action) => (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      data-repair={viewedRoot()}
+                      onClick={() => viewedRoot() && props.onRepair?.(viewedRoot()!)}
+                    >
+                      {REPAIR_LABEL[action()]}
+                    </Button>
+                  )}
+                </Show>
               </div>
             }
           >
-            <OverlayScroll class={styles.sectionScroll}>
-              <For each={sections()}>
-                {(sec) => (
-                  <div class={styles.memberSection} data-root={sec.root}>
-                    <Show when={headed()}>{memberHeader(sec)}</Show>
-                    {/* A member that cannot be opened has no repo to read, so
-                        its header's state badge is the whole of its section. */}
-                    <Show when={sec.state?.usable !== false}>
-                      {sectionLists(sec)}
-                      <Show when={headed() && !gitStateFor(sec.root).files.length}>
-                        <div class={styles.memberEmpty}>No changes</div>
-                      </Show>
-                    </Show>
-                  </div>
-                )}
-              </For>
-            </OverlayScroll>
+            <Show
+              when={anyFiles()}
+              fallback={
+                <div class="tree-empty">
+                  <p>No changes yet. Edit a file and it shows up here to stage, commit, and push.</p>
+                </div>
+              }
+            >
+              <OverlayScroll class={styles.sectionScroll}>
+                <div class={styles.memberSection} data-root={viewedRoot()}>
+                  {sectionLists({ root: viewedRoot()! })}
+                </div>
+              </OverlayScroll>
+            </Show>
           </Show>
         </PanelSection>
 

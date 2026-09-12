@@ -21,15 +21,44 @@
   padding: calc(6px * var(--ui-scale));
 }
 
-.topBar > svg {
+/* The tab's name, outside a Feature. Inside one the member chips take this
+   spot, the same swap the Search tab makes, so the two tabs open the same way
+   and this matches Search's title exactly. */
+.title {
+  padding-left: calc(4px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+}
+
+/* Row two: the repo the chip above names. Shorter than row one, which carries
+   the tab's own title and has to match the other tabs' opening row. */
+.branchBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale));
+  min-height: calc(30px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) calc(4px * var(--ui-scale));
+}
+
+.branchBar > svg {
   flex: none;
   width: var(--control-icon);
   height: var(--control-icon);
   color: var(--fg-muted);
 }
 
-/* One branch name for the whole tab: a Feature checks the same branch out in
-   every member, so naming it per member would repeat one fact N times. */
+/* Why the member picked has no changes to read, and the repair beside it. */
+.unusable {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--fg-muted);
+}
+
+/* The branch the repo on screen is on. */
 .branchName {
   overflow: hidden;
   color: var(--fg-muted);
@@ -162,43 +191,6 @@
 
 /* Whose section this is, where its branch stands, and the three things you do
    to one repo. Sticky under the panel's own bar, the same as the file tree's. */
-/* Sticks to the top of the section's own scroller, which is what it is inside
-   now that the branch row above is not sticky itself. */
-.memberHeader {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: calc(4px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  background: var(--canvas-card);
-  border-bottom: 1px solid var(--border-default);
-}
-
-/* The member's Space colour arrives as one custom property; a member outside
-   every Space leaves it at the neutral default. Same chip the tree draws. */
-
-.memberName {
-  flex: 1;
-  overflow: hidden;
-  color: var(--fg-default);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Why this member has nothing to show. Quiet, since the repair button beside
-   it is the thing to act on. */
-.stateBadge {
-  flex: 0 1 auto;
-  overflow: hidden;
-  color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Which members the message below lands in. Present only inside a Feature, so
    it is never a row explaining the one repo there is. */
 .commitTarget {
@@ -206,13 +198,6 @@
   align-items: center;
   gap: calc(4px * var(--ui-scale));
   padding: 0 0 calc(4px * var(--ui-scale));
-  color: var(--fg-muted);
-  font-size: var(--sway-text-md);
-}
-
-/* A clean member still keeps its header, so it needs a line saying so. */
-.memberEmpty {
-  padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
   font-size: var(--sway-text-md);
 }
@@ -350,7 +335,6 @@
 }
 
 .reviewRow:hover .rowEnd,
-.memberHeader:hover .rowEnd,
 .stashRow:hover .rowEnd,
 .rowEnd:focus-within {
   opacity: 1;
