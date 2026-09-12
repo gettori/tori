@@ -1,8 +1,6 @@
-/* One file's diff, as an editor tab. The top row borrows the Files and Search
-   tabs' rhythm (40px, sm icon buttons) so every header in the app is one
-   height. Row-level diff styling lives in DiffRows.module.css, shared with the
-   commit views. */
-.diffView {
+/* One commit's patch for one file, as a tab. The bar is DiffView's, minus the
+   staging controls: history is read, not edited. */
+.commitDiff {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -32,20 +30,12 @@
   text-align: center;
 }
 
-.added {
+.status[data-status="A"] {
   color: var(--diff-added);
 }
 
-.deleted {
+.status[data-status="D"] {
   color: var(--diff-deleted);
-}
-
-.modified {
-  color: var(--diff-modified);
-}
-
-.untracked {
-  color: var(--fg-muted);
 }
 
 .name {
@@ -68,17 +58,16 @@
   direction: rtl;
 }
 
-/* Which comparison this tab is: the same word the tab strip carries, because
-   two tabs on one file are told apart by nothing else. */
-.mode {
+/* Which commit this is: the same id the tab strip carries, because two tabs
+   on one file are told apart by nothing else. */
+.sha {
   flex: none;
   padding: 0 calc(6px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
-  color: var(--fg-subtle);
+  border-radius: var(--sway-radius-pill);
+  color: var(--fg-muted);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: var(--sway-text-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .spacer {
@@ -91,6 +80,13 @@
   color: var(--brand-default);
 }
 
+.error {
+  flex: none;
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--diff-deleted);
+  font-size: var(--sway-text-md);
+}
+
 .body {
   flex: 1;
   overflow: auto;
@@ -98,16 +94,4 @@
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: var(--sway-text-md);
   line-height: 1.4;
-}
-
-.body .diffGap {
-  color: var(--fg-muted);
-  cursor: pointer;
-  user-select: none;
-  background: var(--canvas-card);
-  border-block: 1px solid var(--border-default);
-}
-
-.body .diffGap:hover {
-  color: var(--fg-default);
 }
