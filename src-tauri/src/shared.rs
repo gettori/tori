@@ -100,6 +100,119 @@ fn link_state(worktree: &Path, shared: &Path, name: &str) -> LinkState {
     }
 }
 
+fn git_says(worktree: &Path, args: &[&str], name: &str) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(worktree)
+        .args(args)
+        .arg("--")
+        .arg(name)
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+/// Does git carry this file on the branch? The one state that cannot be shared:
+/// moving a tracked file out of the worktree reads as a deletion on the branch.
+fn is_tracked(worktree: &Path, name: &str) -> bool {
+    git_says(worktree, &["ls-files", "--error-unmatch", "-z"], name)
+}
+
+fn is_ignored(worktree: &Path, name: &str) -> bool {
+    git_says(worktree, &["check-ignore", "-q"], name)
+}
+
+/// The exclude file every worktree of a container shares. `--git-common-dir` is
+/// the container's own git dir, not the per-worktree one, which is exactly why
+/// one line here hides a name in all of them at once.
+fn exclude_file(worktree: &Path) -> Option<PathBuf> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(worktree)
+        .args(["rev-parse", "--git-common-dir"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let dir = if Path::new(&dir).is_absolute() {
+        PathBuf::from(dir)
+    } else {
+        worktree.join(dir)
+    };
+    Some(dir.join("info").join("exclude"))
+}
+
+/// The block Sway owns inside the exclude file. Everything after it to the next
+/// comment (or the end) is ours to add to and take from; anything above it is
+/// the user's and is never rewritten.
+const EXCLUDE_HEADER: &str = "# Shared in worktrees (managed by Sway)";
+
+/// Split the exclude file into the lines before our block, our names, and the
+/// lines after it.
+fn split_exclude(text: &str) -> (Vec<&str>, Vec<&str>, Vec<&str>) {
+    let lines: Vec<&str> = text.lines().collect();
+    let Some(at) = lines.iter().position(|l| l.trim() == EXCLUDE_HEADER) else {
+        return (lines, Vec::new(), Vec::new());
+    };
+    let end = lines[at + 1..]
+        .iter()
+        .position(|l| l.trim_start().starts_with('#'))
+        .map(|i| at + 1 + i)
+        .unwrap_or(lines.len());
+    let ours = lines[at + 1..end].iter().copied().filter(|l| !l.trim().is_empty()).collect();
+    (lines[..at].to_vec(), ours, lines[end..].to_vec())
+}
+
+fn write_exclude(path: &Path, before: &[&str], ours: &[&str], after: &[&str]) -> Result<(), String> {
+    let mut out: Vec<String> = before.iter().map(|s| s.to_string()).collect();
+    while out.last().is_some_and(|l| l.trim().is_empty()) {
+        out.pop();
+    }
+    if !ours.is_empty() {
+        if !out.is_empty() {
+            out.push(String::new());
+        }
+        out.push(EXCLUDE_HEADER.to_string());
+        out.extend(ours.iter().map(|s| s.to_string()));
+    }
+    out.extend(after.iter().map(|s| s.to_string()));
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let mut body = out.join("\n");
+    if !body.is_empty() {
+        body.push('\n');
+    }
+    std::fs::write(path, body).map_err(|e| e.to_string())
+}
+
+fn exclude_add(worktree: &Path, name: &str) -> Result<(), String> {
+    let Some(path) = exclude_file(worktree) else {
+        return Ok(());
+    };
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let (before, mut ours, after) = split_exclude(&text);
+    if ours.contains(&name) {
+        return Ok(());
+    }
+    ours.push(name);
+    write_exclude(&path, &before, &ours, &after)
+}
+
+fn exclude_remove(worktree: &Path, name: &str) -> Result<(), String> {
+    let Some(path) = exclude_file(worktree) else {
+        return Ok(());
+    };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let (before, ours, after) = split_exclude(&text);
+    if !ours.contains(&name) {
+        return Ok(());
+    }
+    let kept: Vec<&str> = ours.into_iter().filter(|l| *l != name).collect();
+    write_exclude(&path, &before, &kept, &after)
+}
+
 /// Top-level names `.shared/` holds, sorted, so two reads of one container list
 /// them in the same order.
 fn entry_names(shared: &Path) -> Vec<(String, bool)> {
@@ -117,7 +230,7 @@ fn entry_names(shared: &Path) -> Vec<(String, bool)> {
     out
 }
 
-/// What the Worktree Files page draws: the entries, and where each one did and
+/// What the Shared in worktrees page draws: the entries, and where each one
 /// did not land.
 #[tauri::command(async)]
 pub fn shared_overview(container: String) -> Result<SharedOverview, String> {
@@ -195,10 +308,16 @@ fn remove_in(shared: &Path, worktrees: &[PathBuf], name: &str) -> Result<(), Str
         }
     }
     if target.is_dir() && !target.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
-        std::fs::remove_dir_all(&target).map_err(|e| e.to_string())
+        std::fs::remove_dir_all(&target).map_err(|e| e.to_string())?;
     } else {
-        std::fs::remove_file(&target).map_err(|e| e.to_string())
+        std::fs::remove_file(&target).map_err(|e| e.to_string())?;
     }
+    // The exclude line was written to hide the links; with the entry and its
+    // links gone there is nothing left for it to hide.
+    if let Some(w) = worktrees.first() {
+        exclude_remove(w, name)?;
+    }
+    Ok(())
 }
 
 /// Link one entry into every worktree that has nothing of its name. Answers how
@@ -208,6 +327,117 @@ fn remove_in(shared: &Path, worktrees: &[PathBuf], name: &str) -> Result<(), Str
 pub fn shared_link(container: String, name: String) -> Result<u32, String> {
     let name = checked_name(&name)?;
     link_in(&shared_dir(Path::new(&container)), &live_worktrees(&container), name)
+}
+
+/// What sharing this file would do, so the confirmation can say it before it
+/// happens rather than after.
+#[derive(Serialize, Debug)]
+pub struct SharePlan {
+    /// Git carries it on the branch. The one answer that blocks the whole thing.
+    pub tracked: bool,
+    /// Already hidden from git, so no exclude line is needed.
+    pub ignored: bool,
+    pub is_dir: bool,
+    /// Worktrees that would gain a link, this one excluded.
+    pub links: u32,
+    /// The container already has an entry of this name.
+    pub taken: bool,
+}
+
+#[tauri::command(async)]
+pub fn shared_plan(container: String, worktree: String, name: String) -> Result<SharePlan, String> {
+    let name = checked_name(&name)?;
+    let shared = shared_dir(Path::new(&container));
+    let w = PathBuf::from(&worktree);
+    let src = w.join(name);
+    if src.symlink_metadata().is_err() {
+        return Err(format!("\"{name}\" is not in that worktree."));
+    }
+    Ok(SharePlan {
+        tracked: is_tracked(&w, name),
+        ignored: is_ignored(&w, name),
+        is_dir: src.is_dir(),
+        links: live_worktrees(&container)
+            .iter()
+            .filter(|o| o.as_path() != w && link_state(o, &shared, name) == LinkState::Missing)
+            .count() as u32,
+        taken: shared.join(name).exists(),
+    })
+}
+
+/// Move `<worktree>/<name>` into `.shared/`, link it back, and link it into
+/// every other worktree. The move is what makes it shared: a copy would leave
+/// the original as the one file nobody else's link points at.
+///
+/// A name git does not already ignore also gets a line in the container's
+/// exclude file, so the new symlinks do not show up as untracked in every
+/// worktree at once. That file is per-clone and shared across worktrees, which
+/// is why nothing lands in `.gitignore`.
+#[tauri::command(async)]
+pub fn shared_add(container: String, worktree: String, name: String) -> Result<u32, String> {
+    let name = checked_name(&name)?;
+    let shared = shared_dir(Path::new(&container));
+    let w = PathBuf::from(&worktree);
+    let src = w.join(name);
+    if src.symlink_metadata().is_err() {
+        return Err(format!("\"{name}\" is not in that worktree."));
+    }
+    if is_tracked(&w, name) {
+        return Err(format!(
+            "Git carries \"{name}\" on this branch. Only files git does not track can be shared."
+        ));
+    }
+    let dest = shared.join(name);
+    if dest.exists() {
+        return Err(format!("The shared folder already has \"{name}\"."));
+    }
+    if !is_ignored(&w, name) {
+        exclude_add(&w, name)?;
+    }
+    std::fs::create_dir_all(&shared).map_err(|e| e.to_string())?;
+    std::fs::rename(&src, &dest).map_err(|e| e.to_string())?;
+    std::os::unix::fs::symlink(&dest, &src).map_err(|e| e.to_string())?;
+    Ok(link_in(&shared, &live_worktrees(&container), name)? + 1)
+}
+
+/// Stop sharing, keeping the file: it moves back into `worktree` as a real
+/// file, and every other worktree's link is dropped. Answers how many links
+/// went.
+///
+/// Moved rather than copied into each: an entry can be a folder the size of
+/// `node_modules`, and writing N copies of it to undo one link is not an undo.
+#[tauri::command(async)]
+pub fn shared_keep_in(container: String, worktree: String, name: String) -> Result<u32, String> {
+    let name = checked_name(&name)?;
+    let shared = shared_dir(Path::new(&container));
+    let w = PathBuf::from(&worktree);
+    let src = shared.join(name);
+    if !src.exists() {
+        return Err(format!("\"{name}\" is not in the shared folder."));
+    }
+    let mut dropped: u32 = 0;
+    for other in live_worktrees(&container) {
+        if link_state(&other, &shared, name) != LinkState::Linked {
+            continue;
+        }
+        std::fs::remove_file(other.join(name)).map_err(|e| e.to_string())?;
+        if other != w {
+            dropped += 1;
+        }
+    }
+    // Its link is gone by now, so anything still here is the worktree's own and
+    // the move would silently replace it.
+    let dest = w.join(name);
+    if dest.symlink_metadata().is_ok() {
+        return Err(format!("{} already has its own \"{name}\".", basename(&w)));
+    }
+    std::fs::rename(&src, dest).map_err(|e| e.to_string())?;
+    exclude_remove(&w, name)?;
+    Ok(dropped)
+}
+
+fn basename(p: &Path) -> String {
+    p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
 }
 
 /// Delete an entry and every link pointing at it. The links go first: removing
@@ -354,6 +584,66 @@ mod tests {
             assert!(shared_remove(c.clone(), bad.into()).is_err(), "{bad} must be refused");
             assert!(shared_unlink(c.clone(), c.clone(), bad.into()).is_err(), "{bad} must be refused");
         }
+        fs::remove_dir_all(&root).ok();
+    }
+
+    /// The block is delimited by the next comment, so a user's own rules below
+    /// ours survive every add and remove.
+    #[test]
+    fn the_exclude_block_only_owns_the_lines_between_its_header_and_the_next_comment() {
+        let text = format!("*.log\n\n{EXCLUDE_HEADER}\n.env\n.npmrc\n\n# mine\nscratch/\n");
+        let (before, ours, after) = split_exclude(&text);
+
+        assert_eq!(before, ["*.log", ""]);
+        assert_eq!(ours, [".env", ".npmrc"]);
+        assert_eq!(after, ["# mine", "scratch/"]);
+    }
+
+    #[test]
+    fn a_file_with_no_block_is_all_before_it() {
+        let (before, ours, after) = split_exclude("*.log\nbuild/\n");
+        assert_eq!(before, ["*.log", "build/"]);
+        assert!(ours.is_empty());
+        assert!(after.is_empty());
+    }
+
+    #[test]
+    fn writing_an_empty_block_takes_the_header_with_it() {
+        let root = unique_tmp();
+        let f = root.join("exclude");
+        write_exclude(&f, &["*.log"], &[".env"], &["# mine"]).unwrap();
+        assert_eq!(
+            fs::read_to_string(&f).unwrap(),
+            format!("*.log\n\n{EXCLUDE_HEADER}\n.env\n# mine\n")
+        );
+
+        // The last name removed: no orphan header left behind.
+        write_exclude(&f, &["*.log"], &[], &["# mine"]).unwrap();
+        assert_eq!(fs::read_to_string(&f).unwrap(), "*.log\n# mine\n");
+
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn keeping_a_file_moves_it_back_and_drops_the_other_links() {
+        let (root, shared, wts) = container(3);
+        let src = put(&shared, ".env", "secret");
+        for w in &wts {
+            std::os::unix::fs::symlink(&src, w.join(".env")).unwrap();
+        }
+
+        let dropped = shared_keep_in(
+            root.to_string_lossy().to_string(),
+            wts[1].to_string_lossy().to_string(),
+            ".env".into(),
+        );
+        // Git is not involved here, so the worktree list is empty and only the
+        // move half runs: the file lands back as a real file either way.
+        assert!(dropped.is_ok());
+        assert_eq!(fs::read_to_string(wts[1].join(".env")).unwrap(), "secret");
+        assert!(!wts[1].join(".env").symlink_metadata().unwrap().file_type().is_symlink());
+        assert!(!shared.join(".env").exists());
+
         fs::remove_dir_all(&root).ok();
     }
 
