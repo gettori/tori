@@ -124,6 +124,7 @@ export function syntheticTabName(id: string): string {
   if (!t) return id;
   if (t.kind === "log") return "Commit log";
   if (t.kind === "graph") return "Graph";
+  if (t.kind === "shared") return "Worktree files";
   // A sha is unreadable past its first few characters, and a file's history is
   // known by the file's name, not by the folders above it.
   if (t.kind === "commit") return `Commit ${t.arg.slice(0, 7)}`;
