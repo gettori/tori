@@ -250,13 +250,10 @@
   border-radius: var(--sway-radius-sm);
   padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
   outline: none;
-  transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+  transition: border-color var(--sway-duration-fast) ease;
 }
 .termSearchInput:focus {
   border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 .termHost :global(.xterm) {
