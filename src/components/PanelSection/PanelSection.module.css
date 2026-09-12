@@ -61,7 +61,7 @@
   padding: 0;
   background: none;
   border: none;
-  color: var(--fg-default);
+  color: var(--fg-muted);
   font: inherit;
   font-size: var(--sway-text-lg);
   text-align: left;
