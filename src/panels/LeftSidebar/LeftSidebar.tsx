@@ -102,6 +102,7 @@ import {
 } from "../../utils/forgeStatus";
 import { settings as appSettings } from "../Settings/settingsStore";
 import Icon from "../../components/Icon/Icon";
+import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
@@ -127,6 +128,7 @@ import {
   Check,
   CircleDashed,
   SquareTerminal,
+  Unlink,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
 import {
@@ -372,6 +374,10 @@ export default function LeftSidebar(props: {
   // missing key is "not probed yet" and a `null` value is "probed, no origin";
   // `forgeChip` reads the difference so a launch does not flash every row inert.
   const [origins, setOrigins] = createSignal<Record<string, string | null>>({});
+  // Shared entries a container's worktrees never received, per container. Only
+  // a non-zero count is drawn: an always-present "0 missing" would be noise on
+  // every project, the same rule the Problems tab follows.
+  const [sharedGaps, setSharedGaps] = createSignal<Record<string, number>>({});
   // Per-project fan-out attempts, keyed by project path. Git already reports an
   // attempt's worktree; this is only what git has no field for (its group and
   // its goal), so it is fetched alongside the config rather than folded into it.
@@ -1232,6 +1238,22 @@ export default function LeftSidebar(props: {
         );
         setOrigins(map);
       })();
+      // Only bare containers link `.shared/` into their worktrees, so only they
+      // can have a gap. Read here rather than per render: the answer changes
+      // when a worktree is created, which is a config change and lands back in
+      // this function.
+      void (async () => {
+        const map: Record<string, number> = {};
+        await Promise.all(
+          cfg.spaces
+            .flatMap((g) => g.projects)
+            .filter((p) => p.branchUnits[0]?.kind === "worktree")
+            .map(async (p) => {
+              map[p.path] = await invoke<number>("shared_drift", { container: p.path }).catch(() => 0);
+            }),
+        );
+        setSharedGaps(map);
+      })();
       // Same shape for the fan-out groups: every git project is asked, since the
       // answer is normally an empty list and the call reconciles the map against
       // git, which is what keeps a group whose worktree was removed outside Sway
@@ -1768,6 +1790,12 @@ export default function LeftSidebar(props: {
   // the typed name. create_worktree DWIMs the target: an existing local checks
   // out, a remote-only name (origin/<name>) is tracked, a brand-new name starts a
   // branch off origin's default.
+  /** The container's Worktree Files page, as an editor tab. The container is in
+   *  the tab's id, so the page reads the right one wherever the tab lands. */
+  function openWorktreeFiles(p: Project) {
+    emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("shared", p.path) });
+  }
+
   async function addWorktree(p: Project) {
     let branches: Branch[];
     try {
@@ -2091,6 +2119,9 @@ export default function LeftSidebar(props: {
       case "worktree":
         return [
           { label: "Add Worktree", onClick: () => addWorktree(p) },
+          // Beside Add Worktree on purpose: the menu that makes worktrees is
+          // where you say what they are made with.
+          { label: "Worktree files…", onClick: () => openWorktreeFiles(p) },
           { label: "Fan out…", onClick: () => fanOut(p) },
           ...(hasOrigin(p)
             ? [{ separator: true } as MenuItem, { label: "Change origin…", warn: true, onClick: () => changeRemote(p) }]
@@ -2131,6 +2162,7 @@ export default function LeftSidebar(props: {
         // actions to bring one back, plus stub removal.
         return [
           { label: "Add Worktree", onClick: () => addWorktree(p) },
+          { label: "Worktree files…", onClick: () => openWorktreeFiles(p) },
           ...(hasOrigin(p)
             ? [{ separator: true } as MenuItem, { label: "Change origin…", warn: true, onClick: () => changeRemote(p) }]
             : [{ separator: true } as MenuItem, { label: "Add Origin", onClick: () => addRemote(p) }]),
@@ -3063,6 +3095,24 @@ export default function LeftSidebar(props: {
                     </Show>
                   </span>
                   <span class={styles.label}>{p.name}</span>
+                  {/* Lit only when a worktree is missing a shared file, since a
+                      healthy container has nothing to say. Doubles as the one
+                      path to the page that is not a right-click. */}
+                  <Show when={sharedGaps()[p.path]}>
+                    {(n) => (
+                      <IconButton
+                        size="xs"
+                        class={styles.driftMark}
+                        icon={<Icon icon={Unlink} />}
+                        aria-label={`${p.name}: worktree files missing`}
+                        tooltip={`${n()} shared ${n() === 1 ? "file is" : "files are"} missing from a worktree`}
+                        onClick={(e: MouseEvent) => {
+                          e.stopPropagation();
+                          openWorktreeFiles(p);
+                        }}
+                      />
+                    )}
+                  </Show>
                   {statusBubble(
                     plainDir()
                       ? bubbleForUnits(p, [folderUnit()])

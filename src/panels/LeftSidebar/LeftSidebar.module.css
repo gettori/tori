@@ -589,6 +589,15 @@
   height: calc(14px * var(--ui-scale));
 }
 
+/* A container whose worktrees did not all get their shared files. Warning hue
+   rather than the session states beside it: this is about the project's setup,
+   not about anything running in it. */
+.driftMark {
+  flex: none;
+  margin-left: auto;
+  color: var(--scale-orange);
+}
+
 /* Bubbled rollup badge on a collapsed branch/project row, or a hidden project's/
    space's nearest rendered ancestor. Shows all four states, each with its own
    glyph + hue, in priority order: waiting, executing, idle, running. */
