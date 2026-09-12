@@ -106,6 +106,7 @@ export function syntheticTabName(id: string): string {
   const t = parseSyntheticId(id);
   if (!t) return id;
   if (t.kind === "log") return "Commit log";
+  if (t.kind === "graph") return "Graph";
   // A sha is unreadable past its first few characters, and a file's history is
   // known by the file's name, not by the folders above it.
   if (t.kind === "commit") return `Commit ${t.arg.slice(0, 7)}`;
