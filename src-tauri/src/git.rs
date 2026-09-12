@@ -1061,6 +1061,13 @@ pub struct LogEntry {
     /// (`HEAD -> main` first, then the rest). Empty for the overwhelming
     /// majority of commits, which is the case the parse has to get right.
     pub refs: Vec<String>,
+    /// Full shas of this commit's parents: one for an ordinary commit, two or
+    /// more for a merge, none for a root. What the graph draws its lanes from,
+    /// and the reason it cannot be derived from the row order alone.
+    pub parents: Vec<String>,
+    /// On HEAD but not on its upstream. The graph paints these apart, since
+    /// "not pushed yet" is the one thing about a commit you can still change.
+    pub unpushed: bool,
 }
 
 /// Six NUL-terminated fields per commit. NUL rather than any printable
@@ -1074,7 +1081,7 @@ pub struct LogEntry {
 /// of the top commit can be months old, and "3 months ago" beside the tip of a
 /// branch you just rebased is a lie about the branch, not a fact about the
 /// commit.
-const LOG_FORMAT: &str = "--format=%H%x00%h%x00%s%x00%an%x00%cr%x00%D";
+const LOG_FORMAT: &str = "--format=%H%x00%h%x00%s%x00%an%x00%cr%x00%D%x00%P";
 
 /// Split `%D` back into names. git joins them with ", ", which no ref name can
 /// contain (git refuses a space in one), so the split cannot cut a name in half.
@@ -1090,10 +1097,10 @@ fn parse_refs(decorations: &str) -> Vec<String> {
 /// Parse the flat `-z` stream. A trailing empty field is left over by the final
 /// record's terminator; `chunks_exact` drops it, along with any partial record
 /// a truncated stream would end in.
-fn parse_log(text: &str) -> Vec<LogEntry> {
+fn parse_log(text: &str, unpushed: &std::collections::HashSet<String>) -> Vec<LogEntry> {
     let fields: Vec<&str> = text.split('\0').collect();
     fields
-        .chunks_exact(6)
+        .chunks_exact(7)
         .map(|c| LogEntry {
             sha: c[0].to_string(),
             short: c[1].to_string(),
@@ -1101,8 +1108,21 @@ fn parse_log(text: &str) -> Vec<LogEntry> {
             author: c[3].to_string(),
             relative_date: c[4].to_string(),
             refs: parse_refs(c[5]),
+            // `%P` is space-separated full shas, empty for a root commit.
+            parents: c[6].split_whitespace().map(str::to_string).collect(),
+            unpushed: unpushed.contains(c[0]),
         })
         .collect()
+}
+
+/// Shas on HEAD that the upstream does not have. Empty when there is no
+/// upstream, which is not the same as "everything is pushed": a branch with
+/// nowhere to push to has nothing to be ahead of, and painting every commit as
+/// unpushed there would make the colour mean nothing.
+fn unpushed_shas(repo: &str) -> std::collections::HashSet<String> {
+    git_capture(repo, &["rev-list", "@{u}..HEAD"])
+        .map(|out| out.split_whitespace().map(str::to_string).collect())
+        .unwrap_or_default()
 }
 
 /// How many commits one page holds when the caller does not say.
@@ -1142,7 +1162,7 @@ pub fn git_log(
         args.extend_from_slice(&["--follow", "--", path]);
     }
     let out = git_capture(&project_path, &args)?;
-    Ok(parse_log(&out))
+    Ok(parse_log(&out, &unpushed_shas(&project_path)))
 }
 
 /// The commit HEAD names, or "" on an unborn branch.
@@ -3954,19 +3974,21 @@ diff --git a/f b/f
     // --- Commit log ---------------------------------------------------------
 
     /// The exact spelling `git log -z --format=…` emits, captured from a real
-    /// repo: six NUL-terminated fields per commit, the final record terminated
-    /// like the rest (so the split leaves a trailing empty field), and `%D`
-    /// empty for a commit nothing points at - which is nearly every commit in
-    /// a real history, and the case a naive split would misread.
+    /// repo: seven NUL-terminated fields per commit, the final record
+    /// terminated like the rest (so the split leaves a trailing empty field),
+    /// and `%D` empty for a commit nothing points at - which is nearly every
+    /// commit in a real history, and the case a naive split would misread.
     #[test]
     fn log_parses_a_decorated_commit_and_an_undecorated_one() {
         let out = concat!(
             "3071c3a4410166c58587\0 3071c3a\0Let work be put aside\0",
             "Sk Arif\011 minutes ago\0HEAD -> wave-2, origin/wave-2, tag: v1.2\0",
+            "b42b4942daffcbee3d28 aaaa1111bbbb2222cccc\0",
             "b42b4942daffcbee3d28\0b42b494\0fix: a subject with a comma, and a colon\0",
-            "Sk Arif\054 minutes ago\0\0",
+            "Sk Arif\054 minutes ago\0\0\0",
         );
-        let log = parse_log(out);
+        let unpushed = ["3071c3a4410166c58587".to_string()].into_iter().collect();
+        let log = parse_log(out, &unpushed);
 
         assert_eq!(log.len(), 2, "the trailing terminator must not add a record");
         assert_eq!(log[0].sha, "3071c3a4410166c58587");
@@ -3974,10 +3996,17 @@ diff --git a/f b/f
         assert_eq!(log[0].author, "Sk Arif");
         assert_eq!(log[0].relative_date, "11 minutes ago");
         assert_eq!(log[0].refs, ["HEAD -> wave-2", "origin/wave-2", "tag: v1.2"]);
+        // Two parents: `%P` is space-separated, so a merge is the case that
+        // proves the field is split rather than taken whole.
+        assert_eq!(log[0].parents, ["b42b4942daffcbee3d28", "aaaa1111bbbb2222cccc"]);
+        assert!(log[0].unpushed);
 
         // The one the verify asks for: no decorations at all is an empty list,
         // not a list holding one empty name.
         assert!(log[1].refs.is_empty(), "an undecorated commit has no refs");
+        // A root commit has no parents, which is the other empty-field case.
+        assert!(log[1].parents.is_empty(), "a root commit has no parents");
+        assert!(!log[1].unpushed);
         // And the comma in its subject stayed in the subject.
         assert_eq!(log[1].subject, "fix: a subject with a comma, and a colon");
     }

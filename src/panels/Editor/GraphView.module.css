@@ -1,0 +1,244 @@
+/* The commit graph, as an editor tab. Lane art is inline SVG (the hues are
+   picked in GraphView.tsx, so a lane's colour is one fact in one place); this
+   file owns the row rhythm and the four columns beside the lanes. */
+.graphView {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--canvas-default);
+}
+
+.topBar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  min-height: calc(40px * var(--ui-scale));
+  padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  background: var(--canvas-card);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.title {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-lg);
+  font-weight: 600;
+}
+
+.branch {
+  padding: 0 calc(6px * var(--ui-scale));
+  border: 1px solid var(--brand-default);
+  border-radius: var(--sway-radius-pill);
+  color: var(--brand-default);
+  font-size: var(--sway-text-xs);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.count {
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-xs);
+}
+
+.error {
+  flex: none;
+  padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
+  color: var(--diff-deleted);
+  font-size: var(--sway-text-md);
+}
+
+.scroll {
+  flex: 1;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  height: calc(24px * var(--ui-scale));
+  padding-right: calc(12px * var(--ui-scale));
+  white-space: nowrap;
+}
+
+.row:hover {
+  background: var(--neutral-hover);
+}
+
+/* The expander. Dim until the row is hovered, so a page of them reads as
+   history rather than as a column of arrows. */
+.twist {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(18px * var(--ui-scale));
+  height: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--fg-watermark);
+  cursor: pointer;
+}
+
+.row:hover .twist,
+.twist:focus-visible,
+.twist[aria-expanded="true"] {
+  color: var(--fg-muted);
+}
+
+.twist > svg {
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+
+/* Full row height and no vertical padding: the lines have to meet the ones in
+   the rows above and below exactly, or the graph reads as dashes. */
+.lanes {
+  flex: none;
+  height: calc(24px * var(--ui-scale));
+}
+
+.subject {
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+  color: var(--fg-default);
+  font-size: var(--sway-text-lg);
+  text-overflow: ellipsis;
+}
+
+.ref {
+  flex: none;
+  overflow: hidden;
+  max-width: calc(200px * var(--ui-scale));
+  padding: 0 calc(5px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-pill);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+  text-overflow: ellipsis;
+}
+
+.ref.head {
+  border-color: var(--brand-default);
+  color: var(--brand-default);
+}
+
+.ref.remote {
+  color: var(--fg-subtle);
+}
+
+.ref.tag {
+  border-style: dashed;
+}
+
+/* Initials, not a fetched avatar: the graph must draw with no network. */
+.who {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+  background: var(--neutral-subtle);
+  border-radius: var(--sway-radius-pill);
+  color: var(--fg-muted);
+  font-size: var(--sway-text-xs);
+  font-weight: 600;
+}
+
+.author {
+  flex: none;
+  overflow: hidden;
+  width: calc(120px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  text-overflow: ellipsis;
+}
+
+.when {
+  flex: none;
+  width: calc(110px * var(--ui-scale));
+  color: var(--fg-subtle);
+  font-size: var(--sway-text-md);
+  text-align: right;
+}
+
+.sha {
+  flex: none;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--fg-subtle);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  font-size: var(--sway-text-md);
+  cursor: pointer;
+}
+
+.sha:hover {
+  color: var(--brand-default);
+}
+
+/* What one commit touched, under it. Indented past the lane art, since these
+   rows belong to the commit rather than to the graph. */
+.files {
+  padding: calc(2px * var(--ui-scale)) 0 calc(4px * var(--ui-scale))
+    calc(40px * var(--ui-scale));
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  width: 100%;
+  padding: calc(1px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: none;
+  border: none;
+  color: var(--fg-default);
+  font: inherit;
+  font-size: var(--sway-text-md);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fileRow:hover {
+  background: var(--neutral-hover);
+}
+
+.fileStatus {
+  flex: none;
+  width: calc(14px * var(--ui-scale));
+  color: var(--diff-modified);
+  font-family: "SF Mono", Menlo, Monaco, monospace;
+  text-align: center;
+}
+
+.fileStatus[data-status="A"] {
+  color: var(--diff-added);
+}
+
+.fileStatus[data-status="D"] {
+  color: var(--diff-deleted);
+}
+
+.filePath {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.noFiles {
+  padding: 0 calc(6px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding: calc(8px * var(--ui-scale));
+}

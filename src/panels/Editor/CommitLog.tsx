@@ -18,6 +18,10 @@ export type LogEntry = {
   author: string;
   relative_date: string;
   refs: string[];
+  /** Full parent shas: one ordinarily, several for a merge, none for a root. */
+  parents: string[];
+  /** On HEAD but not on its upstream. */
+  unpushed: boolean;
 };
 
 /** One backend page. The list grows by this much per "Load more". */

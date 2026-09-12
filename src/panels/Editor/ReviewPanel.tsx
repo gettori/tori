@@ -57,6 +57,7 @@ import { changesLayout, OPTIONAL_CHANGES_SECTIONS, type ChangesSection } from ".
 import type { MemberRoot } from "../../utils/featureMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
+import GraphSection from "./GraphSection";
 import ConfirmDialog, { type ConfirmReq } from "../../components/Dialogs/ConfirmDialog";
 import CreatePrDialog from "../../components/Dialogs/CreatePrDialog";
 import Button from "../../components/Button/Button";
@@ -74,6 +75,7 @@ import {
   Ellipsis,
   FileCode,
   GitBranch,
+  GitGraph,
   GitPullRequestArrow,
   MessageSquarePlus,
   Minus,
@@ -1524,6 +1526,31 @@ export default function ReviewPanel(props: {
                 </For>
               </OverlayScroll>
             </Show>
+          </PanelSection>
+        </Show>
+
+        <Show when={shown("graph")}>
+          <PanelSection
+            layout={changesLayout}
+            id="graph"
+            fill={filler() === "graph"}
+            maxH={maxH}
+            title="Graph"
+            actions={
+              <IconButton
+                size="sm"
+                icon={<Icon icon={GitGraph} />}
+                disabled={!menuRoot()}
+                aria-label="Open Graph"
+                tooltip="Open the full graph in the editor"
+                onClick={() => {
+                  const root = menuRoot();
+                  if (root) emitWith(OPEN_IN_EDITOR, { path: syntheticId("graph", root) });
+                }}
+              />
+            }
+          >
+            <GraphSection root={menuRoot()} />
           </PanelSection>
         </Show>
 

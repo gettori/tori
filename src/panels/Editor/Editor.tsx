@@ -67,6 +67,7 @@ import LocalHistory from "./LocalHistory";
 import CommitDetail from "./CommitDetail";
 import ConflictView from "./ConflictView";
 import DiffView from "./DiffView";
+import GraphView from "./GraphView";
 import DebugSourceView from "./DebugSourceView";
 import ImageView, { isImagePath } from "./ImageView";
 import PdfToolbar from "./PdfToolbar";
@@ -91,6 +92,7 @@ import {
   FileHeart,
   Files,
   GitCompare,
+  GitGraph,
   GitPullRequest,
   TriangleAlert,
   Bug,
@@ -368,9 +370,18 @@ function repoRelative(path: string, root: string): string | null {
 
 // A synthetic view takes one glyph for the whole kind; a file keeps the seti
 // icon its extension earns it.
+const SYNTHETIC_ICONS: Record<string, LucideIcon> = {
+  search: Search,
+  graph: GitGraph,
+  diff: GitCompare,
+};
+
 function tabIcon(t: FileTab) {
   if (!isSyntheticId(t.path)) return <FileIcon name={t.name} />;
-  return <Icon icon={parseSyntheticId(t.path)?.kind === "search" ? Search : History} />;
+  const kind = parseSyntheticId(t.path)?.kind ?? "";
+  // History is the fallback because most of these views are one: the log, a
+  // commit, a file's history, a conflict's three sides.
+  return <Icon icon={SYNTHETIC_ICONS[kind] ?? History} />;
 }
 
 const tabName = (t: FileTab) => searchTabTitle(t.path) ?? t.name;
@@ -2680,6 +2691,11 @@ export default function Editor(props: {
                 </Show>
                 <Show when={t().kind === "commit"}>
                   <CommitDetail workspace={t().workspace} sha={t().arg} />
+                </Show>
+                {/* The other half of the sidebar's Graph section: lanes need
+                    width, and the right panel is the narrow column. */}
+                <Show when={t().kind === "graph"}>
+                  <GraphView workspace={t().workspace} />
                 </Show>
                 {/* Staging lives here rather than in the Changes panel: a hunk
                     needs the width of a pane, and the panel's rows stay one
