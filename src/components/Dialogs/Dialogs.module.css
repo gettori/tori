@@ -63,13 +63,10 @@
   border-radius: var(--sway-radius-md);
   color: var(--fg-default);
   outline: none;
-  transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+  transition: border-color var(--sway-duration-fast) ease;
 }
 .input:focus {
   border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 .hint {
   font-size: var(--sway-text-md);

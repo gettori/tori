@@ -421,14 +421,11 @@
     padding: 0 var(--sway-space-4);
     font: inherit;
     font-size: var(--sway-text-md);
-    transition:
-      border-color var(--sway-duration-fast) ease,
-      box-shadow var(--sway-duration-fast) ease;
+    transition: border-color var(--sway-duration-fast) ease;
   }
   .input:focus {
     outline: none;
     border-color: var(--brand-default);
-    box-shadow: 0 0 0 3px var(--brand-ring);
   }
 
   /* Mono, like every other machine-supplied value in this panel. */
@@ -465,7 +462,6 @@
   }
   .numStepper:focus-within {
     border-color: var(--brand-default);
-    box-shadow: 0 0 0 3px var(--brand-ring);
   }
   .stepperBtn {
     width: calc(26px * var(--ui-scale));

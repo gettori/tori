@@ -23,20 +23,14 @@
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-md);
-  transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+  transition: border-color var(--sway-duration-fast) ease;
 }
 
-/* The field family's gold brand ring, same call as Select's trigger. Keyed off
-   the input's own focus rather than the field's, so a click on the clear button
-   does not light the ring; `:focus-within` would. The input holds focus for the
-   whole interaction (the list is driven by aria-activedescendant), so this ring
-   is on screen the entire time and is the thing that says which control the
-   arrow keys are talking to. */
+/* One step of border, no ring: a text field's caret is its focus cue. Keyed
+   off the input's own focus rather than the field's, so a click on the clear
+   button does not light it; `:focus-within` would. */
 .control:has(.input:focus-visible) {
   border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 .input {
