@@ -3014,6 +3014,7 @@ export default function Editor(props: {
             <ReviewPanel
               root={root()}
               roots={treeRoots()}
+              members={featureId() ? members() : []}
               activePath={activeId()}
               selected={props.selected}
               onReverted={handleReverted}
