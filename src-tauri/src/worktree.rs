@@ -9,7 +9,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 /// Directory under a bare container holding files shared into every worktree
-/// (symlinked at creation, managed from the Worktree Files page). A
+/// (symlinked at creation, managed from the Shared in worktrees page). A
 /// bare-container convention; absent until the first shared file is added.
 pub(crate) const SHARED_DIR: &str = ".shared";
 
