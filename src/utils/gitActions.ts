@@ -279,8 +279,119 @@ export function unstage(root: string, paths: string[]): Promise<boolean> {
 
 /** Commit the staged changes. `amend` rewrites HEAD instead of adding a commit,
  *  and is the one form that needs nothing staged (amending only the message). */
-export function commit(root: string, message: string, amend = false): Promise<boolean> {
-  return act(root, () => invoke("git_commit", { projectPath: root, message, amend }), refreshGit);
+export function commit(root: string, message: string, amend = false, signoff = false): Promise<boolean> {
+  return act(
+    root,
+    () => invoke("git_commit", { projectPath: root, message, amend, signoff }),
+    refreshGit,
+  );
+}
+
+/** What an integrate attempt did. Mirrors `IntegrateOutcome` in git.rs: a
+ *  conflict is an outcome, not a failure, and lands in the Conflicts group. */
+export type IntegrateOutcome = { conflicted: boolean; message: string };
+
+/** Stage everything changed in this root, conflicts excluded: git refuses `add`
+ *  on an unmerged path, so including them would fail the whole call. */
+export function stageAll(root: string): Promise<boolean> {
+  const paths = changedFiles(root).map((f) => f.path);
+  return paths.length ? stage(root, paths) : Promise.resolve(false);
+}
+
+export function unstageAll(root: string): Promise<boolean> {
+  const paths = stagedFiles(root).map((f) => f.path);
+  return paths.length ? unstage(root, paths) : Promise.resolve(false);
+}
+
+/** Fire-and-forget: the answer arrives as `git://fetch-done`, which the store
+ *  is already listening for. */
+export function fetchIn(root: string): Promise<boolean> {
+  return act(root, () => invoke("git_fetch", { repo: root }), refreshMeta);
+}
+
+/** Pull, waiting for the background op's own event. Separate from `fetchIn`
+ *  because a pull can stop on a conflict, which is a state the file list has to
+ *  be re-read to show. */
+export async function pull(root: string, rebase = false): Promise<boolean> {
+  const result = waitFor(root, "git://pull-done", "git://pull-error");
+  try {
+    await invoke("git_pull", { repo: root, rebase });
+  } catch (e) {
+    toastError(e);
+    return false;
+  }
+  const { ok, error } = await result;
+  await refreshGit(root);
+  if (!ok) {
+    toastError(error || "Pull failed");
+    return false;
+  }
+  return true;
+}
+
+export async function merge(root: string, branch: string): Promise<IntegrateOutcome | null> {
+  return integrate(root, "git_merge", { projectPath: root, branch });
+}
+
+export async function rebase(root: string, onto: string): Promise<IntegrateOutcome | null> {
+  return integrate(root, "git_rebase", { projectPath: root, onto });
+}
+
+async function integrate(
+  root: string,
+  cmd: string,
+  args: Record<string, unknown>,
+): Promise<IntegrateOutcome | null> {
+  try {
+    const out = await invoke<IntegrateOutcome>(cmd, args);
+    await refreshGit(root);
+    return out;
+  } catch (e) {
+    await refreshGit(root);
+    toastError(e);
+    return null;
+  }
+}
+
+export function abortIntegrate(root: string): Promise<boolean> {
+  return act(root, () => invoke("git_abort", { projectPath: root }), refreshGit);
+}
+
+/** Undo the last commit, keeping its changes staged. */
+export function undoLastCommit(root: string): Promise<boolean> {
+  return act(root, () => invoke("git_undo_last_commit", { projectPath: root }), refreshGit);
+}
+
+export function createBranch(root: string, name: string, from?: string, checkout = true): Promise<boolean> {
+  return act(root, () => invoke("git_branch_create", { projectPath: root, name, from, checkout }), refreshGit);
+}
+
+export function renameBranch(root: string, from: string, to: string): Promise<boolean> {
+  return act(root, () => invoke("git_branch_rename", { projectPath: root, from, to }), refreshGit);
+}
+
+export function deleteBranch(root: string, branch: string, force = false): Promise<boolean> {
+  return act(root, () => invoke("git_branch_delete", { projectPath: root, branch, force }), refreshGit);
+}
+
+/** Stash the index alone, leaving the worktree. */
+export function stashStaged(root: string, message?: string): Promise<boolean> {
+  return act(
+    root,
+    () => invoke("git_stash_push", { projectPath: root, message, staged: true }),
+    refreshStatus,
+  );
+}
+
+/** This root's branch names, for the pickers. Empty rather than throwing: a
+ *  repo that cannot be read has no branches to offer. */
+export async function branchNames(root: string): Promise<string[]> {
+  try {
+    const list = await invoke<BranchInfo[]>("list_branches", { path: root });
+    return list.map((b) => b.name);
+  } catch {
+    return [];
+  }
 }
 
 /** HEAD's full message, for prefilling the fields when amend is toggled on.
@@ -296,7 +407,11 @@ export async function headMessage(root: string): Promise<string> {
 // Resolves once `git://push-done|error` fires for `repo`, so a caller can await
 // a push before proceeding (e.g. "Open PR" pushing first). One-shot: both
 // listeners are torn down as soon as either fires.
-function waitForPush(repo: string): Promise<{ ok: boolean; error: string }> {
+function waitFor(
+  repo: string,
+  done: string,
+  failed: string,
+): Promise<{ ok: boolean; error: string }> {
   return new Promise((resolve) => {
     let settled = false;
     let unDone: UnlistenFn | undefined;
@@ -308,13 +423,17 @@ function waitForPush(repo: string): Promise<{ ok: boolean; error: string }> {
       unError?.();
       resolve(result);
     };
-    listen<{ repo: string }>("git://push-done", (e) => {
+    listen<{ repo: string }>(done, (e) => {
       if (e.payload.repo === repo) finish({ ok: true, error: "" });
     }).then((un) => (settled ? un() : (unDone = un)));
-    listen<{ repo: string; error: string }>("git://push-error", (e) => {
+    listen<{ repo: string; error: string }>(failed, (e) => {
       if (e.payload.repo === repo) finish({ ok: false, error: e.payload.error });
     }).then((un) => (settled ? un() : (unError = un)));
   });
+}
+
+function waitForPush(repo: string): Promise<{ ok: boolean; error: string }> {
+  return waitFor(repo, "git://push-done", "git://push-error");
 }
 
 /**

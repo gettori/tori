@@ -26,6 +26,10 @@ import {
   refreshGit,
   stage as stageFiles,
   unstage as unstageFiles,
+  stageAll,
+  unstageAll,
+  fetchIn,
+  pull as pullIn,
   commit as commitStaged,
   headMessage,
   push as pushToOrigin,
@@ -35,8 +39,7 @@ import { amendRewritesPushed, composeCommitMessage, splitCommitMessage } from ".
 import { DIFF_CONTEXT } from "../../utils/diffHunks";
 import { copyText } from "../../utils/clipboard";
 import { mentionPath } from "../../utils/pathScope";
-import { folderActors } from "../../utils/folderActors";
-import { revertGuard } from "../../utils/revertGuard";
+import { mayRewrite } from "../../utils/gitGuard";
 import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../utils/safeSend";
 import { askAgentToResolve } from "../../utils/conflictAsk";
 import { sendBlockedReason } from "../../utils/sendTarget";
@@ -319,20 +322,6 @@ export default function ReviewPanel(props: {
     await unstageFiles(root, [path]);
   }
 
-  /** Stage everything this member has, conflicts excluded: git refuses `add` on
-   *  an unmerged path, so including them would fail the whole call. */
-  async function stageAll(root: string) {
-    const paths = changedFiles(root).map((f) => f.path);
-    if (paths.length) await stageFiles(root, paths);
-  }
-
-  /** Unstage everything this member has in the index. */
-  async function unstageAll(root: string | null) {
-    if (!root) return;
-    const paths = stagedFiles(root).map((f) => f.path);
-    if (paths.length) await unstageFiles(root, paths);
-  }
-
   /** Throw away every unstaged change in this member. Guarded, unlike a single
    *  hunk: this one rewrites files across the whole worktree. */
   async function discardAllChanges(root: string | null) {
@@ -357,17 +346,6 @@ export default function ReviewPanel(props: {
         await refreshStatus(root);
       }),
     );
-  }
-
-  /** Ask the remote what it has. The answer arrives as `git://fetch-done`,
-   *  which `refreshAll` is already listening for. */
-  async function fetchRemote(root: string | null) {
-    if (!root) return;
-    try {
-      await invoke("git_fetch", { repo: root });
-    } catch (e) {
-      toastError(e);
-    }
   }
 
   /** Whether this member has somewhere to push and something to push there. */
@@ -576,23 +554,11 @@ export default function ReviewPanel(props: {
    *  hard, one Sway cannot see inside is overridable. `verb` names the action in
    *  the override, so the question reads as itself rather than as a revert. */
   async function guarded(verb: string, root: string, action: () => Promise<void>) {
-    const candidates = await folderActors(root);
-    const verdict = revertGuard(candidates, { folderPath: root });
-    if (!verdict.allow) {
-      if (!verdict.overridable) {
-        toastError(verdict.reason);
-        return;
-      }
-      const go = await askConfirm({
-        title: "Another session may be running here",
-        message: `${verdict.reason}\n\n${verb} anyway?`,
-        confirmLabel: `${verb} anyway`,
-        danger: true,
-      });
-      if (!go) return;
-      if (!revertGuard(candidates, { folderPath: root, allowDetached: true }).allow) return;
-    }
-    await action();
+    const ok = await mayRewrite(verb, root, {
+      confirm: askConfirm,
+      refuse: (reason) => toastError(reason),
+    });
+    if (ok) await action();
   }
 
   /** Hold the busy flag across everything, confirms included.
@@ -1180,13 +1146,13 @@ export default function ReviewPanel(props: {
     <>
       <MenuRow
         disabled={applying() || !changedFiles(menuRoot()).length}
-        onClick={() => void stageAll(menuRoot())}
+        onClick={() => menuRoot() && void stageAll(menuRoot()!)}
       >
         Stage All Changes
       </MenuRow>
       <MenuRow
         disabled={applying() || !stagedFiles(menuRoot()).length}
-        onClick={() => void unstageAll(menuRoot())}
+        onClick={() => menuRoot() && void unstageAll(menuRoot()!)}
       >
         Unstage All Changes
       </MenuRow>
@@ -1197,7 +1163,8 @@ export default function ReviewPanel(props: {
         Discard All Changes...
       </MenuRow>
       <MenuSeparator />
-      <MenuRow onClick={() => void fetchRemote(menuRoot())}>Fetch</MenuRow>
+      <MenuRow onClick={() => menuRoot() && void fetchIn(menuRoot()!)}>Fetch</MenuRow>
+      <MenuRow onClick={() => menuRoot() && void pullIn(menuRoot()!)}>Pull</MenuRow>
       <MenuRow disabled={!canPushIn(menuRoot())} onClick={() => pushMember(menuRoot())}>
         Push
       </MenuRow>

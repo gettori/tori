@@ -875,19 +875,32 @@ fn valid_selector(selector: &str) -> bool {
 /// and exits 0. Counting entries rather than reading that sentence keeps the
 /// answer true regardless of git's locale.
 #[tauri::command]
-pub async fn git_stash_push(project_path: String, message: Option<String>, include_untracked: Option<bool>) -> Result<bool, String> {
-    crate::exec::git_write("git_stash_push", project_path.clone(), move || git_stash_push_body(project_path, message, include_untracked)).await
+pub async fn git_stash_push(
+    project_path: String,
+    message: Option<String>,
+    include_untracked: Option<bool>,
+    staged: Option<bool>,
+) -> Result<bool, String> {
+    crate::exec::git_write("git_stash_push", project_path.clone(), move || {
+        git_stash_push_body(project_path, message, include_untracked, staged)
+    })
+    .await
 }
 
 pub(crate) fn git_stash_push_body(
     project_path: String,
     message: Option<String>,
     include_untracked: Option<bool>,
+    staged: Option<bool>,
 ) -> Result<bool, String> {
     let before = git_stash_list(project_path.clone())?.len();
 
     let mut args: Vec<&str> = vec!["stash", "push"];
-    if include_untracked.unwrap_or(false) {
+    // `--staged` stashes the index alone and leaves the worktree, so it is
+    // exclusive with `-u`: there are no untracked files in an index.
+    if staged.unwrap_or(false) {
+        args.push("--staged");
+    } else if include_untracked.unwrap_or(false) {
         args.push("-u");
     }
     let message = message.unwrap_or_default();
@@ -991,11 +1004,24 @@ pub(crate) fn git_stash_drop_body(project_path: String, selector: String) -> Res
 /// question, not this one's - see `amendRewritesPushed` in
 /// `src/utils/commitMessage.ts`.
 #[tauri::command]
-pub async fn git_commit(project_path: String, message: String, amend: Option<bool>) -> Result<(), String> {
-    crate::exec::git_write("git_commit", project_path.clone(), move || git_commit_body(project_path, message, amend)).await
+pub async fn git_commit(
+    project_path: String,
+    message: String,
+    amend: Option<bool>,
+    signoff: Option<bool>,
+) -> Result<(), String> {
+    crate::exec::git_write("git_commit", project_path.clone(), move || {
+        git_commit_body(project_path, message, amend, signoff)
+    })
+    .await
 }
 
-pub(crate) fn git_commit_body(project_path: String, message: String, amend: Option<bool>) -> Result<(), String> {
+pub(crate) fn git_commit_body(
+    project_path: String,
+    message: String,
+    amend: Option<bool>,
+    signoff: Option<bool>,
+) -> Result<(), String> {
     let message = message.trim();
     if message.is_empty() {
         return Err("Commit message is empty".into());
@@ -1003,6 +1029,9 @@ pub(crate) fn git_commit_body(project_path: String, message: String, amend: Opti
     let mut args = vec!["commit"];
     if amend.unwrap_or(false) {
         args.push("--amend");
+    }
+    if signoff.unwrap_or(false) {
+        args.push("--signoff");
     }
     args.extend(["-m", message]);
     git_run(&project_path, &args)
@@ -1971,6 +2000,210 @@ pub(crate) fn exclude_from_repo(root: &str, dir: &str) {
     let _ = std::fs::write(&exclude, format!("{existing}{sep}{entry}\n"));
 }
 
+
+// --- integrate, undo, branches -------------------------------------------
+//
+// The commands behind the Changes tab's menu and the palette's `Git:` entries.
+// Same two rules as everything above: a write takes the repo's lock through
+// `exec::git_write`, and anything that touches the network goes through
+// `git_command` so a credential prompt reaches the askpass bridge instead of
+// hanging on a TTY that is not there.
+
+/// A background network op's outcome, carried on its event. Same three fields
+/// as `FetchResult` and `PushResult`, kept separate for the same reason they
+/// are: one event per operation, so a listener cannot mistake a failed pull for
+/// a failed fetch.
+#[derive(Clone, Serialize)]
+pub struct PullResult {
+    pub repo: String,
+    pub ok: bool,
+    pub error: String,
+}
+
+/// Background `git pull`, a sibling of `git_fetch` and `git_push`. Emits
+/// `git://pull-done` or `git://pull-error`.
+///
+/// `--no-rebase` is passed explicitly on the merge path rather than left to the
+/// default: `pull.rebase` is a very common global setting, and a menu entry
+/// that says Pull and silently rebases because of one is the kind of surprise
+/// that costs an afternoon.
+#[tauri::command]
+pub fn git_pull(
+    app: AppHandle,
+    state: State<AskpassState>,
+    repo: String,
+    rebase: Option<bool>,
+) -> Result<(), String> {
+    let inner = state.0.clone();
+    let op_id = next_op_id();
+    thread::spawn(move || {
+        let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
+        cmd.arg("pull");
+        cmd.arg(if rebase.unwrap_or(false) { "--rebase" } else { "--no-rebase" });
+        let (ok, error) = {
+            let lock = crate::exec::repo_lock(&repo);
+            let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            match cmd.output() {
+                Ok(o) if o.status.success() => (true, String::new()),
+                // A pull that stopped on a conflict reports through the file
+                // list like a merge does, so its stderr is the whole of what
+                // this has to say about it.
+                Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
+                Err(e) => (false, e.to_string()),
+            }
+        };
+        let event = if ok { "git://pull-done" } else { "git://pull-error" };
+        let _ = app.emit(event, PullResult { repo, ok, error });
+    });
+    Ok(())
+}
+
+/// What an integrate attempt did. A conflict is an outcome, not a failure: the
+/// working tree now holds the unmerged stages the Changes panel is there to
+/// resolve, so it answers `Ok` and says so.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct IntegrateOutcome {
+    pub conflicted: bool,
+    /// git's own account, for a toast. Empty when it went in cleanly.
+    pub message: String,
+}
+
+/// True when the index holds unmerged stages.
+fn has_unmerged(repo: &str) -> bool {
+    git_capture(repo, &["ls-files", "--unmerged"]).is_ok_and(|s| !s.trim().is_empty())
+}
+
+/// Run one integrate subcommand and read a conflict apart from a refusal.
+fn integrate(repo: &str, args: &[&str]) -> Result<IntegrateOutcome, String> {
+    match git_run(repo, args) {
+        Ok(()) => Ok(IntegrateOutcome { conflicted: false, message: String::new() }),
+        Err(e) if has_unmerged(repo) => Ok(IntegrateOutcome { conflicted: true, message: e }),
+        Err(e) => Err(e),
+    }
+}
+
+/// Merge `branch` into the current one.
+#[tauri::command]
+pub async fn git_merge(
+    project_path: String,
+    branch: String,
+    no_ff: Option<bool>,
+) -> Result<IntegrateOutcome, String> {
+    crate::exec::git_write("git_merge", project_path.clone(), move || {
+        let mut args = vec!["merge"];
+        if no_ff.unwrap_or(false) {
+            args.push("--no-ff");
+        }
+        args.push(&branch);
+        integrate(&project_path, &args)
+    })
+    .await
+}
+
+/// Replay the current branch onto `onto`.
+#[tauri::command]
+pub async fn git_rebase(project_path: String, onto: String) -> Result<IntegrateOutcome, String> {
+    crate::exec::git_write("git_rebase", project_path.clone(), move || {
+        integrate(&project_path, &["rebase", &onto])
+    })
+    .await
+}
+
+/// Abandon whatever merge, rebase, cherry-pick or revert is in progress.
+///
+/// The op is read from the repo rather than passed in: the caller's idea of
+/// what is running comes from a poll, and aborting the wrong one is either a
+/// no-op error or, worse, an abort of something the user did not mean.
+#[tauri::command]
+pub async fn git_abort(project_path: String) -> Result<(), String> {
+    crate::exec::git_write("git_abort", project_path.clone(), move || {
+        let op = crate::conflict::git_conflict_op(project_path.clone())?;
+        let args: &[&str] = match op {
+            crate::conflict::ConflictOp::Merge => &["merge", "--abort"],
+            crate::conflict::ConflictOp::Rebase => &["rebase", "--abort"],
+            crate::conflict::ConflictOp::CherryPick => &["cherry-pick", "--abort"],
+            crate::conflict::ConflictOp::Revert => &["revert", "--abort"],
+            crate::conflict::ConflictOp::None => return Err("Nothing to abort".into()),
+        };
+        git_run(&project_path, args)
+    })
+    .await
+}
+
+/// Undo the last commit, keeping its changes staged.
+///
+/// A root commit has no parent to reset onto, and `HEAD~1` fails there rather
+/// than doing something sensible. Deleting the ref is the equivalent: the tree
+/// and index survive, and the branch goes back to unborn.
+#[tauri::command]
+pub async fn git_undo_last_commit(project_path: String) -> Result<(), String> {
+    crate::exec::git_write("git_undo_last_commit", project_path.clone(), move || {
+        if git_capture(&project_path, &["rev-parse", "--verify", "HEAD~1"]).is_ok() {
+            git_run(&project_path, &["reset", "--soft", "HEAD~1"])
+        } else {
+            git_run(&project_path, &["update-ref", "-d", "HEAD"])
+        }
+    })
+    .await
+}
+
+/// Create a branch, optionally from a named start point, optionally checking it
+/// out. Refuses to check out over a dirty tree, which git would do silently for
+/// files the two sides agree on.
+#[tauri::command]
+pub async fn git_branch_create(
+    project_path: String,
+    name: String,
+    from: Option<String>,
+    checkout: Option<bool>,
+) -> Result<(), String> {
+    crate::exec::git_write("git_branch_create", project_path.clone(), move || {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return Err("Branch name is empty".into());
+        }
+        let start = from.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        let mut args = vec![if checkout.unwrap_or(false) { "checkout" } else { "branch" }];
+        if checkout.unwrap_or(false) {
+            args.push("-b");
+        }
+        args.push(&name);
+        if let Some(s) = start {
+            args.push(s);
+        }
+        git_run(&project_path, &args)
+    })
+    .await
+}
+
+/// Rename a branch. `-m` rather than `-M`: clobbering an existing name is a
+/// different decision, and this one has no way to ask.
+#[tauri::command]
+pub async fn git_branch_rename(project_path: String, from: String, to: String) -> Result<(), String> {
+    crate::exec::git_write("git_branch_rename", project_path.clone(), move || {
+        let to = to.trim().to_string();
+        if to.is_empty() {
+            return Err("Branch name is empty".into());
+        }
+        git_run(&project_path, &["branch", "-m", &from, &to])
+    })
+    .await
+}
+
+/// Delete a branch. Unforced by default, so git's own "not fully merged"
+/// refusal is what the caller has to answer for.
+#[tauri::command]
+pub async fn git_branch_delete(
+    project_path: String,
+    branch: String,
+    force: Option<bool>,
+) -> Result<(), String> {
+    crate::exec::git_write("git_branch_delete", project_path.clone(), move || {
+        git_run(&project_path, &["branch", if force.unwrap_or(false) { "-D" } else { "-d" }, &branch])
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2325,7 +2558,7 @@ diff --git a/f b/f
             std::fs::remove_dir_all(&dir).ok();
             return;
         }
-        let err = git_commit_body(p, "won't work".into(), None).expect_err("commit without identity must fail");
+        let err = git_commit_body(p, "won't work".into(), None, None).expect_err("commit without identity must fail");
         assert!(!err.is_empty());
 
         std::fs::remove_dir_all(&dir).ok();
@@ -2375,10 +2608,10 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
         git_stage_body(p.clone(), vec!["new.txt".into()]).unwrap();
 
-        let err = git_commit_body(p.clone(), "   ".into(), None).expect_err("empty message must be refused");
+        let err = git_commit_body(p.clone(), "   ".into(), None, None).expect_err("empty message must be refused");
         assert!(!err.is_empty());
 
-        git_commit_body(p.clone(), "add new.txt".into(), None).unwrap();
+        git_commit_body(p.clone(), "add new.txt".into(), None, None).unwrap();
         let files = git_status_body(&p).unwrap();
         assert!(files.iter().all(|f| f.path != "new.txt"));
 
@@ -2403,13 +2636,13 @@ diff --git a/f b/f
 
         std::fs::write(dir.join("new.txt"), "x").unwrap();
         git_stage_body(p.clone(), vec!["new.txt".into()]).unwrap();
-        git_commit_body(p.clone(), "add new.txt".into(), None).unwrap();
+        git_commit_body(p.clone(), "add new.txt".into(), None, None).unwrap();
         let before = count(&dir);
 
         // A subject, a blank line, and a body that itself contains a blank line:
         // the shape `composeCommitMessage` produces and `%B` must give back.
         let msg = "add new.txt\n\nwhy this was needed\n\nand a second paragraph";
-        git_commit_body(p.clone(), msg.into(), Some(true)).unwrap();
+        git_commit_body(p.clone(), msg.into(), Some(true), None).unwrap();
 
         assert_eq!(count(&dir), before, "amend must rewrite HEAD, not add a commit");
         assert_eq!(git_head_message(p).unwrap().trim(), msg);
@@ -3565,7 +3798,7 @@ diff --git a/f b/f
         let p = dir.to_string_lossy().into_owned();
         std::fs::write(dir.join("scratch.txt"), "local only\n").unwrap();
 
-        assert!(git_stash_push_body(p.clone(), Some("tracked only".into()), None).unwrap());
+        assert!(git_stash_push_body(p.clone(), Some("tracked only".into()), None, None).unwrap());
 
         // The default sweeps up tracked edits and leaves everything git has
         // never seen exactly where it is.
@@ -3573,7 +3806,7 @@ diff --git a/f b/f
         assert_eq!(status_of(&dir, "f.txt"), "");
 
         // With the flag on, the same file goes.
-        assert!(git_stash_push_body(p.clone(), Some("everything".into()), Some(true)).unwrap());
+        assert!(git_stash_push_body(p.clone(), Some("everything".into()), Some(true), None).unwrap());
         assert!(!dir.join("scratch.txt").exists(), "untracked file was left behind");
         assert_eq!(git_stash_list(p).unwrap().len(), 2);
         std::fs::remove_dir_all(&dir).ok();
@@ -3587,7 +3820,7 @@ diff --git a/f b/f
 
         // git prints "No local changes to save" and exits 0, so success alone
         // does not mean an entry exists.
-        assert!(!git_stash_push_body(p.clone(), Some("nothing".into()), None).unwrap());
+        assert!(!git_stash_push_body(p.clone(), Some("nothing".into()), None, None).unwrap());
         assert!(git_stash_list(p).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -3602,7 +3835,7 @@ diff --git a/f b/f
         git(&dir, &["commit", "-qm", "add gone"]);
         std::fs::remove_file(dir.join("gone.txt")).unwrap();
         git(&dir, &["rm", "-q", "--cached", "gone.txt"]);
-        git_stash_push_body(p.clone(), Some("wip".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("wip".into()), None, None).unwrap();
 
         let out = git_stash_apply_body(p.clone(), "stash@{0}".into(), Some(true)).unwrap();
 
@@ -3627,7 +3860,7 @@ diff --git a/f b/f
         // A second file, so a desync would visibly swallow it.
         std::fs::write(dir.join("other.txt"), "edited\n").unwrap();
         git(&dir, &["add", "other.txt"]);
-        git_stash_push_body(p.clone(), Some("a rename".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("a rename".into()), None, None).unwrap();
 
         let out = git_stash_apply_body(p.clone(), "stash@{0}".into(), Some(true)).unwrap();
 
@@ -3646,7 +3879,7 @@ diff --git a/f b/f
     fn a_conflicting_pop_surfaces_gits_reason_and_keeps_the_stash() {
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        git_stash_push_body(p.clone(), Some("wip".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("wip".into()), None, None).unwrap();
         // Edit the same file, so the stash cannot be laid back down over it.
         std::fs::write(dir.join("f.txt"), "something else entirely\n").unwrap();
 
@@ -3662,9 +3895,9 @@ diff --git a/f b/f
     fn drop_removes_one_entry_and_leaves_the_rest() {
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        git_stash_push_body(p.clone(), Some("first".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("first".into()), None, None).unwrap();
         std::fs::write(dir.join("f.txt"), "second round\n").unwrap();
-        git_stash_push_body(p.clone(), Some("second".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("second".into()), None, None).unwrap();
 
         git_stash_drop_body(p.clone(), "stash@{0}".into()).unwrap();
 
@@ -3680,7 +3913,7 @@ diff --git a/f b/f
         // option-shaped value would be read as an option.
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        git_stash_push_body(p.clone(), Some("keep me".into()), None).unwrap();
+        git_stash_push_body(p.clone(), Some("keep me".into()), None, None).unwrap();
 
         for bad in ["--all", "stash@{0} --quiet", "refs/heads/main", "stash@{}", ""] {
             assert!(
