@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { buildRows } from "../../utils/diffView";
 import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
+import { clearCommitFileRequest, commitFileRequest } from "../../utils/commitFocus";
 import DiffRows, { diffRowClasses } from "./DiffRows";
 import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -86,12 +87,27 @@ export default function CommitDetail(props: { workspace: string; sha: string }) 
     }),
   );
 
+  // A sidebar row can ask for one file to be open on arrival. Answered once the
+  // file list is here, and cleared so reopening the tab later does not replay it.
+  createEffect(
+    on([commitFileRequest, detail], ([req, d]) => {
+      if (!req || !d || req.sha !== props.sha) return;
+      const f = d.files.find((x) => x.path === req.file);
+      clearCommitFileRequest();
+      if (f) void showFile(f);
+    }),
+  );
+
   async function toggleFile(f: CommitFile) {
     if (openFile() === f.path) {
       setOpenFile(null);
       setDiff("");
       return;
     }
+    await showFile(f);
+  }
+
+  async function showFile(f: CommitFile) {
     // Set first, so the row reads as open while its patch is on the way.
     setOpenFile(f.path);
     setDiff("");

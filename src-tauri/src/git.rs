@@ -800,6 +800,10 @@ pub struct StashEntry {
     /// stable way to name an entry: the index shifts as entries are pushed and
     /// dropped, so the panel must re-list rather than remember.
     pub selector: String,
+    /// The stash commit itself, for the commit view: a stash is a merge of HEAD
+    /// with the index, so the commit diff's first-parent framing reads as the
+    /// worktree changes it holds.
+    pub sha: String,
     /// The user's own text, colons intact.
     pub message: String,
     /// The branch it was taken on, when git recorded one.
@@ -831,21 +835,22 @@ fn split_stash_subject(subject: &str) -> (Option<String>, String) {
 #[tauri::command(async)]
 pub fn git_stash_list(project_path: String) -> Result<Vec<StashEntry>, String> {
     // NUL-delimited fields, so neither a colon nor a newline in the message can
-    // split one entry into two. The stream is flat: three fields per entry.
+    // split one entry into two. The stream is flat: four fields per entry.
     let out = git_capture(
         &project_path,
-        &["stash", "list", "-z", "--format=%gd%x00%s%x00%cr"],
+        &["stash", "list", "-z", "--format=%gd%x00%H%x00%s%x00%cr"],
     )?;
     let fields: Vec<&str> = out.split('\0').collect();
     Ok(fields
-        .chunks_exact(3)
+        .chunks_exact(4)
         .map(|c| {
-            let (branch, message) = split_stash_subject(c[1]);
+            let (branch, message) = split_stash_subject(c[2]);
             StashEntry {
                 selector: c[0].to_string(),
+                sha: c[1].to_string(),
                 message,
                 branch,
-                relative_date: c[2].to_string(),
+                relative_date: c[3].to_string(),
             }
         })
         .collect())
