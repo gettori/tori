@@ -4,7 +4,8 @@
    elevation stay consistent across chrome (no ad-hoc hex). Chrome tier is
    spacious with soft elevation; see the spacing conventions in tokens.css. */
 
-/* Rounded text input with a gold focus ring. */
+/* Rounded text input; focus is one step of border, see the chat composer
+   for why a text field gets no ring. */
 .input {
   display: block;
   width: 100%;
@@ -17,13 +18,10 @@
   font-size: var(--sway-text-lg);
   line-height: 1.4;
   outline: none;
-  transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+  transition: border-color var(--sway-duration-fast) ease;
 }
 .input:focus {
   border-color: var(--brand-default);
-  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 
 /* Floating menu / dropdown surface (context menu, gear menu, overflow menu). */
