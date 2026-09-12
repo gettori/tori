@@ -65,11 +65,15 @@
   min-height: 0;
 }
 
+/* Wide enough for a name and its count, and never more than the pane can
+   spare: the detail beside it is the half with buttons in it. */
 .rail {
   display: flex;
-  flex: none;
+  flex: 0 0 auto;
   flex-direction: column;
   width: calc(300px * var(--ui-scale));
+  min-width: calc(190px * var(--ui-scale));
+  max-width: 40%;
   min-height: 0;
   border-right: 1px solid var(--border-default);
 }
@@ -182,33 +186,6 @@
   padding-left: calc(22px * var(--ui-scale));
 }
 
-/* One stub per worktree, in the order the pane lists them: how far an entry
-   got, read as a shape before any of the words. */
-.bar {
-  display: flex;
-  flex: none;
-  gap: calc(3px * var(--ui-scale));
-}
-
-.seg {
-  width: calc(14px * var(--ui-scale));
-  height: calc(3px * var(--ui-scale));
-  background: var(--fg-subtle);
-  border-radius: var(--sway-radius-pill);
-}
-
-.seg[data-state="linked"] {
-  background: var(--scale-green);
-}
-
-.seg[data-state="missing"] {
-  background: var(--scale-orange);
-}
-
-.seg[data-state="shadowed"] {
-  background: var(--scale-blue);
-}
-
 .tally {
   overflow: hidden;
   color: var(--fg-subtle);
@@ -242,13 +219,20 @@
 
 .detailTop {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
   min-width: 0;
 }
 
+.detailTop > button {
+  flex: none;
+}
+
 .detailName {
   overflow: hidden;
+  flex: 0 1 auto;
+  min-width: 0;
   color: var(--fg-default);
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: var(--sway-text-xl);
@@ -295,13 +279,20 @@
   text-transform: uppercase;
 }
 
-.colWorktree {
-  flex: none;
-  width: calc(240px * var(--ui-scale));
+/* A share of the row rather than a width, so the two columns keep their
+   proportion in a pane half the width and the buttons stay on screen. The
+   header's state column runs on under the buttons; both start at the same
+   x, which is all a left-aligned label needs. */
+.colWorktree,
+.wt {
+  flex: 0 1 40%;
+  min-width: 0;
 }
 
-.colState {
-  flex: 1;
+.colState,
+.state {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .row {
@@ -318,11 +309,8 @@
 
 .wt {
   display: flex;
-  flex: none;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
-  width: calc(232px * var(--ui-scale));
-  min-width: 0;
 }
 
 .wt > svg {
@@ -342,10 +330,8 @@
 
 .state {
   display: flex;
-  flex: 1;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
-  min-width: 0;
 }
 
 .state > svg {
@@ -362,8 +348,11 @@
 }
 
 .stateWord {
+  overflow: hidden;
   color: var(--fg-default);
   font-size: var(--sway-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stateNote {
@@ -402,6 +391,7 @@
 .footBar {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
   gap: calc(10px * var(--ui-scale));
   padding: calc(10px * var(--ui-scale)) calc(20px * var(--ui-scale));
@@ -420,8 +410,7 @@
 }
 
 .footNote {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 calc(240px * var(--ui-scale));
   margin: 0;
   color: var(--fg-subtle);
   font-size: var(--sway-text-xs);
