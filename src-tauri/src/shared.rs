@@ -320,13 +320,27 @@ fn remove_in(shared: &Path, worktrees: &[PathBuf], name: &str) -> Result<(), Str
     Ok(())
 }
 
-/// Link one entry into every worktree that has nothing of its name. Answers how
-/// many it reached. A shadowed name is left alone, the same rule `link_shared`
-/// follows at creation: a file the branch carries is never replaced by a link.
+/// Link one entry into every worktree that has nothing of its name, or into the
+/// one named. Answers how many it reached. A shadowed name is left alone, the
+/// same rule `link_shared` follows at creation: a file the branch carries is
+/// never replaced by a link.
 #[tauri::command(async)]
-pub fn shared_link(container: String, name: String) -> Result<u32, String> {
+pub fn shared_link(
+    container: String,
+    name: String,
+    worktree: Option<String>,
+) -> Result<u32, String> {
     let name = checked_name(&name)?;
-    link_in(&shared_dir(Path::new(&container)), &live_worktrees(&container), name)
+    let mut live = live_worktrees(&container);
+    // Named or not, the target comes from git's own list: a path the page held
+    // through a delete is one this must not write to.
+    if let Some(one) = worktree {
+        live.retain(|w| w.as_os_str() == one.as_str());
+        if live.is_empty() {
+            return Err(format!("\"{one}\" is not a worktree of this project."));
+        }
+    }
+    link_in(&shared_dir(Path::new(&container)), &live, name)
 }
 
 /// What sharing this file would do, so the confirmation can say it before it
@@ -580,7 +594,7 @@ mod tests {
         let (root, _shared, _w) = container(1);
         let c = root.to_string_lossy().to_string();
         for bad in ["../escape", "a/b", "", "..", "."] {
-            assert!(shared_link(c.clone(), bad.into()).is_err(), "{bad} must be refused");
+            assert!(shared_link(c.clone(), bad.into(), None).is_err(), "{bad} must be refused");
             assert!(shared_remove(c.clone(), bad.into()).is_err(), "{bad} must be refused");
             assert!(shared_unlink(c.clone(), c.clone(), bad.into()).is_err(), "{bad} must be refused");
         }
