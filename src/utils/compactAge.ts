@@ -7,15 +7,15 @@ const YEAR = 365 * DAY;
 
 /**
  * An age as one number and one letter, for a column that has no room for
- * "6 weeks ago": `now`, `3H`, `2D`, `6W`, `3M`, `1Y`. Whole units, floored,
- * so a thing is `1D` from the moment it is a day old until it is two.
+ * "6 weeks ago": `now`, `3h`, `2d`, `6w`, `3m`, `1y`. Whole units, floored,
+ * so a thing is `1d` from the moment it is a day old until it is two.
  */
 export function compactAge(unixSeconds: number, now = Date.now() / 1000): string {
   const age = Math.max(0, now - unixSeconds);
   if (age < HOUR) return "now";
-  if (age < DAY) return `${Math.floor(age / HOUR)}H`;
-  if (age < WEEK) return `${Math.floor(age / DAY)}D`;
-  if (age < MONTH) return `${Math.floor(age / WEEK)}W`;
-  if (age < YEAR) return `${Math.floor(age / MONTH)}M`;
-  return `${Math.floor(age / YEAR)}Y`;
+  if (age < DAY) return `${Math.floor(age / HOUR)}h`;
+  if (age < WEEK) return `${Math.floor(age / DAY)}d`;
+  if (age < MONTH) return `${Math.floor(age / WEEK)}w`;
+  if (age < YEAR) return `${Math.floor(age / MONTH)}m`;
+  return `${Math.floor(age / YEAR)}y`;
 }
