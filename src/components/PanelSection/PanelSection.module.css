@@ -33,13 +33,22 @@
   height: calc(8px * var(--ui-scale));
 }
 
+/* 12px on the left is where a row's icon column starts (4px row margin plus
+   8px row padding), so the chevron sits over the icons below it. */
 .sectionHeader {
   display: flex;
   flex: none;
   align-items: center;
   gap: calc(2px * var(--ui-scale));
   height: calc(30px * var(--ui-scale));
-  padding: 0 calc(6px * var(--ui-scale)) 0 calc(4px * var(--ui-scale));
+  padding: 0 calc(6px * var(--ui-scale)) 0 calc(12px * var(--ui-scale));
+}
+
+/* A size up from the tree's own chevron: this one heads a section. Three
+   classes deep to outweigh Chevron's own `.chevron .chev svg`. */
+.sectionHeader .sectionToggle .sectionChevron svg {
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
 }
 
 .sectionToggle {

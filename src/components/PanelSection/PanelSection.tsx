@@ -56,7 +56,7 @@ export default function PanelSection<Id extends string>(props: {
           aria-expanded={open()}
           onClick={() => props.layout.setOpen(props.id, !open())}
         >
-          <Chevron open={open()} />
+          <Chevron open={open()} class={styles.sectionChevron} />
           <span class={styles.sectionTitle}>{props.title}</span>
         </button>
         <Show when={open()}>{props.actions}</Show>
