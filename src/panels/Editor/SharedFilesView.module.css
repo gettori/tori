@@ -1,4 +1,4 @@
-/* The Worktree Files page: a list of entries and where each one landed, not a
+/* The Shared in worktrees page: a list of entries and where each one landed,
    file tree. Rows are the tree's, so a name reads the same here as anywhere. */
 .page {
   display: flex;
@@ -214,6 +214,25 @@
 
 .link[data-state="missing"] .dot {
   background: var(--scale-orange);
+}
+
+/* The worktree picker inside the move-back confirmation: which one keeps the
+   file is the whole question, so it sits with the sentence that asks it. */
+.pick {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.pick select {
+  padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  color: var(--fg-default);
+  font: inherit;
 }
 
 .wtName {

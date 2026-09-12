@@ -198,7 +198,7 @@ const KEPT = new Map<string, Kept>([
     { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` },
   ],
   [
-    "panels/Editor/WorktreeFilesView.tsx",
+    "panels/Editor/SharedFilesView.tsx",
     { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` },
   ],
   ["panels/LeftSidebar/FeatureItem.tsx", { count: 4, reason: TRUNCATION }],
@@ -271,7 +271,7 @@ const KEPT = new Map<string, Kept>([
  *  the orange stripe, saying the same thing twice; the stripe stayed and the
  *  chip went, and its `title` with it.
  *
- *  **Up one** with the Worktree Files page, whose bar carries the container's
+ *  **Up one** with the Shared in worktrees page, whose bar carries the
  *  path, truncated from the left. */
 const RAW_ELEMENT_TITLES = 67;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket

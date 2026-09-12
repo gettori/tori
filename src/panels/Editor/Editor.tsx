@@ -69,7 +69,7 @@ import CommitDiffView from "./CommitDiffView";
 import ConflictView from "./ConflictView";
 import DiffView from "./DiffView";
 import GraphView from "./GraphView";
-import WorktreeFilesView from "./WorktreeFilesView";
+import SharedFilesView from "./SharedFilesView";
 import DebugSourceView from "./DebugSourceView";
 import ImageView, { isImagePath } from "./ImageView";
 import PdfToolbar from "./PdfToolbar";
@@ -1092,10 +1092,14 @@ export default function Editor(props: {
   // container is a bare one (`create_worktree` links `.shared/` into each
   // worktree) or a plain repo (whose Feature worktrees sit under
   // `.sway/worktrees`, where no such folder is linked).
-  const sharedPath = () => {
+  const sharedContainer = () => {
     const m = activeMember();
-    if (m) return m.kind === "worktree" ? `${m.member.repoPath}/.shared` : null;
-    return props.selected?.projectKind === "worktree" ? `${props.selected.projectPath}/.shared` : null;
+    if (m) return m.kind === "worktree" ? m.member.repoPath : null;
+    return props.selected?.projectKind === "worktree" ? props.selected.projectPath : null;
+  };
+  const sharedPath = () => {
+    const c = sharedContainer();
+    return c ? `${c}/.shared` : null;
   };
 
   // In-app replacement for window.prompt (unimplemented in WKWebView); mirrors the
@@ -2736,7 +2740,7 @@ export default function Editor(props: {
                 {/* Project configuration, not a file: what every worktree of
                     this container gets, and which ones actually got it. */}
                 <Show when={t().kind === "shared"}>
-                  <WorktreeFilesView workspace={t().workspace} />
+                  <SharedFilesView workspace={t().workspace} />
                 </Show>
                 {/* Staging lives here rather than in the Changes panel: a hunk
                     needs the width of a pane, and the panel's rows stay one
@@ -3032,6 +3036,7 @@ export default function Editor(props: {
           <Match when={rightMode() === "files"}>
             <FilesPanel
               root={root()}
+              container={sharedContainer()}
               members={featureId() ? members() : []}
               activePath={shownFileId()}
               outlinePath={activeId()}

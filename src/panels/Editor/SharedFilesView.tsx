@@ -1,6 +1,6 @@
-import { createEffect, createMemo, createSignal, on, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, For, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { Folder, FolderSymlink, Link2, Link2Off, RefreshCw, Trash2 } from "lucide-solid";
+import { FileDown, Folder, FolderSymlink, Link2, Link2Off, RefreshCw, Trash2 } from "lucide-solid";
 
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import Button from "../../components/Button/Button";
@@ -10,7 +10,7 @@ import Tooltip from "../../components/Tooltip/Tooltip";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import ConfirmDialog from "../../components/Dialogs/ConfirmDialog";
 import FileIcon from "../../seti/FileIcon";
-import styles from "./WorktreeFilesView.module.css";
+import styles from "./SharedFilesView.module.css";
 
 /** Mirrors `LinkState` in src-tauri/src/shared.rs. */
 type LinkState = "linked" | "missing" | "shadowed";
@@ -22,7 +22,13 @@ type Overview = { dir: string; exists: boolean; worktrees: string[]; entries: Sh
 const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-type Ask = { title: string; message: string; confirmLabel: string; run: () => void };
+type Ask = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  extra?: JSX.Element;
+  run: () => void;
+};
 
 /** A folder has no extension to pick a glyph from, so it gets the one icon a
  *  folder ever gets; a file gets the tree's. */
@@ -55,12 +61,13 @@ const STATE_WHY: Record<LinkState, string> = {
  * and a file tree shows no sign of it. Each row answers that, and the button
  * beside it closes the gap.
  */
-export default function WorktreeFilesView(props: { workspace: string }) {
+export default function SharedFilesView(props: { workspace: string }) {
   const [data, setData] = createSignal<Overview | null>(null);
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal("");
   const [open, setOpen] = createSignal<ReadonlySet<string>>(new Set());
   const [ask, setAsk] = createSignal<Ask | null>(null);
+  const [keepIn, setKeepIn] = createSignal("");
 
   // Which read is current: the strip reuses one component across tabs of a
   // kind, so an earlier container's answer can land after a later one's.
@@ -128,10 +135,45 @@ export default function WorktreeFilesView(props: { workspace: string }) {
     });
   }
 
+  /** Stop sharing without losing the file: it moves back into one worktree as a
+   *  real file and the other links go. Which worktree is the whole question, so
+   *  the confirmation asks it rather than picking. */
+  function keep(e: SharedEntry) {
+    const holders = e.links.filter((l) => l.state === "linked").map((l) => l.path);
+    const target = holders[0] ?? data()?.worktrees[0];
+    if (!target) return;
+    setKeepIn(target);
+    setAsk({
+      title: `Stop sharing ${e.name}?`,
+      message:
+        `The ${e.is_dir ? "folder" : "file"} moves back into one worktree and becomes a normal ` +
+        `${e.is_dir ? "folder" : "file"} there.` +
+        (holders.length > 1 ? ` The other ${plural(holders.length - 1, "worktree")} lose it.` : "") +
+        "\n\nIt stops being hidden from git in this project.",
+      confirmLabel: "Move back",
+      extra: (
+        <label class={styles.pick}>
+          Keep it in
+          <select value={keepIn()} onChange={(ev) => setKeepIn(ev.currentTarget.value)}>
+            <For each={holders.length ? holders : (data()?.worktrees ?? [])}>
+              {(w) => <option value={w}>{basename(w)}</option>}
+            </For>
+          </select>
+        </label>
+      ),
+      run: () =>
+        void run(`keep:${e.name}`, async () => {
+          const worktree = keepIn();
+          await invoke("shared_keep_in", { container: props.workspace, worktree, name: e.name });
+          return `${e.name} is a normal ${e.is_dir ? "folder" : "file"} in ${basename(worktree)} now.`;
+        }),
+    });
+  }
+
   function remove(e: SharedEntry) {
     const n = linkedIn(e);
     setAsk({
-      title: `Stop sharing ${e.name}?`,
+      title: `Delete ${e.name} everywhere?`,
       message:
         `The ${e.is_dir ? "folder" : "file"} is deleted from the shared folder` +
         (n ? `, and the ${plural(n, "link")} pointing at it go with it.` : ".") +
@@ -149,7 +191,7 @@ export default function WorktreeFilesView(props: { workspace: string }) {
     <div class={styles.page}>
       <div class={styles.topBar}>
         <Icon icon={FolderSymlink} />
-        <span class={styles.title}>Worktree files</span>
+        <span class={styles.title}>Shared in worktrees</span>
         <span class={styles.dir} title={data()?.dir ?? props.workspace}>
           {data()?.dir ?? props.workspace}
         </span>
@@ -226,10 +268,18 @@ export default function WorktreeFilesView(props: { workspace: string }) {
                           </Show>
                           <IconButton
                             size="xs"
+                            icon={<Icon icon={FileDown} />}
+                            disabled={!!busy()}
+                            aria-label={`Stop sharing ${e.name}, keeping the file`}
+                            tooltip="Stop sharing and move it back into one worktree"
+                            onClick={() => keep(e)}
+                          />
+                          <IconButton
+                            size="xs"
                             icon={<Icon icon={Trash2} />}
                             disabled={!!busy()}
-                            aria-label={`Stop sharing ${e.name}`}
-                            tooltip="Stop sharing this and delete it"
+                            aria-label={`Delete ${e.name}`}
+                            tooltip="Delete it and every link to it"
                             onClick={() => remove(e)}
                           />
                         </span>
@@ -288,6 +338,7 @@ export default function WorktreeFilesView(props: { workspace: string }) {
             title={a().title}
             message={a().message}
             confirmLabel={a().confirmLabel}
+            extra={a().extra}
             onConfirm={() => {
               const req = a();
               setAsk(null);

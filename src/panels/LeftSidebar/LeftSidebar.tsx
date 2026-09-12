@@ -1790,9 +1790,9 @@ export default function LeftSidebar(props: {
   // the typed name. create_worktree DWIMs the target: an existing local checks
   // out, a remote-only name (origin/<name>) is tracked, a brand-new name starts a
   // branch off origin's default.
-  /** The container's Worktree Files page, as an editor tab. The container is in
+  /** The container's Shared in worktrees page, as an editor tab. The container
    *  the tab's id, so the page reads the right one wherever the tab lands. */
-  function openWorktreeFiles(p: Project) {
+  function openSharedFiles(p: Project) {
     emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("shared", p.path) });
   }
 
@@ -2121,7 +2121,7 @@ export default function LeftSidebar(props: {
           { label: "Add Worktree", onClick: () => addWorktree(p) },
           // Beside Add Worktree on purpose: the menu that makes worktrees is
           // where you say what they are made with.
-          { label: "Worktree files…", onClick: () => openWorktreeFiles(p) },
+          { label: "Shared in worktrees…", onClick: () => openSharedFiles(p) },
           { label: "Fan out…", onClick: () => fanOut(p) },
           ...(hasOrigin(p)
             ? [{ separator: true } as MenuItem, { label: "Change origin…", warn: true, onClick: () => changeRemote(p) }]
@@ -2162,7 +2162,7 @@ export default function LeftSidebar(props: {
         // actions to bring one back, plus stub removal.
         return [
           { label: "Add Worktree", onClick: () => addWorktree(p) },
-          { label: "Worktree files…", onClick: () => openWorktreeFiles(p) },
+          { label: "Shared in worktrees…", onClick: () => openSharedFiles(p) },
           ...(hasOrigin(p)
             ? [{ separator: true } as MenuItem, { label: "Change origin…", warn: true, onClick: () => changeRemote(p) }]
             : [{ separator: true } as MenuItem, { label: "Add Origin", onClick: () => addRemote(p) }]),
@@ -3104,11 +3104,11 @@ export default function LeftSidebar(props: {
                         size="xs"
                         class={styles.driftMark}
                         icon={<Icon icon={Unlink} />}
-                        aria-label={`${p.name}: worktree files missing`}
+                        aria-label={`${p.name}: shared files missing from a worktree`}
                         tooltip={`${n()} shared ${n() === 1 ? "file is" : "files are"} missing from a worktree`}
                         onClick={(e: MouseEvent) => {
                           e.stopPropagation();
-                          openWorktreeFiles(p);
+                          openSharedFiles(p);
                         }}
                       />
                     )}
