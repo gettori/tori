@@ -1,8 +1,10 @@
 // One tag table for the editor's HighlightStyle and the `sy-{role}` classes
 // App.css maps onto --syntax-* vars, so code drawn outside an EditorView (the
 // diff rows) colours a keyword exactly as the editor does. Behind the fence.
-import { HighlightStyle } from "@codemirror/language";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags as t, tagHighlighter, type Tag } from "@lezer/highlight";
+import type { Extension } from "@codemirror/state";
+import { languageForPath } from "./languages";
 
 type Entry = { tag: Tag | readonly Tag[]; color: string; fontStyle?: string };
 
@@ -55,3 +57,11 @@ export const syntaxClassHighlighter = tagHighlighter(
 );
 
 export const SYNTAX_ROLES: readonly string[] = [...new Set(TABLE.map(roleOf))];
+
+/** A path's language and the colours to paint it with, for a view that wants
+ *  both and has no use for the rest of the editing stack. Empty when the
+ *  suffix names no language. */
+export async function syntaxFor(path: string): Promise<Extension> {
+  const language = await languageForPath(path);
+  return language ? [language, syntaxHighlighting(swayHighlight)] : [];
+}
