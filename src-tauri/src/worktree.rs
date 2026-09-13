@@ -92,7 +92,25 @@ pub(crate) fn list_worktrees_body(repo_path: String) -> Result<Vec<Worktree>, St
         }
     }
     flush(&mut cur_path, &mut cur_branch, &mut cur_bare, &mut first, &mut result);
+    result.retain(worked_in);
     Ok(result)
+}
+
+/// A checkout in a hidden folder is infrastructure, not a branch anyone works
+/// in. Scribe's `/wiki-init` puts `.wiki` on an orphan branch and checks it out
+/// beside the worktrees, so git lists it like any other: unfiltered it becomes a
+/// branch row in the sidebar and a fourth place every shared file is missing
+/// from.
+///
+/// The bare record is exempt, since callers ask for it by name, and so is the
+/// main one: a repo cloned into a hidden folder (`~/.dotfiles`) is still a repo
+/// someone opened on purpose.
+fn worked_in(w: &Worktree) -> bool {
+    w.is_bare
+        || w.is_main
+        || !Path::new(&w.path)
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().starts_with('.'))
 }
 
 // --- helpers ---
