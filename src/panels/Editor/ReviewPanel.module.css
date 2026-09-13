@@ -564,25 +564,36 @@
    and a dragged box would be overwritten by the next keystroke. */
 .commitInput {
   composes: input from "../../styles/patterns.module.css";
-  background: none;
-  border: none;
   resize: none;
 }
 
-.commitInput:focus {
+/* Doubled for specificity, the way `.splitMore` is: `composes` lands the
+   pattern's rule after this file's in the bundle, so a plain `border: none`
+   loses to it and the card draws a second box inside itself. */
+.commitInput.commitInput {
+  background: none;
   border: none;
 }
 
+/* The numbers and the verb they qualify. Wraps rather than squeezes: at the
+   panel's narrowest the buttons take their own line and the count keeps its
+   words, which beats "Nothing to commit" worn down to "N..". */
 .commitFooter {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  padding: 0 calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale))
+    calc(10px * var(--ui-scale));
 }
 
 .commitStats {
   overflow: hidden;
-  min-width: 0;
+  /* Its own width and no more, floored at its longest word: "3 files" takes
+     the room "3 files" needs, and the buttons wrap before "Nothing to commit"
+     is worn down to "N..". */
+  flex: 0 1 auto;
+  min-width: min-content;
   color: var(--fg-muted);
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: var(--sway-text-sm);
@@ -594,6 +605,7 @@
   display: flex;
   flex: none;
   gap: calc(6px * var(--ui-scale));
+  margin-left: auto;
 }
 
 /* Commit fills the split button, which is what has the width. */
