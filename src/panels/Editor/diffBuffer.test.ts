@@ -2,7 +2,15 @@ import { describe, it, expect } from "vitest";
 import { EditorState, type StateCommand } from "@codemirror/state";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import type { DiffRow } from "../../utils/diffView";
-import { diffBufferExtension, diffBufferField, nextChange, oldLineAt, previousChange, setDiffHunks } from "./diffBuffer";
+import {
+  changeSpans,
+  diffBufferExtension,
+  diffBufferField,
+  nextChange,
+  oldLineAt,
+  previousChange,
+  setDiffHunks,
+} from "./diffBuffer";
 
 const DOC = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n");
 
@@ -122,5 +130,18 @@ describe("moving between changes", () => {
     };
     expect([go(nextChange), go(nextChange), go(nextChange), go(nextChange)]).toEqual([3, 12, 26, 3]);
     expect(go(previousChange)).toBe(26);
+  });
+});
+
+describe("the overview ruler's spans", () => {
+  it("puts removed runs on the old strip and added runs on the new one", () => {
+    const state = load();
+    const line = (pos: number) => state.doc.lineAt(pos).number;
+    expect(changeSpans(state).map((s) => [s.side, line(s.from), line(s.to)])).toEqual([
+      ["old", 3, 3],
+      ["new", 3, 3],
+      ["new", 12, 13],
+      ["old", 26, 26],
+    ]);
   });
 });

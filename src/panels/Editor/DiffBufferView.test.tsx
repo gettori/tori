@@ -2,7 +2,9 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup } from "@solidjs/testing-library";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { SearchQuery, setSearchQuery } from "@codemirror/search";
+import { UNCOMMITTED, type Blame } from "../../utils/blame";
 import { parseDiffHunks } from "../../utils/diffHunks";
+import { blameAtLine } from "./blameGutter";
 import DiffBufferView from "./DiffBufferView";
 
 const flags = vi.hoisted(() => ({ vim: false }));
@@ -33,7 +35,19 @@ const DIFF = [
   " const v17 = 17;",
 ].join("\n");
 
-function mount() {
+const COMMITS = [
+  { sha: "a".repeat(40), short: "aaaaaaa", author: "Ada", time: 1_600_000_000, summary: "first" },
+  { sha: "b".repeat(40), short: "bbbbbbb", author: "Bo", time: 1_700_000_000, summary: "second" },
+  { sha: UNCOMMITTED, short: "0000000", author: "Not Committed Yet", time: 1_800_000_000, summary: "" },
+];
+
+const BLAME: Blame = {
+  head: "c".repeat(40),
+  commits: COMMITS,
+  lines: Array.from({ length: 20 }, (_, i) => (i === 2 ? 2 : i % 2)),
+};
+
+function mount(blame: Blame | null = null) {
   const { container } = render(() => (
     <DiffBufferView
       text={DOC}
@@ -42,6 +56,7 @@ function mount() {
       staged={false}
       busy={false}
       canStage
+      blame={blame}
       onHunk={() => {}}
       onSelect={() => {}}
     />
@@ -96,6 +111,31 @@ describe("DiffBufferView", () => {
     bands()[0].click();
     expect(bands()).toHaveLength(1);
     expect(content()).toContain("const v9 = 9;");
+  });
+
+  it("carries the same blame the editor tab lays on the same lines", () => {
+    const { container, view } = mount(BLAME);
+    expect(container.querySelector(".cm-blame-gutter")).not.toBeNull();
+    const lines = Array.from({ length: 20 }, (_, i) => i + 1);
+    const expected = lines.map((n) => {
+      const commit = COMMITS[BLAME.lines[n - 1]];
+      return commit.sha === UNCOMMITTED ? null : commit;
+    });
+    expect(lines.map((n) => blameAtLine(view.state, n))).toEqual(expected);
+  });
+
+  it("marks both strips of the overview ruler in document order, with no minimap", () => {
+    const { container } = mount();
+    const tops = (side: string) =>
+      [...container.querySelectorAll<HTMLElement>(`.cm-diff-overview-${side} .cm-diff-overview-mark`)].map((m) =>
+        parseFloat(m.style.top),
+      );
+    const old = tops("old");
+    expect(old).toHaveLength(2);
+    expect(tops("new")).toHaveLength(1);
+    expect(old[0]).toBeLessThan(old[1]);
+    expect(old[1]).toBeGreaterThan(50);
+    expect(container.querySelector(".cm-sway-minimap")).toBeNull();
   });
 
   it("carries the vim layer when vim is on", () => {

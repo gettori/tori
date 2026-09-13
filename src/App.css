@@ -731,6 +731,43 @@ html {
   color: var(--fg-default);
 }
 
+/* Beside the scroller rather than over it, so long lines and the scrollbar
+   stay clear of the marks. */
+.cm-diff-overview-host .cm-scroller {
+  margin-right: calc(10px * var(--ui-scale));
+}
+
+.cm-diff-overview {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 1px;
+  width: calc(10px * var(--ui-scale));
+  pointer-events: none;
+  border-left: 1px solid var(--border-default);
+}
+
+.cm-diff-overview-old,
+.cm-diff-overview-new {
+  position: relative;
+  flex: 1;
+}
+
+.cm-diff-overview-mark {
+  position: absolute;
+  inset-inline: 0;
+  min-height: 2px;
+}
+
+.cm-diff-overview-old .cm-diff-overview-mark {
+  background: var(--diff-deleted);
+}
+
+.cm-diff-overview-new .cm-diff-overview-mark {
+  background: var(--diff-added);
+}
+
 .cm-diff-old-numbers .cm-gutterElement {
   min-width: 20px;
   padding: 0 3px 0 5px;
