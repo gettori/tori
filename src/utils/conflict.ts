@@ -388,8 +388,9 @@ export function keeps(choice: Choice, side: Side): boolean {
  *  with nothing removes the line rather than leaving a blank one. */
 export type ResultSlot = { id: string; from: number; to: number };
 
-/** A built document and the conflicts still open in it. */
-export type ResultDoc = { text: string; slots: ResultSlot[] };
+/** A built document, the conflicts still open in it, and where each region that
+ *  needed no decision landed. */
+export type ResultDoc = { text: string; slots: ResultSlot[]; carried: ResultSlot[] };
 
 /**
  * The file the chosen resolutions add up to, with an empty line held open
@@ -418,6 +419,7 @@ export function buildResult(
 
   const out: string[] = [];
   const marks: { id: string; from: number; to: number }[] = [];
+  const carried: typeof marks = [];
   let cursor = 1;
   for (const r of regions) {
     out.push(...base.slice(cursor - 1, r.base.from - 1));
@@ -431,7 +433,9 @@ export function buildResult(
     } else {
       // `hand` contributes nothing, for the same reason it cannot be rebuilt:
       // those lines are the reader's own and live in the document.
+      const from = out.length;
       out.push(...(choiceLines(stages, r, choice) ?? []));
+      if (!r.both) carried.push({ id: r.id, from, to: out.length });
     }
     cursor = r.base.to;
   }
@@ -447,7 +451,8 @@ export function buildResult(
   offsets.push(at);
   // The last line has no newline to reach past, so its slot stops at the end.
   const clamp = (i: number) => Math.min(text.length, offsets[i]);
-  return { text, slots: marks.map((m) => ({ id: m.id, from: clamp(m.from), to: clamp(m.to) })) };
+  const span = (m: ResultSlot) => ({ id: m.id, from: clamp(m.from), to: clamp(m.to) });
+  return { text, slots: marks.map(span), carried: carried.map(span) };
 }
 
 /** The Result pane's starting document: every conflict still open. */
