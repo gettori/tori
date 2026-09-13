@@ -78,8 +78,12 @@ export default function DiffRows(props: {
   path?: string;
 }) {
   const painted = createMemo(() => (props.path ? paintRows(props.rows, props.path) : null));
+  const numbered = createMemo(() => props.rows.some((r) => r.oldLine !== null || r.newLine !== null));
+  const digits = createMemo(
+    () => String(props.rows.reduce((max, r) => Math.max(max, r.oldLine ?? 0, r.newLine ?? 0), 0)).length,
+  );
 
-  function cell(row: DiffRow | null, index: number | null) {
+  function cell(row: DiffRow | null, index: number | null, only?: "old" | "new") {
     // Read once, not per render: whether a surface offers line staging is a
     // property of the surface, so a read-only diff (a commit, a transcript)
     // gets no handlers and no roles at all rather than inert ones on every
@@ -92,7 +96,10 @@ export default function DiffRows(props: {
       <div
         class={`${styles.diffLine} ${row ? (styles[rowClass(row)] ?? "") : styles.sideEmpty} ${
           selectable ? styles.selectable : ""
-        } ${picked() ? styles.selected : ""} ${spans() ? styles.painted : ""}`}
+        } ${picked() ? styles.selected : ""} ${spans() ? styles.painted : ""} ${numbered() ? styles.numbered : ""}`}
+        data-old={only === "new" ? undefined : (row?.oldLine ?? undefined)}
+        data-new={only === "old" ? undefined : (row?.newLine ?? undefined)}
+        style={digits() > 4 ? { "--diff-num-digits": digits() } : undefined}
         onClick={selectable ? toggle : undefined}
         // A line is in the selection or it is not, which is what a checkbox
         // is. Reachable by keyboard for the same reason the conflicted row is
@@ -126,8 +133,8 @@ export default function DiffRows(props: {
         <For each={toSideBySide(props.rows)}>
           {(side) => (
             <div class={styles.sideRow}>
-              {cell(side.left, side.leftIndex)}
-              {cell(side.right, side.rightIndex)}
+              {cell(side.left, side.leftIndex, "old")}
+              {cell(side.right, side.rightIndex, "new")}
             </div>
           )}
         </For>

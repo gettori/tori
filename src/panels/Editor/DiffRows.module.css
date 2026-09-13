@@ -78,6 +78,32 @@
   box-shadow: inset calc(3px * var(--ui-scale)) 0 0 var(--accent-fg);
 }
 
+/* Line numbers are generated content read off data attributes, so they are never
+   part of a row's text: not its textContent, not what a copy picks up. */
+.diffLine.numbered {
+  --diff-num-digits: 4;
+  --diff-num-col: calc(var(--diff-num-digits) * 1ch + 8px * var(--ui-scale));
+  position: relative;
+  padding-left: calc(8px * var(--ui-scale) + 2 * var(--diff-num-col));
+}
+.diffLine.numbered::before,
+.diffLine.numbered::after {
+  position: absolute;
+  top: 0;
+  width: calc(var(--diff-num-digits) * 1ch);
+  text-align: right;
+  color: var(--fg-muted);
+  user-select: none;
+}
+.diffLine.numbered::before {
+  content: attr(data-old);
+  left: calc(8px * var(--ui-scale));
+}
+.diffLine.numbered::after {
+  content: attr(data-new);
+  left: calc(8px * var(--ui-scale) + var(--diff-num-col));
+}
+
 /* Side-by-side. Both columns live in one grid row inside a single scroll
    container, so they stay aligned and scroll together without a sync handler. */
 .sideBySide {
@@ -92,6 +118,15 @@
 }
 .sideRow > .diffLine:first-child {
   border-right: 1px solid var(--border-default);
+}
+.sideRow > .diffLine.numbered {
+  padding-left: calc(8px * var(--ui-scale) + var(--diff-num-col));
+}
+.sideRow > .diffLine.numbered::before {
+  content: attr(data-old) attr(data-new);
+}
+.sideRow > .diffLine.numbered::after {
+  content: none;
 }
 /* A cell with no counterpart on this side: present but visibly not a line. */
 .diffLine.sideEmpty {

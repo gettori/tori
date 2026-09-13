@@ -17,10 +17,11 @@
 
 export type Seg = { text: string; changed: boolean };
 
-export type DiffRow =
+export type DiffRow = { oldLine: number | null; newLine: number | null } & (
   | { kind: "context" | "meta"; text: string }
   // `pair` links a del to the add it was matched with (side-by-side alignment).
-  | { kind: "del" | "add"; text: string; segs?: Seg[]; pair?: number };
+  | { kind: "del" | "add"; text: string; segs?: Seg[]; pair?: number }
+);
 
 // Words, runs of whitespace, and single punctuation chars. Identifier chars
 // include `_`/`$` so `fooBar_baz` is one token rather than three.
@@ -129,16 +130,27 @@ function classify(line: string): "add" | "del" | "meta" | "context" {
   return "context";
 }
 
-/** Build rendered rows from a hunk's lines (header excluded). */
-export function buildRows(lines: string[]): DiffRow[] {
+/** Build rendered rows from a hunk's lines (header excluded), numbered from the
+ *  hunk's two starts. Without `start` every row's numbers are null. */
+export function buildRows(lines: string[], start?: { old: number; new: number }): DiffRow[] {
   const rows: DiffRow[] = [];
   let pairSeq = 0;
   let i = 0;
+  let oldAt = start?.old ?? null;
+  let newAt = start?.new ?? null;
+
+  const numbers = (kind: DiffRow["kind"]) => {
+    const oldLine = kind === "add" || kind === "meta" ? null : oldAt;
+    const newLine = kind === "del" || kind === "meta" ? null : newAt;
+    if (oldLine !== null) oldAt = oldLine + 1;
+    if (newLine !== null) newAt = newLine + 1;
+    return { oldLine, newLine };
+  };
 
   while (i < lines.length) {
     const kind = classify(lines[i]);
     if (kind !== "del" && kind !== "add") {
-      rows.push({ kind, text: lines[i] });
+      rows.push({ kind, text: lines[i], ...numbers(kind) });
       i++;
       continue;
     }
@@ -154,18 +166,18 @@ export function buildRows(lines: string[]): DiffRow[] {
     const addPair = new Map<number, number>();
     const delRows: DiffRow[] = dels.map((text, di) => {
       const aj = matches[di];
-      if (aj < 0) return { kind: "del", text };
+      if (aj < 0) return { kind: "del", text, ...numbers("del") };
       const segs = wordSegs(text, adds[aj]);
       const id = pairSeq++;
       addPair.set(aj, id);
-      return { kind: "del", text, segs: segs?.del, pair: id };
+      return { kind: "del", text, segs: segs?.del, pair: id, ...numbers("del") };
     });
     const addRows: DiffRow[] = adds.map((text, aj) => {
       const id = addPair.get(aj);
-      if (id === undefined) return { kind: "add", text };
+      if (id === undefined) return { kind: "add", text, ...numbers("add") };
       const di = matches.indexOf(aj);
       const segs = wordSegs(dels[di], text);
-      return { kind: "add", text, segs: segs?.add, pair: id };
+      return { kind: "add", text, segs: segs?.add, pair: id, ...numbers("add") };
     });
     rows.push(...delRows, ...addRows);
   }

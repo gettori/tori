@@ -700,7 +700,7 @@ export default function PrDetail(props: {
               // changes; recomputing it on a column toggle or a gap expansion is
               // pure waste. The segments then change only when a thread appears
               // at a new line, so the diff's DOM survives everything else.
-              const rows = createMemo(() => buildRows(hunk.lines));
+              const rows = createMemo(() => buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine }));
               const lines = createMemo(() => newSideLines(hunk));
               const oldLines = createMemo(() => oldSideLines(hunk));
               const segments = createMemo(() => {
