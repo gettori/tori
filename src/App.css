@@ -779,6 +779,61 @@ html {
   background: var(--diff-added);
 }
 
+/* Emitted as literal class strings by conflictBands.ts, so global. */
+.cm-conflict-current {
+  background: color-mix(in srgb, var(--success-fg) 12%, transparent);
+}
+
+.cm-conflict-current-marker {
+  background: color-mix(in srgb, var(--success-fg) 28%, transparent);
+}
+
+.cm-conflict-base {
+  background: color-mix(in srgb, var(--fg-muted) 10%, transparent);
+}
+
+.cm-conflict-base-marker,
+.cm-conflict-split {
+  background: color-mix(in srgb, var(--fg-muted) 22%, transparent);
+}
+
+.cm-conflict-incoming {
+  background: color-mix(in srgb, var(--accent-fg) 12%, transparent);
+}
+
+.cm-conflict-incoming-marker {
+  background: color-mix(in srgb, var(--accent-fg) 28%, transparent);
+}
+
+.cm-conflict-marker {
+  color: var(--fg-muted);
+}
+
+.cm-conflict-overview-host .cm-scroller {
+  margin-right: calc(10px * var(--ui-scale));
+}
+
+.cm-conflict-overview {
+  display: none;
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: calc(10px * var(--ui-scale));
+  pointer-events: none;
+  border-left: 1px solid var(--border-default);
+}
+
+.cm-conflict-overview-host .cm-conflict-overview {
+  display: block;
+}
+
+.cm-conflict-overview-mark {
+  position: absolute;
+  inset-inline: 0;
+  min-height: 2px;
+  background: var(--danger-fg);
+}
+
 .cm-diff-old-numbers .cm-gutterElement {
   min-width: 20px;
   padding: 0 3px 0 5px;

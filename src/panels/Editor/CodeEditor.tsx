@@ -18,6 +18,7 @@ import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { repoint } from "./renameTabs";
 import { diffGutterExtension, diffLineNumbers, setDiffMarkers, type Hunk } from "./diffGutter";
 import { blameExtension, setAgentMarkers, setBlameMarkers, type TurnLink } from "./blameGutter";
+import { conflictBands } from "./conflictBands";
 import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blame";
 import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agentLines";
 import { chatsInFolder, liveChats } from "../../utils/chatSessions";
@@ -1075,6 +1076,7 @@ export default function CodeEditor(props: {
     foldGutter(),
     highlightSelectionMatches(),
     diffGutterExtension(),
+    conflictBands(),
     blameConf.of([]),
     prefsConf.of(currentPrefExtensions()),
     // What the selection was before it last grew, so shrink has somewhere to go
