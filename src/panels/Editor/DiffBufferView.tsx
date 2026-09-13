@@ -15,14 +15,28 @@ import { defaultKeymap } from "@codemirror/commands";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import type { DiffHunk } from "../../utils/diffHunks";
 import { vimModeOn } from "../Settings/settingsStore";
-import { diffBufferExtension, setDiffHunks } from "./diffBuffer";
+import {
+  diffBufferExtension,
+  diffBufferField,
+  hunkActionGutter,
+  selectedRows,
+  setDiffHunks,
+  type HunkAction,
+} from "./diffBuffer";
 import { swayTheme } from "./editorTheme";
 import { languageForPath } from "./languages";
 import { syntaxFor } from "./syntaxStyle";
 import { vimExtension } from "./vimMode";
 import styles from "./DiffBufferView.module.css";
 
-export default function DiffBufferView(props: { text: string; hunks: DiffHunk[]; path: string }) {
+export default function DiffBufferView(props: {
+  text: string;
+  hunks: DiffHunk[];
+  path: string;
+  staged: boolean;
+  onHunk: (hunk: number, action: HunkAction) => void;
+  onSelect: (picked: { hunk: number; lines: number[] }[]) => void;
+}) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
   let language: Language | null = null;
@@ -48,6 +62,7 @@ export default function DiffBufferView(props: { text: string; hunks: DiffHunk[];
           vimConf.of(vimExtension(vimModeOn())),
           diffBufferExtension(),
           lineNumbers(),
+          hunkActionGutter({ staged: () => props.staged, run: (hunk, action) => props.onHunk(hunk, action) }),
           highlightActiveLine(),
           highlightActiveLineGutter(),
           drawSelection(),
@@ -57,6 +72,11 @@ export default function DiffBufferView(props: { text: string; hunks: DiffHunk[];
           syntaxConf.of([]),
           swayTheme,
           keymap.of([...searchKeymap, ...defaultKeymap]),
+          EditorView.updateListener.of((update) => {
+            if (update.selectionSet || update.startState.field(diffBufferField) !== update.state.field(diffBufferField)) {
+              props.onSelect(selectedRows(update.state));
+            }
+          }),
         ],
       }),
     });

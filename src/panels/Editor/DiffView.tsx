@@ -128,6 +128,7 @@ export default function DiffView(props: {
   createEffect(on(diff, () => setPicked(null)));
 
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
+  const linesLabel = (count: number) => `${staged() ? "Unstage" : "Stage"} ${count} line${count === 1 ? "" : "s"}`;
 
   function toastError(e: unknown) {
     emitWith<ToastEvent>(TOAST, { message: String(e), kind: "error" });
@@ -189,8 +190,18 @@ export default function DiffView(props: {
     }),
   );
 
-  // The text is only fetched by a reload, and another diff tab can flip the layout.
-  createEffect(on(editorLayout, () => void reload(), { defer: true }));
+  // Picks belong to the layout they were made in, the text is only fetched by a
+  // reload, and another diff tab can flip the layout.
+  createEffect(
+    on(
+      editorLayout,
+      () => {
+        setPicked(null);
+        void reload();
+      },
+      { defer: true },
+    ),
+  );
 
   /** Run one index-shuffling apply and put the view back in step with it. On
    *  failure the refetch happens before the error surfaces, so the user is
@@ -415,6 +426,22 @@ export default function DiffView(props: {
           <span class={styles.dir}>{fileDir(file())}</span>
         </Show>
         <span class={styles.mode}>{staged() ? "Staged" : "Working tree"}</span>
+        <Show when={editorLayout() ? picked() : null}>
+          {(sel) => (
+            <Button
+              size="xs"
+              disabled={applying()}
+              tooltip={staged() ? "Unstage only the selected lines" : "Stage only the selected lines"}
+              onClick={() => {
+                const hunk = hunks()[sel().hunk];
+                const lines = [...sel().lines].sort((a, b) => a - b);
+                void applyLines(sel().hunk, hunkFingerprint(hunk.header, hunk.lines), lines);
+              }}
+            >
+              {linesLabel(sel().lines.size)}
+            </Button>
+          )}
+        </Show>
         <span class={styles.spacer} />
         <IconButton
           size="sm"
@@ -540,9 +567,7 @@ export default function DiffView(props: {
                             )
                           }
                         >
-                          {`${staged() ? "Unstage" : "Stage"} ${sel().lines.size} line${
-                            sel().lines.size === 1 ? "" : "s"
-                          }`}
+                          {linesLabel(sel().lines.size)}
                         </Button>
                       )}
                     </Show>
@@ -583,7 +608,20 @@ export default function DiffView(props: {
           </div>
         </Show>
         <Show when={editorLayout() && fileText() !== null}>
-          <DiffBufferView text={fileText()!} hunks={hunks()} path={file()} />
+          <DiffBufferView
+            text={fileText()!}
+            hunks={hunks()}
+            path={file()}
+            staged={staged()}
+            onHunk={(index, action) => {
+              const hunk = hunks()[index];
+              const fingerprint = hunkFingerprint(hunk.header, hunk.lines);
+              void (action === "apply" ? applyHunk(index, fingerprint) : discardHunk(index, fingerprint));
+            }}
+            onSelect={(groups) =>
+              setPicked(groups.length === 1 ? { hunk: groups[0].hunk, lines: new Set(groups[0].lines) } : null)
+            }
+          />
         </Show>
       </Show>
       <Show when={confirmReq()}>

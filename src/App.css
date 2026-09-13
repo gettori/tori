@@ -724,6 +724,37 @@ html {
   text-align: right;
 }
 
+.cm-diff-hunk-buttons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+  padding: 0 2px;
+}
+
+.cm-diff-hunk-action {
+  display: inline-flex;
+  padding: 0;
+  color: var(--fg-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.cm-diff-hunk-action:hover {
+  color: var(--fg-default);
+}
+
+.cm-diff-hunk-action svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* Git blame. Emitted as literal class strings by src/panels/Editor/blameGutter.ts,
    so like the diff gutter above they are global rather than CSS-module scoped.
 
