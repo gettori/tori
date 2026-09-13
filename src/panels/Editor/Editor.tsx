@@ -936,15 +936,24 @@ export default function Editor(props: {
   // every git action, so the banner appears and clears on the same beat as the
   // Changes panel's Conflicts section, with no second source of truth.
 
-  /** Open the open file's three-way view. A tab rather than a pane inside this
-   *  one: the file itself stays open beside it, which is where the reader ends
-   *  up once they know which side they want. */
-  function openConflictView() {
+  /** Open a file's three-way view, the open file's by default. A tab rather
+   *  than a pane inside this one: the file itself stays open beside it, which is
+   *  where the reader ends up once they know which side they want. */
+  function openConflictView(path = activeFileTab()?.path) {
     const r = root();
-    const path = activeFileTab()?.path;
     const rel = r && path && repoRelative(path, r);
     if (!r || !rel) return;
     emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("conflict", r, rel) });
+  }
+
+  // Markers can outlive the conflict (after a `git add`, or committed by
+  // mistake), and the three-way tab can only read stages git still holds.
+  function compareConflict(path: string) {
+    if (isConflicted(watchRoots(), path)) return openConflictView(path);
+    emitWith<ToastEvent>(TOAST, {
+      message: "Git no longer lists this file as conflicted, so there are no versions to compare.",
+      kind: "info",
+    });
   }
 
   // Safe-send's capability gate, the same pair the Changes and Problems panels
@@ -2622,7 +2631,7 @@ export default function Editor(props: {
         <Show when={conflictedHere()}>
           <div class={styles.conflictBanner} role="status">
             <span>Merge conflict: this file holds both sides.</span>
-            <Button size="xs" onClick={openConflictView}>
+            <Button size="xs" onClick={() => openConflictView()}>
               Compare the versions
             </Button>
             <Button
@@ -2907,6 +2916,7 @@ export default function Editor(props: {
             onBreakpointsMoved={breaksMoved}
             frameLine={frameLocation()}
             onCloseFile={forceCloseFile}
+            onCompareConflict={compareConflict}
             reverted={reverted()}
             selected={props.selected}
             blame={blameOn()}

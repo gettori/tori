@@ -809,6 +809,27 @@ html {
   color: var(--fg-muted);
 }
 
+.cm-conflict-actions {
+  display: flex;
+  gap: calc(10px * var(--ui-scale));
+  padding: 0 calc(4px * var(--ui-scale));
+  font-size: var(--sway-text-md);
+}
+
+.cm-conflict-action {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cm-conflict-action:hover {
+  color: var(--accent-fg);
+  text-decoration: underline;
+}
+
 .cm-conflict-overview-host .cm-scroller {
   margin-right: calc(10px * var(--ui-scale));
 }

@@ -17,6 +17,7 @@ afterEach(() => {
 });
 
 function mount(lines: string[]): EditorView {
+  view?.destroy();
   view = new EditorView({ doc: lines.join("\n"), extensions: conflictBands(), parent: document.body });
   return view;
 }
@@ -54,5 +55,44 @@ describe("a conflicted file in the editor", () => {
     expect(marks).toHaveLength(1);
     expect(parseFloat(marks[0].style.top)).toBeGreaterThan(90);
     expect(editor.dom.classList.contains("cm-conflict-overview-host")).toBe(true);
+  });
+});
+
+describe("accepting from the marker view", () => {
+  const PLAIN = ["one", "<<<<<<< HEAD", "ours", "=======", "theirs", ">>>>>>> feature", "two"];
+  const accept = (editor: EditorView, name: string) =>
+    (editor.dom.querySelector(`[aria-label="${name}"]`) as HTMLButtonElement).click();
+
+  it("leaves the buffer holding exactly the side taken", () => {
+    const cases: [string, string[]][] = [
+      ["Accept current change", ["one", "ours", "two"]],
+      ["Accept incoming change", ["one", "theirs", "two"]],
+      ["Accept both changes", ["one", "ours", "theirs", "two"]],
+    ];
+    for (const [name, want] of cases) {
+      const editor = mount(PLAIN);
+      accept(editor, name);
+      expect(editor.state.doc.toString()).toBe(want.join("\n"));
+    }
+  });
+
+  it("leaves no blank line where the side taken is empty", () => {
+    const editor = mount(["one", "<<<<<<< HEAD", "=======", "theirs", ">>>>>>> feature", "two"]);
+
+    accept(editor, "Accept current change");
+
+    expect(editor.state.doc.toString()).toBe("one\ntwo");
+  });
+
+  it("drops a diff3 base section whichever way the conflict is accepted", () => {
+    const cases: [string, string[]][] = [
+      ["Accept current change", ["one", "ours", "two"]],
+      ["Accept both changes", ["one", "ours", "theirs", "two"]],
+    ];
+    for (const [name, want] of cases) {
+      const editor = mount(DIFF3);
+      accept(editor, name);
+      expect(editor.state.doc.toString()).toBe(want.join("\n"));
+    }
   });
 });
