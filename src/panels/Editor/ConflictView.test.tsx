@@ -28,6 +28,7 @@ const THEIRS = ["a", "T1", "c", "d", "e", "T2", "g", ""].join("\n");
 
 let stages: unknown = { base: BASE, ours: OURS, theirs: THEIRS, binary: false };
 let op = "merge";
+let sides: unknown = null;
 let stagesFails = false;
 let resolveFails = false;
 // What `git_status` answers next, for the one test that drives the shared store.
@@ -44,6 +45,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return stagesFails ? Promise.reject("f.txt has no merge conflict.") : Promise.resolve(stages);
     }
     if (cmd === "git_conflict_op") return Promise.resolve(op);
+    if (cmd === "git_conflict_sides") return Promise.resolve(sides);
     if (cmd === "git_status") return Promise.resolve(statusRows);
     if (cmd === "git_conflict_resolve") {
       if (resolveFails) return Promise.reject("src/f.txt is no longer conflicted.");
@@ -110,6 +112,7 @@ function decideAll(choice: string | RegExp) {
 beforeEach(async () => {
   stages = { base: BASE, ours: OURS, theirs: THEIRS, binary: false };
   op = "merge";
+  sides = null;
   stagesFails = false;
   resolveFails = false;
   statusRows = [];
@@ -430,6 +433,71 @@ describe("the conflict tab", () => {
     mount();
 
     await waitFor(() => expect(screen.getByText(/no merge conflict/)).toBeTruthy());
+  });
+});
+
+describe("actions in the side panes", () => {
+  const resultDoc = () =>
+    EditorView.findFromDOM(
+      mounted!.container.querySelector('[aria-label="Result"]')!.closest(".cm-editor") as HTMLElement,
+    )!.state.doc.toString();
+
+  it("hides a side's row once that side is in the Result, and leaves the other's up", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+    expect(screen.queryAllByLabelText("Accept Yours (HEAD)")).toHaveLength(2);
+    expect(screen.queryAllByLabelText("Accept Incoming")).toHaveLength(2);
+
+    fireEvent.click(byName("Take Yours (HEAD)"));
+
+    expect(screen.queryAllByLabelText("Accept Yours (HEAD)")).toHaveLength(1);
+    expect(screen.queryAllByLabelText("Accept Incoming")).toHaveLength(2);
+  });
+
+  it("keeps both when the other side is accepted from its own pane", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    fireEvent.click(byName("Take Yours (HEAD)"));
+    fireEvent.click(screen.getAllByLabelText("Accept Incoming")[0]);
+
+    expect(byName("Keep both versions, ours first").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("settles a conflict whose two sides are both ignored, until one is taken back", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+    const before = resultDoc();
+
+    for (const side of ["Yours (HEAD)", "Incoming"]) {
+      for (const button of screen.getAllByLabelText(`Ignore ${side}`)) fireEvent.click(button);
+    }
+
+    expect(markResolved().disabled).toBe(false);
+    expect(resultDoc()).toBe(before);
+
+    fireEvent.click(screen.getAllByLabelText("Stop ignoring Incoming")[0]);
+    expect(markResolved().disabled).toBe(true);
+  });
+
+  it("names the commit and ref behind each side, the right way round under a rebase", async () => {
+    const main = { sha: "a".repeat(40), short: "aaaaaaa", name: "main" };
+    const feature = { sha: "b".repeat(40), short: "bbbbbbb", name: "feature" };
+    const header = (ref: string) => screen.getByText(ref).parentElement!.textContent;
+
+    sides = { ours: main, theirs: feature };
+    mount();
+    await waitFor(() => expect(screen.getByText("main aaaaaaa")).toBeTruthy());
+    expect(header("main aaaaaaa")).toBe("Yours (HEAD)main aaaaaaa");
+    expect(header("feature bbbbbbb")).toBe("Incomingfeature bbbbbbb");
+    mounted!.unmount();
+
+    op = "rebase";
+    sides = { ours: feature, theirs: main };
+    mount();
+    await waitFor(() => expect(screen.getByText("main aaaaaaa")).toBeTruthy());
+    expect(header("main aaaaaaa")).toBe("Yours (being replayed)main aaaaaaa");
+    expect(header("feature bbbbbbb")).toBe("Upstreamfeature bbbbbbb");
   });
 });
 

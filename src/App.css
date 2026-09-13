@@ -649,6 +649,13 @@ html {
   background: color-mix(in srgb, var(--danger-fg) 14%, transparent);
 }
 
+.cm-conflict-side-actions {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
+}
+
 .cm-result-slot-label {
   color: var(--fg-muted);
   font-size: var(--sway-text-md);

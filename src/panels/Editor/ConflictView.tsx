@@ -1,7 +1,7 @@
 import { createSignal, createMemo, createEffect, on, onCleanup, batch, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { gitStateFor, refreshStatus } from "../../utils/gitActions";
-import { EditorView, lineNumbers, showPanel, Decoration, type DecorationSet } from "@codemirror/view";
+import { EditorView, lineNumbers, showPanel, Decoration, WidgetType, type DecorationSet } from "@codemirror/view";
 import { Compartment, EditorState, RangeSetBuilder, Text, type Extension } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
 import {
@@ -16,14 +16,16 @@ import {
   seedResult,
   sideLabels,
   unresolved,
+  withSide,
   type Choice,
   type ConflictOp,
   type ConflictRegion,
+  type ConflictSides,
   type ConflictStages,
   type Side,
   type SideLabels,
 } from "../../utils/conflict";
-import { choiceOptions, decideRegion, resetResult, resultField } from "./resultPane";
+import { choiceOptions, decideRegion, ignoreSide, resetResult, resultField } from "./resultPane";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
@@ -114,13 +116,89 @@ export function regionDecorations(
   return builder.finish();
 }
 
-function paneExtensions(
+type SideAct = (id: string, side: Side, act: "accept" | "ignore" | "restore") => void;
+
+class SideActions extends WidgetType {
+  constructor(
+    readonly id: string,
+    readonly side: Side,
+    readonly label: string,
+    readonly ignored: boolean,
+    readonly act: SideAct,
+  ) {
+    super();
+  }
+
+  eq(other: SideActions): boolean {
+    return (
+      other.id === this.id && other.side === this.side && other.label === this.label && other.ignored === this.ignored
+    );
+  }
+
+  toDOM(): HTMLElement {
+    const wrap = document.createElement("div");
+    wrap.className = "cm-conflict-side-actions";
+    if (this.ignored) {
+      const note = document.createElement("span");
+      note.className = "cm-result-slot-label";
+      note.textContent = "Ignored";
+      wrap.appendChild(note);
+    }
+    const acts = this.ignored
+      ? ([["restore", "Stop ignoring"]] as const)
+      : ([
+          ["accept", "Accept"],
+          ["ignore", "Ignore"],
+        ] as const);
+    for (const [act, text] of acts) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "cm-result-slot-button";
+      button.textContent = text;
+      button.setAttribute("aria-label", `${text} ${this.label}`);
+      button.title = `${text} ${this.label}`;
+      button.onclick = () => this.act(this.id, this.side, act);
+      wrap.appendChild(button);
+    }
+    return wrap;
+  }
+
+  ignoreEvent(): boolean {
+    return true;
+  }
+}
+
+function sideActionDecorations(
   regions: ConflictRegion[],
   side: PaneSide,
   doc: Text,
-  label: string,
-  deco: Compartment,
   choices: Record<string, Choice>,
+  ignored: Record<string, Side[]>,
+  label: string,
+  act: SideAct,
+): DecorationSet {
+  // The base is never a candidate, so its pane gets no row.
+  if (side === "base") return Decoration.none;
+  const ranges = [];
+  for (const r of conflictsOnly(regions)) {
+    const choice = choices[r.id];
+    if (choice && keeps(choice, side)) continue;
+    const widget = new SideActions(r.id, side, label, !!ignored[r.id]?.includes(side), act);
+    const line = r[side].from;
+    ranges.push(
+      line > doc.lines
+        ? Decoration.widget({ widget, block: true, side: 1 }).range(doc.length)
+        : Decoration.widget({ widget, block: true, side: -1 }).range(doc.line(Math.max(line, 1)).from),
+    );
+  }
+  return Decoration.set(ranges, true);
+}
+
+function paneExtensions(
+  label: string,
+  detail: string | null,
+  deco: Compartment,
+  decor: Extension,
   syntax: Compartment,
   syntaxExt: Extension,
 ): Extension {
@@ -143,7 +221,7 @@ function paneExtensions(
     // nothing else: rebuilding the panes for it would throw away the scroll
     // position of the file you are working through. Both documents are
     // read-only, so there is still no change for the set to be mapped through.
-    deco.of(EditorView.decorations.of(regionDecorations(regions, side, doc, choices))),
+    deco.of(decor),
     // The name sits *inside* its pane rather than in a row above the pair. Two
     // columns laid over the merge view line up only while the panes are exactly
     // half each, which stops being true the moment Phase 12 turns on revert
@@ -152,6 +230,12 @@ function paneExtensions(
       const dom = document.createElement("div");
       dom.className = styles.sideLabel;
       dom.textContent = label;
+      if (detail) {
+        const ref = document.createElement("span");
+        ref.className = styles.sideRef;
+        ref.textContent = detail;
+        dom.append(ref);
+      }
       return { dom, top: true };
     }),
   ];
@@ -201,6 +285,8 @@ export default function ConflictView(props: {
   const [error, setError] = createSignal("");
   const [currentId, setCurrentId] = createSignal<string | null>(null);
   const [choices, setChoices] = createSignal<Record<string, Choice>>({});
+  const [ignored, setIgnored] = createSignal<Record<string, Side[]>>({});
+  const [sides, setSides] = createSignal<ConflictSides | null>(null);
   /** For a conflict about the file's existence: whether to keep it or not. */
   const [keepFile, setKeepFile] = createSignal<boolean | null>(null);
   const [saving, setSaving] = createSignal(false);
@@ -241,7 +327,7 @@ export default function ConflictView(props: {
     if (!gone.length || gone.length === 2) return null;
     return gone[0] === "ours" ? "theirs" : "ours";
   });
-  const left = createMemo(() => unresolved(regions(), choices()));
+  const left = createMemo(() => unresolved(regions(), choices(), ignored()));
 
   /** What the file's existence was decided to be, when that is the question:
    *  the surviving text to keep, `undefined` to remove the file, null while it
@@ -285,17 +371,19 @@ export default function ConflictView(props: {
     // file's would match the wrong lines.
     batch(() => {
       setChoices({});
+      setIgnored({});
       setKeepFile(null);
       setDone(false);
     });
     try {
-      const [read, operation] = await Promise.all([
+      const [read, operation, behind] = await Promise.all([
         invoke<ConflictStages>("git_conflict_stages", { projectPath: workspace, file }),
         // The stages are the view; the operation only names the sides, so a
         // repo that cannot answer it still gets a usable conflict.
         invoke<ConflictOp>("git_conflict_op", { projectPath: workspace }).catch(
           () => "none" as ConflictOp,
         ),
+        invoke<ConflictSides>("git_conflict_sides", { projectPath: workspace }).catch(() => null),
       ]);
       if (mine !== current) return;
       // Together, so the panes are built once with both the documents and the
@@ -303,6 +391,7 @@ export default function ConflictView(props: {
       batch(() => {
         setStages(read);
         setOp(operation);
+        setSides(behind);
         setError("");
       });
     } catch (e) {
@@ -451,6 +540,23 @@ export default function ConflictView(props: {
     return new Map(conflictsOnly(regions()).map((r) => [r.id, s ? bothChoices(s, r) : (["both"] as Choice[])]));
   });
   const optionsFor = (id: string) => choiceOptions(names(), bothFor().get(id) ?? ["both"]);
+
+  const sideDetail = (side: PaneSide) => {
+    const ref = side === "base" ? null : sides()?.[side];
+    return ref ? [ref.name, ref.short].filter(Boolean).join(" ") : null;
+  };
+  const paneDecor = (
+    rs: ConflictRegion[],
+    side: PaneSide,
+    doc: Text,
+    picked: Record<string, Choice>,
+    skipped: Record<string, Side[]>,
+  ): Extension => [
+    EditorView.decorations.of(regionDecorations(rs, side, doc, picked)),
+    EditorView.decorations.of(
+      sideActionDecorations(rs, side, doc, picked, skipped, sideName(side, names()), actOnSide),
+    ),
+  ];
   const slots = resultField(optionsFor, chooseRegion);
 
   function destroy() {
@@ -479,6 +585,16 @@ export default function ConflictView(props: {
     return lines.length ? lines.join("\n") + "\n" : "";
   }
 
+  function actOnSide(id: string, side: Side, act: "accept" | "ignore" | "restore") {
+    if (act === "accept") {
+      chooseRegion(id, withSide(choices()[id], side, bothFor().get(id) ?? ["both"]));
+      return;
+    }
+    const aside = (ignored()[id] ?? []).filter((s) => s !== side);
+    setIgnored({ ...ignored(), [id]: act === "ignore" ? [...aside, side] : aside });
+    result?.dispatch({ effects: ignoreSide.of({ id, side, ignored: act === "ignore" }) });
+  }
+
   // Both routes to a decision land here, so the header and the slot cannot
   // disagree about what was chosen or about what the document says.
   function chooseRegion(id: string, choice: Choice) {
@@ -501,7 +617,7 @@ export default function ConflictView(props: {
     // `op` is a dependency, not just a read: `on` runs its body untracked, and
     // the labels the panes carry come from it. Without it here, a rebase's
     // panes would keep whatever names the previous read left behind.
-    on([regions, stages, op, pair], ([rs, s, , showing]) => {
+    on([regions, stages, op, pair, sides], ([rs, s, , showing]) => {
       destroy();
       if (!host || !s || s.binary) return;
       // One `Text` per side, built here and handed to both the decorations and
@@ -512,17 +628,32 @@ export default function ConflictView(props: {
       // here: a rebuild is for a different set of documents, and accepting a
       // side is not that. The effect below repaints instead.
       const picked = choices();
+      const skipped = ignored();
       const ext = syntax() ?? [];
       const leftDoc = docFor(showing.left);
       const rightDoc = docFor(showing.right);
       merge = new MergeView({
         a: {
           doc: leftDoc,
-          extensions: paneExtensions(rs, showing.left, leftDoc, sideName(showing.left, names()), decoLeft, picked, syntaxLeft, ext),
+          extensions: paneExtensions(
+            sideName(showing.left, names()),
+            sideDetail(showing.left),
+            decoLeft,
+            paneDecor(rs, showing.left, leftDoc, picked, skipped),
+            syntaxLeft,
+            ext,
+          ),
         },
         b: {
           doc: rightDoc,
-          extensions: paneExtensions(rs, showing.right, rightDoc, sideName(showing.right, names()), decoRight, picked, syntaxRight, ext),
+          extensions: paneExtensions(
+            sideName(showing.right, names()),
+            sideDetail(showing.right),
+            decoRight,
+            paneDecor(rs, showing.right, rightDoc, picked, skipped),
+            syntaxRight,
+            ext,
+          ),
         },
         parent: host,
         gutter: true,
@@ -557,7 +688,7 @@ export default function ConflictView(props: {
         ],
         parent: resultHost,
       });
-      result.dispatch({ effects: resetResult.of({ slots: seed.slots, choices: {} }) });
+      result.dispatch({ effects: resetResult.of({ slots: seed.slots, choices: {}, ignored: {} }) });
     }),
   );
 
@@ -593,7 +724,7 @@ export default function ConflictView(props: {
   // rather than rebuilds: the panes keep the scroll position of the file the
   // reader is working through.
   createEffect(
-    on(choices, (picked) => {
+    on([choices, ignored], ([picked, skipped]) => {
       if (!merge) return;
       const rs = regions();
       // Which document a pane holds is the pair's answer, not a fixed one: with
@@ -604,9 +735,7 @@ export default function ConflictView(props: {
         [merge.b, pair().right, decoRight],
       ] as const) {
         view.dispatch({
-          effects: deco.reconfigure(
-            EditorView.decorations.of(regionDecorations(rs, side, view.state.doc, picked)),
-          ),
+          effects: deco.reconfigure(paneDecor(rs, side, view.state.doc, picked, skipped)),
         });
       }
     }),

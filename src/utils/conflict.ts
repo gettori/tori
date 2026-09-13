@@ -31,6 +31,12 @@ export type ConflictStages = {
 /** Mirrors `ConflictOp` in src-tauri/src/conflict.rs. */
 export type ConflictOp = "merge" | "rebase" | "cherrypick" | "revert" | "none";
 
+/** Mirrors `SideRef` in src-tauri/src/conflict.rs. */
+export type SideRef = { sha: string; short: string; name: string | null };
+
+/** Mirrors `ConflictSides` in src-tauri/src/conflict.rs. */
+export type ConflictSides = { ours: SideRef | null; theirs: SideRef | null };
+
 /** A half-open, 1-based line range: `from` is the first line, `to` is one past
  *  the last. `from === to` is a point between lines, which is what a pure
  *  insertion on one side looks like on the sides that did not make it. */
@@ -242,12 +248,21 @@ export function prevConflict(regions: ConflictRegion[], currentId: string | null
   return at > 0 ? list[at - 1] : null;
 }
 
+/** Whether a region has its answer: a choice, or both sides set aside. Ignoring
+ *  is bookkeeping rather than an edit, so a region settled that way keeps
+ *  whatever text the Result already holds for it. */
+export function decided(id: string, choices: Record<string, Choice>, ignored: Record<string, Side[]> = {}): boolean {
+  const aside = ignored[id] ?? [];
+  return !!choices[id] || (aside.includes("ours") && aside.includes("theirs"));
+}
+
 /** The conflicts still waiting on a decision. */
 export function unresolved(
   regions: ConflictRegion[],
   choices: Record<string, Choice>,
+  ignored: Record<string, Side[]> = {},
 ): ConflictRegion[] {
-  return conflictsOnly(regions).filter((r) => !choices[r.id]);
+  return conflictsOnly(regions).filter((r) => !decided(r.id, choices, ignored));
 }
 
 /**
@@ -336,6 +351,21 @@ export function choiceLines(stages: ConflictStages, region: ConflictRegion, choi
   // Offered only where it splices, so the pair in the same order is a fallback
   // for a stale choice, not a path anyone is shown.
   return combine(stages, region, first) ?? [...take(first), ...take(second)];
+}
+
+/**
+ * What accepting one side from its own pane makes of a region's choice.
+ *
+ * It adds rather than replaces, the way VS Code's in-pane accepts do: with the
+ * other side already in, the answer is both, combined where `both` offers it
+ * and with the side that was there first ahead.
+ */
+export function withSide(current: Choice | undefined, side: Side, both: Choice[]): Choice {
+  const other: Side = side === "ours" ? "theirs" : "ours";
+  if (current && keeps(current, side)) return current;
+  if (!current || !keeps(current, other)) return side;
+  const ordered: Choice = other === "ours" ? "combine-ours" : "combine-theirs";
+  return both.includes(ordered) ? ordered : both[0];
 }
 
 /** Whether a choice keeps that side's version in the result. */
