@@ -1,7 +1,18 @@
 // Git's hunks laid over the file they describe: added lines tinted where they
 // sit, removed lines drawn as block widgets where they were removed, and the old
 // file's numbers in a gutter of their own. Behind the fence.
-import { Decoration, EditorView, GutterMarker, WidgetType, gutter, type DecorationSet } from "@codemirror/view";
+import {
+  BlockType,
+  Decoration,
+  EditorView,
+  GutterMarker,
+  ViewPlugin,
+  WidgetType,
+  gutter,
+  type BlockInfo,
+  type DecorationSet,
+  type ViewUpdate,
+} from "@codemirror/view";
 import { StateEffect, StateField, type EditorState, type Extension, type Range, type StateCommand, type Text } from "@codemirror/state";
 import type { Language } from "@codemirror/language";
 import { HIGHLIGHT_MAX } from "../Chat/highlight";
@@ -370,6 +381,97 @@ const oldNumberGutter = gutter({
 // Before `lineNumbers()`, so the old column sits left of the new one.
 export function diffBufferExtension(): Extension {
   return [diffBufferField, hiddenField, oldNumberGutter];
+}
+
+export type ChangeSpan = { side: "old" | "new"; from: number; to: number };
+
+export function changeSpans(state: EditorState): ChangeSpan[] {
+  const { doc } = state;
+  const out: ChangeSpan[] = [];
+  for (const hunk of state.field(diffBufferField).hunks) {
+    for (const run of hunk.removed) out.push({ side: "old", from: run.pos, to: run.pos });
+    let start: number | null = null;
+    for (let at = 0; at <= hunk.addRows.length; at++) {
+      const line = hunk.firstNew + at;
+      if (at < hunk.addRows.length && hunk.addRows[at] !== null && line <= doc.lines) {
+        start ??= line;
+      } else if (start !== null) {
+        out.push({ side: "new", from: doc.line(start).from, to: doc.line(line - 1).to });
+        start = null;
+      }
+    }
+  }
+  return out;
+}
+
+// A line block holds the removed-lines widget above its text, so each side
+// measures its own part of the block.
+function partAt(view: EditorView, pos: number, pick: (part: BlockInfo) => boolean): BlockInfo {
+  const block = view.lineBlockAt(pos);
+  return (Array.isArray(block.type) ? block.type.find(pick) : null) ?? block;
+}
+
+class OverviewRuler {
+  readonly dom = document.createElement("div");
+  readonly strips = { old: document.createElement("div"), new: document.createElement("div") };
+
+  constructor(readonly view: EditorView) {
+    this.dom.className = "cm-diff-overview";
+    this.dom.setAttribute("aria-hidden", "true");
+    this.strips.old.className = "cm-diff-overview-old";
+    this.strips.new.className = "cm-diff-overview-new";
+    this.dom.append(this.strips.old, this.strips.new);
+    view.dom.appendChild(this.dom);
+    this.place();
+    this.draw();
+  }
+
+  update(update: ViewUpdate) {
+    if (update.geometryChanged) this.place();
+    if (
+      update.heightChanged ||
+      update.geometryChanged ||
+      update.startState.field(diffBufferField) !== update.state.field(diffBufferField)
+    ) {
+      this.draw();
+    }
+  }
+
+  draw() {
+    const total = this.view.contentHeight || 1;
+    this.strips.old.replaceChildren();
+    this.strips.new.replaceChildren();
+    const isText = (b: BlockInfo) => b.type === BlockType.Text;
+    for (const span of changeSpans(this.view.state)) {
+      const first = partAt(this.view, span.from, span.side === "old" ? (b) => b.widget instanceof RemovedLines : isText);
+      const last = span.side === "old" ? first : partAt(this.view, span.to, isText);
+      const mark = document.createElement("div");
+      mark.className = "cm-diff-overview-mark";
+      mark.style.top = `${(first.top / total) * 100}%`;
+      mark.style.height = `${((last.bottom - first.top) / total) * 100}%`;
+      this.strips[span.side].appendChild(mark);
+    }
+  }
+
+  // Level with the scroller alone, so the find and vim panels stay uncovered.
+  place() {
+    this.view.requestMeasure({
+      key: this,
+      read: (view) => ({ top: view.scrollDOM.offsetTop, height: view.scrollDOM.offsetHeight }),
+      write: ({ top, height }) => {
+        this.dom.style.top = `${top}px`;
+        this.dom.style.height = `${height}px`;
+      },
+    });
+  }
+
+  destroy() {
+    this.dom.remove();
+  }
+}
+
+export function diffOverviewRuler(): Extension {
+  return [ViewPlugin.fromClass(OverviewRuler), EditorView.editorAttributes.of({ class: "cm-diff-overview-host" })];
 }
 
 export type HunkAction = "apply" | "discard";

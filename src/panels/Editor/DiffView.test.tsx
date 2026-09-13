@@ -85,6 +85,7 @@ import { EditorView } from "@codemirror/view";
 import DiffView from "./DiffView";
 import { writeDiffEditorLayout } from "../../utils/diffLayout";
 import { parseDiffHunks } from "../../utils/diffHunks";
+import { pathCrumbs } from "./breadcrumbTrail";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { enterRoots } from "../../utils/gitActions";
 import { diffTabId, parseDiffArg } from "../../utils/syntheticTabs";
@@ -347,5 +348,14 @@ describe("staging from the editor layout", () => {
     fireEvent.click(await screen.findByText("Stage 2 lines"));
     await waitFor(() => expect(applyLineArgs).toHaveLength(2));
     expect(applyLineArgs[1]).toEqual(applyLineArgs[0]);
+  });
+});
+
+describe("the editor layout's breadcrumbs", () => {
+  it("names the file the way the editor tab's trail does", async () => {
+    writeDiffEditorLayout(true);
+    render(() => <DiffView workspace="/proj" arg="unstaged:src/a.ts" selected={null} />);
+    const bar = await screen.findByRole("navigation", { name: "Breadcrumbs" });
+    expect(bar.textContent).toBe(pathCrumbs("/proj", "/proj/src/a.ts").map((c) => c.name).join(""));
   });
 });

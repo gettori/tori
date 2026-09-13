@@ -13,6 +13,7 @@ import {
   RefreshCw,
   SquareCode,
   Undo2,
+  UserRound,
 } from "lucide-solid";
 import {
   emitWith,
@@ -26,6 +27,8 @@ import {
   type ToastEvent,
 } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
+import { blameFor, dropBlame, type Blame } from "../../utils/blame";
+import { blameOn, writeBlamePref } from "../../utils/blamePref";
 import {
   gitStateFor,
   refreshStatus,
@@ -41,6 +44,8 @@ import { diffIgnoreWhitespaceOn as ignoreWhitespace, writeDiffIgnoreWhitespace }
 import { copyText } from "../../utils/clipboard";
 import { sendTargetFor } from "../../utils/sendTarget";
 import { parseDiffArg } from "../../utils/syntheticTabs";
+import type { TintedMember } from "../../utils/featureMembers";
+import Breadcrumbs from "./Breadcrumbs";
 import DiffRows, { diffRowClasses } from "./DiffRows";
 import HunkCommentInput from "./HunkCommentInput";
 import type { RevertOutcome } from "./CheckpointTimeline";
@@ -49,6 +54,7 @@ import IconButton from "../../components/IconButton/IconButton";
 import Button from "../../components/Button/Button";
 import Icon from "../../components/Icon/Icon";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
+import crumbStyles from "./Breadcrumbs.module.css";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./DiffView.module.css";
 
@@ -90,6 +96,8 @@ export default function DiffView(props: {
   /** The tab's arg: the comparison and the repo-relative path. */
   arg: string;
   selected: Selection | null;
+  /** The member holding the file inside a Feature, for the breadcrumb trail. */
+  member?: TintedMember | null;
   onReverted?: (outcome: RevertOutcome) => void;
 }) {
   const parsed = createMemo(() => parseDiffArg(props.arg));
@@ -109,6 +117,8 @@ export default function DiffView(props: {
   // selection spanning two could not be applied as one request anyway.
   const [picked, setPicked] = createSignal<{ hunk: number; lines: ReadonlySet<number> } | null>(null);
   const [fileText, setFileText] = createSignal<string | null>(null);
+  const [blame, setBlame] = createSignal<Blame | null>(null);
+  const [caret, setCaret] = createSignal<{ line: number; column: number } | null>(null);
   let nav: { next: () => void; previous: () => void } | undefined;
 
   const hunks = createMemo(() => parseDiffHunks(diff()));
@@ -176,14 +186,26 @@ export default function DiffView(props: {
     }
   }
 
+  async function fetchBlame(): Promise<Blame | null> {
+    const head = gitStateFor(props.workspace).head;
+    // git blames the working tree, which is not the text the staged tab shows.
+    if (!blameOn() || staged() || !head) return null;
+    return blameFor(props.workspace, file(), head);
+  }
+
   /** Re-read the diff and drop what was derived from the old one. Called after
    *  every apply and whenever the file changes on disk, so the rendered hunks
    *  (and the fingerprints taken from them) never lag the file. */
   async function reload() {
-    const [text, body] = await Promise.all([fetchDiff(), editorLayout() ? fetchText() : null]);
+    const [text, body, blamed] = await Promise.all([
+      fetchDiff(),
+      editorLayout() ? fetchText() : null,
+      editorLayout() ? fetchBlame() : null,
+    ]);
     batch(() => {
       setDiff(text);
       setFileText(body);
+      setBlame(blamed);
       // The hunks just moved, so the cached gap contents no longer line up with
       // the ranges they were fetched for.
       setOpenGaps(new Set<string>());
@@ -213,6 +235,15 @@ export default function DiffView(props: {
   );
 
   createEffect(on(ignoreWhitespace, () => void reload(), { defer: true }));
+  createEffect(
+    on(
+      [blameOn, () => gitStateFor(props.workspace).head],
+      async () => {
+        if (editorLayout()) setBlame(await fetchBlame());
+      },
+      { defer: true },
+    ),
+  );
 
   /** Run one index-shuffling apply and put the view back in step with it. On
    *  failure the refetch happens before the error surfaces, so the user is
@@ -363,8 +394,15 @@ export default function DiffView(props: {
   const flushAgentWrites = debounce(() => {
     const paths = [...agentWritten];
     agentWritten.clear();
-    if (paths.some((p) => p.endsWith(file()))) void reload();
+    if (paths.some((p) => p.endsWith(file()))) fileWritten();
   }, AGENT_WRITE_DEBOUNCE_MS);
+
+  // A write changes which lines are uncommitted, and the blame cache is keyed
+  // by HEAD, which a write does not move.
+  function fileWritten() {
+    dropBlame(props.workspace, file());
+    void reload();
+  }
 
   onMount(async () => {
     if (paneRef) {
@@ -379,7 +417,7 @@ export default function DiffView(props: {
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
       const from = e.payload.root;
       if (from && from !== props.workspace) return;
-      if (e.payload.paths.some((p) => p.endsWith(file()))) void reload();
+      if (e.payload.paths.some((p) => p.endsWith(file()))) fileWritten();
     });
     offAgentWrites = onWith<AgentFilesWritten>(AGENT_FILES_WRITTEN, ({ paths }) => {
       for (const p of paths) agentWritten.add(p);
@@ -640,6 +678,27 @@ export default function DiffView(props: {
           </div>
         </Show>
         <Show when={editorLayout() && fileText() !== null}>
+          <Breadcrumbs
+            root={props.workspace}
+            path={`${props.workspace}/${file()}`}
+            member={props.member}
+            caret={caret()}
+            trailing={
+              <Show when={!staged()}>
+                <IconButton
+                  size="sm"
+                  aria-pressed={blameOn()}
+                  icon={<Icon icon={UserRound} class={blameOn() ? crumbStyles.barToggleOn : undefined} />}
+                  onClick={() => writeBlamePref(!blameOn())}
+                  tooltip={
+                    blameOn()
+                      ? "Showing git blame: who last changed each line, shaded by age. Click to hide."
+                      : "Git blame: show who last changed each line, shaded by age."
+                  }
+                />
+              </Show>
+            }
+          />
           <DiffBufferView
             text={fileText()!}
             hunks={hunks()}
@@ -647,6 +706,8 @@ export default function DiffView(props: {
             staged={staged()}
             busy={applying()}
             canStage={canStage()}
+            blame={blame()}
+            onCaret={(line, column) => setCaret({ line, column })}
             controls={(n) => (nav = n)}
             onHunk={(index, action) => {
               const hunk = hunks()[index];
