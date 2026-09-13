@@ -5,7 +5,8 @@ import {
   deletedSides,
   nextConflict,
   prevConflict,
-  resolvedText,
+  buildResult,
+  seedResult,
   sideLabels,
   unresolved,
   type Choice,
@@ -237,15 +238,15 @@ describe("building the resolved file", () => {
     const rs = conflictRegions(b, o, t);
     const s = { base: b, ours: o, theirs: t, binary: false };
 
-    expect(resolvedText(s, rs, all2(rs, "ours"))).toBe(o);
-    expect(resolvedText(s, rs, all2(rs, "theirs"))).toBe(t);
+    expect(buildResult(s, rs, all2(rs, "ours")).text).toBe(o);
+    expect(buildResult(s, rs, all2(rs, "theirs")).text).toBe(t);
   });
 
   it("carries a change only one side made, whichever side is chosen", () => {
     // `EXTRA` is nobody's decision: theirs never touched those lines, so taking
     // theirs at both conflicts must not drop it. Losing it is how a merge tool
     // silently reverts work that was never in dispute.
-    const taken = resolvedText(stages, regions, all("theirs"))!;
+    const taken = buildResult(stages, regions, all("theirs")).text;
 
     expect(taken).toContain("EXTRA");
     expect(taken).toBe(
@@ -254,7 +255,7 @@ describe("building the resolved file", () => {
   });
 
   it("keeps both versions in git's own order when both are accepted", () => {
-    const taken = resolvedText(stages, regions, all("both"))!;
+    const taken = buildResult(stages, regions, all("both")).text;
 
     expect(taken).toBe(
       // Ours then theirs, at each conflict: the order the markers had, so the
@@ -266,29 +267,70 @@ describe("building the resolved file", () => {
   it("resolves one conflict without touching the other", () => {
     const [first, second] = conflictsOnly(regions);
 
-    const taken = resolvedText(stages, regions, { [first.id]: "theirs", [second.id]: "ours" })!;
+    const taken = buildResult(stages, regions, { [first.id]: "theirs", [second.id]: "ours" }).text;
 
     expect(taken).toBe(
       ["one", "THEIRS-A", "three", "EXTRA", "four", "five", "OURS-B", "seven", ""].join("\n"),
     );
   });
 
-  it("refuses to build a file while a conflict is undecided", () => {
+  it("holds a line open for each conflict still undecided", () => {
     // A half-resolved file that looks finished is worse than no file: it would
-    // be staged as the answer, and the side that lost was never chosen.
+    // be staged as the answer, and the side that lost was never chosen. So an
+    // undecided conflict contributes a blank line rather than either version,
+    // and the caller's button stays off until `unresolved` is empty.
     const [first] = conflictsOnly(regions);
 
     expect(unresolved(regions, {})).toHaveLength(2);
-    expect(resolvedText(stages, regions, {})).toBeNull();
+    expect(seedResult(stages, regions).slots.map((s) => s.id)).toEqual(
+      conflictsOnly(regions).map((r) => r.id),
+    );
+    expect(seedResult(stages, regions).text).toBe(
+      ["one", "", "three", "EXTRA", "four", "five", "", "seven", ""].join("\n"),
+    );
+
     expect(unresolved(regions, { [first.id]: "ours" })).toEqual([conflictsOnly(regions)[1]]);
-    expect(resolvedText(stages, regions, { [first.id]: "ours" })).toBeNull();
+    expect(buildResult(stages, regions, { [first.id]: "ours" }).slots.map((s) => s.id)).toEqual([
+      conflictsOnly(regions)[1].id,
+    ]);
+  });
+
+  it("puts a slot exactly where that conflict's lines belong", () => {
+    // What the Result pane leans on: replacing a slot's range with a side's
+    // lines has to give the same file as deciding it up front. An offset off by
+    // one newline here lands the chosen version inside its neighbour.
+    const seed = seedResult(stages, regions);
+    const [first, second] = conflictsOnly(regions);
+    const splice = (text: string, from: number, to: number, put: string) =>
+      text.slice(0, from) + put + text.slice(to);
+
+    // Back to front, so the first splice does not move the second's offsets.
+    const slotOf = (id: string) => seed.slots.find((s) => s.id === id)!;
+    let text = splice(seed.text, slotOf(second.id).from, slotOf(second.id).to, "OURS-B\n");
+    text = splice(text, slotOf(first.id).from, slotOf(first.id).to, "THEIRS-A\n");
+
+    expect(text).toBe(buildResult(stages, regions, { [first.id]: "theirs", [second.id]: "ours" }).text);
+  });
+
+  it("counts a conflict the reader is writing by hand as decided", () => {
+    // `hand` is an answer, not the absence of one, so it takes the region off
+    // the undecided list. What it does not do is put lines in the seed: those
+    // are the reader's own and live in the document.
+    const [first, second] = conflictsOnly(regions);
+    const byHand = { [first.id]: "hand" as Choice, [second.id]: "ours" as Choice };
+
+    expect(unresolved(regions, byHand)).toEqual([]);
+    expect(buildResult(stages, regions, byHand).slots).toEqual([]);
+    expect(buildResult(stages, regions, byHand).text).toBe(
+      ["one", "three", "EXTRA", "four", "five", "OURS-B", "seven", ""].join("\n"),
+    );
   });
 
   it("needs no decision at all for a file only one side changed", () => {
     const oneSided = conflictRegions(base, ours, base);
 
     expect(unresolved(oneSided, {})).toEqual([]);
-    expect(resolvedText({ base, ours, theirs: base, binary: false }, oneSided, {})).toBe(ours);
+    expect(buildResult({ base, ours, theirs: base, binary: false }, oneSided, {}).text).toBe(ours);
   });
 
   it("rebuilds a file both sides created from scratch", () => {
@@ -297,15 +339,15 @@ describe("building the resolved file", () => {
     const addAdd = { base: null, ours: "ours\nlines\n", theirs: "theirs\n", binary: false };
     const rs = conflictRegions("", addAdd.ours, addAdd.theirs);
 
-    expect(resolvedText(addAdd, rs, all2(rs, "ours"))).toBe("ours\nlines\n");
-    expect(resolvedText(addAdd, rs, all2(rs, "theirs"))).toBe("theirs\n");
+    expect(buildResult(addAdd, rs, all2(rs, "ours")).text).toBe("ours\nlines\n");
+    expect(buildResult(addAdd, rs, all2(rs, "theirs")).text).toBe("theirs\n");
   });
 
   it("keeps a file that does not end in a newline ending that way", () => {
     const rs = conflictRegions("one\ntwo", "one\nOURS", "one\nTHEIRS");
     const s = { base: "one\ntwo", ours: "one\nOURS", theirs: "one\nTHEIRS", binary: false };
 
-    expect(resolvedText(s, rs, all2(rs, "ours"))).toBe("one\nOURS");
+    expect(buildResult(s, rs, all2(rs, "ours")).text).toBe("one\nOURS");
   });
 });
 
