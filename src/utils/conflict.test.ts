@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  bothChoices,
+  combine,
   conflictRegions,
   conflictsOnly,
   deletedSides,
@@ -418,5 +420,31 @@ describe("walking the conflicts", () => {
     expect(prevConflict(regions, second.id)?.id).toBe(first.id);
     expect(prevConflict(regions, first.id)).toBeNull();
     expect(prevConflict(regions, null)).toBeNull();
+  });
+});
+
+describe("combining both sides' edits", () => {
+  const conflict = (base: string, ours: string, theirs: string) => {
+    const [region] = conflictsOnly(conflictRegions(base, ours, theirs));
+    return { region, stages: { base, ours, theirs, binary: false } };
+  };
+
+  it("splices two edits to different halves of one line", () => {
+    const { region, stages } = conflict("const a = 1, b = 2;\n", "const a = 10, b = 2;\n", "const a = 1, b = 20;\n");
+    expect(combine(stages, region, "ours")).toEqual(["const a = 10, b = 20;"]);
+    expect(bothChoices(stages, region)).toEqual(["combine-ours"]);
+  });
+
+  it("refuses when both sides rewrite the same characters", () => {
+    const { region, stages } = conflict("const a = 1, b = 2;\n", "const a = 7, b = 2;\n", "const a = 9, b = 2;\n");
+    expect(combine(stages, region, "ours")).toBeNull();
+    expect(bothChoices(stages, region)).toEqual(["both"]);
+  });
+
+  it("lets the order decide two insertions at the same point", () => {
+    const { region, stages } = conflict("a\nc\n", "a\nx\nc\n", "a\ny\nc\n");
+    expect(combine(stages, region, "ours")).toEqual(["x", "y"]);
+    expect(combine(stages, region, "theirs")).toEqual(["y", "x"]);
+    expect(bothChoices(stages, region)).toEqual(["combine-ours", "combine-theirs"]);
   });
 });
