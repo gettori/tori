@@ -8,6 +8,107 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.913.0-alpha
+
+The right sidebar is rebuilt on VS Code's model: Files, Search and Changes
+work like VS Code's explorer, Search view and Source Control. Diffs and merge
+conflicts catch up with it too. A diff can show the whole file with git's hunks
+drawn over it and stage from there, and a conflict gets an editable Result
+pane. Files shared across worktrees get a page of their own.
+
+### Files and Search
+
+- Files is an explorer: member chips for a Feature in the filter row, a branch
+  line with New File, New Folder, Refresh and Collapse, and a row menu with
+  Open to the Side, Open Preview, Open in Integrated Terminal, Find in Folder,
+  Cut, Copy, Paste, Duplicate, Copy Path, Copy Relative Path and file history.
+- Scripts, Outline and TODOs are one collapsible section under the tree, one
+  tab at a time. The Tasks, Outline, Docs and Shared tabs are gone.
+- Search is VS Code's Search view, with replace and details toggles on the
+  search line, Includes and Excludes fields, and a Search Editor tab.
+- All three sidebar tabs open the same way: a title or the member chips, then
+  their controls, then the content.
+
+### Changes and git
+
+- Changes is rebuilt around committing. The commit box sits near the top as one
+  card: one message field (Enter commits, Shift+Enter is a newline), what the
+  commit would hold, AI Draft and Commit. Commit is never greyed out; clicking
+  it says what is missing.
+- Inside a Feature the tab shows one member at a time, picked by chip, and
+  everything below follows it: the file list, branch, ahead/behind, Push, Open
+  PR, stashes, checkpoints, the graph and the commit box.
+- A commit graph: one lane in the sidebar, full lanes in a Graph tab. The
+  sidebar colours by branch rather than by push, so a pushed branch no longer
+  draws all orange, and its page grows until the base branch is on it.
+- Graph, Stashes and Checkpoints share one section under the file list. A
+  stash or graph row opens to the files that commit touched, and each file
+  opens its own diff tab for that commit.
+- A file's diff opens in its own editor tab instead of unfolding inside the
+  panel, so several can be open and the file list stays put.
+- About forty more git commands are in the palette as `Git:` entries. Pull
+  passes `--no-rebase` explicitly, so it doesn't rebase just because
+  `pull.rebase` is set globally.
+
+### Diffs
+
+- Diff rows are coloured in the file's own language and numbered on both
+  sides, in Changes, commit, session and pull request diffs. Copying lines
+  copies only the code.
+- A diff tab can show the file itself: a read-only buffer with git's hunks
+  drawn over it, removed lines in place, changed characters marked, and a
+  second gutter with the old line numbers. It has the editor's selection, find
+  and vim.
+- From that buffer you can stage, unstage and discard a hunk, or select lines
+  and stage just those. It sends the backend the same payload the rows do.
+- Next and previous change on Alt+F5 and Shift+Alt+F5, unchanged stretches
+  folded into a band, and an ignore whitespace toggle.
+- The buffer gets blame in the gutter, an overview ruler with removed and added
+  strips, and the editor's breadcrumbs.
+- In the plain editor, clicking a change mark in the gutter, or the line number
+  beside it, shows the lines that used to be there.
+
+### Merge conflicts
+
+- The conflict tab has a third pane, Result, holding the file as it will be
+  written, and you can edit it. An undecided conflict offers yours, theirs,
+  both, or by hand.
+- When the two sides edit different parts of one line, Both becomes Combine and
+  splices the edits together, the same idea as VS Code's smart combination.
+- Each side pane has Accept and Ignore above every conflict, and its header
+  names the branch and short sha behind that side, for merge, cherry-pick,
+  revert and rebase alike.
+- The Result pane says what each conflict holds (Holds Yours (HEAD), Written by
+  hand), with Remove per side and Reset to base. Anything that would throw away
+  typed lines asks first.
+- The side panes and Result line up region by region and scroll together.
+- A conflicted file opened in the plain editor paints its marker blocks, with a
+  mark per conflict on a ruler strip, and each block has Accept Current, Accept
+  Incoming, Accept Both and Compare above it.
+
+### Shared in worktrees
+
+- A page opened from a project row's menu, under Add Worktree, shows each
+  shared entry and which worktrees actually have its link. Before, an entry
+  added after a worktree was made never reached it, and nothing showed that.
+- Link a single worktree or every gap at once, stop sharing, or move an entry
+  back out.
+- Share a file from its own row in the tree. Sharing is a move: the file goes
+  into the shared folder and its old path becomes a link, so anything reading
+  that path keeps working. A file git tracks is refused.
+- The project row carries a mark while a worktree is missing a shared entry.
+- A shared folder lists as a folder in the tree and search, not as a file that
+  fails to open.
+- A hidden checkout, like a wiki on an orphan branch, stays out of the
+  worktree list.
+
+### Editor
+
+- Lint and the lightbulb are drawn inline, breakpoints show only while
+  debugging, and bookmarks are gone.
+- Text fields drop their focus ring; the caret is the cue. Buttons, selects,
+  switches and tabs keep theirs.
+
 ## 26.911.0-alpha
 
 Sway's commands get a dock, and they stop depending on your shell. The Shells
