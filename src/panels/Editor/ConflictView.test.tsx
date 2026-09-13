@@ -608,6 +608,54 @@ describe("the Result pane", () => {
     expect(slotButton("Take Yours (HEAD)")).toBeTruthy();
   });
 
+  it("says what a decided conflict holds, and takes one side back out", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    fireEvent.click(byName("Take Yours (HEAD)"));
+    fireEvent.click(screen.getAllByLabelText("Accept Incoming")[0]);
+    expect(doc()).toBe(["a", "O1", "T1", "c", "d", "e", "", "g", ""].join("\n"));
+    expect(screen.getByText("Holds both versions, ours first")).toBeTruthy();
+
+    fireEvent.click(slotButton("Remove Incoming")!);
+
+    expect(doc()).toBe(["a", "O1", "c", "d", "e", "", "g", ""].join("\n"));
+    expect(screen.getByText("Holds Yours (HEAD)")).toBeTruthy();
+  });
+
+  it("reads a decided conflict typed over as written by hand, and resets it to the base", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    fireEvent.click(byName("Take Yours (HEAD)"));
+    result().dispatch({ changes: { from: doc().indexOf("O1") + 2, insert: "!" } });
+
+    expect(byName("Write these lines yourself").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Written by hand")).toBeTruthy();
+
+    fireEvent.click(slotButton("Reset to base")!);
+    fireEvent.click(await screen.findByText("Discard edits"));
+
+    await waitFor(() => expect(doc()).toBe(["a", "b", "c", "d", "e", "", "g", ""].join("\n")));
+    expect(slotButtons("Take Yours (HEAD)")).toHaveLength(2);
+  });
+
+  it("asks before a choice replaces what the reader typed, and leaves it alone on no", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    fireEvent.click(byName("Take Yours (HEAD)"));
+    result().dispatch({ changes: { from: doc().indexOf("O1") + 2, insert: "!" } });
+    const typed = doc();
+
+    fireEvent.click(byName("Take Incoming"));
+    await waitFor(() => expect(screen.getByText("Discard your edits?")).toBeTruthy());
+    fireEvent.click(screen.getByText("Cancel"));
+
+    await waitFor(() => expect(screen.queryByText("Discard your edits?")).toBeNull());
+    expect(doc()).toBe(typed);
+  });
+
   it("takes what the reader typed above a slot with them", async () => {
     mount();
     await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());

@@ -13,6 +13,7 @@ import {
   keeps,
   nextConflict,
   prevConflict,
+  regionLines,
   seedResult,
   sideLabels,
   unresolved,
@@ -22,10 +23,11 @@ import {
   type ConflictRegion,
   type ConflictSides,
   type ConflictStages,
+  type ResultSlot,
   type Side,
   type SideLabels,
 } from "../../utils/conflict";
-import { choiceOptions, decideRegion, ignoreSide, resetResult, resultField } from "./resultPane";
+import { choiceOptions, decideRegion, editedByHand, ignoreSide, resetResult, resultField } from "./resultPane";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
@@ -557,7 +559,7 @@ export default function ConflictView(props: {
       sideActionDecorations(rs, side, doc, picked, skipped, sideName(side, names()), actOnSide),
     ),
   ];
-  const slots = resultField(optionsFor, chooseRegion);
+  const slots = resultField(optionsFor, { choose: (id, choice) => void chooseRegion(id, choice), reset: (id) => void resetRegion(id) });
 
   function destroy() {
     merge?.destroy();
@@ -585,9 +587,24 @@ export default function ConflictView(props: {
     return lines.length ? lines.join("\n") + "\n" : "";
   }
 
+  // An undecided region holds a blank line open, the way the seed does, except
+  // at the very end of the document where there is no newline to hold.
+  const blankFor = (slot: ResultSlot, view: EditorView) => (slot.to === view.state.doc.length ? "" : "\n");
+  const slotOf = (id: string) => result?.state.field(slots, false)?.slots.find((s) => s.id === id);
+  const typedOver = (view: EditorView, id: string) => editedByHand(view.state.field(slots), view.state.doc, id);
+  // The Result pane keeps no history, so replacing what the reader typed
+  // cannot be undone.
+  const confirmDiscard = () =>
+    askConfirm({
+      title: "Discard your edits?",
+      message: "The lines you wrote for this conflict will be replaced.",
+      confirmLabel: "Discard edits",
+      danger: true,
+    });
+
   function actOnSide(id: string, side: Side, act: "accept" | "ignore" | "restore") {
     if (act === "accept") {
-      chooseRegion(id, withSide(choices()[id], side, bothFor().get(id) ?? ["both"]));
+      void chooseRegion(id, withSide(choices()[id], side, bothFor().get(id) ?? ["both"]));
       return;
     }
     const aside = (ignored()[id] ?? []).filter((s) => s !== side);
@@ -597,15 +614,36 @@ export default function ConflictView(props: {
 
   // Both routes to a decision land here, so the header and the slot cannot
   // disagree about what was chosen or about what the document says.
-  function chooseRegion(id: string, choice: Choice) {
-    setChoices({ ...choices(), [id]: choice });
+  async function chooseRegion(id: string, choice: Choice | null) {
+    const view = result;
     const r = regions().find((x) => x.id === id);
-    const slot = result?.state.field(slots, false)?.slots.find((s) => s.id === id);
-    if (!result || !r || !slot) return;
-    const put = textFor(r, choice);
-    result.dispatch({
+    if (!view || !r) return;
+    const text = choice ? textFor(r, choice) : null;
+    // `hand` replaces nothing, so there is nothing to ask about.
+    if ((choice === null || text !== null) && typedOver(view, id)) {
+      if (!(await confirmDiscard()) || result !== view) return;
+    }
+    const slot = slotOf(id);
+    if (!slot) return;
+    const put = choice ? text : blankFor(slot, view);
+    view.dispatch({
       changes: put === null ? undefined : { from: slot.from, to: slot.to, insert: put },
       effects: decideRegion.of({ id, choice }),
+    });
+  }
+
+  async function resetRegion(id: string) {
+    const view = result;
+    const s = stages();
+    const r = regions().find((x) => x.id === id);
+    if (!view || !s || !r) return;
+    if (typedOver(view, id) && (!(await confirmDiscard()) || result !== view)) return;
+    const slot = slotOf(id);
+    if (!slot) return;
+    const base = regionLines(s, "base", r.base);
+    view.dispatch({
+      changes: { from: slot.from, to: slot.to, insert: base.length ? base.join("\n") + "\n" : blankFor(slot, view) },
+      effects: decideRegion.of({ id, choice: null }),
     });
   }
 
@@ -679,6 +717,12 @@ export default function ConflictView(props: {
           paneTheme,
           syntaxResult.of(syntax() ?? []),
           slots,
+          // The field is where every choice lands, typing over one included, so
+          // the header and the side panes follow it instead of keeping a copy.
+          EditorView.updateListener.of((u) => {
+            const after = u.state.field(slots).choices;
+            if (after !== u.startState.field(slots).choices) setChoices(after);
+          }),
           showPanel.of(() => {
             const dom = document.createElement("div");
             dom.className = styles.sideLabel;
@@ -898,7 +942,7 @@ export default function ConflictView(props: {
                   // and the label agreeing.
                   aria-label={c.name}
                   tooltip={c.name}
-                  onClick={() => chooseRegion(r().id, c.choice)}
+                  onClick={() => void chooseRegion(r().id, c.choice)}
                 >
                   {c.text}
                 </Button>

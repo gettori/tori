@@ -286,7 +286,8 @@ export function deletedSides(stages: ConflictStages): Side[] {
 // split once however many regions and choices ask for its lines.
 const splitStages = new WeakMap<ConflictStages, Record<"base" | Side, string[]>>();
 
-function regionLines(stages: ConflictStages, which: "base" | Side, range: LineRange): string[] {
+/** The lines one stage holds over a range of its own. */
+export function regionLines(stages: ConflictStages, which: "base" | Side, range: LineRange): string[] {
   let split = splitStages.get(stages);
   if (!split) {
     const lines = (text: string | null) => (text ?? "").split("\n");
@@ -366,6 +367,14 @@ export function withSide(current: Choice | undefined, side: Side, both: Choice[]
   if (!current || !keeps(current, other)) return side;
   const ordered: Choice = other === "ours" ? "combine-ours" : "combine-theirs";
   return both.includes(ordered) ? ordered : both[0];
+}
+
+/** What a region's choice becomes with one side taken back out: the other side
+ *  where both were in, or null, which is undecided again. */
+export function withoutSide(current: Choice, side: Side): Choice | null {
+  if (current === side) return null;
+  if (!keeps(current, side)) return current;
+  return side === "ours" ? "theirs" : "ours";
 }
 
 /** Whether a choice keeps that side's version in the result. */
