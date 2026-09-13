@@ -525,6 +525,7 @@ export default function DiffView(props: {
                 </div>
                 <DiffRows
                   rows={buildRows(hunk.lines)}
+                  path={file()}
                   twoColumn={twoColumn()}
                   selection={{
                     has: (i) => picked()?.hunk === hi() && picked()!.lines.has(i),

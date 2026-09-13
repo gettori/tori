@@ -18,9 +18,22 @@
 }
 
 .diffLine.add {
+  background: color-mix(in srgb, var(--diff-added) 20%, transparent);
   color: var(--diff-added);
 }
 .diffLine.del {
+  background: color-mix(in srgb, var(--diff-deleted) 20%, transparent);
+  color: var(--diff-deleted);
+}
+/* A painted line carries its colour per token, so the line itself goes back to
+   the default and only the marker keeps the diff colour. */
+.diffLine.painted {
+  color: var(--fg-default);
+}
+.diffLine.add .marker {
+  color: var(--diff-added);
+}
+.diffLine.del .marker {
   color: var(--diff-deleted);
 }
 .diffLine.hunk {

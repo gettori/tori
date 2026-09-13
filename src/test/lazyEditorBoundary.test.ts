@@ -29,6 +29,7 @@ const FORBIDDEN_MODULES = [
   "../panels/Editor/SearchResultsBuffer",
   "../panels/Editor/lspClient",
   "../panels/Editor/diffGutter",
+  "../panels/Editor/syntaxLines",
   "../panels/Editor/pdfjsRuntime",
   "../panels/Chat/shikiEngine",
   "../utils/mermaidEngine",
