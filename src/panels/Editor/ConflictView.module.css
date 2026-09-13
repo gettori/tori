@@ -122,6 +122,11 @@
   font-size: var(--sway-text-md);
 }
 
+.sideRef {
+  margin-left: calc(6px * var(--ui-scale));
+  color: var(--fg-subtle);
+}
+
 .panes {
   flex: 1;
   min-height: 0;

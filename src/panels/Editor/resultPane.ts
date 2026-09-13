@@ -3,15 +3,18 @@
 // lines rather than the lines that were there when the pane opened.
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
 import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
-import type { Choice, ResultSlot, SideLabels } from "../../utils/conflict";
+import { decided, type Choice, type ResultSlot, type Side, type SideLabels } from "../../utils/conflict";
 
-export type ResultState = { slots: ResultSlot[]; choices: Record<string, Choice> };
+export type ResultState = { slots: ResultSlot[]; choices: Record<string, Choice>; ignored: Record<string, Side[]> };
 
 /** A fresh seed: new spans, nothing decided. Carries the document with it. */
 export const resetResult = StateEffect.define<ResultState>();
 
 /** One conflict answered. Rides with the change that replaces its lines. */
 export const decideRegion = StateEffect.define<{ id: string; choice: Choice }>();
+
+/** One side of a conflict set aside or taken back, which changes no text. */
+export const ignoreSide = StateEffect.define<{ id: string; side: Side; ignored: boolean }>();
 
 /** How a slot's buttons report back, since the view does not own the choices. */
 export type Choose = (id: string, choice: Choice) => void;
@@ -90,7 +93,7 @@ class SlotWidget extends WidgetType {
 function slotDecorations(state: ResultState, options: OptionsFor, choose: Choose): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   for (const slot of state.slots) {
-    if (state.choices[slot.id]) continue;
+    if (decided(slot.id, state.choices, state.ignored)) continue;
     builder.add(
       slot.from,
       slot.from,
@@ -111,13 +114,18 @@ function slotDecorations(state: ResultState, options: OptionsFor, choose: Choose
  */
 export function resultField(options: OptionsFor, choose: Choose): StateField<ResultState> {
   return StateField.define<ResultState>({
-    create: () => ({ slots: [], choices: {} }),
+    create: () => ({ slots: [], choices: {}, ignored: {} }),
     update(value, tr) {
       let next = value;
       for (const effect of tr.effects) {
         if (effect.is(resetResult)) return effect.value;
         if (effect.is(decideRegion)) {
           next = { ...next, choices: { ...next.choices, [effect.value.id]: effect.value.choice } };
+        }
+        if (effect.is(ignoreSide)) {
+          const { id, side, ignored } = effect.value;
+          const aside = (next.ignored[id] ?? []).filter((s) => s !== side);
+          next = { ...next, ignored: { ...next.ignored, [id]: ignored ? [...aside, side] : aside } };
         }
       }
       if (tr.docChanged) {
