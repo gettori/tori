@@ -1,7 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@solidjs/testing-library";
 import DiffRows from "./DiffRows";
 import { buildRows } from "../../utils/diffView";
+
+// Token colours come from a lazily imported engine; here it is a stub that
+// classes every word, so the tests below can see colour and change mark meet.
+vi.mock("./syntaxLines", () => ({
+  languageForPath: async () => ({ name: "ts" }),
+  tokenLines: (text: string) =>
+    text.split("\n").map((line) =>
+      line
+        .split(/(\s+)/)
+        .filter(Boolean)
+        .map((t) => ({ text: t, cls: /^\w+$/.test(t) ? "sy-word" : null })),
+    ),
+}));
 
 // The point of this component existing at all: two surfaces render a hunk, and
 // they must render it the *same* way. Copying the markup into each would leave
@@ -111,5 +124,20 @@ describe("DiffRows", () => {
     };
     // The layout changes; which tokens are marked as changed does not.
     expect(textOf(true)).toEqual(textOf(false));
+  });
+
+  it("keeps a changed token coloured and marked, in both layouts", async () => {
+    for (const twoColumn of [false, true]) {
+      const { container } = render(() => <DiffRows rows={buildRows(HUNK)} twoColumn={twoColumn} path="/repo/a.ts" />);
+      await vi.waitFor(() => expect(container.querySelector(".sy-word")).not.toBeNull());
+      const changed = [...container.querySelectorAll("span")].filter((s) => s.textContent === "250");
+      expect(changed).toHaveLength(1);
+      expect(changed[0].className).toMatch(/sy-word/);
+      expect(changed[0].className).toMatch(/wordChanged/);
+      // The shared prefix is coloured and not marked.
+      const shared = [...container.querySelectorAll("span")].find((s) => s.textContent === "timeout")!;
+      expect(shared.className).toMatch(/sy-word/);
+      expect(shared.className).not.toMatch(/wordChanged/);
+    }
   });
 });

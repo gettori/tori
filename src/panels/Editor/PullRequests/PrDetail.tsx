@@ -749,7 +749,7 @@ export default function PrDetail(props: {
                   <For each={segments()}>
                     {(seg) => (
                       <>
-                        <DiffRows rows={seg.rows} twoColumn={twoColumn()} selection={selection()} />
+                        <DiffRows rows={seg.rows} path={f.path} twoColumn={twoColumn()} selection={selection()} />
                         <For each={seg.after}>{(t) => threadCard(t, false)}</For>
                       </>
                     )}

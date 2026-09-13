@@ -148,7 +148,7 @@ export default function CommitDiffView(props: { workspace: string; arg: string }
             {(hunk) => (
               <div>
                 <div class={`${diffRowClasses.line} ${diffRowClasses.hunk}`}>{hunk.header}</div>
-                <DiffRows rows={buildRows(hunk.lines)} twoColumn={twoColumn()} />
+                <DiffRows rows={buildRows(hunk.lines)} path={file()} twoColumn={twoColumn()} />
               </div>
             )}
           </For>
