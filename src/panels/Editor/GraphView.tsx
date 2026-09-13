@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, RefreshCw } from "lucide-solid";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import { gitStateFor } from "../../utils/gitActions";
-import { authorInitials, buildGraph, refPill, type GraphRow } from "../../utils/commitGraph";
+import { authorInitials, buildGraph, foldPills, refPill, type GraphRow } from "../../utils/commitGraph";
 import { commitDiffTabId, syntheticId } from "../../utils/syntheticTabs";
 import IconButton from "../../components/IconButton/IconButton";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -25,19 +25,24 @@ type CommitDetail = { files: CommitFile[] };
 const LANE_W = 14;
 const ROW_H = 24;
 const DOT_R = 4;
+/** The same step up the sidebar gives HEAD (8px solid, 11px hollow). */
+const HEAD_DOT_R = 5.5;
 
-/** Lanes cycle through six of the scale hues, the same set the file icons draw
- *  from. Written out rather than built from a lane number, so every token the
- *  drawing names is one the token check can see. */
+/** The trunk's hue, the same orange the sidebar's Graph section paints the base
+ *  lane. Kept out of the cycling set so nothing else can wear it: on this
+ *  drawing the colour is what says "this is the branch everything lands on". */
+const TRUNK_HUE = "var(--scale-orange)";
+
+/** Every other lane cycles through five of the scale hues, the same set the
+ *  file icons draw from. Written out rather than built from a lane number, so
+ *  every token the drawing names is one the token check can see. */
 const LANE_HUES = [
   "var(--scale-blue)",
-  "var(--scale-orange)",
   "var(--scale-green)",
   "var(--scale-purple)",
   "var(--scale-pink)",
   "var(--scale-yellow)",
 ];
-const laneHue = (lane: number) => LANE_HUES[lane % LANE_HUES.length];
 
 /**
  * The commit graph, at reading width.
@@ -57,6 +62,35 @@ export default function GraphView(props: { workspace: string }) {
   const [files, setFiles] = createSignal<Record<string, CommitFile[]>>({});
 
   const graph = createMemo(() => buildGraph(entries()));
+
+  /** The trunk's name, for the pill that wears the trunk's colour. Read here
+   *  rather than passed in: this tab is opened by id and has no panel above it
+   *  to hand it down. */
+  const [base, setBase] = createSignal<string | null>(null);
+  createEffect(
+    on(
+      () => props.workspace,
+      async (root) => {
+        try {
+          setBase(await invoke<string | null>("git_default_base_branch", { projectPath: root }));
+        } catch {
+          setBase(null);
+        }
+      },
+    ),
+  );
+
+  const isHead = (row: GraphRow) => row.entry.refs.some((r) => refPill(r).kind === "head");
+
+  /** A commit's own hue: the trunk's orange once the base branch contains it,
+   *  its lane's colour while it does not.
+   *
+   *  Per row and not per lane, which is the whole difficulty: a feature branch
+   *  and the trunk it came off share one lane, and the line only changes
+   *  meaning at the commit the base branch starts containing. Colouring the
+   *  lane would paint the feature orange along with the trunk under it. */
+  const rowHue = (row: GraphRow) =>
+    row.entry.off_base ? LANE_HUES[row.lane % LANE_HUES.length] : TRUNK_HUE;
 
   async function load(skip: number) {
     if (loading()) return;
@@ -137,23 +171,39 @@ export default function GraphView(props: { workspace: string }) {
             <path
               d={
                 edge.from === edge.to
-                  ? `M ${x(edge.from)} 0 L ${x(edge.to)} ${ROW_H}`
+                  ? // HEAD's own line starts at its dot, the way the sidebar
+                    // starts the first entry's: nothing is above it to draw.
+                    `M ${x(edge.from)} ${isHead(row) && edge.to === row.lane ? ROW_H / 2 : 0} L ${x(edge.to)} ${ROW_H}`
                   : // A bend meets the dot at the row's middle, so a merge
                     // reads as joining this commit rather than crossing it.
                     `M ${x(edge.from)} 0 C ${x(edge.from)} ${ROW_H / 2}, ${x(edge.to)} ${ROW_H / 2}, ${x(edge.to)} ${ROW_H}`
               }
               fill="none"
-              stroke={laneHue(Math.max(edge.from, edge.to))}
+              // The line coming into this commit wears the commit's hue, so the
+              // trunk turns orange at the row the base branch starts containing
+              // rather than at whatever lane it happens to run in. A line only
+              // passing through keeps its own lane's colour.
+              stroke={
+                edge.to === row.lane
+                  ? rowHue(row)
+                  : LANE_HUES[Math.max(edge.from, edge.to) % LANE_HUES.length]
+              }
               stroke-width="1.5"
             />
           )}
         </For>
+        {/* HEAD is the hollow one, a size up, as the sidebar's Graph section
+            draws it: where you are, not what you have pushed. */}
         <circle
           cx={x(row.lane)}
           cy={ROW_H / 2}
-          r={DOT_R}
-          fill={row.entry.unpushed || row.merge ? "var(--canvas-default)" : laneHue(row.lane)}
-          stroke={laneHue(row.lane)}
+          r={isHead(row) ? HEAD_DOT_R : DOT_R}
+          fill={
+            isHead(row) || row.entry.unpushed || row.merge
+              ? "var(--canvas-default)"
+              : rowHue(row)
+          }
+          stroke={rowHue(row)}
           stroke-width="2"
         />
       </svg>
@@ -202,11 +252,15 @@ export default function GraphView(props: { workspace: string }) {
                   <span class={styles.subject} title={row.entry.subject}>
                     {row.entry.subject}
                   </span>
-                  <For each={row.entry.refs}>
-                    {(ref) => {
-                      const pill = refPill(ref);
-                      return <span class={`${styles.ref} ${styles[pill.kind]}`}>{pill.label}</span>;
-                    }}
+                  <For each={foldPills(row.entry.refs, base())}>
+                    {(pill) => (
+                      <span
+                        class={`${styles.ref} ${styles[pill.kind]}`}
+                        classList={{ [styles.base]: pill.base }}
+                      >
+                        {pill.label}
+                      </span>
+                    )}
                   </For>
                   <span class={styles.who} title={row.entry.author}>
                     {authorInitials(row.entry.author)}
