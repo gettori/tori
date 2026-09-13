@@ -290,6 +290,7 @@ export default function CodeEditor(props: {
   // Close a tab from inside the editor: the "take disk" choice on a
   // deleted-file conflict has no buffer left to show.
   onCloseFile?: (path: string) => void;
+  onCompareConflict?: (path: string) => void;
   // Absolute paths a checkpoint tree revert just rewrote or removed, with a
   // nonce so a repeat revert of the same files retriggers. Resolved through the
   // same path as any external change, rather than waiting on the fs watcher.
@@ -1076,7 +1077,12 @@ export default function CodeEditor(props: {
     foldGutter(),
     highlightSelectionMatches(),
     diffGutterExtension(),
-    conflictBands(),
+    // The view rather than a path, because one buffer's extensions outlive a
+    // rename and the path is only right at the moment of the click.
+    conflictBands((v) => {
+      const path = [...views.values()].find((rec) => rec.view === v)?.path;
+      if (path) props.onCompareConflict?.(path);
+    }),
     blameConf.of([]),
     prefsConf.of(currentPrefExtensions()),
     // What the selection was before it last grew, so shrink has somewhere to go
