@@ -370,6 +370,7 @@ pub fn run() {
             shared::shared_remove,
             shared::shared_unlink,
             git::git_head_sha,
+            git::git_base_offset,
             blame::git_blame,
             agent_lines::agent_lines,
             conflict::git_conflict_stages,
