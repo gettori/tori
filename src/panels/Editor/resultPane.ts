@@ -2,7 +2,7 @@
 // reader's own edits, so a choice made after a hand edit replaces the right
 // lines rather than the lines that were there when the pane opened.
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view";
-import { RangeSetBuilder, StateEffect, StateField, type Text } from "@codemirror/state";
+import { RangeSetBuilder, StateEffect, StateField, type Text, type Transaction } from "@codemirror/state";
 import {
   decided,
   keeps,
@@ -15,6 +15,7 @@ import {
 
 export type ResultState = {
   slots: ResultSlot[];
+  carried: ResultSlot[];
   choices: Record<string, Choice>;
   ignored: Record<string, Side[]>;
   // What an action last wrote into each slot. Typing is measured against it.
@@ -140,6 +141,13 @@ class SlotWidget extends WidgetType {
   }
 }
 
+function mapSpan(tr: Transaction, span: ResultSlot): ResultSlot {
+  // Outward, so text typed into a region is part of it, except past a span's
+  // closing newline: typing there starts the line below.
+  const closed = span.to > span.from && tr.startState.doc.sliceString(span.to - 1, span.to) === "\n";
+  return { id: span.id, from: tr.changes.mapPos(span.from, -1), to: tr.changes.mapPos(span.to, closed ? -1 : 1) };
+}
+
 function slotDecorations(state: ResultState, options: OptionsFor, act: SlotActions): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   for (const slot of state.slots) {
@@ -166,7 +174,7 @@ function slotDecorations(state: ResultState, options: OptionsFor, act: SlotActio
  */
 export function resultField(options: OptionsFor, act: SlotActions): StateField<ResultState> {
   return StateField.define<ResultState>({
-    create: () => ({ slots: [], choices: {}, ignored: {}, placed: {} }),
+    create: () => ({ slots: [], carried: [], choices: {}, ignored: {}, placed: {} }),
     update(value, tr) {
       let next = value;
       const wrote: string[] = [];
@@ -191,14 +199,8 @@ export function resultField(options: OptionsFor, act: SlotActions): StateField<R
       }
       if (!tr.docChanged && !wrote.length) return next;
 
-      const slots = !tr.docChanged
-        ? next.slots
-        : // Outward, so text typed into a region is part of it, except past a
-          // span's closing newline: typing there starts the line below.
-          next.slots.map((slot) => {
-            const closed = slot.to > slot.from && tr.startState.doc.sliceString(slot.to - 1, slot.to) === "\n";
-            return { id: slot.id, from: tr.changes.mapPos(slot.from, -1), to: tr.changes.mapPos(slot.to, closed ? -1 : 1) };
-          });
+      const slots = tr.docChanged ? next.slots.map((slot) => mapSpan(tr, slot)) : next.slots;
+      const carried = tr.docChanged ? next.carried.map((span) => mapSpan(tr, span)) : next.carried;
       let { choices, placed } = next;
       slots.forEach((slot, i) => {
         const text = () => tr.newDoc.sliceString(slot.from, slot.to);
@@ -213,7 +215,7 @@ export function resultField(options: OptionsFor, act: SlotActions): StateField<R
         if (!choice || choice === "hand" || !tr.changes.touchesRange(before.from, before.to)) return;
         if (text() !== placed[slot.id]) choices = { ...choices, [slot.id]: "hand" };
       });
-      return { ...next, slots, choices, placed };
+      return { ...next, slots, carried, choices, placed };
     },
     provide: (field) => EditorView.decorations.from(field, (value) => slotDecorations(value, options, act)),
   });
