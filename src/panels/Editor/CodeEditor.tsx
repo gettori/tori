@@ -11,6 +11,7 @@ import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { syntaxHighlighting, indentOnInput, bracketMatching, foldGutter, foldKeymap } from "@codemirror/language";
 import { swayHighlight } from "./syntaxStyle";
+import { swayTheme } from "./editorTheme";
 import { langForPath } from "./languages";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
@@ -155,25 +156,6 @@ import styles from "./CodeEditor.module.css";
 function relTo(root: string, abs: string): string {
   return abs.startsWith(root + "/") ? abs.slice(root.length + 1) : abs;
 }
-
-const swayTheme = EditorView.theme(
-  {
-    "&": { backgroundColor: "var(--canvas-card)", color: "var(--fg-default)", height: "100%" },
-    ".cm-content": {
-      caretColor: "var(--fg-default)",
-      fontFamily: 'var(--editor-font-family, "SF Mono", Menlo, Monaco, monospace)',
-      fontSize: "var(--editor-font-size, 13px)",
-    },
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--fg-default)" },
-    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
-      backgroundColor: "var(--accent-subtle)",
-    },
-    ".cm-gutters": { backgroundColor: "var(--canvas-card)", color: "var(--fg-subtle)", border: "none" },
-    ".cm-activeLine": { backgroundColor: "transparent" },
-    ".cm-activeLineGutter": { backgroundColor: "var(--neutral-hover)" },
-  },
-  { dark: true },
-);
 
 // `pendingKind` (not a truthy `pendingExternal`) is what marks a deferred
 // conflict: a deleted file's stashed text is the empty string, which would

@@ -697,6 +697,33 @@ html {
   transform: scaleX(2);
 }
 
+.cm-diff-line-added {
+  background: color-mix(in srgb, var(--diff-added) 20%, transparent);
+}
+
+.cm-diff-word-added {
+  background: var(--diff-added-word);
+  border-radius: 2px;
+}
+
+/* `.cm-line`'s own padding, so removed text starts in the same column. */
+.cm-diff-removed-line {
+  padding: 0 2px 0 6px;
+  white-space: pre;
+  background: color-mix(in srgb, var(--diff-deleted) 20%, transparent);
+}
+
+.cm-diff-word-removed {
+  background: var(--diff-deleted-word);
+  border-radius: 2px;
+}
+
+.cm-diff-old-numbers .cm-gutterElement {
+  min-width: 20px;
+  padding: 0 3px 0 5px;
+  text-align: right;
+}
+
 /* Git blame. Emitted as literal class strings by src/panels/Editor/blameGutter.ts,
    so like the diff gutter above they are global rather than CSS-module scoped.
 
