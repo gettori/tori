@@ -718,6 +718,19 @@ html {
   border-radius: 2px;
 }
 
+.cm-diff-hidden {
+  padding: 0 2px 0 6px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+  background: var(--canvas-card);
+  border-block: 1px solid var(--border-default);
+}
+
+.cm-diff-hidden:hover {
+  color: var(--fg-default);
+}
+
 .cm-diff-old-numbers .cm-gutterElement {
   min-width: 20px;
   padding: 0 3px 0 5px;

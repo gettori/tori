@@ -2,10 +2,13 @@ import { batch, createSignal, createMemo, createEffect, lazy, on, onMount, onCle
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  ChevronDown,
+  ChevronUp,
   Columns2,
   Copy,
   FileCode,
   Minus,
+  Pilcrow,
   Plus,
   RefreshCw,
   SquareCode,
@@ -34,6 +37,7 @@ import { buildRows, hunkGaps, type Gap } from "../../utils/diffView";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
 import { diffEditorLayoutOn as editorLayout, writeDiffEditorLayout } from "../../utils/diffLayout";
+import { diffIgnoreWhitespaceOn as ignoreWhitespace, writeDiffIgnoreWhitespace } from "../../utils/diffWhitespace";
 import { copyText } from "../../utils/clipboard";
 import { sendTargetFor } from "../../utils/sendTarget";
 import { parseDiffArg } from "../../utils/syntheticTabs";
@@ -105,6 +109,7 @@ export default function DiffView(props: {
   // selection spanning two could not be applied as one request anyway.
   const [picked, setPicked] = createSignal<{ hunk: number; lines: ReadonlySet<number> } | null>(null);
   const [fileText, setFileText] = createSignal<string | null>(null);
+  let nav: { next: () => void; previous: () => void } | undefined;
 
   const hunks = createMemo(() => parseDiffHunks(diff()));
   const gaps = createMemo(() => hunkGaps(hunks()));
@@ -128,6 +133,9 @@ export default function DiffView(props: {
   createEffect(on(diff, () => setPicked(null)));
 
   const twoColumn = () => sideBySide() && paneWidth() >= SIDE_BY_SIDE_MIN_WIDTH;
+  // Staging re-derives the diff without -w, so a hunk read with it matches
+  // nothing git would apply.
+  const canStage = () => !ignoreWhitespace();
   const linesLabel = (count: number) => `${staged() ? "Unstage" : "Stage"} ${count} line${count === 1 ? "" : "s"}`;
 
   function toastError(e: unknown) {
@@ -141,6 +149,7 @@ export default function DiffView(props: {
         file: file(),
         context: DIFF_CONTEXT,
         mode: staged() ? "staged" : "unstaged",
+        ignoreWhitespace: ignoreWhitespace(),
       });
     } catch (e) {
       toastError(e);
@@ -202,6 +211,8 @@ export default function DiffView(props: {
       { defer: true },
     ),
   );
+
+  createEffect(on(ignoreWhitespace, () => void reload(), { defer: true }));
 
   /** Run one index-shuffling apply and put the view back in step with it. On
    *  failure the refetch happens before the error surfaces, so the user is
@@ -426,7 +437,7 @@ export default function DiffView(props: {
           <span class={styles.dir}>{fileDir(file())}</span>
         </Show>
         <span class={styles.mode}>{staged() ? "Staged" : "Working tree"}</span>
-        <Show when={editorLayout() ? picked() : null}>
+        <Show when={editorLayout() && canStage() ? picked() : null}>
           {(sel) => (
             <Button
               size="xs"
@@ -443,6 +454,10 @@ export default function DiffView(props: {
           )}
         </Show>
         <span class={styles.spacer} />
+        <Show when={editorLayout()}>
+          <IconButton size="sm" icon={<Icon icon={ChevronUp} />} tooltip="Previous change" onClick={() => nav?.previous()} />
+          <IconButton size="sm" icon={<Icon icon={ChevronDown} />} tooltip="Next change" onClick={() => nav?.next()} />
+        </Show>
         <IconButton
           size="sm"
           icon={<Icon icon={staged() ? Minus : Plus} />}
@@ -460,8 +475,9 @@ export default function DiffView(props: {
           <IconButton
             size="sm"
             icon={<Icon icon={Undo2} />}
-            disabled={applying() || !hunks().length}
-            tooltip="Discard every hunk below"
+            disabled={applying() || !hunks().length || !canStage()}
+            tooltipWhenDisabled={!canStage()}
+            tooltip={canStage() ? "Discard every hunk below" : "Show whitespace changes to discard from here"}
             onClick={() => void discardAll()}
           />
         </Show>
@@ -471,6 +487,14 @@ export default function DiffView(props: {
           icon={<Icon icon={FileCode} />}
           tooltip="Open the file itself"
           onClick={() => emitWith(OPEN_IN_EDITOR, { path: `${props.workspace}/${file()}` })}
+        />
+        <IconButton
+          size="sm"
+          class={styles.pressable}
+          aria-pressed={ignoreWhitespace()}
+          icon={<Icon icon={Pilcrow} />}
+          tooltip={ignoreWhitespace() ? "Show whitespace changes, which staging needs" : "Ignore whitespace changes"}
+          onClick={() => writeDiffIgnoreWhitespace(!ignoreWhitespace())}
         />
         <IconButton
           size="sm"
@@ -513,11 +537,13 @@ export default function DiffView(props: {
           <div class="tree-empty">
             <Show when={!loading()}>
               <p>
-                {staged()
-                  ? "Nothing staged in this file."
-                  : entry()
-                    ? "No unstaged changes left in this file."
-                    : "This file matches HEAD."}
+                {ignoreWhitespace() && entry()
+                  ? "No changes here once whitespace is ignored."
+                  : staged()
+                    ? "Nothing staged in this file."
+                    : entry()
+                      ? "No unstaged changes left in this file."
+                      : "This file matches HEAD."}
               </p>
             </Show>
           </div>
@@ -536,51 +562,53 @@ export default function DiffView(props: {
                       land in one place in both modes. */}
                   <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
                     <span>{hunk.header}</span>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      disabled={applying()}
-                      tooltip={staged() ? "Unstage this hunk" : "Stage this hunk"}
-                      onClick={() =>
-                        // The fingerprint is derived from the hunk exactly as
-                        // rendered, so the backend can prove it is still the same
-                        // hunk before applying it.
-                        void applyHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))
-                      }
-                    >
-                      {staged() ? "Unstage hunk" : "Stage hunk"}
-                    </Button>
-                    {/* Only while this hunk has lines picked, so the header stays
-                        the width it always was until there is something to act
-                        on. */}
-                    <Show when={picked()?.hunk === hi() ? picked() : null}>
-                      {(sel) => (
-                        <Button
-                          size="xs"
-                          disabled={applying()}
-                          tooltip={staged() ? "Unstage only the selected lines" : "Stage only the selected lines"}
-                          onClick={() =>
-                            void applyLines(
-                              hi(),
-                              hunkFingerprint(hunk.header, hunk.lines),
-                              [...sel().lines].sort((a, b) => a - b),
-                            )
-                          }
-                        >
-                          {linesLabel(sel().lines.size)}
-                        </Button>
-                      )}
-                    </Show>
-                    <Show when={!staged()}>
+                    <Show when={canStage()}>
                       <Button
                         size="xs"
                         variant="ghost"
                         disabled={applying()}
-                        tooltip="Throw away this hunk"
-                        onClick={() => void discardHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))}
+                        tooltip={staged() ? "Unstage this hunk" : "Stage this hunk"}
+                        onClick={() =>
+                          // The fingerprint is derived from the hunk exactly as
+                          // rendered, so the backend can prove it is still the same
+                          // hunk before applying it.
+                          void applyHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))
+                        }
                       >
-                        Discard hunk
+                        {staged() ? "Unstage hunk" : "Stage hunk"}
                       </Button>
+                      {/* Only while this hunk has lines picked, so the header stays
+                          the width it always was until there is something to act
+                          on. */}
+                      <Show when={picked()?.hunk === hi() ? picked() : null}>
+                        {(sel) => (
+                          <Button
+                            size="xs"
+                            disabled={applying()}
+                            tooltip={staged() ? "Unstage only the selected lines" : "Stage only the selected lines"}
+                            onClick={() =>
+                              void applyLines(
+                                hi(),
+                                hunkFingerprint(hunk.header, hunk.lines),
+                                [...sel().lines].sort((a, b) => a - b),
+                              )
+                            }
+                          >
+                            {linesLabel(sel().lines.size)}
+                          </Button>
+                        )}
+                      </Show>
+                      <Show when={!staged()}>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={applying()}
+                          tooltip="Throw away this hunk"
+                          onClick={() => void discardHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))}
+                        >
+                          Discard hunk
+                        </Button>
+                      </Show>
                     </Show>
                     <HunkCommentInput
                       target={target()}
@@ -594,10 +622,14 @@ export default function DiffView(props: {
                     rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}
                     path={file()}
                     twoColumn={twoColumn()}
-                    selection={{
-                      has: (i) => picked()?.hunk === hi() && picked()!.lines.has(i),
-                      toggle: (i) => pickLine(hi(), i),
-                    }}
+                    selection={
+                      canStage()
+                        ? {
+                            has: (i) => picked()?.hunk === hi() && picked()!.lines.has(i),
+                            toggle: (i) => pickLine(hi(), i),
+                          }
+                        : undefined
+                    }
                   />
                   <For each={gaps().filter((g) => g.afterHunk === hi())}>
                     {(gap) => gapRow(gap, `gap${hi()}`)}
@@ -614,6 +646,8 @@ export default function DiffView(props: {
             path={file()}
             staged={staged()}
             busy={applying()}
+            canStage={canStage()}
+            controls={(n) => (nav = n)}
             onHunk={(index, action) => {
               const hunk = hunks()[index];
               const fingerprint = hunkFingerprint(hunk.header, hunk.lines);

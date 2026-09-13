@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { EditorState } from "@codemirror/state";
+import { EditorState, type StateCommand } from "@codemirror/state";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import type { DiffRow } from "../../utils/diffView";
-import { diffBufferExtension, diffBufferField, oldLineAt, setDiffHunks } from "./diffBuffer";
+import { diffBufferExtension, diffBufferField, nextChange, oldLineAt, previousChange, setDiffHunks } from "./diffBuffer";
 
 const DOC = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n");
 
@@ -110,5 +110,17 @@ describe("the old-number gutter", () => {
   it("numbers the removed lines from the old file", () => {
     const widgets = decorations(load()).filter((d) => d.removedOld);
     expect(widgets.map((w) => w.removedOld)).toEqual([[3], [24, 25]]);
+  });
+});
+
+describe("moving between changes", () => {
+  it("lands on each hunk's first change in turn from the top, and wraps both ways", () => {
+    let state = load();
+    const go = (command: StateCommand) => {
+      command({ state, dispatch: (tr) => (state = tr.state) });
+      return state.doc.lineAt(state.selection.main.head).number;
+    };
+    expect([go(nextChange), go(nextChange), go(nextChange), go(nextChange)]).toEqual([3, 12, 26, 3]);
+    expect(go(previousChange)).toBe(26);
   });
 });
