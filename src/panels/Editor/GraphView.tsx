@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ChevronDown, ChevronRight, RefreshCw } from "lucide-solid";
+import { ChevronDown, ChevronRight, GitBranch, RefreshCw } from "lucide-solid";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import { gitStateFor } from "../../utils/gitActions";
@@ -215,7 +215,12 @@ export default function GraphView(props: { workspace: string }) {
       <div class={styles.topBar}>
         <span class={styles.title}>Graph</span>
         <Show when={gitStateFor(props.workspace).branch}>
-          {(branch) => <span class={styles.branch}>{branch()}</span>}
+          {(branch) => (
+            <span class={styles.branch}>
+              <Icon icon={GitBranch} />
+              {branch()}
+            </span>
+          )}
         </Show>
         <span class={styles.spacer} />
         <span class={styles.count}>{entries().length} loaded</span>

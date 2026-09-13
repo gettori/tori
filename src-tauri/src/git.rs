@@ -1159,6 +1159,30 @@ fn off_base_shas(repo: &str) -> std::collections::HashSet<String> {
         .unwrap_or_default()
 }
 
+/// How many commits sit between HEAD and the point it left the base branch, so
+/// a graph can widen its page until the base is on it.
+///
+/// The merge base rather than the base's tip: on a branch cut a while ago the
+/// tip has moved on and is no ancestor of HEAD, so counting to it would answer
+/// for a commit `git log HEAD` is never going to print. Zero whenever the
+/// question has no answer (no base, no remote-tracking ref, no shared history),
+/// which leaves the caller on its own page size.
+#[tauri::command(async)]
+pub fn git_base_offset(project_path: String) -> Result<u32, String> {
+    let Ok(Some(base)) = git_default_base_branch(project_path.clone()) else {
+        return Ok(0);
+    };
+    let base_ref = format!("refs/remotes/origin/{base}");
+    let Ok(merge_base) = git_capture(&project_path, &["merge-base", "HEAD", &base_ref]) else {
+        return Ok(0);
+    };
+    let range = format!("{merge_base}..HEAD");
+    Ok(git_capture(&project_path, &["rev-list", "--count", &range])
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0))
+}
+
 /// How many commits one page holds when the caller does not say.
 const LOG_PAGE: u32 = 100;
 

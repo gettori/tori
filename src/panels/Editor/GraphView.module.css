@@ -28,12 +28,24 @@
   font-weight: 600;
 }
 
+/* Icon and text, the way the Changes panel's branch bar reads it. A pill here
+   said "ref" beside a drawing whose pills are the actual refs. */
 .branch {
-  padding: 0 calc(6px * var(--ui-scale));
-  border: 1px solid var(--brand-default);
-  border-radius: var(--sway-radius-pill);
-  color: var(--brand-default);
-  font-size: var(--sway-text-xs);
+  display: inline-flex;
+  align-items: center;
+  gap: calc(5px * var(--ui-scale));
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch > svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
 }
 
 .spacer {

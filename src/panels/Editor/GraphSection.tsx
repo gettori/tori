@@ -19,6 +19,14 @@ import styles from "./GraphSection.module.css";
  *  graph is a tab, and this is the glance. */
 const ROWS = 40;
 
+/** Rows of trunk kept under the base, so the commit it points at is not the
+ *  last line on the page. */
+const TAIL = 8;
+
+/** Where the page stops widening. A branch further than this off the trunk has
+ *  stopped being a glance, and the graph tab is the place to read it. */
+const CAP = 400;
+
 /**
  * The commit graph, compressed to fit the right panel.
  *
@@ -60,7 +68,14 @@ export default function GraphSection(props: {
           return;
         }
         try {
-          setEntries(await invoke<LogEntry[]>("git_log", { projectPath: root, limit: ROWS, all }));
+          // A branch longer than one page would push the base off the bottom,
+          // and where you left the trunk is the one thing this section is for.
+          // So the page grows to reach it, rather than the reader paging for it.
+          const offset = await invoke<number>("git_base_offset", { projectPath: root }).catch(
+            () => 0,
+          );
+          const limit = Math.min(CAP, Math.max(ROWS, offset + TAIL));
+          setEntries(await invoke<LogEntry[]>("git_log", { projectPath: root, limit, all }));
           setError("");
         } catch (e) {
           setEntries([]);
