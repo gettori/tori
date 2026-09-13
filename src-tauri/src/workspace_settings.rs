@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn a_folder_that_is_not_a_repo_still_takes_an_override() {
-        // Docs trees and `.shared/` are real folders outside any git repo; the
+        // A `.shared/` folder is a real folder outside any git repo; the
         // exclude simply has nowhere to go, and that must not refuse the write.
         let dir = std::env::temp_dir().join(format!("sway-ws-plain-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();

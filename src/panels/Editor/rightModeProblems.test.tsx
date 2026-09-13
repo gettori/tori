@@ -28,8 +28,6 @@ const FEATURE = {
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     switch (cmd) {
-      case "get_docs_root":
-        return Promise.reject("no docs root");
       case "list_features":
         return Promise.resolve([FEATURE]);
       case "get_config":

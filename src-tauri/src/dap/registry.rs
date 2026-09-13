@@ -115,7 +115,7 @@ pub fn root_for(adapter: &DapAdapter, file_path: &Path, project_path: &Path) -> 
         file_path.parent().unwrap_or(project_path)
     };
 
-    // A file outside the project (the Docs tree, a worktree's `.shared/`) has no
+    // A file outside the project (a worktree's `.shared/`, say) has no
     // ancestor chain worth searching.
     if !start.starts_with(project_path) {
         return project_path.to_path_buf();

@@ -26,8 +26,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve({ ahead: 0, behind: 0, has_upstream: false });
       case "file_exists":
         return Promise.resolve(String(args.path) === FILE);
-      case "get_docs_root":
-        return Promise.reject("no docs root");
       default:
         return Promise.resolve(null);
     }

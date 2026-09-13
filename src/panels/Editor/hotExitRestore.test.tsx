@@ -34,8 +34,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(onDisk.has(String(args.path)));
       case "hot_exit_load":
         return Promise.resolve(stashOnDisk);
-      case "get_docs_root":
-        return Promise.reject("no docs root");
       case "git_status":
       case "list_branches":
       case "fs_read_dir":

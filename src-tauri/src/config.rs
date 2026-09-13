@@ -29,8 +29,6 @@ struct RawConfig {
     // into explicit extra paths so old configs are never silently dropped.
     #[serde(default)]
     project: Vec<RawProject>,
-    #[serde(default)]
-    docs: RawDocs,
     // Per-space metadata overlay (`[[space]]` tables), merged onto discovered
     // spaces by name. Currently just an icon; the filesystem stays the source of
     // truth for which spaces exist.
@@ -76,24 +74,6 @@ struct ProjectMeta {
     /// An image on disk, normally a copy in `~/.config/sway/icons`.
     #[serde(default)]
     icon_file: Option<String>,
-}
-
-// A parallel notes/docs tree that mirrors `<root>/<space>/<project>` under a
-// single base folder, so a project's docs live at `<docs.root>/<space>/<project>`.
-#[derive(Deserialize, Default)]
-struct RawDocs {
-    /// Base folder for the mirrored docs tree. Defaults to the grimoire vault.
-    #[serde(default)]
-    root: Option<String>,
-}
-
-/// The docs base folder, expanded, falling back to the grimoire vault default.
-fn docs_root(raw: &RawConfig) -> String {
-    raw.docs
-        .root
-        .as_deref()
-        .map(expand_tilde)
-        .unwrap_or_else(|| expand_tilde("~/.dotfiles/grimoire/docs"))
 }
 
 #[derive(Deserialize, Default)]
@@ -262,9 +242,6 @@ const SAMPLE: &str = r#"# Sway config. Projects are discovered from your base fo
 # roots  = ["~/Projects"]   # base folders scanned as <root>/<space>/<project>
 # ignore = ["node_modules"] # folder names to skip (dotfiles are always skipped)
 # paths  = []               # explicit out-of-root project folders
-#
-# [docs]
-# root = "~/.dotfiles/grimoire/docs"  # mirrored notes tree: <root>/<space>/<project>
 "#;
 
 fn ensure_config() -> Result<String, String> {
@@ -845,15 +822,6 @@ fn get_config_body(index: &ProjectIndex) -> Result<ResolvedConfig, String> {
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     Ok(resolve(raw, index))
-}
-
-/// The base folder of the mirrored docs tree (`<docs.root>/<space>/<project>`),
-/// so the editor can show a project's notes alongside its files.
-#[tauri::command(async)]
-pub fn get_docs_root() -> Result<String, String> {
-    let text = ensure_config()?;
-    let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
-    Ok(docs_root(&raw))
 }
 
 #[tauri::command]
@@ -2140,7 +2108,6 @@ mod tests {
                     path: p.to_string(),
                 })
                 .collect(),
-            docs: RawDocs::default(),
             space: Vec::new(),
             project_meta: Vec::new(),
             space_order: Vec::new(),

@@ -47,8 +47,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve([FEATURE]);
       case "get_config":
         return Promise.resolve({ spaces: [] });
-      case "get_docs_root":
-        return Promise.reject("no docs root");
       case "git_status":
       case "list_branches":
       case "list_project_files":

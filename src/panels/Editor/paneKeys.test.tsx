@@ -28,8 +28,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve([{ name: "feature", current: true }]);
       case "git_ahead_behind":
         return Promise.resolve({ ahead: 1, behind: 0, has_upstream: true });
-      case "get_docs_root":
-        return Promise.reject("no docs root");
       case "file_exists":
         return Promise.resolve(false);
       case "fs_read_dir":

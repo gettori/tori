@@ -85,7 +85,7 @@ export const SingleRoot: Story = {
   args: { root: API },
 };
 
-/** Read-only, as the Docs tab draws it: no create, rename or delete. */
+/** Read-only: no create, rename or delete. */
 export const ReadOnly: Story = {
   args: { root: DOCS, editable: false },
 };

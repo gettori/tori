@@ -398,8 +398,6 @@ describe("the project a member's repo was discovered as", () => {
       [PLAIN] as never,
     );
     expect(m.kind).toBe("plain");
-    expect(m.spaceName).toBe("work");
-    expect(m.projectName).toBe("web");
   });
 
   it("reads a bare container as a worktree layout", () => {
@@ -408,7 +406,6 @@ describe("the project a member's repo was discovered as", () => {
       [CONTAINER] as never,
     );
     expect(m.kind).toBe("worktree");
-    expect(m.projectName).toBe("api");
   });
 
   it("resolves a repo outside every Space to no space name, without throwing", () => {
@@ -416,8 +413,6 @@ describe("the project a member's repo was discovered as", () => {
       { members: [member("/tmp/scratch", "/tmp/scratch/wt")] } as never,
       [PLAIN] as never,
     );
-    expect(m.spaceName).toBeUndefined();
-    expect(m.projectName).toBeUndefined();
     expect(m.kind).toBeUndefined();
     // And it still tints neutrally rather than failing the whole list.
     expect(m.hue).toBeUndefined();

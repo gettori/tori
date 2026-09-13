@@ -56,8 +56,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(STAGES);
       case "git_conflict_op":
         return Promise.resolve("merge");
-      case "get_docs_root":
-        return Promise.reject("no docs root");
       default:
         return Promise.resolve(null);
     }
