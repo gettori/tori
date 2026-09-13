@@ -524,7 +524,7 @@ export default function DiffView(props: {
                   />
                 </div>
                 <DiffRows
-                  rows={buildRows(hunk.lines)}
+                  rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}
                   path={file()}
                   twoColumn={twoColumn()}
                   selection={{

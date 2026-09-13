@@ -232,7 +232,7 @@ export default function SessionDiffView(props: {
                       <Show when={openHunks().has(key()) && why()}>
                         {(text) => <div class={styles.why}>{text()}</div>}
                       </Show>
-                      <DiffRows rows={buildRows(hunk.lines)} path={file.path} twoColumn={twoColumn()} />
+                      <DiffRows rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })} path={file.path} twoColumn={twoColumn()} />
                     </div>
                   );
                 }}
