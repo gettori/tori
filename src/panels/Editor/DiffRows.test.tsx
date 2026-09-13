@@ -108,6 +108,38 @@ describe("DiffRows", () => {
     expect(seen[1]).toEqual(seen[0]);
   });
 
+  it("numbers each line on both sides inline, and on its own side side-by-side", () => {
+    const rows = buildRows(HUNK, { old: 7, new: 9 });
+    const nums = (el: Element) => [el.getAttribute("data-old"), el.getAttribute("data-new")];
+    const picked: number[] = [];
+    const inline = render(() => (
+      <DiffRows rows={rows} twoColumn={false} selection={{ has: () => false, toggle: (i) => picked.push(i) }} />
+    ));
+    const lines = [...inline.container.children];
+    expect(lines.map(nums)).toEqual([
+      ["7", null],
+      [null, "9"],
+      ["8", "10"],
+    ]);
+    // Generated content, not text: a line still reads as exactly its diff line.
+    expect(lines.map((l) => l.textContent)).toEqual(HUNK);
+    lines.forEach((l) => fireEvent.click(l));
+    expect(picked).toEqual([0, 1]);
+
+    const side = render(() => <DiffRows rows={rows} twoColumn={true} />);
+    const grid = side.container.firstElementChild!;
+    expect([...grid.children].map((row) => [...row.children].map(nums))).toEqual([
+      [
+        ["7", null],
+        [null, "9"],
+      ],
+      [
+        ["8", null],
+        [null, "10"],
+      ],
+    ]);
+  });
+
   it("marks the lines the caller says are picked", () => {
     const { container } = render(() => (
       <DiffRows rows={buildRows(HUNK)} twoColumn={false} selection={{ has: (i) => i === 1, toggle: () => {} }} />

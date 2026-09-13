@@ -112,6 +112,30 @@ describe("buildRows", () => {
     expect(withSegs).toHaveLength(2);
   });
 
+  it("numbers each row on the sides it exists on, from the hunk's two starts", () => {
+    const lines = [" a", "-b", "+B", " c", "+inserted", " d", "-deleted", "\\ No newline at end of file"];
+    const rows = buildRows(lines, { old: 10, new: 20 });
+    expect(rows.map((r) => [r.oldLine, r.newLine])).toEqual([
+      [10, 20],
+      [11, null],
+      [null, 21],
+      [12, 22],
+      [null, 23],
+      [13, 24],
+      [14, null],
+      [null, null],
+    ]);
+    expect(buildRows(lines).every((r) => r.oldLine === null && r.newLine === null)).toBe(true);
+  });
+
+  it("gives word segments only to a block that both removes and adds", () => {
+    const segged = (lines: string[]) =>
+      buildRows(lines).filter((r) => (r.kind === "del" || r.kind === "add") && r.segs).length;
+    expect(segged([" let x = 1;", "+let x = 2;", "+let y = 3;"])).toBe(0);
+    expect(segged(["-let x = 1;", "-let y = 2;", " let x = 1;"])).toBe(0);
+    expect(segged(["-let x = 1;", "+let x = 2;"])).toBe(2);
+  });
+
   it("treats a no-newline marker as meta, not a removal", () => {
     const rows = buildRows(["-a", "+b", "\\ No newline at end of file"]);
     expect(rows[rows.length - 1].kind).toBe("meta");
@@ -189,13 +213,13 @@ describe("toSideBySide", () => {
   });
 
   it("gives an unpaired removal an empty right cell", () => {
-    const sides = toSideBySide([{ kind: "del", text: "-gone" }]);
+    const sides = toSideBySide([{ kind: "del", text: "-gone", oldLine: null, newLine: null }]);
     expect(sides[0].left?.kind).toBe("del");
     expect(sides[0].right).toBeNull();
   });
 
   it("gives an unpaired addition an empty left cell", () => {
-    const sides = toSideBySide([{ kind: "add", text: "+new" }]);
+    const sides = toSideBySide([{ kind: "add", text: "+new", oldLine: null, newLine: null }]);
     expect(sides[0].left).toBeNull();
     expect(sides[0].right?.kind).toBe("add");
   });
