@@ -1,5 +1,5 @@
 import { createMemo, For, Show } from "solid-js";
-import { toSideBySide, type DiffRow, type Seg } from "../../utils/diffView";
+import { changedRange, toSideBySide, type DiffRow } from "../../utils/diffView";
 import { overlay, paintRows, type Span } from "../../utils/syntaxRows";
 import styles from "./DiffRows.module.css";
 
@@ -17,16 +17,6 @@ function rowClass(row: DiffRow): string {
   if (row.kind === "del") return "del";
   if (row.kind === "meta") return "meta";
   return "";
-}
-
-// `segs[0]` is the marker, which is never part of the run.
-function changedRange(segs: Seg[]): [number, number] | null {
-  let at = 0;
-  for (const s of segs.slice(1)) {
-    if (s.changed) return [at, at + s.text.length];
-    at += s.text.length;
-  }
-  return null;
 }
 
 /** A line's text, with the changed tokens wrapped when the row was paired. */

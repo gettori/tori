@@ -1,4 +1,4 @@
-import { createSignal, createMemo, createEffect, on, onMount, onCleanup, For, Show } from "solid-js";
+import { batch, createSignal, createMemo, createEffect, lazy, on, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -8,6 +8,7 @@ import {
   Minus,
   Plus,
   RefreshCw,
+  SquareCode,
   Undo2,
 } from "lucide-solid";
 import {
@@ -32,6 +33,7 @@ import { parseDiffHunks, DIFF_CONTEXT } from "../../utils/diffHunks";
 import { buildRows, hunkGaps, type Gap } from "../../utils/diffView";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { sideBySideOn as sideBySide, writeSideBySide, SIDE_BY_SIDE_MIN_WIDTH } from "../../utils/sideBySide";
+import { diffEditorLayoutOn as editorLayout, writeDiffEditorLayout } from "../../utils/diffLayout";
 import { copyText } from "../../utils/clipboard";
 import { sendTargetFor } from "../../utils/sendTarget";
 import { parseDiffArg } from "../../utils/syntheticTabs";
@@ -45,6 +47,8 @@ import Icon from "../../components/Icon/Icon";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import hunkStyles from "./HunkCommentInput.module.css";
 import styles from "./DiffView.module.css";
+
+const DiffBufferView = lazy(() => import("./DiffBufferView"));
 
 /** What `git_discard_hunks` reports back: the backstop that makes the discard
  *  undoable, plus the paths that changed on disk. */
@@ -100,6 +104,7 @@ export default function DiffView(props: {
   // hunk at a time: the patch is rebuilt from a single hunk's body, so a
   // selection spanning two could not be applied as one request anyway.
   const [picked, setPicked] = createSignal<{ hunk: number; lines: ReadonlySet<number> } | null>(null);
+  const [fileText, setFileText] = createSignal<string | null>(null);
 
   const hunks = createMemo(() => parseDiffHunks(diff()));
   const gaps = createMemo(() => hunkGaps(hunks()));
@@ -142,15 +147,38 @@ export default function DiffView(props: {
     }
   }
 
+  async function fetchText(): Promise<string | null> {
+    try {
+      const lines = await invoke<string[]>("git_file_slice", {
+        projectPath: props.workspace,
+        file: file(),
+        mode: staged() ? "staged" : "unstaged",
+        start: 1,
+        end: Number.MAX_SAFE_INTEGER,
+      });
+      return lines.join("\n");
+    } catch (e) {
+      // A file deleted from the working tree has no text to read, and its
+      // hunks still draw, as removed lines over an empty buffer.
+      if (entry()?.status.includes("D")) return "";
+      toastError(e);
+      return null;
+    }
+  }
+
   /** Re-read the diff and drop what was derived from the old one. Called after
    *  every apply and whenever the file changes on disk, so the rendered hunks
    *  (and the fingerprints taken from them) never lag the file. */
   async function reload() {
-    setDiff(await fetchDiff());
-    // The hunks just moved, so the cached gap contents no longer line up with
-    // the ranges they were fetched for.
-    setOpenGaps(new Set<string>());
-    setGapLines({});
+    const [text, body] = await Promise.all([fetchDiff(), editorLayout() ? fetchText() : null]);
+    batch(() => {
+      setDiff(text);
+      setFileText(body);
+      // The hunks just moved, so the cached gap contents no longer line up with
+      // the ranges they were fetched for.
+      setOpenGaps(new Set<string>());
+      setGapLines({});
+    });
   }
 
   createEffect(
@@ -160,6 +188,9 @@ export default function DiffView(props: {
       setLoading(false);
     }),
   );
+
+  // The text is only fetched by a reload, and another diff tab can flip the layout.
+  createEffect(on(editorLayout, () => void reload(), { defer: true }));
 
   /** Run one index-shuffling apply and put the view back in step with it. On
    *  failure the refetch happens before the error surfaces, so the user is
@@ -417,20 +448,30 @@ export default function DiffView(props: {
         <IconButton
           size="sm"
           class={styles.pressable}
-          aria-pressed={twoColumn()}
+          aria-pressed={!editorLayout() && twoColumn()}
           icon={<Icon icon={Columns2} />}
-          disabled={paneWidth() < SIDE_BY_SIDE_MIN_WIDTH}
+          disabled={editorLayout() || paneWidth() < SIDE_BY_SIDE_MIN_WIDTH}
           // Greyed out only because the pane is too narrow, which is exactly
           // what the label says and nothing on screen otherwise does.
           tooltipWhenDisabled
           tooltip={
-            paneWidth() < SIDE_BY_SIDE_MIN_WIDTH
-              ? "Side-by-side needs a wider pane"
-              : twoColumn()
-                ? "Switch to inline diff"
-                : "Switch to side-by-side diff"
+            editorLayout()
+              ? "Side-by-side is not available in the editor layout"
+              : paneWidth() < SIDE_BY_SIDE_MIN_WIDTH
+                ? "Side-by-side needs a wider pane"
+                : twoColumn()
+                  ? "Switch to inline diff"
+                  : "Switch to side-by-side diff"
           }
           onClick={() => writeSideBySide(!sideBySide())}
+        />
+        <IconButton
+          size="sm"
+          class={styles.pressable}
+          aria-pressed={editorLayout()}
+          icon={<Icon icon={SquareCode} />}
+          tooltip={editorLayout() ? "Switch back to diff rows" : "Show the diff in the file itself"}
+          onClick={() => writeDiffEditorLayout(!editorLayout())}
         />
         <IconButton
           size="sm"
@@ -455,90 +496,95 @@ export default function DiffView(props: {
           </div>
         }
       >
-        <div class={styles.body}>
-          {/* Gaps are keyed by the hunk they follow (-1 = before the first), so
-              they interleave with the hunks rather than living inside one. */}
-          <For each={gaps().filter((g) => g.afterHunk === -1)}>{(gap) => gapRow(gap, "gap-1")}</For>
-          <For each={hunks()}>
-            {(hunk, hi) => (
-              <div>
-                {/* The hunk header is the shared control anchor: it renders
-                    identically inline and side-by-side, so per-hunk actions
-                    land in one place in both modes. */}
-                <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
-                  <span>{hunk.header}</span>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    disabled={applying()}
-                    tooltip={staged() ? "Unstage this hunk" : "Stage this hunk"}
-                    onClick={() =>
-                      // The fingerprint is derived from the hunk exactly as
-                      // rendered, so the backend can prove it is still the same
-                      // hunk before applying it.
-                      void applyHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))
-                    }
-                  >
-                    {staged() ? "Unstage hunk" : "Stage hunk"}
-                  </Button>
-                  {/* Only while this hunk has lines picked, so the header stays
-                      the width it always was until there is something to act
-                      on. */}
-                  <Show when={picked()?.hunk === hi() ? picked() : null}>
-                    {(sel) => (
-                      <Button
-                        size="xs"
-                        disabled={applying()}
-                        tooltip={staged() ? "Unstage only the selected lines" : "Stage only the selected lines"}
-                        onClick={() =>
-                          void applyLines(
-                            hi(),
-                            hunkFingerprint(hunk.header, hunk.lines),
-                            [...sel().lines].sort((a, b) => a - b),
-                          )
-                        }
-                      >
-                        {`${staged() ? "Unstage" : "Stage"} ${sel().lines.size} line${
-                          sel().lines.size === 1 ? "" : "s"
-                        }`}
-                      </Button>
-                    )}
-                  </Show>
-                  <Show when={!staged()}>
+        <Show when={!editorLayout()}>
+          <div class={styles.body}>
+            {/* Gaps are keyed by the hunk they follow (-1 = before the first), so
+                they interleave with the hunks rather than living inside one. */}
+            <For each={gaps().filter((g) => g.afterHunk === -1)}>{(gap) => gapRow(gap, "gap-1")}</For>
+            <For each={hunks()}>
+              {(hunk, hi) => (
+                <div>
+                  {/* The hunk header is the shared control anchor: it renders
+                      identically inline and side-by-side, so per-hunk actions
+                      land in one place in both modes. */}
+                  <div class={`${diffRowClasses.line} ${diffRowClasses.hunk} ${hunkStyles.hunkHeaderRow}`}>
+                    <span>{hunk.header}</span>
                     <Button
                       size="xs"
                       variant="ghost"
                       disabled={applying()}
-                      tooltip="Throw away this hunk"
-                      onClick={() => void discardHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))}
+                      tooltip={staged() ? "Unstage this hunk" : "Stage this hunk"}
+                      onClick={() =>
+                        // The fingerprint is derived from the hunk exactly as
+                        // rendered, so the backend can prove it is still the same
+                        // hunk before applying it.
+                        void applyHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))
+                      }
                     >
-                      Discard hunk
+                      {staged() ? "Unstage hunk" : "Stage hunk"}
                     </Button>
-                  </Show>
-                  <HunkCommentInput
-                    target={target()}
-                    disabledReason={disabledReason()}
-                    filePath={`${props.workspace}/${file()}`}
-                    startLine={hunk.startLine}
-                    endLine={hunk.endLine}
+                    {/* Only while this hunk has lines picked, so the header stays
+                        the width it always was until there is something to act
+                        on. */}
+                    <Show when={picked()?.hunk === hi() ? picked() : null}>
+                      {(sel) => (
+                        <Button
+                          size="xs"
+                          disabled={applying()}
+                          tooltip={staged() ? "Unstage only the selected lines" : "Stage only the selected lines"}
+                          onClick={() =>
+                            void applyLines(
+                              hi(),
+                              hunkFingerprint(hunk.header, hunk.lines),
+                              [...sel().lines].sort((a, b) => a - b),
+                            )
+                          }
+                        >
+                          {`${staged() ? "Unstage" : "Stage"} ${sel().lines.size} line${
+                            sel().lines.size === 1 ? "" : "s"
+                          }`}
+                        </Button>
+                      )}
+                    </Show>
+                    <Show when={!staged()}>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={applying()}
+                        tooltip="Throw away this hunk"
+                        onClick={() => void discardHunk(hi(), hunkFingerprint(hunk.header, hunk.lines))}
+                      >
+                        Discard hunk
+                      </Button>
+                    </Show>
+                    <HunkCommentInput
+                      target={target()}
+                      disabledReason={disabledReason()}
+                      filePath={`${props.workspace}/${file()}`}
+                      startLine={hunk.startLine}
+                      endLine={hunk.endLine}
+                    />
+                  </div>
+                  <DiffRows
+                    rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}
+                    path={file()}
+                    twoColumn={twoColumn()}
+                    selection={{
+                      has: (i) => picked()?.hunk === hi() && picked()!.lines.has(i),
+                      toggle: (i) => pickLine(hi(), i),
+                    }}
                   />
+                  <For each={gaps().filter((g) => g.afterHunk === hi())}>
+                    {(gap) => gapRow(gap, `gap${hi()}`)}
+                  </For>
                 </div>
-                <DiffRows
-                  rows={buildRows(hunk.lines, { old: hunk.oldStart, new: hunk.startLine })}
-                  path={file()}
-                  twoColumn={twoColumn()}
-                  selection={{
-                    has: (i) => picked()?.hunk === hi() && picked()!.lines.has(i),
-                    toggle: (i) => pickLine(hi(), i),
-                  }}
-                />
-                <For each={gaps().filter((g) => g.afterHunk === hi())}>
-                  {(gap) => gapRow(gap, `gap${hi()}`)}
-                </For>
-              </div>
-            )}
-          </For>
-        </div>
+              )}
+            </For>
+          </div>
+        </Show>
+        <Show when={editorLayout() && fileText() !== null}>
+          <DiffBufferView text={fileText()!} hunks={hunks()} path={file()} />
+        </Show>
       </Show>
       <Show when={confirmReq()}>
         <ConfirmDialog

@@ -72,6 +72,17 @@ function toSegs(marker: string, tokens: string[], pre: number, suf: number): Seg
   return segs;
 }
 
+/** The changed run of a paired line, as offsets into its body (the marker, which
+ *  is `segs[0]`, excluded), or null when nothing in it is marked. */
+export function changedRange(segs: Seg[]): [number, number] | null {
+  let at = 0;
+  for (const s of segs.slice(1)) {
+    if (s.changed) return [at, at + s.text.length];
+    at += s.text.length;
+  }
+  return null;
+}
+
 /** Word-level segments for a matched -/+ pair. `del`/`add` are the raw diff
  *  lines including their leading marker, which is never highlighted. */
 export function wordSegs(del: string, add: string): { del: Seg[]; add: Seg[] } | null {
