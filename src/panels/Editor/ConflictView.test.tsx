@@ -433,6 +433,47 @@ describe("the conflict tab", () => {
   });
 });
 
+describe("keeping both sides", () => {
+  /** Whether the header row offers a decision by this exact name. */
+  const offered = (name: string) =>
+    screen.queryAllByLabelText(name).some((el) => !el.closest(".cm-result-slot"));
+
+  it("offers a combination where the sides edit different halves of a line, and plain both where they collide", async () => {
+    stages = {
+      base: ["x = 1, y = 2;", "keep", "z = 3;", ""].join("\n"),
+      ours: ["x = 10, y = 2;", "keep", "z = 7;", ""].join("\n"),
+      theirs: ["x = 1, y = 20;", "keep", "z = 9;", ""].join("\n"),
+      binary: false,
+    };
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    // Both orders give the same line here, so the combination names no order.
+    expect(offered("Combine both sides' edits")).toBe(true);
+    expect(offered("Keep both versions, ours first")).toBe(false);
+    fireEvent.click(byName("Combine both sides' edits"));
+
+    fireEvent.click(nextConflict());
+    expect(offered("Combine both sides' edits")).toBe(false);
+    expect(offered("Keep both versions, ours first")).toBe(true);
+    fireEvent.click(byName("Take Yours (HEAD)"));
+
+    fireEvent.click(markResolved());
+    await waitFor(() => expect(written).toHaveLength(1));
+    expect(written[0].content).toBe(["x = 10, y = 20;", "keep", "z = 7;", ""].join("\n"));
+  });
+
+  it("names the order only when the order changes the text", async () => {
+    stages = { base: "a\nc\n", ours: "a\nx\nc\n", theirs: "a\ny\nc\n", binary: false };
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 1")).toBeTruthy());
+
+    expect(offered("Combine both sides' edits")).toBe(false);
+    expect(offered("Combine both sides' edits, Yours (HEAD) first")).toBe(true);
+    expect(offered("Combine both sides' edits, Incoming first")).toBe(true);
+  });
+});
+
 describe("the Result pane", () => {
   /** The pane's own editor, reached through the name it carries for the same
    *  reason the two above it do. */

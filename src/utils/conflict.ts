@@ -17,7 +17,7 @@
 // truth, and Phase 12 writes the resolved file from them rather than editing
 // around the markers.
 
-import { Chunk } from "@codemirror/merge";
+import { Chunk, diff } from "@codemirror/merge";
 import { Text } from "@codemirror/state";
 
 /** Mirrors `ConflictStages` in src-tauri/src/conflict.rs. */
@@ -71,10 +71,12 @@ export type Side = "ours" | "theirs";
 
 /** What the reader decided about one conflict region. `both` keeps ours then
  *  theirs, in that order: it is the order git wrote the two into the file, so
- *  the result reads the way the markers did. `hand` is a decision too: the
- *  reader is writing these lines, so the answer is in the document rather than
- *  derivable from the stages. */
-export type Choice = Side | "both" | "hand";
+ *  the result reads the way the markers did. `combine-ours` and
+ *  `combine-theirs` splice both sides' edits into the base (see `combine`),
+ *  named for the side that goes first where two edits land on one spot. `hand`
+ *  is a decision too: the reader is writing these lines, so the answer is in
+ *  the document rather than derivable from the stages. */
+export type Choice = Side | "both" | "combine-ours" | "combine-theirs" | "hand";
 
 /** What to call each side, and which one is the reader's own work.
  *
@@ -265,6 +267,82 @@ export function deletedSides(stages: ConflictStages): Side[] {
   return out;
 }
 
+// Keyed by the stages object, which a read hands around whole, so each side is
+// split once however many regions and choices ask for its lines.
+const splitStages = new WeakMap<ConflictStages, Record<"base" | Side, string[]>>();
+
+function regionLines(stages: ConflictStages, which: "base" | Side, range: LineRange): string[] {
+  let split = splitStages.get(stages);
+  if (!split) {
+    const lines = (text: string | null) => (text ?? "").split("\n");
+    split = { base: lines(stages.base), ours: lines(stages.ours), theirs: lines(stages.theirs) };
+    splitStages.set(stages, split);
+  }
+  return split[which].slice(range.from - 1, range.to - 1);
+}
+
+/**
+ * Both sides' edits to one region spliced into its base, or null when two of
+ * them rewrite the same base characters.
+ *
+ * VS Code's smart combination. git conflicts a line at a time, so edits to two
+ * halves of one line are a conflict it refused; diffed a character at a time
+ * against the base, they need not overlap at all. Every line carries its
+ * newline through the diff, which keeps two whole-line insertions two lines.
+ */
+export function combine(stages: ConflictStages, region: ConflictRegion, first: Side): string[] | null {
+  const text = (lines: string[]) => lines.map((l) => `${l}\n`).join("");
+  const base = text(regionLines(stages, "base", region.base));
+  const edits = (["ours", "theirs"] as const).flatMap((side) => {
+    const after = text(regionLines(stages, side, region[side]));
+    return diff(base, after).map((c) => ({ side, from: c.fromA, to: c.toA, insert: after.slice(c.fromB, c.toB) }));
+  });
+  // Insertions ahead of rewrites at the same point, so `first` only ever orders
+  // two insertions there, the one case where order changes the text.
+  const rank = (e: (typeof edits)[number]) => (e.to > e.from ? 2 : 0) + (e.side === first ? 0 : 1);
+  edits.sort((a, b) => a.from - b.from || rank(a) - rank(b));
+  let out = "";
+  let at = 0;
+  for (const e of edits) {
+    if (e.from < at) return null;
+    out += base.slice(at, e.from) + e.insert;
+    at = e.to;
+  }
+  out += base.slice(at);
+  if (!out) return [];
+  return (out.endsWith("\n") ? out.slice(0, -1) : out).split("\n");
+}
+
+/** How one region offers keeping both sides: a combination where the edits
+ *  splice, a second order only where order changes the text, and git's plain
+ *  pair where they collide. */
+export function bothChoices(stages: ConflictStages, region: ConflictRegion): Choice[] {
+  const oursFirst = combine(stages, region, "ours");
+  if (!oursFirst) return ["both"];
+  const theirsFirst = combine(stages, region, "theirs");
+  if (!theirsFirst || theirsFirst.join("\n") === oursFirst.join("\n")) return ["combine-ours"];
+  return ["combine-ours", "combine-theirs"];
+}
+
+/** The lines a choice puts where a region was, or null for `hand`, whose lines
+ *  are the reader's and live in the document. */
+export function choiceLines(stages: ConflictStages, region: ConflictRegion, choice: Choice): string[] | null {
+  const take = (side: Side) => regionLines(stages, side, region[side]);
+  if (choice === "hand") return null;
+  if (choice === "ours" || choice === "theirs") return take(choice);
+  if (choice === "both") return [...take("ours"), ...take("theirs")];
+  const first = choice === "combine-ours" ? "ours" : "theirs";
+  const second = first === "ours" ? "theirs" : "ours";
+  // Offered only where it splices, so the pair in the same order is a fallback
+  // for a stale choice, not a path anyone is shown.
+  return combine(stages, region, first) ?? [...take(first), ...take(second)];
+}
+
+/** Whether a choice keeps that side's version in the result. */
+export function keeps(choice: Choice, side: Side): boolean {
+  return choice === side || choice === "both" || choice === "combine-ours" || choice === "combine-theirs";
+}
+
 /** Where one undecided conflict sits in a built document, as character offsets.
  *  `to` reaches past the line's terminating newline, so replacing the range
  *  with a side's lines leaves the file's line structure intact and replacing it
@@ -298,10 +376,6 @@ export function buildResult(
   choices: Record<string, Choice>,
 ): ResultDoc {
   const base = (stages.base ?? "").split("\n");
-  const ours = (stages.ours ?? "").split("\n");
-  const theirs = (stages.theirs ?? "").split("\n");
-  const take = (side: Side, r: ConflictRegion) =>
-    (side === "ours" ? ours : theirs).slice(r[side].from - 1, r[side].to - 1);
 
   const out: string[] = [];
   const marks: { id: string; from: number; to: number }[] = [];
@@ -312,14 +386,14 @@ export function buildResult(
     // side moved is the version to carry. Both having moved to the same text is
     // the `both === false` case where either answer is the same answer.
     const choice: Choice | undefined = r.both ? choices[r.id] : r.touched.ours ? "ours" : "theirs";
-    if (choice === "both") out.push(...take("ours", r), ...take("theirs", r));
-    else if (choice === "ours" || choice === "theirs") out.push(...take(choice, r));
-    else if (!choice) {
+    if (!choice) {
       marks.push({ id: r.id, from: out.length, to: out.length + 1 });
       out.push("");
+    } else {
+      // `hand` contributes nothing, for the same reason it cannot be rebuilt:
+      // those lines are the reader's own and live in the document.
+      out.push(...(choiceLines(stages, r, choice) ?? []));
     }
-    // `hand` falls through contributing nothing, for the same reason it cannot
-    // be rebuilt: those lines are the reader's own and live in the document.
     cursor = r.base.to;
   }
   out.push(...base.slice(cursor - 1));

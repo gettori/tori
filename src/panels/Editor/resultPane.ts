@@ -16,31 +16,44 @@ export const decideRegion = StateEffect.define<{ id: string; choice: Choice }>()
 /** How a slot's buttons report back, since the view does not own the choices. */
 export type Choose = (id: string, choice: Choice) => void;
 
-/** What each choice is called, both on the slot's own buttons and on the
- *  header's. The two side names come from the running operation, never from the
- *  stage: under a rebase the version git calls "ours" is the upstream's. */
-export const CHOICES: {
-  choice: Choice;
-  text: (labels: SideLabels) => string;
-  name: (labels: SideLabels) => string;
-}[] = [
-  { choice: "ours", text: (l) => l.ours, name: (l) => `Take ${l.ours}` },
-  { choice: "theirs", text: (l) => l.theirs, name: (l) => `Take ${l.theirs}` },
-  { choice: "both", text: () => "Both", name: () => "Keep both versions, ours first" },
-  { choice: "hand", text: () => "By hand", name: () => "Write these lines yourself" },
-];
+export type ChoiceOption = { choice: Choice; text: string; name: string };
+
+/** One region's choices for the slot to offer. */
+export type OptionsFor = (id: string) => ChoiceOption[];
+
+/** What each choice for one region is called, both on the slot's own buttons
+ *  and on the header's. The two side names come from the running operation,
+ *  never from the stage: under a rebase the version git calls "ours" is the
+ *  upstream's. `both` is the region's `bothChoices`, and a combination names
+ *  its order only when it is offered in two. */
+export function choiceOptions(labels: SideLabels, both: Choice[]): ChoiceOption[] {
+  const combined = (choice: Choice): ChoiceOption => {
+    if (choice === "both") return { choice, text: "Both", name: "Keep both versions, ours first" };
+    const first = labels[choice === "combine-theirs" ? "theirs" : "ours"];
+    return both.length > 1
+      ? { choice, text: `Combine, ${first} first`, name: `Combine both sides' edits, ${first} first` }
+      : { choice, text: "Combine", name: "Combine both sides' edits" };
+  };
+  return [
+    { choice: "ours", text: labels.ours, name: `Take ${labels.ours}` },
+    { choice: "theirs", text: labels.theirs, name: `Take ${labels.theirs}` },
+    ...both.map(combined),
+    { choice: "hand", text: "By hand", name: "Write these lines yourself" },
+  ];
+}
 
 class SlotWidget extends WidgetType {
   constructor(
     readonly id: string,
-    readonly labels: SideLabels,
+    readonly options: ChoiceOption[],
     readonly choose: Choose,
   ) {
     super();
   }
 
   eq(other: SlotWidget): boolean {
-    return other.id === this.id && other.labels === this.labels;
+    const names = (widget: SlotWidget) => widget.options.map((o) => o.name).join();
+    return other.id === this.id && names(other) === names(this);
   }
 
   toDOM(): HTMLElement {
@@ -52,15 +65,15 @@ class SlotWidget extends WidgetType {
     label.textContent = "Undecided";
     wrap.appendChild(label);
 
-    for (const option of CHOICES) {
+    for (const option of this.options) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "cm-result-slot-button";
-      button.textContent = option.text(this.labels);
+      button.textContent = option.text;
       // The visible text is a side's name on its own, which says nothing about
       // what pressing it does; the name has to carry the verb.
-      button.setAttribute("aria-label", option.name(this.labels));
-      button.title = option.name(this.labels);
+      button.setAttribute("aria-label", option.name);
+      button.title = option.name;
       button.onclick = () => this.choose(this.id, option.choice);
       wrap.appendChild(button);
     }
@@ -74,14 +87,14 @@ class SlotWidget extends WidgetType {
   }
 }
 
-function slotDecorations(state: ResultState, labels: SideLabels, choose: Choose): DecorationSet {
+function slotDecorations(state: ResultState, options: OptionsFor, choose: Choose): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   for (const slot of state.slots) {
     if (state.choices[slot.id]) continue;
     builder.add(
       slot.from,
       slot.from,
-      Decoration.widget({ widget: new SlotWidget(slot.id, labels, choose), block: true, side: -1 }),
+      Decoration.widget({ widget: new SlotWidget(slot.id, options(slot.id), choose), block: true, side: -1 }),
     );
   }
   return builder.finish();
@@ -96,7 +109,7 @@ function slotDecorations(state: ResultState, labels: SideLabels, choose: Choose)
  * lines below it, and a span kept outside would be describing the document as
  * it was when the pane opened.
  */
-export function resultField(labels: () => SideLabels, choose: Choose): StateField<ResultState> {
+export function resultField(options: OptionsFor, choose: Choose): StateField<ResultState> {
   return StateField.define<ResultState>({
     create: () => ({ slots: [], choices: {} }),
     update(value, tr) {
@@ -123,6 +136,6 @@ export function resultField(labels: () => SideLabels, choose: Choose): StateFiel
       return next;
     },
     provide: (field) =>
-      EditorView.decorations.from(field, (value) => slotDecorations(value, labels(), choose)),
+      EditorView.decorations.from(field, (value) => slotDecorations(value, options, choose)),
   });
 }

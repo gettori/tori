@@ -5,9 +5,12 @@ import { EditorView, lineNumbers, showPanel, Decoration, type DecorationSet } fr
 import { Compartment, EditorState, RangeSetBuilder, Text, type Extension } from "@codemirror/state";
 import { MergeView } from "@codemirror/merge";
 import {
+  bothChoices,
+  choiceLines,
   conflictRegions,
   conflictsOnly,
   deletedSides,
+  keeps,
   nextConflict,
   prevConflict,
   seedResult,
@@ -20,7 +23,7 @@ import {
   type Side,
   type SideLabels,
 } from "../../utils/conflict";
-import { CHOICES, decideRegion, resetResult, resultField } from "./resultPane";
+import { choiceOptions, decideRegion, resetResult, resultField } from "./resultPane";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
@@ -97,7 +100,7 @@ export function regionDecorations(
         ? styles.conflictLine
         : !choice
           ? styles.conflictLine
-          : choice === "both" || choice === side
+          : keeps(choice, side)
             ? styles.acceptedLine
             : styles.droppedLine;
     for (let n = from; n < to; n++) {
@@ -441,7 +444,14 @@ export default function ConflictView(props: {
   const syntaxRight = new Compartment();
   const syntaxResult = new Compartment();
 
-  const slots = resultField(names, chooseRegion);
+  // Per conflict, because whether the two sides' edits splice is a character
+  // diff, and the Result pane asks again on every keystroke.
+  const bothFor = createMemo(() => {
+    const s = stages();
+    return new Map(conflictsOnly(regions()).map((r) => [r.id, s ? bothChoices(s, r) : (["both"] as Choice[])]));
+  });
+  const optionsFor = (id: string) => choiceOptions(names(), bothFor().get(id) ?? ["both"]);
+  const slots = resultField(optionsFor, chooseRegion);
 
   function destroy() {
     merge?.destroy();
@@ -462,12 +472,10 @@ export default function ConflictView(props: {
   function textFor(r: ConflictRegion, choice: Choice): string | null {
     const s = stages();
     if (!s) return null;
-    const take = (side: Side) =>
-      (s[side] ?? "").split("\n").slice(r[side].from - 1, r[side].to - 1);
+    const lines = choiceLines(s, r, choice);
     // `hand` leaves the slot's blank line alone: that line is where the reader
     // is about to type, so replacing it would take the cursor's home away.
-    if (choice === "hand") return null;
-    const lines = choice === "both" ? [...take("ours"), ...take("theirs")] : take(choice);
+    if (!lines) return null;
     return lines.length ? lines.join("\n") + "\n" : "";
   }
 
@@ -750,7 +758,7 @@ export default function ConflictView(props: {
         {(r) => (
           <div class={styles.choices}>
             <span class={styles.choiceLabel}>Take</span>
-            <For each={CHOICES}>
+            <For each={optionsFor(r().id)}>
               {(c) => (
                 <Button
                   size="xs"
@@ -759,11 +767,11 @@ export default function ConflictView(props: {
                   // Contains the visible text rather than replacing it ("Take
                   // Upstream" over "Upstream"), which is what keeps the name
                   // and the label agreeing.
-                  aria-label={c.name(names())}
-                  tooltip={c.name(names())}
+                  aria-label={c.name}
+                  tooltip={c.name}
                   onClick={() => chooseRegion(r().id, c.choice)}
                 >
-                  {c.text(names())}
+                  {c.text}
                 </Button>
               )}
             </For>
