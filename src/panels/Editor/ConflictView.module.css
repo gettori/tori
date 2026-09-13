@@ -133,6 +133,24 @@
   height: 100%;
 }
 
+/* The answer, under the two candidates. Given a third of the height rather
+   than an equal share: the reader spends most of the time comparing, and drops
+   into this one a region at a time. */
+.result {
+  flex: 0 0 34%;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--border-default);
+}
+
+/* Which two documents the panes hold, held together so the group reads as one
+   control rather than three buttons that happen to sit together. */
+.pairs {
+  display: flex;
+  flex: none;
+  gap: calc(2px * var(--ui-scale));
+}
+
 /* Both sides moved these lines: this is the decision. */
 .conflictLine {
   background: color-mix(in srgb, var(--danger-fg) 14%, transparent);

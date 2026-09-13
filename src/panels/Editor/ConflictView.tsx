@@ -10,7 +10,7 @@ import {
   deletedSides,
   nextConflict,
   prevConflict,
-  resolvedText,
+  seedResult,
   sideLabels,
   unresolved,
   type Choice,
@@ -18,7 +18,9 @@ import {
   type ConflictRegion,
   type ConflictStages,
   type Side,
+  type SideLabels,
 } from "../../utils/conflict";
+import { CHOICES, decideRegion, resetResult, resultField } from "./resultPane";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
@@ -37,10 +39,21 @@ const OP_WORD: Record<ConflictOp, string> = {
   none: "Unresolved",
 };
 
+// The base is not one of the two candidates, so it is never a side to take.
+type PaneSide = Side | "base";
+
+// Ours against theirs is the decision itself; either against the base answers
+// "what did this side change", which is the question a conflict between two
+// rewrites usually turns on.
+const PAIRS: { id: string; left: PaneSide; right: PaneSide }[] = [
+  { id: "sides", left: "ours", right: "theirs" },
+  { id: "base-ours", left: "base", right: "ours" },
+  { id: "base-theirs", left: "base", right: "theirs" },
+];
+
 // Its own theme rather than CodeEditor's: that module is the lazy edge of the
-// whole editing stack (language packs, LSP), and two read-only panes need none
-// of it. No syntax highlighting either - what matters here is which lines the
-// two sides disagree about, and the merge view already colours exactly that.
+// whole editing stack (LSP, vim, the prefs), and these panes need none of it.
+// The language and its colours arrive on their own, through `syntaxFor`.
 const paneTheme = EditorView.theme(
   {
     "&": { backgroundColor: "var(--canvas-card)", color: "var(--fg-default)" },
@@ -68,7 +81,7 @@ const paneTheme = EditorView.theme(
  */
 export function regionDecorations(
   regions: ConflictRegion[],
-  side: Side,
+  side: PaneSide,
   doc: Text,
   choices: Record<string, Choice>,
 ): DecorationSet {
@@ -78,11 +91,15 @@ export function regionDecorations(
     const choice = choices[r.id];
     const cls = !r.both
       ? styles.carriedLine
-      : !choice
+      : // The base was not a candidate, so nothing here was taken or dropped:
+        // these are the lines the two sides disagree about, and that is all.
+        side === "base"
         ? styles.conflictLine
-        : choice === "both" || choice === side
-          ? styles.acceptedLine
-          : styles.droppedLine;
+        : !choice
+          ? styles.conflictLine
+          : choice === "both" || choice === side
+            ? styles.acceptedLine
+            : styles.droppedLine;
     for (let n = from; n < to; n++) {
       // A range can name a line past the end when a side ends without a
       // trailing newline. The range is still right; there is simply no line
@@ -96,16 +113,22 @@ export function regionDecorations(
 
 function paneExtensions(
   regions: ConflictRegion[],
-  side: Side,
+  side: PaneSide,
   doc: Text,
   label: string,
   deco: Compartment,
   choices: Record<string, Choice>,
+  syntax: Compartment,
+  syntaxExt: Extension,
 ): Extension {
   return [
     lineNumbers(),
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
+    // In a compartment of its own because the language pack is fetched after
+    // the pane is already on screen: whichever of the two lands first, the
+    // other reaches it without rebuilding and losing the reader's place.
+    syntax.of(syntaxExt),
     // CodeMirror gives its content `role="textbox"`, and an ARIA input field
     // with no accessible name is a serious axe violation - two of them here, one
     // per side, which is the worst case: the whole point of this view is which
@@ -131,6 +154,11 @@ function paneExtensions(
   ];
 }
 
+const sideName = (side: PaneSide, names: SideLabels) => (side === "base" ? "Base" : names[side]);
+
+const pairName = (p: (typeof PAIRS)[number], names: SideLabels) =>
+  `Compare ${sideName(p.left, names)} with ${sideName(p.right, names)}`;
+
 /** Put line `line` of `view` in the middle of the pane. */
 function reveal(view: EditorView, line: number) {
   const doc = view.state.doc;
@@ -141,16 +169,20 @@ function reveal(view: EditorView, line: number) {
 /**
  * One conflicted file, opened as an editor tab.
  *
- * The two candidate versions sit side by side in a `MergeView`, because that is
- * the choice the reader is actually making. The base is the third document and
- * deliberately not a third pane: three columns of code do not fit the width
- * this pane gets, and what the base is *for* is the region under discussion, so
- * it is shown one region at a time under the header.
+ * Two of the three documents sit side by side in a `MergeView`, because a diff
+ * takes two; which two is the reader's to pick, since "what did this side
+ * change" is a different question from "which of these do I want". Three
+ * columns of code would not fit the width this pane gets, so the base also
+ * stays available a region at a time under the header.
  *
- * The choices are held here and written **once**, when the reader marks the
- * file resolved. Until then the working copy is exactly as git left it, so a
- * tab abandoned half way through leaves the merge untouched rather than a
- * partly-rewritten file that looks finished.
+ * Under them is the Result pane, which is the answer and is editable: a merge
+ * often needs a line neither side wrote, and the alternative is resolving it
+ * wrong on purpose and then opening the file to fix it.
+ *
+ * It is written **once**, when the reader marks the file resolved. Until then
+ * the working copy is exactly as git left it, so a tab abandoned half way
+ * through leaves the merge untouched rather than a partly-rewritten file that
+ * looks finished.
  */
 export default function ConflictView(props: {
   workspace: string;
@@ -171,6 +203,12 @@ export default function ConflictView(props: {
   const [saving, setSaving] = createSignal(false);
   const [done, setDone] = createSignal(false);
   const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+  const [pairId, setPairId] = createSignal(PAIRS[0].id);
+  /** The language and its colours, once fetched. Null until then, and for a
+   *  file whose suffix names no language. */
+  const [syntax, setSyntax] = createSignal<Extension | null>(null);
+
+  const pair = () => PAIRS.find((p) => p.id === pairId()) ?? PAIRS[0];
 
   const askConfirm = (opts: Omit<ConfirmReq, "resolve">): Promise<boolean> =>
     new Promise((resolve) => setConfirmReq({ ...opts, resolve }));
@@ -202,20 +240,29 @@ export default function ConflictView(props: {
   });
   const left = createMemo(() => unresolved(regions(), choices()));
 
-  /** The file the choices add up to, or null while anything is undecided.
-   *  `undefined` is the deletion case, which has no text to build. */
-  const resolution = createMemo<string | null | undefined>(() => {
+  /** What the file's existence was decided to be, when that is the question:
+   *  the surviving text to keep, `undefined` to remove the file, null while it
+   *  is unanswered. Null too when the question is about lines instead, which
+   *  the Result pane answers rather than this. */
+  const deletion = createMemo<string | null | undefined>(() => {
     const s = stages();
-    if (!s || s.binary) return null;
-    if (deleted().length) {
-      if (keepFile() === null) return null;
-      if (!keepFile()) return undefined;
-      const side = survivor();
-      return side ? (s[side] ?? "") : null;
-    }
-    return resolvedText(s, regions(), choices());
+    if (!s || s.binary || !deleted().length) return null;
+    if (keepFile() === null) return null;
+    if (!keepFile()) return undefined;
+    const side = survivor();
+    return side ? (s[side] ?? "") : null;
   });
-  const canResolve = () => !saving() && resolution() !== null;
+  const removesFile = () => deleted().length > 0 && keepFile() === false;
+
+  const canResolve = () => {
+    if (saving()) return false;
+    const s = stages();
+    if (!s || s.binary) return false;
+    // The text itself is no longer derived here, so the gate is only whether
+    // every conflict has an answer; what those answers add up to is whatever
+    // the Result pane holds, hand edits included.
+    return deleted().length ? deletion() !== null : left().length === 0;
+  };
 
   /** The base lines this conflict is a disagreement about. Empty when the two
    *  sides both inserted at a point (nothing of the base is involved) and null
@@ -314,8 +361,14 @@ export default function ConflictView(props: {
    * of the Conflicts section.
    */
   async function markResolved() {
-    const text = resolution();
-    if (text === null || saving()) return;
+    if (!canResolve()) return;
+    // `undefined` means remove the file, so a missing pane must not fall
+    // through to it: the two are one keystroke apart and only one is reversible.
+    let text: string | null | undefined;
+    if (deleted().length) text = deletion();
+    else if (result) text = result.state.doc.toString();
+    else return;
+    if (text === null) return;
     // Held across the confirms, not just the write: the dialog is a singleton,
     // so a second click behind it replaces the pending question and the answer
     // lands on something else. Same reason the panel's `busy` exists.
@@ -377,50 +430,154 @@ export default function ConflictView(props: {
   }
 
   let host: HTMLDivElement | undefined;
+  let resultHost: HTMLDivElement | undefined;
   let merge: MergeView | null = null;
+  let result: EditorView | null = null;
   // One per pane rather than one shared: a compartment is a position in a
-  // configuration, and these are two configurations.
-  const decoOurs = new Compartment();
-  const decoTheirs = new Compartment();
+  // configuration, and these are three configurations.
+  const decoLeft = new Compartment();
+  const decoRight = new Compartment();
+  const syntaxLeft = new Compartment();
+  const syntaxRight = new Compartment();
+  const syntaxResult = new Compartment();
+
+  const slots = resultField(names, chooseRegion);
 
   function destroy() {
     merge?.destroy();
     merge = null;
   }
-  onCleanup(destroy);
+  function destroyResult() {
+    result?.destroy();
+    result = null;
+  }
+  onCleanup(() => {
+    destroy();
+    destroyResult();
+  });
+
+  // Newline-terminated, because a slot's span reaches past its own newline:
+  // that is what lets taking a side that deletes the lines remove the line
+  // rather than leave a blank one behind.
+  function textFor(r: ConflictRegion, choice: Choice): string | null {
+    const s = stages();
+    if (!s) return null;
+    const take = (side: Side) =>
+      (s[side] ?? "").split("\n").slice(r[side].from - 1, r[side].to - 1);
+    // `hand` leaves the slot's blank line alone: that line is where the reader
+    // is about to type, so replacing it would take the cursor's home away.
+    if (choice === "hand") return null;
+    const lines = choice === "both" ? [...take("ours"), ...take("theirs")] : take(choice);
+    return lines.length ? lines.join("\n") + "\n" : "";
+  }
+
+  // Both routes to a decision land here, so the header and the slot cannot
+  // disagree about what was chosen or about what the document says.
+  function chooseRegion(id: string, choice: Choice) {
+    setChoices({ ...choices(), [id]: choice });
+    const r = regions().find((x) => x.id === id);
+    const slot = result?.state.field(slots, false)?.slots.find((s) => s.id === id);
+    if (!result || !r || !slot) return;
+    const put = textFor(r, choice);
+    result.dispatch({
+      changes: put === null ? undefined : { from: slot.from, to: slot.to, insert: put },
+      effects: decideRegion.of({ id, choice }),
+    });
+  }
 
   // Rebuilt rather than reconfigured when the documents change: both panes are
   // read-only, so no cursor, selection or scroll position in them is worth
-  // carrying into a different file's conflict.
+  // carrying into a different file's conflict. `pair` rebuilds them too, since
+  // a different pair is a different pair of documents.
   createEffect(
     // `op` is a dependency, not just a read: `on` runs its body untracked, and
     // the labels the panes carry come from it. Without it here, a rebase's
     // panes would keep whatever names the previous read left behind.
-    on([regions, stages, op], ([rs, s]) => {
+    on([regions, stages, op, pair], ([rs, s, , showing]) => {
       destroy();
       if (!host || !s || s.binary) return;
       // One `Text` per side, built here and handed to both the decorations and
       // the editor: `EditorStateConfig.doc` takes a `Text`, so splitting the
       // string a second time would only make a second copy of the same lines.
-      const ours = Text.of((s.ours ?? "").split("\n"));
-      const theirs = Text.of((s.theirs ?? "").split("\n"));
+      const docFor = (side: PaneSide) => Text.of((s[side] ?? "").split("\n"));
       // Read untracked on purpose, which is the opposite of what `op` needs
       // here: a rebuild is for a different set of documents, and accepting a
       // side is not that. The effect below repaints instead.
       const picked = choices();
+      const ext = syntax() ?? [];
+      const leftDoc = docFor(showing.left);
+      const rightDoc = docFor(showing.right);
       merge = new MergeView({
         a: {
-          doc: ours,
-          extensions: paneExtensions(rs, "ours", ours, names().ours, decoOurs, picked),
+          doc: leftDoc,
+          extensions: paneExtensions(rs, showing.left, leftDoc, sideName(showing.left, names()), decoLeft, picked, syntaxLeft, ext),
         },
         b: {
-          doc: theirs,
-          extensions: paneExtensions(rs, "theirs", theirs, names().theirs, decoTheirs, picked),
+          doc: rightDoc,
+          extensions: paneExtensions(rs, showing.right, rightDoc, sideName(showing.right, names()), decoRight, picked, syntaxRight, ext),
         },
         parent: host,
         gutter: true,
         highlightChanges: true,
       });
+    }),
+  );
+
+  // The Result pane is deliberately not rebuilt for a pair switch: it holds the
+  // reader's own edits, and the pair is a question about the two candidates.
+  createEffect(
+    on([regions, stages, op], ([rs, s]) => {
+      destroyResult();
+      if (!resultHost || !s || s.binary || deletedSides(s).length) return;
+      const seed = seedResult(s, rs);
+      result = new EditorView({
+        doc: seed.text,
+        extensions: [
+          lineNumbers(),
+          // A third `role="textbox"` on screen, and the only editable one, so
+          // it needs the name the other two got for the same reason.
+          EditorView.contentAttributes.of({ "aria-label": "Result" }),
+          paneTheme,
+          syntaxResult.of(syntax() ?? []),
+          slots,
+          showPanel.of(() => {
+            const dom = document.createElement("div");
+            dom.className = styles.sideLabel;
+            dom.textContent = "Result";
+            return { dom, top: true };
+          }),
+        ],
+        parent: resultHost,
+      });
+      result.dispatch({ effects: resetResult.of({ slots: seed.slots, choices: {} }) });
+    }),
+  );
+
+  // The language pack is fetched per file and lands after the panes are up, so
+  // every view reaches it through a compartment rather than being rebuilt.
+  createEffect(
+    on(() => props.file, (file) => {
+      setSyntax(null);
+      void import("./syntaxStyle").then(
+        async (m) => {
+          const ext = await m.syntaxFor(file);
+          if (props.file === file) setSyntax(() => ext);
+        },
+        // A failed chunk load leaves the panes uncoloured, which is what they
+        // looked like before; nothing retries because nothing would change.
+        () => {},
+      );
+    }),
+  );
+
+  createEffect(
+    on(syntax, (ext) => {
+      const applied = ext ?? [];
+      if (merge) {
+        merge.a.dispatch({ effects: syntaxLeft.reconfigure(applied) });
+        merge.b.dispatch({ effects: syntaxRight.reconfigure(applied) });
+      }
+      result?.dispatch({ effects: syntaxResult.reconfigure(applied) });
     }),
   );
 
@@ -431,9 +588,12 @@ export default function ConflictView(props: {
     on(choices, (picked) => {
       if (!merge) return;
       const rs = regions();
+      // Which document a pane holds is the pair's answer, not a fixed one: with
+      // the base on the left, painting it as "ours" would colour the wrong
+      // lines and call a region accepted that nobody accepted.
       for (const [view, side, deco] of [
-        [merge.a, "ours", decoOurs],
-        [merge.b, "theirs", decoTheirs],
+        [merge.a, pair().left, decoLeft],
+        [merge.b, pair().right, decoRight],
       ] as const) {
         view.dispatch({
           effects: deco.reconfigure(
@@ -450,8 +610,8 @@ export default function ConflictView(props: {
   createEffect(
     on(currentRegion, (r) => {
       if (!r || !merge) return;
-      reveal(merge.a, r.ours.from);
-      reveal(merge.b, r.theirs.from);
+      reveal(merge.a, r[pair().left].from);
+      reveal(merge.b, r[pair().right].from);
     }),
   );
 
@@ -463,6 +623,26 @@ export default function ConflictView(props: {
         </span>
         <span class={styles.op}>{OP_WORD[op()]}</span>
         <div class={styles.actions}>
+          {/* Against the base it is what one side did, which is the only way to
+              read a conflict where both sides rewrote the same block. */}
+          <Show when={stages() && !stages()!.binary && !deleted().length}>
+            <div class={styles.pairs} role="group" aria-label="Compare">
+              <For each={PAIRS}>
+                {(p) => (
+                  <Button
+                    size="xs"
+                    variant={pairId() === p.id ? "primary" : "default"}
+                    aria-pressed={pairId() === p.id}
+                    aria-label={pairName(p, names())}
+                    tooltip={pairName(p, names())}
+                    onClick={() => setPairId(p.id)}
+                  >
+                    {sideName(p.left, names())} / {sideName(p.right, names())}
+                  </Button>
+                )}
+              </For>
+            </div>
+          </Show>
           <Show when={!deleted().length && conflicts().length}>
             <span class={styles.counter}>
               {at() < 0
@@ -511,7 +691,7 @@ export default function ConflictView(props: {
               }
               onClick={() => void markResolved()}
             >
-              {resolution() === undefined ? "Delete and mark resolved" : "Mark resolved"}
+              {removesFile() ? "Delete and mark resolved" : "Mark resolved"}
             </Button>
           </Show>
         </div>
@@ -570,20 +750,20 @@ export default function ConflictView(props: {
         {(r) => (
           <div class={styles.choices}>
             <span class={styles.choiceLabel}>Take</span>
-            <For each={["ours", "theirs", "both"] as const}>
+            <For each={CHOICES}>
               {(c) => (
                 <Button
                   size="xs"
-                  variant={choices()[r().id] === c ? "primary" : "default"}
-                  aria-pressed={choices()[r().id] === c}
+                  variant={choices()[r().id] === c.choice ? "primary" : "default"}
+                  aria-pressed={choices()[r().id] === c.choice}
                   // Contains the visible text rather than replacing it ("Take
                   // Upstream" over "Upstream"), which is what keeps the name
                   // and the label agreeing.
-                  aria-label={c === "both" ? "Keep both versions, ours first" : `Take ${names()[c]}`}
-                  tooltip={c === "both" ? "Keep both versions, ours first" : `Take ${names()[c]}`}
-                  onClick={() => setChoices({ ...choices(), [r().id]: c })}
+                  aria-label={c.name(names())}
+                  tooltip={c.name(names())}
+                  onClick={() => chooseRegion(r().id, c.choice)}
                 >
-                  {c === "both" ? "Both" : names()[c]}
+                  {c.text(names())}
                 </Button>
               )}
             </For>
@@ -611,6 +791,12 @@ export default function ConflictView(props: {
         </div>
       </Show>
       <div class={styles.panes} ref={host} />
+      {/* The answer, as a document rather than as a sum of button presses. A
+          merge often needs a line neither side wrote, and every other route to
+          one is "resolve it wrong, then open the file and fix it". */}
+      <Show when={stages() && !stages()!.binary && !deleted().length}>
+        <div class={styles.result} ref={resultHost} />
+      </Show>
       <Show when={confirmReq()}>
         <ConfirmDialog
           title={confirmReq()!.title}

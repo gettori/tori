@@ -638,6 +638,36 @@ html {
 .sy-function { color: var(--syntax-function); }
 .sy-method { color: var(--syntax-method); }
 
+/* The undecided-conflict row inside the merge Result pane. Emitted as literal
+   class strings by src/panels/Editor/resultPane.ts, so global like the gutter
+   classes below. */
+.cm-result-slot {
+  display: flex;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
+  background: color-mix(in srgb, var(--danger-fg) 14%, transparent);
+}
+
+.cm-result-slot-label {
+  color: var(--fg-muted);
+  font-size: var(--sway-text-md);
+}
+
+.cm-result-slot-button {
+  padding: 0 calc(6px * var(--ui-scale));
+  border: 1px solid var(--border-default);
+  border-radius: var(--sway-radius-sm);
+  background: var(--canvas-card);
+  color: var(--fg-default);
+  font-size: var(--sway-text-md);
+  cursor: pointer;
+}
+
+.cm-result-slot-button:hover {
+  background: var(--neutral-hover);
+}
+
 /* Git diff gutter */
 .cm-diff-gutter {
   width: calc(3px * var(--ui-scale));

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { EditorView } from "@codemirror/view";
 import { expectNoAxeViolations } from "../../test/axe";
 
 // The conflict tab. The alignment itself is `conflict.test.ts`'s job; what is
@@ -69,18 +70,30 @@ const { TOAST } = await import("../../utils/events");
 let mounted: ReturnType<typeof render> | null = null;
 let resolved: { restored: string[]; deleted: string[] }[] = [];
 
-function mount() {
+function mount(file = "src/f.txt") {
   mounted = render(() => (
-    <ConflictView workspace="/proj" file="src/f.txt" onResolved={(o) => resolved.push(o)} />
+    <ConflictView workspace="/proj" file={file} onResolved={(o) => resolved.push(o)} />
   ));
 }
 
 /** The button for one decision, found by its accessible name so the long side
  *  labels do not have to be repeated (and so a pane's own label cannot match
  *  instead). These used to be found by `title`; the sweep onto `Tooltip` moved
- *  that text onto `aria-label`, where it is a name rather than hover text. */
+ *  that text onto `aria-label`, where it is a name rather than hover text.
+ *
+ *  Scoped to the header row, because the Result pane offers the same four
+ *  decisions again on the conflict's own line and both routes carry the same
+ *  name. `slotButton` below is how the other one is reached. */
 const byName = (t: string | RegExp) =>
-  screen.getByLabelText(t).closest("button") as HTMLButtonElement;
+  screen.getAllByLabelText(t).find((el) => !el.closest(".cm-result-slot"))!.closest("button") as HTMLButtonElement;
+
+/** Every still-undecided slot offering this decision, inside the Result pane. */
+const slotButtons = (t: string | RegExp) =>
+  screen.queryAllByLabelText(t).filter((el) => el.closest(".cm-result-slot"));
+
+/** The first of them, which is the conflict the tab opened on. */
+const slotButton = (t: string | RegExp) => slotButtons(t)[0] as HTMLButtonElement | undefined;
+
 const markResolved = () =>
   screen.getByText(/mark resolved/i).closest("button") as HTMLButtonElement;
 const nextConflict = () => byName("Next conflict");
@@ -166,16 +179,16 @@ describe("the conflict tab", () => {
     // work as yours, which is both wrong and completely convincing.
     op = "merge";
     mount();
-    await waitFor(() => expect(screen.getByLabelText("Take Yours (HEAD)")).toBeTruthy());
+    await waitFor(() => expect(byName("Take Yours (HEAD)")).toBeTruthy());
     mounted!.unmount();
 
     op = "rebase";
     mount();
     await waitFor(() => expect(screen.getByText("Rebase")).toBeTruthy());
 
-    expect(screen.getByLabelText("Take Yours (being replayed)")).toBeTruthy();
+    expect(byName("Take Yours (being replayed)")).toBeTruthy();
     expect(screen.queryByTitle("Take Yours (HEAD)")).toBeNull();
-    expect(screen.getByLabelText("Take Upstream")).toBeTruthy();
+    expect(byName("Take Upstream")).toBeTruthy();
   });
 
   it("re-reads when the file stops being conflicted under it", async () => {
@@ -417,5 +430,179 @@ describe("the conflict tab", () => {
     mount();
 
     await waitFor(() => expect(screen.getByText(/no merge conflict/)).toBeTruthy());
+  });
+});
+
+describe("the Result pane", () => {
+  /** The pane's own editor, reached through the name it carries for the same
+   *  reason the two above it do. */
+  function result() {
+    const content = mounted!.container.querySelector('[aria-label="Result"]')!;
+    return EditorView.findFromDOM(content.closest(".cm-editor") as HTMLElement)!;
+  }
+  const doc = () => result().state.doc.toString();
+
+  /** Where the first undecided conflict's blank line starts. */
+  const slotAt = () => doc().indexOf("\n\n") + 1;
+
+  it("opens with a blank line held where each conflict will go", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    // The untouched lines are already the answer; only the two disputed ones
+    // are waiting, and each is offered on its own line rather than in a list
+    // somewhere else.
+    expect(doc()).toBe(["a", "", "c", "d", "e", "", "g", ""].join("\n"));
+    expect(slotButton("Take Yours (HEAD)")).toBeTruthy();
+  });
+
+  it("answers a conflict from its own line, and the header agrees", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    fireEvent.click(slotButton("Write these lines yourself")!);
+
+    // One decision, two places showing it: a reader who used the slot must not
+    // find the header still asking.
+    expect(byName("Write these lines yourself").getAttribute("aria-pressed")).toBe("true");
+    // `hand` leaves the blank line alone, because that line is where the
+    // reader is about to type.
+    expect(doc()).toBe(["a", "", "c", "d", "e", "", "g", ""].join("\n"));
+    // And that slot stops asking, since it has its answer. The other conflict
+    // is still open, so its own line still offers all four.
+    expect(slotButtons("Write these lines yourself")).toHaveLength(1);
+  });
+
+  it("replaces a taken side rather than stacking the next one after it", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    fireEvent.click(byName("Take Yours (HEAD)"));
+    expect(doc()).toBe(["a", "O1", "c", "d", "e", "", "g", ""].join("\n"));
+
+    fireEvent.click(byName("Take Incoming"));
+
+    // Changing your mind is a replacement, not an append: the span moved with
+    // the first take, so the second lands on it.
+    expect(doc()).toBe(["a", "T1", "c", "d", "e", "", "g", ""].join("\n"));
+  });
+
+  it("keeps a conflict undecided when the reader only types at it", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    result().dispatch({ changes: { from: slotAt(), insert: "MINE" } });
+
+    // Typing beside a slot is an edit, not an answer. Nothing else can tell
+    // half-finished text from a decision, so the button has to be pressed.
+    expect(markResolved().disabled).toBe(true);
+    expect(slotButton("Take Yours (HEAD)")).toBeTruthy();
+  });
+
+  it("takes what the reader typed above a slot with them", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    // An insertion above the first slot moves both slots down. A span kept
+    // outside the document would still be pointing at "a".
+    result().dispatch({ changes: { from: 0, insert: "header\n" } });
+    fireEvent.click(byName("Take Yours (HEAD)"));
+
+    expect(doc()).toBe(["header", "a", "O1", "c", "d", "e", "", "g", ""].join("\n"));
+  });
+
+  it("writes the document, hand edits and all", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    decideAll("Take Yours (HEAD)");
+    // The line neither side wrote, which is the whole reason the pane is
+    // editable: without it this merge can only be resolved wrong and fixed
+    // afterwards.
+    result().dispatch({ changes: { from: doc().length, insert: "mine\n" } });
+
+    fireEvent.click(markResolved());
+
+    await waitFor(() => expect(written).toHaveLength(1));
+    expect(written[0].content).toBe(["a", "O1", "c", "d", "e", "O2", "g", "mine", ""].join("\n"));
+  });
+
+  it("resolves a conflict left to the reader as whatever they left there", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+
+    fireEvent.click(byName("Write these lines yourself"));
+    fireEvent.click(nextConflict());
+    fireEvent.click(byName("Take Yours (HEAD)"));
+
+    // Every conflict has an answer now, even though one of them is a blank
+    // line: "neither of these" is a decision the other three cannot express.
+    expect(markResolved().disabled).toBe(false);
+    fireEvent.click(markResolved());
+
+    await waitFor(() => expect(written).toHaveLength(1));
+    expect(written[0].content).toBe(["a", "", "c", "d", "e", "O2", "g", ""].join("\n"));
+  });
+
+  it("is not offered for a file one side deleted", async () => {
+    // There are no lines to merge, only the question of whether the file
+    // survives, so a pane offering to edit its contents would be answering
+    // something nobody asked.
+    stages = { base: BASE, ours: OURS, theirs: null, binary: false };
+    mount();
+
+    await waitFor(() => expect(screen.getByText(/deleted this file/)).toBeTruthy());
+    expect(mounted!.container.querySelector('[aria-label="Result"]')).toBeNull();
+  });
+});
+
+describe("which two versions the panes compare", () => {
+  it("keeps the decisions, the place and the document across a switch", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+    const content = () => mounted!.container.querySelector('[aria-label="Result"]')!;
+    const doc = () =>
+      EditorView.findFromDOM(content().closest(".cm-editor") as HTMLElement)!.state.doc.toString();
+
+    fireEvent.click(byName("Take Yours (HEAD)"));
+    const before = doc();
+
+    fireEvent.click(byName("Compare Base with Incoming"));
+
+    // The pair is a question about the two candidates. Nothing about it is an
+    // answer, so rebuilding the panes for it must not cost the reader the
+    // answers they already gave or the lines they already wrote.
+    expect(screen.getByText("Conflict 1 of 2")).toBeTruthy();
+    expect(byName("Take Yours (HEAD)").getAttribute("aria-pressed")).toBe("true");
+    expect(doc()).toBe(before);
+    expect(screen.getByLabelText("Base")).toBeTruthy();
+    expect(screen.getByLabelText("Incoming")).toBeTruthy();
+    // The side that is no longer on screen is no longer a pane.
+    expect(screen.queryByLabelText("Yours (HEAD)")).toBeNull();
+  });
+});
+
+describe("reading the code in the panes", () => {
+  it("colours every pane once the language pack lands", async () => {
+    // The pack is fetched per file and arrives after the panes are already up,
+    // so this is really a test that the late arrival reaches them at all: the
+    // panes are built once and never rebuilt for it.
+    stages = {
+      base: "const a = 1\n",
+      ours: "const a = 2\n",
+      theirs: "const a = 3\n",
+      binary: false,
+    };
+    mount("src/f.ts");
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 1")).toBeTruthy());
+
+    for (const pane of ["Yours (HEAD)", "Incoming", "Result"]) {
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText(pane).querySelector("span[class]"),
+          `${pane} is painted`,
+        ).toBeTruthy(),
+      );
+    }
   });
 });

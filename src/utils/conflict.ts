@@ -71,8 +71,10 @@ export type Side = "ours" | "theirs";
 
 /** What the reader decided about one conflict region. `both` keeps ours then
  *  theirs, in that order: it is the order git wrote the two into the file, so
- *  the result reads the way the markers did. */
-export type Choice = Side | "both";
+ *  the result reads the way the markers did. `hand` is a decision too: the
+ *  reader is writing these lines, so the answer is in the document rather than
+ *  derivable from the stages. */
+export type Choice = Side | "both" | "hand";
 
 /** What to call each side, and which one is the reader's own work.
  *
@@ -263,9 +265,18 @@ export function deletedSides(stages: ConflictStages): Side[] {
   return out;
 }
 
+/** Where one undecided conflict sits in a built document, as character offsets.
+ *  `to` reaches past the line's terminating newline, so replacing the range
+ *  with a side's lines leaves the file's line structure intact and replacing it
+ *  with nothing removes the line rather than leaving a blank one. */
+export type ResultSlot = { id: string; from: number; to: number };
+
+/** A built document and the conflicts still open in it. */
+export type ResultDoc = { text: string; slots: ResultSlot[] };
+
 /**
- * The file the chosen resolutions add up to, or null while any conflict is
- * still undecided.
+ * The file the chosen resolutions add up to, with an empty line held open
+ * wherever a conflict has not been decided yet.
  *
  * Built out of the three stages rather than by editing the marker-riddled file
  * on disk, which is the point of modelling the conflict from the index: the
@@ -277,16 +288,15 @@ export function deletedSides(stages: ConflictStages): Side[] {
  * from the base; inside one, the region's own span on the chosen side says
  * which lines replace them.
  *
- * Null rather than a best effort when something is undecided: a half-resolved
- * file that looks finished is worse than no file at all, and the caller's
- * button is disabled on the same condition.
+ * This runs **once**, to seed the Result pane. After that the document is the
+ * answer: a reader who takes a side and then edits it has written something no
+ * walk over the stages can reproduce, which is why nothing rebuilds from here.
  */
-export function resolvedText(
+export function buildResult(
   stages: ConflictStages,
   regions: ConflictRegion[],
   choices: Record<string, Choice>,
-): string | null {
-  if (unresolved(regions, choices).length) return null;
+): ResultDoc {
   const base = (stages.base ?? "").split("\n");
   const ours = (stages.ours ?? "").split("\n");
   const theirs = (stages.theirs ?? "").split("\n");
@@ -294,17 +304,40 @@ export function resolvedText(
     (side === "ours" ? ours : theirs).slice(r[side].from - 1, r[side].to - 1);
 
   const out: string[] = [];
+  const marks: { id: string; from: number; to: number }[] = [];
   let cursor = 1;
   for (const r of regions) {
     out.push(...base.slice(cursor - 1, r.base.from - 1));
     // An undisputed region is not a decision, so it does not have one: whichever
     // side moved is the version to carry. Both having moved to the same text is
     // the `both === false` case where either answer is the same answer.
-    const choice: Choice = r.both ? choices[r.id] : r.touched.ours ? "ours" : "theirs";
+    const choice: Choice | undefined = r.both ? choices[r.id] : r.touched.ours ? "ours" : "theirs";
     if (choice === "both") out.push(...take("ours", r), ...take("theirs", r));
-    else out.push(...take(choice, r));
+    else if (choice === "ours" || choice === "theirs") out.push(...take(choice, r));
+    else if (!choice) {
+      marks.push({ id: r.id, from: out.length, to: out.length + 1 });
+      out.push("");
+    }
+    // `hand` falls through contributing nothing, for the same reason it cannot
+    // be rebuilt: those lines are the reader's own and live in the document.
     cursor = r.base.to;
   }
   out.push(...base.slice(cursor - 1));
-  return out.join("\n");
+
+  const text = out.join("\n");
+  const offsets: number[] = [];
+  let at = 0;
+  for (const line of out) {
+    offsets.push(at);
+    at += line.length + 1;
+  }
+  offsets.push(at);
+  // The last line has no newline to reach past, so its slot stops at the end.
+  const clamp = (i: number) => Math.min(text.length, offsets[i]);
+  return { text, slots: marks.map((m) => ({ id: m.id, from: clamp(m.from), to: clamp(m.to) })) };
+}
+
+/** The Result pane's starting document: every conflict still open. */
+export function seedResult(stages: ConflictStages, regions: ConflictRegion[]): ResultDoc {
+  return buildResult(stages, regions, {});
 }
