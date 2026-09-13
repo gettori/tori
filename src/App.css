@@ -686,6 +686,17 @@ html {
   background: var(--diff-deleted);
 }
 
+/* A mark with removed lines behind it. The stripe is 3px, which is nothing to
+   aim at, so hovering the column swells the ones worth clicking. Scaled rather
+   than widened: a width change here reflows the whole document sideways. */
+.cm-diff-gutter .cm-gutterElement.cm-diff-peekable {
+  cursor: pointer;
+}
+
+.cm-diff-gutter:hover .cm-gutterElement.cm-diff-peekable {
+  transform: scaleX(2);
+}
+
 /* Git blame. Emitted as literal class strings by src/panels/Editor/blameGutter.ts,
    so like the diff gutter above they are global rather than CSS-module scoped.
 
