@@ -121,7 +121,6 @@ type StashEntry = {
 };
 type StashOutcome = { restored: string[]; deleted: string[] };
 /** `git diff --numstat`, summed: what the composer's footer says. */
-type DiffStat = { files: number; insertions: number; deletions: number };
 
 /** One member's worth of the panel: its own file lists, its own branch, its own
  *  stage / commit / push. A branch unit is the one-section case, and the only
@@ -416,31 +415,13 @@ export default function ReviewPanel(props: {
     if (branchName) void pushToOrigin(root, branchName);
   }
 
-  // What the commit would hold: staged when anything is, else the working
-  // tree, which is what you are about to stage. Re-read whenever the member's
-  // status does, since that is the only thing that moves these numbers.
-  const [stats, setStats] = createSignal<DiffStat | null>(null);
-  createEffect(
-    on(
-      () => [viewedRoot(), gitStateFor(viewedRoot()).files, stagedFiles(viewedRoot()).length > 0] as const,
-      async ([root, , staged]) => {
-        if (!root) {
-          setStats(null);
-          return;
-        }
-        const read = await invoke<DiffStat>("git_diff_stat", { projectPath: root, staged }).catch(() => null);
-        if (root === viewedRoot()) setStats(read);
-      },
-    ),
-  );
+  // What the commit would hold: staged when anything is, else the working tree,
+  // which is what you are about to stage.
   const statsLabel = () => {
     const root = viewedRoot();
     const staged = stagedFiles(root).length;
     const n = staged || changedFiles(root).length + conflictedFiles(root).length;
-    if (!n) return "Nothing to commit";
-    const st = stats();
-    const counts = st ? ` \u00b7 +${st.insertions} -${st.deletions}` : "";
-    return `${plural(n, "file")}${counts}`;
+    return n ? plural(n, "file") : "Nothing to commit";
   };
 
   /** The button says how many repos it is about, because inside a Feature one
@@ -1410,42 +1391,41 @@ export default function ReviewPanel(props: {
         />
         <div class={styles.commitFooter}>
           <span class={styles.commitStats}>{statsLabel()}</span>
-          <span class={styles.spacer} />
-        <div class={styles.commitActions}>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={!commitStagedFiles().length || !!disabledReason() || drafting()}
-            tooltipWhenDisabled
-            tooltip={disabledReason() ?? "Ask the selected session to draft a commit message"}
-            onClick={askAgentToDraft}
-          >
-            AI Draft
-          </Button>
-          {/* A split button: the verb on the left, its variants behind the
-              chevron, so Amend and Commit & Push cost one click each without
-              standing on the row as three primary buttons. */}
-          <span class={styles.splitButton}>
+          <div class={styles.commitActions}>
             <Button
-              variant="primary"
               size="sm"
-              class={styles.commitButton}
-              disabled={committing()}
-              tooltip={amend() ? "Amend the last commit" : commitLabelHint()}
-              onClick={() => void commit()}
+              variant="ghost"
+              disabled={!commitStagedFiles().length || !!disabledReason() || drafting()}
+              tooltipWhenDisabled
+              tooltip={disabledReason() ?? "Ask the selected session to draft a commit message"}
+              onClick={askAgentToDraft}
             >
-              {commitLabel()}
+              AI Draft
             </Button>
-            <Dropdown as="span" wrapper menu={commitMenu()} placement="top-end">
-              <IconButton
+            {/* A split button: the verb on the left, its variants behind the
+                chevron, so Amend and Commit & Push cost one click each without
+                standing on the row as three primary buttons. */}
+            <span class={styles.splitButton}>
+              <Button
+                variant="primary"
                 size="sm"
-                class={styles.splitMore}
-                tooltip="More commit actions"
-                icon={<Icon icon={ChevronDown} />}
-              />
-            </Dropdown>
-          </span>
-        </div>
+                class={styles.commitButton}
+                disabled={committing()}
+                tooltip={amend() ? "Amend the last commit" : commitLabelHint()}
+                onClick={() => void commit()}
+              >
+                {commitLabel()}
+              </Button>
+              <Dropdown as="span" wrapper menu={commitMenu()} placement="top-end">
+                <IconButton
+                  size="sm"
+                  class={styles.splitMore}
+                  tooltip="More commit actions"
+                  icon={<Icon icon={ChevronDown} />}
+                />
+              </Dropdown>
+            </span>
+          </div>
         </div>
       </div>
 
