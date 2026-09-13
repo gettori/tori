@@ -211,7 +211,6 @@ const RIGHT_MODES: { mode: SetRightMode["mode"]; section?: SetRightMode["section
   { mode: "search", label: "Search" },
   { mode: "debug", label: "Debug" },
   { mode: "session", label: "Session" },
-  { mode: "docs", label: "Docs" },
 ];
 
 /**

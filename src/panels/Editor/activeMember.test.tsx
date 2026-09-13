@@ -1,10 +1,9 @@
 // The modes that answer for the member `activeRoot` points at (#160 phase 3):
-// Pull requests, Tasks and Docs.
+// Pull requests and Tasks.
 //
-// Docs was not merely pointed at the wrong member inside a Feature, it was
-// permanently hidden: it built its folder from a `spaceName` of "" and the
-// Feature's own name. It resolves per member now, and the chip row under the
-// tab strip is what moves that member.
+// Inside a Feature they were pointed at the Feature rather than at a member,
+// which names no repo on disk. They resolve per member now, and the chip row
+// under the tab strip is what moves that member.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
@@ -26,8 +25,6 @@ const API = `${API_REPO}/auth`;
  *  `.shared/` is linked. */
 const WEB_REPO = "/w/web";
 const WEB = `${WEB_REPO}/.sway/worktrees/auth`;
-
-const DOCS_ROOT = "/docs";
 
 const member = (repoPath: string, displayName: string, worktreePath: string | null, order: number) => ({
   repoPath,
@@ -85,8 +82,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         ]);
       case "get_config":
         return Promise.resolve({ spaces: SPACES });
-      case "get_docs_root":
-        return Promise.resolve(DOCS_ROOT);
       case "file_exists": {
         const path = a.path as string;
         const answer = present.has(path);
@@ -162,14 +157,11 @@ const featureSel = (activeRoot: string) => ({
   projectKind: "feature",
 });
 
-let setSel: ((s: unknown) => void) | null = null;
-
 /** Mount with the chip row wired to the same handler App gives it, so clicking
  *  a chip really moves the selection. */
 async function mountEditor(initial = API) {
   for (const bump of featureHandlers) bump();
   const [sel, set] = createSignal<unknown>(featureSel(initial));
-  setSel = set;
   render(() => (
     <Editor
       selected={sel() as never}
@@ -190,19 +182,18 @@ beforeEach(() => {
   listening.ready = false;
   park = null;
   scripts = {};
-  present = new Set([`${DOCS_ROOT}/work/api`, `${DOCS_ROOT}/work/web`]);
+  present = new Set<string>();
   FEATURE_MEMBERS = [member(API_REPO, "api", API, 0), member(WEB_REPO, "web", WEB, 1)];
 });
 
 afterEach(() => {
   cleanup();
-  setSel = null;
 });
 
 describe("the member chip row", () => {
   it("is drawn for the modes that answer for one member, and no others", async () => {
     await mountEditor();
-    for (const mode of ["pulls", "tasks", "docs"]) {
+    for (const mode of ["pulls", "tasks"]) {
       showMode(mode);
       await waitFor(() => expect(chipRow()).toBeTruthy());
     }
@@ -289,50 +280,5 @@ describe("the chip row past its cap", () => {
     pointerClick(screen.getByRole("menuitem", { name: "r7" }));
 
     await waitFor(() => expect(screen.getByText("last")).toBeTruthy());
-  });
-});
-
-describe("the Docs tab inside a Feature", () => {
-  it("resolves the folder from the active member's space and project", async () => {
-    await mountEditor(API);
-    await waitFor(() =>
-      expect(calls.some((c) => c.cmd === "file_exists" && c.args.path === `${DOCS_ROOT}/work/api`)).toBe(
-        true,
-      ),
-    );
-    // Not `<docsRoot>//Auth`: the selection's own space is "" and its project
-    // name is the Feature's, which name no folder on disk.
-    expect(calls.some((c) => c.cmd === "file_exists" && String(c.args.path).includes("Auth"))).toBe(false);
-    await waitFor(() => expect(tabFor("Docs")).toBeTruthy());
-  });
-
-  it("lets the newer probe win when a slower one answers after it", async () => {
-    // Two moves in quick succession leave two `file_exists` in flight. Without
-    // the generation guard the slower answer overwrites the newer one, and Docs
-    // shows the member you already left.
-    park = { path: `${DOCS_ROOT}/work/api`, release: () => {} };
-    present = new Set([`${DOCS_ROOT}/work/web`]);
-    await mountEditor(API);
-    await waitFor(() =>
-      expect(calls.some((c) => c.cmd === "file_exists" && c.args.path === `${DOCS_ROOT}/work/api`)).toBe(
-        true,
-      ),
-    );
-
-    setSel!(featureSel(WEB));
-    await waitFor(() =>
-      expect(calls.some((c) => c.cmd === "file_exists" && c.args.path === `${DOCS_ROOT}/work/web`)).toBe(
-        true,
-      ),
-    );
-    await waitFor(() => expect(tabFor("Docs")).toBeTruthy());
-
-    // The stale probe answers last, and says the folder does not exist.
-    park.release();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    // Still the web member's folder: the older answer was dropped.
-    expect(tabFor("Docs")).toBeTruthy();
   });
 });

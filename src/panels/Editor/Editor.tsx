@@ -22,7 +22,6 @@ const SearchResultsBuffer = lazy(() => import("./SearchResultsBuffer"));
 // predicate and the release sweep are needed whether or not the view is
 // mounted - and is deliberately free of any pdf.js *value* import.
 const PdfView = lazy(() => import("./PdfView"));
-import FileTree from "./FileTree/FileTree";
 import FilesPanel from "./FilesPanel/FilesPanel";
 import PromptModal from "../../components/Dialogs/PromptModal";
 import PickerModal from "../../components/Dialogs/PickerModal";
@@ -103,7 +102,6 @@ import {
   Network,
   Search,
   MessagesSquare,
-  BookOpen,
   PanelRight,
   History,
   UserRound,
@@ -332,16 +330,15 @@ type RightMode =
   | "pulls"
   | "problems"
   | "calls"
-  | "docs"
   | "session"
   | "search"
   | "debug";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 /** The modes that answer for the member `activeRoot` points at, rather than for
  *  the whole Feature (Changes, Search, Problems) or for the file in front
- *  (Calls, Session, Debug). These are the two the chip row switches;
+ *  (Calls, Session, Debug). Pull requests is the one the chip row switches;
  *  Files and Search draw member chips of their own. */
-const ACTIVE_ROOT_MODES: RightMode[] = ["pulls", "docs"];
+const ACTIVE_ROOT_MODES: RightMode[] = ["pulls"];
 
 const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   files: { mode: "files", label: "Files", icon: Files },
@@ -352,7 +349,6 @@ const RIGHT_MODE_TABS: Record<RightMode, ModeTab> = {
   search: { mode: "search", label: "Search", icon: Search },
   debug: { mode: "debug", label: "Debug", icon: Bug },
   session: { mode: "session", label: "Session", icon: MessagesSquare },
-  docs: { mode: "docs", label: "Docs", icon: BookOpen },
 };
 
 function tabId(t: FileTab): string {
@@ -602,7 +598,7 @@ export default function Editor(props: {
   // The mode strip runs through the shared OverflowTabBar, so it collapses into
   // a +N menu on a narrow pane instead of squeezing every label. The bar can
   // reorder tabs when one is picked out of the overflow menu, so the canonical
-  // order lives in a signal; availability (session/docs) still filters it
+  // order lives in a signal; availability (session/problems) still filters it
   // on every render.
   const [modeOrder, setModeOrder] = createSignal<RightMode[]>([
     "files",
@@ -613,15 +609,12 @@ export default function Editor(props: {
     "calls",
     "debug",
     "session",
-    "docs",
   ]);
   // Files/Changes/Search are always offered; the rest need their target to exist.
   function modeAvailable(m: RightMode): boolean {
     switch (m) {
       case "session":
         return !!props.selected?.sessionId;
-      case "docs":
-        return !!docsPath();
       // Only worth a tab when something is actually wrong; an always-present
       // "Problems (0)" is noise on a clean tree.
       case "problems":
@@ -878,8 +871,8 @@ export default function Editor(props: {
   const focusMember = () => (featureId() ? memberFor(focusRoot(), members()) : null);
 
   /** The member the workspace is pointed at, for the panes that follow
-   *  `activeRoot` rather than the file in front: Pull requests, Tasks, Shared
-   *  and Docs. Null outside a Feature, where there is only one repo anyway. */
+   *  `activeRoot` rather than the file in front, Pull requests being the one
+   *  left. Null outside a Feature, where there is only one repo anyway. */
   const activeMember = () => (featureId() ? memberFor(root(), members()) : null);
   /** Which repo the pane below is about. Only inside a Feature: with one repo
    *  on screen there is nothing to disambiguate, and Outline, Calls, Session and
@@ -1224,8 +1217,8 @@ export default function Editor(props: {
     startDebugging();
   }
 
-  // Where scratch buffers live, fetched once for the same reason the docs root
-  // below is: it is a fixed directory the backend owns. The pane needs it for
+  // Where scratch buffers live, fetched once: it is a fixed directory the
+  // backend owns. The pane needs it for
   // the one place a scratch differs from any other file tab, which is that its
   // file can be taken away (closing an untouched one, promoting one with
   // Save-as). Until it arrives `isScratchPath` answers false for everything, so
@@ -1235,49 +1228,9 @@ export default function Editor(props: {
     setScratchDir(await scratchDirPath());
   });
 
-  // A parallel docs/notes tree mirroring <docsRoot>/<space>/<project>, keyed on
-  // the canonical space/project (not the branch-unit folder), surfaced as its own
-  // Docs tab only when that folder actually exists.
-  const [docsRoot, setDocsRoot] = createSignal<string | null>(null);
-  const [docsPath, setDocsPath] = createSignal<string | null>(null);
-  onMount(async () => {
-    try {
-      setDocsRoot(await invoke<string>("get_docs_root"));
-    } catch {
-      // no docs root configured: the docs section stays hidden
-    }
-  });
-  // Inside a Feature the space and project are the *active member's*: the
-  // selection's own are `""` and the Feature's name, which name no folder on
-  // disk, so this tab was permanently hidden there.
-  const docsCandidate = () => {
-    const dr = docsRoot();
-    const sel = props.selected;
-    if (!dr || !sel) return null;
-    const m = activeMember();
-    const space = m ? m.spaceName : sel.spaceName;
-    const project = m ? m.projectName : sel.projectName;
-    return space && project ? `${dr}/${space}/${project}` : null;
-  };
-  // Bumped per probe: moving the active member twice in quick succession leaves
-  // two `file_exists` in flight, and the slower one must not answer for the
-  // member that is no longer selected. Same latest-wins guard the TODO and
-  // Search panels keep.
-  let docsProbe = 0;
-  createEffect(
-    on(docsCandidate, async (candidate) => {
-      const probe = ++docsProbe;
-      if (!candidate) return setDocsPath(null);
-      const exists = await invoke<boolean>("file_exists", { path: candidate }).catch(() => false);
-      if (probe !== docsProbe) return;
-      setDocsPath(exists ? candidate : null);
-    }),
-  );
-
-  // A selection without an available Docs/Session tab falls back to Files, so
-  // the pane is never stuck on a mode the current selection can't show.
+  // A selection without an available Session tab falls back to Files, so the
+  // pane is never stuck on a mode the current selection can't show.
   createEffect(() => {
-    if (rightMode() === "docs" && !docsPath()) setRightMode("files");
     if (rightMode() === "session" && !props.selected?.sessionId) setRightMode("files");
     // The Problems tab disappears once the last diagnostic clears.
     if (rightMode() === "problems" && !problemsHere()) setRightMode("files");
@@ -1410,8 +1363,8 @@ export default function Editor(props: {
   );
 
   // A tab is bucketed by the workspace selected when it was opened, which is
-  // what makes Docs-tree and `.shared/` files - real files that live outside any
-  // project root - land somewhere predictable instead of nowhere.
+  // what makes a `.shared/` file - a real file that lives outside any project
+  // root - land somewhere predictable instead of nowhere.
   function openFile(path: string) {
     if (!tabs().some((t) => t.path === path)) {
       setTabs([...tabs(), { path, name: isSyntheticId(path) ? syntheticTabName(path) : basename(path) }]);
@@ -2057,9 +2010,9 @@ export default function Editor(props: {
   const gitRoot = () => rootOf(activeId(), watchRoots()) ?? root();
 
   // Repo-relative, which is what every git_* command takes, alongside the repo
-  // it is relative to. A file outside every member (a Docs note, a `.shared/`
-  // file) has no path git would accept, so it is refused by name rather than
-  // staged against the wrong repo.
+  // it is relative to. A file outside every member (a `.shared/` file, say) has
+  // no path git would accept, so it is refused by name rather than staged
+  // against the wrong repo.
   //
   // Relativized through `mentionPath` rather than by slicing the root's length:
   // `isUnderPath` normalizes a trailing slash before comparing, so a root that
@@ -3086,9 +3039,6 @@ export default function Editor(props: {
               selfSessionId={props.selected!.sessionId ?? null}
               liveTabs={props.liveTabs ?? []}
             />
-          </Match>
-          <Match when={rightMode() === "docs"}>
-            <FileTree root={docsPath()} />
           </Match>
         </Switch>
       </div>
