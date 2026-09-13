@@ -464,7 +464,7 @@ fn checked_patch(
     context: Option<u32>,
     stale: &str,
 ) -> Result<crate::patch::FilePatch, String> {
-    let text = git_diff_text(project_path.to_string(), file.to_string(), context, Some(mode))?;
+    let text = git_diff_text(project_path.to_string(), file.to_string(), context, Some(mode), None)?;
     let parsed = crate::patch::parse_patch(&text);
     for (&i, expected) in hunk_indices.iter().zip(fingerprints) {
         let actual = parsed.hunks.get(i).ok_or_else(|| stale.to_string())?;
@@ -535,7 +535,7 @@ pub(crate) fn inside_repo(project_path: &str, file: &str) -> Result<PathBuf, Str
 /// generic "the diff changed" would be true but useless there: nothing changed,
 /// the hunk was picked from the Staged section, and the fix is one click.
 fn matches_staged_diff(project_path: &str, file: &str, fingerprints: &[String], context: Option<u32>) -> bool {
-    let Ok(text) = git_diff_text(project_path.to_string(), file.to_string(), context, Some(DiffMode::Staged)) else {
+    let Ok(text) = git_diff_text(project_path.to_string(), file.to_string(), context, Some(DiffMode::Staged), None) else {
         return false;
     };
     let parsed = crate::patch::parse_patch(&text);
@@ -1529,15 +1529,20 @@ pub(crate) fn git_diff_file_body(project_path: String, file: String, mode: Optio
 /// so its "n unchanged lines" collapse has something real to hide and to reveal
 /// on expand. Omitted means git's default. `mode` picks which two trees are
 /// compared, defaulting to worktree-vs-HEAD.
+///
+/// `ignore_whitespace` adds `-w`. The staging commands always re-derive the
+/// diff without it, so hunks read this way are for looking at, not staging.
 #[tauri::command(async)]
 pub fn git_diff_text(
     project_path: String,
     file: String,
     context: Option<u32>,
     mode: Option<DiffMode>,
+    ignore_whitespace: Option<bool>,
 ) -> Result<String, String> {
     let mode = mode.unwrap_or_default();
     let unified: Vec<String> = context.map(|n| format!("-U{}", n)).into_iter().collect();
+    let whitespace: &[&str] = if ignore_whitespace.unwrap_or(false) { &["-w"] } else { &[] };
 
     let output = Command::new("git")
         .arg("-C")
@@ -1546,12 +1551,17 @@ pub fn git_diff_text(
         .args(mode.args())
         .args(["--no-color"])
         .args(&unified)
+        .args(whitespace)
         .args(["--", &file])
         .output()
         .map_err(|e| e.to_string())?;
 
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
     if (output.status.success() && !text.trim().is_empty()) || !mode.shows_untracked() {
+        return Ok(text);
+    }
+    // Under -w an empty diff of a tracked file means only whitespace changed.
+    if output.status.success() && !whitespace.is_empty() && !is_untracked(&project_path, &file)? {
         return Ok(text);
     }
 
@@ -1561,6 +1571,7 @@ pub fn git_diff_text(
         .arg(&project_path)
         .args(["diff", "--no-color", "--no-index"])
         .args(&unified)
+        .args(whitespace)
         .args(["--", "/dev/null", &file])
         .output()
         .map_err(|e| e.to_string())?;
@@ -2470,7 +2481,7 @@ mod tests {
         // asking for its diff returns something. Under v1 this path was the
         // literal "before.txt -> after.txt", which matched no file and gave an
         // empty diff.
-        let diff = git_diff_text(p, renamed.path.clone(), None, Some(DiffMode::Staged)).unwrap();
+        let diff = git_diff_text(p, renamed.path.clone(), None, Some(DiffMode::Staged), None).unwrap();
         assert!(!diff.is_empty(), "a renamed file's diff must not come back empty");
 
         std::fs::remove_dir_all(&dir).ok();
@@ -3052,8 +3063,23 @@ diff --git a/f b/f
     }
 
     fn hunks_of(p: &str, file: &str, mode: DiffMode) -> crate::patch::FilePatch {
-        let text = git_diff_text(p.into(), file.into(), Some(3), Some(mode)).unwrap();
+        let text = git_diff_text(p.into(), file.into(), Some(3), Some(mode), None).unwrap();
         crate::patch::parse_patch(&text)
+    }
+
+    #[test]
+    fn an_indentation_only_change_has_no_hunks_when_whitespace_is_ignored() {
+        let dir = repo_with_two_hunks();
+        let p = dir.to_string_lossy().into_owned();
+        let mut lines: Vec<String> = (1..=20).map(|i| format!("line {i}")).collect();
+        lines[4] = format!("    {}", lines[4]);
+        std::fs::write(dir.join("f.txt"), lines.join("\n") + "\n").unwrap();
+
+        let shown = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Unstaged), None).unwrap();
+        assert_eq!(crate::patch::parse_patch(&shown).hunks.len(), 1);
+        let ignored = git_diff_text(p, "f.txt".into(), Some(3), Some(DiffMode::Unstaged), Some(true)).unwrap();
+        assert!(ignored.trim().is_empty(), "{ignored}");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -3411,9 +3437,9 @@ diff --git a/f b/f
         let parsed = hunks_of(&p, "f.txt", DiffMode::Unstaged);
         git_apply_hunks_body(p.clone(), "f.txt".into(), vec![0], vec![parsed.hunks[0].fingerprint.clone()], false, Some(3)).unwrap();
 
-        let head = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Head)).unwrap();
-        let staged = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Staged)).unwrap();
-        let unstaged = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Unstaged)).unwrap();
+        let head = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Head), None).unwrap();
+        let staged = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Staged), None).unwrap();
+        let unstaged = git_diff_text(p.clone(), "f.txt".into(), Some(3), Some(DiffMode::Unstaged), None).unwrap();
 
         // vs HEAD sees both edits; each of the other two sees exactly one.
         assert!(head.contains("line 2 EDITED") && head.contains("line 19 EDITED"));
@@ -3429,7 +3455,7 @@ diff --git a/f b/f
         git(&dir, &["add", "f.txt"]);
         // Staged, so worktree-vs-index is empty but vs-HEAD is not. The gutter
         // and the session diff both depend on still seeing the change here.
-        let default = git_diff_text(p.clone(), "f.txt".into(), None, None).unwrap();
+        let default = git_diff_text(p.clone(), "f.txt".into(), None, None, None).unwrap();
         assert!(default.contains("line 2 EDITED"), "default mode must stay vs HEAD");
         assert!(!git_diff_file_body(p, "f.txt".into(), None).unwrap().is_empty());
         std::fs::remove_dir_all(&dir).ok();
