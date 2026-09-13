@@ -9,7 +9,7 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, type StateCommand } from "@codemirror/state";
 import type { Language } from "@codemirror/language";
 import { defaultKeymap } from "@codemirror/commands";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
@@ -19,6 +19,8 @@ import {
   diffBufferExtension,
   diffBufferField,
   hunkActionGutter,
+  nextChange,
+  previousChange,
   selectedRows,
   setDiffHunks,
   setHunksBusy,
@@ -36,14 +38,18 @@ export default function DiffBufferView(props: {
   path: string;
   staged: boolean;
   busy: boolean;
+  canStage: boolean;
   onHunk: (hunk: number, action: HunkAction) => void;
   onSelect: (picked: { hunk: number; lines: number[] }[]) => void;
+  controls?: (nav: { next: () => void; previous: () => void }) => void;
 }) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
   let language: Language | null = null;
   const vimConf = new Compartment();
   const syntaxConf = new Compartment();
+  const stageConf = new Compartment();
+  const stageGutter = hunkActionGutter({ staged: () => props.staged, run: (hunk, action) => props.onHunk(hunk, action) });
 
   function load() {
     if (!view) return;
@@ -64,7 +70,7 @@ export default function DiffBufferView(props: {
           vimConf.of(vimExtension(vimModeOn())),
           diffBufferExtension(),
           lineNumbers(),
-          hunkActionGutter({ staged: () => props.staged, run: (hunk, action) => props.onHunk(hunk, action) }),
+          stageConf.of(props.canStage ? stageGutter : []),
           highlightActiveLine(),
           highlightActiveLineGutter(),
           drawSelection(),
@@ -73,7 +79,12 @@ export default function DiffBufferView(props: {
           highlightSelectionMatches(),
           syntaxConf.of([]),
           swayTheme,
-          keymap.of([...searchKeymap, ...defaultKeymap]),
+          keymap.of([
+            { key: "Alt-F5", run: nextChange },
+            { key: "Shift-Alt-F5", run: previousChange },
+            ...searchKeymap,
+            ...defaultKeymap,
+          ]),
           EditorView.updateListener.of((update) => {
             if (update.selectionSet || update.startState.field(diffBufferField) !== update.state.field(diffBufferField)) {
               props.onSelect(selectedRows(update.state));
@@ -82,6 +93,12 @@ export default function DiffBufferView(props: {
         ],
       }),
     });
+    const go = (command: StateCommand) => () => {
+      if (!view) return;
+      command(view);
+      view.focus();
+    };
+    props.controls?.({ next: go(nextChange), previous: go(previousChange) });
     load();
   });
 
@@ -102,7 +119,17 @@ export default function DiffBufferView(props: {
     on(vimModeOn, (vimOn) => view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimOn)) }), { defer: true }),
   );
   createEffect(on(() => props.busy, (busy) => view?.dispatch({ effects: setHunksBusy.of(busy) })));
-  onCleanup(() => view?.destroy());
+  createEffect(
+    on(
+      () => props.canStage,
+      (can) => view?.dispatch({ effects: stageConf.reconfigure(can ? stageGutter : []) }),
+      { defer: true },
+    ),
+  );
+  onCleanup(() => {
+    view?.destroy();
+    view = undefined;
+  });
 
   return <div class={styles.buffer} ref={host} />;
 }

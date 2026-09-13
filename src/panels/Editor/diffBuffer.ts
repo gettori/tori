@@ -2,16 +2,17 @@
 // sit, removed lines drawn as block widgets where they were removed, and the old
 // file's numbers in a gutter of their own. Behind the fence.
 import { Decoration, EditorView, GutterMarker, WidgetType, gutter, type DecorationSet } from "@codemirror/view";
-import { StateEffect, StateField, type EditorState, type Extension, type Range, type Text } from "@codemirror/state";
+import { StateEffect, StateField, type EditorState, type Extension, type Range, type StateCommand, type Text } from "@codemirror/state";
 import type { Language } from "@codemirror/language";
 import { HIGHLIGHT_MAX } from "../Chat/highlight";
 import type { DiffHunk } from "../../utils/diffHunks";
-import { buildRows, changedRange, type DiffRow } from "../../utils/diffView";
+import { buildRows, changedRange, hunkGaps, type DiffRow } from "../../utils/diffView";
 import { overlay } from "../../utils/syntaxRows";
 import { tokenLines, type Span } from "./syntaxLines";
 
 type Placed = {
   firstNew: number;
+  changeAt: number;
   from: number;
   to: number;
   olds: (number | null)[];
@@ -117,10 +118,12 @@ function build(doc: Text, input: DiffHunk[], language: Language | null): DiffBuf
     const addRows: (number | null)[] = [];
     const removed: Placed["removed"] = [];
     let run: Run | null = null;
+    let changeAt: number | null = null;
 
     const place = (done: Run) => {
       const at = removedAt(doc, nextNew, new RemovedLines(done.rows, done.spans));
       ranges.push(at);
+      changeAt ??= at.from;
       removed.push({ pos: at.from, rows: done.indices });
     };
 
@@ -146,6 +149,7 @@ function build(doc: Text, input: DiffHunk[], language: Language | null): DiffBuf
       addRows.push(row.kind === "add" ? i : null);
       if (row.kind !== "add" || row.newLine > doc.lines) continue;
       const line = doc.line(row.newLine);
+      changeAt ??= line.from;
       ranges.push(addedLine.range(line.from));
       const range = row.segs ? changedRange(row.segs) : null;
       const to = range ? Math.min(range[1], line.length) : 0;
@@ -157,6 +161,7 @@ function build(doc: Text, input: DiffHunk[], language: Language | null): DiffBuf
     const endLine = clampLine(doc, Math.max(firstNew + olds.length - 1, startLine));
     hunks.push({
       firstNew,
+      changeAt: changeAt ?? doc.line(startLine).from,
       from: Math.min(doc.line(startLine).from, removed[0]?.pos ?? Infinity),
       to: Math.max(doc.line(endLine).to, removed[removed.length - 1]?.pos ?? -1),
       olds,
@@ -199,6 +204,29 @@ export function oldLineAt(state: EditorState, line: number): number | null {
   return at < hunk.olds.length ? hunk.olds[at] : line + hunk.deltaAfter;
 }
 
+function changeCommand(forward: boolean): StateCommand {
+  return ({ state, dispatch }) => {
+    const { hunks } = state.field(diffBufferField);
+    if (!hunks.length) return false;
+    const here = state.doc.lineAt(state.selection.main.head).number;
+    const lineOf = (hunk: Placed) => state.doc.lineAt(hunk.changeAt).number;
+    const target = forward
+      ? (hunks.find((h) => lineOf(h) > here) ?? hunks[0])
+      : ([...hunks].reverse().find((h) => lineOf(h) < here) ?? hunks[hunks.length - 1]);
+    dispatch(
+      state.update({
+        selection: { anchor: target.changeAt },
+        effects: EditorView.scrollIntoView(target.changeAt, { y: "center" }),
+        userEvent: "select",
+      }),
+    );
+    return true;
+  };
+}
+
+export const nextChange = changeCommand(true);
+export const previousChange = changeCommand(false);
+
 export function selectedRows(state: EditorState): { hunk: number; lines: number[] }[] {
   const { hunks } = state.field(diffBufferField);
   const picked = new Map<number, Set<number>>();
@@ -233,6 +261,64 @@ export function selectedRows(state: EditorState): { hunk: number; lines: number[
   }
   return [...picked].map(([hunk, rows]) => ({ hunk, lines: [...rows].sort((a, b) => a - b) }));
 }
+
+const revealLines = StateEffect.define<number>();
+
+class HiddenLines extends WidgetType {
+  constructor(readonly count: number) {
+    super();
+  }
+
+  eq(other: HiddenLines): boolean {
+    return other.count === this.count;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const band = document.createElement("div");
+    band.className = "cm-diff-hidden";
+    band.textContent = `\u22ef ${this.count} unchanged line${this.count === 1 ? "" : "s"}`;
+    band.onclick = () => view.dispatch({ effects: revealLines.of(view.posAtDOM(band)) });
+    return band;
+  }
+}
+
+function hiddenGaps(doc: Text, hunks: DiffHunk[]): DecorationSet {
+  const spans = hunkGaps(hunks).map((g) => [g.start, g.end]);
+  const last = hunks[hunks.length - 1];
+  // `hunkGaps` leaves the tail out because a diff does not know the file's
+  // length. The buffer does, unless the file is empty.
+  if (last && doc.length) spans.push([last.endLine + 1, doc.lines]);
+  const ranges = spans
+    .filter(([start, end]) => start <= end && end <= doc.lines)
+    .map(([start, end]) =>
+      Decoration.replace({ widget: new HiddenLines(end - start + 1), block: true }).range(
+        doc.line(start).from,
+        doc.line(end).to,
+      ),
+    );
+  return Decoration.set(ranges);
+}
+
+const hiddenField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(value, tr) {
+    let hidden = value.map(tr.changes);
+    for (const e of tr.effects) {
+      if (e.is(setDiffHunks)) hidden = hiddenGaps(tr.newDoc, e.value.hunks);
+      if (e.is(revealLines)) hidden = hidden.update({ filter: (from, to) => e.value < from || to < e.value });
+    }
+    // Find can select text inside a folded stretch, so that stretch opens.
+    const ranges = tr.selection?.ranges ?? [];
+    if (ranges.length) {
+      hidden = hidden.update({
+        filter: (from, to) =>
+          !ranges.some((r) => from <= r.from && r.to <= to && (!r.empty || (from < r.head && r.head < to))),
+      });
+    }
+    return hidden;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 class OldNumber extends GutterMarker {
   constructor(readonly text: string) {
@@ -283,7 +369,7 @@ const oldNumberGutter = gutter({
 
 // Before `lineNumbers()`, so the old column sits left of the new one.
 export function diffBufferExtension(): Extension {
-  return [diffBufferField, oldNumberGutter];
+  return [diffBufferField, hiddenField, oldNumberGutter];
 }
 
 export type HunkAction = "apply" | "discard";

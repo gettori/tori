@@ -41,6 +41,7 @@ function mount() {
       path="/repo/a.ts"
       staged={false}
       busy={false}
+      canStage
       onHunk={() => {}}
       onSelect={() => {}}
     />
@@ -83,6 +84,18 @@ describe("DiffBufferView", () => {
     expect(container.querySelectorAll(".cm-searchMatch").length).toBeGreaterThan(0);
 
     expect(view.state.readOnly).toBe(true);
+  });
+
+  it("folds the unchanged stretches into bands that open on a click", () => {
+    const { container } = mount();
+    const bands = () => [...container.querySelectorAll<HTMLElement>(".cm-diff-hidden")];
+    const content = () => container.querySelector(".cm-content")!.textContent;
+    expect(bands().map((b) => b.textContent)).toEqual(["\u22ef 5 unchanged lines", "\u22ef 3 unchanged lines"]);
+    expect(content()).not.toContain("const v9 = 9;");
+
+    bands()[0].click();
+    expect(bands()).toHaveLength(1);
+    expect(content()).toContain("const v9 = 9;");
   });
 
   it("carries the vim layer when vim is on", () => {
