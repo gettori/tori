@@ -4,7 +4,7 @@ import { GitCommitHorizontal } from "lucide-solid";
 
 import { emitWith, OPEN_IN_EDITOR } from "../../utils/events";
 import { gitStateFor } from "../../utils/gitActions";
-import { authorInitials, refPill } from "../../utils/commitGraph";
+import { authorInitials, foldPills } from "../../utils/commitGraph";
 import { compactAge } from "../../utils/compactAge";
 import { syntheticId } from "../../utils/syntheticTabs";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -37,23 +37,7 @@ export default function GraphSection(props: {
   const [error, setError] = createSignal("");
   const [open, setOpen] = createSignal<ReadonlySet<string>>(new Set());
 
-  const isBase = (name: string) => !!props.base && (name === props.base || name === `origin/${props.base}`);
-
-  /** One pill per branch: `x` and `origin/x` on one commit fold into `x -
-   *  origin/x`, except for HEAD, whose remote the hollow dot already speaks
-   *  for. A remote with no local branch keeps its own pill. */
-  const pills = (c: LogEntry) => {
-    const all = c.refs.map(refPill);
-    const head = all.find((p) => p.kind === "head")?.label;
-    const hasLocal = (name: string) => name === head || all.some((p) => p.kind === "branch" && p.label === name);
-    const remoteOf = (name: string) => all.find((p) => p.kind === "remote" && p.label.endsWith(`/${name}`));
-    return all.flatMap((p) => {
-      if (p.kind === "remote" && hasLocal(p.label.slice(p.label.indexOf("/") + 1))) return [];
-      const remote = p.kind === "branch" ? remoteOf(p.label) : undefined;
-      const label = remote ? `${p.label} - ${remote.label}` : p.label;
-      return [{ ...p, label, base: isBase(p.label) }];
-    });
-  };
+  const pills = (c: LogEntry) => foldPills(c.refs, props.base);
 
   function toggle(sha: string) {
     setOpen((prev) => {
