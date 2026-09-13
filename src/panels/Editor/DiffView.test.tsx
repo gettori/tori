@@ -37,6 +37,10 @@ let applyLineArgs: unknown[] = [];
 let applyHunkArgs: unknown[] = [];
 let discardArgs: { cmd: string; args: unknown }[] = [];
 
+// Rows are read by their text here, and a painted row splits its text into
+// token spans. Colour is DiffRows' business and tested there, so no language.
+vi.mock("./syntaxLines", () => ({ languageForPath: async () => null, tokenLines: () => [] }));
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: unknown) => {
     switch (cmd) {

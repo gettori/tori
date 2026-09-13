@@ -1,5 +1,6 @@
-import { For, Show } from "solid-js";
-import { toSideBySide, type DiffRow } from "../../utils/diffView";
+import { createMemo, For, Show } from "solid-js";
+import { toSideBySide, type DiffRow, type Seg } from "../../utils/diffView";
+import { overlay, paintRows, type Span } from "../../utils/syntaxRows";
 import styles from "./DiffRows.module.css";
 
 // One hunk's rows, rendered the same way wherever a diff appears.
@@ -18,9 +19,31 @@ function rowClass(row: DiffRow): string {
   return "";
 }
 
+// `segs[0]` is the marker, which is never part of the run.
+function changedRange(segs: Seg[]): [number, number] | null {
+  let at = 0;
+  for (const s of segs.slice(1)) {
+    if (s.changed) return [at, at + s.text.length];
+    at += s.text.length;
+  }
+  return null;
+}
+
 /** A line's text, with the changed tokens wrapped when the row was paired. */
-function lineContent(r: DiffRow) {
+function lineContent(r: DiffRow, spans: Span[] | null) {
   const segs = (r.kind === "del" || r.kind === "add") && r.segs;
+  if (spans) {
+    const range = segs ? changedRange(segs) : null;
+    const pieces = range ? overlay(spans, range[0], range[1]) : spans.map((s) => ({ ...s, changed: false }));
+    return (
+      <>
+        <span class={styles.marker}>{r.kind === "context" ? " " : r.text.slice(0, 1) || " "}</span>
+        <For each={pieces}>
+          {(p) => <span class={`${p.cls ?? ""} ${p.changed ? styles.wordChanged : ""}`}>{p.text}</span>}
+        </For>
+      </>
+    );
+  }
   if (!segs) return "text" in r ? r.text || " " : " ";
   return (
     <For each={segs}>{(s) => (s.changed ? <span class={styles.wordChanged}>{s.text}</span> : <>{s.text}</>)}</For>
@@ -46,7 +69,16 @@ export type LineSelection = {
   toggle: (index: number) => void;
 };
 
-export default function DiffRows(props: { rows: DiffRow[]; twoColumn: boolean; selection?: LineSelection }) {
+export default function DiffRows(props: {
+  rows: DiffRow[];
+  twoColumn: boolean;
+  selection?: LineSelection;
+  /** The file the hunk belongs to, for its language. Without it the rows
+   *  render plain. */
+  path?: string;
+}) {
+  const painted = createMemo(() => (props.path ? paintRows(props.rows, props.path) : null));
+
   function cell(row: DiffRow | null, index: number | null) {
     // Read once, not per render: whether a surface offers line staging is a
     // property of the surface, so a read-only diff (a commit, a transcript)
@@ -55,11 +87,12 @@ export default function DiffRows(props: { rows: DiffRow[]; twoColumn: boolean; s
     const selectable = !!props.selection && !!row && (row.kind === "add" || row.kind === "del") && index !== null;
     const toggle = () => props.selection!.toggle(index!);
     const picked = () => selectable && props.selection!.has(index!);
+    const spans = () => (index === null ? null : (painted()?.[index] ?? null));
     return (
       <div
         class={`${styles.diffLine} ${row ? (styles[rowClass(row)] ?? "") : styles.sideEmpty} ${
           selectable ? styles.selectable : ""
-        } ${picked() ? styles.selected : ""}`}
+        } ${picked() ? styles.selected : ""} ${spans() ? styles.painted : ""}`}
         onClick={selectable ? toggle : undefined}
         // A line is in the selection or it is not, which is what a checkbox
         // is. Reachable by keyboard for the same reason the conflicted row is
@@ -77,7 +110,7 @@ export default function DiffRows(props: { rows: DiffRow[]; twoColumn: boolean; s
             : undefined
         }
       >
-        {row ? lineContent(row) : " "}
+        {row ? lineContent(row, spans()) : " "}
       </div>
     );
   }
