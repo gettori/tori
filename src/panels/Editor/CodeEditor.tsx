@@ -2,7 +2,7 @@ import { onCleanup, onMount, createEffect, createMemo, on, createSignal, For, Sh
 import { Portal } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
+import { EditorView, keymap, highlightActiveLine, highlightActiveLineGutter, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightSpecialChars } from "@codemirror/view";
 // `Text` as a value, not a type: `Text.of` is how a buffer is built from lines
 // the line-ending pass already split (see lineEndings.ts).
 import { Annotation, EditorState, Compartment, Prec, Text, type Extension, type StateCommand, type StateEffect, type StateField } from "@codemirror/state";
@@ -15,7 +15,7 @@ import { langForPath } from "./languages";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
 import { repoint } from "./renameTabs";
-import { diffGutterExtension, setDiffMarkers, type Hunk } from "./diffGutter";
+import { diffGutterExtension, diffLineNumbers, setDiffMarkers, type Hunk } from "./diffGutter";
 import { blameExtension, setAgentMarkers, setBlameMarkers, type TurnLink } from "./blameGutter";
 import { blameFor, canPlaceBlame, dropBlame, emptyBlame } from "../../utils/blame";
 import { agentLinesFor, dropAgentLines, emptyAgentLines } from "../../utils/agentLines";
@@ -1065,7 +1065,7 @@ export default function CodeEditor(props: {
     // Ctrl-E, Ctrl-D, Ctrl-K) collide with vim's Ctrl commands, and in normal
     // mode vim is the one that should win. `vimMode.test.tsx` pins the rule.
     vimConf.of([]),
-    lineNumbers(),
+    diffLineNumbers(),
     highlightActiveLine(),
     highlightActiveLineGutter(),
     ...(follower ? [] : [history()]),

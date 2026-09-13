@@ -1481,6 +1481,11 @@ pub struct DiffHunk {
     start: u32,
     /// New-file lines affected; 0 for a pure deletion.
     count: u32,
+    /// 1-based first removed line in the old file. 0 for a pure addition.
+    old_start: u32,
+    /// The removed lines themselves, without their `-` prefix. Empty for a pure
+    /// addition.
+    removed: Vec<String>,
 }
 
 /// Parse a unified-diff range token like "12,3" or "12" (count defaults to 1).
@@ -1563,12 +1568,26 @@ pub fn git_diff_text(
 }
 
 fn parse_hunks(text: &str) -> Vec<DiffHunk> {
-    let mut hunks = Vec::new();
+    let mut hunks: Vec<DiffHunk> = Vec::new();
+    // Which hunk the body lines below belong to. Cleared at each file header,
+    // because a removed line reading "-- a/f" is indistinguishable from one,
+    // and only the lines after an `@@` are content.
+    let mut open: Option<usize> = None;
     for line in text.lines() {
+        if line.starts_with("diff --git ") {
+            open = None;
+            continue;
+        }
         // Hunk header: @@ -old_start,old_count +new_start,new_count @@
         let Some(rest) = line.strip_prefix("@@ ") else {
+            if let Some(at) = open {
+                if let Some(removed) = line.strip_prefix('-') {
+                    hunks[at].removed.push(removed.to_string());
+                }
+            }
             continue;
         };
+        open = None;
         let mut tokens = rest.split_whitespace();
         let (Some(minus), Some(plus)) = (tokens.next(), tokens.next()) else {
             continue;
@@ -1576,7 +1595,7 @@ fn parse_hunks(text: &str) -> Vec<DiffHunk> {
         if !minus.starts_with('-') || !plus.starts_with('+') {
             continue;
         }
-        let (_, old_count) = parse_range(&minus[1..]);
+        let (old_start, old_count) = parse_range(&minus[1..]);
         let (new_start, new_count) = parse_range(&plus[1..]);
         let kind = if old_count == 0 {
             "added"
@@ -1585,10 +1604,13 @@ fn parse_hunks(text: &str) -> Vec<DiffHunk> {
         } else {
             "modified"
         };
+        open = Some(hunks.len());
         hunks.push(DiffHunk {
             kind: kind.to_string(),
             start: new_start,
             count: new_count,
+            old_start: if old_count == 0 { 0 } else { old_start },
+            removed: Vec::new(),
         });
     }
     hunks
@@ -2486,14 +2508,32 @@ diff --git a/f b/f
 --- a/f
 +++ b/f
 @@ -0,0 +1,3 @@
++one
++two
++three
 @@ -10,2 +11,2 @@
+-old ten
+-old eleven
++new eleven
++new twelve
 @@ -20,3 +20,0 @@
+-gone a
+--- still a removed line
+-gone c
+\\ No newline at end of file
 ";
         let hunks = parse_hunks(diff);
         assert_eq!(hunks.len(), 3);
         assert_eq!((hunks[0].kind.as_str(), hunks[0].start, hunks[0].count), ("added", 1, 3));
         assert_eq!((hunks[1].kind.as_str(), hunks[1].start, hunks[1].count), ("modified", 11, 2));
         assert_eq!((hunks[2].kind.as_str(), hunks[2].start, hunks[2].count), ("deleted", 20, 0));
+
+        assert_eq!(hunks[0].old_start, 0);
+        assert!(hunks[0].removed.is_empty(), "an addition removes nothing: {:?}", hunks[0].removed);
+        assert_eq!(hunks[1].old_start, 10);
+        assert_eq!(hunks[1].removed, vec!["old ten", "old eleven"]);
+        assert_eq!(hunks[2].old_start, 20);
+        assert_eq!(hunks[2].removed, vec!["gone a", "-- still a removed line", "gone c"]);
     }
 
     #[test]
