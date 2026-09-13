@@ -120,6 +120,31 @@ export function refPill(ref: string): RefPill {
   return { label: ref, kind: "branch" };
 }
 
+export type FoldedPill = RefPill & { base: boolean };
+
+/**
+ * The pills one commit shows, both graphs drawing them the same way.
+ *
+ * One pill per branch: `x` and `origin/x` on one commit fold into
+ * `x - origin/x`, except for HEAD, whose remote the hollow dot already speaks
+ * for. A remote with no local branch keeps its own pill, and the trunk's is
+ * flagged so it can wear the trunk's colour.
+ */
+export function foldPills(refs: readonly string[], base: string | null | undefined): FoldedPill[] {
+  const all = refs.map(refPill);
+  const head = all.find((p) => p.kind === "head")?.label;
+  const hasLocal = (name: string) =>
+    name === head || all.some((p) => p.kind === "branch" && p.label === name);
+  const remoteOf = (name: string) => all.find((p) => p.kind === "remote" && p.label.endsWith(`/${name}`));
+  const isBase = (name: string) => !!base && (name === base || name === `origin/${base}`);
+  return all.flatMap((p) => {
+    if (p.kind === "remote" && hasLocal(p.label.slice(p.label.indexOf("/") + 1))) return [];
+    const remote = p.kind === "branch" ? remoteOf(p.label) : undefined;
+    const label = remote ? `${p.label} - ${remote.label}` : p.label;
+    return [{ ...p, label, base: isBase(p.label) }];
+  });
+}
+
 /** Initials for an author's avatar. Two words give two letters, one gives one:
  *  no network, so a circle of initials is the avatar. */
 export function authorInitials(name: string): string {

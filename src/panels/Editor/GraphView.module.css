@@ -124,9 +124,16 @@
   text-overflow: ellipsis;
 }
 
+/* The branch pills wear their lane's colour, as the sidebar's Graph section
+   draws them: HEAD's the branch hue, the trunk's the trunk hue. */
 .ref.head {
-  border-color: var(--brand-default);
-  color: var(--brand-default);
+  border-color: var(--scale-blue);
+  color: var(--scale-blue);
+}
+
+.ref.base {
+  border-color: var(--scale-orange);
+  color: var(--scale-orange);
 }
 
 .ref.remote {
