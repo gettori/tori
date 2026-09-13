@@ -44,12 +44,6 @@ export type TintedMember = {
   /** The Space hue, absent for a repo outside every Space. */
   hue: string | undefined;
   style: ChipStyle | undefined;
-  /** The Space and project this member's repo was discovered as, for the two
-   *  surfaces that address a folder by name rather than by path: Docs looks up
-   *  `<docsRoot>/<spaceName>/<projectName>`. Absent for a repo outside every
-   *  Space, which has no such folder to find. */
-  spaceName: string | undefined;
-  projectName: string | undefined;
   /** How this member's *repo* is laid out, which is what says whether it has a
    *  `.shared/` folder to offer. See `projectUnitKind`. */
   kind: string | undefined;
@@ -211,8 +205,6 @@ export function tintedMember(member: Member, spaces: SpaceTint[]): TintedMember 
     state: memberState(member.state),
     hue,
     style: space && hue ? { "--chip-hue": hue, "--chip-rgb": spaceHueRgb(space.name, space.color) } : undefined,
-    spaceName: space?.name,
-    projectName: found?.project.name,
     kind: projectUnitKind(found?.project),
   };
 }

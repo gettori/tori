@@ -51,8 +51,6 @@ vi.mock("@tauri-apps/api/core", () => ({
     switch (cmd) {
       case "file_exists":
         return Promise.resolve(true);
-      case "get_docs_root":
-        return Promise.reject("no docs root");
       case "git_status":
         return Promise.resolve(gitRows);
       case "list_branches":

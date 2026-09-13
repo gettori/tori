@@ -693,7 +693,7 @@ function TreeNode(props: {
     <div>
       <ContextMenu
         // Every row has a menu now, read-only ones included: revealing a file in
-        // Finder mutates nothing, and a docs tree you cannot edit is still a
+        // Finder mutates nothing, and a tree you cannot edit is still a
         // tree you want to get out of.
         items={menuItems()}
         ref={row}
@@ -1026,7 +1026,7 @@ function RootBody(props: {
  *  actions work even before `root` exists (mkdir auto-creates it).
  *
  *  The Files tab passes `filter` and `onControls` and draws the toolbar itself;
- *  the Shared and Docs tabs use the tree's own. */
+ *  the Shared tab uses the tree's own. */
 export default function FileTree(props: {
   root: string | null;
   editable?: boolean;

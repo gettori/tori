@@ -35,8 +35,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve({ ahead: 0, behind: 0, has_upstream: true });
       // No docs root, nothing restorable, an empty tree: every file this suite
       // navigates through is one it opened itself.
-      case "get_docs_root":
-        return Promise.reject("no docs root");
       case "file_exists":
         return Promise.resolve(false);
       case "fs_read_dir":

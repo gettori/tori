@@ -172,7 +172,7 @@ export type PrOpened = { projectPath: string };
 
 export const SET_RIGHT_MODE = "sway:set-right-mode";
 export type SetRightMode = {
-  mode: "files" | "changes" | "pulls" | "search" | "session" | "docs" | "debug";
+  mode: "files" | "changes" | "pulls" | "search" | "session" | "debug";
   /** With `files`, the section below the tree to show and open. */
   section?: "scripts" | "outline" | "todos";
 };

@@ -381,7 +381,7 @@ pub fn server_for_path(path: &str) -> Option<&'static LspServer> {
 pub fn root_for(server: &LspServer, file_path: &Path, project_path: &Path) -> PathBuf {
     let start = if file_path.is_dir() { file_path } else { file_path.parent().unwrap_or(project_path) };
 
-    // Only walk within the project. A file outside it (the Docs tree, a
+    // Only walk within the project. A file outside it (a shared file, a
     // worktree's `.shared/`) has no ancestor chain worth searching, so it
     // falls straight back to the project root.
     if !start.starts_with(project_path) {

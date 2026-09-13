@@ -32,8 +32,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve({ ahead: 1, behind: 0, has_upstream: true });
       // No docs root, no restorable tabs, an empty tree: this suite opens its
       // files explicitly rather than inheriting any.
-      case "get_docs_root":
-        return Promise.reject("no docs root");
       case "file_exists":
         return Promise.resolve(false);
       case "fs_read_dir":

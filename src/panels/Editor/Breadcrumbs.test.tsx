@@ -119,8 +119,6 @@ describe("the member crumb", () => {
     state: { label: "Ready", usable: true, action: null, reason: null },
     hue: "oklch(0.72 0.13 250)",
     style: { "--chip-hue": "oklch(0.72 0.13 250)", "--chip-rgb": "111 176 224" },
-    spaceName: "space",
-    projectName: "web",
     kind: "worktree",
   };
   const buttons = () => [...document.querySelectorAll<HTMLElement>("nav button")];

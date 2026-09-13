@@ -186,7 +186,7 @@ describe("the shared git store", () => {
     expect(gitState().root).toBe("/a");
     expect(isConflicted(["/a", "/b"], "/b/src/a.ts")).toBe(true);
     expect(isConflicted(["/a", "/b"], "/a/src/a.ts")).toBe(false);
-    // A file under no member (a Docs note, a `.shared/` file) is not something
+    // A file under no member (a `.shared/` file, say) is not something
     // git has anything to say about.
     expect(isConflicted(["/a", "/b"], "/elsewhere/src/a.ts")).toBe(false);
   });
