@@ -231,6 +231,7 @@ import { renameTabsUnder, repoint } from "./renameTabs";
 import {
   isSyntheticId,
   parseCommitDiffArg,
+  parseDiffArg,
   parseSyntheticId,
   syntheticId,
   syntheticTabName,
@@ -2692,6 +2693,7 @@ export default function Editor(props: {
                     workspace={t().workspace}
                     arg={t().arg}
                     selected={props.selected}
+                    member={tabMember(`${t().workspace}/${parseDiffArg(t().arg).file}`)}
                     onReverted={handleReverted}
                   />
                 </Show>

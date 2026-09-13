@@ -13,11 +13,15 @@ import { Compartment, EditorState, type StateCommand } from "@codemirror/state";
 import type { Language } from "@codemirror/language";
 import { defaultKeymap } from "@codemirror/commands";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import type { Blame } from "../../utils/blame";
 import type { DiffHunk } from "../../utils/diffHunks";
 import { vimModeOn } from "../Settings/settingsStore";
+import { blameExtension, setBlameMarkers } from "./blameGutter";
+import { caretListener } from "./cursorJump";
 import {
   diffBufferExtension,
   diffBufferField,
+  diffOverviewRuler,
   hunkActionGutter,
   nextChange,
   previousChange,
@@ -39,9 +43,11 @@ export default function DiffBufferView(props: {
   staged: boolean;
   busy: boolean;
   canStage: boolean;
+  blame: Blame | null;
   onHunk: (hunk: number, action: HunkAction) => void;
   onSelect: (picked: { hunk: number; lines: number[] }[]) => void;
   controls?: (nav: { next: () => void; previous: () => void }) => void;
+  onCaret?: (line: number, column: number) => void;
 }) {
   let host!: HTMLDivElement;
   let view: EditorView | undefined;
@@ -49,6 +55,8 @@ export default function DiffBufferView(props: {
   const vimConf = new Compartment();
   const syntaxConf = new Compartment();
   const stageConf = new Compartment();
+  const blameConf = new Compartment();
+  let blameShown = false;
   const stageGutter = hunkActionGutter({ staged: () => props.staged, run: (hunk, action) => props.onHunk(hunk, action) });
 
   function load() {
@@ -58,6 +66,18 @@ export default function DiffBufferView(props: {
       changes: doc === props.text ? undefined : { from: 0, to: doc.length, insert: props.text },
       effects: setDiffHunks.of({ hunks: props.hunks, language }),
     });
+    placeBlame();
+  }
+
+  // After the text: a whole-document replace drops the markers it maps through.
+  function placeBlame() {
+    if (!view) return;
+    const blame = props.blame;
+    if (!!blame !== blameShown) {
+      blameShown = !!blame;
+      view.dispatch({ effects: blameConf.reconfigure(blame ? blameExtension() : []) });
+    }
+    if (blame) setBlameMarkers(view, blame);
   }
 
   onMount(() => {
@@ -70,6 +90,7 @@ export default function DiffBufferView(props: {
           vimConf.of(vimExtension(vimModeOn())),
           diffBufferExtension(),
           lineNumbers(),
+          blameConf.of([]),
           stageConf.of(props.canStage ? stageGutter : []),
           highlightActiveLine(),
           highlightActiveLineGutter(),
@@ -79,12 +100,14 @@ export default function DiffBufferView(props: {
           highlightSelectionMatches(),
           syntaxConf.of([]),
           swayTheme,
+          diffOverviewRuler(),
           keymap.of([
             { key: "Alt-F5", run: nextChange },
             { key: "Shift-Alt-F5", run: previousChange },
             ...searchKeymap,
             ...defaultKeymap,
           ]),
+          caretListener((line, column) => props.onCaret?.(line, column)),
           EditorView.updateListener.of((update) => {
             if (update.selectionSet || update.startState.field(diffBufferField) !== update.state.field(diffBufferField)) {
               props.onSelect(selectedRows(update.state));
@@ -115,6 +138,7 @@ export default function DiffBufferView(props: {
     ),
   );
   createEffect(on([() => props.text, () => props.hunks], load, { defer: true }));
+  createEffect(on(() => props.blame, placeBlame, { defer: true }));
   createEffect(
     on(vimModeOn, (vimOn) => view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimOn)) }), { defer: true }),
   );
