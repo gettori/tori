@@ -375,6 +375,7 @@ pub fn run() {
             agent_lines::agent_lines,
             conflict::git_conflict_stages,
             conflict::git_conflict_op,
+            conflict::git_conflict_sides,
             conflict::git_conflict_resolve,
             git::git_commit_detail,
             git::git_commit_file_diff,

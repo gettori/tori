@@ -61,6 +61,25 @@ pub enum ConflictOp {
     None,
 }
 
+/// The commit behind one side of a conflict, and the ref that names it.
+#[derive(Serialize, Debug, PartialEq, Default)]
+pub struct SideRef {
+    pub sha: String,
+    pub short: String,
+    /// A branch or remote-tracking name. `None` when nothing names the commit,
+    /// as with a detached HEAD or a commit picked by its sha.
+    pub name: Option<String>,
+}
+
+/// What stands behind stages 2 and 3, for the pane headers. Mapped through the
+/// operation here, like the stages themselves: under a rebase stage 2 is the
+/// upstream and stage 3 is the commit being replayed.
+#[derive(Serialize, Debug, PartialEq, Default)]
+pub struct ConflictSides {
+    pub ours: Option<SideRef>,
+    pub theirs: Option<SideRef>,
+}
+
 fn capture(repo: &str, args: &[&str]) -> Result<Vec<u8>, String> {
     let out = Command::new("git")
         .arg("-C")
@@ -130,24 +149,24 @@ pub fn git_conflict_stages(project_path: String, file: String) -> Result<Conflic
     })
 }
 
+/// A path inside the git dir, read through `rev-parse --git-path`, never by
+/// joining `.git`: in this repo a worktree's git dir is
+/// `<main>/.bare/worktrees/<name>`, and `<worktree>/.git` is a file pointing at it.
+fn git_path(project_path: &str, name: &str) -> Option<std::path::PathBuf> {
+    let out = capture(project_path, &["rev-parse", "--git-path", name]).ok()?;
+    let rel = String::from_utf8_lossy(&out).trim().to_string();
+    if rel.is_empty() {
+        return None;
+    }
+    let p = Path::new(&rel);
+    // `--git-path` answers relative to the repository, not to the caller.
+    Some(if p.is_absolute() { p.to_path_buf() } else { Path::new(project_path).join(p) })
+}
+
 /// What operation is mid-flight, which decides what to call stages 2 and 3.
-///
-/// Read through `rev-parse --git-path`, never by joining `.git`: in this repo a
-/// worktree's git dir is `<main>/.bare/worktrees/<name>`, and `<worktree>/.git`
-/// is a file pointing at it.
 #[tauri::command(async)]
 pub fn git_conflict_op(project_path: String) -> Result<ConflictOp, String> {
-    let git_path = |name: &str| -> Option<std::path::PathBuf> {
-        let out = capture(&project_path, &["rev-parse", "--git-path", name]).ok()?;
-        let rel = String::from_utf8_lossy(&out).trim().to_string();
-        if rel.is_empty() {
-            return None;
-        }
-        let p = Path::new(&rel);
-        // `--git-path` answers relative to the repository, not to the caller.
-        Some(if p.is_absolute() { p.to_path_buf() } else { Path::new(&project_path).join(p) })
-    };
-    let present = |name: &str| git_path(name).is_some_and(|p| p.exists());
+    let present = |name: &str| git_path(&project_path, name).is_some_and(|p| p.exists());
 
     // Order matters: a cherry-pick or revert that hits a conflict during a
     // rebase leaves both markers, and the rebase is the one that decides which
@@ -162,6 +181,56 @@ pub fn git_conflict_op(project_path: String) -> Result<ConflictOp, String> {
         ConflictOp::Revert
     } else {
         ConflictOp::None
+    })
+}
+
+fn trimmed(repo: &str, args: &[&str]) -> Option<String> {
+    let out = capture(repo, args).ok()?;
+    let text = String::from_utf8_lossy(&out).trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
+fn side_ref(repo: &str, rev: &str, name: Option<String>) -> Option<SideRef> {
+    let sha = trimmed(repo, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")])?;
+    let short = trimmed(repo, &["rev-parse", "--short", &sha]).unwrap_or_else(|| sha.chars().take(7).collect());
+    Some(SideRef { sha, short, name })
+}
+
+// Tips only: `name-rev` would also name `feature~2`, but it walks history to
+// do it, which takes seconds on a large repository.
+fn branch_name(repo: &str, rev: &str) -> Option<String> {
+    let sha = trimmed(repo, &["rev-parse", "--verify", "--quiet", &format!("{rev}^{{commit}}")])?;
+    let refs = trimmed(repo, &["for-each-ref", "--points-at", &sha, "--format=%(refname:short)", "refs/heads", "refs/remotes"])?;
+    refs.lines().next().map(str::to_string)
+}
+
+/// The commits and refs behind the two sides of the conflict in progress.
+#[tauri::command(async)]
+pub fn git_conflict_sides(project_path: String) -> Result<ConflictSides, String> {
+    let repo = project_path.as_str();
+    let op = git_conflict_op(project_path.clone())?;
+    if op == ConflictOp::Rebase {
+        let dir = if git_path(repo, "rebase-merge").is_some_and(|p| p.exists()) { "rebase-merge" } else { "rebase-apply" };
+        let read = |name: &str| {
+            let text = std::fs::read_to_string(git_path(repo, &format!("{dir}/{name}"))?).ok()?;
+            let text = text.trim().to_string();
+            (!text.is_empty()).then_some(text)
+        };
+        // HEAD is the upstream plus whatever has been replayed so far, so it is
+        // named after `onto`; the commit being replayed belongs to `head-name`.
+        let onto = read("onto").and_then(|sha| branch_name(repo, &sha));
+        let head_name = read("head-name").map(|n| n.trim_start_matches("refs/heads/").to_string());
+        return Ok(ConflictSides { ours: side_ref(repo, "HEAD", onto), theirs: side_ref(repo, "REBASE_HEAD", head_name) });
+    }
+    let incoming = match op {
+        ConflictOp::Merge => Some("MERGE_HEAD"),
+        ConflictOp::CherryPick => Some("CHERRY_PICK_HEAD"),
+        ConflictOp::Revert => Some("REVERT_HEAD"),
+        _ => None,
+    };
+    Ok(ConflictSides {
+        ours: side_ref(repo, "HEAD", trimmed(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])),
+        theirs: incoming.and_then(|rev| side_ref(repo, rev, branch_name(repo, rev))),
     })
 }
 
@@ -345,6 +414,32 @@ mod tests {
         let s = git_conflict_stages(p, "b.bin".into()).unwrap();
 
         assert!(s.binary);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_sides_name_their_commits_and_swap_under_a_rebase() {
+        let dir = conflicted("sides");
+        let p = dir.to_string_lossy().into_owned();
+        let sha = |rev: &str| String::from_utf8_lossy(&capture(&p, &["rev-parse", rev]).unwrap()).trim().to_string();
+        let (main, feature) = (sha("main"), sha("feature"));
+        let pair = |side: Option<SideRef>| {
+            let side = side.expect("a side with a commit");
+            assert!(side.sha.starts_with(&side.short), "{} is a prefix of {}", side.short, side.sha);
+            (side.sha, side.name)
+        };
+
+        let merge = git_conflict_sides(p.clone()).unwrap();
+        assert_eq!(pair(merge.ours), (main.clone(), Some("main".to_string())));
+        assert_eq!(pair(merge.theirs), (feature.clone(), Some("feature".to_string())));
+
+        // Rebasing main onto feature replays main's commit on top of feature, so
+        // stage 2 is feature's and stage 3 is main's: the merge's pair reversed.
+        git(&dir, &["merge", "--abort"]);
+        git(&dir, &["rebase", "feature"]);
+        let rebase = git_conflict_sides(p).unwrap();
+        assert_eq!(pair(rebase.ours), (feature, Some("feature".to_string())));
+        assert_eq!(pair(rebase.theirs), (main, Some("main".to_string())));
         std::fs::remove_dir_all(&dir).ok();
     }
 
