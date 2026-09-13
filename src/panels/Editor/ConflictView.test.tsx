@@ -713,6 +713,58 @@ describe("the Result pane", () => {
   });
 });
 
+describe("lining the panes up", () => {
+  const viewNamed = (name: string) =>
+    EditorView.findFromDOM(
+      mounted!.container.querySelector(`[aria-label="${name}"]`)!.closest(".cm-editor") as HTMLElement,
+    )!;
+
+  // The offsets themselves are `paneAlign.test.tsx`'s: jsdom measures these
+  // panes at zero height once MergeView scrolls them, so here only the wiring
+  // can be seen.
+  it("gives both side panes the same space where the Result runs taller", async () => {
+    stages = { base: "a\nb\nc\n", ours: "a\nO1\nO2\nO3\nc\n", theirs: "a\nT1\nc\n", binary: false };
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 1")).toBeTruthy());
+    const result = viewNamed("Result");
+    const space = (name: string) =>
+      [...viewNamed(name).contentDOM.querySelectorAll<HTMLElement>(".cm-align-spacer")].map((el) => el.style.height);
+
+    result.dispatch({ changes: { from: result.state.doc.line(2).from, insert: "W\nX\nY\nZ\n" } });
+
+    await waitFor(() => expect(space("Yours (HEAD)").length).toBeGreaterThan(0));
+    expect(space("Incoming")).toEqual(space("Yours (HEAD)"));
+  });
+
+  it("scrolls the panes and the Result together", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByText("Conflict 1 of 2")).toBeTruthy());
+    // jsdom lays nothing out, so scrollTop is a plain number here, and a change
+    // fires the event a browser would.
+    const scrollable = (el: HTMLElement) => {
+      let top = 0;
+      Object.defineProperty(el, "scrollTop", {
+        configurable: true,
+        get: () => top,
+        set: (v: number) => {
+          if (v === top) return;
+          top = v;
+          el.dispatchEvent(new Event("scroll"));
+        },
+      });
+      return el;
+    };
+    const panes = scrollable(mounted!.container.querySelector(".cm-mergeView") as HTMLElement);
+    const result = scrollable(viewNamed("Result").dom.parentElement!);
+
+    panes.scrollTop = 120;
+    expect(result.scrollTop).toBe(120);
+
+    result.scrollTop = 40;
+    expect(panes.scrollTop).toBe(40);
+  });
+});
+
 describe("which two versions the panes compare", () => {
   it("keeps the decisions, the place and the document across a switch", async () => {
     mount();

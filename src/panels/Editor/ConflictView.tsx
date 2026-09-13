@@ -28,6 +28,7 @@ import {
   type SideLabels,
 } from "../../utils/conflict";
 import { choiceOptions, decideRegion, editedByHand, ignoreSide, resetResult, resultField } from "./resultPane";
+import { lineAnchor, paneAligner, posAnchor, scrollTogether, type AlignMember } from "./paneAlign";
 import { emitWith, TOAST, type ToastEvent } from "../../utils/events";
 import { folderActors } from "../../utils/folderActors";
 import { revertGuard } from "../../utils/revertGuard";
@@ -203,9 +204,11 @@ function paneExtensions(
   decor: Extension,
   syntax: Compartment,
   syntaxExt: Extension,
+  align: Extension,
 ): Extension {
   return [
     lineNumbers(),
+    align,
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
     // In a compartment of its own because the language pack is fetched after
@@ -561,15 +564,49 @@ export default function ConflictView(props: {
   ];
   const slots = resultField(optionsFor, { choose: (id, choice) => void chooseRegion(id, choice), reset: (id) => void resetRegion(id) });
 
+  const aligner = paneAligner(() => {
+    if (!merge || !result) return [];
+    const { left, right } = pair();
+    const state = result.state.field(slots, false);
+    const spans = new Map([...(state?.slots ?? []), ...(state?.carried ?? [])].map((s) => [s.id, s]));
+    const rs = regions();
+    if (rs.some((r) => !spans.has(r.id))) return [];
+    const pane = (view: EditorView, side: PaneSide): AlignMember => ({
+      view,
+      anchors: rs.flatMap((r) => [
+        lineAnchor(view.state.doc, r[side].from, "top"),
+        lineAnchor(view.state.doc, r[side].to, "text"),
+      ]),
+    });
+    const doc = result.state.doc;
+    const resultMember: AlignMember = {
+      view: result,
+      anchors: rs.flatMap((r) => {
+        const span = spans.get(r.id)!;
+        return [posAnchor(doc, doc.lineAt(span.from).from, "top"), posAnchor(doc, span.to, "text")];
+      }),
+    };
+    return [[pane(merge.a, left), pane(merge.b, right)], [resultMember]];
+  });
+
+  let unlinkScroll = () => {};
+  function linkScroll() {
+    unlinkScroll();
+    unlinkScroll = merge && result && resultHost ? scrollTogether([merge.dom, resultHost]) : () => {};
+  }
+
   function destroy() {
+    unlinkScroll();
     merge?.destroy();
     merge = null;
   }
   function destroyResult() {
+    unlinkScroll();
     result?.destroy();
     result = null;
   }
   onCleanup(() => {
+    aligner.destroy();
     destroy();
     destroyResult();
   });
@@ -680,6 +717,7 @@ export default function ConflictView(props: {
             paneDecor(rs, showing.left, leftDoc, picked, skipped),
             syntaxLeft,
             ext,
+            aligner.extension,
           ),
         },
         b: {
@@ -691,12 +729,15 @@ export default function ConflictView(props: {
             paneDecor(rs, showing.right, rightDoc, picked, skipped),
             syntaxRight,
             ext,
+            aligner.extension,
           ),
         },
         parent: host,
         gutter: true,
         highlightChanges: true,
       });
+      aligner.schedule();
+      linkScroll();
     }),
   );
 
@@ -717,6 +758,7 @@ export default function ConflictView(props: {
           paneTheme,
           syntaxResult.of(syntax() ?? []),
           slots,
+          aligner.extension,
           // The field is where every choice lands, typing over one included, so
           // the header and the side panes follow it instead of keeping a copy.
           EditorView.updateListener.of((u) => {
@@ -732,7 +774,11 @@ export default function ConflictView(props: {
         ],
         parent: resultHost,
       });
-      result.dispatch({ effects: resetResult.of({ slots: seed.slots, choices: {}, ignored: {} }) });
+      result.dispatch({
+        effects: resetResult.of({ slots: seed.slots, carried: seed.carried, choices: {}, ignored: {} }),
+      });
+      aligner.schedule();
+      linkScroll();
     }),
   );
 
