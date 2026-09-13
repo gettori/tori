@@ -34,7 +34,14 @@ const DIFF = [
 ].join("\n");
 
 function mount() {
-  const { container } = render(() => <DiffBufferView text={DOC} hunks={parseDiffHunks(DIFF)} path="/repo/a.ts" />);
+  const { container } = render(() => <DiffBufferView
+      text={DOC}
+      hunks={parseDiffHunks(DIFF)}
+      path="/repo/a.ts"
+      staged={false}
+      onHunk={() => {}}
+      onSelect={() => {}}
+    />);
   const view = EditorView.findFromDOM(container.querySelector<HTMLElement>(".cm-editor")!)!;
   return { container, view };
 }

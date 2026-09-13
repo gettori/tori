@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
 import type { FileStatus } from "../../utils/gitActions";
 
 // The diff tab, driven through the real component. Two things are its own and
@@ -36,6 +36,8 @@ let statusRows: FileStatus[] = [UNSTAGED];
 let applyLineArgs: unknown[] = [];
 let applyHunkArgs: unknown[] = [];
 let discardArgs: { cmd: string; args: unknown }[] = [];
+let diffText = DIFF;
+let fileLines = ["one", "TWO", "three"];
 
 // Rows are read by their text here, and a painted row splits its text into
 // token spans. Colour is DiffRows' business and tested there, so no language.
@@ -47,7 +49,9 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "git_diff_text":
         diffCalls += 1;
         diffArgs.push(args as { projectPath: string; file: string; mode?: string });
-        return Promise.resolve(DIFF);
+        return Promise.resolve(diffText);
+      case "git_file_slice":
+        return Promise.resolve(fileLines);
       case "git_status":
         return Promise.resolve(statusRows);
       case "git_apply_hunks":
@@ -77,7 +81,9 @@ vi.mock("@tauri-apps/api/event", () => ({
   emit: () => Promise.resolve(),
 }));
 
+import { EditorView } from "@codemirror/view";
 import DiffView from "./DiffView";
+import { writeDiffEditorLayout } from "../../utils/diffLayout";
 import { parseDiffHunks } from "../../utils/diffHunks";
 import { hunkFingerprint } from "../../utils/hunkFingerprint";
 import { enterRoots } from "../../utils/gitActions";
@@ -100,6 +106,9 @@ beforeEach(() => {
   applyLineArgs = [];
   applyHunkArgs = [];
   discardArgs = [];
+  diffText = DIFF;
+  fileLines = ["one", "TWO", "three"];
+  writeDiffEditorLayout(false);
   for (const key of Object.keys(handlers)) delete handlers[key];
 });
 
@@ -270,5 +279,74 @@ describe("hunk staging", () => {
     // to destroy.
     await mountDiff(true);
     expect(screen.queryByText("Discard hunk")).toBeNull();
+  });
+});
+
+describe("staging from the editor layout", () => {
+  const TWO_HUNKS = [
+    "diff --git a/src/a.ts b/src/a.ts",
+    "--- a/src/a.ts",
+    "+++ b/src/a.ts",
+    "@@ -1,3 +1,3 @@",
+    " one",
+    "-two",
+    "+TWO",
+    " three",
+    "@@ -10,3 +10,3 @@",
+    " ten",
+    "-eleven",
+    "+ELEVEN",
+    " twelve",
+    "",
+  ].join("\n");
+
+  /** The same tab again, drawn as the buffer. */
+  async function remountAsBuffer(): Promise<EditorView> {
+    cleanup();
+    writeDiffEditorLayout(true);
+    render(() => <DiffView workspace="/proj" arg="unstaged:src/a.ts" selected={null} />);
+    const editor = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(".cm-editor");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    return EditorView.findFromDOM(editor)!;
+  }
+
+  it("stages the second hunk from its gutter action with the payload the rows send", async () => {
+    diffText = TWO_HUNKS;
+    fileLines = ["one", "TWO", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "ELEVEN", "twelve"];
+    await mountDiff();
+    fireEvent.click(screen.getAllByText("Stage hunk")[1]);
+    await waitFor(() => expect(applyHunkArgs).toHaveLength(1));
+
+    await remountAsBuffer();
+    // The gutter's hidden spacer carries a copy of the buttons to size the column.
+    const actions = await waitFor(() => {
+      const found = document.querySelectorAll<HTMLElement>(
+        '.cm-diff-hunk-actions .cm-gutterElement:not([style*="visibility"]) [aria-label="Stage this hunk"]',
+      );
+      expect(found).toHaveLength(2);
+      return found;
+    });
+    fireEvent.click(actions[1]);
+    await waitFor(() => expect(applyHunkArgs).toHaveLength(2));
+    expect(applyHunkArgs[1]).toEqual(applyHunkArgs[0]);
+  });
+
+  it("stages the lines selected in the buffer with the row indices the rows send", async () => {
+    await mountDiff();
+    fireEvent.click(screen.getByText("-two"));
+    fireEvent.click(screen.getByText("+TWO"));
+    fireEvent.click(await screen.findByText("Stage 2 lines"));
+    await waitFor(() => expect(applyLineArgs).toHaveLength(1));
+
+    const view = await remountAsBuffer();
+    await waitFor(() => expect(document.querySelector(".cm-diff-removed")).not.toBeNull());
+    // From the end of "one", across the removed "two", to the end of "TWO".
+    view.dispatch({ selection: { anchor: view.state.doc.line(1).to, head: view.state.doc.line(2).to } });
+    fireEvent.click(await screen.findByText("Stage 2 lines"));
+    await waitFor(() => expect(applyLineArgs).toHaveLength(2));
+    expect(applyLineArgs[1]).toEqual(applyLineArgs[0]);
   });
 });
