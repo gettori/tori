@@ -300,7 +300,6 @@ describe("staging from the editor layout", () => {
     "",
   ].join("\n");
 
-  /** The same tab again, drawn as the buffer. */
   async function remountAsBuffer(): Promise<EditorView> {
     cleanup();
     writeDiffEditorLayout(true);

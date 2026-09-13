@@ -613,6 +613,7 @@ export default function DiffView(props: {
             hunks={hunks()}
             path={file()}
             staged={staged()}
+            busy={applying()}
             onHunk={(index, action) => {
               const hunk = hunks()[index];
               const fingerprint = hunkFingerprint(hunk.header, hunk.lines);

@@ -21,6 +21,7 @@ import {
   hunkActionGutter,
   selectedRows,
   setDiffHunks,
+  setHunksBusy,
   type HunkAction,
 } from "./diffBuffer";
 import { swayTheme } from "./editorTheme";
@@ -34,6 +35,7 @@ export default function DiffBufferView(props: {
   hunks: DiffHunk[];
   path: string;
   staged: boolean;
+  busy: boolean;
   onHunk: (hunk: number, action: HunkAction) => void;
   onSelect: (picked: { hunk: number; lines: number[] }[]) => void;
 }) {
@@ -99,6 +101,7 @@ export default function DiffBufferView(props: {
   createEffect(
     on(vimModeOn, (vimOn) => view?.dispatch({ effects: vimConf.reconfigure(vimExtension(vimOn)) }), { defer: true }),
   );
+  createEffect(on(() => props.busy, (busy) => view?.dispatch({ effects: setHunksBusy.of(busy) })));
   onCleanup(() => view?.destroy());
 
   return <div class={styles.buffer} ref={host} />;

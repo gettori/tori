@@ -12,11 +12,15 @@ import { tokenLines, type Span } from "./syntaxLines";
 
 type Placed = {
   firstNew: number;
+  from: number;
+  to: number;
   olds: (number | null)[];
   addRows: (number | null)[];
   removed: { pos: number; rows: number[] }[];
   deltaAfter: number;
 };
+
+type Run = { rows: DiffRow[]; spans: (Span[] | null)[]; indices: number[] };
 
 export type DiffBufferState = {
   hunks: Placed[];
@@ -25,7 +29,6 @@ export type DiffBufferState = {
   actionAt: Map<number, number>;
 };
 
-/** Git's hunks for the document, and the language to colour removed lines in. */
 export const setDiffHunks = StateEffect.define<{ hunks: DiffHunk[]; language: Language | null }>();
 
 const addedLine = Decoration.line({ class: "cm-diff-line-added" });
@@ -95,6 +98,8 @@ function removedAt(doc: Text, before: number, widget: RemovedLines): Range<Decor
   return Decoration.widget({ widget, block: true, side: -1 }).range(doc.line(Math.max(1, before)).from);
 }
 
+const clampLine = (doc: Text, line: number) => Math.min(Math.max(line, 1), doc.lines);
+
 function build(doc: Text, input: DiffHunk[], language: Language | null): DiffBufferState {
   const ranges: Range<Decoration>[] = [];
   const hunks: Placed[] = [];
@@ -111,7 +116,13 @@ function build(doc: Text, input: DiffHunk[], language: Language | null): DiffBuf
     const olds: (number | null)[] = [];
     const addRows: (number | null)[] = [];
     const removed: Placed["removed"] = [];
-    let run: { rows: DiffRow[]; spans: (Span[] | null)[]; indices: number[] } | null = null;
+    let run: Run | null = null;
+
+    const place = (done: Run) => {
+      const at = removedAt(doc, nextNew, new RemovedLines(done.rows, done.spans));
+      ranges.push(at);
+      removed.push({ pos: at.from, rows: done.indices });
+    };
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -122,9 +133,7 @@ function build(doc: Text, input: DiffHunk[], language: Language | null): DiffBuf
         run.spans.push(spans?.[i] ?? null);
         run.indices.push(i);
       } else if (run) {
-        const at = removedAt(doc, nextNew, new RemovedLines(run.rows, run.spans));
-        ranges.push(at);
-        removed.push({ pos: at.from, rows: run.indices });
+        place(run);
         run = null;
       }
       if (row.oldLine !== null) {
@@ -142,14 +151,20 @@ function build(doc: Text, input: DiffHunk[], language: Language | null): DiffBuf
       const to = range ? Math.min(range[1], line.length) : 0;
       if (range && range[0] < to) ranges.push(addedWord.range(line.from + range[0], line.from + to));
     }
-    if (run) {
-      const at = removedAt(doc, nextNew, new RemovedLines(run.rows, run.spans));
-      ranges.push(at);
-      removed.push({ pos: at.from, rows: run.indices });
-    }
+    if (run) place(run);
 
-    hunks.push({ firstNew, olds, addRows, removed, deltaAfter: nextOld - nextNew });
-    actionAt.set(Math.min(Math.max(firstNew, 1), doc.lines), index);
+    const startLine = clampLine(doc, firstNew);
+    const endLine = clampLine(doc, Math.max(firstNew + olds.length - 1, startLine));
+    hunks.push({
+      firstNew,
+      from: Math.min(doc.line(startLine).from, removed[0]?.pos ?? Infinity),
+      to: Math.max(doc.line(endLine).to, removed[removed.length - 1]?.pos ?? -1),
+      olds,
+      addRows,
+      removed,
+      deltaAfter: nextOld - nextNew,
+    });
+    actionAt.set(startLine, index);
   }
 
   const last = hunks[hunks.length - 1];
@@ -166,7 +181,6 @@ export const diffBufferField = StateField.define<DiffBufferState>({
   provide: (field) => EditorView.decorations.from(field, (value) => value.decorations),
 });
 
-/** The old file's number for a line of this document, or null on an added line. */
 export function oldLineAt(state: EditorState, line: number): number | null {
   const { hunks } = state.field(diffBufferField);
   let lo = 0;
@@ -185,8 +199,6 @@ export function oldLineAt(state: EditorState, line: number): number | null {
   return at < hunk.olds.length ? hunk.olds[at] : line + hunk.deltaAfter;
 }
 
-/** The changed rows the selection covers, by hunk index, as indices into each
- *  hunk's body: the same numbers line staging sends from the rows. */
 export function selectedRows(state: EditorState): { hunk: number; lines: number[] }[] {
   const { hunks } = state.field(diffBufferField);
   const picked = new Map<number, Set<number>>();
@@ -200,7 +212,15 @@ export function selectedRows(state: EditorState): { hunk: number; lines: number[
     const end = state.doc.lineAt(range.to);
     // A selection that stops at a line's start has not taken that line.
     const last = end.from === range.to && end.number > first ? end.number - 1 : end.number;
-    hunks.forEach((hunk, index) => {
+    let lo = 0;
+    let hi = hunks.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (hunks[mid].to < range.from) lo = mid + 1;
+      else hi = mid;
+    }
+    for (let index = lo; index < hunks.length && hunks[index].from <= range.to; index++) {
+      const hunk = hunks[index];
       hunk.addRows.forEach((row, at) => {
         const line = hunk.firstNew + at;
         if (row !== null && line >= first && line <= last) pick(index, row);
@@ -209,7 +229,7 @@ export function selectedRows(state: EditorState): { hunk: number; lines: number[
       for (const run of hunk.removed) {
         if (range.from <= run.pos && run.pos <= range.to) for (const row of run.rows) pick(index, row);
       }
-    });
+    }
   }
   return [...picked].map(([hunk, rows]) => ({ hunk, lines: [...rows].sort((a, b) => a - b) }));
 }
@@ -228,7 +248,6 @@ class OldNumber extends GutterMarker {
   }
 }
 
-/** The numbers beside a removed-lines widget, one per line it draws. */
 class OldNumbers extends GutterMarker {
   constructor(readonly lines: (number | null)[]) {
     super();
@@ -262,16 +281,21 @@ const oldNumberGutter = gutter({
   updateSpacer: (_spacer, update) => new OldNumber(String(update.state.field(diffBufferField).widestOld)),
 });
 
-/** The field and the old-number gutter. Put it before `lineNumbers()` so the old
- *  column sits left of the new one. */
+// Before `lineNumbers()`, so the old column sits left of the new one.
 export function diffBufferExtension(): Extension {
   return [diffBufferField, oldNumberGutter];
 }
 
 export type HunkAction = "apply" | "discard";
 
-/** Whether the tab is the staged half, and what a hunk's buttons do. */
 export type HunkActions = { staged: () => boolean; run: (hunk: number, action: HunkAction) => void };
+
+export const setHunksBusy = StateEffect.define<boolean>();
+
+const busyField = StateField.define<boolean>({
+  create: () => false,
+  update: (value, tr) => tr.effects.reduce((busy, e) => (e.is(setHunksBusy) ? e.value : busy), value),
+});
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 // Lucide's plus, minus and undo-2, drawn by hand for codeActionBulb.ts's reason:
@@ -280,11 +304,12 @@ const PLUS_PATHS = ["M5 12h14", "M12 5v14"];
 const MINUS_PATHS = ["M5 12h14"];
 const UNDO_PATHS = ["M9 14 4 9l5-5", "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"];
 
-function actionButton(paths: string[], label: string, onClick: () => void): HTMLButtonElement {
+function actionButton(paths: string[], label: string, disabled: boolean, onClick: () => void): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "cm-diff-hunk-action";
   button.title = label;
+  button.disabled = disabled;
   button.setAttribute("aria-label", label);
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
@@ -304,40 +329,46 @@ class HunkButtons extends GutterMarker {
   constructor(
     readonly hunk: number,
     readonly staged: boolean,
+    readonly busy: boolean,
     readonly run: HunkActions["run"],
   ) {
     super();
   }
 
   eq(other: HunkButtons): boolean {
-    return other.hunk === this.hunk && other.staged === this.staged;
+    return other.hunk === this.hunk && other.staged === this.staged && other.busy === this.busy;
   }
 
   toDOM(): Node {
     const wrap = document.createElement("div");
     wrap.className = "cm-diff-hunk-buttons";
+    const label = this.staged ? "Unstage this hunk" : "Stage this hunk";
     wrap.appendChild(
-      actionButton(this.staged ? MINUS_PATHS : PLUS_PATHS, this.staged ? "Unstage this hunk" : "Stage this hunk", () =>
-        this.run(this.hunk, "apply"),
-      ),
+      actionButton(this.staged ? MINUS_PATHS : PLUS_PATHS, label, this.busy, () => this.run(this.hunk, "apply")),
     );
     if (!this.staged) {
-      wrap.appendChild(actionButton(UNDO_PATHS, "Throw away this hunk", () => this.run(this.hunk, "discard")));
+      wrap.appendChild(
+        actionButton(UNDO_PATHS, "Throw away this hunk", this.busy, () => this.run(this.hunk, "discard")),
+      );
     }
     return wrap;
   }
 }
 
-/** Stage, unstage and discard beside each hunk's first line, by the hunk's index
- *  in the list the buffer was given. */
 export function hunkActionGutter(actions: HunkActions): Extension {
-  return gutter({
-    class: "cm-diff-hunk-actions",
-    lineMarker: (view, block) => {
-      const hunk = view.state.field(diffBufferField).actionAt.get(view.state.doc.lineAt(block.from).number);
-      return hunk === undefined ? null : new HunkButtons(hunk, actions.staged(), actions.run);
-    },
-    lineMarkerChange: (update) => update.startState.field(diffBufferField) !== update.state.field(diffBufferField),
-    initialSpacer: () => new HunkButtons(0, actions.staged(), () => {}),
-  });
+  return [
+    busyField,
+    gutter({
+      class: "cm-diff-hunk-actions",
+      lineMarker: (view, block) => {
+        const hunk = view.state.field(diffBufferField).actionAt.get(view.state.doc.lineAt(block.from).number);
+        if (hunk === undefined) return null;
+        return new HunkButtons(hunk, actions.staged(), view.state.field(busyField), actions.run);
+      },
+      lineMarkerChange: (update) =>
+        update.startState.field(diffBufferField) !== update.state.field(diffBufferField) ||
+        update.startState.field(busyField) !== update.state.field(busyField),
+      initialSpacer: () => new HunkButtons(0, actions.staged(), false, () => {}),
+    }),
+  ];
 }
