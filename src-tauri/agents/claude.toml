@@ -94,9 +94,9 @@ hooks = true
 # this prefix swapped for that profile's home, and the layout under it is the
 # same one.
 #
-# `home_markers`: an adopted folder must already hold one, since the add-time
-# `whoami` writes into whatever it is pointed at. Measured 2026-09-14: `claude
-# auth status` on an empty CLAUDE_CONFIG_DIR wrote `.claude.json` there.
+# `home_markers`: an adopted folder must be empty or already hold one, since the
+# add-time `whoami` writes into whatever it is pointed at. Measured 2026-09-14:
+# `claude auth status` on an empty CLAUDE_CONFIG_DIR wrote `.claude.json` there.
 [accounts]
 home_env = "CLAUDE_CONFIG_DIR"
 home_default = "~/.claude"

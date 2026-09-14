@@ -437,7 +437,8 @@ pub fn canonicalize_home(path: &Path) -> Result<String, String> {
 /// one.
 ///
 /// Refused before anything runs in it: the sign-in probe writes into whatever
-/// folder it is pointed at, so a mis-picked one must never reach it.
+/// folder it is pointed at, so a mis-picked one must never reach it. An empty
+/// folder has nothing to mix those files into, so it is adopted as it is.
 pub fn adopted_home(
     adapter: &crate::agents::AgentAdapter,
     file: &AccountsFile,
@@ -460,12 +461,10 @@ pub fn adopted_home(
     if !path.is_dir() {
         return Err(format!("No folder at {}.", path.display()));
     }
-    if !accounts.home_markers.iter().any(|name| path.join(name).exists()) {
+    if !is_empty_dir(&path) && !accounts.home_markers.iter().any(|name| path.join(name).exists()) {
         return Err(format!(
-            "This folder has no {} files. Run {} once with {} pointing at it, or leave the field empty.",
-            adapter.label,
-            adapter.program,
-            accounts.home_env.as_deref().unwrap_or("its home variable"),
+            "This folder holds other files and none of {}'s. Pick an empty folder or one {} already uses, or leave the field empty.",
+            adapter.label, adapter.label,
         ));
     }
     let home = canonicalize_home(&path)?;
@@ -478,6 +477,14 @@ pub fn adopted_home(
         return Err(format!("{home} is already the {} account.", taken.label));
     }
     Ok(home)
+}
+
+// Finder drops `.DS_Store` into any folder it has shown, so a folder made with
+// "New Folder" and picked through Browse is never literally empty.
+fn is_empty_dir(path: &Path) -> bool {
+    std::fs::read_dir(path)
+        .map(|mut entries| entries.all(|e| e.is_ok_and(|e| e.file_name() == ".DS_Store")))
+        .unwrap_or(false)
 }
 
 /// Create a profile home for `profile_id` and return its canonical path.
@@ -1849,21 +1856,28 @@ mod tests {
     }
 
     #[test]
-    fn a_folder_holding_the_agents_files_is_adopted_at_its_canonical_path() {
+    fn a_marked_or_empty_folder_is_adopted_at_its_canonical_path() {
         let root = scratch("adopt");
         std::fs::create_dir_all(root.join("work/projects")).unwrap();
+        std::fs::create_dir_all(root.join("fresh")).unwrap();
+        std::fs::write(root.join("fresh/.DS_Store"), "").unwrap();
+        let a = adopting(&root);
         let spelt = format!("{}/", root.join("work").display());
 
-        let home = adopted_home(&adopting(&root), &AccountsFile::default(), &spelt).unwrap();
+        let home = adopted_home(&a, &AccountsFile::default(), &spelt).unwrap();
         assert_eq!(home, canonicalize_home(&root.join("work")).unwrap());
+        let fresh = root.join("fresh").display().to_string();
+        let home = adopted_home(&a, &AccountsFile::default(), &fresh).unwrap();
+        assert_eq!(home, canonicalize_home(&root.join("fresh")).unwrap());
 
         std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
-    fn a_folder_that_is_missing_empty_or_relative_is_refused() {
+    fn a_folder_that_is_missing_unmarked_or_relative_is_refused() {
         let root = scratch("adopt-refused");
-        std::fs::create_dir_all(root.join("empty")).unwrap();
+        std::fs::create_dir_all(root.join("stray")).unwrap();
+        std::fs::write(root.join("stray/notes.txt"), "").unwrap();
         std::fs::create_dir_all(root.join("work/projects")).unwrap();
         std::fs::write(root.join("a-file"), "").unwrap();
         let a = adopting(&root);
@@ -1873,8 +1887,8 @@ mod tests {
 
         assert!(refusal(&a, root.join("missing")).starts_with("No folder"));
         assert!(refusal(&a, root.join("a-file")).starts_with("No folder"));
-        let empty = refusal(&a, root.join("empty"));
-        assert!(empty.contains("CLAUDE_CONFIG_DIR pointing at it"), "{empty}");
+        let stray = refusal(&a, root.join("stray"));
+        assert!(stray.contains("Pick an empty folder"), "{stray}");
         assert!(refusal(&a, PathBuf::from("work")).contains("full path"));
 
         let mut blind = a.clone();
