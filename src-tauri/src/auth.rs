@@ -343,6 +343,7 @@ mod tests {
         AccountsConfig {
             home_env: Some("X_HOME".into()),
             home_default: None,
+            home_markers: vec![],
             login_args: vec![],
             logout_args: vec!["logout".into()],
             whoami_args: vec!["status".into()],

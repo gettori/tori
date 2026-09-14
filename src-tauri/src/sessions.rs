@@ -283,7 +283,7 @@ fn roots_for<'a>(
                     profile_root(dir, default_home, home)?
                 }
             };
-            Some(Root { adapter, profile: p.id.clone(), dir: root, managed: p.home.is_some() })
+            Some(Root { adapter, profile: p.id.clone(), dir: root, managed: p.managed })
         })
         .collect()
 }
@@ -2675,6 +2675,7 @@ mod tests {
         a.accounts = home_default.map(|home| crate::agents::AccountsConfig {
             home_env: Some("X_CONFIG_DIR".into()),
             home_default: Some(home.to_path_buf()),
+            home_markers: vec![],
             login_args: vec![],
             logout_args: vec![],
             whoami_args: vec![],
@@ -2690,6 +2691,7 @@ mod tests {
             label: label.into(),
             email: None,
             home: Some(home.to_string_lossy().into_owned()),
+            managed: true,
         }
     }
 
