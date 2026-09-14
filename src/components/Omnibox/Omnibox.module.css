@@ -29,7 +29,8 @@
 /* `Dialog`'s title recipe, on the palette's own heading. The real title is
    `titleHidden` here, so this is the line a reader sees, and it has to match a
    dialog title or the palette looks like a different kind of surface. Kept in
-   step with `Dialog.module.css`'s `.title` deliberately (#130 moved both).
+   step with `Dialog.module.css`'s `.title` deliberately (#130 moved both),
+   except the size, which #181 left a step above a dialog title on purpose.
 
    The margin is this file's own and stays: the heading sits inside the dialog's
    *body*, which is a plain scroller rather than the gapped column the panel is,
