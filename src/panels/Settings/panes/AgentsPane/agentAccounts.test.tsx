@@ -69,6 +69,7 @@ const view = (over: Record<string, unknown> = {}) => ({
   declared: true,
   canAdd: true,
   canSignOut: true,
+  defaultPresent: true,
   profiles: [profile()],
   ...over,
 });

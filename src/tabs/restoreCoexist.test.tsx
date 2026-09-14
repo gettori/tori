@@ -61,6 +61,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "pty_live_ids":
         return Promise.resolve(livePtys);
       case "profile_spawn_env":
+        if (args.profileId === null) return Promise.resolve({});
         return args.profileId === "fonn"
           ? Promise.resolve({ CLAUDE_CONFIG_DIR: "/homes/fonn" })
           : Promise.reject(`no profile \`${String(args.profileId)}\``);
@@ -372,14 +373,14 @@ describe("restore brings a tab back on its own account", () => {
     expect(open()[0].profile).toBe("fonn");
   });
 
-  it("reads a tab stored before accounts existed as the default profile, asking nothing", async () => {
+  it("reads a tab stored before accounts existed as the default profile, and asks for its env", async () => {
     storeTabs([shell({ id: "sh:1", kind: "agent", program: "claude", args: [] })]);
 
     await restore();
 
     expect(open()[0].profile).toBeNull();
     expect(open()[0].env).toBeUndefined();
-    expect(invokes.some((i) => i.cmd === "profile_spawn_env")).toBe(false);
+    expect(invokes.some((i) => i.cmd === "profile_spawn_env" && i.args.profileId === null)).toBe(true);
   });
 
   // The failure the whole feature exists to prevent: an empty env here would

@@ -97,7 +97,14 @@ describe("the Settings panel's accessibility", () => {
             },
           ];
         if (cmd === "agent_accounts")
-          return { adapterId: "claude", declared: true, canAdd: true, canSignOut: true, profiles: [] };
+          return {
+            adapterId: "claude",
+            declared: true,
+            canAdd: true,
+            canSignOut: true,
+            defaultPresent: true,
+            profiles: [],
+          };
         return cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS;
       },
     );
