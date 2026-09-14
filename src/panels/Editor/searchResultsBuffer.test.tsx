@@ -58,8 +58,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { setBufferAccess } from "./liveBuffers";
-import { clearSearchBuffers, openSearchResults, searchBuffer } from "./searchResultsStore";
-import { prefixLen } from "./searchResultsDoc";
+import { blankForm, clearSearchBuffers, openSearchEditor, searchBuffer } from "./searchResultsStore";
+import { prefixLen, type DocRoot, type ResultMatch } from "./searchResultsDoc";
 import SearchResultsBuffer from "./SearchResultsBuffer";
 
 const ROOT = "/space/proj";
@@ -67,7 +67,7 @@ const A = `${ROOT}/src/a.ts`;
 const B = `${ROOT}/src/b.ts`;
 const C = `${ROOT}/src/c.ts`;
 
-const ROOTS = [{ root: ROOT, label: "proj" }];
+const ROOTS: DocRoot[] = [{ root: ROOT, label: "proj" }];
 const MATCHES = [
   { root: ROOT, path: "src/a.ts", line: 2, text: "const needle = 1" },
   { root: ROOT, path: "src/b.ts", line: 1, text: "needle" },
@@ -102,9 +102,26 @@ function registerBuffers() {
   });
 }
 
-function mount(query = "needle", matches = MATCHES, roots = ROOTS, ws = ROOT) {
-  const id = openSearchResults(ws, query, matches, roots);
-  mounted = render(() => <SearchResultsBuffer id={id} />);
+/** Context rows off: they read every hit file on mount and move every row,
+ *  and what this file pins is routing, not layout. */
+const form = () => ({ ...blankForm(), query: "needle", showContext: false });
+
+type Confirm = (opts: { title: string; message?: string; confirmLabel?: string }) => Promise<boolean>;
+
+function renderBuffer(id: string, roots: readonly DocRoot[] = ROOTS, confirm?: Confirm) {
+  const memberRoots = roots.map((r) => ({ path: r.root, repoPath: r.root, label: r.label }));
+  // No chip row: members only narrow what a re-run searches, never where a row writes.
+  mounted = render(() => (
+    <SearchResultsBuffer id={id} roots={memberRoots} members={[]} openPaths={[]} confirm={confirm} />
+  ));
+}
+
+async function mount(opts: { matches?: ResultMatch[]; roots?: DocRoot[]; ws?: string; confirm?: Confirm } = {}) {
+  const { matches = MATCHES, roots = ROOTS, ws = ROOT, confirm } = opts;
+  const id = openSearchEditor(ws, form(), { matches, roots });
+  renderBuffer(id, roots, confirm);
+  // The seed is built into the buffer after mount, so nothing can be typed until it lands.
+  await waitFor(() => expect(view().state.doc.lines).toBe(searchBuffer(id)!.doc!.rows.length));
   return id;
 }
 
@@ -116,7 +133,7 @@ function retype(id: string, row: number, text: string) {
   const v = view();
   const line = v.state.doc.line(row);
   v.dispatch({
-    changes: { from: line.from + prefixLen(searchBuffer(id)!.doc), to: line.to, insert: text },
+    changes: { from: line.from + prefixLen(searchBuffer(id)!.doc!), to: line.to, insert: text },
   });
 }
 
@@ -143,8 +160,8 @@ afterEach(() => {
 });
 
 describe("materialising a search", () => {
-  it("shows one row per match, each carrying its own line number", () => {
-    mount();
+  it("shows one row per match, each carrying its own line number", async () => {
+    await mount();
     const doc = view().state.doc;
     expect(doc.line(4).text).toBe("src/a.ts");
     expect(doc.line(ROW.a).text).toBe("2: const needle = 1");
@@ -152,45 +169,62 @@ describe("materialising a search", () => {
     expect(doc.line(ROW.c).text).toBe("1: c needle");
   });
 
-  it("opens as a tab of its own workspace, so two projects are two buffers", () => {
+  it("opens as a tab of its own workspace, so two projects are two buffers", async () => {
     const seen: string[] = [];
     const listener = (e: Event) => seen.push((e as CustomEvent).detail.path);
     window.addEventListener("sway:open-in-editor", listener);
     try {
-      const id = mount();
+      const id = await mount();
       expect(seen).toEqual([id]);
       expect(id).toContain(encodeURIComponent(ROOT));
-      // The workspace is what the id is keyed on, not a root the search
-      // happened to cover: the same word in the next project is its own buffer.
-      expect(openSearchResults("/space/other", "needle", MATCHES, ROOTS)).not.toBe(id);
+      // Keyed on the workspace, not on a root the search covered: the same hits
+      // opened from another project are that project's buffer.
+      const other = openSearchEditor("/space/other", form(), { matches: MATCHES, roots: ROOTS });
+      expect(other).not.toBe(id);
+      expect(other).toContain(encodeURIComponent("/space/other"));
     } finally {
       window.removeEventListener("sway:open-in-editor", listener);
     }
   });
 
-  it("hands an edited buffer back rather than rebuilding it under the edits", () => {
-    // The Open button is the same click that opened it. Refreshing the results
-    // would be a reasonable reading of a second press; throwing away typed
-    // edits to do it is not.
-    const id = mount();
+  it("opens the same search again as a tab of its own, leaving the edited one alone", async () => {
+    const id = await mount();
     retype(id, ROW.a, "const pin = 1");
-    expect(openSearchResults(ROOT, "needle", MATCHES, ROOTS)).toBe(id);
+    expect(openSearchEditor(ROOT, form(), { matches: MATCHES, roots: ROOTS })).not.toBe(id);
     expect(searchBuffer(id)!.state!.doc.line(ROW.a).text).toBe("2: const pin = 1");
+  });
+
+  it("holds a re-run off while edits wait, and asks before Enter drops them", async () => {
+    // Refreshing the results is a fair reading of a new query; throwing away
+    // typed edits to do it is not.
+    const confirm = vi.fn<Confirm>(() => Promise.resolve(false));
+    const id = await mount({ confirm });
+    retype(id, ROW.a, "const pin = 1");
+    const query = screen.getByRole("textbox", { name: "Search" });
+
+    fireEvent.input(query, { target: { value: "pin" } });
+    await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/Edits not applied yet/));
+
+    fireEvent.keyDown(query, { key: "Enter" });
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(view().state.doc.line(ROW.a).text).toBe("2: const pin = 1");
+    expect(applyButton().textContent).toMatch(/Apply to 1 file/);
   });
 });
 
 describe("coming back to a buffer another tab was shown over", () => {
-  it("keeps the edits, and keeps enforcing its own rules", () => {
+  it("keeps the edits, and keeps enforcing its own rules", async () => {
     // The Editor unmounts a synthetic tab's view when another tab is selected,
     // which is why the document lives in the store. The trap is that the
     // *configuration* travels with it: a state handed to a second mount still
     // carries the first mount's extensions, which close over a destroyed view
     // and signals nothing renders. Both halves are asserted, because the doc
     // coming back looks like success on its own.
-    const id = mount();
+    const id = await mount();
     retype(id, ROW.a, "const pin = 1");
     mounted!.unmount();
-    mounted = render(() => <SearchResultsBuffer id={id} />);
+    renderBuffer(id);
 
     expect(view().state.doc.line(ROW.a).text).toBe("2: const pin = 1");
 
@@ -209,31 +243,32 @@ describe("coming back to a buffer another tab was shown over", () => {
 });
 
 describe("what the buffer will not let you do", () => {
-  it("refuses a change to the line count, and says why", () => {
-    const id = mount();
+  it("refuses a change to the line count, and says why", async () => {
+    const id = await mount();
     const before = view().state.doc.toString();
     const line = view().state.doc.line(ROW.a);
     view().dispatch({ changes: { from: line.to, insert: "\nan extra line" } });
     expect(view().state.doc.toString()).toBe(before);
     expect(screen.getByRole("status").textContent).toMatch(/cannot be added or removed/);
-    expect(searchBuffer(id)!.doc.rows.length).toBe(11);
+    expect(searchBuffer(id)!.doc!.rows.length).toBe(11);
   });
 
-  it("takes the complaint down once an edit gets through", () => {
+  it("takes the complaint down once an edit gets through", async () => {
     // A refusal is about one keystroke. Left on screen it reads as a complaint
     // about whatever was typed after it, which is the edit that worked.
-    const id = mount();
+    const id = await mount();
     const line = view().state.doc.line(ROW.a);
     view().dispatch({ changes: { from: line.to, insert: "\nan extra line" } });
-    expect(screen.getByRole("status")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toMatch(/cannot be added or removed/);
     retype(id, ROW.a, "const pin = 1");
-    expect(screen.queryByRole("status")).toBeNull();
+    // The row stays up to hold the Apply button, so it is the text that has to go.
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 });
 
 describe("writing edits back", () => {
   it("writes an edited line to its own file and marks the write as ours", async () => {
-    const id = mount();
+    const id = await mount();
     retype(id, ROW.a, "const pin = 1");
     fireEvent.click(applyButton());
 
@@ -253,7 +288,7 @@ describe("writing edits back", () => {
     // The other half of marking the write as ours: the echo that would have
     // reloaded this tab is suppressed, so the tab has to be told directly or it
     // sits on pre-write text whose next save reverts the write.
-    const id = mount();
+    const id = await mount();
     open[A] = { text: "one\nconst needle = 1\nthree", dirty: false };
     retype(id, ROW.a, "const pin = 1");
     fireEvent.click(applyButton());
@@ -264,7 +299,7 @@ describe("writing edits back", () => {
   });
 
   it("puts the edit in an unsaved buffer rather than on disk, and leaves it dirty", async () => {
-    const id = mount();
+    const id = await mount();
     open[A] = { text: "one\nconst needle = 1\nthree\nplus my own edit", dirty: true };
     retype(id, ROW.a, "const pin = 1");
     fireEvent.click(applyButton());
@@ -279,7 +314,7 @@ describe("writing edits back", () => {
   });
 
   it("refuses a file whose line moved since the search, and names it", async () => {
-    const id = mount();
+    const id = await mount();
     retype(id, ROW.b, "pin");
     disk[B] = "somebody else got here first";
     fireEvent.click(applyButton());
@@ -290,7 +325,7 @@ describe("writing edits back", () => {
   });
 
   it("applies only the file that refused when it is tried again", async () => {
-    const id = mount();
+    const id = await mount();
     retype(id, ROW.a, "const pin = 1");
     retype(id, ROW.b, "pin");
     retype(id, ROW.c, "c pin");
@@ -316,7 +351,7 @@ describe("writing edits back", () => {
   });
 
   it("will not write a file it has already written, however the row is edited", async () => {
-    const id = mount();
+    const id = await mount();
     retype(id, ROW.a, "const pin = 1");
     fireEvent.click(applyButton());
     // The outcome line, not the call: the lock goes on when the write comes
@@ -347,7 +382,7 @@ describe("writing back across members", () => {
   /** Two notes, then blank/member/header/row twice over. */
   const ROWS = { api: 6, web: 10 };
 
-  const mountFeature = () => mount("needle", SHARED, FEATURE, "feature:f1");
+  const mountFeature = () => mount({ matches: SHARED, roots: FEATURE, ws: "feature:f1" });
 
   beforeEach(() => {
     disk[`${API}/src/index.ts`] = "api needle";
@@ -355,7 +390,7 @@ describe("writing back across members", () => {
   });
 
   it("sends each member's edits against that member's own root", async () => {
-    const id = mountFeature();
+    const id = await mountFeature();
     retype(id, ROWS.api, "api pin");
     retype(id, ROWS.web, "web pin");
     fireEvent.click(applyButton());
@@ -374,7 +409,7 @@ describe("writing back across members", () => {
   });
 
   it("marks the write at the absolute path the row's own member gives it", async () => {
-    const id = mountFeature();
+    const id = await mountFeature();
     retype(id, ROWS.web, "web pin");
     fireEvent.click(applyButton());
 
@@ -384,7 +419,7 @@ describe("writing back across members", () => {
   });
 
   it("names the member when one file refuses and the path alone names two", async () => {
-    const id = mountFeature();
+    const id = await mountFeature();
     retype(id, ROWS.web, "web pin");
     disk[`${WEB}/src/index.ts`] = "somebody else got here first";
     fireEvent.click(applyButton());
@@ -392,14 +427,17 @@ describe("writing back across members", () => {
     await screen.findByText(/Refused src\/index\.ts in Web App/);
     // The other member's copy of the path is untouched and still editable.
     retype(id, ROWS.api, "api pin");
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(view().state.doc.line(ROWS.api).text).toBe("1: api pin");
+    expect(applyButton().textContent).toMatch(/Apply to 2 files/);
   });
 });
 
 describe("the results buffer, to axe", () => {
   it("has no accessibility violations", async () => {
-    mount();
-    await waitFor(() => expect(screen.getByText("Apply")).toBeTruthy());
+    const id = await mount();
+    // A waiting edit is what puts the status row and the Apply button on screen.
+    retype(id, ROW.a, "const pin = 1");
+    await waitFor(() => expect(applyButton()).toBeTruthy());
 
     // `document.body`, not the render container: a tooltip portals out of it.
     await expectNoAxeViolations(document.body);

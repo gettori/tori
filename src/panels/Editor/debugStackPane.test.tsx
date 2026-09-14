@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import PaneView from "../../tabs/PaneView";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup, within } from "@solidjs/testing-library";
 
 // Execution controls and the call stack, from the pane's side.
 //
@@ -306,11 +306,13 @@ describe("from the pane to the editor", () => {
   it("opens a clicked frame at its own line", async () => {
     await mountEditor();
     const id = await startRun();
-    render(() => <DebugPanel root={REPO} selected={null} />);
+    const pane = render(() => <DebugPanel root={REPO} selected={null} />);
     event(id, "stopped", { reason: "breakpoint", threadId: 3 });
-    await waitFor(() => expect(screen.queryByText("main")).toBeTruthy());
+    // Scoped to the pane: the Files tab titles itself with the branch, also "main".
+    const frameRow = () => within(pane.container).queryByText("main")?.closest("button");
+    await waitFor(() => expect(frameRow()).toBeTruthy());
 
-    fireEvent.click(screen.getByText("main").closest("button")!);
+    fireEvent.click(frameRow()!);
 
     // Line 12, not the top frame's 6: clicking a frame is asking to be looking
     // at that frame.

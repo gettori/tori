@@ -245,7 +245,9 @@ describe("line-level staging", () => {
     fireEvent.click(screen.getByText("+TWO"));
     await waitFor(() => expect(screen.getByText("Stage 1 line")).toBeTruthy());
 
-    // Indices into a hunk body mean nothing once that body has been re-read.
+    // Indices into a hunk body mean nothing once that body has changed. An
+    // identical re-read sets an equal signal, which Solid does not propagate.
+    diffText = DIFF.replace("+TWO", "+Two");
     fsBurst(["/proj/src/a.ts"]);
     await waitFor(() => expect(diffCalls).toBe(2));
     await waitFor(() => expect(screen.queryByText(/Stage \d+ line/)).toBeNull());

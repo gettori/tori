@@ -61,10 +61,8 @@ describe("synthetic tab ids", () => {
     );
     // A path with no folders above it still names itself.
     expect(syntheticTabName(syntheticId("history", WS, "README.md"))).toBe("History: README.md");
-    // A results buffer is known by its query, which is the only thing telling
-    // one of them from another - and it round-trips a query with a slash in it,
-    // which a file path would have been split on.
-    expect(syntheticTabName(syntheticId("search", WS, "TODO(:|s)"))).toBe("Search: TODO(:|s)");
-    expect(syntheticTabName(syntheticId("search", WS, "a/b"))).toBe("Search: a/b");
+    // A Search Editor's arg is a sequence number, not its query, so the id alone
+    // names nothing more; the strip takes the query from `searchTabTitle`.
+    expect(syntheticTabName(syntheticId("search", WS, "3"))).toBe("Search");
   });
 });

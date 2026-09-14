@@ -1,6 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { purgeTabsUnder, type TabMaps } from "./purgeTabs";
 import { syntheticId } from "../../utils/syntheticTabs";
+
+// The real store subscribes on `window` as it loads, and this suite has no DOM.
+// An empty store answers null for every id, which is all the default reads.
+vi.mock("./searchResultsStore", () => ({ searchBufferRoots: () => null }));
 
 const t = (path: string) => ({ path, name: path.split("/").pop()! });
 

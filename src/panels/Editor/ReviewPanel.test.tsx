@@ -209,7 +209,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import ReviewPanel from "./ReviewPanel";
-import { stage, enterRoots, refreshStatus } from "../../utils/gitActions";
+import { stage, stagedFiles, enterRoots, refreshStatus } from "../../utils/gitActions";
 import {
   TOAST,
   OPEN_IN_EDITOR,
@@ -333,15 +333,14 @@ describe("the shared git store", () => {
     // showing the file as unstaged until something happened to refresh it.
     await mountPanel();
     expect(screen.queryByText("Staged Changes")).toBeNull();
-    // One "Changes" to begin with: the section header. The unstaged group is
-    // the only group, so it does not repeat the word under it.
-    expect(screen.getAllByText("Changes")).toHaveLength(1);
+    // The unstaged group is the only group, so it draws no header of its own.
+    expect(screen.queryByText("Changes")).toBeNull();
 
     await stage("/proj", ["src/a.ts"]);
 
     await waitFor(() => expect(screen.getByText("Staged Changes")).toBeTruthy());
-    // Still one: the unstaged group is gone with its last row, the header stays.
-    expect(screen.getAllByText("Changes")).toHaveLength(1);
+    // The unstaged group left with its last row, so there is still no header.
+    expect(screen.queryByText("Changes")).toBeNull();
   });
 });
 
@@ -391,9 +390,9 @@ describe("conflicts", () => {
     expect(rows[0].tagName).toBe("BUTTON");
     expect(rows[0].querySelectorAll("button")).toHaveLength(0);
     // The ordinary file beside it still gets its group and its controls, so the
-    // conflict group is an addition rather than a takeover. Two now say
-    // "Changes": the section header and the group inside it.
-    expect(screen.getAllByText("Changes").length).toBeGreaterThan(1);
+    // conflict group is an addition rather than a takeover. With Conflicts above
+    // it, the unstaged group names itself.
+    expect(screen.getAllByText("Changes")).toHaveLength(1);
     expect(screen.getByTitle("src/a.ts").querySelectorAll("button").length).toBeGreaterThan(0);
   });
 
@@ -541,7 +540,7 @@ describe("discard", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await waitFor(() => expect(screen.getByTitle("src/new.ts")).toBeTruthy());
 
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     // An untracked file is not restored to anything, it is removed, and git has
     // no copy. Calling that "discard changes" would understate it.
     expect(await screen.findByText("Delete src/new.ts?")).toBeTruthy();
@@ -623,9 +622,9 @@ describe("stash", () => {
     stashRows = [ENTRY];
     render(() => <ReviewPanel root="/proj" selected={null} />);
 
-    expect(await screen.findByText("Stashes")).toBeTruthy();
+    await showStashes();
     // The message survives its colons, and is not the raw "On main: ..." subject.
-    expect(screen.getByText("fix: the thing: with colons")).toBeTruthy();
+    expect(await screen.findByText("fix: the thing: with colons")).toBeTruthy();
   });
 
   it("creates a stash named after the message's first line, untracked left out by default", async () => {
@@ -656,7 +655,7 @@ describe("stash", () => {
     await waitFor(() => expect(screen.getByTitle("src/a.ts")).toBeTruthy());
 
     await showStashes();
-    fireEvent.click(screen.getByLabelText(/include untracked/i));
+    fireEvent.click(screen.getByLabelText("untracked"));
     fireEvent.click(screen.getByRole("button", { name: "Stash all" }));
 
     await waitFor(() =>
@@ -686,7 +685,7 @@ describe("stash", () => {
     render(() => <ReviewPanel root="/proj" selected={null} onReverted={(o) => reverted.push(o)} />);
     await showStashes();
 
-    fireEvent.click(screen.getByText("Pop"));
+    fireEvent.click(await screen.findByRole("button", { name: "Pop stash" }));
 
     await waitFor(() =>
       expect(stashArgs).toEqual([
@@ -707,7 +706,7 @@ describe("stash", () => {
     await showStashes();
 
     const toasts = captureToasts();
-    fireEvent.click(screen.getByText("Pop"));
+    fireEvent.click(await screen.findByRole("button", { name: "Pop stash" }));
     await waitFor(() => expect(toasts.messages.join(" ")).toContain("would be overwritten"));
     toasts.stop();
   });
@@ -717,7 +716,7 @@ describe("stash", () => {
     render(() => <ReviewPanel root="/proj" selected={null} />);
     await showStashes();
 
-    fireEvent.click(screen.getByText("Drop"));
+    fireEvent.click(await screen.findByRole("button", { name: "Drop stash" }));
 
     // Discard can promise a backstop; drop cannot, because a stash is not part
     // of the working tree any snapshot covers. Saying otherwise would be a lie.
@@ -753,12 +752,15 @@ describe("stash", () => {
 });
 
 describe("amend", () => {
-  /** Amend lives in the Commit button's own menu now, so switching it is two
+  /** Amend lives in the Commit button's own menu, so switching it is two
    *  clicks: open the split button's menu, then pick the row. */
   async function flipAmend(row: "Commit (Amend)" | "Stop amending") {
     pointerClick(screen.getByRole("button", { name: "More commit actions" }));
     const item = await screen.findByRole("menuitem", { name: row });
     pointerClick(item);
+    // The menu closes a macrotask after the pick. A trigger pressed before that
+    // toggles the closing menu shut instead of opening a fresh one.
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   }
 
   /** Toggle amend on and wait for HEAD's message to land in the fields. */
@@ -794,7 +796,7 @@ describe("amend", () => {
     headMsg = "already pushed";
     await mountPanel();
     await turnAmendOn();
-    fireEvent.click(screen.getByText("Amend"));
+    fireEvent.click(screen.getByRole("button", { name: "Amend" }));
 
     await waitFor(() => expect(screen.getByText("Amend a pushed commit?")).toBeTruthy());
     // Nothing is committed until the question is answered.
@@ -802,7 +804,7 @@ describe("amend", () => {
 
     fireEvent.click(screen.getByText("Amend anyway"));
     await waitFor(() =>
-      expect(commitArgs).toEqual([{ projectPath: "/proj", message: "already pushed", amend: true }]),
+      expect(commitArgs).toEqual([{ projectPath: "/proj", message: "already pushed", amend: true, signoff: false }]),
     );
   });
 
@@ -811,7 +813,7 @@ describe("amend", () => {
     headMsg = "already pushed";
     await mountPanel();
     await turnAmendOn();
-    fireEvent.click(screen.getByText("Amend"));
+    fireEvent.click(screen.getByRole("button", { name: "Amend" }));
 
     await waitFor(() => expect(screen.getByText("Amend a pushed commit?")).toBeTruthy());
     fireEvent.click(screen.getByText("Cancel"));
@@ -825,10 +827,10 @@ describe("amend", () => {
     headMsg = "not pushed yet";
     await mountPanel();
     await turnAmendOn();
-    fireEvent.click(screen.getByText("Amend"));
+    fireEvent.click(screen.getByRole("button", { name: "Amend" }));
 
     await waitFor(() =>
-      expect(commitArgs).toEqual([{ projectPath: "/proj", message: "not pushed yet", amend: true }]),
+      expect(commitArgs).toEqual([{ projectPath: "/proj", message: "not pushed yet", amend: true, signoff: false }]),
     );
     expect(screen.queryByText("Amend a pushed commit?")).toBeNull();
   });
@@ -838,11 +840,11 @@ describe("amend", () => {
     headMsg = "previous subject\n\nprevious body";
     await mountPanel();
     await turnAmendOn();
-    fireEvent.click(screen.getByText("Amend"));
+    fireEvent.click(screen.getByRole("button", { name: "Amend" }));
 
     await waitFor(() => expect(commitArgs.length).toBe(1));
     // Back to "Commit": a successful amend is not a mode you stay in.
-    await waitFor(() => expect(screen.getByText("Commit")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Commit" })).toBeTruthy());
     expect(messageBox().value).toBe("");
   });
 
@@ -851,10 +853,10 @@ describe("amend", () => {
     headMsg = "local only";
     await mountPanel();
     await turnAmendOn();
-    fireEvent.click(screen.getByText("Amend"));
+    fireEvent.click(screen.getByRole("button", { name: "Amend" }));
 
     await waitFor(() =>
-      expect(commitArgs).toEqual([{ projectPath: "/proj", message: "local only", amend: true }]),
+      expect(commitArgs).toEqual([{ projectPath: "/proj", message: "local only", amend: true, signoff: false }]),
     );
     expect(screen.queryByText("Amend a pushed commit?")).toBeNull();
   });
@@ -868,12 +870,13 @@ describe("the commit log entry point", () => {
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
     window.addEventListener(OPEN_IN_EDITOR, listener);
-    fireEvent.click(await screen.findByLabelText("Show this branch's commit log"));
-    window.removeEventListener(OPEN_IN_EDITOR, listener);
+    pointerClick(screen.getByRole("button", { name: "More Actions" }));
+    pointerClick(await screen.findByRole("menuitem", { name: "Show Commit Log" }));
 
-    // The id carries the workspace, so the same button in another branch-unit
+    // The id carries the workspace, so the same entry in another branch-unit
     // opens a different tab rather than retargeting this one.
-    expect(opened).toEqual([syntheticId("log", "/proj")]);
+    await waitFor(() => expect(opened).toEqual([syntheticId("log", "/proj")]));
+    window.removeEventListener(OPEN_IN_EDITOR, listener);
   });
 });
 
@@ -1306,7 +1309,7 @@ describe("inside a Feature", () => {
     await mountFeature();
 
     // Escaped rather than literal so this file stays ASCII, same as the panel.
-    const PILL = "\u21912 \u21930";
+    const PILL = "\u21912";
     // One of each: they are one repo's answers, and the chip says which repo.
     await waitFor(() => expect(screen.getAllByText(PILL)).toHaveLength(1));
     expect(screen.getAllByText("feat/auth")).toHaveLength(1);
@@ -1400,7 +1403,10 @@ describe("the members a Feature commits in", () => {
         selected={selected as never}
       />
     ));
-    await waitFor(() => expect(document.querySelector("[data-root]")).toBeTruthy());
+    // The store rather than a drawn list: with no file open the first member is
+    // on screen, and it may be the one with nothing staged.
+    const staged = only ? [only] : [A, B];
+    await waitFor(() => expect(staged.every((r) => stagedFiles(r).length)).toBe(true));
     await waitFor(() => expect(handlers["fs://changed"]?.length).toBeGreaterThan(1));
   }
 

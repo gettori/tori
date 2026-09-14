@@ -1,11 +1,11 @@
 // The editor inside a Feature (#154 phase 1): tabs live under `feature:<id>`
 // while git, settings and the watcher follow the active member, and a Feature
 // with no present member opens empty rather than pointing anything at "".
-// Then (#155 phase 2) the file tree draws one section per member, the unusable
-// ones included, and a branch unit stays exactly as headerless as it was.
+// Files shows one member at a time, picked from its chip row, an unusable one
+// as its repair, and a branch unit stays exactly as headerless as it was.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
 import { installResizeObserver, EMPTY_PANE } from "./__fixtures__/editorAgent";
 import { installAnimationFrame } from "../../test/frames";
@@ -16,7 +16,7 @@ installAnimationFrame();
 const A = "/r/a/.sway/worktrees/auth";
 const B = "/r/b/.sway/worktrees/auth";
 const FILE = `${A}/a.txt`;
-// Neither of these ever got a worktree, so their sections are keyed by the repo.
+// Neither of these ever got a worktree, so their chips are keyed by the repo.
 // Two broken members, not one, because the repair they are offered differs: a
 // creation that failed retries, a repo that moved has to be located first.
 const REPO_B = "/r/b";
@@ -114,6 +114,11 @@ const unitSel = {
 const sectionRoots = () =>
   Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"));
 
+const memberChips = () =>
+  Array.from(document.querySelectorAll<HTMLElement>('[role="group"][aria-label="Feature members"] [data-member]'));
+const pickMember = (repoPath: string) =>
+  fireEvent.click(memberChips().find((c) => c.dataset.member === repoPath)!);
+
 const rootsOf = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args.projectPath ?? c.args.root);
 const watchSets = () => calls.filter((c) => c.cmd === "fs_watch_set").map((c) => c.args.roots);
 const store = () => JSON.parse(localStorage.getItem("sway.editor.tabs.v1") ?? "{}");
@@ -198,23 +203,23 @@ describe("the editor inside a Feature", () => {
     expect(calls.filter((c) => c.cmd === "git_status")).toEqual([]);
     expect(calls.filter((c) => c.cmd === "get_workspace_settings")).toEqual([]);
   });
-  it("draws one file-tree section per member and repairs the one with no worktree", async () => {
+  it("draws one member's tree at a time and repairs the one with no worktree", async () => {
     mounted = render(() => (
       <>
         <Editor selected={featureSel(A, [A]) as never} />
         <PaneView pinKind="file" />
       </>
     ));
-    await waitFor(() => expect(sectionRoots()).toEqual([A, REPO_B, REPO_C]));
+    await waitFor(() => expect(sectionRoots()).toEqual([A]));
+    await waitFor(() => expect(memberChips()).toHaveLength(3));
     // Every member wears a chip, and the ones outside every Space are untinted.
-    // Scoped to the tree's sections: a file tab wears a chip of its own (#158),
-    // so a bare `[data-chip]` sweep would answer for both surfaces at once.
-    const chips = Array.from(document.querySelectorAll<HTMLElement>("[data-root] [data-chip]"));
+    const chips = memberChips();
     expect(chips.map((c) => c.textContent)).toEqual(["A", "W", "D"]);
     expect(chips[0].style.getPropertyValue("--chip-hue")).not.toBe("");
     expect(chips[1].style.getPropertyValue("--chip-hue")).toBe("");
 
-    const repair = document.querySelector<HTMLElement>(`[data-repair="${REPO_B}"]`)!;
+    pickMember(REPO_B);
+    const repair = await waitFor(() => document.querySelector<HTMLElement>(`[data-repair="${REPO_B}"]`)!);
     expect(repair.textContent).toBe("Retry");
     repair.click();
     await waitFor(() =>
@@ -234,9 +239,11 @@ describe("the editor inside a Feature", () => {
         <PaneView pinKind="file" />
       </>
     ));
-    await waitFor(() => expect(sectionRoots()).toEqual([A, REPO_B, REPO_C]));
+    await waitFor(() => expect(sectionRoots()).toEqual([A]));
+    await waitFor(() => expect(memberChips()).toHaveLength(3));
 
-    const repair = document.querySelector<HTMLElement>(`[data-repair="${REPO_C}"]`)!;
+    pickMember(REPO_C);
+    const repair = await waitFor(() => document.querySelector<HTMLElement>(`[data-repair="${REPO_C}"]`)!);
     expect(repair.textContent).toBe("Locate");
     repair.click();
 
@@ -258,9 +265,11 @@ describe("the editor inside a Feature", () => {
         <PaneView pinKind="file" />
       </>
     ));
-    await waitFor(() => expect(sectionRoots()).toEqual([A, REPO_B, REPO_C]));
+    await waitFor(() => expect(sectionRoots()).toEqual([A]));
+    await waitFor(() => expect(memberChips()).toHaveLength(3));
 
-    document.querySelector<HTMLElement>(`[data-repair="${REPO_C}"]`)!.click();
+    pickMember(REPO_C);
+    (await waitFor(() => document.querySelector<HTMLElement>(`[data-repair="${REPO_C}"]`)!)).click();
 
     await waitFor(() => expect(calls.some((c) => c.cmd === "pick_folder")).toBe(true));
     expect(calls.some((c) => c.cmd === "relocate_member")).toBe(false);

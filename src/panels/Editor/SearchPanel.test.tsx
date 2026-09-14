@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
-import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
+import type { MemberRoot, TintedMember } from "../../utils/featureMembers";
 
 // The Search panel's controls, driven through the real component. Match
 // semantics belong to the backend's one canonical regex, so what is asserted
@@ -123,10 +124,18 @@ const ONE_FILE = (path = "src/a.ts") =>
     files: [{ path, digest: "d1" }],
   });
 
+/** The Replace All inside the replace field; file and folder rows carry their own. */
+const replaceAllButton = () =>
+  within(screen.getByPlaceholderText("Replace").parentElement!).getByLabelText(/Replace All/) as HTMLButtonElement;
+
+/** The toggle only exists once the details are open, and its name grows a reason when disabled. */
+const ignoreToggle = () => screen.getByLabelText(/^Use Exclude Settings and Ignore Files/) as HTMLButtonElement;
+const openDetails = () => fireEvent.click(screen.getByLabelText("Toggle Search Details"));
+
 /** Open the replace row and type a replacement, waiting for its preview. */
 async function typeReplacement(value: string) {
-  fireEvent.click(screen.getByLabelText("Toggle replace"));
-  fireEvent.input(screen.getByLabelText("Replace with"), { target: { value } });
+  fireEvent.click(screen.getByLabelText("Toggle Replace"));
+  fireEvent.input(screen.getByPlaceholderText("Replace"), { target: { value } });
   await waitFor(() => expect(bridge.previews.length).toBeGreaterThan(0));
 }
 
@@ -135,12 +144,12 @@ async function typeReplacement(value: string) {
 const searches = () => bridge.calls.filter((c) => c.query !== "");
 
 async function type(value: string) {
-  const input = screen.getByPlaceholderText("Search project") as HTMLInputElement;
+  const input = screen.getByPlaceholderText("Search") as HTMLInputElement;
   fireEvent.input(input, { target: { value } });
   // Wait for *this* query, not for "a search happened". Any stray call - a
   // debounce that outlived an earlier test, a refresh - would otherwise satisfy
   // the wait before this query had even been sent, and the test would go on to
-  // click Replace all against results that do not exist yet. That is what made
+  // click Replace All against results that do not exist yet. That is what made
   // "retires it when a toggle changes too" fail on CI roughly one run in twenty
   // while passing everywhere else.
   await waitFor(() => expect(searches().some((c) => c.query === value)).toBe(true));
@@ -168,29 +177,30 @@ describe("capability probe", () => {
   it("disables an unsupported toggle and says why", async () => {
     bridge.respond = () => ok([], { backend: "plain", unsupported: ["noIgnore"] });
     mount();
+    openDetails();
 
-    const ignored = () => screen.getByLabelText("Search ignored files") as HTMLButtonElement;
+    const ignored = ignoreToggle;
     await waitFor(() => expect(ignored().disabled).toBe(true));
 
     // A disabled control with no explanation is barely better than an inert one.
-    // The explanation used to be a `title`, which a disabled button still shows
-    // on hover; a tooltip does not, because a disabled button fires no pointer
-    // events at all. That is what `tooltipWhenDisabled` puts back, and this is
-    // the assertion that it is actually switched on here: hover the surface
-    // around the control and the reason appears.
+    // A tooltip does not open on a disabled button, because it fires no pointer
+    // events at all. That is what `whenDisabled` puts back, and this is the
+    // assertion that it is actually switched on here: hover the surface around
+    // the control and the reason appears.
     const surface = ignored().closest("[data-tooltip-hover-surface]");
     expect(surface).toBeTruthy();
     fireEvent.pointerEnter(surface!);
     await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("no ignore rules"));
 
     // The toggles the plain backend *can* honour stay live.
-    expect((screen.getByLabelText("Match case") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText("Match Case") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("leaves every toggle enabled when the backend honours them all", async () => {
     mount();
+    openDetails();
     await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
-    for (const label of ["Match case", "Match whole word", "Use regular expression", "Search ignored files"]) {
+    for (const label of ["Match Case", "Match Whole Word", "Use Regular Expression", "Use Exclude Settings and Ignore Files"]) {
       expect((screen.getByLabelText(label) as HTMLButtonElement).disabled).toBe(false);
     }
   });
@@ -200,8 +210,9 @@ describe("capability probe", () => {
       throw new Error("backend exploded");
     };
     mount();
+    openDetails();
     await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
-    expect((screen.getByLabelText("Search ignored files") as HTMLButtonElement).disabled).toBe(false);
+    expect(ignoreToggle().disabled).toBe(false);
   });
 });
 
@@ -211,7 +222,7 @@ describe("toggles", () => {
     await type("needle");
     expect(searches()[0].options.case).toBe(false);
 
-    const caseBtn = screen.getByLabelText("Match case") as HTMLButtonElement;
+    const caseBtn = screen.getByLabelText("Match Case") as HTMLButtonElement;
     expect(caseBtn.getAttribute("aria-pressed")).toBe("false");
 
     fireEvent.click(caseBtn);
@@ -226,18 +237,20 @@ describe("toggles", () => {
     mount();
     await type("needle");
     const before = searches().length;
-    fireEvent.click(screen.getByLabelText("Use regular expression"));
+    fireEvent.click(screen.getByLabelText("Use Regular Expression"));
     await waitFor(() => expect(searches().length).toBe(before + 1));
   });
 
   it("sends each toggle under the name the backend expects", async () => {
     mount();
     await type("needle");
+    openDetails();
+    // Pressing Use Exclude Settings and Ignore Files off is what sends noIgnore.
     for (const [label, key] of [
-      ["Match case", "case"],
-      ["Match whole word", "wholeWord"],
-      ["Use regular expression", "regex"],
-      ["Search ignored files", "noIgnore"],
+      ["Match Case", "case"],
+      ["Match Whole Word", "wholeWord"],
+      ["Use Regular Expression", "regex"],
+      ["Use Exclude Settings and Ignore Files", "noIgnore"],
     ] as const) {
       const n = searches().length;
       fireEvent.click(screen.getByLabelText(label));
@@ -251,19 +264,19 @@ describe("glob inputs", () => {
   it("stay hidden until the disclosure is opened", async () => {
     mount();
     await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
-    expect(screen.queryByPlaceholderText("Include, e.g. src/**/*.ts")).toBeNull();
+    expect(screen.queryByPlaceholderText("e.g. src/**/*.ts")).toBeNull();
 
-    fireEvent.click(screen.getByLabelText("Include and exclude globs"));
-    expect(screen.getByPlaceholderText("Include, e.g. src/**/*.ts")).toBeTruthy();
-    expect(screen.getByPlaceholderText("Exclude, e.g. **/*.test.ts")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Toggle Search Details"));
+    expect(screen.getByPlaceholderText("e.g. src/**/*.ts")).toBeTruthy();
+    expect(screen.getByPlaceholderText("e.g. **/*.test.ts")).toBeTruthy();
   });
 
   it("sends the globs, and clearing one restores the unfiltered search", async () => {
     mount();
     await type("needle");
-    fireEvent.click(screen.getByLabelText("Include and exclude globs"));
+    fireEvent.click(screen.getByLabelText("Toggle Search Details"));
 
-    const include = screen.getByPlaceholderText("Include, e.g. src/**/*.ts");
+    const include = screen.getByPlaceholderText("e.g. src/**/*.ts");
     fireEvent.input(include, { target: { value: "src/**/*.ts" } });
     await waitFor(() =>
       expect(searches()[searches().length - 1].options.include).toBe("src/**/*.ts"),
@@ -275,7 +288,7 @@ describe("glob inputs", () => {
 });
 
 describe("errors", () => {
-  it("shows the backend's message and never a false 'No matches'", async () => {
+  it("shows the backend's message and never a false 'No results found.'", async () => {
     bridge.respond = (q) => {
       if (q === "[") throw new Error("regex parse error: unclosed character class");
       return ok([match("needle here", [[0, 6]])]);
@@ -287,11 +300,11 @@ describe("errors", () => {
     await type("needle");
     await waitFor(() => expect(container.textContent).toContain("needle here"));
 
-    const input = screen.getByPlaceholderText("Search project");
+    const input = screen.getByPlaceholderText("Search");
     fireEvent.input(input, { target: { value: "[" } });
 
     await waitFor(() => expect(screen.getByText(/unclosed character class/)).toBeTruthy());
-    expect(screen.queryByText("No matches")).toBeNull();
+    expect(screen.queryByText("No results found.")).toBeNull();
     // The previous pattern's hits must not sit under an error about a different
     // pattern, reading as though they matched it.
     expect(container.textContent).not.toContain("needle here");
@@ -322,32 +335,30 @@ describe("a11y", () => {
     mount();
     await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
 
-    const disclosure = screen.getByLabelText("Include and exclude globs");
+    const disclosure = screen.getByLabelText("Toggle Search Details");
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
 
     fireEvent.click(disclosure);
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
     // Placeholders are not an accessible name; these inputs carry their own.
-    expect(screen.getByLabelText("Include files matching these globs")).toBeTruthy();
-    expect(screen.getByLabelText("Exclude files matching these globs")).toBeTruthy();
+    expect(screen.getByLabelText("files to include")).toBeTruthy();
+    expect(screen.getByLabelText("files to exclude")).toBeTruthy();
   });
 
   it("keeps every toolbar control named after the tooltip sweep", async () => {
     mount();
     await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
 
-    // The sweep moved eleven controls off `title`, and on this panel every one
-    // of them already carried an `aria-label` - so the name must come from that
-    // and not from the tooltip. Named explicitly rather than left to axe, which
-    // reports a *missing* name and has nothing to say about a changed one.
-    // ("Replace all" lives behind the replace row, which has its own tests.)
+    // Named explicitly rather than left to axe, which reports a *missing* name
+    // and has nothing to say about a changed one. Replace All lives behind the
+    // replace row, which has its own tests.
     for (const name of [
-      "Match case",
-      "Use regular expression",
-      "Edit results in a buffer",
-      "Saved searches",
-      "Toggle replace",
-      "Include and exclude globs",
+      "Match Case",
+      "Use Regular Expression",
+      "Open New Search Editor",
+      "Saved Searches",
+      "Toggle Replace",
+      "Toggle Search Details",
     ]) {
       expect(screen.getByLabelText(name)).toBeTruthy();
     }
@@ -360,7 +371,7 @@ describe("a11y", () => {
     // This one hint did not become a tooltip: a tooltip on a text box sits over
     // the results for as long as it has focus. A description is announced on
     // focus instead, which is more than the `title` did for a keyboard user.
-    const box = screen.getByPlaceholderText("Search project");
+    const box = screen.getByPlaceholderText("Search");
     expect(box.getAttribute("title")).toBeNull();
     const hint = document.getElementById(box.getAttribute("aria-describedby")!);
     expect(hint?.textContent).toContain("Up and Down walk what you have searched here");
@@ -420,9 +431,9 @@ describe("replace preview", () => {
     bridge.respond = () => ONE_FILE();
     mount();
     await type("ab");
-    fireEvent.click(screen.getByLabelText("Toggle replace"));
+    fireEvent.click(screen.getByLabelText("Toggle Replace"));
 
-    const input = screen.getByLabelText("Replace with");
+    const input = screen.getByPlaceholderText("Replace");
     for (const v of ["z", "zz", "zzz"]) fireEvent.input(input, { target: { value: v } });
     await waitFor(() => expect(bridge.previews.length).toBeGreaterThan(0));
     expect(bridge.previews.length).toBe(1);
@@ -444,11 +455,11 @@ describe("replace preview", () => {
     bridge.respond = () => ONE_FILE();
     mount({ confirm: () => Promise.resolve(true) });
     await type("ab");
-    fireEvent.click(screen.getByLabelText("Use regular expression"));
+    fireEvent.click(screen.getByLabelText("Use Regular Expression"));
     await waitFor(() => expect(searches().length).toBe(2));
     await typeReplacement("X$1");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
 
     const preview = bridge.previews[bridge.previews.length - 1];
@@ -480,7 +491,7 @@ describe("replace scopes", () => {
     await type("ab");
     await typeReplacement("zz");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
     expect(bridge.replaces[0].targets).toEqual([
       {
@@ -501,30 +512,36 @@ describe("replace scopes", () => {
     await type("ab");
     await typeReplacement("zz");
 
-    fireEvent.click(screen.getByLabelText("Replace in src/b.ts"));
+    const row = document.querySelector(`[data-file="src/b.ts"]`) as HTMLElement;
+    fireEvent.click(within(row).getByLabelText("Replace All"));
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
     expect(bridge.replaces[0].targets).toEqual([
       { path: "src/b.ts", digest: "d2", matches: [{ line: 4, start: 0, end: 2 }] },
     ]);
   });
 
-  it("per-match sends exactly one span", async () => {
-    bridge.respond = TWO_FILES;
+  it("per-match sends that line's spans and no other line's", async () => {
+    // A match row is a line, so its Replace takes every span on it, as VS Code's does.
+    bridge.respond = () =>
+      ok([match("ab cd ab", [[0, 2], [6, 8]], 1, "src/a.ts"), match("ab", [[0, 2]], 2, "src/a.ts")], {
+        files: [{ path: "src/a.ts", digest: "d1" }],
+      });
     mount();
     await type("ab");
     await typeReplacement("zz");
 
-    // Per-match buttons appear only once the preview has been applied, so wait
-    // for the render rather than just the request.
-    await waitFor(() =>
-      expect(screen.getAllByLabelText("Replace this occurrence on line 1").length).toBe(2),
-    );
-    // The second occurrence on line 1 of a.ts, not the first.
-    const buttons = screen.getAllByLabelText("Replace this occurrence on line 1");
-    fireEvent.click(buttons[1]);
+    const row = document.querySelector(`[data-line="1"]`) as HTMLElement;
+    fireEvent.click(within(row).getByLabelText("Replace"));
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
     expect(bridge.replaces[0].targets).toEqual([
-      { path: "src/a.ts", digest: "d1", matches: [{ line: 1, start: 6, end: 8 }] },
+      {
+        path: "src/a.ts",
+        digest: "d1",
+        matches: [
+          { line: 1, start: 0, end: 2 },
+          { line: 1, start: 6, end: 8 },
+        ],
+      },
     ]);
   });
 
@@ -539,7 +556,7 @@ describe("replace scopes", () => {
     mount();
     await type("ab");
     await typeReplacement("zz");
-    expect((screen.getByLabelText("Replace all") as HTMLButtonElement).disabled).toBe(true);
+    expect(replaceAllButton().disabled).toBe(true);
   });
 });
 
@@ -551,7 +568,7 @@ describe("replace confirmation", () => {
     await type("ab");
     await typeReplacement("zz");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(confirm).toHaveBeenCalled());
     expect(bridge.replaces).toEqual([]);
   });
@@ -567,7 +584,7 @@ describe("replace confirmation", () => {
     await type("ab");
     await typeReplacement("zz");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
     expect(seen[0].title).toBe("Replace 2 occurrences in 1 file?");
   });
@@ -597,7 +614,7 @@ describe("dirty buffers", () => {
     await type("ab");
     await typeReplacement("zz");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
     expect(bridge.replaces[0].targets.map((t) => t.path)).toEqual(["src/b.ts"]);
     await waitFor(() => expect(screen.getByText(/unsaved changes/)).toBeTruthy());
@@ -614,7 +631,7 @@ describe("self-writes", () => {
     await type("ab");
     await typeReplacement("zz");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
     expect(markSelfWrite).not.toHaveBeenCalled();
   });
@@ -633,7 +650,7 @@ describe("replace outcome", () => {
     await typeReplacement("zz");
     const before = searches().length;
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
 
     // The re-search is what shows on screen that the write landed.
@@ -653,7 +670,7 @@ describe("unmounting", () => {
     await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
 
     // Type, then close before the input debounce elapses.
-    fireEvent.input(screen.getByPlaceholderText("Search project"), {
+    fireEvent.input(screen.getByPlaceholderText("Search"), {
       target: { value: "gone" },
     });
     unmount();
@@ -675,10 +692,10 @@ describe("outcome staleness", () => {
     await type("ab");
     await typeReplacement("zz");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(screen.getByText(/^Replaced 2 occurrences/)).toBeTruthy());
 
-    fireEvent.input(screen.getByPlaceholderText("Search project"), {
+    fireEvent.input(screen.getByPlaceholderText("Search"), {
       target: { value: "something else" },
     });
     await waitFor(() => expect(screen.queryByText(/^Replaced 2 occurrences/)).toBeNull());
@@ -691,10 +708,10 @@ describe("outcome staleness", () => {
     await type("ab");
     await typeReplacement("zz");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(screen.getByText(/^Replaced 2 occurrences/)).toBeTruthy());
 
-    fireEvent.click(screen.getByLabelText("Match case"));
+    fireEvent.click(screen.getByLabelText("Match Case"));
     await waitFor(() => expect(screen.queryByText(/^Replaced 2 occurrences/)).toBeNull());
   });
 });
@@ -708,12 +725,12 @@ describe("preview after reopening the replace row", () => {
     await waitFor(() => expect(container.querySelectorAll("ins").length).toBe(2));
 
     // Close, change the results underneath, reopen.
-    fireEvent.click(screen.getByLabelText("Toggle replace"));
+    fireEvent.click(screen.getByLabelText("Toggle Replace"));
     await waitFor(() => expect(container.querySelectorAll("ins").length).toBe(0));
-    fireEvent.input(screen.getByPlaceholderText("Search project"), { target: { value: "ab " } });
+    fireEvent.input(screen.getByPlaceholderText("Search"), { target: { value: "ab " } });
     await waitFor(() => expect(searches().length).toBeGreaterThan(1));
 
-    fireEvent.click(screen.getByLabelText("Toggle replace"));
+    fireEvent.click(screen.getByLabelText("Toggle Replace"));
     // The replacement is still typed, so the preview must come back on its own.
     await waitFor(() => expect(container.querySelectorAll("ins").length).toBe(2));
   });
@@ -729,17 +746,18 @@ describe("concurrent replaces", () => {
     await type("ab");
     await typeReplacement("zz");
 
-    const button = screen.getByLabelText("Replace all") as HTMLButtonElement;
-    fireEvent.click(button);
+    // Re-queried every time: disabling it wraps it in a tooltip hover surface,
+    // which mounts a fresh button.
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
     // The in-flight replace disables its own button, and a second click that
     // slipped through would still be refused.
-    await waitFor(() => expect(button.disabled).toBe(true));
-    fireEvent.click(button);
+    await waitFor(() => expect(replaceAllButton().disabled).toBe(true));
+    fireEvent.click(replaceAllButton());
     expect(bridge.replaces.length).toBe(1);
 
     release(null);
-    await waitFor(() => expect(button.disabled).toBe(false));
+    await waitFor(() => expect(replaceAllButton().disabled).toBe(false));
   });
 });
 
@@ -775,11 +793,13 @@ describe("highlighting", () => {
 });
 
 describe("handing the results to an editable buffer", () => {
-  const button = () => screen.getByLabelText("Edit results in a buffer");
+  const button = () => screen.getByRole("button", { name: "Open in editor" });
 
   it("has nothing to hand over until something matched", async () => {
     mount();
-    await waitFor(() => expect((button() as HTMLButtonElement).disabled).toBe(true));
+    await type("needle");
+    await waitFor(() => expect(screen.getByText("No results found.")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Open in editor" })).toBeNull();
   });
 
   it("materialises the matches it is showing, as a tab", async () => {
@@ -789,7 +809,7 @@ describe("handing the results to an editable buffer", () => {
     bridge.respond = () => ok([match("const needle = 1", [[6, 12]], 12, "src/a.ts")]);
     mount();
     await type("needle");
-    await waitFor(() => expect((button() as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect(button()).toBeTruthy());
 
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
@@ -803,20 +823,16 @@ describe("handing the results to an editable buffer", () => {
     const { searchBuffer } = await import("./searchResultsStore");
     expect(opened.length).toBe(1);
     const buf = searchBuffer(opened[0])!;
-    expect(buf.doc.roots).toEqual([{ root: "/proj", label: "/proj" }]);
-    expect(buf.doc.rows).toContainEqual({
-      kind: "match",
-      root: "/proj",
-      file: "src/a.ts",
-      line: 12,
-      original: "const needle = 1",
-    });
+    expect(buf.seed!.roots).toEqual([{ root: "/proj", label: "/proj" }]);
+    expect(buf.seed!.matches).toEqual([
+      { root: "/proj", path: "src/a.ts", line: 12, text: "const needle = 1", submatches: [[6, 12]] },
+    ]);
   });
 });
 
 // --- history and saved searches ---
 
-const queryInput = () => screen.getByPlaceholderText("Search project") as HTMLInputElement;
+const queryInput = () => screen.getByPlaceholderText("Search") as HTMLInputElement;
 const lastSearch = () => searches()[searches().length - 1];
 
 /** Type a query and press Enter, which is what puts it in the history. */
@@ -828,7 +844,7 @@ async function commit(value: string) {
 
 /** Open the saved-searches disclosure. */
 function openSavedRow() {
-  fireEvent.click(screen.getByLabelText("Saved searches"));
+  fireEvent.click(screen.getByLabelText("Saved Searches"));
 }
 
 describe("query history", () => {
@@ -838,11 +854,11 @@ describe("query history", () => {
     // never ran, and the results would not be the ones they remember.
     mount();
     await commit("alpha");
-    fireEvent.click(screen.getByLabelText("Match case"));
+    fireEvent.click(screen.getByLabelText("Match Case"));
     await commit("beta");
     // Back to the panel's default before recalling, so a restored `case: true`
     // can only have come out of the history.
-    fireEvent.click(screen.getByLabelText("Match case"));
+    fireEvent.click(screen.getByLabelText("Match Case"));
     await waitFor(() => expect(lastSearch().options.case).toBe(false));
 
     // Both halves inside the wait: "beta" is already the query on screen, so
@@ -932,7 +948,7 @@ describe("saved searches", () => {
   it("survives a relaunch, with the query and toggles it was saved with", async () => {
     const r = mount();
     await type("needle");
-    fireEvent.click(screen.getByLabelText("Use regular expression"));
+    fireEvent.click(screen.getByLabelText("Use Regular Expression"));
     await waitFor(() => expect(lastSearch().options.regex).toBe(true));
     openSavedRow();
     saveAs("todos");
@@ -989,7 +1005,7 @@ describe("saved searches", () => {
     // Both survive, and the results are still on screen underneath.
     expect(screen.getByText("todos")).toBeTruthy();
     expect(screen.getByText("hooks")).toBeTruthy();
-    expect(screen.getByText("src/a.ts")).toBeTruthy();
+    expect(document.querySelector(`[data-file="src/a.ts"]`)).toBeTruthy();
   });
 
   it("deletes one, and says so to storage", async () => {
@@ -1012,7 +1028,7 @@ describe("saved searches", () => {
     bridge.respond = () => ok([match("const needle = 1", [[6, 12]], 12, "src/a.ts")]);
     const r = mount();
     await type("needle");
-    fireEvent.click(screen.getByLabelText("Use regular expression"));
+    fireEvent.click(screen.getByLabelText("Use Regular Expression"));
     await waitFor(() => expect(lastSearch().options.regex).toBe(true));
     openSavedRow();
     saveAs("todos");
@@ -1033,13 +1049,13 @@ describe("saved searches", () => {
 
     const { searchBuffer } = await import("./searchResultsStore");
     const buf = searchBuffer(opened[0])!;
-    expect(buf.doc.query).toBe("needle");
-    expect(buf.doc.rows).toContainEqual({
-      kind: "match",
+    expect(buf.form.query).toBe("needle");
+    expect(buf.seed!.matches).toContainEqual({
       root: "/proj",
-      file: "src/a.ts",
+      path: "src/a.ts",
       line: 12,
-      original: "const needle = 1",
+      text: "const needle = 1",
+      submatches: [[6, 12]],
     });
     // Restored, not merely run: the search it fired carries the saved toggles.
     expect(lastSearch().options.regex).toBe(true);
@@ -1174,8 +1190,9 @@ describe("multi-root search", () => {
     bridge.respond = (_q, _o, root) =>
       root === WEB ? ok([], { backend: "plain", unsupported: ["noIgnore"] }) : ok([]);
     mountFeature();
+    openDetails();
 
-    const ignored = () => screen.getByLabelText("Search ignored files") as HTMLButtonElement;
+    const ignored = ignoreToggle;
     await waitFor(() => expect(ignored().disabled).toBe(true));
 
     const surface = ignored().closest("[data-tooltip-hover-surface]");
@@ -1201,12 +1218,15 @@ describe("multi-root search", () => {
     const { container } = mountFeature();
     await type("ab");
 
+    await waitFor(() => expect(sectionEl(DOCS).textContent).toContain("ab cd ab"));
     for (const m of MEMBERS) expect(sectionEl(m.path)).toBeTruthy();
     expect(sectionEl(API).textContent).toContain("PA");
     expect(sectionEl(WEB).textContent).toContain("WA");
     expect(sectionEl(DOCS).textContent).toContain("DS");
 
-    await expectNoAxeViolations(container);
+    // jsdom 30's getComputedStyle throws on an inline calc() holding a var(), which
+    // the rows' indent is, so axe errors out of this rule instead of judging it.
+    await expectNoAxeViolations(container, { rules: { "avoid-inline-spacing": { enabled: false } } });
   });
 
   // A member rename and a member reorder (#159 phase 1) reach here as a new
@@ -1238,7 +1258,7 @@ describe("multi-root search", () => {
 
     expect(document.querySelector(`[data-root="/proj"]`)).toBeTruthy();
     expect(screen.queryByText("Payments API")).toBeNull();
-    expect(document.querySelector(`[class*="sectionHeader"]`)).toBeNull();
+    expect(document.querySelector(`[class*="memberRow"]`)).toBeNull();
   });
 
   it("reports truncation and failure per section, and keeps the rest", async () => {
@@ -1279,7 +1299,7 @@ describe("multi-root search", () => {
     const listener = (e: Event) => opened.push((e as CustomEvent).detail);
     window.addEventListener("sway:open-in-editor", listener);
     try {
-      fireEvent.click(sectionEl(WEB).querySelector(`[class*="matchRow"]`)!);
+      fireEvent.click(sectionEl(WEB).querySelector(`[data-line]`)!);
     } finally {
       window.removeEventListener("sway:open-in-editor", listener);
     }
@@ -1316,8 +1336,8 @@ describe("multi-root search", () => {
     mountFeature();
     await type("ab");
 
-    const open = () => screen.getByLabelText("Edit results in a buffer") as HTMLButtonElement;
-    await waitFor(() => expect(open().disabled).toBe(false));
+    const open = () => screen.getByRole("button", { name: "Open in editor" });
+    await waitFor(() => expect(open()).toBeTruthy());
 
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
@@ -1329,16 +1349,16 @@ describe("multi-root search", () => {
     }
 
     const { searchBuffer } = await import("./searchResultsStore");
-    const doc = searchBuffer(opened[0])!.doc;
+    const seed = searchBuffer(opened[0])!.seed!;
     // One tab for the result set on screen, not one per member: N tabs to close
     // is a worse answer than one document with member headers in it.
     expect(opened[0]).toContain(encodeURIComponent("feature:f1"));
-    expect(doc.roots.map((r) => r.root)).toEqual([API, WEB, DOCS]);
-    expect(doc.rows.filter((r) => r.kind === "member")).toEqual([
-      { kind: "member", label: "Payments API" },
-      { kind: "member", label: "Web App" },
-      { kind: "member", label: "Docs Site" },
+    expect(seed.roots).toEqual([
+      { root: API, label: "Payments API" },
+      { root: WEB, label: "Web App" },
+      { root: DOCS, label: "Docs Site" },
     ]);
+    expect(seed.matches.map((m) => m.root)).toEqual([API, WEB, DOCS]);
   });
 
   it("previews every member's spans in one root-free call, in the order drawn", async () => {
@@ -1372,7 +1392,7 @@ describe("multi-root search", () => {
     await type("ab");
     await typeReplacement("X");
 
-    const webRow = sectionEl(WEB).querySelector(`[aria-label="Replace in src/index.ts"]`)!;
+    const webRow = sectionEl(WEB).querySelector(`[data-file="src/index.ts"] [aria-label="Replace All"]`)!;
     fireEvent.click(webRow);
 
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
@@ -1380,20 +1400,25 @@ describe("multi-root search", () => {
     expect(bridge.replaces[0].targets.map((t) => t.path)).toEqual(["src/index.ts"]);
   });
 
-  it("replaces one occurrence against the member its row belongs to", async () => {
+  it("replaces one line against the member its row belongs to", async () => {
     bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE("src/index.ts"));
     mountFeature();
     await type("ab");
     await typeReplacement("X");
 
-    fireEvent.click(
-      sectionEl(WEB).querySelector(`[aria-label="Replace this occurrence on line 1"]`)!,
-    );
+    fireEvent.click(sectionEl(WEB).querySelector(`[data-line="1"] [aria-label="Replace"]`)!);
 
     await waitFor(() => expect(bridge.replaces.length).toBe(1));
     expect(bridge.replaces[0].root).toBe(WEB);
     expect(bridge.replaces[0].targets).toEqual([
-      { path: "src/index.ts", digest: "d1", matches: [{ line: 1, start: 0, end: 2 }] },
+      {
+        path: "src/index.ts",
+        digest: "d1",
+        matches: [
+          { line: 1, start: 0, end: 2 },
+          { line: 1, start: 6, end: 8 },
+        ],
+      },
     ]);
   });
 
@@ -1403,7 +1428,7 @@ describe("multi-root search", () => {
     await type("ab");
     await typeReplacement("X");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
 
     await waitFor(() => expect(bridge.replaces.length).toBe(2));
     expect(bridge.replaces.map((r) => r.root)).toEqual([API, WEB]);
@@ -1423,7 +1448,7 @@ describe("multi-root search", () => {
     await type("ab");
     await typeReplacement("X");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
 
     await waitFor(() => expect(bridge.replaces.length).toBe(2));
     // "1 skipped (changed on disk)" over a Feature names neither the file you
@@ -1450,13 +1475,37 @@ describe("member restriction", () => {
     { path: DOCS, repoPath: "/repos/docs", label: "Docs Site" },
   ];
 
+  /** The chip row reads `TintedMember`s; only what it draws is filled in. */
+  const tinted = (r: MemberRoot): TintedMember =>
+    ({
+      member: {
+        repoPath: r.repoPath,
+        displayName: r.label,
+        worktreePath: r.state?.usable === false ? null : r.path,
+        state: { kind: r.state?.usable === false ? "worktree-missing" : "present" },
+        order: 0,
+      },
+      key: r.path,
+      label: r.label,
+      state: r.state ?? { label: "Ready", usable: true, action: null, reason: null },
+      hue: undefined,
+      style: undefined,
+      kind: "worktree",
+    }) as TintedMember;
+
   const mountFeature = (extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) =>
     render(() => (
-      <SearchPanel root={API} roots={MEMBERS} workspace="feature:f1" focusNonce={0} {...extra} />
+      <SearchPanel
+        root={API}
+        roots={MEMBERS}
+        members={MEMBERS.map(tinted)}
+        workspace="feature:f1"
+        focusNonce={0}
+        {...extra}
+      />
     ));
 
   const chip = (label: string) => screen.getByLabelText(label) as HTMLButtonElement;
-  const allChip = () => screen.getByText("All") as HTMLButtonElement;
   const pressed = (el: HTMLElement) => el.getAttribute("aria-pressed") === "true";
   const sectionEl = (root: string) => document.querySelector(`[data-root="${root}"]`);
 
@@ -1469,24 +1518,25 @@ describe("member restriction", () => {
     fireEvent.click(chip("Payments API"));
 
     await waitFor(() => expect(searches().length).toBeGreaterThan(before));
-    expect(searches().slice(before).map((c) => c.root)).toEqual([API]);
+    expect(searches().slice(before).map((c) => c.root)).toEqual([WEB, DOCS]);
   });
 
-  it("is multi-select, and All puts every member back", async () => {
+  it("is multi-select, and lighting every chip again searches every member", async () => {
     mountFeature();
     await type("needle");
 
     fireEvent.click(chip("Payments API"));
     fireEvent.click(chip("Web App"));
-    await waitFor(() => expect(pressed(chip("Web App"))).toBe(true));
-    expect(pressed(chip("Payments API"))).toBe(true);
-    expect(pressed(allChip())).toBe(false);
+    await waitFor(() => expect(pressed(chip("Web App"))).toBe(false));
+    expect(pressed(chip("Payments API"))).toBe(false);
+    expect(pressed(chip("Docs Site"))).toBe(true);
 
+    fireEvent.click(chip("Web App"));
     const before = searches().length;
-    fireEvent.click(allChip());
+    fireEvent.click(chip("Payments API"));
     await waitFor(() => expect(searches().length).toBeGreaterThan(before));
     expect(searches().slice(before).map((c) => c.root)).toEqual([API, WEB, DOCS]);
-    expect(pressed(allChip())).toBe(true);
+    for (const m of MEMBERS) expect(pressed(chip(m.label))).toBe(true);
   });
 
   it("drops the sections of the members it excluded", async () => {
@@ -1495,27 +1545,27 @@ describe("member restriction", () => {
     bridge.respond = () => ONE_FILE();
     mountFeature();
     await type("ab");
-    await waitFor(() => expect(sectionEl(WEB)).toBeTruthy());
+    await waitFor(() => expect(sectionEl(API)).toBeTruthy());
 
     fireEvent.click(chip("Payments API"));
 
-    await waitFor(() => expect(sectionEl(WEB)).toBeNull());
-    expect(sectionEl(API)).toBeTruthy();
+    await waitFor(() => expect(sectionEl(API)).toBeNull());
+    expect(sectionEl(WEB)).toBeTruthy();
   });
 
   it("re-enables a toggle once the member that could not honour it is excluded", async () => {
     bridge.respond = (_q, _o, root) =>
       root === DOCS ? ok([], { backend: "plain", unsupported: ["noIgnore"] }) : ok([]);
     mountFeature();
+    openDetails();
 
-    const ignored = () => screen.getByLabelText("Search ignored files") as HTMLButtonElement;
+    const ignored = ignoreToggle;
     await waitFor(() => expect(ignored().disabled).toBe(true));
 
     // Narrowed away from the `plain` member, the option is honourable again, so
     // leaving it greyed out would be disabling it on behalf of a repo this
     // search will not touch.
-    fireEvent.click(chip("Payments API"));
-    fireEvent.click(chip("Web App"));
+    fireEvent.click(chip("Docs Site"));
 
     await waitFor(() => expect(ignored().disabled).toBe(false));
   });
@@ -1527,7 +1577,7 @@ describe("member restriction", () => {
     await type("ab");
     await typeReplacement("X");
 
-    fireEvent.click(screen.getByLabelText("Replace all"));
+    fireEvent.click(replaceAllButton());
     await waitFor(() => expect(screen.getByText(/Replaced 4 occurrences/)).toBeTruthy());
 
     fireEvent.click(chip("Payments API"));
@@ -1541,19 +1591,19 @@ describe("member restriction", () => {
     mountFeature();
     await type("needle");
     fireEvent.click(chip("Web App"));
-    await waitFor(() => expect(pressed(chip("Web App"))).toBe(true));
-
-    const input = screen.getByPlaceholderText("Search project");
-    fireEvent.keyDown(input, { key: "Enter" });
-    fireEvent.click(allChip());
     await waitFor(() => expect(pressed(chip("Web App"))).toBe(false));
+
+    const input = screen.getByPlaceholderText("Search");
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.click(chip("Web App"));
+    await waitFor(() => expect(pressed(chip("Web App"))).toBe(true));
 
     fireEvent.keyDown(input, { key: "ArrowUp" });
 
     // Recall hands back the search that was run, and which members it covered
     // is as much a part of that as the toggles are.
-    await waitFor(() => expect(pressed(chip("Web App"))).toBe(true));
-    expect(pressed(chip("Payments API"))).toBe(false);
+    await waitFor(() => expect(pressed(chip("Web App"))).toBe(false));
+    expect(pressed(chip("Payments API"))).toBe(true);
   });
 
   it("re-runs a saved search against the members it was saved with", async () => {
@@ -1566,13 +1616,14 @@ describe("member restriction", () => {
       }),
     );
     mountFeature();
-    fireEvent.click(screen.getByLabelText("Saved searches"));
+    fireEvent.click(screen.getByLabelText("Saved Searches"));
     const before = searches().length;
     fireEvent.click(screen.getByText("web todos"));
 
     await waitFor(() => expect(searches().length).toBeGreaterThan(before));
     expect(searches().slice(before).map((c) => c.root)).toEqual([WEB]);
     expect(pressed(chip("Web App"))).toBe(true);
+    expect(pressed(chip("Payments API"))).toBe(false);
   });
 
   it("falls back to every member when the saved restriction names none of them", async () => {
@@ -1585,7 +1636,7 @@ describe("member restriction", () => {
       }),
     );
     mountFeature();
-    fireEvent.click(screen.getByLabelText("Saved searches"));
+    fireEvent.click(screen.getByLabelText("Saved Searches"));
     const before = searches().length;
     fireEvent.click(screen.getByText("gone"));
 
@@ -1595,23 +1646,19 @@ describe("member restriction", () => {
 
   it("offers no chip for a member that cannot be searched", async () => {
     const missing = { label: "Worktree missing", usable: false, action: "recreate" as const, reason: null };
+    const roots = [MEMBERS[0], MEMBERS[1], { ...MEMBERS[2], state: missing }];
     render(() => (
-      <SearchPanel
-        root={API}
-        roots={[MEMBERS[0], MEMBERS[1], { ...MEMBERS[2], state: missing }]}
-        workspace="feature:f1"
-        focusNonce={0}
-      />
+      <SearchPanel root={API} roots={roots} members={roots.map(tinted)} workspace="feature:f1" focusNonce={0} />
     ));
 
-    await waitFor(() => expect(chip("Docs Site").disabled).toBe(true));
+    await waitFor(() => expect(chip("Docs Site: Worktree missing").disabled).toBe(true));
     expect(chip("Payments API").disabled).toBe(false);
   });
 
   it("has no chip row at all for a branch unit", async () => {
     mount();
     await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
-    expect(screen.queryByRole("group", { name: "Search these members" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Feature members" })).toBeNull();
   });
 
   it("has no axe violations", async () => {
@@ -1619,7 +1666,7 @@ describe("member restriction", () => {
     const { container } = mountFeature();
     await type("ab");
     fireEvent.click(chip("Payments API"));
-    await waitFor(() => expect(pressed(chip("Payments API"))).toBe(true));
+    await waitFor(() => expect(pressed(chip("Payments API"))).toBe(false));
 
     await expectNoAxeViolations(container);
   });

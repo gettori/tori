@@ -1,9 +1,6 @@
-// The modes that answer for the member `activeRoot` points at (#160 phase 3):
-// Pull requests and Tasks.
-//
-// Inside a Feature they were pointed at the Feature rather than at a member,
-// which names no repo on disk. They resolve per member now, and the chip row
-// under the tab strip is what moves that member.
+// The member chip rows inside a Feature (#160 phase 3). Pull requests wears the
+// right panel's row, which moves `activeRoot`; the Files tab wears its own, and
+// its Scripts section is the pane that visibly reloads for the member picked.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
@@ -171,10 +168,10 @@ async function mountEditor(initial = API) {
   await waitFor(() => expect(listening.ready).toBe(true));
 }
 
-const showMode = (mode: string) => emitWith(SET_RIGHT_MODE, { mode });
+const showMode = (mode: string, section?: string) => emitWith(SET_RIGHT_MODE, { mode, section });
+const showScripts = () => showMode("files", "scripts");
 const chip = (repoPath: string) => document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`);
 const chipRow = () => document.querySelector<HTMLElement>('[role="group"][aria-label="Feature members"]');
-const tabFor = (name: string) => screen.queryByRole("tab", { name });
 
 beforeEach(() => {
   calls.length = 0;
@@ -193,20 +190,20 @@ afterEach(() => {
 describe("the member chip row", () => {
   it("is drawn for the modes that answer for one member, and no others", async () => {
     await mountEditor();
-    for (const mode of ["pulls", "tasks"]) {
+    for (const mode of ["pulls", "files", "changes"]) {
+      // Debug follows the file in front and names its member on a line instead,
+      // so passing through it proves each row belongs to the mode that drew it.
+      showMode("debug");
+      await waitFor(() => expect(chipRow()).toBeNull());
       showMode(mode);
       await waitFor(() => expect(chipRow()).toBeTruthy());
     }
-    // Files answers for the whole Feature: it draws a section per member and
-    // has no single member to switch.
-    showMode("files");
-    await waitFor(() => expect(chipRow()).toBeNull());
   });
 
   it("moves the active member, and the pane below reloads for it", async () => {
     scripts = { [API]: { "api:serve": "node ." }, [WEB]: { "web:dev": "vite" } };
     await mountEditor();
-    showMode("tasks");
+    showScripts();
     await waitFor(() => expect(screen.getByText("api:serve")).toBeTruthy());
 
     fireEvent.click(chip(WEB_REPO)!);
@@ -217,7 +214,7 @@ describe("the member chip row", () => {
 
   it("marks the member the pane is about", async () => {
     await mountEditor();
-    showMode("tasks");
+    showMode("files");
     await waitFor(() => expect(chip(API_REPO)).toBeTruthy());
     expect(chip(API_REPO)!.getAttribute("aria-pressed")).toBe("true");
     expect(chip(WEB_REPO)!.getAttribute("aria-pressed")).toBe("false");
@@ -226,7 +223,9 @@ describe("the member chip row", () => {
   it("wears a broken member's state and refuses to switch to it", async () => {
     FEATURE_MEMBERS = [member(API_REPO, "api", API, 0), member(WEB_REPO, "web", null, 1)];
     await mountEditor();
-    showMode("tasks");
+    // The right panel's row: the Files row lets a broken member be picked, to
+    // show its repair (featureRoot.test.tsx).
+    showMode("pulls");
     await waitFor(() => expect(chip(WEB_REPO)).toBeTruthy());
     const broken = chip(WEB_REPO) as HTMLButtonElement;
     expect(broken.disabled).toBe(true);
@@ -236,8 +235,8 @@ describe("the member chip row", () => {
   it("is absent with only one member, which is not a choice", async () => {
     FEATURE_MEMBERS = [member(API_REPO, "api", API, 0)];
     await mountEditor();
-    showMode("tasks");
-    await waitFor(() => expect(tabFor("Tasks")).toBeTruthy());
+    showMode("files");
+    await waitFor(() => expect(screen.getByLabelText("Filter files")).toBeTruthy());
     expect(chipRow()).toBeNull();
   });
 });
@@ -249,10 +248,10 @@ describe("the chip row past its cap", () => {
   it("caps the row and puts the rest behind +N", async () => {
     FEATURE_MEMBERS = many(8);
     await mountEditor("/w/r0/auth");
-    showMode("tasks");
+    showMode("files");
     await waitFor(() => expect(chipRow()).toBeTruthy());
-    expect(chipRow()!.querySelectorAll("[data-member]")).toHaveLength(6);
-    expect(screen.getByRole("button", { name: "2 more members" })).toBeTruthy();
+    expect(chipRow()!.querySelectorAll("[data-member]")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "4 more members" })).toBeTruthy();
   });
 
   it("never hides the member the pane is about", async () => {
@@ -260,22 +259,22 @@ describe("the chip row past its cap", () => {
     // one for being eighth is the one thing it must not do.
     FEATURE_MEMBERS = many(8);
     await mountEditor("/w/r7/auth");
-    showMode("tasks");
+    showMode("files");
     await waitFor(() => expect(chip("/w/r7")).toBeTruthy());
     expect(chip("/w/r7")!.getAttribute("aria-pressed")).toBe("true");
-    expect(chipRow()!.querySelectorAll("[data-member]")).toHaveLength(6);
+    expect(chipRow()!.querySelectorAll("[data-member]")).toHaveLength(4);
     // It took the last slot rather than growing the row.
-    expect(chip("/w/r5")).toBeNull();
+    expect(chip("/w/r3")).toBeNull();
   });
 
   it("switches to a hidden member from the +N menu", async () => {
     FEATURE_MEMBERS = many(8);
     scripts = { "/w/r0/auth": { first: "x" }, "/w/r7/auth": { last: "y" } };
     await mountEditor("/w/r0/auth");
-    showMode("tasks");
+    showScripts();
     await waitFor(() => expect(screen.getByText("first")).toBeTruthy());
 
-    pointerClick(screen.getByRole("button", { name: "2 more members" }));
+    pointerClick(screen.getByRole("button", { name: "4 more members" }));
     await screen.findByRole("menu");
     pointerClick(screen.getByRole("menuitem", { name: "r7" }));
 
