@@ -20,6 +20,7 @@ import {
   profileSignedOut,
 } from "./agentHealth";
 import { saveSettings, settings, settingsLoaded } from "../panels/Settings/settingsStore";
+import { allowedRows, soleProfile } from "./projectAgents";
 
 /** The stored answer alone, with no health folded in. */
 export function agentChosen(id: string): boolean {
@@ -123,11 +124,16 @@ export function enabledChatAgents(): Adapter[] {
  * otherwise. Null rather than a fallback to claude: with nothing enabled there
  * is no honest answer, and starting a draft on an agent the user turned off
  * would make the setting a suggestion.
+ *
+ * Qualifying includes the rows the project holding `folder` allows. Where it
+ * allows none that is offered, the draft still opens, and refuses by name.
  */
-export function draftChatAgent(preferred: string | null | undefined): string | null {
+export function draftChatAgent(preferred: string | null | undefined, folder?: string | null): string | null {
   const offered = enabledChatAgents();
-  if (preferred && offered.some((a) => a.id === preferred)) return preferred;
-  return offered[0]?.id ?? null;
+  const rows = allowedRows(folder);
+  const fits = (id: string) => offered.some((a) => a.id === id) && (!rows || rows.some((r) => r.agent === id));
+  if (preferred && fits(preferred)) return preferred;
+  return offered.find((a) => fits(a.id))?.id ?? offered[0]?.id ?? null;
 }
 
 /**
@@ -144,15 +150,31 @@ export function draftChatAgent(preferred: string | null | undefined): string | n
  * the literal `"default"`. A `??` chain would be wrong here: `knownProfile`
  * answers `null` for the default account, and falling through that would let
  * the Settings default overrule a project that had chosen it.
+ *
+ * The rows the project holding `folder` allows (see `utils/projectAgents`) have
+ * the last word: an answer they leave out gives way to this agent's first
+ * account they keep.
  */
-export function draftChatProfile(agentId: string, remembered?: string | null): string | null {
+export function draftChatProfile(
+  agentId: string,
+  remembered?: string | null,
+  folder?: string | null,
+): string | null {
+  const picked = layeredProfile(agentId, remembered);
+  const allowed = allowedRows(folder)?.filter((r) => r.agent === agentId);
+  if (!allowed?.length || allowed.some((r) => r.profile === asProfileId(picked))) return picked;
+  const kept = allowed.map((r) => knownProfile(agentId, r.profile)).find((p) => p !== undefined);
+  // Rows whose accounts are all gone still name one, so the spawn refuses with
+  // the project's reason instead of starting on a login it does not allow.
+  return kept !== undefined ? kept : asTabProfile(allowed[0].profile);
+}
+
+function layeredProfile(agentId: string, remembered?: string | null): string | null {
   const project = knownProfile(agentId, remembered);
   if (project !== undefined) return project;
   const chosen = knownProfile(agentId, settings.agent?.defaultProfiles?.[agentId]);
   if (chosen !== undefined) return chosen;
-  const listed = agentHealthFor(agentId)?.profiles;
-  if (!listed?.length || listed.some((p) => p.id === asProfileId(null))) return null;
-  return asTabProfile(listed[0].id);
+  return asTabProfile(soleProfile(agentId));
 }
 
 /** The account this agent's new sessions start on absent a project's own

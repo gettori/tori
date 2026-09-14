@@ -97,6 +97,7 @@ import { revealTarget } from "../../utils/agentLines";
 import { attachmentSources, chatTier, publishedCapabilities, steerCostLabel } from "../../utils/chatCapabilities";
 import { providerMarkKey } from "../../components/Icon/ProviderIcon";
 import { rememberChatPrefs, settings } from "../Settings/settingsStore";
+import { agentRefusal } from "../../utils/projectAgents";
 import { capNotice, markNoticed, noticed, pastCap, shouldNotice, MULTI_CHAT_NOTICE } from "../../utils/chatConcurrency";
 import {
   emitWith,
@@ -810,6 +811,15 @@ export default function ChatView(props: {
      * abandon the transcript the panel is still showing.
      */
     function connect(opts: { reconnect: boolean }) {
+      // A reconnect re-attaches to a child that is already running, so only a
+      // start answers to the rows the project allows.
+      const refused = opts.reconnect ? null : agentRefusal(props.cwd, props.agentId, props.profile);
+      if (refused) {
+        const message = `${refused}.`;
+        edit((s) => applyEvent(s, { type: "sessionError", sessionId: props.sessionId, message, fatal: true }));
+        failFirstSend(message);
+        return;
+      }
       // Re-armed per connect, not once per panel: a reconnect re-opens the
       // session, so an agent that replays on open replays again.
       replaying = chatTier(findAdapter(props.agentId).chat?.transport).historySource === "session-replay";

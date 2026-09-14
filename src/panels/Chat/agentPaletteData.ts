@@ -133,6 +133,9 @@ export function paletteProviders(input: {
   ready: (id: string, profile: string | null) => boolean;
   signedOut: (id: string, profile: string | null) => boolean;
   probing: (id: string, profile: string | null) => boolean;
+  /** Whether the project allows this row. One it leaves out is not listed, unlike
+   *  a broken agent: the project chose that, so there is nothing to fix. */
+  allowed?: (id: string, profile: string | null) => boolean;
   /** The binary's measured version, from `agentVersion`. Optional so a caller
    *  with no health sweep still gets a palette; the head then falls back to
    *  the version the probe recorded, which is the list's own vintage. */
@@ -145,7 +148,8 @@ export function paletteProviders(input: {
     // `[null]` is the single-account install: one row, named after the agent
     // alone, which is what it was before accounts existed.
     const named = input.profilesFor(adapter.id);
-    const accounts: readonly (PaletteAccount | null)[] = named.length ? named : [null];
+    const listed: readonly (PaletteAccount | null)[] = named.length ? named : [null];
+    const accounts = listed.filter((a) => input.allowed?.(adapter.id, a ? asTabProfile(a.id) : null) ?? true);
     return accounts.map((account) => {
       const profile = account ? asTabProfile(account.id) : null;
       const catalog = byPair.get(catalogKey(adapter.id, profile));

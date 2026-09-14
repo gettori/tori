@@ -36,6 +36,7 @@ import {
 } from "../../utils/agentHealth";
 import { ensureAdaptersLoaded, findAdapter } from "../../utils/agents";
 import { agentOffReason, enabledChatAgents } from "../../utils/agentEnabled";
+import { agentRefusal } from "../../utils/projectAgents";
 import {
   cachedModes,
   capabilitiesFor,
@@ -120,6 +121,7 @@ export default function ChatDraft(props: {
       ready: agentReady,
       signedOut: profileSignedOut,
       probing: isProbing,
+      allowed: (id, profile) => !agentRefusal(props.cwd, id, profile),
       version: agentVersion,
     }),
   );
@@ -204,6 +206,8 @@ export default function ChatDraft(props: {
     // something the user has said they do not want offered.
     const off = agentOffReason(props.agentId, props.profile);
     if (off) return off;
+    const refused = agentRefusal(props.cwd, props.agentId, props.profile);
+    if (refused) return refused;
     const health = mine()?.health;
     if (!health || health.kind !== "fix") return null;
     return `${findAdapter(props.agentId).label}: ${health.reason.toLowerCase()}`;
