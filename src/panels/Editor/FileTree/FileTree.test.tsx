@@ -8,8 +8,7 @@ import { pointerClick } from "../../../test/menus";
 //
 // Containment itself is the backend's job and is proven in `fs.rs`; what is
 // asserted here is strictly the tree's own half: which command each action
-// sends, that every one carries the root it was mounted with (so the project
-// tree can never be handed the `.shared` fence by accident), and that the
+// sends, that every one carries the root it was mounted with, and that the
 // directory an action touched is re-read afterwards so the change shows.
 
 type Entry = { name: string; path: string; is_dir: boolean; ignored: boolean };
@@ -34,8 +33,8 @@ const bridge: {
   existing: Set<string>;
   failRename: boolean;
   projectFiles: string[];
-  /** Per-root file lists, for the multi-root filter. Falls back to the flat
-   *  `projectFiles` so every single-root test reads exactly as it did. */
+  /** Per-root file lists, for a switch between members. A root missing here
+   *  reads `projectFiles`. */
   filesByRoot: Record<string, string[]>;
   overlay: Record<string, unknown>;
 } = {
@@ -91,9 +90,8 @@ vi.mock("@tauri-apps/api/core", async () => {
   };
 });
 
-import FileTree, { clearListingCache, type TreeRoot } from "./FileTree";
+import FileTree, { clearListingCache } from "./FileTree";
 import { resetExpanded } from "../../../utils/treeExpanded";
-import { memberState } from "../../../utils/features";
 import styles from "./FileTree.module.css";
 import { loadWorkspaceSettings } from "../../Settings/settingsStore";
 
@@ -922,28 +920,17 @@ describe("the row context menu", () => {
   });
 });
 
-// A Feature opens N member worktrees as one tree: one section per member, each
-// fenced to its own root. What is asserted here is the containment (a mutation
-// carries the section's root and nothing else), and that the sections survive
-// the identity churn a `features://changed` resource hands them.
-describe("a Feature's member roots", () => {
+// Inside a Feature the Files tab shows one member at a time, handing the tree
+// that member's worktree as its root. A switch is a new root under a live tree,
+// and nothing the last member's mount knew may leak into the next one.
+describe("one member of a Feature at a time", () => {
   const A = "/feat/api";
   const B = "/feat/web";
 
-  const MEMBERS: TreeRoot[] = [
-    { path: A, repoPath: "/repos/api", label: "Payments API" },
-    { path: B, repoPath: "/repos/web", label: "Web App" },
-  ];
-
-  const sectionOf = (path: string) => document.querySelector(`[data-root="${path}"]`) as HTMLElement;
-  const backgroundOf = (path: string) =>
-    sectionOf(path).querySelector(`.${styles.sectionBody}`) as HTMLElement;
-
-  function mountFeature(overrides: Record<string, unknown> = {}) {
-    return render(() => (
+  const mountMember = (root: () => string, overrides: Record<string, unknown> = {}) =>
+    render(() => (
       <FileTree
-        root={null}
-        roots={MEMBERS}
+        root={root()}
         editable
         noun="member folder"
         askText={answering("ignored")}
@@ -951,7 +938,6 @@ describe("a Feature's member roots", () => {
         {...overrides}
       />
     ));
-  }
 
   function toasts() {
     const seen: { message: string }[] = [];
@@ -971,136 +957,109 @@ describe("a Feature's member roots", () => {
     };
   });
 
-  it("heads a row's menu with the member the row sits in", async () => {
-    mountFeature();
-    const row = await within(sectionOf(B)).findByText("package.json");
+  it("heads a row's menu with the member it is showing", async () => {
+    const [root, setRoot] = createSignal(A);
+    const [member, setMember] = createSignal("Payments API");
+    render(() => (
+      <FileTree
+        root={root()}
+        member={member()}
+        editable
+        noun="member folder"
+        askText={answering("ignored")}
+        askConfirm={confirming(true)}
+      />
+    ));
+    await screen.findByText("README.md");
 
-    fireEvent.contextMenu(row);
+    setRoot(B);
+    setMember("Web App");
+    fireEvent.contextMenu(await screen.findByText("package.json"));
 
-    // Both members carry a `src`, and the menu that opens over one of them
-    // otherwise says nothing about which repo it is about to rename inside.
+    // Both members carry a `src`, and a menu over one of them otherwise says
+    // nothing about which repo it is about to rename inside.
     const m = await screen.findByRole("menu");
     expect(within(m).getByRole("group", { name: "Web App" })).toBeTruthy();
     expect(within(m).queryByText("Payments API")).toBeNull();
   });
 
-  it("refreshes only the section whose root the burst names, once per burst", async () => {
-    mountFeature();
-    await within(sectionOf(A)).findByText("README.md");
-    await within(sectionOf(B)).findByText("package.json");
+  it("refreshes on its own root's bursts only, once per burst", async () => {
+    mountMember(() => A);
+    await screen.findByText("README.md");
     bridge.calls = [];
 
-    // Three events, one root, one reload: the same debounce every other
-    // `fs://changed` consumer sits behind.
+    // Every member of a Feature is watched at once, so bursts tagged with
+    // another member's root reach this tree too.
     fsChanged(B, [`${B}/package.json`]);
-    fsChanged(B, [`${B}/src/app.ts`]);
-    fsChanged(B, [`${B}/src/new.ts`]);
-    await waitFor(() => expect(readsOf(B)).toHaveLength(1), { timeout: 2000 });
-    await new Promise((r) => setTimeout(r, 250));
-    expect(readsOf(B)).toHaveLength(1);
+    await new Promise((r) => setTimeout(r, 500));
     expect(readsOf(A)).toHaveLength(0);
+
+    // Three events, one reload: the same debounce every other `fs://changed`
+    // consumer sits behind.
+    fsChanged(A, [`${A}/README.md`]);
+    fsChanged(A, [`${A}/src/main.ts`]);
+    fsChanged(A, [`${A}/src/new.ts`]);
+    await waitFor(() => expect(readsOf(A)).toHaveLength(1), { timeout: 2000 });
+    await new Promise((r) => setTimeout(r, 250));
+    expect(readsOf(A)).toHaveLength(1);
   });
 
-  it("keeps its sections when the roots array is rebuilt with the same paths", async () => {
-    // `features://changed` fires once per member while a Feature is being
-    // created, and a resource hands back fresh objects every time. Keyed on
-    // those objects, every section would remount and lose what it had open.
-    const [roots, setRoots] = createSignal<TreeRoot[]>([...MEMBERS]);
-    render(() => <FileTree root={null} roots={roots()} />);
-    await within(sectionOf(A)).findByText("README.md");
-    fireEvent.click(within(sectionOf(A)).getByText("src"));
-    await within(sectionOf(A)).findByText("main.ts");
-    const reads = sent("fs_read_dir_compact").length;
+  it("filters the member it switched to, not the one it left", async () => {
+    bridge.filesByRoot = { [A]: ["src/config.ts"], [B]: ["lib/config.ts"] };
+    const [root, setRoot] = createSignal(A);
+    mountMember(root);
+    await screen.findByText("README.md");
+    const box = () => screen.getByLabelText("Filter files") as HTMLInputElement;
 
-    setRoots(MEMBERS.map((m) => ({ ...m })));
-    await new Promise((r) => setTimeout(r, 0));
+    fireEvent.input(box(), { target: { value: "config" } });
+    await screen.findByText("src/config.ts");
 
-    expect(sent("fs_read_dir_compact")).toHaveLength(reads);
-    expect(within(sectionOf(A)).getByText("main.ts")).toBeTruthy();
+    setRoot(B);
+    await screen.findByText("package.json");
+    expect(box().value).toBe("");
+
+    fireEvent.input(box(), { target: { value: "config" } });
+    await screen.findByText("lib/config.ts");
+    expect(screen.queryByText("src/config.ts")).toBeNull();
+    expect(sent("list_project_files").map((c) => c.args.projectPath)).toEqual([A, B]);
   });
 
-  // The other half of the same churn (#159 phase 1): a rename and a reorder do
-  // change the array, and the section headers have to follow rather than keep
-  // naming the members the way the first render found them.
-  it("renames and reorders its sections when the roots array says so", async () => {
-    const [roots, setRoots] = createSignal<TreeRoot[]>([...MEMBERS]);
-    render(() => <FileTree root={null} roots={roots()} />);
-    await within(sectionOf(A)).findByText("README.md");
-    const order = () => Array.from(document.querySelectorAll("[data-root]")).map((s) => s.getAttribute("data-root"));
-    expect(order()).toEqual([A, B]);
-    expect(screen.getByText("Web App")).toBeTruthy();
+  it("fences every mutation to the member it switched to", async () => {
+    const [root, setRoot] = createSignal(A);
+    mountMember(root, { askText: answering("moved") });
+    await screen.findByText("README.md");
 
-    setRoots([{ ...MEMBERS[1], label: "Storefront" }, MEMBERS[0]]);
+    setRoot(B);
+    await screen.findByText("package.json");
 
-    await waitFor(() => expect(order()).toEqual([B, A]));
-    expect(screen.getByText("Storefront")).toBeTruthy();
-    expect(screen.queryByText("Web App")).toBeNull();
-  });
-
-  // And the third shape of the same churn (#159 phase 5): Add repository grows
-  // the member set, so a section has to appear for a root that was not there,
-  // with its own listing rather than a share of a neighbour's.
-  it("grows a section, and only that one, when a member is added", async () => {
-    const [roots, setRoots] = createSignal<TreeRoot[]>([MEMBERS[0]]);
-    render(() => <FileTree root={null} roots={roots()} />);
-    await within(sectionOf(A)).findByText("README.md");
-    const reads = readsOf(A).length;
-
-    setRoots([...MEMBERS]);
-
-    await within(sectionOf(B)).findByText("package.json");
-    expect(Array.from(document.querySelectorAll("[data-root]")).map((s) => s.getAttribute("data-root"))).toEqual([A, B]);
-    // The newcomer read its own root; the one already there did not read again.
-    expect(readsOf(B).length).toBeGreaterThan(0);
-    expect(readsOf(A)).toHaveLength(reads);
-  });
-
-  it("fences every mutation to the section it was made in", async () => {
-    mountFeature({ askText: answering("moved") });
-    await within(sectionOf(B)).findByText("package.json");
-
-    fireEvent.click(within(sectionOf(B)).getByLabelText("New Folder in Web App"));
+    fireEvent.click(screen.getByLabelText("New Folder"));
     await waitFor(() => expect(sent("fs_mkdir")).toHaveLength(1));
     expect(sent("fs_mkdir")[0].args).toMatchObject({ root: B, path: `${B}/moved` });
 
-    fireEvent.contextMenu(within(sectionOf(B)).getByText("package.json"));
+    fireEvent.contextMenu(screen.getByText("package.json"));
     pointerClick(await screen.findByText("Rename"));
     await waitFor(() => expect(sent("fs_rename")).toHaveLength(1));
     expect(sent("fs_rename")[0].args).toMatchObject({ root: B, from: `${B}/package.json` });
 
-    fireEvent.contextMenu(within(sectionOf(B)).getByText("src"));
+    fireEvent.contextMenu(screen.getByText("src"));
     pointerClick(await screen.findByText("Delete"));
     await waitFor(() => expect(sent("fs_delete")).toHaveLength(1));
     expect(sent("fs_delete")[0].args).toMatchObject({ root: B, path: `${B}/src` });
   });
 
-  it("moves back out to the section's own root when dropped on its background", async () => {
-    mountFeature();
-    await within(sectionOf(A)).findByText("README.md");
-    fireEvent.click(within(sectionOf(A)).getByText("src"));
-    await within(sectionOf(A)).findByText("main.ts");
-
-    const dt = dataTransfer();
-    fireEvent.dragStart(within(sectionOf(A)).getByText("main.ts").parentElement!, { dataTransfer: dt });
-    fireEvent.drop(backgroundOf(A), { dataTransfer: dt });
-
-    await waitFor(() => expect(sent("fs_rename")).toHaveLength(1));
-    expect(sent("fs_rename")[0].args).toMatchObject({
-      root: A,
-      from: `${A}/src/main.ts`,
-      to: `${A}/main.ts`,
-    });
-  });
-
-  it("refuses a move across roots before any command goes out", async () => {
+  it("refuses to paste a cut from another member before any command goes out", async () => {
     const notices = toasts();
-    mountFeature();
-    await within(sectionOf(A)).findByText("README.md");
-    await within(sectionOf(B)).findByText("package.json");
+    const [root, setRoot] = createSignal(A);
+    mountMember(root);
+    fireEvent.contextMenu(await screen.findByText("README.md"));
+    pointerClick(await screen.findByText("Cut"));
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
 
-    const dt = dataTransfer();
-    fireEvent.dragStart(within(sectionOf(A)).getByText("README.md").parentElement!, { dataTransfer: dt });
-    fireEvent.drop(backgroundOf(B), { dataTransfer: dt });
+    // What was cut outlives the switch, and a move across members would be
+    // half a history in each repo.
+    setRoot(B);
+    fireEvent.contextMenu(await screen.findByText("src"));
+    pointerClick(await screen.findByText("Paste"));
 
     await waitFor(() => expect(notices.seen).toHaveLength(1));
     expect(notices.seen[0].message).toContain("member folder");
@@ -1108,91 +1067,21 @@ describe("a Feature's member roots", () => {
     notices.stop();
   });
 
-  it("reveals into the root that owns the file and leaves the others shut", async () => {
-    Element.prototype.scrollIntoView = vi.fn();
-    mountFeature({ activePath: `${B}/src/app.ts` });
-    await within(sectionOf(A)).findByText("README.md");
-    expect(screen.queryByText("app.ts")).toBeNull();
-
-    fireEvent.click(screen.getByLabelText("Reveal"));
-
-    await within(sectionOf(B)).findByText("app.ts");
-    expect(within(sectionOf(A)).queryByText("main.ts")).toBeNull();
-  });
-
-  it("filters each root on its own and keeps both sections under their chips", async () => {
-    bridge.filesByRoot = { [A]: ["src/config.ts"], [B]: ["lib/config.ts"] };
-    mountFeature();
-    await within(sectionOf(A)).findByText("README.md");
-
-    fireEvent.input(screen.getByLabelText("Filter files"), { target: { value: "config" } });
-
-    await within(sectionOf(A)).findByText("src/config.ts");
-    await within(sectionOf(B)).findByText("lib/config.ts");
-    expect(sent("list_project_files").map((c) => c.args.projectPath).sort()).toEqual([A, B]);
-    expect(sectionOf(A).querySelector("[data-chip]")!.textContent).toBe("PA");
-    expect(sectionOf(B).querySelector("[data-chip]")!.textContent).toBe("WA");
-  });
-
-  it("offers a repair instead of a tree for a member with no worktree", async () => {
-    const onRepair = vi.fn();
-    mountFeature({
-      roots: [
-        MEMBERS[0],
-        { ...MEMBERS[1], state: memberState({ kind: "worktree-missing" }) },
-      ],
-      onRepair,
-    });
-    await within(sectionOf(A)).findByText("README.md");
-
-    expect(within(sectionOf(B)).queryByText("package.json")).toBeNull();
-    expect(within(sectionOf(B)).getByText("Worktree missing")).toBeTruthy();
-    fireEvent.click(sectionOf(B).querySelector("[data-repair]") as HTMLElement);
-    expect(onRepair).toHaveBeenCalledWith(B);
-  });
-
-  it("loads a repaired member, which never changed path and so never remounted", async () => {
-    const [state, setState] = createSignal(memberState({ kind: "worktree-missing" }));
-    render(() => <FileTree root={null} roots={[MEMBERS[0], { ...MEMBERS[1], state: state() }]} />);
-    await within(sectionOf(A)).findByText("README.md");
-    expect(within(sectionOf(B)).queryByText("package.json")).toBeNull();
-
-    setState(memberState({ kind: "present" }));
-
-    await within(sectionOf(B)).findByText("package.json");
-  });
-
-  it("draws no section chrome for a lone root", async () => {
-    render(() => (
-      <FileTree
-        root={A}
-        editable
-        noun="member folder"
-        askText={answering(null)}
-        askConfirm={confirming(true)}
-      />
-    ));
+  it("offers no reveal for a file in another member", async () => {
+    mountMember(() => A, { activePath: `${B}/src/app.ts` });
     await screen.findByText("README.md");
 
-    expect(document.querySelector(`.${styles.sectionHeader}`)).toBeNull();
-    expect(screen.getByLabelText("New File")).toBeTruthy();
+    expect(screen.queryByLabelText("Reveal")).toBeNull();
   });
 });
 
-
-// What the tree had open, restored. Every row used to own its `open` signal, so
-// reopening a workspace collapsed it back to its roots and a Feature's members
-// each lost their place at once.
+// What the tree had open, restored. A Feature's members share one workspace
+// key, so what each had open is told apart by its path alone.
 describe("restoring what was open", () => {
   const WS = "feature:f1";
   const A = "/feat/api";
   const B = "/feat/web";
-  const MEMBERS: TreeRoot[] = [
-    { path: A, repoPath: "/repos/api", label: "Payments API" },
-    { path: B, repoPath: "/repos/web", label: "Web App" },
-  ];
 
-  const sectionOf = (path: string) => document.querySelector(`[data-root="${path}"]`) as HTMLElement;
   const stored = () => JSON.parse(localStorage.getItem("sway.treeExpanded.v1") ?? "{}");
 
   /** What last run left behind, as the next run finds it. */
@@ -1201,11 +1090,10 @@ describe("restoring what was open", () => {
     resetExpanded();
   };
 
-  const mountFeature = (overrides: Record<string, unknown> = {}) =>
+  const mountMember = (root: () => string, overrides: Record<string, unknown> = {}) =>
     render(() => (
       <FileTree
-        root={null}
-        roots={MEMBERS}
+        root={root()}
         persistKey={WS}
         editable
         noun="member folder"
@@ -1228,68 +1116,48 @@ describe("restoring what was open", () => {
 
   it("comes back open in the member that had it open, and only there", async () => {
     seed({ [WS]: { dirs: [`${B}/src`] } });
-    mountFeature();
+    const [root, setRoot] = createSignal(A);
+    mountMember(root);
+    await screen.findByText("README.md");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText("main.ts")).toBeNull();
 
-    await within(sectionOf(B)).findByText("app.ts");
-    expect(within(sectionOf(A)).queryByText("main.ts")).toBeNull();
+    setRoot(B);
+    await screen.findByText("app.ts");
   });
 
   it("keeps a reveal out of the record, so a remount does not re-open the chain", async () => {
-    const view = mountFeature({ activePath: `${B}/src/app.ts` });
-    await within(sectionOf(B)).findByText("package.json");
+    const view = mountMember(() => B, { activePath: `${B}/src/app.ts` });
+    await screen.findByText("package.json");
 
     fireEvent.click(screen.getByLabelText("Reveal"));
-    await within(sectionOf(B)).findByText("app.ts");
+    await screen.findByText("app.ts");
     // The walk is a cascade of transient opens: recorded, it would re-open on
     // the next mount the chain the user has since closed by hand.
     expect(stored()[WS]?.dirs ?? []).toEqual([]);
 
     view.unmount();
-    mountFeature({ activePath: `${B}/src/app.ts` });
+    mountMember(() => B, { activePath: `${B}/src/app.ts` });
 
-    await within(sectionOf(B)).findByText("package.json");
+    await screen.findByText("package.json");
     expect(screen.queryByText("app.ts")).toBeNull();
   });
 
-  it("closes every section's folders at once and leaves the sections themselves open", async () => {
-    mountFeature();
-    fireEvent.click(await within(sectionOf(A)).findByText("src"));
-    fireEvent.click(await within(sectionOf(B)).findByText("src"));
-    await within(sectionOf(A)).findByText("main.ts");
-    await within(sectionOf(B)).findByText("app.ts");
+  it("collapses the member on screen and leaves the others' folders open", async () => {
+    seed({ [WS]: { dirs: [`${B}/src`] } });
+    const [root, setRoot] = createSignal(A);
+    mountMember(root);
+    fireEvent.click(await screen.findByText("src"));
+    await screen.findByText("main.ts");
 
     fireEvent.click(screen.getByLabelText("Collapse all folders"));
 
     await waitFor(() => expect(screen.queryByText("main.ts")).toBeNull());
-    expect(screen.queryByText("app.ts")).toBeNull();
-    // Closing the folders inside a section is not closing the section: both
-    // members are still on screen with their top level showing.
-    expect(within(sectionOf(A)).getByText("README.md")).toBeTruthy();
-    expect(within(sectionOf(B)).getByText("package.json")).toBeTruthy();
-    expect(stored()[WS]?.dirs ?? []).toEqual([]);
-  });
+    expect(screen.getByText("README.md")).toBeTruthy();
+    expect(stored()[WS].dirs).toEqual([`${B}/src`]);
 
-  it("does not read a section that comes back closed until it is opened", async () => {
-    const C = "/feat/db";
-    bridge.dirs[C] = [file(C, "schema.sql")];
-    seed({ [WS]: { closed: [B, C] } });
-    render(() => (
-      <FileTree
-        root={null}
-        roots={[...MEMBERS, { path: C, repoPath: "/repos/db", label: "Database" }]}
-        persistKey={WS}
-      />
-    ));
-    await within(sectionOf(A)).findByText("README.md");
-    await new Promise((r) => setTimeout(r, 0));
-
-    // One listing for three members: a member nobody has open has nothing on
-    // screen to go stale, so it is not read at all.
-    expect(sent("fs_read_dir_compact")).toHaveLength(1);
-    expect(within(sectionOf(B)).queryByText("package.json")).toBeNull();
-
-    fireEvent.click(sectionOf(B).querySelector("[aria-expanded]") as HTMLElement);
-    await within(sectionOf(B)).findByText("package.json");
+    setRoot(B);
+    await screen.findByText("app.ts");
   });
 
   it("records the files pane's folders under its own workspace", async () => {
@@ -1307,7 +1175,6 @@ describe("restoring what was open", () => {
     await screen.findByText("main.ts");
     await new Promise((r) => setTimeout(r, 0));
 
-    // The shared and docs panes: they expand, and nothing about them is kept.
     expect(localStorage.getItem("sway.treeExpanded.v1")).toBeNull();
   });
 
@@ -1334,29 +1201,6 @@ describe("the file tree, to axe", () => {
     await screen.findByText("README.md");
 
     // `document.body`, not the render container: a tooltip portals out of it.
-    await expectNoAxeViolations(document.body);
-  });
-
-  it("has none once it grows section headers either", async () => {
-    bridge.dirs = {
-      "/feat/api": [file("/feat/api", "README.md")],
-      "/feat/web": [file("/feat/web", "package.json")],
-    };
-    render(() => (
-      <FileTree
-        root={null}
-        roots={[
-          { path: "/feat/api", repoPath: "/repos/api", label: "Payments API" },
-          { path: "/feat/web", repoPath: "/repos/web", label: "Web App", state: memberState({ kind: "worktree-missing" }) },
-        ]}
-        editable
-        noun="member folder"
-        askText={answering(null)}
-        askConfirm={confirming(true)}
-      />
-    ));
-    await screen.findByText("README.md");
-
     await expectNoAxeViolations(document.body);
   });
 });

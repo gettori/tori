@@ -1,6 +1,6 @@
-// The four panes that follow the file in front, inside a Feature (#160 phase 2).
+// The panes that follow the file in front, inside a Feature (#160 phase 2).
 //
-// Outline, Calls, Session and Debug are about one repo, and inside a Feature the
+// Calls, Session and Debug are about one repo, and inside a Feature the
 // one they are about is the active tab's, not the member you last clicked in the
 // tree. What is asserted here is that they say which repo, that a run launches
 // in it, and that moving the active member no longer kills the run.
@@ -121,7 +121,6 @@ vi.mock("./lspClient", () => ({
 
 const { default: Editor } = await import("./Editor");
 const { emitWith, OPEN_IN_EDITOR, DEBUG_PICK, SET_RIGHT_MODE } = await import("../../utils/events");
-const { publishSymbols } = await import("../../utils/symbols");
 const { publishCallRoots } = await import("../../utils/callHierarchy");
 const dap = await import("../../utils/dapSessions");
 const store = await import("../../utils/debugStore");
@@ -179,14 +178,9 @@ async function openFile(path: string) {
   await waitFor(() => expect(screen.getAllByText(name).length).toBeGreaterThan(0));
 }
 
-/** Outline and Calls appear only once a server has answered for the file, and
- *  Debug only while something is running, so each pane is reached the way the
- *  app reaches it rather than by clicking a tab that is not there. */
-const showOutline = async (path: string) => {
-  publishSymbols(path, []);
-  const tab = await waitFor(() => screen.getByRole("tab", { name: "Outline" }));
-  fireEvent.click(tab);
-};
+/** Calls appears only once a server has answered for the file, and Debug only
+ *  while something is running, so each pane is reached the way the app reaches
+ *  it rather than by clicking a tab that is not there. */
 const showCalls = async (path: string) => {
   publishCallRoots(path, []);
   const tab = await waitFor(() => screen.getByRole("tab", { name: "Calls" }));
@@ -194,7 +188,7 @@ const showCalls = async (path: string) => {
 };
 const showMode = (mode: string) => emitWith(SET_RIGHT_MODE, { mode });
 
-/** The member line above the pane, which is the only place the four panes say
+/** The member line above the pane, which is the only place these panes say
  *  which repo they are answering for. */
 const focusLine = () => document.querySelector<HTMLElement>("[data-focus-member]");
 
@@ -221,14 +215,11 @@ afterEach(async () => {
   warn.mockRestore();
 });
 
-describe("the member line above the four panes that follow the file", () => {
-  it("names the active tab's member above Outline and Calls", async () => {
+describe("the member line above the panes that follow the file", () => {
+  it("names the active tab's member above Calls", async () => {
     const file = `${B}/src/b.ts`;
     await mountEditor();
     await openFile(file);
-
-    await showOutline(file);
-    await waitFor(() => expect(focusLine()?.textContent).toContain("web"));
 
     await showCalls(file);
     await waitFor(() => expect(focusLine()?.textContent).toContain("web"));
@@ -292,8 +283,9 @@ describe("starting a run inside a Feature", () => {
     await mountEditor();
     await openFile(`${A}/src/a.ts`);
     emitWith(DEBUG_PICK, { kind: "script" });
-    await waitFor(() => expect(screen.getByText("dev")).toBeTruthy());
-    fireEvent.click(screen.getByText("Start"));
+    // Not `dev`: the Files tab's Scripts section lists it too, before the dialog
+    // is up. The dialog is handed its scripts, so Start arrives with them.
+    fireEvent.click(await screen.findByText("Start"));
     await waitFor(() =>
       expect(JSON.parse(localStorage.getItem("sway.debugLastTarget") ?? "{}")).toHaveProperty(A),
     );

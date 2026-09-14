@@ -47,6 +47,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "session_tail_state") return Promise.resolve(bridge.tail);
     if (cmd === "chat_orphans") return Promise.resolve([]);
     if (cmd === "agent_hook_launch_args") return Promise.resolve([]);
+    if (cmd === "profile_spawn_env") return Promise.resolve({});
     if (cmd === "folder_historical") return Promise.resolve(false);
     return Promise.resolve(null);
   },

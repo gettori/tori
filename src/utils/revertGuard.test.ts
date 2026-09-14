@@ -99,7 +99,7 @@ describe("revertGuard", () => {
     );
     if (verdict.allow) throw new Error("expected a block");
     expect(verdict.reason).toContain("one and two");
-    expect(verdict.reason).toContain("are running");
+    expect(verdict.reason).toContain("are still working");
   });
 
   it("treats a live tab that is merely running as no blocker", () => {
