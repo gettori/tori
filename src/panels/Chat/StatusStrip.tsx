@@ -5,6 +5,7 @@ import Button from "../../components/Button/Button";
 import IconButton from "../../components/IconButton/IconButton";
 import SessionStats, { type SessionDetail } from "./SessionStats";
 import type { ConnectionHealth } from "./chatStore";
+import { backgroundLabel } from "../../utils/sessionStatus";
 import styles from "./Chat.module.css";
 
 /**
@@ -31,6 +32,9 @@ import styles from "./Chat.module.css";
 export default function StatusStrip(props: {
   health: ConnectionHealth;
   running: boolean;
+  /** Background work still outstanding once the turn is over, which reads as
+   *  waiting rather than idle. */
+  background?: { agents: number; tasks: number };
   awaitingApproval: boolean;
   /** A compaction is running inside the turn. Named separately because it is
    *  the one kind of work that produces nothing to look at for half a minute:
@@ -84,18 +88,21 @@ export default function StatusStrip(props: {
     onCleanup(() => document.removeEventListener("mousedown", onDoc));
   });
 
+  const waiting = () => !!props.background && props.background.agents + props.background.tasks > 0;
+
   const label = () => {
     if (props.health === "disconnected") return "Disconnected";
     if (props.health === "connecting") return "Connecting";
     if (props.awaitingApproval) return "Waiting for approval";
     if (props.compacting) return "Compacting";
-    return props.running ? "Working" : "Idle";
+    if (props.running) return "Working";
+    return waiting() ? backgroundLabel(props.background!) : "Idle";
   };
 
   const tone = () => {
     if (props.health === "disconnected") return styles.stripBad;
     if (props.awaitingApproval) return styles.stripAttention;
-    if (props.running || props.health === "connecting") return styles.stripBusy;
+    if (props.running || waiting() || props.health === "connecting") return styles.stripBusy;
     return styles.stripIdle;
   };
 

@@ -8,6 +8,7 @@ import { revertGuard, type RevertBlocker } from "../../utils/revertGuard";
 import { folderActors } from "../../utils/folderActors";
 import { chatsInFolder } from "../../utils/chatSessions";
 import { isUnderPath } from "../../utils/pathScope";
+import { isWorking } from "../../utils/sessionStatus";
 import { UNATTRIBUTED_NOTICE } from "../../utils/attribution";
 import Button from "../../components/Button/Button";
 import Tooltip from "../../components/Tooltip/Tooltip";
@@ -129,7 +130,7 @@ export default function CheckpointTimeline(props: {
   const executingHere = () => {
     const folder = props.folderPath;
     if (!folder) return [];
-    return liveSessionStatuses().filter((s) => s.status === "executing" && isUnderPath(s.folderPath, folder));
+    return liveSessionStatuses().filter((s) => isWorking(s.status) && isUnderPath(s.folderPath, folder));
   };
 
   async function loadEntries() {

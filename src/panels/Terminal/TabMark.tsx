@@ -2,7 +2,13 @@ import { Show } from "solid-js";
 import Icon from "../../components/Icon/Icon";
 import { providerIcon, providerMarkKey } from "../../components/Icon/ProviderIcon";
 import agentStyles from "../../components/Icon/agentMarks.module.css";
-import { blockedOnUser, statusPresentation, type SessionStatus } from "../../utils/sessionStatus";
+import {
+  backgroundLabel,
+  blockedOnUser,
+  isWorking,
+  statusPresentation,
+  type SessionStatus,
+} from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
 import styles from "./TabMark.module.css";
 
@@ -41,8 +47,11 @@ export default function TabMark(props: {
   /** Measured or inferred. Defaults to inferred, which is both the safer
    *  default and the rendering every non-chat surface already had. */
   certainty?: StatusCertainty;
+  /** What a `waitingOnBackground` session is waiting on, which words the
+   *  tooltip. Absent falls back to the status's own name. */
+  background?: { agents: number; tasks: number };
 }) {
-  const working = () => props.status === "executing";
+  const working = () => props.status !== null && isWorking(props.status);
   // Whose logo this ended up being, for the tint. Resolved rather than assumed
   // from `agentId`, so a session wearing the fallback brain cannot pick up a
   // brand colour it has not earned.
@@ -53,7 +62,13 @@ export default function TabMark(props: {
   // exact tier's "(measured)" suffix carried through by the same helper.
   const shown = () =>
     props.status && props.status !== "none"
-      ? statusPresentation(props.status, props.certainty ?? "inferred")
+      ? statusPresentation(
+          props.status,
+          props.certainty ?? "inferred",
+          props.status === "waitingOnBackground" && props.background
+            ? backgroundLabel(props.background)
+            : undefined,
+        )
       : null;
 
   return (
