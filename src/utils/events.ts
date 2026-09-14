@@ -554,6 +554,11 @@ export const NEW_SESSION = "sway:new-session";
 // full registry, e.g. a user-added adapter.
 export type NewSession = { folderPath: string; projectName: string; agent?: string };
 
+// Payload-carrying event: open a chat draft in a branch-unit folder the sidebar
+// just created, so a new worktree does not land on an empty strip.
+export const NEW_CHAT_AT = "sway:new-chat-at";
+export type NewChatAt = { folderPath: string; projectName: string };
+
 // Payload-carrying event: tear down everything rooted under a path (used when a
 // space is deleted). The terminal area kills + closes PTY tabs whose cwd is under
 // it; the editor pane closes buffers under it. Emitted before the native delete so
