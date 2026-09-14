@@ -1887,6 +1887,12 @@ button.diffHunkHeader:hover {
   color: var(--fg-default);
 }
 
+/* The fold is about the strip rather than a lane, so it sheds the floor that
+   keeps lane chips from shrinking together. */
+.laneMore {
+  min-width: 0;
+}
+
 .laneOn {
   background: var(--neutral-hover);
   border-color: var(--border-default);
