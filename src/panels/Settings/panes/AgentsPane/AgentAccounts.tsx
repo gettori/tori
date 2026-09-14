@@ -16,6 +16,7 @@ import { asProfileId, asTabProfile, refreshAgentHealth, type SignIn } from "../.
 import { defaultProfile, setDefaultProfile } from "../../../../utils/agentEnabled";
 import { warnAtLabel } from "../../../../utils/chatBudget";
 import {
+  OTHER_WEEK_LABEL,
   limitTypeChip,
   limitTypeLabel,
   modelWeekLabel,
@@ -29,11 +30,13 @@ import {
   chipFor,
   declaredRungs,
   modelWindowLabel,
+  needsToken,
   offersModelWindow,
   setUsageNotify,
   setUsageWarnAt,
   setWindowShown,
   showsWindow,
+  tokenAlreadyRead,
   usageNotify,
   usageUnavailableReason,
   usageWarnAt,
@@ -217,7 +220,7 @@ function WindowCard(props: {
 }
 
 /** What each chip is called, whether it is lit, and whether anything has ever
- *  answered for it. The one place the three chips are enumerated. */
+ *  answered for it. The one place the chips are enumerated. */
 type Chip = {
   id: WindowChip;
   /** Chip width: "5H", "Week", "Fable". */
@@ -228,15 +231,20 @@ type Chip = {
   reading: WindowReading | null;
 };
 
+function unreadNames(id: WindowChip, guess: string | null): { label: string; name: string } {
+  if (id === "model_week") return { label: guess ?? "Model", name: modelWeekLabel(guess) };
+  if (id === "week_other") return { label: "Other", name: OTHER_WEEK_LABEL };
+  return { label: limitTypeChip(id), name: limitTypeLabel(id) ?? id };
+}
+
 function chipsFor(agentId: string, profile: string | null): Chip[] {
   const readings = windowsFor(agentId, profile);
+  // Every account of an agent offers the same chips, read or not: which windows
+  // show is the user's call, and a chip that appeared only after its read could
+  // never be used to ask for that read.
   const ids: WindowChip[] = offersModelWindow(agentId)
-    ? ["five_hour", "seven_day", "model_week"]
+    ? ["five_hour", "seven_day", "model_week", "week_other"]
     : ["five_hour", "seven_day"];
-  // A week the endpoint scoped to something that is not a model. Listed only
-  // once one has been read: unlike the model week, whose chip is how you ask for
-  // the read in the first place, this one is named by the answer.
-  if (readings.some((w) => chipFor(w.kind) === "week_other")) ids.push("week_other");
   return ids.map((id) => {
     // The scoped weekly window first, where a deep read returned more than one
     // window: an account with both a Fable week and an extra-usage pot is one
@@ -247,15 +255,11 @@ function chipsFor(agentId: string, profile: string | null): Chip[] {
         : readings.find((w) => w.kind === id)) ??
       readings.find((w) => chipFor(w.kind) === id) ??
       null;
-    const guess = id === "model_week" ? modelWindowLabel(agentId, profile) : null;
+    const unread = unreadNames(id, id === "model_week" ? modelWindowLabel(agentId, profile) : null);
     return {
       id,
-      label: reading ? limitTypeChip(reading.kind) : id === "model_week" ? (guess ?? "Model") : limitTypeChip(id),
-      name: reading
-        ? (limitTypeLabel(reading.kind) ?? reading.kind)
-        : id === "model_week"
-          ? modelWeekLabel(guess)
-          : (limitTypeLabel(id) ?? id),
+      label: reading ? limitTypeChip(reading.kind) : unread.label,
+      name: reading ? (limitTypeLabel(reading.kind) ?? reading.kind) : unread.name,
       lit: showsWindow(agentId, profile, id),
       reading,
     };
@@ -298,15 +302,17 @@ function WindowChips(props: {
   onAsk: (chip: WindowChip, on: boolean) => void;
 }) {
   const chips = () => chipsFor(props.agentId, props.profile);
-  /** The one chip that cannot answer until it is allowed to. On the other two a
+  /** The chips that cannot answer until the token is read. On the generic two a
    *  missing reading is a read that has not landed yet, which the window card
    *  below already says; marking those "n/a" too would be noise on every fresh
    *  install. */
-  const locked = (c: Chip) => c.id === "model_week" && c.reading === null;
+  const locked = (c: Chip) => needsToken(c.id) && c.reading === null;
   const why = (c: Chip) =>
-    locked(c)
-      ? `Sway has to read this account's token from the login Keychain to see its ${c.label} window. macOS asks the first time.`
-      : `Show the ${limitTypeLabel(c.reading ? c.reading.kind : c.id)} window in the titlebar`;
+    !locked(c)
+      ? `Show the ${limitTypeLabel(c.reading ? c.reading.kind : c.id)} window in the titlebar`
+      : tokenAlreadyRead(props.agentId, props.profile)
+        ? `This account's token reports no ${c.label} window.`
+        : `Sway reads this account's token from the login Keychain to see its ${c.label} window.`;
 
   return (
     <div class={styles.chipRow}>
@@ -676,9 +682,11 @@ function AccountCard(props: {
                     now={props.now}
                     dim={b.dim}
                     note={
-                      b.chip === "model_week" && b.reading === null
-                        ? "needs the account token"
-                        : null
+                      !needsToken(b.chip) || b.reading !== null
+                        ? null
+                        : tokenAlreadyRead(props.agentId, tab())
+                          ? "not reported for this account"
+                          : "needs the account token"
                     }
                   />
                 )}

@@ -206,6 +206,10 @@ export function modelWeekLabel(model: string | null): string {
   return `Week${DOT}${model === null ? "one model" : `${model} only`}`;
 }
 
+/** A weekly window scoped to something other than a model, named before any read
+ *  has said what. */
+export const OTHER_WEEK_LABEL = `Week${DOT}other scope`;
+
 /** The same window on the strip, where a model gets one letter: the bar beside
  *  it is what carries the meaning, and the row has three of these to fit. */
 export function modelWeekShort(model: string): string {
