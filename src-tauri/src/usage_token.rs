@@ -226,33 +226,23 @@ pub fn read_usage(
 
 // --- the real vault and the real endpoint ---
 
+/// Read through `/usr/bin/security`, the tool `claude` writes the item with, so
+/// the item already trusts it. Read in process, every Sway build needs its own
+/// "Always Allow", and a dev build's signature changes on every rebuild.
 pub struct Keychain;
 
-/// One entry against the process-wide store, installing that store if nothing
-/// has yet.
-///
-/// `keyring-core` has a single default and the forge installs it at startup, so
-/// in practice one is already there. The retry is what stops this rung depending
-/// on that: an ordering nobody wrote down is one a later change can break
-/// silently. It cannot clobber a test's mock, because a mock *is* a default
-/// store and the fallback only runs when there is none.
-fn open_entry(service: &str, account: &str) -> Result<keyring_core::Entry, String> {
-    match keyring_core::Entry::new(service, account) {
-        Ok(entry) => Ok(entry),
-        Err(_) => {
-            crate::forge::token::install_store().map_err(|e| format!("{e:?}"))?;
-            keyring_core::Entry::new(service, account).map_err(|e| e.to_string())
-        }
-    }
-}
+const ITEM_NOT_FOUND: i32 = 44;
 
 impl Vault for Keychain {
     fn secret(&self, service: &str, account: &str) -> Result<Option<String>, String> {
-        let entry = open_entry(service, account)?;
-        match entry.get_password() {
-            Ok(secret) => Ok(Some(secret)),
-            Err(keyring_core::Error::NoEntry) => Ok(None),
-            Err(e) => Err(format!("keychain: {e}")),
+        let mut cmd = std::process::Command::new("/usr/bin/security");
+        cmd.args(["find-generic-password", "-a", account, "-s", service, "-w"]);
+        let out = crate::env::output_with_timeout(&mut cmd)
+            .ok_or_else(|| "the keychain did not answer".to_string())?;
+        match out.status.code() {
+            Some(0) => Ok(Some(String::from_utf8_lossy(&out.stdout).trim_end().to_string())),
+            Some(ITEM_NOT_FOUND) => Ok(None),
+            _ => Err(format!("keychain: {}", String::from_utf8_lossy(&out.stderr).trim())),
         }
     }
 }
@@ -571,15 +561,9 @@ mod tests {
     }
 
     /// Re-measures the whole rung against this machine: the real item, the real
-    /// endpoint, the real shapes. Raises a Keychain prompt, which is the point
-    /// of running it by hand.
-    ///
-    /// Run it **alone**, by name. `keyring-core` holds one process-wide default
-    /// store and `forge::token`'s tests install a mock into the same slot, so a
-    /// run that catches both would have one of them reading the other's store.
-    /// This also drives `open_entry`'s fallback, since no startup has run here.
+    /// endpoint, the real shapes. Run by hand, since it reads a live login.
     #[test]
-    #[ignore = "reads the real Keychain item and calls the usage endpoint: prompts"]
+    #[ignore = "reads the real Keychain item and calls the usage endpoint"]
     fn the_real_account_answers_with_its_scoped_window() {
         let reading =
             read_usage(UsageSource::Token, None, &os_account(), &Keychain, &Anthropic, now_ms())
