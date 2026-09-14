@@ -576,6 +576,7 @@ mod tests {
         agents::AccountsConfig {
             home_env: None,
             home_default: None,
+            home_markers: vec![],
             login_args: vec![],
             logout_args: vec![],
             whoami_args: args.iter().map(|a| a.to_string()).collect(),

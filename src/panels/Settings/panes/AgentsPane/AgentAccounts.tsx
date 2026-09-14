@@ -7,12 +7,12 @@ import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
 import Checkbox from "../../../../components/Checkbox/Checkbox";
-import PromptModal from "../../../../components/Dialogs/PromptModal";
+import AddAccountDialog from "../../../../components/Dialogs/AddAccountDialog";
 import Switch from "../../../../components/Switch/Switch";
 import Tooltip from "../../../../components/Tooltip/Tooltip";
 import { homeDir } from "@tauri-apps/api/path";
 import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../../../utils/events";
-import { asTabProfile, refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
+import { asProfileId, asTabProfile, refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
 import { defaultProfile, setDefaultProfile } from "../../../../utils/agentEnabled";
 import { warnAtLabel } from "../../../../utils/chatBudget";
 import {
@@ -90,6 +90,7 @@ export type ProfileStatus = {
   label: string;
   isDefault: boolean;
   home: string | null;
+  managed: boolean;
   signIn: SignIn;
   // Per profile, never per adapter: the route carries the home variable, so one
   // route shared across a card would send every "Sign in" press to whichever
@@ -101,20 +102,25 @@ export type ProfileStatus = {
 };
 
 /** What the card is asked to confirm. `removable` adds the "remove it too"
- *  checkbox, whose state comes back in the answer. */
+ *  checkbox with what removing does under it, and its state comes back in the
+ *  answer. */
 type ConfirmAsk = {
   title: string;
   message: string;
   confirmLabel?: string;
   danger?: boolean;
-  removable?: boolean;
+  removable?: string;
   /** The profile home the answer is about, where there is one to name. */
   home?: string | null;
 };
 type ConfirmAnswer = { ok: boolean; remove: boolean };
+type AccountAsk = { label: string; folder: string };
 
 /** Mirrors `crate::accounts::RemovalOutcome`. */
 type RemovalOutcome = { type: "removed" } | { type: "needsConfirming"; message: string };
+
+/** Mirrors `crate::accounts::AddedAccount`. */
+type AddedAccount = { id: string; login: LoginRoute | null };
 
 /** Mirrors `crate::accounts::AccountsView`. */
 export type AccountsView = {
@@ -429,11 +435,12 @@ function AccountCard(props: {
   // Two calls rather than one command with a flag, so the sentence the user
   // agrees to is the backend's own refusal text rather than something this
   // component wrote from memory. The first call is what produces it.
-  const call = (confirmedWithoutLogout: boolean) =>
+  const call = (confirmedWithoutLogout: boolean, signOut: boolean) =>
     invoke<RemovalOutcome>("remove_agent_account", {
       adapterId: props.agentId,
       profileId: p().id,
       confirmedWithoutLogout,
+      signOut,
     });
 
   // The default account has no stored home: it is the variable left unset, so
@@ -445,6 +452,10 @@ function AccountCard(props: {
 
   const canSignOut = () => p().signIn === "signedIn" && props.view.canSignOut;
   const canRemove = () => !p().isDefault;
+  const removeNote = () =>
+    p().managed
+      ? "Sway forgets it and deletes the profile home, with the sessions inside."
+      : "Sway forgets it. Its folder stays.";
 
   const signOut = async () => {
     await invoke("sign_out_agent_account", { adapterId: props.agentId, profileId: p().id });
@@ -474,8 +485,8 @@ function AccountCard(props: {
     }
   };
 
-  const remove = async () => {
-    const first = await call(false);
+  const remove = async (signOut: boolean) => {
+    const first = await call(false, signOut);
     // "Needs confirming" arrives as a value rather than an error, so this never
     // has to tell it apart from a refusal by reading the message.
     if (first.type === "removed") {
@@ -484,7 +495,7 @@ function AccountCard(props: {
       return;
     }
     if (!(await props.confirm({ title: `Remove ${p().label}?`, message: first.message })).ok) return;
-    await call(true);
+    await call(true, signOut);
     toast(`Removed ${p().label}. Its tokens stay valid until they expire.`, "info");
     props.onChanged();
   };
@@ -496,13 +507,14 @@ function AccountCard(props: {
             title: `Sign ${p().label} out?`,
             message: `${props.agentLabel} revokes this login. You can sign back in from here.`,
             confirmLabel: "Sign out",
-            removable: canRemove(),
+            removable: canRemove() ? removeNote() : undefined,
             home: home(),
           }
         : {
             title: `Remove ${p().label}?`,
-            message:
-              "Sway forgets this account and deletes the profile home it made for it, with the sessions inside.",
+            message: p().managed
+              ? "Sway forgets this account and deletes the profile home it made for it, with the sessions inside."
+              : "Sway forgets this account. Its folder and the login in it stay.",
             confirmLabel: "Remove",
             danger: true,
             home: home(),
@@ -511,7 +523,7 @@ function AccountCard(props: {
     if (!answer.ok) return;
     setBusy(true);
     try {
-      if (answer.remove || !canSignOut()) await remove();
+      if (answer.remove || !canSignOut()) await remove(answer.remove);
       else await signOut();
     } catch (e) {
       toast(String(e), "error");
@@ -714,7 +726,11 @@ function AccountCard(props: {
                 <div class={styles.dangerNote}>
                   <Show
                     when={canSignOut()}
-                    fallback={`Removing ${p().label} deletes the profile home Sway made for it, with the sessions inside.`}
+                    fallback={
+                      p().managed
+                        ? `Removing ${p().label} deletes the profile home Sway made for it, with the sessions inside.`
+                        : `Removing ${p().label} forgets it here. Its folder and the login in it stay.`
+                    }
                   >
                     Signing out drops {p().label}'s token and its group leaves the titlebar. Chats
                     already running on it keep going.
@@ -771,11 +787,13 @@ export default function AgentAccounts(props: {
   // Both modals are the in-app ones. Tauri's macOS webview implements neither
   // `window.confirm` nor `window.prompt`, so the browser versions would silently
   // do nothing: no name entered, no confirmation given, and no error either.
-  const [nameReq, setNameReq] = createSignal<{ resolve: (v: string | null) => void } | null>(null);
-  const askName = () => new Promise<string | null>((resolve) => setNameReq({ resolve }));
-  const resolveName = (v: string | null) => {
-    const req = nameReq();
-    setNameReq(null);
+  const [accountReq, setAccountReq] = createSignal<{
+    resolve: (v: AccountAsk | null) => void;
+  } | null>(null);
+  const askAccount = () => new Promise<AccountAsk | null>((resolve) => setAccountReq({ resolve }));
+  const resolveAccount = (v: AccountAsk | null) => {
+    const req = accountReq();
+    setAccountReq(null);
     req?.resolve(v);
   };
   const [confirmReq, setConfirmReq] = createSignal<
@@ -841,21 +859,32 @@ export default function AgentAccounts(props: {
   };
 
   const add = async () => {
-    const label = (await askName())?.trim();
-    if (!label) return;
+    const ask = await askAccount();
+    const label = ask?.label.trim();
+    if (!ask || !label) return;
     setAdding(true);
     try {
       // The profile and its home exist before anyone signs in, which is why the
       // route comes back from here: the job it starts has to carry *this*
       // profile's home, or the login lands in the account the user already had.
-      const route = await invoke<LoginRoute>("add_agent_account", {
+      const added = await invoke<AddedAccount>("add_agent_account", {
         adapterId: props.agentId,
         label,
+        home: ask.folder.trim() || null,
       });
+      // With no login to inherit, nothing in the default picker would be
+      // checked and new sessions would start on whichever account lists first.
+      if (!view()?.defaultPresent && defaultProfile(props.agentId) === asProfileId(null)) {
+        setDefaultProfile(props.agentId, added.id);
+      }
       changed();
-      const job = loginJob(props.agentId, props.agentLabel, label, label, route, cwd() ?? "/");
+      if (!added.login) {
+        toast(`Added ${label}. It is already signed in.`, "info");
+        return;
+      }
+      const job = loginJob(props.agentId, props.agentLabel, added.id, label, added.login, cwd() ?? "/");
       if (job) emitWith<OpenJob>(OPEN_JOB, job);
-      else toast(loginNote(props.agentLabel, route) ?? "", "info");
+      else toast(loginNote(props.agentLabel, added.login) ?? "", "info");
     } catch (e) {
       toast(String(e), "error");
     } finally {
@@ -926,13 +955,11 @@ export default function AgentAccounts(props: {
               </div>
             )}
           </Show>
-          <Show when={nameReq()}>
-            <PromptModal
-              title={`Name for the new ${props.agentLabel} account`}
-              note="Sway's own label for it. The agent never sees this."
-              okLabel="Create and sign in"
-              onSubmit={(v) => resolveName(v)}
-              onCancel={() => resolveName(null)}
+          <Show when={accountReq()}>
+            <AddAccountDialog
+              agentLabel={props.agentLabel}
+              onSubmit={(v) => resolveAccount(v)}
+              onCancel={() => resolveAccount(null)}
             />
           </Show>
           <Show when={confirmReq()}>
@@ -948,14 +975,16 @@ export default function AgentAccounts(props: {
                       {(path) => <div class={dialogStyles.path}>{path()}</div>}
                     </Show>
                     <Show when={req().removable}>
-                      <Checkbox
-                        checked={alsoRemove()}
-                        onChange={setAlsoRemove}
-                        label="Remove the account as well"
-                      />
-                      <div class={dialogStyles.optionHint}>
-                        Sway forgets it and deletes the profile home, with the sessions inside.
-                      </div>
+                      {(note) => (
+                        <>
+                          <Checkbox
+                            checked={alsoRemove()}
+                            onChange={setAlsoRemove}
+                            label="Remove the account as well"
+                          />
+                          <div class={dialogStyles.optionHint}>{note()}</div>
+                        </>
+                      )}
                     </Show>
                   </>
                 }

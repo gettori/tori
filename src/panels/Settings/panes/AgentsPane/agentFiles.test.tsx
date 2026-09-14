@@ -139,7 +139,10 @@ function mount(
         ? accountsView()
         : { adapterId: "claude", declared: false, canAdd: false, canSignOut: false, profiles: [] };
     if (cmd === "add_agent_account")
-      return { type: "terminal", program: "claude", args: ["auth", "login"], home: null };
+      return {
+        id: "work",
+        login: { type: "terminal", program: "claude", args: ["auth", "login"], home: null },
+      };
     if (cmd === "model_catalogs") return [];
     if (cmd === "set_settings") return (args as { settings?: unknown })?.settings;
     return [];
@@ -259,7 +262,7 @@ describe("the Files group", () => {
     const before = invoked.mock.calls.filter((c) => c[0] === "agent_config_files").length;
 
     fireEvent.click(r.getByRole("button", { name: /Add account/ }));
-    const input = await waitFor(() => screen.getByRole("textbox"));
+    const input = await waitFor(() => screen.getByRole("textbox", { name: "Name" }));
     fireEvent.input(input, { target: { value: "Work" } });
     fireEvent.click(screen.getByText("Create and sign in"));
 
