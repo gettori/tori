@@ -1332,19 +1332,20 @@ export default function ReviewPanel(props: {
               {(root) => {
                 const sec = () => sections().find((x) => x.root === root);
                 const on = () => (amend() ? targetMember() === root : !unticked().has(root));
+                const action = () =>
+                  amend()
+                    ? `Amend the last commit in ${sec()?.label}`
+                    : on()
+                      ? `Leave ${sec()?.label} out of this commit`
+                      : `Include ${sec()?.label} in this commit`;
                 return (
                   <Tooltip
                     as="button"
                     type="button"
                     class={styles.chip}
                     aria-pressed={on()}
-                    label={
-                      amend()
-                        ? `Amend the last commit in ${sec()?.label}`
-                        : on()
-                          ? `Leave ${sec()?.label} out of this commit`
-                          : `Include ${sec()?.label} in this commit`
-                    }
+                    aria-label={action()}
+                    label={action()}
                     onClick={() => {
                       // Amend is one member, so a chip picks rather than toggles.
                       if (amend()) {
