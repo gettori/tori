@@ -587,6 +587,7 @@ impl AgentTransport for ClaudeTransport {
         }
 
         // stderr into a bounded tail, so the death message can say why.
+        let (stderr_done_tx, stderr_done) = std::sync::mpsc::channel::<()>();
         {
             let shared = self.shared.clone();
             thread::spawn(move || {
@@ -604,6 +605,7 @@ impl AgentTransport for ClaudeTransport {
                         }
                     }
                 }
+                let _ = stderr_done_tx.send(());
             });
         }
 
@@ -689,6 +691,10 @@ impl AgentTransport for ClaudeTransport {
                 // once: a `close()` that already ended the session has nothing
                 // to add, and a second fatal event would confuse the host's reap.
                 if !shared.finished.swap(true, Ordering::SeqCst) {
+                    // stdout can close before the stderr reader drains a child that
+                    // wrote and exited at once. Bounded, because a grandchild holding
+                    // stderr open would otherwise hold the death message forever.
+                    let _ = stderr_done.recv_timeout(Duration::from_millis(500));
                     let tail = shared.stderr_tail.lock().map(|t| t.trim().to_string()).unwrap_or_default();
                     let message = if tail.is_empty() {
                         "the claude process exited".to_string()
