@@ -30,6 +30,7 @@ vi.mock("../panels/Settings/settingsStore", () => ({
 const health = vi.hoisted(() => ({
   unswept: new Set<string>(),
   notInstalled: new Set<string>(),
+  noAccounts: new Set<string>(),
   // Keyed `<agent>:<profile>`, so a test can sign one account out and leave the
   // other alone, which is the whole of what the per-account gate has to do.
   signedOut: new Set<string>(),
@@ -44,7 +45,10 @@ const key = (id: string, profile: string | null = null) => `${id}:${profile ?? "
 vi.mock("./agentHealth", async (orig) => ({
   ...(await orig<typeof import("./agentHealth")>()),
   agentReady: (id: string, profile: string | null = null) =>
-    !health.notInstalled.has(id) && !health.signedOut.has(`${id}:${profile ?? ""}`),
+    !health.notInstalled.has(id) &&
+    !health.noAccounts.has(id) &&
+    !health.signedOut.has(`${id}:${profile ?? ""}`),
+  noAccounts: (id: string) => health.noAccounts.has(id),
   profileSignedOut: (id: string, profile: string | null = null) =>
     health.signedOut.has(`${id}:${profile ?? ""}`),
   agentHealthFor: (id: string) =>
@@ -54,6 +58,7 @@ vi.mock("./agentHealth", async (orig) => ({
           id,
           status: health.notInstalled.has(id) ? "notFound" : "versionMatch",
           signIn: health.signedOut.has(`${id}:`) ? "signedOut" : "unknown",
+          profiles: health.accounts[id]?.map((p) => ({ id: p })),
         },
   knownProfile: (id: string, profile: string | null | undefined) => {
     if (!profile) return undefined;
@@ -96,6 +101,7 @@ beforeEach(() => {
   bench.saved = [];
   health.unswept.clear();
   health.notInstalled.clear();
+  health.noAccounts.clear();
   health.signedOut.clear();
   health.accounts = {};
   adapters.list = [
@@ -137,6 +143,13 @@ describe("what counts as enabled", () => {
     expect(enableBlockedReason("claude")).toBe("Still being checked");
     bench.enabled = { claude: true };
     expect(agentEnabled("claude")).toBe(true);
+  });
+
+  it("will not turn on or offer an agent with no account to run as", () => {
+    health.noAccounts.add("claude");
+    expect(enableBlockedReason("claude")).toBe("Add an account first");
+    bench.enabled = { claude: true };
+    expect(agentEnabled("claude")).toBe(false);
   });
 });
 
@@ -252,6 +265,12 @@ describe("which account a new session opens on", () => {
     bench.defaultProfiles = { claude: "fonn" };
     health.accounts = { claude: ["default", "fonn"], codex: ["default"] };
     expect(draftChatProfile("codex", "fonn")).toBeNull();
+  });
+
+  it("starts on the first added account when there is no login to inherit", () => {
+    health.accounts = { claude: ["fonn", "work"] };
+    expect(draftChatProfile("claude", null)).toBe("fonn");
+    expect(draftChatProfile("claude", "default")).toBe("fonn");
   });
 });
 

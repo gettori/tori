@@ -8,6 +8,7 @@
 // simultaneously calling "not installed" would be Sway disagreeing with itself.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { agents } from "./agents";
 
 export type BinaryStatus = "notFound" | "versionUnknown" | "versionMatch" | "versionDrift";
 
@@ -162,7 +163,15 @@ export function agentReady(id: string, profile: string | null = null): boolean {
   // An adapter with no health row is one the sweep did not cover, which is
   // ignorance again rather than a verdict.
   if (!row) return true;
-  return row.status !== "notFound" && !profileSignedOut(id, profile);
+  return row.status !== "notFound" && !noAccounts(id) && !profileSignedOut(id, profile);
+}
+
+/** Whether this agent has no account to start a session on: it declares
+ *  `[accounts]`, its default home is absent, and none was added. A row with no
+ *  `profiles` list is ignorance, never this. */
+export function noAccounts(id: string): boolean {
+  const listed = rows()?.find((h) => h.id === id)?.profiles;
+  return Array.isArray(listed) && listed.length === 0 && !!agents().find((a) => a.id === id)?.accounts;
 }
 
 /** The accounts of one agent that are worth naming.

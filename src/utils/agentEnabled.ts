@@ -16,6 +16,7 @@ import {
   asProfileId,
   asTabProfile,
   knownProfile,
+  noAccounts,
   profileSignedOut,
 } from "./agentHealth";
 import { saveSettings, settings, settingsLoaded } from "../panels/Settings/settingsStore";
@@ -47,6 +48,7 @@ export function enableBlockedReason(id: string): string | null {
   const row = agentHealthFor(id);
   if (!row) return "Still being checked";
   if (row.status === "notFound") return "Install it first";
+  if (noAccounts(id)) return "Add an account first";
   if (row.signIn === "signedOut") return "Sign in first";
   return null;
 }
@@ -80,6 +82,7 @@ export function agentOffReason(id: string, profile: string | null = null): strin
   if (agentEnabled(id, profile)) return null;
   const label = findAdapter(id).label;
   if (!agentChosen(id)) return `${label} is turned off in Settings`;
+  if (noAccounts(id) && agentHealthFor(id)?.status !== "notFound") return `${label} has no account set up`;
   // The same wording whichever account it is. Naming the profile here would put
   // an id the user never chose into a sentence, and the row they pressed
   // already says which account they are on.
@@ -132,9 +135,10 @@ export function draftChatAgent(preferred: string | null | undefined): string | n
  * spelling.
  *
  * Three layers, in the order the plan settled on: what this project last used,
- * this agent's Settings default, and the login the user already had. Each
- * remembered id is checked rather than trusted, the way `draftChatAgent` checks
- * an agent, because an account can be removed while a project still names it.
+ * this agent's Settings default, and the login the user already had (the first
+ * listed account where there is none). Each remembered id is checked rather
+ * than trusted, the way `draftChatAgent` checks an agent, because an account
+ * can be removed while a project still names it.
  *
  * `remembered` arrives in the **stored** spelling, where the default account is
  * the literal `"default"`. A `??` chain would be wrong here: `knownProfile`
@@ -144,7 +148,11 @@ export function draftChatAgent(preferred: string | null | undefined): string | n
 export function draftChatProfile(agentId: string, remembered?: string | null): string | null {
   const project = knownProfile(agentId, remembered);
   if (project !== undefined) return project;
-  return knownProfile(agentId, settings.agent?.defaultProfiles?.[agentId]) ?? null;
+  const chosen = knownProfile(agentId, settings.agent?.defaultProfiles?.[agentId]);
+  if (chosen !== undefined) return chosen;
+  const listed = agentHealthFor(agentId)?.profiles;
+  if (!listed?.length || listed.some((p) => p.id === asProfileId(null))) return null;
+  return asTabProfile(listed[0].id);
 }
 
 /** The account this agent's new sessions start on absent a project's own

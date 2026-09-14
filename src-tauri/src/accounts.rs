@@ -140,12 +140,26 @@ impl Default for AccountsFile {
 
 // --- pure core: the rules, over an explicit file value, with no filesystem ---
 
-/// Every profile for `adapter_id`, default first.
-///
-/// The default is prepended rather than stored, so it is present for an adapter
-/// the user has never touched and cannot go missing from a hand-edited file.
+/// Every profile for `adapter_id`, default first when [`default_present`] says
+/// it exists.
 pub fn profiles_for(file: &AccountsFile, adapter_id: &str) -> Vec<Profile> {
-    let mut out = vec![default_profile_for(file, adapter_id)];
+    let present = crate::agents::find(adapter_id).map_or(true, default_present);
+    profiles_for_with(file, adapter_id, present)
+}
+
+/// [`profiles_for`] with the default's presence passed in.
+///
+/// The default is prepended rather than stored, so it cannot go missing from a
+/// hand-edited file.
+pub fn profiles_for_with(
+    file: &AccountsFile,
+    adapter_id: &str,
+    default_present: bool,
+) -> Vec<Profile> {
+    let mut out = Vec::new();
+    if default_present {
+        out.push(default_profile_for(file, adapter_id));
+    }
     if let Some(added) = file.adapters.get(adapter_id) {
         out.extend(added.iter().cloned());
     }
@@ -293,7 +307,8 @@ pub fn spawn_env(
 ///
 /// `None` and [`DEFAULT_PROFILE_ID`] are the same request and both answer with
 /// no pair, which is the definition of the default profile: the home variable
-/// left unset.
+/// left unset. With the default's home absent that request is an error, since
+/// running with the variable unset would create it.
 ///
 /// An id that names no profile is an **error**, never no pair. Falling back
 /// would start the session on the user's own login while every label around it
@@ -307,7 +322,14 @@ pub fn profile_pair(
 ) -> Result<Option<(String, String)>, String> {
     let id = profile_id.unwrap_or(DEFAULT_PROFILE_ID);
     if id == DEFAULT_PROFILE_ID {
-        return Ok(None);
+        return match absent_default_home(adapter) {
+            None => Ok(None),
+            Some(home) => Err(format!(
+                "{} has no default account: {} does not exist",
+                adapter.label,
+                home.display()
+            )),
+        };
     }
     let accounts = adapter.accounts.as_ref().ok_or_else(|| {
         format!("`{}` declares no accounts, so it has no profile `{id}`", adapter.id)
@@ -365,6 +387,20 @@ pub fn accounts_path() -> PathBuf {
 /// macOS resolves this to `~/Library/Application Support/sway/profiles`.
 pub fn profile_home_root() -> PathBuf {
     dirs::data_dir().unwrap_or_default().join("sway/profiles")
+}
+
+/// Whether the default profile exists: the adapter's `home_default` is on disk.
+///
+/// True for an adapter that declares no `[accounts]` or no `home_default`, since
+/// there is nothing to check. Not read from `CLAUDE_CONFIG_DIR`: discovery,
+/// config files and MCP resolve against `home_default`, so a row admitted by the
+/// variable would describe the wrong account.
+pub fn default_present(adapter: &crate::agents::AgentAdapter) -> bool {
+    absent_default_home(adapter).is_none()
+}
+
+fn absent_default_home(adapter: &crate::agents::AgentAdapter) -> Option<&Path> {
+    adapter.accounts.as_ref()?.home_default.as_deref().filter(|home| !home.exists())
 }
 
 /// Canonicalize a path before it is stored or handed to a agent.
@@ -514,6 +550,8 @@ pub struct AccountsView {
     /// `false` for an adapter with no `logout_args`, which the removal flow has
     /// to say out loud: tokens stay valid until they expire.
     pub can_sign_out: bool,
+    pub default_present: bool,
+    pub default_home: Option<String>,
     pub profiles: Vec<ProfileStatus>,
 }
 
@@ -687,13 +725,17 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
             declared: false,
             can_add: false,
             can_sign_out: false,
+            default_present: true,
+            default_home: None,
             profiles: Vec::new(),
         });
     };
 
     let cached = crate::health::cached_profiles(&adapter_id).await;
     let file = load();
-    let mut profiles: Vec<ProfileStatus> = profiles_for(&file, &adapter_id)
+    // One look at the disk, so the hint and the missing row cannot disagree.
+    let default_on_disk = default_present(&adapter);
+    let mut profiles: Vec<ProfileStatus> = profiles_for_with(&file, &adapter_id, default_on_disk)
         .iter()
         .map(|p| status_of(&adapter, &accounts, p, &cached))
         .collect();
@@ -704,6 +746,8 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
         declared: true,
         can_add: can_add_account(&accounts),
         can_sign_out: !accounts.logout_args.is_empty(),
+        default_present: default_on_disk,
+        default_home: accounts.home_default.as_ref().map(|h| h.to_string_lossy().into_owned()),
         profiles,
     })
 }
@@ -770,8 +814,8 @@ fn mint_profile_id(file: &AccountsFile, adapter_id: &str, label: &str) -> String
     let base = sanitize_segment(&label.to_lowercase());
     let base = base.trim_matches('_');
     let base = if base.is_empty() { "account" } else { base };
-    let taken: Vec<String> =
-        profiles_for(file, adapter_id).into_iter().map(|p| p.id).collect();
+    let stored = file.adapters.get(adapter_id).into_iter().flatten().map(|p| p.id.clone());
+    let taken: Vec<String> = stored.chain([DEFAULT_PROFILE_ID.to_string()]).collect();
     if !taken.iter().any(|id| id == base) {
         return base.to_string();
     }
@@ -943,7 +987,7 @@ mod tests {
     #[test]
     fn the_default_profile_is_present_for_an_adapter_with_no_stored_profiles() {
         let file = AccountsFile::default();
-        let all = profiles_for(&file, "claude");
+        let all = profiles_for_with(&file, "claude", true);
         assert_eq!(all.len(), 1);
         assert!(all[0].is_default());
         assert_eq!(all[0].home, None, "the default profile is the variable left unset");
@@ -963,12 +1007,12 @@ mod tests {
         let mut file = AccountsFile::default();
         rename_profile(&mut file, "claude", DEFAULT_PROFILE_ID, "  Personal  ").unwrap();
 
-        let all = profiles_for(&file, "claude");
+        let all = profiles_for_with(&file, "claude", true);
         assert_eq!(all[0].label, "Personal", "trimmed, and it is the name the user typed");
         assert_eq!(all[0].id, DEFAULT_PROFILE_ID);
         assert_eq!(all[0].home, None, "still the variable left unset");
         // Per adapter: one agent's accounts say nothing about another's.
-        assert_eq!(profiles_for(&file, "codex")[0].label, "Default");
+        assert_eq!(profiles_for_with(&file, "codex", true)[0].label, "Default");
 
         // Back to the built-in name stores nothing, so absent and "Default"
         // stay one answer rather than two.
@@ -1005,7 +1049,8 @@ mod tests {
         let mut file = AccountsFile::default();
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
         add_profile(&mut file, "claude", added("personal", "/tmp/p")).unwrap();
-        let ids: Vec<String> = profiles_for(&file, "claude").into_iter().map(|p| p.id).collect();
+        let ids: Vec<String> =
+            profiles_for_with(&file, "claude", true).into_iter().map(|p| p.id).collect();
         assert_eq!(ids, ["default", "work", "personal"]);
     }
 
@@ -1020,8 +1065,8 @@ mod tests {
     fn profiles_are_per_adapter() {
         let mut file = AccountsFile::default();
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
-        assert_eq!(profiles_for(&file, "claude").len(), 2);
-        assert_eq!(profiles_for(&file, "codex").len(), 1, "codex sees only its default");
+        assert_eq!(profiles_for_with(&file, "claude", true).len(), 2);
+        assert_eq!(profiles_for_with(&file, "codex", true).len(), 1, "codex sees only its default");
     }
 
     /// The Agents table's column: declared adapters count their default plus
@@ -1032,9 +1077,60 @@ mod tests {
         let mut file = AccountsFile::default();
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
         let counts = account_counts(&file);
-        assert_eq!(counts.get("claude"), Some(&2), "default plus one added");
+        let claude_default = crate::agents::find("claude").map_or(true, default_present) as usize;
+        assert_eq!(
+            counts.get("claude"),
+            Some(&(claude_default + 1)),
+            "default where present, plus one added"
+        );
         assert_eq!(counts.get("codex"), Some(&1), "the default alone");
         assert_eq!(counts.get("gemini"), None, "gemini declares no [accounts]");
+    }
+
+    #[test]
+    fn an_absent_default_home_lists_only_the_added_profiles() {
+        let mut file = AccountsFile::default();
+        assert!(profiles_for_with(&file, "claude", false).is_empty());
+        add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
+        let ids: Vec<String> =
+            profiles_for_with(&file, "claude", false).into_iter().map(|p| p.id).collect();
+        assert_eq!(ids, ["work"]);
+    }
+
+    #[test]
+    fn the_default_is_present_exactly_when_its_declared_home_exists() {
+        let root = std::env::temp_dir().join(format!("sway-default-home-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let declaring = |home: PathBuf| {
+            let mut a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
+            a.accounts.as_mut().unwrap().home_default = Some(home);
+            a
+        };
+
+        assert!(default_present(&declaring(root.clone())));
+        assert!(!default_present(&declaring(root.join("missing"))));
+        // Nothing declared to check, which is how Codex and OpenCode keep theirs.
+        assert!(default_present(&adapter_with(Some("CLAUDE_CONFIG_DIR"), true)), "no home_default");
+        assert!(default_present(&crate::agents::test_adapter("x")), "no [accounts]");
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// Running with the home variable unset would create the missing home, so
+    /// the default is refused by name rather than spawned.
+    #[test]
+    fn an_absent_default_home_refuses_the_default_profile() {
+        let missing = std::env::temp_dir().join(format!("sway-no-default-{}", std::process::id()));
+        let mut a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
+        a.accounts.as_mut().unwrap().home_default = Some(missing.clone());
+        let mut file = AccountsFile::default();
+        add_profile(&mut file, "claude", added("fonn", "/canonical/fonn")).unwrap();
+
+        for id in [None, Some(DEFAULT_PROFILE_ID)] {
+            let err = profile_env(&a, &file, id).unwrap_err();
+            assert!(err.contains(&missing.display().to_string()), "{err}");
+        }
+        assert!(profile_env(&a, &file, Some("fonn")).is_ok(), "an added profile still resolves");
     }
 
     #[test]
@@ -1087,7 +1183,7 @@ mod tests {
     fn the_default_profile_is_never_serialized() {
         let mut file = AccountsFile::default();
         add_profile(&mut file, "claude", added("work", "/tmp/w")).unwrap();
-        let _ = profiles_for(&file, "claude");
+        let _ = profiles_for_with(&file, "claude", true);
         let text = serde_json::to_string(&file).unwrap();
         assert!(!text.contains(DEFAULT_PROFILE_ID), "default leaked into the file: {text}");
     }

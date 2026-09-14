@@ -201,7 +201,10 @@ fn check(adapter: &AgentAdapter) -> AgentHealth {
     // Everything else is `Unknown` by construction, which costs no subprocess
     // and never reports a missing agent as signed out.
     let account = match (resolved.as_deref(), adapter.accounts.as_ref()) {
-        (Some(path), Some(accounts)) => crate::auth::whoami(path, accounts, None),
+        // Not while the default home is absent: probing with the variable unset creates it.
+        (Some(path), Some(accounts)) if crate::accounts::default_present(adapter) => {
+            crate::auth::whoami(path, accounts, None)
+        }
         _ => crate::auth::Whoami::default(),
     };
     let profiles = profile_health(adapter, resolved.as_deref(), &account);
