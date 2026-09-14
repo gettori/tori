@@ -8,6 +8,36 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.914.0-alpha
+
+Claude accounts no longer assume `~/.claude`. You can add an account from a
+config folder you already have, and Sway stops creating an empty login on a
+machine that keeps Claude somewhere else.
+
+### Accounts
+
+- Add a Claude account from an existing config folder, like `~/.claude-work`,
+  instead of one Sway makes. The folder has to already hold Claude's files,
+  and if it is already signed in no login tab opens. The default home and a
+  folder that is already added are refused.
+- A Browse button next to the folder field opens a folder picker with hidden
+  folders shown, so dot folders like `~/.claude-work` are pickable.
+- Removing an account made from your own folder only forgets it. Nothing is
+  deleted, and it is signed out only if you ask for that in the same dialog.
+- Sway no longer writes `~/.claude` at launch. Before, the health check, the
+  session watcher and the model probe each created it, so a user who keeps
+  Claude in another folder got an empty login they never asked for.
+- With no `~/.claude` on disk there is no default account: the accounts card
+  says the folder is missing, the first account you add becomes the default,
+  and Claude cannot be turned on with zero accounts.
+
+### Dialogs
+
+- The add account dialog matches its mockup, on a fixed field rhythm with
+  32px controls so Browse and the buttons line up with the fields.
+- Every dialog with buttons gets a hairline above its footer, and the head,
+  body and footer are padded on their own. Dialog titles step down to 16px.
+
 ## 26.913.0-alpha
 
 The right sidebar is rebuilt on VS Code's model: Files, Search and Changes
