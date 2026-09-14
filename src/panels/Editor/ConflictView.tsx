@@ -463,7 +463,7 @@ export default function ConflictView(props: {
     // through to it: the two are one keystroke apart and only one is reversible.
     let text: string | null | undefined;
     if (deleted().length) text = deletion();
-    else if (result) text = result.state.doc.toString();
+    else if (result) text = result.state.sliceDoc();
     else return;
     if (text === null) return;
     // Held across the confirms, not just the write: the dialog is a singleton,
