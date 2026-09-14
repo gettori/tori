@@ -39,6 +39,7 @@ export default function AddAccountDialog(props: {
   return (
     <Dialog
       open
+      class={styles.tallControls}
       title={`New ${props.agentLabel} account`}
       onClose={() => props.onCancel()}
       initialFocus={() => first}
@@ -51,42 +52,46 @@ export default function AddAccountDialog(props: {
         </>
       }
     >
-      <div onKeyDown={onKeyDown}>
-        <div id={NAME_LABEL} class={styles.label}>
-          Name
-        </div>
-        <input
-          ref={first}
-          class={styles.input}
-          aria-labelledby={NAME_LABEL}
-          value={label()}
-          onInput={(e) => setLabel(e.currentTarget.value)}
-        />
-        <div class={styles.msg}>Sway's own label for it. The agent never sees this.</div>
-
-        <div id={FOLDER_LABEL} class={styles.label}>
-          Folder
-        </div>
-        <div class={styles.fieldRow}>
+      <div class={styles.form} onKeyDown={onKeyDown}>
+        <div class={styles.field}>
+          <div id={NAME_LABEL} class={styles.fieldLabel}>
+            Name
+          </div>
           <input
-            class={styles.input}
-            aria-labelledby={FOLDER_LABEL}
-            value={folder()}
-            placeholder="Leave empty for a folder Sway manages"
-            onInput={(e) => setFolder(e.currentTarget.value)}
-            autocapitalize="off"
-            autocorrect="off"
-            spellcheck={false}
+            ref={first}
+            class={styles.fieldInput}
+            aria-labelledby={NAME_LABEL}
+            value={label()}
+            onInput={(e) => setLabel(e.currentTarget.value)}
           />
-          <Show when={props.browse}>
-            <Button disabled={picking()} onClick={() => void browse()}>
-              Browse
-            </Button>
-          </Show>
+          <div class={styles.fieldHint}>Sway's own label for it. The agent never sees this.</div>
         </div>
-        <div class={styles.msg}>
-          {props.agentLabel} keys its login by this exact spelling, so write it the way your shell
-          exports it.
+
+        <div class={styles.field}>
+          <div id={FOLDER_LABEL} class={styles.fieldLabel}>
+            Folder
+          </div>
+          <div class={styles.fieldRow}>
+            <input
+              class={styles.fieldInput}
+              aria-labelledby={FOLDER_LABEL}
+              value={folder()}
+              placeholder="Leave empty for a folder Sway manages"
+              onInput={(e) => setFolder(e.currentTarget.value)}
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck={false}
+            />
+            <Show when={props.browse}>
+              <Button disabled={picking()} onClick={() => void browse()}>
+                Browse
+              </Button>
+            </Show>
+          </div>
+          <div class={styles.fieldHint}>
+            {props.agentLabel} keys its login by this exact spelling, so write it the way your shell
+            exports it.
+          </div>
         </div>
       </div>
     </Dialog>
