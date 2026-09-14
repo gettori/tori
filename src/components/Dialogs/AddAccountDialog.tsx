@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
@@ -10,6 +10,7 @@ const FOLDER_LABEL = "add-account-folder-label";
 
 export default function AddAccountDialog(props: {
   agentLabel: string;
+  browse?: (from: string) => Promise<string | null>;
   onSubmit: (answer: { label: string; folder: string }) => void;
   onCancel: () => void;
 }) {
@@ -18,8 +19,19 @@ export default function AddAccountDialog(props: {
   const submit = () => props.onSubmit({ label: label(), folder: folder() });
   let first: HTMLInputElement | undefined;
 
+  const [picking, setPicking] = createSignal(false);
+  const browse = async () => {
+    setPicking(true);
+    try {
+      const chosen = await props.browse?.(folder());
+      if (chosen) setFolder(chosen);
+    } finally {
+      setPicking(false);
+    }
+  };
+
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key !== "Enter") return;
+    if (e.key !== "Enter" || !(e.target instanceof HTMLInputElement)) return;
     e.preventDefault();
     submit();
   }
@@ -55,16 +67,23 @@ export default function AddAccountDialog(props: {
         <div id={FOLDER_LABEL} class={styles.label}>
           Folder
         </div>
-        <input
-          class={styles.input}
-          aria-labelledby={FOLDER_LABEL}
-          value={folder()}
-          placeholder="Leave empty for a folder Sway manages"
-          onInput={(e) => setFolder(e.currentTarget.value)}
-          autocapitalize="off"
-          autocorrect="off"
-          spellcheck={false}
-        />
+        <div class={styles.fieldRow}>
+          <input
+            class={styles.input}
+            aria-labelledby={FOLDER_LABEL}
+            value={folder()}
+            placeholder="Leave empty for a folder Sway manages"
+            onInput={(e) => setFolder(e.currentTarget.value)}
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck={false}
+          />
+          <Show when={props.browse}>
+            <Button disabled={picking()} onClick={() => void browse()}>
+              Browse
+            </Button>
+          </Show>
+        </div>
         <div class={styles.msg}>
           {props.agentLabel} keys its login by this exact spelling, so write it the way your shell
           exports it.
