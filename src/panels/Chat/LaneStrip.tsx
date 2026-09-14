@@ -3,9 +3,13 @@ import type { Lane } from "./chatStore";
 import agentStyles from "../../components/Icon/agentMarks.module.css";
 import styles from "./Chat.module.css";
 
-/** The row above the composer: `main`, then one lane per subagent still
- *  running. It switches what you read, never what you type: Sway has no channel
- *  to a subagent, so rebinding the composer would promise one. */
+/** Finished lanes show inline up to this many, and fold behind one chip past it. */
+const FOLD_AFTER = 2;
+
+/** The row above the composer: `main`, then the subagents, live ones first and
+ *  finished ones after, folded behind one chip once there are enough of them.
+ *  It switches what you read, never what you type: Sway has no channel to a
+ *  subagent, so rebinding the composer would promise one. */
 export default function LaneStrip(props: {
   lanes: readonly Lane[];
   /** The lane being read, or null for the main agent. */
@@ -36,6 +40,15 @@ export default function LaneStrip(props: {
 
   const mainTone = () => (props.busy ? agentStyles.tint : styles.laneIdle);
 
+  const [showDone, setShowDone] = createSignal(false);
+  const isLive = (l: Lane) => l.status === null || props.blocked.has(l.agentId);
+  const done = () => props.lanes.filter((l) => !isLive(l));
+  const folds = () => done().length > FOLD_AFTER;
+  // The lane being read stays out while folded, or its highlight would vanish
+  // and nothing on the strip would say where you are.
+  const shownDone = () => (folds() && !showDone() ? done().filter((l) => l.agentId === props.selected) : done());
+  const shown = () => [...props.lanes.filter(isLive), ...shownDone()];
+
   createEffect(
     on(
       // Background tasks count as running too. Gated on lanes alone, a chat
@@ -63,9 +76,10 @@ export default function LaneStrip(props: {
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (!digit) return;
       const at = Number(digit[1]) - 1;
-      if (at > props.lanes.length) return;
+      // Numbered as drawn, so a folded lane has no key and a finished one's moves.
+      if (at > shown().length) return;
       e.preventDefault();
-      props.onSelect(at === 0 ? null : props.lanes[at - 1]!.agentId);
+      props.onSelect(at === 0 ? null : shown()[at - 1]!.agentId);
     };
     window.addEventListener("keydown", onKey);
     onCleanup(() => window.removeEventListener("keydown", onKey));
@@ -126,7 +140,17 @@ export default function LaneStrip(props: {
         <Show when={props.lanes.length > 0}>
           <div class={styles.laneGroup} role="group" aria-label="Subagent lanes">
             <Chip lane={null} at={0} />
-            <For each={props.lanes}>{(lane, at) => <Chip lane={lane} at={at() + 1} />}</For>
+            <For each={shown()}>{(lane, at) => <Chip lane={lane} at={at() + 1} />}</For>
+            <Show when={folds()}>
+              <button
+                type="button"
+                class={`${styles.lane} ${styles.laneMore}`}
+                aria-expanded={showDone()}
+                onClick={() => setShowDone(!showDone())}
+              >
+                {showDone() ? "Hide done" : `+${done().length - shownDone().length} done`}
+              </button>
+            </Show>
           </div>
         </Show>
         {/* Its own group with its own name, because the two rows answer
