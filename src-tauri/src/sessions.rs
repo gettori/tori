@@ -3522,9 +3522,11 @@ mod tests {
     #[test]
     /// One adapter ships, so one directory is watched. The count is the claim:
     /// a stale root left behind would make the watcher create and watch a
-    /// directory for an agent that no longer exists.
+    /// directory for an agent that no longer exists. Read with no added accounts,
+    /// since those belong to the machine running the test, not to the adapter.
     fn watch_dirs_covers_every_agent_root() {
-        let dirs = watch_dirs();
+        let dirs: Vec<PathBuf> =
+            discovery_roots(&crate::accounts::AccountsFile::default()).into_iter().map(|r| r.dir).collect();
         assert_eq!(dirs.len(), 1, "one bundled adapter, one watched root: {dirs:?}");
         assert!(dirs[0].ends_with(".claude/projects"));
     }
