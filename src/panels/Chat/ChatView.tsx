@@ -21,7 +21,7 @@ import { draftPick, hasPick, pickRidesArgv, setDraftPick } from "../../utils/cha
 import { turnTokens, usageSummary } from "../../utils/chatUsage";
 import { quotaState, rateLimitFrom, readingsOf, windowSentence } from "../../utils/chatRateLimit";
 import { recordReadings, transitionKey, windowsFor } from "../../utils/usageStore";
-import { usageWarnAt } from "../../utils/usageSettings";
+import { accountWindows, chipFor, usageWarnAt } from "../../utils/usageSettings";
 import {
   approaching,
   breach,
@@ -1451,8 +1451,12 @@ export default function ChatView(props: {
   // One attention notice per window per reset, in this chat. `approaching` only:
   // `reached` has the banner, `expired` and `ok` have nothing to say.
   createEffect(() => {
+    // A window kept off the strip is one the user said they do not want to hear
+    // about, the same rule the OS notification follows.
+    const shown = accountWindows(props.agentId, resolvedProfile());
     for (const w of quotaWindows()) {
       if (w.state !== "approaching") continue;
+      if (!shown.includes(chipFor(w.reading.kind))) continue;
       const key = transitionKey(props.agentId, resolvedProfile(), w.reading.kind, w.reading.resetsAt, "approaching");
       if (said.has(key)) continue;
       const sentence = w.sentence();
