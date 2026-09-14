@@ -145,6 +145,8 @@ describe("the lane strip", () => {
       lane({ agentId: "a3", description: "three", status: "async_launched" }),
     ];
     render(() => strip({ lanes: ended }));
+    // Three finished lanes fold behind one chip, so open it first.
+    fireEvent.click(screen.getByText("+3 done"));
     expect(screen.getByText("failed")).toBeTruthy();
     expect(screen.getByText("cancelled")).toBeTruthy();
     expect(screen.getByText("async_launched")).toBeTruthy();
