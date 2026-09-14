@@ -30,12 +30,14 @@ import {
   DRAG_ABS_PATH_MIME,
   OPEN_JOB,
   NEW_SESSION,
+  NEW_CHAT_AT,
   PURGE_UNDER_PATH,
   TERMINAL_TAB_FOCUSED,
   REMOVE_BRANCH_UNIT,
   type RemoveBranchUnit,
   type OpenJob,
   type NewSession,
+  type NewChatAt,
   type PurgeUnderPath,
   type LiveTab,
   type TerminalTabFocused,
@@ -997,17 +999,16 @@ export default function LeftSidebar(props: {
   // Select a unit inside `project`, reading the tree loadConfig has just
   // re-discovered rather than the caller's copy of it. A plain repo's branch
   // units all share one folder, so callers there match on the branch.
-  function selectUnitIn(project: Project, pick: (u: BranchUnit) => boolean): boolean {
+  function selectUnitIn(project: Project, pick: (u: BranchUnit) => boolean): BranchUnit | undefined {
     for (const g of config()?.spaces ?? []) {
       for (const p of g.projects) {
         if (!samePath(p.path, project.path)) continue;
         const u = p.branchUnits.find(pick);
-        if (!u) return false;
-        void selectUnit(g, p, u);
-        return true;
+        if (u) void selectUnit(g, p, u);
+        return u;
       }
     }
-    return false;
+    return undefined;
   }
 
   // The reverse of a sidebar selection driving the terminal: the user clicked a
@@ -1834,7 +1835,8 @@ export default function LeftSidebar(props: {
       // that unit, the way clicking its row would.
       const folder = await invoke<string>("create_worktree", { repoPath: p.path, branch });
       await loadConfig();
-      selectUnitIn(p, (u) => samePath(u.folderPath, folder));
+      const unit = selectUnitIn(p, (u) => samePath(u.folderPath, folder));
+      if (unit) emitWith<NewChatAt>(NEW_CHAT_AT, { folderPath: unit.folderPath, projectName: p.name });
     } catch (e) {
       setError(String(e));
     }

@@ -28,6 +28,7 @@ import {
   OPEN_SHELL_AT,
   type OpenShellAt,
   NEW_SESSION,
+  NEW_CHAT_AT,
   PURGE_UNDER_PATH,
   PURGE_WORKSPACE,
   type PurgeWorkspace,
@@ -43,6 +44,7 @@ import {
   TERMINAL_TAB_FOCUSED,
   type OpenTerminal,
   type NewSession,
+  type NewChatAt,
   type PurgeUnderPath,
   type LiveTab,
   type SendToSession,
@@ -947,6 +949,7 @@ export default function Terminal(props: {
 
   let offOpenTerminal: (() => void) | undefined;
   let offNewSession: (() => void) | undefined;
+  let offNewChatAt: (() => void) | undefined;
   let offOpenJob: (() => void) | undefined;
   let offRevealDock: (() => void) | undefined;
   let offNewDockShell: (() => void) | undefined;
@@ -1000,6 +1003,15 @@ export default function Terminal(props: {
     // Spawns at the named folder, with no props.selected timing dependency.
     offNewSession = onWith<NewSession>(NEW_SESSION, (s) => {
       spawnSession(s.agent ?? "claude", s.folderPath, s.projectName, false);
+    });
+    offNewChatAt = onWith<NewChatAt>(NEW_CHAT_AT, async ({ folderPath, projectName }) => {
+      // A reused worktree folder can have stored tabs coming back, and those
+      // win: a draft is only for a strip that would otherwise sit empty.
+      await stripReady(folderPath);
+      if (tabsIn(folderPath).length) return;
+      const agent = draftAgent(folderPath);
+      if (!agent) return;
+      openChatDraft(folderPath, folderPath, projectName, agent, draftProfile(folderPath, agent));
     });
     // A tab whose process ends (the user typed `exit`, a task finished) is
     // closed. Agent-exit within a live shell fires no event. A command tab's
@@ -1058,6 +1070,7 @@ export default function Terminal(props: {
   onCleanup(() => {
     offOpenTerminal?.();
     offNewSession?.();
+    offNewChatAt?.();
     offOpenJob?.();
     offRevealDock?.();
     offNewDockShell?.();
