@@ -78,6 +78,7 @@ const ADAPTERS = [
     running_pattern: null,
     pty_quiet_ms: 2000,
     chat,
+    usage: { sources: ["sessions"] },
   },
 ];
 
