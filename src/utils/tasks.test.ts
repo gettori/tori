@@ -53,9 +53,16 @@ const JUSTFILE = [
 describe("package.json scripts", () => {
   it("runs each script with the project's own package manager", () => {
     expect(parsePackageScripts(PKG, "pnpm")).toEqual([
-      { id: "npm:dev", name: "dev", source: "npm", command: "pnpm run dev" },
-      { id: "npm:test:watch", name: "test:watch", source: "npm", command: "pnpm run test:watch" },
-      { id: "npm:build", name: "build", source: "npm", command: "pnpm run build" },
+      { id: "npm:dev", name: "dev", source: "npm", command: "pnpm run dev", file: "package.json", line: 1 },
+      {
+        id: "npm:test:watch",
+        name: "test:watch",
+        source: "npm",
+        command: "pnpm run test:watch",
+        file: "package.json",
+        line: 1,
+      },
+      { id: "npm:build", name: "build", source: "npm", command: "pnpm run build", file: "package.json", line: 1 },
     ]);
   });
 
@@ -91,7 +98,7 @@ describe("Makefile targets", () => {
 
   it("runs one with make", () => {
     expect(parseMakeTargets("build:\n\tcc x.c")).toEqual([
-      { id: "make:build", name: "build", source: "make", command: "make build" },
+      { id: "make:build", name: "build", source: "make", command: "make build", file: "Makefile", line: 1 },
     ]);
   });
 
@@ -119,7 +126,7 @@ describe("justfile recipes", () => {
 
   it("runs one with just", () => {
     expect(parseJustRecipes("build:\n    cargo build")).toEqual([
-      { id: "just:build", name: "build", source: "just", command: "just build" },
+      { id: "just:build", name: "build", source: "just", command: "just build", file: "justfile", line: 1 },
     ]);
   });
 

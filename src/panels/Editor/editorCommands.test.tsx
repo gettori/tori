@@ -223,11 +223,11 @@ describe("commands the editor answers", () => {
     });
     fireEvent.click(screen.getByText("OK"));
 
-    // The palette's one-line prompt never amends, and says so rather than
-    // leaving the flag off the payload for the backend to default.
+    // The palette's one-line prompt never amends or signs off, and says so
+    // rather than leaving the flags off the payload for the backend to default.
     await waitFor(() =>
       expect(invokedWith("git_commit")).toEqual([
-        { projectPath: REPO, message: "Say what changed", amend: false },
+        { projectPath: REPO, message: "Say what changed", amend: false, signoff: false },
       ]),
     );
   });
@@ -274,7 +274,7 @@ describe("commands the editor answers", () => {
 
     await waitFor(() =>
       expect(invokedWith("git_commit")).toEqual([
-        { projectPath: MEMBER_B, message: "Say what changed", amend: false },
+        { projectPath: MEMBER_B, message: "Say what changed", amend: false, signoff: false },
       ]),
     );
   });
