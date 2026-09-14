@@ -858,6 +858,12 @@ export default function AgentAccounts(props: {
     }
   };
 
+  const browseFolder = (from: string) =>
+    invoke<string | null>("pick_account_folder", { defaultPath: from.trim() || null }).catch((e) => {
+      toast(String(e), "error");
+      return null;
+    });
+
   const add = async () => {
     const ask = await askAccount();
     const label = ask?.label.trim();
@@ -958,6 +964,7 @@ export default function AgentAccounts(props: {
           <Show when={accountReq()}>
             <AddAccountDialog
               agentLabel={props.agentLabel}
+              browse={browseFolder}
               onSubmit={(v) => resolveAccount(v)}
               onCancel={() => resolveAccount(null)}
             />

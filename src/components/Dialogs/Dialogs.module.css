@@ -114,6 +114,10 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+.fieldRow {
+  display: flex;
+  gap: calc(8px * var(--ui-scale));
+}
 
 /* ---- Icon picker contents (SpaceDialog) ----
    The tiles and their layout moved to `IconGrid` with #109; what stays here is
