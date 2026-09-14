@@ -5,6 +5,7 @@ import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import Chevron from "../../../../components/Chevron/Chevron";
 import ConfirmDialog from "../../../../components/Dialogs/ConfirmDialog";
+import Tooltip from "../../../../components/Tooltip/Tooltip";
 import {
   COMPOSE_DRAFT,
   OPEN_IN_EDITOR,
@@ -230,30 +231,33 @@ function FileRow(props: {
               <For each={e().children}>
                 {(child) => (
                   <span class={styles.fileKid}>
-                    <button
+                    <Tooltip
+                      as="button"
                       type="button"
                       class={styles.fileKidOpen}
                       disabled={!rooted() || child.path === null}
-                      title={
+                      label={
                         child.path === null
                           ? `No ${e().label.toLowerCase()} file in ${child.name}`
                           : (rooted() ? undefined : NO_ROOT)
                       }
+                      whenDisabled
                       onClick={() => child.path && openPath(child.path)}
                     >
                       {child.name}
-                    </button>
+                    </Tooltip>
                     {/* Removing needs no project, unlike everything that opens
                         a tab: it touches disk and nothing else. */}
-                    <button
+                    <Tooltip
+                      as="button"
                       type="button"
                       class={styles.fileKidDrop}
                       aria-label={`Remove ${child.name}`}
-                      title={`Remove ${child.name}`}
+                      label={`Remove ${child.name}`}
                       onClick={() => setDoomed(child)}
                     >
                       <Icon icon={X} />
-                    </button>
+                    </Tooltip>
                   </span>
                 )}
               </For>

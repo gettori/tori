@@ -61,9 +61,9 @@ export default function DiffBufferView(props: {
 
   function load() {
     if (!view) return;
-    const doc = view.state.doc.toString();
+    const doc = view.state.sliceDoc();
     view.dispatch({
-      changes: doc === props.text ? undefined : { from: 0, to: doc.length, insert: props.text },
+      changes: doc === props.text ? undefined : { from: 0, to: view.state.doc.length, insert: props.text },
       effects: setDiffHunks.of({ hunks: props.hunks, language }),
     });
     placeBlame();
