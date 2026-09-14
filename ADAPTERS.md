@@ -202,7 +202,7 @@ serve_client_fs = false   # optional, default false; advertise Sway's filesystem
 [accounts]
 home_env = "..."            # optional; the env var pointing the agent at an isolated profile home
 home_default = "~/..."      # optional; where home_env points when unset - required with isolation + [discovery]
-home_markers = []           # optional; names a folder must already hold to be added as an account
+home_markers = []           # optional; names a non-empty folder must already hold to be added as an account
 login_args = []             # optional; args that start an interactive login, run in a real PTY
 logout_args = []            # optional; args that sign the profile out
 whoami_args = []            # optional; bounded, non-interactive "who is signed in here" probe
@@ -359,9 +359,10 @@ for one.
 **`home_markers` guards adding a folder the user already has.** An account can
 point at an existing home instead of one Sway creates. The sign-in probe that
 runs when it is added writes into whatever folder it is given, so the folder
-must already hold one of these names or it is refused before anything runs in
-it. An adapter that declares none cannot adopt a folder. Sway never deletes an
-adopted folder: removing that account only forgets it.
+must be empty or already hold one of these names, or it is refused before
+anything runs in it. An empty folder is signed in to like one Sway created. An
+adapter that declares none cannot adopt a folder. Sway never deletes an adopted
+folder: removing that account only forgets it.
 
 ### The `[usage]` table
 
