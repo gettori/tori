@@ -1200,6 +1200,20 @@ impl ClaudeMapper {
             TurnOutcome::Errored
         };
 
+        let mut out = Vec::new();
+        // The reason is only on this frame: claude never streams its synthetic
+        // error message (a 401, "Please run /login"), so without this an auth
+        // failure ends the turn with nothing on screen.
+        if matches!(outcome, TurnOutcome::Errored) {
+            if let Some(reason) = frame["result"].as_str().map(str::trim).filter(|r| !r.is_empty()) {
+                out.push(ChatEvent::SessionError {
+                    session_id: self.session_id.clone(),
+                    message: reason.to_string(),
+                    fatal: false,
+                });
+            }
+        }
+
         let mut extra = Extra::new();
         for (key, name) in [
             ("ttft_ms", "ttftMs"),
@@ -1213,7 +1227,7 @@ impl ClaudeMapper {
             }
         }
 
-        vec![ChatEvent::TurnCompleted {
+        out.push(ChatEvent::TurnCompleted {
             session_id: self.session_id.clone(),
             turn_id: self.turn_id(),
             outcome,
@@ -1225,7 +1239,8 @@ impl ClaudeMapper {
             cost_usd: frame["total_cost_usd"].as_f64(),
             permission_denials: denials(&frame["permission_denials"]),
             extra,
-        }]
+        });
+        out
     }
 }
 
