@@ -298,7 +298,7 @@ pub async fn usage_token_claude(profile: Option<String>) -> Result<TokenReading,
         // The chip is the opt-in, so the gate is whether this account asked for
         // the window only this read can answer. Anything else is `Off`, which
         // returns before the vault is touched.
-        let source = if crate::settings::wants_model_window("claude", &id) {
+        let source = if crate::settings::wants_token_window("claude", &id) {
             UsageSource::Token
         } else {
             UsageSource::Off

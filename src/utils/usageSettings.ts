@@ -107,8 +107,13 @@ export function showsWindow(agentId: string, profile: string | null, chip: Windo
 /** Whether this account has ever answered on the token rung. Evidence that the
  *  Keychain item was opened, not that the number is current: a reading kept from
  *  before a restart still proves the permission was given. */
-function tokenAlreadyRead(agentId: string, profile: string | null): boolean {
+export function tokenAlreadyRead(agentId: string, profile: string | null): boolean {
   return windowsFor(agentId, profile).some((w) => w.source === "token");
+}
+
+/** The chips only the account token can answer. */
+export function needsToken(chip: WindowChip): boolean {
+  return chip === "model_week" || chip === "week_other";
 }
 
 /**
@@ -128,7 +133,7 @@ export function usageRungFor(agentId: string, profile: string | null): UsageSour
   const rungs = declaredRungs(agentId);
   const windows = accountWindows(agentId, profile);
   if (rungs.length === 0 || windows.length === 0) return "off";
-  const deep = windows.some((w) => w === "model_week" || w === "week_other");
+  const deep = windows.some(needsToken);
   if (rungs.includes("token") && (deep || tokenAlreadyRead(agentId, profile))) {
     return "token";
   }

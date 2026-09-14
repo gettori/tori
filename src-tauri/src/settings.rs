@@ -565,6 +565,10 @@ pub enum UsageSource {
 /// to exist before that read to authorise it.
 pub const MODEL_WEEK: &str = "model_week";
 
+/// The chip for a weekly window scoped to something other than a model, which
+/// only the account token can answer too.
+pub const WEEK_OTHER: &str = "week_other";
+
 /// One account's answer about its own quota.
 ///
 /// Every field is optional and every absence carries a meaning. No `windows` is
@@ -592,20 +596,21 @@ pub struct UsageSettings {
     pub accounts: std::collections::BTreeMap<String, AccountUsage>,
 }
 
-/// Whether this account asked for the model-scoped weekly window.
+/// Whether this account asked for a weekly window only the account token can
+/// answer.
 ///
 /// The gate on the one read that opens the login Keychain, asked here rather
 /// than trusted from the frontend: the custody exemption rests on the vault not
 /// being touched until the user has said so, and a settings file is the only
 /// record of them saying it.
-pub fn wants_model_window(agent: &str, profile_id: &str) -> bool {
+pub fn wants_token_window(agent: &str, profile_id: &str) -> bool {
     get_settings()
         .agent
         .usage
         .get(agent)
         .and_then(|u| u.accounts.get(profile_id))
         .and_then(|a| a.windows.as_ref())
-        .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK))
+        .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK || k == WEEK_OTHER))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -1315,7 +1320,7 @@ mod tests {
     /// settings file rather than of the caller, because the custody exemption
     /// rests on the vault staying shut until the user has said otherwise.
     #[test]
-    fn only_a_stored_model_week_chip_asks_for_the_token_read() {
+    fn only_a_token_week_chip_asks_for_the_token_read() {
         let mut u = UsageSettings::default();
         u.accounts.insert(
             "default".into(),
@@ -1325,7 +1330,7 @@ mod tests {
             u.accounts
                 .get(id)
                 .and_then(|a| a.windows.as_ref())
-                .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK))
+                .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK || k == WEEK_OTHER))
         };
         assert!(!asked(&u, "default"), "the five-hour chip is not consent to a vault read");
         assert!(!asked(&u, "work"), "an account with no entry has asked for nothing");
@@ -1338,6 +1343,12 @@ mod tests {
             },
         );
         assert!(asked(&u, "default"));
+
+        u.accounts.insert(
+            "default".into(),
+            AccountUsage { windows: Some(vec![WEEK_OTHER.into()]), ..Default::default() },
+        );
+        assert!(asked(&u, "default"), "the other week is answered by the token too");
     }
 
     /// A file written before the key existed loads with an empty map rather
