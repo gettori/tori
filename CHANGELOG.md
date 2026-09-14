@@ -8,6 +8,14 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.914.2-alpha
+
+- A new Claude account can use an empty folder. Adding an account from a folder
+  used to require Claude's files already in it, so a fresh folder was refused.
+  An empty one (a lone `.DS_Store` counts) now goes through the normal login
+  tab. A folder holding other files and none of Claude's is still refused, so
+  the sign-in never writes into something else.
+
 ## 26.914.1-alpha
 
 A project can limit which agents run in it, a new worktree opens straight onto
