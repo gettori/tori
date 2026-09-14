@@ -15,6 +15,8 @@ import InitGitDialog from "../../components/Dialogs/InitGitDialog";
 import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/NewProjectDialog";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
 import ProjectIconDialog from "../../components/Dialogs/ProjectIconDialog";
+import ProjectAgentsDialog, { ruleRows } from "../../components/Dialogs/ProjectAgentsDialog";
+import { projectRows, setProjectRows } from "../../utils/projectAgents";
 import { pushToast, type ToastAction } from "../../components/Toasts/Toasts";
 import Button from "../../components/Button/Button";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
@@ -666,6 +668,7 @@ export default function LeftSidebar(props: {
   // icon fields, so a re-discovery while the dialog is open cannot leave the
   // picker showing a state the tree has already moved past.
   const [iconReq, setIconReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
+  const [agentsReq, setAgentsReq] = createSignal<Project | null>(null);
 
   // Drag-to-reorder state for the root space tiles (pinned spaces don't reorder).
   // `dragSpace` is the name being dragged; `dropHint` marks the tile the drop
@@ -2108,6 +2111,9 @@ export default function LeftSidebar(props: {
       ...kind,
       // No leading separator on a menu whose kind contributed nothing.
       ...(kind.length ? [{ separator: true } as MenuItem] : []),
+      ...(ruleRows(projectRows(p.path)).length > 1 || projectRows(p.path).length
+        ? [{ label: "Agents\u2026", onClick: () => setAgentsReq(p) }]
+        : []),
       { label: "Change icon…", onClick: () => setIconReq({ p, busy: false }) },
     ];
   };
@@ -3390,6 +3396,22 @@ export default function LeftSidebar(props: {
           onPickFile={pickIconFile}
           onCancel={() => setIconReq(null)}
         />
+      </Show>
+
+      <Show when={agentsReq()}>
+        {(p) => (
+          <ProjectAgentsDialog
+            projectName={p().name}
+            rows={ruleRows(projectRows(p().path))}
+            allowed={projectRows(p().path)}
+            onConfirm={(rows) =>
+              void setProjectRows(p().path, rows)
+                .then(() => setAgentsReq(null))
+                .catch((e) => setError(String(e)))
+            }
+            onCancel={() => setAgentsReq(null)}
+          />
+        )}
       </Show>
 
       <Show when={spaceReq()}>

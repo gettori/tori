@@ -499,6 +499,15 @@ pub struct EditorPrefs {
     pub format_on_save: Option<bool>,
 }
 
+/// One row of the chat palette: an agent, and one of its accounts.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentRow {
+    pub agent: String,
+    /// The stored spelling, so the user's own login is the literal `"default"`.
+    pub profile: String,
+}
+
 /// The agent binaries this install drives.
 ///
 /// An override wins over discovery. Empty means "use the discovered one",
@@ -646,6 +655,11 @@ pub struct Settings {
     /// Keyed by project path, same shape and same reason as `chat`.
     #[serde(default)]
     pub editor: std::collections::HashMap<String, EditorPrefs>,
+    /// The palette rows each project allows, keyed by project path; no entry
+    /// allows every row. Removing an account leaves its row in place, so a
+    /// project that allowed only that one refuses rather than opens up.
+    #[serde(default)]
+    pub project_agents: std::collections::HashMap<String, Vec<AgentRow>>,
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
