@@ -954,6 +954,15 @@ export function backgroundTasks(s: ChatState): Lane[] {
   return Object.values(s.lanes).filter((l) => !isSubagent(l) && l.status === null);
 }
 
+/** Work this chat started that has not finished: its running subagent lanes and
+ *  its backgrounded tasks, counted the way the lane strip draws them. */
+export function outstandingBackground(s: ChatState): { agents: number; tasks: number } {
+  return {
+    agents: laneStrip(s).filter((l) => l.status === null).length,
+    tasks: backgroundTasks(s).length,
+  };
+}
+
 /** A lane opened by an id alone (a permission prompt beating `task_started`)
  *  has no type yet, and is a subagent by construction: nothing else on this
  *  channel asks the user anything. */
@@ -2008,6 +2017,10 @@ export function chatStatus(s: ChatState): SessionStatus {
   // would sit there unnoticed until someone wondered why it never finished.
   if (s.budgetStopped) return "budgetStopped";
   if (isRunning(s)) return "executing";
+  // The turn is over but what it started is not, and the folder is still
+  // changing, so this must not read as idle.
+  const background = outstandingBackground(s);
+  if (background.agents || background.tasks) return "waitingOnBackground";
   // A ready child that has not run a turn is idle, not busy: the spinner
   // covers only the genuine gap between spawn and the answered handshake.
   return s.started || s.ready ? "idle" : "running";

@@ -11,6 +11,10 @@ import type { SessionDot, StatusCertainty } from "./sessionDot";
 
 export type SessionStatus =
   | "executing"
+  /** The parent's turn is over, but subagents or backgrounded tasks it started
+   *  are still running. Counted as working wherever work matters (rollups, the
+   *  revert guard, the tab pulse), because the folder is still changing. */
+  | "waitingOnBackground"
   /** Blocked on a permission prompt. */
   | "waitingForApproval"
   /** Blocked on a question the agent asked (AskUserQuestion and its kin).
@@ -31,6 +35,7 @@ export type SessionStatus =
 
 export const STATUS_LABEL: Record<Exclude<SessionStatus, "none">, string> = {
   executing: "Executing",
+  waitingOnBackground: "Waiting on background work",
   waitingForApproval: "Waiting for approval",
   waitingForAnswer: "Waiting for an answer",
   budgetStopped: "Stopped: budget reached",
@@ -54,8 +59,8 @@ export const STATUS_LABEL: Record<Exclude<SessionStatus, "none">, string> = {
 export function statusPresentation(
   status: Exclude<SessionStatus, "none">,
   certainty: StatusCertainty,
+  label: string = STATUS_LABEL[status],
 ): { title: string; exact: boolean } {
-  const label = STATUS_LABEL[status];
   return certainty === "exact" ? { title: `${label} (measured)`, exact: true } : { title: label, exact: false };
 }
 
@@ -94,9 +99,23 @@ export function blockedOnUser(status: SessionStatus): boolean {
   return awaitingUser(status) || status === "budgetStopped";
 }
 
+/** Is work still going on in this session's folder? Stated once so the rollups,
+ *  the revert guard and the tab pulse agree on it. */
+export function isWorking(status: SessionStatus): boolean {
+  return status === "executing" || status === "waitingOnBackground";
+}
+
+/** Outstanding background work in the words a status line uses, e.g.
+ *  `Waiting: 2 agents, 1 task`. */
+export function backgroundLabel(counts: { agents: number; tasks: number }): string {
+  const part = (n: number, word: string) => (n ? `${n} ${word}${n === 1 ? "" : "s"}` : null);
+  return `Waiting: ${[part(counts.agents, "agent"), part(counts.tasks, "task")].filter(Boolean).join(", ")}`;
+}
+
 export function dotFromStatus(status: SessionStatus): SessionDot {
   switch (status) {
     case "executing":
+    case "waitingOnBackground":
       return "working";
     case "waitingForApproval":
     case "waitingForAnswer":
@@ -146,7 +165,7 @@ export function rollupStatuses(sessions: { status: SessionStatus }[]): Rollup {
   for (const s of sessions) {
     if (s.status === "waitingForApproval") r.waitingForApproval++;
     else if (s.status === "waitingForAnswer") r.waitingForAnswer++;
-    else if (s.status === "executing") r.executing++;
+    else if (isWorking(s.status)) r.executing++;
     else if (s.status === "idle") r.idle++;
     else if (s.status === "running") r.running++;
   }

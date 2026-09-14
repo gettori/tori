@@ -92,7 +92,7 @@ import {
   applyTemplate,
 } from "../../utils/agents";
 import { BLOCKED_REASON, sanitizeForSend, bracketedPaste, sendWithProbeGate, type ProbeState } from "../../utils/safeSend";
-import { awaitingUser, blockedOnUser, type SessionStatus } from "../../utils/sessionStatus";
+import { awaitingUser, blockedOnUser, isWorking, type SessionStatus } from "../../utils/sessionStatus";
 import type { StatusCertainty } from "../../utils/sessionDot";
 import { liveSessionStatuses, sessionStatus } from "../../utils/sessionActivity";
 import { sessions } from "../../utils/sessionStore";
@@ -2074,7 +2074,7 @@ export default function Terminal(props: {
       closeId(id);
       return;
     }
-    const busy = (t.kind === "chat" || t.kind === "agent") && tabStatus(t) === "executing";
+    const busy = (t.kind === "chat" || t.kind === "agent") && isWorking(tabStatus(t) ?? "none");
     if (busy) {
       const ok = await askConfirm({
         title: `${tabTitle(t)} is still working.`,
@@ -2098,6 +2098,10 @@ export default function Terminal(props: {
     if (t.kind !== "chat") return null;
     return liveChats().find((c) => c.tabId === t.id)?.status ?? null;
   }
+
+  /** What a chat tab's background work is, for its mark's tooltip. */
+  const chatBackground = (t: OpenTerm) =>
+    t.kind === "chat" ? liveChats().find((c) => c.tabId === t.id)?.background : undefined;
 
   /** Does this tab host a session at all? Shell and command tabs do not, and
    *  get no mark rather than a resting one for a session they will never have. */
@@ -2494,7 +2498,12 @@ export default function Terminal(props: {
     icon: (u) => {
       const t = asTerm(u);
       const mark = marksSession(t) ? (
-        <TabMark agentId={t.program} status={tabStatus(t)} certainty={tabCertainty(t)} />
+        <TabMark
+          agentId={t.program}
+          status={tabStatus(t)}
+          certainty={tabCertainty(t)}
+          background={chatBackground(t)}
+        />
       ) : undefined;
       const m = tabMember(t.cwd);
       // Still undefined outside a Feature, so a plain shell keeps the bare label

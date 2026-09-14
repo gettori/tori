@@ -26,7 +26,7 @@
 // nothing. Executing is now judged on the status alone, whatever tier produced
 // it.
 import { isUnderPath } from "./pathScope";
-import type { SessionStatus } from "./sessionStatus";
+import { isWorking, type SessionStatus } from "./sessionStatus";
 
 export type RevertCandidate = {
   sessionId: string;
@@ -75,7 +75,7 @@ export function revertBlockers(candidates: readonly RevertCandidate[], folderPat
     // that reported it without a live tab fell through both branches and
     // blocked nothing at all. A session we can see is mid-turn is a hard block
     // however we came to see it.
-    if (c.status === "executing") {
+    if (isWorking(c.status)) {
       blockers.push({
         sessionId: c.sessionId,
         sessionName: c.sessionName,
@@ -106,7 +106,7 @@ export function revertGuard(
       allow: false,
       overridable: false,
       blockers,
-      reason: `${nameList(executing)} ${executing.length === 1 ? "is" : "are"} running a turn right now. Wait for it to finish before reverting.`,
+      reason: `${nameList(executing)} ${executing.length === 1 ? "is" : "are"} still working. Wait for it to finish before reverting.`,
     };
   }
   const detached = blockers.filter((b) => b.kind === "detached");

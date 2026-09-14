@@ -23,6 +23,8 @@ export type LiveChat = {
   folderPath: string;
   tabId: string;
   status: SessionStatus;
+  /** What a `waitingOnBackground` chat is waiting on, for its tab's tooltip. */
+  background?: { agents: number; tasks: number };
   /** Is this chat the tab currently on screen? Read by presence: an approval
    *  that blocks in the chat you are watching does not need an OS notification
    *  telling you about it. The sidebar selection cannot answer this - a chat
