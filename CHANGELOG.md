@@ -8,6 +8,47 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## 26.914.1-alpha
+
+A project can limit which agents run in it, a new worktree opens straight onto
+a chat draft, and a Claude turn that fails now says why.
+
+### Chat
+
+- Creating a worktree from the sidebar opens a chat draft in it, so it no
+  longer lands on an empty tab strip. A reused worktree folder with tabs coming
+  back keeps those instead.
+- A Claude turn that fails on auth shows the reason. The CLI sends it only in
+  the final result and never streams it, so the turn used to end with nothing
+  on screen.
+- When a Claude process dies, its message keeps the reason from stderr instead
+  of sometimes losing it to a race with stdout closing.
+- A chat stays working while its subagents and background tasks run, and says
+  it is waiting on background work, instead of looking finished.
+- Subagent lanes put live ones first, and past two finished ones the rest fold
+  behind a `+N done` chip. The lane you are reading stays visible when folded.
+- The transcript scrolls with the wheel anywhere in the pane, gutters included,
+  not just over the centred column.
+
+### Agents and accounts
+
+- A project row's menu has Agents..., to allow only the agents and accounts you
+  name in that project. Worktrees inside the repo share its rule, and anything
+  else shows as not allowed in this project.
+- Claude's Keychain item is read through `/usr/bin/security`, which the item
+  already trusts, so macOS stops asking for access after every rebuild.
+- Every account on an agent offers the same usage chips, and a second
+  account's titlebar row draws all the windows you chose for it unless the
+  topbar is narrow.
+- The chat's quota notice only speaks for windows the account shows, so the
+  overage window no longer warns alongside the weekly one when its chip is off.
+
+### Fixes
+
+- Keeping a shared file in a worktree that git does not list now moves it back
+  properly instead of leaving the link behind.
+- The commit target chips have names for screen readers.
+
 ## 26.914.0-alpha
 
 Claude accounts no longer assume `~/.claude`. You can add an account from a
