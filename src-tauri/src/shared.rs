@@ -439,9 +439,14 @@ pub fn shared_keep_in(container: String, worktree: String, name: String) -> Resu
             dropped += 1;
         }
     }
+    let dest = w.join(name);
+    // A worktree git does not list keeps its link through the loop, and the
+    // guard below would take that link for a file of its own.
+    if link_state(&w, &shared, name) == LinkState::Linked {
+        std::fs::remove_file(&dest).map_err(|e| e.to_string())?;
+    }
     // Its link is gone by now, so anything still here is the worktree's own and
     // the move would silently replace it.
-    let dest = w.join(name);
     if dest.symlink_metadata().is_ok() {
         return Err(format!("{} already has its own \"{name}\".", basename(&w)));
     }
