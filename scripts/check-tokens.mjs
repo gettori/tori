@@ -701,6 +701,8 @@ if (filterProblems.length > 0) {
 // silently left the palette's heading two steps smaller, and nothing failed.
 // The margin is deliberately not compared: the heading sits inside the dialog's
 // *body*, which is a plain scroller, so it needs a margin the head does not.
+// Nor is the size: #181 took dialog titles to 16px and left the palette's
+// heading at 18px on purpose.
 const valueOf = (rules, selector, property) => {
   for (const rule of rules.filter((r) => r.selectors.includes(selector))) {
     const m = rule.body.match(new RegExp(`(?:^|;)\\s*${property}\\s*:([^;]+)`));
@@ -710,7 +712,7 @@ const valueOf = (rules, selector, property) => {
 };
 
 // What a dialog title *is*, as opposed to where it sits.
-const TITLE_RECIPE = ["font-size", "line-height", "font-weight", "color"];
+const TITLE_RECIPE = ["line-height", "font-weight", "color"];
 const titleProblems = [];
 const dialogRules = cssRules(dialogSource);
 for (const property of TITLE_RECIPE) {
