@@ -193,19 +193,14 @@
 .list {
   flex: 1;
   min-height: 0;
-  /* A measure, not a container: long prose is unreadable at pane width, so the
-     transcript and the composer share one centred column while the status strip
-     above them stays edge to edge. */
-  width: 100%;
-  max-width: var(--chat-measure);
-  margin-inline: auto;
   overflow-y: auto;
   overscroll-behavior: contain;
-  /* Asymmetric on purpose: assistant prose starts at the left edge and wants the
-     wider margin, while the right side holds the prompt bubbles and the
-     scrollbar, which read better tucked in tighter. */
-  padding: calc(12px * var(--ui-scale)) calc(12px * var(--ui-scale))
-    calc(12px * var(--ui-scale)) calc(24px * var(--ui-scale));
+  /* The scroller spans the pane so the wheel works over the gutters too, and the
+     centred column the composer shares is held by the gutter in the padding.
+     Asymmetric on purpose: prose wants the wider left margin, bubbles the right. */
+  padding-block: calc(12px * var(--ui-scale));
+  padding-left: calc(max(0px, (100% - var(--chat-measure)) / 2) + 24px * var(--ui-scale));
+  padding-right: calc(max(0px, (100% - var(--chat-measure)) / 2) + 12px * var(--ui-scale));
   display: flex;
   flex-direction: column;
   gap: calc(12px * var(--ui-scale));
