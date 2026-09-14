@@ -1,6 +1,6 @@
 [package]
 name = "sway"
-version = "26.913.0-alpha"
+version = "26.914.0-alpha"
 description = "Dev workflow manager: session tree + Claude terminal + editor"
 authors = ["skarif"]
 edition = "2021"
