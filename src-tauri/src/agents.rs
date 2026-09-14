@@ -512,6 +512,10 @@ pub struct AccountsConfig {
     /// the frontend scans nothing.
     #[serde(skip)]
     pub home_default: Option<PathBuf>,
+    /// Names a folder must already hold before it can be added as an account:
+    /// the sign-in probe writes into whatever it is pointed at.
+    #[serde(skip)]
+    pub home_markers: Vec<String>,
     /// Args that start an interactive login. Run in a real PTY tab, never
     /// captured: measured in Phase 0, `claude auth login` is browser OAuth with
     /// no non-interactive variant, so anything that tried to complete a login
@@ -829,6 +833,8 @@ struct AccountsToml {
     #[serde(default)]
     home_default: Option<String>,
     #[serde(default)]
+    home_markers: Vec<String>,
+    #[serde(default)]
     login_args: Vec<String>,
     #[serde(default)]
     logout_args: Vec<String>,
@@ -942,7 +948,7 @@ fn default_needs_you() -> bool {
     true
 }
 
-fn expand_tilde(path: &str) -> PathBuf {
+pub(crate) fn expand_tilde(path: &str) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
             return home.join(rest);
@@ -1224,6 +1230,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
             Ok(AccountsConfig {
                 home_env: a.home_env,
                 home_default: a.home_default.as_deref().map(expand_tilde),
+                home_markers: a.home_markers,
                 login_args: a.login_args,
                 logout_args: a.logout_args,
                 whoami_args: a.whoami_args,

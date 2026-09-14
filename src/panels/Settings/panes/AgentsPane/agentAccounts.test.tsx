@@ -56,6 +56,7 @@ const profile = (over: Record<string, unknown> = {}) => ({
   label: "Default",
   isDefault: true,
   home: null,
+  managed: false,
   signIn: "signedIn",
   account: "a@b.c",
   apiKeySource: null,
@@ -379,7 +380,7 @@ describe("signing in", () => {
 
     fireEvent.click(getByRole("button", { name: /Add account/ }));
     // The modal portals out of the component's own container.
-    const input = await waitFor(() => screen.getByRole("textbox"));
+    const input = await waitFor(() => screen.getByRole("textbox", { name: "Name" }));
     fireEvent.input(input, { target: { value: "Work" } });
     fireEvent.click(screen.getByText("Create and sign in"));
 
@@ -435,7 +436,7 @@ describe("signing out", () => {
   it("removes as well when the dialog's checkbox is ticked", async () => {
     const { container, getByRole } = await open(mount({
       accounts: {
-        profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, home: "/h/w" })],
+        profiles: [profile(), profile({ id: "work", label: "Work", isDefault: false, home: "/h/w", managed: true })],
       },
     }));
     await waitFor(() => expect(container.textContent).toContain("Work"));

@@ -98,6 +98,7 @@ const ROW_ONCLICK =
 const KEPT = new Map<string, Kept>([
   ["App.tsx", { count: 1, reason: `${HEADING} - the quit confirmation` }],
   ["components/Dialog/Dialog.test.tsx", { count: 1, reason: FIXTURE }],
+  ["components/Dialogs/AddAccountDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/AskpassDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/BranchRemoveDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/ConfirmDeleteFeature.tsx", { count: 1, reason: HEADING }],
@@ -208,7 +209,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/LeftSidebar/needsYou.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/LeftSidebar/rollupAttribution.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/sidebarStructure.test.tsx", { count: 4, reason: FIXTURE }],
-  ["panels/Settings/panes/AgentsPane/AgentAccounts.tsx", { count: 2, reason: HEADING }],
+  ["panels/Settings/panes/AgentsPane/AgentAccounts.tsx", { count: 1, reason: HEADING }],
   [
     "panels/Settings/panes/AgentsPane/AgentDetail.tsx",
     {

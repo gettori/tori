@@ -79,6 +79,14 @@ pub struct Profile {
     /// resolves the login the user already had before Sway existed.
     #[serde(default)]
     pub home: Option<String>,
+    /// Missing reads as `true`: every profile stored before this field was one
+    /// Sway created.
+    #[serde(default = "managed_by_default")]
+    pub managed: bool,
+}
+
+fn managed_by_default() -> bool {
+    true
 }
 
 impl Profile {
@@ -94,6 +102,7 @@ pub fn default_profile() -> Profile {
         label: DEFAULT_PROFILE_LABEL.to_string(),
         email: None,
         home: None,
+        managed: false,
     }
 }
 
@@ -424,6 +433,53 @@ pub fn canonicalize_home(path: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("profile home {} is not valid UTF-8", resolved.display()))
 }
 
+/// The canonical home for a folder the user already has, or why it cannot be
+/// one.
+///
+/// Refused before anything runs in it: the sign-in probe writes into whatever
+/// folder it is pointed at, so a mis-picked one must never reach it.
+pub fn adopted_home(
+    adapter: &crate::agents::AgentAdapter,
+    file: &AccountsFile,
+    folder: &str,
+) -> Result<String, String> {
+    let accounts = adapter
+        .accounts
+        .as_ref()
+        .ok_or_else(|| format!("`{}` declares no accounts", adapter.id))?;
+    if accounts.home_markers.is_empty() {
+        return Err(format!(
+            "Sway cannot tell a {} folder from any other, so leave the field empty.",
+            adapter.label
+        ));
+    }
+    let path = crate::agents::expand_tilde(folder.trim());
+    if !path.is_absolute() {
+        return Err("Give the folder's full path, starting with / or ~/.".into());
+    }
+    if !path.is_dir() {
+        return Err(format!("No folder at {}.", path.display()));
+    }
+    if !accounts.home_markers.iter().any(|name| path.join(name).exists()) {
+        return Err(format!(
+            "This folder has no {} files. Run {} once with {} pointing at it, or leave the field empty.",
+            adapter.label,
+            adapter.program,
+            accounts.home_env.as_deref().unwrap_or("its home variable"),
+        ));
+    }
+    let home = canonicalize_home(&path)?;
+    let default_home = accounts.home_default.as_deref().and_then(|d| canonicalize_home(d).ok());
+    if default_home.as_deref() == Some(home.as_str()) {
+        return Err(format!("{home} is {}'s default account, which Sway already lists.", adapter.label));
+    }
+    let mut stored = file.adapters.get(&adapter.id).into_iter().flatten();
+    if let Some(taken) = stored.find(|p| p.home.as_deref() == Some(home.as_str())) {
+        return Err(format!("{home} is already the {} account.", taken.label));
+    }
+    Ok(home)
+}
+
 /// Create a profile home for `profile_id` and return its canonical path.
 ///
 /// Reachable from Phase 3's "add an account" flow; the root-taking form below
@@ -515,6 +571,7 @@ pub struct ProfileStatus {
     /// instead of a backend refusal and a frontend guess that agree by luck.
     pub is_default: bool,
     pub home: Option<String>,
+    pub managed: bool,
     pub sign_in: crate::auth::SignIn,
     /// How to sign **this** profile in.
     ///
@@ -610,7 +667,8 @@ pub enum RemovalStep {
     /// This agent has no sign-out command, so the user has to be told that
     /// removing the account revokes nothing before anything is deleted.
     AskFirst,
-    /// Asked and answered. Forget it.
+    /// Asked and answered, or a folder the user already had, whose login is
+    /// theirs to keep. Forget it.
     ForgetWithoutSigningOut,
 }
 
@@ -620,8 +678,13 @@ pub enum RemovalStep {
 /// The order is the whole point. Deleting the profile before signing out would
 /// leave a credential Sway had abandoned rather than revoked, with nothing left
 /// in the UI to try again from.
-pub fn removal_plan(has_logout: bool, confirmed_without_logout: bool) -> RemovalStep {
-    if has_logout {
+///
+/// `revoke` is whether the login goes with the account: always for a home Sway
+/// made, and for a folder the user already had only when they ask for it.
+pub fn removal_plan(revoke: bool, has_logout: bool, confirmed_without_logout: bool) -> RemovalStep {
+    if !revoke {
+        RemovalStep::ForgetWithoutSigningOut
+    } else if has_logout {
         RemovalStep::SignOutFirst
     } else if confirmed_without_logout {
         RemovalStep::ForgetWithoutSigningOut
@@ -693,6 +756,7 @@ fn status_of(
         label: profile.label.clone(),
         is_default: profile.is_default(),
         home: profile.home.clone(),
+        managed: profile.managed,
         // A profile the sweep has no row for is one added since it last ran.
         // `Unknown` renders neutral and blocks nothing, which is the honest
         // answer for an account nobody has asked about yet.
@@ -752,7 +816,17 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
     })
 }
 
-/// Create a profile and its home, ready to be signed in to.
+/// What adding an account answers: the id it was stored under, and the login to
+/// open, `None` where the folder it adopted is already signed in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddedAccount {
+    pub id: String,
+    pub login: Option<crate::auth::LoginRoute>,
+}
+
+/// Create a profile and its home, ready to be signed in to. With `home` set it
+/// adopts that folder instead, through [`adopted_home`].
 ///
 /// The home exists before the profile is stored, because the stored path is the
 /// canonical one and canonicalizing needs something to resolve. Phase 0 measured
@@ -767,7 +841,8 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
 pub async fn add_agent_account(
     adapter_id: String,
     label: String,
-) -> Result<crate::auth::LoginRoute, String> {
+    home: Option<String>,
+) -> Result<AddedAccount, String> {
     let adapter = adapter(&adapter_id)?;
     let accounts = adapter
         .accounts
@@ -786,23 +861,41 @@ pub async fn add_agent_account(
 
     let mut file = load();
     let id = mint_profile_id(&file, &adapter_id, label);
-    let home = create_profile_home(&adapter_id, &id)?;
+    let folder = home.as_deref().map(str::trim).filter(|f| !f.is_empty());
+    let (home, managed) = match folder {
+        Some(folder) => (adopted_home(&adapter, &file, folder)?, false),
+        None => (create_profile_home(&adapter_id, &id)?, true),
+    };
     let profile = Profile {
-        id: id.clone(),
+        id,
         label: label.to_string(),
         email: None,
         home: Some(home.clone()),
+        managed,
     };
     // The directory exists before the store does, because the stored path is
     // the canonical one and canonicalizing needs something to resolve. So if
     // storing it fails, take the directory back: an unreferenced profile home
     // is invisible in the UI and never cleaned up by anything.
     if let Err(e) = add_profile(&mut file, &adapter_id, profile.clone()).and_then(|()| save(&file)) {
-        std::fs::remove_dir_all(&home).ok();
+        if managed {
+            std::fs::remove_dir_all(&home).ok();
+        }
         return Err(e);
     }
 
-    Ok(crate::auth::login_route(&adapter, spawn_env(&accounts, &profile)?))
+    let pair = spawn_env(&accounts, &profile)?;
+    // A login tab over a folder that is already signed in would only ask the
+    // user to sign in again.
+    let signed_in = !managed
+        && crate::env::resolve_binary(&adapter.program).is_some_and(|path| {
+            let answer = crate::auth::whoami(&path, &accounts, pair.as_ref());
+            answer.state == crate::auth::SignIn::SignedIn
+        });
+    Ok(AddedAccount {
+        id: profile.id,
+        login: (!signed_in).then(|| crate::auth::login_route(&adapter, pair)),
+    })
 }
 
 /// A stable id for a new profile, derived from the label and made unique.
@@ -856,6 +949,9 @@ pub enum RemovalOutcome {
 /// with no logout command means and been told to proceed anyway. It is a
 /// separate argument rather than a silent fallback so that the removal cannot
 /// quietly become a delete for adapters that never had a logout.
+///
+/// `sign_out` is the user asking for the login to go as well, which matters only
+/// for a folder they already had: a home Sway made is always signed out.
 #[tauri::command]
 pub async fn remove_agent_account(
     chat: tauri::State<'_, crate::chat::host::ChatState>,
@@ -863,6 +959,7 @@ pub async fn remove_agent_account(
     adapter_id: String,
     profile_id: String,
     confirmed_without_logout: bool,
+    sign_out: bool,
 ) -> Result<RemovalOutcome, String> {
     let adapter = adapter(&adapter_id)?;
     let accounts = adapter
@@ -893,7 +990,8 @@ pub async fn remove_agent_account(
     let profile = profile(&file, &adapter_id, &profile_id)
         .ok_or_else(|| format!("no profile `{profile_id}` for `{adapter_id}`"))?;
 
-    match removal_plan(!accounts.logout_args.is_empty(), confirmed_without_logout) {
+    let revoke = profile.managed || sign_out;
+    match removal_plan(revoke, !accounts.logout_args.is_empty(), confirmed_without_logout) {
         RemovalStep::SignOutFirst => {
             let path = crate::env::resolve_binary(&adapter.program).ok_or_else(|| {
                 format!("`{}` is not installed, so it cannot sign out", adapter.program)
@@ -922,11 +1020,14 @@ pub async fn remove_agent_account(
     // The home goes last, after the store no longer points at it. The other
     // order leaves a stored profile aimed at a directory that is gone, which
     // reads as a working account right up until a session starts in it.
-    if let Some(home) = removed.home {
-        std::fs::remove_dir_all(&home)
-            .map_err(|e| format!("signed out and forgot the account, but its home is still at {home}: {e}"))?;
-    }
+    discard_home(&removed)?;
     Ok(RemovalOutcome::Removed)
+}
+
+fn discard_home(removed: &Profile) -> Result<(), String> {
+    let Some(home) = removed.home.as_ref().filter(|_| removed.managed) else { return Ok(()) };
+    std::fs::remove_dir_all(home)
+        .map_err(|e| format!("signed out and forgot the account, but its home is still at {home}: {e}"))
 }
 
 /// Sign one profile out without forgetting it.
@@ -979,6 +1080,7 @@ mod tests {
             label: id.to_string(),
             email: None,
             home: Some(home.to_string()),
+            managed: true,
         }
     }
 
@@ -1167,6 +1269,7 @@ mod tests {
         let mut p = added("work", "/tmp/w");
         p.email = Some("a@b.c".into());
         p.label = "Work".into();
+        p.managed = false;
         add_profile(&mut file, "claude", p).unwrap();
         add_profile(&mut file, "codex", added("alt", "/tmp/a")).unwrap();
         // The one thing about the default account that is stored: its name.
@@ -1194,12 +1297,20 @@ mod tests {
         assert_eq!(back.version, FILE_VERSION);
     }
 
+    #[test]
+    fn a_profile_stored_before_the_managed_field_loads_as_managed() {
+        let text = r#"{"adapters":{"claude":[{"id":"work","label":"Work","home":"/tmp/w"}]}}"#;
+        let back: AccountsFile = serde_json::from_str(text).unwrap();
+        assert!(back.adapters["claude"][0].managed);
+    }
+
     // --- spawn environment ---
 
     fn accounts_config(home_env: Option<&str>, isolation: bool) -> crate::agents::AccountsConfig {
         crate::agents::AccountsConfig {
             home_env: home_env.map(|s| s.to_string()),
             home_default: None,
+            home_markers: vec![],
             login_args: vec![],
             logout_args: vec![],
             whoami_args: vec![],
@@ -1366,6 +1477,7 @@ mod tests {
             label: label.to_string(),
             is_default: false,
             home: Some(format!("/tmp/{label}")),
+            managed: true,
             sign_in: crate::auth::SignIn::SignedIn,
             login: crate::auth::LoginRoute::AgentStates,
             account: account.map(str::to_string),
@@ -1513,10 +1625,10 @@ mod tests {
     /// left in the UI to try again from.
     #[test]
     fn a_agent_with_a_logout_command_signs_out_before_forgetting_anything() {
-        assert_eq!(removal_plan(true, false), RemovalStep::SignOutFirst);
+        assert_eq!(removal_plan(true, true, false), RemovalStep::SignOutFirst);
         // Confirmation is for the *other* branch. An adapter that can sign out
         // must not be talked past it.
-        assert_eq!(removal_plan(true, true), RemovalStep::SignOutFirst);
+        assert_eq!(removal_plan(true, true, true), RemovalStep::SignOutFirst);
     }
 
     /// The state the removal flow has to say out loud rather than paper over.
@@ -1524,8 +1636,36 @@ mod tests {
     /// there is no single command that signs the agent out.
     #[test]
     fn a_agent_with_no_logout_asks_before_it_deletes() {
-        assert_eq!(removal_plan(false, false), RemovalStep::AskFirst);
-        assert_eq!(removal_plan(false, true), RemovalStep::ForgetWithoutSigningOut);
+        assert_eq!(removal_plan(true, false, false), RemovalStep::AskFirst);
+        assert_eq!(removal_plan(true, false, true), RemovalStep::ForgetWithoutSigningOut);
+    }
+
+    #[test]
+    fn an_adopted_folder_is_forgotten_and_left_as_it_was() {
+        assert_eq!(removal_plan(false, true, false), RemovalStep::ForgetWithoutSigningOut);
+        assert_eq!(removal_plan(false, false, false), RemovalStep::ForgetWithoutSigningOut);
+
+        let root = scratch("discard");
+        std::fs::create_dir_all(root.join("adopted/projects")).unwrap();
+        std::fs::write(root.join("adopted/.claude.json"), "{}").unwrap();
+        std::fs::create_dir_all(root.join("made")).unwrap();
+        let listing = |dir: &Path| {
+            let mut names: Vec<_> = std::fs::read_dir(dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+            names.sort();
+            names
+        };
+        let before = listing(&root.join("adopted"));
+
+        let mut adopted = added("adopted", root.join("adopted").to_str().unwrap());
+        adopted.managed = false;
+        discard_home(&adopted).unwrap();
+        assert_eq!(listing(&root.join("adopted")), before);
+        assert_eq!(std::fs::read_to_string(root.join("adopted/.claude.json")).unwrap(), "{}");
+
+        discard_home(&added("made", root.join("made").to_str().unwrap())).unwrap();
+        assert!(!root.join("made").exists(), "a home Sway made goes with its account");
+
+        std::fs::remove_dir_all(&root).ok();
     }
 
     /// The sentence somebody has to agree to, checked against the real adapter
@@ -1550,6 +1690,7 @@ mod tests {
         let accounts = crate::agents::AccountsConfig {
             home_env: None,
             home_default: None,
+            home_markers: vec![],
             login_args: vec![],
             logout_args: vec![],
             whoami_args: vec![],
@@ -1581,7 +1722,7 @@ mod tests {
             .collect();
         assert_eq!(
             keys,
-            ["id", "label", "email", "home"],
+            ["id", "label", "email", "home", "managed"],
             "a new field on a stored profile has to be justified here"
         );
         for smell in ["token", "secret", "password", "key", "credential"] {
@@ -1652,5 +1793,76 @@ mod tests {
         }
 
         std::fs::remove_dir_all(&base).ok();
+    }
+
+    fn adopting(root: &Path) -> crate::agents::AgentAdapter {
+        let mut a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
+        let accounts = a.accounts.as_mut().unwrap();
+        accounts.home_default = Some(root.join("default"));
+        accounts.home_markers = vec![".claude.json".into(), "projects".into()];
+        a
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("sway-{name}-{}", std::process::id()));
+        std::fs::remove_dir_all(&root).ok();
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn a_folder_holding_the_agents_files_is_adopted_at_its_canonical_path() {
+        let root = scratch("adopt");
+        std::fs::create_dir_all(root.join("work/projects")).unwrap();
+        let spelt = format!("{}/", root.join("work").display());
+
+        let home = adopted_home(&adopting(&root), &AccountsFile::default(), &spelt).unwrap();
+        assert_eq!(home, canonicalize_home(&root.join("work")).unwrap());
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_folder_that_is_missing_empty_or_relative_is_refused() {
+        let root = scratch("adopt-refused");
+        std::fs::create_dir_all(root.join("empty")).unwrap();
+        std::fs::create_dir_all(root.join("work/projects")).unwrap();
+        std::fs::write(root.join("a-file"), "").unwrap();
+        let a = adopting(&root);
+        let refusal = |adapter: &crate::agents::AgentAdapter, folder: PathBuf| {
+            adopted_home(adapter, &AccountsFile::default(), folder.to_str().unwrap()).unwrap_err()
+        };
+
+        assert!(refusal(&a, root.join("missing")).starts_with("No folder"));
+        assert!(refusal(&a, root.join("a-file")).starts_with("No folder"));
+        let empty = refusal(&a, root.join("empty"));
+        assert!(empty.contains("CLAUDE_CONFIG_DIR pointing at it"), "{empty}");
+        assert!(refusal(&a, PathBuf::from("work")).contains("full path"));
+
+        let mut blind = a.clone();
+        blind.accounts.as_mut().unwrap().home_markers.clear();
+        assert!(refusal(&blind, root.join("work")).contains("cannot tell"));
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn the_default_home_and_a_folder_already_added_are_refused() {
+        let root = scratch("adopt-taken");
+        std::fs::create_dir_all(root.join("default/projects")).unwrap();
+        std::fs::create_dir_all(root.join("work/projects")).unwrap();
+        let a = adopting(&root);
+        let mut file = AccountsFile::default();
+        let mut work = added("work", &canonicalize_home(&root.join("work")).unwrap());
+        work.label = "Work".into();
+        add_profile(&mut file, "claude", work).unwrap();
+
+        let refusal = |folder: &str| {
+            adopted_home(&a, &file, &root.join(folder).display().to_string()).unwrap_err()
+        };
+        assert!(refusal("default").contains("default account"));
+        assert!(refusal("work").contains("already the Work account"));
+
+        std::fs::remove_dir_all(&root).ok();
     }
 }
