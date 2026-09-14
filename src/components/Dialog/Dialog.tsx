@@ -136,9 +136,6 @@ export default function Dialog(props: DialogProps) {
           onKeyDown={(e: KeyboardEvent) => props.onKeyDown?.(e)}
         >
           <DialogSurface.Provider value={surface}>
-            {/* `headHidden` is not "hide the head": it drops the wrapper's own
-                box while keeping its children, so a hidden title costs no gap
-                in the panel's column. See Dialog.module.css. */}
             <div
               class={
                 props.titleHidden && !props.description
@@ -157,14 +154,6 @@ export default function Dialog(props: DialogProps) {
                 </Primitive.Description>
               </Show>
             </div>
-            {/* Focusable because it scrolls. A dialog whose body holds no
-                control of its own (a long confirmation, a list of rows) would
-                otherwise be unscrollable by keyboard: the panel has focus but
-                the body is the scroller, and the page behind is locked. This is
-                what axe's `scrollable-region-focusable` asks for, and that rule
-                is disabled under jsdom (no scroll geometry), so no test here can
-                catch its absence. The cost is one tab stop per dialog; rendered
-                only when there is a body at all. */}
             <Show when={props.children != null}>
               <div class={styles.body} tabindex={0}>
                 {props.children}

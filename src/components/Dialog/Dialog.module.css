@@ -73,27 +73,7 @@
   transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
-  /* Kobalte locks the page behind the dialog (`preventScroll`), so a panel that
-     overflows the window would put its own actions row out of reach - the page
-     cannot be scrolled to it. Bounded height plus a scrolling body instead.
-
-     Through a hook rather than as a plain value, because a caller that wants a
-     shorter panel (the command palette, whose list wants to stop well before
-     85vh) would otherwise have to redeclare `max-height` from its own stylesheet
-     on this same element. Both rules are a single class, so which one won would
-     be decided by the order the bundler happened to emit the two CSS modules in,
-     not by anything either file says - the trap
-     [[gotchas#same-specificity-hover-and-active-declare-active-last]] records.
-     A custom property resolves on the element instead, so a caller sets the hook
-     and bundle order stops mattering. */
   max-height: var(--dialog-max-height, min(85vh, calc(720px * var(--ui-scale))));
-  padding: var(--sway-space-7);
-  /* One gap between head, body and actions, rather than a margin on each of
-     them. Three margins drift apart the moment one part is edited alone, and
-     the old set had already drifted off the ramp (12 / 12 / 14). Declared here
-     so a part that is not rendered - every `Show` below - costs no space at
-     all, which a margin on a sibling cannot express. */
-  gap: var(--sway-space-6);
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
   border-radius: var(--sway-radius-xl);
@@ -149,47 +129,24 @@
   max-width: calc(100vw - calc(48px * var(--ui-scale)));
 }
 
-/* ---- Head, body, actions. Head and actions are pinned; only the body
-   scrolls, so the title stays readable and the buttons stay reachable. ---- */
 .head {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  /* Tighter than the panel's own gap: a title and its description are one
-     block, not two. */
   gap: var(--sway-space-3);
+  padding: var(--sway-space-6);
 }
-/* A hidden title still has to be in the document (it is the accessible name),
-   but it must not cost a row of the panel's gap. `.titleHidden` is
-   `position: absolute`, so it is already out of flow; the wrapper around it is
-   not, and an empty flex item still earns a gap on both sides. `contents`
-   removes the wrapper's own box and leaves its children where they were, so a
-   `titleHidden` dialog - the command palette is the only one - opens with its
-   body against the panel padding, exactly as it did when the spacing lived in
-   margins on an absolutely positioned element.
-
-   Applied only when there is no description. A hidden title *with* a
-   description leaves a head that still has something visible to hold, so it
-   stays an ordinary flex item and the description keeps the panel's rhythm
-   rather than being promoted to a sibling of the body. */
 .headHidden {
   display: contents;
 }
 .title {
-  font-size: var(--sway-text-3xl);
+  font-size: var(--sway-text-2xl);
   line-height: var(--sway-line-tight);
   font-weight: 600;
   color: var(--fg-default);
   white-space: pre-wrap;
+  margin: 0;
 }
-/* Titled for a screen reader, absent from the layout. For a dialog whose
-   design has no title line (the shortcut sheet), where inventing one would be
-   a redesign rather than a migration.
-
-   The same recipe as `.srOnly` in Settings.module.css, deliberately copied
-   rather than shared: this cluster keeps each module self-contained (see the
-   header of Dialogs.module.css on why there is no cross-module `composes`
-   here). If a third copy appears, that is the point to reconsider. */
 .titleHidden {
   position: absolute;
   width: 1px;
@@ -202,9 +159,11 @@
   font-size: var(--sway-text-lg);
   color: var(--fg-muted);
   white-space: pre-wrap;
+  margin: 0;
 }
 .body {
   flex: 1 1 auto;
+  padding: var(--sway-space-4) var(--sway-space-6) var(--sway-space-7);
   min-height: 0;
   overflow-y: auto;
 }
@@ -221,7 +180,6 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--sway-space-4);
-  margin: 0 calc(-1 * var(--sway-space-7)) calc(-1 * var(--sway-space-7));
-  padding: var(--sway-space-5) var(--sway-space-7);
+  padding: var(--sway-space-4);
   border-top: 1px solid var(--border-default);
 }
