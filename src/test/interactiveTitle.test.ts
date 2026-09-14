@@ -113,6 +113,7 @@ const KEPT = new Map<string, Kept>([
   ["components/Dialogs/NewFeatureDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/NewProjectDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.test.tsx", { count: 2, reason: FIXTURE }],
+  ["components/Dialogs/ProjectAgentsDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/ProjectIconDialog.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PickerModal.tsx", { count: 1, reason: HEADING }],
   ["components/Dialogs/PromptModal.test.tsx", { count: 1, reason: FIXTURE }],
@@ -156,6 +157,10 @@ const KEPT = new Map<string, Kept>([
   ["panels/Editor/GraphView.tsx", { count: 2, reason: TRUNCATION }],
   ["panels/Editor/CommitLog.tsx", { count: 2, reason: TRUNCATION }],
   ["panels/Editor/FileTree/FileTree.tsx", { count: 1, reason: TRUNCATION }],
+  [
+    "panels/Editor/FilesPanel/FilesPanel.tsx",
+    { count: 1, reason: "the `title` prop of a `PanelSection`: the section heading it renders as visible text, never hover text" },
+  ],
   ["panels/Editor/OutlinePanel.tsx", { count: 1, reason: ROW_ONCLICK }],
   ["panels/Editor/PullRequests/PrDetail.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/PullRequests/PullRequests.tsx", { count: 2, reason: TRUNCATION }],
@@ -166,8 +171,8 @@ const KEPT = new Map<string, Kept>([
   [
     "panels/Editor/Editor.tsx",
     {
-      count: 3,
-      reason: `one ${TRUNCATION}, and two of ${HEADING}. Was two truncations until the tab registry deduplicated the strip's touched-dot span into the shared fileDots helper (written once, rendered in both the tab and its overflow row). Its 9 swept controls rest on this static check alone: the pane is 2000 lines behind a CodeMirror mount and phase 3 did not budget a mounting test for it, the same limit DebugPanel records above`,
+      count: 4,
+      reason: `one ${TRUNCATION}, and three of ${HEADING}. Was two truncations until the tab registry deduplicated the strip's touched-dot span into the shared fileDots helper (written once, rendered in both the tab and its overflow row). Its 9 swept controls rest on this static check alone: the pane is 2000 lines behind a CodeMirror mount and phase 3 did not budget a mounting test for it, the same limit DebugPanel records above`,
     },
   ],
   [
@@ -191,9 +196,8 @@ const KEPT = new Map<string, Kept>([
   ],
   [
     "panels/Editor/ReviewPanel.tsx",
-    { count: 6, reason: `three ${TRUNCATION}, one ${ROW_ONCLICK}, and two of ${HEADING}` },
+    { count: 5, reason: `one ${TRUNCATION}, two of ${ROW_ONCLICK}, and two of ${HEADING}` },
   ],
-  ["panels/Editor/SearchPanel.tsx", { count: 1, reason: TRUNCATION }],
   [
     "panels/Editor/SessionPanel.tsx",
     { count: 3, reason: `two ${TRUNCATION}, and one ${ROW_ONCLICK}` },
@@ -215,6 +219,13 @@ const KEPT = new Map<string, Kept>([
     {
       count: 4,
       reason: `three ${TRUNCATION}, and the explanation on a struck-through capability chip, which matches the one on the chips beside it`,
+    },
+  ],
+  [
+    "panels/Settings/panes/AgentsPane/AgentFiles.tsx",
+    {
+      count: 2,
+      reason: `one ${HEADING}, and one ${TRUNCATION}. That one is a link's full target, behind the two path segments its chip shows`,
     },
   ],
   ["panels/Settings/components/paneKit.tsx", { count: 2, reason: TRUNCATION }],
@@ -273,12 +284,16 @@ const KEPT = new Map<string, Kept>([
  *  chip went, and its `title` with it.
  *
  *  **Up one** with the Shared in worktrees page, whose bar carries the
- *  path, truncated from the left. */
-const RAW_ELEMENT_TITLES = 67;
+ *  path, truncated from the left.
+ *
+ *  **Up two**: the graph page's two rows, the diff tab's path and an agent
+ *  file's link target, less the Changes panel's member header span and the
+ *  Search view's file header div, both dropped by their rebuilds. */
+const RAW_ELEMENT_TITLES = 69;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
- *  (see the header); pinned here so the list cannot grow quietly. Down one from
- *  ten for the same reason as above, and the row itself is unchanged. */
-const ROW_ONCLICK_ROWS = 9;
+ *  (see the header); pinned here so the list cannot grow quietly. The Changes
+ *  panel's stash row is one: a click expands it to its files. */
+const ROW_ONCLICK_ROWS = 10;
 
 const TITLE = /\btitle=/g;
 
@@ -390,9 +405,12 @@ describe("the title= guard", () => {
     // Down one span: the dev build's chip is gone. It sat in the topbar beside
     // the orange dev stripe repeating what the stripe already says, and one
     // marker per fact is enough.
+    // Up three spans, down one div: the graph rows, the diff tab's path and an
+    // agent file's link target, less the Changes panel's member header; the div
+    // is the Search view's file header, which its rebuild dropped.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
-      div: 16,
-      span: 51,
+      div: 15,
+      span: 54,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });
