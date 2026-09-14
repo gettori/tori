@@ -62,6 +62,7 @@ import {
   draftChatAgent,
   draftChatProfile,
 } from "../../utils/agentEnabled";
+import { agentRefusal, NOT_ALLOWED } from "../../utils/projectAgents";
 import {
   asProfileId,
   asTabProfile,
@@ -417,6 +418,7 @@ export default function Terminal(props: {
     const byId = new Map(sessions.map((s) => [s.id, s]));
     let missingSessions = 0;
     let missingProfiles = 0;
+    let refusedAccounts = 0;
     let relocated = 0;
     let home: string | null = null;
     const cwdFor = async (cwd: string): Promise<string> => {
@@ -504,8 +506,15 @@ export default function Terminal(props: {
           missingSessions++;
           continue;
         }
-        const id = restoredId(d.id, chatId, () => live.chat.has(d.sessionId!));
         const s = byId.get(d.sessionId)!;
+        // A restore is a resume, so the account rule refuses it. A child the
+        // backend still holds is a webview reload re-attaching, and is kept.
+        const chatProfile = asTabProfile(s.profile ?? d.profile);
+        if (!live.chat.has(d.sessionId) && agentRefusal(d.cwd, d.program || "claude", chatProfile)) {
+          refusedAccounts++;
+          continue;
+        }
+        const id = restoredId(d.id, chatId, () => live.chat.has(d.sessionId!));
         openOrActivate({
           id,
           // The session's own name wins over the stored one, on the same rule
@@ -559,6 +568,11 @@ export default function Terminal(props: {
           continue;
         }
         const agentId = s.agent ?? "claude";
+        const agentProfile = asTabProfile(s.profile ?? d.profile);
+        if (!live.pty.has(d.id ?? "") && agentRefusal(s.cwd || d.cwd, agentId, agentProfile)) {
+          refusedAccounts++;
+          continue;
+        }
         // focusOrResume already focuses an existing tab rather than spawning a
         // second one, so an already-live session never double-spawns.
         const id = restoredId(d.id, shellId, (id) => live.pty.has(id));
@@ -595,6 +609,10 @@ export default function Terminal(props: {
       const profile = d.kind === "agent" ? (d.profile ?? null) : null;
       let env: Record<string, string> | undefined;
       if (d.kind === "agent") {
+        if (!live.pty.has(d.id ?? "") && agentRefusal(cwd, agentIdForProgram(d.program), profile)) {
+          refusedAccounts++;
+          continue;
+        }
         env = await profileEnv(agentIdForProgram(d.program), profile).catch(() => undefined);
         if (!env) {
           missingProfiles++;
@@ -631,6 +649,10 @@ export default function Terminal(props: {
     if (missingSessions) notices.push(`${missingSessions} session${missingSessions > 1 ? "s" : ""} no longer exist`);
     if (missingProfiles)
       notices.push(`${missingProfiles} tab${missingProfiles > 1 ? "s" : ""} ran on an account that is gone`);
+    if (refusedAccounts)
+      notices.push(
+        `${refusedAccounts} tab${refusedAccounts > 1 ? "s" : ""} ran on an account this project does not allow`,
+      );
     if (relocated) notices.push(`${relocated} folder${relocated > 1 ? "s" : ""} missing, opened in your home directory`);
     if (notices.length) emitWith<ToastEvent>(TOAST, { message: `Restored tabs: ${notices.join("; ")}.`, kind: "info" });
   }
@@ -992,9 +1014,9 @@ export default function Terminal(props: {
         return;
       }
       const ws = workspaceKey(sel);
-      const agent = draftAgent(ws);
+      const agent = draftAgent(ws, root);
       if (!agent) return;
-      const tabId = openChatDraft(ws, root, sel.projectName, agent, draftProfile(ws, agent));
+      const tabId = openChatDraft(ws, root, sel.projectName, agent, draftProfile(ws, root, agent));
       // Offered, never sent. The user reads what is in the box and decides.
       offerToComposer(tabId, d.blocks);
       focusTab(ws, tabId);
@@ -1009,9 +1031,9 @@ export default function Terminal(props: {
       // win: a draft is only for a strip that would otherwise sit empty.
       await stripReady(folderPath);
       if (tabsIn(folderPath).length) return;
-      const agent = draftAgent(folderPath);
+      const agent = draftAgent(folderPath, folderPath);
       if (!agent) return;
-      openChatDraft(folderPath, folderPath, projectName, agent, draftProfile(folderPath, agent));
+      openChatDraft(folderPath, folderPath, projectName, agent, draftProfile(folderPath, folderPath, agent));
     });
     // A tab whose process ends (the user typed `exit`, a task finished) is
     // closed. Agent-exit within a live shell fires no event. A command tab's
@@ -1383,7 +1405,7 @@ export default function Terminal(props: {
     // A session lives in exactly one profile home, so resuming it anywhere else
     // would start an empty conversation wearing its name. Refuse rather than
     // open a tab that cannot be what it says it is.
-    const env = await spawnEnvOrWarn(agentId, sel.profile ?? null);
+    const env = await spawnEnvOrWarn(agentId, sel.profile ?? null, sel.sessionCwd || sel.folderPath);
     if (!env) return;
     openOrActivate({
       id,
@@ -1409,7 +1431,16 @@ export default function Terminal(props: {
    * env would start the agent on the user's own login while every label around
    * it named another account.
    */
-  async function spawnEnvOrWarn(agentId: string, profile: string | null): Promise<Record<string, string> | null> {
+  async function spawnEnvOrWarn(
+    agentId: string,
+    profile: string | null,
+    folder: string,
+  ): Promise<Record<string, string> | null> {
+    const refused = agentRefusal(folder, agentId, profile);
+    if (refused) {
+      emitWith<ToastEvent>(TOAST, { message: `${refused}.`, kind: "error" });
+      return null;
+    }
     return await profileEnv(agentId, profile).catch(() => {
       emitWith<ToastEvent>(TOAST, {
         message: "That account is no longer set up. Add it again in Settings, or start on another one.",
@@ -1514,9 +1545,9 @@ export default function Terminal(props: {
     asked?: string | null,
   ) {
     const a = findAdapter(agentId);
-    const profile = asked !== undefined ? asked : draftProfile(workspace, agentId);
+    const profile = asked !== undefined ? asked : draftProfile(workspace, folderPath, agentId);
     const args = [...a.base_args, ...(yolo ? a.yolo_args : []), ...(await hookArgs(agentId))];
-    const env = await spawnEnvOrWarn(agentId, profile);
+    const env = await spawnEnvOrWarn(agentId, profile, folderPath);
     if (!env) return;
     // The account this project last used, on the same rule a chat records it:
     // an agent tab runs as an account exactly the way a chat does. The agent
@@ -1769,19 +1800,20 @@ export default function Terminal(props: {
    * reading by root here meant a Feature's memory was written where nothing
    * looked for it.
    */
-  const draftAgent = (workspace: string) => draftChatAgent(chatPrefs(workspace).agent);
+  const draftAgent = (workspace: string, folder: string) => draftChatAgent(chatPrefs(workspace).agent, folder);
 
-  /** And the account it opens on: this project's last, that agent's Settings
-   *  default behind it. Read from the same place and checked the same way, so
-   *  an account removed since is dropped rather than spawned against. */
-  const draftProfile = (workspace: string, agentId: string) =>
-    draftChatProfile(agentId, chatPrefs(workspace).profile);
+  /** And the account it opens on: this workspace's last, that agent's Settings
+   *  default behind it, narrowed to the rows the project holding `folder`
+   *  allows. Checked the same way, so an account removed since is not spawned
+   *  against. */
+  const draftProfile = (workspace: string, folder: string, agentId: string) =>
+    draftChatProfile(agentId, chatPrefs(workspace).profile, folder);
 
   /** Why a new chat cannot be started here, or null. */
   const noChatReason = () => {
     const root = selectionRoot(props.selected);
     if (!root) return "Select a branch first";
-    return draftAgent(workspaceKey(props.selected))
+    return draftAgent(workspaceKey(props.selected), root)
       ? null
       : "No agent enabled. Turn one on in Settings.";
   };
@@ -1811,8 +1843,19 @@ export default function Terminal(props: {
       ? accounts.map((a) => ({
           label: label(a.label),
           onClick: () => newSession("claude", false, asTabProfile(a.id)),
+          ...claudeRowRefusal(asTabProfile(a.id)),
         }))
-      : [{ label: label(), onClick: () => newSession("claude") }];
+      : [{ label: label(), onClick: () => newSession("claude"), ...claudeRowRefusal() }];
+  };
+
+  /** The fields that make a Claude launch row refuse in the selected project, or
+   *  none. No `profile` is the account a tab opened without one would get. */
+  const claudeRowRefusal = (profile?: string | null) => {
+    const sel = props.selected;
+    const root = selectionRoot(sel);
+    if (!root) return {};
+    const asked = profile !== undefined ? profile : draftProfile(workspaceKey(sel), root, "claude");
+    return agentRefusal(root, "claude", asked) ? { refusing: true, note: NOT_ALLOWED } : {};
   };
 
   // A new chat is a draft: no process, no session id, no claim, until the first
@@ -1822,9 +1865,9 @@ export default function Terminal(props: {
     const root = selectionRoot(sel);
     if (!sel || !root) return;
     const ws = workspaceKey(sel);
-    const agent = agentId ?? draftAgent(ws);
+    const agent = agentId ?? draftAgent(ws, root);
     if (!agent) return;
-    openChatDraft(ws, root, sel.projectName, agent, draftProfile(ws, agent));
+    openChatDraft(ws, root, sel.projectName, agent, draftProfile(ws, root, agent));
   }
 
   /**
@@ -1846,6 +1889,11 @@ export default function Terminal(props: {
     const existing = open().find((t) => t.sessionId === sessionId);
     if (existing) {
       focusTab(existing.workspace, existing.id);
+      return;
+    }
+    const refused = agentRefusal(sel.sessionCwd || sel.folderPath, agentId, sel.profile ?? null);
+    if (refused) {
+      emitWith<ToastEvent>(TOAST, { message: `${refused}.`, kind: "error" });
       return;
     }
     // A session someone else is already resuming cannot be driven from here:
@@ -2369,7 +2417,13 @@ export default function Terminal(props: {
                 ]
               : []),
             ...(agentEnabled("claude")
-              ? [{ label: `${findAdapter("claude").label} (yolo)`, onClick: () => newSession("claude", true) }]
+              ? [
+                  {
+                    label: `${findAdapter("claude").label} (yolo)`,
+                    onClick: () => newSession("claude", true),
+                    ...claudeRowRefusal(),
+                  },
+                ]
               : []),
           ]}
         >

@@ -261,7 +261,15 @@ export type Settings = {
   chat: Record<string, ChatPrefs>;
   /** Keyed by project path, same shape and same reason as `chat`. */
   editor: Record<string, EditorPrefs>;
+  /** The palette rows each project allows, keyed by project path: see
+   *  `utils/projectAgents`. */
+  projectAgents?: Record<string, AgentRow[]>;
 };
+
+/** One chat palette row: an agent and one of its accounts. Mirrors `AgentRow`
+ *  in src-tauri/src/settings.rs. `profile` is the stored spelling, where the
+ *  default account is the literal `"default"`. */
+export type AgentRow = { agent: string; profile: string };
 
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "sway-dark" },
@@ -319,6 +327,7 @@ export const DEFAULT_SETTINGS: Settings = {
   agent: {},
   chat: {},
   editor: {},
+  projectAgents: {},
 };
 
 /**
