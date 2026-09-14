@@ -207,10 +207,9 @@ describe("a second account on the same agent", () => {
     expect(barsIn(clusterFor("claude", "default")!)).toHaveLength(2);
   });
 
-  // One row in full and the rest as a figure. A second login is glanced at to
-  // see whether it is in trouble, and the row you are working on is the one
-  // worth three bars.
-  it("draws the leading login in full and the second as one number", () => {
+  // Which windows a row draws is the user's call through its chips, not its
+  // position on the strip, so a second login is drawn as fully as the first.
+  it("draws a second login's windows in full too", () => {
     seedUsageStoreForTests("claude", null, [win("five_hour", 0.1), win("seven_day", 0.2)], NOW);
     seedUsageStoreForTests("claude", "work", [win("five_hour", 0.3), win("seven_day", 0.91)], NOW);
     render(() => <UsageStrip />);
@@ -218,9 +217,8 @@ describe("a second account on the same agent", () => {
     const lead = clusterFor("claude", "default")!;
     const second = clusterFor("claude", "work")!;
     expect(lead.querySelectorAll(`.${styles.track}`)).toHaveLength(2);
-    expect(barsIn(second).map((b) => b.dataset.kind)).toEqual(["seven_day"]);
-    expect(second.querySelector(`.${styles.track}`)).toBeNull();
-    expect(second.textContent).toBe("Work91.0%");
+    expect(barsIn(second).map((b) => b.dataset.kind)).toEqual(["five_hour", "seven_day"]);
+    expect(second.querySelectorAll(`.${styles.track}`)).toHaveLength(2);
     // And a rule between them, so the second name reads as another account.
     expect(document.querySelectorAll(`.${styles.divider}`)).toHaveLength(1);
   });

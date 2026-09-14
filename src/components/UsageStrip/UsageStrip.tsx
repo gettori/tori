@@ -85,10 +85,8 @@ type Cluster = {
   label: string;
   warnAt: number;
   windows: WindowReading[];
-  /** First of its agent: it carries the glyph, it is the one drawn in full, and
-   *  it is the one that needs no name (the glyph is the name). Every other login
-   *  on the same agent is a name and one number, which is what a second account
-   *  is usually glanced at for. */
+  /** First of its agent: it carries the glyph and needs no name (the glyph is
+   *  the name). Every other login on the same agent carries its own name. */
   lead: boolean;
 };
 
@@ -129,13 +127,11 @@ function clusters(collapsed: boolean, now: number): Cluster[] {
   return out.map((row) => {
     const lead = row.agentId !== lastAgent;
     lastAgent = row.agentId;
-    // Every row but the leading one, and every row at all on a narrow topbar,
-    // is one number: the window it is nearest to. Narrowness is a fact about
-    // the space rather than about the account, so it never touches what the
-    // chips say: widen the window and the other bars come back.
-    const full = lead && !collapsed;
-    const one = full ? null : tightestWindow(row.windows, row.warnAt, now);
-    return { ...row, lead, windows: full ? row.windows : one ? [one] : [] };
+    // On a narrow topbar every row is one number: the window it is nearest to.
+    // Narrowness is a fact about the space rather than about the account, so it
+    // never touches what the chips say: widen the window and the bars come back.
+    const one = collapsed ? tightestWindow(row.windows, row.warnAt, now) : null;
+    return { ...row, lead, windows: collapsed ? (one ? [one] : []) : row.windows };
   });
 }
 
@@ -169,8 +165,8 @@ function UsageBar(props: {
   reading: WindowReading;
   warnAt: number;
   now: number;
-  /** A second login's row: the number alone, with no window name and no track.
-   *  It is there to be counted, not read. */
+  /** A second login's row on a narrow topbar: the number alone, with no window
+   *  name and no track. */
   compact?: boolean;
 }) {
   const state = () => quotaState(props.reading, props.warnAt, props.now);
@@ -363,7 +359,7 @@ export default function UsageStrip() {
                       reading={w()}
                       warnAt={row().warnAt}
                       now={clock()}
-                      compact={!row().lead}
+                      compact={collapsed() && !row().lead}
                     />
                   )}
                 </Index>

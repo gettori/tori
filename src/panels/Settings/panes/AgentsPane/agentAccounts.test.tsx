@@ -631,7 +631,7 @@ describe("the quota on an account card", () => {
   // Once a read has landed the chip stops asking and starts naming: the model
   // comes from the window itself, which is the only thing that knows it.
   it("names the model window after the model once one has answered", async () => {
-    seedUsageStoreForTests("claude", null, [win("seven_day_fable", 0.032, 3 * 86400)], NOW);
+    seedUsageStoreForTests("claude", null, [{ ...win("seven_day_fable", 0.032, 3 * 86400), source: "token" }], NOW);
     const { container, getByRole } = await expand(await open(mount()));
     await waitFor(() => expect(container.textContent).toContain("Fable only"));
     expect(getByRole("button", { name: /^Fable$/ })).toBeTruthy();
