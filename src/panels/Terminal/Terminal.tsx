@@ -592,8 +592,8 @@ export default function Terminal(props: {
       // login under a label that says otherwise.
       const profile = d.kind === "agent" ? (d.profile ?? null) : null;
       let env: Record<string, string> | undefined;
-      if (profile) {
-        env = await profileEnv(d.program, profile).catch(() => undefined);
+      if (d.kind === "agent") {
+        env = await profileEnv(agentIdForProgram(d.program), profile).catch(() => undefined);
         if (!env) {
           missingProfiles++;
           continue;
@@ -609,7 +609,7 @@ export default function Terminal(props: {
         program: d.program,
         args: d.args,
         profile,
-        ...(env ? { env } : {}),
+        ...(env && Object.keys(env).length ? { env } : {}),
           ...(d.kind === "agent" && d.program ? { init: agentInit(d.program, d.args) } : {}),
         },
         false,
@@ -1397,7 +1397,6 @@ export default function Terminal(props: {
    * it named another account.
    */
   async function spawnEnvOrWarn(agentId: string, profile: string | null): Promise<Record<string, string> | null> {
-    if (!profile) return {};
     return await profileEnv(agentId, profile).catch(() => {
       emitWith<ToastEvent>(TOAST, {
         message: "That account is no longer set up. Add it again in Settings, or start on another one.",

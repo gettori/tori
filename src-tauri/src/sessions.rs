@@ -245,6 +245,7 @@ struct Root<'a> {
     adapter: &'a agents::AgentAdapter,
     profile: String,
     dir: PathBuf,
+    managed: bool,
 }
 
 /// A profile's own transcript root: the adapter's declared discovery dir with
@@ -282,7 +283,7 @@ fn roots_for<'a>(
                     profile_root(dir, default_home, home)?
                 }
             };
-            Some(Root { adapter, profile: p.id.clone(), dir: root })
+            Some(Root { adapter, profile: p.id.clone(), dir: root, managed: p.home.is_some() })
         })
         .collect()
 }
@@ -1601,6 +1602,21 @@ fn watch_dirs() -> Vec<PathBuf> {
     discovery_roots(&accounts).into_iter().map(|r| r.dir).collect()
 }
 
+/// A missing root is created only under a home Sway manages. Any other is the
+/// agent's to create: making `projects/` there would make `~/.claude` with it.
+fn watchable_dirs(roots: Vec<Root<'_>>) -> Result<Vec<PathBuf>, String> {
+    let mut dirs = Vec::new();
+    for root in roots {
+        if root.managed {
+            std::fs::create_dir_all(&root.dir).map_err(|e| e.to_string())?;
+        } else if !root.dir.is_dir() {
+            continue;
+        }
+        dirs.push(root.dir);
+    }
+    Ok(dirs)
+}
+
 /// When the last filesystem event landed, shared by whichever watcher is
 /// current and the one thread that emits.
 ///
@@ -1674,10 +1690,7 @@ pub fn sessions_watch_start(
     app: AppHandle,
     state: State<SessionWatch>,
 ) -> Result<(), String> {
-    let dirs = watch_dirs();
-    for dir in &dirs {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    }
+    let dirs = watchable_dirs(discovery_roots(&crate::accounts::load()))?;
 
     // Trailing-edge debounce. The watcher callback only records WHEN the last
     // filesystem event landed; a background thread emits `sessions://changed`
@@ -3512,6 +3525,22 @@ mod tests {
         let dirs = watch_dirs();
         assert_eq!(dirs.len(), 1, "one bundled adapter, one watched root: {dirs:?}");
         assert!(dirs[0].ends_with(".claude/projects"));
+    }
+
+    #[test]
+    fn the_watcher_creates_a_root_only_under_a_managed_home() {
+        let m = tmp_machine("watch");
+        std::fs::remove_dir_all(m.join("default")).unwrap();
+        let a = adapter_at(&m, Some(&m.join("default")));
+        let profiles =
+            vec![crate::accounts::default_profile(), added("work", "Work", &m.join("work"))];
+
+        let dirs = watchable_dirs(roots_for(&a, &profiles)).unwrap();
+        assert_eq!(dirs, [m.join("work/projects")], "the missing default root is skipped");
+        assert!(m.join("work/projects").is_dir(), "a managed home gets its root created");
+        assert!(!m.join("default").exists(), "nothing is made where the default home would be");
+
+        std::fs::remove_dir_all(&m).ok();
     }
 
     #[test]

@@ -122,6 +122,8 @@ export type AccountsView = {
   declared: boolean;
   canAdd: boolean;
   canSignOut: boolean;
+  defaultPresent: boolean;
+  defaultHome: string | null;
   profiles: ProfileStatus[];
 };
 
@@ -140,6 +142,10 @@ const WARN_AT_STEP = 0.05;
 
 function toast(message: string, kind: ToastEvent["kind"]) {
   emitWith<ToastEvent>(TOAST, { message, kind });
+}
+
+function shortHome(path: string, home: string): string {
+  return home.length > 1 && path.startsWith(home) ? `~${path.slice(home.length)}` : path;
 }
 
 /** When the window empties, in the words the reader needs: a countdown while it
@@ -434,10 +440,7 @@ function AccountCard(props: {
   // the agent resolves the login the user already had and Sway never names it.
   const home = () => {
     const path = p().home;
-    if (!path) return null;
-    return props.cwd.length > 1 && path.startsWith(props.cwd)
-      ? `~${path.slice(props.cwd.length)}`
-      : path;
+    return path ? shortHome(path, props.cwd) : null;
   };
 
   const canSignOut = () => p().signIn === "signedIn" && props.view.canSignOut;
@@ -896,23 +899,33 @@ export default function AgentAccounts(props: {
               disabled={checking()}
             />
           </div>
-          <div class={styles.accountsCard}>
-            <For each={v().profiles}>
-              {(profile) => (
-                <AccountCard
-                  agentId={props.agentId}
-                  agentLabel={props.agentLabel}
-                  view={v()}
-                  profile={profile}
-                  cwd={cwd() ?? "/"}
-                  now={now()}
-                  chooseDefault={v().profiles.length > 1}
-                  onChanged={changed}
-                  confirm={askConfirm}
-                />
-              )}
-            </For>
-          </div>
+          <Show when={v().profiles.length > 0}>
+            <div class={styles.accountsCard}>
+              <For each={v().profiles}>
+                {(profile) => (
+                  <AccountCard
+                    agentId={props.agentId}
+                    agentLabel={props.agentLabel}
+                    view={v()}
+                    profile={profile}
+                    cwd={cwd() ?? "/"}
+                    now={now()}
+                    chooseDefault={v().profiles.length > 1}
+                    onChanged={changed}
+                    confirm={askConfirm}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
+          <Show when={v().defaultPresent ? null : v().defaultHome}>
+            {(missing) => (
+              <div class={styles.hint}>
+                No {shortHome(missing(), cwd() ?? "/")} on this machine. Add an account and point it at your{" "}
+                {props.agentLabel} folder, or leave the folder empty for one Sway manages.
+              </div>
+            )}
+          </Show>
           <Show when={nameReq()}>
             <PromptModal
               title={`Name for the new ${props.agentLabel} account`}

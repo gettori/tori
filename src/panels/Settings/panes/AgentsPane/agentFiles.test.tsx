@@ -110,6 +110,7 @@ const accountsView = () => ({
   declared: true,
   canAdd: true,
   canSignOut: true,
+  defaultPresent: true,
   profiles: [
     {
       id: "default",
