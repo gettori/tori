@@ -161,6 +161,7 @@ import {
   takeForSend,
   laneStrip,
   backgroundTasks,
+  outstandingBackground,
   selectLane,
   blockedLanes,
   laneOf,
@@ -1110,6 +1111,7 @@ export default function ChatView(props: {
       folderPath: props.workspace,
       tabId: props.tabId,
       status: chatStatus(state),
+      background: outstandingBackground(state),
       visible: props.active,
     });
   });
@@ -2019,6 +2021,7 @@ export default function ChatView(props: {
         <StatusStrip
           health={connectionHealth(state)}
           running={running()}
+          background={outstandingBackground(state)}
           compacting={state.compactingItemId !== null}
           awaitingApproval={pendingApprovals(state).length > 0}
           files={touchedFiles()}
