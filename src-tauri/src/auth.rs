@@ -349,6 +349,8 @@ mod tests {
             whoami_args: vec!["status".into()],
             whoami_kind: kind,
             supports_isolation: true,
+            onboarded: None,
+            plugins_kind: None,
         }
     }
 

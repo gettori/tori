@@ -1142,6 +1142,7 @@ export default function Terminal(props: {
       ...(j.env ? { env: j.env } : {}),
       ...(j.rediscoverOnExit ? { rediscoverOnExit: true } : {}),
       ...(j.recheckAgentsOnExit ? { recheckAgentsOnExit: true } : {}),
+      ...(j.completeSignInOnExit ? { completeSignInOnExit: j.completeSignInOnExit } : {}),
       ...(j.interactive ? { interactive: true } : {}),
     };
     setOpen([...open(), tab]);
@@ -1195,6 +1196,11 @@ export default function Terminal(props: {
     // After the verdict is recorded, so anything watching sees the outcome even
     // when the tab is about to go.
     if (t.rediscoverOnExit) invoke("rediscover").catch(() => {});
+    // Only a clean exit: an abandoned login has no first run to finish.
+    if (t.completeSignInOnExit && code === 0) {
+      const { agentId, profileId } = t.completeSignInOnExit;
+      invoke("complete_sign_in", { adapterId: agentId, profileId }).catch(() => {});
+    }
     if (t.recheckAgentsOnExit) void refreshAgentHealth();
     const failed = code !== 0;
     emitWith<ToastEvent>(TOAST, {

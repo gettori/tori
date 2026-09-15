@@ -1,5 +1,6 @@
 mod accounts;
 mod agent_config;
+mod agent_plugins;
 mod agent_lines;
 mod agents;
 mod askpass;
@@ -253,6 +254,7 @@ pub fn run() {
             attachments::attachments_dir,
             catalog_probe::model_catalogs,
             catalog_probe::refresh_model_catalog,
+            catalog_probe::record_live_catalog,
             usage_snapshot::usage_snapshot_load,
             usage_snapshot::usage_snapshot_save,
             usage_probe::usage_probe_codex,
@@ -425,6 +427,7 @@ pub fn run() {
             install::agent_update_route,
             install::agent_uninstall_route,
             accounts::sign_out_agent_account,
+            accounts::complete_sign_in,
             auth::agent_login_route,
             onboarding::onboarding_should_show,
             onboarding::onboarding_content,
@@ -495,6 +498,7 @@ pub fn run() {
             agent_config::agent_config_files,
             agent_config::agent_config_new,
             agent_config::agent_config_delete,
+            agent_plugins::agent_plugins,
             launch::open_in_vscode,
             launch::open_in_ghostty,
             launch::reveal_in_finder,

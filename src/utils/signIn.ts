@@ -56,6 +56,7 @@ export function loginJob(
     // Both outcomes end the process, and both want a re-probe: a finished login
     // changes the answer, and an abandoned one confirms it did not.
     recheckAgentsOnExit: true,
+    completeSignInOnExit: { agentId, profileId },
   };
 }
 

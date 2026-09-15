@@ -89,6 +89,7 @@ import {
   cachedModels,
   catalogFor,
   refreshCatalogIfDue,
+  recordLiveCommands,
   type CatalogModel,
 } from "../../utils/modelCatalog";
 import { findAdapter } from "../../utils/agents";
@@ -718,6 +719,11 @@ export default function ChatView(props: {
         dropNotice(s);
         applyEvent(s, ev);
       });
+      // Under the account the session actually ran as, which is the cache the
+      // next draft on it reads.
+      if (ev.type === "sessionReady" || ev.type === "sessionStarted") {
+        recordLiveCommands(props.agentId, resolvedProfile(), ev.slashCommands);
+      }
       // A session that died before it could take the message being held for it.
       // Handing the message back and turning the tab into a draft again is a
       // better answer than a dead transcript with the user's words inside it:

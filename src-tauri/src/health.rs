@@ -582,6 +582,8 @@ mod tests {
             whoami_args: args.iter().map(|a| a.to_string()).collect(),
             whoami_kind: Some(kind),
             supports_isolation: false,
+            onboarded: None,
+            plugins_kind: None,
         }
     }
 

@@ -181,6 +181,35 @@ impl WhoamiKind {
     }
 }
 
+/// The flag a home's state file carries once the agent's own first-run wizard
+/// has been through it. Sway sets it after a sign-in it started: the wizard
+/// exists to pick a theme and log in, and a home Sway created and signed in
+/// has had both done, so the next interactive run would only ask again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OnboardedFlag {
+    /// Relative to the account home.
+    pub file: String,
+    /// A top-level key in that JSON file, set to `true`.
+    pub key: String,
+}
+
+/// How an account home records its installed plugins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginsKind {
+    /// `plugins/installed_plugins.json` (version 2, keyed `name@marketplace`)
+    /// beside a `settings.json` whose `enabledPlugins` says which are on.
+    ClaudeInstalledJson,
+}
+
+impl PluginsKind {
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "claude_installed_json" => Some(Self::ClaudeInstalledJson),
+            _ => None,
+        }
+    }
+}
+
 /// Where an adapter's sessions live and how to find them.
 ///
 /// One variant, and an enum rather than a struct on purpose: a backend that is
@@ -542,6 +571,14 @@ pub struct AccountsConfig {
     /// env may still share one credential store behind it, in which case adding
     /// a second account would silently sign the first one out.
     pub supports_isolation: bool,
+    /// The first-run flag a finished sign-in sets in the home; see
+    /// [`OnboardedFlag`]. Backend-only: the write happens there.
+    #[serde(skip)]
+    pub onboarded: Option<OnboardedFlag>,
+    /// How this home lists its installed plugins, when the adapter has such a
+    /// list. Backend-only: it names files to read, and the frontend reads none.
+    #[serde(skip)]
+    pub plugins_kind: Option<PluginsKind>,
 }
 
 /// Whether a `[[config.entries]]` row names one file or a directory of them.
@@ -844,6 +881,12 @@ struct AccountsToml {
     whoami_kind: Option<String>,
     #[serde(default)]
     supports_isolation: bool,
+    #[serde(default)]
+    onboarded_file: Option<String>,
+    #[serde(default)]
+    onboarded_key: Option<String>,
+    #[serde(default)]
+    plugins_kind: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1227,6 +1270,26 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                     ))
                 }
             };
+            // Both halves or neither: a file with no key names nothing to set,
+            // and a key with no file has nowhere to go.
+            let onboarded = match (a.onboarded_file, a.onboarded_key) {
+                (None, None) => None,
+                (Some(file), Some(key)) => Some(OnboardedFlag { file, key }),
+                (file, key) => {
+                    return Err(format!(
+                        "{source}: accounts.onboarded_file and accounts.onboarded_key go \
+                         together (got file {file:?}, key {key:?})"
+                    ))
+                }
+            };
+            let plugins_kind = a
+                .plugins_kind
+                .as_deref()
+                .map(|kind| {
+                    PluginsKind::from_str(kind)
+                        .ok_or_else(|| format!("{source}: unknown accounts.plugins_kind `{kind}`"))
+                })
+                .transpose()?;
             Ok(AccountsConfig {
                 home_env: a.home_env,
                 home_default: a.home_default.as_deref().map(expand_tilde),
@@ -1236,6 +1299,8 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
                 whoami_args: a.whoami_args,
                 whoami_kind,
                 supports_isolation: a.supports_isolation,
+                onboarded,
+                plugins_kind,
             })
         })
         .transpose()?;
