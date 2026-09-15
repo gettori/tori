@@ -280,7 +280,7 @@ pub fn fetch_pr_head(
     if !sha.is_empty() && has_commit(repo, sha) {
         return Ok(());
     }
-    let out = pr_head_fetch_command(repo, number, sock, token).output().map_err(|e| e.to_string())?;
+    let out = crate::git_health::run(&mut pr_head_fetch_command(repo, number, sock, token))?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -1929,10 +1929,10 @@ pub fn git_fetch(
         let (ok, error) = {
             let lock = crate::exec::repo_lock(&repo);
             let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            match cmd.output() {
+            match crate::git_health::run(&mut cmd) {
                 Ok(o) if o.status.success() => (true, String::new()),
                 Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
-                Err(e) => (false, e.to_string()),
+                Err(e) => (false, e),
             }
         };
         let event = if ok { "git://fetch-done" } else { "git://fetch-error" };
@@ -1979,10 +1979,10 @@ pub fn push_branch(repo: &str, remote: &str, branch: &str, sock: &Path, token: &
         cmd.arg("--set-upstream");
     }
     cmd.arg(remote).arg(branch);
-    match cmd.output() {
+    match crate::git_health::run(&mut cmd) {
         Ok(o) if o.status.success() => Ok(()),
         Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(e),
     }
 }
 
@@ -2093,7 +2093,7 @@ pub fn delete_remote_branch(
     let out = {
         let lock = crate::exec::repo_lock(&repo);
         let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        cmd.output().map_err(|e| e.to_string())?
+        crate::git_health::run(&mut cmd)?
     };
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
@@ -2192,13 +2192,13 @@ pub fn git_pull(
         let (ok, error) = {
             let lock = crate::exec::repo_lock(&repo);
             let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            match cmd.output() {
+            match crate::git_health::run(&mut cmd) {
                 Ok(o) if o.status.success() => (true, String::new()),
                 // A pull that stopped on a conflict reports through the file
                 // list like a merge does, so its stderr is the whole of what
                 // this has to say about it.
                 Ok(o) => (false, String::from_utf8_lossy(&o.stderr).trim().to_string()),
-                Err(e) => (false, e.to_string()),
+                Err(e) => (false, e),
             }
         };
         let event = if ok { "git://pull-done" } else { "git://pull-error" };
@@ -2969,6 +2969,18 @@ diff --git a/f b/f
         assert!(!def.is_empty());
         assert!(dir.join(&def).is_dir());
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_fetch_with_no_git_on_path_names_the_fix() {
+        let empty = std::env::temp_dir().join(format!("sway-no-git-{}", std::process::id()));
+        std::fs::create_dir_all(&empty).unwrap();
+        let mut cmd = git_command("/repo", "op-1", Path::new("/tmp/sway-akp-x/s"), "tok");
+        cmd.arg("fetch").env("PATH", &empty);
+        let ready = || crate::git_health::GitHealth::Ready { path: "/usr/bin/git".into(), version: None };
+        let err = crate::git_health::run_with(&mut cmd, ready).unwrap_err();
+        std::fs::remove_dir_all(&empty).ok();
+        assert_eq!(err, crate::git_health::MISSING);
     }
 
     #[test]

@@ -110,7 +110,7 @@ describe("the tab grouping", () => {
       ["lsp", "dap"],
       ["panes"],
       ["appearance", "typography"],
-      ["github"],
+      ["git", "github"],
     ]);
   });
 

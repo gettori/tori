@@ -20,6 +20,7 @@ pub mod forge;
 mod format;
 mod fs;
 mod git;
+mod git_health;
 mod catalog_probe;
 mod health;
 mod hooks;
@@ -411,6 +412,8 @@ pub fn run() {
             agents::list_agents,
             health::agent_health,
             health::refresh_agent_health,
+            git_health::git_health,
+            git_health::refresh_git_health,
             accounts::agent_accounts,
             accounts::agent_account_counts,
             accounts::profile_spawn_env,

@@ -40,7 +40,7 @@ beforeEach(async () => {
   await loadWorkspaceSettings(null);
 });
 
-/** The four catalogue entries that stand for a whole section rather than for a
+/** The five catalogue entries that stand for a whole section rather than for a
  *  row: their controls are built at runtime (a card per agent found, a row per
  *  server installed), so they have a section on screen and no `<label>`.
  *
@@ -51,6 +51,7 @@ beforeEach(async () => {
 const CARD_ENTRIES: Record<string, string> = {
   "language-servers": "Language servers",
   debuggers: "Debuggers",
+  git: "Git",
   github: "GitHub",
 };
 const ANCHORED_ENTRIES = ["agents"];
