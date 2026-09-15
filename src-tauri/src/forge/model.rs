@@ -334,7 +334,10 @@ impl<T> Paged<T> {
 /// Declared rather than assumed so a provider that cannot resolve threads (or
 /// cannot merge) makes its control render inert instead of shipping a button
 /// that fails on click.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// The `Default` is every flag off, so a provider that cannot be built at all
+/// offers nothing rather than everything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Capabilities {
     pub pull_requests: bool,
@@ -342,6 +345,11 @@ pub struct Capabilities {
     pub review_threads: bool,
     pub resolve_threads: bool,
     pub merge: bool,
+    // Review submission, one flag per verdict: GitLab has approve and comment
+    // but nothing that carries "changes requested".
+    pub approve: bool,
+    pub request_changes: bool,
+    pub comment_review: bool,
 }
 
 /// The three states the credential can be in.
@@ -450,6 +458,9 @@ mod tests {
                 review_threads: true,
                 resolve_threads: true,
                 merge: true,
+                approve: true,
+                request_changes: true,
+                comment_review: true,
             },
             // All three auth states, because the Settings section renders a
             // distinct surface for each and a mirror that only saw one would
@@ -479,7 +490,7 @@ mod tests {
                 super::super::accounts::Provider::Github,
                 "https://github.com",
                 "github.com",
-                true,
+                Some(super::super::device_flow::CLIENT_ID),
             ),
             // A truncated page, because `truncated: true` is the case the UI
             // must not render as a complete list.

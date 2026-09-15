@@ -35,10 +35,11 @@ const chip = (over: Partial<Parameters<typeof forgeChip>[0]> = {}) =>
 describe("the states that render nothing", () => {
   it("tells a remote it cannot serve apart from a branch with no PR yet", () => {
     // The whole point of the pair. Both are an absence on screen, but only one
-    // of them is a place a later phase may hang a create control: a GitLab
-    // checkout can never grow a GitHub PR, so a control there is dead the day
-    // it ships (`lesson_probe_the_capability_before_building_its_control`).
-    expect(chip({ origin: "git@gitlab.com:skarif2/sway.git" }).kind).toBe("inert");
+    // of them is a place a later phase may hang a create control: a Bitbucket
+    // checkout can never grow a pull request Sway can read, so a control there
+    // is dead the day it ships
+    // (`lesson_probe_the_capability_before_building_its_control`).
+    expect(chip({ origin: "git@bitbucket.org:skarif2/sway.git" }).kind).toBe("inert");
     expect(chip({ origin: null }).kind).toBe("inert");
     expect(chip({ status: status({ pullRequest: null }) }).kind).toBe("noPr");
   });

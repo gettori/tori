@@ -258,13 +258,18 @@ describe("the forge chip on a branch row", () => {
       expect((await row("fresh")).querySelector('[data-forge-state="noPr"]')).toBeTruthy(),
     );
 
-    for (const label of ["gl-main", "solo-main"]) {
-      const r = await row(label);
-      expect(r.querySelector("[data-forge-state]")).toBeNull();
-      expect(r.querySelector("[data-forge-pr]")).toBeNull();
-      // Nothing a later phase could wire a create control onto.
-      expect(r.querySelector("button")).toBeNull();
-    }
+    // gitlab.com has an adapter, so a repo there with no account is offered one
+    // rather than left blank. What it must not show is PR state.
+    const gl = await row("gl-main");
+    expect(gl.querySelector('[data-forge-state="connect"]')).toBeTruthy();
+    expect(gl.querySelector("[data-forge-pr]")).toBeNull();
+
+    // A repo with no origin has nothing to connect to, so nothing renders and
+    // there is no control to click.
+    const solo = await row("solo-main");
+    expect(solo.querySelector("[data-forge-state]")).toBeNull();
+    expect(solo.querySelector("[data-forge-pr]")).toBeNull();
+    expect(solo.querySelector("button")).toBeNull();
 
     // A plain-dir project row is its own unit and has no branch, so it is inert
     // for the same reason and by the same rule.

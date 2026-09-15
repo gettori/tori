@@ -19,6 +19,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   isForgeError,
   type AuthState,
+  type Capabilities,
   type ForgeAccount,
   type ForgeHost,
   type ForgeProvider,
@@ -177,6 +178,12 @@ export async function resolveForgeRepo(path: string): Promise<RepoAccount | null
 /** What a checkout last resolved to, or null before it has been asked. */
 export function forgeRepo(path: string | null): RepoAccount | null {
   return path ? (repos()[path] ?? null) : null;
+}
+
+/** What this checkout's provider can do, or null before it has resolved. */
+export function forgeCapabilities(path: string | null): Capabilities | null {
+  const repo = forgeRepo(path);
+  return repo?.kind === "account" ? repo.capabilities : null;
 }
 
 /// Pick the account a repo acts as, then re-resolve everything sharing it.

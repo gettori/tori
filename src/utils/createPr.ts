@@ -24,7 +24,7 @@ export function apiCanServe(origin: string | null, known: KnownHosts): boolean {
 
 /// The providers Rust's `forge_for` has an adapter for. `forgeTypes.test.ts`
 /// holds this to the list Rust emits, so the two cannot drift.
-export const ADAPTERS: ReadonlySet<Provider> = new Set(["github"]);
+export const ADAPTERS: ReadonlySet<Provider> = new Set(["github", "gitlab"]);
 
 /// The host to offer an account for, or null for one that already serves. A
 /// host named like a provider with no adapter gets none, since adding its

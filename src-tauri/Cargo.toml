@@ -67,6 +67,9 @@ apple-native-keyring-store = { version = "1", features = ["keychain"] }
 # is `sha256(dir)[:8]`, so the token rung has to compute one. Already in the
 # lock file as a tauri build dependency; this makes it a runtime one too.
 sha2 = "0.10"
+# GitLab identifies a diff line by a SHA1 of its path, which is the only way to
+# anchor a multi-line review comment (`forge/gitlab.rs`).
+sha1 = "0.10"
 # `com.apple.quarantine` on a downloaded agent: read to decide whether Gatekeeper
 # will even be asked, and cleared only when the user says so.
 xattr = "1"

@@ -241,8 +241,10 @@ fn has_commit(project_path: &str, sha: &str) -> bool {
 /// Make a pull request's head commit readable locally.
 ///
 /// The PR's own file contents come from **layer 1**, the git protocol, not from
-/// the API: `refs/pull/{n}/head` is a ref the forge publishes and `git fetch`
-/// reaches it with the credentials the askpass bridge already handles. That is
+/// the API: the head ref is one the forge publishes (`refs/pull/{n}/head` on
+/// GitHub, `refs/merge-requests/{n}/head` on GitLab, which is why the caller
+/// passes it in) and `git fetch` reaches it with the credentials the askpass
+/// bridge already handles. That is
 /// what makes expanding a collapsed region in a PR diff cost zero API quota,
 /// and it is the difference between a gap expander that works and one that has
 /// to be governed by the same rate budget as everything else.
@@ -263,16 +265,16 @@ fn has_commit(project_path: &str, sha: &str) -> bool {
 /// commit already in the object store is a round trip spent on nothing.
 /// The fetch itself, built but not run, so a test can read back what it would
 /// have done: which refspec, and whether the bridge is wired.
-fn pr_head_fetch_command(repo: &str, number: u64, sock: &Path, token: &str) -> Command {
+fn pr_head_fetch_command(repo: &str, head_ref: &str, sock: &Path, token: &str) -> Command {
     let op_id = next_op_id();
     let mut cmd = git_command(repo, &op_id, sock, token);
-    cmd.args(["fetch", "--no-tags", "origin", &format!("refs/pull/{number}/head")]);
+    cmd.args(["fetch", "--no-tags", "origin", head_ref]);
     cmd
 }
 
 pub fn fetch_pr_head(
     repo: &str,
-    number: u64,
+    head_ref: &str,
     sha: &str,
     sock: &Path,
     token: &str,
@@ -280,7 +282,7 @@ pub fn fetch_pr_head(
     if !sha.is_empty() && has_commit(repo, sha) {
         return Ok(());
     }
-    let out = crate::git_health::run(&mut pr_head_fetch_command(repo, number, sock, token))?;
+    let out = crate::git_health::run(&mut pr_head_fetch_command(repo, head_ref, sock, token))?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -295,9 +297,12 @@ pub fn git_fetch_pr_head(
     sha: String,
 ) -> Result<(), String> {
     let inner = state.0.clone();
+    // Resolved before the repo lock: working out the head ref reads the repo's
+    // own origin, which takes that same lock.
+    let head_ref = crate::forge::commands::pr_head_ref(&project_path, number);
     let lock = crate::exec::repo_lock(&project_path);
     let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    fetch_pr_head(&project_path, number, &sha, inner.sock_path(), inner.token())
+    fetch_pr_head(&project_path, &head_ref, &sha, inner.sock_path(), inner.token())
 }
 
 /// The 1-based line range `start..=end` of a file **as of one commit**.
@@ -3536,13 +3541,21 @@ diff --git a/f b/f
         .trim()
         .to_string();
 
-        fetch_pr_head(&p, 7, &head, sock, "tok").expect("a local commit needs no remote");
+        fetch_pr_head(&p, "refs/pull/7/head", &head, sock, "tok")
+            .expect("a local commit needs no remote");
 
         // And a sha this repo has never seen does go to the network, which with
         // no remote configured is where it fails. `GIT_TERMINAL_PROMPT=0` from
         // `git_command` is what makes that a failure rather than a hang.
         assert!(
-            fetch_pr_head(&p, 7, "0123456789abcdef0123456789abcdef01234567", sock, "tok").is_err(),
+            fetch_pr_head(
+                &p,
+                "refs/pull/7/head",
+                "0123456789abcdef0123456789abcdef01234567",
+                sock,
+                "tok",
+            )
+            .is_err(),
             "an absent commit must be fetched",
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -3550,7 +3563,8 @@ diff --git a/f b/f
 
     #[test]
     fn fetching_a_pr_head_goes_through_the_bridge_and_leaves_no_ref_behind() {
-        let cmd = pr_head_fetch_command("/repo", 7, Path::new("/tmp/sway-akp-x/s"), "tok");
+        let cmd =
+            pr_head_fetch_command("/repo", "refs/pull/7/head", Path::new("/tmp/sway-akp-x/s"), "tok");
 
         // Everything that talks to a remote goes through the bridge, or a
         // private repo with no agent leaves git nothing to ask and no terminal

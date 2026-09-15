@@ -18,6 +18,7 @@
 //! thread's comments. One walker cannot cover both, and pretending otherwise is
 //! how the nested case silently truncates.
 
+use super::model::RateSnapshot;
 use super::{ForgeError, RateLimitKind};
 use serde_json::Value;
 
@@ -186,12 +187,80 @@ impl Transport for UreqTransport {
     }
 }
 
+/// Wraps a transport and records what every response said about the rate budget
+/// and the credential.
+///
+/// A transport rather than a method on a provider: the pagination walkers take a
+/// `&dyn Transport` and loop on it directly, so anything that lived in a
+/// provider method would be skipped by every paginated call. Here a 401 on page
+/// three of a walk marks the credential suspect exactly like a 401 on a single
+/// GET, with no call site able to opt out.
+pub struct Recording {
+    inner: Box<dyn Transport>,
+    /// Set once a 401 has been seen. The token is kept, not cleared: see
+    /// [`super::model::AuthState::Suspect`].
+    suspect: std::sync::atomic::AtomicBool,
+    rate: std::sync::Mutex<RateSnapshot>,
+}
+
+impl Recording {
+    pub fn new(inner: Box<dyn Transport>) -> Self {
+        Self {
+            inner,
+            suspect: std::sync::atomic::AtomicBool::new(false),
+            rate: std::sync::Mutex::new(RateSnapshot::default()),
+        }
+    }
+
+    pub fn rate(&self) -> RateSnapshot {
+        *self.rate.lock().unwrap()
+    }
+
+    pub fn suspect(&self) -> bool {
+        self.suspect.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl Transport for Recording {
+    fn send(&self, req: HttpRequest) -> Result<HttpResponse, ForgeError> {
+        let resp = self.inner.send(req)?;
+        *self.rate.lock().unwrap() = rate_snapshot(&resp);
+        match resp.status {
+            401 => self.suspect.store(true, std::sync::atomic::Ordering::Relaxed),
+            // Any answered call clears the suspicion. A 401 from a proxy, a
+            // captive portal or a forge incident is transient, and without this
+            // the flag would latch on forever: the user would be told to sign in
+            // again to fix something that had already fixed itself.
+            200..=299 => self.suspect.store(false, std::sync::atomic::Ordering::Relaxed),
+            _ => {}
+        }
+        Ok(resp)
+    }
+}
+
 /// How many pages either walker will follow before giving up and reporting
 /// truncation.
 ///
 /// A cap rather than an unbounded loop: a paging bug on either side would
 /// otherwise spend the whole rate budget in one call. Reported, never silent.
 pub const PAGE_CAP: usize = 20;
+
+/// What a response said about the rate budget, in either spelling.
+///
+/// GitHub prefixes the headers with `X-`, GitLab sends the RFC names. Both are
+/// read in one place so the classifier and the recording transport cannot end
+/// up disagreeing about which budget a response reported.
+pub fn rate_snapshot(resp: &HttpResponse) -> RateSnapshot {
+    let field = |names: [&str; 2]| {
+        names.iter().find_map(|n| resp.header(n)).map(str::trim).filter(|v| !v.is_empty())
+    };
+    RateSnapshot {
+        remaining: field(["X-RateLimit-Remaining", "RateLimit-Remaining"])
+            .and_then(|v| v.parse().ok()),
+        limit: field(["X-RateLimit-Limit", "RateLimit-Limit"]).and_then(|v| v.parse().ok()),
+        reset_at: field(["X-RateLimit-Reset", "RateLimit-Reset"]).and_then(|v| v.parse().ok()),
+    }
+}
 
 /// Maps a non-2xx response onto the variant a caller can branch on.
 ///
@@ -206,12 +275,13 @@ pub fn classify(resp: &HttpResponse) -> Option<ForgeError> {
     }
     let message = error_message(&resp.body).unwrap_or_else(|| resp.body.clone());
     let retry_after = resp.header("Retry-After").and_then(|v| v.trim().parse::<u64>().ok());
-    let exhausted = resp.header("X-RateLimit-Remaining").map(|v| v.trim() == "0").unwrap_or(false);
     // Read here rather than left to the caller's rate snapshot: a refusal is
     // exactly the response whose body never reaches the snapshot's reader, so
     // the one number that says when to come back would be dropped on the only
     // path that needs it.
-    let reset_at = resp.header("X-RateLimit-Reset").and_then(|v| v.trim().parse::<u64>().ok());
+    let rate = rate_snapshot(resp);
+    let exhausted = rate.remaining == Some(0);
+    let reset_at = rate.reset_at;
 
     Some(match resp.status {
         401 => ForgeError::CredentialSuspect,
@@ -677,6 +747,49 @@ mod tests {
             classify(&forbidden),
             Some(ForgeError::Forbidden { message: "Resource not accessible".into() })
         );
+    }
+
+    #[test]
+    fn a_rate_limit_reads_the_same_in_either_spelling() {
+        // GitHub prefixes these headers with `X-`; GitLab sends the RFC names.
+        // A reader that knew only one family would take the other's refusal for
+        // a permissions error, and stop polling for the wrong reason with no
+        // deadline to come back on.
+        let throttled = StubTransport::with_headers(
+            429,
+            &[
+                ("RateLimit-Remaining", "0"),
+                ("RateLimit-Reset", "1785179400"),
+                ("RateLimit-Limit", "2000"),
+            ],
+            r#"{"message":"Too many requests"}"#,
+        );
+        assert_eq!(
+            classify(&throttled),
+            Some(ForgeError::RateLimited {
+                kind: RateLimitKind::Secondary,
+                retry_after_secs: None,
+                reset_at_secs: Some(1_785_179_400),
+            })
+        );
+
+        // And a 403 with the budget gone is the primary limit in that spelling
+        // too, not a permissions error.
+        let exhausted = StubTransport::with_headers(
+            403,
+            &[("RateLimit-Remaining", "0"), ("RateLimit-Reset", "1785179400")],
+            r#"{"message":"Rate limit exceeded"}"#,
+        );
+        assert!(matches!(
+            classify(&exhausted),
+            Some(ForgeError::RateLimited { kind: RateLimitKind::Primary, .. })
+        ));
+
+        // Both families feed the one snapshot the scheduler paces itself by.
+        let snapshot = rate_snapshot(&throttled);
+        assert_eq!(snapshot.remaining, Some(0));
+        assert_eq!(snapshot.limit, Some(2000));
+        assert_eq!(snapshot.reset_at, Some(1_785_179_400));
     }
 
     #[test]

@@ -100,6 +100,17 @@ describe("mayPoll", () => {
   });
 });
 
+const CAPS = {
+  pullRequests: true,
+  checks: true,
+  reviewThreads: true,
+  resolveThreads: true,
+  merge: true,
+  approve: true,
+  requestChanges: true,
+  commentReview: true,
+};
+
 describe("projectPause", () => {
   const auth = (id: string): AuthState =>
     id === "work" ? { kind: "suspect", login: "fonn-arif" } : SIGNED_IN;
@@ -108,6 +119,7 @@ describe("projectPause", () => {
     accountId,
     host: "github.com",
     auth: auth(accountId),
+    capabilities: CAPS,
   });
 
   it("pauses only the projects of the account that was rejected", () => {

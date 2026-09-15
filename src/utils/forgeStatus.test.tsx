@@ -83,8 +83,25 @@ function account(id: string, auth: AuthState): ForgeAccount {
   };
 }
 
+const CAPS = {
+  pullRequests: true,
+  checks: true,
+  reviewThreads: true,
+  resolveThreads: true,
+  merge: true,
+  approve: true,
+  requestChanges: true,
+  commentReview: true,
+};
+
 function on(accountId: string): RepoAccount {
-  return { kind: "account", accountId, host: "github.com", auth: { kind: "signedIn", login: accountId } };
+  return {
+    kind: "account",
+    accountId,
+    host: "github.com",
+    auth: { kind: "signedIn", login: accountId },
+    capabilities: CAPS,
+  };
 }
 
 /** One account, `personal`, in this state, told to Rust and the store alike.

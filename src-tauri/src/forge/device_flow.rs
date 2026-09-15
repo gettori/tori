@@ -31,12 +31,52 @@ use serde_json::Value;
 /// empty id rather than trusting the constant.
 pub const CLIENT_ID: &str = "Ov23liDBQcC2uWTVFpjp";
 
+/// GitLab's equivalent, per instance rather than global: a self-managed server
+/// only has an application if its own admin registered one, which is why the
+/// id is stored per host and this constant covers gitlab.com alone. Empty until
+/// that application exists, and an empty id offers no browser flow at all.
+pub const GITLAB_COM_CLIENT_ID: &str = "";
+
 /// The scope asked for. `repo` covers private repositories, PRs, and the
 /// Checks API. Deliberately nothing wider: no `workflow`, no `read:org`.
 const SCOPE: &str = "repo";
+/// GitLab's equivalent of `repo`. `write_repository` is deliberately absent:
+/// pushing through the account is Phase 5's switch, and asking for it here
+/// would widen every sign-in for a feature that is off.
+const GITLAB_SCOPE: &str = "api";
 
 const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
+
+/// Where one provider's device flow lives, and what it asks for.
+///
+/// Both forges implement RFC 8628, so the two steps and every error string are
+/// shared; what differs is the origin and the scope. GitLab's endpoints hang off
+/// the instance's own base URL, which is what makes a self-managed server the
+/// same flow at a different address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Endpoints {
+    pub code_url: String,
+    pub token_url: String,
+    pub scope: &'static str,
+}
+
+pub fn github_endpoints() -> Endpoints {
+    Endpoints {
+        code_url: DEVICE_CODE_URL.to_string(),
+        token_url: ACCESS_TOKEN_URL.to_string(),
+        scope: SCOPE,
+    }
+}
+
+pub fn gitlab_endpoints(base_url: &str) -> Endpoints {
+    let base = base_url.trim_end_matches('/');
+    Endpoints {
+        code_url: format!("{base}/oauth/authorize_device"),
+        token_url: format!("{base}/oauth/token"),
+        scope: GITLAB_SCOPE,
+    }
+}
 
 /// The floor for the poll interval when the server does not name one. GitHub's
 /// documented default is 5 seconds.
@@ -68,6 +108,32 @@ pub struct PendingFlow {
     pub interval_secs: u64,
 }
 
+/// What a successful exchange hands back.
+///
+/// The refresh token and the deadline travel with the access token because
+/// GitLab's tokens expire in two hours and a refresh invalidates both halves at
+/// once: a pair split across two reads is a pair that can be half-stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenSet {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    // Seconds from now, as the server sends it; the caller turns it into a
+    // deadline against its own clock.
+    pub expires_in_secs: Option<u64>,
+}
+
+fn token_set(v: &Value) -> Option<TokenSet> {
+    let access = v.get("access_token")?.as_str()?;
+    if access.is_empty() {
+        return None;
+    }
+    Some(TokenSet {
+        access_token: access.to_string(),
+        refresh_token: v.get("refresh_token").and_then(|t| t.as_str()).map(|s| s.to_string()),
+        expires_in_secs: v.get("expires_in").and_then(|e| e.as_u64()),
+    })
+}
+
 /// Every way a poll can end.
 ///
 /// `Pending` and `SlowDown` both carry the interval to use next, so the caller
@@ -75,7 +141,7 @@ pub struct PendingFlow {
 /// waiting" would lose the backoff and earn a harder throttle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PollOutcome {
-    Authorized { token: String },
+    Authorized { token: TokenSet },
     Pending { next_interval_secs: u64 },
     SlowDown { next_interval_secs: u64 },
     /// The user pressed cancel on GitHub's page.
@@ -94,11 +160,11 @@ pub fn classify_poll(body: &str, current_interval_secs: u64) -> Result<PollOutco
     let v: Value = serde_json::from_str(body)
         .map_err(|e| ForgeError::Malformed { message: format!("device poll: {e}") })?;
 
-    if let Some(token) = v.get("access_token").and_then(|t| t.as_str()) {
-        if token.is_empty() {
-            return Err(ForgeError::Malformed { message: "empty access_token".into() });
-        }
-        return Ok(PollOutcome::Authorized { token: token.to_string() });
+    if v.get("access_token").is_some() {
+        return match token_set(&v) {
+            Some(set) => Ok(PollOutcome::Authorized { token: set }),
+            None => Err(ForgeError::Malformed { message: "empty access_token".into() }),
+        };
     }
 
     // A server-supplied interval wins over arithmetic: it is the number the
@@ -181,12 +247,15 @@ fn form_post(url: &str, body: String) -> HttpRequest {
 pub fn start_with(
     transport: &dyn Transport,
     client_id: &str,
+    endpoints: &Endpoints,
 ) -> Result<(DevicePrompt, PendingFlow), ForgeError> {
     if client_id.is_empty() {
         return Err(ForgeError::NotAuthenticated);
     }
-    let resp =
-        transport.send(form_post(DEVICE_CODE_URL, format!("client_id={client_id}&scope={SCOPE}")))?;
+    let resp = transport.send(form_post(
+        &endpoints.code_url,
+        format!("client_id={client_id}&scope={}", endpoints.scope),
+    ))?;
     if let Some(err) = super::http::classify(&resp) {
         return Err(err);
     }
@@ -198,13 +267,14 @@ pub fn start_with(
 pub fn poll_once_with(
     transport: &dyn Transport,
     client_id: &str,
+    endpoints: &Endpoints,
     flow: &PendingFlow,
 ) -> Result<PollOutcome, ForgeError> {
     if client_id.is_empty() {
         return Err(ForgeError::NotAuthenticated);
     }
     let resp = transport.send(form_post(
-        ACCESS_TOKEN_URL,
+        &endpoints.token_url,
         format!(
             "client_id={client_id}&device_code={}&grant_type=urn:ietf:params:oauth:grant-type:device_code",
             flow.device_code
@@ -221,14 +291,42 @@ pub fn poll_once_with(
     classify_poll(&resp.body, flow.interval_secs)
 }
 
+/// Exchanges a refresh token for a new pair.
+///
+/// GitLab invalidates **both** halves of the old pair on every refresh, so
+/// whatever comes back here is the only credential that still works: it has to
+/// reach the keychain before any caller is handed it, or a crash in between
+/// signs the account out for good with no way back but a fresh sign-in.
+pub fn refresh_with(
+    transport: &dyn Transport,
+    client_id: &str,
+    endpoints: &Endpoints,
+    refresh_token: &str,
+) -> Result<TokenSet, ForgeError> {
+    if client_id.is_empty() {
+        return Err(ForgeError::NotAuthenticated);
+    }
+    let resp = transport.send(form_post(
+        &endpoints.token_url,
+        format!("client_id={client_id}&refresh_token={refresh_token}&grant_type=refresh_token"),
+    ))?;
+    if let Some(err) = super::http::classify(&resp) {
+        return Err(err);
+    }
+    let v: Value = serde_json::from_str(&resp.body)
+        .map_err(|e| ForgeError::Malformed { message: format!("refresh: {e}") })?;
+    token_set(&v)
+        .ok_or_else(|| ForgeError::Malformed { message: "refresh returned no token".into() })
+}
+
 // --- thin wrappers over the registered client id ---
 
 pub fn start(transport: &dyn Transport) -> Result<(DevicePrompt, PendingFlow), ForgeError> {
-    start_with(transport, CLIENT_ID)
+    start_with(transport, CLIENT_ID, &github_endpoints())
 }
 
 pub fn poll_once(transport: &dyn Transport, flow: &PendingFlow) -> Result<PollOutcome, ForgeError> {
-    poll_once_with(transport, CLIENT_ID, flow)
+    poll_once_with(transport, CLIENT_ID, &github_endpoints(), flow)
 }
 
 #[cfg(test)]
@@ -236,10 +334,75 @@ mod tests {
     use super::super::http::test_support::StubTransport;
     use super::*;
 
+    fn authorized(access: &str) -> PollOutcome {
+        PollOutcome::Authorized {
+            token: TokenSet {
+                access_token: access.into(),
+                refresh_token: None,
+                expires_in_secs: None,
+            },
+        }
+    }
+
     #[test]
     fn an_authorized_poll_yields_the_token() {
         let out = classify_poll(r#"{"access_token":"gho_x","token_type":"bearer"}"#, 5).unwrap();
-        assert_eq!(out, PollOutcome::Authorized { token: "gho_x".into() });
+        assert_eq!(out, authorized("gho_x"));
+    }
+
+    #[test]
+    fn a_refreshable_token_carries_its_pair_and_its_deadline() {
+        // GitLab answers with all three, and dropping either the refresh token
+        // or the expiry leaves an account that simply stops working in two
+        // hours with nothing able to renew it.
+        let out = classify_poll(
+            r#"{"access_token":"glpat_a","refresh_token":"glrt_r","expires_in":7200}"#,
+            5,
+        )
+        .unwrap();
+        assert_eq!(
+            out,
+            PollOutcome::Authorized {
+                token: TokenSet {
+                    access_token: "glpat_a".into(),
+                    refresh_token: Some("glrt_r".into()),
+                    expires_in_secs: Some(7200),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn a_refresh_exchanges_the_pair_for_a_new_one() {
+        // The old pair stops working the moment this answers, so the new one is
+        // the only credential left: it is read whole, or the call fails.
+        let t = StubTransport::new(vec![StubTransport::json(
+            200,
+            r#"{"access_token":"glpat_b","refresh_token":"glrt_s","expires_in":7200}"#,
+        )]);
+        let set = refresh_with(&t, "app-id", &gitlab_endpoints("https://git.acme.test"), "glrt_r")
+            .unwrap();
+        assert_eq!(set.access_token, "glpat_b");
+        assert_eq!(set.refresh_token.as_deref(), Some("glrt_s"));
+        assert_eq!(set.expires_in_secs, Some(7200));
+
+        let body = t.requests()[0].body.clone().unwrap();
+        assert!(body.contains("grant_type=refresh_token"));
+        assert!(body.contains("refresh_token=glrt_r"));
+
+        // A refused refresh is an error rather than a half-applied change: the
+        // caller is what decides the account is suspect.
+        let refused = StubTransport::new(vec![StubTransport::json(
+            401,
+            r#"{"error":"invalid_grant"}"#,
+        )]);
+        assert!(refresh_with(
+            &refused,
+            "app-id",
+            &gitlab_endpoints("https://git.acme.test"),
+            "glrt_r"
+        )
+        .is_err());
     }
 
     #[test]
@@ -347,9 +510,10 @@ mod tests {
         // `start`, so it stays reachable from a test now that the real constant
         // is filled in.
         let t = StubTransport::new(vec![]);
-        assert_eq!(start_with(&t, "").unwrap_err(), ForgeError::NotAuthenticated);
+        let gh = github_endpoints();
+        assert_eq!(start_with(&t, "", &gh).unwrap_err(), ForgeError::NotAuthenticated);
         let flow = PendingFlow { device_code: "d".into(), interval_secs: 5 };
-        assert_eq!(poll_once_with(&t, "", &flow).unwrap_err(), ForgeError::NotAuthenticated);
+        assert_eq!(poll_once_with(&t, "", &gh, &flow).unwrap_err(), ForgeError::NotAuthenticated);
         assert_eq!(t.request_count(), 0, "nothing reached the wire");
     }
 
@@ -379,7 +543,7 @@ mod tests {
             200,
             r#"{"device_code":"d","user_code":"U","verification_uri":"https://x","interval":5}"#,
         )]);
-        start_with(&t, "Iv1.test").unwrap();
+        start_with(&t, "Iv1.test", &github_endpoints()).unwrap();
 
         let req = &t.requests()[0];
         assert_eq!(req.method, "POST");
@@ -396,8 +560,8 @@ mod tests {
     fn the_poll_sends_the_device_grant_type() {
         let t = StubTransport::new(vec![StubTransport::json(200, r#"{"access_token":"gho_x"}"#)]);
         let flow = PendingFlow { device_code: "dc".into(), interval_secs: 5 };
-        let out = poll_once_with(&t, "Iv1.test", &flow).unwrap();
-        assert_eq!(out, PollOutcome::Authorized { token: "gho_x".into() });
+        let out = poll_once_with(&t, "Iv1.test", &github_endpoints(), &flow).unwrap();
+        assert_eq!(out, authorized("gho_x"));
 
         let body = t.requests()[0].body.clone().unwrap();
         assert!(body.contains("device_code=dc"));
@@ -417,9 +581,31 @@ mod tests {
         )]);
         let flow = PendingFlow { device_code: "dc".into(), interval_secs: 5 };
         assert_eq!(
-            poll_once_with(&t, "Iv1.test", &flow).unwrap(),
+            poll_once_with(&t, "Iv1.test", &github_endpoints(), &flow).unwrap(),
             PollOutcome::Pending { next_interval_secs: 5 }
         );
+    }
+
+    #[test]
+    fn a_gitlab_instance_runs_the_same_flow_at_its_own_origin() {
+        // The reason the endpoints are a parameter: a self-managed server is
+        // this flow at a different address, and hardcoding gitlab.com would send
+        // a company's sign-in to the public instance.
+        let t = StubTransport::new(vec![
+            StubTransport::json(
+                200,
+                r#"{"device_code":"d","user_code":"U","verification_uri":"https://git.acme.test/oauth/device","interval":5}"#,
+            ),
+            StubTransport::json(200, r#"{"access_token":"glpat_x"}"#),
+        ]);
+        let acme = gitlab_endpoints("https://git.acme.test/");
+        let (_, flow) = start_with(&t, "app-id", &acme).unwrap();
+        poll_once_with(&t, "app-id", &acme, &flow).unwrap();
+
+        let sent = t.requests();
+        assert_eq!(sent[0].url, "https://git.acme.test/oauth/authorize_device");
+        assert_eq!(sent[1].url, "https://git.acme.test/oauth/token");
+        assert!(sent[0].body.clone().unwrap().contains("scope=api"), "api, and nothing wider");
     }
 
     #[test]

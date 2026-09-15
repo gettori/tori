@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 pub const GITHUB_COM: &str = "github.com";
+pub const GITLAB_COM: &str = "gitlab.com";
 
 /// What the pre-accounts GitHub credential becomes. Fixed, so migrating again
 /// after a deleted accounts file updates this account instead of adding a twin.
@@ -61,6 +62,10 @@ pub struct Account {
 pub struct HostRecord {
     #[serde(default)]
     pub accounts: Vec<Account>,
+    // Per host because only that instance's admin can register one, and absent
+    // means token paste is the only route.
+    #[serde(default)]
+    pub app_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,6 +195,16 @@ pub fn remove_account(file: &mut AccountsFile, id: &str) -> Option<Account> {
     Some(removed)
 }
 
+// Absolute rather than a duration, because the process will not be running for
+// most of the wait.
+pub fn note_expiry(file: &mut AccountsFile, id: &str, expires_at: Option<u64>) {
+    for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
+        if account.id == id {
+            account.expires_at = expires_at;
+        }
+    }
+}
+
 pub fn note_login(file: &mut AccountsFile, id: &str, login: &str) {
     for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
         if account.id == id {
@@ -267,9 +282,45 @@ pub struct SignInRoutes {
     pub device_flow: bool,
     pub scopes: Vec<String>,
     pub token_url: String,
+    // GitLab only: GitHub's application is Sway's own, and showing it would
+    // invite editing something the user cannot change.
+    pub app_id: Option<String>,
 }
 
-pub fn sign_in_routes(provider: Provider, base_url: &str, host: &str, has_client_id: bool) -> SignInRoutes {
+// An empty stored id reads as absent, so clearing the field in Settings puts
+// the host back on token paste.
+pub fn app_id(file: &AccountsFile, host: &str) -> Option<String> {
+    file.hosts
+        .get(host)
+        .and_then(|r| r.app_id.clone())
+        .filter(|id| !id.trim().is_empty())
+}
+
+pub fn set_app_id(file: &mut AccountsFile, host: &str, app_id: &str) -> bool {
+    let trimmed = app_id.trim();
+    let record = file.hosts.entry(host.to_string()).or_default();
+    let next = (!trimmed.is_empty()).then(|| trimmed.to_string());
+    if record.app_id == next {
+        // A host record kept only for an id that was never set would be an
+        // empty entry nothing removes.
+        if next.is_none() && record.accounts.is_empty() {
+            file.hosts.remove(host);
+        }
+        return false;
+    }
+    record.app_id = next;
+    if record.app_id.is_none() && record.accounts.is_empty() {
+        file.hosts.remove(host);
+    }
+    true
+}
+
+pub fn sign_in_routes(
+    provider: Provider,
+    base_url: &str,
+    host: &str,
+    client_id: Option<&str>,
+) -> SignInRoutes {
     let (scope, token_url) = match provider {
         Provider::Github => ("repo", format!("{base_url}/settings/tokens/new?scopes=repo&description=Sway")),
         Provider::Gitlab => {
@@ -279,9 +330,17 @@ pub fn sign_in_routes(provider: Provider, base_url: &str, host: &str, has_client
     SignInRoutes {
         host: host.to_string(),
         base_url: base_url.to_string(),
-        device_flow: has_client_id && provider == Provider::Github && host == GITHUB_COM,
+        // GitHub's application is Sway's own and covers github.com only, so a
+        // GitHub Enterprise server has no browser flow. GitLab's is registered
+        // per instance, so any host with an id has one.
+        device_flow: client_id.is_some_and(|id| !id.trim().is_empty())
+            && (provider == Provider::Gitlab || host == GITHUB_COM),
         scopes: vec![scope.to_string()],
         token_url,
+        app_id: match provider {
+            Provider::Gitlab => client_id.map(|id| id.to_string()).filter(|id| !id.is_empty()),
+            Provider::Github => None,
+        },
     }
 }
 
@@ -450,17 +509,43 @@ mod tests {
 
     #[test]
     fn github_com_offers_the_browser_and_any_other_host_only_a_token() {
-        let github = sign_in_routes(Provider::Github, GH, GITHUB_COM, true);
+        let github = sign_in_routes(Provider::Github, GH, GITHUB_COM, Some("Ov23test"));
         assert!(github.device_flow);
         assert_eq!(github.scopes, ["repo"]);
         assert!(github.token_url.starts_with("https://github.com/settings/tokens/new"));
 
-        let ghe = sign_in_routes(Provider::Github, "https://ghe.example.com", "ghe.example.com", true);
+        // Sway's GitHub application covers github.com alone, so an enterprise
+        // server has no browser flow even with an id in hand.
+        let ghe =
+            sign_in_routes(Provider::Github, "https://ghe.example.com", "ghe.example.com", Some("Ov23test"));
         assert!(!ghe.device_flow);
         assert!(ghe.token_url.starts_with("https://ghe.example.com/"));
 
-        let gitlab = sign_in_routes(Provider::Gitlab, "https://gitlab.com", "gitlab.com", true);
+        let gitlab = sign_in_routes(Provider::Gitlab, "https://gitlab.com", GITLAB_COM, None);
         assert!(!gitlab.device_flow);
         assert_eq!(gitlab.scopes, ["api"]);
+    }
+
+    #[test]
+    fn a_self_managed_gitlab_offers_the_browser_once_its_application_id_is_stored() {
+        // Only that instance's admin can register an application, so the id is
+        // per host and its absence is what leaves token paste as the one route.
+        let mut file = AccountsFile::default();
+        let host = "git.example.com";
+        let base = "https://git.example.com";
+        let routes = |file: &AccountsFile| {
+            sign_in_routes(Provider::Gitlab, base, host, app_id(file, host).as_deref())
+        };
+        assert!(!routes(&file).device_flow);
+
+        assert!(set_app_id(&mut file, host, "app-123"));
+        assert!(routes(&file).device_flow, "a registered application unlocks the browser");
+        assert_eq!(routes(&file).app_id.as_deref(), Some("app-123"));
+
+        // Clearing it puts the host back on paste, and takes the record with it:
+        // an entry holding neither an account nor an id is one nothing removes.
+        assert!(set_app_id(&mut file, host, "   "));
+        assert!(!routes(&file).device_flow);
+        assert!(file.hosts.is_empty());
     }
 }

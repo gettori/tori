@@ -98,6 +98,7 @@ const bridge = vi.hoisted(() => ({
   replyFails: null as { kind: string; message: string } | null,
   resolveFails: null as { kind: string; message: string } | null,
   viewer: null as string | null,
+  capabilities: {} as Record<string, boolean>,
   submitFails: null as { kind: string; message: string } | null,
   mergeable: "clean" as string,
   mergeableFails: null as { kind: string; message: string } | null,
@@ -148,6 +149,7 @@ vi.mock("@tauri-apps/api/core", () => ({
         accountId: "personal",
         host: "github.com",
         auth: bridge.viewer ? { kind: "signedIn", login: bridge.viewer } : { kind: "signedOut" },
+        capabilities: bridge.capabilities,
       });
     return Promise.resolve(null);
   },
@@ -174,6 +176,18 @@ type RemoveBranchUnit = { projectPath: string; branch: string };
 
 const cmds = (name: string) => bridge.calls.filter((c) => c.cmd === name);
 
+/** What GitHub reports. A test that cares about one verdict flips that flag. */
+const FULL_CAPS = {
+  pullRequests: true,
+  checks: true,
+  reviewThreads: true,
+  resolveThreads: true,
+  merge: true,
+  approve: true,
+  requestChanges: true,
+  commentReview: true,
+};
+
 /** Sign in as `login`, and let the viewer identity land. */
 const signInAs = async (login: string) => {
   bridge.viewer = login;
@@ -198,6 +212,7 @@ describe("the pull request detail", () => {
     bridge.calls.length = 0;
     bridge.files = [];
     bridge.truncated = false;
+    bridge.capabilities = { ...FULL_CAPS };
     bridge.fail = null;
     bridge.slice = [];
     bridge.fetchFails = null;
@@ -803,6 +818,23 @@ describe("writing and submitting a review", () => {
       target: { value: "the error is dropped here" },
     });
     await waitFor(() => expect(button("Request changes").disabled).toBe(false));
+  });
+
+  it("renders request-changes inert on a host that has no such verdict", async () => {
+    // GitLab approves and comments and has nothing carrying "changes
+    // requested", so the control says so rather than failing on click.
+    bridge.capabilities = { ...FULL_CAPS, requestChanges: false };
+    await signInAs("skarif2");
+    await startReview("someone-else");
+    await commentOn(["+two edited"], "a note");
+
+    const button = (label: string) =>
+      screen.getAllByText(label).find((n) => n.closest("button"))!.closest("button")!;
+    expect(button("Request changes").disabled).toBe(true);
+    expect(button("Approve").disabled).toBe(false);
+    expect(document.querySelector("[data-verdict-reason]")!.textContent).toContain(
+      "no such verdict",
+    );
   });
 
   it("clears the pending set on a successful submit and keeps it on a refusal", async () => {

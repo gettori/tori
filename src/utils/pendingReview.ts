@@ -93,13 +93,17 @@ export type SubmitBlock = { event: ReviewEvent; reason: string };
 /** Copy for each reason a verdict cannot be submitted. Separate from the check
  *  so the reason travels with the disabled control rather than being re-derived
  *  next to it. */
+export const UNSUPPORTED_REASON = "This host has no such verdict.";
 export const SELF_AUTHORED_REASON = "GitHub does not accept this on your own pull request.";
 export const EMPTY_BODY_REASON = "Requesting changes needs a summary saying what to change.";
 
 /** Why this verdict cannot be submitted right now, or null if it can.
  *
- *  Three independent noes, in the order they matter:
+ *  Four independent noes, in the order they matter:
  *
+ *    0. **The host has no such verdict.** GitLab has approve and comment and
+ *       nothing that carries "changes requested", so the control is inert there
+ *       for a reason that has nothing to do with this pull request.
  *    1. **Self-authored.** The server answers 422, so approve and
  *       request-changes are not offerable at all. `null` (viewer not yet known)
  *       blocks too: an unknown author is not a known-different one.
@@ -114,7 +118,9 @@ export function submitBlock(input: {
   body: string;
   comments: readonly DraftComment[];
   selfAuthored: boolean | null;
+  supported: boolean;
 }): string | null {
+  if (!input.supported) return UNSUPPORTED_REASON;
   const verdict = input.event === "approve" || input.event === "requestChanges";
   if (verdict && input.selfAuthored !== false) return SELF_AUTHORED_REASON;
   if (input.event === "requestChanges" && !input.body.trim()) return EMPTY_BODY_REASON;

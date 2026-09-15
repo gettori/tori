@@ -63,6 +63,7 @@ export default function ForgeSection() {
   const [draft, setDraft] = createSignal<Draft | null>(null);
   const [routes, setRoutes] = createSignal<SignInRoutes | null>(null);
   const [token, setToken] = createSignal("");
+  const [appId, setAppId] = createSignal("");
   const [prompt, setPrompt] = createSignal<DevicePrompt | null>(null);
   const [error, setError] = createSignal<string | null>(null);
   const [copied, setCopied] = createSignal(false);
@@ -96,8 +97,16 @@ export default function ForgeSection() {
   function openDraft(provider: ForgeProvider, url: string, accountId: string | null = null) {
     setError(null);
     setToken("");
+    setAppId("");
     setRoutes(null);
     setDraft({ provider, url, accountId });
+  }
+
+  /** Both places routes arrive, so the application id field always shows what
+   *  is stored for the host rather than what the last draft typed. */
+  function noteRoutes(r: SignInRoutes) {
+    setRoutes(r);
+    setAppId(r.appId ?? "");
   }
 
   function closeDraft() {
@@ -109,8 +118,23 @@ export default function ForgeSection() {
   async function loadRoutes(d: Draft) {
     setError(null);
     try {
-      setRoutes(
+      noteRoutes(
         await invoke<SignInRoutes>("forge_sign_in_routes", { provider: d.provider, baseUrl: d.url }),
+      );
+    } catch (e) {
+      setError(forgeErrorMessage(e));
+    }
+  }
+
+  async function saveAppId(d: Draft, r: SignInRoutes) {
+    setError(null);
+    try {
+      noteRoutes(
+        await invoke<SignInRoutes>("forge_set_app_id", {
+          provider: d.provider,
+          baseUrl: r.baseUrl,
+          appId: appId(),
+        }),
       );
     } catch (e) {
       setError(forgeErrorMessage(e));
@@ -205,7 +229,7 @@ export default function ForgeSection() {
     }
     if (r.deviceFlow) return signInWithBrowser(account.provider, r.baseUrl, account.id);
     openDraft(account.provider, r.baseUrl, account.id);
-    setRoutes(r);
+    noteRoutes(r);
   }
 
   async function remove(account: ForgeAccount) {
@@ -368,6 +392,28 @@ export default function ForgeSection() {
             <Show when={routes()}>
               {(r) => (
                 <>
+                  {/* GitLab registers applications per instance, so this is the
+                      one thing that can turn the browser flow on for a host
+                      Sway has never seen. */}
+                  <Show when={d().provider === "gitlab"}>
+                    <div class={styles.row}>
+                      <label class={styles.label}>Application ID</label>
+                      <div class={styles.control}>
+                        <input
+                          type="text"
+                          class={`${styles.input} ${styles.text}`}
+                          aria-label="Application ID"
+                          value={appId()}
+                          onInput={(e) => setAppId(e.currentTarget.value)}
+                        />
+                        <Button onClick={() => void saveAppId(d(), r())}>Save</Button>
+                      </div>
+                      <div class={styles.hint} data-testid="app-id-hint">
+                        Optional. An OAuth application on {r().host} with the api scope, registered
+                        as public, adds browser sign-in. Without one, paste a token below.
+                      </div>
+                    </div>
+                  </Show>
                   <Show when={r().deviceFlow}>
                     <div class={styles.row}>
                       <label class={styles.label}>Browser</label>
