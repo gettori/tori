@@ -339,6 +339,18 @@ export function refreshCatalog(agentId: string, profile: string | null = null): 
     .finally(() => setProbing((ids) => ids.filter((id) => id !== key)));
 }
 
+/** Fold a live session's command list into this account's cache, so the next
+ *  draft's `/` menu opens on what the agent said last, not on what the last
+ *  probe heard. A probe is only re-run on a version change, so a plugin
+ *  installed since it ran stayed out of the menu until an explicit Ask again.
+ *  Fire-and-forget: the session already has its list. */
+export function recordLiveCommands(agentId: string, profile: string | null, commands: readonly SlashCommand[]) {
+  if (!commands.length) return;
+  void invoke<ModelCatalog>("record_live_catalog", { agentId, profileId: profile, commands })
+    .then(absorb)
+    .catch(() => null);
+}
+
 /** Ask every agent that has never answered or whose binary has changed.
  *
  *  **One request per agent rather than the backend's batch command**, and the

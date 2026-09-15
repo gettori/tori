@@ -2681,6 +2681,8 @@ mod tests {
             whoami_args: vec![],
             whoami_kind: None,
             supports_isolation: true,
+            onboarded: None,
+            plugins_kind: None,
         });
         a
     }

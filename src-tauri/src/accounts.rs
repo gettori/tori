@@ -616,6 +616,10 @@ pub struct AccountsView {
     pub can_sign_out: bool,
     pub default_present: bool,
     pub default_home: Option<String>,
+    /// Where the default account really runs when Sway's own environment sets
+    /// the adapter's `home_env`; see [`inherited_home`]. `None` is the normal
+    /// case, the variable unset.
+    pub inherited_home: Option<String>,
     pub profiles: Vec<ProfileStatus>,
 }
 
@@ -798,6 +802,7 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
             can_sign_out: false,
             default_present: true,
             default_home: None,
+            inherited_home: None,
             profiles: Vec::new(),
         });
     };
@@ -811,6 +816,8 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
         .map(|p| status_of(&adapter, &accounts, p, &cached))
         .collect();
     mark_duplicates(&mut profiles);
+    let inherited_home = inherited_home(&accounts);
+    mark_inherited_home(&mut profiles, inherited_home.as_deref());
 
     Ok(AccountsView {
         adapter_id,
@@ -819,8 +826,38 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
         can_sign_out: !accounts.logout_args.is_empty(),
         default_present: default_on_disk,
         default_home: accounts.home_default.as_ref().map(|h| h.to_string_lossy().into_owned()),
+        inherited_home,
         profiles,
     })
+}
+
+/// The home the default account really runs in when Sway's own environment
+/// sets the adapter's `home_env`: every default-profile child inherits it, so
+/// "the variable left unset" is then a different account than the user's own
+/// login. Measured today: a dev build started from a shell that had exported
+/// `CLAUDE_CONFIG_DIR` for a named profile, and signing that profile out took
+/// the default down with it. Canonical where the folder exists, so it compares
+/// equal to a stored profile home; the raw string otherwise, so it still names
+/// what was set.
+fn inherited_home(accounts: &crate::agents::AccountsConfig) -> Option<String> {
+    let var = accounts.home_env.as_deref()?;
+    let raw = std::env::var(var).ok().filter(|v| !v.trim().is_empty())?;
+    Some(canonicalize_home(Path::new(&raw)).unwrap_or(raw))
+}
+
+/// The default row is a duplicate of the named profile whose home it inherited,
+/// which `mark_duplicates` cannot see when that profile is signed out: there is
+/// no email on either side to match, yet a sign-out of one is a sign-out of both.
+pub fn mark_inherited_home(statuses: &mut [ProfileStatus], inherited: Option<&str>) {
+    let Some(inherited) = inherited else { return };
+    let twin = statuses
+        .iter()
+        .find(|s| !s.is_default && s.home.as_deref() == Some(inherited))
+        .map(|s| s.label.clone());
+    let Some(twin) = twin else { return };
+    if let Some(default) = statuses.iter_mut().find(|s| s.is_default) {
+        default.duplicate_of.get_or_insert(twin);
+    }
 }
 
 /// What adding an account answers: the id it was stored under, and the login to
@@ -1102,6 +1139,45 @@ pub async fn sign_out_agent_account(adapter_id: String, profile_id: String) -> R
         .map_err(|e| format!("{} would not sign out: {e}", adapter.label))
 }
 
+/// Set the home's first-run flag after a sign-in Sway started has exited clean.
+///
+/// `Ok(false)` when there was nothing to do: the adapter declares no flag, the
+/// state file is not there (the login wrote nothing, so there is no home to
+/// finish), or the flag is already set. The file is Claude's own live state,
+/// so only that one key is touched and the rest is written back as read.
+#[tauri::command]
+pub async fn complete_sign_in(adapter_id: String, profile_id: String) -> Result<bool, String> {
+    let adapter = adapter(&adapter_id)?;
+    let Some(flag) = adapter.accounts.as_ref().and_then(|a| a.onboarded.clone()) else {
+        return Ok(false);
+    };
+    let (_, _, home) = crate::agent_config::homes_for(&adapter)
+        .into_iter()
+        .find(|(id, _, _)| *id == profile_id)
+        .ok_or_else(|| format!("`{adapter_id}` has no account `{profile_id}` with a home"))?;
+    crate::exec::blocking("complete_sign_in", move || {
+        let path = home.join(&flag.file);
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(format!("could not read {}: {e}", path.display())),
+        };
+        let mut state: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| format!("{} is not JSON: {e}", path.display()))?;
+        let object = state
+            .as_object_mut()
+            .ok_or_else(|| format!("{} is not a JSON object", path.display()))?;
+        if object.get(&flag.key).and_then(|v| v.as_bool()) == Some(true) {
+            return Ok(false);
+        }
+        object.insert(flag.key.clone(), serde_json::Value::Bool(true));
+        let out = serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?;
+        std::fs::write(&path, out).map_err(|e| format!("could not write {}: {e}", path.display()))?;
+        Ok(true)
+    })
+    .await
+}
+
 /// Relabel a profile. The label is the only thing the user chose, so it is the
 /// only thing renaming touches.
 #[tauri::command]
@@ -1361,6 +1437,8 @@ mod tests {
             whoami_args: vec![],
             whoami_kind: None,
             supports_isolation: isolation,
+            onboarded: None,
+            plugins_kind: None,
         }
     }
 
@@ -1741,6 +1819,8 @@ mod tests {
             whoami_args: vec![],
             whoami_kind: None,
             supports_isolation: false,
+            onboarded: None,
+            plugins_kind: None,
         };
         let warning = no_logout_warning(&adapter, &accounts);
         assert!(warning.contains("valid until they expire"), "{warning}");

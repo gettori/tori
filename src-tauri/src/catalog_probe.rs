@@ -1295,6 +1295,40 @@ pub async fn refresh_model_catalog(
     Ok(refresh_one(adapter, profile, home.as_ref(), version))
 }
 
+/// Fold a live session's handshake into the cache, so the next draft opens on
+/// what this account said most recently rather than on what the last probe
+/// heard. A plugin installed after the probe is the measured case: nothing
+/// re-probes for it, since [`ModelCatalog::is_stale`] is keyed on the binary's
+/// version, so the cache stayed without it until an explicit Ask again.
+///
+/// Commands only. Models are re-resolved by the probe on every version change
+/// and carry `user_configured` and per-row options the live list does not.
+/// A never-probed account is left alone: a catalogue built from a handshake
+/// would have no version to go stale against, and the draft's own due check
+/// probes it anyway.
+#[tauri::command]
+pub async fn record_live_catalog(
+    agent_id: String,
+    profile_id: Option<String>,
+    commands: Vec<SlashCommand>,
+) -> Result<ModelCatalog, String> {
+    let profile = profile_id.unwrap_or_else(|| crate::accounts::DEFAULT_PROFILE_ID.to_string());
+    crate::exec::blocking("record_live_catalog", move || {
+        let lock = agent_lock(&agent_id, &profile);
+        let _held = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let root = catalog_root();
+        let mut catalog = load_from(&root, &agent_id, &profile);
+        if let Some(cat) = catalog.catalogue.as_mut() {
+            if !commands.is_empty() && cat.commands != commands {
+                cat.commands = commands;
+                save_to(&root, &catalog)?;
+            }
+        }
+        Ok(catalog)
+    })
+    .await
+}
+
 // There is deliberately **no batch refresh command.** One existed, sweeping
 // every never-probed or stale agent on its own threads and returning the lot,
 // and it was the wrong shape for the only caller there is: a batch answers when
