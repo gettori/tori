@@ -21,10 +21,12 @@ import {
   type AuthState,
   type ForgeAccount,
   type ForgeHost,
+  type ForgeProvider,
   type RepoAccount,
   type StatusReport,
   type UnitStatus,
 } from "./forgeTypes";
+import { canonicalHost, type KnownHosts } from "./prUrl";
 import {
   askOrder,
   backoffAfter,
@@ -97,7 +99,7 @@ export function noteForgeAccounts(list: readonly ForgeAccount[]) {
 /// Usually free: Rust answers from the login it learned at sign-in and only
 /// reaches the network for a credential restored without one.
 export async function refreshForgeViewer(accountId: string) {
-  const v = await invoke<string>("github_viewer", { accountId }).catch(() => null);
+  const v = await invoke<string>("forge_viewer", { accountId }).catch(() => null);
   // Only when still signed in. A sign-out landing while this was in flight
   // would otherwise restore the identity it had just cleared.
   if (v && accountAuth(accountId).kind === "signedIn") setViewers((m) => ({ ...m, [accountId]: v }));
@@ -118,6 +120,20 @@ export function forgeViewer(path: string | null): string | null {
 export async function refreshForgeAccounts() {
   const hosts = await invoke<ForgeHost[]>("forge_accounts").catch(() => null);
   if (Array.isArray(hosts)) noteForgeAccounts(hosts.flatMap((h) => h.accounts));
+}
+
+/** Every host with an account, with the provider and web URL it was added as. */
+export function forgeHosts(): KnownHosts {
+  const hosts = new Map<string, { provider: ForgeProvider; baseUrl: string }>();
+  for (const a of accounts()) {
+    try {
+      hosts.set(canonicalHost(new URL(a.baseUrl).hostname), { provider: a.provider, baseUrl: a.baseUrl });
+    } catch {
+      // Rust normalizes every base URL it writes, so only a hand-edited file
+      // lands here, and that account serves nothing.
+    }
+  }
+  return hosts;
 }
 
 /** The `forge.enabled` kill switch, from the settings store. */
@@ -271,7 +287,7 @@ async function pollProject(project: WatchedProject, trigger: Trigger, now: numbe
   // reaching Rust at all.
   setLastPollAt((m) => ({ ...m, [project.path]: now }));
   try {
-    const report = await invoke<StatusReport>("github_unit_statuses", {
+    const report = await invoke<StatusReport>("forge_unit_statuses", {
       projectPath: project.path,
       branches,
       // Only an explicit refresh bypasses Rust's freshness window. A focus or an

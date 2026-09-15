@@ -16,6 +16,7 @@ import {
   type PullRequest,
   type UnitStatus,
 } from "./forgeTypes";
+import { ADAPTERS } from "./createPr";
 
 // This fixture is written by the Rust round-trip test
 // (`emit_wire_samples_for_the_typescript_mirror` in forge/model.rs), serialized
@@ -33,7 +34,7 @@ const keysOf = (v: unknown) => Object.keys(v as object).sort();
 const NESTED_ONLY = ["reviewComment"];
 /// Bare values, not objects, so there are no field names to compare. Their
 /// contents are checked by the enum and auth-state tests below.
-const NOT_OBJECTS = ["reviewDecision", "authStates"];
+const NOT_OBJECTS = ["reviewDecision", "authStates", "servedProviders"];
 
 describe("forgeTypes mirrors the Rust forge model", () => {
   it("agrees with Rust on every field name, type by type", () => {
@@ -57,6 +58,12 @@ describe("forgeTypes mirrors the Rust forge model", () => {
       ...NOT_OBJECTS,
     ].sort();
     expect(emitted).toEqual(covered);
+  });
+
+  it("agrees on which providers Rust can build a client for", () => {
+    // `connectHost` offers an account only for these, so a provider added in
+    // Rust and not here leaves a host Sway serves looking unservable.
+    expect([...ADAPTERS].sort()).toEqual([...golden.servedProviders].sort());
   });
 
   it("agrees on the nested comment shape too", () => {

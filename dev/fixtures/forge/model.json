@@ -107,6 +107,9 @@
     "path": "src-tauri/src/forge/github.rs",
     "startLine": 86
   },
+  "servedProviders": [
+    "github"
+  ],
   "signInRoutes": {
     "baseUrl": "https://github.com",
     "deviceFlow": true,

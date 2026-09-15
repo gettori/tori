@@ -238,7 +238,7 @@ fn add_signed_in(
     secret: Secret,
     reauth: Option<&str>,
 ) -> Result<SignedIn, ForgeError> {
-    let forge = forge_for(provider, host, Some(secret.access_token.clone()), None)?;
+    let forge = forge_for(provider, base_url, host, Some(secret.access_token.clone()), None)?;
     let login = match forge.viewer() {
         Ok(viewer) => viewer.login,
         Err(ForgeError::CredentialSuspect) => {
@@ -346,7 +346,13 @@ fn client_in(
     match accounts::resolve(file, picks, &remote) {
         Resolution::Account(id) => {
             let (_, account) = accounts::find(file, &id).ok_or(ForgeError::NotAuthenticated)?;
-            let forge = forge_for(account.provider, &remote.host, auth::token(&id), login_of(&id))?;
+            let forge = forge_for(
+                account.provider,
+                &account.base_url,
+                &remote.host,
+                auth::token(&id),
+                login_of(&id),
+            )?;
             Ok(Client { account_id: id, repo: remote.repo, forge })
         }
         Resolution::Pick { .. } => Err(ForgeError::AccountPickNeeded { host: remote.host }),
@@ -355,21 +361,31 @@ fn client_in(
     }
 }
 
-/// The adapter for a provider on a host. Only github.com has one so far.
+/// The adapter for a provider at an account's base URL. GitLab has none yet.
 fn forge_for(
     provider: Provider,
+    base_url: &str,
     host: &str,
     token: Option<String>,
     login: Option<String>,
 ) -> Result<Box<dyn Forge>, ForgeError> {
     match provider {
-        Provider::Github if host == accounts::GITHUB_COM => Ok(Box::new(github::GitHubForge::new(
+        Provider::Github => Ok(Box::new(github::GitHubForge::new(
             Box::new(UreqTransport::default()),
+            base_url,
             token,
             login,
         ))),
-        _ => Err(ForgeError::UnsupportedRemote { host: host.to_string() }),
+        Provider::Gitlab => Err(ForgeError::UnsupportedRemote { host: host.to_string() }),
     }
+}
+
+#[cfg(test)]
+pub(crate) fn served_providers() -> Vec<Provider> {
+    [Provider::Github, Provider::Gitlab]
+        .into_iter()
+        .filter(|&p| forge_for(p, "https://example.test", "example.test", None, None).is_ok())
+        .collect()
 }
 
 fn login_of(account_id: &str) -> Option<String> {
@@ -400,7 +416,7 @@ fn gated_client(project_path: &str) -> Result<Client, ForgeError> {
 /// `refresh` is the manual-refresh path. Nothing here is persisted: see
 /// [`super::prs`] for why the association is always a query.
 #[tauri::command(async)]
-pub fn github_pr_for_branch(
+pub fn forge_pr_for_branch(
     project_path: String,
     branch: String,
     refresh: bool,
@@ -436,7 +452,7 @@ impl From<NewPr> for CreatePr {
 
 /// Opens a pull request, then makes it immediately visible to the next lookup.
 #[tauri::command(async)]
-pub fn github_create_pr(
+pub fn forge_create_pr(
     project_path: String,
     new_pr: NewPr,
 ) -> Result<PullRequest, ForgeErrorDto> {
@@ -454,7 +470,7 @@ pub fn github_create_pr(
 /// create must not run until the head exists on the remote. See
 /// [`prs::push_then_create`].
 #[tauri::command(async)]
-pub fn github_push_and_create_pr(
+pub fn forge_push_and_create_pr(
     state: tauri::State<'_, crate::askpass::AskpassState>,
     project_path: String,
     remote: String,
@@ -488,7 +504,7 @@ pub fn github_push_and_create_pr(
 /// the per-tick cap comes back as `uncovered` rather than being dropped; see
 /// [`super::status`].
 #[tauri::command(async)]
-pub fn github_unit_statuses(
+pub fn forge_unit_statuses(
     project_path: String,
     branches: Vec<String>,
     refresh: bool,
@@ -519,7 +535,7 @@ pub fn github_unit_statuses(
 /// them from the same status store the sidebar chips do, which is what stops a
 /// row and its chip from being two answers to one question.
 #[tauri::command(async)]
-pub fn github_list_prs(project_path: String) -> Result<Paged<PullRequest>, ForgeErrorDto> {
+pub fn forge_list_prs(project_path: String) -> Result<Paged<PullRequest>, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
     let result = c.forge.list_pull_requests(&c.repo);
     auth::note_result(&c.account_id, &result);
@@ -536,7 +552,7 @@ pub fn github_list_prs(project_path: String) -> Result<Paged<PullRequest>, Forge
 /// recomputed diff would read identically and anchor differently, which puts
 /// comments on the wrong lines rather than failing outright.
 #[tauri::command(async)]
-pub fn github_pr_files(
+pub fn forge_pr_files(
     project_path: String,
     number: u64,
 ) -> Result<Paged<PrFile>, ForgeErrorDto> {
@@ -553,7 +569,7 @@ pub fn github_pr_files(
 /// takes a `PullRequestReviewThread` node id that no REST response ever
 /// produces. A thread read the REST way could be displayed and never resolved.
 #[tauri::command(async)]
-pub fn github_review_threads(
+pub fn forge_review_threads(
     project_path: String,
     number: u64,
 ) -> Result<Paged<ReviewThread>, ForgeErrorDto> {
@@ -569,7 +585,7 @@ pub fn github_review_threads(
 /// what corrects the three things it had to guess: the id, the author's login,
 /// and the timestamp.
 #[tauri::command(async)]
-pub fn github_reply_to_thread(
+pub fn forge_reply_to_thread(
     project_path: String,
     thread_id: String,
     body: String,
@@ -589,7 +605,7 @@ pub fn github_reply_to_thread(
 /// still taken, so the command refuses on a repo the forge cannot serve for the
 /// same reason every other one does, and acts as that repo's account.
 #[tauri::command(async)]
-pub fn github_set_thread_resolved(
+pub fn forge_set_thread_resolved(
     project_path: String,
     thread_id: String,
     resolved: bool,
@@ -616,7 +632,7 @@ pub fn github_set_thread_resolved(
 /// Returning the one field this command can always answer for keeps the cheap
 /// path and the fetched path telling the same kind of truth.
 #[tauri::command(async)]
-pub fn github_viewer(account_id: String) -> Result<String, ForgeErrorDto> {
+pub fn forge_viewer(account_id: String) -> Result<String, ForgeErrorDto> {
     if !auth::enabled() || !auth::may_call(&account_id) {
         return Err(ForgeError::NotAuthenticated.into());
     }
@@ -635,7 +651,7 @@ pub fn github_viewer(account_id: String) -> Result<String, ForgeErrorDto> {
 /// whenever the second call failed, with nothing telling the caller which
 /// comments had already landed.
 #[tauri::command(async)]
-pub fn github_submit_review(
+pub fn forge_submit_review(
     project_path: String,
     number: u64,
     event: ReviewEvent,
@@ -682,7 +698,7 @@ where
 /// request. `Unknown` is a real answer (GitHub is still computing it) and means
 /// ask again, never "no".
 #[tauri::command(async)]
-pub fn github_mergeability(
+pub fn forge_mergeability(
     project_path: String,
     number: u64,
 ) -> Result<MergeableState, ForgeErrorDto> {
@@ -702,7 +718,7 @@ pub fn github_mergeability(
 /// Only on success. A refused merge changed nothing, and throwing the cache away
 /// would spend a fresh round of requests to re-learn what it already knew.
 #[tauri::command(async)]
-pub fn github_merge(
+pub fn forge_merge(
     project_path: String,
     number: u64,
     method: MergeMethod,
@@ -721,7 +737,7 @@ pub fn github_merge(
 /// reason: the head moved, so the cached check rollup describes a commit that is
 /// no longer the tip.
 #[tauri::command(async)]
-pub fn github_update_branch(project_path: String, number: u64) -> Result<(), ForgeErrorDto> {
+pub fn forge_update_branch(project_path: String, number: u64) -> Result<(), ForgeErrorDto> {
     let c = gated_client(&project_path)?;
     Ok(landing(&c.account_id, &c.repo, || c.forge.update_branch(&c.repo, number))?)
 }
@@ -778,7 +794,13 @@ pub fn restore_at_startup(enabled: bool) {
 fn learn_login(account_id: &str) -> Result<String, ForgeError> {
     let file = accounts::load();
     let (host, account) = accounts::find(&file, account_id).ok_or(ForgeError::NotAuthenticated)?;
-    let forge = forge_for(account.provider, host, auth::token(account_id), login_of(account_id))?;
+    let forge = forge_for(
+        account.provider,
+        &account.base_url,
+        host,
+        auth::token(account_id),
+        login_of(account_id),
+    )?;
     let result = forge.viewer();
     auth::note_result(account_id, &result);
     let login = result?.login;
@@ -946,6 +968,7 @@ mod tests {
         };
         super::super::github::GitHubForge::new(
             Box::new(super::super::http::test_support::StubTransport::new(vec![resp])),
+            "https://github.com",
             Some(TOKEN.into()),
             None,
         )
@@ -1055,6 +1078,15 @@ mod tests {
     }
 
     #[test]
+    fn a_github_enterprise_remote_resolves_through_its_account() {
+        let mut file = AccountsFile::default();
+        let (base_url, host) = accounts::normalize_base_url("ghe.acme.test").unwrap();
+        let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", None).unwrap();
+        let remote = remote::parse("git@ghe.acme.test:acme/widgets.git").unwrap();
+        assert_eq!(client_in(&file, &BTreeMap::new(), remote).ok().map(|c| c.account_id), Some(id));
+    }
+
+    #[test]
     fn no_pr_failure_ever_carries_the_token() {
         // Every one of these errors is rendered in the UI and may be copied into
         // a bug report. A token reaching the message would be a leak that no
@@ -1122,7 +1154,7 @@ mod tests {
         let not_a_repo = std::env::temp_dir().join("sway_forge_no_repo_here");
         switched_off();
 
-        let err = github_unit_statuses(
+        let err = forge_unit_statuses(
             not_a_repo.to_string_lossy().into_owned(),
             vec!["wave-3".into()],
             false,
@@ -1143,7 +1175,7 @@ mod tests {
         let not_a_repo = std::env::temp_dir().join("sway_forge_no_repo_here");
         switched_off();
 
-        let err = github_list_prs(not_a_repo.to_string_lossy().into_owned()).unwrap_err();
+        let err = forge_list_prs(not_a_repo.to_string_lossy().into_owned()).unwrap_err();
         assert_eq!(err.kind, "notAuthenticated", "a disabled integration listed pull requests");
 
         auth::restore(vec![], true);
@@ -1157,7 +1189,7 @@ mod tests {
         let not_a_repo = std::env::temp_dir().join("sway_forge_no_repo_here");
         switched_off();
 
-        let err = github_pr_files(not_a_repo.to_string_lossy().into_owned(), 12).unwrap_err();
+        let err = forge_pr_files(not_a_repo.to_string_lossy().into_owned(), 12).unwrap_err();
         assert_eq!(err.kind, "notAuthenticated", "a disabled integration listed changed files");
 
         auth::restore(vec![], true);

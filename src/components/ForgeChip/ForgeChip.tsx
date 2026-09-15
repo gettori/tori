@@ -17,6 +17,7 @@ import {
   CircleDotDashed,
   MessageSquareWarning,
   MessageSquareCheck,
+  Plug,
   UserRound,
   type LucideIcon,
 } from "lucide-solid";
@@ -67,7 +68,11 @@ export default function ForgeChipView(props: {
   // cannot be hovered, focused, or clicked into a capability it does not have.
   const picking = () => props.chip.kind === "pickAccount";
   const anything = () =>
-    picking() || pr() !== null || props.chip.checks !== null || props.chip.review !== null;
+    picking() ||
+    props.chip.connect !== null ||
+    pr() !== null ||
+    props.chip.checks !== null ||
+    props.chip.review !== null;
 
   const body = () => (
     <>
@@ -75,6 +80,13 @@ export default function ForgeChipView(props: {
         <span class={styles.forgeItem} title="Pick which account this repo uses" data-forge-pick>
           <Icon icon={UserRound} />
         </span>
+      </Show>
+      <Show when={props.chip.connect}>
+        {(c) => (
+          <span class={styles.forgeItem} title={c().title} data-forge-connect>
+            <Icon icon={Plug} />
+          </span>
+        )}
       </Show>
       <Show when={pr()}>
         {(p) => (

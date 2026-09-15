@@ -472,6 +472,9 @@ mod tests {
                 },
                 auth: AuthState::SignedIn { login: "skarif2".into() },
             },
+            // Which providers the resolver can actually build a client for, so
+            // the frontend's copy of that list fails here when Rust's changes.
+            "servedProviders": super::super::commands::served_providers(),
             "signInRoutes": super::super::accounts::sign_in_routes(
                 super::super::accounts::Provider::Github,
                 "https://github.com",

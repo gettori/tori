@@ -63,7 +63,7 @@ let live: { sessionId: string; sessionName: string; folderPath: string; status: 
 let originUrl: string | null = null;
 let defaultBase: string | null = null;
 let authState: { kind: string; login?: string } = { kind: "signedOut" };
-// What `github_push_and_create_pr` was called with, and what it answers. An
+// What `forge_push_and_create_pr` was called with, and what it answers. An
 // empty array after a click is the assertion that nothing was sent.
 let createPrArgs: unknown[] = [];
 let createPrFails: unknown = null;
@@ -156,7 +156,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       // a null settings object in the store instead.
       case "set_settings":
         return Promise.resolve((args as { settings: unknown }).settings);
-      case "github_push_and_create_pr":
+      case "forge_push_and_create_pr":
         createPrArgs.push(args);
         if (createPrFails) return Promise.reject(createPrFails);
         return Promise.resolve({
@@ -224,6 +224,8 @@ import {
 import { saveSettings, DEFAULT_SETTINGS } from "../Settings/settingsStore";
 import { BLOCKED_REASON } from "../../utils/safeSend";
 import { diffTabId, syntheticId } from "../../utils/syntheticTabs";
+import { noteForgeAccounts, resetForgeStatusForTests } from "../../utils/forgeStatus";
+import type { ForgeAccount } from "../../utils/forgeTypes";
 
 /** Collects toast messages until `stop()`. `emitWith` is a window CustomEvent,
  *  not the Tauri event bus, so mocking the transport would never see one. */
@@ -232,6 +234,21 @@ function captureToasts() {
   const onToast = (e: Event) => messages.push((e as CustomEvent<ToastEvent>).detail.message);
   window.addEventListener(TOAST, onToast);
   return { messages, stop: () => window.removeEventListener(TOAST, onToast) };
+}
+
+/** The in-app form is offered only on a host with an account, which the sidebar
+ *  loads into the forge store. */
+function signInForgeAccount() {
+  const account: ForgeAccount = {
+    id: "personal",
+    provider: "github",
+    baseUrl: "https://github.com",
+    login: "skarif2",
+    label: "skarif2",
+    expiresAt: null,
+    auth: authState as ForgeAccount["auth"],
+  };
+  noteForgeAccounts(authState.kind === "signedOut" ? [] : [account]);
 }
 
 /** The create-PR dialog's own subtree.
@@ -282,6 +299,7 @@ beforeEach(async () => {
   authState = { kind: "signedOut" };
   createPrArgs = [];
   createPrFails = null;
+  resetForgeStatusForTests();
   // `github` is named explicitly rather than left to the spread: the settings
   // store is created *over* DEFAULT_SETTINGS, so writing to the store mutates
   // that object in place. A test that switches the integration off leaves
@@ -895,6 +913,7 @@ describe("Open PR", () => {
     branches = [{ name: "wave-3", current: true }];
     defaultBase = "main";
     aheadBehind = { ahead: 0, behind: 0, has_upstream: true };
+    signInForgeAccount();
     await mountPanel();
     return await screen.findByRole("button", { name: "Open PR" });
   }
@@ -1104,6 +1123,7 @@ describe("the agent-drafted PR description", () => {
     defaultBase = "main";
     aheadBehind = { ahead: 0, behind: 0, has_upstream: true };
     authState = { kind: "signedIn", login: "skarif2" };
+    signInForgeAccount();
 
     const sent: unknown[] = [];
     const onSend = (e: Event) => {

@@ -383,7 +383,7 @@ mod tests {
             StubTransport::json(200, found),
             StubTransport::json(200, "[]"),
         ]));
-        let client = GitHubForge::new(Box::new(stub.clone()), Some("gho_test".into()), None)
+        let client = GitHubForge::new(Box::new(stub.clone()), "https://github.com", Some("gho_test".into()), None)
             .with_base("https://api.test");
 
         let mut c = PrCache::default();

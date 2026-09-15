@@ -24,7 +24,7 @@ let viewerReads = 0;
 let viewerAnswer: string | null = null;
 /** What each checkout resolves to. Anything unlisted acts as `personal`. */
 let repoOf: Record<string, RepoAccount> = {};
-/** Queued answers to `github_unit_statuses`, one per call. A value is resolved,
+/** Queued answers to `forge_unit_statuses`, one per call. A value is resolved,
  *  an Error is rejected; running out falls back to an empty report. */
 let answers: (StatusReport | Error)[] = [];
 
@@ -37,13 +37,13 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "forge_repo_account") {
       return Promise.resolve(repoOf[args?.projectPath as string] ?? on("personal"));
     }
-    if (cmd === "github_viewer") {
+    if (cmd === "forge_viewer") {
       viewerReads += 1;
       return viewerAnswer
         ? Promise.resolve(viewerAnswer)
         : Promise.reject(new Error("not signed in"));
     }
-    if (cmd === "github_unit_statuses") {
+    if (cmd === "forge_unit_statuses") {
       asks.push(args as unknown as Ask);
       const next = answers.shift();
       if (next instanceof Error) return Promise.reject(next);

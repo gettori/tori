@@ -110,7 +110,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "github_pr_files") {
+    if (cmd === "forge_pr_files") {
       return bridge.fail
         ? Promise.reject(bridge.fail)
         : Promise.resolve({ items: bridge.files, truncated: bridge.truncated });
@@ -119,26 +119,26 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.fetchFails ? Promise.reject(bridge.fetchFails) : Promise.resolve(null);
     if (cmd === "git_blob_slice")
       return bridge.sliceFails ? Promise.reject(bridge.sliceFails) : Promise.resolve(bridge.slice);
-    if (cmd === "github_review_threads") {
+    if (cmd === "forge_review_threads") {
       return bridge.threadsFail
         ? Promise.reject(bridge.threadsFail)
         : Promise.resolve({ items: bridge.threads, truncated: bridge.threadsTruncated });
     }
-    if (cmd === "github_reply_to_thread")
+    if (cmd === "forge_reply_to_thread")
       return bridge.replyFails ? Promise.reject(bridge.replyFails) : Promise.resolve(bridge.reply);
-    if (cmd === "github_set_thread_resolved")
+    if (cmd === "forge_set_thread_resolved")
       return bridge.resolveFails ? Promise.reject(bridge.resolveFails) : Promise.resolve(null);
-    if (cmd === "github_viewer")
+    if (cmd === "forge_viewer")
       return bridge.viewer ? Promise.resolve(bridge.viewer) : Promise.reject(new Error("signed out"));
-    if (cmd === "github_submit_review")
+    if (cmd === "forge_submit_review")
       return bridge.submitFails ? Promise.reject(bridge.submitFails) : Promise.resolve(null);
-    if (cmd === "github_mergeability")
+    if (cmd === "forge_mergeability")
       return bridge.mergeableFails
         ? Promise.reject(bridge.mergeableFails)
         : Promise.resolve(bridge.mergeable);
-    if (cmd === "github_merge")
+    if (cmd === "forge_merge")
       return bridge.mergeFails ? Promise.reject(bridge.mergeFails) : Promise.resolve(null);
-    if (cmd === "github_update_branch")
+    if (cmd === "forge_update_branch")
       return bridge.updateFails ? Promise.reject(bridge.updateFails) : Promise.resolve(null);
     if (cmd === "list_sessions") return Promise.resolve(bridge.sessions);
     if (cmd === "sessions_running") return Promise.resolve(bridge.running);
@@ -280,7 +280,7 @@ describe("the pull request detail", () => {
     // After the reads that opening a pull request makes (the files, the threads
     // and the mergeability verdict), so this counts what *expanding* costs
     // rather than what arriving costs.
-    await waitFor(() => expect(cmds("github_mergeability")).toHaveLength(1));
+    await waitFor(() => expect(cmds("forge_mergeability")).toHaveLength(1));
     const before = bridge.calls.length;
     fireEvent.click(gap);
 
@@ -290,7 +290,7 @@ describe("the pull request detail", () => {
     // The two halves of the promise. Nothing since the click touched the API,
     // and the content was read at the PR's head sha rather than off disk.
     const since = bridge.calls.slice(before);
-    expect(since.filter((c) => c.cmd.startsWith("github_"))).toHaveLength(0);
+    expect(since.filter((c) => c.cmd.startsWith("forge_"))).toHaveLength(0);
     expect(cmds("git_fetch_pr_head")[0].args).toMatchObject({ number: 42, sha: HEAD_SHA });
     expect(cmds("git_blob_slice")[0].args).toMatchObject({
       rev: HEAD_SHA,
@@ -552,7 +552,7 @@ describe("review threads on a pull request's diff", () => {
     expect(screen.queryAllByText("fixed in 4d95fc3")).toHaveLength(1);
     const card = document.querySelector('[data-thread-id="PRRT_1"]')!;
     expect(card.textContent).toContain("skarif2");
-    expect(cmds("github_reply_to_thread")[0].args).toMatchObject({
+    expect(cmds("forge_reply_to_thread")[0].args).toMatchObject({
       projectPath: ROOT,
       threadId: "PRRT_1",
       body: "fixed in 4d95fc3",
@@ -591,7 +591,7 @@ describe("review threads on a pull request's diff", () => {
 
     // Same call, same node id, opposite flag: they are one intent, and a
     // provider that has one has the other.
-    const calls = cmds("github_set_thread_resolved").map((c) => c.args);
+    const calls = cmds("forge_set_thread_resolved").map((c) => c.args);
     expect(calls).toEqual([
       { projectPath: ROOT, threadId: "PRRT_1", resolved: true },
       { projectPath: ROOT, threadId: "PRRT_1", resolved: false },
@@ -733,7 +733,7 @@ describe("writing and submitting a review", () => {
       "src/edit.ts:42-43",
     ]);
     // And the whole point: nothing has been sent.
-    expect(cmds("github_submit_review")).toHaveLength(0);
+    expect(cmds("forge_submit_review")).toHaveLength(0);
   });
 
   it("disables both verdicts on your own pull request, with the reason on screen", async () => {
@@ -755,13 +755,13 @@ describe("writing and submitting a review", () => {
 
     // And the one verb the author can use goes through, carrying the comments.
     fireEvent.click(button("Comment"));
-    await waitFor(() => expect(cmds("github_submit_review")).toHaveLength(1));
-    expect(cmds("github_submit_review")[0].args).toMatchObject({
+    await waitFor(() => expect(cmds("forge_submit_review")).toHaveLength(1));
+    expect(cmds("forge_submit_review")[0].args).toMatchObject({
       projectPath: ROOT,
       number: 42,
       event: "comment",
     });
-    const sent = cmds("github_submit_review")[0].args.comments as unknown[];
+    const sent = cmds("forge_submit_review")[0].args.comments as unknown[];
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ path: "src/edit.ts", line: 2, side: "RIGHT", body: "a note" });
   });
@@ -781,8 +781,8 @@ describe("writing and submitting a review", () => {
     );
 
     fireEvent.click(button("Approve"));
-    await waitFor(() => expect(cmds("github_submit_review")).toHaveLength(1));
-    expect(cmds("github_submit_review")[0].args).toMatchObject({ event: "approve" });
+    await waitFor(() => expect(cmds("forge_submit_review")).toHaveLength(1));
+    expect(cmds("forge_submit_review")[0].args).toMatchObject({ event: "approve" });
   });
 
   it("blocks request-changes until the review says what to change", async () => {
@@ -1115,10 +1115,10 @@ describe("landing a pull request", () => {
     expect(button("Merge").disabled).toBe(false);
 
     fireEvent.click(button("Merge"));
-    await waitFor(() => expect(cmds("github_merge")).toHaveLength(1));
+    await waitFor(() => expect(cmds("forge_merge")).toHaveLength(1));
     // The picker's own value, not a method chosen here: a repo can forbid any of
     // the three and that setting is not readable from this side.
-    expect(cmds("github_merge")[0].args).toMatchObject({ number: 42, method: "squash" });
+    expect(cmds("forge_merge")[0].args).toMatchObject({ number: 42, method: "squash" });
   });
 
   it("shuts the method picker while the merge is in flight", async () => {
@@ -1136,7 +1136,7 @@ describe("landing a pull request", () => {
     fireEvent.click(button("Merge"));
     expect(picker().disabled).toBe(true);
 
-    await waitFor(() => expect(cmds("github_merge")).toHaveLength(1));
+    await waitFor(() => expect(cmds("forge_merge")).toHaveLength(1));
   });
 
   it("merges by whichever method the picker names", async () => {
@@ -1153,8 +1153,8 @@ describe("landing a pull request", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     fireEvent.click(button("Merge"));
-    await waitFor(() => expect(cmds("github_merge")).toHaveLength(1));
-    expect(cmds("github_merge")[0].args).toMatchObject({ number: 42, method: "merge" });
+    await waitFor(() => expect(cmds("forge_merge")).toHaveLength(1));
+    expect(cmds("forge_merge")[0].args).toMatchObject({ number: 42, method: "merge" });
   });
 
   it("holds the button shut on the server's verdict, and says which one", async () => {
@@ -1209,9 +1209,9 @@ describe("landing a pull request", () => {
 
     bridge.mergeable = "clean";
     fireEvent.click(button("Update branch"));
-    await waitFor(() => expect(cmds("github_update_branch")).toHaveLength(1));
+    await waitFor(() => expect(cmds("forge_update_branch")).toHaveLength(1));
     await waitFor(() => expect(state()).toBe("clean"));
-    expect(cmds("github_mergeability").length).toBeGreaterThan(1);
+    expect(cmds("forge_mergeability").length).toBeGreaterThan(1);
   });
 
   it("keeps the button inert while nobody has asked, which is not a verdict", async () => {

@@ -7,37 +7,51 @@
 // user ends up looking at a form whose submit cannot work.
 
 import { mayUseForge, type AuthState } from "./forgeTypes";
-import { parseOrigin } from "./prUrl";
+import { canonicalHost, originHost, parseOrigin, type KnownHosts, type Provider } from "./prUrl";
 
 export type PrPath = "form" | "compare" | "none";
 
-/// The hosts the API client actually speaks to.
-///
-/// Deliberately stricter than `prUrl`'s provider detection, which matches any
-/// host *containing* "github" so that GitHub Enterprise still gets a working
-/// compare URL. The Rust resolver (`forge::commands::client_for`) serves only
-/// github.com so far, so a GHE remote passing the looser test would open a form whose
-/// submit comes back `unsupportedRemote`. Compare still works there; the form
-/// does not.
-const API_HOSTS = ["github.com", "www.github.com"];
-
 /// Whether the forge API can serve this origin at all, regardless of sign-in.
-export function apiCanServe(origin: string | null): boolean {
+///
+/// Stricter than `prUrl`'s name guess on purpose. Rust files an account only
+/// after the host's API named the token's login, so a host with one is a host
+/// the client reaches; a name containing "github" proves nothing of the kind.
+export function apiCanServe(origin: string | null, known: KnownHosts): boolean {
   if (!origin) return false;
-  const parsed = parseOrigin(origin);
-  if (!parsed) return false;
-  return parsed.provider === "github" && API_HOSTS.includes(parsed.host.toLowerCase());
+  const parsed = parseOrigin(origin, known);
+  return parsed !== null && known.has(canonicalHost(parsed.host));
+}
+
+/// The providers Rust's `forge_for` has an adapter for. `forgeTypes.test.ts`
+/// holds this to the list Rust emits, so the two cannot drift.
+export const ADAPTERS: ReadonlySet<Provider> = new Set(["github"]);
+
+/// The host to offer an account for, or null for one that already serves. A
+/// host named like a provider with no adapter gets none, since adding its
+/// account in Settings would fail.
+export function connectHost(origin: string | null, known: KnownHosts): string | null {
+  if (!origin || apiCanServe(origin, known)) return null;
+  const parsed = parseOrigin(origin, known);
+  if (parsed) return ADAPTERS.has(parsed.provider) ? canonicalHost(parsed.host) : null;
+  // A name that suggests no provider can still be a GitHub Enterprise server.
+  const host = originHost(origin);
+  return host ? canonicalHost(host) : null;
 }
 
 /// Which of the three paths the button takes.
 ///
-/// `compare` is not a degraded mode to apologise for: it is how every non-GitHub
-/// remote, every signed-out user, and everyone with the integration switched off
-/// opens a PR, and it works without an account.
-export function prPath(origin: string | null, auth: AuthState, enabled: boolean): PrPath {
+/// `compare` is not a degraded mode to apologise for: it is how every host
+/// without an account, every signed-out user, and everyone with the integration
+/// switched off opens a PR, and it works without an account.
+export function prPath(
+  origin: string | null,
+  known: KnownHosts,
+  auth: AuthState,
+  enabled: boolean,
+): PrPath {
   if (!origin) return "none";
-  if (apiCanServe(origin) && mayUseForge(auth, enabled)) return "form";
-  return parseOrigin(origin) ? "compare" : "none";
+  if (apiCanServe(origin, known) && mayUseForge(auth, enabled)) return "form";
+  return parseOrigin(origin, known) ? "compare" : "none";
 }
 
 /// The words the agent is asked to draft in.

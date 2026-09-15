@@ -1,43 +1,49 @@
 import { describe, it, expect } from "vitest";
 import { apiCanServe, composeDraftRequest, prPath, submitBlockedReason } from "./createPr";
 import type { AuthState } from "./forgeTypes";
+import type { KnownHosts } from "./prUrl";
 
 const SIGNED_IN: AuthState = { kind: "signedIn", login: "skarif2" };
 const SIGNED_OUT: AuthState = { kind: "signedOut" };
 const SUSPECT: AuthState = { kind: "suspect", login: "skarif2" };
 
 const GH = "git@github.com:skarif2/sway.git";
+const HOSTS: KnownHosts = new Map([["github.com", { provider: "github", baseUrl: "https://github.com" }]]);
 
 describe("prPath", () => {
   it("opens the in-app form only for a signed-in, enabled GitHub remote", () => {
-    expect(prPath(GH, SIGNED_IN, true)).toBe("form");
+    expect(prPath(GH, HOSTS, SIGNED_IN, true)).toBe("form");
   });
 
   it("falls back to compare for every reason the API cannot serve", () => {
     // None of these is an error state. Opening a PR through the provider's own
     // page works without an account, which is why signing out costs the user
     // the in-app form and nothing else.
-    expect(prPath(GH, SIGNED_OUT, true)).toBe("compare");
-    expect(prPath(GH, SUSPECT, true)).toBe("compare");
-    expect(prPath(GH, SIGNED_IN, false)).toBe("compare");
-    expect(prPath("git@gitlab.com:skarif2/sway.git", SIGNED_IN, true)).toBe("compare");
-    expect(prPath("git@bitbucket.org:skarif2/sway.git", SIGNED_IN, true)).toBe("compare");
+    expect(prPath(GH, HOSTS, SIGNED_OUT, true)).toBe("compare");
+    expect(prPath(GH, HOSTS, SUSPECT, true)).toBe("compare");
+    expect(prPath(GH, HOSTS, SIGNED_IN, false)).toBe("compare");
+    expect(prPath("git@gitlab.com:skarif2/sway.git", HOSTS, SIGNED_IN, true)).toBe("compare");
+    expect(prPath("git@bitbucket.org:skarif2/sway.git", HOSTS, SIGNED_IN, true)).toBe("compare");
   });
 
   it("refuses only when there is no usable origin at all", () => {
-    expect(prPath(null, SIGNED_IN, true)).toBe("none");
-    expect(prPath("", SIGNED_IN, true)).toBe("none");
-    expect(prPath("git@example.com:skarif2/sway.git", SIGNED_IN, true)).toBe("none");
+    expect(prPath(null, HOSTS, SIGNED_IN, true)).toBe("none");
+    expect(prPath("", HOSTS, SIGNED_IN, true)).toBe("none");
+    expect(prPath("git@example.com:skarif2/sway.git", HOSTS, SIGNED_IN, true)).toBe("none");
   });
 
-  it("sends GitHub Enterprise to compare, not to the form", () => {
-    // The trap this exists for: prUrl's provider detection matches any host
-    // containing "github", so GHE gets a working compare URL. The Rust client
-    // accepts github.com only, so a form here would submit and come back
-    // `unsupportedRemote` after the user had typed a title and body.
+  it("opens the form on a self-hosted host only once it has an account", () => {
+    // Without one, prUrl's name guess still gives GHE a working compare URL, but
+    // a form would submit and come back `unsupportedRemote` after the user had
+    // typed a title and body.
     const ghe = "git@github.mycorp.com:skarif2/sway.git";
-    expect(apiCanServe(ghe)).toBe(false);
-    expect(prPath(ghe, SIGNED_IN, true)).toBe("compare");
+    expect(apiCanServe(ghe, HOSTS)).toBe(false);
+    expect(prPath(ghe, HOSTS, SIGNED_IN, true)).toBe("compare");
+    const registered: KnownHosts = new Map([
+      ...HOSTS,
+      ["github.mycorp.com", { provider: "github", baseUrl: "https://github.mycorp.com" }],
+    ]);
+    expect(prPath(ghe, registered, SIGNED_IN, true)).toBe("form");
   });
 
   it("accepts the https and ssh spellings of the same remote", () => {
@@ -47,7 +53,7 @@ describe("prPath", () => {
       "git@github.com:skarif2/sway.git",
       "ssh://git@github.com/skarif2/sway.git",
     ]) {
-      expect(prPath(origin, SIGNED_IN, true), origin).toBe("form");
+      expect(prPath(origin, HOSTS, SIGNED_IN, true), origin).toBe("form");
     }
   });
 });

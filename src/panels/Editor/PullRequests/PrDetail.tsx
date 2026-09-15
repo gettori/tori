@@ -177,7 +177,7 @@ export default function PrDetail(props: {
       setLoading(true);
       setError(null);
       try {
-        const page = await invoke<Paged<PrFile>>("github_pr_files", {
+        const page = await invoke<Paged<PrFile>>("forge_pr_files", {
           projectPath: root,
           number,
         });
@@ -213,7 +213,7 @@ export default function PrDetail(props: {
   /// different, and only one of them should be dressed as a verdict.
   async function loadMergeability(root: string, number: number, mine: number) {
     try {
-      const state = await invoke<MergeableState>("github_mergeability", {
+      const state = await invoke<MergeableState>("forge_mergeability", {
         projectPath: root,
         number,
       });
@@ -230,7 +230,7 @@ export default function PrDetail(props: {
    *  threads this list has never seen. */
   async function loadThreads(root: string, number: number, mine: number) {
     try {
-      const page = await invoke<Paged<ReviewThread>>("github_review_threads", {
+      const page = await invoke<Paged<ReviewThread>>("forge_review_threads", {
         projectPath: root,
         number,
       });
@@ -255,7 +255,7 @@ export default function PrDetail(props: {
     const pending = pendingComment(body, ++replySeq);
     setThreads((list) => withComment(list, threadId, pending));
     try {
-      const stored = await invoke<ReviewComment>("github_reply_to_thread", {
+      const stored = await invoke<ReviewComment>("forge_reply_to_thread", {
         projectPath: props.root,
         threadId,
         body,
@@ -276,7 +276,7 @@ export default function PrDetail(props: {
     const mine = current;
     setBusyThread(threadId);
     try {
-      await invoke<void>("github_set_thread_resolved", {
+      await invoke<void>("forge_set_thread_resolved", {
         projectPath: props.root,
         threadId,
         resolved,
@@ -449,7 +449,7 @@ export default function PrDetail(props: {
     const mine = current;
     setSubmitting(true);
     try {
-      await invoke<void>("github_submit_review", {
+      await invoke<void>("forge_submit_review", {
         projectPath: props.root,
         number: props.pr.number,
         event,
@@ -597,7 +597,7 @@ export default function PrDetail(props: {
   const mergePr = (method: MergeMethod) =>
     land(
       () =>
-        invoke<void>("github_merge", {
+        invoke<void>("forge_merge", {
           projectPath: props.root,
           number: props.pr.number,
           method,
@@ -611,7 +611,7 @@ export default function PrDetail(props: {
   const updateBranch = () =>
     land(
       () =>
-        invoke<void>("github_update_branch", {
+        invoke<void>("forge_update_branch", {
           projectPath: props.root,
           number: props.pr.number,
         }),

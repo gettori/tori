@@ -7,8 +7,10 @@ import {
   AGENT_FILES_WRITTEN,
   AGENT_WRITE_DEBOUNCE_MS,
   OPEN_IN_EDITOR,
+  OPEN_SETTINGS,
   PR_OPENED,
   TOAST,
+  type OpenSettings,
   type PrOpened,
   type AgentFilesWritten,
   type ToastEvent,
@@ -45,14 +47,14 @@ import { BLOCKED_REASON, requestSend, type SessionTarget } from "../../utils/saf
 import { askAgentToResolve } from "../../utils/conflictAsk";
 import { sendBlockedReason } from "../../utils/sendTarget";
 import { comparePrUrl } from "../../utils/prUrl";
-import { composeDraftRequest, prPath } from "../../utils/createPr";
+import { composeDraftRequest, connectHost, prPath } from "../../utils/createPr";
 import {
   forgeAccountName,
   forgeErrorMessage,
   type AuthState,
   type PullRequest,
 } from "../../utils/forgeTypes";
-import { forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../utils/forgeStatus";
+import { forgeHosts, forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../utils/forgeStatus";
 import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/features";
 import MemberChip from "../../components/MemberChip/MemberChip";
@@ -100,6 +102,7 @@ import {
   GitPullRequestArrow,
   UserRound,
   Minus,
+  Plug,
   Plus,
   RefreshCw,
   Trash2,
@@ -205,7 +208,7 @@ export default function ReviewPanel(props: {
   const [origin, setOrigin] = createSignal<string | null>(null);
   const [baseBranch, setBaseBranch] = createSignal<string | null>(null);
   const [openingPr, setOpeningPr] = createSignal(false);
-  // The in-app create-PR form. Only reachable on a signed-in github.com remote;
+  // The in-app create-PR form. Only reachable on a signed-in, registered host;
   // every other case still opens the provider's compare page (see `prPath`).
   const [prForm, setPrForm] = createSignal(false);
   const [prTitle, setPrTitle] = createSignal("");
@@ -228,6 +231,7 @@ export default function ReviewPanel(props: {
     const repo = forgeAccount();
     return repo?.kind === "pick" ? repo : null;
   };
+  const connectable = () => (settings.forge.enabled ? connectHost(origin(), forgeHosts()) : null);
   // Accounts changing clears every resolution in the store, so ask again.
   createEffect(() => {
     const root = viewedRoot();
@@ -810,15 +814,12 @@ export default function ReviewPanel(props: {
     ),
   );
 
-  // "Open PR": one button, three paths. A signed-in github.com remote opens the
-  // in-app form; anything else (another provider, GitHub Enterprise, signed out,
-  // or the integration switched off) still pushes and opens the provider's own
-  // compare page, exactly as it did before the API existed. The decision lives
-  // in `prPath` so the button and the submit cannot disagree about it.
+  // The decision lives in `prPath` so the button and the submit cannot disagree
+  // about it.
   async function openPr() {
     const org = origin();
     if (openingPr()) return;
-    if (prPath(org, accountAuth(), settings.forge.enabled) === "form") {
+    if (prPath(org, forgeHosts(), accountAuth(), settings.forge.enabled) === "form") {
       setPrTitle("");
       setPrBody("");
       setPrBase(baseBranch() ?? "");
@@ -846,7 +847,7 @@ export default function ReviewPanel(props: {
     const org = origin();
     const base = baseBranch();
     if (!root || !branchName || !org || !base) return;
-    const url = comparePrUrl(org, base, branchName);
+    const url = comparePrUrl(org, base, branchName, forgeHosts());
     if (!url) {
       toastError("This origin isn't a recognized GitHub/GitLab/Bitbucket host.");
       return;
@@ -897,7 +898,7 @@ export default function ReviewPanel(props: {
     if (!root || !branchName || !base || openingPr()) return;
     setOpeningPr(true);
     try {
-      const pr = await invoke<PullRequest>("github_push_and_create_pr", {
+      const pr = await invoke<PullRequest>("forge_push_and_create_pr", {
         projectPath: root,
         remote: "origin",
         newPr: {
@@ -1369,6 +1370,17 @@ export default function ReviewPanel(props: {
                 tooltip={`Pick which ${pick().host} account this repo uses`}
               />
             </Dropdown>
+          )}
+        </Show>
+        <Show when={connectable()}>
+          {(host) => (
+            <IconButton
+              size="sm"
+              icon={<Icon icon={Plug} />}
+              aria-label={`Add an account for ${host()}`}
+              tooltip={`Add an account for ${host()} in Settings`}
+              onClick={() => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "forge" })}
+            />
           )}
         </Show>
       </div>

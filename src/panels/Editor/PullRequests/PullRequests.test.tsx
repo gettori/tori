@@ -49,21 +49,21 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "github_list_prs") {
+    if (cmd === "forge_list_prs") {
       return bridge.fail
         ? Promise.reject(bridge.fail)
         : Promise.resolve({ items: bridge.items, truncated: bridge.truncated });
     }
-    if (cmd === "github_unit_statuses")
+    if (cmd === "forge_unit_statuses")
       return Promise.resolve({
         statuses: bridge.statuses,
         uncovered: 0,
         rate: { remaining: 4800, limit: 5000, resetAt: null },
       });
-    if (cmd === "github_pr_files")
+    if (cmd === "forge_pr_files")
       return Promise.resolve({ items: bridge.files, truncated: false });
-    if (cmd === "github_mergeability") return Promise.resolve(bridge.mergeable);
-    if (cmd === "github_merge") return Promise.resolve(null);
+    if (cmd === "forge_mergeability") return Promise.resolve(bridge.mergeable);
+    if (cmd === "forge_merge") return Promise.resolve(null);
     if (cmd === "forge_repo_account")
       return Promise.resolve({
         kind: "account",
@@ -125,16 +125,16 @@ describe("the pull request list", () => {
 
     fireEvent.click(screen.getByText("pull request 31"));
     await waitFor(() => expect(screen.queryByText("src/utils/forgeChip.ts")).toBeTruthy());
-    expect(bridge.calls.filter((c) => c.cmd === "github_pr_files")[0].args).toMatchObject({
+    expect(bridge.calls.filter((c) => c.cmd === "forge_pr_files")[0].args).toMatchObject({
       projectPath: ROOT,
       number: 31,
     });
 
     // And back, without re-listing: the list it left is the one it returns to.
-    const listed = bridge.calls.filter((c) => c.cmd === "github_list_prs").length;
+    const listed = bridge.calls.filter((c) => c.cmd === "forge_list_prs").length;
     fireEvent.click(screen.getByText("← Pull requests"));
     await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
-    expect(bridge.calls.filter((c) => c.cmd === "github_list_prs")).toHaveLength(listed);
+    expect(bridge.calls.filter((c) => c.cmd === "forge_list_prs")).toHaveLength(listed);
   });
 
   it("re-asks for the list once a pull request has been landed", async () => {
@@ -156,13 +156,13 @@ describe("the pull request list", () => {
       ),
     );
 
-    const listed = bridge.calls.filter((c) => c.cmd === "github_list_prs").length;
+    const listed = bridge.calls.filter((c) => c.cmd === "forge_list_prs").length;
     // Landed, and the server no longer has it open.
     bridge.items = [];
     fireEvent.click(screen.getAllByText("Merge").find((n) => n.closest("button"))!);
 
     await waitFor(() =>
-      expect(bridge.calls.filter((c) => c.cmd === "github_list_prs").length).toBe(listed + 1),
+      expect(bridge.calls.filter((c) => c.cmd === "forge_list_prs").length).toBe(listed + 1),
     );
     fireEvent.click(screen.getByText("← Pull requests"));
     await waitFor(() => expect(screen.queryByText("pull request 31")).toBeNull());
@@ -228,7 +228,7 @@ describe("the pull request list", () => {
     noteAuth({ kind: "signedOut" });
     render(() => <PullRequests root={ROOT} />);
     await Promise.resolve();
-    expect(bridge.calls.filter((c) => c.cmd === "github_list_prs")).toHaveLength(0);
+    expect(bridge.calls.filter((c) => c.cmd === "forge_list_prs")).toHaveLength(0);
   });
 
   it("shows the server's own sentence when the listing fails", async () => {
@@ -265,12 +265,12 @@ describe("the pull request list", () => {
     render(() => <PullRequests root={ROOT} />);
     await waitFor(() => expect(screen.queryByText("pull request 1")).toBeTruthy());
 
-    const before = bridge.calls.filter((c) => c.cmd === "github_list_prs").length;
+    const before = bridge.calls.filter((c) => c.cmd === "forge_list_prs").length;
     window.dispatchEvent(
       new CustomEvent("sway:pr-opened", { detail: { projectPath: "/root/work/other" } }),
     );
     await Promise.resolve();
-    expect(bridge.calls.filter((c) => c.cmd === "github_list_prs")).toHaveLength(before);
+    expect(bridge.calls.filter((c) => c.cmd === "forge_list_prs")).toHaveLength(before);
   });
 
   it("takes its checks from the same store the sidebar chip reads", async () => {
@@ -304,7 +304,7 @@ describe("the pull request list", () => {
     // And the panel asked for none of it: every request since the row rendered
     // was the poller's.
     expect(
-      bridge.calls.slice(before).filter((c) => c.cmd === "github_list_prs"),
+      bridge.calls.slice(before).filter((c) => c.cmd === "forge_list_prs"),
     ).toHaveLength(0);
   });
 });
