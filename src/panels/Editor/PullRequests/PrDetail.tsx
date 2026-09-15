@@ -40,7 +40,7 @@ import { emitWith, REMOVE_BRANCH_UNIT, type RemoveBranchUnit } from "../../../ut
 import { STATUS_LABEL } from "../../../utils/sessionStatus";
 import { findAdapter } from "../../../utils/agents";
 import { agentOffReason } from "../../../utils/agentEnabled";
-import { forgeViewer, pollNow } from "../../../utils/forgeStatus";
+import { forgeCapabilities, forgeViewer, pollNow } from "../../../utils/forgeStatus";
 import {
   forgeErrorMessage,
   type DraftComment,
@@ -121,6 +121,7 @@ export default function PrDetail(props: {
 
   const reviewing = () => reviewOpen() || pending().length > 0;
   const selfAuthored = createMemo(() => isSelfAuthored(props.pr, forgeViewer(props.root)));
+  const capabilities = createMemo(() => forgeCapabilities(props.root));
 
   // Handing a thread back to the agent that wrote the branch. Which thread is in
   // flight, and how the last attempt on each went. Per thread rather than one
@@ -959,6 +960,7 @@ export default function PrDetail(props: {
           body={reviewBody()}
           onBody={setReviewBody}
           selfAuthored={selfAuthored()}
+          capabilities={capabilities()}
           submitting={submitting()}
           onSubmit={(event) => void submitReview(event)}
           onRemove={(i) => setPending((list) => list.filter((_, at) => at !== i))}

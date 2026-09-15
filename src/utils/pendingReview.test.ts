@@ -145,7 +145,7 @@ describe("submitBlock", () => {
   });
 
   it("blocks both verdicts on a self-authored pull request", () => {
-    const args = { body: "looks good", comments: [], selfAuthored: true };
+    const args = { body: "looks good", comments: [], selfAuthored: true, supported: true };
     expect(submitBlock({ ...args, event: "approve" })).toBe(SELF_AUTHORED_REASON);
     expect(submitBlock({ ...args, event: "requestChanges" })).toBe(SELF_AUTHORED_REASON);
     // Comment-only is the one verb GitHub accepts from the author, and on a
@@ -156,13 +156,13 @@ describe("submitBlock", () => {
   it("blocks a verdict while the viewer is still unknown", () => {
     // Not-yet-known is not known-different. Offering approve here ships a
     // button whose only outcome is a 422.
-    const args = { body: "looks good", comments: [], selfAuthored: null };
+    const args = { body: "looks good", comments: [], selfAuthored: null, supported: true };
     expect(submitBlock({ ...args, event: "approve" })).toBe(SELF_AUTHORED_REASON);
     expect(submitBlock({ ...args, event: "comment" })).toBeNull();
   });
 
   it("allows both verdicts on someone else's pull request", () => {
-    const args = { body: "looks good", comments: [], selfAuthored: false };
+    const args = { body: "looks good", comments: [], selfAuthored: false, supported: true };
     expect(submitBlock({ ...args, event: "approve" })).toBeNull();
     expect(submitBlock({ ...args, event: "requestChanges" })).toBeNull();
   });
@@ -171,30 +171,30 @@ describe("submitBlock", () => {
     // The server accepts it. A reader receiving "changes requested" with no
     // word about what to change cannot act on it, which is the actual failure.
     expect(
-      submitBlock({ event: "requestChanges", body: "   ", comments: [], selfAuthored: false }),
+      submitBlock({ event: "requestChanges", body: "   ", comments: [], selfAuthored: false, supported: true }),
     ).toBe(EMPTY_BODY_REASON);
     expect(
-      submitBlock({ event: "requestChanges", body: "fix the leak", comments: [], selfAuthored: false }),
+      submitBlock({ event: "requestChanges", body: "fix the leak", comments: [], selfAuthored: false, supported: true }),
     ).toBeNull();
     // Line comments do not substitute: the verdict's own summary is what says
     // what the whole review is asking for.
     expect(
-      submitBlock({ event: "requestChanges", body: "", comments: [comment()], selfAuthored: false }),
+      submitBlock({ event: "requestChanges", body: "", comments: [comment()], selfAuthored: false, supported: true }),
     ).toBe(EMPTY_BODY_REASON);
   });
 
   it("refuses a comment review with nothing in it", () => {
-    expect(submitBlock({ event: "comment", body: "", comments: [], selfAuthored: true })).toBeTruthy();
+    expect(submitBlock({ event: "comment", body: "", comments: [], selfAuthored: true, supported: true })).toBeTruthy();
     // Either half is enough on its own.
     expect(
-      submitBlock({ event: "comment", body: "", comments: [comment()], selfAuthored: true }),
+      submitBlock({ event: "comment", body: "", comments: [comment()], selfAuthored: true, supported: true }),
     ).toBeNull();
-    expect(submitBlock({ event: "comment", body: "nit", comments: [], selfAuthored: true })).toBeNull();
+    expect(submitBlock({ event: "comment", body: "nit", comments: [], selfAuthored: true, supported: true })).toBeNull();
   });
 
   it("lets an approval carry no words at all", () => {
     // An approval with an empty body is a complete statement; a request for
     // changes with one is not.
-    expect(submitBlock({ event: "approve", body: "", comments: [], selfAuthored: false })).toBeNull();
+    expect(submitBlock({ event: "approve", body: "", comments: [], selfAuthored: false, supported: true })).toBeNull();
   });
 });

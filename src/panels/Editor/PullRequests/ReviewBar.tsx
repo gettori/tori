@@ -11,7 +11,7 @@
 
 import { For, Show, createMemo } from "solid-js";
 import { anchorLabel, submitBlock } from "../../../utils/pendingReview";
-import type { DraftComment, ReviewEvent } from "../../../utils/forgeTypes";
+import type { Capabilities, DraftComment, ReviewEvent } from "../../../utils/forgeTypes";
 import Button from "../../../components/Button/Button";
 import styles from "./ReviewBar.module.css";
 
@@ -28,16 +28,30 @@ export default function ReviewBar(props: {
   /** null while the viewer is unknown, which blocks both verdicts: not-yet-known
    *  is not known-different. */
   selfAuthored: boolean | null;
+  /** null while the repo's account is still resolving. The panel it renders in
+   *  was opened from that account's own pull request list, so null is a startup
+   *  window rather than a provider saying no. */
+  capabilities: Capabilities | null;
   submitting: boolean;
   onSubmit: (event: ReviewEvent) => void;
   onRemove: (index: number) => void;
 }) {
+  const supported = (event: ReviewEvent) => {
+    const caps = props.capabilities;
+    if (!caps) return true;
+    return event === "approve"
+      ? caps.approve
+      : event === "requestChanges"
+        ? caps.requestChanges
+        : caps.commentReview;
+  };
   const blockFor = (event: ReviewEvent) =>
     submitBlock({
       event,
       body: props.body,
       comments: props.comments,
       selfAuthored: props.selfAuthored,
+      supported: supported(event),
     });
 
   // The reason to spell out under the row: whichever verdict is blocked, since

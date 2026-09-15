@@ -104,6 +104,13 @@ impl AuthCore {
         }
     }
 
+    /// A renewal replaced the access token, which also clears any suspicion:
+    /// the pair the server just issued is the one that works.
+    pub fn note_refreshed(&mut self, token: String) {
+        self.token = Some(token);
+        self.suspect = false;
+    }
+
     /// Completing a device flow, or re-signing-in after a suspicion.
     pub fn sign_in(&mut self, token: String, login: Option<String>) {
         self.token = Some(token);
@@ -176,6 +183,18 @@ impl AuthStore {
         }
     }
 
+    pub fn note_refreshed(&mut self, id: &str, token: String) {
+        if let Some(core) = self.accounts.get_mut(id) {
+            core.note_refreshed(token);
+        }
+    }
+
+    pub fn note_rejected(&mut self, id: &str) {
+        if let Some(core) = self.accounts.get_mut(id) {
+            core.note_unauthorized();
+        }
+    }
+
     pub fn sign_in(&mut self, id: &str, token: String, login: Option<String>) {
         let enabled = self.enabled;
         self.accounts
@@ -234,6 +253,18 @@ pub fn note_result<T>(id: &str, result: &Result<T, super::ForgeError>) {
 
 pub fn note_login(id: &str, login: String) {
     with(|s| s.note_login(id, login));
+}
+
+/// The in-memory half of a renewal. The keychain write is the caller's, because
+/// a new pair is stored before anything is allowed to use it.
+pub fn note_refreshed(id: &str, token: String) {
+    with(|s| s.note_refreshed(id, token));
+}
+
+/// The renewal itself was refused, which is the one failure that ends a
+/// credential: nothing can renew it, so the user has to sign in again.
+pub fn note_rejected(id: &str) {
+    with(|s| s.note_rejected(id));
 }
 
 /// Restores every account's credential from the keychain at startup.
