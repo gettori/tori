@@ -1,8 +1,8 @@
 //! Whether Sway currently has a usable forge credential, and what to do when
 //! the answer changes.
 //!
-//! A pure core ([`AuthCore`], state and inputs explicit) plus a thin global
-//! wrapper, per `[[lesson_pure_core_for_global_stores]]`. The core owns one
+//! A pure core ([`AuthCore`] per account, gathered in [`AuthStore`]) plus a thin
+//! global wrapper, per `[[lesson_pure_core_for_global_stores]]`. The core owns one
 //! decision the rest of the app keeps asking: **may I call the API right now?**
 //! Three separate things can say no (no token, a suspect token, the kill
 //! switch), and every caller getting that wrong in its own way is how a
@@ -19,6 +19,8 @@
 //! any answered call clears the suspicion by itself.
 
 use super::model::AuthState;
+use super::token::Secret;
+use std::collections::BTreeMap;
 
 /// The credential state, with nothing global in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,7 +29,7 @@ pub struct AuthCore {
     login: Option<String>,
     /// A 401 has been seen and not yet superseded by a success.
     suspect: bool,
-    /// The `github.enabled` kill switch. Separate from the token on purpose:
+    /// The `forge.enabled` kill switch. Separate from the token on purpose:
     /// stopping the network traffic must not mean losing the credential.
     enabled: bool,
 }
@@ -95,6 +97,13 @@ impl AuthCore {
         }
     }
 
+    /// Records who the token belongs to, once it is known.
+    pub fn note_login(&mut self, login: String) {
+        if self.token.is_some() {
+            self.login = Some(login);
+        }
+    }
+
     /// Completing a device flow, or re-signing-in after a suspicion.
     pub fn sign_in(&mut self, token: String, login: Option<String>) {
         self.token = Some(token);
@@ -115,75 +124,134 @@ impl AuthCore {
     }
 }
 
+/// Every account's credential, keyed by account id, under one kill switch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthStore {
+    accounts: BTreeMap<String, AuthCore>,
+    enabled: bool,
+}
+
+impl Default for AuthStore {
+    fn default() -> Self {
+        Self { accounts: BTreeMap::new(), enabled: true }
+    }
+}
+
+impl AuthStore {
+    /// `(account id, token, login)` per account the keychain answered for.
+    pub fn restored(entries: Vec<(String, Option<String>, Option<String>)>, enabled: bool) -> Self {
+        let accounts = entries
+            .into_iter()
+            .map(|(id, token, login)| (id, AuthCore::restored(token, login, enabled)))
+            .collect();
+        Self { accounts, enabled }
+    }
+
+    /// An account Sway holds no credential for reads as signed out.
+    pub fn state(&self, id: &str) -> AuthState {
+        self.accounts.get(id).map_or(AuthState::SignedOut, AuthCore::state)
+    }
+
+    pub fn may_call(&self, id: &str) -> bool {
+        self.accounts.get(id).is_some_and(AuthCore::may_call)
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn token(&self, id: &str) -> Option<&str> {
+        self.accounts.get(id).and_then(AuthCore::token)
+    }
+
+    pub fn note_result<T>(&mut self, id: &str, result: &Result<T, super::ForgeError>) {
+        if let Some(core) = self.accounts.get_mut(id) {
+            core.note_result(result);
+        }
+    }
+
+    pub fn note_login(&mut self, id: &str, login: String) {
+        if let Some(core) = self.accounts.get_mut(id) {
+            core.note_login(login);
+        }
+    }
+
+    pub fn sign_in(&mut self, id: &str, token: String, login: Option<String>) {
+        let enabled = self.enabled;
+        self.accounts
+            .entry(id.to_string())
+            .or_insert_with(|| AuthCore::restored(None, None, enabled))
+            .sign_in(token, login);
+    }
+
+    pub fn sign_out(&mut self, id: &str) {
+        self.accounts.remove(id);
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+        for core in self.accounts.values_mut() {
+            core.set_enabled(enabled);
+        }
+    }
+}
+
 // --- thin global wrapper ---
 
-static AUTH: std::sync::Mutex<Option<AuthCore>> = std::sync::Mutex::new(None);
+static AUTH: std::sync::Mutex<Option<AuthStore>> = std::sync::Mutex::new(None);
 
-fn with<R>(f: impl FnOnce(&mut AuthCore) -> R) -> R {
+fn with<R>(f: impl FnOnce(&mut AuthStore) -> R) -> R {
     let mut guard = AUTH.lock().unwrap();
-    f(guard.get_or_insert_with(AuthCore::default))
+    f(guard.get_or_insert_with(AuthStore::default))
 }
 
-pub fn state() -> AuthState {
-    with(|a| a.state())
+pub fn state(id: &str) -> AuthState {
+    with(|s| s.state(id))
 }
 
-pub fn may_call() -> bool {
-    with(|a| a.may_call())
+pub fn may_call(id: &str) -> bool {
+    with(|s| s.may_call(id))
 }
 
-pub fn token() -> Option<String> {
-    with(|a| a.token().map(|t| t.to_string()))
+pub fn enabled() -> bool {
+    with(|s| s.enabled())
 }
 
-pub fn note_unauthorized() {
-    with(|a| a.note_unauthorized());
-}
-
-pub fn note_success() {
-    with(|a| a.note_success());
-}
-
-pub fn set_enabled(enabled: bool) {
-    with(|a| a.set_enabled(enabled));
+pub fn token(id: &str) -> Option<String> {
+    with(|s| s.token(id).map(|t| t.to_string()))
 }
 
 /// Folds the outcome of a forge call into the credential state.
 ///
 /// **The one bridge between the client and what the UI reads.** The client
 /// keeps its own view of the credential so it stays unit-testable in isolation,
-/// but that view is useless if it never reaches `github_auth_state`. Every
+/// but that view is useless if it never reaches `forge_accounts`. Every
 /// command that calls the forge routes its result through here, so a 401 on any
-/// call marks the credential suspect exactly once, in one place.
-pub fn note_result<T>(result: &Result<T, super::ForgeError>) {
-    with(|a| a.note_result(result));
+/// call marks that account's credential suspect exactly once, in one place.
+pub fn note_result<T>(id: &str, result: &Result<T, super::ForgeError>) {
+    with(|s| s.note_result(id, result));
 }
 
-/// Records who the token belongs to, once it is known.
-pub fn note_login(login: String) {
-    with(|a| {
-        if a.token.is_some() {
-            a.login = Some(login);
-        }
-    });
+pub fn note_login(id: &str, login: String) {
+    with(|s| s.note_login(id, login));
 }
 
-/// Restores the credential from the keychain at startup.
-pub fn restore(token: Option<String>, login: Option<String>, enabled: bool) {
-    *AUTH.lock().unwrap() = Some(AuthCore::restored(token, login, enabled));
+/// Restores every account's credential from the keychain at startup.
+pub fn restore(entries: Vec<(String, Option<String>, Option<String>)>, enabled: bool) {
+    *AUTH.lock().unwrap() = Some(AuthStore::restored(entries, enabled));
 }
 
-/// Stores the token and takes the credential out of suspicion.
-pub fn sign_in(token: String, login: Option<String>) -> Result<(), super::ForgeError> {
-    super::token::save(&token)?;
-    with(|a| a.sign_in(token, login));
+/// Stores the secret and takes the account out of suspicion.
+pub fn sign_in(id: &str, secret: &Secret, login: Option<String>) -> Result<(), super::ForgeError> {
+    super::token::save_secret(id, secret)?;
+    with(|s| s.sign_in(id, secret.access_token.clone(), login));
     Ok(())
 }
 
-/// Deletes the credential, which is the only thing that ever does.
-pub fn sign_out() -> Result<(), super::ForgeError> {
-    super::token::delete()?;
-    with(|a| a.sign_out());
+/// Deletes the account's credential, which is the only thing that ever does.
+pub fn sign_out(id: &str) -> Result<(), super::ForgeError> {
+    super::token::delete_secret(id)?;
+    with(|s| s.sign_out(id));
     Ok(())
 }
 
@@ -313,9 +381,7 @@ mod tests {
         // Naming an account while signed out would render "signed in as X" for
         // a token that does not exist.
         let mut a = AuthCore::default();
-        if a.token.is_some() {
-            a.login = Some("skarif2".into());
-        }
+        a.note_login("skarif2".into());
         assert_eq!(a.state(), AuthState::SignedOut);
     }
 
@@ -340,5 +406,24 @@ mod tests {
         for (a, why) in cases {
             assert!(!a.may_call(), "{why} must stop the caller");
         }
+    }
+
+    #[test]
+    fn a_401_on_one_account_leaves_the_other_untouched() {
+        let mut store = AuthStore::restored(
+            vec![
+                ("personal".into(), Some("gho_a".into()), Some("skarif2".into())),
+                ("work".into(), Some("gho_b".into()), Some("fonn-arif".into())),
+            ],
+            true,
+        );
+        store.note_result("work", &Err::<(), _>(super::super::ForgeError::CredentialSuspect));
+        assert!(!store.may_call("work"));
+        assert!(store.may_call("personal"));
+        assert_eq!(store.state("personal"), AuthState::SignedIn { login: "skarif2".into() });
+
+        store.set_enabled(false);
+        assert!(!store.may_call("personal"), "the kill switch reaches every account");
+        assert_eq!(store.state("nobody"), AuthState::SignedOut);
     }
 }

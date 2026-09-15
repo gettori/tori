@@ -234,6 +234,41 @@ export type AuthState =
   | { kind: "signedIn"; login: string }
   | { kind: "suspect"; login: string | null };
 
+export type ForgeProvider = "github" | "gitlab";
+
+/// One account Sway holds on a forge host, with its credential state.
+export type ForgeAccount = {
+  id: string;
+  provider: ForgeProvider;
+  baseUrl: string;
+  login: string | null;
+  label: string;
+  /// Epoch **seconds**, for tokens that expire.
+  expiresAt: number | null;
+  auth: AuthState;
+};
+
+export type ForgeHost = { host: string; accounts: ForgeAccount[] };
+
+/// Which account a checkout acts as. `noAccount` carries no host when the
+/// checkout has no remote at all.
+export type RepoAccount =
+  | { kind: "account"; accountId: string; host: string; auth: AuthState }
+  | { kind: "pick"; host: string; candidates: ForgeAccount[] }
+  | { kind: "noAccount"; host: string | null };
+
+export type SignInRoutes = {
+  host: string;
+  baseUrl: string;
+  deviceFlow: boolean;
+  scopes: string[];
+  tokenUrl: string;
+};
+
+export function forgeAccountName(account: ForgeAccount): string {
+  return account.label || account.login || account.baseUrl;
+}
+
 /// A `ForgeError` as the Tauri layer serializes it: a stable `kind` to branch
 /// on plus a sentence to show. The kind is deliberately not the message, so
 /// rewording a sentence cannot change behaviour.
@@ -315,6 +350,8 @@ export const FORGE_KEYS = {
   pagedTruncated: ["items", "truncated"],
   rateSnapshot: ["limit", "remaining", "resetAt"],
   statusReport: ["rate", "statuses", "uncovered"],
+  forgeAccount: ["auth", "baseUrl", "expiresAt", "id", "label", "login", "provider"],
+  signInRoutes: ["baseUrl", "deviceFlow", "host", "scopes", "tokenUrl"],
   // Not a domain type, but it crosses the same bridge and the poll scheduler
   // branches on it, so it is checked against Rust the same way.
   forgeError: ["kind", "message", "rateLimitKind", "resetAtSecs", "retryAfterSecs"],

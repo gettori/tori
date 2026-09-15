@@ -70,6 +70,12 @@ describe("the states that render nothing", () => {
     }
   });
 
+  it("offers the account pick when the host has several and the repo chose none", () => {
+    const c = chip({ paused: "pickAccount" });
+    expect(c.kind).toBe("pickAccount");
+    expect(c.pr).toBeNull();
+  });
+
   it("says nothing at all about a unit no tick has covered", () => {
     // A unit past the per-tick cap. Rendering "no pull request" here is the
     // failure the `uncovered` count exists to prevent: a partial answer that

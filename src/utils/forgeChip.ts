@@ -5,7 +5,7 @@
 // that draws "no pull request" when the truth is "this remote is not GitHub" is
 // wrong in a way nobody reports, because both look like an absence.
 //
-// ## Five kinds, and the two that matter
+// ## Six kinds, and the two that matter
 //
 // The distinction the plan cares about is **inert vs noPr**. `noPr` means the
 // forge answered and there is no PR yet, which is a normal, temporary state of a
@@ -26,7 +26,7 @@ import { apiCanServe } from "./createPr";
 import type { PauseReason } from "./forgePoll";
 import type { CheckRollup, ReviewDecision, UnitStatus } from "./forgeTypes";
 
-export type ForgeChipKind = "hidden" | "inert" | "unknown" | "noPr" | "pr";
+export type ForgeChipKind = "hidden" | "inert" | "unknown" | "noPr" | "pr" | "pickAccount";
 
 /// What the PR glyph depicts. `none` is the no-PR marker, which is a state of
 /// the branch rather than of a pull request, hence a value here rather than a
@@ -62,6 +62,9 @@ export function forgeChip(input: {
   if (!input.branch) return { ...NOTHING, kind: "inert" };
   if (input.origin === undefined) return NOTHING;
   if (!apiCanServe(input.origin)) return { ...NOTHING, kind: "inert" };
+  // Several accounts on the host and none picked for this repo: the pick is the
+  // one thing worth drawing.
+  if (input.paused === "pickAccount") return { ...NOTHING, kind: "pickAccount" };
   // Signed out, switched off, or a credential the forge rejected: the poller is
   // stopped, so the newest thing this store holds is whatever was true before it
   // stopped. Rendering it would age silently.

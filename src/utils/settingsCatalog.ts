@@ -32,7 +32,7 @@ export type SettingSection =
   | "lsp"
   | "dap"
   | "git"
-  | "github"
+  | "forge"
   | "appearance"
   | "typography"
   | "editor"
@@ -100,7 +100,7 @@ export const SETTING_TABS: SettingTabDef[] = [
   { id: "languages", label: "Languages", group: "Workbench", icon: "braces", sections: ["lsp", "dap"] },
   { id: "panes", label: "Panes", group: "Workbench", icon: "columns-2", sections: ["panes"] },
   { id: "appearance", label: "Appearance", group: "Application", icon: "palette", sections: ["appearance", "typography"] },
-  { id: "integrations", label: "Integrations", group: "Application", icon: "plug", sections: ["git", "github"] },
+  { id: "integrations", label: "Integrations", group: "Application", icon: "plug", sections: ["git", "forge"] },
 ];
 
 /** Which tab a section is shown under. Derived from `SETTING_TABS` rather than
@@ -122,7 +122,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   lsp: "Language servers",
   dap: "Debuggers",
   git: "Git",
-  github: "GitHub",
+  forge: "GitHub and GitLab",
   appearance: "Appearance",
   typography: "Typography",
   editor: "Editor",
@@ -246,10 +246,10 @@ export const SETTINGS: SettingEntry[] = [
     hint: "Whether git is installed and usable, and what to run to install it when it is not.",
   },
   {
-    id: "github",
-    section: "github",
-    label: "GitHub",
-    hint: "The account Sway acts as, signing in and out, and the forge integration's kill switch.",
+    id: "forge",
+    section: "forge",
+    label: "GitHub and GitLab",
+    hint: "Accounts on GitHub and GitLab hosts, signing in and out, and the forge integration's kill switch.",
   },
 
   { id: "theme", section: "appearance", label: "Theme" },

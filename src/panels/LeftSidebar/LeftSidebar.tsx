@@ -92,11 +92,13 @@ import {
 import { belongsToUnit } from "../../utils/unitAttribution";
 import { forgeChip } from "../../utils/forgeChip";
 import ForgeChipView from "../../components/ForgeChip/ForgeChip";
-import { needsAttention } from "../../utils/forgeTypes";
+import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils/forgeTypes";
 import { apiCanServe } from "../../utils/createPr";
 import {
   forgePause,
+  forgeRepo,
   noteForgeEnabled,
+  pickForgeAccount,
   noteWatchedProjects,
   pollNow,
   pollOnFocus,
@@ -919,7 +921,7 @@ export default function LeftSidebar(props: {
       forgeChip({
         origin: origins()[p.path],
         branch: u.branch,
-        paused: forgePause(),
+        paused: forgePause(p.path),
         status: unitStatus(p.path, u.branch),
       }),
     );
@@ -928,12 +930,41 @@ export default function LeftSidebar(props: {
     // panel lists what exists, and a button that opens a list this branch is
     // not in would be a control that appears to do nothing.
     const opens = () => chip().kind === "pr";
+    const pickItems = (): MenuItem[] => {
+      const repo = forgeRepo(p.path);
+      if (repo?.kind !== "pick") return [];
+      return [
+        { heading: `${repo.host} account` },
+        ...repo.candidates.map((a) => ({
+          label: forgeAccountName(a),
+          onClick: () =>
+            void pickForgeAccount(p.path, a.id).catch((e) => setError(forgeErrorMessage(e))),
+        })),
+      ];
+    };
     return (
-      <ForgeChipView
-        chip={chip()}
-        label={`Pull requests for ${p.name}`}
-        onActivate={opens() ? () => void openPullRequests(g, p, u) : undefined}
-      />
+      <Show
+        when={chip().kind === "pickAccount"}
+        fallback={
+          <ForgeChipView
+            chip={chip()}
+            label={`Pull requests for ${p.name}`}
+            onActivate={opens() ? () => void openPullRequests(g, p, u) : undefined}
+          />
+        }
+      >
+        {/* The row selects its branch on click, which picking must not also do. */}
+        <span onClick={(e) => e.stopPropagation()}>
+          <Dropdown
+            as="span"
+            items={pickItems()}
+            placement="bottom-end"
+            aria-label={`Pick an account for ${p.name}`}
+          >
+            <ForgeChipView chip={chip()} />
+          </Dropdown>
+        </span>
+      </Show>
     );
   }
 
@@ -2698,7 +2729,7 @@ export default function LeftSidebar(props: {
   // The kill switch, straight from Settings. Read through an effect rather than
   // at mount so switching it off stops the schedule on the click, not on the
   // next launch.
-  createEffect(() => noteForgeEnabled(appSettings.github?.enabled ?? true));
+  createEffect(() => noteForgeEnabled(appSettings.forge?.enabled ?? true));
 
   // What the poller watches, and which of it is on screen.
   //

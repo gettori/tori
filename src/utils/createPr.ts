@@ -15,8 +15,8 @@ export type PrPath = "form" | "compare" | "none";
 ///
 /// Deliberately stricter than `prUrl`'s provider detection, which matches any
 /// host *containing* "github" so that GitHub Enterprise still gets a working
-/// compare URL. The Rust client (`forge::github::parse_remote`) accepts only
-/// github.com, so a GHE remote passing the looser test would open a form whose
+/// compare URL. The Rust resolver (`forge::commands::client_for`) serves only
+/// github.com so far, so a GHE remote passing the looser test would open a form whose
 /// submit comes back `unsupportedRemote`. Compare still works there; the form
 /// does not.
 const API_HOSTS = ["github.com", "www.github.com"];

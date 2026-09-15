@@ -306,13 +306,13 @@ describe("a command that deep links to one row", () => {
 
   it("does not put focus inside a card section", async () => {
     // Its contents are built at runtime, so the first control in it is whatever
-    // that section happened to render - for GitHub, a sign-out button. Landing
+    // that section happened to render - for forge accounts, a remove button. Landing
     // focus there would arm the next Space or Enter. The scroll and the flash
     // still say "here", which is all a section without a control can offer.
-    render(() => <Settings onClose={() => {}} query="GitHub" entry="github" />);
+    render(() => <Settings onClose={() => {}} query="GitHub" entry="forge" />);
 
-    await waitFor(() => expect(row("github")!.className).toContain("cardSectionHit"));
-    expect(row("github")!.contains(document.activeElement)).toBe(false);
+    await waitFor(() => expect(row("forge")!.className).toContain("cardSectionHit"));
+    expect(row("forge")!.contains(document.activeElement)).toBe(false);
   });
 
   it("leaves the search box focused when no row was named", async () => {

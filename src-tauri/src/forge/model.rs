@@ -16,7 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A repository, as the two coordinates every forge API needs. Parsed from the
-/// git remote by `github::parse_remote`, never stored.
+/// git remote by `remote::parse`, never stored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoRef {
@@ -459,6 +459,25 @@ mod tests {
                 AuthState::SignedIn { login: "skarif2".into() },
                 AuthState::Suspect { login: Some("skarif2".into()) },
             ],
+            // A signed-in account as the Integrations pane and the pick list read
+            // it, with the optional fields populated so their names are emitted.
+            "forgeAccount": super::super::accounts::AccountView {
+                account: super::super::accounts::Account {
+                    id: "github-com-skarif2".into(),
+                    provider: super::super::accounts::Provider::Github,
+                    base_url: "https://github.com".into(),
+                    login: Some("skarif2".into()),
+                    label: "skarif2".into(),
+                    expires_at: Some(1_785_179_400),
+                },
+                auth: AuthState::SignedIn { login: "skarif2".into() },
+            },
+            "signInRoutes": super::super::accounts::sign_in_routes(
+                super::super::accounts::Provider::Github,
+                "https://github.com",
+                "github.com",
+                true,
+            ),
             // A truncated page, because `truncated: true` is the case the UI
             // must not render as a complete list.
             "pagedTruncated": Paged { items: vec![1u32, 2, 3], truncated: true },

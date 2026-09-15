@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
-import type { PullRequest } from "../../../utils/forgeTypes";
+import type { AuthState, PullRequest } from "../../../utils/forgeTypes";
 
 // The Pull Requests panel.
 //
@@ -64,17 +64,31 @@ vi.mock("@tauri-apps/api/core", () => ({
       return Promise.resolve({ items: bridge.files, truncated: false });
     if (cmd === "github_mergeability") return Promise.resolve(bridge.mergeable);
     if (cmd === "github_merge") return Promise.resolve(null);
-    if (cmd === "github_auth_state") return Promise.resolve({ kind: "signedOut" });
+    if (cmd === "forge_repo_account")
+      return Promise.resolve({
+        kind: "account",
+        accountId: "personal",
+        host: "github.com",
+        auth: { kind: "signedIn", login: "skarif2" },
+      });
     return Promise.resolve(null);
   },
 }));
 
 const { default: PullRequests } = await import("./PullRequests");
-const { noteForgeAuth, noteForgeEnabled, noteWatchedProjects, resetForgeStatusForTests, pollNow } =
+const { noteForgeAccounts, noteForgeEnabled, noteWatchedProjects, resetForgeStatusForTests, pollNow } =
   await import("../../../utils/forgeStatus");
 
+/** The one account these tests act as, in this state. Signed out is no account. */
+const noteAuth = (auth: AuthState) =>
+  noteForgeAccounts(
+    auth.kind === "signedOut"
+      ? []
+      : [{ id: "personal", provider: "github", baseUrl: "https://github.com", login: "skarif2", label: "skarif2", expiresAt: null, auth }],
+  );
+
 const signIn = () => {
-  noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+  noteAuth({ kind: "signedIn", login: "skarif2" });
   noteForgeEnabled(true);
 };
 
@@ -189,21 +203,21 @@ describe("the pull request list", () => {
     await waitFor(() => expect(empty.queryByText("No open pull requests.")).toBeTruthy());
     empty.unmount();
 
-    noteForgeAuth({ kind: "signedOut" });
+    noteAuth({ kind: "signedOut" });
     const out = render(() => <PullRequests root={ROOT} />);
     expect(out.queryByText(/Sign in to GitHub in Settings/)).toBeTruthy();
     out.unmount();
 
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    noteAuth({ kind: "signedIn", login: "skarif2" });
     noteForgeEnabled(false);
     const off = render(() => <PullRequests root={ROOT} />);
     expect(off.queryByText(/switched off in Settings/)).toBeTruthy();
     off.unmount();
 
     noteForgeEnabled(true);
-    noteForgeAuth({ kind: "suspect", login: "skarif2" });
+    noteAuth({ kind: "suspect", login: "skarif2" });
     const suspect = render(() => <PullRequests root={ROOT} />);
-    expect(suspect.queryByText(/rejected the stored credential/)).toBeTruthy();
+    await waitFor(() => expect(suspect.queryByText(/rejected the stored credential/)).toBeTruthy());
     suspect.unmount();
   });
 
@@ -211,7 +225,7 @@ describe("the pull request list", () => {
     // Rust refuses too, but a request the frontend does not make is the half
     // that costs nothing at all - and the pause is exactly the state where the
     // answer could not be shown even if it arrived.
-    noteForgeAuth({ kind: "signedOut" });
+    noteAuth({ kind: "signedOut" });
     render(() => <PullRequests root={ROOT} />);
     await Promise.resolve();
     expect(bridge.calls.filter((c) => c.cmd === "github_list_prs")).toHaveLength(0);

@@ -223,7 +223,7 @@ pub fn run() {
             // Non-fatal like the askpass bridge and the tray above: a keychain
             // that will not open should leave Sway signed out, not stop it
             // starting.
-            forge::commands::restore_at_startup(settings::get_settings().github.enabled);
+            forge::commands::restore_at_startup(settings::get_settings().forge.enabled);
 
             Ok(())
         })
@@ -509,12 +509,15 @@ pub fn run() {
             worktree::branch_status,
             worktree::remove_worktree,
             worktree::remove_worktree_and_branch,
-            forge::commands::github_auth_state,
-            forge::commands::github_is_configured,
-            forge::commands::github_device_start,
-            forge::commands::github_device_poll,
-            forge::commands::github_device_cancel,
-            forge::commands::github_sign_out,
+            forge::commands::forge_accounts,
+            forge::commands::forge_sign_in_routes,
+            forge::commands::forge_device_start,
+            forge::commands::forge_device_poll,
+            forge::commands::forge_device_cancel,
+            forge::commands::forge_add_token,
+            forge::commands::forge_remove_account,
+            forge::commands::forge_repo_account,
+            forge::commands::forge_pick_account,
             forge::commands::github_pr_for_branch,
             forge::commands::github_create_pr,
             forge::commands::github_push_and_create_pr,
