@@ -6,7 +6,7 @@
 //
 // ## Where each column comes from
 //
-// The **list** is a request this panel makes: `github_list_prs`, uncached,
+// The **list** is a request this panel makes: `forge_list_prs`, uncached,
 // because a panel someone just opened wants the current answer and the cache
 // Phase 5 built exists to pace a tick that runs forever, not a click.
 //
@@ -68,7 +68,7 @@ export default function PullRequests(props: { root: string | null }) {
     setLoading(true);
     setError(null);
     try {
-      const page = await invoke<Paged<PullRequest>>("github_list_prs", { projectPath: root });
+      const page = await invoke<Paged<PullRequest>>("forge_list_prs", { projectPath: root });
       setItems(page.items);
       setTruncated(page.truncated);
       setListedRoot(root);

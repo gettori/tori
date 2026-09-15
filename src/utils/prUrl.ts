@@ -5,11 +5,26 @@
 // (origin/HEAD with a main/master fallback probe) - this module only turns
 // (origin, base, branch) into the compare URL.
 
+import type { ForgeProvider } from "./forgeTypes";
+
 export type Provider = "github" | "gitlab" | "bitbucket";
 
-type ParsedOrigin = { provider: Provider; host: string; owner: string; repo: string };
+export type KnownHosts = ReadonlyMap<string, { provider: ForgeProvider; baseUrl: string }>;
 
-function detectProvider(host: string): Provider | null {
+type OriginParts = { host: string; owner: string; repo: string };
+type ParsedOrigin = OriginParts & { provider: Provider };
+
+/** A host spelled the way Rust keys account hosts. */
+export function canonicalHost(host: string): string {
+  const lower = host.toLowerCase();
+  return lower === "www.github.com" ? "github.com" : lower;
+}
+
+function detectProvider(host: string, known: KnownHosts): Provider | null {
+  const registered = known.get(canonicalHost(host));
+  if (registered) return registered.provider;
+  // No account on the host, so its name is the only hint. Good enough for a
+  // compare URL, which is all an unregistered host gets.
   if (host.includes("github")) return "github";
   if (host.includes("gitlab")) return "gitlab";
   if (host.includes("bitbucket")) return "bitbucket";
@@ -29,21 +44,15 @@ function ownerAndRepo(path: string): { owner: string; repo: string } | null {
   return { owner, repo };
 }
 
-/** Normalize an `origin` remote URL (https, ssh://, or scp-like
- *  `git@host:owner/repo.git`) into its provider, host, owner, and repo.
- *  Returns null for an unrecognized provider or an unparseable URL. */
-export function parseOrigin(url: string): ParsedOrigin | null {
+function originParts(url: string): OriginParts | null {
   const trimmed = url.trim();
 
   // scp-like ssh (no "://"): git@host:owner/repo(.git)?
   if (!trimmed.includes("://")) {
     const m = trimmed.match(/^(?:[\w.-]+@)?([\w.-]+):(.+)$/);
     if (!m) return null;
-    const provider = detectProvider(m[1]);
-    if (!provider) return null;
     const or = ownerAndRepo(m[2]);
-    if (!or) return null;
-    return { provider, host: m[1], ...or };
+    return or ? { host: m[1], ...or } : null;
   }
 
   let u: URL;
@@ -52,29 +61,47 @@ export function parseOrigin(url: string): ParsedOrigin | null {
   } catch {
     return null;
   }
-  const provider = detectProvider(u.hostname);
-  if (!provider) return null;
   const or = ownerAndRepo(u.pathname);
-  if (!or) return null;
-  return { provider, host: u.hostname, ...or };
+  return or ? { host: u.hostname, ...or } : null;
+}
+
+/** The host of an `origin` remote URL, whether or not any provider is
+ *  recognized there. Null for an unparseable URL. */
+export function originHost(url: string): string | null {
+  return originParts(url)?.host ?? null;
+}
+
+/** Normalize an `origin` remote URL (https, ssh://, or scp-like
+ *  `git@host:owner/repo.git`) into its provider, host, owner, and repo.
+ *  Returns null for an unrecognized provider or an unparseable URL. */
+export function parseOrigin(url: string, known: KnownHosts): ParsedOrigin | null {
+  const parts = originParts(url);
+  const provider = parts && detectProvider(parts.host, known);
+  return parts && provider ? { provider, ...parts } : null;
 }
 
 /** The provider's new-PR/MR compare URL for `branch` against `base`, or null
- *  when `origin` isn't a recognized provider. Built off the parsed host, so
- *  a self-hosted GitHub Enterprise / GitLab / Bitbucket Server instance gets
- *  its own domain rather than the public one. */
-export function comparePrUrl(origin: string, base: string, branch: string): string | null {
-  const parsed = parseOrigin(origin);
+ *  when `origin` isn't a recognized provider. A host with an account is
+ *  reached at its account's base URL, which keeps a port the ssh remote
+ *  cannot carry; any other host is assumed to serve https on its own name. */
+export function comparePrUrl(
+  origin: string,
+  base: string,
+  branch: string,
+  known: KnownHosts,
+): string | null {
+  const parsed = parseOrigin(origin, known);
   if (!parsed) return null;
   const { provider, host, owner, repo } = parsed;
+  const web = known.get(canonicalHost(host))?.baseUrl ?? `https://${host}`;
   const b = encodeURIComponent(base);
   const h = encodeURIComponent(branch);
   switch (provider) {
     case "github":
-      return `https://${host}/${owner}/${repo}/compare/${b}...${h}?expand=1`;
+      return `${web}/${owner}/${repo}/compare/${b}...${h}?expand=1`;
     case "gitlab":
-      return `https://${host}/${owner}/${repo}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${h}&merge_request%5Btarget_branch%5D=${b}`;
+      return `${web}/${owner}/${repo}/-/merge_requests/new?merge_request%5Bsource_branch%5D=${h}&merge_request%5Btarget_branch%5D=${b}`;
     case "bitbucket":
-      return `https://${host}/${owner}/${repo}/pull-requests/new?source=${h}&dest=${b}`;
+      return `${web}/${owner}/${repo}/pull-requests/new?source=${h}&dest=${b}`;
   }
 }

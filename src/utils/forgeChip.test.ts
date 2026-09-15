@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { forgeChip } from "./forgeChip";
 import type { CheckState, PullRequest, ReviewDecision, UnitStatus } from "./forgeTypes";
+import type { KnownHosts } from "./prUrl";
 
 const GH = "git@github.com:skarif2/sway.git";
+const HOSTS: KnownHosts = new Map([["github.com", { provider: "github", baseUrl: "https://github.com" }]]);
 
 const pull = (over: Partial<PullRequest> = {}): PullRequest => ({
   number: 12,
@@ -28,7 +30,7 @@ const status = (over: Partial<UnitStatus> = {}): UnitStatus => ({
 });
 
 const chip = (over: Partial<Parameters<typeof forgeChip>[0]> = {}) =>
-  forgeChip({ origin: GH, branch: "wave-3", paused: null, status: status(), ...over });
+  forgeChip({ origin: GH, hosts: HOSTS, branch: "wave-3", firstUnit: true, paused: null, status: status(), ...over });
 
 describe("the states that render nothing", () => {
   it("tells a remote it cannot serve apart from a branch with no PR yet", () => {
@@ -41,11 +43,18 @@ describe("the states that render nothing", () => {
     expect(chip({ status: status({ pullRequest: null }) }).kind).toBe("noPr");
   });
 
-  it("reads GitHub Enterprise as a remote the API cannot serve", () => {
-    // The compare-URL path works there and the Rust client does not, so a chip
-    // promising in-app PR state on GHE would be promising a call that comes
-    // back `unsupportedRemote`.
-    expect(chip({ origin: "https://github.acme.com/skarif2/sway.git" }).kind).toBe("inert");
+  it("offers an account for a host with none, once per repo", () => {
+    // Before one, a chip promising in-app PR state would be promising a call
+    // that comes back `unsupportedRemote`, so the chip offers the account instead.
+    const ghe = "https://github.acme.com/skarif2/sway.git";
+    expect(chip({ origin: ghe }).connect?.title).toContain("github.acme.com");
+    expect(chip({ origin: "git@git.corp.test:skarif2/sway.git" }).kind).toBe("connect");
+    expect(chip({ origin: ghe, firstUnit: false }).kind).toBe("inert");
+    expect(chip({ origin: ghe, paused: "disabled" }).kind).toBe("inert");
+    const registered: KnownHosts = new Map([
+      ["github.acme.com", { provider: "github", baseUrl: "https://github.acme.com" }],
+    ]);
+    expect(chip({ origin: ghe, hosts: registered }).kind).toBe("pr");
   });
 
   it("has nothing to say about a folder that is not a branch", () => {

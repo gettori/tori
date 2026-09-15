@@ -47,6 +47,7 @@ const PR_FILE_CAP: usize = 300;
 const PR_FILES_PER_PAGE: usize = 100;
 const PR_FILE_PAGES: usize = PR_FILE_CAP / PR_FILES_PER_PAGE;
 
+const GITHUB_WEB: &str = "https://github.com";
 const API_BASE: &str = "https://api.github.com";
 const GRAPHQL_URL: &str = "https://api.github.com/graphql";
 /// Sent on every request. GitHub rejects an API call with no User-Agent, and
@@ -97,11 +98,26 @@ pub struct GitHubForge {
     token: Option<String>,
     api_base: String,
     graphql_url: String,
+    // github.com only. GitHub Enterprise Server answers a version it does not
+    // know with a 400, and older servers know none.
+    versioned: bool,
     login: Option<String>,
 }
 
 impl GitHubForge {
-    pub fn new(transport: Box<dyn Transport>, token: Option<String>, login: Option<String>) -> Self {
+    pub fn new(
+        transport: Box<dyn Transport>,
+        base_url: &str,
+        token: Option<String>,
+        login: Option<String>,
+    ) -> Self {
+        let base = base_url.trim_end_matches('/');
+        let versioned = base.eq_ignore_ascii_case(GITHUB_WEB);
+        let (api_base, graphql_url) = if versioned {
+            (API_BASE.to_string(), GRAPHQL_URL.to_string())
+        } else {
+            (format!("{base}/api/v3"), format!("{base}/api/graphql"))
+        };
         Self {
             transport: std::sync::Arc::new(Recording {
                 inner: transport,
@@ -109,8 +125,9 @@ impl GitHubForge {
                 rate: std::sync::Mutex::new(RateSnapshot::default()),
             }),
             token,
-            api_base: API_BASE.to_string(),
-            graphql_url: GRAPHQL_URL.to_string(),
+            api_base,
+            graphql_url,
+            versioned,
             login,
         }
     }
@@ -130,9 +147,11 @@ impl GitHubForge {
     fn headers(&self) -> Vec<(String, String)> {
         let mut h = vec![
             ("Accept".to_string(), "application/vnd.github+json".to_string()),
-            ("X-GitHub-Api-Version".to_string(), "2022-11-28".to_string()),
             ("User-Agent".to_string(), USER_AGENT.to_string()),
         ];
+        if self.versioned {
+            h.push(("X-GitHub-Api-Version".to_string(), "2022-11-28".to_string()));
+        }
         if let Some(t) = &self.token {
             h.push(("Authorization".to_string(), format!("Bearer {t}")));
         }
@@ -801,7 +820,7 @@ mod tests {
         responses: Vec<super::super::http::HttpResponse>,
     ) -> (GitHubForge, std::sync::Arc<StubTransport>) {
         let stub = std::sync::Arc::new(StubTransport::new(responses));
-        let f = GitHubForge::new(Box::new(stub.clone()), Some("gho_test".into()), None)
+        let f = GitHubForge::new(Box::new(stub.clone()), GITHUB_WEB, Some("gho_test".into()), None)
             .with_base("https://api.test");
         (f, stub)
     }
@@ -941,7 +960,7 @@ mod tests {
     #[test]
     fn signed_out_never_reaches_the_network() {
         let t = StubTransport::new(vec![]);
-        let f = GitHubForge::new(Box::new(t), None, None).with_base("https://api.test");
+        let f = GitHubForge::new(Box::new(t), GITHUB_WEB, None, None).with_base("https://api.test");
         assert_eq!(f.auth_state(), AuthState::SignedOut);
         // Not "returns an error after asking": it must not reach the wire at all.
         assert_eq!(
@@ -1398,6 +1417,29 @@ mod tests {
         assert!(seen.iter().any(|(k, _)| k == "User-Agent"), "GitHub rejects a call with none");
         assert!(seen.iter().any(|(k, v)| k == "Authorization" && v.starts_with("Bearer ")));
         assert!(seen.iter().any(|(k, _)| k == "X-GitHub-Api-Version"));
+    }
+
+    #[test]
+    fn a_github_enterprise_host_is_reached_under_its_own_api_paths() {
+        let remote = super::super::remote::parse("git@ghe.acme.test:acme/widgets.git").unwrap();
+        let stub = std::sync::Arc::new(StubTransport::new(vec![
+            StubTransport::json(200, r#"{"login":"arif"}"#),
+            StubTransport::json(200, "[]"),
+            StubTransport::json(200, r#"{"data":{"repository":{"u0":{"nodes":[]}}}}"#),
+        ]));
+        let f = GitHubForge::new(Box::new(stub.clone()), "https://ghe.acme.test/", Some("ghp_pasted".into()), None);
+
+        assert_eq!(f.viewer().unwrap().login, "arif");
+        f.pull_request_for_branch(&remote.repo, "wave-3").unwrap();
+        f.unit_statuses(&remote.repo, &["wave-3".to_string()]).unwrap();
+
+        let sent = stub.requests();
+        assert_eq!(sent[0].url, "https://ghe.acme.test/api/v3/user");
+        assert!(sent[1].url.starts_with("https://ghe.acme.test/api/v3/repos/acme/widgets/pulls?"), "got {}", sent[1].url);
+        assert_eq!(sent[2].url, "https://ghe.acme.test/api/graphql");
+        for req in &sent {
+            assert!(!req.headers.iter().any(|(k, _)| k == "X-GitHub-Api-Version"), "{} sent the version header", req.url);
+        }
     }
 
 }
