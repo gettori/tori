@@ -39,6 +39,7 @@ import Resizer from './components/Resizer/Resizer';
 import AskpassDialog from './components/Dialogs/AskpassDialog';
 import ConfirmDialog, { type ConfirmReq } from './components/Dialogs/ConfirmDialog';
 import ToastRegion from './components/Toasts/Toasts';
+import type { GitReport } from './utils/gitHealth';
 import Settings from './panels/Settings/Settings';
 import UpdatePill from './components/UpdatePill/UpdatePill';
 import UsageStrip from './components/UsageStrip/UsageStrip';
@@ -1030,6 +1031,24 @@ function App() {
         emitWith<ToastEvent>(TOAST, {
           message: `Imported VS Code themes are no longer supported, so ${path} was dropped. Sway now ships named themes; pick one in Settings.`,
           kind: 'info',
+        });
+      })
+      .catch(() => {
+        // Never block startup on a notice.
+      });
+    invoke<GitReport>('git_health')
+      .then((r) => {
+        if (r.health.kind === 'ready') return;
+        emitWith<ToastEvent>(TOAST, {
+          message: 'git is not installed, fix it in Settings.',
+          kind: 'error',
+          action: {
+            label: 'Open Settings',
+            run: () => {
+              setSettingsEntry('git');
+              setSettingsOpen(true);
+            },
+          },
         });
       })
       .catch(() => {
