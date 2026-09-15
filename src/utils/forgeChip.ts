@@ -5,7 +5,7 @@
 // that draws "no pull request" when the truth is "this remote is not GitHub" is
 // wrong in a way nobody reports, because both look like an absence.
 //
-// ## Six kinds, and the two that matter
+// ## Seven kinds, and the two that matter
 //
 // The distinction the plan cares about is **inert vs noPr**. `noPr` means the
 // forge answered and there is no PR yet, which is a normal, temporary state of a
@@ -22,11 +22,12 @@
 // it, and rendering nothing is what keeps that partial answer from reading as a
 // complete one.
 
-import { apiCanServe } from "./createPr";
+import { apiCanServe, connectHost } from "./createPr";
 import type { PauseReason } from "./forgePoll";
+import type { KnownHosts } from "./prUrl";
 import type { CheckRollup, ReviewDecision, UnitStatus } from "./forgeTypes";
 
-export type ForgeChipKind = "hidden" | "inert" | "unknown" | "noPr" | "pr" | "pickAccount";
+export type ForgeChipKind = "hidden" | "inert" | "unknown" | "noPr" | "pr" | "pickAccount" | "connect";
 
 /// What the PR glyph depicts. `none` is the no-PR marker, which is a state of
 /// the branch rather than of a pull request, hence a value here rather than a
@@ -41,9 +42,10 @@ export type ForgeChip = {
   pr: { state: PrChipState; label: string; title: string } | null;
   checks: { tone: BadgeTone; title: string } | null;
   review: { tone: BadgeTone; title: string } | null;
+  connect: { title: string } | null;
 };
 
-const NOTHING: ForgeChip = { kind: "hidden", pr: null, checks: null, review: null };
+const NOTHING: ForgeChip = { kind: "hidden", pr: null, checks: null, review: null, connect: null };
 
 /// The whole chip for one branch-unit.
 ///
@@ -53,7 +55,9 @@ const NOTHING: ForgeChip = { kind: "hidden", pr: null, checks: null, review: nul
 /// which is indistinguishable from a bug the one time it is real.
 export function forgeChip(input: {
   origin: string | null | undefined;
+  hosts: KnownHosts;
   branch: string | null;
+  firstUnit: boolean;
   paused: PauseReason | null;
   status: UnitStatus | null;
 }): ForgeChip {
@@ -61,7 +65,12 @@ export function forgeChip(input: {
   // every other question, including whether the origin has been probed.
   if (!input.branch) return { ...NOTHING, kind: "inert" };
   if (input.origin === undefined) return NOTHING;
-  if (!apiCanServe(input.origin)) return { ...NOTHING, kind: "inert" };
+  if (!apiCanServe(input.origin, input.hosts)) {
+    // One door per repo, not per branch: signed out, every row would carry one.
+    const host = input.firstUnit && input.paused !== "disabled" ? connectHost(input.origin, input.hosts) : null;
+    if (!host) return { ...NOTHING, kind: "inert" };
+    return { ...NOTHING, kind: "connect", connect: { title: `Add an account for ${host} in Settings` } };
+  }
   // Several accounts on the host and none picked for this repo: the pick is the
   // one thing worth drawing.
   if (input.paused === "pickAccount") return { ...NOTHING, kind: "pickAccount" };
@@ -78,6 +87,7 @@ export function forgeChip(input: {
       pr: { state: "none", label: "", title: "No pull request for this branch" },
       checks: null,
       review: null,
+      connect: null,
     };
   }
   const state: PrChipState = pr.state === "open" ? (pr.isDraft ? "draft" : "open") : pr.state;
@@ -89,6 +99,7 @@ export function forgeChip(input: {
     // both, and a badge for "no checks" is a badge for nothing.
     checks: checksBadge(input.status.checks),
     review: reviewBadge(input.status.reviewDecision),
+    connect: null,
   };
 }
 
@@ -107,6 +118,7 @@ export function forgeBadges(status: UnitStatus | null): ForgeChip {
     pr: null,
     checks: checksBadge(status.checks),
     review: reviewBadge(status.reviewDecision),
+    connect: null,
   };
 }
 

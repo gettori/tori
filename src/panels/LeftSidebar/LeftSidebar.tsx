@@ -52,6 +52,8 @@ import {
   SET_RIGHT_MODE,
   type SetRightMode,
   TOGGLE_DOCK,
+  OPEN_SETTINGS,
+  type OpenSettings,
 } from "../../utils/events";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { traceSwitchStart } from "../../utils/perfTrace";
@@ -95,6 +97,7 @@ import ForgeChipView from "../../components/ForgeChip/ForgeChip";
 import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils/forgeTypes";
 import { apiCanServe } from "../../utils/createPr";
 import {
+  forgeHosts,
   forgePause,
   forgeRepo,
   noteForgeEnabled,
@@ -920,15 +923,17 @@ export default function LeftSidebar(props: {
     const chip = createMemo(() =>
       forgeChip({
         origin: origins()[p.path],
+        hosts: forgeHosts(),
         branch: u.branch,
+        firstUnit: u.branch === p.branchUnits.find((x) => x.branch)?.branch,
         paused: forgePause(p.path),
         status: unitStatus(p.path, u.branch),
       }),
     );
-    // A control only when there is a pull request to open a panel *onto*. A
-    // branch with no PR yet renders the quiet no-PR mark and stays inert: the
-    // panel lists what exists, and a button that opens a list this branch is
-    // not in would be a control that appears to do nothing.
+    // A control only when there is a pull request to open a panel *onto*, or a
+    // host to add an account for. A branch with no PR yet renders the quiet
+    // no-PR mark and stays inert: the panel lists what exists, and a button that
+    // opens a list this branch is not in would be a control that does nothing.
     const opens = () => chip().kind === "pr";
     const pickItems = (): MenuItem[] => {
       const repo = forgeRepo(p.path);
@@ -948,8 +953,14 @@ export default function LeftSidebar(props: {
         fallback={
           <ForgeChipView
             chip={chip()}
-            label={`Pull requests for ${p.name}`}
-            onActivate={opens() ? () => void openPullRequests(g, p, u) : undefined}
+            label={chip().connect?.title ?? `Pull requests for ${p.name}`}
+            onActivate={
+              chip().connect
+                ? () => emitWith<OpenSettings>(OPEN_SETTINGS, { entry: "forge" })
+                : opens()
+                  ? () => void openPullRequests(g, p, u)
+                  : undefined
+            }
           />
         }
       >
@@ -2747,8 +2758,9 @@ export default function LeftSidebar(props: {
   createEffect(() => {
     const g = activeSpace();
     const seen = origins();
+    const hosts = forgeHosts();
     const watched: WatchedProject[] = (g?.projects ?? [])
-      .filter((p) => apiCanServe(seen[p.path] ?? null))
+      .filter((p) => apiCanServe(seen[p.path] ?? null, hosts))
       .map((p) => {
         const open = expanded().has(pkey(g!, p));
         return {

@@ -155,7 +155,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     if (cmd === "forge_repo_account")
       return Promise.resolve({ kind: "account", accountId: "personal", host: "github.com", auth: bridge.auth });
-    if (cmd === "github_unit_statuses") return Promise.resolve(REPORT);
+    if (cmd === "forge_unit_statuses") return Promise.resolve(REPORT);
     if (cmd === "sessions_running")
       return Promise.resolve(((args.sessions ?? []) as { id: string }[]).map((s) => s.id));
     if (cmd === "session_tail_state") return Promise.resolve("done");
@@ -190,7 +190,7 @@ const { resetForgeStatusForTests } = await import("../../utils/forgeStatus");
 
 const row = async (label: string) => (await screen.findByText(label)).parentElement!;
 const statusAsks = () =>
-  bridge.calls.filter((c) => c.cmd === "github_unit_statuses").map((c) => c.args.projectPath);
+  bridge.calls.filter((c) => c.cmd === "forge_unit_statuses").map((c) => c.args.projectPath);
 
 describe("the forge chip on a branch row", () => {
   beforeEach(() => {
@@ -287,7 +287,7 @@ describe("the forge chip on a branch row", () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={[]} />);
 
     await waitFor(() => expect(statusAsks().length).toBeGreaterThan(0));
-    const ask = bridge.calls.find((c) => c.cmd === "github_unit_statuses")!;
+    const ask = bridge.calls.find((c) => c.cmd === "forge_unit_statuses")!;
     expect(ask.args.branches).toEqual(["shipped", "drafting", "broken", "fresh"]);
     // The disclosure toggles and the config settles during mount, each of which
     // re-runs the watcher effect. The 30-second per-project gap is what keeps
@@ -306,6 +306,10 @@ describe("the forge chip on a branch row", () => {
     noteForgeAccounts([]);
 
     await waitFor(() => expect(shipped.querySelector("[data-forge-pr]")).toBeNull());
+
+    // github.com has no account left, so the repo offers one, on its first row only.
+    expect(shipped.querySelector('button[data-forge-state="connect"]')).toBeTruthy();
+    expect((await row("drafting")).querySelector("[data-forge-state]")).toBeNull();
   });
 });
 
