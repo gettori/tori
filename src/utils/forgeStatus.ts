@@ -9,17 +9,30 @@
 // Nothing here is per-unit. One tick asks Rust about a whole project at once,
 // because the rate budget scales with unit count and a per-unit request is what
 // spends 5,000 an hour on an idle window.
+//
+// Credentials are per account, and a project reaches its account through its
+// origin: the resolved `RepoAccount` is what every pause and budget is read
+// through, so one account's 401 or rate limit leaves the others polling.
 
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { isForgeError, type AuthState, type StatusReport, type UnitStatus } from "./forgeTypes";
+import {
+  isForgeError,
+  type AuthState,
+  type ForgeAccount,
+  type ForgeHost,
+  type RepoAccount,
+  type StatusReport,
+  type UnitStatus,
+} from "./forgeTypes";
 import {
   askOrder,
   backoffAfter,
   budgetBackoff,
   mayPoll,
-  pauseReason,
+  MIN_GAP_MS,
   POLL_INTERVAL_MS,
+  projectPause,
   type PauseReason,
   type PollClock,
   type Trigger,
@@ -32,64 +45,82 @@ export type WatchedProject = { path: string; units: readonly WatchedUnit[] };
 
 // --- fed inputs -------------------------------------------------------------
 
-const [auth, setAuth] = createSignal<AuthState>({ kind: "signedOut" });
-const [viewer, setViewer] = createSignal<string | null>(null);
+const [accounts, setAccounts] = createSignal<readonly ForgeAccount[]>([]);
+const [viewers, setViewers] = createSignal<Record<string, string>>({});
 const [enabled, setEnabled] = createSignal(true);
 const [projects, setProjects] = createSignal<readonly WatchedProject[]>([]);
 
-/** The credential state, from whoever last asked Rust for it. */
-export function noteForgeAuth(state: AuthState) {
-  const was = auth();
-  setAuth(state);
+const signedOut: AuthState = { kind: "signedOut" };
+const accountAuth = (id: string): AuthState => accounts().find((a) => a.id === id)?.auth ?? signedOut;
+const ids = (list: readonly ForgeAccount[]) => list.map((a) => a.id).sort().join("\n");
+
+/** Every account and its credential state, from whoever last asked Rust. */
+export function noteForgeAccounts(list: readonly ForgeAccount[]) {
+  const was = accounts();
+  setAccounts(list);
   // The viewer identity is a fact about *this* credential, and the review gate
   // reads it to decide whether approve and request-changes are offerable at
   // all. Carrying it across a sign-out, or across a 401, is how that gate ends
-  // up answering for an account that is no longer the one signed in: sign out,
-  // sign back in as somebody else, and the first account's identity would still
-  // be saying whose pull request this is.
+  // up answering for an account that is no longer the one signed in.
   //
   // Rust keeps the login through a suspicion on purpose, so the re-auth prompt
   // can name the account it wants back. That is a *label*; this is an
   // authorisation fact, and only one of the two survives a 401.
-  const account = (s: AuthState) => (s.kind === "signedIn" ? s.login : null);
-  if (state.kind !== "signedIn") setViewer(null);
-  else if (account(was) !== account(state)) void refreshForgeViewer();
+  setViewers((m) => {
+    const kept: Record<string, string> = {};
+    for (const a of list) if (a.auth.kind === "signedIn" && m[a.id]) kept[a.id] = m[a.id];
+    return kept;
+  });
+  const login = (s: AuthState | undefined) => (s?.kind === "signedIn" ? s.login : null);
+  let becameUsable = false;
+  for (const a of list) {
+    if (a.auth.kind !== "signedIn") continue;
+    const before = was.find((b) => b.id === a.id)?.auth;
+    if (login(before) !== login(a.auth)) void refreshForgeViewer(a.id);
+    if (before?.kind !== "signedIn") becameUsable = true;
+  }
 
+  // An account added or removed can change which account any repo resolves
+  // to, so every resolution is asked again by the tick below.
+  const changed = ids(was) !== ids(list);
+  if (changed) {
+    setRepos({});
+    setResolvedAt({});
+  }
   // Becoming usable is itself a trigger, because every tick before it was
-  // refused by `mayPoll` and none of them will be retried on their own. Without
-  // this, signing in (or the startup read simply landing after the first tick)
-  // leaves a signed-in app looking signed-out until the next interval.
-  if (state.kind === "signedIn" && was.kind !== "signedIn") void pollNow("focus");
+  // refused by `mayPoll` and none of them will be retried on their own.
+  if (changed || becameUsable) void pollNow("focus");
 }
 
-/// Ask Rust who the token belongs to and fold it in.
+/// Ask Rust who an account's token belongs to and fold it in.
 ///
 /// Usually free: Rust answers from the login it learned at sign-in and only
 /// reaches the network for a credential restored without one.
-export async function refreshForgeViewer() {
-  const v = await invoke<string>("github_viewer").catch(() => null);
+export async function refreshForgeViewer(accountId: string) {
+  const v = await invoke<string>("github_viewer", { accountId }).catch(() => null);
   // Only when still signed in. A sign-out landing while this was in flight
   // would otherwise restore the identity it had just cleared.
-  if (v && auth().kind === "signedIn") setViewer(v);
+  if (v && accountAuth(accountId).kind === "signedIn") setViewers((m) => ({ ...m, [accountId]: v }));
 }
 
-/** The login the stored credential belongs to, or null while unknown. */
-export function forgeViewer(): string | null {
-  return viewer();
+/** The login this checkout's account belongs to, or null while unknown. */
+export function forgeViewer(path: string | null): string | null {
+  const repo = forgeRepo(path);
+  return repo?.kind === "account" ? (viewers()[repo.accountId] ?? null) : null;
 }
 
-/// Ask Rust for the credential state and fold it in.
+/// Ask Rust for every account's credential state and fold it in.
 ///
-/// Rust is the only place that knows: the token is in the keychain and the
+/// Rust is the only place that knows: the tokens are in the keychain and the
 /// suspect flag is set by whichever call last got a 401, which may be one no
 /// surface here made. A failure is swallowed on purpose, since the alternative
 /// to a stale answer is an invented one.
-export async function refreshForgeAuth() {
-  const state = await invoke<AuthState>("github_auth_state").catch(() => null);
-  if (state) noteForgeAuth(state);
+export async function refreshForgeAccounts() {
+  const hosts = await invoke<ForgeHost[]>("forge_accounts").catch(() => null);
+  if (Array.isArray(hosts)) noteForgeAccounts(hosts.flatMap((h) => h.accounts));
 }
 
-/** The `github.enabled` kill switch, from the settings store. */
+/** The `forge.enabled` kill switch, from the settings store. */
 export function noteForgeEnabled(on: boolean) {
   setEnabled(on);
 }
@@ -102,17 +133,45 @@ export function noteWatchedProjects(list: readonly WatchedProject[]) {
 
 // --- owned state ------------------------------------------------------------
 
+const [repos, setRepos] = createSignal<Record<string, RepoAccount>>({});
+const [resolvedAt, setResolvedAt] = createSignal<Record<string, number>>({});
 const [statuses, setStatuses] = createSignal<Record<string, UnitStatus>>({});
 const [uncovered, setUncovered] = createSignal<Record<string, number>>({});
-/** Epoch ms before which *nothing* may poll. A rate limit belongs to the token,
- *  so one project hitting it stops them all. */
-const [accountBlockedUntil, setAccountBlockedUntil] = createSignal<number | null>(null);
+/** Epoch ms before which nothing on an account may poll, by account id. A rate
+ *  limit belongs to the token, so it stops that account's projects and no
+ *  other's. */
+const [accountBlocked, setAccountBlocked] = createSignal<Record<string, number>>({});
 /** Per-project blocks, for the failures that belong to one repo (no origin, a
  *  remote this forge does not serve). */
 const [projectBlocked, setProjectBlocked] = createSignal<Record<string, number>>({});
 const [lastPollAt, setLastPollAt] = createSignal<Record<string, number>>({});
 
 const key = (path: string, branch: string) => `${path}\n${branch}`;
+
+/// Which account a checkout acts as, asked of Rust and kept per path.
+///
+/// Any root works, a worktree's or its project's: the origin is what resolves,
+/// and it is shared. No request leaves the machine, only a local git read.
+export async function resolveForgeRepo(path: string): Promise<RepoAccount | null> {
+  const repo = await invoke<RepoAccount>("forge_repo_account", { projectPath: path }).catch(() => null);
+  if (repo) setRepos((m) => ({ ...m, [path]: repo }));
+  return repo;
+}
+
+/** What a checkout last resolved to, or null before it has been asked. */
+export function forgeRepo(path: string | null): RepoAccount | null {
+  return path ? (repos()[path] ?? null) : null;
+}
+
+/// Pick the account a repo acts as, then re-resolve everything sharing it.
+///
+/// Rejects with Rust's error for the caller to show: a pick that did not stick
+/// must not look like one that did.
+export async function pickForgeAccount(path: string, accountId: string) {
+  await invoke("forge_pick_account", { projectPath: path, accountId });
+  await Promise.all([...new Set([path, ...Object.keys(repos())])].map(resolveForgeRepo));
+  await pollNow("focus");
+}
 
 /** One unit's forge story, or null when no tick has covered it yet. */
 export function unitStatus(path: string, branch: string | null): UnitStatus | null {
@@ -127,25 +186,24 @@ export function uncoveredUnits(path: string): number {
   return uncovered()[path] ?? 0;
 }
 
-/** Why polling is stopped, or null when it is running. */
-export function forgePause(): PauseReason | null {
-  return pauseReason(auth(), enabled());
+/** Why polling is stopped for this checkout, or null when it is running or
+ *  has not resolved yet (Rust is then the one to say). */
+export function forgePause(path: string | null): PauseReason | null {
+  if (!enabled()) return "disabled";
+  if (accounts().length === 0) return "signedOut";
+  const repo = forgeRepo(path);
+  return repo ? projectPause(repo, accountAuth, true) : null;
 }
 
-/** Epoch ms until which the account is backed off, or null. */
-export function forgeBlockedUntil(): number | null {
-  return accountBlockedUntil();
-}
-
-function clockFor(path: string): PollClock {
-  const account = accountBlockedUntil();
+function clockFor(path: string, repo: RepoAccount): PollClock {
+  const account = repo.kind === "account" ? (accountBlocked()[repo.accountId] ?? null) : null;
   const project = projectBlocked()[path] ?? null;
   const blockedUntil =
     account === null ? project : project === null ? account : Math.max(account, project);
   return { lastPollAt: lastPollAt()[path] ?? null, blockedUntil };
 }
 
-function applyReport(path: string, report: StatusReport, now: number) {
+function applyReport(path: string, repo: RepoAccount, report: StatusReport, now: number) {
   setStatuses((m) => {
     const next = { ...m };
     for (const s of report.statuses) next[key(path, s.headRef)] = s;
@@ -162,26 +220,50 @@ function applyReport(path: string, report: StatusReport, now: number) {
   // The pre-emptive half of the rate story: slow down while there is still
   // budget left, so the request that gets refused is never the user's.
   const budget = budgetBackoff(report.rate, now);
-  if (budget) setAccountBlockedUntil(budget.untilMs);
+  if (budget && repo.kind === "account") {
+    setAccountBlocked((m) => ({ ...m, [repo.accountId]: budget.untilMs }));
+  }
 }
 
-async function noteFailure(path: string, err: unknown, now: number) {
+async function noteFailure(path: string, repo: RepoAccount, err: unknown, now: number) {
   const backoff = backoffAfter(err, now);
-  if (backoff?.scope === "account") setAccountBlockedUntil(backoff.untilMs);
+  if (backoff?.scope === "account" && repo.kind === "account") {
+    setAccountBlocked((m) => ({ ...m, [repo.accountId]: backoff.untilMs }));
+  }
   if (backoff?.scope === "project") setProjectBlocked((m) => ({ ...m, [path]: backoff.untilMs }));
+  if (!isForgeError(err)) return;
   // Rust has already decided the credential cannot be used: a 401 moved it to
   // suspect, or `may_call` refused before the request was built. Re-reading the
   // state is what turns that into a paused scheduler and a prompt, rather than a
   // tick that fails the same way every two minutes forever. Both kinds matter,
   // because the decision can also be made by a *different* command (a PR create
   // that got the 401), leaving this store's copy of the auth state stale.
-  if (isForgeError(err) && (err.kind === "credentialSuspect" || err.kind === "notAuthenticated")) {
-    await refreshForgeAuth();
+  if (err.kind === "credentialSuspect" || err.kind === "notAuthenticated") {
+    await refreshForgeAccounts();
+  }
+  // Rust resolved this checkout differently from the copy here: an account or a
+  // pick went away, or the origin changed.
+  if (["notAuthenticated", "pickAccount", "noRemote", "unsupportedRemote"].includes(err.kind)) {
+    await resolveForgeRepo(path);
   }
 }
 
+/// A resolved account changes only through an account or pick change, which
+/// re-resolves on its own; anything else is re-asked at most once per gap.
+async function repoFor(path: string, trigger: Trigger, now: number): Promise<RepoAccount | null> {
+  const cached = repos()[path];
+  const at = resolvedAt()[path];
+  const fresh = at !== undefined && now - at < MIN_GAP_MS && trigger !== "manual";
+  if (cached && (cached.kind === "account" || fresh)) return cached;
+  setResolvedAt((m) => ({ ...m, [path]: now }));
+  return resolveForgeRepo(path);
+}
+
 async function pollProject(project: WatchedProject, trigger: Trigger, now: number) {
-  if (!mayPoll(clockFor(project.path), trigger, now, auth(), enabled())) return;
+  const repo = await repoFor(project.path, trigger, now);
+  if (!repo) return;
+  const pause = projectPause(repo, accountAuth, enabled());
+  if (!mayPoll(clockFor(project.path, repo), trigger, now, pause)) return;
   const branches = askOrder(project.units);
   if (branches.length === 0) return;
   // Stamped before the await, so two triggers landing together do not both get
@@ -196,9 +278,9 @@ async function pollProject(project: WatchedProject, trigger: Trigger, now: numbe
       // interval tick is happy with an answer from the last few seconds.
       refresh: trigger === "manual",
     });
-    applyReport(project.path, report, now);
+    applyReport(project.path, repo, report, now);
   } catch (e) {
-    await noteFailure(project.path, e, now);
+    await noteFailure(project.path, repo, e, now);
   }
 }
 
@@ -206,6 +288,9 @@ async function pollProject(project: WatchedProject, trigger: Trigger, now: numbe
 ///
 /// `now` is a parameter so a test can drive the schedule without a fake clock.
 export async function pollNow(trigger: Trigger, now: number = Date.now()) {
+  // With no account nothing can be polled, and resolving every project to
+  // learn that would cost a git read each.
+  if (accounts().length === 0 || !enabled()) return;
   await Promise.all(projects().map((p) => pollProject(p, trigger, now)));
 }
 
@@ -218,7 +303,7 @@ export async function pollNow(trigger: Trigger, now: number = Date.now()) {
 /// sign-out made outside Settings would reach the chips or not depending on
 /// which of the two won.
 export async function pollOnFocus(now: number = Date.now()) {
-  await refreshForgeAuth();
+  await refreshForgeAccounts();
   await pollNow("focus", now);
 }
 
@@ -231,15 +316,15 @@ export async function pollOnFocus(now: number = Date.now()) {
 /// stale one. The gap in `forgePoll` is what stops that from becoming a request
 /// per alt-tab.
 export function startForgePolling(): () => void {
-  // The credential, read once at startup. A local read costing no request, and
-  // the store's own copy starts at `signedOut`, so without it every tick before
-  // the first focus is refused. It lands asynchronously, which is fine: becoming
-  // signed-in is itself a trigger (see `noteForgeAuth`).
+  // The credentials, read once at startup. A local read costing no request, and
+  // the store's own copy starts empty, so without it every tick before the
+  // first focus is refused. It lands asynchronously, which is fine: becoming
+  // signed-in is itself a trigger (see `noteForgeAccounts`).
   //
   // No opening tick here. Nothing is watched yet at mount, so it would poll an
   // empty list; the first real tick comes from whoever calls
   // `noteWatchedProjects`, which is the moment there is something to ask about.
-  void refreshForgeAuth();
+  void refreshForgeAccounts();
   const onFocus = () => void pollOnFocus();
   window.addEventListener("focus", onFocus);
   const timer = window.setInterval(() => void pollNow("interval"), POLL_INTERVAL_MS);
@@ -255,13 +340,15 @@ export function startForgePolling(): () => void {
 /// process-wide, so one test's rate-limit block would otherwise silence the
 /// next, and nothing in the app should ever call this.
 export function resetForgeStatusForTests() {
-  setAuth({ kind: "signedOut" });
-  setViewer(null);
+  setAccounts([]);
+  setViewers({});
   setEnabled(true);
   setProjects([]);
+  setRepos({});
+  setResolvedAt({});
   setStatuses({});
   setUncovered({});
-  setAccountBlockedUntil(null);
+  setAccountBlocked({});
   setProjectBlocked({});
   setLastPollAt({});
 }

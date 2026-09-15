@@ -32,6 +32,18 @@
     "startLine": 45,
     "startSide": "RIGHT"
   },
+  "forgeAccount": {
+    "auth": {
+      "kind": "signedIn",
+      "login": "skarif2"
+    },
+    "baseUrl": "https://github.com",
+    "expiresAt": 1785179400,
+    "id": "github-com-skarif2",
+    "label": "skarif2",
+    "login": "skarif2",
+    "provider": "github"
+  },
   "forgeError": {
     "kind": "rateLimited",
     "message": "Secondary rate limit, retry in 60s",
@@ -94,6 +106,15 @@
     "line": 88,
     "path": "src-tauri/src/forge/github.rs",
     "startLine": 86
+  },
+  "signInRoutes": {
+    "baseUrl": "https://github.com",
+    "deviceFlow": true,
+    "host": "github.com",
+    "scopes": [
+      "repo"
+    ],
+    "tokenUrl": "https://github.com/settings/tokens/new?scopes=repo&description=Sway"
   },
   "statusReport": {
     "rate": {

@@ -18,7 +18,10 @@
 //!   * `model` - the domain types, mirrored into `src/utils/forgeTypes.ts`
 //!   * `http`  - the transport seam, redaction, and both pagination walkers
 //!   * `github` - the one provider that exists today
+//!   * `accounts` - accounts per host, and which one a repo acts as
+//!   * `remote` - a git remote as a host plus a repo
 
+pub mod accounts;
 pub mod auth;
 pub mod commands;
 pub mod device_flow;
@@ -26,12 +29,13 @@ pub mod github;
 pub mod http;
 pub mod model;
 pub mod prs;
+pub mod remote;
 pub mod status;
 pub mod token;
 
 use model::{
-    AuthState, Capabilities, DraftComment, MergeableState, Paged, PrFile, PullRequest, RepoRef,
-    ReviewComment, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    AuthState, Capabilities, DraftComment, MergeableState, Paged, PrFile, PullRequest, RateSnapshot,
+    RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use serde::{Deserialize, Serialize};
 
@@ -79,6 +83,10 @@ pub enum ForgeError {
     /// The server refused a merge. Carries the server's own wording, because
     /// GitHub knows about branch protection that Sway cannot see.
     NotMergeable { message: String },
+    /// The host has several accounts and this repo has not picked one.
+    AccountPickNeeded { host: String },
+    /// Something the user typed cannot be used, with the sentence saying why.
+    Invalid { message: String },
     /// Any other API-level failure, with the status kept for triage.
     Api { status: u16, message: String },
     /// The request never completed (DNS, TLS, timeout, offline).
@@ -116,6 +124,8 @@ impl std::fmt::Display for ForgeError {
             Self::NotFound => write!(f, "not found"),
             Self::AlreadyExists { message } => write!(f, "{message}"),
             Self::NotMergeable { message } => write!(f, "{message}"),
+            Self::AccountPickNeeded { host } => write!(f, "pick which {host} account this repo uses"),
+            Self::Invalid { message } => write!(f, "{message}"),
             Self::Api { status, message } => write!(f, "{status}: {message}"),
             Self::Transport { message } => write!(f, "{message}"),
             Self::Malformed { message } => write!(f, "unexpected response: {message}"),
@@ -158,6 +168,9 @@ pub trait Forge: Send + Sync {
     fn capabilities(&self) -> Capabilities;
 
     fn auth_state(&self) -> AuthState;
+
+    /// What the last answered call said about the rate budget.
+    fn rate_snapshot(&self) -> RateSnapshot;
 
     /// Who the stored token belongs to. Needed before a review can be offered,
     /// because the author of a PR cannot approve or request changes on it.
@@ -286,6 +299,9 @@ mod tests {
         }
         fn auth_state(&self) -> AuthState {
             AuthState::SignedOut
+        }
+        fn rate_snapshot(&self) -> RateSnapshot {
+            RateSnapshot::default()
         }
         fn viewer(&self) -> Result<Viewer, ForgeError> {
             Err(ForgeError::NotAuthenticated)

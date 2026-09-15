@@ -5,21 +5,46 @@
 //!   * a **pure core** ([`save_to`], [`load_from`], [`delete_from`]) that takes
 //!     its `Entry` explicitly, so it is exercised against `keyring-core`'s mock
 //!     store and never touches a real keychain in a test run;
-//!   * a **thin wrapper** ([`save`], [`load`], [`delete`]) that supplies the
-//!     process-wide entry and is the only part that knows there is a default.
+//!   * a **thin wrapper** ([`save_secret`], [`load_secret`], [`delete_secret`])
+//!     that supplies the per-account entry and is the only part that knows there
+//!     is a default.
 //!
 //! The store itself is installed once at startup by [`install_store`]. Nothing
 //! here reaches the network; the credential is handed to `github::GitHubForge`.
 
 use super::ForgeError;
 use keyring_core::{Entry, Error as KeyringError};
+use serde::{Deserialize, Serialize};
 
-/// The keychain service name. Stable, because changing it orphans every token
-/// already stored under the old one.
-const SERVICE: &str = "com.sway.forge.github";
-/// One credential per forge, not per account: multi-account is out of scope for
-/// this wave, and a fixed user keeps the entry a specifier rather than a search.
-const USER: &str = "oauth";
+/// The keychain service every account's secret is stored under, keyed by the
+/// account id. Stable, because changing it orphans every stored token.
+const ACCOUNT_SERVICE: &str = "com.sway.forge";
+/// The single GitHub credential from before accounts existed. Read once by the
+/// migration and left in place, so a downgraded build still finds it.
+const LEGACY_SERVICE: &str = "com.sway.forge.github";
+const LEGACY_USER: &str = "oauth";
+
+/// What one account keeps in the keychain. One entry for both tokens, so a
+/// refresh replaces the pair in a single write.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Secret {
+    pub access_token: String,
+    #[serde(default)]
+    pub refresh_token: Option<String>,
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(<redacted>)")
+    }
+}
+
+impl Secret {
+    pub fn access(token: String) -> Self {
+        Self { access_token: token, refresh_token: None }
+    }
+}
 
 /// Installs the platform credential store as the process default.
 ///
@@ -42,8 +67,8 @@ pub fn install_store() -> Result<(), ForgeError> {
     Err(ForgeError::Transport { message: "no credential store on this platform".into() })
 }
 
-fn entry() -> Result<Entry, ForgeError> {
-    Entry::new(SERVICE, USER).map_err(map_err)
+fn account_entry(account_id: &str) -> Result<Entry, ForgeError> {
+    Entry::new(ACCOUNT_SERVICE, account_id).map_err(map_err)
 }
 
 /// Keyring failures that are not "there is nothing stored" become transport
@@ -81,22 +106,42 @@ pub fn delete_from(entry: &Entry) -> Result<(), ForgeError> {
     }
 }
 
-// --- thin wrappers over the default entry ---
-
-pub fn save(token: &str) -> Result<(), ForgeError> {
-    save_to(&entry()?, token)
+pub fn save_secret_to(entry: &Entry, secret: &Secret) -> Result<(), ForgeError> {
+    let text = serde_json::to_string(secret)
+        .map_err(|e| ForgeError::Malformed { message: format!("secret: {e}") })?;
+    save_to(entry, &text)
 }
 
-pub fn load() -> Result<Option<String>, ForgeError> {
-    load_from(&entry()?)
+pub fn load_secret_from(entry: &Entry) -> Result<Option<Secret>, ForgeError> {
+    let Some(text) = load_from(entry)? else {
+        return Ok(None);
+    };
+    // The serde error is dropped on purpose: its message can quote the input.
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(|_| ForgeError::Malformed { message: "the stored secret is not readable".into() })
 }
 
-pub fn delete() -> Result<(), ForgeError> {
-    delete_from(&entry()?)
+// --- thin wrappers over the real entries ---
+
+pub fn save_secret(account_id: &str, secret: &Secret) -> Result<(), ForgeError> {
+    save_secret_to(&account_entry(account_id)?, secret)
+}
+
+pub fn load_secret(account_id: &str) -> Result<Option<Secret>, ForgeError> {
+    load_secret_from(&account_entry(account_id)?)
+}
+
+pub fn delete_secret(account_id: &str) -> Result<(), ForgeError> {
+    delete_from(&account_entry(account_id)?)
+}
+
+pub fn load_legacy() -> Result<Option<String>, ForgeError> {
+    load_from(&Entry::new(LEGACY_SERVICE, LEGACY_USER).map_err(map_err)?)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::sync::Once;
 
@@ -107,13 +152,17 @@ mod tests {
     /// The default store is global, so this cannot be per-test; `Once` keeps
     /// concurrent tests from racing to install it. Every test below then uses a
     /// distinct user so they do not share a credential.
-    fn mock_entry(user: &str) -> Entry {
+    pub(crate) fn mock_entry_in(service: &str, user: &str) -> Entry {
         MOCK.call_once(|| {
             keyring_core::set_default_store(
                 keyring_core::mock::Store::new().expect("the mock store always builds"),
             );
         });
-        Entry::new(SERVICE, user).expect("mock store accepts any name")
+        Entry::new(service, user).expect("mock store accepts any name")
+    }
+
+    fn mock_entry(user: &str) -> Entry {
+        mock_entry_in(ACCOUNT_SERVICE, user)
     }
 
     #[test]
@@ -160,5 +209,19 @@ mod tests {
         let msg = map_err(KeyringError::NoEntry).to_string();
         assert!(msg.contains("keychain"));
         assert!(!msg.contains("gho_"));
+    }
+
+    #[test]
+    fn a_secret_round_trips_with_and_without_a_refresh_token() {
+        let e = mock_entry("secret-round-trip");
+        assert_eq!(load_secret_from(&e).unwrap(), None);
+
+        save_secret_to(&e, &Secret::access("gho_only".into())).unwrap();
+        assert_eq!(load_secret_from(&e).unwrap(), Some(Secret::access("gho_only".into())));
+
+        let pair = Secret { access_token: "glpat_a".into(), refresh_token: Some("glrt_r".into()) };
+        save_secret_to(&e, &pair).unwrap();
+        assert_eq!(load_secret_from(&e).unwrap(), Some(pair.clone()));
+        assert!(!format!("{pair:?}").contains("glpat_a"), "Debug must not print a token");
     }
 }

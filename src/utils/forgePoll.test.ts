@@ -5,6 +5,7 @@ import {
   budgetBackoff,
   mayPoll,
   pauseReason,
+  projectPause,
   MIN_GAP_MS,
   PRIMARY_BACKOFF_MS,
   SECONDARY_BACKOFF_MS,
@@ -12,7 +13,7 @@ import {
   RATE_FLOOR,
   type PollClock,
 } from "./forgePoll";
-import type { AuthState, ForgeErrorDto, RateSnapshot } from "./forgeTypes";
+import type { AuthState, ForgeErrorDto, RateSnapshot, RepoAccount } from "./forgeTypes";
 
 const SIGNED_IN: AuthState = { kind: "signedIn", login: "skarif2" };
 const NOW = 1_785_179_400_000;
@@ -60,41 +61,68 @@ describe("mayPoll", () => {
       [{ kind: "suspect", login: "skarif2" } as AuthState, true],
       [SIGNED_IN, false],
     ] as const) {
-      expect(mayPoll(idle, "interval", NOW, auth, enabled)).toBe(false);
-      expect(mayPoll(idle, "focus", NOW, auth, enabled)).toBe(false);
+      const pause = pauseReason(auth, enabled);
+      expect(mayPoll(idle, "interval", NOW, pause)).toBe(false);
+      expect(mayPoll(idle, "focus", NOW, pause)).toBe(false);
       // Even a manual refresh: a paused integration has nothing to refresh with.
-      expect(mayPoll(idle, "manual", NOW, auth, enabled)).toBe(false);
+      expect(mayPoll(idle, "manual", NOW, pause)).toBe(false);
     }
   });
 
   it("polls a project it has never polled", () => {
-    expect(mayPoll(idle, "interval", NOW, SIGNED_IN, true)).toBe(true);
+    expect(mayPoll(idle, "interval", NOW, null)).toBe(true);
   });
 
   it("collapses a focus storm into one tick", () => {
     // Alt-tabbing fires focus repeatedly. Without the gap every one of those is
     // a request, which is how an idle window spends the hourly budget.
     const justPolled: PollClock = { lastPollAt: NOW - 1_000, blockedUntil: null };
-    expect(mayPoll(justPolled, "focus", NOW, SIGNED_IN, true)).toBe(false);
+    expect(mayPoll(justPolled, "focus", NOW, null)).toBe(false);
 
     const older: PollClock = { lastPollAt: NOW - MIN_GAP_MS, blockedUntil: null };
-    expect(mayPoll(older, "focus", NOW, SIGNED_IN, true)).toBe(true);
+    expect(mayPoll(older, "focus", NOW, null)).toBe(true);
   });
 
   it("lets a manual refresh through the gap but not through a backoff", () => {
     // The user asked, so the gap yields. The rate limit does not: hitting
     // refresh during a throttle is how a throttle becomes a longer one.
     const justPolled: PollClock = { lastPollAt: NOW - 1_000, blockedUntil: null };
-    expect(mayPoll(justPolled, "manual", NOW, SIGNED_IN, true)).toBe(true);
+    expect(mayPoll(justPolled, "manual", NOW, null)).toBe(true);
 
     const blocked: PollClock = { lastPollAt: null, blockedUntil: NOW + 60_000 };
-    expect(mayPoll(blocked, "manual", NOW, SIGNED_IN, true)).toBe(false);
-    expect(mayPoll(blocked, "interval", NOW, SIGNED_IN, true)).toBe(false);
+    expect(mayPoll(blocked, "manual", NOW, null)).toBe(false);
+    expect(mayPoll(blocked, "interval", NOW, null)).toBe(false);
   });
 
   it("resumes the moment a backoff expires", () => {
     const expired: PollClock = { lastPollAt: null, blockedUntil: NOW };
-    expect(mayPoll(expired, "interval", NOW, SIGNED_IN, true)).toBe(true);
+    expect(mayPoll(expired, "interval", NOW, null)).toBe(true);
+  });
+});
+
+describe("projectPause", () => {
+  const auth = (id: string): AuthState =>
+    id === "work" ? { kind: "suspect", login: "fonn-arif" } : SIGNED_IN;
+  const on = (accountId: string): RepoAccount => ({
+    kind: "account",
+    accountId,
+    host: "github.com",
+    auth: auth(accountId),
+  });
+
+  it("pauses only the projects of the account that was rejected", () => {
+    expect(projectPause(on("work"), auth, true)).toBe("suspect");
+    expect(projectPause(on("personal"), auth, true)).toBeNull();
+  });
+
+  it("waits on a pick, and reads a host with no account as signed out", () => {
+    expect(projectPause({ kind: "pick", host: "github.com", candidates: [] }, auth, true)).toBe(
+      "pickAccount",
+    );
+    expect(projectPause({ kind: "noAccount", host: "github.com" }, auth, true)).toBe("signedOut");
+    // No remote at all is Rust's `noRemote` to report, not a sign-in to ask for.
+    expect(projectPause({ kind: "noAccount", host: null }, auth, true)).toBeNull();
+    expect(projectPause(on("personal"), auth, false)).toBe("disabled");
   });
 });
 

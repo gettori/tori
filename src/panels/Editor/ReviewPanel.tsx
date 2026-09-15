@@ -46,7 +46,13 @@ import { askAgentToResolve } from "../../utils/conflictAsk";
 import { sendBlockedReason } from "../../utils/sendTarget";
 import { comparePrUrl } from "../../utils/prUrl";
 import { composeDraftRequest, prPath } from "../../utils/createPr";
-import { forgeErrorMessage, type AuthState, type PullRequest } from "../../utils/forgeTypes";
+import {
+  forgeAccountName,
+  forgeErrorMessage,
+  type AuthState,
+  type PullRequest,
+} from "../../utils/forgeTypes";
+import { forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../utils/forgeStatus";
 import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/features";
 import MemberChip from "../../components/MemberChip/MemberChip";
@@ -92,6 +98,7 @@ import {
   GitCommitHorizontal,
   GitGraph,
   GitPullRequestArrow,
+  UserRound,
   Minus,
   Plus,
   RefreshCw,
@@ -210,7 +217,22 @@ export default function ReviewPanel(props: {
   // retargeting the compare page.
   const [prBase, setPrBase] = createSignal("");
   const [prDrafting, setPrDrafting] = createSignal(false);
-  const [authState, setAuthState] = createSignal<AuthState>({ kind: "signedOut" });
+  // The account "Open PR" acts as, read through the poll store so a pick made
+  // from the sidebar lands here too.
+  const forgeAccount = () => forgeRepo(viewedRoot());
+  const accountAuth = (): AuthState => {
+    const repo = forgeAccount();
+    return repo?.kind === "account" ? repo.auth : { kind: "signedOut" };
+  };
+  const pickState = () => {
+    const repo = forgeAccount();
+    return repo?.kind === "pick" ? repo : null;
+  };
+  // Accounts changing clears every resolution in the store, so ask again.
+  createEffect(() => {
+    const root = viewedRoot();
+    if (root && !forgeAccount()) void resolveForgeRepo(root);
+  });
   const [applying, setApplying] = createSignal(false);
   const [stashes, setStashes] = createSignal<StashEntry[]>([]);
   // Which stashes show their files, by sha: a selector shifts as entries come
@@ -344,11 +366,7 @@ export default function ReviewPanel(props: {
     // Read alongside the base branch rather than once at mount: signing in from
     // Settings must change what "Open PR" does without a restart, and this
     // already runs whenever the panel's project changes or the tree refreshes.
-    try {
-      setAuthState(await invoke<AuthState>("github_auth_state"));
-    } catch {
-      setAuthState({ kind: "signedOut" });
-    }
+    await resolveForgeRepo(root);
     try {
       setBaseBranch(await invoke<string | null>("git_default_base_branch", { projectPath: root }));
     } catch {
@@ -800,7 +818,7 @@ export default function ReviewPanel(props: {
   async function openPr() {
     const org = origin();
     if (openingPr()) return;
-    if (prPath(org, authState(), settings.github.enabled) === "form") {
+    if (prPath(org, accountAuth(), settings.forge.enabled) === "form") {
       setPrTitle("");
       setPrBody("");
       setPrBase(baseBranch() ?? "");
@@ -808,6 +826,16 @@ export default function ReviewPanel(props: {
       return;
     }
     await openCompare();
+  }
+
+  async function pickAccount(accountId: string) {
+    const root = viewedRoot();
+    if (!root) return;
+    try {
+      await pickForgeAccount(root, accountId);
+    } catch (e) {
+      emitWith<ToastEvent>(TOAST, { message: forgeErrorMessage(e), kind: "error" });
+    }
   }
 
   // The unauthenticated path, unchanged: push first if the branch is unpushed or
@@ -1319,6 +1347,29 @@ export default function ReviewPanel(props: {
             tooltip={openingPr() ? "Opening a pull request" : "Open a pull request"}
             onClick={openPr}
           />
+        </Show>
+        <Show when={pickState()}>
+          {(pick) => (
+            <Dropdown
+              as="span"
+              wrapper
+              items={[
+                { heading: `${pick().host} account` },
+                ...pick().candidates.map((a) => ({
+                  label: forgeAccountName(a),
+                  onClick: () => void pickAccount(a.id),
+                })),
+              ]}
+              placement="bottom-end"
+            >
+              <IconButton
+                size="sm"
+                icon={<Icon icon={UserRound} />}
+                aria-label="Pick account"
+                tooltip={`Pick which ${pick().host} account this repo uses`}
+              />
+            </Dropdown>
+          )}
         </Show>
       </div>
 

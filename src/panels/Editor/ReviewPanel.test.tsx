@@ -145,8 +145,12 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(originUrl);
       case "git_default_base_branch":
         return Promise.resolve(defaultBase);
-      case "github_auth_state":
-        return Promise.resolve(authState);
+      case "forge_repo_account":
+        return Promise.resolve(
+          authState.kind === "signedOut"
+            ? { kind: "noAccount", host: "github.com" }
+            : { kind: "account", accountId: "personal", host: "github.com", auth: authState },
+        );
       // The backend echoes back what it persisted, which is what puts the
       // settings store into agreement. Returning the default `null` would land
       // a null settings object in the store instead.
@@ -283,7 +287,7 @@ beforeEach(async () => {
   // that object in place. A test that switches the integration off leaves
   // `DEFAULT_SETTINGS.github.enabled === false` behind it, and a reset that
   // spreads the same object would faithfully restore the wrong value.
-  await saveSettings({ ...DEFAULT_SETTINGS, github: { enabled: true } });
+  await saveSettings({ ...DEFAULT_SETTINGS, forge: { enabled: true, picks: {} } });
   for (const key of Object.keys(handlers)) delete handlers[key];
 });
 
@@ -1056,7 +1060,7 @@ describe("Open PR", () => {
     // only one of them costs the credential. Both stop the API being used.
     originUrl = "git@github.com:skarif2/sway.git";
     authState = { kind: "signedIn", login: "skarif2" };
-    await saveSettings({ ...DEFAULT_SETTINGS, github: { enabled: false } });
+    await saveSettings({ ...DEFAULT_SETTINGS, forge: { enabled: false, picks: {} } });
     const opened: string[] = [];
     const open = vi.spyOn(window, "open").mockImplementation((url) => {
       opened.push(String(url));

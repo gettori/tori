@@ -53,56 +53,6 @@ const GRAPHQL_URL: &str = "https://api.github.com/graphql";
 /// `update.rs` already sets one for the same reason.
 const USER_AGENT: &str = "sway";
 
-/// Derives the owner and repo from a git remote URL.
-///
-/// Accepts the three shapes a remote actually takes (`https://`, `git@` scp
-/// syntax, and `ssh://`), and refuses anything not on github.com with
-/// [`ForgeError::UnsupportedRemote`] rather than a generic failure. That
-/// distinction is what lets the sidebar render a GitLab remote as inert instead
-/// of as "no PR yet", which would offer a create button that cannot work.
-pub fn parse_remote(url: &str) -> Result<RepoRef, ForgeError> {
-    let url = url.trim();
-    if url.is_empty() {
-        return Err(ForgeError::NoRemote);
-    }
-    // `git@host:owner/repo.git`, which is not a URL and will not parse as one.
-    let (host, path) = if let Some(rest) = url.strip_prefix("git@") {
-        match rest.split_once(':') {
-            Some((host, path)) => (host.to_string(), path.to_string()),
-            None => return Err(ForgeError::UnsupportedRemote { host: rest.to_string() }),
-        }
-    } else {
-        let rest = url
-            .strip_prefix("https://")
-            .or_else(|| url.strip_prefix("http://"))
-            .or_else(|| url.strip_prefix("ssh://git@"))
-            .or_else(|| url.strip_prefix("ssh://"))
-            .ok_or_else(|| ForgeError::UnsupportedRemote { host: url.to_string() })?;
-        match rest.split_once('/') {
-            Some((host, path)) => (host.to_string(), path.to_string()),
-            None => return Err(ForgeError::UnsupportedRemote { host: rest.to_string() }),
-        }
-    };
-
-    // Strip a `user@` prefix and any port, so `git@github.com` and
-    // `github.com:22` both resolve to the same host.
-    let host = host.rsplit('@').next().unwrap_or(&host).to_string();
-    let host = host.split(':').next().unwrap_or(&host).to_string();
-    if !host.eq_ignore_ascii_case("github.com") && !host.eq_ignore_ascii_case("www.github.com") {
-        return Err(ForgeError::UnsupportedRemote { host });
-    }
-
-    let path = path.trim_start_matches('/').trim_end_matches('/');
-    let path = path.strip_suffix(".git").unwrap_or(path);
-    let mut bits = path.splitn(2, '/');
-    let owner = bits.next().unwrap_or_default();
-    let repo = bits.next().unwrap_or_default();
-    if owner.is_empty() || repo.is_empty() {
-        return Err(ForgeError::UnsupportedRemote { host });
-    }
-    Ok(RepoRef { owner: owner.to_string(), repo: repo.to_string() })
-}
-
 /// Wraps the real transport and records what every response said about the rate
 /// budget and the credential.
 ///
@@ -524,6 +474,10 @@ impl Forge for GitHubForge {
         }
     }
 
+    fn rate_snapshot(&self) -> RateSnapshot {
+        GitHubForge::rate_snapshot(self)
+    }
+
     fn auth_state(&self) -> AuthState {
         match (&self.token, self.transport.suspect.load(std::sync::atomic::Ordering::Relaxed)) {
             (None, _) => AuthState::SignedOut,
@@ -850,37 +804,6 @@ mod tests {
         let f = GitHubForge::new(Box::new(stub.clone()), Some("gho_test".into()), None)
             .with_base("https://api.test");
         (f, stub)
-    }
-
-    #[test]
-    fn every_remote_shape_resolves_to_the_same_repo() {
-        let want = repo();
-        for url in [
-            "https://github.com/skarif2/sway.git",
-            "https://github.com/skarif2/sway",
-            "git@github.com:skarif2/sway.git",
-            "ssh://git@github.com/skarif2/sway.git",
-            "https://github.com/skarif2/sway/",
-        ] {
-            assert_eq!(parse_remote(url).unwrap(), want, "failed on {url}");
-        }
-    }
-
-    #[test]
-    fn a_non_github_remote_is_its_own_error_not_a_generic_failure() {
-        // This is what lets the sidebar render a GitLab unit as inert instead of
-        // as "no PR yet" behind a create button that cannot work.
-        assert_eq!(
-            parse_remote("git@gitlab.com:acme/widgets.git"),
-            Err(ForgeError::UnsupportedRemote { host: "gitlab.com".into() })
-        );
-        assert_eq!(
-            parse_remote("https://bitbucket.org/acme/widgets.git"),
-            Err(ForgeError::UnsupportedRemote { host: "bitbucket.org".into() })
-        );
-        assert_eq!(parse_remote(""), Err(ForgeError::NoRemote));
-        // A host with no repo path is unsupported, not a panic.
-        assert!(parse_remote("https://github.com/skarif2").is_err());
     }
 
     #[test]

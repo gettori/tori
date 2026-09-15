@@ -23,6 +23,8 @@ import { forgeBadges } from "../../../utils/forgeChip";
 import ForgeChipView from "../../../components/ForgeChip/ForgeChip";
 import {
   forgePause,
+  forgeRepo,
+  resolveForgeRepo,
   unitStatus,
   uncoveredUnits,
   pollNow,
@@ -40,6 +42,7 @@ const PAUSED_COPY = {
   disabled: "GitHub is switched off in Settings.",
   signedOut: "Sign in to GitHub in Settings to see pull requests.",
   suspect: "GitHub rejected the stored credential. Sign in again in Settings.",
+  pickAccount: "Pick which account this repo uses from its branch chip in the sidebar.",
 } as const;
 
 export default function PullRequests(props: { root: string | null }) {
@@ -54,7 +57,12 @@ export default function PullRequests(props: { root: string | null }) {
   // Which pull request is open in the detail view, if any.
   const [opened, setOpened] = createSignal<PullRequest | null>(null);
 
-  const paused = () => forgePause();
+  const paused = () => forgePause(props.root);
+  // Accounts changing clears every resolution in the store, so ask again.
+  createEffect(() => {
+    const root = props.root;
+    if (root && !forgeRepo(root)) void resolveForgeRepo(root);
+  });
 
   async function load(root: string) {
     setLoading(true);

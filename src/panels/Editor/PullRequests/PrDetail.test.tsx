@@ -142,10 +142,13 @@ vi.mock("@tauri-apps/api/core", () => ({
       return bridge.updateFails ? Promise.reject(bridge.updateFails) : Promise.resolve(null);
     if (cmd === "list_sessions") return Promise.resolve(bridge.sessions);
     if (cmd === "sessions_running") return Promise.resolve(bridge.running);
-    if (cmd === "github_auth_state")
-      return Promise.resolve(
-        bridge.viewer ? { kind: "signedIn", login: bridge.viewer } : { kind: "signedOut" },
-      );
+    if (cmd === "forge_repo_account")
+      return Promise.resolve({
+        kind: "account",
+        accountId: "personal",
+        host: "github.com",
+        auth: bridge.viewer ? { kind: "signedIn", login: bridge.viewer } : { kind: "signedOut" },
+      });
     return Promise.resolve(null);
   },
 }));
@@ -158,7 +161,7 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
 }));
 
 const { default: PrDetail } = await import("./PrDetail");
-const { noteForgeAuth, noteForgeEnabled, resetForgeStatusForTests } = await import(
+const { noteForgeAccounts, noteForgeEnabled, resetForgeStatusForTests, resolveForgeRepo } = await import(
   "../../../utils/forgeStatus"
 );
 const { noteForgeUnits, probeBatch, resetSessionActivityForTests } = await import(
@@ -175,7 +178,18 @@ const cmds = (name: string) => bridge.calls.filter((c) => c.cmd === name);
 const signInAs = async (login: string) => {
   bridge.viewer = login;
   noteForgeEnabled(true);
-  noteForgeAuth({ kind: "signedIn", login });
+  noteForgeAccounts([
+    {
+      id: "personal",
+      provider: "github",
+      baseUrl: "https://github.com",
+      login,
+      label: login,
+      expiresAt: null,
+      auth: { kind: "signedIn", login },
+    },
+  ]);
+  await resolveForgeRepo(ROOT);
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
 

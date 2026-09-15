@@ -1,16 +1,16 @@
 import GitSection from "./GitSection";
-import GithubSection from "./GithubSection";
+import ForgeSection from "./ForgeSection";
 import { CardSection, type PaneProps } from "../../components/paneKit";
 
-/** Git itself, then the forge account and its kill switch. */
+/** Git itself, then the forge accounts and their kill switch. */
 export default function IntegrationsPane(props: PaneProps) {
   return (
     <>
       <CardSection {...props} id="git">
         <GitSection />
       </CardSection>
-      <CardSection {...props} id="github">
-        <GithubSection />
+      <CardSection {...props} id="forge">
+        <ForgeSection />
       </CardSection>
     </>
   );
