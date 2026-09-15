@@ -34,8 +34,9 @@ import { mirroredOptions } from "../../../../utils/chatTypes";
 import { settings, saveSettings } from "../../settingsStore";
 import { behindVerified, verifiedVersion } from "../../../../utils/versions";
 import OverlayScroll from "../../../../components/Scrollbar/OverlayScroll";
-import AgentAccounts from "./AgentAccounts";
+import AgentAccounts, { type AccountsView } from "./AgentAccounts";
 import AgentFiles from "./AgentFiles";
+import AgentPlugins from "./AgentPlugins";
 import styles from "../../Settings.module.css";
 
 // What each published key means, since the value alone is deliberately terse.
@@ -419,6 +420,13 @@ export default function AgentDetail(props: {
     () => a().id,
     (id) => invoke<LoginRoute>("agent_login_route", { adapterId: id }).catch(() => null),
   );
+  // The same cached sweep the accounts list reads, asked here only for the one
+  // fact the setup page needs and the hidden list would otherwise have shown.
+  const [accountsView] = createResource(
+    () => a().id,
+    (id) => invoke<AccountsView>("agent_accounts", { adapterId: id }).catch(() => null),
+  );
+  const inheritedHome = () => accountsView()?.inheritedHome ?? null;
   const terminal = (r: InstallRoute | null | undefined) =>
     r && r.type === "terminal" ? r : null;
   const installCmd = () => terminal(installRoute());
@@ -671,6 +679,18 @@ export default function AgentDetail(props: {
                   </>
                 )}
               </Show>
+              {/* Signed out here can mean signed out of a folder that is not the
+                  user's own: the accounts list, where the same fact lives, is
+                  hidden on this page, so it has to be said on the step. */}
+              <Show when={inheritedHome()}>
+                {(inherited) => (
+                  <div class={styles.hint}>
+                    Sway started with the home variable set to <code>{inherited()}</code>, so this
+                    step is about that folder's login, not your own. Start Sway from a shell
+                    without it to get yours back.
+                  </div>
+                )}
+              </Show>
             </div>
           </div>
 
@@ -735,7 +755,7 @@ export default function AgentDetail(props: {
         </Show>
       </Show>
 
-      {/* Last of the three account-scoped groups. Everything above it is what
+      {/* Third of the account-scoped groups. Everything above it is what
           the agent can *do* for an account; this is what is on disk for one,
           which is the least urgent of the three and the longest. Still below
           the accounts, because every row is resolved against one of them and
@@ -747,6 +767,13 @@ export default function AgentDetail(props: {
           projectRoot={props.projectRoot}
           accountsNonce={accountsChanged()}
         />
+      </Show>
+
+      {/* Also on disk, per account, and read the same way as Files: the
+          handshake the probe runs carries no plugin list, so the home's own
+          record is the only source a page with no session has. */}
+      <Show when={!setupMode()}>
+        <AgentPlugins agentId={a().id} accountsNonce={accountsChanged()} />
       </Show>
 
       <div class={styles.groupHead}>

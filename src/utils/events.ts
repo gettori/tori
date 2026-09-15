@@ -512,6 +512,10 @@ export type OpenJob = {
    *  whose whole purpose is to change the answer: without it a completed login
    *  would keep reading as signed out. */
   recheckAgentsOnExit?: boolean;
+  /** Which account a clean exit finishes signing in. Set by sign-in only:
+   *  the agent's own first-run flag is set for that home, so its next
+   *  interactive run does not open the wizard on an account already in. */
+  completeSignInOnExit?: { agentId: string; profileId: string };
 };
 
 // Start a debug run (F5). Fire-and-forget and payload-less on purpose: the

@@ -133,6 +133,9 @@ export type AccountsView = {
   canSignOut: boolean;
   defaultPresent: boolean;
   defaultHome: string | null;
+  /** Where the default account really runs when Sway's own environment set the
+   *  adapter's home variable. Null is the normal case. */
+  inheritedHome: string | null;
   profiles: ProfileStatus[];
 };
 
@@ -637,6 +640,19 @@ function AccountCard(props: {
               exists to stop exactly that shape. The default account has no path
               to show, because it is the variable left unset. */}
           <div class={styles.acctHome}>{home() ?? "Your existing login"}</div>
+          {/* The one case where "the variable left unset" is not this account:
+              Sway itself was started with it set, and every child of this row
+              inherits it. Said here, because signing out whichever named
+              profile owns that folder signs this one out too. */}
+          <Show when={p().isDefault ? props.view.inheritedHome : null}>
+            {(inherited) => (
+              <div class={styles.hint}>
+                Runs in <code>{inherited()}</code>: the home variable was already set when Sway
+                started, so this is that account and not the variable left unset. Start Sway from
+                a shell without it to get your own login back.
+              </div>
+            )}
+          </Show>
           {/* The agent's own answer about which credential it will bill against,
               not Sway reading its environment and guessing which variables
               matter to which agent. A notice, never a block: sessions run. */}

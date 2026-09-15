@@ -338,7 +338,7 @@ fn adapter(adapter_id: &str) -> Result<&'static AgentAdapter, String> {
 /// The default account's home is the adapter's `home_default`; a named
 /// profile's is its own stored one. A profile with neither is skipped rather
 /// than resolved against the process's cwd.
-fn homes_for(adapter: &AgentAdapter) -> Vec<(String, String, PathBuf)> {
+pub(crate) fn homes_for(adapter: &AgentAdapter) -> Vec<(String, String, PathBuf)> {
     let default_home = adapter.accounts.as_ref().and_then(|a| a.home_default.clone());
     let file = load();
     profiles_for(&file, &adapter.id)

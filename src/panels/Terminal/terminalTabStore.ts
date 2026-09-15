@@ -46,6 +46,8 @@ export type OpenTerm = {
   // signed out. Set at open and never changed, so neither replaces the tab.
   rediscoverOnExit?: boolean;
   recheckAgentsOnExit?: boolean;
+  // Sign-in tabs: the account a clean exit marks as through its first run.
+  completeSignInOnExit?: { agentId: string; profileId: string };
   // Command tabs: whether the command is typed at (a sign-in, an install). Only
   // those take the keyboard, on open or on any later reveal of the dock.
   interactive?: boolean;
