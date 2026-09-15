@@ -221,6 +221,11 @@ export type Capabilities = {
   reviewThreads: boolean;
   resolveThreads: boolean;
   merge: boolean;
+  /// One flag per verdict: GitLab has approve and comment but nothing that
+  /// carries "changes requested".
+  approve: boolean;
+  requestChanges: boolean;
+  commentReview: boolean;
 };
 
 /// `suspect` is a 401 that has *not* destroyed the token.
@@ -253,7 +258,7 @@ export type ForgeHost = { host: string; accounts: ForgeAccount[] };
 /// Which account a checkout acts as. `noAccount` carries no host when the
 /// checkout has no remote at all.
 export type RepoAccount =
-  | { kind: "account"; accountId: string; host: string; auth: AuthState }
+  | { kind: "account"; accountId: string; host: string; auth: AuthState; capabilities: Capabilities }
   | { kind: "pick"; host: string; candidates: ForgeAccount[] }
   | { kind: "noAccount"; host: string | null };
 
@@ -263,6 +268,9 @@ export type SignInRoutes = {
   deviceFlow: boolean;
   scopes: string[];
   tokenUrl: string;
+  /// The OAuth application registered on this instance, GitLab only. Null where
+  /// there is none, which is what leaves token paste as the only route.
+  appId: string | null;
 };
 
 export function forgeAccountName(account: ForgeAccount): string {
@@ -346,12 +354,21 @@ export const FORGE_KEYS = {
   prFile: ["additions", "deletions", "patch", "path", "previousPath", "status"],
   draftComment: ["body", "line", "path", "side", "startLine", "startSide"],
   viewer: ["avatarUrl", "login"],
-  capabilities: ["checks", "merge", "pullRequests", "resolveThreads", "reviewThreads"],
+  capabilities: [
+    "approve",
+    "checks",
+    "commentReview",
+    "merge",
+    "pullRequests",
+    "requestChanges",
+    "resolveThreads",
+    "reviewThreads",
+  ],
   pagedTruncated: ["items", "truncated"],
   rateSnapshot: ["limit", "remaining", "resetAt"],
   statusReport: ["rate", "statuses", "uncovered"],
   forgeAccount: ["auth", "baseUrl", "expiresAt", "id", "label", "login", "provider"],
-  signInRoutes: ["baseUrl", "deviceFlow", "host", "scopes", "tokenUrl"],
+  signInRoutes: ["appId", "baseUrl", "deviceFlow", "host", "scopes", "tokenUrl"],
   // Not a domain type, but it crosses the same bridge and the poll scheduler
   // branches on it, so it is checked against Rust the same way.
   forgeError: ["kind", "message", "rateLimitKind", "resetAtSecs", "retryAfterSecs"],

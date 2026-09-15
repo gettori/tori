@@ -12,12 +12,12 @@ use super::accounts::{self, AccountView, AccountsFile, HostView, Provider, Resol
 use super::device_flow::{self, DevicePrompt, PendingFlow, PollOutcome};
 use super::http::UreqTransport;
 use super::model::{
-    AuthState, DraftComment, MergeableState, Paged, PrFile, PullRequest, RepoRef, ReviewComment,
-    ReviewEvent, ReviewThread, StatusReport,
+    AuthState, Capabilities, DraftComment, MergeableState, Paged, PrFile, PullRequest, RepoRef,
+    ReviewComment, ReviewEvent, ReviewThread, StatusReport,
 };
 use super::remote::{self, Remote};
 use super::token::{self, Secret};
-use super::{auth, github, prs, status, CreatePr, Forge, ForgeError, MergeMethod};
+use super::{auth, github, gitlab, prs, refresh, status, CreatePr, Forge, ForgeError, MergeMethod};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -31,6 +31,8 @@ pub struct PendingSignIn {
     base_url: String,
     host: String,
     reauth: Option<String>,
+    client_id: String,
+    endpoints: device_flow::Endpoints,
 }
 
 #[derive(Default)]
@@ -129,7 +131,7 @@ pub struct SignedIn {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum RepoAccount {
-    Account { account_id: String, host: String, auth: AuthState },
+    Account { account_id: String, host: String, auth: AuthState, capabilities: Capabilities },
     Pick { host: String, candidates: Vec<AccountView> },
     /// No remote, or a host with no account. `host` is absent for the first.
     NoAccount { host: Option<String> },
@@ -143,7 +145,46 @@ pub fn forge_accounts() -> Vec<HostView> {
 #[tauri::command(async)]
 pub fn forge_sign_in_routes(provider: Provider, base_url: String) -> Result<SignInRoutes, ForgeErrorDto> {
     let (base_url, host) = accounts::normalize_base_url(&base_url)?;
-    Ok(accounts::sign_in_routes(provider, &base_url, &host, device_flow::is_configured()))
+    let file = accounts::load();
+    Ok(routes_in(&file, provider, &base_url, &host))
+}
+
+// Per host, because only that instance can issue one: gitlab.com's is Sway's
+// own, and a company's server has whichever its admin created, or none.
+#[tauri::command(async)]
+pub fn forge_set_app_id(
+    provider: Provider,
+    base_url: String,
+    app_id: String,
+) -> Result<SignInRoutes, ForgeErrorDto> {
+    let (base_url, host) = accounts::normalize_base_url(&base_url)?;
+    accounts::update(|file| Ok(accounts::set_app_id(file, &host, &app_id)))?;
+    let file = accounts::load();
+    Ok(routes_in(&file, provider, &base_url, &host))
+}
+
+fn routes_in(
+    file: &AccountsFile,
+    provider: Provider,
+    base_url: &str,
+    host: &str,
+) -> SignInRoutes {
+    accounts::sign_in_routes(provider, base_url, host, client_id_for(file, provider, host).as_deref())
+}
+
+/// The OAuth application a host's browser sign-in would use.
+///
+/// Sway's own on github.com. On GitLab it is whichever the user registered on
+/// that instance, falling back to Sway's for gitlab.com once one exists.
+fn client_id_for(file: &AccountsFile, provider: Provider, host: &str) -> Option<String> {
+    match provider {
+        Provider::Github => (host == accounts::GITHUB_COM && device_flow::is_configured())
+            .then(|| device_flow::CLIENT_ID.to_string()),
+        Provider::Gitlab => accounts::app_id(file, host).or_else(|| {
+            (host == accounts::GITLAB_COM && !device_flow::GITLAB_COM_CLIENT_ID.is_empty())
+                .then(|| device_flow::GITLAB_COM_CLIENT_ID.to_string())
+        }),
+    }
 }
 
 /// Starts a device flow, holding the secret half in Rust.
@@ -155,14 +196,29 @@ pub fn forge_device_start(
     account_id: Option<String>,
 ) -> Result<DevicePrompt, ForgeErrorDto> {
     let (base_url, host) = accounts::normalize_base_url(&base_url)?;
-    if !accounts::sign_in_routes(provider, &base_url, &host, device_flow::is_configured()).device_flow {
+    let file = accounts::load();
+    if !routes_in(&file, provider, &base_url, &host).device_flow {
         return Err(ForgeError::Invalid {
             message: format!("Sway has no browser sign-in for {host}. Paste a token instead."),
         }
         .into());
     }
-    let (prompt, flow) = device_flow::start(&UreqTransport::default())?;
-    *state.0.lock().unwrap() = Some(PendingSignIn { flow, provider, base_url, host, reauth: account_id });
+    let client_id = client_id_for(&file, provider, &host).unwrap_or_default();
+    let endpoints = match provider {
+        Provider::Github => device_flow::github_endpoints(),
+        Provider::Gitlab => device_flow::gitlab_endpoints(&base_url),
+    };
+    let (prompt, flow) =
+        device_flow::start_with(&UreqTransport::default(), &client_id, &endpoints)?;
+    *state.0.lock().unwrap() = Some(PendingSignIn {
+        flow,
+        provider,
+        base_url,
+        host,
+        reauth: account_id,
+        client_id,
+        endpoints,
+    });
     Ok(prompt)
 }
 
@@ -176,7 +232,12 @@ pub fn forge_device_poll(
     let Some(sign_in) = pending else {
         return Err(ForgeError::NotAuthenticated.into());
     };
-    let outcome = device_flow::poll_once(&UreqTransport::default(), &sign_in.flow)?;
+    let outcome = device_flow::poll_once_with(
+        &UreqTransport::default(),
+        &sign_in.client_id,
+        &sign_in.endpoints,
+        &sign_in.flow,
+    )?;
     Ok(match outcome {
         PollOutcome::Authorized { token: t } => {
             state.0.lock().unwrap().take();
@@ -185,7 +246,8 @@ pub fn forge_device_poll(
                 sign_in.provider,
                 &sign_in.base_url,
                 &sign_in.host,
-                Secret::access(t),
+                Secret { access_token: t.access_token, refresh_token: t.refresh_token },
+                expires_at(t.expires_in_secs),
                 sign_in.reauth.as_deref(),
             )?;
             PollReport::Authorized { account_id: signed.account_id, login: signed.login }
@@ -226,7 +288,30 @@ pub fn forge_add_token(
         return Err(ForgeError::Invalid { message: "Paste a token first.".into() }.into());
     }
     let (base_url, host) = accounts::normalize_base_url(&base_url)?;
-    Ok(add_signed_in(provider, &base_url, &host, Secret::access(token.to_string()), account_id.as_deref())?)
+    // A pasted token carries no expiry: whatever the user set on the host is
+    // the host's business, and inventing a deadline here would sign them out.
+    Ok(add_signed_in(
+        provider,
+        &base_url,
+        &host,
+        Secret::access(token.to_string()),
+        None,
+        account_id.as_deref(),
+    )?)
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// The wall-clock deadline for a token that expires, from the server's own "in
+/// N seconds". Absolute, because the process will not be running for most of
+/// the wait.
+fn expires_at(in_secs: Option<u64>) -> Option<u64> {
+    in_secs.map(|s| now_secs() + s)
 }
 
 /// Asks the host whose token this is, then files it under that login. A token
@@ -236,9 +321,10 @@ fn add_signed_in(
     base_url: &str,
     host: &str,
     secret: Secret,
+    expires_at: Option<u64>,
     reauth: Option<&str>,
 ) -> Result<SignedIn, ForgeError> {
-    let forge = forge_for(provider, base_url, host, Some(secret.access_token.clone()), None)?;
+    let forge = forge_for(provider, base_url, Some(secret.access_token.clone()), None);
     let login = match forge.viewer() {
         Ok(viewer) => viewer.login,
         Err(ForgeError::CredentialSuspect) => {
@@ -248,6 +334,7 @@ fn add_signed_in(
     };
     let account_id = accounts::update(|file| {
         let id = accounts::add_account(file, provider, base_url, host, &login, reauth)?;
+        accounts::note_expiry(file, &id, expires_at);
         auth::sign_in(&id, &secret, Some(login.clone()))?;
         Ok(id)
     })?;
@@ -285,7 +372,15 @@ fn repo_account_in(
 ) -> RepoAccount {
     let host = remote.host.clone();
     match accounts::resolve(file, picks, remote) {
-        Resolution::Account(id) => RepoAccount::Account { auth: auth(&id), account_id: id, host },
+        Resolution::Account(id) => {
+            // Built without a token, because a capability is a fact about the
+            // provider rather than about the credential, and this answer is
+            // rendered before any call is made.
+            let capabilities = accounts::find(file, &id)
+                .map(|(_, a)| forge_for(a.provider, &a.base_url, None, None).capabilities())
+                .unwrap_or_default();
+            RepoAccount::Account { auth: auth(&id), account_id: id, host, capabilities }
+        }
         Resolution::Pick { candidates } => RepoAccount::Pick {
             candidates: candidates
                 .iter()
@@ -345,14 +440,13 @@ fn client_in(
 ) -> Result<Client, ForgeError> {
     match accounts::resolve(file, picks, &remote) {
         Resolution::Account(id) => {
-            let (_, account) = accounts::find(file, &id).ok_or(ForgeError::NotAuthenticated)?;
+            let (host, account) = accounts::find(file, &id).ok_or(ForgeError::NotAuthenticated)?;
             let forge = forge_for(
                 account.provider,
                 &account.base_url,
-                &remote.host,
-                auth::token(&id),
+                fresh_token(file, host, account),
                 login_of(&id),
-            )?;
+            );
             Ok(Client { account_id: id, repo: remote.repo, forge })
         }
         Resolution::Pick { .. } => Err(ForgeError::AccountPickNeeded { host: remote.host }),
@@ -361,31 +455,153 @@ fn client_in(
     }
 }
 
-/// The adapter for a provider at an account's base URL. GitLab has none yet.
+/// The adapter for a provider at an account's base URL.
 fn forge_for(
     provider: Provider,
     base_url: &str,
-    host: &str,
     token: Option<String>,
     login: Option<String>,
-) -> Result<Box<dyn Forge>, ForgeError> {
+) -> Box<dyn Forge> {
+    let transport = Box::new(UreqTransport::default());
     match provider {
-        Provider::Github => Ok(Box::new(github::GitHubForge::new(
-            Box::new(UreqTransport::default()),
-            base_url,
-            token,
-            login,
-        ))),
-        Provider::Gitlab => Err(ForgeError::UnsupportedRemote { host: host.to_string() }),
+        Provider::Github => Box::new(github::GitHubForge::new(transport, base_url, token, login)),
+        Provider::Gitlab => Box::new(gitlab::GitLabForge::new(transport, base_url, token, login)),
     }
 }
 
+// Every provider with an adapter, mirrored to the frontend through the model
+// fixture. A variant added without one fails `forge_for`'s match first and this
+// list second, so the frontend's copy cannot drift past both.
 #[cfg(test)]
 pub(crate) fn served_providers() -> Vec<Provider> {
-    [Provider::Github, Provider::Gitlab]
-        .into_iter()
-        .filter(|&p| forge_for(p, "https://example.test", "example.test", None, None).is_ok())
-        .collect()
+    vec![Provider::Github, Provider::Gitlab]
+}
+
+/// The ref a forge publishes a pull request's head under.
+///
+/// Layer 1 reads this with plain `git fetch`, so it is the one piece of
+/// provider knowledge the git layer needs and cannot work out for itself.
+fn head_ref(provider: Provider, number: u64) -> String {
+    match provider {
+        Provider::Github => format!("refs/pull/{number}/head"),
+        Provider::Gitlab => format!("refs/merge-requests/{number}/head"),
+    }
+}
+
+/// Which head ref this checkout's forge publishes.
+///
+/// An unresolved repo answers GitHub's spelling, which is what every caller
+/// assumed before GitLab existed: a fetch of a ref the remote does not have
+/// fails the same way either spelling does.
+pub fn pr_head_ref(project_path: &str, number: u64) -> String {
+    let file = accounts::load();
+    let provider = remote_of(project_path).ok().and_then(|remote| {
+        let picks = crate::settings::get_settings().forge.picks;
+        match accounts::resolve(&file, &picks, &remote) {
+            Resolution::Account(id) => accounts::find(&file, &id).map(|(_, a)| a.provider),
+            // No pick, or no account at all: every account on a host shares its
+            // provider, so the first one answers for the host.
+            _ => file.hosts.get(&remote.host).and_then(|r| r.accounts.first()).map(|a| a.provider),
+        }
+    });
+    head_ref(provider.unwrap_or(Provider::Github), number)
+}
+
+/// Runs a forge call, renewing the credential once when the host rejects it.
+///
+/// Inside the call that failed rather than on the next tick: a token that
+/// expired mid-session is one Sway can replace without the user, and making
+/// them watch a cycle fail first is a pause with nothing behind it.
+fn attempt<T>(
+    c: &Client,
+    run: impl Fn(&dyn Forge) -> Result<T, ForgeError>,
+) -> Result<T, ForgeError> {
+    let first = run(c.forge.as_ref());
+    auth::note_result(&c.account_id, &first);
+    if !matches!(first, Err(ForgeError::CredentialSuspect)) {
+        return first;
+    }
+    let Some(renewed) = renewed_client(c) else {
+        return first;
+    };
+    let second = run(renewed.forge.as_ref());
+    auth::note_result(&c.account_id, &second);
+    second
+}
+
+/// The same repo and account, holding whatever credential the account has now.
+/// `None` when nothing can renew it, which leaves the rejection standing.
+fn renewed_client(c: &Client) -> Option<Client> {
+    let file = accounts::load();
+    let (host, account) = accounts::find(&file, &c.account_id)?;
+    let token = fresh_token(&file, host, account)?;
+    Some(Client {
+        account_id: c.account_id.clone(),
+        repo: c.repo.clone(),
+        forge: forge_for(account.provider, &account.base_url, Some(token), login_of(&c.account_id)),
+    })
+}
+
+fn refresher() -> &'static refresh::Refresher {
+    static R: std::sync::OnceLock<refresh::Refresher> = std::sync::OnceLock::new();
+    R.get_or_init(refresh::Refresher::default)
+}
+
+/// The access token to act as, renewed first when it is near its deadline or
+/// when the last call came back 401.
+///
+/// Both triggers run through the same gate: a suspect account reads as already
+/// spent, so the next call renews it and clears the suspicion instead of
+/// waiting for the user. Only a refused renewal makes that suspicion stick.
+fn fresh_token(file: &AccountsFile, host: &str, account: &accounts::Account) -> Option<String> {
+    let id = account.id.clone();
+    let current = auth::token(&id);
+    // Re-read rather than captured, so the caller that waited at the gate sees
+    // the deadline the winner just moved and spends no request of its own.
+    let deadline = || match auth::state(&id) {
+        AuthState::Suspect { .. } => Some(0),
+        _ => accounts::find(&accounts::load(), &id).and_then(|(_, a)| a.expires_at),
+    };
+    if !refresh::due(deadline(), now_secs()) {
+        return current;
+    }
+    let refresh_token = token::load_secret(&id).ok().flatten()?.refresh_token?;
+    let client_id = client_id_for(file, account.provider, host)?;
+    let endpoints = match account.provider {
+        Provider::Github => device_flow::github_endpoints(),
+        Provider::Gitlab => device_flow::gitlab_endpoints(&account.base_url),
+    };
+    let renewal = refresh::Renewal {
+        account_id: &id,
+        refresh_token: &refresh_token,
+        client_id: &client_id,
+        endpoints: &endpoints,
+    };
+    let store = |set: &device_flow::TokenSet| -> Result<(), ForgeError> {
+        let secret = Secret {
+            access_token: set.access_token.clone(),
+            refresh_token: set.refresh_token.clone(),
+        };
+        token::save_secret(&id, &secret)?;
+        let at = expires_at(set.expires_in_secs);
+        accounts::update(|file| {
+            accounts::note_expiry(file, &id, at);
+            Ok(())
+        })?;
+        auth::note_refreshed(&id, secret.access_token);
+        Ok(())
+    };
+    match refresher().ensure(&UreqTransport::default(), &renewal, deadline, now_secs, store) {
+        Ok(refresh::Renewed::Fresh(token)) => Some(token),
+        Ok(refresh::Renewed::Current) => auth::token(&id),
+        Err(refresh::RefreshFailure::Rejected(_)) => {
+            auth::note_rejected(&id);
+            None
+        }
+        // The old token is good until its own deadline, so this is a retry
+        // rather than a sign-out.
+        Err(refresh::RefreshFailure::NotStored(_)) => current,
+    }
 }
 
 fn login_of(account_id: &str) -> Option<String> {
@@ -423,9 +639,7 @@ pub fn forge_pr_for_branch(
 ) -> Result<Option<PullRequest>, ForgeErrorDto> {
     let c = client_for(&project_path)?;
     let out = prs::cached_lookup(&c.repo, &branch, refresh, || {
-        let result = c.forge.pull_request_for_branch(&c.repo, &branch);
-        auth::note_result(&c.account_id, &result);
-        result
+        attempt(&c, |f| f.pull_request_for_branch(&c.repo, &branch))
     })?;
     Ok(out)
 }
@@ -457,9 +671,8 @@ pub fn forge_create_pr(
     new_pr: NewPr,
 ) -> Result<PullRequest, ForgeErrorDto> {
     let c = client_for(&project_path)?;
-    let result = c.forge.create_pull_request(&c.repo, &new_pr.into());
-    auth::note_result(&c.account_id, &result);
-    let pr = result?;
+    let req: CreatePr = new_pr.into();
+    let pr = attempt(&c, |f| f.create_pull_request(&c.repo, &req))?;
     prs::record_created(&c.repo, pr.clone());
     Ok(pr)
 }
@@ -486,11 +699,7 @@ pub fn forge_push_and_create_pr(
     let req: CreatePr = new_pr.into();
     let pr = prs::push_then_create(
         || crate::git::push_branch(&project_path, &remote, &head, inner.sock_path(), inner.token()),
-        || {
-            let result = c.forge.create_pull_request(&c.repo, &req);
-            auth::note_result(&c.account_id, &result);
-            result
-        },
+        || attempt(&c, |f| f.create_pull_request(&c.repo, &req)),
     )?;
     prs::record_created(&c.repo, pr.clone());
     Ok(pr)
@@ -511,12 +720,11 @@ pub fn forge_unit_statuses(
 ) -> Result<StatusReport, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
     let out = status::cached_tick(&c.repo, &branches, refresh, |ask| {
-        let result = c.forge.unit_statuses(&c.repo, ask);
-        auth::note_result(&c.account_id, &result);
         // The snapshot is read whether the call succeeded or not, but only a
         // success carries it out of here: an error path returns the error, and
         // the scheduler backs off on that instead.
-        result.map(|statuses| (statuses, c.forge.rate_snapshot()))
+        attempt(&c, |f| f.unit_statuses(&c.repo, ask))
+            .map(|statuses| (statuses, c.forge.rate_snapshot()))
     })?;
     Ok(out)
 }
@@ -537,9 +745,7 @@ pub fn forge_unit_statuses(
 #[tauri::command(async)]
 pub fn forge_list_prs(project_path: String) -> Result<Paged<PullRequest>, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    let result = c.forge.list_pull_requests(&c.repo);
-    auth::note_result(&c.account_id, &result);
-    Ok(result?)
+    Ok(attempt(&c, |f| f.list_pull_requests(&c.repo))?)
 }
 
 /// Every file one pull request touches, with GitHub's own patch for each.
@@ -557,9 +763,7 @@ pub fn forge_pr_files(
     number: u64,
 ) -> Result<Paged<PrFile>, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    let result = c.forge.pull_request_files(&c.repo, number);
-    auth::note_result(&c.account_id, &result);
-    Ok(result?)
+    Ok(attempt(&c, |f| f.pull_request_files(&c.repo, number))?)
 }
 
 /// Every review conversation on one pull request.
@@ -574,9 +778,7 @@ pub fn forge_review_threads(
     number: u64,
 ) -> Result<Paged<ReviewThread>, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    let result = c.forge.review_threads(&c.repo, number);
-    auth::note_result(&c.account_id, &result);
-    Ok(result?)
+    Ok(attempt(&c, |f| f.review_threads(&c.repo, number))?)
 }
 
 /// Reply to a thread, returning the comment the server stored.
@@ -591,9 +793,7 @@ pub fn forge_reply_to_thread(
     body: String,
 ) -> Result<ReviewComment, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    let result = c.forge.reply_to_thread(&c.repo, &thread_id, &body);
-    auth::note_result(&c.account_id, &result);
-    Ok(result?)
+    Ok(attempt(&c, |f| f.reply_to_thread(&c.repo, &thread_id, &body))?)
 }
 
 /// Resolve or unresolve a thread.
@@ -611,9 +811,7 @@ pub fn forge_set_thread_resolved(
     resolved: bool,
 ) -> Result<(), ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    let result = c.forge.set_thread_resolved(&thread_id, resolved);
-    auth::note_result(&c.account_id, &result);
-    Ok(result?)
+    Ok(attempt(&c, |f| f.set_thread_resolved(&thread_id, resolved))?)
 }
 
 /// Who an account's token belongs to.
@@ -659,9 +857,7 @@ pub fn forge_submit_review(
     comments: Vec<DraftComment>,
 ) -> Result<(), ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    let result = c.forge.submit_review(&c.repo, number, event, &body, &comments);
-    auth::note_result(&c.account_id, &result);
-    Ok(result?)
+    Ok(attempt(&c, |f| f.submit_review(&c.repo, number, event, &body, &comments))?)
 }
 
 /// Run a mutation that moves a branch, and drop the caches only if it worked.
@@ -674,13 +870,11 @@ pub fn forge_submit_review(
 /// **Only on success.** A refused mutation changed nothing on the server, and
 /// throwing the caches away for it spends a fresh round of requests to re-learn
 /// exactly what was already known.
-fn landing<F>(account_id: &str, repo: &RepoRef, run: F) -> Result<(), ForgeError>
+fn landing<F>(repo: &RepoRef, run: F) -> Result<(), ForgeError>
 where
     F: FnOnce() -> Result<(), ForgeError>,
 {
-    let result = run();
-    auth::note_result(account_id, &result);
-    result?;
+    run()?;
     prs::invalidate_repo(repo);
     status::invalidate_repo(repo);
     Ok(())
@@ -703,9 +897,7 @@ pub fn forge_mergeability(
     number: u64,
 ) -> Result<MergeableState, ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    let result = c.forge.mergeability(&c.repo, number);
-    auth::note_result(&c.account_id, &result);
-    Ok(result?)
+    Ok(attempt(&c, |f| f.mergeability(&c.repo, number))?)
 }
 
 /// Land the pull request.
@@ -724,7 +916,7 @@ pub fn forge_merge(
     method: MergeMethod,
 ) -> Result<(), ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    Ok(landing(&c.account_id, &c.repo, || c.forge.merge(&c.repo, number, method))?)
+    Ok(landing(&c.repo, || attempt(&c, |f| f.merge(&c.repo, number, method)))?)
 }
 
 /// Merge the base branch into this pull request's head, on the server.
@@ -739,7 +931,7 @@ pub fn forge_merge(
 #[tauri::command(async)]
 pub fn forge_update_branch(project_path: String, number: u64) -> Result<(), ForgeErrorDto> {
     let c = gated_client(&project_path)?;
-    Ok(landing(&c.account_id, &c.repo, || c.forge.update_branch(&c.repo, number))?)
+    Ok(landing(&c.repo, || attempt(&c, |f| f.update_branch(&c.repo, number)))?)
 }
 
 /// Installs the keychain store, migrates the pre-accounts token, and restores
@@ -793,14 +985,13 @@ pub fn restore_at_startup(enabled: bool) {
 /// than silently failing.
 fn learn_login(account_id: &str) -> Result<String, ForgeError> {
     let file = accounts::load();
-    let (host, account) = accounts::find(&file, account_id).ok_or(ForgeError::NotAuthenticated)?;
+    let (_, account) = accounts::find(&file, account_id).ok_or(ForgeError::NotAuthenticated)?;
     let forge = forge_for(
         account.provider,
         &account.base_url,
-        host,
         auth::token(account_id),
         login_of(account_id),
-    )?;
+    );
     let result = forge.viewer();
     auth::note_result(account_id, &result);
     let login = result?.login;
@@ -844,10 +1035,8 @@ mod tests {
         // throwing them away spends a fresh round of requests to re-learn them.
         let repo = RepoRef { owner: "skarif2".into(), repo: "refused".into() };
         prs::record_created(&repo, pr(1, "wave-3"));
-        let err = landing("test-account", &repo, || {
-            Err(ForgeError::NotMergeable { message: "blocked".into() })
-        })
-        .unwrap_err();
+        let err = landing(&repo, || Err(ForgeError::NotMergeable { message: "blocked".into() }))
+            .unwrap_err();
         assert!(matches!(err, ForgeError::NotMergeable { .. }));
 
         let served = prs::cached_lookup(&repo, "wave-3", false, || {
@@ -869,7 +1058,7 @@ mod tests {
         prs::record_created(&repo, pr(2, "sibling"));
         prs::record_created(&other, pr(3, "wave-3"));
 
-        landing("test-account", &repo, || Ok(())).unwrap();
+        landing(&repo, || Ok(())).unwrap();
 
         for branch in ["wave-3", "sibling"] {
             let mut asked = false;
@@ -1075,6 +1264,15 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&worktree);
         let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn each_provider_publishes_a_pull_request_head_under_its_own_ref() {
+        // The one piece of provider knowledge the git layer needs. Fetching
+        // GitHub's spelling from GitLab finds nothing, and the gap expander then
+        // has no content to show for a merge request that is right there.
+        assert_eq!(head_ref(Provider::Github, 7), "refs/pull/7/head");
+        assert_eq!(head_ref(Provider::Gitlab, 7), "refs/merge-requests/7/head");
     }
 
     #[test]

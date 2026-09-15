@@ -17,7 +17,7 @@
 //! Module layout:
 //!   * `model` - the domain types, mirrored into `src/utils/forgeTypes.ts`
 //!   * `http`  - the transport seam, redaction, and both pagination walkers
-//!   * `github` - the one provider that exists today
+//!   * `github`, `gitlab` - the providers
 //!   * `accounts` - accounts per host, and which one a repo acts as
 //!   * `remote` - a git remote as a host plus a repo
 
@@ -26,9 +26,11 @@ pub mod auth;
 pub mod commands;
 pub mod device_flow;
 pub mod github;
+pub mod gitlab;
 pub mod http;
 pub mod model;
 pub mod prs;
+pub mod refresh;
 pub mod remote;
 pub mod status;
 pub mod token;
@@ -295,6 +297,9 @@ mod tests {
                 review_threads: false,
                 resolve_threads: false,
                 merge: false,
+                approve: false,
+                request_changes: false,
+                comment_review: false,
             }
         }
         fn auth_state(&self) -> AuthState {

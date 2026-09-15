@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { pointerClick } from "../../../../test/menus";
 import type { AuthState, ForgeAccount, ForgeHost, SignInRoutes } from "../../../../utils/forgeTypes";
 
 // The surfaces the forge accounts section has to tell apart, driven through the
@@ -11,6 +12,9 @@ import type { AuthState, ForgeAccount, ForgeHost, SignInRoutes } from "../../../
 // when it deliberately was not.
 
 let hosts: ForgeHost[] = [];
+/** The application id Rust has stored per host, which is what turns the browser
+ *  flow on for a GitLab instance. */
+let appIds: Record<string, string> = {};
 let devicePolls: unknown[] = [];
 const calls = { start: 0, poll: 0, cancel: 0, removed: [] as string[] };
 
@@ -18,15 +22,19 @@ function account(id: string, auth: AuthState, login: string | null): ForgeAccoun
   return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, auth };
 }
 
-/** Rust's ladder, reduced to the one fact these tests branch on. */
+/** Rust's ladder, reduced to the facts these tests branch on: Sway's own
+ *  application covers github.com, and a GitLab instance has whichever one was
+ *  registered on it. */
 function routesFor(baseUrl: string): SignInRoutes {
   const host = new URL(baseUrl).host;
+  const appId = appIds[host] ?? null;
   return {
     host,
     baseUrl,
-    deviceFlow: host === "github.com",
+    deviceFlow: host === "github.com" || appId !== null,
     scopes: ["repo"],
     tokenUrl: `${baseUrl}/settings/tokens/new?scopes=repo`,
+    appId,
   };
 }
 
@@ -37,6 +45,14 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve(hosts);
       case "forge_sign_in_routes":
         return Promise.resolve(routesFor(args?.baseUrl as string));
+      case "forge_set_app_id": {
+        const url = args?.baseUrl as string;
+        const id = (args?.appId as string).trim();
+        const host = new URL(url).host;
+        if (id) appIds[host] = id;
+        else delete appIds[host];
+        return Promise.resolve(routesFor(url));
+      }
       case "forge_device_start":
         calls.start += 1;
         return Promise.resolve({
@@ -73,6 +89,7 @@ import ForgeSection from "./ForgeSection";
 beforeEach(() => {
   cleanup();
   hosts = [];
+  appIds = {};
   devicePolls = [];
   calls.start = 0;
   calls.poll = 0;
@@ -160,6 +177,32 @@ describe("the forge accounts settings section", () => {
 
     expect((await screen.findByTestId("token-scopes")).textContent).toContain("git.example.com");
     expect(screen.queryByText("Sign in with browser")).toBeNull();
+  });
+
+  it("offers a self-managed GitLab the browser only once it has an application id", async () => {
+    // Only that instance's admin can register an application, so until its id
+    // is known the browser flow would open a page the server refuses.
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByText("Add account"));
+    // The provider picker is a listbox behind a button, so a choice is two
+    // presses and the rows exist only while it is open.
+    pointerClick(screen.getByLabelText("Provider"));
+    await screen.findByRole("listbox");
+    pointerClick(screen.getByRole("option", { name: "GitLab" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fireEvent.input(screen.getByLabelText("Host URL"), {
+      target: { value: "https://git.example.com" },
+    });
+    fireEvent.click(screen.getByText("Continue"));
+
+    expect((await screen.findByTestId("token-scopes")).textContent).toContain("git.example.com");
+    expect(screen.queryByText("Sign in with browser")).toBeNull();
+
+    fireEvent.input(screen.getByLabelText("Application ID"), { target: { value: "app-123" } });
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(await screen.findByText("Sign in with browser")).toBeTruthy();
   });
 
   it("shows the code and the page to type it into while a flow is pending", async () => {

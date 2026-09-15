@@ -13,9 +13,12 @@
     }
   ],
   "capabilities": {
+    "approve": true,
     "checks": true,
+    "commentReview": true,
     "merge": true,
     "pullRequests": true,
+    "requestChanges": true,
     "resolveThreads": true,
     "reviewThreads": true
   },
@@ -108,9 +111,11 @@
     "startLine": 86
   },
   "servedProviders": [
-    "github"
+    "github",
+    "gitlab"
   ],
   "signInRoutes": {
+    "appId": null,
     "baseUrl": "https://github.com",
     "deviceFlow": true,
     "host": "github.com",

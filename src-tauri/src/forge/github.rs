@@ -26,7 +26,7 @@
 
 use super::http::{
     classify, graphql_data, paginate_graphql, paginate_rest, ConnectionSpec, GraphqlEndpoint,
-    HttpRequest, NestedSpec, Transport, PAGE_CAP,
+    HttpRequest, NestedSpec, Recording, Transport, PAGE_CAP,
 };
 use super::model::{
     AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
@@ -54,45 +54,6 @@ const GRAPHQL_URL: &str = "https://api.github.com/graphql";
 /// `update.rs` already sets one for the same reason.
 const USER_AGENT: &str = "sway";
 
-/// Wraps the real transport and records what every response said about the rate
-/// budget and the credential.
-///
-/// This is a transport rather than a method on [`GitHubForge`] for one reason:
-/// the pagination walkers take a `&dyn Transport` and loop on it directly, so
-/// anything that lived only in a `GitHubForge` method would be skipped by every
-/// paginated call. Putting it here means a 401 on page three of a thread walk
-/// marks the credential suspect exactly like a 401 on a single GET, with no
-/// call site able to opt out.
-struct Recording {
-    inner: Box<dyn Transport>,
-    /// Set once a 401 has been seen. The token is kept, not cleared: see
-    /// [`AuthState::Suspect`].
-    suspect: std::sync::atomic::AtomicBool,
-    rate: std::sync::Mutex<RateSnapshot>,
-}
-
-impl Transport for Recording {
-    fn send(&self, req: super::http::HttpRequest) -> Result<super::http::HttpResponse, ForgeError> {
-        let resp = self.inner.send(req)?;
-        *self.rate.lock().unwrap() = RateSnapshot {
-            remaining: resp.header("X-RateLimit-Remaining").and_then(|v| v.trim().parse().ok()),
-            limit: resp.header("X-RateLimit-Limit").and_then(|v| v.trim().parse().ok()),
-            // Seconds since the epoch, so this one is wider than the counts.
-            reset_at: resp.header("X-RateLimit-Reset").and_then(|v| v.trim().parse().ok()),
-        };
-        match resp.status {
-            401 => self.suspect.store(true, std::sync::atomic::Ordering::Relaxed),
-            // Any answered call clears the suspicion. A 401 from a proxy, a
-            // captive portal or a forge incident is transient, and without this
-            // the flag would latch on forever: the user would be told to sign
-            // in again to fix something that had already fixed itself.
-            200..=299 => self.suspect.store(false, std::sync::atomic::Ordering::Relaxed),
-            _ => {}
-        }
-        Ok(resp)
-    }
-}
-
 pub struct GitHubForge {
     transport: std::sync::Arc<Recording>,
     token: Option<String>,
@@ -119,11 +80,7 @@ impl GitHubForge {
             (format!("{base}/api/v3"), format!("{base}/api/graphql"))
         };
         Self {
-            transport: std::sync::Arc::new(Recording {
-                inner: transport,
-                suspect: std::sync::atomic::AtomicBool::new(false),
-                rate: std::sync::Mutex::new(RateSnapshot::default()),
-            }),
+            transport: std::sync::Arc::new(Recording::new(transport)),
             token,
             api_base,
             graphql_url,
@@ -141,7 +98,7 @@ impl GitHubForge {
     }
 
     pub fn rate_snapshot(&self) -> RateSnapshot {
-        *self.transport.rate.lock().unwrap()
+        self.transport.rate()
     }
 
     fn headers(&self) -> Vec<(String, String)> {
@@ -490,6 +447,9 @@ impl Forge for GitHubForge {
             review_threads: true,
             resolve_threads: true,
             merge: true,
+            approve: true,
+            request_changes: true,
+            comment_review: true,
         }
     }
 
@@ -498,7 +458,7 @@ impl Forge for GitHubForge {
     }
 
     fn auth_state(&self) -> AuthState {
-        match (&self.token, self.transport.suspect.load(std::sync::atomic::Ordering::Relaxed)) {
+        match (&self.token, self.transport.suspect()) {
             (None, _) => AuthState::SignedOut,
             (Some(_), true) => AuthState::Suspect { login: self.login.clone() },
             (Some(_), false) => {

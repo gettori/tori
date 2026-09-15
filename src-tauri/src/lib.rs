@@ -511,6 +511,7 @@ pub fn run() {
             worktree::remove_worktree_and_branch,
             forge::commands::forge_accounts,
             forge::commands::forge_sign_in_routes,
+            forge::commands::forge_set_app_id,
             forge::commands::forge_device_start,
             forge::commands::forge_device_poll,
             forge::commands::forge_device_cancel,
