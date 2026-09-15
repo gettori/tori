@@ -145,7 +145,16 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "list_project_attempts") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(ORIGINS[args.projectPath as string] ?? null);
-    if (cmd === "github_auth_state") return Promise.resolve(bridge.auth);
+    if (cmd === "forge_accounts") {
+      const auth = bridge.auth;
+      return Promise.resolve(
+        auth.kind === "signedOut"
+          ? []
+          : [{ host: "github.com", accounts: [{ id: "personal", provider: "github", baseUrl: "https://github.com", login: "skarif2", label: "skarif2", expiresAt: null, auth }] }],
+      );
+    }
+    if (cmd === "forge_repo_account")
+      return Promise.resolve({ kind: "account", accountId: "personal", host: "github.com", auth: bridge.auth });
     if (cmd === "github_unit_statuses") return Promise.resolve(REPORT);
     if (cmd === "sessions_running")
       return Promise.resolve(((args.sessions ?? []) as { id: string }[]).map((s) => s.id));
@@ -293,8 +302,8 @@ describe("the forge chip on a branch row", () => {
 
     // The statuses are still in the store; what changed is that nothing is
     // refreshing them, so the row must stop presenting them as current.
-    const { noteForgeAuth } = await import("../../utils/forgeStatus");
-    noteForgeAuth({ kind: "signedOut" });
+    const { noteForgeAccounts } = await import("../../utils/forgeStatus");
+    noteForgeAccounts([]);
 
     await waitFor(() => expect(shipped.querySelector("[data-forge-pr]")).toBeNull());
   });

@@ -13,7 +13,7 @@
 // stops polling well before the budget is gone, and a hard stop on both of
 // GitHub's rate limits rather than only the obvious one.
 
-import type { AuthState, ForgeErrorDto, RateSnapshot } from "./forgeTypes";
+import type { AuthState, ForgeErrorDto, RateSnapshot, RepoAccount } from "./forgeTypes";
 import { isForgeError } from "./forgeTypes";
 
 /// The background cadence. Two minutes rather than seconds: a check run takes
@@ -52,7 +52,7 @@ export const SECONDARY_BACKOFF_MS = 60_000;
 export const NO_REMOTE_BACKOFF_MS = 10 * 60_000;
 
 /// Why polling is stopped, or null when it is not.
-export type PauseReason = "disabled" | "signedOut" | "suspect";
+export type PauseReason = "disabled" | "signedOut" | "suspect" | "pickAccount";
 
 /// The mirror of `AuthCore::may_call`, in the shape the UI needs: not just
 /// whether polling may run, but which of the three independent noes said so, so
@@ -65,6 +65,26 @@ export function pauseReason(auth: AuthState, enabled: boolean): PauseReason | nu
   if (auth.kind === "signedOut") return "signedOut";
   if (auth.kind === "suspect") return "suspect";
   return null;
+}
+
+/// `pauseReason` for one checkout, through the account it resolved to. Two
+/// accounts pause independently: a rejected token stops only its own repos.
+export function projectPause(
+  repo: RepoAccount,
+  auth: (accountId: string) => AuthState,
+  enabled: boolean,
+): PauseReason | null {
+  if (!enabled) return "disabled";
+  switch (repo.kind) {
+    case "account":
+      return pauseReason(auth(repo.accountId), enabled);
+    case "pick":
+      return "pickAccount";
+    case "noAccount":
+      // No remote at all is not a sign-in problem. Rust answers `noRemote` and
+      // the project backs off on its own.
+      return repo.host === null ? null : "signedOut";
+  }
 }
 
 export type Trigger = "focus" | "interval" | "manual";
@@ -81,10 +101,9 @@ export function mayPoll(
   clock: PollClock,
   trigger: Trigger,
   now: number,
-  auth: AuthState,
-  enabled: boolean,
+  pause: PauseReason | null,
 ): boolean {
-  if (pauseReason(auth, enabled) !== null) return false;
+  if (pause !== null) return false;
   // A block outlasts a manual refresh on purpose: hitting refresh during a rate
   // limit is how a throttle becomes a longer throttle.
   if (clock.blockedUntil !== null && now < clock.blockedUntil) return false;
@@ -95,8 +114,8 @@ export function mayPoll(
 
 /// How wide a backoff reaches.
 ///
-/// A rate limit belongs to the token, so it stops every project at once; a
-/// remote the forge cannot serve belongs to the one repo. Blocking the account
+/// A rate limit belongs to the token, so it stops every project on that account;
+/// a remote the forge cannot serve belongs to the one repo. Blocking the account
 /// for a GitLab checkout would let one unrelated project silence the rest.
 export type Backoff = { scope: "account" | "project"; untilMs: number };
 

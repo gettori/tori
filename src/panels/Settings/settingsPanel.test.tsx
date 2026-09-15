@@ -52,7 +52,7 @@ const CARD_ENTRIES: Record<string, string> = {
   "language-servers": "Language servers",
   debuggers: "Debuggers",
   git: "Git",
-  github: "GitHub",
+  forge: "GitHub and GitLab",
 };
 const ANCHORED_ENTRIES = ["agents"];
 /** Entries whose control lives on **an account's card**, on an agent's own

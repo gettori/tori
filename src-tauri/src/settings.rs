@@ -173,13 +173,17 @@ impl Default for PanePins {
 /// which makes it the one cheap way back if the integration misbehaves.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct Github {
+pub struct Forge {
     pub enabled: bool,
+    /// Account id by repo key (`forge::remote::Remote::key`), for hosts with
+    /// more than one account.
+    #[serde(default)]
+    pub picks: std::collections::BTreeMap<String, String>,
 }
 
-impl Default for Github {
+impl Default for Forge {
     fn default() -> Self {
-        Self { enabled: true }
+        Self { enabled: true, picks: Default::default() }
     }
 }
 
@@ -633,8 +637,9 @@ pub struct Settings {
     pub checkpoints: Checkpoints,
     #[serde(default)]
     pub pane_pins: PanePins,
-    #[serde(default)]
-    pub github: Github,
+    /// Read from `github` too, its name before other forges.
+    #[serde(default, alias = "github")]
+    pub forge: Forge,
     #[serde(default)]
     pub chat_defaults: ChatDefaults,
     #[serde(default)]
@@ -799,6 +804,10 @@ pub fn set_settings(settings: Settings, app: AppHandle) -> Result<Settings, Stri
     // lock now that commands no longer queue on one IPC thread.
     let store = crate::exec::named_lock("settings");
     let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut settings = settings;
+    // Rust writes the picks (`edit_forge_picks`), and the frontend's copy of
+    // them can be older than the file.
+    settings.forge.picks = load_from(&settings_path()).forge.picks;
     save_to(&settings_path(), &settings)?;
     let _ = app.emit("settings://changed", ());
     Ok(settings)
@@ -816,6 +825,21 @@ pub fn forget_default_profile(adapter_id: &str, profile_id: &str) {
     let store = crate::exec::named_lock("settings");
     let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     forget_default_profile_in(&settings_path(), adapter_id, profile_id);
+}
+
+/// Load-modify-save on the forge picks, under the same lock and for the same
+/// reason as `forget_default_profile`. `change` answers whether it changed.
+pub fn edit_forge_picks(
+    change: impl FnOnce(&mut std::collections::BTreeMap<String, String>) -> bool,
+) -> Result<(), String> {
+    let store = crate::exec::named_lock("settings");
+    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let path = settings_path();
+    let mut settings = load_from(&path);
+    if !change(&mut settings.forge.picks) {
+        return Ok(());
+    }
+    save_to(&path, &settings)
 }
 
 /// The same on an explicit path, so the read-back is testable somewhere other
@@ -907,20 +931,23 @@ mod tests {
     }
 
     #[test]
-    fn the_github_kill_switch_defaults_on_and_survives_an_older_settings_file() {
+    fn the_forge_kill_switch_defaults_on_and_survives_an_older_settings_file() {
         // A settings file written before this field existed must not read as
-        // "integration off": the default has to come from `Github::default`,
+        // "integration off": the default has to come from `Forge::default`,
         // not from the absence of the key.
         let p = tmp_file();
         std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
-        assert!(load_from(&p).github.enabled, "a file with no github section is enabled");
+        assert!(load_from(&p).forge.enabled, "a file with no forge section is enabled");
 
         // And an explicit off survives the round trip, or the kill switch would
         // silently re-arm the integration on every restart.
         let mut s = load_from(&p);
-        s.github.enabled = false;
+        s.forge.enabled = false;
         save_to(&p, &s).unwrap();
-        assert!(!load_from(&p).github.enabled);
+        assert!(!load_from(&p).forge.enabled);
+
+        std::fs::write(&p, r#"{"github":{"enabled":false}}"#).unwrap();
+        assert!(!load_from(&p).forge.enabled, "the old github key still switches it off");
         let _ = std::fs::remove_file(&p);
     }
 

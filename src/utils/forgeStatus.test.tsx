@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { AuthState, StatusReport, UnitStatus } from "./forgeTypes";
+import type { AuthState, ForgeAccount, RepoAccount, StatusReport, UnitStatus } from "./forgeTypes";
 import { MIN_GAP_MS, POLL_INTERVAL_MS, PRIMARY_BACKOFF_MS } from "./forgePoll";
 
 // The scheduler driven end to end, with the Tauri boundary as the meter.
@@ -17,19 +17,25 @@ import { MIN_GAP_MS, POLL_INTERVAL_MS, PRIMARY_BACKOFF_MS } from "./forgePoll";
 type Ask = { projectPath: string; branches: string[]; refresh: boolean };
 
 const asks: Ask[] = [];
-let authState: AuthState = { kind: "signedOut" };
-let authStateReads = 0;
+/** Rust's accounts, as `forge_accounts` answers. */
+let accountList: ForgeAccount[] = [];
+let accountReads = 0;
 let viewerReads = 0;
 let viewerAnswer: string | null = null;
+/** What each checkout resolves to. Anything unlisted acts as `personal`. */
+let repoOf: Record<string, RepoAccount> = {};
 /** Queued answers to `github_unit_statuses`, one per call. A value is resolved,
  *  an Error is rejected; running out falls back to an empty report. */
 let answers: (StatusReport | Error)[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
-    if (cmd === "github_auth_state") {
-      authStateReads += 1;
-      return Promise.resolve(authState);
+    if (cmd === "forge_accounts") {
+      accountReads += 1;
+      return Promise.resolve([{ host: "github.com", accounts: accountList }]);
+    }
+    if (cmd === "forge_repo_account") {
+      return Promise.resolve(repoOf[args?.projectPath as string] ?? on("personal"));
     }
     if (cmd === "github_viewer") {
       viewerReads += 1;
@@ -48,11 +54,12 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import {
-  noteForgeAuth,
+  noteForgeAccounts,
   noteForgeEnabled,
   noteWatchedProjects,
   pollNow,
   resetForgeStatusForTests,
+  resolveForgeRepo,
   startForgePolling,
   unitStatus,
   uncoveredUnits,
@@ -62,6 +69,30 @@ import {
 } from "./forgeStatus";
 
 const NOW = 1_785_179_400_000;
+const SIGNED_IN: AuthState = { kind: "signedIn", login: "skarif2" };
+
+function account(id: string, auth: AuthState): ForgeAccount {
+  return {
+    id,
+    provider: "github",
+    baseUrl: "https://github.com",
+    login: auth.kind === "signedIn" ? auth.login : null,
+    label: id,
+    expiresAt: null,
+    auth,
+  };
+}
+
+function on(accountId: string): RepoAccount {
+  return { kind: "account", accountId, host: "github.com", auth: { kind: "signedIn", login: accountId } };
+}
+
+/** One account, `personal`, in this state, told to Rust and the store alike.
+ *  Signed out is no account at all, which is what Rust answers then. */
+function noteAuth(state: AuthState) {
+  accountList = state.kind === "signedOut" ? [] : [account("personal", state)];
+  noteForgeAccounts(accountList);
+}
 
 function status(head: string, over: Partial<UnitStatus> = {}): UnitStatus {
   return {
@@ -100,15 +131,15 @@ const project = (path: string, branches: string[]) => ({
 
 /** Drain the microtask queue, however many awaits deep the work sits. */
 const flush = async () => {
-  for (let i = 0; i < 5; i++) await Promise.resolve();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 
-function signedInWith(projects: WatchedProject[]) {
+function signedInWith(projects: WatchedProject[], accounts = [account("personal", SIGNED_IN)]) {
   // Rust's answer too, not just the store's copy. `startForgePolling` re-reads
-  // the credential at mount and Rust is the authority, so a stub that still
+  // the credentials at mount and Rust is the authority, so a stub that still
   // said "signed out" would quietly undo this line.
-  authState = { kind: "signedIn", login: "skarif2" };
-  noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+  accountList = accounts;
+  noteForgeAccounts(accounts);
   noteForgeEnabled(true);
   noteWatchedProjects(projects);
 }
@@ -116,10 +147,11 @@ function signedInWith(projects: WatchedProject[]) {
 beforeEach(() => {
   asks.length = 0;
   answers = [];
-  authState = { kind: "signedOut" };
-  authStateReads = 0;
+  accountList = [];
+  accountReads = 0;
   viewerReads = 0;
   viewerAnswer = null;
+  repoOf = {};
   resetForgeStatusForTests();
 });
 
@@ -128,20 +160,26 @@ beforeEach(() => {
 // exist at all, and an answer from a credential that is no longer signed in is
 // the one way that gate can be wrong without looking wrong.
 describe("the viewer identity", () => {
+  /** The identity as a checkout acting as `personal` reads it. */
+  const viewer = async () => {
+    await resolveForgeRepo("/a");
+    return forgeViewer("/a");
+  };
+
   it("is learned when a credential becomes usable", async () => {
     viewerAnswer = "skarif2";
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    noteAuth(SIGNED_IN);
     await flush();
-    expect(forgeViewer()).toBe("skarif2");
+    expect(await viewer()).toBe("skarif2");
   });
 
   it("does not survive a sign-out", async () => {
     viewerAnswer = "skarif2";
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    noteAuth(SIGNED_IN);
     await flush();
 
-    noteForgeAuth({ kind: "signedOut" });
-    expect(forgeViewer(), "an identity outlived its credential").toBeNull();
+    noteAuth({ kind: "signedOut" });
+    expect(await viewer(), "an identity outlived its credential").toBeNull();
   });
 
   it("does not survive a rejected credential", async () => {
@@ -149,11 +187,11 @@ describe("the viewer identity", () => {
     // the account it wants back. That is a label. This is an authorisation
     // fact, and only one of the two is allowed to outlive a 401.
     viewerAnswer = "skarif2";
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    noteAuth(SIGNED_IN);
     await flush();
 
-    noteForgeAuth({ kind: "suspect", login: "skarif2" });
-    expect(forgeViewer()).toBeNull();
+    noteAuth({ kind: "suspect", login: "skarif2" });
+    expect(await viewer()).toBeNull();
   });
 
   it("is re-derived when a different account signs in", async () => {
@@ -161,16 +199,16 @@ describe("the viewer identity", () => {
     // have the review gate answering "whose pull request is this?" for an
     // account that is no longer signed in.
     viewerAnswer = "skarif2";
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    noteAuth(SIGNED_IN);
     await flush();
     expect(viewerReads).toBe(1);
 
-    noteForgeAuth({ kind: "signedOut" });
+    noteAuth({ kind: "signedOut" });
     viewerAnswer = "someone-else";
-    noteForgeAuth({ kind: "signedIn", login: "someone-else" });
+    noteAuth({ kind: "signedIn", login: "someone-else" });
     await flush();
 
-    expect(forgeViewer()).toBe("someone-else");
+    expect(await viewer()).toBe("someone-else");
     expect(viewerReads).toBe(2);
   });
 
@@ -178,10 +216,10 @@ describe("the viewer identity", () => {
     // The credential state is re-read on every window focus, and an identity
     // request per focus is a request spent to learn what has not changed.
     viewerAnswer = "skarif2";
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    noteAuth(SIGNED_IN);
     await flush();
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    noteAuth(SIGNED_IN);
+    noteAuth(SIGNED_IN);
     await flush();
     expect(viewerReads).toBe(1);
   });
@@ -201,7 +239,7 @@ describe("the poll schedule", () => {
   });
 
   it("issues no request at all in each paused state", async () => {
-    // The deferred half of the `github.enabled` promise, and the same for the
+    // The deferred half of the `forge.enabled` promise, and the same for the
     // two credential states. A disabled integration that keeps polling is the
     // failure the kill switch exists to prevent.
     const cases: [AuthState, boolean, string][] = [
@@ -212,12 +250,12 @@ describe("the poll schedule", () => {
     for (const [state, enabled, why] of cases) {
       resetForgeStatusForTests();
       asks.length = 0;
-      noteForgeAuth(state);
+      noteAuth(state);
       noteForgeEnabled(enabled);
       noteWatchedProjects([project("/a", ["main"])]);
-      expect(forgePause()).not.toBeNull();
       await pollNow("interval", NOW);
       await pollNow("manual", NOW);
+      expect(forgePause("/a")).not.toBeNull();
       expect(asks.length, `${why} kept polling`).toBe(0);
     }
   });
@@ -226,7 +264,7 @@ describe("the poll schedule", () => {
     // Rust caps the ask, so the order this sends is what decides which units get
     // covered and which come back as `uncovered`. Sending the raw list would
     // make that fall on whatever order the sidebar happened to build.
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
+    noteAuth(SIGNED_IN);
     noteForgeEnabled(true);
     noteWatchedProjects([
       {
@@ -298,7 +336,7 @@ describe("what a tick brings back", () => {
 });
 
 describe("backing off", () => {
-  it("stops every project when the account hits a primary limit", async () => {
+  it("stops every project on the account when it hits a primary limit", async () => {
     // The limit belongs to the token, not the repo, so a second project polling
     // straight through it would keep the block from ever ending.
     signedInWith([project("/a", ["main"]), project("/b", ["main"])]);
@@ -311,6 +349,34 @@ describe("backing off", () => {
 
     await pollNow("interval", NOW + PRIMARY_BACKOFF_MS);
     expect(asks.length).toBe(2);
+  });
+
+  it("keeps one account's rate limit off another account's projects", async () => {
+    // Each token has its own hourly budget, so a limit on one is no reason to
+    // stop a project that polls as the other.
+    repoOf = { "/b": on("work") };
+    signedInWith(
+      [project("/a", ["main"]), project("/b", ["main"])],
+      [account("personal", SIGNED_IN), account("work", { kind: "signedIn", login: "fonn-arif" })],
+    );
+    answers = [forgeError("rateLimited", { rateLimitKind: "primary" }), report([status("main")])];
+    await pollNow("interval", NOW);
+    asks.length = 0;
+
+    await pollNow("interval", NOW + MIN_GAP_MS);
+    expect(asks.map((a) => a.projectPath)).toEqual(["/b"]);
+  });
+
+  it("pauses only the projects of an account whose token was rejected", async () => {
+    repoOf = { "/b": on("work") };
+    signedInWith(
+      [project("/a", ["main"]), project("/b", ["main"])],
+      [account("personal", SIGNED_IN), account("work", { kind: "suspect", login: "fonn-arif" })],
+    );
+    await pollNow("interval", NOW);
+    expect(asks.map((a) => a.projectPath)).toEqual(["/a"]);
+    expect(forgePause("/b")).toBe("suspect");
+    expect(forgePause("/a")).toBeNull();
   });
 
   it("waits out a secondary limit by the seconds the server named", async () => {
@@ -357,12 +423,12 @@ describe("backing off", () => {
     // Rust has already marked the token suspect. Without re-reading it here the
     // scheduler would keep asking every tick and getting the same 401.
     signedInWith([project("/a", ["main"])]);
-    authState = { kind: "suspect", login: "skarif2" };
+    accountList = [account("personal", { kind: "suspect", login: "skarif2" })];
     answers = [forgeError("credentialSuspect")];
     await pollNow("interval", NOW);
 
-    expect(authStateReads).toBe(1);
-    expect(forgePause()).toBe("suspect");
+    expect(accountReads).toBe(1);
+    expect(forgePause("/a")).toBe("suspect");
     asks.length = 0;
     await pollNow("interval", NOW + MIN_GAP_MS);
     expect(asks.length).toBe(0);
@@ -374,12 +440,12 @@ describe("backing off", () => {
     // before building a request, so nothing breaks, it just fails identically
     // every two minutes forever with the scheduler none the wiser.
     signedInWith([project("/a", ["main"])]);
-    authState = { kind: "suspect", login: "skarif2" };
+    accountList = [account("personal", { kind: "suspect", login: "skarif2" })];
     answers = [forgeError("notAuthenticated")];
     await pollNow("interval", NOW);
 
-    expect(authStateReads).toBe(1);
-    expect(forgePause()).toBe("suspect");
+    expect(accountReads).toBe(1);
+    expect(forgePause("/a")).toBe("suspect");
   });
 
   it("recovers on the normal interval after an offline stretch", async () => {
@@ -409,8 +475,8 @@ describe("the background schedule", () => {
     await pollNow("interval", NOW);
     expect(asks.length, "polled while signed out").toBe(0);
 
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
-    await Promise.resolve();
+    noteAuth(SIGNED_IN);
+    await flush();
     expect(asks.length).toBe(1);
 
     // A repeated auth read is not news and must never become a request. Two
@@ -418,8 +484,8 @@ describe("the background schedule", () => {
     // would refuse it anyway); the assertion is on the outcome they share,
     // since the focus tick this fires reads the wall clock and cannot be
     // driven far enough forward to isolate one of them.
-    noteForgeAuth({ kind: "signedIn", login: "skarif2" });
-    await Promise.resolve();
+    noteAuth(SIGNED_IN);
+    await flush();
     expect(asks.length).toBe(1);
   });
 
@@ -430,8 +496,8 @@ describe("the background schedule", () => {
     signedInWith([project("/a", ["main"])]);
     const stop = startForgePolling();
     window.dispatchEvent(new Event("focus"));
-    // Two flushes, not one: a focus tick re-reads the credential before it asks
-    // anything, so the request is one microtask deeper than the poll alone.
+    // A focus tick re-reads the credentials and resolves the checkout before it
+    // asks anything, so the request sits several microtasks deep.
     await flush();
     expect(asks.length).toBe(1);
 
@@ -447,12 +513,12 @@ describe("the background schedule", () => {
     signedInWith([project("/a", ["main"])]);
     const stop = startForgePolling();
     vi.advanceTimersByTime(POLL_INTERVAL_MS);
-    await Promise.resolve();
+    await flush();
     expect(asks.length).toBe(1);
 
     stop();
     vi.advanceTimersByTime(POLL_INTERVAL_MS * 3);
-    await Promise.resolve();
+    await flush();
     expect(asks.length, "the interval outlived its owner").toBe(1);
   });
 });

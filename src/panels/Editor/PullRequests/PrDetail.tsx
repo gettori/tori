@@ -120,7 +120,7 @@ export default function PrDetail(props: {
   const [reviewOpen, setReviewOpen] = createSignal(false);
 
   const reviewing = () => reviewOpen() || pending().length > 0;
-  const selfAuthored = createMemo(() => isSelfAuthored(props.pr, forgeViewer()));
+  const selfAuthored = createMemo(() => isSelfAuthored(props.pr, forgeViewer(props.root)));
 
   // Handing a thread back to the agent that wrote the branch. Which thread is in
   // flight, and how the last attempt on each went. Per thread rather than one

@@ -17,6 +17,7 @@ import {
   CircleDotDashed,
   MessageSquareWarning,
   MessageSquareCheck,
+  UserRound,
   type LucideIcon,
 } from "lucide-solid";
 import Icon from "../Icon/Icon";
@@ -64,10 +65,17 @@ export default function ForgeChipView(props: {
   // The wrapper draws only when something inside it will. A descriptor whose
   // kinds all render nothing must leave no element behind, so an inert unit
   // cannot be hovered, focused, or clicked into a capability it does not have.
-  const anything = () => pr() !== null || props.chip.checks !== null || props.chip.review !== null;
+  const picking = () => props.chip.kind === "pickAccount";
+  const anything = () =>
+    picking() || pr() !== null || props.chip.checks !== null || props.chip.review !== null;
 
   const body = () => (
     <>
+      <Show when={picking()}>
+        <span class={styles.forgeItem} title="Pick which account this repo uses" data-forge-pick>
+          <Icon icon={UserRound} />
+        </span>
+      </Show>
       <Show when={pr()}>
         {(p) => (
           <span

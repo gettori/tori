@@ -41,7 +41,8 @@ export type PanePins = { terminal: PinSide; chat: PinSide; file: PinSide };
 /** The forge integration's kill switch. Separate from signing out on purpose:
  *  signing out also stops the traffic but costs the credential, so quieting a
  *  misbehaving poller would disable PR creation and the review surface too. */
-export type Github = { enabled: boolean };
+/** The forge kill switch, and the account each repo picked (written by Rust). */
+export type ForgeSettings = { enabled: boolean; picks: Record<string, string> };
 /** What a chat reopens with, remembered per project because the right harness,
  *  model and effort are a property of the work rather than of the user. `model`
  *  is the `--model` **value**, never the resolved id the session reports back:
@@ -252,7 +253,7 @@ export type Settings = {
   typography: Typography;
   checkpoints: Checkpoints;
   panePins: PanePins;
-  github: Github;
+  forge: ForgeSettings;
   chatDefaults: ChatDefaults;
   budgets: Budgets;
   editorDefaults: EditorDefaults;
@@ -273,7 +274,7 @@ export type AgentRow = { agent: string; profile: string };
 
 export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: "sway-dark" },
-  github: { enabled: true },
+  forge: { enabled: true, picks: {} },
   typography: {
     uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
     uiFontSize: 15,

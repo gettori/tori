@@ -64,8 +64,8 @@ function stubHost() {
         return "git@github.com:acme/api.git";
       case "git_default_base_branch":
         return "main";
-      case "github_auth_state":
-        return { kind: "signedOut" };
+      case "forge_repo_account":
+        return { kind: "noAccount", host: "github.com" };
       case "git_diff_text":
         return [
           `diff --git a/${a.file} b/${a.file}`,
