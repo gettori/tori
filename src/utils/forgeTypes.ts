@@ -262,6 +262,9 @@ export type ForgeHost = {
   /// Git over https on this host uses the repo's account instead of whatever
   /// credential helper the user has configured.
   gitCredentials: boolean;
+  /// Git outside Tori asks Tori for this host too, through the user's global git
+  /// config. Never on while `gitCredentials` is off.
+  gitEverywhere: boolean;
   /// The account a repo with no pick of its own acts as.
   defaultAccount: string | null;
 };
