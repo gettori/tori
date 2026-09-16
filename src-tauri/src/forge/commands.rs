@@ -18,6 +18,7 @@ use super::model::{
 use super::remote::{self, Remote};
 use super::token::{self, Secret};
 use super::{auth, github, gitlab, now_secs, prs, refresh, status, CreatePr, Forge, ForgeError, MergeMethod};
+use crate::credential::Reach;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -174,8 +175,39 @@ pub fn forge_set_app_id(
 /// the pane renders what Rust stored rather than what it assumed.
 #[tauri::command(async)]
 pub fn forge_set_git_credentials(host: String, enabled: bool) -> Result<Vec<HostView>, ForgeErrorDto> {
-    accounts::update(|file| Ok(accounts::set_git_credentials(file, &host, enabled)))?;
+    accounts::update(|file| {
+        let everywhere = accounts::git_everywhere(file, &host);
+        let changed = accounts::set_git_credentials(file, &host, enabled);
+        // Only a host set everywhere has anything in the global config to take out.
+        if everywhere {
+            sync_global_config(file)?;
+        }
+        Ok(changed)
+    })?;
     Ok(accounts::view(&accounts::load(), auth::state))
+}
+
+/// The second switch: git outside Tori asks Tori for this host too.
+#[tauri::command(async)]
+pub fn forge_set_git_everywhere(host: String, enabled: bool) -> Result<Vec<HostView>, ForgeErrorDto> {
+    accounts::update(|file| {
+        let changed = accounts::set_git_everywhere(file, &host, enabled);
+        sync_global_config(file)?;
+        Ok(changed)
+    })?;
+    Ok(accounts::view(&accounts::load(), auth::state))
+}
+
+// Inside the update, so a global config git could not write leaves the switch
+// where it was rather than showing a state git does not have.
+fn sync_global_config(file: &AccountsFile) -> Result<(), ForgeError> {
+    crate::credential::sync_global_config(file).map_err(|message| ForgeError::Transport { message })
+}
+
+/// The global git config brought in line with the accounts as they are now,
+/// under the lock the switches take, so it cannot undo one flipped meanwhile.
+pub fn resync_global_config() {
+    let _ = accounts::update(|file| sync_global_config(file));
 }
 
 #[tauri::command(async)]
@@ -375,6 +407,8 @@ fn add_signed_in(
 pub fn forge_remove_account(account_id: String) -> Result<(), ForgeErrorDto> {
     auth::sign_out(&account_id)?;
     accounts::update(|file| Ok(accounts::remove_account(file, &account_id)))?;
+    // The removal stands either way. Git asks the user on a host with no account.
+    resync_global_config();
     // A pick left behind names no account, so resolution already ignores it.
     let _ = crate::settings::edit_forge_picks(|picks| accounts::drop_picks_for(picks, &account_id));
     Ok(())
@@ -563,16 +597,25 @@ pub fn git_credential(project_path: &str, host: &str) -> Option<(String, String)
 
 /// The same from the host and path git hands its helper, for git that runs
 /// outside any checkout Tori registered, a clone included.
-pub fn git_credential_at(host: &str, path: &str) -> Option<(String, String)> {
+pub fn git_credential_at(host: &str, path: &str, reach: Reach) -> Option<(String, String)> {
     let file = accounts::load();
-    let id = git_account_at(&file, &crate::settings::get_settings().forge.picks, host, path)?;
+    let id = git_account_at(&file, &crate::settings::get_settings().forge.picks, host, path, reach)?;
     git_login(&file, &id)
 }
 
-fn git_account_at(file: &AccountsFile, picks: &BTreeMap<String, String>, host: &str, path: &str) -> Option<String> {
+fn git_account_at(
+    file: &AccountsFile,
+    picks: &BTreeMap<String, String>,
+    host: &str,
+    path: &str,
+    reach: Reach,
+) -> Option<String> {
     let remote = remote::parse(&format!("https://{host}/{path}")).ok()?;
     // `parse` drops a port, and a host on another port is another server.
     if remote.host != remote::canonical_host(host) {
+        return None;
+    }
+    if reach == Reach::Everywhere && !accounts::git_everywhere(file, &remote.host) {
         return None;
     }
     git_account(file, picks, &remote)
@@ -1457,16 +1500,17 @@ mod tests {
         let picks = BTreeMap::new();
         let path = "skarif2/masterchef.git";
 
-        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path), None, "the switch is off");
+        let tori = Reach::Tori;
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), None, "the switch is off");
         accounts::set_git_credentials(&mut file, "gitlab.com", true);
-        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path), Some(arif));
-        assert_eq!(git_account_at(&file, &picks, "gitlab.com:8443", path), None);
-        assert_eq!(git_account_at(&file, &picks, "gitlab.com", ""), None);
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), Some(arif));
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com:8443", path, tori), None);
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", "", tori), None);
 
         let work = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "fonn-arif", None).unwrap();
-        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path), None, "two accounts, no pick, no default");
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), None, "two accounts, no pick, no default");
         let picks = BTreeMap::from([("gitlab.com/skarif2/masterchef".to_string(), work.clone())]);
-        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path), Some(work));
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path, tori), Some(work));
     }
 
     #[test]

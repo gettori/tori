@@ -77,6 +77,10 @@ pub struct HostRecord {
     /// away from a helper that was already doing it.
     #[serde(default)]
     pub git_credentials: bool,
+    /// Git outside Tori asks Tori for this host too, through the user's global
+    /// git config.
+    #[serde(default)]
+    pub git_everywhere: bool,
     /// The account a repo with no pick of its own acts as.
     #[serde(default)]
     pub default_account: Option<String>,
@@ -399,6 +403,28 @@ pub fn set_git_credentials(file: &mut AccountsFile, host: &str, on: bool) -> boo
         return false;
     }
     record.git_credentials = on;
+    // Off takes the second switch with it, so turning this back on later does
+    // not quietly edit the user's global config again.
+    record.git_everywhere &= on;
+    true
+}
+
+/// Only on top of the host's own switch, which is what makes Tori answer at all.
+pub fn git_everywhere(file: &AccountsFile, host: &str) -> bool {
+    git_credentials(file, host) && file.hosts.get(host).is_some_and(|r| r.git_everywhere)
+}
+
+pub fn set_git_everywhere(file: &mut AccountsFile, host: &str, on: bool) -> bool {
+    if on && !git_credentials(file, host) {
+        return false;
+    }
+    let Some(record) = file.hosts.get_mut(host) else {
+        return false;
+    };
+    if record.git_everywhere == on {
+        return false;
+    }
+    record.git_everywhere = on;
     true
 }
 
@@ -462,6 +488,7 @@ pub struct HostView {
     pub host: String,
     pub accounts: Vec<AccountView>,
     pub git_credentials: bool,
+    pub git_everywhere: bool,
     pub default_account: Option<String>,
 }
 
@@ -477,6 +504,7 @@ pub fn view(file: &AccountsFile, auth: impl Fn(&str) -> AuthState) -> Vec<HostVi
             host: host.clone(),
             accounts: record.accounts.iter().map(|a| account_view(a, &auth)).collect(),
             git_credentials: git_credentials(file, host),
+            git_everywhere: git_everywhere(file, host),
             default_account: default_account(record),
         })
         .collect()

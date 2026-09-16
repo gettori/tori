@@ -15,13 +15,15 @@
 // Git in a process Tori spawned (a terminal tab, an agent) has no op. There
 // `spawn_env` turns `useHttpPath` on, and the path names the repo the way a
 // remote does, so the same per-repo account answers with nothing registered.
+// Git anywhere else gets the same entries from `sync_global_config`, and finds
+// the socket through the bridge file `publish` writes.
 //
 // It runs as this same binary re-exec'd, like `askpass`, and speaks over the
 // askpass socket with the same per-session token: one door, authenticated once.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
@@ -37,6 +39,21 @@ pub const ENV_SOCK: &str = "TORI_CREDENTIAL_SOCK";
 pub const ENV_TOKEN: &str = "TORI_CREDENTIAL_TOKEN";
 
 static SOCKET: OnceLock<(String, String)> = OnceLock::new();
+
+/// How far a credential request reaches, set by the token it carried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reach {
+    /// Tori's own ops and the processes it spawns: hosts with the push switch on.
+    Tori,
+    /// Git anywhere, through the bridge file: hosts set to answer git everywhere.
+    Everywhere,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BridgeFile {
+    sock: String,
+    token: String,
+}
 
 /// Which checkout each in-flight bridged op belongs to.
 fn ops() -> &'static Mutex<HashMap<String, String>> {
@@ -105,9 +122,49 @@ fn serves(repo: &str, remote: &str) -> bool {
             .unwrap_or(false)
 }
 
-/// Called once the askpass socket is up, so spawned processes have one to ask.
-pub fn publish(sock: &Path, token: &str) {
-    let _ = SOCKET.set((sock.to_string_lossy().into_owned(), token.to_string()));
+/// Called once the askpass socket is up, so spawned processes have one to ask,
+/// and git run from outside Tori finds it in the bridge file.
+pub fn publish(sock: &Path, spawned_token: &str, file_token: &str) {
+    let sock = sock.to_string_lossy().into_owned();
+    if let Err(e) = write_bridge(&bridge_path(), &sock, file_token) {
+        eprintln!("tori: credential bridge file not written: {e}");
+    }
+    let _ = SOCKET.set((sock, spawned_token.to_string()));
+}
+
+/// Called at exit. Only a file naming this instance's socket is removed, so
+/// quitting one of two running copies leaves the other reachable.
+pub fn unpublish() {
+    let path = bridge_path();
+    if let (Some((sock, _)), Some((named, _))) = (SOCKET.get(), socket_in_file(&path)) {
+        if *sock == named {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+fn bridge_path() -> PathBuf {
+    dirs::home_dir().unwrap_or_default().join(".config/tori/askpass.json")
+}
+
+fn write_bridge(path: &Path, sock: &str, token: &str) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    let _ = std::fs::remove_file(&tmp);
+    // Created 0600 rather than narrowed after, so the token is never readable
+    // by anyone else, not even between two calls.
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)?;
+    let text = serde_json::to_string(&BridgeFile { sock: sock.to_string(), token: token.to_string() })?;
+    file.write_all(text.as_bytes())?;
+    std::fs::rename(tmp, path)
+}
+
+fn socket_in_file(path: &Path) -> Option<(String, String)> {
+    let bridge: BridgeFile = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    Some((bridge.sock, bridge.token))
 }
 
 /// Environment for a process Tori spawns for the user, pointing git at Tori's
@@ -130,18 +187,103 @@ fn git_env(file: &AccountsFile, helper: &str, sock: &str, token: &str, inherited
     // Numbered on from whatever list the process inherited, which renumbering
     // from zero would silently cut short.
     let mut n = inherited;
-    for host in hosts {
-        let url = format!("credential.https://{host}");
-        // An empty value resets the helper list, so an osxkeychain entry for this
-        // host cannot answer ahead of the account the user picked.
-        for (key, value) in [("helper", ""), ("helper", helper), ("useHttpPath", "true")] {
-            env.push((format!("GIT_CONFIG_KEY_{n}"), format!("{url}.{key}")));
-            env.push((format!("GIT_CONFIG_VALUE_{n}"), value.to_string()));
-            n += 1;
-        }
+    for (key, value) in hosts.into_iter().flat_map(|host| helper_entries(host, helper)) {
+        env.push((format!("GIT_CONFIG_KEY_{n}"), key));
+        env.push((format!("GIT_CONFIG_VALUE_{n}"), value));
+        n += 1;
     }
     env.push(("GIT_CONFIG_COUNT".to_string(), n.to_string()));
     env
+}
+
+fn helper_entries(host: &str, helper: &str) -> [(String, String); 3] {
+    let url = format!("credential.https://{host}");
+    // An empty value resets the helper list, so an osxkeychain entry for this
+    // host cannot answer ahead of the account the user picked.
+    [
+        (format!("{url}.helper"), String::new()),
+        (format!("{url}.helper"), helper.to_string()),
+        (format!("{url}.useHttpPath"), "true".to_string()),
+    ]
+}
+
+/// Bring the user's global git config in line with the hosts set to answer git
+/// everywhere. Their entries live in a file of Tori's own that the global config
+/// includes, so turning the last one off never has to tell Tori's values apart
+/// from the user's.
+pub fn sync_global_config(file: &AccountsFile) -> Result<(), String> {
+    let hosts: Vec<&str> =
+        file.hosts.keys().map(String::as_str).filter(|host| accounts::git_everywhere(file, host)).collect();
+    let home = dirs::home_dir().unwrap_or_default();
+    sync_config(&hosts, &helper_config(), &home.join(".config/tori/gitconfig"), &global_config_path(&home))
+}
+
+fn global_config_path(home: &Path) -> PathBuf {
+    if let Some(path) = std::env::var_os("GIT_CONFIG_GLOBAL") {
+        return path.into();
+    }
+    let dotfile = home.join(".gitconfig");
+    let xdg = std::env::var_os("XDG_CONFIG_HOME").map_or_else(|| home.join(".config"), PathBuf::from).join("git/config");
+    if !dotfile.exists() && xdg.exists() {
+        xdg
+    } else {
+        dotfile
+    }
+}
+
+fn sync_config(hosts: &[&str], helper: &str, own: &Path, global: &Path) -> Result<(), String> {
+    let include = own.to_string_lossy();
+    let included = match git_config_exit(global, &["--fixed-value", "--get-all", "include.path", &include])? {
+        0 => true,
+        1 => false,
+        code => return Err(format!("git config could not read {} (exit {code})", global.display())),
+    };
+    if hosts.is_empty() {
+        if included {
+            git_config_exit(global, &["--fixed-value", "--unset-all", "include.path", &include])?;
+        }
+        let _ = std::fs::remove_file(own);
+        return Ok(());
+    }
+
+    let tmp = own.with_extension("tmp");
+    let _ = std::fs::remove_file(&tmp);
+    if let Some(parent) = own.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    for (key, value) in hosts.iter().flat_map(|host| helper_entries(host, helper)) {
+        if git_config_exit(&tmp, &["--add", &key, &value])? != 0 {
+            return Err(format!("git config could not write {}", tmp.display()));
+        }
+    }
+    std::fs::rename(&tmp, own).map_err(|e| e.to_string())?;
+
+    if !included {
+        // Appended by hand: `git config --add` would join an `[include]` already
+        // higher in the file, above the plain helpers Tori's reset must follow,
+        // and `store` there would save Tori's token in plain text.
+        let ends_open = std::fs::read(global).is_ok_and(|text| text.last().is_some_and(|b| *b != b'\n'));
+        let quoted = include.replace('\\', "\\\\").replace('"', "\\\"");
+        let section = format!("{}[include]\n\tpath = \"{quoted}\"\n", if ends_open { "\n" } else { "" });
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(global)
+            .and_then(|mut f| f.write_all(section.as_bytes()))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn git_config_exit(file: &Path, args: &[&str]) -> Result<i32, String> {
+    let out = Command::new("git")
+        .arg("config")
+        .arg("--file")
+        .arg(file)
+        .args(args)
+        .output()
+        .map_err(|e| format!("git could not run: {e}"))?;
+    Ok(out.status.code().unwrap_or(-1))
 }
 
 fn lone_remote(repo: &str) -> Option<String> {
@@ -171,11 +313,12 @@ fn quoted(s: &str) -> String {
 /// Nothing is the fail-closed answer, and it fails *soft*: git moves on to its
 /// next way of asking, the askpass dialog for Tori's own ops and the terminal
 /// prompt anywhere else.
-pub fn answer(op_id: &str, host: &str, path: &str) -> Option<String> {
+pub fn answer(op_id: &str, host: &str, path: &str, reach: Reach) -> Option<String> {
     answer_with(
         op_id,
         host,
         path,
+        reach,
         crate::forge::commands::git_credential,
         crate::forge::commands::git_credential_at,
     )
@@ -185,15 +328,21 @@ fn answer_with(
     op_id: &str,
     host: &str,
     path: &str,
+    reach: Reach,
     by_checkout: impl Fn(&str, &str) -> Option<(String, String)>,
-    by_path: impl Fn(&str, &str) -> Option<(String, String)>,
+    by_path: impl Fn(&str, &str, Reach) -> Option<(String, String)>,
 ) -> Option<String> {
-    let repo = ops().lock().ok()?.get(op_id).cloned();
+    // Op ids are guessable, and an op's host need not be set everywhere, so the
+    // bridge file's token never goes through one.
+    let repo = match reach {
+        Reach::Tori => ops().lock().ok()?.get(op_id).cloned(),
+        Reach::Everywhere => None,
+    };
     let (username, token) = match repo {
         // The host git asked for, not the one the op registered under: a
         // redirect to somewhere else must not be handed this account's token.
         Some(repo) => by_checkout(&repo, host)?,
-        None => by_path(host, path)?,
+        None => by_path(host, path, reach)?,
     };
     Some(format!("username={username}\npassword={token}\n"))
 }
@@ -216,10 +365,13 @@ pub fn run_helper() -> i32 {
     }
     // Askpass's pair first: an op id only exists on the socket that pair names,
     // and a Tori started from Tori's terminal inherits the other pair as well.
-    let Some((sock, token)) = socket_in_env(crate::askpass::ENV_SOCK, crate::askpass::ENV_TOKEN)
-        .or_else(|| socket_in_env(ENV_SOCK, ENV_TOKEN))
-    else {
-        return 1;
+    let in_env = socket_in_env(crate::askpass::ENV_SOCK, crate::askpass::ENV_TOKEN)
+        .or_else(|| socket_in_env(ENV_SOCK, ENV_TOKEN));
+    let from_file = in_env.is_none();
+    // No file is Tori being closed, and so is a file whose socket is gone after
+    // a crash: git asks the user, with nothing to report.
+    let Some((sock, token)) = in_env.or_else(|| socket_in_file(&bridge_path())) else {
+        return 0;
     };
     let op_id = std::env::var(crate::askpass::ENV_OP).unwrap_or_default();
     let host = field(&input, "host").unwrap_or_default();
@@ -234,6 +386,7 @@ pub fn run_helper() -> i32 {
             }
             0
         }
+        Err(_) if from_file => 0,
         Err(e) => {
             // Diagnostics to stderr only; stdout is the answer and nothing else.
             eprintln!("tori credential: {e}");
@@ -280,26 +433,40 @@ mod tests {
     }
 
     #[test]
+    fn git_outside_tori_finds_the_socket_in_a_file_only_its_owner_can_read() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("tori-bridge-{}", std::process::id()));
+        let path = dir.join("askpass.json");
+        write_bridge(&path, "/tmp/tori-akp-1/s", "credential-token").unwrap();
+
+        assert_eq!(socket_in_file(&path), Some(("/tmp/tori-akp-1/s".to_string(), "credential-token".to_string())));
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(socket_in_file(&path), None);
+    }
+
+    #[test]
     fn a_request_is_read_by_key_and_one_naming_no_repo_answers_nothing() {
         let input = "protocol=https\nhost=github.com\npath=skarif2/tori.git\n\n";
         assert_eq!(field(input, "host").as_deref(), Some("github.com"));
         assert_eq!(field(input, "username"), None);
-        assert_eq!(answer("op-nobody", "github.com", ""), None);
+        assert_eq!(answer("op-nobody", "github.com", "", Reach::Tori), None);
     }
 
     #[test]
     fn git_with_no_op_is_answered_from_the_path_and_a_registered_op_still_wins() {
         let by_checkout = |_: &str, _: &str| Some(("x-access-token".to_string(), "from-checkout".to_string()));
-        let by_path = |_: &str, _: &str| Some(("oauth2".to_string(), "from-path".to_string()));
+        let by_path = |_: &str, _: &str, _: Reach| Some(("oauth2".to_string(), "from-path".to_string()));
         let path = "skarif2/masterchef.git";
 
         assert_eq!(
-            answer_with("", "gitlab.com", path, by_checkout, by_path).as_deref(),
+            answer_with("", "gitlab.com", path, Reach::Tori, by_checkout, by_path).as_deref(),
             Some("username=oauth2\npassword=from-path\n")
         );
         let _op = register("op-registered", "/repos/masterchef");
         assert_eq!(
-            answer_with("op-registered", "gitlab.com", path, by_checkout, by_path).as_deref(),
+            answer_with("op-registered", "gitlab.com", path, Reach::Tori, by_checkout, by_path).as_deref(),
             Some("username=x-access-token\npassword=from-checkout\n")
         );
     }

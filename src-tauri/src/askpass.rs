@@ -200,6 +200,9 @@ pub struct AskpassInner {
     // Handed to processes Tori spawns for the user, where anything running can
     // read it, so it gets a credential and never raises a dialog.
     credential_token: String,
+    // Written to the bridge file, which any process of the user's can read, so
+    // it reaches only hosts set to answer git everywhere.
+    everywhere_token: String,
     sock_path: PathBuf,
     dir: PathBuf,
     timeout: Duration,
@@ -216,6 +219,9 @@ impl AskpassInner {
     }
     pub fn credential_token(&self) -> &str {
         &self.credential_token
+    }
+    pub fn everywhere_token(&self) -> &str {
+        &self.everywhere_token
     }
 }
 
@@ -270,6 +276,7 @@ fn start_with(
     let inner = Arc::new(AskpassInner {
         token,
         credential_token: random_token(),
+        everywhere_token: random_token(),
         sock_path,
         dir,
         timeout,
@@ -312,15 +319,20 @@ fn handle_request(inner: &Arc<AskpassInner>, stream: &UnixStream) -> Option<Stri
 
     // Constant-ish token check. A private 0700 dir already gates access; the
     // token is defense-in-depth against a same-user process guessing the path.
-    let full = req.token.as_bytes() == inner.token.as_bytes();
-    if !full && req.token.as_bytes() != inner.credential_token.as_bytes() {
+    let token = req.token.as_bytes();
+    let full = token == inner.token.as_bytes();
+    let reach = if full || token == inner.credential_token.as_bytes() {
+        crate::credential::Reach::Tori
+    } else if token == inner.everywhere_token.as_bytes() {
+        crate::credential::Reach::Everywhere
+    } else {
         return None;
-    }
+    };
     // A credential is answered from the op's checkout or the repo path, with no
     // dialog and no user in the loop. Empty means Tori has nothing for it and
     // git falls through to the prompts below.
     if req.kind == CREDENTIAL {
-        return Some(crate::credential::answer(&req.op_id, &req.host, &req.path).unwrap_or_default());
+        return Some(crate::credential::answer(&req.op_id, &req.host, &req.path, reach).unwrap_or_default());
     }
     if !full {
         return None;
