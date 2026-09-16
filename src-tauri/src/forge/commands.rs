@@ -163,13 +163,27 @@ pub fn forge_set_app_id(
     Ok(routes_in(&file, provider, &base_url, &host))
 }
 
+/// The per-host switch for git over https, answering with the refreshed list so
+/// the pane renders what Rust stored rather than what it assumed.
+#[tauri::command(async)]
+pub fn forge_set_git_credentials(host: String, enabled: bool) -> Result<Vec<HostView>, ForgeErrorDto> {
+    accounts::update(|file| Ok(accounts::set_git_credentials(file, &host, enabled)))?;
+    Ok(accounts::view(&accounts::load(), auth::state))
+}
+
 fn routes_in(
     file: &AccountsFile,
     provider: Provider,
     base_url: &str,
     host: &str,
 ) -> SignInRoutes {
-    accounts::sign_in_routes(provider, base_url, host, client_id_for(file, provider, host).as_deref())
+    accounts::sign_in_routes(
+        provider,
+        base_url,
+        host,
+        client_id_for(file, provider, host).as_deref(),
+        accounts::git_credentials(file, host),
+    )
 }
 
 /// The OAuth application a host's browser sign-in would use.
@@ -505,6 +519,47 @@ pub fn pr_head_ref(project_path: &str, number: u64) -> String {
         }
     });
     head_ref(provider.unwrap_or(Provider::Github), number)
+}
+
+/// Whether git in this checkout should ask Sway for `host`'s credential.
+pub fn serves_git(project_path: &str, host: &str) -> bool {
+    let Ok(remote) = remote_of(project_path) else {
+        return false;
+    };
+    remote.host == host
+        && accounts::serves_git(
+            &accounts::load(),
+            &crate::settings::get_settings().forge.picks,
+            &remote,
+        )
+}
+
+/// The account git should push and fetch as here, spelled the way git's helper
+/// protocol wants it. `None` leaves git to the user's own helpers.
+pub fn git_credential(project_path: &str, host: &str) -> Option<(String, String)> {
+    let remote = remote_of(project_path).ok()?;
+    let file = accounts::load();
+    let picks = crate::settings::get_settings().forge.picks;
+    if remote.host != host || !accounts::serves_git(&file, &picks, &remote) {
+        return None;
+    }
+    let Resolution::Account(id) = accounts::resolve(&file, &picks, &remote) else {
+        return None;
+    };
+    let (host, account) = accounts::find(&file, &id)?;
+    // The same renewal every API call goes through, so a push at the end of a
+    // long session does not fail on a token that expired an hour into it.
+    let token = fresh_token(&file, host, account)?;
+    Some((git_username(account.provider).to_string(), token))
+}
+
+/// The username each provider expects beside a token over https. Neither reads
+/// it as an identity (the token carries that), but both require one.
+fn git_username(provider: Provider) -> &'static str {
+    match provider {
+        Provider::Github => "x-access-token",
+        Provider::Gitlab => "oauth2",
+    }
 }
 
 /// Runs a forge call, renewing the credential once when the host rejects it.

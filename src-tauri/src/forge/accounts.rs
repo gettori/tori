@@ -66,6 +66,11 @@ pub struct HostRecord {
     // means token paste is the only route.
     #[serde(default)]
     pub app_id: Option<String>,
+    /// Git over https on this host uses the repo's account instead of whatever
+    /// credential helper the user has. Off by default: it takes an operation
+    /// away from a helper that was already doing it.
+    #[serde(default)]
+    pub git_credentials: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -315,17 +320,53 @@ pub fn set_app_id(file: &mut AccountsFile, host: &str, app_id: &str) -> bool {
     true
 }
 
+/// Whether git on this host should ask Sway for a credential.
+///
+/// An account is part of the answer rather than a separate check: the switch
+/// exists to hand git *an account's* token, so a host with none cannot be on,
+/// which is also what turns it off when the last account goes.
+pub fn git_credentials(file: &AccountsFile, host: &str) -> bool {
+    file.hosts.get(host).is_some_and(|r| r.git_credentials && !r.accounts.is_empty())
+}
+
+pub fn set_git_credentials(file: &mut AccountsFile, host: &str, on: bool) -> bool {
+    let Some(record) = file.hosts.get_mut(host) else {
+        return false;
+    };
+    if record.git_credentials == on {
+        return false;
+    }
+    record.git_credentials = on;
+    true
+}
+
+/// Whether git in this checkout should ask Sway: the host's switch is on and
+/// the repo acts as exactly one account on it. An unanswered pick falls back to
+/// the user's own helpers rather than to a prompt.
+pub fn serves_git(file: &AccountsFile, picks: &BTreeMap<String, String>, remote: &Remote) -> bool {
+    git_credentials(file, &remote.host) && matches!(resolve(file, picks, remote), Resolution::Account(_))
+}
+
 pub fn sign_in_routes(
     provider: Provider,
     base_url: &str,
     host: &str,
     client_id: Option<&str>,
+    git_credentials: bool,
 ) -> SignInRoutes {
-    let (scope, token_url) = match provider {
-        Provider::Github => ("repo", format!("{base_url}/settings/tokens/new?scopes=repo&description=Sway")),
-        Provider::Gitlab => {
-            ("api", format!("{base_url}/-/user_settings/personal_access_tokens?name=Sway&scopes=api"))
-        }
+    // GitHub's `repo` already carries push; GitLab splits the API from the git
+    // protocol, so a token that has to serve both says so.
+    let scopes: Vec<&str> = match (provider, git_credentials) {
+        (Provider::Github, _) => vec!["repo"],
+        (Provider::Gitlab, false) => vec!["api"],
+        (Provider::Gitlab, true) => vec!["api", "write_repository"],
+    };
+    let token_url = match provider {
+        Provider::Github => format!("{base_url}/settings/tokens/new?scopes=repo&description=Sway"),
+        Provider::Gitlab => format!(
+            "{base_url}/-/user_settings/personal_access_tokens?name=Sway&scopes={}",
+            scopes.join(",")
+        ),
     };
     SignInRoutes {
         host: host.to_string(),
@@ -335,7 +376,7 @@ pub fn sign_in_routes(
         // per instance, so any host with an id has one.
         device_flow: client_id.is_some_and(|id| !id.trim().is_empty())
             && (provider == Provider::Gitlab || host == GITHUB_COM),
-        scopes: vec![scope.to_string()],
+        scopes: scopes.iter().map(|s| s.to_string()).collect(),
         token_url,
         app_id: match provider {
             Provider::Gitlab => client_id.map(|id| id.to_string()).filter(|id| !id.is_empty()),
@@ -357,6 +398,7 @@ pub struct AccountView {
 pub struct HostView {
     pub host: String,
     pub accounts: Vec<AccountView>,
+    pub git_credentials: bool,
 }
 
 pub fn account_view(account: &Account, auth: impl Fn(&str) -> AuthState) -> AccountView {
@@ -369,6 +411,7 @@ pub fn view(file: &AccountsFile, auth: impl Fn(&str) -> AuthState) -> Vec<HostVi
         .map(|(host, record)| HostView {
             host: host.clone(),
             accounts: record.accounts.iter().map(|a| account_view(a, &auth)).collect(),
+            git_credentials: git_credentials(file, host),
         })
         .collect()
 }
@@ -509,7 +552,7 @@ mod tests {
 
     #[test]
     fn github_com_offers_the_browser_and_any_other_host_only_a_token() {
-        let github = sign_in_routes(Provider::Github, GH, GITHUB_COM, Some("Ov23test"));
+        let github = sign_in_routes(Provider::Github, GH, GITHUB_COM, Some("Ov23test"), false);
         assert!(github.device_flow);
         assert_eq!(github.scopes, ["repo"]);
         assert!(github.token_url.starts_with("https://github.com/settings/tokens/new"));
@@ -517,13 +560,51 @@ mod tests {
         // Sway's GitHub application covers github.com alone, so an enterprise
         // server has no browser flow even with an id in hand.
         let ghe =
-            sign_in_routes(Provider::Github, "https://ghe.example.com", "ghe.example.com", Some("Ov23test"));
+            sign_in_routes(Provider::Github, "https://ghe.example.com", "ghe.example.com", Some("Ov23test"), false);
         assert!(!ghe.device_flow);
         assert!(ghe.token_url.starts_with("https://ghe.example.com/"));
 
-        let gitlab = sign_in_routes(Provider::Gitlab, "https://gitlab.com", GITLAB_COM, None);
+        let gitlab = sign_in_routes(Provider::Gitlab, "https://gitlab.com", GITLAB_COM, None, false);
         assert!(!gitlab.device_flow);
         assert_eq!(gitlab.scopes, ["api"]);
+    }
+
+    #[test]
+    fn the_git_switch_is_off_by_default_and_goes_with_the_last_account() {
+        let mut file = AccountsFile::default();
+        let host = "gitlab.example.com";
+        let base = "https://gitlab.example.com";
+        let first = add_account(&mut file, Provider::Gitlab, base, host, "arif", None).unwrap();
+        assert!(!git_credentials(&file, host), "git keeps its own helpers until asked");
+
+        assert!(set_git_credentials(&mut file, host, true));
+        assert!(git_credentials(&file, host));
+        let text = serde_json::to_string(&file).unwrap();
+        assert_eq!(serde_json::from_str::<AccountsFile>(&text).unwrap(), file);
+
+        // On with the switch, the token has to serve the git protocol as well
+        // as the API, so the paste screen asks for the scope that does.
+        let routes = sign_in_routes(Provider::Gitlab, base, host, None, git_credentials(&file, host));
+        assert_eq!(routes.scopes, ["api", "write_repository"]);
+        assert!(routes.token_url.contains("scopes=api,write_repository"));
+
+        let remote = remote::parse("https://gitlab.example.com/acme/widgets.git").unwrap();
+        let mut picks = BTreeMap::new();
+        assert!(serves_git(&file, &picks, &remote), "one account, so git can be answered");
+
+        // An unanswered pick is not an account to act as, so git keeps whatever
+        // helper it had rather than being handed an arbitrary one.
+        let second = add_account(&mut file, Provider::Gitlab, base, host, "arif-work", None).unwrap();
+        assert!(!serves_git(&file, &picks, &remote));
+        picks.insert(remote.key(), second.clone());
+        assert!(serves_git(&file, &picks, &remote));
+
+        // The last account leaving takes the switch with it: there is nothing
+        // left to hand git, so the flag cannot read as on.
+        remove_account(&mut file, &first);
+        remove_account(&mut file, &second);
+        assert!(!git_credentials(&file, host));
+        assert!(!serves_git(&file, &picks, &remote));
     }
 
     #[test]
@@ -534,7 +615,7 @@ mod tests {
         let host = "git.example.com";
         let base = "https://git.example.com";
         let routes = |file: &AccountsFile| {
-            sign_in_routes(Provider::Gitlab, base, host, app_id(file, host).as_deref())
+            sign_in_routes(Provider::Gitlab, base, host, app_id(file, host).as_deref(), false)
         };
         assert!(!routes(&file).device_flow);
 
