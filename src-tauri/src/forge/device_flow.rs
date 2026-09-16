@@ -45,6 +45,9 @@ const SCOPE: &str = "repo";
 /// would widen every sign-in for a feature that is off.
 const GITLAB_SCOPE: &str = "api";
 
+pub const ACCESS_DENIED: &str = "access_denied";
+pub const EXPIRED_TOKEN: &str = "expired_token";
+
 const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 
@@ -177,8 +180,8 @@ pub fn classify_poll(body: &str, current_interval_secs: u64) -> Result<PollOutco
         Some("slow_down") => Ok(PollOutcome::SlowDown {
             next_interval_secs: named.unwrap_or(current_interval_secs + SLOW_DOWN_BUMP_SECS),
         }),
-        Some("access_denied") => Ok(PollOutcome::Denied),
-        Some("expired_token") => Ok(PollOutcome::Expired),
+        Some(ACCESS_DENIED) => Ok(PollOutcome::Denied),
+        Some(EXPIRED_TOKEN) => Ok(PollOutcome::Expired),
         // An unknown error must not read as "keep waiting": that would spin
         // until the code expired with nothing to show for it.
         Some(other) => Err(ForgeError::Api {

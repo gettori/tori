@@ -17,7 +17,7 @@ use super::model::{
 };
 use super::remote::{self, Remote};
 use super::token::{self, Secret};
-use super::{auth, github, gitlab, prs, refresh, status, CreatePr, Forge, ForgeError, MergeMethod};
+use super::{auth, github, gitlab, now_secs, prs, refresh, status, CreatePr, Forge, ForgeError, MergeMethod};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -116,8 +116,9 @@ impl From<ForgeError> for ForgeErrorDto {
 pub enum PollReport {
     Authorized { account_id: String, login: String },
     Pending { next_interval_secs: u64 },
-    Denied,
-    Expired,
+    /// `code` is the server's own `error` value, so the UI can quote the host.
+    Denied { code: String },
+    Expired { code: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -168,6 +169,15 @@ pub fn forge_set_app_id(
 #[tauri::command(async)]
 pub fn forge_set_git_credentials(host: String, enabled: bool) -> Result<Vec<HostView>, ForgeErrorDto> {
     accounts::update(|file| Ok(accounts::set_git_credentials(file, &host, enabled)))?;
+    Ok(accounts::view(&accounts::load(), auth::state))
+}
+
+#[tauri::command(async)]
+pub fn forge_set_default_account(
+    host: String,
+    account_id: Option<String>,
+) -> Result<Vec<HostView>, ForgeErrorDto> {
+    accounts::update(|file| accounts::set_default_account(file, &host, account_id.as_deref()))?;
     Ok(accounts::view(&accounts::load(), auth::state))
 }
 
@@ -276,11 +286,11 @@ pub fn forge_device_poll(
         }
         PollOutcome::Denied => {
             state.0.lock().unwrap().take();
-            PollReport::Denied
+            PollReport::Denied { code: device_flow::ACCESS_DENIED.into() }
         }
         PollOutcome::Expired => {
             state.0.lock().unwrap().take();
-            PollReport::Expired
+            PollReport::Expired { code: device_flow::EXPIRED_TOKEN.into() }
         }
     })
 }
@@ -312,13 +322,6 @@ pub fn forge_add_token(
         None,
         account_id.as_deref(),
     )?)
-}
-
-fn now_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 /// The wall-clock deadline for a token that expires, from the server's own "in
@@ -1006,7 +1009,7 @@ pub fn restore_at_startup(enabled: bool) {
         log_startup(&format!("forge: {e}"));
     }
     let file = accounts::load();
-    let mut unnamed = Vec::new();
+    let mut probe = Vec::new();
     let entries = accounts::all_accounts(&file)
         .map(|(_, account)| {
             let token = token::load_secret(&account.id)
@@ -1015,18 +1018,20 @@ pub fn restore_at_startup(enabled: bool) {
                     None
                 })
                 .map(|secret| secret.access_token);
-            if token.is_some() && account.login.is_none() {
-                unnamed.push(account.id.clone());
+            let rejected = account.rejected_at.is_some();
+            if token.is_some() && (account.login.is_none() || rejected) {
+                probe.push(account.id.clone());
             }
-            (account.id.clone(), token, account.login.clone())
+            auth::Restored { id: account.id.clone(), token, login: account.login.clone(), rejected }
         })
         .collect();
     auth::restore(entries, enabled);
-    // Only a migrated account starts without a login. Best-effort and off the
-    // setup thread: an unnamed account is cosmetic until a review needs it.
-    if enabled && !unnamed.is_empty() {
+    // Only a migrated account starts without a login, and a rejected one gets
+    // the recovery a restart used to give for free. Off the setup thread, since
+    // each is a request.
+    if enabled && !probe.is_empty() {
         std::thread::spawn(move || {
-            for id in unnamed {
+            for id in probe {
                 let _ = learn_login(&id);
             }
         });
@@ -1394,7 +1399,13 @@ mod tests {
     }
 
     fn switched_off() {
-        auth::restore(vec![("acct".into(), Some(TOKEN.into()), Some("skarif2".into()))], false);
+        let acct = auth::Restored {
+            id: "acct".into(),
+            token: Some(TOKEN.into()),
+            login: Some("skarif2".into()),
+            rejected: false,
+        };
+        auth::restore(vec![acct], false);
     }
 
     #[test]
@@ -1460,5 +1471,10 @@ mod tests {
         assert!(!json.contains("gho_"), "a token reached the frontend: {json}");
         let pending = serde_json::to_string(&PollReport::Pending { next_interval_secs: 10 }).unwrap();
         assert!(pending.contains("\"nextIntervalSecs\":10"), "the frontend reads camelCase: {pending}");
+
+        let denied = serde_json::to_value(PollReport::Denied { code: device_flow::ACCESS_DENIED.into() }).unwrap();
+        assert_eq!(denied, serde_json::json!({ "kind": "denied", "code": "access_denied" }));
+        let expired = serde_json::to_value(PollReport::Expired { code: device_flow::EXPIRED_TOKEN.into() }).unwrap();
+        assert_eq!(expired, serde_json::json!({ "kind": "expired", "code": "expired_token" }));
     }
 }

@@ -480,6 +480,7 @@ mod tests {
                     login: Some("skarif2".into()),
                     label: "skarif2".into(),
                     expires_at: Some(1_785_179_400),
+                    rejected_at: None,
                 },
                 auth: AuthState::SignedIn { login: "skarif2".into() },
             },

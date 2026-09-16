@@ -250,6 +250,8 @@ export type ForgeAccount = {
   label: string;
   /// Epoch **seconds**, for tokens that expire.
   expiresAt: number | null;
+  /// Epoch **seconds** when the host stopped accepting the token.
+  rejectedAt: number | null;
   auth: AuthState;
 };
 
@@ -259,6 +261,8 @@ export type ForgeHost = {
   /// Git over https on this host uses the repo's account instead of whatever
   /// credential helper the user has configured.
   gitCredentials: boolean;
+  /// The account a repo with no pick of its own acts as.
+  defaultAccount: string | null;
 };
 
 /// Which account a checkout acts as. `noAccount` carries no host when the
@@ -373,7 +377,7 @@ export const FORGE_KEYS = {
   pagedTruncated: ["items", "truncated"],
   rateSnapshot: ["limit", "remaining", "resetAt"],
   statusReport: ["rate", "statuses", "uncovered"],
-  forgeAccount: ["auth", "baseUrl", "expiresAt", "id", "label", "login", "provider"],
+  forgeAccount: ["auth", "baseUrl", "expiresAt", "id", "label", "login", "provider", "rejectedAt"],
   signInRoutes: ["appId", "baseUrl", "deviceFlow", "host", "scopes", "tokenUrl"],
   // Not a domain type, but it crosses the same bridge and the poll scheduler
   // branches on it, so it is checked against Rust the same way.

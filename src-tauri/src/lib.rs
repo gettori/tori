@@ -521,6 +521,7 @@ pub fn run() {
             forge::commands::forge_sign_in_routes,
             forge::commands::forge_set_app_id,
             forge::commands::forge_set_git_credentials,
+            forge::commands::forge_set_default_account,
             forge::commands::forge_device_start,
             forge::commands::forge_device_poll,
             forge::commands::forge_device_cancel,

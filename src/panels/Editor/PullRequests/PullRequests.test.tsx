@@ -84,7 +84,7 @@ const noteAuth = (auth: AuthState) =>
   noteForgeAccounts(
     auth.kind === "signedOut"
       ? []
-      : [{ id: "personal", provider: "github", baseUrl: "https://github.com", login: "skarif2", label: "skarif2", expiresAt: null, auth }],
+      : [{ id: "personal", provider: "github", baseUrl: "https://github.com", login: "skarif2", label: "skarif2", expiresAt: null, rejectedAt: null, auth }],
   );
 
 const signIn = () => {

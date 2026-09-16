@@ -55,6 +55,10 @@ pub struct Account {
     /// Unix seconds, for tokens that expire.
     #[serde(default)]
     pub expires_at: Option<u64>,
+    /// Unix seconds when the host stopped accepting the token, so a restart
+    /// comes back suspect instead of signed in.
+    #[serde(default)]
+    pub rejected_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,6 +75,9 @@ pub struct HostRecord {
     /// away from a helper that was already doing it.
     #[serde(default)]
     pub git_credentials: bool,
+    /// The account a repo with no pick of its own acts as.
+    #[serde(default)]
+    pub default_account: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -151,6 +158,7 @@ pub fn add_account(
     if let Some(existing) = record.accounts.iter_mut().find(same_login) {
         existing.login = Some(login.to_string());
         existing.base_url = base_url.to_string();
+        existing.rejected_at = None;
         return Ok(existing.id.clone());
     }
     let unnamed = |a: &&mut Account| a.login.is_none() && reauth == Some(a.id.as_str());
@@ -160,6 +168,7 @@ pub fn add_account(
             adopted.label = login.to_string();
         }
         adopted.base_url = base_url.to_string();
+        adopted.rejected_at = None;
         return Ok(adopted.id.clone());
     }
     let id = mint_id(&taken, host, login);
@@ -170,6 +179,7 @@ pub fn add_account(
         login: Some(login.to_string()),
         label: login.to_string(),
         expires_at: None,
+        rejected_at: None,
     });
     Ok(id)
 }
@@ -194,6 +204,9 @@ pub fn remove_account(file: &mut AccountsFile, id: &str) -> Option<Account> {
     let record = file.hosts.get_mut(&host)?;
     let index = record.accounts.iter().position(|a| a.id == id)?;
     let removed = record.accounts.remove(index);
+    if record.default_account.as_deref() == Some(id) {
+        record.default_account = None;
+    }
     if record.accounts.is_empty() {
         file.hosts.remove(&host);
     }
@@ -206,6 +219,15 @@ pub fn note_expiry(file: &mut AccountsFile, id: &str, expires_at: Option<u64>) {
     for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
         if account.id == id {
             account.expires_at = expires_at;
+        }
+    }
+}
+
+/// A still-suspect account keeps the date it was first rejected on.
+pub fn note_rejection(file: &mut AccountsFile, id: &str, suspect: bool, now: u64) {
+    for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
+        if account.id == id {
+            account.rejected_at = if suspect { account.rejected_at.or(Some(now)) } else { None };
         }
     }
 }
@@ -244,6 +266,7 @@ pub fn migrate_legacy(
             login: None,
             label: String::new(),
             expires_at: None,
+            rejected_at: None,
         });
     }
     file.legacy_migrated = true;
@@ -259,17 +282,43 @@ pub enum Resolution {
 }
 
 pub fn resolve(file: &AccountsFile, picks: &BTreeMap<String, String>, remote: &Remote) -> Resolution {
-    let accounts = file.hosts.get(&remote.host).map(|r| r.accounts.as_slice()).unwrap_or_default();
+    let record = file.hosts.get(&remote.host);
+    let accounts = record.map(|r| r.accounts.as_slice()).unwrap_or_default();
     if let Some(picked) = picks.get(&remote.key()) {
         if accounts.iter().any(|a| &a.id == picked) {
             return Resolution::Account(picked.clone());
         }
+    }
+    if let Some(default) = record.and_then(default_account) {
+        return Resolution::Account(default);
     }
     match accounts {
         [] => Resolution::NoAccount,
         [only] => Resolution::Account(only.id.clone()),
         many => Resolution::Pick { candidates: many.iter().map(|a| a.id.clone()).collect() },
     }
+}
+
+fn default_account(record: &HostRecord) -> Option<String> {
+    record.default_account.clone().filter(|id| record.accounts.iter().any(|a| &a.id == id))
+}
+
+pub fn set_default_account(file: &mut AccountsFile, host: &str, id: Option<&str>) -> Result<bool, ForgeError> {
+    let record = file.hosts.get_mut(host);
+    if let Some(id) = id {
+        if !record.as_ref().is_some_and(|r| r.accounts.iter().any(|a| a.id == id)) {
+            return Err(ForgeError::Invalid { message: format!("That account is not on {host}.") });
+        }
+    }
+    let Some(record) = record else {
+        return Ok(false);
+    };
+    let next = id.map(str::to_string);
+    if record.default_account == next {
+        return Ok(false);
+    }
+    record.default_account = next;
+    Ok(true)
 }
 
 pub fn drop_picks_for(picks: &mut BTreeMap<String, String>, id: &str) -> bool {
@@ -399,6 +448,7 @@ pub struct HostView {
     pub host: String,
     pub accounts: Vec<AccountView>,
     pub git_credentials: bool,
+    pub default_account: Option<String>,
 }
 
 pub fn account_view(account: &Account, auth: impl Fn(&str) -> AuthState) -> AccountView {
@@ -408,10 +458,12 @@ pub fn account_view(account: &Account, auth: impl Fn(&str) -> AuthState) -> Acco
 pub fn view(file: &AccountsFile, auth: impl Fn(&str) -> AuthState) -> Vec<HostView> {
     file.hosts
         .iter()
+        .filter(|(_, record)| !record.accounts.is_empty())
         .map(|(host, record)| HostView {
             host: host.clone(),
             accounts: record.accounts.iter().map(|a| account_view(a, &auth)).collect(),
             git_credentials: git_credentials(file, host),
+            default_account: default_account(record),
         })
         .collect()
 }
@@ -490,6 +542,18 @@ mod tests {
     }
 
     #[test]
+    fn signing_in_again_clears_a_recorded_rejection() {
+        let mut file = AccountsFile::default();
+        let id = signed_in(&mut file, "skarif2");
+        note_rejection(&mut file, &id, true, 1_785_179_400);
+        let text = serde_json::to_string(&file).unwrap();
+        assert_eq!(serde_json::from_str::<AccountsFile>(&text).unwrap(), file);
+
+        assert_eq!(signed_in(&mut file, "skarif2"), id);
+        assert_eq!(find(&file, &id).unwrap().1.rejected_at, None);
+    }
+
+    #[test]
     fn the_legacy_token_becomes_one_github_account_and_stays_for_a_downgrade() {
         let legacy = mock_entry_in("com.sway.forge.github.migration-test", "oauth");
         token::save_to(&legacy, "gho_legacy").unwrap();
@@ -504,7 +568,12 @@ mod tests {
         let moved = mock_entry_in("com.sway.forge.migration-test", MIGRATED_GITHUB_ID);
         assert_eq!(token::load_secret_from(&moved).unwrap(), Some(Secret::access("gho_legacy".into())));
         let restored = super::super::auth::AuthStore::restored(
-            vec![(MIGRATED_GITHUB_ID.into(), Some("gho_legacy".into()), None)],
+            vec![super::super::auth::Restored {
+                id: MIGRATED_GITHUB_ID.into(),
+                token: Some("gho_legacy".into()),
+                login: None,
+                rejected: false,
+            }],
             true,
         );
         assert!(restored.may_call(MIGRATED_GITHUB_ID), "comes up signed in");
@@ -548,6 +617,84 @@ mod tests {
         remove_account(&mut file, &picked);
         assert!(drop_picks_for(&mut picks, &picked));
         assert!(matches!(resolve(&file, &picks, &sway()), Resolution::Pick { candidates } if candidates.len() == 2));
+    }
+
+    #[test]
+    fn a_repo_pick_beats_the_host_default_which_beats_the_pick_state() {
+        let mut file = AccountsFile::default();
+        let personal = signed_in(&mut file, "skarif2");
+        let work = signed_in(&mut file, "fonn-arif");
+        let mut picks = BTreeMap::new();
+        assert!(matches!(resolve(&file, &picks, &sway()), Resolution::Pick { .. }));
+
+        assert_eq!(set_default_account(&mut file, GITHUB_COM, Some(&work)), Ok(true));
+        assert_eq!(resolve(&file, &picks, &sway()), Resolution::Account(work.clone()));
+
+        picks.insert(sway().key(), personal.clone());
+        assert_eq!(resolve(&file, &picks, &sway()), Resolution::Account(personal.clone()));
+
+        // Removal is the one thing that clears a default, so the only account left answers.
+        picks.clear();
+        remove_account(&mut file, &work);
+        assert_eq!(file.hosts[GITHUB_COM].default_account, None);
+        assert_eq!(resolve(&file, &picks, &sway()), Resolution::Account(personal));
+
+        let text = serde_json::to_string(&file).unwrap();
+        assert_eq!(serde_json::from_str::<AccountsFile>(&text).unwrap(), file);
+    }
+
+    #[test]
+    fn a_default_naming_no_account_on_the_host_is_refused_or_ignored() {
+        let mut file = AccountsFile::default();
+        signed_in(&mut file, "a");
+        signed_in(&mut file, "b");
+        let elsewhere =
+            add_account(&mut file, Provider::Gitlab, "https://gitlab.com", GITLAB_COM, "arif", None).unwrap();
+        assert!(matches!(
+            set_default_account(&mut file, GITHUB_COM, Some(&elsewhere)),
+            Err(ForgeError::Invalid { .. })
+        ));
+        assert!(set_default_account(&mut file, "ghe.example.com", Some("a")).is_err());
+        assert_eq!(set_default_account(&mut file, "ghe.example.com", None), Ok(false));
+
+        // A hand-edited file can still name a stranger, and resolution must not act as it.
+        file.hosts.get_mut(GITHUB_COM).unwrap().default_account = Some("gone".into());
+        assert!(matches!(resolve(&file, &BTreeMap::new(), &sway()), Resolution::Pick { .. }));
+    }
+
+    #[test]
+    fn a_host_default_lets_git_be_answered_without_a_repo_pick() {
+        let mut file = AccountsFile::default();
+        signed_in(&mut file, "skarif2");
+        let work = signed_in(&mut file, "fonn-arif");
+        set_git_credentials(&mut file, GITHUB_COM, true);
+        let picks = BTreeMap::new();
+        assert!(!serves_git(&file, &picks, &sway()));
+
+        set_default_account(&mut file, GITHUB_COM, Some(&work)).unwrap();
+        assert!(serves_git(&file, &picks, &sway()));
+    }
+
+    #[test]
+    fn a_host_holding_only_an_application_id_is_not_listed() {
+        let mut file = AccountsFile::default();
+        set_app_id(&mut file, "git.example.com", "app-123");
+        signed_in(&mut file, "skarif2");
+
+        let hosts = view(&file, |_| AuthState::SignedOut);
+        assert_eq!(hosts.iter().map(|h| h.host.as_str()).collect::<Vec<_>>(), [GITHUB_COM]);
+    }
+
+    #[test]
+    fn a_host_view_names_its_default_in_camel_case() {
+        let mut file = AccountsFile::default();
+        let id = signed_in(&mut file, "skarif2");
+        let json = serde_json::to_value(view(&file, |_| AuthState::SignedOut)).unwrap();
+        assert_eq!(json[0]["defaultAccount"], serde_json::Value::Null);
+
+        set_default_account(&mut file, GITHUB_COM, Some(&id)).unwrap();
+        let json = serde_json::to_value(view(&file, |_| AuthState::SignedOut)).unwrap();
+        assert_eq!(json[0]["defaultAccount"], id.as_str());
     }
 
     #[test]
