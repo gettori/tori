@@ -84,6 +84,14 @@ function familyOf(provider: ForgeProvider, host: string): string {
   return host === "github.com" ? "GitHub" : "Enterprise";
 }
 
+// A classic token that reports scopes and lacks `workflow` is refused on any push
+// touching `.github/workflows/`. An empty list is a fine-grained token, whose
+// permissions Tori cannot read, so it gets no nudge.
+function needsWorkflow(account: ForgeAccount): boolean {
+  const scopes = account.scopes ?? [];
+  return account.provider === "github" && scopes.length > 0 && !scopes.includes("workflow");
+}
+
 // Every account on a host shares its provider, so the first one names the family.
 const family = (host: ForgeHost) => familyOf(host.accounts[0]?.provider ?? "github", host.host);
 
@@ -571,7 +579,10 @@ export default function ForgeSection() {
                   {(account) => (
                     <div
                       class={cards.account}
-                      classList={{ [cards.rejected]: account.auth.kind === "suspect" }}
+                      classList={{
+                        [cards.rejected]: account.auth.kind === "suspect",
+                        [cards.nudged]: account.auth.kind === "signedIn" && needsWorkflow(account),
+                      }}
                       data-testid="forge-account"
                     >
                       <div class={cards.line}>
@@ -580,7 +591,7 @@ export default function ForgeSection() {
                         <span class={cards.word} data-auth={account.auth.kind}>
                           {STATUS_WORD[account.auth.kind]}
                         </span>
-                        <Show when={account.auth.kind !== "signedIn"}>
+                        <Show when={account.auth.kind !== "signedIn" || needsWorkflow(account)}>
                           <Button variant="primary" size="xs" onClick={() => connectHost(host, account.id)}>
                             Sign in again
                           </Button>
@@ -598,6 +609,11 @@ export default function ForgeSection() {
                       <Show when={account.auth.kind === "suspect"}>
                         <div class={cards.reason} data-testid="suspect-notice">
                           {rejection(host.host, account.rejectedAt)}
+                        </div>
+                      </Show>
+                      <Show when={account.auth.kind === "signedIn" && needsWorkflow(account)}>
+                        <div class={`${cards.reason} ${cards.nudge}`} data-testid="workflow-notice">
+                          Pushes that change GitHub Actions need a newer sign-in.
                         </div>
                       </Show>
                     </div>
@@ -779,7 +795,11 @@ export default function ForgeSection() {
                             <span>Scopes</span>
                             <For each={r().scopes}>{(scope) => <span class={cards.chip}>{scope}</span>}</For>
                             <Show when={r().scopes.length > 1}>
-                              <span>The second only if you push over {r().host}.</span>
+                              <span>
+                                {state().target.provider === "github"
+                                  ? "The second only if you push changes to GitHub Actions."
+                                  : `The second only if you push over ${r().host}.`}
+                              </span>
                             </Show>
                           </div>
                           <div class={cards.hint}>

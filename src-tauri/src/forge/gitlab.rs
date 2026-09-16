@@ -445,6 +445,10 @@ impl Forge for GitLabForge {
         self.transport.rate()
     }
 
+    fn granted_scopes(&self) -> Option<Vec<String>> {
+        None
+    }
+
     fn auth_state(&self) -> AuthState {
         match (&self.token, self.transport.suspect()) {
             (None, _) => AuthState::SignedOut,

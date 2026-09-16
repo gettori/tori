@@ -481,6 +481,7 @@ mod tests {
                     label: "skarif2".into(),
                     expires_at: Some(1_785_179_400),
                     rejected_at: None,
+                    scopes: Some(vec!["repo".into(), "workflow".into()]),
                 },
                 auth: AuthState::SignedIn { login: "skarif2".into() },
             },

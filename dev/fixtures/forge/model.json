@@ -46,7 +46,11 @@
     "label": "skarif2",
     "login": "skarif2",
     "provider": "github",
-    "rejectedAt": null
+    "rejectedAt": null,
+    "scopes": [
+      "repo",
+      "workflow"
+    ]
   },
   "forgeError": {
     "kind": "rateLimited",
@@ -121,9 +125,10 @@
     "deviceFlow": true,
     "host": "github.com",
     "scopes": [
-      "repo"
+      "repo",
+      "workflow"
     ],
-    "tokenUrl": "https://github.com/settings/tokens/new?scopes=repo&description=Tori"
+    "tokenUrl": "https://github.com/settings/tokens/new?scopes=repo,workflow&description=Tori"
   },
   "statusReport": {
     "rate": {
