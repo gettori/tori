@@ -122,7 +122,7 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   lsp: "Language servers",
   dap: "Debuggers",
   git: "Git",
-  forge: "GitHub and GitLab",
+  forge: "Hosts",
   appearance: "Appearance",
   typography: "Typography",
   editor: "Editor",
@@ -248,8 +248,10 @@ export const SETTINGS: SettingEntry[] = [
   {
     id: "forge",
     section: "forge",
-    label: "GitHub and GitLab",
-    hint: "Accounts on GitHub and GitLab hosts, signing in and out, and the forge integration's kill switch.",
+    label: "Hosts",
+    // The product names stay in the hint: the filter is fuzzy over both fields,
+    // so "github" has to keep finding this section after the rename.
+    hint: "Accounts on GitHub, GitLab and self-hosted instances of either, signing in and out, and the integration's kill switch.",
   },
 
   { id: "theme", section: "appearance", label: "Theme" },
