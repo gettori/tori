@@ -28,6 +28,12 @@
   border-bottom: var(--tori-border-thin) solid var(--border-default);
 }
 
+.logo {
+  display: flex;
+  flex: none;
+  color: var(--fg-muted);
+}
+
 .host {
   font-family: var(--tori-font-mono);
   font-size: var(--tori-text-xs);
