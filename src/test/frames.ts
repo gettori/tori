@@ -10,7 +10,7 @@
  *
  * It lives here rather than in the editor agent because the terminal strip
  * needs it too, and both strips are about to need it again when they move onto
- * Kobalte Tabs (skarif2/sway#111). An async `waitFor`/`findBy` around the
+ * Kobalte Tabs (gettori/tori#111). An async `waitFor`/`findBy` around the
  * lookup is the alternative, and is better when the test is already async.
  */
 export function installAnimationFrame(): void {

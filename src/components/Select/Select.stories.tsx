@@ -25,7 +25,7 @@ const THEMES: SelectGroup[] = [
     ],
   },
   {
-    label: "From ~/.config/sway/themes",
+    label: "From ~/.config/tori/themes",
     options: [
       { value: "nord", label: "Nord" },
       { value: "gruvbox", label: "Gruvbox" },
@@ -78,7 +78,7 @@ export const Sizes: Story = {
   render: () => {
     const [value, setValue] = createSignal("comfortable");
     return (
-      <div style={{ display: "flex", "align-items": "center", gap: "var(--sway-space-4)" }}>
+      <div style={{ display: "flex", "align-items": "center", gap: "var(--tori-space-4)" }}>
         {SIZES.map((size) => (
           <Select
             options={DENSITY}
@@ -100,7 +100,7 @@ export const Disabled: Story = {
   render: () => {
     const [value, setValue] = createSignal("squash");
     return (
-      <div style={{ display: "flex", "align-items": "center", gap: "var(--sway-space-4)" }}>
+      <div style={{ display: "flex", "align-items": "center", gap: "var(--tori-space-4)" }}>
         <Select
           options={METHODS}
           value={value()}
@@ -120,7 +120,7 @@ export const Disabled: Story = {
 };
 
 /** Grouped rows, AppearancePane's shape: a heading names where each theme came
- *  from, so a user theme is visibly not one of Sway's. Headings are not
+ *  from, so a user theme is visibly not one of Tori's. Headings are not
  *  focusable and the arrows step straight past them. */
 export const Groups: Story = {
   render: () => {

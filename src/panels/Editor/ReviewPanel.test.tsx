@@ -169,7 +169,7 @@ vi.mock("@tauri-apps/api/core", () => ({
           headRef: "wave-3",
           baseRef: "main",
           headSha: "abc",
-          url: "https://github.com/skarif2/sway/pull/42",
+          url: "https://github.com/skarif2/tori/pull/42",
           mergeableState: "unknown",
         });
       // The revert guard's detached tier walks these two. They return arrays
@@ -920,7 +920,7 @@ describe("Open PR", () => {
   }
 
   it("opens the in-app form on a signed-in github.com remote", async () => {
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
     fireEvent.click(await mountWithPrHeader());
 
@@ -932,7 +932,7 @@ describe("Open PR", () => {
   });
 
   it("submits the typed title and body, and names the PR it opened", async () => {
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
     fireEvent.click(await mountWithPrHeader());
     await screen.findByText("Open a pull request");
@@ -968,7 +968,7 @@ describe("Open PR", () => {
   });
 
   it("carries the draft toggle through to the backend", async () => {
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
     fireEvent.click(await mountWithPrHeader());
     await screen.findByText("Open a pull request");
@@ -986,7 +986,7 @@ describe("Open PR", () => {
     // The form's base is the PR's, not the repo's. Writing it back into the
     // panel's `git_default_base_branch` reading would leave a cancelled edit
     // pointing the compare-URL fallback somewhere the user never chose.
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
     fireEvent.click(await mountWithPrHeader());
     await screen.findByText("Open a pull request");
@@ -1005,7 +1005,7 @@ describe("Open PR", () => {
   });
 
   it("opens the PR against the edited base, not the repo default", async () => {
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
     fireEvent.click(await mountWithPrHeader());
     await screen.findByText("Open a pull request");
@@ -1021,7 +1021,7 @@ describe("Open PR", () => {
   });
 
   it("refuses to submit without a title, and says why", async () => {
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
     fireEvent.click(await mountWithPrHeader());
     await screen.findByText("Open a pull request");
@@ -1034,7 +1034,7 @@ describe("Open PR", () => {
   it("keeps the typed title and body when the server refuses", async () => {
     // Most of these failures are fixable in place, so losing the description
     // and making the user retype it would be its own insult.
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
     createPrFails = { kind: "alreadyExists", message: "A pull request already exists for skarif2:wave-3." };
     fireEvent.click(await mountWithPrHeader());
@@ -1059,7 +1059,7 @@ describe("Open PR", () => {
   });
 
   it("falls back to the compare page when signed out", async () => {
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedOut" };
     const opened: string[] = [];
     const open = vi.spyOn(window, "open").mockImplementation((url) => {
@@ -1078,7 +1078,7 @@ describe("Open PR", () => {
   it("falls back to the compare page when the integration is switched off", async () => {
     // Signing out and switching the integration off are different things, and
     // only one of them costs the credential. Both stop the API being used.
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
     await saveSettings({ ...DEFAULT_SETTINGS, forge: { enabled: false, picks: {} } });
     const opened: string[] = [];
@@ -1098,7 +1098,7 @@ describe("Open PR", () => {
     // prUrl's provider detection matches any host containing "github", but the
     // API client accepts github.com only. A form here would submit and come
     // back `unsupportedRemote` after the user had typed a title and body.
-    originUrl = "git@github.mycorp.com:skarif2/sway.git";
+    originUrl = "git@github.mycorp.com:skarif2/tori.git";
     authState = { kind: "signedIn", login: "skarif2" };
     const opened: string[] = [];
     const open = vi.spyOn(window, "open").mockImplementation((url) => {
@@ -1120,7 +1120,7 @@ describe("the agent-drafted PR description", () => {
     // of request. A blocked session is refused outright rather than queued: the
     // user has to answer that permission prompt first.
     branches = [{ name: "wave-3", current: true }];
-    originUrl = "git@github.com:skarif2/sway.git";
+    originUrl = "git@github.com:skarif2/tori.git";
     defaultBase = "main";
     aheadBehind = { ahead: 0, behind: 0, has_upstream: true };
     authState = { kind: "signedIn", login: "skarif2" };

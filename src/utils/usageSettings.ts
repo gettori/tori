@@ -6,7 +6,7 @@
 // per-agent answer could only ever describe one of them.
 //
 // **The chips are the whole control.** There is no source ladder any more. Which
-// windows an account shows is also how deep Sway reads for it: nothing lit means
+// windows an account shows is also how deep Tori reads for it: nothing lit means
 // nothing is read, the two generic windows come off the rung the adapter offers
 // for free, and the weekly windows past those two (one scoped to a model, one to
 // whatever else the endpoint scopes a week to) are what only the account token
@@ -125,7 +125,7 @@ export function needsToken(chip: WindowChip): boolean {
  *
  * **That gates the first read, not every one after it.** An account already read
  * on this rung keeps it whatever the chips show, because the chips say what the
- * titlebar draws and this says whether Sway may ask at all. Held to the chip,
+ * titlebar draws and this says whether Tori may ask at all. Held to the chip,
  * turning a bar off dropped the account to a rung with no read path at all, and
  * its row sat in the titlebar going stale on numbers no trigger could refresh.
  */

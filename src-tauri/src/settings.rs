@@ -1,6 +1,6 @@
-// Global user settings: ~/.config/sway/settings.json (JSONC, like VS Code).
+// Global user settings: ~/.config/tori/settings.json (JSONC, like VS Code).
 // Read with json5 (comment-tolerant), written as pretty JSON. Separate from
-// sway.toml, which is project *discovery* config; this is user preferences
+// tori.toml, which is project *discovery* config; this is user preferences
 // (appearance, typography, checkpoints). Mirrors config.rs's watcher + the pure
 // core / thin wrapper split so the load/save logic is unit-testable off-disk
 // (see the repo's "pure core for global stores" lesson).
@@ -23,13 +23,13 @@ impl Default for SettingsWatch {
 fn settings_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/settings.json")
+        .join(".config/tori/settings.json")
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Appearance {
-    /// Bundled theme id, e.g. "sway-dark".
+    /// Bundled theme id, e.g. "tori-dark".
     pub theme: String,
     /// The VS Code-era `importPath`, read so the migration can name the file it
     /// dropped in a one-time notice. `skip_serializing` is what actually drops
@@ -42,7 +42,7 @@ pub struct Appearance {
 impl Default for Appearance {
     fn default() -> Self {
         Self {
-            theme: "sway-dark".into(),
+            theme: "tori-dark".into(),
             legacy_import_path: None,
         }
     }
@@ -56,8 +56,8 @@ impl Default for Appearance {
 /// Settings is still migrated, and the rewrite happens whenever they next save.
 fn migrate_theme_id(id: &str) -> Option<&'static str> {
     match id {
-        "dark-plus" | "import" => Some("sway-dark"),
-        "light-plus" => Some("sway-light"),
+        "dark-plus" | "import" => Some("tori-dark"),
+        "light-plus" => Some("tori-light"),
         _ => None,
     }
 }
@@ -78,7 +78,7 @@ pub struct Typography {
     pub line_height: f32,
 }
 
-/// The bundled Nerd Font first, the platform's own monospace behind it. Sway
+/// The bundled Nerd Font first, the platform's own monospace behind it. Tori
 /// ships the file (public/fonts, docs/FONTS.md), so this default resolves on a machine with no
 /// patched font installed - which is the point: a prompt full of powerline
 /// separators and devicons should not depend on what the user happened to
@@ -141,7 +141,7 @@ fn pin_rightmost() -> PinSide {
     PinSide::Rightmost
 }
 
-/// Where each family of tabs opens. The defaults are the layout Sway shipped
+/// Where each family of tabs opens. The defaults are the layout Tori shipped
 /// with: terminals and chat on the left, files on the right.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -265,21 +265,21 @@ pub struct ChatDefaults {
     /// Lines of tool output shown before a "show all" fold. Zero means no fold.
     #[serde(default = "default_tool_output_lines")]
     pub tool_output_lines: u32,
-    /// Show Sway's own injected hook events in the transcript. Off by default:
+    /// Show Tori's own injected hook events in the transcript. Off by default:
     /// they are plumbing rather than the user's own hooks, and a reader
-    /// scanning for their own hook should not have to skip Sway's to find it.
-    /// (The stronger version of this - that Sway's hook fired on *every* tool
+    /// scanning for their own hook should not have to skip Tori's to find it.
+    /// (The stronger version of this - that Tori's hook fired on *every* tool
     /// and so buried the user's - stopped being true when the matcher narrowed
     /// to the write tools.)
     #[serde(default)]
-    pub show_sway_hooks: bool,
+    pub show_tori_hooks: bool,
     /// Render `AskUserQuestion` as an answerable form in the transcript.
     ///
     /// Off restores what shipped before it: the call becomes a permission
     /// prompt like any other tool's, so the only answers are allow and deny, and
     /// allowing was measured to make the CLI self-answer "The user did not
     /// answer the questions" against an interactive client that is not there.
-    /// Here because the form is the one place Sway puts a control of its own in
+    /// Here because the form is the one place Tori puts a control of its own in
     /// the middle of the agent's turn, and a user who dislikes that should be
     /// able to have the old card back without leaving the app.
     #[serde(default = "yes")]
@@ -289,12 +289,12 @@ pub struct ChatDefaults {
     /// bare default so a file predating the switch does not read as off.
     #[serde(default = "yes")]
     pub attach_long_pastes: bool,
-    /// How many live chats before Sway says the cost is adding up. **Zero means
+    /// How many live chats before Tori says the cost is adding up. **Zero means
     /// no cap.**
     ///
     /// A ceiling that warns rather than refuses, for the same reason the
     /// permission gate went: several chats at once is the point of the surface,
-    /// and Sway is not the right authority on how many is too many for this
+    /// and Tori is not the right authority on how many is too many for this
     /// machine or this bill. What it can honestly do is notice, because each
     /// live chat is a streaming child process the user did not necessarily mean
     /// to still have running.
@@ -333,7 +333,7 @@ impl Default for ChatDefaults {
             streaming: true,
             density: TranscriptDensity::default(),
             tool_output_lines: default_tool_output_lines(),
-            show_sway_hooks: false,
+            show_tori_hooks: false,
             answer_questions_inline: true,
             attach_long_pastes: true,
             max_concurrent_chats: default_max_concurrent_chats(),
@@ -588,7 +588,7 @@ pub const WEEK_OTHER: &str = "week_other";
 /// an account nobody has answered for, which resolves to the two windows that
 /// cost nothing to read; an **empty** `windows` is the user's own no. No
 /// `warn_at` follows the one shared threshold. No `notify` is on, which is quiet
-/// by construction: the send path suppresses itself while Sway has focus, so
+/// by construction: the send path suppresses itself while Tori has focus, so
 /// what it governs is only a limit reached while you were away.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -869,7 +869,7 @@ fn drop_default_profile(agent: &mut Agent, adapter_id: &str, profile_id: &str) -
 
 /// The VS Code theme file this install lost, returned exactly once.
 ///
-/// Sway no longer imports VS Code themes, so an install that had one is
+/// Tori no longer imports VS Code themes, so an install that had one is
 /// silently switched to a bundled palette. Silently is the problem: the user
 /// picked that file, so they are told once, by name, that it is gone. The flag
 /// lives in state.json rather than settings.json for the same reason
@@ -927,7 +927,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("sway-settings-test-{n}-{seq}.json"))
+        std::env::temp_dir().join(format!("tori-settings-test-{n}-{seq}.json"))
     }
 
     #[test]
@@ -963,7 +963,7 @@ mod tests {
                 streaming: false,
                 density: TranscriptDensity::Compact,
                 tool_output_lines: 5,
-                show_sway_hooks: true,
+                show_tori_hooks: true,
                 answer_questions_inline: false,
                 attach_long_pastes: false,
                 max_concurrent_chats: 9,
@@ -1179,7 +1179,7 @@ mod tests {
         let _ = std::fs::remove_file(&p);
     }
 
-    /// Sway now bundles JetBrainsMono Nerd Font Mono, so the terminal default
+    /// Tori now bundles JetBrainsMono Nerd Font Mono, so the terminal default
     /// names it. An install still carrying the previous default never chose
     /// that value - it is just the old default written to disk - so it moves,
     /// the same way a VS Code-era theme id does.
@@ -1222,7 +1222,7 @@ mod tests {
     #[test]
     fn a_file_without_the_new_sections_loads_on_the_documented_defaults() {
         let p = tmp_file();
-        std::fs::write(&p, r#"{ "appearance": { "theme": "sway-dark" } }"#).unwrap();
+        std::fs::write(&p, r#"{ "appearance": { "theme": "tori-dark" } }"#).unwrap();
         let back = load_from(&p);
         // Chat is the default surface: this is the flip.
         assert_eq!(back.chat_defaults.default_surface, DefaultSurface::Chat);
@@ -1230,15 +1230,15 @@ mod tests {
         // from the explicit defaults or streaming silently ships off.
         assert!(back.chat_defaults.streaming);
         assert_eq!(back.chat_defaults.tool_output_lines, 20);
-        // Sway's own hook noise stays folded until asked for.
-        assert!(!back.chat_defaults.show_sway_hooks);
+        // Tori's own hook noise stays folded until asked for.
+        assert!(!back.chat_defaults.show_tori_hooks);
         assert_eq!(back.agent.path, None);
         // Nothing offered until something says so. Empty rather than "every
         // agent", because the pickers read this map and a missing key has to
         // mean the user has not chosen rather than has chosen everything.
         assert!(back.agent.enabled.is_empty());
         // And the section it did carry is untouched.
-        assert_eq!(back.appearance.theme, "sway-dark");
+        assert_eq!(back.appearance.theme, "tori-dark");
     }
 
     /// The enabled map survives a write and a read, keyed by adapter id.
@@ -1547,7 +1547,7 @@ mod tests {
     #[test]
     fn the_editor_block_defaults_on_a_legacy_file_and_on_a_partial_one() {
         let p = tmp_file();
-        std::fs::write(&p, r#"{ "appearance": { "theme": "sway-dark" } }"#).unwrap();
+        std::fs::write(&p, r#"{ "appearance": { "theme": "tori-dark" } }"#).unwrap();
         let back = load_from(&p);
         assert_eq!(
             back.editor_defaults,
@@ -1662,14 +1662,14 @@ mod tests {
 
         // A settings file predating this section loads rather than resetting
         // everything else to defaults.
-        std::fs::write(&p, r#"{"appearance":{"theme":"sway-dark"}}"#).unwrap();
+        std::fs::write(&p, r#"{"appearance":{"theme":"tori-dark"}}"#).unwrap();
         assert!(load_from(&p).chat.is_empty());
         let _ = std::fs::remove_file(&p);
     }
 
     #[test]
     fn missing_file_yields_defaults() {
-        let p = std::env::temp_dir().join("sway-settings-does-not-exist.json");
+        let p = std::env::temp_dir().join("tori-settings-does-not-exist.json");
         let _ = std::fs::remove_file(&p);
         assert_eq!(load_from(&p), Settings::default());
     }
@@ -1705,21 +1705,21 @@ mod tests {
         let p = tmp_file();
         let mut s = Settings::default();
         s.typography.ui_font_size = 12;
-        s.appearance.theme = "sway-light".into();
+        s.appearance.theme = "tori-light".into();
         save_to(&p, &s).unwrap();
         assert_eq!(load_from(&p), s);
         std::fs::remove_file(&p).ok();
     }
 
-    /// Every id the VS Code-theme era could persist lands on a named Sway
-    /// theme. A Light+ install must land on Sway *Light*: mapping it to the
+    /// Every id the VS Code-theme era could persist lands on a named Tori
+    /// theme. A Light+ install must land on Tori *Light*: mapping it to the
     /// default would silently flip an existing user to dark.
     #[test]
     fn legacy_theme_ids_migrate_on_read() {
         for (old, expected) in [
-            ("dark-plus", "sway-dark"),
-            ("light-plus", "sway-light"),
-            ("import", "sway-dark"),
+            ("dark-plus", "tori-dark"),
+            ("light-plus", "tori-light"),
+            ("import", "tori-dark"),
         ] {
             let p = tmp_file();
             std::fs::write(

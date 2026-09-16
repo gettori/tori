@@ -18,10 +18,10 @@ installAnimationFrame();
 /** A bare container: its worktrees sit beside it, and `.shared/` is linked in. */
 const API_REPO = "/w/api";
 const API = `${API_REPO}/auth`;
-/** A plain repo: its Feature worktree sits under `.sway/worktrees`, where no
+/** A plain repo: its Feature worktree sits under `.tori/worktrees`, where no
  *  `.shared/` is linked. */
 const WEB_REPO = "/w/web";
-const WEB = `${WEB_REPO}/.sway/worktrees/auth`;
+const WEB = `${WEB_REPO}/.tori/worktrees/auth`;
 
 const member = (repoPath: string, displayName: string, worktreePath: string | null, order: number) => ({
   repoPath,

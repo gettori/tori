@@ -3,7 +3,7 @@ import { forgeChip } from "./forgeChip";
 import type { CheckState, PullRequest, ReviewDecision, UnitStatus } from "./forgeTypes";
 import type { KnownHosts } from "./prUrl";
 
-const GH = "git@github.com:skarif2/sway.git";
+const GH = "git@github.com:skarif2/tori.git";
 const HOSTS: KnownHosts = new Map([["github.com", { provider: "github", baseUrl: "https://github.com" }]]);
 
 const pull = (over: Partial<PullRequest> = {}): PullRequest => ({
@@ -16,7 +16,7 @@ const pull = (over: Partial<PullRequest> = {}): PullRequest => ({
   headRef: "wave-3",
   baseRef: "main",
   headSha: "abc123",
-  url: "https://github.com/skarif2/sway/pull/12",
+  url: "https://github.com/skarif2/tori/pull/12",
   mergeableState: "clean",
   ...over,
 });
@@ -36,10 +36,10 @@ describe("the states that render nothing", () => {
   it("tells a remote it cannot serve apart from a branch with no PR yet", () => {
     // The whole point of the pair. Both are an absence on screen, but only one
     // of them is a place a later phase may hang a create control: a Bitbucket
-    // checkout can never grow a pull request Sway can read, so a control there
+    // checkout can never grow a pull request Tori can read, so a control there
     // is dead the day it ships
     // (`lesson_probe_the_capability_before_building_its_control`).
-    expect(chip({ origin: "git@bitbucket.org:skarif2/sway.git" }).kind).toBe("inert");
+    expect(chip({ origin: "git@bitbucket.org:skarif2/tori.git" }).kind).toBe("inert");
     expect(chip({ origin: null }).kind).toBe("inert");
     expect(chip({ status: status({ pullRequest: null }) }).kind).toBe("noPr");
   });
@@ -47,9 +47,9 @@ describe("the states that render nothing", () => {
   it("offers an account for a host with none, once per repo", () => {
     // Before one, a chip promising in-app PR state would be promising a call
     // that comes back `unsupportedRemote`, so the chip offers the account instead.
-    const ghe = "https://github.acme.com/skarif2/sway.git";
+    const ghe = "https://github.acme.com/skarif2/tori.git";
     expect(chip({ origin: ghe }).connect?.title).toContain("github.acme.com");
-    expect(chip({ origin: "git@git.corp.test:skarif2/sway.git" }).kind).toBe("connect");
+    expect(chip({ origin: "git@git.corp.test:skarif2/tori.git" }).kind).toBe("connect");
     expect(chip({ origin: ghe, firstUnit: false }).kind).toBe("inert");
     expect(chip({ origin: ghe, paused: "disabled" }).kind).toBe("inert");
     const registered: KnownHosts = new Map([

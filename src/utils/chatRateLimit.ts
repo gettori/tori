@@ -19,7 +19,7 @@
 //      conversion happens here, once, named, and is pinned by a test using the
 //      real captured magnitude rather than a round number.
 //
-// One vocabulary, shared with Sway's own ceilings in `chatBudget.ts`: ok says
+// One vocabulary, shared with Tori's own ceilings in `chatBudget.ts`: ok says
 // nothing, approaching is a heads-up, reached is a limit in force. `expired`
 // is the fourth answer this side needs and ceilings do not: a quota window
 // resets on a clock, so a level can be known to be wrong rather than merely old.
@@ -91,7 +91,7 @@ const REJECTED = "rejected";
  *   it is a memory. Checked after `reached`, a 100% five-hour window would keep
  *   a blocking banner up for the hours after the reset that cleared it.
  * - **`reached` outranks the level.** A `rejected` status, or a source's own hit
- *   flag, is the source saying it refused work; 100% is only Sway's arithmetic
+ *   flag, is the source saying it refused work; 100% is only Tori's arithmetic
  *   agreeing. Either wins over the threshold below.
  * - **The threshold applies only under that.** `warnAt` outside (0, 1) disables
  *   `approaching` and nothing else, mirroring `chatBudget.approaching`: 100% is
@@ -120,7 +120,7 @@ export function quotaState(r: QuotaReading, warnAt: number, now: number): QuotaS
 /**
  * The three bands a level is painted in, on every surface that draws one.
  *
- * Fixed rather than read off the account's Warn at, which governs when Sway
+ * Fixed rather than read off the account's Warn at, which governs when Tori
  * *says* something (the chat's banner, the notification). Colour is a scale the
  * eye reads without a legend: green is fine and paints only the bar, orange is
  * worth knowing and paints the figure too, red is nearly out. A user who moved

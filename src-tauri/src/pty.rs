@@ -108,7 +108,7 @@ type SharedChild = Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>;
 
 /// The master, shared so the seeder can read the terminal's foreground through
 /// it. Never the slave: macOS answers `tcgetpgrp` on a reopened slave with
-/// ENOTTY, and any slave fd Sway holds keeps the reader from seeing EOF.
+/// ENOTTY, and any slave fd Tori holds keeps the reader from seeing EOF.
 type SharedMaster = Arc<Mutex<Box<dyn MasterPty + Send>>>;
 
 pub struct Session {
@@ -452,7 +452,7 @@ pub fn pty_spawn(
                 // Recording it would make the orphan check answer "gone" for a
                 // session that is in fact running.
                 child_pid: None,
-                sway_pid: std::process::id(),
+                tori_pid: std::process::id(),
             },
         );
         match outcome {
@@ -493,7 +493,7 @@ pub fn pty_spawn(
     };
     cmd.cwd(&cwd);
     cmd.env("TERM", "xterm-256color");
-    cmd.env("TERM_PROGRAM", "Sway");
+    cmd.env("TERM_PROGRAM", "Tori");
     cmd.env("TERM_PROGRAM_VERSION", app.package_info().version.to_string());
 
     // Applied last, so a caller pointing an agent at a different home wins over
@@ -703,7 +703,7 @@ pub fn pty_kill(
             let _ = child.kill();
         }
         // Give the session id back, or closing an agent tab would leave it
-        // permanently unopenable until Sway restarts.
+        // permanently unopenable until Tori restarts.
         if let Some(session_id) = &session.claimed_session {
             chat.0.registry.release(session_id, &id);
         }
@@ -1072,7 +1072,7 @@ mod tests {
         let pair = native_pty_system()
             .openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 })
             .expect("openpty");
-        let cmd = command_tab("sh", &["-c".into(), "echo $PATH".into()], Some("/sway-login-only/bin:/usr/bin:/bin"));
+        let cmd = command_tab("sh", &["-c".into(), "echo $PATH".into()], Some("/tori-login-only/bin:/usr/bin:/bin"));
         let mut child = pair.slave.spawn_command(cmd).expect("spawn");
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().expect("reader");
@@ -1083,7 +1083,7 @@ mod tests {
         }
         let _ = child.wait();
         let out = String::from_utf8_lossy(&out);
-        assert!(out.contains("/sway-login-only/bin"), "the program saw another PATH: {out:?}");
+        assert!(out.contains("/tori-login-only/bin"), "the program saw another PATH: {out:?}");
     }
 
     const FAST: SeedTimings = SeedTimings {
@@ -1117,7 +1117,7 @@ mod tests {
 
     /// The tmux case without tmux: `set -m` gives `sleep` a process group of its
     /// own and the terminal with it, which is what an rc that attaches tmux does
-    /// to the shell Sway spawned.
+    /// to the shell Tori spawned.
     #[test]
     fn a_shell_that_handed_its_terminal_on_is_not_typed_into() {
         let (seeder, seen, mut child) = seeded("/bin/sh", &["-c", "set -m; sleep 5"]);
@@ -1146,7 +1146,7 @@ mod tests {
         assert_eq!(String::from_utf8(seen.lock().unwrap().clone()).unwrap(), "claude\n");
     }
 
-    /// The check reads the foreground through the master Sway already holds,
+    /// The check reads the foreground through the master Tori already holds,
     /// never the slave, so a shell that exits with its init still pending
     /// reaches EOF, and so `pty://exit`, all the same.
     #[test]

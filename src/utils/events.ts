@@ -33,30 +33,30 @@ export type LiveTab = {
   state: "inert" | "open" | "live";
 };
 
-export const FOCUS_SEARCH = "sway:focus-search";
-export const FOCUS_TERMINAL = "sway:focus-terminal";
+export const FOCUS_SEARCH = "tori:focus-search";
+export const FOCUS_TERMINAL = "tori:focus-terminal";
 // Moves keyboard focus into the toast region (Cmd+Option+T), from which Tab
 // reaches each toast and Escape dismisses the focused one. Routed through the
 // command registry rather than Kobalte's own document-level hotkey listener,
 // which never checks defaultPrevented (the double-fire gotcha).
-export const FOCUS_TOASTS = "sway:focus-toasts";
+export const FOCUS_TOASTS = "tori:focus-toasts";
 // Switches the editor's right panel to the project-wide Search mode and
 // focuses its input (Cmd+Shift+F). Distinct from FOCUS_SEARCH, which focuses
 // the left sidebar's own filter box.
-export const FOCUS_PROJECT_SEARCH = "sway:focus-project-search";
+export const FOCUS_PROJECT_SEARCH = "tori:focus-project-search";
 
 // Payload-carrying event: jump to tab N (0-indexed) of the current
 // workspace's visible terminal bar (Cmd+1..9). Consumed by Terminal.tsx.
-export const TAB_JUMP = "sway:tab-jump";
+export const TAB_JUMP = "tori:tab-jump";
 export type TabJump = { index: number };
 
 // Cycle to the next tab in the current workspace's visible terminal bar
 // (Ctrl+Tab). Consumed by Terminal.tsx.
-export const TAB_CYCLE = "sway:tab-cycle";
+export const TAB_CYCLE = "tori:tab-cycle";
 
 // Focus the next session (across all live tabs) whose status is "Waiting for
 // approval" (Cmd+Shift+A). Consumed by Terminal.tsx.
-export const NEXT_WAITING_SESSION = "sway:next-waiting-session";
+export const NEXT_WAITING_SESSION = "tori:next-waiting-session";
 
 // Payload-carrying event: stop a chat's running turn (Cmd+.) or, from the
 // command palette, one named chat. Consumed by App.tsx, which owns the only
@@ -70,7 +70,7 @@ export const NEXT_WAITING_SESSION = "sway:next-waiting-session";
 // `sessionId: null` means "work out which one": the palette always names a
 // session, the hotkey usually cannot. See `chatToStop` for the resolution and
 // for why it refuses to guess between several.
-export const STOP_CHAT = "sway:stop-chat";
+export const STOP_CHAT = "tori:stop-chat";
 export type StopChat = { sessionId: string | null };
 
 // Payload-carrying event: open the omnibox, in the mode the prefix selects
@@ -82,55 +82,55 @@ export type StopChat = { sessionId: string | null };
 // run") are asked differently often enough to deserve separate keys, but they
 // now open the same box at different prefixes, and either can be typed into the
 // other without closing anything.
-export const OPEN_OMNIBOX = "sway:open-omnibox";
+export const OPEN_OMNIBOX = "tori:open-omnibox";
 export type OpenOmnibox = { prefix: string };
 
 // Toggles the Cmd+/ shortcut sheet. Consumed by App.tsx. A toggle rather than
 // an open, so the same key that summons it dismisses it.
-export const TOGGLE_SHORTCUTS = "sway:toggle-shortcuts";
+export const TOGGLE_SHORTCUTS = "tori:toggle-shortcuts";
 
 // Global UI zoom (Cmd+ / Cmd- / Cmd0), consumed by App.tsx, which drives the
 // zoom multiplier in settingsStore. Scales chrome, editor, and terminal together.
-export const ZOOM_IN = "sway:zoom-in";
-export const ZOOM_OUT = "sway:zoom-out";
-export const ZOOM_RESET = "sway:zoom-reset";
+export const ZOOM_IN = "tori:zoom-in";
+export const ZOOM_OUT = "tori:zoom-out";
+export const ZOOM_RESET = "tori:zoom-reset";
 
 // Reload the webview (Cmd+R), consumed by App.tsx. Reloads the frontend only,
 // not the Rust backend (that needs a full restart).
-export const RELOAD_APP = "sway:reload-app";
+export const RELOAD_APP = "tori:reload-app";
 
 // Show/hide toggles for the four major panes. Consumed by App.tsx, which owns
 // the visibility flags; TOGGLE_FILETREE also reaches the editor (App reveals the
 // editor when the filetree is shown). Emitted by the topbar cluster, the view
 // hotkeys, and the command palette so all three drive one path.
-export const TOGGLE_SIDEBAR = "sway:toggle-sidebar";
-export const TOGGLE_TERMINAL = "sway:toggle-terminal";
-export const TOGGLE_EDITOR = "sway:toggle-editor";
-export const TOGGLE_FILETREE = "sway:toggle-filetree";
-export const TOGGLE_DOCK = "sway:toggle-dock";
+export const TOGGLE_SIDEBAR = "tori:toggle-sidebar";
+export const TOGGLE_TERMINAL = "tori:toggle-terminal";
+export const TOGGLE_EDITOR = "tori:toggle-editor";
+export const TOGGLE_FILETREE = "tori:toggle-filetree";
+export const TOGGLE_DOCK = "tori:toggle-dock";
 
 // Step the sidebar through its modes. Consumed by LeftSidebar, which owns and
 // persists the mode.
-export const TOGGLE_SIDEBAR_MODE = "sway:toggle-sidebar-mode";
+export const TOGGLE_SIDEBAR_MODE = "tori:toggle-sidebar-mode";
 
 // Open the dock with this command's tab in front. The terminal panel owns the
 // tab model, so it answers for a toast's Show as well as its own dedupe.
-export const REVEAL_DOCK = "sway:reveal-dock";
+export const REVEAL_DOCK = "tori:reveal-dock";
 export type RevealDock = { tabId: string };
 
 // A plain shell in the dock. The dock draws the `+`, and the terminal panel owns
 // the tab model it opens into.
-export const NEW_DOCK_SHELL = "sway:new-dock-shell";
+export const NEW_DOCK_SHELL = "tori:new-dock-shell";
 
 // Open the New Feature dialog. On the bus because the button that asks now sits
 // in the sidebar's own head row, and the dialog belongs to the Feature list
 // under it; lifting the dialog instead would move its five sibling dialogs too.
-export const NEW_FEATURE = "sway:new-feature";
+export const NEW_FEATURE = "tori:new-feature";
 
 // Pane layout edits (plan phase 8), all consumed by App.tsx, which owns the
 // tree. Emitted by the command palette and by a tab's own context menu, so a
 // split made either way runs the same guards.
-export const SPLIT_PANE = "sway:split-pane";
+export const SPLIT_PANE = "tori:split-pane";
 export type SplitPane = {
   dir: "row" | "column";
   /** Which pane to split; the focused one when omitted (the palette). */
@@ -141,10 +141,10 @@ export type SplitPane = {
   tabId?: string;
   kind?: string;
 };
-export const CLOSE_PANE = "sway:close-pane";
+export const CLOSE_PANE = "tori:close-pane";
 /** Move one tab into another pane. `paneId` names the target outright (the tab
  *  menu knows it); `direction` steps to the next or previous pane instead. */
-export const MOVE_TAB_TO_PANE = "sway:move-tab-to-pane";
+export const MOVE_TAB_TO_PANE = "tori:move-tab-to-pane";
 export type MoveTabToPane = {
   /** Omitted by the palette, which knows no tab: the focused pane's own. */
   tabId?: string;
@@ -158,7 +158,7 @@ export type MoveTabToPane = {
 // Fired by App.tsx after a pane transitions hidden -> shown, so the terminal
 // refits its cell grid and CodeMirror re-measures without waiting on a
 // ResizeObserver tick. Consumed by TerminalView and CodeEditor.
-export const REFIT_PANES = "sway:refit-panes";
+export const REFIT_PANES = "tori:refit-panes";
 
 // Payload-carrying event: switch the editor's right panel to a named mode
 // (the command palette's "toggle right-panel mode" actions). Editor.tsx's
@@ -167,10 +167,10 @@ export const REFIT_PANES = "sway:refit-panes";
 /** A pull request was just opened, so any list of them is one row short.
  *  Carries the project it belongs to: two projects can be open at once and a
  *  panel showing the other one has nothing to re-list. */
-export const PR_OPENED = "sway:pr-opened";
+export const PR_OPENED = "tori:pr-opened";
 export type PrOpened = { projectPath: string };
 
-export const SET_RIGHT_MODE = "sway:set-right-mode";
+export const SET_RIGHT_MODE = "tori:set-right-mode";
 export type SetRightMode = {
   mode: "files" | "changes" | "pulls" | "search" | "session" | "debug";
   /** With `files`, the section below the tree to show and open. */
@@ -179,13 +179,13 @@ export type SetRightMode = {
 
 // Payload-carrying event: the right panel's Search, narrowed to one folder of
 // one repo (the file tree's Find in Folder). Consumed by Editor.tsx.
-export const SEARCH_IN_FOLDER = "sway:search-in-folder";
+export const SEARCH_IN_FOLDER = "tori:search-in-folder";
 export type SearchInFolder = { repoPath: string; rel: string };
 
 // Payload-carrying event: a plain shell tab opened in `cwd`, in the selected
 // workspace (the file tree's Open in Integrated Terminal). Consumed by
 // Terminal.tsx.
-export const OPEN_SHELL_AT = "sway:open-shell-at";
+export const OPEN_SHELL_AT = "tori:open-shell-at";
 export type OpenShellAt = { cwd: string };
 
 // The command registry's editor entries (utils/commands.ts). Each acts on
@@ -196,53 +196,53 @@ export type OpenShellAt = { cwd: string };
 // Save is consumed by CodeEditor (it owns the buffer); the rest by Editor (it
 // owns the tabs). GOTO_LINE asks for a line number rather than carrying one -
 // Editor is the prompt host, so the palette closes before the prompt opens.
-export const EDITOR_SAVE = "sway:editor-save";
-export const EDITOR_CLOSE_TAB = "sway:editor-close-tab";
-export const EDITOR_TOGGLE_PREVIEW = "sway:editor-toggle-preview";
+export const EDITOR_SAVE = "tori:editor-save";
+export const EDITOR_CLOSE_TAB = "tori:editor-close-tab";
+export const EDITOR_TOGGLE_PREVIEW = "tori:editor-toggle-preview";
 /** Soft-wrap this one buffer, whatever `settings.editorDefaults.softWrap` says. */
-export const EDITOR_TOGGLE_SOFT_WRAP = "sway:editor-toggle-soft-wrap";
-export const EDITOR_GOTO_LINE = "sway:editor-goto-line";
+export const EDITOR_TOGGLE_SOFT_WRAP = "tori:editor-toggle-soft-wrap";
+export const EDITOR_GOTO_LINE = "tori:editor-goto-line";
 
 // A new untitled buffer, and saving one under a real name. Both consumed by
 // Editor: it owns the tabs, and SAVE_AS asks for a path the way GOTO_LINE asks
 // for a line, so the palette closes before the prompt opens. The text itself
 // comes from `liveBuffers`, which is how the pane reaches a buffer it does not
 // own.
-export const EDITOR_NEW_SCRATCH = "sway:editor-new-scratch";
-export const EDITOR_SAVE_AS = "sway:editor-save-as";
+export const EDITOR_NEW_SCRATCH = "tori:editor-new-scratch";
+export const EDITOR_SAVE_AS = "tori:editor-save-as";
 
 // Reports back out of the editor, for a caller that put a file there and needs
 // to know what became of it: the chat composer's open-in-editor link mirrors
 // each save into the draft and lets go when the tab closes.
-export const EDITOR_FILE_SAVED = "sway:editor-file-saved";
+export const EDITOR_FILE_SAVED = "tori:editor-file-saved";
 export type EditorFileSaved = { path: string; contents: string };
-export const EDITOR_TAB_CLOSED = "sway:editor-tab-closed";
+export const EDITOR_TAB_CLOSED = "tori:editor-tab-closed";
 export type EditorTabClosed = { path: string };
 /** Close whichever tab holds `path`, if one does. Unlike CLOSE_TAB it names
  *  the file rather than acting on the active tab. `discard` skips the unsaved
  *  changes confirm, for a caller that has already taken the buffer's text. */
-export const EDITOR_CLOSE_PATH = "sway:editor-close-path";
+export const EDITOR_CLOSE_PATH = "tori:editor-close-path";
 export type EditorClosePath = { path: string; discard?: boolean };
 
 // Back and forward through the jump list. Consumed by Editor.tsx, which is
 // where the list lives: it is bucketed by workspace exactly as the tab strip is,
 // and this pane is the only thing that knows which workspace is selected.
-export const EDITOR_NAV_BACK = "sway:editor-nav-back";
-export const EDITOR_NAV_FORWARD = "sway:editor-nav-forward";
+export const EDITOR_NAV_BACK = "tori:editor-nav-back";
+export const EDITOR_NAV_FORWARD = "tori:editor-nav-forward";
 
 // Put the most recently closed tab back. Consumed by Editor.tsx, which owns
 // both the tab strip and the per-workspace stack of what was closed; the
 // document behind it comes back through `closedBuffers` on the normal open
 // path, so this carries no payload.
-export const EDITOR_REOPEN_CLOSED = "sway:editor-reopen-closed";
+export const EDITOR_REOPEN_CLOSED = "tori:editor-reopen-closed";
 
 // The selection commands, consumed by CodeEditor for the same reason as save:
 // they act on the live buffer's selection, which only it holds. Each has a CM6
 // chord as well; these carry the palette's copy of it.
-export const EDITOR_EXPAND_SELECTION = "sway:editor-expand-selection";
-export const EDITOR_SHRINK_SELECTION = "sway:editor-shrink-selection";
-export const EDITOR_JOIN_LINES = "sway:editor-join-lines";
-export const EDITOR_SPLIT_SELECTION = "sway:editor-split-selection";
+export const EDITOR_EXPAND_SELECTION = "tori:editor-expand-selection";
+export const EDITOR_SHRINK_SELECTION = "tori:editor-shrink-selection";
+export const EDITOR_JOIN_LINES = "tori:editor-join-lines";
+export const EDITOR_SPLIT_SELECTION = "tori:editor-split-selection";
 
 // Hot exit's quit handshake. Editor.tsx asks, CodeEditor answers with whether
 // the unsaved buffers actually reached the disk, matched by `requestId` the way
@@ -250,9 +250,9 @@ export const EDITOR_SPLIT_SELECTION = "sway:editor-split-selection";
 // buffers live behind the lazy editor boundary and Editor holds that component
 // only through props. `requestStash` in utils/hotExit.ts wraps both sides;
 // nothing should emit these directly.
-export const EDITOR_STASH_DIRTY = "sway:editor-stash-dirty";
+export const EDITOR_STASH_DIRTY = "tori:editor-stash-dirty";
 export type EditorStashDirty = { requestId: string };
-export const EDITOR_STASH_RESULT = "sway:editor-stash-result";
+export const EDITOR_STASH_RESULT = "tori:editor-stash-result";
 export type EditorStashResult = { requestId: string; ok: boolean };
 
 // Payload-carrying event: flip one `EditorDefaults` boolean in whichever layer
@@ -267,7 +267,7 @@ export type EditorStashResult = { requestId: string; ok: boolean };
 // One event for every boolean rather than one per setting: the alternative is a
 // new event name and a new listener for each key a later phase adds, which is
 // the registration cost this generic payload exists to remove.
-export const PREFS_TOGGLE = "sway:prefs-toggle";
+export const PREFS_TOGGLE = "tori:prefs-toggle";
 export type PrefsToggle = { key: EditorToggleKey };
 
 // Payload-carrying event: open the Settings panel, optionally with its filter
@@ -277,7 +277,7 @@ export type PrefsToggle = { key: EditorToggleKey };
 // This is how a `Preferences: ...` command reaches a setting it cannot toggle: a
 // font stack or a dollar ceiling has no other value to flip to, so the command
 // takes you to it rather than guessing at one.
-export const OPEN_SETTINGS = "sway:open-settings";
+export const OPEN_SETTINGS = "tori:open-settings";
 /** `query` seeds the search box; `entry` is the catalogue id of the one setting
  *  the command pointed at, which the panel scrolls to, focuses and flashes. The
  *  query alone would only get you to the right tab - two settings can match one
@@ -289,25 +289,25 @@ export type OpenSettings = { query?: string; entry?: string };
 // installs privately is a shortcut nothing can print. Consumed by CodeEditor,
 // which owns the view they run against; each is a no-op when the active file
 // has no language server, exactly as its function-row key already is.
-export const EDITOR_LSP_DEFINITION = "sway:editor-lsp-definition";
-export const EDITOR_LSP_REFERENCES = "sway:editor-lsp-references";
-export const EDITOR_LSP_RENAME = "sway:editor-lsp-rename";
-export const EDITOR_LSP_FORMAT = "sway:editor-lsp-format";
+export const EDITOR_LSP_DEFINITION = "tori:editor-lsp-definition";
+export const EDITOR_LSP_REFERENCES = "tori:editor-lsp-references";
+export const EDITOR_LSP_RENAME = "tori:editor-lsp-rename";
+export const EDITOR_LSP_FORMAT = "tori:editor-lsp-format";
 // Not a library binding like the four above: nothing in `@codemirror/lsp-client`
-// asks for a code action at all, so this one is Sway's from end to end.
-export const EDITOR_LSP_CODE_ACTION = "sway:editor-lsp-code-action";
+// asks for a code action at all, so this one is Tori's from end to end.
+export const EDITOR_LSP_CODE_ACTION = "tori:editor-lsp-code-action";
 // A whole-file action, named by its LSP kind. One event carrying the kind
 // rather than one event per command: the three differ only in which string
 // goes on the wire, and three handlers would be three copies of one function.
-export const EDITOR_LSP_SOURCE_ACTION = "sway:editor-lsp-source-action";
+export const EDITOR_LSP_SOURCE_ACTION = "tori:editor-lsp-source-action";
 export type SourceAction = { kind: string; label: string };
 // Looking somewhere rather than going there: the answer is rendered inside the
 // file being read, so nothing opens and nothing scrolls away. Separate events
 // from the two above because the destination is the same and the *gesture* is
 // not - "show me" and "take me there" are different intentions about the same
 // symbol, and one command doing both would have to guess which was meant.
-export const EDITOR_PEEK_DEFINITION = "sway:editor-peek-definition";
-export const EDITOR_PEEK_REFERENCES = "sway:editor-peek-references";
+export const EDITOR_PEEK_DEFINITION = "tori:editor-peek-definition";
+export const EDITOR_PEEK_REFERENCES = "tori:editor-peek-references";
 
 /** The LSP kinds those commands are spelled with. Here rather than beside the
  *  rest of the source-action logic because `commands.ts` needs them and is
@@ -326,31 +326,31 @@ export const SOURCE_KINDS = {
 // mounted and knows both the selected workspace and the active file - the
 // Changes panel knows the first but is usually not on screen, and has never
 // known the second. The actions themselves live in utils/gitActions.
-export const GIT_STAGE_ACTIVE = "sway:git-stage-active";
-export const GIT_UNSTAGE_ACTIVE = "sway:git-unstage-active";
-export const GIT_COMMIT = "sway:git-commit";
-export const GIT_PUSH = "sway:git-push";
-export const GIT_FETCH = "sway:git-fetch";
-export const GIT_PULL = "sway:git-pull";
-export const GIT_PULL_REBASE = "sway:git-pull-rebase";
-export const GIT_SYNC = "sway:git-sync";
-export const GIT_STAGE_ALL = "sway:git-stage-all";
-export const GIT_UNSTAGE_ALL = "sway:git-unstage-all";
-export const GIT_DISCARD_ALL = "sway:git-discard-all";
-export const GIT_COMMIT_SIGNOFF = "sway:git-commit-signoff";
-export const GIT_UNDO_COMMIT = "sway:git-undo-commit";
-export const GIT_STASH_STAGED = "sway:git-stash-staged";
-export const GIT_MERGE_BRANCH = "sway:git-merge-branch";
-export const GIT_REBASE_BRANCH = "sway:git-rebase-branch";
-export const GIT_ABORT = "sway:git-abort";
-export const GIT_BRANCH_CREATE = "sway:git-branch-create";
-export const GIT_BRANCH_RENAME = "sway:git-branch-rename";
-export const GIT_BRANCH_DELETE = "sway:git-branch-delete";
+export const GIT_STAGE_ACTIVE = "tori:git-stage-active";
+export const GIT_UNSTAGE_ACTIVE = "tori:git-unstage-active";
+export const GIT_COMMIT = "tori:git-commit";
+export const GIT_PUSH = "tori:git-push";
+export const GIT_FETCH = "tori:git-fetch";
+export const GIT_PULL = "tori:git-pull";
+export const GIT_PULL_REBASE = "tori:git-pull-rebase";
+export const GIT_SYNC = "tori:git-sync";
+export const GIT_STAGE_ALL = "tori:git-stage-all";
+export const GIT_UNSTAGE_ALL = "tori:git-unstage-all";
+export const GIT_DISCARD_ALL = "tori:git-discard-all";
+export const GIT_COMMIT_SIGNOFF = "tori:git-commit-signoff";
+export const GIT_UNDO_COMMIT = "tori:git-undo-commit";
+export const GIT_STASH_STAGED = "tori:git-stash-staged";
+export const GIT_MERGE_BRANCH = "tori:git-merge-branch";
+export const GIT_REBASE_BRANCH = "tori:git-rebase-branch";
+export const GIT_ABORT = "tori:git-abort";
+export const GIT_BRANCH_CREATE = "tori:git-branch-create";
+export const GIT_BRANCH_RENAME = "tori:git-branch-rename";
+export const GIT_BRANCH_DELETE = "tori:git-branch-delete";
 
 // Payload-carrying event: focus a specific live terminal tab by id (the
 // command palette's "focus session" action, when the session is already
 // open). Consumed by Terminal.tsx.
-export const FOCUS_SESSION_TAB = "sway:focus-session-tab";
+export const FOCUS_SESSION_TAB = "tori:focus-session-tab";
 export type FocusSessionTab = { tabId: string };
 
 // Payload-carrying event: the user clicked a terminal tab, so move the sidebar
@@ -360,12 +360,12 @@ export type FocusSessionTab = { tabId: string };
 // programmatic focus that a sidebar selection already drives, so the two can't
 // feed back into each other. Consumed by LeftSidebar.tsx. Command tabs (clone/
 // bootstrap) don't emit it.
-export const TERMINAL_TAB_FOCUSED = "sway:terminal-tab-focused";
+export const TERMINAL_TAB_FOCUSED = "tori:terminal-tab-focused";
 export type TerminalTabFocused = { folderPath: string; sessionId?: string };
-export const CLOSE_TAB = "sway:close-tab";
-export const SESSIONS_REFRESH = "sway:sessions-refresh";
-export const THEME_APPLIED = "sway:theme-applied";
-export const SETTINGS_CHANGED = "sway:settings-changed";
+export const CLOSE_TAB = "tori:close-tab";
+export const SESSIONS_REFRESH = "tori:sessions-refresh";
+export const THEME_APPLIED = "tori:theme-applied";
+export const SETTINGS_CHANGED = "tori:settings-changed";
 
 // The payload of the backend `fs://changed` Tauri event, mirroring `struct
 // FsChanged` in `src-tauri/src/fs.rs`. Not an event name: `fs://changed` is
@@ -389,7 +389,7 @@ export type FsChanged = {
 // `fs://changed` Tauri event, consumed directly by the editor panes. The one
 // exception is AGENT_FILES_WRITTEN below, which is not a fan-out of the watcher
 // but a report from a chat session about its own writes.)
-export const OPEN_IN_EDITOR = "sway:open-in-editor";
+export const OPEN_IN_EDITOR = "tori:open-in-editor";
 export type OpenInEditor = {
   path: string;
   line?: number;
@@ -405,7 +405,7 @@ export type OpenInEditor = {
 // has no Selection of its own: it cannot name a workspace, so it describes the
 // draft and lets Terminal (which does have one) decide where it lands, the same
 // way OPEN_JOB works. A window with no root toasts instead of guessing.
-export const COMPOSE_DRAFT = "sway:compose-draft";
+export const COMPOSE_DRAFT = "tori:compose-draft";
 export type ComposeDraft = { blocks: ContentBlock[] };
 
 // Payload-carrying event: a file or folder the file tree just renamed or moved.
@@ -413,7 +413,7 @@ export type ComposeDraft = { blocks: ContentBlock[] };
 // path (`renameTabs.ts`) and their buffers move with them, keeping unsaved text
 // and undo history. Renaming a folder moves everything open inside it, which is
 // why consumers match on prefix rather than on equality.
-export const FILE_RENAMED = "sway:file-renamed";
+export const FILE_RENAMED = "tori:file-renamed";
 export type FileRenamed = { from: string; to: string };
 
 // Payload-carrying event: the files a chat session's tool call just wrote,
@@ -425,7 +425,7 @@ export type FileRenamed = { from: string; to: string };
 // Changes panel take it so an agent edit is on screen while the user is still
 // reading the tool card. Consumers keep their `isSelfWrite` check and stay
 // idempotent, because the watcher's echo is still coming.
-export const AGENT_FILES_WRITTEN = "sway:agent-files-written";
+export const AGENT_FILES_WRITTEN = "tori:agent-files-written";
 export type AgentFilesWritten = { paths: string[] };
 
 // How long a consumer coalesces a burst of the above. This event is per tool
@@ -439,7 +439,7 @@ export const AGENT_WRITE_DEBOUNCE_MS = 100;
 // child has been closed and its claim released, because a tab left open on a
 // deleted transcript would keep rendering history that no longer exists and
 // could still be typed at.
-export const SESSION_DELETED = "sway:session-deleted";
+export const SESSION_DELETED = "tori:session-deleted";
 export type SessionDeleted = { sessionId: string };
 
 // Payload-carrying event: show the turn that wrote a line. Emitted by the
@@ -450,7 +450,7 @@ export type SessionDeleted = { sessionId: string };
 // A timestamp rather than a turn id, because that is what the checkpoints are
 // named by. Only the tab hosting the session can translate the two, since the
 // mapping is built as its turns run.
-export const REVEAL_TURN = "sway:reveal-turn";
+export const REVEAL_TURN = "tori:reveal-turn";
 export type RevealTurn = { sessionId: string; promptTs: number };
 
 // Payload-carrying event: a History row was acted on. The dropdown lives in the
@@ -460,13 +460,13 @@ export type RevealTurn = { sessionId: string; promptTs: number };
 // History names the session and what to do with it, and the sidebar answers
 // exactly as its own row would. One event rather than three keeps that seam a
 // single thing to find.
-export const SESSION_ACTION = "sway:session-action";
+export const SESSION_ACTION = "tori:session-action";
 export type SessionAction = { sessionId: string; action: "open" | "rename" | "delete" };
 
 // Payload-carrying event: open a tab that runs one task at a branch unit. The
 // transient commands (clone, bootstrap, install, sign-in) left through OPEN_JOB
 // below; what stays is the kind whose cwd is a real workspace.
-export const OPEN_TERMINAL = "sway:open-terminal";
+export const OPEN_TERMINAL = "tori:open-terminal";
 export type OpenTerminal = {
   id: string;
   title: string;
@@ -483,12 +483,12 @@ export type OpenTerminal = {
   init?: string;
 };
 
-// Payload-carrying event: run a transient command Sway starts for you (clone,
+// Payload-carrying event: run a transient command Tori starts for you (clone,
 // bare-worktree bootstrap, agent install/update/uninstall, sign-in). Opens a
 // `kind: "command"` tab in the dock's `shells:` group, a synthetic key no
 // branch unit's strip is ever on, so it can neither join nor hide one
 // ([[adr_jobs_leave_the_tab_model]]). Consumed by Terminal.tsx.
-export const OPEN_JOB = "sway:open-job";
+export const OPEN_JOB = "tori:open-job";
 export type OpenJob = {
   /** Also the dedupe key: a second start under a live id reveals that job
    *  rather than spawning a second process. */
@@ -523,35 +523,35 @@ export type OpenJob = {
 // means depends on the selected branch-unit and what was last debugged there.
 // Editor resolves that and opens the picker when there is no answer yet, so a
 // first press teaches rather than doing nothing.
-export const DEBUG_START = "sway:debug-start";
+export const DEBUG_START = "tori:debug-start";
 
 // Stop the debug run (Shift+F5). Payload-less for the same reason.
-export const DEBUG_STOP = "sway:debug-stop";
+export const DEBUG_STOP = "tori:debug-stop";
 /** Set or clear a breakpoint on the caret's line in the file on screen. */
-export const DEBUG_TOGGLE_BREAKPOINT = "sway:debug-toggle-breakpoint";
+export const DEBUG_TOGGLE_BREAKPOINT = "tori:debug-toggle-breakpoint";
 
 // Stop the run and start the same target again. Its own event rather than a
 // stop followed by a start from the caller, because the two have to be ordered
 // against each other: a start issued while the previous run is still being torn
 // down joins that run instead of replacing it.
-export const DEBUG_RESTART = "sway:debug-restart";
+export const DEBUG_RESTART = "tori:debug-restart";
 
 // Open the target picker at a specific kind, which is what the palette's three
 // rows do. A kind rather than a whole target: the picker still has to resolve
 // the root, read that root's scripts and offer the remembered port.
-export const DEBUG_PICK = "sway:debug-pick";
+export const DEBUG_PICK = "tori:debug-pick";
 export type DebugPick = { kind: "file" | "script" | "attach" };
 
 // Fire-and-forget: run this workspace's most recently run task again. The
 // command registry owns the binding but not the workspace, so App resolves the
 // selection and the recents store; nothing here says which task, because the
 // answer changes with the selected branch-unit.
-export const RUN_LAST_TASK = "sway:run-last-task";
+export const RUN_LAST_TASK = "tori:run-last-task";
 
 // Payload-carrying event: start a fresh agent session in a branch-unit folder.
 // Emitted by the sidebar's "New session" menu item; the terminal area owns the
 // spawn (id/title/yolo conventions), so the sidebar only names the target.
-export const NEW_SESSION = "sway:new-session";
+export const NEW_SESSION = "tori:new-session";
 // `agent` is any registered adapter id (Terminal.tsx's spawnSession treats it
 // as opaque, looking it up via findAdapter), not just the bundled
 // pair - the command palette's "new session per registered agent" needs the
@@ -560,14 +560,14 @@ export type NewSession = { folderPath: string; projectName: string; agent?: stri
 
 // Payload-carrying event: open a chat draft in a branch-unit folder the sidebar
 // just created, so a new worktree does not land on an empty strip.
-export const NEW_CHAT_AT = "sway:new-chat-at";
+export const NEW_CHAT_AT = "tori:new-chat-at";
 export type NewChatAt = { folderPath: string; projectName: string };
 
 // Payload-carrying event: tear down everything rooted under a path (used when a
 // space is deleted). The terminal area kills + closes PTY tabs whose cwd is under
 // it; the editor pane closes buffers under it. Emitted before the native delete so
 // no agent keeps writing into a vanishing cwd.
-export const PURGE_UNDER_PATH = "sway:purge-under-path";
+export const PURGE_UNDER_PATH = "tori:purge-under-path";
 export type PurgeUnderPath = { path: string };
 
 // A whole workspace key is going away (a Feature was deleted). Unlike a path
@@ -579,7 +579,7 @@ export type PurgeUnderPath = { path: string };
 // delete *offers* to remove each worktree rather than removing it, so a member
 // the user keeps can still be opened as a branch unit, and its tabs, terminals
 // and tree state are that unit's, not the Feature's.
-export const PURGE_WORKSPACE = "sway:purge-workspace";
+export const PURGE_WORKSPACE = "tori:purge-workspace";
 export type PurgeWorkspace = { workspace: string; roots?: string[] };
 
 // Payload-carrying event: ask the sidebar to open its own branch-removal
@@ -591,13 +591,13 @@ export type PurgeWorkspace = { workspace: string; roots?: string[] };
 // running in the folder. A panel that called `remove_worktree_and_branch`
 // itself would be a place for all three to be forgotten. The sidebar owns the
 // branch-unit list, so it also decides which of its two dialogs a unit gets.
-export const REMOVE_BRANCH_UNIT = "sway:remove-branch-unit";
+export const REMOVE_BRANCH_UNIT = "tori:remove-branch-unit";
 export type RemoveBranchUnit = { projectPath: string; branch: string };
 
 // Payload-carrying event: surface a toast from anywhere. components/Toasts owns
 // the stack (ToastRegion listens, pushToast writes), so panels emit this instead
 // of holding their own notifier.
-export const TOAST = "sway:toast";
+export const TOAST = "tori:toast";
 // `action` is an optional single button. It exists for a notice whose undo has
 // nowhere else to live: a cross-file rename rewrote files nobody is looking at,
 // and the moment the user would want that back is the moment they are told.
@@ -615,7 +615,7 @@ export type ToastEvent = {
 // and answers with the result, matched by `requestId`. Never call `pty_write`
 // directly for a composed message - route through `requestSend` so the
 // probe-gate and insert-only guarantee apply uniformly.
-export const SEND_TO_SESSION = "sway:send-to-session";
+export const SEND_TO_SESSION = "tori:send-to-session";
 export type SendToSession = {
   requestId: string;
   sessionId: string;
@@ -643,18 +643,18 @@ export type SendToSession = {
   blocks?: ContentBlock[];
 };
 
-export const SEND_TO_SESSION_RESULT = "sway:send-to-session-result";
+export const SEND_TO_SESSION_RESULT = "tori:send-to-session-result";
 export type SendToSessionResult = { requestId: string; result: "sent" | "blocked" | "timeout" };
 
 // DataTransfer MIME carrying an absolute file path when dragging a tree row or
 // editor tab onto the terminal (which inserts it as a cwd-relative `@path`).
-export const DRAG_PATH_MIME = "application/x-sway-path";
+export const DRAG_PATH_MIME = "application/x-tori-path";
 
 // DataTransfer MIME carrying one or more newline-separated ABSOLUTE paths when
 // dragging a left-sidebar row (space / project / branch / session) onto the
 // terminal. Unlike DRAG_PATH_MIME these are inserted verbatim as `@<abspath>`
 // (not relativized to the cwd), so the agent gets the full path to read from.
-export const DRAG_ABS_PATH_MIME = "application/x-sway-abspath";
+export const DRAG_ABS_PATH_MIME = "application/x-tori-abspath";
 
 export function emit(name: string) {
   window.dispatchEvent(new CustomEvent(name));

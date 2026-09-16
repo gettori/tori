@@ -6,7 +6,7 @@
 //! one that rots. So the file on disk is mapped to the same events a live child
 //! emits, and the panel cannot tell the difference beyond the flag it is handed.
 //!
-//! **Why it works for sessions Sway never ran.** `parse_transcript_turns` reads
+//! **Why it works for sessions Tori never ran.** `parse_transcript_turns` reads
 //! the jsonl the agent itself writes, and a PTY agent tab, an outside
 //! terminal, and a chat tab all write the same file. So a session started
 //! anywhere backfills here without a second parser.
@@ -349,7 +349,7 @@ fn strip_continuation_framing(text: &str) -> String {
 /// prompt a checkpoint was taken for, so `&turns[..at]` is everything before it.
 ///
 /// **Snapped to the nearest human prompt rather than cut at `ts < prompt_ts`.**
-/// A chat checkpoint is stamped with Sway's own clock at `turnStarted`
+/// A chat checkpoint is stamped with Tori's own clock at `turnStarted`
 /// (`checkpoints.ts:71`) while the transcript is stamped with the agent's, so
 /// one prompt carries two timestamps a second or two apart and a bare
 /// comparison lands on either side of it depending on which way they drifted.
@@ -497,7 +497,7 @@ mod tests {
 
             // Replayed: the same run, written as a transcript and read back
             // by the scanner that reads real ones.
-            let dir = std::env::temp_dir().join(format!("sway-parity-{name}"));
+            let dir = std::env::temp_dir().join(format!("tori-parity-{name}"));
             std::fs::create_dir_all(&dir).expect("scratch dir");
             let transcript = dir.join("session.jsonl");
             std::fs::write(&transcript, transcript_of(&frames)).expect("write transcript");
@@ -601,7 +601,7 @@ mod tests {
     fn a_labelled_attachment_replays_as_the_blocks_that_were_sent() {
         let sent = vec![
             ContentBlock::FileRef {
-                path: "/Users/x/.config/sway/attachments/19af-0/shot.png".into(),
+                path: "/Users/x/.config/tori/attachments/19af-0/shot.png".into(),
                 start_line: None,
                 end_line: None,
                 text: None,
@@ -785,7 +785,7 @@ mod tests {
     /// reader for each surface.
     #[test]
     fn a_transcript_written_by_a_terminal_session_replays_the_same_way() {
-        let dir = std::env::temp_dir().join(format!("sway-history-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-history-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("terminal-era.jsonl");
         std::fs::write(
@@ -836,14 +836,14 @@ mod tests {
             "This session is being continued from a previous conversation that ran out of context. ",
             "The summary below covers the earlier portion of the conversation. Summary: ",
             "1. Primary Request and Intent: the user asked for a detailed summary. ",
-            "2. Key Technical Concepts: Sway chat UI project. ",
+            "2. Key Technical Concepts: Tori chat UI project. ",
             "If you need specific details from before compaction (like exact code snippets), ",
             "read the full transcript at: /Users/x/.claude/projects/p/ff243892.jsonl ",
             "Continue the conversation from where it left off without asking the user any further questions.",
         );
         let out = strip_continuation_framing(raw);
         assert!(out.starts_with("1. Primary Request and Intent"), "got {out:?}");
-        assert!(out.ends_with("Sway chat UI project."), "got {out:?}");
+        assert!(out.ends_with("Tori chat UI project."), "got {out:?}");
         assert!(!out.contains(".jsonl"));
         assert!(!out.contains("without asking the user"));
     }
@@ -863,7 +863,7 @@ mod tests {
     /// one as a prompt - a session with two real prompts reporting five.
     #[test]
     fn a_slash_command_is_not_replayed_as_something_the_user_typed() {
-        let dir = std::env::temp_dir().join(format!("sway-cmd-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-cmd-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("commands.jsonl");
         std::fs::write(
@@ -907,7 +907,7 @@ mod tests {
     /// markup is still a question the user asked.
     #[test]
     fn a_prompt_that_merely_starts_with_markup_is_still_the_users() {
-        let dir = std::env::temp_dir().join(format!("sway-markup-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-markup-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("markup.jsonl");
         std::fs::write(
@@ -930,7 +930,7 @@ mod tests {
     /// rendered as something the user typed.
     #[test]
     fn a_compaction_replays_inline_with_the_agents_own_summary() {
-        let dir = std::env::temp_dir().join(format!("sway-compact-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-compact-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("compacted.jsonl");
         std::fs::write(
@@ -1008,7 +1008,7 @@ mod tests {
     #[test]
     fn a_rewind_cuts_at_the_prompt_even_when_the_two_clocks_disagree() {
         // The checkpoint says 1200; the transcript stamped the same prompt 1198,
-        // because Sway's `turnStarted` and the agent's write are two clocks.
+        // because Tori's `turnStarted` and the agent's write are two clocks.
         // A `ts < prompt_ts` cut would keep that prompt and sever its turn.
         let turns = vec![
             stamped("user", 1000, "first"),

@@ -1,4 +1,4 @@
-// The commands Sway runs for you, as tabs. They open in the dock's `shells:`
+// The commands Tori runs for you, as tabs. They open in the dock's `shells:`
 // group, which is nobody's branch unit, and the window never moves: `focusTab`
 // writes `activeWorkspace`, and that write is the whole of the bug
 // adr_jobs_leave_the_tab_model exists to prevent. `interactive` decides only
@@ -123,7 +123,7 @@ beforeEach(() => {
   ensureEnvelope(REPO, seedOnePane);
 });
 
-describe("a command Sway runs for you", () => {
+describe("a command Tori runs for you", () => {
   it("opens as a command tab in the Shells workspace", async () => {
     mount();
     emitWith<OpenJob>(OPEN_JOB, SIGN_IN);

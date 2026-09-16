@@ -21,7 +21,7 @@ function member(repoPath: string, order: number, state: MemberState = { kind: "p
   return {
     repoPath,
     displayName: name,
-    worktreePath: state.kind === "present" ? `${repoPath}/.sway/worktrees/auth` : null,
+    worktreePath: state.kind === "present" ? `${repoPath}/.tori/worktrees/auth` : null,
     state,
     order,
   };

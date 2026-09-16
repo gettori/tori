@@ -28,7 +28,7 @@
 //
 // The cache is invalidatable rather than lifetime-memoized, which it used to
 // be. "Cached for the app's lifetime" was correct only while nothing inside
-// Sway could change the answer; once a agent can be installed or signed in
+// Tori could change the answer; once a agent can be installed or signed in
 // from the app, a `OnceLock` would show `NotFound` for a binary the user just
 // installed until they restarted. See `HealthCache`.
 
@@ -270,7 +270,7 @@ fn profile_health(
 /// A memoized sweep that can be told it is wrong.
 ///
 /// This used to be a `OnceLock`, which was right while the answer could not
-/// change: nothing inside Sway installed a binary or signed anyone in, so
+/// change: nothing inside Tori installed a binary or signed anyone in, so
 /// "computed once per app run" and "correct" were the same statement. They stop
 /// being the same the moment an install or a login happens in-app, and a
 /// `OnceLock` has no way back: the user would see `NotFound` for a agent they
@@ -557,7 +557,7 @@ mod tests {
     #[test]
     fn a_missing_binary_reports_not_found() {
         // A fake adapter whose launch binary cannot exist on any machine.
-        let adapter = agents::test_adapter("sway-nonexistent-agent-binary");
+        let adapter = agents::test_adapter("tori-nonexistent-agent-binary");
         let health = check(&adapter);
         assert_eq!(health.status, BinaryStatus::NotFound);
         assert!(health.path.is_none());
@@ -626,7 +626,7 @@ mod tests {
     #[test]
     fn a_missing_binary_is_never_probed_for_a_sign_in() {
         let adapter = with_accounts(
-            "sway-nonexistent-agent-binary",
+            "tori-nonexistent-agent-binary",
             probe(&["-c", "exit 0"], agents::WhoamiKind::ExitCode),
         );
         let health = check(&adapter);

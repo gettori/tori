@@ -37,9 +37,9 @@ describe("remembering a measured context window", () => {
   });
 
   it("survives a store holding something that is not a map of windows", () => {
-    localStorage.setItem("sway.contextWindows.v1", '["not", "a", "map"]');
+    localStorage.setItem("tori.contextWindows.v1", '["not", "a", "map"]');
     expect(rememberedWindows()).toEqual({});
-    localStorage.setItem("sway.contextWindows.v1", "{oh dear");
+    localStorage.setItem("tori.contextWindows.v1", "{oh dear");
     expect(rememberedWindows()).toEqual({});
   });
 });

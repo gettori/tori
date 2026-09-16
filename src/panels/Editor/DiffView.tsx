@@ -346,7 +346,7 @@ export default function DiffView(props: {
     if (applying()) return;
     const ok = await askConfirm({
       title: "Discard this hunk?",
-      message: `This change to ${file()} goes away. It is not staged, so git has no other copy of it.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
+      message: `This change to ${file()} goes away. It is not staged, so git has no other copy of it.\n\nTori saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
       confirmLabel: "Discard hunk",
       danger: true,
     });
@@ -747,7 +747,7 @@ export default function DiffView(props: {
     if (!list.length) return;
     const ok = await askConfirm({
       title: "Discard all unstaged changes to this file?",
-      message: `Every change to ${file()} below goes away. None of it is staged, so git has no other copy.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
+      message: `Every change to ${file()} below goes away. None of it is staged, so git has no other copy.\n\nTori saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
       confirmLabel: "Discard changes",
       danger: true,
     });

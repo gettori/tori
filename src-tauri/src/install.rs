@@ -6,7 +6,7 @@
 //! `[install]` table, and the frontend's half is what the rung *does* on
 //! screen. Like a login, an install is a real PTY tab or it is nothing: the
 //! vendor's installers stream output, prompt, and fail in ways the user has to
-//! read, so Sway opens the door and never captures what happens behind it.
+//! read, so Tori opens the door and never captures what happens behind it.
 //!
 //! (A previous module of this name downloaded and extracted archives itself,
 //! with checksums and a platform matrix. This one runs the vendor's own

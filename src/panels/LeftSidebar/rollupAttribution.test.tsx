@@ -17,7 +17,7 @@ const plain = (branch: string, isCurrent: boolean) => ({
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -114,10 +114,10 @@ describe("a rollup badge on a plain repo's sibling branch rows", () => {
     bridge.handlers = {};
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
     // The project open, both branch rows visible and both collapsed, so each
     // shows its own rollup rather than its session rows.
-    localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/repo"]));
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/repo"]));
   });
 
   it("lands on the branch the session recorded, not on its checked-out sibling", async () => {

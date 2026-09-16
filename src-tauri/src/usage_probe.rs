@@ -1,9 +1,9 @@
-//! Codex's quota, read from `codex app-server` on Sway's own schedule.
+//! Codex's quota, read from `codex app-server` on Tori's own schedule.
 //!
 //! The `cli` rung of [[adr_usage_source_ladder]]. Codex forwards no rate limits
 //! over ACP (measured in `acp_transport::tests::codex_forwards_no_rate_limits_over_acp`),
 //! so unlike Claude there is nothing passive to merge and a reading exists only
-//! because Sway asked for one.
+//! because Tori asked for one.
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -223,7 +223,7 @@ fn exchange(
     send(json!({
         "jsonrpc": "2.0", "id": 1, "method": "initialize",
         "params": {
-            "clientInfo": { "name": "sway", "title": null, "version": env!("CARGO_PKG_VERSION") },
+            "clientInfo": { "name": "tori", "title": null, "version": env!("CARGO_PKG_VERSION") },
             "capabilities": { "experimentalApi": true, "requestAttestation": false },
         },
     }))?;
@@ -275,7 +275,7 @@ pub fn probe_with(program: &str, args: &[String], deadline: Duration) -> Result<
     }
 }
 
-/// The real thing. `-s read-only -a never` because a server Sway only reads
+/// The real thing. `-s read-only -a never` because a server Tori only reads
 /// from must not be able to edit or ask.
 pub fn probe_codex() -> Result<UsageProbe, String> {
     let args: Vec<String> = ["-s", "read-only", "-a", "never", "app-server"]

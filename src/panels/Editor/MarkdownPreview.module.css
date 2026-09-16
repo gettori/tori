@@ -13,7 +13,7 @@
   max-width: calc(860px * var(--ui-scale));
   margin: 0 auto;
   color: var(--fg-default);
-  font-size: var(--sway-text-2xl);
+  font-size: var(--tori-text-2xl);
   line-height: 1.6;
 }
 
@@ -39,12 +39,12 @@
   font-family: "SF Mono", Menlo, Monaco, monospace;
   font-size: 0.9em;
   background: var(--neutral-hover);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: 0.1em 0.35em;
 }
 .markdownBody :global(pre) {
   background: var(--neutral-hover);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   padding: calc(10px * var(--ui-scale));
   overflow-x: auto;
 }
@@ -60,7 +60,7 @@
 }
 .markdownBody :global(img) {
   max-width: 100%;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
 }
 .markdownBody :global(table) {
   border-collapse: collapse;
@@ -101,7 +101,7 @@
   border: none;
   background: var(--neutral-subtle);
   color: var(--fg-muted);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: calc(3px * var(--ui-scale));
   cursor: pointer;
   opacity: 0;

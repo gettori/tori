@@ -29,7 +29,7 @@ export type WorkspaceSaved = readonly SavedSearch[];
 /** Every workspace's saved searches, keyed by root. */
 export type SavedSearchStore = Readonly<Record<string, WorkspaceSaved>>;
 
-const LS_SAVED_SEARCHES = "sway.savedSearches";
+const LS_SAVED_SEARCHES = "tori.savedSearches";
 
 /** This workspace's saved searches, empty for one with none. */
 export function savedFor(store: SavedSearchStore, ws: string): WorkspaceSaved {

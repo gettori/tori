@@ -585,7 +585,7 @@ describe("the ambient rows say what kind they are", () => {
       name: "PreToolUse:Write",
       event: "PreToolUse",
       phase: "finished",
-      swayOwned: false,
+      toriOwned: false,
       outcome: "allow",
       exitCode: 0,
       output: null,

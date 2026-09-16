@@ -10,7 +10,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { liveBufferText } from "./liveBuffers";
 import { lspTargetFor } from "./lspClient";
-import { pathToUri, uriToPath } from "./swayWorkspace";
+import { pathToUri, uriToPath } from "./toriWorkspace";
 
 /** Which question a peek is asking. */
 export type PeekKind = "definition" | "references";

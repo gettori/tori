@@ -18,10 +18,10 @@ use serde::{Deserialize, Serialize};
 
 /// The keychain service every account's secret is stored under, keyed by the
 /// account id. Stable, because changing it orphans every stored token.
-const ACCOUNT_SERVICE: &str = "com.sway.forge";
+const ACCOUNT_SERVICE: &str = "com.tori.forge";
 /// The single GitHub credential from before accounts existed. Read once by the
 /// migration and left in place, so a downgraded build still finds it.
-const LEGACY_SERVICE: &str = "com.sway.forge.github";
+const LEGACY_SERVICE: &str = "com.tori.forge.github";
 const LEGACY_USER: &str = "oauth";
 
 /// What one account keeps in the keychain. One entry for both tokens, so a
@@ -61,7 +61,7 @@ pub fn install_store() -> Result<(), ForgeError> {
         );
         Ok(())
     }
-    // Sway is macOS-only today. Rather than silently running with no store (so
+    // Tori is macOS-only today. Rather than silently running with no store (so
     // every save fails at the point of use, far from the cause), say so here.
     #[cfg(not(target_os = "macos"))]
     Err(ForgeError::Transport { message: "no credential store on this platform".into() })

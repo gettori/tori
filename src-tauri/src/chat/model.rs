@@ -1,5 +1,5 @@
 //! The normalized chat event model: the one vocabulary every chat surface in
-//! Sway speaks, and the only thing the frontend ever sees.
+//! Tori speaks, and the only thing the frontend ever sees.
 //!
 //! A transport (today only `claude` stream-json, tomorrow possibly Codex or an
 //! ACP agent) maps its own wire format *into* these types, and nothing above
@@ -38,13 +38,13 @@ fn extra_is_empty(e: &Extra) -> bool {
 
 /// A permission mode, as the id its own agent names it.
 ///
-/// **A string rather than an enum, and deliberately so.** Sway used to
+/// **A string rather than an enum, and deliberately so.** Tori used to
 /// enumerate Claude's four modes as variants, which made the neutral model
 /// carry one agent's vocabulary: Gemini's `--approval-mode` speaks
 /// `default|auto_edit|yolo|plan`, and Codex does not have a fixed set at all -
 /// it lists its permission profiles *at runtime* over `permissionProfile/list`.
 /// No fixed enum can represent that, so the mode is whatever the adapter
-/// declares and Sway passes it through without opinion.
+/// declares and Tori passes it through without opinion.
 ///
 /// The guard the enum used to provide is not free, and is not replaced by
 /// anything in this type. A string accepts every typo, so what a declared mode
@@ -52,7 +52,7 @@ fn extra_is_empty(e: &Extra) -> bool {
 /// `crate::agents`, which spawns the binary once per declared mode. See also
 /// the `gotchas.md` entry on enum-to-string neutrality.
 ///
-/// **A permissive mode now means what it says.** This used to note that Sway's
+/// **A permissive mode now means what it says.** This used to note that Tori's
 /// own `PreToolUse` gate ran ahead of every agent mode, so a permissive one
 /// was still supervised. Phase 7 deleted that gate: the agent decides, and a
 /// mode named after bypassing permissions really does bypass them.
@@ -284,7 +284,7 @@ pub enum PermissionDecision {
     Deny,
 }
 
-/// How far an approval answer reaches. Project scope is Sway-owned and never
+/// How far an approval answer reaches. Project scope is Tori-owned and never
 /// written to the user's own `~/.claude/settings.json`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -309,12 +309,12 @@ pub struct SuggestedRule {
 
 /// An action the agent itself offered alongside a permission question.
 ///
-/// **These are the CLI's words, not Sway's invention.** Measured on claude
+/// **These are the CLI's words, not Tori's invention.** Measured on claude
 /// 2.1.231, a `can_use_tool` request carries up to three of them: the rule that
 /// would allow this call, the directory that would unblock it, and the mode that
-/// would stop it asking. Sway renders them and echoes the chosen one back
+/// would stop it asking. Tori renders them and echoes the chosen one back
 /// verbatim rather than composing rule text itself, because the rule grammar
-/// belongs to the agent - a `Bash` rule is a command *pattern*, and Sway
+/// belongs to the agent - a `Bash` rule is a command *pattern*, and Tori
 /// guessing at that is how an "always allow `touch a.txt`" silently becomes
 /// "always allow every `touch`".
 ///
@@ -420,7 +420,7 @@ pub struct SlashCommand {
 /// not a flag), `requires` (a per-model gate Claude's catalogue publishes and no
 /// agent advertises), `permissive` and `default`. The last two are the load
 /// bearing omission: an agent publishes an id, a label and a description, so a
-/// mode's danger and a mode's defaultness are things Sway would have to infer
+/// mode's danger and a mode's defaultness are things Tori would have to infer
 /// from the words in an id. It does not, and the surface renders such a row
 /// without the permissive caution rather than with a guessed one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -435,7 +435,7 @@ pub struct ChatModeInfo {
 /// One configuration lever the agent published, in the shape a generic control
 /// can render.
 ///
-/// **The mirror's point is that Sway does not have to recognise an option to
+/// **The mirror's point is that Tori does not have to recognise an option to
 /// show it.** The three categories with bespoke controls (model, mode, thought
 /// level) are three entries in the agent's list, not the whole of it, and an
 /// agent is free to publish a fourth tomorrow. Everything representable is
@@ -450,7 +450,7 @@ pub struct ChatModeInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ChatConfigOption {
     pub id: String,
-    /// The agent's own label, rendered verbatim: for a lever Sway knows nothing
+    /// The agent's own label, rendered verbatim: for a lever Tori knows nothing
     /// else about, it is the only name the user will ever see.
     pub name: String,
     #[serde(default)]
@@ -528,7 +528,7 @@ impl ChatConfigValue {
 /// for it would mean two rules to keep in step.
 ///
 /// A level the agent published is always enabled. The only disabled rows are
-/// Sway's own measured extras whose measurement no longer applies, which is a
+/// Tori's own measured extras whose measurement no longer applies, which is a
 /// row that says why rather than a level that quietly vanished.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -536,7 +536,7 @@ pub struct ChatEffortLevel {
     pub level: String,
     /// What the picker row reads, which is the level itself for anything the
     /// agent named: it published a word, not a label, and inventing one would
-    /// describe a level by Sway's guess at it.
+    /// describe a level by Tori's guess at it.
     #[serde(default)]
     pub label: String,
     #[serde(default)]
@@ -572,7 +572,7 @@ pub struct ChatModelInfo {
     /// control rather than rendering an inert one.
     #[serde(default)]
     pub supported_effort_levels: Vec<String>,
-    /// The same levels as rows a picker can render, plus any level Sway measured
+    /// The same levels as rows a picker can render, plus any level Tori measured
     /// that this agent never advertises. See [`ChatEffortLevel`].
     ///
     /// Additive rather than a replacement, because a catalogue cached before
@@ -596,7 +596,7 @@ pub struct ChatModelInfo {
     pub supports_auto_mode: bool,
     /// Whether this model has a fast mode to toggle.
     ///
-    /// **The CLI publishes this and Sway used to restate it.** `[[chat.annotations]]`
+    /// **The CLI publishes this and Tori used to restate it.** `[[chat.annotations]]`
     /// carried a hand-keyed table saying the same thing, and it was already
     /// wrong: it named `claude-opus-5` while the catalogue resolves both Opus
     /// rows to `claude-opus-5[1m]`, so the lookup never matched. Reading the
@@ -618,7 +618,7 @@ pub struct ChatModelInfo {
 
 /// What a agent said it can do, read off its own handshake.
 ///
-/// **Advertised, not measured, and the distinction is the point.** Sway's
+/// **Advertised, not measured, and the distinction is the point.** Tori's
 /// per-transport tier records what *shipped* against a agent somebody sat down
 /// and measured; this records what *this* agent, on this machine, at this
 /// version, claims about itself. They answer different questions and the tier
@@ -645,7 +645,7 @@ pub struct ChatCapabilities {
 // Both measured agents advertise `sessionCapabilities.fork` on the wire, but the
 // protocol schema this build speaks (v1) models no such field, so reading it
 // would mean parsing raw JSON around the crate. That would be worth doing for a
-// capability Sway could use - and it cannot: Sway's fork is `fork_args` plus a
+// capability Tori could use - and it cannot: Tori's fork is `fork_args` plus a
 // tree snapshot, and the ACP transport implements no fork verb at all. A
 // capability published here would be one the UI could only offer and then fail.
 
@@ -666,7 +666,7 @@ pub struct ChatCapabilities {
 pub struct ChatAccount {
     /// As the agent words it, e.g. `Claude Pro`, `Claude Max`. Passed through
     /// rather than parsed into a tier: the strings are the CLI's to change, and
-    /// a plan Sway has never seen should render as itself, not as "unknown".
+    /// a plan Tori has never seen should render as itself, not as "unknown".
     #[serde(default)]
     pub subscription_type: String,
     #[serde(default)]
@@ -739,7 +739,7 @@ pub enum PlanItemStatus {
 /// One quota window as a source reported it.
 ///
 /// `kind` is the source's own window name (`five_hour`, `seven_day`) rather than
-/// an enum: a harness is free to invent a window Sway has never seen, and a
+/// an enum: a harness is free to invent a window Tori has never seen, and a
 /// window dropped for being off a list is a limit the user finds out about from
 /// a failed turn instead.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -807,7 +807,7 @@ impl ContentBlock {
     ///
     /// The exact form `turn_frame` and `prompt_blocks` write and nothing
     /// looser, so a sentence that merely says `[Image 1]` stays prose. The path
-    /// is a transcript's word, not Sway's: an agent writes that file, so it is
+    /// is a transcript's word, not Tori's: an agent writes that file, so it is
     /// required to be absolute and one line, and every surface drawing it still
     /// decides for itself what it will open.
     pub fn from_replayed_text(text: &str) -> ContentBlock {
@@ -839,7 +839,7 @@ fn is_label(token: &str) -> bool {
 /// are two chances for the agent to be told two different things about the same
 /// selection.
 ///
-/// A `.pdf` is spelled out by page. Inside Sway a PDF's "line" is its page,
+/// A `.pdf` is spelled out by page. Inside Tori a PDF's "line" is its page,
 /// because the chips and the jump list already speak in lines, but an agent
 /// reads a PDF by page and would take `#L3` for the file's third line of text.
 pub fn file_ref_locator(path: &str, start_line: Option<u32>, end_line: Option<u32>) -> String {
@@ -978,7 +978,7 @@ pub enum ChatEvent {
     /// The agent's configuration levers, as they now stand.
     ///
     /// Emitted when the session opens and again whenever the agent reports a
-    /// change, its own `session/update` and the answer to a switch Sway sent
+    /// change, its own `session/update` and the answer to a switch Tori sent
     /// alike. **The whole set every time, never a delta**: the agent replies
     /// with its full list, one option can re-cut another's choices (picking a
     /// model changes which thinking levels exist), and a mirror rebuilt from the
@@ -1001,7 +1001,7 @@ pub enum ChatEvent {
     HookFired {
         session_id: String,
         /// Pairs `Started` with its `Finished`. Also what lets a `Started` be
-        /// attributed to Sway retroactively: only the response carries the
+        /// attributed to Tori retroactively: only the response carries the
         /// marker, so the started frame inherits ownership through this id.
         hook_id: String,
         /// As the agent names it, e.g. `PreToolUse:Bash`. **Reports the tool,
@@ -1011,11 +1011,11 @@ pub enum ChatEvent {
         /// The lifecycle event, e.g. `PreToolUse`, `SessionStart`.
         event: String,
         phase: HookPhase,
-        /// True when this is Sway's own injected approval hook, identified by
+        /// True when this is Tori's own injected approval hook, identified by
         /// the marker it stamps on its own output. Collapsed by default: it
-        /// runs on every tool call and is Sway's own plumbing, not something
+        /// runs on every tool call and is Tori's own plumbing, not something
         /// the user configured.
-        sway_owned: bool,
+        tori_owned: bool,
         #[serde(default)]
         outcome: Option<String>,
         #[serde(default)]
@@ -1265,7 +1265,7 @@ pub enum ChatEvent {
         /// Correlates the answer back to the blocked helper process, or to the
         /// control request the agent is waiting on.
         request_id: String,
-        /// When Sway will auto-deny. Sway owns this deadline and keeps it
+        /// When Tori will auto-deny. Tori owns this deadline and keeps it
         /// strictly below the hook's own timeout, so an unanswered prompt fails
         /// closed with a reason rather than being resolved by the CLI.
         #[serde(default)]
@@ -1295,7 +1295,7 @@ pub enum ChatEvent {
     /// vocabulary and the surface never sees that string.
     ///
     /// There is no deadline field. Measured 2026-08-22 on claude 2.1.239: the
-    /// CLI imposes none (417s held, zero frames after the ask), and Sway arms
+    /// CLI imposes none (417s held, zero frames after the ask), and Tori arms
     /// none either, so an unanswered question ends only by being cancelled.
     QuestionRequest {
         session_id: String,
@@ -1948,7 +1948,7 @@ mod tests {
                 name: "PreToolUse:Bash".into(),
                 event: "PreToolUse".into(),
                 phase: HookPhase::Finished,
-                sway_owned: false,
+                tori_owned: false,
                 outcome: Some("success".into()),
                 exit_code: Some(0),
                 output: Some("{\"hookSpecificOutput\":{}}".into()),

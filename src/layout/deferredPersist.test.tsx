@@ -45,16 +45,16 @@ describe("a store write during a click", () => {
       setPaneActive(WS, "left", `sh:${i}`);
     }
     vi.runAllTimers();
-    expect(spy.mock.calls.map((c) => c[0]).sort()).toEqual(["sway.panes.v1", "sway.tabpanes.v1"]);
+    expect(spy.mock.calls.map((c) => c[0]).sort()).toEqual(["tori.panes.v1", "tori.tabpanes.v1"]);
     spy.mockRestore();
   });
 
   it("lands on its own once the burst stops", () => {
     ensureEnvelope(WS, seed);
     setPaneActive(WS, "left", "sh:1");
-    expect(stored("sway.tabpanes.v1")).toBeNull();
+    expect(stored("tori.tabpanes.v1")).toBeNull();
     vi.runAllTimers();
-    expect(JSON.parse(stored("sway.tabpanes.v1")!)[WS].active).toEqual({ left: "sh:1" });
+    expect(JSON.parse(stored("tori.tabpanes.v1")!)[WS].active).toEqual({ left: "sh:1" });
   });
 });
 
@@ -64,15 +64,15 @@ describe("the flush hooks", () => {
     setFocusedPane(WS, "right");
     setPaneActive(WS, "left", "sh:1");
     dispatchEvent(new Event("pagehide"));
-    expect(JSON.parse(stored("sway.panes.v1")!)[WS].focusedPaneId).toBe("right");
-    expect(JSON.parse(stored("sway.tabpanes.v1")!)[WS].active).toEqual({ left: "sh:1" });
+    expect(JSON.parse(stored("tori.panes.v1")!)[WS].focusedPaneId).toBe("right");
+    expect(JSON.parse(stored("tori.tabpanes.v1")!)[WS].active).toEqual({ left: "sh:1" });
   });
 
   it("is a no-op with nothing pending", () => {
     flushEnvelopes();
     flushTabPlacement();
-    expect(stored("sway.panes.v1")).toBeNull();
-    expect(stored("sway.tabpanes.v1")).toBeNull();
+    expect(stored("tori.panes.v1")).toBeNull();
+    expect(stored("tori.tabpanes.v1")).toBeNull();
   });
 
   // A reset reloads from storage, so a write still holding the state it is
@@ -82,6 +82,6 @@ describe("the flush hooks", () => {
     setFocusedPane(WS, "right");
     resetPaneLayoutModel();
     vi.runAllTimers();
-    expect(stored("sway.panes.v1")).toBeNull();
+    expect(stored("tori.panes.v1")).toBeNull();
   });
 });

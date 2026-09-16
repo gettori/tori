@@ -10,8 +10,8 @@ import { defaultKeymap, history, historyField, historyKeymap, indentWithTab, red
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
 import { syntaxHighlighting, indentOnInput, bracketMatching, foldGutter, foldKeymap } from "@codemirror/language";
-import { swayHighlight } from "./syntaxStyle";
-import { swayTheme } from "./editorTheme";
+import { toriHighlight } from "./syntaxStyle";
+import { toriTheme } from "./editorTheme";
 import { langForPath } from "./languages";
 import { debounce } from "../../utils/debounce";
 import { markSelfWrite, isSelfWrite } from "../../utils/selfWrites";
@@ -42,7 +42,7 @@ import type { BreakpointMark } from "../../utils/debugBreakpoints";
 import { frameHighlight, setFrameLineMarker } from "./frameHighlight";
 import { debugRunning } from "../../utils/debugStore";
 import { debugHover } from "./debugHover";
-import { swayRenameSymbol } from "./lspRenameCommand";
+import { toriRenameSymbol } from "./lspRenameCommand";
 import { describeRename, type RenameOutcome } from "./lspRename";
 import { applyCodeAction, caretRange, wholeFileRange } from "./codeActionCommand";
 import { publishSourceActionKinds } from "../../utils/sourceActions";
@@ -72,7 +72,7 @@ import { semanticHighlight, semanticTokenCount, setSemanticTokens } from "./sema
 import { formatForSave, type FormatDeps, type FormatResult } from "./formatOnSave";
 import { organizeForSave, type OrganizeDeps } from "./organizeOnSave";
 import { editsByUri } from "./workspaceEdit";
-import { uriToPath } from "./swayWorkspace";
+import { uriToPath } from "./toriWorkspace";
 import { diffChanges, toDoc } from "./docDiff";
 import { dropSymbols, clearSymbols, setWorkspaceSymbolSearch } from "../../utils/symbols";
 import { clearCallRoots, dropCallRoots, setCallFetcher } from "../../utils/callHierarchy";
@@ -409,7 +409,7 @@ export default function CodeEditor(props: {
   // panel so it is the same menu component as every other list of choices in
   // the app, with the same keyboard and outside-click behaviour.
   //
-  // The one surface in Sway with no trigger element: the caret is a coordinate,
+  // The one surface in Tori with no trigger element: the caret is a coordinate,
   // not a control. That is what `Dropdown`'s `anchor` mode exists for, and why
   // it is a `DropdownMenu` rather than a `ContextMenu` (only the former accepts
   // both `open` and a virtual anchor).
@@ -1089,12 +1089,12 @@ export default function CodeEditor(props: {
     // back to. Per buffer, like the undo history beside it: an expansion chain
     // is about one document's syntax.
     selectionHistory,
-    syntaxHighlighting(swayHighlight),
+    syntaxHighlighting(toriHighlight),
     // After the highlight style, not before: the grammar colours everything
     // immediately and offline, and the server's answer lands on top of the
     // subset it has actually resolved.
     semanticHighlight(),
-    swayTheme,
+    toriTheme,
     keymap.of([
       {
         key: "Mod-s",
@@ -1177,7 +1177,7 @@ export default function CodeEditor(props: {
     peek,
     peekKeymap(peek),
     peekTheme,
-    // F2 must reach Sway's rename, not the library's. `languageServerExtensions()`
+    // F2 must reach Tori's rename, not the library's. `languageServerExtensions()`
     // binds it to `renameSymbol`, whose `doRename` skips every file the user has
     // not already opened - silently, which is the worst way for a rename to be
     // wrong. Highest precedence because that keymap arrives through the LSP
@@ -1187,7 +1187,7 @@ export default function CodeEditor(props: {
         {
           key: "F2",
           preventDefault: true,
-          run: (v) => swayRenameSymbol(v, renameIo),
+          run: (v) => toriRenameSymbol(v, renameIo),
         },
       ]),
     ),
@@ -2176,7 +2176,7 @@ export default function CodeEditor(props: {
     // buffer wants the same news about it.
     offLsp = onLspChange(relinkLsp);
     // Genuine external changes to any open buffer: reload (clean) or banner
-    // (dirty). Sway's own saves are skipped via isSelfWrite. handleExternalChange
+    // (dirty). Tori's own saves are skipped via isSelfWrite. handleExternalChange
     // also resyncs the gutter for the active file.
     unlistenFs = await listen<FsChanged>("fs://changed", (e) => {
       if (e.payload.root && e.payload.root !== props.projectRoot) return;
@@ -2184,7 +2184,7 @@ export default function CodeEditor(props: {
         // Every path, not only the open ones: the language workspace holds
         // snapshots of files the user never opened, and a snapshot that keeps
         // describing the old text is worse than no snapshot at all. Not gated
-        // on `isSelfWrite` - Sway only ever writes the file it is showing, and
+        // on `isSelfWrite` - Tori only ever writes the file it is showing, and
         // that one is view-backed, which `fileChanged` ignores anyway.
         notifyLspFileChanged(p);
         if (buffers.has(p) && !isSelfWrite(p)) void handleExternalChange(p);
@@ -2427,7 +2427,7 @@ export default function CodeEditor(props: {
   const offLspCommands = [
     onEvent(EDITOR_LSP_DEFINITION, () => void (view && jumpToDefinition(view))),
     onEvent(EDITOR_LSP_REFERENCES, () => void (view && findReferences(view))),
-    onEvent(EDITOR_LSP_RENAME, () => void (view && swayRenameSymbol(view, renameIo))),
+    onEvent(EDITOR_LSP_RENAME, () => void (view && toriRenameSymbol(view, renameIo))),
     onEvent(EDITOR_LSP_FORMAT, () => void formatNow()),
     onEvent(EDITOR_LSP_CODE_ACTION, () => void openCodeActions()),
     onWith<SourceAction>(EDITOR_LSP_SOURCE_ACTION, ({ kind, label }) => void runSourceAction(kind, label)),

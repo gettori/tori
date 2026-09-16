@@ -1,6 +1,6 @@
 /* Design tokens, two tiers.
 
-   Primitives (--sway-*) are raw, theme-independent values: the palette ramp,
+   Primitives (--tori-*) are raw, theme-independent values: the palette ramp,
    spacing, radii, type, motion. Semantic tokens are the roles the UI actually
    consumes (--canvas-default, --fg-default, ...); they select primitives per theme, keyed on
    :root[data-theme]. The dark set maps 1:1 to the values that used to live in
@@ -11,44 +11,44 @@
 @layer tokens {
   :root {
     /* ---- Neutral ramp (light end to dark end) ---- */
-    --sway-white: #ffffff;
-    --sway-gray-50: #f3f3f3;
-    --sway-gray-100: #ededed;
-    --sway-gray-150: #e8e8e8;
-    --sway-gray-200: #e0e0e0;
-    --sway-gray-500: #6a6a6a;
-    --sway-gray-600: #808080;
-    --sway-gray-800: #2a2d2e;
-    --sway-gray-850: #2d2d2d;
-    --sway-gray-900: #252526;
-    --sway-gray-950: #1e1e1e;
-    --sway-gray-990: #1a1a1a;
-    --sway-black: #000000;
+    --tori-white: #ffffff;
+    --tori-gray-50: #f3f3f3;
+    --tori-gray-100: #ededed;
+    --tori-gray-150: #e8e8e8;
+    --tori-gray-200: #e0e0e0;
+    --tori-gray-500: #6a6a6a;
+    --tori-gray-600: #808080;
+    --tori-gray-800: #2a2d2e;
+    --tori-gray-850: #2d2d2d;
+    --tori-gray-900: #252526;
+    --tori-gray-950: #1e1e1e;
+    --tori-gray-990: #1a1a1a;
+    --tori-black: #000000;
 
     /* Foreground endpoints */
-    --sway-fg-dark: #d4d4d4;
-    --sway-fg-light: #1e1e1e;
+    --tori-fg-dark: #d4d4d4;
+    --tori-fg-light: #1e1e1e;
 
     /* ---- Cool navy surface ramp (dark theme) ----
        The dark chrome palette, a deep cool navy rather than a neutral charcoal.
        Sampled from the premium reference; the dark semantic tokens below select
        these instead of the neutral grays. Light theme keeps the gray ramp. */
-    --sway-navy-950: #15171c; /* window / desk bg (the tinted shell behind everything) */
-    --sway-navy-900: #1b1e25; /* card: the raised terminal/editor content panel */
-    --sway-navy-850: #1b232e; /* raised head / input field */
-    --sway-navy-800: #252a34; /* card2: raised chips / active tabs, hover / active row */
-    --sway-navy-700: #232c38; /* legacy solid border (superseded by --sway-navy-line for chrome dividers) */
+    --tori-navy-950: #15171c; /* window / desk bg (the tinted shell behind everything) */
+    --tori-navy-900: #1b1e25; /* card: the raised terminal/editor content panel */
+    --tori-navy-850: #1b232e; /* raised head / input field */
+    --tori-navy-800: #252a34; /* card2: raised chips / active tabs, hover / active row */
+    --tori-navy-700: #232c38; /* legacy solid border (superseded by --tori-navy-line for chrome dividers) */
     /* Cool blue-white hairline: the single divider treatment across the flat UI
        (panel border, terminal<->editor split, tree/header rules). Depth comes
        from the one floating card, not from stacking borders. */
-    --sway-navy-line: rgba(200, 215, 255, 0.08);
+    --tori-navy-line: rgba(200, 215, 255, 0.08);
     /* A slightly stronger stop of the same cool hairline, for structural lines
        that must stay legible but still read as quiet (the branch/worktree graph
        rail). Kept well under the placeholder's weight so it never shouts. */
-    --sway-navy-line-strong: rgba(200, 215, 255, 0.13);
-    --sway-fg-navy: #e4e8f0; /* primary text (cool near-white) */
-    --sway-fg-navy-dim: #98a0b0; /* dim text (muted slate) */
-    --sway-fg-navy-faint: #666e7e; /* faint text (dim slate): quiet icons, placeholders, meta */
+    --tori-navy-line-strong: rgba(200, 215, 255, 0.13);
+    --tori-fg-navy: #e4e8f0; /* primary text (cool near-white) */
+    --tori-fg-navy-dim: #98a0b0; /* dim text (muted slate) */
+    --tori-fg-navy-faint: #666e7e; /* faint text (dim slate): quiet icons, placeholders, meta */
 
     /* ---- Agent brand hues ----
        A vendor's own colour, worn by its mark while a turn is running. A
@@ -62,87 +62,87 @@
        are all published as monochrome black, and their faithful rendering is
        the theme's own foreground rather than a hue. Source is Simple Icons,
        slug `googlegemini`, the same set the paths come from. */
-    --sway-agent-gemini: #8e75b2;
+    --tori-agent-gemini: #8e75b2;
 
     /* Accent (blue) */
-    --sway-blue-100: #cfe3fb;
-    --sway-blue-500: #4a9eff;
-    --sway-blue-600: #005fb8;
-    --sway-blue-900: #094771;
+    --tori-blue-100: #cfe3fb;
+    --tori-blue-500: #4a9eff;
+    --tori-blue-600: #005fb8;
+    --tori-blue-900: #094771;
 
     /* ---- Brand ramp (champagne / brass gold) ----
        The fixed brand identity, independent of the theme-following blue accent.
        Chrome selection/focus/active read the semantic --brand-* family below;
        these primitives are the raw ramp both themes select from. */
-    --sway-gold-50: #faf4e6;
-    --sway-gold-100: #f1e3c4;
-    --sway-gold-200: #e6cf9d;
-    --sway-gold-300: #d9bd85;
-    --sway-gold-400: #d9a468;
-    --sway-gold-500: #c19653;
-    --sway-gold-600: #a97f42;
-    --sway-gold-700: #8a6733;
-    --sway-gold-800: #6b4f27;
-    --sway-gold-900: #4a3719;
+    --tori-gold-50: #faf4e6;
+    --tori-gold-100: #f1e3c4;
+    --tori-gold-200: #e6cf9d;
+    --tori-gold-300: #d9bd85;
+    --tori-gold-400: #d9a468;
+    --tori-gold-500: #c19653;
+    --tori-gold-600: #a97f42;
+    --tori-gold-700: #8a6733;
+    --tori-gold-800: #6b4f27;
+    --tori-gold-900: #4a3719;
 
     /* ---- Type ---- */
-    --sway-font-ui: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    --tori-font-ui: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     /* The bundled Nerd Font sits at the *end*, as a glyph fallback rather than
        the face: agent output pasted from a shell carries powerline separators
        and devicons, and a box instead of one is the bug. Browsers fall back per
        character, so code in the transcript keeps rendering in SF Mono and only
        the glyphs nothing else has come from the bundle. */
-    --sway-font-mono:
+    --tori-font-mono:
       ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, "Cascadia Code", "JetBrainsMono Nerd Font Mono", monospace;
     /* Type ramp. Every step folds --ui-scale, so the whole chrome type system
        tracks the UI font size (and Cmd +/- zoom) from one multiplier. Each base
        is the px that step renders at the default UI size (--ui-scale = 1); the
        ramp carries enough steps to keep the dense 10-13px cluster distinct. */
-    --sway-text-2xs: calc(10px * var(--ui-scale));
-    --sway-text-xs: calc(11px * var(--ui-scale));
-    --sway-text-sm: calc(12px * var(--ui-scale));
-    --sway-text-md: calc(13px * var(--ui-scale));
-    --sway-text-lg: calc(14px * var(--ui-scale));
-    --sway-text-xl: calc(15px * var(--ui-scale));
-    --sway-text-2xl: calc(16px * var(--ui-scale));
-    --sway-text-3xl: calc(18px * var(--ui-scale));
-    --sway-text-4xl: calc(21px * var(--ui-scale));
+    --tori-text-2xs: calc(10px * var(--ui-scale));
+    --tori-text-xs: calc(11px * var(--ui-scale));
+    --tori-text-sm: calc(12px * var(--ui-scale));
+    --tori-text-md: calc(13px * var(--ui-scale));
+    --tori-text-lg: calc(14px * var(--ui-scale));
+    --tori-text-xl: calc(15px * var(--ui-scale));
+    --tori-text-2xl: calc(16px * var(--ui-scale));
+    --tori-text-3xl: calc(18px * var(--ui-scale));
+    --tori-text-4xl: calc(21px * var(--ui-scale));
     /* Transcript prose. Deliberately *not* on the chrome ramp: it is set at
        runtime from the terminal font size (see settingsStore.applySettings), so
        a chat and a terminal read at one size. This default matches the 15px
        terminal default, covering the first paint and anything that renders
        these styles without the settings store. */
     --chat-font-size: 15px;
-    --sway-line-tight: 1.2;
-    --sway-line-normal: 1.5;
+    --tori-line-tight: 1.2;
+    --tori-line-normal: 1.5;
 
     /* ---- Spacing ----
        Scale-aware like the type ramp: each step folds --ui-scale, so padding,
        gaps, and margins built on these tokens track the UI font size (and Cmd
        +/- zoom) from the one multiplier. Bases are the px each step renders at
        the default UI size (--ui-scale = 1). */
-    --sway-space-1: calc(2px * var(--ui-scale));
-    --sway-space-2: calc(4px * var(--ui-scale));
-    --sway-space-3: calc(6px * var(--ui-scale));
-    --sway-space-4: calc(8px * var(--ui-scale));
-    --sway-space-5: calc(12px * var(--ui-scale));
-    --sway-space-6: calc(16px * var(--ui-scale));
-    --sway-space-7: calc(24px * var(--ui-scale));
-    --sway-space-8: calc(32px * var(--ui-scale));
+    --tori-space-1: calc(2px * var(--ui-scale));
+    --tori-space-2: calc(4px * var(--ui-scale));
+    --tori-space-3: calc(6px * var(--ui-scale));
+    --tori-space-4: calc(8px * var(--ui-scale));
+    --tori-space-5: calc(12px * var(--ui-scale));
+    --tori-space-6: calc(16px * var(--ui-scale));
+    --tori-space-7: calc(24px * var(--ui-scale));
+    --tori-space-8: calc(32px * var(--ui-scale));
 
     /* ---- Radii ---- */
-    --sway-radius-sm: 3px;
-    --sway-radius-md: 8px;
-    --sway-radius-lg: 10px;
+    --tori-radius-sm: 3px;
+    --tori-radius-md: 8px;
+    --tori-radius-lg: 10px;
     /* Every surface that floats over the app: dialog, modal, popover, menu,
        toast, and the work-card. One radius for the whole tier, because they
        are the same kind of object to the eye whatever the code calls them. */
-    --sway-radius-xl: 12px;
-    --sway-radius-pill: 999px;
+    --tori-radius-xl: 12px;
+    --tori-radius-pill: 999px;
 
     /* ---- Border widths ---- */
-    --sway-border-thin: 1px;
-    --sway-border-thick: 2px;
+    --tori-border-thin: 1px;
+    --tori-border-thick: 2px;
 
     /* ---- Controls (buttons, toggles, segmented, tabs) ----
        Fixed outer heights + a standard icon size, all scaling with the UI.
@@ -154,14 +154,14 @@
     --control-icon: calc(16px * var(--ui-scale));
 
     /* ---- Motion ---- */
-    --sway-duration-fast: 80ms;
-    --sway-duration-med: 160ms;
-    --sway-ease: ease;
+    --tori-duration-fast: 80ms;
+    --tori-duration-med: 160ms;
+    --tori-ease: ease;
 
     /* ---- Settings-driven tokens (overridden by the settings store as inline
        props on <html>; defaults here match the pre-settings look). ---- */
     --ui-scale: 1; /* chrome sizing multiplier; = uiFontSize / 15 × zoom */
-    --ui-line-height: var(--sway-line-normal);
+    --ui-line-height: var(--tori-line-normal);
     --editor-font-family: "SF Mono", Menlo, Monaco, monospace;
     --editor-font-size: 13px;
 
@@ -524,11 +524,11 @@
   /* ---- Spacing conventions (two-tier rhythm) ----
      Chrome surfaces (sidebar, toolbar, dialogs, settings, menus, toasts,
      buttons) are SPACIOUS: generous padding, section rhythm, pills, soft
-     elevation. Reach for --sway-space-5/6/7 (12/16/24px) and --shadow-md/lg.
+     elevation. Reach for --tori-space-5/6/7 (12/16/24px) and --shadow-md/lg.
      Work surfaces (editor, terminal, file tree, session tree, tabs) stay DENSE:
-     tight rows, upgraded only via radii/hover/type. Reach for --sway-space-2/3
+     tight rows, upgraded only via radii/hover/type. Reach for --tori-space-2/3
      (4/6px) and at most --shadow-sm. All chrome spacing >=2px scales with the
-     UI: use a --sway-space-* token or `calc(<px> * var(--ui-scale))`, so padding,
+     UI: use a --tori-space-* token or `calc(<px> * var(--ui-scale))`, so padding,
      gaps, and control dimensions track the UI font size (and Cmd +/- zoom).
-     1px hairlines/borders stay fixed; radii are fixed px (--sway-radius-*). */
+     1px hairlines/borders stay fixed; radii are fixed px (--tori-radius-*). */
 }

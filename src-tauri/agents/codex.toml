@@ -23,7 +23,7 @@ base_args = []
 yolo_args = ["--dangerously-bypass-approvals-and-sandbox"]
 # Empty, which the UI reads as "this agent's sessions can't be resumed" (see
 # ADAPTERS.md) rather than mis-resuming. Codex does have its own resume, but the
-# id Sway holds for an ACP row is Sway's own: see opencode.toml for the full
+# id Tori holds for an ACP row is Tori's own: see opencode.toml for the full
 # reasoning, which applies here unchanged.
 resume_args = []
 
@@ -34,7 +34,7 @@ resume_args = []
 pty_quiet_ms = 2000
 # Not claimed. The quiet-PTY join is Claude-shaped and unmeasured against
 # Codex's TUI, and a chat tab does not need it: over ACP the agent asks
-# in-protocol and Sway renders the question.
+# in-protocol and Tori renders the question.
 needs_you = false
 hooks = false
 
@@ -44,7 +44,7 @@ hooks = false
 #
 # `codex login status` puts the entire answer in its exit code: 0 signed in, 1
 # not, with the prose ("Logged in using ChatGPT" / "Not logged in") on **stderr**
-# and stdout empty. So `whoami_kind = "exit_code"`, and Sway learns no account
+# and stdout empty. So `whoami_kind = "exit_code"`, and Tori learns no account
 # name from it - Codex does not print one, and inventing a parse of that prose
 # would be a guess about a sentence nobody promised to keep.
 #
@@ -68,7 +68,7 @@ whoami_kind = "exit_code"
 # `codex-acp` 1.2.0 files it into its own state and emits no session update
 # (`acp_transport::tests::codex_forwards_no_rate_limits_over_acp`, 2026-09-06);
 # the only way back out is `/status`, as markdown prose. So Codex's quota costs
-# a read Sway schedules for itself: `usage_probe.rs` drives
+# a read Tori schedules for itself: `usage_probe.rs` drives
 # `codex app-server` for `account/rateLimits/read`, which answers the two
 # windows, the plan and the credit balance in one exchange.
 [usage]
@@ -86,7 +86,7 @@ transport = "acp"
 # That surface is also moving: it went from 598 files / 6,230 lines on 0.144.5 to
 # 642 / 6,923 on 0.147.0, three patch versions apart and inside one afternoon.
 # What the wrapper gives up is `thread/archive`, `thread/rollback`,
-# `thread/fork` and `turn/steer`, none of which Sway drives over ACP anyway.
+# `thread/fork` and `turn/steer`, none of which Tori drives over ACP anyway.
 program = "npx"
 # Pinned to the version measured, matching how the ACP catalog pins its own
 # rows. `npx -y @agentclientprotocol/codex-acp` unpinned would silently move the
@@ -111,7 +111,7 @@ base_args = ["-y", "@agentclientprotocol/codex-acp@1.2.0"]
 # worth keeping:
 #
 #   * the effort selector's **id is `reasoning_effort`** while its **category is
-#     `thought_level`**. Sway selects by category, which is the only reason it
+#     `thought_level`**. Tori selects by category, which is the only reason it
 #     finds this at all: opencode's ids happen to match their categories, and
 #     matching on the id here would have found nothing.
 #   * `collaboration_mode` is categorized as *itself*, so no bespoke control
@@ -120,7 +120,7 @@ base_args = ["-y", "@agentclientprotocol/codex-acp@1.2.0"]
 #
 # `session/list` is advertised and answered, **scoped to the asking session's
 # cwd**: a chat in a project directory is told about that directory's sessions
-# and nothing else. So a probe session in Sway's probe directory is out of a
+# and nothing else. So a probe session in Tori's probe directory is out of a
 # user's history twice over, the agent's scoping and `adopt`'s own filter.
 session_id_args = []
 resume_args = []
@@ -144,6 +144,6 @@ add_dir_args = []
 # on the handshake, which is what the ACP transport reads them from.
 
 [chat.acp]
-# Left at the safe default: measured doing its own file I/O, and Sway's MCP
+# Left at the safe default: measured doing its own file I/O, and Tori's MCP
 # configuration is not forwarded over ACP at all.
 serve_client_fs = false

@@ -1,12 +1,12 @@
 name: Adapter request
-description: Ask for support for an agent CLI Sway does not know about
+description: Ask for support for an agent CLI Tori does not know about
 labels: ["adapter"]
 body:
   - type: markdown
     attributes:
       value: |
         **You may not need this issue.** Agents are data, not code: a
-        `schema_version = 1` TOML in `~/.config/sway/agents/` can add one
+        `schema_version = 1` TOML in `~/.config/tori/agents/` can add one
         yourself, and the schema is stable at v1. See
         [ADAPTERS.md](../../ADAPTERS.md).
 
@@ -37,7 +37,7 @@ body:
     attributes:
       label: Where its session transcripts live
       description: >
-        A directory of per-session files, or a shared database. Sway supports
+        A directory of per-session files, or a shared database. Tori supports
         both (`file` and `sqlite` discovery backends).
       placeholder: "~/.codex/sessions, one .jsonl per session"
     validations:

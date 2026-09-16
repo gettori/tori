@@ -6,7 +6,7 @@
   flex-direction: column;
   overflow-y: auto;
   background: var(--canvas-card);
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
 }
 
 .head {
@@ -47,19 +47,19 @@
   gap: calc(10px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(12px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 
 .notice {
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .error {
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--danger-fg);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .fileRow {
@@ -70,7 +70,7 @@
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: none;
   color: inherit;
   font: inherit;
@@ -87,7 +87,7 @@
   flex: none;
   min-width: calc(72px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 .status[data-file-status="added"] {
   color: var(--diff-added);
@@ -108,7 +108,7 @@
   flex: none;
   display: flex;
   gap: calc(4px * var(--ui-scale));
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
   font-variant-numeric: tabular-nums;
 }
 .added {
@@ -126,24 +126,24 @@
   margin: calc(4px * var(--ui-scale)) 0;
   padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
 }
 
 .anchor {
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono, monospace);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono, monospace);
+  font-size: var(--tori-text-2xs);
 }
 
 .composerInput {
   width: 100%;
   padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--canvas-default, var(--canvas-card));
   color: var(--fg-default);
   font: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   resize: vertical;
 }
 
@@ -156,7 +156,7 @@
 .threadCount {
   flex: none;
   color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 
 /* Conversations that sit beside no diff row: outdated, or anchored outside the
@@ -170,7 +170,7 @@
   color: var(--fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 
 .fileDiff {
@@ -182,7 +182,7 @@
 .skip {
   padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 /* The collapsed-gap row sits in the same column flow as real diff lines, so it

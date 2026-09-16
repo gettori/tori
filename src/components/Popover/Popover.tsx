@@ -16,7 +16,7 @@ export type PopoverPlacement = "bottom-start" | "bottom-end" | "top-start" | "to
 const ANCHOR_GUTTER = 12;
 
 /**
- * The anchored panel surface: Kobalte's popover behind Sway's chrome and Sway's
+ * The anchored panel surface: Kobalte's popover behind Tori's chrome and Tori's
  * API. The menus have their own pair of wrappers (`Menu/`); this is for a panel
  * with arbitrary content that hangs off a control, and its one consumer is the
  * History dropdown.

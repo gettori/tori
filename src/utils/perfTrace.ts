@@ -1,6 +1,6 @@
 /**
  * Frontend half of the switch-latency instrumentation. Off unless the backend
- * was launched with `SWAY_TRACE` set, which it answers through `trace_config`,
+ * was launched with `TORI_TRACE` set, which it answers through `trace_config`,
  * because a release bundle has no devtools and no console to be told through.
  *
  * Two things are recorded. Every `invoke` gets a line with a correlation id,
@@ -157,7 +157,7 @@ function report(ok: boolean, why: string): void {
 function tagged(args: unknown, id: number): unknown {
   if (args instanceof ArrayBuffer || ArrayBuffer.isView(args)) return args;
   if (args !== undefined && (typeof args !== "object" || args === null)) return args;
-  return { ...(args as object), __swayTrace: id };
+  return { ...(args as object), __toriTrace: id };
 }
 
 /** Open a span, answering whether one was opened. A worktree switch is armed

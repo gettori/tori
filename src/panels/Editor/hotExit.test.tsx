@@ -185,7 +185,7 @@ describe("launching with a stash", () => {
     // it is keyed by an absolute path like every other buffer, so `dirtyStash`
     // picks it up and the rebuild finds it with no scratch-shaped branch in the
     // stash at all.
-    const SCRATCH = "/home/me/.config/sway/scratch/Untitled-1";
+    const SCRATCH = "/home/me/.config/tori/scratch/Untitled-1";
     disk[SCRATCH] = "";
     const first = await mountEditor(SCRATCH);
     typeInto(first.view, "a thought worth keeping\n");

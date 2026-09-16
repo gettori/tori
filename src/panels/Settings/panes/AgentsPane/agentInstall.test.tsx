@@ -1,6 +1,6 @@
 // The install half of an agent's detail page, end to end through the component.
 //
-// Sway never installs anything itself: the button opens a real terminal tab
+// Tori never installs anything itself: the button opens a real terminal tab
 // running the vendor's own documented command, from the adapter's [install]
 // table, and the tab re-probes health on exit. These tests keep that shape:
 // nothing here asserts on a package landing anywhere, because nothing does.

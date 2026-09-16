@@ -152,7 +152,7 @@ describe("toolPaths", () => {
     expect(toolPaths(card({ name: "Grep", input: { pattern: "src/.*\\.ts" } }))).toEqual([]);
   });
 
-  // ACP publishes locations and no arguments Sway can read, so without these a
+  // ACP publishes locations and no arguments Tori can read, so without these a
   // codex card knows the file it read and cannot offer to open it.
   it("lists the locations an agent declared for a call with no path in its arguments", () => {
     const c = card({

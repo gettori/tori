@@ -24,9 +24,9 @@
   padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
   background: var(--canvas-head);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   cursor: pointer;
 }
 
@@ -49,7 +49,7 @@
   flex: none;
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .results {
@@ -69,7 +69,7 @@
   gap: calc(6px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .fileName {
@@ -98,16 +98,16 @@
 .tag {
   flex: none;
   color: var(--accent-fg);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 .loc {
   flex: none;
   min-width: calc(28px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -118,8 +118,8 @@
   min-width: 0;
   overflow: hidden;
   color: var(--fg-default);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

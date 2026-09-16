@@ -9,7 +9,7 @@ import {
   type LspPosition,
   type MaterialisedFile,
 } from "./workspaceEdit";
-import { pathToUri } from "./swayWorkspace";
+import { pathToUri } from "./toriWorkspace";
 
 // The applier is what stands between a server's opinion and someone's files, so
 // the cases here are the ones where doing the obvious thing loses something: a

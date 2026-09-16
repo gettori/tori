@@ -172,7 +172,7 @@ describe("the reverse-request router", () => {
       conn.receive(JSON.stringify({ seq: 100 + index, type: "request", command, arguments: {} }));
     }
 
-    // None left unanswered: an adapter waiting on a reply Sway never sends is
+    // None left unanswered: an adapter waiting on a reply Tori never sends is
     // the failure this router exists for, and it is completely silent.
     expect(sent).toHaveLength(REVERSE_REQUESTS.length);
     for (const [index, command] of REVERSE_REQUESTS.entries()) {
@@ -180,7 +180,7 @@ describe("the reverse-request router", () => {
       expect(reply.type).toBe("response");
       expect(reply.command).toBe(command);
       expect(reply.request_seq).toBe(100 + index);
-      // A refusal, not a "no such method": the adapter is told what Sway will
+      // A refusal, not a "no such method": the adapter is told what Tori will
       // not do and why, in a body it can render.
       expect(reply.success).toBe(false);
       expect(String(reply.message)).not.toMatch(/not implement|method not found/i);
@@ -253,7 +253,7 @@ describe("the initialize payload", () => {
     expect(args.adapterID).toBe("js-debug");
   });
 
-  it("declares a request-implying capability only when Sway actually serves it", () => {
+  it("declares a request-implying capability only when Tori actually serves it", () => {
     const { conn } = agent();
     // A fresh connection refuses everything; the real handlers are installed by
     // `dapSessions.ts`, so this asserts the *default* posture is honest.
@@ -275,7 +275,7 @@ describe("the initialize payload", () => {
     expect(args.supportsVariableType).toBe(true);
   });
 
-  it("does not claim runInTerminal, which Sway refuses", () => {
+  it("does not claim runInTerminal, which Tori refuses", () => {
     // Phase 1 measured this: with `integratedTerminal` or `externalTerminal`
     // js-debug sends `runInTerminal`, and a session that cannot serve it dies
     // at zero stops, zero output and zero errors. Declaring false keeps the

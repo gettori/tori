@@ -1,7 +1,7 @@
 // When a quota crossing is worth the OS's attention.
 //
 // Two rules, and they pull in opposite directions on purpose. **Nothing while
-// the window is focused**, because a focused Sway is already showing the strip.
+// the window is focused**, because a focused Tori is already showing the strip.
 // And **once per window per reset, across restarts**, because the record of
 // what has been said is on disk and a notice repeated on every launch is the
 // failure that record exists to prevent.
@@ -103,7 +103,7 @@ describe("what earns a notification", () => {
 });
 
 describe("the focus rule", () => {
-  // A focused Sway is already showing the strip, and a chat on that account is
+  // A focused Tori is already showing the strip, and a chat on that account is
   // showing the banner. A notification would be a second copy of what is on
   // screen.
   it("sends nothing while the window has focus", () => {

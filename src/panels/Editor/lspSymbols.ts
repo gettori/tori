@@ -15,7 +15,7 @@ import {
   type SymbolNode,
 } from "../../utils/symbols";
 import { lspTargetFor, lspTargets } from "./lspClient";
-import { pathToUri, uriToPath } from "./swayWorkspace";
+import { pathToUri, uriToPath } from "./toriWorkspace";
 
 /**
  * This file's symbol tree, or null when there is none to have.

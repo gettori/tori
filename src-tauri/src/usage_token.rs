@@ -227,7 +227,7 @@ pub fn read_usage(
 // --- the real vault and the real endpoint ---
 
 /// Read through `/usr/bin/security`, the tool `claude` writes the item with, so
-/// the item already trusts it. Read in process, every Sway build needs its own
+/// the item already trusts it. Read in process, every Tori build needs its own
 /// "Always Allow", and a dev build's signature changes on every rebuild.
 pub struct Keychain;
 
@@ -388,14 +388,14 @@ mod tests {
     #[test]
     fn a_profile_home_names_its_own_item() {
         assert_eq!(service_for(None), "Claude Code-credentials");
-        let named = service_for(Some("/Users/me/Library/Application Support/sway/profiles/claude/work"));
+        let named = service_for(Some("/Users/me/Library/Application Support/tori/profiles/claude/work"));
         assert!(named.starts_with("Claude Code-credentials-"), "{named}");
         assert_eq!(named.len(), "Claude Code-credentials-".len() + 8, "eight hex characters");
         assert_ne!(named, service_for(Some("/Users/me/other")), "one directory, one item");
     }
 
     /// The account name has to survive a launchd environment, which is the one
-    /// Sway actually ships into and the one no test process ever has.
+    /// Tori actually ships into and the one no test process ever has.
     #[test]
     fn the_os_account_does_not_depend_on_an_environment_variable() {
         let from_home = dirs::home_dir().expect("a home directory");
@@ -508,7 +508,7 @@ mod tests {
         let reading = read_usage(UsageSource::Token, None, "me", &vault, &api, NOW).expect("a reading");
 
         let root = std::env::temp_dir().join(format!(
-            "sway-token-custody-{}-{:?}",
+            "tori-token-custody-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));

@@ -1,6 +1,6 @@
-//! The event log Sway keeps beside an ACP session.
+//! The event log Tori keeps beside an ACP session.
 //!
-//! Every other agent Sway drives writes a transcript of its own that
+//! Every other agent Tori drives writes a transcript of its own that
 //! `chat_history` can read back. An ACP agent keeps its conversation privately
 //! and hands it over only as `session/load`'s replay, on the live channel, to a
 //! session that is already running. So a tab restored after a restart has
@@ -12,7 +12,7 @@
 //!
 //!   * **The log is a cache of the agent's replay, never the truth.** The agent
 //!     owns its conversation; a session continued in the codex CLI and reopened
-//!     in Sway must show the CLI's turns, not Sway's stale copy. So a replay
+//!     in Tori must show the CLI's turns, not Tori's stale copy. So a replay
 //!     that brings a conversation *rebuilds* the file, and one that brings
 //!     nothing leaves it alone rather than emptying it.
 //!   * **It costs the reader thread nothing measurable.** Every live event of
@@ -41,7 +41,7 @@ use super::pacing::{split, Stream};
 /// **Off**, and the measurement is why: `sync_data` costs 4.9 ms against 31 us
 /// to append, and it would spend that on the child's stdout reader thread once
 /// per turn. What it buys is a turn surviving a power cut - the page cache
-/// already survives a crash of Sway itself - and what is at risk is the tail of
+/// already survives a crash of Tori itself - and what is at risk is the tail of
 /// a log that the agent can replay in full anyway. The constant exists so the
 /// trade is named rather than assumed, and so a test can drive both sides.
 const SYNC_ON_TURN: bool = false;
@@ -80,7 +80,7 @@ pub struct LogMeta {
     /// Human prompts in the log, which is to say `userMessage` lines.
     #[serde(default)]
     pub prompt_count: u32,
-    /// Epoch seconds when Sway last saw a prompt go past on this session, or 0
+    /// Epoch seconds when Tori last saw a prompt go past on this session, or 0
     /// when it never has. **Stamped from the clock**, because no `ChatEvent`
     /// carries a time of its own; a replay therefore leaves it where it was
     /// rather than dating an old conversation to the moment it was reopened.
@@ -943,7 +943,7 @@ mod tests {
     /// worth asserting.
     #[test]
     fn three_flushed_turns_leave_their_count_beside_the_log() {
-        let dir = std::env::temp_dir().join(format!("sway-mirror-meta-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-mirror-meta-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let log = dir.join("s1.jsonl");
 
@@ -996,7 +996,7 @@ mod tests {
     /// and understate a conversation the file still holds in full.
     #[test]
     fn a_reopened_session_counts_on_from_what_the_sidecar_held() {
-        let dir = std::env::temp_dir().join(format!("sway-mirror-seed-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-mirror-seed-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let log = dir.join("s1.jsonl");
 

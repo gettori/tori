@@ -1,4 +1,4 @@
-// Sway's own cross-file rename.
+// Tori's own cross-file rename.
 //
 // The library ships one, and it cannot work here. `doRename`
 // (`lsp-client/dist/index.js:1209`) walks the server's edits and does
@@ -96,12 +96,12 @@ export async function renameAcross(deps: RenameDeps, newName: string): Promise<R
   let backstopTs: number | null = null;
 
   const outcome = await applyWorkspaceEdit(edit, deps, {
-    // A multi-file rewrite the user cannot undo is not one Sway will do
+    // A multi-file rewrite the user cannot undo is not one Tori will do
     // quietly. Checked before the confirm, so they are never asked to approve
     // something that was going to be refused anyway.
     precheck: async (fileCount) => {
       if (fileCount <= 1 || (await deps.backstopAvailable())) return null;
-      return `This folder is not a git repository, so Sway cannot take a snapshot it could undo a ${fileCount}-file rename from. Renaming inside a single file still works.`;
+      return `This folder is not a git repository, so Tori cannot take a snapshot it could undo a ${fileCount}-file rename from. Renaming inside a single file still works.`;
     },
     onDirty: async (dirty, fileCount) => {
       const ok = await deps.confirm({
@@ -117,7 +117,7 @@ export async function renameAcross(deps: RenameDeps, newName: string): Promise<R
         backstopTs = await deps.takeBackstop(`Rename to "${newName}" in ${fileCount} files`);
         return null;
       } catch (e) {
-        return `Sway could not take a snapshot to undo this from, so nothing was renamed: ${String(e)}`;
+        return `Tori could not take a snapshot to undo this from, so nothing was renamed: ${String(e)}`;
       }
     },
   });

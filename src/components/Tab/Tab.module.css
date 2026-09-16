@@ -17,9 +17,9 @@
   align-items: center;
   /* Square on the bar's side, rounded away from it, as the sidebar's rows are on
      theirs: a rounded top corner clips the bar into a lozenge. */
-  border-radius: 0 0 var(--sway-radius-md) var(--sway-radius-md);
+  border-radius: 0 0 var(--tori-radius-md) var(--tori-radius-md);
   background: transparent;
-  transition: background var(--sway-duration-fast) ease;
+  transition: background var(--tori-duration-fast) ease;
 }
 
 /* Selected off Kobalte's own `data-selected` rather than off a prop, so the
@@ -36,7 +36,7 @@
 .pill:has([data-selected]) {
   background:
     linear-gradient(var(--brand-bar), var(--brand-bar)) center top / 100%
-      var(--sway-border-thick) no-repeat,
+      var(--tori-border-thick) no-repeat,
     linear-gradient(to bottom, var(--brand-subtle), transparent);
 }
 
@@ -56,14 +56,14 @@
   padding: 0 var(--tab-pad);
   background: transparent;
   border: none;
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--tab-inactive-fg);
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   line-height: 1.4;
   white-space: nowrap;
   cursor: pointer;
-  transition: color var(--sway-duration-fast) ease;
+  transition: color var(--tori-duration-fast) ease;
 }
 
 .tab svg {
@@ -106,7 +106,7 @@
   margin-right: calc(6px * var(--ui-scale));
   background: transparent;
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-muted);
   cursor: pointer;
 }

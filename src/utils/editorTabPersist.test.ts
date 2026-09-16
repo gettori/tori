@@ -44,7 +44,7 @@ describe("toStore", () => {
 
   it("never stores a synthetic view, nor records one as the active tab", () => {
     // A relaunch restores files; a commit log is opened on request, and every
-    // stored path is probed for existence, which a `sway://` id can never pass.
+    // stored path is probed for existence, which a `tori://` id can never pass.
     const log = syntheticId("log", "/w/a");
     const out = toStore([tab(log), tab("/w/a/one.ts")], { "/w/a": log }, 100);
     expect(out["/w/a"].paths).toEqual(["/w/a/one.ts"]);

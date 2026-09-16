@@ -1,4 +1,4 @@
-// The schedule for a read Sway pays for itself.
+// The schedule for a read Tori pays for itself.
 //
 // A fake clock throughout: every rule here is about elapsed time, and a test
 // that waited out five minutes would be one nobody runs.

@@ -454,7 +454,7 @@ export default function TerminalView(props: {
         {(to) => (
           <div class={styles.termRestore} role="status">
             <span class={styles.termRestoreText}>
-              Your shell handed this terminal to <code>{to()}</code>, so Sway did not start{" "}
+              Your shell handed this terminal to <code>{to()}</code>, so Tori did not start{" "}
               <code>{props.program || props.init?.trim()}</code> here.
             </span>
             <Button size="sm" onClick={() => setRefusalDismissed(true)}>

@@ -4,7 +4,7 @@
 // This module owns the two halves that need the filesystem - finding a
 // project's own icon, and copying an uploaded image into a store the config can
 // point at. The chosen-icon *storage* is a `[[project_meta]]` table in
-// `sway.toml`, written by config.rs alongside the `[[space]]` overlay.
+// `tori.toml`, written by config.rs alongside the `[[space]]` overlay.
 //
 // ---- How detection works, and what it is defending against ----
 //
@@ -700,11 +700,11 @@ pub fn cached_project_icon(project: &Path, folders: &[PathBuf]) -> Option<String
 // The upload store (unchanged in shape: a user's own pick is never detected)
 // ---------------------------------------------------------------------------
 
-/// Where uploaded icons are copied to. Beside `sway.toml`, so a project's icon
+/// Where uploaded icons are copied to. Beside `tori.toml`, so a project's icon
 /// travels with the config rather than pointing at a file the user may move or
 /// delete out from under it.
 pub fn icons_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/icons")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/icons")
 }
 
 /// FNV-1a (64-bit). Used only to name a stored file; nothing depends on it
@@ -834,7 +834,7 @@ mod tests {
     fn tmp(name: &str) -> PathBuf {
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
         let dir = std::env::temp_dir().join(format!(
-            "sway_icons_test_{}_{}_{name}",
+            "tori_icons_test_{}_{}_{name}",
             std::process::id(),
             n
         ));
@@ -1278,11 +1278,11 @@ mod tests {
 
     #[test]
     fn stored_name_changes_with_content_so_a_replacement_never_reuses_a_url() {
-        let a = stored_name("/p/sway", b"first", "png");
-        let b = stored_name("/p/sway", b"second", "png");
+        let a = stored_name("/p/tori", b"first", "png");
+        let b = stored_name("/p/tori", b"second", "png");
         assert_ne!(a, b);
-        assert_eq!(a, stored_name("/p/sway", b"first", "png"));
-        assert!(a.starts_with("sway-") && a.ends_with(".png"));
+        assert_eq!(a, stored_name("/p/tori", b"first", "png"));
+        assert!(a.starts_with("tori-") && a.ends_with(".png"));
     }
 
     #[test]

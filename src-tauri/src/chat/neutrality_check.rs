@@ -285,7 +285,7 @@ pub fn map_codex(ev: CodexEvent) -> ChatEvent {
 /// Exhaustive over `AcpSessionUpdate`. Adding a variant breaks this build.
 pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
     match update {
-        // The user's own message echoed back. Sway already rendered it when it
+        // The user's own message echoed back. Tori already rendered it when it
         // was sent, so replaying it as an event would duplicate the bubble;
         // there is no neutral "echo" event and inventing one to satisfy a
         // single transport is exactly the drift this module exists to prevent.
@@ -371,7 +371,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
             extra: Default::default(),
         },
         // No counterpart, honestly: `acp.rs` drops this update (pinned by its
-        // `an_update_with_no_sway_counterpart_maps_to_no_events`), and a mode is
+        // `an_update_with_no_tori_counterpart_maps_to_no_events`), and a mode is
         // confirmed by the `set_config_option` answer, which no measured agent skips.
         AcpSessionUpdate::CurrentModeUpdate => ChatEvent::SessionError {
             session_id: sid(),
@@ -389,7 +389,7 @@ pub fn map_acp(update: AcpSessionUpdate) -> ChatEvent {
 /// What a agent does with one [`ChatCommand`].
 ///
 /// The command side needs its own check for a reason the event side does not
-/// have: an event Sway cannot map is a gap in the *model*, but a verb a agent
+/// have: an event Tori cannot map is a gap in the *model*, but a verb a agent
 /// cannot serve is normal and permanent. Nothing is wrong with a transport that
 /// has no mid-turn input; what would be wrong is a verb only Claude can be
 /// asked for, since then the trait is Claude's interface wearing a neutral name.

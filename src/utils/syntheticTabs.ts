@@ -3,14 +3,14 @@
 // The tab model is path-keyed all the way down: `tabId` is the path, dirty flags
 // and preview choices are keyed by path, and CodeEditor's buffer map is keyed by
 // path. A view like the commit log has no file behind it, so it borrows that key
-// space with a `sway://` id instead of inventing a second tab type nothing else
+// space with a `tori://` id instead of inventing a second tab type nothing else
 // understands.
 //
 // The id **carries its workspace**, for two reasons that are really one:
 //
 //   - Uniqueness. Every path-keyed map above has no workspace dimension, on the
 //     grounds that "a path names exactly one file across every workspace". A
-//     bare `sway://log` would break that: two branch-units each showing their
+//     bare `tori://log` would break that: two branch-units each showing their
 //     own log would collide in one key.
 //   - Purging. `purgeTabsUnder` closes tabs by path prefix when a folder goes
 //     away. An id with no workspace in it is under no folder, so a deleted space
@@ -22,7 +22,7 @@
 // search results do - which is a different thing: the pane's buffer map, its
 // dirty flags and the hot-exit stash still know nothing about it.
 
-const PREFIX = "sway://";
+const PREFIX = "tori://";
 
 export type SyntheticTab = {
   /** What the tab shows: `log`, `commit`, `history`. */

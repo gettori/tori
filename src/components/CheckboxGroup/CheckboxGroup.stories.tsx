@@ -34,7 +34,7 @@ export const Default: Story = {
  *  render both. */
 export const States: Story = {
   render: (args) => (
-    <div style={{ display: "flex", "flex-direction": "column", gap: "var(--sway-space-5)" }}>
+    <div style={{ display: "flex", "flex-direction": "column", gap: "var(--tori-space-5)" }}>
       <CheckboxGroup {...args} label="Nothing chosen" value={[]} />
       <CheckboxGroup {...args} label="Some chosen" value={["check", "comment"]} />
       <CheckboxGroup

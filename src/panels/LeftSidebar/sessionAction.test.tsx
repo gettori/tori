@@ -16,7 +16,7 @@ const plain = (branch: string, isCurrent: boolean) => ({
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -112,7 +112,7 @@ describe("a session action raised from outside the tree", () => {
     bridge.agent = "claude";
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
   });
 
   // The guard that only the selection chain has: on a plain repo the session's
@@ -168,8 +168,8 @@ describe("a session action raised from outside the tree", () => {
 
   // A session with no transcript is a different act wearing the same button.
   // Its conversation lives wherever its agent keeps it, no protocol verb
-  // removes one, and all that happens is that Sway stops listing it - so
-  // promising that the history is gone would be promising something Sway
+  // removes one, and all that happens is that Tori stops listing it - so
+  // promising that the history is gone would be promising something Tori
   // cannot do, to somebody who would believe it.
   it("says it is forgetting, not deleting, a session with no transcript", async () => {
     bridge.agent = "gemini";
@@ -184,7 +184,7 @@ describe("a session action raised from outside the tree", () => {
     await waitFor(() => expect(cmds()).toContain("delete_session"));
     // The backend decides which of the two it is doing from the agent, so the
     // agent has to be sent: without it, `delete_session` would take the path
-    // for a transcript and remove Sway's record by the wrong route.
+    // for a transcript and remove Tori's record by the wrong route.
     const call = bridge.calls.find((c) => c.cmd === "delete_session")!;
     expect(call.args.agent).toBe("gemini");
   });

@@ -7,18 +7,18 @@
 @layer components {
   .card {
     width: calc(400px * var(--ui-scale));
-    padding: var(--sway-space-6);
-    font-size: var(--sway-text-md);
+    padding: var(--tori-space-6);
+    font-size: var(--tori-text-md);
     color: var(--fg-default);
   }
 
   .head {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-3);
+    gap: var(--tori-space-3);
   }
   .who {
-    font-size: var(--sway-text-2xl);
+    font-size: var(--tori-text-2xl);
     font-weight: 600;
   }
   /* Freshness, once, for the whole card: what a reader is checking is whether
@@ -26,18 +26,18 @@
   .ago {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-2);
+    gap: var(--tori-space-2);
     margin-left: auto;
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
     color: var(--fg-muted);
   }
 
   .accounts {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-3);
-    margin-top: var(--sway-space-6);
-    font-size: var(--sway-text-sm);
+    gap: var(--tori-space-3);
+    margin-top: var(--tori-space-6);
+    font-size: var(--tori-text-sm);
   }
 
   .tab {
@@ -45,7 +45,7 @@
     border: none;
     background: none;
     font: inherit;
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--fg-subtle);
@@ -61,20 +61,20 @@
     color: var(--fg-default);
   }
   .tab + .tab {
-    padding-left: var(--sway-space-3);
-    border-left: var(--sway-border-thin) solid var(--border-default);
+    padding-left: var(--tori-space-3);
+    border-left: var(--tori-border-thin) solid var(--border-default);
   }
   /* Between the last account and the plan. A rule rather than a gap, so the two
      halves of the row read as two different kinds of fact. */
   .rule {
     flex: 1;
-    height: var(--sway-border-thin);
+    height: var(--tori-border-thin);
     background: var(--border-default);
   }
 
   .email,
   .plan {
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
     color: var(--fg-muted);
     white-space: nowrap;
   }
@@ -82,8 +82,8 @@
   .windows {
     display: flex;
     flex-direction: column;
-    gap: var(--sway-space-6);
-    margin: var(--sway-space-6) 0;
+    gap: var(--tori-space-6);
+    margin: var(--tori-space-6) 0;
     padding: 0;
     list-style: none;
   }
@@ -92,19 +92,19 @@
     display: grid;
     grid-template-columns: auto auto 1fr;
     align-items: baseline;
-    gap: var(--sway-space-3) var(--sway-space-3);
+    gap: var(--tori-space-3) var(--tori-space-3);
   }
   .kind {
     font-weight: 500;
   }
   .level {
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
     font-variant-numeric: tabular-nums;
     color: var(--fg-default);
   }
   .when {
     justify-self: end;
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
     color: var(--fg-muted);
   }
 
@@ -129,28 +129,28 @@
   .track {
     grid-column: 1 / -1;
     height: calc(6px * var(--ui-scale));
-    border-radius: var(--sway-radius-pill);
+    border-radius: var(--tori-radius-pill);
     background: var(--neutral-subtle);
     overflow: hidden;
   }
   .fill {
     display: block;
     height: 100%;
-    border-radius: var(--sway-radius-pill);
+    border-radius: var(--tori-radius-pill);
     background: currentColor;
     color: var(--success-fg);
   }
 
-  /* The projection, boxed: it is the one line on the card that is Sway's own
+  /* The projection, boxed: it is the one line on the card that is Tori's own
      arithmetic rather than a number some source reported. */
   .pace {
     display: flex;
     align-items: flex-start;
-    gap: var(--sway-space-3);
+    gap: var(--tori-space-3);
     margin: 0;
-    padding: var(--sway-space-5);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
+    padding: var(--tori-space-5);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
     color: var(--fg-muted);
     line-height: 1.5;
   }
@@ -160,12 +160,12 @@
   }
 
   .empty {
-    margin: var(--sway-space-6) 0;
+    margin: var(--tori-space-6) 0;
     color: var(--fg-muted);
   }
 
   .trouble {
-    margin: var(--sway-space-5) 0 0;
+    margin: var(--tori-space-5) 0 0;
     color: var(--attention-fg);
   }
 }

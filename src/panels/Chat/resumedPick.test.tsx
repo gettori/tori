@@ -5,7 +5,7 @@
 // the model back and reports it on `system/init`, while `--permission-mode` and
 // `--effort` are per-process flags a resume does not restore - init came back
 // `permissionMode: "default"` for a session started in `plan`, and no frame
-// mentions effort at any point. Sway passed neither on resume, so the model
+// mentions effort at any point. Tori passed neither on resume, so the model
 // looked like it persisted and the other two silently reset.
 //
 // Re-measured on 2.1.259 for issue 163 and unchanged: `--resume` with no mode

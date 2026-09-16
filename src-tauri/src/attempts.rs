@@ -16,7 +16,7 @@
 //     already discoverable via `git worktree list`, so this store records only
 //     the three things git has no field for: which group an attempt belongs to
 //     and what the group was trying to do. Every read reconciles against git, so
-//     a `git worktree remove` run outside Sway leaves no stale entry.
+//     a `git worktree remove` run outside Tori leaves no stale entry.
 //   * **A promotion deletes; it never merges.** The whole point of fan-out is
 //     that the attempts are alternatives, so the winner's branch is kept as it
 //     stands and the losers are removed outright. Nothing here runs merge,
@@ -36,7 +36,7 @@ use crate::owned_state::{project_state_path, write_atomically};
 /// so a project does not sprout three new spaces the moment it fans out. One
 /// directory rather than one per attempt, so every walker has a single name to
 /// skip and a stale exclusion cannot leave one attempt visible and another not.
-pub const ATTEMPTS_DIR: &str = ".sway-attempts";
+pub const ATTEMPTS_DIR: &str = ".tori-attempts";
 
 /// Dependency and build directories worth cloning into a fresh attempt.
 ///
@@ -47,7 +47,7 @@ pub const ATTEMPTS_DIR: &str = ".sway-attempts";
 /// more would cost more than it saves.
 const CLONED_DIRS: &[&str] = &["node_modules", "vendor", "target", ".venv"];
 
-/// One attempt, as Sway records it. `path` is absolute and is the join key
+/// One attempt, as Tori records it. `path` is absolute and is the join key
 /// against `git worktree list`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,7 +62,7 @@ pub struct Attempt {
 
 /// The per-project map. A struct rather than a bare `Vec` so a later field is an
 /// addition rather than a format break, and `#[serde(default)]` so a record
-/// written by a newer Sway still reads here as its attempts rather than as
+/// written by a newer Tori still reads here as its attempts rather than as
 /// nothing.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,7 +104,7 @@ fn canon(path: &str) -> PathBuf {
 
 /// The attempts that still exist, reconciled against git.
 ///
-/// **Git is truth.** An attempt whose worktree was removed outside Sway (`git
+/// **Git is truth.** An attempt whose worktree was removed outside Tori (`git
 /// worktree remove`, or an `rm -rf` plus a prune) is dropped from the map here,
 /// so a stale entry cannot outlive the thing it describes. The reconciliation is
 /// a read that *writes*, which is unusual and deliberate: doing it lazily on the
@@ -248,7 +248,7 @@ pub(crate) fn create_attempt_body(
     // `.shared/`, which keeps the convention available here without inventing a
     // second meaning for it.
     crate::worktree::link_shared(&container, &target);
-    // Sway created this folder: adopt it so a path that once held other sessions
+    // Tori created this folder: adopt it so a path that once held other sessions
     // does not surface them as this attempt's history.
     let _ = crate::sessions::adopt(&target_str);
     record(&root, Attempt { path: target_str.clone(), group_id, goal })?;
@@ -409,7 +409,7 @@ mod tests {
 
     /// A scratch directory that cleans itself up, plus the project-state map it
     /// wrote. There is no `tempfile` dependency in this crate, and the map lives
-    /// under the real `~/.config/sway`, so a test that did not remove its own
+    /// under the real `~/.config/tori`, so a test that did not remove its own
     /// would leave an entry behind for a path that no longer exists.
     struct Scratch {
         path: PathBuf,
@@ -418,7 +418,7 @@ mod tests {
 
     impl Scratch {
         fn new(name: &str) -> Self {
-            let path = std::env::temp_dir().join(format!("sway-attempts-{}-{name}", std::process::id()));
+            let path = std::env::temp_dir().join(format!("tori-attempts-{}-{name}", std::process::id()));
             let _ = std::fs::remove_dir_all(&path);
             std::fs::create_dir_all(&path).expect("scratch dir");
             // Canonicalized because macOS resolves `/var` to `/private/var`, and
@@ -455,7 +455,7 @@ mod tests {
     }
 
     /// The map records only what git cannot: the group and the goal. Three
-    /// attempts read back as one group, and a worktree Sway did not create is
+    /// attempts read back as one group, and a worktree Tori did not create is
     /// not swept into it.
     #[test]
     fn three_attempts_read_back_as_one_group_and_an_ordinary_worktree_is_unaffected() {
@@ -488,14 +488,14 @@ mod tests {
         assert!(listed.iter().all(|a| a.goal == "make the parser faster"));
         assert!(
             !listed.iter().any(|a| a.path.contains("plain-wt")),
-            "a worktree Sway did not create is not an attempt"
+            "a worktree Tori did not create is not an attempt"
         );
     }
 
-    /// Git is the truth. A worktree removed outside Sway leaves no entry behind,
+    /// Git is the truth. A worktree removed outside Tori leaves no entry behind,
     /// and the reconciliation is written back rather than recomputed forever.
     #[test]
-    fn a_worktree_removed_outside_sway_leaves_no_stale_entry() {
+    fn a_worktree_removed_outside_tori_leaves_no_stale_entry() {
         let dir = repo("stale");
         let root = dir.root.clone();
         let container = dir.path().join(ATTEMPTS_DIR);
@@ -780,7 +780,7 @@ mod tests {
         }
         std::fs::write(root.join("real.txt"), "the user's own work\n").unwrap();
 
-        let index = std::env::temp_dir().join(format!("sway-attempts-idx-{}", std::process::id()));
+        let index = std::env::temp_dir().join(format!("tori-attempts-idx-{}", std::process::id()));
         let _ = std::fs::remove_file(&index);
         let tree = crate::checkpoint::write_tree_scratch(&root_str, &index).expect("snapshot");
 

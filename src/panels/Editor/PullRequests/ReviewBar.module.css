@@ -22,7 +22,7 @@
   color: var(--fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 
 .pending {
@@ -30,14 +30,14 @@
   align-items: baseline;
   gap: calc(6px * var(--ui-scale));
   min-width: 0;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .anchor {
   flex: none;
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono, monospace);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono, monospace);
+  font-size: var(--tori-text-2xs);
 }
 
 .pendingBody {
@@ -53,11 +53,11 @@
   width: 100%;
   padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--canvas-default, var(--canvas-card));
   color: var(--fg-default);
   font: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   resize: vertical;
 }
 
@@ -72,5 +72,5 @@
 .reason {
   color: var(--fg-muted);
   text-align: right;
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }

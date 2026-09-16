@@ -1,9 +1,9 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Installing Sway (Gatekeeper, "Apple could not verify")
+  - name: Installing Tori (Gatekeeper, "Apple could not verify")
     url: https://github.com/gettori/tori/blob/main/docs/INSTALL.md
     about: >
-      macOS blocking the first launch is expected - Sway v0.1 is unsigned. The
+      macOS blocking the first launch is expected - Tori v0.1 is unsigned. The
       install doc has the two ways past it.
   - name: Adding an agent yourself
     url: https://github.com/gettori/tori/blob/main/ADAPTERS.md

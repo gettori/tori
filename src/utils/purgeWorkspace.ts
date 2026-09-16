@@ -20,25 +20,25 @@ import { PURGE_WORKSPACE, emitWith, type PurgeWorkspace } from "./events";
 
 /** localStorage stores shaped `Record<workspace, ...>` at the top level. */
 const WORKSPACE_STORES = [
-  "sway.panes.v1",
-  "sway.tabpanes.v1",
-  "sway.editor.tabs.v1",
-  "sway.terminalTabs",
-  "sway.fileFrecency",
-  "sway.breakpoints",
-  "sway.watches",
-  "sway.debugAttachPorts",
-  "sway.debugLastTarget",
-  "sway.taskRuns",
-  "sway.searchHistory",
-  "sway.savedSearches",
-  "sway.treeExpanded.v1",
+  "tori.panes.v1",
+  "tori.tabpanes.v1",
+  "tori.editor.tabs.v1",
+  "tori.terminalTabs",
+  "tori.fileFrecency",
+  "tori.breakpoints",
+  "tori.watches",
+  "tori.debugAttachPorts",
+  "tori.debugLastTarget",
+  "tori.taskRuns",
+  "tori.searchHistory",
+  "tori.savedSearches",
+  "tori.treeExpanded.v1",
 ] as const;
 
 /** The stores a Feature writes under a *member root* rather than under its own
  *  key: what a debug run remembers, and where. Everything else a member folder
  *  can appear in belongs to that folder as a branch unit. */
-const MEMBER_ROOT_STORES = ["sway.watches", "sway.debugAttachPorts", "sway.debugLastTarget"] as const;
+const MEMBER_ROOT_STORES = ["tori.watches", "tori.debugAttachPorts", "tori.debugLastTarget"] as const;
 
 export function dropWorkspaceKey<T extends Record<string, unknown>>(store: T, ws: string): T {
   if (!(ws in store)) return store;

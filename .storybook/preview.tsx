@@ -27,7 +27,7 @@ const THEMES = listSelectableBundled();
 const preview: Preview = {
   globalTypes: {
     theme: {
-      description: "Sway theme",
+      description: "Tori theme",
       toolbar: {
         title: "Theme",
         icon: "paintbrush",

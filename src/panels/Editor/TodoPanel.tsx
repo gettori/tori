@@ -48,7 +48,7 @@ function basename(path: string): string {
  * One `grep_project` for an alternation of the configured tags rather than a
  * search per tag, and the tags come from the three-layer settings resolution
  * (`editorDefaults().todoPatterns`), so a repo that says `NOTE` and `REVIEW`
- * in its `.sway/settings.json` gets those instead of somebody else's.
+ * in its `.tori/settings.json` gets those instead of somebody else's.
  *
  * Inside a Feature that becomes one grep per member, run together and kept
  * apart: the backend caps each one, so merging them into a single list would

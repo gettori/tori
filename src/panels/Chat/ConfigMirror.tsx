@@ -34,16 +34,16 @@ const glyphsFor = (id: string) => TOGGLE_GLYPHS[id] ?? GENERIC_TOGGLE;
 const needsWords = (id: string) => !(id in TOGGLE_GLYPHS);
 
 /**
- * Every lever the agent published that Sway has no control of its own for.
+ * Every lever the agent published that Tori has no control of its own for.
  *
  * **Rendered by shape, not by name.** A select becomes the same menu pill the
  * model and mode pickers are, a boolean becomes the same switch Settings uses,
- * and the agent's own label and description are shown verbatim: Sway has no
+ * and the agent's own label and description are shown verbatim: Tori has no
  * other word for a lever it has never seen, and inventing one would describe an
- * option by what Sway guessed rather than by what the agent said.
+ * option by what Tori guessed rather than by what the agent said.
  *
  * An option of a kind this build cannot render is **skipped**, never drawn as a
- * dead control. The protocol may grow shapes with no Sway counterpart, and one
+ * dead control. The protocol may grow shapes with no Tori counterpart, and one
  * row fewer is a better answer than a widget that does nothing when clicked.
  *
  * There is no pending state here, unlike the mode. A mirrored switch goes out
@@ -96,7 +96,7 @@ const asSelect = (o: ChatConfigOption) =>
  *
  * **Which of the two counts as "on" is the agent's own ordering**, second
  * choice wins. There is nothing else to go on: a select carries no polarity, so
- * either Sway reads the labels for words like "off" - guessing at another
+ * either Tori reads the labels for words like "off" - guessing at another
  * program's vocabulary in a component whose whole rule is not to - or it takes
  * the order the agent listed them in. Agents list the default first, and "on" is
  * the one you turn *to*, so the two agree in the case that exists

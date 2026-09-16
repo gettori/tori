@@ -21,7 +21,7 @@ const unit = (label: string, folderPath: string) => ({
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -93,9 +93,9 @@ describe("switching between Spaces and Features", () => {
     bridge.features = [AUTH];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.sidebar-mode.v1", "spaces");
-    localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/proj"]));
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/proj"]));
   });
 
   it("comes back to what each mode was last on", async () => {
@@ -132,7 +132,7 @@ describe("switching between Spaces and Features", () => {
 
   it("leaves the selection alone when the remembered Feature is gone", async () => {
     localStorage.setItem(
-      "sway.selection-memory.v1",
+      "tori.selection-memory.v1",
       JSON.stringify({ spaces: {}, feature: { kind: "feature", featureId: "deleted", folderPath: WAVE } }),
     );
     const { sel, onSelect } = mount();

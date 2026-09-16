@@ -424,7 +424,7 @@ function tabTitle(t: FileTab): string {
   return parseSyntheticId(t.path)?.workspace ?? t.path;
 }
 
-const LS_RIGHT_W = "sway.editor.rightw.v1";
+const LS_RIGHT_W = "tori.editor.rightw.v1";
 // Floors in design px at `--ui-scale` 1, scaled with it like the app's outer
 // panes. The right panel has no maximum: it grows until the code side would drop
 // below its own floor, so a wide editor can be almost all file tree.
@@ -721,7 +721,7 @@ export default function Editor(props: {
   createEffect(() => saveFrecency(frecency()));
 
   /** Note working in a file. Synthetic views are skipped for `recordJump`'s
-   *  reason: `sway://` is not a path any picker can offer. */
+   *  reason: `tori://` is not a path any picker can offer. */
   function noteTouch(path: string, kind: Touch) {
     if (isSyntheticId(path)) return;
     setFrecency((s) => note(s, ws(), path, kind, Date.now()));
@@ -755,7 +755,7 @@ export default function Editor(props: {
   // edits included - the moment you switched branch-unit, with none of the
   // discard confirm that closing a tab goes through.
   // Synthetic views are filtered out here rather than downstream: this is the
-  // set CodeEditor keeps buffers for, and a `sway://` id has no file to read, no
+  // set CodeEditor keeps buffers for, and a `tori://` id has no file to read, no
   // buffer to keep, and so no language server to attach.
   const allOpenPaths = () =>
     Object.values(tabsByWs()).flatMap((ts) => ts.map((t) => t.path).filter((p) => !isSyntheticId(p)));
@@ -805,7 +805,7 @@ export default function Editor(props: {
   // The active tab when it is a real file. The three suffix tests below ask
   // what is on disk, and a synthetic id ends in the workspace path - a folder
   // named `notes.md` would otherwise give the commit log a preview toggle and
-  // render MarkdownPreview against a `sway://` id.
+  // render MarkdownPreview against a `tori://` id.
   const activeFileTab = () => {
     const t = activeTab();
     return t && !isSyntheticId(t.path) ? t : null;
@@ -1087,7 +1087,7 @@ export default function Editor(props: {
   // is its project path from discovery, so it is already the container, and
   // `kind` says whether that container is a bare one (`create_worktree` links
   // `.shared/` into each worktree) or a plain repo (whose Feature worktrees sit
-  // under `.sway/worktrees`, where no such folder is linked).
+  // under `.tori/worktrees`, where no such folder is linked).
   const sharedContainer = () => {
     const m = activeMember();
     if (m) return m.kind === "worktree" ? m.member.repoPath : null;
@@ -1403,7 +1403,7 @@ export default function Editor(props: {
    * The file is created *before* the tab, and that ordering is the whole
    * feature: a tab with a real path behind it is stored by `editorTabPersist`,
    * probed alive by the restore, stashed by hot exit and read and written by
-   * CodeEditor with no special case anywhere. A synthetic `sway://scratch/…` id
+   * CodeEditor with no special case anywhere. A synthetic `tori://scratch/…` id
    * would have needed one in each, and `toStore` drops synthetic ids on
    * purpose, so an untitled tab could never have survived a relaunch.
    *
@@ -2123,7 +2123,7 @@ export default function Editor(props: {
     const ok = await askConfirm({
       title: `Discard changes to ${files.length} file${files.length === 1 ? "" : "s"}?`,
       message:
-        "Every unstaged change in this repo goes back to how it is staged. Anything already staged is kept.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.",
+        "Every unstaged change in this repo goes back to how it is staged. Anything already staged is kept.\n\nTori saves a snapshot first, so you can bring it back from Undo history in the timeline.",
       confirmLabel: "Discard changes",
       danger: true,
     });
@@ -2351,8 +2351,8 @@ export default function Editor(props: {
       if (e.payload.root && e.payload.root !== props.selected?.folderPath) return;
       const external = e.payload.paths.filter((p) => !isSelfWrite(p));
       // The fs fallback for the live indicator: only consulted when the
-      // session's own parser named nothing, so an adapter Sway can read is
-      // never second-guessed by a weaker signal. Sway's own saves are already
+      // session's own parser named nothing, so an adapter Tori can read is
+      // never second-guessed by a weaker signal. Tori's own saves are already
       // out (isSelfWrite), so the editor can never make a session look busy.
       const sel = props.selected;
       if (sel && !lastParserPath && selectedExecuting() && external.length) {
@@ -2593,7 +2593,7 @@ export default function Editor(props: {
         {/* Where the open file sits and where the caret sits in it. Below the
             tabs and above everything else in the column: a tab says which file,
             and this says the rest of the answer. Only for a real file - a commit
-            log or a conflict view has a `sway://` id, which names no folder any
+            log or a conflict view has a `tori://` id, which names no folder any
             picker could list. */}
         <Breadcrumbs
           root={root()}
@@ -2618,7 +2618,7 @@ export default function Editor(props: {
               <Show when={pdfId()} keyed>
                 {(id) => <PdfToolbar path={id} />}
               </Show>
-              {/* Not for a `sway://` view: a commit log has no working copy for
+              {/* Not for a `tori://` view: a commit log has no working copy for
                   git to blame. Not for a PDF either: blame is per line, and a
                   PDF has none - it is not even read as text. */}
               <Show when={filePath() && !isSyntheticId(filePath()!) && !pdfId()}>{blameBtn()}</Show>
@@ -2741,7 +2741,7 @@ export default function Editor(props: {
             <ImageView path={fileId()!} />
           </Show>
           {/* `goto` carries a page rather than a line for a PDF: the chat, the
-              chips and the jump list already speak in `line`, and inside Sway
+              chips and the jump list already speak in `line`, and inside Tori
               that is what a PDF's line is. */}
           <Show when={pdfOf(fileId())}>
             <Suspense fallback={<div class={styles.editorEmpty}>Loading viewer...</div>}>
@@ -2804,7 +2804,7 @@ export default function Editor(props: {
     dots: fileDots,
     // The tab moves between panes either way (the registry says so); what a
     // synthetic view cannot do is hand anyone a path, since dropping its id on
-    // a terminal would paste `sway://…`, which names nothing on disk.
+    // a terminal would paste `tori://…`, which names nothing on disk.
     onDragStart: (u, e) => {
       const t = asFile(u);
       if (isSyntheticId(t.path)) return;

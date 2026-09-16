@@ -52,7 +52,7 @@ function DapCard(props: { adapter: DapHealth }) {
               something they already have. */}
           <Match when={a().detail}>{(detail) => <>{detail()}</>}</Match>
           <Match when={a().status === "notFound"}>
-            Not installed. Install <code>{a().program}</code> and reopen Sway to pick it up.
+            Not installed. Install <code>{a().program}</code> and reopen Tori to pick it up.
           </Match>
           <Match when={a().version}>
             Ready, running the bundled adapter {a().adapterVersion} on {a().program}{" "}
@@ -60,7 +60,7 @@ function DapCard(props: { adapter: DapHealth }) {
           </Match>
           <Match when={true}>
             Ready, running the bundled adapter {a().adapterVersion}. {a().program} does not report a
-            version, so Sway cannot check it.
+            version, so Tori cannot check it.
           </Match>
         </Switch>
       </div>

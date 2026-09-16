@@ -1,6 +1,6 @@
 /* The chat surface (hash-scoped). Follows the app's design language end to
-   end: chrome-tier sizes (interactive text at --sway-text-lg / --sway-text-md,
-   never smaller), fixed control heights, --sway-font-mono for code and
+   end: chrome-tier sizes (interactive text at --tori-text-lg / --tori-text-md,
+   never smaller), fixed control heights, --tori-font-mono for code and
    figures, menus on the shared menuSurface recipe, and the gold brand for
    focus and the one primary action. Every colour is a role token.
 
@@ -43,7 +43,7 @@
   min-height: calc(var(--control-height-sm) + 8px * var(--ui-scale) + 1px);
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
 
@@ -82,15 +82,15 @@
 
 .stripTime {
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 .stripItem {
   white-space: nowrap;
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 .stripSep {
@@ -125,7 +125,7 @@
   overflow-y: auto;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   box-shadow: var(--shadow-md);
 }
 
@@ -144,7 +144,7 @@
 
 .menuNote {
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.4;
 }
 
@@ -156,7 +156,7 @@
   display: inline-flex;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   white-space: nowrap;
   color: var(--fg-muted);
 }
@@ -184,7 +184,7 @@
 
 .statSep {
   color: var(--fg-muted);
-  font-size: var(--sway-text-4xl);
+  font-size: var(--tori-text-4xl);
   line-height: 1;
 }
 
@@ -229,7 +229,7 @@
   max-width: min(85%, calc(640px * var(--ui-scale)));
   padding: calc(8px * var(--ui-scale)) calc(13px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-lg);
+  border-radius: var(--tori-radius-lg);
   /* A step above the transcript, not the transcript itself. This was
      `--canvas-default`, the exact colour of the list behind it, which left the
      border doing all the work of saying "this is a surface" and made your own
@@ -248,10 +248,10 @@
 }
 
 .userBubble :global(code) {
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
   font-size: 0.9em;
   background: var(--neutral-hover);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: 0.1em 0.35em;
 }
 
@@ -272,17 +272,17 @@
   max-width: 100%;
   max-height: calc(180px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
 }
 
 /* A token in the sentence that names something this turn carried. Drawn the
    way the composer drew it, so the prompt reads the same on both sides of
    send. A token naming nothing the turn holds stays plain text. */
 .promptChip {
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: 0.1em 0.35em;
   background: var(--neutral-hover);
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
   font-size: 0.9em;
 }
 
@@ -291,8 +291,8 @@
    rather than part of what was asked. */
 .promptImageGone {
   color: var(--fg-subtle);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 /* A steer: the same person's message, delivered into the turn above it rather
@@ -335,7 +335,7 @@
   border: 0;
   background: none;
   font: inherit;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.4;
   white-space: nowrap;
   color: var(--fg-subtle);
@@ -379,11 +379,11 @@
    ones that have to agree, so a fenced block matches `.toolPre` and `.hunk`
    here rather than a body in another pane. */
 .assistant :global(code) {
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
   font-size: 0.9em;
   color: var(--brand-strong);
   background: var(--neutral-subtle);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: 0.1em 0.35em;
 }
 
@@ -391,7 +391,7 @@
   margin: calc(8px * var(--ui-scale)) 0;
   padding: calc(12px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   background: var(--neutral-subtle);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -420,7 +420,7 @@
   overflow-x: auto;
   margin: calc(8px * var(--ui-scale)) 0;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   /* `separate`, because a collapsed border belongs to the cells and a cell
      cannot be rounded. The frame sits here, the cells draw only dividers. */
   border-collapse: separate;
@@ -502,12 +502,12 @@
 /* The corner label carries the fence's info string. It sits on the frame's own
    fill so a long first line passes under it, not through it. */
 .codeLang {
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
   font-size: calc(10px * var(--ui-scale));
   line-height: 1;
   color: var(--fg-muted);
   background: var(--neutral-subtle);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: calc(3px * var(--ui-scale)) calc(5px * var(--ui-scale));
 }
 
@@ -519,7 +519,7 @@
   border: none;
   background: var(--neutral-subtle);
   color: var(--fg-muted);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: calc(3px * var(--ui-scale));
   cursor: pointer;
   opacity: 0;
@@ -542,7 +542,7 @@
   margin: 0;
   padding: calc(12px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   background: var(--neutral-subtle);
 }
 
@@ -584,12 +584,12 @@
 .thinkingToggle {
   display: inline-flex;
   align-items: center;
-  gap: var(--sway-space-3);
+  gap: var(--tori-space-3);
   background: transparent;
   border: none;
   padding: 0;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   cursor: pointer;
 }
 
@@ -626,7 +626,7 @@
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border-left: 2px solid var(--border-strong);
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.55;
   white-space: pre-wrap;
 }
@@ -642,7 +642,7 @@
   padding: 0;
   background: transparent;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   cursor: pointer;
   text-align: left;
 }
@@ -659,7 +659,7 @@
    not a dimmed control: the whole point is that there is nothing to operate. */
 .rulesUnsupported {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.5;
 }
 
@@ -695,11 +695,11 @@
 .ruleInput {
   padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--canvas-input);
   color: var(--fg-default);
   font: inherit;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .ruleInput {
@@ -711,8 +711,8 @@
   flex: 1;
   min-width: 0;
   color: var(--fg-default);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -720,7 +720,7 @@
 
 .ruleScope {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   white-space: nowrap;
 }
 
@@ -748,7 +748,7 @@
   gap: calc(8px * var(--ui-scale));
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   /* No fill. A tool call is plumbing, and plumbing earns attention only when it
      fails, so it keeps a hairline and gives its fill up to the prompt bubble
      above. This used to be `--neutral-subtle`, which made the loudest surface in
@@ -772,8 +772,8 @@
   border: none;
   padding: 0;
   background: transparent;
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   text-align: left;
   cursor: pointer;
 }
@@ -782,7 +782,7 @@
   flex: none;
   display: inline-flex;
   color: var(--fg-subtle);
-  transition: transform var(--sway-duration-fast) var(--sway-ease);
+  transition: transform var(--tori-duration-fast) var(--tori-ease);
 }
 
 .toolCaretOpen {
@@ -830,7 +830,7 @@
 .toolSummary {
   flex: none;
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   white-space: nowrap;
 }
 
@@ -846,13 +846,13 @@
 
 .toolDuration {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   white-space: nowrap;
 }
 
 .toolState {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   white-space: nowrap;
 }
 
@@ -889,8 +889,8 @@
   padding: 0;
   background: transparent;
   color: var(--accent-fg);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   text-align: left;
   overflow-wrap: anywhere;
   cursor: pointer;
@@ -901,11 +901,11 @@
 }
 
 .toolBadge {
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   padding: 0 calc(6px * var(--ui-scale));
   color: var(--diff-added);
   font-family: inherit;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 
 /* Expanded detail: a darker well inside the card, the way the mock's diff
@@ -916,15 +916,15 @@
   padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
   overflow: auto;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   /* Lifts off the transcript rather than sinking into it. As `--canvas-default`
      this was an inset that read only because the tool card around it carried a
      fill; with that card now transparent, the same value would leave command
      output the exact colour of the pane behind it. */
   background: var(--neutral-subtle);
   color: var(--fg-default);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1022,8 +1022,8 @@ button.toolGutter:hover {
    be a program rather than a value. */
 .toolArgName {
   color: var(--fg-subtle);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 /* A diff row. The tint carries the add/remove verdict rather than the text
@@ -1113,8 +1113,8 @@ button.diffHunkHeader:hover {
   padding: 0;
   background: transparent;
   color: var(--fg-subtle);
-  font-family: var(--sway-font-ui);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-ui);
+  font-size: var(--tori-text-sm);
   cursor: pointer;
 }
 
@@ -1124,7 +1124,7 @@ button.diffHunkHeader:hover {
 
 .toolNote {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.4;
 }
 
@@ -1138,7 +1138,7 @@ button.diffHunkHeader:hover {
 
 .hunk {
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   /* Same reason as `.toolPre`: the diff is the payload, so it takes the fill the
      tool card gave up. Diff lines colour their text rather than their
      background, so nothing composites over this. */
@@ -1148,8 +1148,8 @@ button.diffHunkHeader:hover {
 
 .diffLine {
   padding: 0 calc(12px * var(--ui-scale));
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   line-height: 1.6;
   white-space: pre;
   overflow-x: auto;
@@ -1184,8 +1184,8 @@ button.diffHunkHeader:hover {
   padding: 0 calc(8px * var(--ui-scale));
   background: transparent;
   color: var(--fg-subtle);
-  font-family: var(--sway-font-ui);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-ui);
+  font-size: var(--tori-text-sm);
   cursor: pointer;
 }
 
@@ -1230,23 +1230,23 @@ button.diffHunkHeader:hover {
   margin-top: calc(8px * var(--ui-scale));
   padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
   border: 1px solid var(--blocking-border);
-  border-radius: var(--sway-radius-lg);
+  border-radius: var(--tori-radius-lg);
   background: var(--blocking-surface);
 }
 
 .promptQuestion {
   color: var(--blocking-fg);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
 .promptQuestion code {
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
   font-size: 0.9em;
   color: var(--blocking-accent);
   background: var(--neutral-subtle);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: 0.1em 0.35em;
 }
 
@@ -1256,7 +1256,7 @@ button.diffHunkHeader:hover {
   padding: 0;
   background: transparent;
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   cursor: pointer;
 }
 
@@ -1272,11 +1272,11 @@ button.diffHunkHeader:hover {
   padding: calc(10px * var(--ui-scale)) calc(12px * var(--ui-scale));
   overflow: auto;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   background: var(--canvas-default);
   color: var(--fg-default);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1307,26 +1307,26 @@ button.diffHunkHeader:hover {
   gap: calc(12px * var(--ui-scale));
   padding: calc(14px * var(--ui-scale)) calc(16px * var(--ui-scale));
   border: 1px solid var(--blocking-border);
-  border-radius: var(--sway-radius-lg);
+  border-radius: var(--tori-radius-lg);
   background: var(--blocking-surface);
 }
 
 .questionHead {
   display: flex;
   align-items: baseline;
-  gap: var(--sway-space-2);
+  gap: var(--tori-space-2);
 }
 
 .questionTitle {
   color: var(--blocking-fg);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   font-weight: 500;
   line-height: 1.5;
 }
 
 .questionAgent {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .questionRow {
@@ -1342,11 +1342,11 @@ button.diffHunkHeader:hover {
   margin: 0;
   padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   background: var(--neutral-subtle);
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1354,7 +1354,7 @@ button.diffHunkHeader:hover {
 
 .questionOtherLabel {
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* The shared input recipe again, on the free-text box. */
@@ -1364,16 +1364,16 @@ button.diffHunkHeader:hover {
   width: 100%;
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-default);
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   line-height: 1.4;
   outline: none;
   transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    box-shadow var(--tori-duration-fast) ease;
 }
 
 .questionOther:focus {
@@ -1394,7 +1394,7 @@ button.diffHunkHeader:hover {
 
 .questionHint {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* Settled cards hand the gold back: only a question still waiting wears the
@@ -1419,7 +1419,7 @@ button.diffHunkHeader:hover {
 .questionState {
   margin-left: auto;
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* The agent's own record, quoted rather than re-rendered. Replayed cards
@@ -1427,10 +1427,10 @@ button.diffHunkHeader:hover {
 .questionRecord {
   margin: 0;
   padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   background: var(--neutral-subtle);
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1443,16 +1443,16 @@ button.diffHunkHeader:hover {
   width: 100%;
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-default);
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   line-height: 1.4;
   outline: none;
   transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    box-shadow var(--tori-duration-fast) ease;
 }
 
 .promptReason:focus {
@@ -1468,7 +1468,7 @@ button.diffHunkHeader:hover {
 .notice {
   align-self: center;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* The glyph and the line it labels. Top aligned rather than centred, so a
@@ -1477,7 +1477,7 @@ button.diffHunkHeader:hover {
 .noticeLine {
   display: flex;
   align-items: flex-start;
-  gap: var(--sway-space-3);
+  gap: var(--tori-space-3);
 }
 
 .noticeIcon {
@@ -1532,7 +1532,7 @@ button.diffHunkHeader:hover {
 .noticeDetails > summary {
   color: var(--fg-subtle);
   cursor: pointer;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   list-style: none;
   text-align: center;
 }
@@ -1553,7 +1553,7 @@ button.diffHunkHeader:hover {
    so it gets a measure rather than the centred single line's treatment. */
 .noticeDetailsBody {
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   max-width: calc(680px * var(--ui-scale));
   padding-top: calc(6px * var(--ui-scale));
   white-space: pre-wrap;
@@ -1570,7 +1570,7 @@ button.diffHunkHeader:hover {
   border: 0;
   color: var(--fg-muted);
   cursor: pointer;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   padding: 0;
   text-align: left;
   width: 100%;
@@ -1583,14 +1583,14 @@ button.diffHunkHeader:hover {
 .sessionInfoBody {
   display: flex;
   flex-direction: column;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   gap: calc(10px * var(--ui-scale));
   padding-top: calc(8px * var(--ui-scale));
 }
 
 .sessionInfoBody h4 {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   font-weight: 600;
   margin: 0 0 calc(2px * var(--ui-scale));
 }
@@ -1622,7 +1622,7 @@ button.diffHunkHeader:hover {
   padding: calc(8px * var(--ui-scale)) calc(16px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
   background: var(--canvas-card);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .banner {
@@ -1673,7 +1673,7 @@ button.diffHunkHeader:hover {
   margin-inline: auto;
   border-top: 1px solid var(--border-default);
   background: var(--canvas-card);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* A button because it is the fold, the way a tool call's row is; the reset is
@@ -1688,7 +1688,7 @@ button.diffHunkHeader:hover {
   background: transparent;
   color: var(--fg-muted);
   font: inherit;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -1721,11 +1721,11 @@ button.diffHunkHeader:hover {
   height: calc(20px * var(--ui-scale));
   padding: 0 calc(8px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--canvas-card);
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
@@ -1741,7 +1741,7 @@ button.diffHunkHeader:hover {
 }
 
 .planCount {
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1811,7 +1811,7 @@ button.diffHunkHeader:hover {
   background: transparent;
   color: var(--accent-fg);
   font-family: inherit;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -1847,7 +1847,7 @@ button.diffHunkHeader:hover {
 
 .laneGroupName {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
 }
 
 /* Text wearing a chip's shape: same row, and nothing happens when you press it.
@@ -1878,7 +1878,7 @@ button.diffHunkHeader:hover {
   background: transparent;
   color: var(--fg-muted);
   font-family: inherit;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   cursor: pointer;
 }
 
@@ -1934,8 +1934,8 @@ button.diffHunkHeader:hover {
 .laneFigure {
   flex: none;
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
 }
 
 /* Watermark, deliberately: the binding is a hint for whoever wants it, and at
@@ -1943,8 +1943,8 @@ button.diffHunkHeader:hover {
 .laneKey {
   flex: none;
   color: var(--fg-watermark);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
 }
 
 .composer {
@@ -1980,8 +1980,8 @@ button.diffHunkHeader:hover {
      what it becomes. */
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
-  transition: border-color var(--sway-duration-fast) ease;
+  border-radius: var(--tori-radius-xl);
+  transition: border-color var(--tori-duration-fast) ease;
 }
 
 /* One step of border, and nothing else.
@@ -2014,7 +2014,7 @@ button.diffHunkHeader:hover {
   overflow-y: auto;
   resize: none;
   border: none;
-  border-radius: var(--sway-radius-xl) var(--sway-radius-xl) 0 0;
+  border-radius: var(--tori-radius-xl) var(--tori-radius-xl) 0 0;
   padding: var(--input-pad-top) var(--input-pad-x) var(--input-pad-bottom);
   background: transparent;
   color: var(--fg-default);
@@ -2063,13 +2063,13 @@ button.diffHunkHeader:hover {
   width: var(--control-height);
   height: var(--control-height);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   background: transparent;
   color: var(--fg-muted);
   cursor: pointer;
   transition:
-    border-color var(--sway-duration-fast) ease,
-    color var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    color var(--tori-duration-fast) ease;
 }
 
 .attachButton:hover:not(:disabled) {
@@ -2091,11 +2091,11 @@ button.diffHunkHeader:hover {
   height: var(--control-height);
   width: var(--control-height);
   border: none;
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--brand-default);
   color: var(--brand-on);
   cursor: pointer;
-  transition: filter var(--sway-duration-fast) ease;
+  transition: filter var(--tori-duration-fast) ease;
 }
 
 .sendButton:hover:not(:disabled) {
@@ -2133,14 +2133,14 @@ button.diffHunkHeader:hover {
   height: var(--control-height);
   padding: 0 calc(9px * var(--ui-scale)) 0 calc(10px * var(--ui-scale));
   border: 1px solid var(--neutral-subtle);
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: transparent;
   color: var(--fg-default);
   font: inherit;
   cursor: pointer;
   transition:
-    background var(--sway-duration-fast) ease,
-    border-color var(--sway-duration-fast) ease;
+    background var(--tori-duration-fast) ease,
+    border-color var(--tori-duration-fast) ease;
 }
 
 .pill:hover:not(:disabled),
@@ -2177,7 +2177,7 @@ button.diffHunkHeader:hover {
 
 .pillPrefix {
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   white-space: nowrap;
 }
 
@@ -2185,7 +2185,7 @@ button.diffHunkHeader:hover {
   max-width: calc(160px * var(--ui-scale));
   overflow: hidden;
   color: inherit;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -2242,13 +2242,13 @@ button.diffHunkHeader:hover {
 
 .pickName {
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   line-height: 1.3;
 }
 
 .pickDesc {
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.35;
 }
 
@@ -2257,7 +2257,7 @@ button.diffHunkHeader:hover {
    fragment beside a pill in the composer. */
 .pickNote {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.35;
 }
 
@@ -2308,7 +2308,7 @@ button.diffHunkHeader:hover {
    below it. */
 .composerNotice {
   color: var(--brand-strong);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.3;
   padding: 0 calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale));
 }
@@ -2317,7 +2317,7 @@ button.diffHunkHeader:hover {
    scratch tab holds the draft while it is being edited in the editor. */
 .composerHint {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.3;
   padding: calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale)) 0;
 }
@@ -2336,7 +2336,7 @@ button.diffHunkHeader:hover {
 /* Small print in the composer bar (the draft's blocked reason). */
 .barNote {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.3;
   white-space: nowrap;
 }
@@ -2346,7 +2346,7 @@ button.diffHunkHeader:hover {
   width: calc(48px * var(--ui-scale));
   height: calc(5px * var(--ui-scale));
   margin-right: calc(6px * var(--ui-scale));
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--neutral-hover);
   overflow: hidden;
   vertical-align: middle;
@@ -2370,7 +2370,7 @@ button.diffHunkHeader:hover {
   overflow-y: auto;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   box-shadow: var(--shadow-md);
 }
 
@@ -2379,11 +2379,11 @@ button.diffHunkHeader:hover {
   align-items: baseline;
   gap: calc(8px * var(--ui-scale));
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
   background: transparent;
   color: var(--fg-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-align: left;
   cursor: pointer;
 }
@@ -2400,13 +2400,13 @@ button.diffHunkHeader:hover {
 
 .completionName {
   flex: none;
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
 }
 
 .completionHint {
   flex: none;
   color: var(--fg-subtle);
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
 }
 
 .completionDesc {
@@ -2432,7 +2432,7 @@ button.diffHunkHeader:hover {
   align-items: center;
   max-width: 100%;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   overflow: hidden;
   background: var(--neutral-subtle);
 }
@@ -2461,8 +2461,8 @@ button.diffHunkHeader:hover {
   border: 0;
   background: none;
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   cursor: default;
 }
 
@@ -2534,7 +2534,7 @@ button.attachmentBody:hover {
   width: max-content;
   min-width: calc(88px * var(--ui-scale));
   max-width: calc(168px * var(--ui-scale));
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
 }
 
 .attachmentTile .attachmentBody {
@@ -2561,7 +2561,7 @@ button.attachmentBody:hover {
    is what the tile is sized by, so it has to stay narrow enough to be one. */
 .attachmentTile .attachmentName {
   padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale)) 0;
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
   text-align: center;
 }
 
@@ -2571,7 +2571,7 @@ button.attachmentBody:hover {
   overflow: hidden;
   padding: 0 calc(6px * var(--ui-scale)) calc(3px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
   text-align: center;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -2584,7 +2584,7 @@ button.attachmentBody:hover {
   top: calc(2px * var(--ui-scale));
   right: calc(2px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--neutral-subtle);
   opacity: 0;
 }
@@ -2599,7 +2599,7 @@ button.attachmentBody:hover {
 .dropHint {
   padding: 0 calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 
 /* ---- the queue strip ---- */
@@ -2614,7 +2614,7 @@ button.attachmentBody:hover {
 
 .queueLabel {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* Held after a stopped turn: the queue is waiting on a decision, not on a
@@ -2626,11 +2626,11 @@ button.attachmentBody:hover {
 .queueItem {
   max-width: calc(220px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   padding: calc(3px * var(--ui-scale)) calc(10px * var(--ui-scale));
   background: var(--canvas-input);
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2651,8 +2651,8 @@ button.attachmentBody:hover {
 .barToggle {
   display: inline-flex;
   align-items: center;
-  gap: var(--sway-space-2);
-  font-size: var(--sway-text-md);
+  gap: var(--tori-space-2);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
 

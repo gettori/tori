@@ -13,14 +13,14 @@
 .content {
   z-index: 1300;
   max-width: calc(280px * var(--ui-scale));
-  padding: var(--sway-space-3) var(--sway-space-5);
+  padding: var(--tori-space-3) var(--tori-space-5);
   background: var(--canvas-card);
   color: var(--fg-default);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   box-shadow: var(--shadow-md);
-  font-size: var(--sway-text-md);
-  line-height: var(--sway-line-normal);
+  font-size: var(--tori-text-md);
+  line-height: var(--tori-line-normal);
   /* Kobalte writes this as an inline style on the content, pointing at whichever
      corner the popper actually resolved to, so the zoom below grows out of the
      trigger instead of out of thin air. The fallback is not decoration: the name
@@ -58,7 +58,7 @@
   }
 }
 .content[data-expanded] {
-  animation: tooltipContentIn var(--sway-duration-fast) var(--sway-ease);
+  animation: tooltipContentIn var(--tori-duration-fast) var(--tori-ease);
 }
 @media (prefers-reduced-motion: reduce) {
   .content[data-expanded] {

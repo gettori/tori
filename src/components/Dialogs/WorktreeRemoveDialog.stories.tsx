@@ -19,7 +19,7 @@ const meta = {
   },
   args: {
     label: "feature/omnibox",
-    path: "/Users/you/Projects/sway/feature-omnibox",
+    path: "/Users/you/Projects/tori/feature-omnibox",
     branch: "feature/omnibox",
     dirty: false,
     unpushed: false,

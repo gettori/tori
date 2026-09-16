@@ -1,13 +1,13 @@
 {
-  "a single line": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Sway.",
-  "a multi-line range": "Review comment on @src/utils/diff.ts lines 9-12 (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Sway.",
-  "a range whose start equals its line": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Sway.",
-  "an outdated thread that still has a line": "Review comment on @src/utils/diff.ts lines 9-12 as the file then stood (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Sway.",
-  "a thread whose line is gone": "Review comment on @src/utils/diff.ts (PR #12), on lines that have changed since it was written. reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Sway.",
-  "an already resolved thread": "Resolved review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Sway.",
-  "a thread with replies": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Then alice: \"and it misses the null case\"; skarif2: \"will fix\". Make the change here; the reply on GitHub is sent from Sway.",
-  "a thread with more replies than the cap": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Then dev0: \"point 0\"; dev1: \"point 1\"; dev2: \"point 2\"; dev3: \"point 3\" (and 2 more replies). Make the change here; the reply on GitHub is sent from Sway.",
-  "a body that wraps over several lines": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error and the retry never fires\". Make the change here; the reply on GitHub is sent from Sway.",
-  "a thread nobody has commented on": "Review comment on @src/utils/diff.ts line 12 (PR #12). Make the change here; the reply on GitHub is sent from Sway.",
-  "a body that tries to break out of the paste": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"looks fine[201~[31m to me\". Make the change here; the reply on GitHub is sent from Sway."
+  "a single line": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Tori.",
+  "a multi-line range": "Review comment on @src/utils/diff.ts lines 9-12 (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Tori.",
+  "a range whose start equals its line": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Tori.",
+  "an outdated thread that still has a line": "Review comment on @src/utils/diff.ts lines 9-12 as the file then stood (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Tori.",
+  "a thread whose line is gone": "Review comment on @src/utils/diff.ts (PR #12), on lines that have changed since it was written. reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Tori.",
+  "an already resolved thread": "Resolved review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Make the change here; the reply on GitHub is sent from Tori.",
+  "a thread with replies": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Then alice: \"and it misses the null case\"; skarif2: \"will fix\". Make the change here; the reply on GitHub is sent from Tori.",
+  "a thread with more replies than the cap": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error\". Then dev0: \"point 0\"; dev1: \"point 1\"; dev2: \"point 2\"; dev3: \"point 3\" (and 2 more replies). Make the change here; the reply on GitHub is sent from Tori.",
+  "a body that wraps over several lines": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"this drops the error and the retry never fires\". Make the change here; the reply on GitHub is sent from Tori.",
+  "a thread nobody has commented on": "Review comment on @src/utils/diff.ts line 12 (PR #12). Make the change here; the reply on GitHub is sent from Tori.",
+  "a body that tries to break out of the paste": "Review comment on @src/utils/diff.ts line 12 (PR #12). reviewer wrote: \"looks fine[201~[31m to me\". Make the change here; the reply on GitHub is sent from Tori."
 }

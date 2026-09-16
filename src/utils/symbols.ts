@@ -275,7 +275,7 @@ export function normalizeDocumentSymbols(res: unknown, path: string): SymbolNode
  *
  *  `toPath` is injected because turning a server's URI into a path is the
  *  editor's business, and this module may not import the module that knows how
- *  (it reaches CodeMirror). A hit Sway cannot address is dropped rather than
+ *  (it reaches CodeMirror). A hit Tori cannot address is dropped rather than
  *  listed as something Enter would do nothing to. */
 export function normalizeWorkspaceSymbols(
   res: unknown,

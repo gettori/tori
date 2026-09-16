@@ -4,7 +4,7 @@
 // and that only ever fires for a path under a workspace root. An agent's own
 // config home is under none of them, so a tab on `~/.claude/CLAUDE.md` is a
 // real file with no watcher behind it: the agent rewrites it mid-session, and
-// the next save in Sway would have silently written the buffer over the top.
+// the next save in Tori would have silently written the buffer over the top.
 //
 // So an out-of-root tab records the file's mtime and re-checks it just before
 // writing. In root, nothing changes: the watcher got there first, and a second

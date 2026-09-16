@@ -64,7 +64,7 @@ import styles from "../../Settings.module.css";
 // a section above it, and why there is no Usage section any more.
 //
 // **The chips are the whole usage control.** Which windows an account puts in
-// the titlebar is also how deep Sway reads for it: nothing lit is nothing read,
+// the titlebar is also how deep Tori reads for it: nothing lit is nothing read,
 // the two generic windows come free off the rung the adapter offers, and the
 // model-scoped weekly one is the single thing that needs the login Keychain.
 // Pressing that chip is the opt-in, so the permission is asked at the moment the
@@ -133,7 +133,7 @@ export type AccountsView = {
   canSignOut: boolean;
   defaultPresent: boolean;
   defaultHome: string | null;
-  /** Where the default account really runs when Sway's own environment set the
+  /** Where the default account really runs when Tori's own environment set the
    *  adapter's home variable. Null is the normal case. */
   inheritedHome: string | null;
   profiles: ProfileStatus[];
@@ -269,7 +269,7 @@ function chipsFor(agentId: string, profile: string | null): Chip[] {
   });
 }
 
-/** One box per window Sway can name for this account, plus one per chip that
+/** One box per window Tori can name for this account, plus one per chip that
  *  has nothing to show yet. A deep read can return more windows than there are
  *  chips (an extra-usage pot beside the model week), and a box each is how they
  *  stay visible without a chip nobody could act on. */
@@ -315,7 +315,7 @@ function WindowChips(props: {
       ? `Show the ${limitTypeLabel(c.reading ? c.reading.kind : c.id)} window in the titlebar`
       : tokenAlreadyRead(props.agentId, props.profile)
         ? `This account's token reports no ${c.label} window.`
-        : `Sway reads this account's token from the login Keychain to see its ${c.label} window.`;
+        : `Tori reads this account's token from the login Keychain to see its ${c.label} window.`;
 
   return (
     <div class={styles.chipRow}>
@@ -453,7 +453,7 @@ function AccountCard(props: {
     });
 
   // The default account has no stored home: it is the variable left unset, so
-  // the agent resolves the login the user already had and Sway never names it.
+  // the agent resolves the login the user already had and Tori never names it.
   const home = () => {
     const path = p().home;
     return path ? shortHome(path, props.cwd) : null;
@@ -463,8 +463,8 @@ function AccountCard(props: {
   const canRemove = () => !p().isDefault;
   const removeNote = () =>
     p().managed
-      ? "Sway forgets it and deletes the profile home, with the sessions inside."
-      : "Sway forgets it. Its folder stays.";
+      ? "Tori forgets it and deletes the profile home, with the sessions inside."
+      : "Tori forgets it. Its folder stays.";
 
   const signOut = async () => {
     await invoke("sign_out_agent_account", { adapterId: props.agentId, profileId: p().id });
@@ -522,8 +522,8 @@ function AccountCard(props: {
         : {
             title: `Remove ${p().label}?`,
             message: p().managed
-              ? "Sway forgets this account and deletes the profile home it made for it, with the sessions inside."
-              : "Sway forgets this account. Its folder and the login in it stay.",
+              ? "Tori forgets this account and deletes the profile home it made for it, with the sessions inside."
+              : "Tori forgets this account. Its folder and the login in it stay.",
             confirmLabel: "Remove",
             danger: true,
             home: home(),
@@ -601,7 +601,7 @@ function AccountCard(props: {
         </Show>
 
         <div class={styles.acctSummary}>
-          {/* Who this account is, and nothing about what Sway does with it. The
+          {/* Who this account is, and nothing about what Tori does with it. The
               quota settings all had a summary here and it made the head the
               busiest row on the screen; they are one press away, on the card
               that also explains them. */}
@@ -641,20 +641,20 @@ function AccountCard(props: {
               to show, because it is the variable left unset. */}
           <div class={styles.acctHome}>{home() ?? "Your existing login"}</div>
           {/* The one case where "the variable left unset" is not this account:
-              Sway itself was started with it set, and every child of this row
+              Tori itself was started with it set, and every child of this row
               inherits it. Said here, because signing out whichever named
               profile owns that folder signs this one out too. */}
           <Show when={p().isDefault ? props.view.inheritedHome : null}>
             {(inherited) => (
               <div class={styles.hint}>
-                Runs in <code>{inherited()}</code>: the home variable was already set when Sway
-                started, so this is that account and not the variable left unset. Start Sway from
+                Runs in <code>{inherited()}</code>: the home variable was already set when Tori
+                started, so this is that account and not the variable left unset. Start Tori from
                 a shell without it to get your own login back.
               </div>
             )}
           </Show>
           {/* The agent's own answer about which credential it will bill against,
-              not Sway reading its environment and guessing which variables
+              not Tori reading its environment and guessing which variables
               matter to which agent. A notice, never a block: sessions run. */}
           <Show when={p().apiKeySource}>
             {(source) => (
@@ -679,12 +679,12 @@ function AccountCard(props: {
             when={reads()}
             fallback={
               <div class={styles.hint}>
-                Sway reads no quota for {props.agentLabel}
+                Tori reads no quota for {props.agentLabel}
                 <Show when={usageUnavailableReason(props.agentId)}>{(why) => <>: {why()}</>}</Show>.
               </div>
             }
           >
-            {/* Every window Sway can name for this account, whether or not the
+            {/* Every window Tori can name for this account, whether or not the
                 titlebar carries it: hiding a bar is not the same as not wanting
                 to know, and the one that needs permission has to be visible to
                 be asked for. */}
@@ -752,7 +752,7 @@ function AccountCard(props: {
                     when={canSignOut()}
                     fallback={
                       p().managed
-                        ? `Removing ${p().label} deletes the profile home Sway made for it, with the sessions inside.`
+                        ? `Removing ${p().label} deletes the profile home Tori made for it, with the sessions inside.`
                         : `Removing ${p().label} forgets it here. Its folder and the login in it stay.`
                     }
                   >
@@ -924,7 +924,7 @@ export default function AgentAccounts(props: {
 
   return (
     // An adapter that declares no `[accounts]` table renders nothing at all,
-    // rather than a set of controls that cannot do anything. "Sway has nothing
+    // rather than a set of controls that cannot do anything. "Tori has nothing
     // true to say about this agent's accounts" is not the same claim as
     // "nobody is signed in".
     <Show when={view()?.declared && view()}>
@@ -981,7 +981,7 @@ export default function AgentAccounts(props: {
             {(missing) => (
               <div class={styles.hint}>
                 No {shortHome(missing(), cwd() ?? "/")} on this machine. Add an account and point it at your{" "}
-                {props.agentLabel} folder, or leave the folder empty for one Sway manages.
+                {props.agentLabel} folder, or leave the folder empty for one Tori manages.
               </div>
             )}
           </Show>

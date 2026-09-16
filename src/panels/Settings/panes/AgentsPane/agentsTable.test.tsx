@@ -107,7 +107,7 @@ describe("the agents table", () => {
     expect(container.textContent).toContain("Not installed");
   });
 
-  // The note carries standing facts (who ships it, how Sway drives it), not
+  // The note carries standing facts (who ships it, how Tori drives it), not
   // status: sign-in, billing and install hints live on the agent's page, and
   // the state cell already carries the verdict.
   it("notes the provider and the transport, not the account", async () => {
@@ -120,7 +120,7 @@ describe("the agents table", () => {
 
   // Stored profiles from the accounts file, no probe behind them. "-" for an
   // adapter with no [accounts] table, because a default "1" would claim an
-  // account Sway has nothing true to say about.
+  // account Tori has nothing true to say about.
   it("counts stored accounts, and claims none for an undeclared adapter", async () => {
     const { container, findByText } = await mount();
     await findByText("Ready");
@@ -221,15 +221,15 @@ describe("the agents table", () => {
   // fix, and a switch that vanished would leave the reader guessing.
   it("refuses the switch for an agent whose state is not Ready", async () => {
     const r = await mount(undefined, undefined, { claude: true });
-    const claude = (await r.findByLabelText("Offer Claude in Sway")) as HTMLInputElement;
-    const copilot = (await r.findByLabelText("Offer Copilot in Sway")) as HTMLInputElement;
+    const claude = (await r.findByLabelText("Offer Claude in Tori")) as HTMLInputElement;
+    const copilot = (await r.findByLabelText("Offer Copilot in Tori")) as HTMLInputElement;
     expect(claude.disabled).toBe(false);
     expect(copilot.disabled).toBe(true);
   });
 
-  // Outdated is a notice, never a gate: the binary is older than the one Sway
+  // Outdated is a notice, never a gate: the binary is older than the one Tori
   // measured against and still runs, so refusing it would lock a working
-  // install out of the app over Sway's own bookkeeping.
+  // install out of the app over Tori's own bookkeeping.
   it("lets an Outdated agent be turned on", async () => {
     const r = await mount(
       [row({ status: "versionDrift", version: "2.1.100", verifiedAgainst: "claude 2.1.231" })],
@@ -237,7 +237,7 @@ describe("the agents table", () => {
       {},
     );
     await r.findByText("Outdated");
-    expect((r.getByLabelText("Offer Claude in Sway") as HTMLInputElement).disabled).toBe(false);
+    expect((r.getByLabelText("Offer Claude in Tori") as HTMLInputElement).disabled).toBe(false);
   });
 
   // Off is always reachable. An agent turned on and then uninstalled would
@@ -245,7 +245,7 @@ describe("the agents table", () => {
   it("still lets an agent that broke be turned off", async () => {
     const r = await mount([notInstalled("claude", "Claude")], undefined, { claude: true });
     await r.findByText("Not installed");
-    const box = r.getByLabelText("Offer Claude in Sway") as HTMLInputElement;
+    const box = r.getByLabelText("Offer Claude in Tori") as HTMLInputElement;
     expect(box.disabled).toBe(false);
     expect(box.checked).toBe(true);
   });
@@ -263,7 +263,7 @@ describe("the agents table", () => {
 
   it("writes the flip through set_settings, keyed by adapter id", async () => {
     const r = await mount(undefined, undefined, {});
-    fireEvent.click(await r.findByLabelText("Offer Claude in Sway"));
+    fireEvent.click(await r.findByLabelText("Offer Claude in Tori"));
     await waitFor(() => {
       const call = invoked.mock.calls.find((c) => c[0] === "set_settings");
       expect((call?.[1] as { settings: { agent: { enabled: Record<string, boolean> } } })?.settings.agent.enabled)

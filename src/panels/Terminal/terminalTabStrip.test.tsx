@@ -4,7 +4,7 @@ import { tab, tabs, closeOf } from "../../test/tabs";
 import { installAnimationFrame } from "../../test/frames";
 
 // The terminal tab strip, characterized before it moves onto Kobalte Tabs
-// (skarif2/sway#111).
+// (gettori/tori#111).
 //
 // Every other terminal suite mounts this panel to watch what gets *spawned*;
 // none of them ever reached a tab. So the two gestures the strip exists for,

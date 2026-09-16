@@ -1,5 +1,5 @@
 // A background subagent finishing makes the CLI open a turn of its own, with no
-// user message in front of it. That turn spends money Sway never authorised, so
+// user message in front of it. That turn spends money Tori never authorised, so
 // the ceiling has to be checked when it *completes* - a stop armed only at the
 // next user message would let an agent-opened turn run past the limit.
 //

@@ -6,15 +6,15 @@
 //!   than blank until the first turn of the day runs.
 //! - **The fired dedupe keys**, so a restart *inside* a window that has already
 //!   been announced does not announce it again. Without these the notice would
-//!   be tied to a process rather than to a window, and quitting Sway would be a
+//!   be tied to a process rather than to a window, and quitting Tori would be a
 //!   way to hear about the same 90% five times.
 //!
 //! **There was a third thing and it is gone: a bounded 7-day ring of past
 //! readings, for a chart of how a window got to where it is.** The chart is not
 //! being built, and the reason is the same one that would have made it wrong. A
-//! quota window belongs to the *account*, not to Sway: turns run in the CLI, in
+//! quota window belongs to the *account*, not to Tori: turns run in the CLI, in
 //! the desktop app, or on another machine all count against it. The ring records
-//! only what Sway itself read, so a stretch with Sway shut has no samples in it
+//! only what Tori itself read, so a stretch with Tori shut has no samples in it
 //! while the level goes on moving, and on a real machine that is most of the
 //! week. A file that grows to draw a chart which is mostly hole is worth
 //! neither. What answers the question is the current level and its reset, and
@@ -22,7 +22,7 @@
 //!
 //! The frontend owns the merge (`src/utils/usageStore.ts`); this owns durability
 //! and the prune. The prune happens on save rather than on load, so a file left
-//! by a Sway that ran a fortnight ago cannot come back holding stale keys.
+//! by a Tori that ran a fortnight ago cannot come back holding stale keys.
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -75,12 +75,12 @@ pub struct UsageSnapshot {
     pub fired: BTreeMap<String, Option<u64>>,
 }
 
-/// The data dir rather than `~/.config/sway`, for the reason `catalog_probe.rs`
-/// and `accounts.rs` chose it: this is state Sway derived from what a harness
+/// The data dir rather than `~/.config/tori`, for the reason `catalog_probe.rs`
+/// and `accounts.rs` chose it: this is state Tori derived from what a harness
 /// said, not configuration a user edits, and `~/.config` commonly lives in a
 /// dotfile repo.
 pub fn usage_root() -> PathBuf {
-    dirs::data_dir().unwrap_or_default().join("sway/usage")
+    dirs::data_dir().unwrap_or_default().join("tori/usage")
 }
 
 fn usage_path(root: &Path) -> PathBuf {
@@ -150,7 +150,7 @@ mod tests {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("sway-usage-{name}-{}-{nanos}-{seq}", std::process::id()))
+        std::env::temp_dir().join(format!("tori-usage-{name}-{}-{nanos}-{seq}", std::process::id()))
     }
 
     const NOW: u64 = 1_788_500_000_000;

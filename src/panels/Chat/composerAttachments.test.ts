@@ -32,14 +32,14 @@ const labels = () => pendingFor(KEY).map((p) => (p.block.type === "fileRef" ? [p
 
 describe("a pasted file becomes a labelled path", () => {
   it("posts the bytes raw with the name in a header, and offers the path it got back", async () => {
-    invoke.mockResolvedValueOnce("/home/me/.config/sway/attachments/abc-shot.png");
+    invoke.mockResolvedValueOnce("/home/me/.config/tori/attachments/abc-shot.png");
     const bytes = new Uint8Array([1, 2, 3]);
     await claude.onAttachUploads([{ name: "shot.png", bytes }]);
 
     expect(invoke).toHaveBeenCalledWith("store_attachment", bytes, {
       headers: { [ATTACHMENT_NAME_HEADER]: "shot.png" },
     });
-    expect(labels()).toEqual([["[Image 1]", "/home/me/.config/sway/attachments/abc-shot.png"]]);
+    expect(labels()).toEqual([["[Image 1]", "/home/me/.config/tori/attachments/abc-shot.png"]]);
     expect(pendingFor(KEY).some((p) => p.block.type === "image")).toBe(false);
   });
 
@@ -98,9 +98,9 @@ describe("where uploads go", () => {
   it("asks once and hands back null when the backend cannot say", async () => {
     invoke.mockRejectedValueOnce("no home");
     expect(await attachmentsDir()).toBeNull();
-    invoke.mockResolvedValue("/home/me/.config/sway/attachments");
-    expect(await attachmentsDir()).toBe("/home/me/.config/sway/attachments");
-    expect(await attachmentsDir()).toBe("/home/me/.config/sway/attachments");
+    invoke.mockResolvedValue("/home/me/.config/tori/attachments");
+    expect(await attachmentsDir()).toBe("/home/me/.config/tori/attachments");
+    expect(await attachmentsDir()).toBe("/home/me/.config/tori/attachments");
     expect(invoke).toHaveBeenCalledTimes(2);
   });
 });

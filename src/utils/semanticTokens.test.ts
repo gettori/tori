@@ -166,7 +166,7 @@ describe("tokenClasses", () => {
 
   it("has nothing to say about a type it does not know", () => {
     // rust-analyzer ships a dozen of its own. Silence leaves the grammar's
-    // colour in place, which is the right answer for a type Sway has no role for.
+    // colour in place, which is the right answer for a type Tori has no role for.
     expect(tokenClasses(token("selfKeyword"))).toEqual([]);
     expect(tokenClasses(token(""))).toEqual([]);
   });
@@ -209,7 +209,7 @@ describe("the capability block", () => {
   });
 
   it("says it augments the grammar rather than replacing it", () => {
-    // Sway keeps lexical highlighting underneath, so a server should not be
+    // Tori keeps lexical highlighting underneath, so a server should not be
     // asked to tokenise the punctuation and comments already coloured.
     expect(caps.textDocument.semanticTokens.augmentsSyntaxTokens).toBe(true);
   });
@@ -222,7 +222,7 @@ describe("the capability block", () => {
     expect(caps.textDocument.semanticTokens.dynamicRegistration).toBe(false);
   });
 
-  it("invites the one server-initiated request Sway answers", () => {
+  it("invites the one server-initiated request Tori answers", () => {
     // Against the rule the rest of the capability surface follows, and
     // deliberately: without it a server never says its answers went stale, and
     // editing a type in one file leaves every other file's colours wrong until

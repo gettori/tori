@@ -13,7 +13,7 @@
 // `panels/Settings/settingsStore.ts`, and for the same reason.
 import { createSignal } from "solid-js";
 
-export const BLAME_KEY = "sway.editor.blame";
+export const BLAME_KEY = "tori.editor.blame";
 
 /** Off by default: blame is a question you ask, and asking it costs a gutter
  *  column and a line of text beside the cursor on every file you open. */

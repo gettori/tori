@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { configurationFor, configurationClientCapabilities } from "./lspConfiguration";
 
 // What `yaml-language-server` actually asks for, in the order it asks
-// (`settingsHandlers.js:45-51`). Sway has an opinion about exactly one of them,
+// (`settingsHandlers.js:45-51`). Tori has an opinion about exactly one of them,
 // which is the case the positional rule below exists for.
 const YAML_ITEMS = [
   { section: "yaml" },
@@ -24,7 +24,7 @@ const YAML_SETTINGS = {
 describe("configurationFor", () => {
   it("answers one value per requested section, in order", () => {
     // Positional, which the protocol requires: the server reads the reply by
-    // index, so dropping the sections Sway has nothing to say about would
+    // index, so dropping the sections Tori has nothing to say about would
     // shift `[yaml]`'s answer onto `http` and hand the server its own
     // configuration under the wrong name.
     const answer = configurationFor(YAML_SETTINGS, { items: YAML_ITEMS });
@@ -84,7 +84,7 @@ describe("configurationFor", () => {
   });
 
   it("ignores scopeUri rather than failing on it", () => {
-    // Sway's settings are per server, not per folder. Answering the same value
+    // Tori's settings are per server, not per folder. Answering the same value
     // for every scope is exactly right until they are not.
     const answer = configurationFor(YAML_SETTINGS, {
       items: [{ section: "yaml", scopeUri: "file:///proj/a" }],

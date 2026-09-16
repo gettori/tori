@@ -14,17 +14,17 @@
   background: var(--neutral-hover);
   border: 1px solid var(--border-default);
   color: var(--fg-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   padding: 0 calc(12px * var(--ui-scale));
   font-family: inherit;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.4;
   cursor: pointer;
   transition:
-    border-color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease,
-    filter var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    background var(--tori-duration-fast) ease,
+    box-shadow var(--tori-duration-fast) ease,
+    filter var(--tori-duration-fast) ease;
 }
 
 /* Keyboard focus: a gold brand ring (pointer focus stays quiet). */
@@ -115,7 +115,7 @@
 .xs {
   height: var(--control-height-xs);
   padding: 0 calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* ---- Icon-only: a square whose side is the size's fixed height, no label ---- */

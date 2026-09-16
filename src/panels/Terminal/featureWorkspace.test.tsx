@@ -5,8 +5,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
-const A = "/r/a/.sway/worktrees/auth";
-const B = "/r/b/.sway/worktrees/auth";
+const A = "/r/a/.tori/worktrees/auth";
+const B = "/r/b/.tori/worktrees/auth";
 
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
@@ -104,7 +104,7 @@ beforeEach(() => {
   bridge.calls.length = 0;
   bridge.byFolder = {};
   localStorage.setItem(
-    "sway.terminalTabs",
+    "tori.terminalTabs",
     JSON.stringify({
       "feature:f1": {
         tabs: [

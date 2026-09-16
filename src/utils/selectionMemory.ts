@@ -3,7 +3,7 @@
 // Feature list and drops an entry whose folder or record is gone.
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
 
-const KEY = "sway.selection-memory.v1";
+const KEY = "tori.selection-memory.v1";
 
 type Memory = { spaces: Record<string, Selection>; feature: Selection | null };
 

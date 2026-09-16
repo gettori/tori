@@ -69,7 +69,7 @@ pub(super) const ASK_USER_QUESTION: &str = "AskUserQuestion";
 ///
 /// This replaced "Fast mode is not available in the Agent SDK", which was the
 /// CLI's own sentence for `sdk_opt_in_required` and stopped being true the
-/// moment Sway took the opt-in (see `claude.toml`'s `--settings`). Quoting a
+/// moment Tori took the opt-in (see `claude.toml`'s `--settings`). Quoting a
 /// reason the session is no longer giving is worse than having none: it reads as
 /// measured and is not.
 const FAST_MODE_REFUSAL: &str = "Set when the chat starts; there is no mid-session switch";
@@ -157,7 +157,7 @@ const THINKING_MODES: [&str; 3] = ["enabled", "adaptive", "disabled"];
 /// these are assembled from the catalogue row's own capability flags.
 ///
 /// **This used to read `[[chat.annotations]]` and no longer does.** The
-/// handshake publishes `supportsFastMode` per model, so a Sway-side table
+/// handshake publishes `supportsFastMode` per model, so a Tori-side table
 /// restating it was the `[[chat.models]]` trap again: hand-maintained, keyed on
 /// a spelling the catalogue does not use (`claude-opus-5` against a resolved
 /// `claude-opus-5[1m]`), and therefore already matching nothing.
@@ -232,12 +232,12 @@ pub fn effort_levels(
     // ("2.1.237 (Claude Code)") compares equal to the bare number `system/init`
     // reports. Comparing the raw strings would make every row stale forever.
     let running = crate::health::parse_version(cli_version);
-    // No version, no extras. A binary Sway cannot name is one no measurement
+    // No version, no extras. A binary Tori cannot name is one no measurement
     // can be scoped to, so the picker shows exactly what the agent published
-    // rather than a disabled row explaining a claim Sway never got to make.
+    // rather than a disabled row explaining a claim Tori never got to make.
     let Some(running) = running else { return out };
     for extra in extras {
-        // A level the agent already named is the agent's, not Sway's. An extra
+        // A level the agent already named is the agent's, not Tori's. An extra
         // that collides with one adds nothing and must not re-state it as a
         // second row the picker cannot tell apart.
         if out.iter().any(|l| l.level == extra.id) {
@@ -312,14 +312,14 @@ pub struct ClaudeMapper {
     handshake_reported: bool,
     /// Tool inputs accumulated from `input_json_delta`, keyed by block index.
     partial_tool_input: HashMap<u64, String>,
-    /// Hook ids proven to be Sway's own, learned from the marker on their
+    /// Hook ids proven to be Tori's own, learned from the marker on their
     /// `hook_response`. Retained for the session because a hook's `Started` can
     /// be re-examined only through this id, and the set is bounded by the
     /// number of tool calls rather than by anything unbounded.
-    sway_hook_ids: std::collections::HashSet<String>,
+    tori_hook_ids: std::collections::HashSet<String>,
     /// Tool calls whose result names a file they only *read*. Learned from the
     /// call's own name, and retained for the same reason and with the same
-    /// bound as `sway_hook_ids`: the result frame arrives with nothing but a
+    /// bound as `tori_hook_ids`: the result frame arrives with nothing but a
     /// `tool_use_id` on it.
     read_only_calls: std::collections::HashSet<String>,
     /// `Agent` call id -> the `task_id` it launched, from `task_started`. What
@@ -343,7 +343,7 @@ pub struct ClaudeMapper {
     cli_version: String,
     /// The model the session last reported running. Empty before the first
     /// `system/init`, and what makes a model change detectable at all: the
-    /// switch is reported here whether Sway asked for it or `/model` did.
+    /// switch is reported here whether Tori asked for it or `/model` did.
     reported_model: String,
     /// Why the session says fast mode will not serve, from `system/init`'s
     /// `fast_mode_disabled_reason`. An account fact rather than a model one, so
@@ -360,7 +360,7 @@ impl ClaudeMapper {
         }
     }
 
-    /// Hand the mapper the levels Sway measured that this CLI never advertises,
+    /// Hand the mapper the levels Tori measured that this CLI never advertises,
     /// so the live catalogue offers the same set the probe cached.
     pub fn with_effort_extras(mut self, extras: Vec<ChatEffortExtra>) -> Self {
         self.effort_extras = extras;
@@ -398,7 +398,7 @@ impl ClaudeMapper {
     /// The lever set for the model this init reports, when it is not the set
     /// already published.
     ///
-    /// Driven by what the session says it is running, not by Sway's own set
+    /// Driven by what the session says it is running, not by Tori's own set
     /// path, so a `/model` slash command refreshes the mirror exactly as
     /// `chat_set_model` does: both are confirmed by the next `system/init`.
     fn model_options(&mut self, model: &str) -> Option<ChatEvent> {
@@ -579,12 +579,12 @@ impl ClaudeMapper {
     /// `WebFetch`, a non-safe-listed `Bash`, an MCP tool and a `Task` subagent's
     /// own call all ask; `Read` does not, and neither does anything under
     /// `acceptEdits` or `bypassPermissions`. Those silences are the agent
-    /// deciding, not a gap Sway has to cover.
+    /// deciding, not a gap Tori has to cover.
     ///
     /// **Nothing is answered here.** The mapper's only job is to turn the frame
     /// into an event; the answer travels back out through the transport, which
     /// is the half that owns the deadline. An unrecognised subtype maps to no
-    /// event rather than to a guess, because a control request Sway does not
+    /// event rather than to a guess, because a control request Tori does not
     /// understand is one it must not pretend to have handled.
     fn map_control_request(&mut self, frame: &Value) -> Vec<ChatEvent> {
         let request = &frame["request"];
@@ -648,7 +648,7 @@ impl ClaudeMapper {
             // they already are.
             modes: Vec::new(),
             account: self.account.clone(),
-            // Claude advertises no capability set of its own. What Sway knows
+            // Claude advertises no capability set of its own. What Tori knows
             // about this agent was measured and pinned in the chat tier, so
             // there is nothing on the wire to carry - and `None` says exactly
             // that rather than claiming an agent that supports nothing.
@@ -795,9 +795,9 @@ impl ClaudeMapper {
 
     /// One `hook_started`/`hook_response` frame.
     ///
-    /// Ownership is decided from the marker Sway stamps on its own hook output
-    /// ([`approval::SWAY_HOOK_MARKER`]), never from `hook_name`: that field
-    /// reports the *tool*, so Sway's all-tools hook and a user's hook on the
+    /// Ownership is decided from the marker Tori stamps on its own hook output
+    /// ([`approval::TORI_HOOK_MARKER`]), never from `hook_name`: that field
+    /// reports the *tool*, so Tori's all-tools hook and a user's hook on the
     /// same tool are both `PreToolUse:Bash` and cannot be told apart by name.
     ///
     /// Only the response carries the marker, so a `Started` is remembered by
@@ -808,15 +808,15 @@ impl ClaudeMapper {
     fn map_hook(&mut self, frame: &Value, phase: HookPhase) -> Vec<ChatEvent> {
         let hook_id = frame["hook_id"].as_str().unwrap_or_default().to_string();
         let output = frame["output"].as_str().map(str::to_string);
-        let sway_owned = match phase {
+        let tori_owned = match phase {
             HookPhase::Finished => {
-                let owned = output.as_deref().is_some_and(is_sway_hook_output);
+                let owned = output.as_deref().is_some_and(is_tori_hook_output);
                 if owned {
-                    self.sway_hook_ids.insert(hook_id.clone());
+                    self.tori_hook_ids.insert(hook_id.clone());
                 }
                 owned
             }
-            HookPhase::Started => self.sway_hook_ids.contains(&hook_id),
+            HookPhase::Started => self.tori_hook_ids.contains(&hook_id),
         };
         vec![ChatEvent::HookFired {
             session_id: self.session_id.clone(),
@@ -824,7 +824,7 @@ impl ClaudeMapper {
             name: frame["hook_name"].as_str().unwrap_or_default().to_string(),
             event: frame["hook_event"].as_str().unwrap_or_default().to_string(),
             phase,
-            sway_owned,
+            tori_owned,
             outcome: frame["outcome"].as_str().map(str::to_string),
             exit_code: frame["exit_code"].as_i64(),
             output,
@@ -1255,7 +1255,7 @@ impl ClaudeMapper {
 /// mode, which was the safe answer to the wrong question: reporting `default`
 /// for a session actually running `dontAsk` tells the user the opposite of the
 /// truth about what the agent may do without asking. Passing the id through
-/// means the status shows what the CLI said, and an id Sway cannot resolve to a
+/// means the status shows what the CLI said, and an id Tori cannot resolve to a
 /// declared mode is handled where that is decidable - see `ChatConfig::mode_args_for`.
 ///
 /// Absent stays `default`, which is the Claude literal on purpose: this is the
@@ -1304,15 +1304,15 @@ fn camel(snake: &str) -> String {
     out
 }
 
-/// Does this hook stdout carry Sway's own marker?
+/// Does this hook stdout carry Tori's own marker?
 ///
 /// Parsed rather than substring-matched: a user hook that merely *prints* the
 /// marker word (echoing a payload, logging a diff) must not be mistaken for
-/// Sway's, and only a real top-level `true` counts.
-fn is_sway_hook_output(output: &str) -> bool {
+/// Tori's, and only a real top-level `true` counts.
+fn is_tori_hook_output(output: &str) -> bool {
     serde_json::from_str::<Value>(output)
         .ok()
-        .and_then(|v| v.get(super::approval::SWAY_HOOK_MARKER).and_then(Value::as_bool))
+        .and_then(|v| v.get(super::approval::TORI_HOOK_MARKER).and_then(Value::as_bool))
         .unwrap_or(false)
 }
 
@@ -1343,7 +1343,7 @@ fn usage_from(raw: &Value) -> Usage {
     }
 }
 
-/// One `AskUserQuestion` input, as a form Sway can render.
+/// One `AskUserQuestion` input, as a form Tori can render.
 ///
 /// **All or nothing.** A question the parser cannot read drops the whole form
 /// back to a permission prompt rather than rendering the rest, because the
@@ -1429,7 +1429,7 @@ fn free_text(answer: &QuestionAnswer) -> Option<&str> {
 ///
 /// Picks and free text are joined into one value rather than kept apart. The
 /// measured grammar has no entry carrying both, because the CLI's own client
-/// cannot produce one; Sway's can, since a multi-select question offers Other
+/// cannot produce one; Tori's can, since a multi-select question offers Other
 /// alongside its boxes. Joining is the only shape that fits a grammar of one
 /// value per question, and it is the same `, ` a multi-pick already uses.
 fn entry(questions: &[ChatQuestion], answer: &QuestionAnswer) -> String {
@@ -1460,7 +1460,7 @@ fn preview_for<'a>(questions: &'a [ChatQuestion], answer: &QuestionAnswer) -> Op
 
 /// The actions a `can_use_tool` request offered, as the CLI wrote them.
 ///
-/// An entry whose `type` Sway does not know is **skipped**, not guessed at and
+/// An entry whose `type` Tori does not know is **skipped**, not guessed at and
 /// not fatal: the list is the agent's, it grows on the agent's schedule, and
 /// one unknown offer must not cost the user the offers that came with it.
 fn suggestions(raw: &Value) -> Vec<PermissionSuggestion> {
@@ -1767,7 +1767,7 @@ fn line_count(s: &str) -> u64 {
 
 /// The host out of a URL, without a URL parser.
 ///
-/// Sway has no `url` crate and this needs one field of one, so it takes the
+/// Tori has no `url` crate and this needs one field of one, so it takes the
 /// authority between `://` and the first `/`, `?` or `#` and drops any
 /// `user@`. `None` for anything without a scheme, which keeps a summary from
 /// claiming a host it guessed at.
@@ -1962,7 +1962,7 @@ mod tests {
         assert!(!main.contains("Done. Created"), "and the lane's report is not in it");
     }
 
-    /// A lane's tokens are the CLI's figure, not one Sway adds up: the
+    /// A lane's tokens are the CLI's figure, not one Tori adds up: the
     /// lifecycle frames already report a running total, and a second
     /// accumulator would give one subagent two numbers that drift apart.
     #[test]
@@ -2477,10 +2477,10 @@ mod tests {
 
     /// Pinned against the real frames captured from claude 2.1.220 with
     /// `--include-hook-events`, including the measured detail that makes the
-    /// whole attribution necessary: Sway's all-tools hook and the user's hook
+    /// whole attribution necessary: Tori's all-tools hook and the user's hook
     /// on the same tool both arrive as `PreToolUse:Bash`.
     #[test]
-    fn sway_and_user_hooks_on_one_tool_call_are_told_apart_by_the_marker() {
+    fn tori_and_user_hooks_on_one_tool_call_are_told_apart_by_the_marker() {
         let mut m = ClaudeMapper::new("s1");
         let started = |id: &str| {
             serde_json::json!({
@@ -2497,23 +2497,23 @@ mod tests {
             })
         };
         let owned = |evs: &[ChatEvent]| match evs {
-            [ChatEvent::HookFired { sway_owned, .. }] => *sway_owned,
+            [ChatEvent::HookFired { tori_owned, .. }] => *tori_owned,
             _ => panic!("expected exactly one HookFired, got {evs:?}"),
         };
 
         // Both started frames are indistinguishable, and neither has been
         // attributed yet: an unattributed hook reports as not-ours, so a user
         // hook is never hidden by a guess.
-        assert!(!owned(&m.map(&started("sway"))));
+        assert!(!owned(&m.map(&started("tori"))));
         assert!(!owned(&m.map(&started("user"))));
 
-        // The responses settle it. Only Sway's carries the marker.
-        let sway_out = super::super::approval::hook_output();
-        assert!(owned(&m.map(&response("sway", &sway_out))));
+        // The responses settle it. Only Tori's carries the marker.
+        let tori_out = super::super::approval::hook_output();
+        assert!(owned(&m.map(&response("tori", &tori_out))));
         assert!(!owned(&m.map(&response("user", ""))));
 
         // And the id is now known, so a later frame for the same hook is ours.
-        assert!(owned(&m.map(&started("sway"))));
+        assert!(owned(&m.map(&started("tori"))));
     }
 
     /// **The marker really survives the CLI**, checked against the frames the
@@ -2545,8 +2545,8 @@ mod tests {
                 "the CLI echoed something other than what the helper prints; re-run the probe"
             );
             for ev in m.map(&frame) {
-                if let ChatEvent::HookFired { sway_owned, .. } = ev {
-                    assert!(sway_owned, "a captured Sway hook row was not attributed to Sway");
+                if let ChatEvent::HookFired { tori_owned, .. } = ev {
+                    assert!(tori_owned, "a captured Tori hook row was not attributed to Tori");
                     attributed += 1;
                 }
             }
@@ -2555,15 +2555,15 @@ mod tests {
     }
 
     #[test]
-    fn a_user_hook_that_merely_prints_the_marker_word_is_not_mistaken_for_sways() {
+    fn a_user_hook_that_merely_prints_the_marker_word_is_not_mistaken_for_toris() {
         // A hook echoing a payload or logging a diff can easily contain the
         // marker's text. Only a parsed top-level `true` counts.
         let mut m = ClaudeMapper::new("s1");
         for output in [
-            "swayApproval",
-            "{\"swayApproval\": false}",
-            "{\"nested\": {\"swayApproval\": true}}",
-            "not json at all { swayApproval: true",
+            "toriApproval",
+            "{\"toriApproval\": false}",
+            "{\"nested\": {\"toriApproval\": true}}",
+            "not json at all { toriApproval: true",
         ] {
             let evs = m.map(&serde_json::json!({
                 "type": "system", "subtype": "hook_response", "hook_id": "u",
@@ -2571,8 +2571,8 @@ mod tests {
                 "output": output, "exit_code": 0, "outcome": "success", "session_id": "s1"
             }));
             assert!(
-                matches!(evs.as_slice(), [ChatEvent::HookFired { sway_owned: false, .. }]),
-                "output {output:?} must not read as Sway's own hook"
+                matches!(evs.as_slice(), [ChatEvent::HookFired { tori_owned: false, .. }]),
+                "output {output:?} must not read as Tori's own hook"
             );
         }
     }
@@ -2587,14 +2587,14 @@ mod tests {
             "outcome": "blocking_error", "session_id": "s1"
         }));
         match evs.as_slice() {
-            [ChatEvent::HookFired { name, event, outcome, exit_code, output, stderr, sway_owned, .. }] => {
+            [ChatEvent::HookFired { name, event, outcome, exit_code, output, stderr, tori_owned, .. }] => {
                 assert_eq!(name, "SessionStart:startup");
                 assert_eq!(event, "SessionStart");
                 assert_eq!(outcome.as_deref(), Some("blocking_error"));
                 assert_eq!(*exit_code, Some(2));
                 assert_eq!(output.as_deref(), Some("context"));
                 assert_eq!(stderr.as_deref(), Some("a warning"));
-                assert!(!sway_owned);
+                assert!(!tori_owned);
             }
             other => panic!("unexpected {other:?}"),
         }
@@ -3014,7 +3014,7 @@ mod tests {
     ///
     /// The answer string names every question it was given, so a form silently
     /// one row short would put an answer in front of the agent for a question
-    /// the user never saw. A permission prompt at least says honestly that Sway
+    /// the user never saw. A permission prompt at least says honestly that Tori
     /// could not read this and lets the user deny it.
     #[test]
     fn a_question_that_cannot_be_read_falls_back_to_the_permission_prompt() {
@@ -3167,7 +3167,7 @@ mod tests {
     /// Picks and free text in one answer join into a single value.
     ///
     /// The measured grammar has no entry carrying both, because the CLI's own
-    /// client cannot produce one. Sway's can: a multi-select question offers
+    /// client cannot produce one. Tori's can: a multi-select question offers
     /// Other beside its boxes. Pinned so the shape is a decision on the record
     /// rather than whatever the code happened to do.
     #[test]
@@ -3256,7 +3256,7 @@ mod tests {
         assert!(matches!(&suggestions[2], PermissionSuggestion::SetMode { mode, .. } if mode.as_str() == "acceptEdits"));
     }
 
-    /// A suggestion type Sway does not know must cost only itself. Failing the
+    /// A suggestion type Tori does not know must cost only itself. Failing the
     /// whole request would take the offers that *are* understood down with it.
     #[test]
     fn an_unknown_suggestion_is_dropped_without_losing_the_others() {
@@ -3274,7 +3274,7 @@ mod tests {
         assert!(matches!(&suggestions[0], PermissionSuggestion::SetMode { mode, .. } if mode.as_str() == "plan"));
     }
 
-    /// A control request Sway does not understand must not become a prompt: it
+    /// A control request Tori does not understand must not become a prompt: it
     /// would be a question nobody can answer, blocking the child forever.
     #[test]
     fn an_unrecognised_control_request_maps_to_nothing() {
@@ -3376,7 +3376,7 @@ mod tests {
     /// Claude publishes no options of its own, so the levers it does have are
     /// assembled per model, **from that model's own catalogue row**. The set
     /// follows what the **session** says it is running, which is how a `/model`
-    /// slash command refreshes it: Sway is not on that path, and `system/init`
+    /// slash command refreshes it: Tori is not on that path, and `system/init`
     /// reports the switch either way.
     ///
     /// The ids here are the fixture's, not invented: `initialize.jsonl`
@@ -3413,7 +3413,7 @@ mod tests {
     /// **The account's own reason beats the transport's, and is quoted.**
     ///
     /// `system/init` carries `fast_mode_disabled_reason`, and it is the only
-    /// place anyone is told why *this* account cannot run fast mode. Sway used
+    /// place anyone is told why *this* account cannot run fast mode. Tori used
     /// to read it into the store and show none of it, so the lever said "no
     /// mid-session switch" to a user whose real problem was usage credits - true
     /// and useless, since one of those is fixable.
@@ -3622,8 +3622,8 @@ mod tests {
         assert_eq!(rows(&levels), vec![("low", false), ("ultracode", false)]);
     }
 
-    /// A binary Sway cannot name is one no measurement can be scoped to, so the
-    /// picker offers exactly what the agent published and nothing of Sway's.
+    /// A binary Tori cannot name is one no measurement can be scoped to, so the
+    /// picker offers exactly what the agent published and nothing of Tori's.
     #[test]
     fn an_unnamed_binary_gets_no_measured_levels() {
         let levels = effort_levels(&a_model(&["low"]), &ultracode(EffortExtraState::Working, "2.1.237"), "");
@@ -3651,7 +3651,7 @@ mod tests {
     }
 
     /// An extra that collides with a level the agent already named is the
-    /// agent's, not Sway's: one row, and no second copy the picker's own
+    /// agent's, not Tori's: one row, and no second copy the picker's own
     /// selection could not tell apart.
     #[test]
     fn a_measurement_never_duplicates_a_published_level() {
@@ -3965,7 +3965,7 @@ mod tests {
         //
         // A refused, denied or unanswered call answers with a bare string, so
         // a summariser that assumes an object has to return `None` here rather
-        // than unwrap. `AskUserQuestion` is the sharp one: Sway answers it *by
+        // than unwrap. `AskUserQuestion` is the sharp one: Tori answers it *by
         // denying it*, which makes this the shape of the app's own success.
         ("ask-user-question", "AskUserQuestion", "", ResultShape::ErrorText),
         ("hook-denied", "Bash", "", ResultShape::ErrorText),
@@ -3981,7 +3981,7 @@ mod tests {
     // --- What a summariser reads off those shapes ---
     //
     // The other half of the table above: `RESULT_SHAPES` pins what the CLI
-    // sends, this pins what Sway makes of it. Same (fixture, tool, mode) key,
+    // sends, this pins what Tori makes of it. Same (fixture, tool, mode) key,
     // so a shape row without a summary row is a payload nobody summarises and
     // the coverage test below says so by name.
 

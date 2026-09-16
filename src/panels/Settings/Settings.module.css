@@ -10,7 +10,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--sway-space-7) var(--sway-space-6);
+    padding: var(--tori-space-7) var(--tori-space-6);
     z-index: 100;
     overflow: auto;
   }
@@ -25,16 +25,16 @@
        inside it. Remapped here rather than bumped declaration by declaration:
        the shared controls (Button, Select, Switch) read the same primitives, so
        a per-rule bump would leave a 14px label beside a 12px picker. The cost is
-       that `--sway-text-md` means 14px in this file and 13px everywhere else. */
-    --sway-text-2xs: calc(11px * var(--ui-scale));
-    --sway-text-xs: calc(12px * var(--ui-scale));
-    --sway-text-sm: calc(13px * var(--ui-scale));
-    --sway-text-md: calc(14px * var(--ui-scale));
-    --sway-text-lg: calc(15px * var(--ui-scale));
-    --sway-text-xl: calc(16px * var(--ui-scale));
-    --sway-text-2xl: calc(18px * var(--ui-scale));
-    --sway-text-3xl: calc(21px * var(--ui-scale));
-    --sway-text-4xl: calc(24px * var(--ui-scale));
+       that `--tori-text-md` means 14px in this file and 13px everywhere else. */
+    --tori-text-2xs: calc(11px * var(--ui-scale));
+    --tori-text-xs: calc(12px * var(--ui-scale));
+    --tori-text-sm: calc(13px * var(--ui-scale));
+    --tori-text-md: calc(14px * var(--ui-scale));
+    --tori-text-lg: calc(15px * var(--ui-scale));
+    --tori-text-xl: calc(16px * var(--ui-scale));
+    --tori-text-2xl: calc(18px * var(--ui-scale));
+    --tori-text-3xl: calc(21px * var(--ui-scale));
+    --tori-text-4xl: calc(24px * var(--ui-scale));
     display: flex;
     flex-direction: column;
     width: min(calc(1200px * var(--ui-scale)), 90vw);
@@ -59,10 +59,10 @@
       transparent 80%
     );
     color: var(--fg-default);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-xl);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-xl);
     box-shadow: var(--shadow-lg);
-    font-family: var(--sway-font-ui);
+    font-family: var(--tori-font-ui);
     padding: calc(10px * var(--ui-scale));
     gap: calc(10px * var(--ui-scale));
     overflow: hidden;
@@ -74,15 +74,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--sway-space-6);
+    gap: var(--tori-space-6);
     flex: none;
   }
 
   .title {
-    font-size: var(--sway-text-3xl);
+    font-size: var(--tori-text-3xl);
     font-weight: 600;
     flex: none;
-    padding-left: var(--sway-space-2);
+    padding-left: var(--tori-space-2);
   }
 
   /* The inset around the raised card is the panel's own padding now, so this
@@ -127,22 +127,22 @@
     align-items: center;
     flex: none;
     min-height: calc(40px * var(--ui-scale));
-    margin-bottom: var(--sway-space-3);
+    margin-bottom: var(--tori-space-3);
   }
 
   .searchInput {
     flex: 1;
     min-width: 0;
     background: transparent;
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
     color: var(--fg-default);
     caret-color: var(--brand-default);
     padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
     font: inherit;
-    font-size: var(--sway-text-lg);
+    font-size: var(--tori-text-lg);
     outline: none;
-    transition: border-color var(--sway-duration-fast) ease;
+    transition: border-color var(--tori-duration-fast) ease;
   }
   /* Placeholder reads as a faint hint, not real content. */
   .searchInput::placeholder {
@@ -155,38 +155,38 @@
 
   /* Uppercase mono, so it names a group rather than reading as pressable. */
   .railGroup {
-    padding: var(--sway-space-6) var(--sway-space-4) var(--sway-space-5);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    padding: var(--tori-space-6) var(--tori-space-4) var(--tori-space-5);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     font-weight: 600;
     letter-spacing: 0.15em;
     text-transform: uppercase;
     color: var(--fg-subtle);
   }
   .railGroup:first-child {
-    padding-top: var(--sway-space-5);
+    padding-top: var(--tori-space-5);
   }
 
   .railItem {
     position: relative;
     display: flex;
     align-items: center;
-    gap: var(--sway-space-3);
+    gap: var(--tori-space-3);
     width: 100%;
-    padding: var(--sway-space-4) var(--sway-space-4) var(--sway-space-4) var(--sway-space-5);
+    padding: var(--tori-space-4) var(--tori-space-4) var(--tori-space-4) var(--tori-space-5);
     margin-bottom: 1px;
     border: 0;
-    border-radius: var(--sway-radius-md);
+    border-radius: var(--tori-radius-md);
     background: transparent;
     color: var(--fg-muted);
     font: inherit;
-    font-size: var(--sway-text-md);
+    font-size: var(--tori-text-md);
     text-align: left;
     cursor: pointer;
   }
   .railItem:hover {
     background: linear-gradient(to right, var(--neutral-hover), transparent);
-    border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
+    border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
   }
   .railItem:focus-visible {
     outline: none;
@@ -203,11 +203,11 @@
   .railItemActive:hover {
     background:
       linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
-        var(--sway-border-thick) 100% no-repeat,
+        var(--tori-border-thick) 100% no-repeat,
       linear-gradient(to right, var(--brand-subtle), transparent);
     /* Square on the bar's side, rounded away from it, as the sidebar's rows
        are: a rounded left corner clips the bar into a lozenge. */
-    border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
+    border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
     color: var(--fg-default);
     font-weight: 500;
   }
@@ -220,8 +220,8 @@
   /* What the category holds, not what a query found. */
   .railBadge {
     flex: none;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     font-variant-numeric: tabular-nums;
     color: var(--fg-subtle);
   }
@@ -231,25 +231,25 @@
      into, and the sidebar's own floating pieces are card over shell. */
   .railFoot {
     margin-top: auto;
-    padding: var(--sway-space-4);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
+    padding: var(--tori-space-4);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
     background: var(--canvas-card);
   }
   .railFootTitle {
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     font-weight: 500;
     color: var(--fg-muted);
-    margin-bottom: var(--sway-space-2);
+    margin-bottom: var(--tori-space-2);
   }
   .railFootNote {
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     line-height: 1.5;
     color: var(--fg-subtle);
     overflow-wrap: anywhere;
   }
   .railFootNote code {
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
   }
 
   /* --- The detail pane --- */
@@ -265,14 +265,14 @@
     flex: 1;
     min-width: 0;
     background: var(--canvas-card);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-xl);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-xl);
     /* The frame never scrolls; this is what still clips the rows to the card's
        corners, which the old `overflow-y: auto` was doing as a side effect. */
     overflow: hidden;
   }
   .paneInner {
-    padding: var(--sway-space-6) var(--sway-space-7) var(--sway-space-8);
+    padding: var(--tori-space-6) var(--tori-space-7) var(--tori-space-8);
   }
 
   /* A reading measure, centred, rather than a card that keeps growing: a row is
@@ -289,7 +289,7 @@
   }
 
   .section {
-    margin-bottom: var(--sway-space-7);
+    margin-bottom: var(--tori-space-7);
   }
   .section:last-child {
     margin-bottom: 0;
@@ -298,7 +298,7 @@
      Agents on a card, the detail on a back button, and each of them sat a
      different distance from the card's edge. One padding, every pane. */
   .paneInner > [data-pane] {
-    padding-top: var(--sway-space-5);
+    padding-top: var(--tori-space-5);
   }
   /* Agents' opening title row carries a button and a filter, so it stands a
      small control tall and its text sits lower than a text-only title's. Every
@@ -313,10 +313,10 @@
   .sectionTitle {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-5);
-    margin-bottom: var(--sway-space-1);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    gap: var(--tori-space-5);
+    margin-bottom: var(--tori-space-1);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -333,10 +333,10 @@
   .row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) calc(196px * var(--ui-scale));
-    column-gap: var(--sway-space-6);
+    column-gap: var(--tori-space-6);
     align-items: center;
-    padding: var(--sway-space-5) var(--sway-space-1);
-    border-bottom: var(--sway-border-thin) solid var(--border-default);
+    padding: var(--tori-space-5) var(--tori-space-1);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
   }
   .row:last-child {
     border-bottom: 0;
@@ -344,7 +344,7 @@
 
   .label {
     grid-column: 1;
-    font-size: var(--sway-text-md);
+    font-size: var(--tori-text-md);
     line-height: 1.4;
     color: var(--fg-default);
   }
@@ -354,14 +354,14 @@
   .hint {
     grid-column: 1;
     max-width: calc(520px * var(--ui-scale));
-    margin-top: var(--sway-space-2);
-    font-size: var(--sway-text-xs);
+    margin-top: var(--tori-space-2);
+    font-size: var(--tori-text-xs);
     line-height: 1.55;
     color: var(--fg-muted);
     text-wrap: pretty;
   }
   .hint code {
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
   }
 
   /* One width for every control in the panel, so none of them floats at
@@ -374,7 +374,7 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--sway-space-4);
+    gap: var(--tori-space-4);
   }
 
   /* A row whose control will not fit the 196px column.
@@ -388,20 +388,20 @@
     grid-column: 1 / -1;
     grid-row: auto;
     justify-content: flex-start;
-    margin-top: var(--sway-space-4);
+    margin-top: var(--tori-space-4);
   }
 
   /* A note between groups, outside the row grid. */
   .note {
     max-width: calc(520px * var(--ui-scale));
-    margin-top: var(--sway-space-5);
-    font-size: var(--sway-text-xs);
+    margin-top: var(--tori-space-5);
+    font-size: var(--tori-text-xs);
     line-height: 1.55;
     color: var(--fg-muted);
     text-wrap: pretty;
   }
   .note code {
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
   }
 
   /* --- Controls --- */
@@ -415,13 +415,13 @@
   .input {
     background: var(--canvas-input);
     color: var(--fg-default);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
     height: var(--control-height);
-    padding: 0 var(--sway-space-4);
+    padding: 0 var(--tori-space-4);
     font: inherit;
-    font-size: var(--sway-text-md);
-    transition: border-color var(--sway-duration-fast) ease;
+    font-size: var(--tori-text-md);
+    transition: border-color var(--tori-duration-fast) ease;
   }
   .input:focus {
     outline: none;
@@ -431,14 +431,14 @@
   /* Mono, like every other machine-supplied value in this panel. */
   .text {
     width: 100%;
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
   }
 
   /* Allowed to be nothing: a stepper cannot express an unset ceiling, and
      stepping up from blank would set one nobody asked for. */
   .numField {
     width: calc(104px * var(--ui-scale));
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
     text-align: right;
     appearance: textfield;
   }
@@ -455,8 +455,8 @@
   .numStepper {
     display: flex;
     align-items: center;
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
     background: var(--neutral-subtle);
     overflow: hidden;
   }
@@ -471,7 +471,7 @@
     background: transparent;
     color: var(--fg-muted);
     font: inherit;
-    font-size: var(--sway-text-lg);
+    font-size: var(--tori-text-lg);
     line-height: 1;
     cursor: pointer;
   }
@@ -497,8 +497,8 @@
     border-radius: 0;
     background: transparent;
     color: var(--fg-default);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-md);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-md);
     text-align: center;
     appearance: textfield;
   }
@@ -516,9 +516,9 @@
 
   /* How many the query found, above the results. */
   .resultCount {
-    margin-bottom: var(--sway-space-6);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    margin-bottom: var(--tori-space-6);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -529,8 +529,8 @@
      says "here" and then stops. */
   .rowFlash {
     background: var(--accent-subtle);
-    border-radius: var(--sway-radius-sm);
-    box-shadow: 0 0 0 var(--sway-space-2) var(--accent-subtle);
+    border-radius: var(--tori-radius-sm);
+    box-shadow: 0 0 0 var(--tori-space-2) var(--accent-subtle);
   }
 
   /* Weight and colour, not a block of background: the row is already on screen
@@ -543,7 +543,7 @@
 
   /* Exists so the whole group can be marked. */
   .cardSection {
-    margin-bottom: var(--sway-space-7);
+    margin-bottom: var(--tori-space-7);
   }
   .cardSection:last-child {
     margin-bottom: 0;
@@ -552,8 +552,8 @@
   /* Its controls are built at runtime, so there is no label to mark inside. */
   .cardSectionHit {
     border-left: calc(2px * var(--ui-scale)) solid var(--accent-fg);
-    padding-left: var(--sway-space-5);
-    margin-left: calc(-1 * var(--sway-space-5));
+    padding-left: var(--tori-space-5);
+    margin-left: calc(-1 * var(--tori-space-5));
   }
 
   /* Announced, never drawn: the aggregate match count for a screen reader. */
@@ -564,14 +564,14 @@
   /* Accent, not brand: an annotation, not something you can press. */
   .originBadge {
     flex: none;
-    padding: 0 var(--sway-space-2);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    padding: 0 var(--tori-space-2);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--accent-fg);
     background: var(--accent-subtle);
-    border-radius: var(--sway-radius-sm);
+    border-radius: var(--tori-radius-sm);
   }
 
   /* Quiet, because nine loud buttons would make the section read as a list of
@@ -583,7 +583,7 @@
     border: none;
     color: var(--fg-subtle);
     font-family: inherit;
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     cursor: pointer;
   }
   .originAction:hover {
@@ -603,7 +603,7 @@
   .agentRowWrap {
     display: grid;
     grid-template-columns: minmax(0, 1fr) calc(34px * var(--ui-scale));
-    column-gap: var(--sway-space-5);
+    column-gap: var(--tori-space-5);
     align-items: center;
   }
   .agentHeadCols,
@@ -612,7 +612,7 @@
     grid-template-columns:
       minmax(0, 1fr) calc(68px * var(--ui-scale)) calc(56px * var(--ui-scale))
       calc(68px * var(--ui-scale)) calc(120px * var(--ui-scale));
-    column-gap: var(--sway-space-5);
+    column-gap: var(--tori-space-5);
     align-items: center;
   }
   .agentTable {
@@ -622,16 +622,16 @@
        a grid child too, so the same gap seats it off the first row. */
     display: grid;
     row-gap: calc(8px * var(--ui-scale));
-    margin-top: var(--sway-space-5);
-    margin-bottom: var(--sway-space-6);
+    margin-top: var(--tori-space-5);
+    margin-bottom: var(--tori-space-6);
   }
   /* The same horizontal padding as the rows, so the head's columns sit over
      the rows' columns: the rows' box runs edge to edge and their content is
      inset by padding, and the head has no box to be inset from. */
   .agentTableHead {
-    padding: var(--sway-space-4) var(--sway-space-4) var(--sway-space-2);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    padding: var(--tori-space-4) var(--tori-space-4) var(--tori-space-2);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -651,11 +651,11 @@
        the room, and the air is what lets the verdict column read at a glance.
        The box is what runs edge to edge; the padding insets the content, so
        nothing hugs a border. */
-    padding: var(--sway-space-5) var(--sway-space-4);
+    padding: var(--tori-space-5) var(--tori-space-4);
     min-height: calc(52px * var(--ui-scale));
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
-    transition: border-color var(--sway-duration-fast), background var(--sway-duration-fast);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    transition: border-color var(--tori-duration-fast), background var(--tori-duration-fast);
   }
   .agentRowWrap:hover {
     border-color: var(--border-strong);
@@ -711,12 +711,12 @@
   .agentCell {
     display: inline-flex;
     align-items: center;
-    gap: var(--sway-space-4);
+    gap: var(--tori-space-4);
     min-width: 0;
   }
   .agentName {
     flex: none;
-    font-size: var(--sway-text-lg);
+    font-size: var(--tori-text-lg);
     font-weight: 500;
     color: var(--fg-default);
   }
@@ -725,26 +725,26 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     color: var(--fg-muted);
   }
   .agentNote code {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
   .agentVersion,
   .agentModels,
   .agentCount {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
     color: var(--fg-subtle);
   }
   .agentModels,
   .agentCount {
     justify-self: end;
   }
-  /* Not red. A probe that failed is Sway not having got an answer, which is a
+  /* Not red. A probe that failed is Tori not having got an answer, which is a
      different thing from the agent being broken, and the row's own state cell
      is already saying whether the binary is there. */
   .agentModelsBad {
@@ -765,18 +765,18 @@
     flex: none;
     width: calc(140px * var(--ui-scale));
     background: transparent;
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
     color: var(--fg-default);
     caret-color: var(--brand-default);
     padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
-    font-family: var(--sway-font-ui);
-    font-size: var(--sway-text-xs);
+    font-family: var(--tori-font-ui);
+    font-size: var(--tori-text-xs);
     font-weight: 400;
     letter-spacing: normal;
     text-transform: none;
     outline: none;
-    transition: border-color var(--sway-duration-fast) ease;
+    transition: border-color var(--tori-duration-fast) ease;
   }
   .tableFilter::placeholder {
     color: var(--fg-watermark);
@@ -789,39 +789,39 @@
      would be a grid of mostly empty card. */
   .cardStack {
     display: grid;
-    gap: var(--sway-space-4);
+    gap: var(--tori-space-4);
   }
   /* Straight under a title, a card block takes the same air the agent table
      does off its own: a title's 2px is measured for a row, which brings its
      own padding, not for a bordered card. */
   .sectionTitle + .cardStack,
   .sectionTitle + .connect {
-    margin-top: var(--sway-space-5);
+    margin-top: var(--tori-space-5);
   }
 
   .card {
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
     background: var(--neutral-subtle);
-    padding: var(--sway-space-5) var(--sway-space-6);
+    padding: var(--tori-space-5) var(--tori-space-6);
   }
 
   .cardHead {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-4);
+    gap: var(--tori-space-4);
   }
 
   .cardTitle {
-    font-size: var(--sway-text-md);
+    font-size: var(--tori-text-md);
     font-weight: 600;
   }
 
   .cardProgram,
   .cardMeta code,
   .cardStatus code {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
     color: var(--fg-subtle);
   }
 
@@ -850,10 +850,10 @@
   .statePill {
     flex: none;
     margin-left: auto;
-    padding: calc(3px * var(--ui-scale)) var(--sway-space-3);
-    border-radius: var(--sway-radius-sm);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    padding: calc(3px * var(--ui-scale)) var(--tori-space-3);
+    border-radius: var(--tori-radius-sm);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     letter-spacing: 0.06em;
     text-transform: uppercase;
     background: var(--neutral-subtle);
@@ -871,64 +871,64 @@
   .cardActions {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-3);
-    margin-top: var(--sway-space-4);
+    gap: var(--tori-space-3);
+    margin-top: var(--tori-space-4);
   }
 
   .cardStatus {
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     line-height: 1.55;
     color: var(--fg-muted);
-    margin-top: var(--sway-space-4);
+    margin-top: var(--tori-space-4);
     text-wrap: pretty;
   }
 
   .cardMeta {
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     line-height: 1.5;
     color: var(--fg-subtle);
-    margin-top: var(--sway-space-3);
+    margin-top: var(--tori-space-3);
   }
 
   .chips {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--sway-space-2);
-    margin-top: var(--sway-space-4);
+    gap: var(--tori-space-2);
+    margin-top: var(--tori-space-4);
   }
   .chips:empty {
     display: none;
   }
 
   .chip {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-muted);
     background: var(--neutral-subtle);
-    border-radius: var(--sway-radius-sm);
-    padding: calc(3px * var(--ui-scale)) var(--sway-space-3);
+    border-radius: var(--tori-radius-sm);
+    padding: calc(3px * var(--ui-scale)) var(--tori-space-3);
   }
 
   /* Unbulleted: three reasons in a card are a note, not a list you work
      through. Roomier than a note, though - each reason is its own paragraph
      and reads as one. */
   .gaps {
-    margin: var(--sway-space-4) 0 0;
+    margin: var(--tori-space-4) 0 0;
     padding: 0;
     list-style: none;
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     line-height: 1.55;
     color: var(--fg-subtle);
   }
   .gaps li + li {
-    margin-top: var(--sway-space-3);
+    margin-top: var(--tori-space-3);
   }
 
   /* One row per model the agent named. A list rather than chips: each row
      carries an id and sometimes a level list, which is more than a chip holds
      and more than fits across a narrow panel. */
   .modelList {
-    margin: var(--sway-space-2) 0 0;
+    margin: var(--tori-space-2) 0 0;
     padding: 0;
     list-style: none;
   }
@@ -936,13 +936,13 @@
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: var(--sway-space-2);
-    padding: var(--sway-space-2) 0;
-    font-size: var(--sway-text-xs);
+    gap: var(--tori-space-2);
+    padding: var(--tori-space-2) 0;
+    font-size: var(--tori-text-xs);
     line-height: 1.4;
   }
   .modelRow + .modelRow {
-    border-top: var(--sway-border-thin) solid var(--border-default);
+    border-top: var(--tori-border-thin) solid var(--border-default);
   }
   .modelName {
     color: var(--fg-default);
@@ -950,14 +950,14 @@
   /* The id, not the label, because this is the string `--model` takes and the
      one worth copying out of here. */
   .modelId {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
   .modelEffort {
     margin-left: auto;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
   /* Why a lever the agent published cannot be taken. Beside the row's own
@@ -985,15 +985,15 @@
   .detailBack {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-2);
-    margin: 0 0 var(--sway-space-5) calc(-1 * var(--sway-space-3));
-    padding: var(--sway-space-2) var(--sway-space-3);
+    gap: var(--tori-space-2);
+    margin: 0 0 var(--tori-space-5) calc(-1 * var(--tori-space-3));
+    padding: var(--tori-space-2) var(--tori-space-3);
     border: 0;
-    border-radius: var(--sway-radius-sm);
+    border-radius: var(--tori-radius-sm);
     background: transparent;
     color: var(--fg-muted);
     font-family: inherit;
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     cursor: pointer;
   }
   .detailBack:hover {
@@ -1008,9 +1008,9 @@
   .detailHead {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-5);
+    gap: var(--tori-space-5);
     align-self: stretch;
-    margin-bottom: var(--sway-space-4);
+    margin-bottom: var(--tori-space-4);
   }
   /* Last on the line, after the verdict pill: the switch is what the reader
      does about the page, and it reads as the conclusion rather than as another
@@ -1027,27 +1027,27 @@
   .detailTitleRow {
     display: flex;
     align-items: baseline;
-    gap: var(--sway-space-4);
+    gap: var(--tori-space-4);
   }
   .detailTitle {
-    font-size: var(--sway-text-2xl);
+    font-size: var(--tori-text-2xl);
     font-weight: 600;
     color: var(--fg-default);
   }
   .detailVersion {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-sm);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
     color: var(--fg-subtle);
   }
   .detailProgram {
-    margin-top: var(--sway-space-1);
+    margin-top: var(--tori-space-1);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .detailProgram code {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
     color: var(--fg-subtle);
   }
   /* Every block on this page is a stretched child of a column flex, so the
@@ -1059,15 +1059,15 @@
     align-self: flex-start;
   }
   .detail .groupHead {
-    margin-top: var(--sway-space-7);
-    margin-bottom: var(--sway-space-5);
+    margin-top: var(--tori-space-7);
+    margin-bottom: var(--tori-space-5);
   }
   /* The air lives between the texts, not between the sections: a card's
      footnote, a provenance line, a warning - each sits off the block above it
      rather than hugging it. Only the page's own hints: the ones nested inside
      a `.row` still sit tight under their label. */
   .detail > .hint {
-    margin-top: var(--sway-space-4);
+    margin-top: var(--tori-space-4);
   }
 
   /* The page's own mark: on a plate, unlike the table rows, because here it is
@@ -1079,7 +1079,7 @@
     width: calc(44px * var(--ui-scale));
     height: calc(44px * var(--ui-scale));
     flex: none;
-    border-radius: var(--sway-radius-md);
+    border-radius: var(--tori-radius-md);
     background: var(--neutral-subtle);
   }
 
@@ -1088,15 +1088,15 @@
      says "notice" rather than "broken". */
   .detailBanner {
     display: flex;
-    gap: var(--sway-space-5);
-    margin-top: var(--sway-space-6);
-    padding: var(--sway-space-6) var(--sway-space-7);
-    border: var(--sway-border-thin) solid color-mix(in srgb, var(--attention-fg) 45%, transparent);
-    border-radius: var(--sway-radius-lg);
+    gap: var(--tori-space-5);
+    margin-top: var(--tori-space-6);
+    padding: var(--tori-space-6) var(--tori-space-7);
+    border: var(--tori-border-thin) solid color-mix(in srgb, var(--attention-fg) 45%, transparent);
+    border-radius: var(--tori-radius-lg);
   }
   .bannerMark {
     flex: none;
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
     font-weight: 600;
     color: var(--attention-fg);
   }
@@ -1105,13 +1105,13 @@
     min-width: 0;
   }
   .bannerTitle {
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     font-weight: 600;
     color: var(--attention-fg);
   }
   .bannerText {
-    margin-top: var(--sway-space-2);
-    font-size: var(--sway-text-xs);
+    margin-top: var(--tori-space-2);
+    font-size: var(--tori-text-xs);
     line-height: 1.55;
     color: var(--fg-muted);
     text-wrap: pretty;
@@ -1121,8 +1121,8 @@
      Mono like the title beside it, but not shouted. */
   .groupFact {
     flex: none;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     letter-spacing: 0.06em;
     color: var(--fg-subtle);
   }
@@ -1132,15 +1132,15 @@
   /* Transparent like the table rows: the border draws the box, and the page's
      own canvas stays the one surface behind everything. */
   .setupSteps {
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
     background: transparent;
   }
   .setupStep {
     display: flex;
-    gap: var(--sway-space-6);
-    padding: var(--sway-space-7);
-    border-bottom: var(--sway-border-thin) solid var(--border-default);
+    gap: var(--tori-space-6);
+    padding: var(--tori-space-7);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
   }
   .setupStep:last-child {
     border-bottom: 0;
@@ -1157,10 +1157,10 @@
     flex: none;
     width: calc(22px * var(--ui-scale));
     height: calc(22px * var(--ui-scale));
-    border: var(--sway-border-thin) solid var(--border-strong);
+    border: var(--tori-border-thin) solid var(--border-strong);
     border-radius: 50%;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-muted);
   }
   .stepDone .stepBadge {
@@ -1174,40 +1174,40 @@
   .stepHead {
     display: flex;
     align-items: baseline;
-    gap: var(--sway-space-4);
+    gap: var(--tori-space-4);
   }
   .stepTitle {
-    font-size: var(--sway-text-md);
+    font-size: var(--tori-text-md);
     font-weight: 600;
     color: var(--fg-default);
   }
   .stepState {
     margin-left: auto;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
     color: var(--success-fg);
   }
   .stepDesc {
-    margin-top: var(--sway-space-3);
-    font-size: var(--sway-text-xs);
+    margin-top: var(--tori-space-3);
+    font-size: var(--tori-text-xs);
     line-height: 1.55;
     color: var(--fg-muted);
     text-wrap: pretty;
   }
   .stepMeta {
-    margin-top: var(--sway-space-3);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-xs);
+    margin-top: var(--tori-space-3);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
     color: var(--fg-subtle);
   }
   .stepActions {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-4);
-    margin-top: var(--sway-space-5);
+    gap: var(--tori-space-4);
+    margin-top: var(--tori-space-5);
   }
   .stepActionNote {
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     color: var(--fg-subtle);
   }
 
@@ -1216,14 +1216,14 @@
   .cmd {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-4);
-    margin-top: var(--sway-space-5);
-    padding: var(--sway-space-4) var(--sway-space-5);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
+    gap: var(--tori-space-4);
+    margin-top: var(--tori-space-5);
+    padding: var(--tori-space-4) var(--tori-space-5);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
     background: var(--canvas-default);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
   }
   .cmdPrompt {
     flex: none;
@@ -1242,8 +1242,8 @@
     border: 0;
     padding: 0;
     background: transparent;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
     cursor: pointer;
   }
@@ -1252,7 +1252,7 @@
   }
   .cmdCopy:focus-visible {
     outline: none;
-    border-radius: var(--sway-radius-sm);
+    border-radius: var(--tori-radius-sm);
     box-shadow: 0 0 0 2px var(--brand-ring);
   }
 
@@ -1263,12 +1263,12 @@
      switch and the titlebar chips all sit on the card rather than in a section
      above it. */
   .accountsCard {
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
     background: transparent;
   }
   .acctCard {
-    border-bottom: var(--sway-border-thin) solid var(--border-default);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
   }
   .acctCard:last-child {
     border-bottom: 0;
@@ -1277,18 +1277,18 @@
   .acctHead {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-4);
-    padding: var(--sway-space-6) var(--sway-space-7);
+    gap: var(--tori-space-4);
+    padding: var(--tori-space-6) var(--tori-space-7);
   }
 
-  /* Who this account is, pushed right. Nothing about what Sway does with it:
+  /* Who this account is, pushed right. Nothing about what Tori does with it:
      the quota settings had a summary here and it made the head the busiest row
      on the screen, so they live on the card that also explains them. */
   .acctSummary {
     margin-left: auto;
     display: flex;
     align-items: center;
-    gap: var(--sway-space-4);
+    gap: var(--tori-space-4);
     min-width: 0;
   }
   .acctToggle {
@@ -1305,11 +1305,11 @@
   }
 
   .acctBody {
-    padding: 0 var(--sway-space-7) var(--sway-space-6);
+    padding: 0 var(--tori-space-7) var(--tori-space-6);
   }
   .acctHome {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
 
@@ -1320,9 +1320,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--sway-space-5);
-    padding: var(--sway-space-5) 0;
-    border-top: var(--sway-border-thin) solid var(--border-default);
+    gap: var(--tori-space-5);
+    padding: var(--tori-space-5) 0;
+    border-top: var(--tori-border-thin) solid var(--border-default);
   }
 
   /* "New sessions start here", as a pill rather than a radio dot: the accounts
@@ -1331,11 +1331,11 @@
   .defaultPill {
     display: inline-flex;
     align-items: center;
-    padding: 0 var(--sway-space-4);
+    padding: 0 var(--tori-space-4);
     height: calc(22px * var(--ui-scale));
-    border: var(--sway-border-thin) solid var(--border-strong);
-    border-radius: var(--sway-radius-pill);
-    font-size: var(--sway-text-xs);
+    border: var(--tori-border-thin) solid var(--border-strong);
+    border-radius: var(--tori-radius-pill);
+    font-size: var(--tori-text-xs);
     color: var(--fg-muted);
     cursor: pointer;
   }
@@ -1360,19 +1360,19 @@
   .chipRow {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-3);
+    gap: var(--tori-space-3);
   }
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: var(--sway-space-2);
+    gap: var(--tori-space-2);
     height: calc(24px * var(--ui-scale));
-    padding: 0 var(--sway-space-4);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
+    padding: 0 var(--tori-space-4);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
     background: transparent;
     font: inherit;
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     color: var(--fg-subtle);
     cursor: pointer;
   }
@@ -1394,7 +1394,7 @@
     opacity: 0.6;
   }
   .chipNa {
-    font-size: var(--sway-text-2xs);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
 
@@ -1403,16 +1403,16 @@
   .winRow {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(calc(180px * var(--ui-scale)), 1fr));
-    gap: var(--sway-space-5);
-    padding: var(--sway-space-5) 0;
+    gap: var(--tori-space-5);
+    padding: var(--tori-space-5) 0;
   }
   .winCard {
     display: flex;
     flex-direction: column;
-    gap: var(--sway-space-3);
-    padding: var(--sway-space-5) var(--sway-space-6);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    gap: var(--tori-space-3);
+    padding: var(--tori-space-5) var(--tori-space-6);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
   }
   /* Off the titlebar, still on this screen: hiding a bar is not the same as not
      wanting to know. */
@@ -1423,18 +1423,18 @@
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: var(--sway-space-4);
+    gap: var(--tori-space-4);
   }
   .winName {
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     color: var(--fg-default);
   }
   /* Green while there is room, and the two warning roles above that. Never the
      blocking tier: check 10 in scripts/check-tokens.mjs holds that to the two
      chat surfaces that mean "this stopped the turn". */
   .winLevel {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-md);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-md);
     color: var(--fg-default);
     font-variant-numeric: tabular-nums;
   }
@@ -1452,14 +1452,14 @@
   .winTrack {
     display: block;
     height: calc(4px * var(--ui-scale));
-    border-radius: var(--sway-radius-pill);
+    border-radius: var(--tori-radius-pill);
     background: var(--neutral-subtle);
     overflow: hidden;
   }
   .winFill {
     display: block;
     height: 100%;
-    border-radius: var(--sway-radius-pill);
+    border-radius: var(--tori-radius-pill);
     background: var(--success-fg);
   }
   .winCard[data-band="warm"] .winFill {
@@ -1469,8 +1469,8 @@
     background: var(--danger-fg);
   }
   .winFoot {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
 
@@ -1479,15 +1479,15 @@
   .stepper {
     display: inline-flex;
     align-items: center;
-    gap: var(--sway-space-2);
-    padding: var(--sway-space-1);
-    border: var(--sway-border-thin) solid var(--border-strong);
-    border-radius: var(--sway-radius-md);
+    gap: var(--tori-space-2);
+    padding: var(--tori-space-1);
+    border: var(--tori-border-thin) solid var(--border-strong);
+    border-radius: var(--tori-radius-md);
   }
   .stepperValue {
     min-width: calc(44px * var(--ui-scale));
     text-align: center;
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     color: var(--fg-default);
     font-variant-numeric: tabular-nums;
   }
@@ -1498,11 +1498,11 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--sway-space-5);
-    margin-top: var(--sway-space-5);
-    padding: var(--sway-space-5) var(--sway-space-6);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    gap: var(--tori-space-5);
+    margin-top: var(--tori-space-5);
+    padding: var(--tori-space-5) var(--tori-space-6);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
   }
   /* The label on one line. The box is a flex row and the note beside it takes
      what it likes, which broke "Sign out" over two lines at every width.
@@ -1520,19 +1520,19 @@
     border-color: var(--danger-fg);
   }
   .dangerTitle {
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     color: var(--danger-fg);
   }
   .dangerNote {
-    margin-top: var(--sway-space-2);
-    font-size: var(--sway-text-xs);
+    margin-top: var(--tori-space-2);
+    font-size: var(--tori-text-xs);
     line-height: 1.5;
     color: var(--fg-muted);
     text-wrap: pretty;
   }
 
   .accountName {
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     font-weight: 600;
     color: var(--fg-default);
   }
@@ -1543,31 +1543,31 @@
     background: none;
     font-family: inherit;
     cursor: text;
-    border-bottom: var(--sway-border-thin) dashed transparent;
+    border-bottom: var(--tori-border-thin) dashed transparent;
   }
   button.accountName:hover {
     border-bottom-color: var(--border-default);
   }
   .accountNameEdit {
     width: 10rem;
-    padding: 0 var(--sway-space-2);
+    padding: 0 var(--tori-space-2);
     font-family: inherit;
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     font-weight: 600;
     color: var(--fg-default);
     background: var(--canvas-input);
-    border: var(--sway-border-thin) solid var(--border-strong);
-    border-radius: var(--sway-radius-sm);
+    border: var(--tori-border-thin) solid var(--border-strong);
+    border-radius: var(--tori-radius-sm);
   }
   .accountAside {
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     color: var(--fg-muted);
     white-space: nowrap;
   }
   /* The email when the agent named one, its sign-in state when it did not. */
   .accountFact {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
     color: var(--fg-subtle);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1576,7 +1576,7 @@
 
   /* The sentence beside an action button, explaining it or its absence. */
   .actionNote {
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     line-height: 1.5;
     color: var(--fg-muted);
     text-wrap: pretty;
@@ -1588,8 +1588,8 @@
      padding and the rows run border to border. `overflow: hidden` is what
      keeps the zebra stripes inside the rounded corners. */
   .modelsCard {
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
     background: transparent;
     overflow: hidden;
   }
@@ -1621,7 +1621,7 @@
      it without touching every other .input in the panel. */
   .pathInput {
     height: auto;
-    padding: var(--sway-space-4) var(--sway-space-5);
+    padding: var(--tori-space-4) var(--tori-space-5);
     /* The sidebar search's surface, and only its surface: transparent, so the
        field sits on the page like that bar sits on the rail, instead of
        carrying the shared .input's filled recipe. Type and metrics stay this
@@ -1630,8 +1630,8 @@
   }
 
   .modelsNone {
-    padding: var(--sway-space-4) var(--sway-space-5);
-    font-size: var(--sway-text-xs);
+    padding: var(--tori-space-4) var(--tori-space-5);
+    font-size: var(--tori-text-xs);
     color: var(--fg-muted);
   }
 
@@ -1639,30 +1639,30 @@
     margin: 0;
     padding: 0;
     list-style: none;
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
     background: transparent;
   }
   .modelRow {
     display: flex;
     align-items: baseline;
-    gap: var(--sway-space-4);
-    padding: var(--sway-space-5) var(--sway-space-6);
-    border-bottom: var(--sway-border-thin) solid var(--border-default);
+    gap: var(--tori-space-4);
+    padding: var(--tori-space-5) var(--tori-space-6);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
   }
   .modelRow:last-child {
     border-bottom: 0;
   }
   .modelName {
     flex: none;
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     font-weight: 500;
     color: var(--fg-default);
   }
   .modelId {
     flex: none;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
   /* Pushed to the far end and clipped: the effort ladder is the longest string
@@ -1671,7 +1671,7 @@
     flex: 1;
     min-width: 0;
     overflow: hidden;
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     color: var(--fg-muted);
     text-align: right;
     text-overflow: ellipsis;
@@ -1683,8 +1683,8 @@
   .groupHead {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-5);
-    margin-bottom: var(--sway-space-4);
+    gap: var(--tori-space-5);
+    margin-bottom: var(--tori-space-4);
   }
   /* Which account the group below is about, past the rule rather than standing
      in for the section's own title. Set in `.groupTitle`'s type, not
@@ -1701,8 +1701,8 @@
     border: 0;
     background: none;
     cursor: pointer;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -1712,14 +1712,14 @@
     color: var(--fg-default);
   }
   button.groupTab + button.groupTab {
-    margin-left: var(--sway-space-4);
-    padding-left: var(--sway-space-4);
-    border-left: var(--sway-border-thin) solid var(--border-default);
+    margin-left: var(--tori-space-4);
+    padding-left: var(--tori-space-4);
+    border-left: var(--tori-border-thin) solid var(--border-default);
   }
   .groupTitle {
     flex: none;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -1731,10 +1731,10 @@
   .connect {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-6);
-    padding: var(--sway-space-6);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-lg);
+    gap: var(--tori-space-6);
+    padding: var(--tori-space-6);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
     background: var(--neutral-subtle);
   }
   .monogram {
@@ -1744,11 +1744,11 @@
     width: calc(34px * var(--ui-scale));
     height: calc(34px * var(--ui-scale));
     flex: none;
-    border-radius: var(--sway-radius-md);
+    border-radius: var(--tori-radius-md);
     background: var(--neutral-hover);
     color: var(--fg-muted);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-md);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-md);
     font-weight: 600;
   }
   .connectMain {
@@ -1756,25 +1756,25 @@
     min-width: 0;
   }
   .connectTitle {
-    font-size: var(--sway-text-md);
+    font-size: var(--tori-text-md);
     font-weight: 500;
   }
 
   /* Present but plainly unavailable: hidden, "where is that setting?" has no
-     answer and reads as Sway having lost it. */
+     answer and reads as Tori having lost it. */
   .inert {
     opacity: 0.55;
   }
 
   .welcome {
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     line-height: 1.55;
     color: var(--fg-default);
     background: var(--canvas-input);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-md);
-    padding: var(--sway-space-5);
-    margin-bottom: var(--sway-space-6);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    padding: var(--tori-space-5);
+    margin-bottom: var(--tori-space-6);
   }
 
   /* --- The Files group: an agent's own config files, per account --- */
@@ -1785,7 +1785,7 @@
     list-style: none;
   }
   .fileRow + .fileRow {
-    border-top: var(--sway-border-thin) solid var(--border-default);
+    border-top: var(--tori-border-thin) solid var(--border-default);
   }
 
   /* The whole header is the disclosure control, so it is a button laid out as
@@ -1794,8 +1794,8 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: var(--sway-space-4);
-    padding: var(--sway-space-5) var(--sway-space-7);
+    gap: var(--tori-space-4);
+    padding: var(--tori-space-5) var(--tori-space-7);
     /* One height for every row, whatever it happens to be carrying. The link
        chip is the reason: it is a box with its own padding and its own icon, so
        without this the rows that have one stand taller than the rows that do
@@ -1820,14 +1820,14 @@
   }
   .fileLabel {
     flex: none;
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     font-weight: 600;
     color: var(--fg-default);
   }
   .filePath {
     flex: none;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
 
@@ -1838,12 +1838,12 @@
     min-width: 0;
     display: inline-flex;
     align-items: center;
-    gap: var(--sway-space-2);
-    padding: var(--sway-space-1) var(--sway-space-3);
-    border-radius: var(--sway-radius-sm);
+    gap: var(--tori-space-2);
+    padding: var(--tori-space-1) var(--tori-space-3);
+    border-radius: var(--tori-radius-sm);
     background: var(--neutral-subtle);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     /* Its own line box rather than the row's, so the chip measures its text
        and not the paragraph leading around it. */
     line-height: 1;
@@ -1866,8 +1866,8 @@
   .fileState {
     margin-left: auto;
     flex: none;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
   }
   .fileState[data-state="dangling"] {
@@ -1877,20 +1877,20 @@
   /* Indented under the header by the glyph column, so the body reads as
      belonging to the row above rather than as a sibling of it. */
   .fileBody {
-    padding: 0 var(--sway-space-7) var(--sway-space-6) var(--sway-space-8);
+    padding: 0 var(--tori-space-7) var(--tori-space-6) var(--tori-space-8);
   }
   .fileFull {
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
     color: var(--fg-subtle);
-    margin-bottom: var(--sway-space-4);
+    margin-bottom: var(--tori-space-4);
   }
 
   .fileKids {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--sway-space-2);
-    margin-bottom: var(--sway-space-4);
+    gap: var(--tori-space-2);
+    margin-bottom: var(--tori-space-4);
   }
   /* A chip is two controls, which is why it is a span with buttons in it and
      not a button: opening the thing and removing it are different enough that
@@ -1898,10 +1898,10 @@
   .fileKid {
     display: inline-flex;
     align-items: center;
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-sm);
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-sm);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
   }
   .fileKid:hover {
     border-color: var(--brand-default);
@@ -1916,8 +1916,8 @@
     cursor: pointer;
   }
   .fileKidOpen {
-    padding: var(--sway-space-2) var(--sway-space-3);
-    border-radius: var(--sway-radius-sm);
+    padding: var(--tori-space-2) var(--tori-space-3);
+    border-radius: var(--tori-radius-sm);
   }
   .fileKidOpen:hover:not(:disabled) {
     color: var(--fg-default);
@@ -1930,7 +1930,7 @@
      names with an affordance rather than as a row of delete buttons. */
   .fileKidDrop {
     display: inline-flex;
-    padding: var(--sway-space-2) var(--sway-space-2) var(--sway-space-2) 0;
+    padding: var(--tori-space-2) var(--tori-space-2) var(--tori-space-2) 0;
     color: var(--fg-subtle);
   }
   .fileKidDrop:hover {
@@ -1941,25 +1941,25 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--sway-space-3);
+    gap: var(--tori-space-3);
   }
   .fileName {
     min-width: 0;
     flex: 1 1 12ch;
     max-width: 24ch;
-    font-family: var(--sway-font-mono);
-    font-size: var(--sway-text-2xs);
-    padding: var(--sway-space-1) var(--sway-space-2);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-sm);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
+    padding: var(--tori-space-1) var(--tori-space-2);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-sm);
     background: var(--canvas-input);
     color: var(--fg-default);
   }
   /* Beside the box that produced it, not in a toast: the name that failed is
      still on screen, and the fix is one edit away. */
   .fileError {
-    margin-top: var(--sway-space-3);
-    font-size: var(--sway-text-2xs);
+    margin-top: var(--tori-space-3);
+    font-size: var(--tori-text-2xs);
     color: var(--danger-fg);
   }
 }

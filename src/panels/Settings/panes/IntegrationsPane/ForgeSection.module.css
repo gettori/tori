@@ -5,13 +5,13 @@
   display: flex;
   flex-direction: column;
   gap: calc(10px * var(--ui-scale));
-  margin-top: var(--sway-space-5);
+  margin-top: var(--tori-space-5);
 }
 
 .card {
   overflow: hidden;
-  border: var(--sway-border-thin) solid var(--border-strong);
-  border-radius: var(--sway-radius-md);
+  border: var(--tori-border-thin) solid var(--border-strong);
+  border-radius: var(--tori-radius-md);
   background: var(--canvas-card);
 }
 
@@ -25,23 +25,23 @@
 }
 
 .head {
-  border-bottom: var(--sway-border-thin) solid var(--border-default);
+  border-bottom: var(--tori-border-thin) solid var(--border-default);
 }
 
 .host {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
   font-weight: 600;
   color: var(--fg-default);
 }
 
 .tag {
-  padding: 0 var(--sway-space-3);
-  border: var(--sway-border-thin) solid transparent;
-  border-radius: var(--sway-radius-sm);
+  padding: 0 var(--tori-space-3);
+  border: var(--tori-border-thin) solid transparent;
+  border-radius: var(--tori-radius-sm);
   background: var(--neutral-subtle);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
   font-weight: 500;
   line-height: 1.6;
   letter-spacing: 0.07em;
@@ -60,7 +60,7 @@
 }
 
 .account + .account {
-  border-top: var(--sway-border-thin) solid var(--border-default);
+  border-top: var(--tori-border-thin) solid var(--border-default);
 }
 
 .rejected {
@@ -92,7 +92,7 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   font-weight: 500;
   line-height: 1.35;
   color: var(--fg-default);
@@ -101,8 +101,8 @@
 }
 
 .word {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
   font-weight: 500;
   color: var(--fg-muted);
 }
@@ -132,7 +132,7 @@
   max-width: calc(520px * var(--ui-scale));
   margin-top: calc(6px * var(--ui-scale));
   padding: 0 calc(13px * var(--ui-scale)) 0 calc(29px * var(--ui-scale));
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   line-height: 1.6;
   color: color-mix(in srgb, var(--danger-fg) 55%, var(--fg-default));
   text-wrap: pretty;
@@ -140,17 +140,17 @@
 
 .footer {
   justify-content: space-between;
-  gap: var(--sway-space-6);
-  border-top: var(--sway-border-thin) solid var(--border-default);
+  gap: var(--tori-space-6);
+  border-top: var(--tori-border-thin) solid var(--border-default);
   background: var(--canvas-head);
 }
 
 .footerLabel {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-4);
+  gap: var(--tori-space-4);
   min-width: 0;
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   line-height: 1.4;
   color: var(--fg-muted);
 }
@@ -161,14 +161,14 @@
 
 .empty {
   padding: calc(20px * var(--ui-scale));
-  border: var(--sway-border-thin) dashed var(--border-strong);
-  border-radius: var(--sway-radius-md);
+  border: var(--tori-border-thin) dashed var(--border-strong);
+  border-radius: var(--tori-radius-md);
   background: var(--canvas-head);
   text-align: center;
 }
 
 .emptyTitle {
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   font-weight: 500;
   line-height: 1.4;
   color: var(--fg-default);
@@ -177,7 +177,7 @@
 .emptyBody {
   max-width: calc(400px * var(--ui-scale));
   margin: calc(5px * var(--ui-scale)) auto calc(14px * var(--ui-scale));
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   line-height: 1.6;
   color: var(--fg-muted);
   text-wrap: pretty;
@@ -186,16 +186,16 @@
 .emptyActions {
   display: flex;
   justify-content: center;
-  gap: var(--sway-space-4);
+  gap: var(--tori-space-4);
 }
 
 .more {
-  padding-top: var(--sway-space-5);
+  padding-top: var(--tori-space-5);
 }
 
 .global {
-  margin-top: var(--sway-space-5);
-  border-top: var(--sway-border-thin) solid var(--border-default);
+  margin-top: var(--tori-space-5);
+  border-top: var(--tori-border-thin) solid var(--border-default);
 }
 
 .flow {
@@ -218,11 +218,11 @@
   display: flex;
   align-items: center;
   gap: calc(10px * var(--ui-scale));
-  margin-bottom: var(--sway-space-5);
+  margin-bottom: var(--tori-space-5);
 }
 
 .flowTitle {
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   font-weight: 500;
   color: var(--fg-default);
 }
@@ -235,15 +235,15 @@
 
 .keys {
   display: inline-flex;
-  gap: var(--sway-space-1);
+  gap: var(--tori-space-1);
   color: var(--fg-muted);
 }
 
 .tile {
-  flex: 1 1 calc(50% - var(--sway-space-4));
-  padding: calc(11px * var(--ui-scale)) var(--sway-space-5);
-  border: var(--sway-border-thin) solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  flex: 1 1 calc(50% - var(--tori-space-4));
+  padding: calc(11px * var(--ui-scale)) var(--tori-space-5);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-md);
   cursor: pointer;
 }
 
@@ -264,18 +264,18 @@
 }
 
 .tileName {
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   font-weight: 600;
   color: var(--fg-default);
 }
 
 .tileName[data-mono] {
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
 }
 
 .route {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
   font-weight: 500;
   color: var(--fg-muted);
 }
@@ -287,7 +287,7 @@
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--sway-space-4);
+  gap: var(--tori-space-4);
   margin-top: calc(13px * var(--ui-scale));
 }
 
@@ -296,15 +296,15 @@
 }
 
 .meta {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
   color: var(--fg-muted);
 }
 
 .fieldLabel {
   display: block;
   margin-bottom: calc(7px * var(--ui-scale));
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   font-weight: 500;
   color: var(--fg-muted);
 }
@@ -312,7 +312,7 @@
 .fieldRow {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-4);
+  gap: var(--tori-space-4);
 }
 
 .fieldRow input {
@@ -322,14 +322,14 @@
 
 .hint,
 .footNote {
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   line-height: 1.6;
   color: var(--fg-muted);
   text-wrap: pretty;
 }
 
 .hint {
-  margin-top: var(--sway-space-4);
+  margin-top: var(--tori-space-4);
 }
 
 .footNote {
@@ -343,17 +343,17 @@
   align-items: center;
   gap: calc(7px * var(--ui-scale));
   margin-top: calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   color: var(--fg-muted);
 }
 
 .chip {
-  padding: var(--sway-space-1) calc(7px * var(--ui-scale));
-  border: var(--sway-border-thin) solid var(--border-strong);
-  border-radius: var(--sway-radius-sm);
+  padding: var(--tori-space-1) calc(7px * var(--ui-scale));
+  border: var(--tori-border-thin) solid var(--border-strong);
+  border-radius: var(--tori-radius-sm);
   background: var(--neutral-subtle);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
   font-weight: 500;
   color: var(--fg-default);
 }
@@ -366,18 +366,18 @@
 }
 
 .band[data-tone="brand"] {
-  border-bottom: var(--sway-border-thin) solid color-mix(in srgb, var(--brand-default) 34%, transparent);
+  border-bottom: var(--tori-border-thin) solid color-mix(in srgb, var(--brand-default) 34%, transparent);
   background: var(--brand-subtle);
 }
 
 .band[data-tone="danger"] {
-  border-bottom: var(--sway-border-thin) solid color-mix(in srgb, var(--danger-fg) 30%, transparent);
+  border-bottom: var(--tori-border-thin) solid color-mix(in srgb, var(--danger-fg) 30%, transparent);
   background: color-mix(in srgb, var(--danger-fg) 6%, transparent);
 }
 
 .bandTitle {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -416,8 +416,8 @@
 }
 
 .lead {
-  margin-bottom: var(--sway-space-5);
-  font-size: var(--sway-text-xs);
+  margin-bottom: var(--tori-space-5);
+  font-size: var(--tori-text-xs);
   line-height: 1.5;
   color: var(--fg-muted);
 }
@@ -426,12 +426,12 @@
   display: inline-flex;
   align-items: center;
   gap: calc(10px * var(--ui-scale));
-  padding: calc(11px * var(--ui-scale)) var(--sway-space-6);
-  border: var(--sway-border-thin) solid var(--border-strong);
-  border-radius: var(--sway-radius-md);
+  padding: calc(11px * var(--ui-scale)) var(--tori-space-6);
+  border: var(--tori-border-thin) solid var(--border-strong);
+  border-radius: var(--tori-radius-md);
   background: var(--canvas-input);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-4xl);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-4xl);
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.22em;
@@ -451,7 +451,7 @@
   justify-content: center;
   gap: calc(7px * var(--ui-scale));
   margin-top: calc(11px * var(--ui-scale));
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   color: var(--fg-muted);
 }
 
@@ -488,21 +488,21 @@
 
 .failureIcon {
   flex: none;
-  margin-top: var(--sway-space-1);
+  margin-top: var(--tori-space-1);
   color: var(--danger-fg);
 }
 
 .failureText {
   max-width: calc(520px * var(--ui-scale));
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   line-height: 1.65;
   color: color-mix(in srgb, var(--danger-fg) 55%, var(--fg-default));
   text-wrap: pretty;
 }
 
 .failureText code {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
 }
 
 .actions .quiet:not(:focus-visible) {
@@ -511,6 +511,6 @@
 
 .appId {
   padding: calc(10px * var(--ui-scale)) calc(13px * var(--ui-scale));
-  border-bottom: var(--sway-border-thin) solid var(--border-default);
+  border-bottom: var(--tori-border-thin) solid var(--border-default);
   background: var(--canvas-head);
 }

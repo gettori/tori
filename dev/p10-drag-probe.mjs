@@ -120,7 +120,7 @@ const drop = WHERE === "edge" ? at.edge : at.strip;
 // A trace of what the page actually received, so a drop that never arrives
 // (the usual failure: an operations mask the page's dropEffect is not in) says
 // so rather than looking like a guard that refused.
-await evaluate("window.__log=[];addEventListener('drop',()=>window.__log.push('drop'),true);addEventListener('dragover',()=>window.__log.push('over'),true);addEventListener('dragleave',()=>window.__log.push('leave'),true);addEventListener('sway:move-tab-to-pane',(e)=>window.__log.push('move '+JSON.stringify(e.detail)));addEventListener('sway:split-pane',(e)=>window.__log.push('split '+JSON.stringify(e.detail)));true");
+await evaluate("window.__log=[];addEventListener('drop',()=>window.__log.push('drop'),true);addEventListener('dragover',()=>window.__log.push('over'),true);addEventListener('dragleave',()=>window.__log.push('leave'),true);addEventListener('tori:move-tab-to-pane',(e)=>window.__log.push('move '+JSON.stringify(e.detail)));addEventListener('tori:split-pane',(e)=>window.__log.push('split '+JSON.stringify(e.detail)));true");
 await send("Input.setInterceptDrags", { enabled: true });
 const intercepted = nextEvent("Input.dragIntercepted");
 const mouse = (type, x, y, extra = {}) =>

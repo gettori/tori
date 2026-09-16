@@ -1,11 +1,11 @@
 // Scratch buffers: the untitled tabs Cmd+N opens.
 //
 // The whole design is one sentence: **a scratch is a real file in
-// `~/.config/sway/scratch/`, not a new kind of tab.** Everything downstream is
+// `~/.config/tori/scratch/`, not a new kind of tab.** Everything downstream is
 // path-keyed already - the tab strip, the dirty map, CodeEditor's buffers, the
 // hot-exit stash, and `editorTabPersist`'s per-workspace restore - so a scratch
 // with an ordinary absolute path needs a branch in none of them. The obvious
-// alternative, a synthetic `sway://scratch/…` id like the commit log's, would
+// alternative, a synthetic `tori://scratch/…` id like the commit log's, would
 // have cost a special case in each, and `toStore` drops synthetic ids on
 // purpose, so an untitled tab could never have survived a relaunch at all.
 //
@@ -21,7 +21,7 @@ import { invoke } from "@tauri-apps/api/core";
  * Is this path one of the scratch files?
  *
  * Strictly *under* the directory, so a sibling that merely starts with the same
- * characters (`…/sway/scratchpad/notes.md`) is not swept up by the two rules
+ * characters (`…/tori/scratchpad/notes.md`) is not swept up by the two rules
  * that read this: closing an untouched scratch deletes its file, and saving one
  * under a new name removes the old.
  *

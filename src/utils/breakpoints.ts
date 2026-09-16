@@ -20,7 +20,7 @@ export type WorkspaceBreakpoints = Readonly<Record<string, FileBreakpoints>>;
 /** Every workspace's breakpoints, keyed by branch-unit folder. */
 export type BreakpointStore = Readonly<Record<string, WorkspaceBreakpoints>>;
 
-const LS_BREAKPOINTS = "sway.breakpoints";
+const LS_BREAKPOINTS = "tori.breakpoints";
 
 const ascending = (a: number, b: number) => a - b;
 

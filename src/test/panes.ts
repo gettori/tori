@@ -7,7 +7,7 @@
 // load path instead of a helper the app does not have.
 import { seedTwoPane } from "../layout/layoutStore";
 
-const LS_PANES = "sway.panes.v1";
+const LS_PANES = "tori.panes.v1";
 
 /** Store the two-pane layout (`left` | `right`) for `ws`. Call after clearing
  *  localStorage and before rendering the shell. */

@@ -5,11 +5,11 @@ import { createHighlighterCore, type HighlighterCore, type ThemeRegistration } f
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { bundledLanguages } from "shiki/langs";
 
-const THEME = "sway-chat";
+const THEME = "tori-chat";
 
 // TextMate scopes onto the theme's `--syntax-*` roles, so chat code follows a
 // theme switch live (the vars repaint) instead of needing a re-highlight.
-const swayTheme: ThemeRegistration = {
+const toriTheme: ThemeRegistration = {
   name: THEME,
   settings: [
     { settings: { foreground: "var(--fg-default)", background: "var(--neutral-subtle)" } },
@@ -90,7 +90,7 @@ let hl: HighlighterCore | undefined;
 
 export async function init(): Promise<void> {
   hl ??= await createHighlighterCore({
-    themes: [swayTheme],
+    themes: [toriTheme],
     langs: [],
     // The JS engine over oniguruma: no wasm compile step, and `forgiving`
     // degrades an unsupported grammar construct to unstyled text instead of

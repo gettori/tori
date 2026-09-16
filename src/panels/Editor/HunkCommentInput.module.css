@@ -19,11 +19,11 @@
   flex: 1;
   min-width: 0;
   font-family: inherit;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   background: var(--canvas-default);
   color: var(--fg-default);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
 }
 

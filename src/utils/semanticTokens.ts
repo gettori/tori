@@ -22,7 +22,7 @@
 // into the startup chunk. The half that makes decorations out of these lives in
 // `panels/Editor/semanticHighlight.ts`.
 
-/** The token types Sway asks for, in the spec's own spelling.
+/** The token types Tori asks for, in the spec's own spelling.
  *
  *  A server is free to answer with types outside this list (rust-analyzer has a
  *  dozen of its own) and that is fine: mapping is by name, so an unrecognised
@@ -55,7 +55,7 @@ export const TOKEN_TYPES = [
   "decorator",
 ] as const;
 
-/** The modifiers Sway asks for. Only `deprecated` currently changes how a token
+/** The modifiers Tori asks for. Only `deprecated` currently changes how a token
  *  renders; the rest are decoded and carried so a later rule can use them
  *  without another round of protocol work. */
 export const TOKEN_MODIFIERS = [
@@ -74,10 +74,10 @@ export const TOKEN_MODIFIERS = [
 /**
  * The capability block, as an `LSPClientExtension` entry.
  *
- * `augmentsSyntaxTokens: true` is the honest description of what Sway does with
+ * `augmentsSyntaxTokens: true` is the honest description of what Tori does with
  * the answer: the grammar keeps highlighting everything it can see, and these
  * land on top of it. A client that claimed otherwise would be asking servers to
- * tokenise punctuation and comments Sway already colours.
+ * tokenise punctuation and comments Tori already colours.
  *
  * `workspace.semanticTokens.refreshSupport` is the one server-initiated request
  * this app invites, deliberately and against the rule that governs the rest of

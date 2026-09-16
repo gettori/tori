@@ -295,7 +295,7 @@ mod tests {
     /// ready to be driven into whatever conflict a test needs.
     fn repo(name: &str) -> PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_conflict_{name}_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_conflict_{name}_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);

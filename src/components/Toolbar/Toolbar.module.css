@@ -14,7 +14,7 @@
 
 .tbEmpty {
   color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   padding: calc(2px * var(--ui-scale)) 0;
 }
 
@@ -35,7 +35,7 @@
 
 .tbName {
   font-weight: 600;
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -57,7 +57,7 @@
    the bar empty beside it; the flex shrink below does the same job only when
    the crumbs actually run out of room, and then it takes it from the longest. */
 .tbCrumb .crumb {
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -68,7 +68,7 @@
 /* Where you actually are, so it shrinks last and carries the full weight. */
 .tbCrumb .crumb.leaf {
   flex: 0 1 auto;
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   color: var(--fg-default);
 }
 
@@ -82,7 +82,7 @@
 .tbErr {
   margin-top: calc(6px * var(--ui-scale));
   color: var(--danger-fg);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* Feature members: one chip per repo, the active root filled in. */
@@ -102,10 +102,10 @@
   height: calc(20px * var(--ui-scale));
   padding: 0 calc(5px * var(--ui-scale));
   border: 1px solid rgb(var(--chip-rgb) / 0.5);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: rgb(var(--chip-rgb) / 0.12);
   color: var(--chip-hue);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   font-weight: 600;
   cursor: pointer;
 }

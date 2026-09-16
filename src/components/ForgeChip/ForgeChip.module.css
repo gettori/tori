@@ -17,7 +17,7 @@
   display: inline-flex;
   align-items: center;
   gap: calc(2px * var(--ui-scale));
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
   font-variant-numeric: tabular-nums;
 }
 .forgeItem :global(svg) {
@@ -65,7 +65,7 @@ button.forgeChip {
   margin: 0;
   font: inherit;
   cursor: pointer;
-  border-radius: var(--sway-radius-sm, 4px);
+  border-radius: var(--tori-radius-sm, 4px);
 }
 button.forgeChip:hover,
 button.forgeChip:focus-visible {

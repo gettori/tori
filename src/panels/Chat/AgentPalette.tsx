@@ -537,7 +537,7 @@ function HealthDot(props: { health: PaletteProvider['health'] }): JSX.Element {
   return <span class={`${styles.dot} ${tone()}`} aria-hidden="true" />;
 }
 
-/** The right-hand end of an agent row: what Sway knows, or the one thing the
+/** The right-hand end of an agent row: what Tori knows, or the one thing the
  *  user can do about not knowing it. */
 function ProviderState(props: {
   provider: PaletteProvider;

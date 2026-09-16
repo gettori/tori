@@ -24,15 +24,15 @@ import type { PermissionMode } from "../../utils/chatTypes";
 
 /*
  * There used to be a caveat here - `BYPASS_STILL_APPROVED`, rendered wherever a
- * mode declared `permissive_caveat` - saying that Sway asked anyway because its
+ * mode declared `permissive_caveat` - saying that Tori asked anyway because its
  * `PreToolUse` hook ran ahead of the permission chain. Both the flag and the
  * sentence are gone: the hook no longer decides, so `bypassPermissions` bypasses
  * permissions and a mode's name is now the truth about what it does. A warning
  * that no longer describes anything is worse than no warning, because it trains
  * people to discount the ones that do.
  *
- * What survives is the *chip*, on `permissive`. The sentence was about Sway and
- * went stale with Sway's gate; the highlight is about the mode, which really
+ * What survives is the *chip*, on `permissive`. The sentence was about Tori and
+ * went stale with Tori's gate; the highlight is about the mode, which really
  * does run tools unasked - and does so with nothing behind it now, which is a
  * better reason to keep noticing it than the one it had before.
  */
@@ -73,7 +73,7 @@ export default function ModeSelector(props: {
         tooltip={title()}
         disabled={props.disabled || props.modes.length === 0}
         pending={props.pending}
-        // Not the retired caveat under another name: that said Sway asked
+        // Not the retired caveat under another name: that said Tori asked
         // anyway, and stopped being true. This marks a mode that runs tools
         // unasked, which is what the mode does and now what actually happens.
         attention={!!current()?.permissive}

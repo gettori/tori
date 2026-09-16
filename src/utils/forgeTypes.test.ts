@@ -62,7 +62,7 @@ describe("forgeTypes mirrors the Rust forge model", () => {
 
   it("agrees on which providers Rust can build a client for", () => {
     // `connectHost` offers an account only for these, so a provider added in
-    // Rust and not here leaves a host Sway serves looking unservable.
+    // Rust and not here leaves a host Tori serves looking unservable.
     expect([...ADAPTERS].sort()).toEqual([...golden.servedProviders].sort());
   });
 

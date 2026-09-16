@@ -80,7 +80,7 @@ let mounted: ReturnType<typeof render> | null = null;
 /** Seed the tab store the way last run's quit would have left it. */
 function storeTabs(paths: string[], active: string) {
   localStorage.setItem(
-    "sway.editor.tabs.v1",
+    "tori.editor.tabs.v1",
     JSON.stringify({ [REPO]: { paths, active, savedAt: Date.now() } }),
   );
 }

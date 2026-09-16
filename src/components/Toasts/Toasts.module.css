@@ -16,13 +16,13 @@
   align-items: flex-start;
   gap: calc(8px * var(--ui-scale));
   padding: calc(9px * var(--ui-scale)) calc(10px * var(--ui-scale)) calc(9px * var(--ui-scale)) calc(12px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   line-height: 1.4;
   color: var(--fg-default);
   background: var(--canvas-head);
   border: 1px solid var(--border-default);
   border-left: 3px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
+  border-radius: var(--tori-radius-xl);
   box-shadow: var(--shadow-lg);
   pointer-events: auto;
   animation: toast-in 140ms ease-out;

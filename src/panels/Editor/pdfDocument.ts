@@ -221,7 +221,7 @@ export function pdfFailureMessage(path: string, err: unknown): string {
     return `${name} needs a newer macOS: this version of WebKit cannot run the PDF viewer.`;
   }
   if ((err as { name?: string } | null)?.name === "PasswordException") {
-    return `${name} is password-protected, and Sway cannot open protected PDFs.`;
+    return `${name} is password-protected, and Tori cannot open protected PDFs.`;
   }
   return `${name} could not be opened as a PDF.`;
 }

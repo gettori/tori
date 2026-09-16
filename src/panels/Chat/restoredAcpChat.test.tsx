@@ -1,7 +1,7 @@
 // A restored chat for an agent that keeps its own conversation.
 //
 // Two sources describe one conversation here, which is what makes this worth a
-// test file of its own: Sway's log, read by `chat_history` before anything is
+// test file of its own: Tori's log, read by `chat_history` before anything is
 // spawned, and the agent's own `session/load` replay once the chat starts. The
 // log is a cache of the replay, so the replay replaces what it drew rather than
 // being folded on top of it - and a replay that brings nothing must leave it

@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn a_keychain_that_will_not_store_the_new_pair_is_a_retry_not_a_sign_out() {
         // The old access token is valid until its own deadline, so telling the
-        // user to sign in again here would be Sway losing an account over a
+        // user to sign in again here would be Tori losing an account over a
         // keychain that was busy.
         let endpoints = gitlab_endpoints("https://gitlab.test");
         let stub = StubTransport::new(vec![StubTransport::json(200, &renewed("glpat_new"))]);

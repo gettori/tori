@@ -41,7 +41,7 @@ import cards from "./ForgeSection.module.css";
 
 // A rejected account is **suspect**, not signed out: its token is still stored,
 // so its action is "sign in again", and rendering it as signed out would imply
-// Sway discarded a credential it deliberately kept.
+// Tori discarded a credential it deliberately kept.
 
 type PollReport =
   | { kind: "authorized"; accountId: string; login: string }
@@ -462,7 +462,7 @@ export default function ForgeSection() {
   async function remove(host: string, account: ForgeAccount) {
     const ok = await askConfirm({
       title: `Remove ${forgeAccountName(account)} from ${host}?`,
-      message: "Sway deletes the token it stored for this account.",
+      message: "Tori deletes the token it stored for this account.",
       confirmLabel: "Remove",
       danger: true,
     });

@@ -9,11 +9,11 @@ const REPO = "/w/api";
 const MEMBER = "/w/api-auth";
 const SIBLING = "/w/api-other";
 // What `probe_project` now emits for a plain repo: the checkout a Feature made
-// under the repo's own `.sway/worktrees`, which is where a kept worktree lands.
-const NESTED = `${REPO}/.sway/worktrees/kept`;
+// under the repo's own `.tori/worktrees`, which is where a kept worktree lands.
+const NESTED = `${REPO}/.tori/worktrees/kept`;
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/w"],
   spaces: [
     {
@@ -121,9 +121,9 @@ describe("a Feature worktree in Spaces", () => {
     bridge.features = [AUTH];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.sidebar-mode.v1", "spaces");
-    localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/api"]));
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/api"]));
   });
 
   it("wears an in-Feature chip on the member unit only", async () => {
@@ -174,7 +174,7 @@ describe("a Feature worktree in Spaces", () => {
 
   // The Keep half of Remove repository: the worktree stays where it is, the
   // record no longer names it, and Spaces is the only place left to reach it
-  // from. A row inside the repo's own `.sway/worktrees` is an ordinary unit.
+  // from. A row inside the repo's own `.tori/worktrees` is an ordinary unit.
   it("reaches a worktree nested under its own repo", async () => {
     bridge.features = [
       { ...AUTH, id: "f2", name: "Kept", branch: "feat/kept", members: [{ ...AUTH.members[0], worktreePath: NESTED }] },

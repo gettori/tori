@@ -21,11 +21,11 @@ import { note, saveFrecency } from "../../utils/frecency";
 // table) and the mode list. That is enough to judge every row shape it renders,
 // which is what these are for.
 
-const REPO = "/Users/you/Projects/sway";
+const REPO = "/Users/you/Projects/tori";
 
 const selection: Selection = {
   spaceName: "personal",
-  projectName: "sway",
+  projectName: "tori",
   projectPath: REPO,
   folderPath: REPO,
   branch: "main",

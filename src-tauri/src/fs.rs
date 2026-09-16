@@ -1,7 +1,7 @@
 // Filesystem access for the in-webview editor: directory listing, read/write,
 // existence checks, plus an LRU of per-root recursive watchers that emit a
 // single debounced `fs://changed { root, paths }` for genuine source edits in
-// the selected root (churn dirs and Sway's own write echo are filtered out
+// the selected root (churn dirs and Tori's own write echo are filtered out
 // elsewhere; background roots keep their watcher but stay silent).
 
 use std::collections::BTreeSet;
@@ -637,7 +637,7 @@ fn touch_roots(entries: &mut Vec<WatchEntry>, roots: &[String], cap: usize) -> V
 /// build output. Terminal-driven git/build/install touch these constantly and a
 /// match here means "skip" so follow-mode and the git gutter only react to real
 /// source edits. (Best-effort gitignore beyond this explicit list is deferred.)
-/// `.sway-attempts` is here for a different reason than the rest: it is not
+/// `.tori-attempts` is here for a different reason than the rest: it is not
 /// build output, it is several whole worktrees. Creating three attempts writes
 /// three checkouts plus three cloned dependency trees inside the project, and
 /// without this the watcher would report every one of those files as a change
@@ -645,10 +645,10 @@ fn touch_roots(entries: &mut Vec<WatchEntry>, roots: &[String], cap: usize) -> V
 const IGNORED_DIRS: &[&str] =
     &[".git", "node_modules", "dist", "target", crate::attempts::ATTEMPTS_DIR];
 
-/// Feature worktrees of a plain repo live under `.sway/worktrees`: whole
-/// checkouts, like `.sway-attempts`. A parent-child pair rather than a name in
-/// `IGNORED_DIRS`, because `.sway` itself holds the settings overlay.
-pub(crate) const FEATURE_WORKTREES: (&str, &str) = (".sway", "worktrees");
+/// Feature worktrees of a plain repo live under `.tori/worktrees`: whole
+/// checkouts, like `.tori-attempts`. A parent-child pair rather than a name in
+/// `IGNORED_DIRS`, because `.tori` itself holds the settings overlay.
+pub(crate) const FEATURE_WORKTREES: (&str, &str) = (".tori", "worktrees");
 
 fn is_ignored(path: &Path) -> bool {
     let mut prev: Option<&str> = None;
@@ -824,7 +824,7 @@ mod tests {
 
     fn temp_tree(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "sway-fs-{name}-{}",
+            "tori-fs-{name}-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -972,28 +972,28 @@ mod tests {
         assert!(is_ignored(Path::new("/p/.git/index")));
         // An attempt is a whole second checkout inside the project, so its churn
         // must not read as a change to the project the user is looking at.
-        assert!(is_ignored(Path::new("/p/.sway-attempts/try-1/src/main.rs")));
+        assert!(is_ignored(Path::new("/p/.tori-attempts/try-1/src/main.rs")));
         assert!(is_ignored(Path::new("/p/node_modules/x/y.js")));
         assert!(is_ignored(Path::new("/p/dist/bundle.js")));
         assert!(is_ignored(Path::new("/p/src-tauri/target/debug/foo")));
         assert!(!is_ignored(Path::new("/p/src/App.tsx")));
         // A substring of an ignored name must not match.
         assert!(!is_ignored(Path::new("/p/src/distance.ts")));
-        // Feature worktrees are checkouts too, but `.sway` itself stays visible.
-        assert!(is_ignored(Path::new("/p/.sway/worktrees/x/a.rs")));
-        assert!(!is_ignored(Path::new("/p/.sway/settings.json")));
+        // Feature worktrees are checkouts too, but `.tori` itself stays visible.
+        assert!(is_ignored(Path::new("/p/.tori/worktrees/x/a.rs")));
+        assert!(!is_ignored(Path::new("/p/.tori/settings.json")));
         assert!(!is_ignored(Path::new("/p/worktrees/a.rs")));
     }
 
     #[test]
-    fn walk_files_skips_feature_worktrees_but_not_the_sway_dir() {
+    fn walk_files_skips_feature_worktrees_but_not_the_tori_dir() {
         let root = std::env::temp_dir().join(format!(
-            "sway-walk-{}",
+            "tori-walk-{}",
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
-        std::fs::create_dir_all(root.join(".sway/worktrees/x")).unwrap();
-        std::fs::write(root.join(".sway/worktrees/x/a.rs"), "").unwrap();
-        std::fs::write(root.join(".sway/settings.json"), "{}").unwrap();
+        std::fs::create_dir_all(root.join(".tori/worktrees/x")).unwrap();
+        std::fs::write(root.join(".tori/worktrees/x/a.rs"), "").unwrap();
+        std::fs::write(root.join(".tori/settings.json"), "{}").unwrap();
         std::fs::create_dir_all(root.join("worktrees")).unwrap();
         std::fs::write(root.join("worktrees/b.rs"), "").unwrap();
         std::fs::write(root.join("main.rs"), "").unwrap();
@@ -1001,7 +1001,7 @@ mod tests {
         let mut out = Vec::new();
         walk_files(&root, &root, &mut out);
         out.sort();
-        assert_eq!(out, [".sway/settings.json", "main.rs", "worktrees/b.rs"]);
+        assert_eq!(out, [".tori/settings.json", "main.rs", "worktrees/b.rs"]);
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -1011,7 +1011,7 @@ mod tests {
     /// folder as a file and a click on it fails with "Is a directory".
     #[test]
     fn a_link_to_a_folder_lists_as_a_folder_and_a_dangling_one_does_not() {
-        let base = std::env::temp_dir().join(format!("sway-fs-link-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let base = std::env::temp_dir().join(format!("tori-fs-link-{}-{:?}", std::process::id(), std::thread::current().id()));
         let outside = base.join("shared");
         let inside = base.join("worktree");
         std::fs::create_dir_all(outside.join("config")).unwrap();
@@ -1039,7 +1039,7 @@ mod tests {
 
     #[test]
     fn fs_commands_roundtrip() {
-        let dir = std::env::temp_dir().join(format!("sway-fs-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-fs-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("hello.txt");
         let fp = file.to_string_lossy().into_owned();
@@ -1071,7 +1071,7 @@ mod tests {
         // The failure this exists to prevent: a cross-file rename that rewrites
         // four files and dies on the fifth, leaving a tree that compiles nowhere
         // and that nothing describes.
-        let dir = std::env::temp_dir().join(format!("sway-fs-batch-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-fs-batch-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let a = dir.join("a.ts");
@@ -1116,7 +1116,7 @@ mod tests {
     fn a_batched_write_creates_a_file_whose_directory_exists() {
         // A rename can introduce a file only in theory, but the command must not
         // refuse a target that simply is not there yet.
-        let dir = std::env::temp_dir().join(format!("sway-fs-batch-new-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-fs-batch-new-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let fresh = dir.join("fresh.ts");
@@ -1129,7 +1129,7 @@ mod tests {
 
     #[test]
     fn scoped_mutations_stay_inside_root() {
-        let base = std::env::temp_dir().join(format!("sway-fs-scope-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("tori-fs-scope-{}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         let root = base.join(".shared");
         let root_s = root.to_string_lossy().into_owned();
@@ -1177,7 +1177,7 @@ mod tests {
 
     #[test]
     fn scoped_mutations_refuse_outside_root() {
-        let base = std::env::temp_dir().join(format!("sway-fs-escape-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("tori-fs-escape-{}", std::process::id()));
         let root = base.join(".shared");
         std::fs::create_dir_all(&root).unwrap();
         let root_s = root.to_string_lossy().into_owned();
@@ -1215,7 +1215,7 @@ mod tests {
         // passes its workspace as `root` and must be fenced identically. A repo
         // checkout is the realistic shape: a dotfile-free root with real siblings
         // next to it, where an escape lands on someone else's worktree.
-        let base = std::env::temp_dir().join(format!("sway-fs-project-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("tori-fs-project-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let project = base.join("my-repo");
         std::fs::create_dir_all(project.join("src")).unwrap();

@@ -116,7 +116,7 @@ describe("selecting a theme", () => {
   afterEach(() => publishUserThemes({ themes: [], errors: [] }));
 
   it("paints a legible theme (the positive control: it reaches the DOM and throws)", () => {
-    expect(() => setTheme("sway-dark")).toThrow(/document/);
+    expect(() => setTheme("tori-dark")).toThrow(/document/);
   });
 
   it("refuses an illegible user theme without painting anything", () => {

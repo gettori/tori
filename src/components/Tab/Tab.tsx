@@ -52,7 +52,7 @@ export function TabRow(props: {
 export interface TabProps
   extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "onClose" | "type" | "title"> {
   /** Narrower than the native attribute, which Solid still types with the
-   *  long-dead `"menu"` value. Nothing in Sway passes it. */
+   *  long-dead `"menu"` value. Nothing in Tori passes it. */
   type?: "submit" | "reset" | "button";
   /** This tab's key in the enclosing `Tabs.Root`, and what `onChange` reports.
    *
@@ -194,7 +194,7 @@ export default function Tab(props: TabProps) {
           whenDisabled={local.tooltipWhenDisabled}
           // Same cast, one prop further: `as` above types the child's props as
           // a `<button>`'s, and Kobalte narrows `type` to its own `"button"`
-          // default. Nothing in Sway passes a tab the other two values.
+          // default. Nothing in Tori passes a tab the other two values.
           type={(local.type ?? "button") as "button"}
           // Counted over the strip's canonical list rather than the rendered
           // one. Kobalte writes neither, and a strip that drops tabs to fit

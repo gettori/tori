@@ -302,7 +302,7 @@ describe("AgentPalette", () => {
   });
 
   // The heading is the only thing naming what the right-hand list belongs to,
-  // and for an agent Sway cannot reach it is also the only thing saying why the
+  // and for an agent Tori cannot reach it is also the only thing saying why the
   // list is short.
   it("heads the model list with the agent and what it has to offer", () => {
     const { filter } = setup();

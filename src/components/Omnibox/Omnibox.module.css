@@ -37,11 +37,11 @@
    so there is no gap here to inherit. It uses the head's inner step, because
    heading-to-content is the same one-block relationship. */
 .title {
-  font-size: var(--sway-text-3xl);
-  line-height: var(--sway-line-tight);
+  font-size: var(--tori-text-3xl);
+  line-height: var(--tori-line-tight);
   font-weight: 600;
   color: var(--fg-default);
-  margin-bottom: var(--sway-space-3);
+  margin-bottom: var(--tori-space-3);
   white-space: pre-wrap;
 }
 
@@ -71,7 +71,7 @@
 
 .itemSub {
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* A row's icon: a file glyph, or the symbol kind. Never shrunk, so a long path
@@ -91,14 +91,14 @@
   text-align: right;
   text-overflow: ellipsis;
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 
 /* The keys this command also answers to, matching the Cmd+/ sheet's chips so
    the two surfaces of one table look like one table. */
 .itemKeys {
   display: flex;
-  gap: var(--sway-space-1);
+  gap: var(--tori-space-1);
   margin-left: auto;
   flex: 0 0 auto;
 }
@@ -106,12 +106,12 @@
 .key {
   min-width: calc(18px * var(--ui-scale));
   padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
-  font-family: var(--sway-font-ui);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-ui);
+  font-size: var(--tori-text-md);
   line-height: 1.5;
   text-align: center;
   color: var(--fg-muted);
   background: var(--canvas-input);
-  border: var(--sway-border-thin) solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-sm);
 }

@@ -67,5 +67,5 @@ export function setupJob(
  */
 export function installNote(agentLabel: string, program: string, route: InstallRoute): string | null {
   if (route.type === "terminal") return null;
-  return `Sway has no install command for ${agentLabel}. Install ${program} yourself, then check again.`;
+  return `Tori has no install command for ${agentLabel}. Install ${program} yourself, then check again.`;
 }

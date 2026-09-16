@@ -29,7 +29,7 @@ export const Default: Story = {
  *  still distinguishable in light and dark. */
 export const States: Story = {
   render: (args) => (
-    <div style={{ display: "flex", "flex-direction": "column", gap: "var(--sway-space-3)" }}>
+    <div style={{ display: "flex", "flex-direction": "column", gap: "var(--tori-space-3)" }}>
       <Switch {...args} checked={false} label="Off" />
       <Switch {...args} checked label="On" />
       <Switch {...args} checked={false} label="Disabled" disabled />
@@ -45,7 +45,7 @@ export const SettingsRows: Story = {
     const [blame, setBlame] = createSignal(false);
     const [diffs, setDiffs] = createSignal(true);
     return (
-      <div style={{ display: "flex", "flex-direction": "column", gap: "var(--sway-space-3)" }}>
+      <div style={{ display: "flex", "flex-direction": "column", gap: "var(--tori-space-3)" }}>
         <Switch checked={streaming()} onChange={setStreaming} label="Stream responses" />
         <Switch checked={blame()} onChange={setBlame} label="Git blame" />
         <Switch checked={diffs()} onChange={setDiffs} label="Side-by-side diffs" />

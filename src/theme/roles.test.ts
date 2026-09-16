@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import swayDark from "./palettes/sway-dark.json";
-import swayLight from "./palettes/sway-light.json";
+import toriDark from "./palettes/tori-dark.json";
+import toriLight from "./palettes/tori-light.json";
 import { alpha, buildRoles, mix, ROLES, variants } from "./roles";
 import { PALETTE_KEYS, validatePalette, type Palette } from "./schema";
 
-const dark = swayDark as Palette;
-const light = swayLight as Palette;
+const dark = toriDark as Palette;
+const light = toriLight as Palette;
 const PALETTES: [string, Palette][] = [
-  ["sway-dark", dark],
-  ["sway-light", light],
+  ["tori-dark", dark],
+  ["tori-light", light],
 ];
 
 
@@ -71,8 +71,8 @@ describe("role table", () => {
 // These six are the ones a reader actually uses to parse a line at a glance,
 // and VS Code's Dark+/Light+ (where this ramp started) collapses two of the
 // pairs, so they are asserted rather than assumed.
-// Scoped to Sway's own two palettes on purpose. Six distinct categories is a
-// claim about the ramp Sway authors, not a rule ports must obey: Catppuccin and
+// Scoped to Tori's own two palettes on purpose. Six distinct categories is a
+// claim about the ramp Tori authors, not a rule ports must obey: Catppuccin and
 // Tokyo Night both give `keyword` and `control` one colour, and forcing them
 // apart would mean inventing a hue their design never chose. What every bundled
 // palette IS held to is completeness (check 2) and legibility (contrast.test.ts).

@@ -1,8 +1,8 @@
 //! Claude's own MCP configuration, read where Claude keeps it and written back
 //! in Claude's own format.
 //!
-//! **No Sway format.** MCP servers are a property of the project and of the
-//! user's Claude install, not of Sway: a server added here has to be the same
+//! **No Tori format.** MCP servers are a property of the project and of the
+//! user's Claude install, not of Tori: a server added here has to be the same
 //! server `claude` sees from a terminal, and one added by `claude mcp add` has
 //! to show up here. Inventing a fourth config file would give the user two
 //! places to look and two answers to the same question.
@@ -28,14 +28,14 @@
 //! `~/.claude.json` is not a config file, it is Claude's live application
 //! state: this machine's copy carries ~90 top-level keys (onboarding flags,
 //! caches, per-project token totals, OAuth account) and every running `claude`
-//! rewrites it. A read-modify-write from Sway would race those writers and
+//! rewrites it. A read-modify-write from Tori would race those writers and
 //! could drop unrelated state that no one asked us to touch. This is the same
 //! boundary the project already draws at `~/.claude/settings.json`, for the
 //! same reason.
 //!
 //! `.mcp.json` has none of those problems: it is a small, single-purpose,
 //! checked-in file that `claude mcp add --scope project` writes and that exists
-//! to be shared. So Sway writes there, and reports the other two read-only.
+//! to be shared. So Tori writes there, and reports the other two read-only.
 //!
 //! ## Pending approval is reported, not bypassed
 //!
@@ -80,7 +80,7 @@ pub struct McpEntry {
     pub scope: McpScope,
     pub approval: McpApproval,
     /// The raw definition as Claude stores it (`command`/`args`/`env`, or
-    /// `type`/`url`/`headers`). Passed through rather than parsed into a Sway
+    /// `type`/`url`/`headers`). Passed through rather than parsed into a Tori
     /// shape so a transport we do not know about still round-trips intact.
     pub config: Value,
 }
@@ -251,7 +251,7 @@ pub fn remove_from_project(
         }
         // Not in the project file: either it was never there, or it is a
         // user/local server we deliberately do not write.
-        None => Err("That server is not in this project's .mcp.json, so Sway cannot remove it.".into()),
+        None => Err("That server is not in this project's .mcp.json, so Tori cannot remove it.".into()),
     }
 }
 

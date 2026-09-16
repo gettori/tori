@@ -21,7 +21,7 @@
 // hand-maintained TOML, and it was wrong in both jobs it had. It offered four
 // models to a session that never handshook regardless of what the installed CLI
 // could run, and its windows said 200k for models the agent reports 1M for.
-// Sway names no model the agent did not name first.
+// Tori names no model the agent did not name first.
 //
 // A completed turn reports the real context window, per model and per provider,
 // in `modelUsage`. It is the authority and it cannot drift, being the running
@@ -48,7 +48,7 @@ export type PickableModel = {
    *  entirely rather than declaring them empty.
    *
    *  Rows rather than bare strings since a level can be offered and refused:
-   *  Sway's own measured extras carry a note when the binary answering is not
+   *  Tori's own measured extras carry a note when the binary answering is not
    *  the one they were measured against. */
   effortLevels: ChatEffortLevel[];
   /** Null until a completed turn reports one, which is what keeps the meter
@@ -58,11 +58,11 @@ export type PickableModel = {
    *  handshaken yet. Surfaced so the picker can say the list may be stale. */
   live: boolean;
   /** This row is a model the user configured in the agent's own settings, not
-   *  one the agent published. It carries an empty `resolvedModel`, since Sway
+   *  one the agent published. It carries an empty `resolvedModel`, since Tori
    *  passes the configured string to the CLI unresolved. */
   userConfigured: boolean;
   /** Whether this model has a fast mode to toggle, as the catalogue publishes
-   *  it. This was Sway's own annotation, looked up by `resolvedModel` against a
+   *  it. This was Tori's own annotation, looked up by `resolvedModel` against a
    *  hand-keyed table, and the table's spelling never matched the catalogue's. */
   fastMode: boolean;
   /** Whether this model honours `--permission-mode auto`. From the live
@@ -557,7 +557,7 @@ export function modeAfterModelSwitch(
  * The mode a session runs when nothing is restored: the one the adapter marks,
  * else its first.
  *
- * Positional rather than the literal `"default"` on the miss. Sway used to fall
+ * Positional rather than the literal `"default"` on the miss. Tori used to fall
  * back to that string, which is Claude's spelling of the idea and not a
  * universal one - Gemini's permissive-by-omission mode shares the name by
  * coincidence, and a Codex profile need not contain the word at all.

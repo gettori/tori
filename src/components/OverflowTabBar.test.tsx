@@ -60,7 +60,7 @@ function mount(onActivate: (id: string) => void = () => {}) {
 }
 
 describe("what fits", () => {
-  // Characterization, written before the Kobalte migration (skarif2/sway#111)
+  // Characterization, written before the Kobalte migration (gettori/tori#111)
   // and expected to survive it unchanged: the widths at which the strip
   // collapses are the contract, not the markup underneath.
   const MANY: Item[] = Array.from({ length: 12 }, (_, i) => ({

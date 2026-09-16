@@ -126,7 +126,7 @@ function installedVersion() {
 }
 
 function download() {
-  const tmp = path.join(os.tmpdir(), `sway-dap-${process.pid}.tar.gz`);
+  const tmp = path.join(os.tmpdir(), `tori-dap-${process.pid}.tar.gz`);
   console.log(`dap:install: fetching js-debug ${manifest.version}`);
   execFileSync("curl", ["-sSfL", manifest.url, "-o", tmp], { stdio: ["ignore", "inherit", "inherit"] });
 

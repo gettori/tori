@@ -337,7 +337,7 @@ export async function pollOnFocus(now: number = Date.now()) {
 /// Starts the background schedule: an interval, plus a tick whenever the window
 /// comes back to the front.
 ///
-/// Focus matters more than the interval does. Coming back to Sway after a build
+/// Focus matters more than the interval does. Coming back to Tori after a build
 /// finished is exactly when the chips are stale, and waiting out the rest of a
 /// two-minute interval to notice is the difference between a live surface and a
 /// stale one. The gap in `forgePoll` is what stops that from becoming a request

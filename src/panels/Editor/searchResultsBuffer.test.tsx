@@ -172,7 +172,7 @@ describe("materialising a search", () => {
   it("opens as a tab of its own workspace, so two projects are two buffers", async () => {
     const seen: string[] = [];
     const listener = (e: Event) => seen.push((e as CustomEvent).detail.path);
-    window.addEventListener("sway:open-in-editor", listener);
+    window.addEventListener("tori:open-in-editor", listener);
     try {
       const id = await mount();
       expect(seen).toEqual([id]);
@@ -183,7 +183,7 @@ describe("materialising a search", () => {
       expect(other).not.toBe(id);
       expect(other).toContain(encodeURIComponent("/space/other"));
     } finally {
-      window.removeEventListener("sway:open-in-editor", listener);
+      window.removeEventListener("tori:open-in-editor", listener);
     }
   });
 
@@ -338,7 +338,7 @@ describe("writing edits back", () => {
     expect(view().state.doc.line(4).text).toBe("src/a.ts  written back");
     expect(view().state.doc.line(10).text).toBe("src/c.ts  refused: changed since the search");
 
-    // The refusal is resolved outside Sway, which is where it came from.
+    // The refusal is resolved outside Tori, which is where it came from.
     disk[C] = "c needle";
     fireEvent.click(applyButton());
 

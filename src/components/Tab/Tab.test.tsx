@@ -4,7 +4,7 @@ import { Tabs } from "../../lib/tabs";
 import { expectNoAxeViolations } from "../../test/axe";
 import Tab from "./Tab";
 
-// The tab pill on Kobalte, from the component's own side (skarif2/sway#111,
+// The tab pill on Kobalte, from the component's own side (gettori/tori#111,
 // #115, #116).
 //
 // The strips have their own suites; what is pinned here is the part none of

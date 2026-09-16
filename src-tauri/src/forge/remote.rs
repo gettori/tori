@@ -72,24 +72,24 @@ pub fn parse(url: &str) -> Result<Remote, ForgeError> {
 mod tests {
     use super::*;
 
-    fn sway() -> Remote {
+    fn tori() -> Remote {
         Remote {
             host: "github.com".into(),
-            repo: RepoRef { owner: "skarif2".into(), repo: "sway".into() },
+            repo: RepoRef { owner: "skarif2".into(), repo: "tori".into() },
         }
     }
 
     #[test]
     fn every_remote_shape_resolves_to_the_same_repo() {
         for url in [
-            "https://github.com/skarif2/sway.git",
-            "https://github.com/skarif2/sway",
-            "git@github.com:skarif2/sway.git",
-            "ssh://git@github.com/skarif2/sway.git",
-            "ssh://git@github.com:22/skarif2/sway.git",
-            "https://www.github.com/skarif2/sway/",
+            "https://github.com/skarif2/tori.git",
+            "https://github.com/skarif2/tori",
+            "git@github.com:skarif2/tori.git",
+            "ssh://git@github.com/skarif2/tori.git",
+            "ssh://git@github.com:22/skarif2/tori.git",
+            "https://www.github.com/skarif2/tori/",
         ] {
-            assert_eq!(parse(url).unwrap(), sway(), "failed on {url}");
+            assert_eq!(parse(url).unwrap(), tori(), "failed on {url}");
         }
     }
 
@@ -103,9 +103,9 @@ mod tests {
 
     #[test]
     fn the_ssh_and_https_forms_of_one_repo_share_a_pick_key() {
-        let ssh = parse("git@GitHub.com:Skarif2/sway.git").unwrap();
-        let https = parse("https://user@github.com:443/skarif2/sway").unwrap();
+        let ssh = parse("git@GitHub.com:Skarif2/tori.git").unwrap();
+        let https = parse("https://user@github.com:443/skarif2/tori").unwrap();
         assert_eq!(ssh.key(), https.key());
-        assert_eq!(ssh.key(), "github.com/skarif2/sway");
+        assert_eq!(ssh.key(), "github.com/skarif2/tori");
     }
 }

@@ -34,7 +34,7 @@ export type FrecencyStore = Readonly<Record<string, WorkspaceStats>>;
 
 export type Touch = "open" | "edit";
 
-const LS_FRECENCY = "sway.fileFrecency";
+const LS_FRECENCY = "tori.fileFrecency";
 
 /** An edit counts for four opens. Not tuned, chosen: the ratio only has to be
  *  large enough that one edit beats a handful of stale opens. */

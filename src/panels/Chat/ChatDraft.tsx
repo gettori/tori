@@ -198,7 +198,7 @@ export default function ChatDraft(props: {
   });
 
   /** Why this draft cannot be sent, or null. The agent stays selected either
-   *  way: a draft that silently switched away from a broken agent would be Sway
+   *  way: a draft that silently switched away from a broken agent would be Tori
    *  choosing for the user, and the pill is where the problem is legible. */
   const blocked = () => {
     // The tab can outlive the setting: a draft left open while its agent was

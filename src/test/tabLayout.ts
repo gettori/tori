@@ -9,7 +9,7 @@
 // `aria-hidden` to find a tab at all.
 //
 // That made the ghost answer for the strip. It is the wrong copy to ask: it
-// carries no context menu (skarif2/sway#103), and once it stops being
+// carries no context menu (gettori/tori#103), and once it stops being
 // interactive at all there is nothing there to ask. So rather than teach the
 // tests a better way to reach the ghost, this gives the bar a real width and
 // puts the tabs where a browser would put them.

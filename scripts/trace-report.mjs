@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Joins the two trace files written under SWAY_TRACE and prints what the plan's
+// Joins the two trace files written under TORI_TRACE and prints what the plan's
 // targets are read from: a row per switch with paint and settled, and a per
 // invoke breakdown carrying queue wait.
 //
@@ -7,7 +7,7 @@
 // frontend puts in each invoke's argument map. It is the number that says
 // whether a command was waiting for the IPC thread or doing work.
 //
-//   node scripts/trace-report.mjs [--dir ~/.config/sway/trace] [--invokes]
+//   node scripts/trace-report.mjs [--dir ~/.config/tori/trace] [--invokes]
 //
 // --invokes prints every invoke of every switch, not just the slowest few.
 
@@ -17,7 +17,7 @@ import { join } from "node:path";
 
 const args = process.argv.slice(2);
 const dirArg = args.indexOf("--dir");
-const dir = dirArg >= 0 ? args[dirArg + 1] : join(homedir(), ".config/sway/trace");
+const dir = dirArg >= 0 ? args[dirArg + 1] : join(homedir(), ".config/tori/trace");
 const allInvokes = args.includes("--invokes");
 
 const read = (name) => {

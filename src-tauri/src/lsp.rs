@@ -149,7 +149,7 @@ fn pump_frames<R: Read + Send + 'static>(stdout: R, sink: impl Fn(String) + Send
 /// Stop a session: signal it, then reap it.
 ///
 /// The `wait` is not optional bookkeeping. `kill` only delivers the signal, so
-/// without reaping, every stopped server stays a zombie for as long as Sway
+/// without reaping, every stopped server stays a zombie for as long as Tori
 /// runs, and a session-per-root registry stops far more servers than the old
 /// one-server host ever did.
 fn stop(session: &mut LspSession) {
@@ -290,7 +290,7 @@ pub async fn lsp_schema_associations() -> Vec<schemastore::SchemaAssociation> {
 /// Where this build's settings schemas live, or `None` if they are not there.
 ///
 /// The frontend pairs this directory with the filenames in
-/// `utils/swaySettingsFiles.ts` and sends the result as more
+/// `utils/toriSettingsFiles.ts` and sends the result as more
 /// `json/schemaAssociations`. Only the *path* comes from here, because
 /// resolving a bundled resource is the one part of the job that needs to know
 /// whether this is a packaged app or a `cargo run`, and `bundled_entry` already
@@ -375,7 +375,7 @@ fn check(server: &LspServer, bundled_entry_missing: bool) -> LspHealth {
 
 /// Health for every registered server. Not memoized the way `agent_health` is:
 /// the sweep is two subprocesses at most, and a user who installs
-/// rust-analyzer while Sway is open should see the card change on the next
+/// rust-analyzer while Tori is open should see the card change on the next
 /// Settings open rather than after a restart.
 #[tauri::command]
 pub async fn lsp_health(app: AppHandle) -> Vec<LspHealth> {
@@ -616,7 +616,7 @@ mod tests {
     /// exist to the frontend.
     ///
     /// Forgetting the line in `lib.rs` compiles cleanly, and the caller of the
-    /// missing command sees a rejected promise. `swaySettingsAssociations`
+    /// missing command sees a rejected promise. `toriSettingsAssociations`
     /// catches that and answers "no schemas", so an unregistered
     /// `lsp_schema_dir` would look exactly like a build that ships none: the
     /// settings file validates nothing and says nothing about why.
@@ -668,7 +668,7 @@ mod tests {
         // at, since an association naming a file that is not there is the same
         // silence one more time.
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/schemas");
-        for name in ["sway-settings.schema.json", "sway-workspace-settings.schema.json"] {
+        for name in ["tori-settings.schema.json", "tori-workspace-settings.schema.json"] {
             let path = dir.join(name);
             let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             serde_json::from_str::<serde_json::Value>(&text)

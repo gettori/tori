@@ -27,7 +27,7 @@
   flex: none;
   width: calc(16px * var(--ui-scale));
   color: var(--diff-modified);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   font-weight: 600;
   text-align: center;
 }
@@ -52,7 +52,7 @@
   flex: none;
   overflow: hidden;
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -62,7 +62,7 @@
   overflow: hidden;
   min-width: 0;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-overflow: ellipsis;
   white-space: nowrap;
   direction: rtl;
@@ -74,9 +74,9 @@
   flex: none;
   padding: 0 calc(6px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -96,7 +96,7 @@
   overflow: auto;
   padding-bottom: calc(8px * var(--ui-scale));
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.4;
 }
 

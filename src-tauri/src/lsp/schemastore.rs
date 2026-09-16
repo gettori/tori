@@ -91,12 +91,12 @@ pub fn associations_from_catalog(text: &str) -> Vec<SchemaAssociation> {
 }
 
 fn cache_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/cache/schemastore-catalog.json")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/cache/schemastore-catalog.json")
 }
 
 fn fetch_catalog() -> Result<String, String> {
     ureq::get(CATALOG_URL)
-        .set("User-Agent", "sway-lsp-schemastore")
+        .set("User-Agent", "tori-lsp-schemastore")
         .timeout(Duration::from_secs(10))
         .call()
         .map_err(|e| e.to_string())?
@@ -156,7 +156,7 @@ pub fn associations() -> &'static [SchemaAssociation] {
     ASSOCIATIONS.get_or_init(|| match catalog_text(&cache_path(), CACHE_TTL, SystemTime::now(), fetch_catalog) {
         Ok(text) => associations_from_catalog(&text),
         Err(e) => {
-            eprintln!("sway: no JSON schema associations ({e}); JSON files will edit without validation");
+            eprintln!("tori: no JSON schema associations ({e}); JSON files will edit without validation");
             Vec::new()
         }
     })
@@ -188,7 +188,7 @@ mod tests {
         static SEQ: AtomicUsize = AtomicUsize::new(0);
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
         let dir = std::env::temp_dir()
-            .join(format!("sway_schemastore_{}_{name}_{n}", std::process::id()));
+            .join(format!("tori_schemastore_{}_{name}_{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir

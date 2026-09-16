@@ -6,8 +6,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 
-const A = "/w/api/.sway/worktrees/auth";
-const B = "/w/web/.sway/worktrees/auth";
+const A = "/w/api/.tori/worktrees/auth";
+const B = "/w/web/.tori/worktrees/auth";
 
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
@@ -15,7 +15,7 @@ const bridge = vi.hoisted(() => ({
 }));
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/w"],
   spaces: [
     {
@@ -111,8 +111,8 @@ describe("selecting a Feature", () => {
     bridge.features = [AUTH, PAY];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.sidebar-mode.v1", "features");
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.sidebar-mode.v1", "features");
   });
 
   it("hands the shell a feature Selection on click, keeping a stored active root", async () => {
@@ -148,19 +148,19 @@ describe("selecting a Feature", () => {
   it("deleting the selected Feature clears it and sweeps feature:<id> from every store", async () => {
     const seed = (key: string, value: unknown) =>
       localStorage.setItem(key, JSON.stringify({ "feature:f1": value, "/w/api": value }));
-    seed("sway.panes.v1", { version: 2 });
-    seed("sway.tabpanes.v1", {});
-    seed("sway.editor.tabs.v1", { paths: [], active: null, savedAt: 1 });
-    seed("sway.terminalTabs", { tabs: [], active: 0, savedAt: 1 });
-    seed("sway.fileFrecency", {});
-    seed("sway.breakpoints", {});
-    seed("sway.watches", []);
-    seed("sway.debugAttachPorts", 9229);
-    seed("sway.debugLastTarget", { kind: "attach", port: 9229 });
-    seed("sway.taskRuns", []);
-    seed("sway.searchHistory", []);
-    seed("sway.savedSearches", []);
-    seed("sway.treeExpanded.v1", { dirs: ["/w/api/src"], closed: [] });
+    seed("tori.panes.v1", { version: 2 });
+    seed("tori.tabpanes.v1", {});
+    seed("tori.editor.tabs.v1", { paths: [], active: null, savedAt: 1 });
+    seed("tori.terminalTabs", { tabs: [], active: 0, savedAt: 1 });
+    seed("tori.fileFrecency", {});
+    seed("tori.breakpoints", {});
+    seed("tori.watches", []);
+    seed("tori.debugAttachPorts", 9229);
+    seed("tori.debugLastTarget", { kind: "attach", port: 9229 });
+    seed("tori.taskRuns", []);
+    seed("tori.searchHistory", []);
+    seed("tori.savedSearches", []);
+    seed("tori.treeExpanded.v1", { dirs: ["/w/api/src"], closed: [] });
     expect(storesHolding("feature:f1").length).toBe(13);
 
     const { onSelect } = await mounted(featureSel);
@@ -183,14 +183,14 @@ describe("selecting a Feature", () => {
         key,
         JSON.stringify({ "feature:f1": value, [A]: value, [B]: value }),
       );
-    seed("sway.watches", ["req.body"]);
-    seed("sway.debugAttachPorts", 9229);
-    seed("sway.debugLastTarget", { kind: "attach", port: 9229 });
+    seed("tori.watches", ["req.body"]);
+    seed("tori.debugAttachPorts", 9229);
+    seed("tori.debugLastTarget", { kind: "attach", port: 9229 });
     // Not the Feature's: a member you keep can be reopened as a branch unit,
     // and these are that unit's.
-    seed("sway.editor.tabs.v1", { paths: [`${A}/a.ts`], active: null, savedAt: 1 });
-    seed("sway.terminalTabs", { tabs: [], active: 0, savedAt: 1 });
-    seed("sway.treeExpanded.v1", { dirs: [`${A}/src`], closed: [] });
+    seed("tori.editor.tabs.v1", { paths: [`${A}/a.ts`], active: null, savedAt: 1 });
+    seed("tori.terminalTabs", { tabs: [], active: 0, savedAt: 1 });
+    seed("tori.treeExpanded.v1", { dirs: [`${A}/src`], closed: [] });
 
     await mounted(featureSel);
     fireEvent.contextMenu(row("Auth"));
@@ -202,9 +202,9 @@ describe("selecting a Feature", () => {
     await waitFor(() => expect(storesHolding("feature:f1")).toEqual([]));
     for (const root of [A, B]) {
       expect(storesHolding(root)).toEqual([
-        "sway.editor.tabs.v1",
-        "sway.terminalTabs",
-        "sway.treeExpanded.v1",
+        "tori.editor.tabs.v1",
+        "tori.terminalTabs",
+        "tori.treeExpanded.v1",
       ]);
     }
   });

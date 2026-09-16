@@ -249,7 +249,7 @@ fn has_commit(project_path: &str, sha: &str) -> bool {
 /// and it is the difference between a gap expander that works and one that has
 /// to be governed by the same rate budget as everything else.
 ///
-/// Fetched with **no destination ref**. A Sway-owned `refs/sway/pr/{n}` would
+/// Fetched with **no destination ref**. A Tori-owned `refs/tori/pr/{n}` would
 /// keep the commit reachable, but nothing would ever remove it, so a reviewer
 /// would accumulate one pinned tree per pull request read, permanently, in
 /// their own repo. Git already shields freshly fetched objects from prune for
@@ -1883,7 +1883,7 @@ fn next_op_id() -> String {
 }
 
 /// Build a `git -C <repo>` command wired to the askpass credential bridge:
-/// `GIT_ASKPASS`/`SSH_ASKPASS` point at Sway's own binary (re-exec'd as the
+/// `GIT_ASKPASS`/`SSH_ASKPASS` point at Tori's own binary (re-exec'd as the
 /// helper), `SSH_ASKPASS_REQUIRE=force` makes ssh use it without a TTY (OpenSSH
 /// >= 8.4), `GIT_TERMINAL_PROMPT=0` forbids any terminal fallback (fail closed),
 /// `LC_ALL=C` keeps prompt wording stable for `kind` parsing, and
@@ -2125,7 +2125,7 @@ pub fn delete_remote_branch(
     Ok(())
 }
 
-/// Whether a login here is answered without prompting: Sway's own helper for a
+/// Whether a login here is answered without prompting: Tori's own helper for a
 /// host with the switch on, else a `credential.helper` in any scope. With
 /// neither, git re-prompts every op (nothing is cached), so the UI warns once.
 #[tauri::command(async)]
@@ -2145,13 +2145,13 @@ pub fn git_has_credential_helper(repo: String) -> Result<bool, String> {
     Ok(out.status.success() && !value.trim().is_empty())
 }
 
-/// Keep a Sway working directory out of the repo, in the repo's own ignore file
+/// Keep a Tori working directory out of the repo, in the repo's own ignore file
 /// rather than the user's `.gitignore`.
 ///
-/// `.git/info/exclude` is the right home: these directories are Sway's business,
+/// `.git/info/exclude` is the right home: these directories are Tori's business,
 /// and writing one into a tracked `.gitignore` would put it in the user's next
 /// commit and then in everyone else's checkout. Nothing tracked is touched, and
-/// a teammate who never runs Sway sees nothing.
+/// a teammate who never runs Tori sees nothing.
 ///
 /// Idempotent, and silent on every failure: a repo that cannot be excluded still
 /// works, it just shows the directory as untracked.
@@ -2611,7 +2611,7 @@ diff --git a/f b/f
 
     fn repo_with_two_branches() -> PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_checkout_test_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_checkout_test_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -2889,7 +2889,7 @@ diff --git a/f b/f
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_init_test_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_init_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -3012,9 +3012,9 @@ diff --git a/f b/f
 
     #[test]
     fn a_fetch_with_no_git_on_path_names_the_fix() {
-        let empty = std::env::temp_dir().join(format!("sway-no-git-{}", std::process::id()));
+        let empty = std::env::temp_dir().join(format!("tori-no-git-{}", std::process::id()));
         std::fs::create_dir_all(&empty).unwrap();
-        let mut cmd = git_command("/repo", "op-1", Path::new("/tmp/sway-akp-x/s"), "tok");
+        let mut cmd = git_command("/repo", "op-1", Path::new("/tmp/tori-akp-x/s"), "tok");
         cmd.arg("fetch").env("PATH", &empty);
         let ready = || crate::git_health::GitHealth::Ready { path: "/usr/bin/git".into(), version: None };
         let err = crate::git_health::run_with(&mut cmd, ready).unwrap_err();
@@ -3025,7 +3025,7 @@ diff --git a/f b/f
     #[test]
     fn git_command_sets_askpass_bridge_env() {
         use std::ffi::OsStr;
-        let sock = Path::new("/tmp/sway-akp-x/s");
+        let sock = Path::new("/tmp/tori-akp-x/s");
         let cmd = git_command("/repo", "op-1", sock, "tok");
         let envs: std::collections::HashMap<String, Option<String>> = cmd
             .get_envs()
@@ -3040,7 +3040,7 @@ diff --git a/f b/f
         assert_eq!(envs.get("GIT_TERMINAL_PROMPT").unwrap().as_deref(), Some("0"));
         assert_eq!(envs.get("LC_ALL").unwrap().as_deref(), Some("C"));
         assert_eq!(envs.get("SSH_ASKPASS_REQUIRE").unwrap().as_deref(), Some("force"));
-        assert_eq!(envs.get(ENV_SOCK).unwrap().as_deref(), Some("/tmp/sway-akp-x/s"));
+        assert_eq!(envs.get(ENV_SOCK).unwrap().as_deref(), Some("/tmp/tori-akp-x/s"));
         assert_eq!(envs.get(ENV_TOKEN).unwrap().as_deref(), Some("tok"));
         assert_eq!(envs.get(ENV_OP).unwrap().as_deref(), Some("op-1"));
         assert!(envs.contains_key("GIT_ASKPASS"));
@@ -3080,7 +3080,7 @@ diff --git a/f b/f
     /// -U3, so "stage one of two" is meaningful.
     fn repo_with_two_hunks() -> PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_hunk_test_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_hunk_test_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -3568,7 +3568,7 @@ diff --git a/f b/f
         // per expanded gap on a branch that is checked out right now.
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        let sock = Path::new("/tmp/sway-akp-x/s");
+        let sock = Path::new("/tmp/tori-akp-x/s");
         let head = String::from_utf8_lossy(
             &Command::new("git").arg("-C").arg(&dir).args(["rev-parse", "HEAD"]).output().unwrap().stdout,
         )
@@ -3598,7 +3598,7 @@ diff --git a/f b/f
     #[test]
     fn fetching_a_pr_head_goes_through_the_bridge_and_leaves_no_ref_behind() {
         let (cmd, _bridge) =
-            pr_head_fetch_command("/repo", "refs/pull/7/head", Path::new("/tmp/sway-akp-x/s"), "tok");
+            pr_head_fetch_command("/repo", "refs/pull/7/head", Path::new("/tmp/tori-akp-x/s"), "tok");
 
         // Everything that talks to a remote goes through the bridge, or a
         // private repo with no agent leaves git nothing to ask and no terminal
@@ -3610,7 +3610,7 @@ diff --git a/f b/f
             .map(|(k, v)| (k.to_string_lossy().into_owned(), v.map(|s| s.to_string_lossy().into_owned())))
             .collect();
         assert_eq!(envs.get("GIT_TERMINAL_PROMPT").unwrap().as_deref(), Some("0"));
-        assert_eq!(envs.get(ENV_SOCK).unwrap().as_deref(), Some("/tmp/sway-akp-x/s"));
+        assert_eq!(envs.get(ENV_SOCK).unwrap().as_deref(), Some("/tmp/tori-akp-x/s"));
         assert!(envs.contains_key("GIT_ASKPASS"));
 
         // And no destination ref. One would keep the commit reachable and
@@ -3648,7 +3648,7 @@ diff --git a/f b/f
     /// the middle one exercises the offset accumulation.
     fn repo_with_three_hunks() -> PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_hunk3_test_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_hunk3_test_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -3925,10 +3925,10 @@ diff --git a/f b/f
         // `..` simply escapes, so the confinement has to be re-established.
         let dir = repo_with_two_hunks();
         let p = dir.to_string_lossy().into_owned();
-        let outside = dir.parent().unwrap().join("sway_escape_probe.txt");
+        let outside = dir.parent().unwrap().join("tori_escape_probe.txt");
         std::fs::write(&outside, "not yours\n").unwrap();
 
-        let err = git_discard_files_body(p, vec!["../sway_escape_probe.txt".into()]).unwrap_err();
+        let err = git_discard_files_body(p, vec!["../tori_escape_probe.txt".into()]).unwrap_err();
 
         assert!(err.contains("outside this folder"), "unhelpful refusal: {err}");
         assert!(outside.exists(), "the file outside the repo is untouched");
@@ -4278,7 +4278,7 @@ diff --git a/f b/f
         // What a fresh `bare_init` worktree looks like: a real repo on an
         // unborn branch, where `git log` itself exits non-zero.
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_log_unborn_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_log_unborn_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
 
@@ -4316,7 +4316,7 @@ diff --git a/f b/f
     /// a root commit, a merge, and a rename carrying an edit.
     fn repo_with_awkward_history() -> std::path::PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_commit_detail_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_commit_detail_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q", "-b", "main"]);
         git(&dir, &["config", "user.email", "t@t"]);

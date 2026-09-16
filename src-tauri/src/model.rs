@@ -12,7 +12,7 @@ const MODELS_URL: &str = "https://openrouter.ai/api/v1/models";
 const MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 fn cache_path() -> Option<PathBuf> {
-    let dir = dirs::cache_dir()?.join("sway");
+    let dir = dirs::cache_dir()?.join("tori");
     let _ = std::fs::create_dir_all(&dir);
     Some(dir.join("openrouter-models.json"))
 }

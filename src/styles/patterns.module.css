@@ -11,14 +11,14 @@
   width: 100%;
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-default);
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   line-height: 1.4;
   outline: none;
-  transition: border-color var(--sway-duration-fast) ease;
+  transition: border-color var(--tori-duration-fast) ease;
 }
 .input:focus {
   border-color: var(--brand-default);
@@ -28,7 +28,7 @@
 .menuSurface {
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   box-shadow: var(--shadow-md);
   padding: calc(4px * var(--ui-scale));
 }
@@ -40,16 +40,16 @@
   gap: calc(6px * var(--ui-scale));
   background: var(--brand-subtle);
   color: var(--fg-default);
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   padding: calc(4px * var(--ui-scale)) calc(12px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 /* Spacious content card: rounded container with soft elevation. */
 .card {
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-lg);
+  border-radius: var(--tori-radius-lg);
   box-shadow: var(--shadow-sm);
   padding: calc(16px * var(--ui-scale));
 }

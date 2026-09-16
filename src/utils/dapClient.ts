@@ -17,7 +17,7 @@
 //      the launch config rather than off what the client declared, so a name
 //      with no router entry is a request nobody answers and an adapter that
 //      waits forever. Every name the bundle can send therefore has an entry
-//      from birth, and the four Sway cannot serve are *refused* explicitly
+//      from birth, and the four Tori cannot serve are *refused* explicitly
 //      rather than left silent.
 //
 // Unlike `serverRequests.ts` there is no substring-before-parse rule: LSP's
@@ -29,7 +29,7 @@
  *  Produced by the backend; the frontend only ever holds and returns it. */
 export type DapHandle = { server: string; session: string };
 
-/** A request the adapter sent *us*. Sway owes every one of these an answer. */
+/** A request the adapter sent *us*. Tori owes every one of these an answer. */
 export type DapRequestFrame = { seq: number; type: "request"; command: string; arguments?: unknown };
 
 /**
@@ -53,7 +53,7 @@ export const REVERSE_REQUESTS = [
 export type ReverseRequest = (typeof REVERSE_REQUESTS)[number];
 
 /**
- * Why Sway refuses each reverse request it does not serve.
+ * Why Tori refuses each reverse request it does not serve.
  *
  * A refusal is an answer: the adapter learns the client cannot do this and
  * reports a real failure, instead of the Phase 1 symptom where an unanswered
@@ -62,16 +62,16 @@ export type ReverseRequest = (typeof REVERSE_REQUESTS)[number];
  * hangs; `dapSessions.ts` overrides it with the real handler.
  */
 const REFUSALS: Record<ReverseRequest, string> = {
-  launchUnelevated: "Sway does not relaunch debug targets with elevated privileges.",
-  launchVSCode: "Sway is not VS Code and cannot open a VS Code window.",
-  remoteFileExists: "Sway does not debug over a remote connection.",
+  launchUnelevated: "Tori does not relaunch debug targets with elevated privileges.",
+  launchVSCode: "Tori is not VS Code and cannot open a VS Code window.",
+  remoteFileExists: "Tori does not debug over a remote connection.",
   runInTerminal:
-    "Sway runs debug targets in its own debug console; use `console: \"internalConsole\"`.",
+    "Tori runs debug targets in its own debug console; use `console: \"internalConsole\"`.",
   startDebugging: "This debug connection has no child-session handler.",
 };
 
 /** Base for the `id` of a refusal's structured error. DAP leaves the numbering
- *  to whoever produces the message, so these are Sway's own and stable. */
+ *  to whoever produces the message, so these are Tori's own and stable. */
 const REFUSAL_ERROR_BASE = 1000;
 
 /**
@@ -84,14 +84,14 @@ const REFUSAL_ERROR_BASE = 1000;
  */
 export function initializeArguments(adapterId: string): Record<string, unknown> {
   return {
-    clientID: "sway",
-    clientName: "Sway",
+    clientID: "tori",
+    clientName: "Tori",
     adapterID: adapterId,
     locale: "en",
     linesStartAt1: true,
     columnsStartAt1: true,
     pathFormat: "path",
-    // Rendering only: what the variables tree shows, not a request Sway owes.
+    // Rendering only: what the variables tree shows, not a request Tori owes.
     // `supportsVariablePaging` was held back until the tree that sends `start`
     // and `count` existed, because an unbacked claim about what the client can
     // do is the same class of lie the obligations map below exists to stop,
@@ -106,13 +106,13 @@ export function initializeArguments(adapterId: string): Record<string, unknown> 
 }
 
 /**
- * Client capabilities whose truth obliges Sway to *serve* a reverse request.
+ * Client capabilities whose truth obliges Tori to *serve* a reverse request.
  *
  * Declaring one of these true while refusing the request it names is a lie the
  * adapter believes, and js-debug believing it is how a target ends up launched
  * into a terminal that does not exist. A test asserts the pairing holds, which
  * is the whole reason the map is data rather than prose. Capabilities absent
- * from here (`supportsVariableType` and friends) describe what Sway renders and
+ * from here (`supportsVariableType` and friends) describe what Tori renders and
  * carry no inbound request.
  */
 export const CAPABILITY_OBLIGATIONS: Record<string, ReverseRequest> = {
@@ -195,7 +195,7 @@ function refusalFor(command: ReverseRequest): { message: string; body: unknown }
       error: {
         id: REFUSAL_ERROR_BASE + REVERSE_REQUESTS.indexOf(command),
         format: REFUSALS[command],
-        // Sway already surfaces the failure in the debug console; a modal from
+        // Tori already surfaces the failure in the debug console; a modal from
         // the adapter's own message would be the same thing twice.
         showUser: false,
       },
@@ -290,11 +290,11 @@ export function createDapConnection(send: (message: string) => void): DapConnect
         // discovers the names structurally. Answered anyway: an unanswered
         // request is an adapter that waits forever.
         console.warn("debug adapter sent an unknown reverse request", request.command);
-        respond(request, false, undefined, `Sway does not implement \`${request.command}\`.`);
+        respond(request, false, undefined, `Tori does not implement \`${request.command}\`.`);
         return;
       }
       if (refused.has(request.command as ReverseRequest)) {
-        console.warn("debug adapter requested", request.command, "which Sway refuses");
+        console.warn("debug adapter requested", request.command, "which Tori refuses");
       }
       answer(request, handler);
     }

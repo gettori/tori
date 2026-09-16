@@ -58,7 +58,7 @@ fn make_transport(
                 .with_effort_extras(effort_extras)
                 .with_questions_as_permissions(questions_as_permissions),
         ),
-        // Every ACP agent reaches Sway through this one arm. Which agent it is
+        // Every ACP agent reaches Tori through this one arm. Which agent it is
         // comes from the adapter's `[chat]` table, not from here, which is what
         // makes a new ACP agent a TOML file rather than a Rust change. The
         // adapter id travels with it only so the session locators this transport
@@ -108,7 +108,7 @@ pub fn build_args(
     // stored mode silently produced a session running something else, with the
     // picker still showing the mode that had been dropped.
     // Only when a mode was actually asked for: no pick stays no flag, leaving
-    // the CLI on its own default rather than Sway asserting one.
+    // the CLI on its own default rather than Tori asserting one.
     if let Some(resolved) = mode.and_then(|m| chat.resolve_mode(Some(m))) {
         args.extend(chat.mode_args_for(&resolved.id).unwrap_or_default());
     }
@@ -171,7 +171,7 @@ pub struct SpawnResult {
 /// `fork_from` is the session being forked *from*, when this is a fork. It is a
 /// separate parameter from `session_id` because a fork is the one case where
 /// the id being read and the id being claimed differ: `session_id` is the new
-/// one, which Sway chooses and claims **before** starting the child. Measured
+/// one, which Tori chooses and claims **before** starting the child. Measured
 /// against claude 2.1.220: `--resume <old> --fork-session --session-id <new>`
 /// honours the passed id and reports it back, so the claim can precede the
 /// process rather than chase it.
@@ -261,7 +261,7 @@ pub async fn chat_spawn(
             surface: Surface::Chat,
             tab_id: tab_id.clone(),
             child_pid: None,
-            sway_pid: std::process::id(),
+            tori_pid: std::process::id(),
             agent: agent_id.clone(),
             profile: profile_id.clone(),
         };
@@ -313,7 +313,7 @@ pub async fn chat_spawn(
         cwd,
         // The user's agent override wins over the adapter's program name.
         // Read at spawn time rather than cached, so changing it in Settings
-        // applies to the next session started without restarting Sway.
+        // applies to the next session started without restarting Tori.
         program: crate::settings::agent_override(&agent_id).unwrap_or_else(|| chat.program.clone()),
         args,
         // The account this session runs as, and the only thing that makes it
@@ -328,7 +328,7 @@ pub async fn chat_spawn(
     let questions_as_permissions = !crate::settings::answer_questions_inline();
     let id_for_factory = session_id.clone();
     let agent_for_factory = agent_id.clone();
-    // **Only a transport whose conversation Sway cannot otherwise read back.**
+    // **Only a transport whose conversation Tori cannot otherwise read back.**
     // A claude session's transcript is a file `chat_history` already reads, so
     // it gets `None` and pays one `if let Some` per event and nothing else.
     // Keyed on the transport rather than on the agent id, so a fifth ACP adapter
@@ -435,7 +435,7 @@ pub async fn chat_set_visible(state: State<'_, ChatState>, session_id: String, v
 ///
 /// **Nothing is persisted here.** The scope rode back to the agent in the same
 /// response, as `updatedPermissions`, in the agent's own rule grammar - and
-/// that copy is the one its next tool call consults. Sway used to write a rule
+/// that copy is the one its next tool call consults. Tori used to write a rule
 /// of its own alongside it, which recorded one decision twice in two formats and
 /// left the two free to disagree. There is no second store now.
 #[tauri::command]
@@ -569,15 +569,15 @@ pub struct UsageTotals {
 }
 
 // `chat_set_budget_stop` used to live here, arming a spend stop in the rule file
-// so the hook would refuse every subsequent tool call. Sway no longer decides
+// so the hook would refuse every subsequent tool call. Tori no longer decides
 // tool calls, so the ceiling moved to the one boundary it still owns: whether a
 // new turn starts at all. That belongs entirely to the panel, so there is
 // nothing left for a command to do.
 
 // `chat_add_restriction`, `chat_list_rules`, `chat_remove_rule` and
-// `chat_accept_rule_offer` used to live here, writing and reading Sway's own
+// `chat_accept_rule_offer` used to live here, writing and reading Tori's own
 // allow/ask/deny store. There is no such store: the agent decides its own tool
-// calls and records its own grants, so a Sway-owned rule could only be a second
+// calls and records its own grants, so a Tori-owned rule could only be a second
 // opinion nothing consults.
 
 /// Every MCP server configured for `cwd`, across Claude's three scopes.
@@ -874,7 +874,7 @@ pub async fn chat_close(state: State<'_, ChatState>, session_id: String) -> Resu
 /// order, and a return value is ordered by construction where two producers on
 /// one channel are not.
 ///
-/// Works for a session Sway never ran: the file is the agent's own jsonl, and
+/// Works for a session Tori never ran: the file is the agent's own jsonl, and
 /// a PTY tab, an outside terminal and a chat tab all write the same one.
 ///
 /// A session with no transcript yet returns no events rather than an error - a
@@ -925,7 +925,7 @@ pub async fn chat_history(
     Ok(events)
 }
 
-/// Does this agent write a transcript Sway can find on disk?
+/// Does this agent write a transcript Tori can find on disk?
 ///
 /// **Asked of the adapter, not of `transcript_path`.** Both answers are `None`
 /// for an ACP session, but `transcript_path` is also `None` for a claude session
@@ -938,7 +938,7 @@ pub(crate) fn keeps_a_transcript(agent_id: &str) -> bool {
         .unwrap_or(true)
 }
 
-/// The conversation for an agent that keeps none Sway can read: the log the
+/// The conversation for an agent that keeps none Tori can read: the log the
 /// mirror wrote beside the session's locator.
 ///
 /// Off the IPC thread through `exec::blocking`, per [[adr_no_sync_ipc_commands]]:
@@ -984,9 +984,9 @@ fn history_from_log(session_id: &str, path: &std::path::Path) -> Vec<ChatEvent> 
 
 // --- mid-turn quit recovery ------------------------------------------------
 //
-// A turn that was running when Sway went away leaves no trace the transcript can
+// A turn that was running when Tori went away leaves no trace the transcript can
 // be read for: the file simply stops, which is indistinguishable from a turn
-// that ended normally and from one still streaming. So Sway records its own
+// that ended normally and from one still streaming. So Tori records its own
 // side - the turn it believes is open - and clears it on completion. Anything
 // still marked at the next launch was interrupted.
 //
@@ -1004,7 +1004,7 @@ pub struct OpenTurn {
 fn open_turn_path(session_id: &str) -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/chat-open-turn")
+        .join(".config/tori/chat-open-turn")
         .join(format!("{session_id}.json"))
 }
 
@@ -1040,7 +1040,7 @@ fn mark_turn(session_id: &str, turn_id: Option<String>) -> Result<(), String> {
     std::fs::write(&path, json).map_err(|e| e.to_string())
 }
 
-/// The turn this session was running when Sway last went away, if any.
+/// The turn this session was running when Tori last went away, if any.
 ///
 /// **Consumed, not merely read**: the mark is cleared as it is reported, so the
 /// interruption is announced exactly once. Left in place it would re-announce
@@ -1094,7 +1094,7 @@ pub async fn chat_retired_stores() -> Result<Option<super::retired::RetiredRuleS
     Ok(super::retired::sweep_rule_store())
 }
 
-/// End a `claude` child left behind by a crashed Sway, so its session id becomes
+/// End a `claude` child left behind by a crashed Tori, so its session id becomes
 /// claimable again. Separate from `chat_close`, which only ever touches sessions
 /// this process owns.
 #[tauri::command]
@@ -1122,7 +1122,7 @@ mod tests {
     /// another's.
     #[test]
     fn only_an_agent_that_keeps_no_transcript_reads_the_log() {
-        assert!(keeps_a_transcript("claude"), "claude writes a transcript Sway reads");
+        assert!(keeps_a_transcript("claude"), "claude writes a transcript Tori reads");
         assert!(!keeps_a_transcript("codex"), "an ACP agent keeps its conversation itself");
         assert!(!keeps_a_transcript("opencode"));
         assert!(keeps_a_transcript("not-an-agent"), "an unknown agent is claude-shaped");
@@ -1146,7 +1146,7 @@ mod tests {
         use crate::chat::host::ChatHost;
         use crate::chat::model::TOOL_OUTPUT_CAP;
 
-        let dir = std::env::temp_dir().join(format!("sway-log-read-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-log-read-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("s1.jsonl");
@@ -1205,7 +1205,7 @@ mod tests {
     /// error. There is nothing wrong with a chat nobody has used yet.
     #[test]
     fn a_session_with_no_log_reads_as_empty() {
-        let missing = std::env::temp_dir().join("sway-log-read-nothing-here.jsonl");
+        let missing = std::env::temp_dir().join("tori-log-read-nothing-here.jsonl");
         let _ = std::fs::remove_file(&missing);
         assert!(history_from_log("s1", &missing).is_empty());
     }
@@ -1251,7 +1251,7 @@ mod tests {
     /// Pins the exact argv measured against claude 2.1.220: forking reads the
     /// old id and *writes* the new one, and the CLI honours the id we pass.
     /// Verified live - the fork answered from the original's context, reported
-    /// the id Sway chose, and the original transcript never saw the fork's turn.
+    /// the id Tori chose, and the original transcript never saw the fork's turn.
     #[test]
     fn a_fork_reads_the_old_session_and_claims_the_new_one() {
         let args = build_args(claude_chat(), "new-id", false, Some("old-id"), None, None, None, &[]);
@@ -1283,7 +1283,7 @@ mod tests {
 
 
     /// Mid-turn quit recovery. The transcript cannot answer this: a killed turn
-    /// and a finished one both just stop, so Sway records its own side.
+    /// and a finished one both just stop, so Tori records its own side.
     #[test]
     fn an_open_turn_survives_a_quit_and_is_announced_exactly_once() {
         let sid = format!("open-turn-test-{}", std::process::id());
@@ -1291,7 +1291,7 @@ mod tests {
         // Nothing recorded yet: a session that never ran reports no interruption.
         assert_eq!(take_interrupted_turn(&sid), None);
 
-        // A turn opens, and Sway goes away before it completes.
+        // A turn opens, and Tori goes away before it completes.
         mark_turn(&sid, Some("turn-3".into())).unwrap();
         let found = take_interrupted_turn(&sid);
         assert_eq!(found.map(|o| o.turn_id), Some("turn-3".to_string()));
@@ -1351,7 +1351,7 @@ mod tests {
 
     /// **No pick, no flag**, which is the rule that actually matters here: a
     /// session nobody chose a model for starts on the CLI's own default rather
-    /// than on one Sway asserted.
+    /// than on one Tori asserted.
     ///
     /// What this test used to say was that an *undeclared* model was dropped,
     /// back when `[[chat.models]]` was a list and `model_args_for` gated on it.
@@ -1391,7 +1391,7 @@ mod tests {
         assert!(!args.iter().any(|a| a == "no-such-mode"), "the unresolvable mode must not reach the child");
     }
 
-    /// No pick stays no flag: Sway asserting a mode nobody chose would be a
+    /// No pick stays no flag: Tori asserting a mode nobody chose would be a
     /// different session from the one the CLI would have started.
     #[test]
     fn no_mode_at_all_passes_no_mode_flag() {
@@ -1496,12 +1496,12 @@ mod tests {
         // Defaulted from `[launch] program`, not restated in `[chat]`.
         assert_eq!(chat.program, "opencode");
 
-        let args = build_args(chat, "sway-minted-id", false, None, None, None, None, &[]);
+        let args = build_args(chat, "tori-minted-id", false, None, None, None, None, &[]);
         assert_eq!(args, vec!["acp"], "the launch is `opencode acp` and nothing else");
 
         // A resume composes the same command: reopening is `session/load` inside
         // the protocol, so there is no second command line for it.
-        let resumed = build_args(chat, "sway-minted-id", true, None, None, None, None, &[]);
+        let resumed = build_args(chat, "tori-minted-id", true, None, None, None, None, &[]);
         assert_eq!(resumed, vec!["acp"]);
 
         // And a model choice does not become a flag, because the switch is a

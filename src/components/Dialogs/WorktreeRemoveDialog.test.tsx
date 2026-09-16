@@ -43,7 +43,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   render(() => (
     <WorktreeRemoveDialog
       label="feature/omnibox"
-      path="/Users/x/Projects/sway/feature-omnibox"
+      path="/Users/x/Projects/tori/feature-omnibox"
       branch="feature/omnibox"
       dirty={false}
       unpushed={false}
@@ -76,7 +76,7 @@ describe("WorktreeRemoveDialog", () => {
     it("shows what is being deleted", () => {
       open();
 
-      expect(screen.getByText("/Users/x/Projects/sway/feature-omnibox")).toBeTruthy();
+      expect(screen.getByText("/Users/x/Projects/tori/feature-omnibox")).toBeTruthy();
       expect(screen.getAllByText("feature/omnibox").length).toBeGreaterThan(0);
     });
 

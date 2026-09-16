@@ -575,7 +575,7 @@ export default function PrDetail(props: {
   /// sentence when it refuses.
   ///
   /// Its wording, verbatim, is the point: GitHub knows about branch protection
-  /// Sway cannot read, so "At least 1 approving review is required" is a fact
+  /// Tori cannot read, so "At least 1 approving review is required" is a fact
   /// only the refusal carries. A generic "could not merge" here would throw away
   /// the only actionable thing in the whole exchange.
   async function land(run: () => Promise<void>, after: () => void) {

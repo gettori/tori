@@ -35,7 +35,7 @@ export type LayoutEnvelope = {
  *  falls back to the pin rule, which now resolves to that one pane. */
 const ENVELOPE_VERSION = 2;
 
-const LS_PANES = "sway.panes.v1";
+const LS_PANES = "tori.panes.v1";
 
 function validNode(n: unknown, depth: number, ids: Set<string>): boolean {
   if (!n || typeof n !== "object") return false;
@@ -230,7 +230,7 @@ export function seedOnePane(): LayoutEnvelope {
   };
 }
 
-/** The two-pane layout Sway shipped with, kept for the suites and stories that
+/** The two-pane layout Tori shipped with, kept for the suites and stories that
  *  are about two panes. `rightShare` is the editor's percent of the split;
  *  visibility carries over from the legacy layout, with its both-hidden
  *  repair. */

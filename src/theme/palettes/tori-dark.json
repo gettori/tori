@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "sway-dark",
-  "label": "Sway Dark",
+  "id": "tori-dark",
+  "label": "Tori Dark",
   "appearance": "dark",
   "colors": {
     "canvas": "#15171c",

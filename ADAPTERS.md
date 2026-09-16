@@ -1,18 +1,18 @@
 # Agent adapters
 
-Sway drives every CLI coding agent through one abstraction: the **agent
+Tori drives every CLI coding agent through one abstraction: the **agent
 adapter**. An adapter describes how to launch an agent, where its session
 transcripts live, how to tell a live process apart from a stray `less` on the
-same file, and which built-in parser turns its transcript into Sway's session
+same file, and which built-in parser turns its transcript into Tori's session
 model.
 
 Seven adapters ship bundled: `claude`, `codex`, `copilot`, `gemini`, `kimi`,
 `opencode` and `pi`. You add your own, or whole-replace a bundled one, by
-dropping a TOML file into `~/.config/sway/agents/`.
+dropping a TOML file into `~/.config/tori/agents/`.
 
 ## Agent, adapter, provider
 
-Sway used to call the same thing an agent in one file and a harness in the next.
+Tori used to call the same thing an agent in one file and a harness in the next.
 It is **agent** everywhere now, including where the word is slightly too broad,
 because a second word bought a distinction almost nothing in the codebase
 actually used.
@@ -21,7 +21,7 @@ Two other words remain, and they are not synonyms for it:
 
 | Word | What it means | Seen in |
 | --- | --- | --- |
-| **agent** | an AI coding CLI. Also the protocol's own word, the `A` in ACP. | `agentId`, `agent_health`, `~/.config/sway/agents/` |
+| **agent** | an AI coding CLI. Also the protocol's own word, the `A` in ACP. | `agentId`, `agent_health`, `~/.config/tori/agents/` |
 | **adapter** | the TOML that says *how* to drive one, and the record it loads into. Data, never behaviour. Exactly one per agent. | this file, `agents/*.toml`, `AgentAdapter`, `Adapter` |
 | **provider** | the vendor behind a **model**. | `providerIcon`, the model pill |
 
@@ -46,8 +46,8 @@ a default and quietly discards a user's binary override or a real probe result.
 
 ## Supported agents
 
-The bundled set *is* Sway's support list - there is no separate catalogue of
-agents Sway has heard of but cannot drive. There used to be one (a trimmed
+The bundled set *is* Tori's support list - there is no separate catalogue of
+agents Tori has heard of but cannot drive. There used to be one (a trimmed
 copy of the [ACP Registry](https://github.com/agentclientprotocol/registry),
 with an install path for its binary entries); it was removed when the last
 uncovered entries got adapters, because a list whose every row is already a
@@ -113,19 +113,19 @@ first-party it is *only* a file drop: no Rust at all. The things a TOML cannot
 supply are a **transport** (`chat.transport` selects one that exists; see
 [The `[chat]` table](#the-chat-table)) and a **parser kind** for a file-backed
 agent whose transcript shape differs from claude's (see
-[Parser kinds](#parser-kinds)). One more lesson from the two adapters Sway once
+[Parser kinds](#parser-kinds)). One more lesson from the two adapters Tori once
 bundled and dropped: an agent whose tools never block on a permission prompt
 wants `needs_you = false`.
 
 ## File location and loading
 
-- Bundled adapters: compiled into Sway, not user-editable.
-- User adapters: every `*.toml` file directly inside `~/.config/sway/agents/`.
-- Loaded once at startup (not live-watched - restart Sway after editing).
+- Bundled adapters: compiled into Tori, not user-editable.
+- User adapters: every `*.toml` file directly inside `~/.config/tori/agents/`.
+- Loaded once at startup (not live-watched - restart Tori after editing).
 - A user file whose `id` matches a bundled adapter **whole-replaces** it: the
   entire adapter definition, not a field-by-field merge. A user file that
   fails validation never silently falls back to pretending nothing's wrong -
-  the error is logged (visible in Sway's console/log output) naming what's
+  the error is logged (visible in Tori's console/log output) naming what's
   wrong, and the id it would have overridden keeps its previous (bundled or
   earlier-loaded) definition so one broken file can't make an agent vanish.
 - An unrecognized top-level field is a warning, not a rejection. A missing
@@ -136,7 +136,7 @@ wants `needs_you = false`.
 
 ```toml
 schema_version = 5   # required; 1 to 5. v2 adds [chat], v3 adds [accounts], v4 adds [usage], v5 adds [config] - all optional, all below
-id = "..."            # required; the agent's identifier throughout Sway
+id = "..."            # required; the agent's identifier throughout Tori
 label = "..."         # required; display name (sidebar, launch buttons)
 icon = "..."          # optional; which bundled agent logo to wear - "claude", "codex", "copilot", "gemini", "kimi", "opencode", "pi". An unknown or absent name is not an error: the UI falls back to the label's first letter rather than to another agent's mark
 verified_against = "..."  # optional; the agent CLI version this was captured against, echoed here for reference
@@ -196,9 +196,9 @@ args = []                 # optional; the args that select this level
 
 # --- only read by transport = "acp" ---
 [chat.acp]
-serve_client_fs = false   # optional, default false; advertise Sway's filesystem and terminal to the agent
+serve_client_fs = false   # optional, default false; advertise Tori's filesystem and terminal to the agent
 
-# --- v3 only; omit the whole table for an agent Sway does not sign in ---
+# --- v3 only; omit the whole table for an agent Tori does not sign in ---
 [accounts]
 home_env = "..."            # optional; the env var pointing the agent at an isolated profile home
 home_default = "~/..."      # optional; where home_env points when unset - required with isolation + [discovery]
@@ -245,7 +245,7 @@ can only select one that already exists. Two members ship:
   one long-lived child with stdin held open. One vendor's format.
 - **`acp`** - the [Agent Client Protocol](https://agentclientprotocol.com) over a
   child's stdio. Not one vendor's format: **every agent speaking ACP
-  first-party reaches Sway through this one transport plus its own TOML**, which
+  first-party reaches Tori through this one transport plus its own TOML**, which
   is why `opencode.toml` is under 40 lines of actual settings.
 
 An unrecognised value is rejected loudly and the id keeps its previous adapter,
@@ -265,7 +265,7 @@ table would only go stale or contradict the user's own account.
 **closed, named set** rather than free-form JSON: a third quirk has to be argued
 for in Rust before a TOML can spell it, which is what keeps "a new agent is a
 TOML file" from meaning "a new agent is a TOML file plus a pile of
-agent-specific escape hatches". `serve_client_fs` advertises Sway's filesystem
+agent-specific escape hatches". `serve_client_fs` advertises Tori's filesystem
 and terminal to the agent; the default declines both, which is a complete
 configuration rather than a degraded one, since ACP agents do their own I/O.
 
@@ -303,17 +303,17 @@ silent:
 
 ### The `[accounts]` table
 
-Declares how Sway signs this agent in, and whether it can hold more than one
-account at once. Omit the whole table for an agent Sway does not sign in: that
+Declares how Tori signs this agent in, and whether it can hold more than one
+account at once. Omit the whole table for an agent Tori does not sign in: that
 reports *unknown*, not *signed out*, and renders no account controls rather
 than an inert set.
 
-**The default profile is `home_env` left unset.** Sway never copies, reads or
+**The default profile is `home_env` left unset.** Tori never copies, reads or
 stores credentials. A default-profile session spawns with no home variable, so
 the agent resolves whatever login the user already had; an added profile
-spawns with the variable pointed at a Sway-created directory under
-`~/Library/Application Support/sway/profiles` (mode `0700`), never under
-`~/.config/sway`, which is commonly a dotfile repo. The default profile cannot
+spawns with the variable pointed at a Tori-created directory under
+`~/Library/Application Support/tori/profiles` (mode `0700`), never under
+`~/.config/tori`, which is commonly a dotfile repo. The default profile cannot
 be renamed or removed, because there is no stored record of it to change.
 
 **`supports_isolation` is a measurement, not an inference.** It defaults to
@@ -332,7 +332,7 @@ in this paragraph rather than in the app.
 > sha256($CLAUDE_CONFIG_DIR)[:8]`, hashing the **raw environment string**
 > rather than a resolved path (the default home takes the unsuffixed name). So
 > `/a/home` and `/a/home/` are two different logins for one directory, and a
-> relative or symlinked spelling is a third. Sway canonicalizes once, at the
+> relative or symlinked spelling is a third. Tori canonicalizes once, at the
 > boundary, before storing a profile home or spawning against it.
 
 `login_args` always runs in a real PTY. `claude auth login` is browser OAuth
@@ -346,7 +346,7 @@ back on and args without a kind are rejected.
 
 **`home_default` is what makes a second account's history findable.** An agent
 pointed at an isolated home writes its transcripts under that home, in the same
-layout it uses by default, so Sway finds a profile's sessions by taking
+layout it uses by default, so Tori finds a profile's sessions by taking
 `[discovery] dir` and swapping this prefix for the profile's own home. Two
 declared paths rather than one declared suffix: the suffix is then derived, and
 a `dir` that does not sit under `home_default` yields no root at all rather than
@@ -357,11 +357,11 @@ only its protocol reaches declares no `[discovery]` table and so is never asked
 for one.
 
 **`home_markers` guards adding a folder the user already has.** An account can
-point at an existing home instead of one Sway creates. The sign-in probe that
+point at an existing home instead of one Tori creates. The sign-in probe that
 runs when it is added writes into whatever folder it is given, so the folder
 must be empty or already hold one of these names, or it is refused before
-anything runs in it. An empty folder is signed in to like one Sway created. An
-adapter that declares none cannot adopt a folder. Sway never deletes an adopted
+anything runs in it. An empty folder is signed in to like one Tori created. An
+adapter that declares none cannot adopt a folder. Tori never deletes an adopted
 folder: removing that account only forgets it.
 
 ### The `[usage]` table
@@ -391,11 +391,11 @@ leave.
 `sources[0]` is what the agent resolves to when the user has chosen nothing, so
 declaration order is the ladder's order and not a set.
 
-**Declare a rung only once Sway has a read path for it.** An undeclared rung
+**Declare a rung only once Tori has a read path for it.** An undeclared rung
 renders as a greyed control with the loader's own reason beside it, which is
 honest; a declared rung with nothing behind it renders as a control that
 answers nothing. Omitting the whole table is the normal case for an agent whose
-quota Sway cannot see, and it renders as "no usage source" rather than as a
+quota Tori cannot see, and it renders as "no usage source" rather than as a
 quota of zero. An empty `sources = []` is rejected: an empty ladder and no
 ladder are not the same claim.
 
@@ -464,7 +464,7 @@ kept in a dotfiles repo lists its skills rather than reading as an opaque link.
 The vendor's own documented install command, exactly as documented. When an
 agent's binary is not on PATH, the Install button on its Settings page runs
 this in a visible terminal tab (spawned directly, no shell) and re-probes
-health when the process exits: Sway opens the door and never installs anything
+health when the process exits: Tori opens the door and never installs anything
 itself, the same posture as sign-in. Omit the whole table when nobody has
 verified an install end to end on a real machine, and the page falls back to
 "install `program` yourself" instructions: an unverified one-liner would be a
@@ -498,9 +498,9 @@ one today: `claude --settings <path>` injects a
 `UserPromptSubmit`/`PreToolUse`/`Notification`/`Stop` hook set, verified
 non-invasive (layers on top of `~/.claude/settings.json` via claude's own
 `--settings-sources user,project,local` default; that file is never opened
-or edited) and scoped to Sway-launched sessions only - an externally-typed
+or edited) and scoped to Tori-launched sessions only - an externally-typed
 `claude` never receives the flag. The value is a **path** to a small
-Sway-written file (`~/.config/sway/claude-hooks-settings.json`), not inline
+Tori-written file (`~/.config/tori/claude-hooks-settings.json`), not inline
 JSON - every agent tab's launch command is typed into its login shell one
 byte at a time, and a PTY in canonical mode silently truncates a single
 line beyond the kernel's line-discipline buffer, so an inline settings blob
@@ -509,7 +509,7 @@ live, not in review). Each hook's command greps only
 `session_id`/`hook_event_name` off the JSON payload on stdin (POSIX
 `grep`/`sed`/`printf`, no jq/node/python dependency, and prompt text/tool
 input are never written to disk) and writes a small
-`~/.config/sway/hooks-status/<session id>.json` marker. `Notification` -
+`~/.config/tori/hooks-status/<session id>.json` marker. `Notification` -
 claude's own signal that it is waiting on the user (a permission prompt or an
 idle nudge) - maps to `blocked-candidate`; `UserPromptSubmit`/`PreToolUse`
 map to `working`; `Stop` maps to `done`. Verified empirically against a real
@@ -544,7 +544,7 @@ one, set `needs_you = false` and the dot caps at working.
 
 ### `{id}` / `{file}` placeholders
 
-`launch.resume_args` and `running.pattern` are templates. Sway substitutes:
+`launch.resume_args` and `running.pattern` are templates. Tori substitutes:
 
 - `{id}` - the session id.
 - `{file}` - the session's transcript file path, for an agent that resumes by
@@ -570,9 +570,9 @@ transcript, an editor with it open).
 ### Parser kinds
 
 `parser.kind` selects which built-in transcript parser turns this agent's
-session data into Sway's session model (prompt/turn/tool counts, touched
+session data into Tori's session model (prompt/turn/tool counts, touched
 files, the chat panel's replay of an existing session, the needs-you tail
-state). Parser kinds are implemented in Sway itself,
+state). Parser kinds are implemented in Tori itself,
 not user-authorable - a user adapter can only *reference* one of:
 
 - `claude_jsonl` - Claude Code's transcript shape: `type: "user"/"assistant"`
@@ -582,7 +582,7 @@ not user-authorable - a user adapter can only *reference* one of:
 
 That is the only kind today, and it is a closed Rust enum rather than a config
 string precisely so this stays honest: a TOML naming an unimplemented kind is
-rejected at load rather than half-working. **Adding a kind is a Sway code
+rejected at load rather than half-working. **Adding a kind is a Tori code
 change**, in `sessions.rs`'s transcript readers - the compiler names every site
 that has to answer for a new variant.
 
@@ -593,7 +593,7 @@ One backend today:
 - **`"file"`** (default, and the only value accepted): the agent writes one
   file per session under a directory tree. `dir` is the session-transcript
   root; `filename_pattern` is matched against each file's *name* (not its full
-  path) inside every immediate subdirectory of `dir` (Sway's layout is
+  path) inside every immediate subdirectory of `dir` (Tori's layout is
   `<dir>/<encoded-cwd>/<session-file>`). Must contain a named capture group
   called `id`, used as a fallback session id when the transcript's own content
   doesn't yield one.
@@ -609,13 +609,13 @@ them.
 `[discovery]`, `[parser]` and `[running]` are **one fact about an adapter, not
 three**, and the loader requires all three or none:
 
-- **All three** - a file-backed agent. Sway walks `discovery.dir`, parses each
+- **All three** - a file-backed agent. Tori walks `discovery.dir`, parses each
   transcript with `parser.kind`, and recognises a live session by matching
   `running.pattern` against the process table. This is `claude`, and every v1
   adapter.
 - **None** - an agent whose sessions only its own protocol reaches. Allowed only
   when `chat.transport` is one that carries sessions in-protocol (today: `acp`).
-  Sway keeps its own small locator file per session instead, records what the
+  Tori keeps its own small locator file per session instead, records what the
   protocol told it, and reopens a conversation with `session/load`.
 - **Some** - always rejected, naming the missing tables. This is the case the
   rule exists for: a typo that loses `[discovery]` from a Claude-shaped adapter
@@ -627,7 +627,7 @@ way that costs something. No directory-and-regex describes a store only the
 agent can read; a parser kind would have nothing to parse; and a `pgrep` pattern
 is actively dangerous, since every session of one ACP agent shares the command
 line `opencode acp`, so a pattern match would report all of them running whenever
-any one was. Sway answers liveness for those agents from the child process it
+any one was. Tori answers liveness for those agents from the child process it
 started itself.
 
 ## Example: a from-scratch third-party adapter
@@ -663,7 +663,7 @@ pattern = 'acme --resume {id}'
 pty_quiet_ms = 2000
 ```
 
-Save this as `~/.config/sway/agents/acme.toml` and restart Sway; a "+ Acme"
+Save this as `~/.config/tori/agents/acme.toml` and restart Tori; a "+ Acme"
 launch option appears alongside the bundled agents.
 
 ### An ACP agent
@@ -694,7 +694,7 @@ agent's own handshake, so there is nothing here to keep in step with it.
 
 ## Whole-replacing a bundled adapter
 
-To point Sway's `claude` adapter at a wrapper script instead of the real
+To point Tori's `claude` adapter at a wrapper script instead of the real
 binary, keep `id = "claude"` and change only what differs - but remember
 this is a **whole replacement**, so every required section must still be
 present in full, not just the field you're changing:

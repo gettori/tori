@@ -14,7 +14,7 @@
 //! so holding ⌘S changes nothing.
 //!
 //! **Refs are keyed by worktree.** A bare repo's worktrees share one ref store,
-//! so `refs/sway/localhistory/*` would otherwise interleave the timelines of
+//! so `refs/tori/localhistory/*` would otherwise interleave the timelines of
 //! `src/a.ts` in fifteen different checkouts into one list. The key is a hash of
 //! the worktree's own toplevel, and a key with no live worktree behind it is
 //! what the prune sweep collects.
@@ -42,7 +42,7 @@ const MAX_PER_FILE: usize = 50;
 /// past this, what you want is a commit.
 const MAX_AGE_MS: u64 = 14 * 24 * 60 * 60 * 1000;
 
-const FAMILY: &str = "refs/sway/localhistory";
+const FAMILY: &str = "refs/tori/localhistory";
 
 /// One saved version, as the timeline lists it.
 #[derive(Serialize, Clone, Debug, PartialEq, Eq)]
@@ -516,7 +516,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_localhistory_test_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_localhistory_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         // A commit, so `worktree list` and `rev-parse` behave as they do in a
@@ -637,7 +637,7 @@ mod tests {
     #[test]
     fn a_file_outside_the_repo_has_no_history_rather_than_an_error() {
         let dir = tmp_repo();
-        let outside = std::env::temp_dir().join("sway_localhistory_outsider.ts");
+        let outside = std::env::temp_dir().join("tori_localhistory_outsider.ts");
         std::fs::write(&outside, "x\n").unwrap();
         let path = outside.to_string_lossy().into_owned();
         assert!(!local_history_note_body(repo(&dir), path.clone()).unwrap());

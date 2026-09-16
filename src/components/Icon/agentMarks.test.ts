@@ -1,4 +1,4 @@
-// Which agents wear a real logo, pinned against the bundled adapters Sway
+// Which agents wear a real logo, pinned against the bundled adapters Tori
 // actually ships.
 //
 // The point is not the count. It is that **a mark is a claim about who ran the

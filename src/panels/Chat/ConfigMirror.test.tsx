@@ -98,7 +98,7 @@ function setup(options: ChatConfigOption[] = OPTIONS) {
 }
 
 describe("the agent's own options in the composer bar", () => {
-  it("shows only what Sway has no control of its own for", () => {
+  it("shows only what Tori has no control of its own for", () => {
     const { container } = setup();
     // The three with bespoke pickers are not mirrored: two controls writing one
     // piece of session state is how they end up disagreeing about it.
@@ -112,7 +112,7 @@ describe("the agent's own options in the composer bar", () => {
     const menu = openMenu(getByLabelText("Verbosity"));
     expect(menu.textContent).toContain("Concise");
     // The agent's own sentence about a choice, carried through rather than
-    // dropped: Sway has nothing else to say about a lever it has never seen.
+    // dropped: Tori has nothing else to say about a lever it has never seen.
     expect(menu.textContent).toContain("Short answers");
   });
 
@@ -128,7 +128,7 @@ describe("the agent's own options in the composer bar", () => {
     expect(onSet).toHaveBeenCalledWith("web_search", true);
   });
 
-  /** A lever Sway has no glyph for keeps its name on screen. The icon-only pill
+  /** A lever Tori has no glyph for keeps its name on screen. The icon-only pill
    *  is for the handful whose picture already says it; a generic toggle glyph
    *  with no words is a control the user cannot identify at all. */
   it("draws the name of a toggle whose glyph means nothing", () => {

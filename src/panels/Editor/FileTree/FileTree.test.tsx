@@ -415,15 +415,15 @@ describe("the undo contract", () => {
   function renameEvents() {
     const seen: { from: string; to: string }[] = [];
     const onRenamed = (e: Event) => seen.push((e as CustomEvent).detail);
-    window.addEventListener("sway:file-renamed", onRenamed);
-    return { seen, stop: () => window.removeEventListener("sway:file-renamed", onRenamed) };
+    window.addEventListener("tori:file-renamed", onRenamed);
+    return { seen, stop: () => window.removeEventListener("tori:file-renamed", onRenamed) };
   }
 
   function toasts() {
     const seen: { message: string; action?: { label: string; run: () => void } }[] = [];
     const onToast = (e: Event) => seen.push((e as CustomEvent).detail);
-    window.addEventListener("sway:toast", onToast);
-    return { seen, stop: () => window.removeEventListener("sway:toast", onToast) };
+    window.addEventListener("tori:toast", onToast);
+    return { seen, stop: () => window.removeEventListener("tori:toast", onToast) };
   }
 
   it("announces a rename so open tabs can follow it", async () => {
@@ -643,7 +643,7 @@ describe("selecting and revealing", () => {
   });
 
   it("offers no reveal for a synthetic tab that has no row", async () => {
-    mountProject({ activePath: "sway://commit-log" });
+    mountProject({ activePath: "tori://commit-log" });
     await screen.findByText("README.md");
 
     expect(screen.queryByLabelText("Reveal")).toBeNull();
@@ -725,7 +725,7 @@ describe("dragging in the tree", () => {
 
     // What Composer.tsx and TerminalView.tsx read. If a move-only drag stopped
     // setting this, dragging a file into chat would silently stop mentioning it.
-    expect(dt.getData("application/x-sway-path")).toBe(`${ROOT}/README.md`);
+    expect(dt.getData("application/x-tori-path")).toBe(`${ROOT}/README.md`);
     // Both meanings stay on the table; the drop target decides which happens.
     expect(dt.effectAllowed).toBe("copyMove");
 
@@ -741,7 +741,7 @@ describe("dragging in the tree", () => {
 
     // The editor's tab strip sets only the mention type.
     const dt = dataTransfer();
-    dt.setData("application/x-sway-path", "/elsewhere/other.ts");
+    dt.setData("application/x-tori-path", "/elsewhere/other.ts");
     fireEvent.dragOver(rowFor("src"), { dataTransfer: dt });
     expect(dt.dropEffect).toBe("");
     fireEvent.drop(rowFor("src"), { dataTransfer: dt });
@@ -756,7 +756,7 @@ describe("dragging in the tree", () => {
     const dt = dataTransfer();
     fireEvent.dragStart(rowFor("README.md"), { dataTransfer: dt });
 
-    expect(dt.getData("application/x-sway-tree-move")).toBe("");
+    expect(dt.getData("application/x-tori-tree-move")).toBe("");
     expect(dt.effectAllowed).toBe("copy");
   });
 
@@ -820,7 +820,7 @@ describe("dragging in the tree", () => {
   });
 });
 
-// Written against the hand-rolled menu (skarif2/sway#103, phase 1), now running
+// Written against the hand-rolled menu (gettori/tori#103, phase 1), now running
 // against Kobalte's (phase 3). Every assertion below is the one phase 1 wrote:
 // what a right-click menu *does* was chosen to survive the change, and it did.
 // Where it opens is pinned in `ContextMenu.test.tsx` instead, since no position
@@ -942,8 +942,8 @@ describe("one member of a Feature at a time", () => {
   function toasts() {
     const seen: { message: string }[] = [];
     const onToast = (e: Event) => seen.push((e as CustomEvent).detail);
-    window.addEventListener("sway:toast", onToast);
-    return { seen, stop: () => window.removeEventListener("sway:toast", onToast) };
+    window.addEventListener("tori:toast", onToast);
+    return { seen, stop: () => window.removeEventListener("tori:toast", onToast) };
   }
 
   beforeEach(() => {
@@ -1082,11 +1082,11 @@ describe("restoring what was open", () => {
   const A = "/feat/api";
   const B = "/feat/web";
 
-  const stored = () => JSON.parse(localStorage.getItem("sway.treeExpanded.v1") ?? "{}");
+  const stored = () => JSON.parse(localStorage.getItem("tori.treeExpanded.v1") ?? "{}");
 
   /** What last run left behind, as the next run finds it. */
   const seed = (store: Record<string, { dirs?: string[]; closed?: string[] }>) => {
-    localStorage.setItem("sway.treeExpanded.v1", JSON.stringify(store));
+    localStorage.setItem("tori.treeExpanded.v1", JSON.stringify(store));
     resetExpanded();
   };
 
@@ -1175,7 +1175,7 @@ describe("restoring what was open", () => {
     await screen.findByText("main.ts");
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(localStorage.getItem("sway.treeExpanded.v1")).toBeNull();
+    expect(localStorage.getItem("tori.treeExpanded.v1")).toBeNull();
   });
 
   it("leaves every workspace it did not touch exactly as it found it", async () => {

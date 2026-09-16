@@ -34,7 +34,7 @@ export type LspHealth = {
 // Identical mapping to the agent cards, and for the same reason: the dot
 // answers "is this usable?" and nothing else, so `versionUnknown` is green.
 // Neither bundled config declares a `verified_against`, so dimming them over
-// Sway's own missing bookkeeping would mark two healthy servers as worse off.
+// Tori's own missing bookkeeping would mark two healthy servers as worse off.
 const TONE: Record<BinaryStatus, string> = {
   versionMatch: styles.dotOk,
   versionUnknown: styles.dotOk,
@@ -59,17 +59,17 @@ function LspCard(props: { server: LspHealth }) {
               send the user off installing something they already have. */}
           <Match when={s().detail}>{(detail) => <>{detail()}</>}</Match>
           <Match when={s().status === "notFound"}>
-            Not installed. Install <code>{s().program}</code> and reopen Sway to pick it up.
+            Not installed. Install <code>{s().program}</code> and reopen Tori to pick it up.
           </Match>
           <Match when={s().status === "versionMatch"}>Installed, version {s().version}.</Match>
           <Match when={s().status === "versionUnknown" && s().version}>
             Installed, version {s().version}.
           </Match>
           <Match when={s().status === "versionUnknown"}>
-            Installed. It does not report a version, so Sway cannot check it.
+            Installed. It does not report a version, so Tori cannot check it.
           </Match>
           <Match when={s().status === "versionDrift"}>
-            Installed, version {s().version}. Sway's config was built against {s().verifiedAgainst},
+            Installed, version {s().version}. Tori's config was built against {s().verifiedAgainst},
             so some behaviour may differ.
           </Match>
         </Switch>
@@ -110,7 +110,7 @@ export default function LspSection() {
           </div>
           <div class={styles.note}>
             A language with no server still opens and edits normally, it just has no completion or
-            diagnostics. Add one with a TOML file in <code>~/.config/sway/lsp/</code>; see
+            diagnostics. Add one with a TOML file in <code>~/.config/tori/lsp/</code>; see
             LSP-SERVERS.md.
           </div>
         </Match>
