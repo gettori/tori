@@ -457,6 +457,10 @@ impl Forge for GitHubForge {
         GitHubForge::rate_snapshot(self)
     }
 
+    fn granted_scopes(&self) -> Option<Vec<String>> {
+        self.transport.scopes()
+    }
+
     fn auth_state(&self) -> AuthState {
         match (&self.token, self.transport.suspect()) {
             (None, _) => AuthState::SignedOut,

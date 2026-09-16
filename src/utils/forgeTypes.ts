@@ -252,6 +252,7 @@ export type ForgeAccount = {
   expiresAt: number | null;
   /// Epoch **seconds** when the host stopped accepting the token.
   rejectedAt: number | null;
+  scopes: string[] | null;
   auth: AuthState;
 };
 
@@ -377,7 +378,7 @@ export const FORGE_KEYS = {
   pagedTruncated: ["items", "truncated"],
   rateSnapshot: ["limit", "remaining", "resetAt"],
   statusReport: ["rate", "statuses", "uncovered"],
-  forgeAccount: ["auth", "baseUrl", "expiresAt", "id", "label", "login", "provider", "rejectedAt"],
+  forgeAccount: ["auth", "baseUrl", "expiresAt", "id", "label", "login", "provider", "rejectedAt", "scopes"],
   signInRoutes: ["appId", "baseUrl", "deviceFlow", "host", "scopes", "tokenUrl"],
   // Not a domain type, but it crosses the same bridge and the poll scheduler
   // branches on it, so it is checked against Rust the same way.

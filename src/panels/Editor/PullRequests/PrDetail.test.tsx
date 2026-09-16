@@ -201,6 +201,7 @@ const signInAs = async (login: string) => {
       label: login,
       expiresAt: null,
       rejectedAt: null,
+      scopes: null,
       auth: { kind: "signedIn", login },
     },
   ]);

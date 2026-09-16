@@ -39,8 +39,9 @@ pub const CLIENT_ID: &str = "Ov23liYTSvmd1SBenOiR";
 pub const GITLAB_COM_CLIENT_ID: &str = "1d723468eb20d4c10bd604bf602f4435985ace170788a7cfecc82f4f45cb4822";
 
 /// The scope asked for. `repo` covers private repositories, PRs, and the
-/// Checks API. Deliberately nothing wider: no `workflow`, no `read:org`.
-const SCOPE: &str = "repo";
+/// Checks API. `workflow` because GitHub refuses a push that touches
+/// `.github/workflows/` without it, and agents edit CI. Still no `read:org`.
+const SCOPE: &str = "repo workflow";
 /// GitLab's equivalent of `repo`. `write_repository` is deliberately absent:
 /// pushing through the account is Phase 5's switch, and asking for it here
 /// would widen every sign-in for a feature that is off.
@@ -258,7 +259,7 @@ pub fn start_with(
     }
     let resp = transport.send(form_post(
         &endpoints.code_url,
-        format!("client_id={client_id}&scope={}", endpoints.scope),
+        format!("client_id={client_id}&scope={}", endpoints.scope.replace(' ', "%20")),
     ))?;
     if let Some(err) = super::http::classify(&resp) {
         return Err(err);
@@ -556,7 +557,7 @@ mod tests {
         assert_eq!(req.url, DEVICE_CODE_URL);
         let body = req.body.clone().unwrap();
         assert!(body.contains("client_id=Iv1.test"));
-        assert!(body.contains(&format!("scope={SCOPE}")), "asks for repo and nothing wider");
+        assert!(body.contains("scope=repo%20workflow"), "repo and workflow, form-encoded, nothing wider");
         // Without an explicit Accept, GitHub answers form-encoded and the JSON
         // parser above would have nothing to read.
         assert!(req.headers.iter().any(|(k, v)| k == "Accept" && v == "application/json"));

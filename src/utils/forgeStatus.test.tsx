@@ -80,6 +80,7 @@ function account(id: string, auth: AuthState): ForgeAccount {
     label: id,
     expiresAt: null,
     rejectedAt: null,
+    scopes: null,
     auth,
   };
 }

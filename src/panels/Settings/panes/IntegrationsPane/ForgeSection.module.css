@@ -138,6 +138,18 @@
   text-wrap: pretty;
 }
 
+.nudged {
+  padding-bottom: calc(10px * var(--ui-scale));
+}
+
+.nudged .line {
+  padding-bottom: 0;
+}
+
+.nudge {
+  color: var(--fg-muted);
+}
+
 .footer {
   justify-content: space-between;
   gap: var(--tori-space-6);

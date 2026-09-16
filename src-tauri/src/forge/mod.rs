@@ -174,6 +174,10 @@ pub trait Forge: Send + Sync {
     /// What the last answered call said about the rate budget.
     fn rate_snapshot(&self) -> RateSnapshot;
 
+    /// The scopes the last answered call said the token holds, where the
+    /// provider reports them at all.
+    fn granted_scopes(&self) -> Option<Vec<String>>;
+
     /// Who the stored token belongs to. Needed before a review can be offered,
     /// because the author of a PR cannot approve or request changes on it.
     fn viewer(&self) -> Result<Viewer, ForgeError>;
@@ -314,6 +318,9 @@ mod tests {
         }
         fn rate_snapshot(&self) -> RateSnapshot {
             RateSnapshot::default()
+        }
+        fn granted_scopes(&self) -> Option<Vec<String>> {
+            None
         }
         fn viewer(&self) -> Result<Viewer, ForgeError> {
             Err(ForgeError::NotAuthenticated)

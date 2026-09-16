@@ -41,7 +41,7 @@ const calls = {
 };
 
 function account(id: string, auth: AuthState, login: string | null, extra: Partial<ForgeAccount> = {}): ForgeAccount {
-  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, auth, ...extra };
+  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, scopes: null, auth, ...extra };
 }
 
 function hostOf(host: string, accounts: ForgeAccount[], extra: Partial<ForgeHost> = {}): ForgeHost {
@@ -62,7 +62,7 @@ function routesFor(baseUrl: string, provider: ForgeProvider = "github"): SignInR
   // Rust's other rule: GitHub's `repo` already carries push, while GitLab needs
   // the git scope named separately once the host answers git.
   const scopes =
-    provider === "gitlab" ? (gitCredentials[host] ? ["api", "write_repository"] : ["api"]) : ["repo"];
+    provider === "gitlab" ? (gitCredentials[host] ? ["api", "write_repository"] : ["api"]) : ["repo", "workflow"];
   return {
     host,
     baseUrl,
@@ -394,14 +394,36 @@ describe("the forge accounts settings section", () => {
     expect(flowCard().queryByText(/needs its OAuth Application ID/)).toBeNull();
   });
 
-  it("names GitHub's one scope on its token step", async () => {
+  it("names GitHub's two scopes on its token step, and what the second is for", async () => {
     render(() => <ForgeSection />);
     await reachEnterpriseToken();
     const scopes = screen.getByTestId("token-scopes");
     expect(within(scopes).getAllByText(/^repo$/)).toHaveLength(1);
-    expect(scopes.textContent).not.toContain("The second only");
+    expect(within(scopes).getAllByText(/^workflow$/)).toHaveLength(1);
+    expect(scopes.textContent).toContain("The second only if you push changes to GitHub Actions.");
     expect(flowCard().getByText("Create a token on ghe.example.com")).toBeTruthy();
     expect(flowCard().getByText("Enterprise")).toBeTruthy();
+  });
+
+  it("asks a classic GitHub token without workflow to sign in again, and leaves the rest alone", async () => {
+    // An empty list is a fine-grained token and null was never asked: neither is
+    // known to lack the permission, so neither is told it does.
+    hosts = [
+      hostOf("github.com", [
+        account("github-com-old", { kind: "signedIn", login: "old" }, "old", { scopes: ["repo"] }),
+        account("github-com-new", { kind: "signedIn", login: "new" }, "new", { scopes: ["repo", "workflow"] }),
+        account("github-com-fine", { kind: "signedIn", login: "fine" }, "fine", { scopes: [] }),
+        account("github-com-unasked", { kind: "signedIn", login: "unasked" }, "unasked"),
+      ]),
+    ];
+    render(() => <ForgeSection />);
+    const rows = await screen.findAllByTestId("forge-account");
+    const nudged = rows.filter((row) => within(row).queryByTestId("workflow-notice"));
+    expect(nudged).toHaveLength(1);
+    expect(within(nudged[0]).getByText("old")).toBeTruthy();
+    expect(within(nudged[0]).getByText("Pushes that change GitHub Actions need a newer sign-in.")).toBeTruthy();
+    expect(within(nudged[0]).getByText("Sign in again")).toBeTruthy();
+    expect(screen.getAllByText("Sign in again")).toHaveLength(1);
   });
 
   it("names the git scope on a GitLab host whose push switch is on", async () => {
