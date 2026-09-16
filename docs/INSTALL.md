@@ -12,7 +12,7 @@ expected, and getting past it takes about ten seconds.
 ## 1. Install
 
 1. Download `Sway_<version>_universal.dmg` from the
-   [Releases page](https://github.com/skarif2/sway/releases).
+   [Releases page](https://github.com/gettori/releases/releases).
 2. Open the DMG and drag **Sway** into **Applications**.
 3. Eject the DMG.
 

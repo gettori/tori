@@ -264,7 +264,7 @@ pub fn logout(
 
 /// Where ADAPTERS.md documents what an adapter has to declare to get a sign-in
 /// flow, which is the honest destination for a agent that declares none.
-const ADAPTER_DOCS: &str = "https://github.com/skarif2/sway/blob/main/ADAPTERS.md";
+const ADAPTER_DOCS: &str = "https://github.com/gettori/tori/blob/main/ADAPTERS.md";
 
 /// How this agent can be signed in to, given what it declares.
 ///

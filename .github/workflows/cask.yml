@@ -1,11 +1,11 @@
-# Point the Homebrew tap (skarif2/homebrew-tap) at a *published* release on
-# skarif2/sway-releases. Dispatched by hand after publishing the draft, never
+# Point the Homebrew tap (gettori/tap) at a *published* release on
+# gettori/releases. Dispatched by hand after publishing the draft, never
 # automatically: a draft's asset URLs are not publicly downloadable, so a cask
 # written against one would 404 for every tester.
 #
 # Rewrites Casks/sway.rb whole from a template rather than sed-patching fields,
 # so the same run also creates the file the first time. Needs RELEASES_TOKEN
-# (fine-grained PAT, Contents read/write on sway-releases and homebrew-tap).
+# (fine-grained PAT, Contents read/write on gettori/releases and gettori/tap).
 name: Update cask
 
 on:
@@ -19,8 +19,8 @@ permissions: {}
 
 env:
   GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-  RELEASES_REPO: skarif2/sway-releases
-  TAP_REPO: skarif2/homebrew-tap
+  RELEASES_REPO: gettori/releases
+  TAP_REPO: gettori/tap
 
 jobs:
   cask:

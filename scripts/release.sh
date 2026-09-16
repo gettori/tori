@@ -13,8 +13,8 @@
 # before running. Needs `gh` logged in with write access to both public repos.
 set -euo pipefail
 
-RELEASES_REPO=skarif2/sway-releases
-TAP_REPO=skarif2/homebrew-tap
+RELEASES_REPO=gettori/releases
+TAP_REPO=gettori/tap
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -157,4 +157,5 @@ rm -rf "$tap" "$notes"
 echo
 echo "Released Sway $version:"
 echo "  https://github.com/${RELEASES_REPO}/releases/tag/$tag"
-echo "  brew install --cask skarif2/tap/sway"
+echo "  brew tap gettori/tap https://github.com/${TAP_REPO}"
+echo "  brew install --cask gettori/tap/sway"
