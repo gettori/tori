@@ -167,7 +167,20 @@
   color: var(--fg-muted);
 }
 
-.footerInert .footerLabel > span {
+.footerText {
+  min-width: 0;
+}
+
+.footerNote {
+  margin-top: var(--tori-space-1);
+  font-size: var(--tori-text-xs);
+  line-height: 1.5;
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+
+.footerInert .footerLabel > span,
+.footerInert .footerNote {
   opacity: 0.45;
 }
 

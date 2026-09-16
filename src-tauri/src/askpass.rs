@@ -7,7 +7,8 @@
 // a private Unix socket into a native in-app dialog and back.
 //
 // The same socket answers one other question: `crate::credential` asks it for a
-// git credential, which is resolved from the op rather than shown to anyone.
+// git credential, which is resolved from the op or the repo path rather than
+// shown to anyone.
 // `Request.kind` is what tells the two apart.
 //
 // Two halves live here:
@@ -80,6 +81,9 @@ struct Request {
     /// The host git named, credential requests only.
     #[serde(default)]
     host: String,
+    /// The repo path, which git only hands a helper under `useHttpPath`.
+    #[serde(default)]
+    path: String,
 }
 
 /// Wire frame the server sends back. An empty `value` is the fail-closed answer
@@ -143,11 +147,11 @@ fn helper_exchange(
 
 /// The credential helper's question on the same socket: no prompt, and the
 /// answer is git's whole `key=value` block rather than one field. See
-/// [`crate::credential`] for why the op id is what identifies the account.
-pub fn ask_credential(sock: &Path, token: &str, op_id: &str, host: &str) -> std::io::Result<String> {
+/// [`crate::credential`] for how the op id or the path identifies the account.
+pub fn ask_credential(sock: &Path, token: &str, op_id: &str, host: &str, path: &str) -> std::io::Result<String> {
     exchange(
         sock,
-        serde_json::json!({ "token": token, "op_id": op_id, "kind": CREDENTIAL, "host": host }),
+        serde_json::json!({ "token": token, "op_id": op_id, "kind": CREDENTIAL, "host": host, "path": path }),
     )
 }
 
@@ -193,6 +197,9 @@ struct ServerState {
 /// `emit` closure fans a prompt out to the frontend (in tests, a recorder).
 pub struct AskpassInner {
     token: String,
+    // Handed to processes Tori spawns for the user, where anything running can
+    // read it, so it gets a credential and never raises a dialog.
+    credential_token: String,
     sock_path: PathBuf,
     dir: PathBuf,
     timeout: Duration,
@@ -206,6 +213,9 @@ impl AskpassInner {
     }
     pub fn token(&self) -> &str {
         &self.token
+    }
+    pub fn credential_token(&self) -> &str {
+        &self.credential_token
     }
 }
 
@@ -259,6 +269,7 @@ fn start_with(
 
     let inner = Arc::new(AskpassInner {
         token,
+        credential_token: random_token(),
         sock_path,
         dir,
         timeout,
@@ -301,14 +312,18 @@ fn handle_request(inner: &Arc<AskpassInner>, stream: &UnixStream) -> Option<Stri
 
     // Constant-ish token check. A private 0700 dir already gates access; the
     // token is defense-in-depth against a same-user process guessing the path.
-    if req.token.as_bytes() != inner.token.as_bytes() {
+    let full = req.token.as_bytes() == inner.token.as_bytes();
+    if !full && req.token.as_bytes() != inner.credential_token.as_bytes() {
         return None;
     }
-    // A credential is answered from the op's own checkout, with no dialog and
-    // no user in the loop. Empty means Tori has nothing for it and git falls
-    // through to the prompts below.
+    // A credential is answered from the op's checkout or the repo path, with no
+    // dialog and no user in the loop. Empty means Tori has nothing for it and
+    // git falls through to the prompts below.
     if req.kind == CREDENTIAL {
-        return Some(crate::credential::answer(&req.op_id, &req.host).unwrap_or_default());
+        return Some(crate::credential::answer(&req.op_id, &req.host, &req.path).unwrap_or_default());
+    }
+    if !full {
+        return None;
     }
     // Bound the prompt we surface; a runaway prompt is treated as hostile.
     if req.prompt.len() > 4096 {
@@ -507,10 +522,10 @@ mod tests {
     #[test]
     fn a_credential_request_answers_empty_without_a_dialog() {
         // The socket's other question (`crate::credential`) has no user in the
-        // loop, so an op nothing registered has to fail closed rather than
-        // surface a prompt nobody asked for.
+        // loop, so a request naming no live op and no repo has to fail closed
+        // rather than surface a prompt nobody asked for.
         let (inner, erx) = test_server(Duration::from_secs(2));
-        let got = ask_credential(inner.sock_path(), inner.token(), "op-unknown", "github.com");
+        let got = ask_credential(inner.sock_path(), inner.token(), "op-unknown", "github.com", "");
         assert_eq!(got.ok().as_deref(), Some(""));
         assert!(erx.recv_timeout(Duration::from_millis(300)).is_err());
     }

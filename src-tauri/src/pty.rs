@@ -495,6 +495,9 @@ pub fn pty_spawn(
     cmd.env("TERM", "xterm-256color");
     cmd.env("TERM_PROGRAM", "Tori");
     cmd.env("TERM_PROGRAM_VERSION", app.package_info().version.to_string());
+    for (key, value) in crate::credential::spawn_env() {
+        cmd.env(key, value);
+    }
 
     // Applied last, so a caller pointing an agent at a different home wins over
     // anything set above.
