@@ -76,6 +76,9 @@ function routesFor(baseUrl: string, provider: ForgeProvider = "github"): SignInR
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     switch (cmd) {
+      case "plugin:opener|open_url":
+        handoff.push(`open ${args?.url as string}`);
+        return Promise.resolve();
       case "forge_accounts":
         return Promise.resolve(hosts);
       case "forge_sign_in_routes":
@@ -166,7 +169,6 @@ beforeEach(() => {
   clipboardWorks = true;
   tokenRejection = null;
   handoff = [];
-  vi.stubGlobal("open", vi.fn(() => void handoff.push("open")));
 });
 
 async function startBrowserSignIn() {
@@ -464,8 +466,7 @@ describe("the forge accounts settings section", () => {
 
     expect(screen.getByTestId("device-code").textContent).toBe("WDJBMJHT");
     expect(await screen.findByTestId("clipboard-confirmation")).toBeTruthy();
-    await waitFor(() => expect(handoff).toEqual(["copy", "open"]));
-    expect(window.open).toHaveBeenCalledWith("https://github.com/login/device", "_blank");
+    await waitFor(() => expect(handoff).toEqual(["copy", "open https://github.com/login/device"]));
   });
 
   it("offers copying the code by hand when the clipboard refused it", async () => {

@@ -41,7 +41,6 @@ function routes(baseUrl: string, provider: ForgeProvider): SignInRoutes {
 type Device = "waits" | "expires" | "fails";
 
 function stubHost(hosts: ForgeHost[], device: Device = "waits") {
-  window.open = () => null;
   mockIPC((cmd, args) => {
     const a = (args ?? {}) as Record<string, unknown>;
     switch (cmd) {
