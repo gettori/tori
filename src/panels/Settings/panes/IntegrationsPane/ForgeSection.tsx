@@ -160,6 +160,7 @@ function failureText(host: string, failure: Failure, lifetimeSecs: number | null
 
 export default function ForgeSection() {
   const [hosts, setHosts] = createSignal<ForgeHost[]>([]);
+  const [loaded, setLoaded] = createSignal(false);
   const [flow, setFlow] = createSignal<AddFlow | null>(null);
   const [product, setProduct] = createSignal<Product>("github.com");
   const [cloudRoutes, setCloudRoutes] = createSignal<Partial<Record<Cloud, SignInRoutes>>>({});
@@ -214,6 +215,7 @@ export default function ForgeSection() {
   // appear on sign-in and vanish on removal, not at the next focus.
   const refresh = async () => {
     const list = await invoke<ForgeHost[]>("forge_accounts").catch(() => null);
+    setLoaded(true);
     if (!Array.isArray(list)) return;
     setHosts(list);
     noteForgeAccounts(list.flatMap((h) => h.accounts));
@@ -836,7 +838,7 @@ export default function ForgeSection() {
                             </Show>
                           </div>
                           <div class={cards.hint}>
-                            <a href={r().tokenUrl} onClick={(e) => openLink(e, r().tokenUrl)}>
+                            <a class={cards.link} href={r().tokenUrl} onClick={(e) => openLink(e, r().tokenUrl)}>
                               Create a token on {r().host}
                             </a>
                           </div>
@@ -888,8 +890,9 @@ export default function ForgeSection() {
                               <span class={cards.check} aria-hidden="true">
                                 <Icon icon={Check} size={10} strokeWidth={2.5} />
                               </span>
-                              <span class={cards.copiedWord}>Already on your clipboard</span>
-                              <span>, Cmd+V is all you need</span>
+                              <span>
+                                <span class={cards.copiedWord}>Already on your clipboard</span>, Cmd+V is all you need
+                              </span>
                             </div>
                           </Show>
                         </>
@@ -902,11 +905,16 @@ export default function ForgeSection() {
                       <Show when={prompt()}>
                         {(p) => (
                           <>
-                            <a href={p().verificationUri} onClick={(e) => openLink(e, p().verificationUri)}>
+                            <a
+                              class={cards.link}
+                              href={p().verificationUri}
+                              onClick={(e) => openLink(e, p().verificationUri)}
+                            >
                               Reopen {p().verificationUri.replace(/^https?:\/\//, "")}
                             </a>{" "}
+                            or{" "}
                             <button type="button" class={cards.link} onClick={() => void copyAgain()}>
-                              Copy again
+                              copy again
                             </button>
                           </>
                         )}
@@ -992,8 +1000,8 @@ export default function ForgeSection() {
           <div class={styles.control}>
             <Switch
               aria-label="Show pull requests and checks"
-              checked={settings.forge.enabled}
-              disabled={!connected()}
+              checked={settings.forge.enabled && (connected() || !loaded())}
+              disabled={loaded() && !connected()}
               onChange={(v) => void setEnabled(v)}
             />
           </div>
