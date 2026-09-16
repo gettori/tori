@@ -29,13 +29,14 @@ use serde_json::Value;
 /// A build with this left empty refuses to start a flow it cannot finish
 /// instead of failing at GitHub, which is why the shaping functions guard on an
 /// empty id rather than trusting the constant.
-pub const CLIENT_ID: &str = "Ov23liDBQcC2uWTVFpjp";
+pub const CLIENT_ID: &str = "Ov23liYTSvmd1SBenOiR";
 
 /// GitLab's equivalent, per instance rather than global: a self-managed server
 /// only has an application if its own admin registered one, which is why the
-/// id is stored per host and this constant covers gitlab.com alone. Empty until
-/// that application exists, and an empty id offers no browser flow at all.
-pub const GITLAB_COM_CLIENT_ID: &str = "";
+/// id is stored per host and this constant covers gitlab.com alone.
+/// The application needs "Device authorization grant" ticked, or gitlab.com
+/// answers `access_denied` before anyone signs in.
+pub const GITLAB_COM_CLIENT_ID: &str = "1d723468eb20d4c10bd604bf602f4435985ace170788a7cfecc82f4f45cb4822";
 
 /// The scope asked for. `repo` covers private repositories, PRs, and the
 /// Checks API. Deliberately nothing wider: no `workflow`, no `read:org`.
@@ -283,10 +284,12 @@ pub fn poll_once_with(
             flow.device_code
         ),
     ))?;
-    // A device poll answers 200 with an `error` field for the ordinary waiting
-    // cases, so the body is the signal, not the status. Only a genuinely
-    // non-2xx response is an error here.
-    if resp.status >= 400 {
+    // The waiting cases arrive as an `error` field, with 200 from GitHub and 400
+    // from GitLab (RFC 8628's own status), so the body is the signal, not the
+    // status. Only a failure that carries no OAuth error is an error here.
+    let oauth_error = resp.status == 400
+        && serde_json::from_str::<Value>(&resp.body).is_ok_and(|v| v.get("error").is_some_and(Value::is_string));
+    if resp.status >= 400 && !oauth_error {
         if let Some(err) = super::http::classify(&resp) {
             return Err(err);
         }
