@@ -63,6 +63,7 @@ export default function RadioGroup(props: {
    *  primitive which arrow keys to treat as forward, and drives the CSS. */
   orientation?: "vertical" | "horizontal";
   class?: string;
+  itemClass?: string;
   "aria-label"?: string;
   "aria-describedby"?: string;
 }) {
@@ -86,7 +87,11 @@ export default function RadioGroup(props: {
       <div class={styles.items} data-orientation={orientation()}>
         <For each={props.options}>
           {(option) => (
-            <Primitive.Item class={styles.item} value={option.value} disabled={option.disabled}>
+            <Primitive.Item
+              class={[styles.item, props.itemClass].filter(Boolean).join(" ")}
+              value={option.value}
+              disabled={option.disabled}
+            >
               <Primitive.ItemInput class={styles.input} />
               <Primitive.ItemControl class={styles.control}>
                 <Primitive.ItemIndicator class={styles.indicator} />

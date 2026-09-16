@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, cleanup, within } from "@solidjs/testing-library";
 import { pointerClick } from "../../../../test/menus";
+import userEvent from "@testing-library/user-event";
 import type {
   AuthState,
   ForgeAccount,
+  ForgeErrorDto,
   ForgeHost,
   ForgeProvider,
   SignInRoutes,
@@ -24,6 +26,10 @@ let appIds: Record<string, string> = {};
 /** Which hosts answer git, the switch Rust keeps on the host record. */
 let gitCredentials: Record<string, boolean> = {};
 let devicePolls: unknown[] = [];
+let deviceLifetimeSecs = 900;
+let clipboardWorks = true;
+let tokenRejection: ForgeErrorDto | null = null;
+let handoff: string[] = [];
 const calls = {
   start: 0,
   poll: 0,
@@ -101,9 +107,11 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve({
           userCode: "WDJB-MJHT",
           verificationUri: "https://github.com/login/device",
-          expiresInSecs: 900,
+          expiresInSecs: deviceLifetimeSecs,
           intervalSecs: 5,
         });
+      case "forge_add_token":
+        return tokenRejection ? Promise.reject(tokenRejection) : Promise.resolve({ accountId: "a", login: "a" });
       case "forge_device_poll": {
         calls.poll += 1;
         const next = devicePolls.shift();
@@ -125,7 +133,12 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-vi.mock("../../../../utils/clipboard", () => ({ copyText: () => Promise.resolve(true) }));
+vi.mock("../../../../utils/clipboard", () => ({
+  copyText: () => {
+    handoff.push("copy");
+    return Promise.resolve(clipboardWorks);
+  },
+}));
 vi.mock("../../../../utils/forgeStatus", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../../utils/forgeStatus")>()),
   resetForgeResolutions: () => {
@@ -148,15 +161,37 @@ beforeEach(() => {
   calls.gitCredentials = [];
   calls.defaults = [];
   calls.resets = 0;
-  vi.stubGlobal("open", vi.fn());
+  deviceLifetimeSecs = 900;
+  clipboardWorks = true;
+  tokenRejection = null;
+  handoff = [];
+  vi.stubGlobal("open", vi.fn(() => void handoff.push("open")));
 });
 
-/** Opens the add form on its github.com default and starts the browser flow. */
 async function startBrowserSignIn() {
   fireEvent.click(await screen.findByText("Connect github.com"));
-  fireEvent.click(await screen.findByText("Continue"));
-  fireEvent.click(await screen.findByText("Sign in with browser"));
+  await screen.findByTestId("device-code");
 }
+
+const flowCard = () => within(screen.getByTestId("add-flow"));
+
+/** Picker, Enterprise tile, host URL, then the token step for that host. */
+async function reachEnterpriseToken(url = "https://ghe.example.com") {
+  fireEvent.click(await screen.findByText("Another host..."));
+  pointerClick(await screen.findByRole("radio", { name: /GitHub Enterprise/ }));
+  fireEvent.click(flowCard().getByText("Continue"));
+  fireEvent.input(await screen.findByLabelText("Host URL"), { target: { value: url } });
+  fireEvent.click(flowCard().getByText("Continue"));
+  await screen.findByLabelText("Personal access token");
+}
+
+const refused = (message: string): ForgeErrorDto => ({
+  kind: "invalid",
+  message,
+  rateLimitKind: null,
+  retryAfterSecs: null,
+  resetAtSecs: null,
+});
 
 describe("the forge accounts settings section", () => {
   it("offers connecting github.com, with the global switch inert, when there is no host", async () => {
@@ -290,51 +325,6 @@ describe("the forge accounts settings section", () => {
     expect(await screen.findByText("No hosts connected")).toBeTruthy();
   });
 
-  it("offers the browser on github.com and names the scope a token needs", async () => {
-    render(() => <ForgeSection />);
-    fireEvent.click(await screen.findByText("Connect github.com"));
-    fireEvent.click(await screen.findByText("Continue"));
-
-    expect(await screen.findByText("Sign in with browser")).toBeTruthy();
-    expect(screen.getByTestId("token-scopes").textContent).toContain("repo scope");
-  });
-
-  it("offers only a token on a host Sway has no browser sign-in for", async () => {
-    render(() => <ForgeSection />);
-    fireEvent.click(await screen.findByText("Another host..."));
-    fireEvent.input(screen.getByLabelText("Host URL"), { target: { value: "https://git.example.com" } });
-    fireEvent.click(screen.getByText("Continue"));
-
-    expect((await screen.findByTestId("token-scopes")).textContent).toContain("git.example.com");
-    expect(screen.queryByText("Sign in with browser")).toBeNull();
-  });
-
-  it("offers a self-managed GitLab the browser only once it has an application id", async () => {
-    // Only that instance's admin can register an application, so until its id
-    // is known the browser flow would open a page the server refuses.
-    render(() => <ForgeSection />);
-    fireEvent.click(await screen.findByText("Another host..."));
-    // The provider picker is a listbox behind a button, so a choice is two
-    // presses and the rows exist only while it is open.
-    pointerClick(screen.getByLabelText("Provider"));
-    await screen.findByRole("listbox");
-    pointerClick(screen.getByRole("option", { name: "GitLab" }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    fireEvent.input(screen.getByLabelText("Host URL"), {
-      target: { value: "https://git.example.com" },
-    });
-    fireEvent.click(screen.getByText("Continue"));
-
-    expect((await screen.findByTestId("token-scopes")).textContent).toContain("git.example.com");
-    expect(screen.queryByText("Sign in with browser")).toBeNull();
-
-    fireEvent.input(screen.getByLabelText("Application ID"), { target: { value: "app-123" } });
-    fireEvent.click(screen.getByText("Save"));
-
-    expect(await screen.findByText("Sign in with browser")).toBeTruthy();
-  });
-
   it("hands git this host's account once the switch is on", async () => {
     hosts = [
       {
@@ -349,67 +339,223 @@ describe("the forge accounts settings section", () => {
     await waitFor(() => expect(calls.gitCredentials).toEqual([["github.com", true]]));
   });
 
-  it("names the git scope on a GitLab host that answers git", async () => {
+  it("names each tile's route before anything is chosen", async () => {
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByText("Another host..."));
+    await waitFor(() => expect(flowCard().getByText("github.com").nextElementSibling?.textContent).toBe("browser"));
+    expect(flowCard().getByText("gitlab.com").nextElementSibling?.textContent).toBe("token");
+    expect(flowCard().getByText("GitHub Enterprise").nextElementSibling?.textContent).toBe("token");
+  });
+
+  it("walks to self-managed GitLab with the arrow keys and commits with Enter", async () => {
+    const user = userEvent.setup();
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByText("Another host..."));
+    const first = await screen.findByRole("radio", { name: /github\.com/ });
+    await waitFor(() => expect(document.activeElement).toBe(first));
+
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{Enter}");
+    expect(await screen.findByLabelText("Host URL")).toBeTruthy();
+    expect(flowCard().getByText("GitLab, self-managed")).toBeTruthy();
+  });
+
+  it("flips gitlab.com's tile to the browser once an application id is saved on its card", async () => {
+    hosts = [
+      hostOf("gitlab.com", [
+        account("gitlab-com-arif", { kind: "signedIn", login: "arif" }, "arif", {
+          provider: "gitlab",
+          baseUrl: "https://gitlab.com",
+        }),
+      ]),
+    ];
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByText("Application ID"));
+    fireEvent.input(await screen.findByLabelText("Application ID for gitlab.com"), { target: { value: "app-123" } });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(appIds["gitlab.com"]).toBe("app-123"));
+
+    fireEvent.click(await screen.findByText("Connect another host..."));
+    await waitFor(() => expect(flowCard().getByText("gitlab.com").nextElementSibling?.textContent).toBe("browser"));
+  });
+
+  it("asks a self-hosted product for its URL, and says why the browser is not there yet", async () => {
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByText("Another host..."));
+    pointerClick(await screen.findByRole("radio", { name: /GitLab, self-managed/ }));
+    fireEvent.click(flowCard().getByText("Continue"));
+
+    expect(await screen.findByLabelText("Host URL")).toBeTruthy();
+    expect(screen.getByTestId("host-url-hint").textContent).toBe("https only. Next step is a token.");
+    expect(flowCard().getByText(/needs its OAuth Application ID/)).toBeTruthy();
+    fireEvent.click(flowCard().getByText("Add later"));
+    expect(flowCard().queryByText(/needs its OAuth Application ID/)).toBeNull();
+  });
+
+  it("names GitHub's one scope on its token step", async () => {
+    render(() => <ForgeSection />);
+    await reachEnterpriseToken();
+    const scopes = screen.getByTestId("token-scopes");
+    expect(within(scopes).getAllByText(/^repo$/)).toHaveLength(1);
+    expect(scopes.textContent).not.toContain("The second only");
+    expect(flowCard().getByText("Create a token on ghe.example.com")).toBeTruthy();
+    expect(flowCard().getByText("Enterprise")).toBeTruthy();
+  });
+
+  it("names the git scope on a GitLab host whose push switch is on", async () => {
     // `api` alone cannot push, so a token pasted for a host with the switch on
     // would sign in and then fail on the first push.
     hosts = [
-      {
-        host: "git.example.com",
-        accounts: [
-          {
-            id: "git-example-com-arif",
+      hostOf(
+        "git.example.com",
+        [
+          account("git-example-com-arif", { kind: "signedIn", login: "arif" }, "arif", {
             provider: "gitlab",
             baseUrl: "https://git.example.com",
-            login: "arif",
-            label: "arif",
-            expiresAt: null,
-            rejectedAt: null,
-            auth: { kind: "signedIn", login: "arif" },
-          },
+          }),
         ],
-        gitCredentials: true,
-        defaultAccount: null,
-      },
+        { gitCredentials: true },
+      ),
     ];
     gitCredentials["git.example.com"] = true;
     render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByLabelText("Add account on git.example.com"));
 
-    fireEvent.click(await screen.findByText("Add account"));
-    pointerClick(screen.getByLabelText("Provider"));
-    await screen.findByRole("listbox");
-    pointerClick(screen.getByRole("option", { name: "GitLab" }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    fireEvent.input(screen.getByLabelText("Host URL"), {
-      target: { value: "https://git.example.com" },
-    });
-    fireEvent.click(screen.getByText("Continue"));
-
-    expect((await screen.findByTestId("token-scopes")).textContent).toContain("write_repository");
+    const scopes = await screen.findByTestId("token-scopes");
+    expect(within(scopes).getByText("api")).toBeTruthy();
+    expect(within(scopes).getByText("write_repository")).toBeTruthy();
+    expect(scopes.textContent).toContain("The second only if you push over git.example.com.");
   });
 
-  it("shows the code and the page to type it into while a flow is pending", async () => {
+  it("puts the code on the clipboard before it opens the page, and says so", async () => {
     render(() => <ForgeSection />);
     await startBrowserSignIn();
 
-    // The code is useless without the page, so the flow opens it rather than
-    // leaving the user to find it.
-    expect((await screen.findByTestId("device-code")).textContent).toBe("WDJB-MJHT");
-    await waitFor(() => expect(window.open).toHaveBeenCalledWith("https://github.com/login/device", "_blank"));
+    expect(screen.getByTestId("device-code").textContent).toBe("WDJBMJHT");
+    expect(await screen.findByTestId("clipboard-confirmation")).toBeTruthy();
+    await waitFor(() => expect(handoff).toEqual(["copy", "open"]));
+    expect(window.open).toHaveBeenCalledWith("https://github.com/login/device", "_blank");
   });
 
-  it("reports a declined sign-in and stops polling", async () => {
-    devicePolls = [{ kind: "denied" }];
+  it("offers copying the code by hand when the clipboard refused it", async () => {
+    clipboardWorks = false;
+    render(() => <ForgeSection />);
+    await startBrowserSignIn();
+    const copy = await screen.findByText("Copy the code");
+    expect(screen.queryByTestId("clipboard-confirmation")).toBeNull();
+
+    clipboardWorks = true;
+    fireEvent.click(copy);
+    expect(await screen.findByTestId("clipboard-confirmation")).toBeTruthy();
+  });
+
+  it("counts down to the host's own expiry", async () => {
+    vi.useFakeTimers();
+    render(() => <ForgeSection />);
+    await startBrowserSignIn();
+    expect((await screen.findByTestId("expires")).textContent).toBe("expires in 15:00");
+
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(screen.getByTestId("expires").textContent).toBe("expires in 13:59");
+    vi.useRealTimers();
+  });
+
+  it("stops polling and cancels the flow in Rust when the user cancels", async () => {
+    vi.useFakeTimers();
+    render(() => <ForgeSection />);
+    await startBrowserSignIn();
+    fireEvent.click(flowCard().getByText("Cancel"));
+
+    expect(calls.cancel).toBe(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(calls.poll).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it("cancels on Escape without letting it reach the panel", async () => {
+    // `Settings.tsx` closes the whole panel on an Escape that reaches it.
+    let panelEscapes = 0;
+    render(() => (
+      <div onKeyDown={(e) => e.key === "Escape" && panelEscapes++}>
+        <ForgeSection />
+      </div>
+    ));
+    await startBrowserSignIn();
+    fireEvent.keyDown(screen.getByTestId("add-flow"), { key: "Escape" });
+
+    expect(panelEscapes).toBe(0);
+    expect(screen.queryByTestId("add-flow")).toBeNull();
+    expect(screen.getByText("No hosts connected")).toBeTruthy();
+    await waitFor(() => expect(calls.cancel).toBe(1));
+  });
+
+  it("asks the host at expiry and shows its expired_token on the error card", async () => {
+    deviceLifetimeSecs = 120;
+    const pending = { kind: "pending", nextIntervalSecs: 5 };
+    devicePolls = [...Array(23).fill(pending), { kind: "expired", code: "expired_token" }];
+    vi.useFakeTimers();
+    render(() => <ForgeSection />);
+    await startBrowserSignIn();
+    await vi.advanceTimersByTimeAsync(119_000);
+    expect(screen.queryByTestId("flow-error")).toBeNull();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const sentence = screen.getByTestId("flow-error").textContent;
+    expect(sentence).toContain("github.com expired the code before it was entered: expired_token.");
+    expect(sentence).toContain("Codes last about 2 minutes.");
+    expect(flowCard().getByText("Paste a token instead")).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it("quotes a denied sign-in, offers a token instead, and stops polling", async () => {
+    devicePolls = [{ kind: "denied", code: "access_denied" }];
     vi.useFakeTimers();
     render(() => <ForgeSection />);
     await startBrowserSignIn();
     await vi.advanceTimersByTimeAsync(5_000);
 
-    expect(screen.getByTestId("forge-error").textContent).toContain("declined");
+    expect(screen.getByTestId("flow-error").textContent).toContain(
+      "github.com says the sign-in was denied: access_denied.",
+    );
+    expect(flowCard().getByText("github.com via browser")).toBeTruthy();
     const pollsAfterDenial = calls.poll;
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(calls.poll, "a declined flow must stop polling").toBe(pollsAfterDenial);
+    expect(calls.poll, "a denied flow must stop polling").toBe(pollsAfterDenial);
     vi.useRealTimers();
+  });
+
+  it("offers the browser back after a refused token on a host that has one", async () => {
+    devicePolls = [{ kind: "denied", code: "access_denied" }];
+    tokenRejection = refused("github.com rejected that token.");
+    vi.useFakeTimers();
+    render(() => <ForgeSection />);
+    await startBrowserSignIn();
+    await vi.advanceTimersByTimeAsync(5_000);
+    vi.useRealTimers();
+
+    fireEvent.click(flowCard().getByText("Paste a token instead"));
+    fireEvent.input(await screen.findByLabelText("Personal access token"), { target: { value: "ghp_x" } });
+    await waitFor(() => expect(screen.getByTestId("token-scopes")).toBeTruthy());
+    fireEvent.click(flowCard().getByText("Sign in"));
+
+    expect((await screen.findByTestId("flow-error")).textContent).toBe("github.com rejected that token. invalid");
+    expect(flowCard().getByText("Sign in with browser instead")).toBeTruthy();
+    expect(flowCard().queryByText("Paste a token instead")).toBeNull();
+  });
+
+  it("offers no second route after a refused token on a host with no browser sign-in", async () => {
+    tokenRejection = refused("ghe.example.com rejected that token.");
+    render(() => <ForgeSection />);
+    await reachEnterpriseToken();
+    fireEvent.input(screen.getByLabelText("Personal access token"), { target: { value: "ghp_x" } });
+    fireEvent.click(flowCard().getByText("Sign in"));
+
+    expect((await screen.findByTestId("flow-error")).textContent).toBe("ghe.example.com rejected that token. invalid");
+    expect(flowCard().getByText("ghe.example.com via token")).toBeTruthy();
+    expect(flowCard().queryByText("Sign in with browser instead")).toBeNull();
+    expect(flowCard().queryByText("Paste a token instead")).toBeNull();
+
+    fireEvent.click(flowCard().getByText("Start again"));
+    expect(await screen.findByLabelText("Personal access token")).toBeTruthy();
   });
 
   it("waits the interval the server asks for, so a slow_down actually slows it", async () => {
@@ -438,7 +584,6 @@ describe("the forge accounts settings section", () => {
     // closed, which on a slow_down is exactly how a throttle becomes a block.
     const { unmount } = render(() => <ForgeSection />);
     await startBrowserSignIn();
-    await screen.findByTestId("device-code");
 
     unmount();
     await waitFor(() => expect(calls.cancel).toBe(1));
