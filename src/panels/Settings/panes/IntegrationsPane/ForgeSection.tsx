@@ -431,6 +431,16 @@ export default function ForgeSection() {
     }
   }
 
+  async function setGitEverywhere(host: ForgeHost, enabled: boolean) {
+    setError(null);
+    try {
+      const list = await invoke<ForgeHost[]>("forge_set_git_everywhere", { host: host.host, enabled });
+      if (Array.isArray(list)) setHosts(list);
+    } catch (e) {
+      setError(forgeErrorMessage(e));
+    }
+  }
+
   // A repo already resolved to the pick state keeps it until asked again.
   async function setDefaultAccount(host: string, accountId: string) {
     setError(null);
@@ -648,6 +658,23 @@ export default function ForgeSection() {
                     checked={host.gitCredentials}
                     disabled={usable().length === 0 && !host.gitCredentials}
                     onChange={(v) => void setGitCredentials(host, v)}
+                  />
+                </div>
+                <div class={cards.footer} classList={{ [cards.footerInert]: !host.gitCredentials }}>
+                  <div class={cards.footerText}>
+                    <div class={cards.footerLabel}>
+                      <span>Use for git everywhere</span>
+                    </div>
+                    <div class={cards.footerNote}>
+                      Your own terminal and editor too, through one include in your global git config. Tori has to be
+                      running: while it's closed, git on {host.host} asks you.
+                    </div>
+                  </div>
+                  <Switch
+                    aria-label={`Use ${host.host} for git everywhere`}
+                    checked={host.gitEverywhere}
+                    disabled={!host.gitCredentials}
+                    onChange={(v) => void setGitEverywhere(host, v)}
                   />
                 </div>
               </div>

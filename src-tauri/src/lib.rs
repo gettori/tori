@@ -183,7 +183,7 @@ pub fn run() {
                 let _ = emit_handle.emit("askpass://prompt", ev);
             })) {
                 Ok(inner) => {
-                    credential::publish(inner.sock_path(), inner.credential_token());
+                    credential::publish(inner.sock_path(), inner.credential_token(), inner.everywhere_token());
                     app.manage(askpass::AskpassState(inner));
                 }
                 Err(e) => eprintln!("tori: askpass bridge failed to start: {e}"),
@@ -233,6 +233,10 @@ pub fn run() {
             // that will not open should leave Tori signed out, not stop it
             // starting.
             forge::commands::restore_at_startup(settings::get_settings().forge.enabled);
+
+            // Tori's git config file names this binary, which may have moved
+            // since it was written.
+            std::thread::spawn(forge::commands::resync_global_config);
 
             Ok(())
         })
@@ -522,6 +526,7 @@ pub fn run() {
             forge::commands::forge_sign_in_routes,
             forge::commands::forge_set_app_id,
             forge::commands::forge_set_git_credentials,
+            forge::commands::forge_set_git_everywhere,
             forge::commands::forge_set_default_account,
             forge::commands::forge_device_start,
             forge::commands::forge_device_poll,
@@ -568,6 +573,7 @@ pub fn run() {
                 set_dock_icon();
             }
             if let tauri::RunEvent::Exit = event {
+                credential::unpublish();
                 app.state::<ChatState>().0.shutdown();
                 // And every debug adapter. A language server is a plain child
                 // and goes with the process; an adapter is deliberately put in
