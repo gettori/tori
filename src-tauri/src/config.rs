@@ -453,9 +453,9 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
     units
 }
 
-/// A plain repo's secondary worktrees as units, sorted by label. `git worktree
-/// list` always names the main worktree first, so everything after it is one a
-/// `git worktree add` made, Tori's own `.tori/worktrees/` included.
+/// A plain repo's secondary worktrees as units. `git worktree list` always names
+/// the main worktree first, so everything after it is one a `git worktree add`
+/// made, Tori's own `.tori/worktrees/` included.
 ///
 /// Only the ones **inside** the main worktree, which is where `feature_container`
 /// puts a plain repo's Feature worktrees. A linked worktree elsewhere is a
@@ -473,8 +473,7 @@ fn secondary_worktree_units(real: &[WtEntry], plain: &[BranchUnit]) -> Vec<Branc
     };
     let inside = format!("{}/", main.path.trim_end_matches('/'));
     let taken: HashSet<&str> = plain.iter().filter_map(|u| u.branch.as_deref()).collect();
-    let mut units: Vec<BranchUnit> = real
-        .iter()
+    real.iter()
         .skip(1)
         .filter(|w| w.path.starts_with(&inside))
         .filter(|w| w.branch.as_deref().map(|b| !taken.contains(b)).unwrap_or(true))
@@ -488,9 +487,16 @@ fn secondary_worktree_units(real: &[WtEntry], plain: &[BranchUnit]) -> Vec<Branc
             kind: ProjectKind::Worktree,
             is_current: false,
         })
-        .collect();
-    units.sort_by(|a, b| a.label.cmp(&b.label));
-    units
+        .collect()
+}
+
+fn sort_units(units: &mut [BranchUnit], default: Option<String>) {
+    units.sort_by_cached_key(|u| {
+        // Guarded, or a detached worktree (no branch) would pin itself when
+        // origin has no HEAD to name a default.
+        let pinned = default.is_some() && u.branch == default;
+        (!pinned, u.label.to_lowercase(), u.label.clone())
+    });
 }
 
 /// Classify a project folder and enumerate its branch-units.
@@ -525,6 +531,7 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
         let attached = attached_branches(&load_attached(), path);
         let mut units = plain_branch_units(path, &attached);
         units.extend(secondary_worktree_units(&real, &units));
+        sort_units(&mut units, default_branch(path));
         return units;
     }
 
@@ -540,7 +547,6 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
     }
 
     // A worktree project: one unit per worktree folder, default branch first.
-    let def = default_branch(path);
     let mut units: Vec<BranchUnit> = real
         .into_iter()
         .map(|w| BranchUnit {
@@ -554,11 +560,7 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
             is_current: false,
         })
         .collect();
-    units.sort_by(|a, b| {
-        let ad = def.is_some() && a.branch.as_deref() == def.as_deref();
-        let bd = def.is_some() && b.branch.as_deref() == def.as_deref();
-        bd.cmp(&ad).then_with(|| a.label.cmp(&b.label))
-    });
+    sort_units(&mut units, default_branch(path));
     units
 }
 
@@ -786,6 +788,10 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
                 .map(expand_tilde)
                 .filter(|f| Path::new(f).is_file());
         }
+    }
+
+    for g in &mut spaces {
+        g.projects.sort_by_cached_key(|p| (p.name.to_lowercase(), p.name.clone()));
     }
 
     // Apply the user's root-space order (stable): externals sort after all roots
