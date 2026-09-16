@@ -278,6 +278,13 @@ pub trait Forge: Send + Sync {
     fn update_branch(&self, repo: &RepoRef, number: u64) -> Result<(), ForgeError>;
 }
 
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

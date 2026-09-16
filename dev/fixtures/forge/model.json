@@ -45,7 +45,8 @@
     "id": "github-com-skarif2",
     "label": "skarif2",
     "login": "skarif2",
-    "provider": "github"
+    "provider": "github",
+    "rejectedAt": null
   },
   "forgeError": {
     "kind": "rateLimited",

@@ -33,7 +33,7 @@ const calls = {
 };
 
 function account(id: string, auth: AuthState, login: string | null): ForgeAccount {
-  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, auth };
+  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, auth };
 }
 
 /** Rust's ladder, reduced to the facts these tests branch on: Sway's own
@@ -149,6 +149,7 @@ describe("the forge accounts settings section", () => {
           account("github-com-fonn-arif", { kind: "signedIn", login: "fonn-arif" }, "fonn-arif"),
         ],
         gitCredentials: false,
+        defaultAccount: null,
       },
     ];
     render(() => <ForgeSection />);
@@ -166,6 +167,7 @@ describe("the forge accounts settings section", () => {
         host: "github.com",
         accounts: [account("github-com-skarif2", { kind: "suspect", login: "skarif2" }, "skarif2")],
         gitCredentials: false,
+        defaultAccount: null,
       },
     ];
     render(() => <ForgeSection />);
@@ -183,6 +185,7 @@ describe("the forge accounts settings section", () => {
         host: "github.com",
         accounts: [account("github-com-skarif2", { kind: "signedIn", login: "skarif2" }, "skarif2")],
         gitCredentials: false,
+        defaultAccount: null,
       },
     ];
     render(() => <ForgeSection />);
@@ -242,6 +245,7 @@ describe("the forge accounts settings section", () => {
         host: "github.com",
         accounts: [account("github-com-skarif2", { kind: "signedIn", login: "skarif2" }, "skarif2")],
         gitCredentials: false,
+        defaultAccount: null,
       },
     ];
     render(() => <ForgeSection />);
@@ -263,10 +267,12 @@ describe("the forge accounts settings section", () => {
             login: "arif",
             label: "arif",
             expiresAt: null,
+            rejectedAt: null,
             auth: { kind: "signedIn", login: "arif" },
           },
         ],
         gitCredentials: true,
+        defaultAccount: null,
       },
     ];
     gitCredentials["git.example.com"] = true;

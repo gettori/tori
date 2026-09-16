@@ -42,8 +42,9 @@ impl Default for AuthCore {
 
 impl AuthCore {
     /// Restores from what the keychain held at startup.
-    pub fn restored(token: Option<String>, login: Option<String>, enabled: bool) -> Self {
-        Self { token, login, suspect: false, enabled }
+    pub fn restored(token: Option<String>, login: Option<String>, suspect: bool, enabled: bool) -> Self {
+        let suspect = suspect && token.is_some();
+        Self { token, login, suspect, enabled }
     }
 
     pub fn state(&self) -> AuthState {
@@ -131,6 +132,22 @@ impl AuthCore {
     }
 }
 
+/// Which way an outcome moved an account. A status tick that crosses nothing
+/// never writes the accounts file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flip {
+    Rejected,
+    Recovered,
+}
+
+/// One account as the keychain and the accounts file answered at startup.
+pub struct Restored {
+    pub id: String,
+    pub token: Option<String>,
+    pub login: Option<String>,
+    pub rejected: bool,
+}
+
 /// Every account's credential, keyed by account id, under one kill switch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthStore {
@@ -145,13 +162,23 @@ impl Default for AuthStore {
 }
 
 impl AuthStore {
-    /// `(account id, token, login)` per account the keychain answered for.
-    pub fn restored(entries: Vec<(String, Option<String>, Option<String>)>, enabled: bool) -> Self {
+    pub fn restored(entries: Vec<Restored>, enabled: bool) -> Self {
         let accounts = entries
             .into_iter()
-            .map(|(id, token, login)| (id, AuthCore::restored(token, login, enabled)))
+            .map(|e| (e.id, AuthCore::restored(e.token, e.login, e.rejected, enabled)))
             .collect();
         Self { accounts, enabled }
+    }
+
+    fn flip(&mut self, id: &str, change: impl FnOnce(&mut AuthCore)) -> Option<Flip> {
+        let core = self.accounts.get_mut(id)?;
+        let before = core.suspect;
+        change(core);
+        match (before, core.suspect) {
+            (false, true) => Some(Flip::Rejected),
+            (true, false) => Some(Flip::Recovered),
+            _ => None,
+        }
     }
 
     /// An account Sway holds no credential for reads as signed out.
@@ -171,10 +198,8 @@ impl AuthStore {
         self.accounts.get(id).and_then(AuthCore::token)
     }
 
-    pub fn note_result<T>(&mut self, id: &str, result: &Result<T, super::ForgeError>) {
-        if let Some(core) = self.accounts.get_mut(id) {
-            core.note_result(result);
-        }
+    pub fn note_result<T>(&mut self, id: &str, result: &Result<T, super::ForgeError>) -> Option<Flip> {
+        self.flip(id, |core| core.note_result(result))
     }
 
     pub fn note_login(&mut self, id: &str, login: String) {
@@ -183,23 +208,19 @@ impl AuthStore {
         }
     }
 
-    pub fn note_refreshed(&mut self, id: &str, token: String) {
-        if let Some(core) = self.accounts.get_mut(id) {
-            core.note_refreshed(token);
-        }
+    pub fn note_refreshed(&mut self, id: &str, token: String) -> Option<Flip> {
+        self.flip(id, |core| core.note_refreshed(token))
     }
 
-    pub fn note_rejected(&mut self, id: &str) {
-        if let Some(core) = self.accounts.get_mut(id) {
-            core.note_unauthorized();
-        }
+    pub fn note_rejected(&mut self, id: &str) -> Option<Flip> {
+        self.flip(id, AuthCore::note_unauthorized)
     }
 
     pub fn sign_in(&mut self, id: &str, token: String, login: Option<String>) {
         let enabled = self.enabled;
         self.accounts
             .entry(id.to_string())
-            .or_insert_with(|| AuthCore::restored(None, None, enabled))
+            .or_insert_with(|| AuthCore::restored(None, None, false, enabled))
             .sign_in(token, login);
     }
 
@@ -248,7 +269,8 @@ pub fn token(id: &str) -> Option<String> {
 /// command that calls the forge routes its result through here, so a 401 on any
 /// call marks that account's credential suspect exactly once, in one place.
 pub fn note_result<T>(id: &str, result: &Result<T, super::ForgeError>) {
-    with(|s| s.note_result(id, result));
+    let flip = with(|s| s.note_result(id, result));
+    record(id, flip);
 }
 
 pub fn note_login(id: &str, login: String) {
@@ -258,17 +280,33 @@ pub fn note_login(id: &str, login: String) {
 /// The in-memory half of a renewal. The keychain write is the caller's, because
 /// a new pair is stored before anything is allowed to use it.
 pub fn note_refreshed(id: &str, token: String) {
-    with(|s| s.note_refreshed(id, token));
+    let flip = with(|s| s.note_refreshed(id, token));
+    record(id, flip);
 }
 
 /// The renewal itself was refused, which is the one failure that ends a
 /// credential: nothing can renew it, so the user has to sign in again.
 pub fn note_rejected(id: &str) {
-    with(|s| s.note_rejected(id));
+    let flip = with(|s| s.note_rejected(id));
+    record(id, flip);
+}
+
+// Auth inside accounts, the order `add_signed_in` takes them. The live state
+// decides, so a write landing after a later flip or a sign-in is not stale.
+fn record(id: &str, flip: Option<Flip>) {
+    if flip.is_none() {
+        return;
+    }
+    let now = super::now_secs();
+    let _ = super::accounts::update(|file| {
+        let suspect = matches!(state(id), AuthState::Suspect { .. });
+        super::accounts::note_rejection(file, id, suspect, now);
+        Ok(())
+    });
 }
 
 /// Restores every account's credential from the keychain at startup.
-pub fn restore(entries: Vec<(String, Option<String>, Option<String>)>, enabled: bool) {
+pub fn restore(entries: Vec<Restored>, enabled: bool) {
     *AUTH.lock().unwrap() = Some(AuthStore::restored(entries, enabled));
 }
 
@@ -291,7 +329,7 @@ mod tests {
     use super::*;
 
     fn signed_in() -> AuthCore {
-        AuthCore::restored(Some("gho_x".into()), Some("skarif2".into()), true)
+        AuthCore::restored(Some("gho_x".into()), Some("skarif2".into()), false, true)
     }
 
     #[test]
@@ -439,12 +477,16 @@ mod tests {
         }
     }
 
+    fn restored(id: &str, token: Option<&str>, login: Option<&str>, rejected: bool) -> Restored {
+        Restored { id: id.into(), token: token.map(Into::into), login: login.map(Into::into), rejected }
+    }
+
     #[test]
     fn a_401_on_one_account_leaves_the_other_untouched() {
         let mut store = AuthStore::restored(
             vec![
-                ("personal".into(), Some("gho_a".into()), Some("skarif2".into())),
-                ("work".into(), Some("gho_b".into()), Some("fonn-arif".into())),
+                restored("personal", Some("gho_a"), Some("skarif2"), false),
+                restored("work", Some("gho_b"), Some("fonn-arif"), false),
             ],
             true,
         );
@@ -456,5 +498,79 @@ mod tests {
         store.set_enabled(false);
         assert!(!store.may_call("personal"), "the kill switch reaches every account");
         assert_eq!(store.state("nobody"), AuthState::SignedOut);
+    }
+
+    fn work(rejected: bool) -> AuthStore {
+        AuthStore::restored(vec![restored("work", Some("gho_b"), Some("fonn-arif"), rejected)], true)
+    }
+
+    fn on_disk() -> (super::super::accounts::AccountsFile, String) {
+        use super::super::accounts::{add_account, AccountsFile, Provider, GITHUB_COM};
+        let mut file = AccountsFile::default();
+        let id = add_account(&mut file, Provider::Github, "https://github.com", GITHUB_COM, "fonn-arif", None).unwrap();
+        (file, id)
+    }
+
+    fn suspect(store: &AuthStore, id: &str) -> bool {
+        matches!(store.state(id), AuthState::Suspect { .. })
+    }
+
+    const UNAUTHORIZED: Result<(), super::super::ForgeError> = Err(super::super::ForgeError::CredentialSuspect);
+
+    #[test]
+    fn a_401_is_recorded_once_however_many_ticks_repeat_it() {
+        use super::super::accounts;
+        let (mut file, id) = on_disk();
+        let mut store = AuthStore::restored(vec![restored(&id, Some("gho_b"), None, false)], true);
+
+        let mut writes = 0;
+        for now in [100, 200, 300] {
+            if store.note_result(&id, &UNAUTHORIZED).is_some() {
+                accounts::note_rejection(&mut file, &id, suspect(&store, &id), now);
+                writes += 1;
+            }
+        }
+        assert_eq!(writes, 1, "a status tick on a suspect account must not write the file");
+        assert_eq!(accounts::find(&file, &id).unwrap().1.rejected_at, Some(100));
+    }
+
+    #[test]
+    fn a_refused_renewal_is_recorded_unless_a_401_already_was() {
+        let mut store = work(false);
+        assert_eq!(store.note_rejected("work"), Some(Flip::Rejected));
+        assert_eq!(store.note_rejected("work"), None);
+
+        let mut store = work(false);
+        store.note_result("work", &UNAUTHORIZED);
+        assert_eq!(store.note_rejected("work"), None, "the 401 already dated it");
+    }
+
+    #[test]
+    fn a_rejected_account_comes_back_suspect_after_a_restart() {
+        let store = work(true);
+        assert_eq!(store.state("work"), AuthState::Suspect { login: Some("fonn-arif".into()) });
+        assert!(!store.may_call("work"));
+
+        let keychain_empty = AuthStore::restored(vec![restored("work", None, None, true)], true);
+        assert_eq!(keychain_empty.state("work"), AuthState::SignedOut);
+    }
+
+    #[test]
+    fn the_startup_probe_clears_a_rejection_on_success_and_keeps_it_on_a_401() {
+        use super::super::accounts;
+        let (mut file, id) = on_disk();
+        accounts::note_rejection(&mut file, &id, true, 100);
+        let mut store = AuthStore::restored(vec![restored(&id, Some("gho_b"), None, true)], true);
+
+        assert_eq!(store.note_result(&id, &UNAUTHORIZED), None);
+        assert!(!store.may_call(&id));
+
+        assert_eq!(store.note_result(&id, &Ok::<_, super::super::ForgeError>(())), Some(Flip::Recovered));
+        accounts::note_rejection(&mut file, &id, suspect(&store, &id), 200);
+        assert_eq!(accounts::find(&file, &id).unwrap().1.rejected_at, None);
+        assert!(store.may_call(&id));
+
+        let mut renewed = work(true);
+        assert_eq!(renewed.note_refreshed("work", "gho_c".into()), Some(Flip::Recovered));
     }
 }
