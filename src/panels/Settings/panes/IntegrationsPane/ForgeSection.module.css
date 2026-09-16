@@ -368,6 +368,14 @@
   max-width: calc(500px * var(--ui-scale));
 }
 
+.recovery {
+  max-width: none;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
 .scopes {
   display: flex;
   flex-wrap: wrap;
