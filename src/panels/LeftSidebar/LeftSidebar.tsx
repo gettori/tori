@@ -56,6 +56,7 @@ import {
   type OpenSettings,
 } from "../../utils/events";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
+import { projectUnitKind } from "../../utils/featureMembers";
 import { traceSwitchStart } from "../../utils/perfTrace";
 import { syntheticId } from "../../utils/syntheticTabs";
 import { onNeedsYouNotificationClick } from "../../utils/presence";
@@ -1279,7 +1280,7 @@ export default function LeftSidebar(props: {
           cfg.spaces
             .flatMap((g) => g.projects)
             .filter((p) => {
-              const k = p.branchUnits[0]?.kind;
+              const k = projectUnitKind(p);
               return k === "plain" || k === "worktree" || k === "incomplete";
             })
             .map(async (p) => {
@@ -1301,7 +1302,7 @@ export default function LeftSidebar(props: {
         await Promise.all(
           cfg.spaces
             .flatMap((g) => g.projects)
-            .filter((p) => p.branchUnits[0]?.kind === "worktree")
+            .filter((p) => projectUnitKind(p) === "worktree")
             .map(async (p) => {
               map[p.path] = await invoke<number>("shared_drift", { container: p.path }).catch(() => 0);
             }),
@@ -2142,13 +2143,10 @@ export default function LeftSidebar(props: {
           { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
         ];
 
-  // A project's git kind comes from its branch-units (all share one kind).
-  const projectKind = (p: Project) => p.branchUnits[0]?.kind;
-
   // A project with a working tree git can branch from: a plain repo or a
   // worktree container. Not a non-git folder, and not a bare stub, which has no
   // checkout to attempt anything against.
-  const gitProject = (p: Project) => projectKind(p) === "plain" || projectKind(p) === "worktree";
+  const gitProject = (p: Project) => projectUnitKind(p) === "plain" || projectUnitKind(p) === "worktree";
 
   // "Change icon…" is appended to every project menu, external and every git
   // kind alike: the icon is a property of the row, not of what git is doing
@@ -2173,7 +2171,7 @@ export default function LeftSidebar(props: {
   // a plain repo commits / sets a remote / pushes.
   const kindMenu = (g: Space, p: Project): MenuItem[] => {
     if (p.external) return [{ label: "Unpin", onClick: () => unpinPath(p) }];
-    switch (projectKind(p)) {
+    switch (projectUnitKind(p)) {
       case "worktree":
         return [
           { label: "Add Worktree", onClick: () => addWorktree(p) },
@@ -3084,7 +3082,7 @@ export default function LeftSidebar(props: {
             // A non-git folder has no branch node, and now no session rows
             // either: its project row *is* the branch-unit, a leaf that selects
             // its single unit when clicked.
-            const plainDir = () => projectKind(p) === "plain-dir";
+            const plainDir = () => projectUnitKind(p) === "plain-dir";
             const folderUnit = () => p.branchUnits[0];
             // The flat units and the fan-out groups. An attempt of a worktree
             // container arrives as an ordinary worktree unit, so it is lifted
