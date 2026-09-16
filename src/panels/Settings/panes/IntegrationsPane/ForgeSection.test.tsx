@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
+import { render, screen, waitFor, fireEvent, cleanup, within } from "@solidjs/testing-library";
 import { pointerClick } from "../../../../test/menus";
 import type {
   AuthState,
@@ -30,11 +30,21 @@ const calls = {
   cancel: 0,
   removed: [] as string[],
   gitCredentials: [] as [string, boolean][],
+  defaults: [] as [string, string | null][],
+  resets: 0,
 };
 
-function account(id: string, auth: AuthState, login: string | null): ForgeAccount {
-  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, auth };
+function account(id: string, auth: AuthState, login: string | null, extra: Partial<ForgeAccount> = {}): ForgeAccount {
+  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, auth, ...extra };
 }
+
+function hostOf(host: string, accounts: ForgeAccount[], extra: Partial<ForgeHost> = {}): ForgeHost {
+  return { host, accounts, gitCredentials: false, defaultAccount: null, ...extra };
+}
+
+const on = (login: string) => account(`github-com-${login}`, { kind: "signedIn", login }, login);
+const rejected = (login: string, rejectedAt: number | null) =>
+  account(`github-com-${login}`, { kind: "suspect", login }, login, { rejectedAt });
 
 /** Rust's ladder, reduced to the facts these tests branch on: Sway's own
  *  application covers github.com, and a GitLab instance has whichever one was
@@ -79,6 +89,13 @@ vi.mock("@tauri-apps/api/core", () => ({
         hosts = hosts.map((h) => (h.host === host ? { ...h, gitCredentials: enabled } : h));
         return Promise.resolve(hosts);
       }
+      case "forge_set_default_account": {
+        const host = args?.host as string;
+        const accountId = (args?.accountId as string | null) ?? null;
+        calls.defaults.push([host, accountId]);
+        hosts = hosts.map((h) => (h.host === host ? { ...h, defaultAccount: accountId } : h));
+        return Promise.resolve(hosts);
+      }
       case "forge_device_start":
         calls.start += 1;
         return Promise.resolve({
@@ -109,6 +126,12 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("../../../../utils/clipboard", () => ({ copyText: () => Promise.resolve(true) }));
+vi.mock("../../../../utils/forgeStatus", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../../utils/forgeStatus")>()),
+  resetForgeResolutions: () => {
+    calls.resets += 1;
+  },
+}));
 
 import ForgeSection from "./ForgeSection";
 
@@ -123,80 +146,153 @@ beforeEach(() => {
   calls.cancel = 0;
   calls.removed = [];
   calls.gitCredentials = [];
+  calls.defaults = [];
+  calls.resets = 0;
   vi.stubGlobal("open", vi.fn());
 });
 
 /** Opens the add form on its github.com default and starts the browser flow. */
 async function startBrowserSignIn() {
-  fireEvent.click(await screen.findByText("Add account"));
+  fireEvent.click(await screen.findByText("Connect github.com"));
   fireEvent.click(await screen.findByText("Continue"));
   fireEvent.click(await screen.findByText("Sign in with browser"));
 }
 
 describe("the forge accounts settings section", () => {
-  it("offers adding an account when there is none", async () => {
+  it("offers connecting github.com, with the global switch inert, when there is no host", async () => {
     render(() => <ForgeSection />);
-    expect(await screen.findByText("No accounts")).toBeTruthy();
-    expect(screen.getByText("Add account")).toBeTruthy();
+    expect(await screen.findByText("No hosts connected")).toBeTruthy();
+    expect(screen.getByText("Connect github.com")).toBeTruthy();
+    expect(screen.getByText("Another host...")).toBeTruthy();
+    expect(screen.getByText("Available once a host is connected.")).toBeTruthy();
+    expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(true);
   });
 
-  it("lists two signed-in users on one host as two accounts under it", async () => {
-    hosts = [
-      {
-        host: "github.com",
-        accounts: [
-          account("github-com-skarif2", { kind: "signedIn", login: "skarif2" }, "skarif2"),
-          account("github-com-fonn-arif", { kind: "signedIn", login: "fonn-arif" }, "fonn-arif"),
-        ],
-        gitCredentials: false,
-        defaultAccount: null,
-      },
-    ];
+  it("gives one github.com account a card with its tag, status and one account's switch", async () => {
+    hosts = [hostOf("github.com", [on("octocat")])];
     render(() => <ForgeSection />);
-    expect(await screen.findAllByTestId("forge-account")).toHaveLength(2);
-    expect(screen.getByText("github.com")).toBeTruthy();
-    expect(screen.getByText(/Signed in as fonn-arif/)).toBeTruthy();
+    const card = await screen.findByTestId("forge-host");
+    expect(card.textContent).toContain("GitHub");
+    expect(card.textContent).toContain("signed in");
+    expect(card.textContent).toContain("Use this account for git push and fetch");
+    expect(screen.getByText("Connect another host...")).toBeTruthy();
+    expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(false);
   });
 
-  it("renders a suspect credential as sign-in-again, not as signed out", async () => {
-    // The distinction the whole 401 story rests on. A signed-out rendering here
-    // would say the token was thrown away, and Sway keeps it precisely so a
-    // transient rejection costs nothing.
+  it("lists two accounts under github.com and one under gitlab.com, each card tagged by family", async () => {
     hosts = [
-      {
-        host: "github.com",
-        accounts: [account("github-com-skarif2", { kind: "suspect", login: "skarif2" }, "skarif2")],
-        gitCredentials: false,
-        defaultAccount: null,
-      },
+      hostOf("github.com", [on("octocat"), on("octocat-review")], { gitCredentials: true, defaultAccount: "github-com-octocat" }),
+      hostOf("gitlab.com", [
+        account("gitlab-com-a-mehta", { kind: "signedIn", login: "a.mehta" }, "a.mehta", {
+          provider: "gitlab",
+          baseUrl: "https://gitlab.com",
+        }),
+      ]),
     ];
     render(() => <ForgeSection />);
+    const [github, gitlab] = await screen.findAllByTestId("forge-host");
+    expect(within(github).getAllByTestId("forge-account")).toHaveLength(2);
+    expect(github.textContent).toContain("GitHub");
+    expect(github.textContent).toContain("Use for git push and fetch");
+    expect(screen.getByLabelText("Account github.com pushes and fetches as").textContent).toContain("octocat");
+    expect(gitlab.textContent).toContain("GitLab");
+    expect(gitlab.textContent).toContain("Use this account for git push and fetch");
+  });
 
-    const notice = await screen.findByTestId("suspect-notice");
-    expect(notice.textContent).toContain("rejected the stored sign-in");
-    expect(screen.getByText("skarif2")).toBeTruthy();
+  it("washes a rejected Enterprise account with the date the host stopped accepting it", async () => {
+    // Noon UTC, so the day reads the same in every timezone the suite runs in.
+    hosts = [
+      hostOf("ghe.example.com", [
+        account("ghe-example-com-j-okafor", { kind: "suspect", login: "j.okafor" }, "j.okafor", {
+          baseUrl: "https://ghe.example.com",
+          rejectedAt: Date.UTC(2025, 8, 12, 12) / 1000,
+        }),
+      ]),
+    ];
+    render(() => <ForgeSection />);
+    const card = await screen.findByTestId("forge-host");
+    expect(card.textContent).toContain("Enterprise");
+    expect(card.textContent).toContain("rejected");
+    expect(screen.getByTestId("suspect-notice").textContent).toBe(
+      "ghe.example.com stopped accepting this token on 12 Sep. It is still stored, so signing in again replaces it in place.",
+    );
     expect(screen.getByText("Sign in again")).toBeTruthy();
-    expect(screen.queryByText("No accounts")).toBeNull();
+    expect(screen.queryByText("No hosts connected")).toBeNull();
   });
 
-  it("removes an account through Rust", async () => {
-    hosts = [
-      {
-        host: "github.com",
-        accounts: [account("github-com-skarif2", { kind: "signedIn", login: "skarif2" }, "skarif2")],
-        gitCredentials: false,
-        defaultAccount: null,
-      },
-    ];
+  it("leaves the date out of the rejection when Sway never recorded one", async () => {
+    hosts = [hostOf("github.com", [rejected("skarif2", null)])];
+    render(() => <ForgeSection />);
+    expect((await screen.findByTestId("suspect-notice")).textContent).toBe(
+      "github.com stopped accepting this token. It is still stored, so signing in again replaces it in place.",
+    );
+  });
+
+  it("offers only signed-in accounts in the chip, with a placeholder until one is chosen", async () => {
+    hosts = [hostOf("github.com", [on("a"), rejected("b", null), on("c")])];
+    render(() => <ForgeSection />);
+    const chip = await screen.findByLabelText("Account github.com pushes and fetches as");
+    expect(chip.textContent).toContain("Choose account");
+
+    pointerClick(chip);
+    await screen.findByRole("listbox");
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["a", "c"]);
+  });
+
+  it("stores a chosen account as the host default and asks every repo again", async () => {
+    hosts = [hostOf("github.com", [on("a"), on("c")])];
+    render(() => <ForgeSection />);
+    pointerClick(await screen.findByLabelText("Account github.com pushes and fetches as"));
+    await screen.findByRole("listbox");
+    pointerClick(screen.getByRole("option", { name: "c" }));
+
+    await waitFor(() => expect(calls.defaults).toEqual([["github.com", "github-com-c"]]));
+    await waitFor(() => expect(calls.resets).toBe(1));
+  });
+
+  it("makes the first signed-in account the default when the switch goes on without one", async () => {
+    // Otherwise the switch would read on while git still asked which account.
+    hosts = [hostOf("github.com", [rejected("a", null), on("b"), on("c")])];
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByLabelText("Use github.com for git push and fetch"));
+
+    await waitFor(() => expect(calls.gitCredentials).toEqual([["github.com", true]]));
+    expect(calls.defaults).toEqual([["github.com", "github-com-b"]]);
+    expect(calls.resets).toBe(1);
+  });
+
+  it("renders the footer inert when every account on the host is rejected", async () => {
+    hosts = [hostOf("github.com", [rejected("a", null), rejected("b", null)])];
+    render(() => <ForgeSection />);
+    const toggle = (await screen.findByLabelText("Use github.com for git push and fetch")) as HTMLInputElement;
+    expect(toggle.disabled).toBe(true);
+    expect((screen.getByLabelText("Account github.com pushes and fetches as") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("asks before removing an account, and removes nothing on cancel", async () => {
+    hosts = [hostOf("github.com", [on("skarif2")])];
     render(() => <ForgeSection />);
     fireEvent.click(await screen.findByLabelText("Remove skarif2"));
+    expect(await screen.findByText("Remove skarif2 from github.com?")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByText("Remove skarif2 from github.com?")).toBeNull());
+    expect(calls.removed).toEqual([]);
+  });
+
+  it("removes an account through Rust once confirmed", async () => {
+    hosts = [hostOf("github.com", [on("skarif2")])];
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByLabelText("Remove skarif2"));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+
     await waitFor(() => expect(calls.removed).toEqual(["github-com-skarif2"]));
-    expect(await screen.findByText("No accounts")).toBeTruthy();
+    expect(await screen.findByText("No hosts connected")).toBeTruthy();
   });
 
   it("offers the browser on github.com and names the scope a token needs", async () => {
     render(() => <ForgeSection />);
-    fireEvent.click(await screen.findByText("Add account"));
+    fireEvent.click(await screen.findByText("Connect github.com"));
     fireEvent.click(await screen.findByText("Continue"));
 
     expect(await screen.findByText("Sign in with browser")).toBeTruthy();
@@ -205,7 +301,7 @@ describe("the forge accounts settings section", () => {
 
   it("offers only a token on a host Sway has no browser sign-in for", async () => {
     render(() => <ForgeSection />);
-    fireEvent.click(await screen.findByText("Add account"));
+    fireEvent.click(await screen.findByText("Another host..."));
     fireEvent.input(screen.getByLabelText("Host URL"), { target: { value: "https://git.example.com" } });
     fireEvent.click(screen.getByText("Continue"));
 
@@ -217,7 +313,7 @@ describe("the forge accounts settings section", () => {
     // Only that instance's admin can register an application, so until its id
     // is known the browser flow would open a page the server refuses.
     render(() => <ForgeSection />);
-    fireEvent.click(await screen.findByText("Add account"));
+    fireEvent.click(await screen.findByText("Another host..."));
     // The provider picker is a listbox behind a button, so a choice is two
     // presses and the rows exist only while it is open.
     pointerClick(screen.getByLabelText("Provider"));

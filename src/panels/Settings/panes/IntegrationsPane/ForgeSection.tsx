@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import Button from "../../../../components/Button/Button";
 import Select from "../../../../components/Select/Select";
 import Switch from "../../../../components/Switch/Switch";
+import ConfirmDialog, { type ConfirmOpts, type ConfirmReq } from "../../../../components/Dialogs/ConfirmDialog";
 import { copyText } from "../../../../utils/clipboard";
 import { settings, saveSettings } from "../../settingsStore";
 import {
@@ -14,8 +15,9 @@ import {
   type ForgeProvider,
   type SignInRoutes,
 } from "../../../../utils/forgeTypes";
-import { noteForgeAccounts } from "../../../../utils/forgeStatus";
+import { noteForgeAccounts, resetForgeResolutions } from "../../../../utils/forgeStatus";
 import styles from "../../Settings.module.css";
+import cards from "./ForgeSection.module.css";
 
 // A rejected account is **suspect**, not signed out: its token is still stored,
 // so its action is "sign in again", and rendering it as signed out would imply
@@ -36,27 +38,31 @@ type DevicePrompt = {
 
 type Draft = { provider: ForgeProvider; url: string; accountId: string | null };
 
-const PROVIDERS: { value: ForgeProvider; label: string; url: string; mark: string }[] = [
-  { value: "github", label: "GitHub", url: "https://github.com", mark: "GH" },
-  { value: "gitlab", label: "GitLab", url: "https://gitlab.com", mark: "GL" },
+const PROVIDERS: { value: ForgeProvider; label: string; url: string }[] = [
+  { value: "github", label: "GitHub", url: "https://github.com" },
+  { value: "gitlab", label: "GitLab", url: "https://gitlab.com" },
 ];
 
-const PILL: Record<AuthState["kind"], string> = {
-  signedIn: "Signed in",
-  suspect: "Rejected",
-  signedOut: "Signed out",
+const STATUS_WORD: Record<AuthState["kind"], string> = {
+  signedIn: "signed in",
+  suspect: "rejected",
+  signedOut: "signed out",
 };
 
-function status(account: ForgeAccount): string {
-  switch (account.auth.kind) {
-    case "signedIn":
-      return account.login ? `Signed in as ${account.login}.` : "Signed in.";
-    case "suspect":
-      return "The host rejected the stored sign-in. Updates for its repos are paused until you sign in again.";
-    case "signedOut":
-      return "No stored sign-in for this account.";
-  }
+// Every account on a host shares its provider, so the first one names the family.
+function family(host: ForgeHost): string {
+  if (host.accounts[0]?.provider === "gitlab") return "GitLab";
+  return host.host === "github.com" ? "GitHub" : "Enterprise";
 }
+
+// Day and month apart: newer ICU spells en-GB September "Sept", en-US keeps "Sep".
+function rejection(host: string, rejectedAt: number | null): string {
+  const at = rejectedAt === null ? null : new Date(rejectedAt * 1000);
+  const on = at ? ` on ${at.getDate()} ${at.toLocaleDateString("en-US", { month: "short" })}` : "";
+  return `${host} stopped accepting this token${on}. It is still stored, so signing in again replaces it in place.`;
+}
+
+const signedIn = (host: ForgeHost) => host.accounts.filter((a) => a.auth.kind === "signedIn");
 
 export default function ForgeSection() {
   const [hosts, setHosts] = createSignal<ForgeHost[]>([]);
@@ -68,6 +74,14 @@ export default function ForgeSection() {
   const [error, setError] = createSignal<string | null>(null);
   const [copied, setCopied] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
+  const [confirmReq, setConfirmReq] = createSignal<ConfirmReq | null>(null);
+  const askConfirm = (opts: ConfirmOpts) =>
+    new Promise<boolean>((resolve) => setConfirmReq({ ...opts, resolve }));
+  const answerConfirm = (ok: boolean) => {
+    const req = confirmReq();
+    setConfirmReq(null);
+    req?.resolve(ok);
+  };
 
   // The poll timer is the one piece of state that must not outlive the panel: a
   // device flow left running would keep hitting the host after the user closed
@@ -234,17 +248,43 @@ export default function ForgeSection() {
 
   // Rust answers with the whole list, so the row shows what was stored rather
   // than what the click assumed.
-  async function setGitCredentials(host: string, enabled: boolean) {
+  async function setGitCredentials(host: ForgeHost, enabled: boolean) {
     setError(null);
     try {
-      const list = await invoke<ForgeHost[]>("forge_set_git_credentials", { host, enabled });
+      // With several accounts and no default, the switch would read on while
+      // git still asked which account to use.
+      const first = signedIn(host)[0];
+      if (enabled && host.accounts.length > 1 && !host.defaultAccount && first) {
+        await invoke("forge_set_default_account", { host: host.host, accountId: first.id });
+        resetForgeResolutions();
+      }
+      const list = await invoke<ForgeHost[]>("forge_set_git_credentials", { host: host.host, enabled });
       if (Array.isArray(list)) setHosts(list);
     } catch (e) {
       setError(forgeErrorMessage(e));
     }
   }
 
-  async function remove(account: ForgeAccount) {
+  // A repo already resolved to the pick state keeps it until asked again.
+  async function setDefaultAccount(host: string, accountId: string) {
+    setError(null);
+    try {
+      const list = await invoke<ForgeHost[]>("forge_set_default_account", { host, accountId });
+      if (Array.isArray(list)) setHosts(list);
+      resetForgeResolutions();
+    } catch (e) {
+      setError(forgeErrorMessage(e));
+    }
+  }
+
+  async function remove(host: string, account: ForgeAccount) {
+    const ok = await askConfirm({
+      title: `Remove ${forgeAccountName(account)} from ${host}?`,
+      message: "Sway deletes the token it stored for this account.",
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
     setError(null);
     try {
       await invoke("forge_remove_account", { accountId: account.id });
@@ -265,12 +305,12 @@ export default function ForgeSection() {
     window.open(url, "_blank");
   };
 
-  /** Whether the integration has an account to act as. **Suspect counts**: the
-   *  token is still stored, so switching the integration off is still a choice
-   *  the user can make while they sort the sign-in out. */
-  const connected = () => hosts().some((h) => h.accounts.some((a) => a.auth.kind !== "signedOut"));
+  const connected = () => hosts().length > 0;
   const idle = () => !draft() && !prompt();
-  const mark = (provider: ForgeProvider) => PROVIDERS.find((p) => p.value === provider)?.mark ?? "";
+  const addTo = (host: ForgeHost) => {
+    const first = host.accounts[0];
+    if (first) openDraft(first.provider, first.baseUrl);
+  };
 
   const setEnabled = (enabled: boolean) =>
     saveSettings({ ...settings, forge: { ...settings.forge, enabled } });
@@ -282,96 +322,117 @@ export default function ForgeSection() {
         <span class={styles.sectionRule} />
       </div>
 
-      {/* No account at all. A card rather than a row, because there is nothing
-          here to set yet: the one thing to do is add an account, and what that
-          buys is worth a sentence beside the button. */}
-      <Show when={hosts().length === 0 && idle()}>
-        <div class={styles.connect}>
-          {/* Two letters, not a logo: lucide dropped its brand icons, and
-              vendoring a mark to fill a 34px tile is a licence question for a
-              decoration. */}
-          <div class={styles.monogram} aria-hidden="true">
-            GH
-          </div>
-          <div class={styles.connectMain}>
-            <div class={styles.connectTitle}>No accounts</div>
-            <div class={styles.cardStatus}>
-              Pull requests, checks and review threads appear next to the branch they belong to.
+      <div class={cards.stack}>
+        <Show when={hosts().length === 0 && idle()}>
+          <div class={cards.empty}>
+            <div class={cards.emptyTitle}>No hosts connected</div>
+            <div class={cards.emptyBody}>
+              Connect a host and its pull requests, merge requests and checks show up beside the branch
+              they belong to.
+            </div>
+            <div class={cards.emptyActions}>
+              <Button variant="primary" onClick={() => openDraft("github", "https://github.com")}>
+                Connect github.com
+              </Button>
+              <Button variant="ghost" onClick={() => openDraft("github", "https://github.com")}>
+                Another host...
+              </Button>
             </div>
           </div>
-          <Button variant="primary" onClick={() => openDraft("github", "https://github.com")}>
-            Add account
-          </Button>
-        </div>
-      </Show>
+        </Show>
 
-      <For each={hosts()}>
-        {(host) => (
-          <>
-            <div class={styles.groupHead}>
-              <span class={styles.groupTitle}>{host.host}</span>
-              <span class={styles.sectionRule} />
-            </div>
-            <For each={host.accounts}>
-              {(account) => (
-                <div class={styles.connect} data-testid="forge-account">
-                  <div class={styles.monogram} aria-hidden="true">
-                    {mark(account.provider)}
-                  </div>
-                  <div class={styles.connectMain}>
-                    <div class={styles.connectTitle}>{forgeAccountName(account)}</div>
-                    <div
-                      class={styles.cardStatus}
-                      data-testid={account.auth.kind === "suspect" ? "suspect-notice" : undefined}
-                    >
-                      {status(account)}
-                    </div>
-                  </div>
-                  <span
-                    class={`${styles.statePill} ${account.auth.kind === "signedIn" ? styles.statePillOk : styles.statePillWarn}`}
-                  >
-                    {PILL[account.auth.kind]}
+        <For each={hosts()}>
+          {(host) => {
+            const usable = () => signedIn(host);
+            return (
+              <div class={cards.card} data-testid="forge-host">
+                <div class={cards.head}>
+                  <span class={cards.host}>{host.host}</span>
+                  <span class={cards.tag} data-family={family(host)}>
+                    {family(host)}
                   </span>
-                  <Show when={account.auth.kind !== "signedIn"}>
-                    <Button size="xs" onClick={() => void signInAgain(account)}>
-                      Sign in again
-                    </Button>
-                  </Show>
+                  <span class={cards.spacer} />
                   <Button
                     variant="ghost"
                     size="xs"
-                    aria-label={`Remove ${forgeAccountName(account)}`}
-                    onClick={() => void remove(account)}
+                    aria-label={`Add account on ${host.host}`}
+                    onClick={() => addTo(host)}
                   >
-                    Remove
+                    Add account
                   </Button>
                 </div>
-              )}
-            </For>
-            <div class={styles.row}>
-              <label class={styles.label}>Use for git push and fetch</label>
-              <div class={styles.control}>
-                <Switch
-                  aria-label={`Use ${host.host} for git push and fetch`}
-                  checked={host.gitCredentials}
-                  onChange={(v) => void setGitCredentials(host.host, v)}
-                />
+                <For each={host.accounts}>
+                  {(account) => (
+                    <div
+                      class={cards.account}
+                      classList={{ [cards.rejected]: account.auth.kind === "suspect" }}
+                      data-testid="forge-account"
+                    >
+                      <div class={cards.line}>
+                        <span class={cards.dot} data-auth={account.auth.kind} aria-hidden="true" />
+                        <span class={cards.login}>{forgeAccountName(account)}</span>
+                        <span class={cards.word} data-auth={account.auth.kind}>
+                          {STATUS_WORD[account.auth.kind]}
+                        </span>
+                        <Show when={account.auth.kind !== "signedIn"}>
+                          <Button variant="primary" size="xs" onClick={() => void signInAgain(account)}>
+                            Sign in again
+                          </Button>
+                        </Show>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          class={cards.remove}
+                          aria-label={`Remove ${forgeAccountName(account)}`}
+                          onClick={() => void remove(host.host, account)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      <Show when={account.auth.kind === "suspect"}>
+                        <div class={cards.reason} data-testid="suspect-notice">
+                          {rejection(host.host, account.rejectedAt)}
+                        </div>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+                <div class={cards.footer} classList={{ [cards.footerInert]: usable().length === 0 }}>
+                  <div class={cards.footerLabel}>
+                    <Show
+                      when={host.accounts.length > 1}
+                      fallback={<span>Use this account for git push and fetch</span>}
+                    >
+                      <span>Use for git push and fetch</span>
+                      <Select
+                        size="xs"
+                        aria-label={`Account ${host.host} pushes and fetches as`}
+                        placeholder="Choose account"
+                        value={host.defaultAccount ?? ""}
+                        options={usable().map((a) => ({ value: a.id, label: forgeAccountName(a) }))}
+                        disabled={usable().length === 0}
+                        onChange={(id) => void setDefaultAccount(host.host, id)}
+                      />
+                    </Show>
+                  </div>
+                  <Switch
+                    aria-label={`Use ${host.host} for git push and fetch`}
+                    checked={host.gitCredentials}
+                    disabled={usable().length === 0 && !host.gitCredentials}
+                    onChange={(v) => void setGitCredentials(host, v)}
+                  />
+                </div>
               </div>
-              <div class={styles.hint}>
-                Sway answers git with this repo's account over https. Off, git uses whatever
-                credential helper you have.
-              </div>
-            </div>
-          </>
-        )}
-      </For>
+            );
+          }}
+        </For>
+      </div>
 
       <Show when={hosts().length > 0 && idle()}>
-        <div class={styles.row}>
-          <label class={styles.label}>Another account</label>
-          <div class={styles.control}>
-            <Button onClick={() => openDraft("github", "https://github.com")}>Add account</Button>
-          </div>
+        <div class={cards.more}>
+          <Button variant="ghost" onClick={() => openDraft("github", "https://github.com")}>
+            Connect another host...
+          </Button>
         </div>
       </Show>
 
@@ -516,7 +577,7 @@ export default function ForgeSection() {
           Without one it stays on screen and inert rather than disappearing:
           hidden, "where did that setting go?" has no answer, and the row is
           also the only place that says what adding an account is *for*. */}
-      <div classList={{ [styles.inert]: !connected() }}>
+      <div class={cards.global} classList={{ [styles.inert]: !connected() }}>
         <div class={styles.row}>
           {/* Chrome rather than a form label, the same way `ToggleRow`'s is: the
               grid makes it a sibling of the control, and the shared `Switch`
@@ -532,10 +593,23 @@ export default function ForgeSection() {
             />
           </div>
           <Show when={!connected()}>
-            <div class={styles.hint}>Available once an account is connected.</div>
+            <div class={styles.hint}>Available once a host is connected.</div>
           </Show>
         </div>
       </div>
+
+      <Show when={confirmReq()}>
+        {(req) => (
+          <ConfirmDialog
+            title={req().title}
+            message={req().message}
+            confirmLabel={req().confirmLabel}
+            danger={req().danger}
+            onConfirm={() => answerConfirm(true)}
+            onCancel={() => answerConfirm(false)}
+          />
+        )}
+      </Show>
     </section>
   );
 }
