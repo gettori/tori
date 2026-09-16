@@ -13,6 +13,7 @@ mod chat;
 mod checkpoint;
 mod config;
 mod conflict;
+mod credential;
 mod dap;
 mod env;
 mod exec;
@@ -128,6 +129,13 @@ pub fn run() {
     // socket marker env set. Detect it and run the stdout-answer-only helper path
     // *before* any Tauri/AppKit init, then exit. The app's own process never has
     // the marker (it is set only on the git child command).
+    if credential::is_helper() {
+        // Before the askpass check, not after: git runs its credential helper
+        // with the whole environment of the op, askpass markers included, so
+        // the argv marker is the only thing telling the two modes apart.
+        std::process::exit(credential::run_helper());
+    }
+
     if askpass::is_helper() {
         std::process::exit(askpass::run_helper());
     }
@@ -512,6 +520,7 @@ pub fn run() {
             forge::commands::forge_accounts,
             forge::commands::forge_sign_in_routes,
             forge::commands::forge_set_app_id,
+            forge::commands::forge_set_git_credentials,
             forge::commands::forge_device_start,
             forge::commands::forge_device_poll,
             forge::commands::forge_device_cancel,

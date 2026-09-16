@@ -253,7 +253,13 @@ export type ForgeAccount = {
   auth: AuthState;
 };
 
-export type ForgeHost = { host: string; accounts: ForgeAccount[] };
+export type ForgeHost = {
+  host: string;
+  accounts: ForgeAccount[];
+  /// Git over https on this host uses the repo's account instead of whatever
+  /// credential helper the user has configured.
+  gitCredentials: boolean;
+};
 
 /// Which account a checkout acts as. `noAccount` carries no host when the
 /// checkout has no remote at all.

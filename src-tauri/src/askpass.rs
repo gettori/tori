@@ -6,6 +6,10 @@
 // so a backgrounded `git fetch` never needs a TTY: each prompt round-trips over
 // a private Unix socket into a native in-app dialog and back.
 //
+// The same socket answers one other question: `crate::credential` asks it for a
+// git credential, which is resolved from the op rather than shown to anyone.
+// `Request.kind` is what tells the two apart.
+//
 // Two halves live here:
 //   * `run_helper` - the stdout-answer-only helper path, entered from `run()`
 //     before any Tauri/AppKit init when the askpass marker env is present.
@@ -60,16 +64,27 @@ pub struct PromptEvent {
     pub kind: String,
 }
 
-/// Wire frame the helper sends the server: authenticated, per-op, one prompt.
+/// The `kind` that asks for a git credential instead of surfacing a prompt.
+pub const CREDENTIAL: &str = "credential";
+
+/// Wire frame the helper sends the server: authenticated, per-op, one question.
 #[derive(serde::Deserialize)]
 struct Request {
     token: String,
     op_id: String,
+    #[serde(default)]
     prompt: String,
+    /// [`CREDENTIAL`] for the git credential helper; absent is a prompt.
+    #[serde(default)]
+    kind: String,
+    /// The host git named, credential requests only.
+    #[serde(default)]
+    host: String,
 }
 
 /// Wire frame the server sends back. An empty `value` is the fail-closed answer
-/// (cancel/timeout/error) - git then receives an empty credential and aborts.
+/// (cancel/timeout/error) - git then receives an empty credential and aborts,
+/// or, for a credential request, falls through to a prompt.
 #[derive(Serialize, serde::Deserialize)]
 struct Response {
     value: String,
@@ -117,21 +132,31 @@ pub fn run_helper() -> i32 {
     }
 }
 
-/// Connect to the server, send the authenticated frame, read one response line,
-/// return its `value`. Isolated from env/stdout so it is unit-testable against a
-/// stub listener.
 fn helper_exchange(
     sock: &Path,
     token: &str,
     op_id: &str,
     prompt: &str,
 ) -> std::io::Result<String> {
+    exchange(sock, serde_json::json!({ "token": token, "op_id": op_id, "prompt": prompt }))
+}
+
+/// The credential helper's question on the same socket: no prompt, and the
+/// answer is git's whole `key=value` block rather than one field. See
+/// [`crate::credential`] for why the op id is what identifies the account.
+pub fn ask_credential(sock: &Path, token: &str, op_id: &str, host: &str) -> std::io::Result<String> {
+    exchange(
+        sock,
+        serde_json::json!({ "token": token, "op_id": op_id, "kind": CREDENTIAL, "host": host }),
+    )
+}
+
+/// Connect to the server, send the authenticated frame, read one response line,
+/// return its `value`. Isolated from env/stdout so it is unit-testable against a
+/// stub listener.
+fn exchange(sock: &Path, req: serde_json::Value) -> std::io::Result<String> {
     let mut stream = UnixStream::connect(sock)?;
-    let req = serde_json::to_string(&serde_json::json!({
-        "token": token,
-        "op_id": op_id,
-        "prompt": prompt,
-    }))?;
+    let req = serde_json::to_string(&req)?;
     stream.write_all(req.as_bytes())?;
     stream.write_all(b"\n")?;
     stream.flush()?;
@@ -278,6 +303,12 @@ fn handle_request(inner: &Arc<AskpassInner>, stream: &UnixStream) -> Option<Stri
     // token is defense-in-depth against a same-user process guessing the path.
     if req.token.as_bytes() != inner.token.as_bytes() {
         return None;
+    }
+    // A credential is answered from the op's own checkout, with no dialog and
+    // no user in the loop. Empty means Sway has nothing for it and git falls
+    // through to the prompts below.
+    if req.kind == CREDENTIAL {
+        return Some(crate::credential::answer(&req.op_id, &req.host).unwrap_or_default());
     }
     // Bound the prompt we surface; a runaway prompt is treated as hostile.
     if req.prompt.len() > 4096 {
@@ -470,6 +501,17 @@ mod tests {
         // Second field (password) for the same op must auto-empty, no emit.
         let got = client(&sock, &token, "op1", "Password for 'https://x': ");
         assert_eq!(got.as_deref(), Some(""));
+        assert!(erx.recv_timeout(Duration::from_millis(300)).is_err());
+    }
+
+    #[test]
+    fn a_credential_request_answers_empty_without_a_dialog() {
+        // The socket's other question (`crate::credential`) has no user in the
+        // loop, so an op nothing registered has to fail closed rather than
+        // surface a prompt nobody asked for.
+        let (inner, erx) = test_server(Duration::from_secs(2));
+        let got = ask_credential(inner.sock_path(), inner.token(), "op-unknown", "github.com");
+        assert_eq!(got.ok().as_deref(), Some(""));
         assert!(erx.recv_timeout(Duration::from_millis(300)).is_err());
     }
 

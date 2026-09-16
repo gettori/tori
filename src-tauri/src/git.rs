@@ -265,11 +265,17 @@ fn has_commit(project_path: &str, sha: &str) -> bool {
 /// commit already in the object store is a round trip spent on nothing.
 /// The fetch itself, built but not run, so a test can read back what it would
 /// have done: which refspec, and whether the bridge is wired.
-fn pr_head_fetch_command(repo: &str, head_ref: &str, sock: &Path, token: &str) -> Command {
+fn pr_head_fetch_command(
+    repo: &str,
+    head_ref: &str,
+    sock: &Path,
+    token: &str,
+) -> (Command, Option<crate::credential::Registered>) {
     let op_id = next_op_id();
     let mut cmd = git_command(repo, &op_id, sock, token);
+    let bridge = crate::credential::bridge(&mut cmd, repo, "origin", &op_id);
     cmd.args(["fetch", "--no-tags", "origin", head_ref]);
-    cmd
+    (cmd, bridge)
 }
 
 pub fn fetch_pr_head(
@@ -282,7 +288,8 @@ pub fn fetch_pr_head(
     if !sha.is_empty() && has_commit(repo, sha) {
         return Ok(());
     }
-    let out = crate::git_health::run(&mut pr_head_fetch_command(repo, head_ref, sock, token))?;
+    let (mut cmd, _bridge) = pr_head_fetch_command(repo, head_ref, sock, token);
+    let out = crate::git_health::run(&mut cmd)?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -1844,13 +1851,12 @@ pub(crate) fn git_remote_add_body(app: AppHandle, project_path: String, url: Str
     Ok(())
 }
 
-/// Origin's URL if configured, else None. Lets the UI gate push on a remote.
-#[tauri::command(async)]
-pub fn git_origin(project_path: String) -> Result<Option<String>, String> {
+/// One remote's URL, or None when the repo has no such remote.
+pub(crate) fn remote_url(repo: &str, remote: &str) -> Result<Option<String>, String> {
     let out = Command::new("git")
         .arg("-C")
-        .arg(&project_path)
-        .args(["remote", "get-url", "origin"])
+        .arg(repo)
+        .args(["remote", "get-url", remote])
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {
@@ -1858,6 +1864,12 @@ pub fn git_origin(project_path: String) -> Result<Option<String>, String> {
     }
     let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
     Ok((!url.is_empty()).then_some(url))
+}
+
+/// Origin's URL if configured, else None. Lets the UI gate push on a remote.
+#[tauri::command(async)]
+pub fn git_origin(project_path: String) -> Result<Option<String>, String> {
+    remote_url(&project_path, "origin")
 }
 
 // --- auth'd / network git via the askpass bridge ---
@@ -1919,15 +1931,18 @@ pub fn git_fetch(
     let op_id = next_op_id();
     thread::spawn(move || {
         let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
+        let named = remote.as_deref().map(str::trim).filter(|r| !r.is_empty());
+        // Before the subcommand, since `-c` is git's own argument and not the
+        // fetch's.
+        let _bridge = match named {
+            Some(r) => crate::credential::bridge(&mut cmd, &repo, r, &op_id),
+            None => crate::credential::bridge_all(&mut cmd, &repo, &op_id),
+        };
         cmd.arg("fetch");
-        match remote.as_deref() {
-            Some(r) if !r.trim().is_empty() => {
-                cmd.arg(r);
-            }
-            _ => {
-                cmd.arg("--all");
-            }
-        }
+        match named {
+            Some(r) => cmd.arg(r),
+            None => cmd.arg("--all"),
+        };
         // Fetch updates remote-tracking refs in the shared .git, so it queues
         // with every other write on this repo (see exec.rs). Held only for the
         // subprocess, not the emit.
@@ -1979,6 +1994,7 @@ pub fn push_branch(repo: &str, remote: &str, branch: &str, sock: &Path, token: &
     let op_id = next_op_id();
     let set_upstream = !has_upstream(repo, branch);
     let mut cmd = git_command(repo, &op_id, sock, token);
+    let _bridge = crate::credential::bridge(&mut cmd, repo, remote, &op_id);
     cmd.arg("push");
     if set_upstream {
         cmd.arg("--set-upstream");
@@ -2094,6 +2110,8 @@ pub fn delete_remote_branch(
     let inner = state.0.clone();
     let op_id = next_op_id();
     let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
+    // A push naming one remote, so the same rule as `push_branch`.
+    let _bridge = crate::credential::bridge(&mut cmd, &repo, &remote, &op_id);
     cmd.args(["push", &remote, "--delete", &refname]);
     let out = {
         let lock = crate::exec::repo_lock(&repo);
@@ -2107,10 +2125,16 @@ pub fn delete_remote_branch(
     Ok(())
 }
 
-/// Whether a `credential.helper` is configured for this repo (any scope). With
-/// none, git re-prompts every op (nothing is cached), so the UI warns once.
+/// Whether a login here is answered without prompting: Sway's own helper for a
+/// host with the switch on, else a `credential.helper` in any scope. With
+/// neither, git re-prompts every op (nothing is cached), so the UI warns once.
 #[tauri::command(async)]
 pub fn git_has_credential_helper(repo: String) -> Result<bool, String> {
+    // Warning about a missing helper here would send the user to configure
+    // something that already works.
+    if crate::credential::answers_fetch(&repo) {
+        return Ok(true);
+    }
     let out = Command::new("git")
         .arg("-C")
         .arg(&repo)
@@ -2174,6 +2198,14 @@ pub struct PullResult {
     pub error: String,
 }
 
+/// The remote a bare `git pull` here would talk to: the current branch's
+/// upstream, which is the only place git resolves one from.
+fn pull_remote(repo: &str) -> Option<String> {
+    let branch = git_capture(repo, &["rev-parse", "--abbrev-ref", "HEAD"]).ok()?;
+    let remote = git_capture(repo, &["config", "--get", &format!("branch.{branch}.remote")]).ok()?;
+    (!remote.is_empty()).then_some(remote)
+}
+
 /// Background `git pull`, a sibling of `git_fetch` and `git_push`. Emits
 /// `git://pull-done` or `git://pull-error`.
 ///
@@ -2192,6 +2224,8 @@ pub fn git_pull(
     let op_id = next_op_id();
     thread::spawn(move || {
         let mut cmd = git_command(&repo, &op_id, inner.sock_path(), inner.token());
+        let _bridge =
+            pull_remote(&repo).and_then(|r| crate::credential::bridge(&mut cmd, &repo, &r, &op_id));
         cmd.arg("pull");
         cmd.arg(if rebase.unwrap_or(false) { "--rebase" } else { "--no-rebase" });
         let (ok, error) = {
@@ -3563,7 +3597,7 @@ diff --git a/f b/f
 
     #[test]
     fn fetching_a_pr_head_goes_through_the_bridge_and_leaves_no_ref_behind() {
-        let cmd =
+        let (cmd, _bridge) =
             pr_head_fetch_command("/repo", "refs/pull/7/head", Path::new("/tmp/sway-akp-x/s"), "tok");
 
         // Everything that talks to a remote goes through the bridge, or a

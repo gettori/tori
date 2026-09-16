@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, cleanup } from "@solidjs/testing-library";
 import { pointerClick } from "../../../../test/menus";
-import type { AuthState, ForgeAccount, ForgeHost, SignInRoutes } from "../../../../utils/forgeTypes";
+import type {
+  AuthState,
+  ForgeAccount,
+  ForgeHost,
+  ForgeProvider,
+  SignInRoutes,
+} from "../../../../utils/forgeTypes";
 
 // The surfaces the forge accounts section has to tell apart, driven through the
 // real component.
@@ -15,8 +21,16 @@ let hosts: ForgeHost[] = [];
 /** The application id Rust has stored per host, which is what turns the browser
  *  flow on for a GitLab instance. */
 let appIds: Record<string, string> = {};
+/** Which hosts answer git, the switch Rust keeps on the host record. */
+let gitCredentials: Record<string, boolean> = {};
 let devicePolls: unknown[] = [];
-const calls = { start: 0, poll: 0, cancel: 0, removed: [] as string[] };
+const calls = {
+  start: 0,
+  poll: 0,
+  cancel: 0,
+  removed: [] as string[],
+  gitCredentials: [] as [string, boolean][],
+};
 
 function account(id: string, auth: AuthState, login: string | null): ForgeAccount {
   return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, auth };
@@ -25,15 +39,19 @@ function account(id: string, auth: AuthState, login: string | null): ForgeAccoun
 /** Rust's ladder, reduced to the facts these tests branch on: Sway's own
  *  application covers github.com, and a GitLab instance has whichever one was
  *  registered on it. */
-function routesFor(baseUrl: string): SignInRoutes {
+function routesFor(baseUrl: string, provider: ForgeProvider = "github"): SignInRoutes {
   const host = new URL(baseUrl).host;
   const appId = appIds[host] ?? null;
+  // Rust's other rule: GitHub's `repo` already carries push, while GitLab needs
+  // the git scope named separately once the host answers git.
+  const scopes =
+    provider === "gitlab" ? (gitCredentials[host] ? ["api", "write_repository"] : ["api"]) : ["repo"];
   return {
     host,
     baseUrl,
     deviceFlow: host === "github.com" || appId !== null,
-    scopes: ["repo"],
-    tokenUrl: `${baseUrl}/settings/tokens/new?scopes=repo`,
+    scopes,
+    tokenUrl: `${baseUrl}/settings/tokens/new?scopes=${scopes.join(",")}`,
     appId,
   };
 }
@@ -44,14 +62,22 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "forge_accounts":
         return Promise.resolve(hosts);
       case "forge_sign_in_routes":
-        return Promise.resolve(routesFor(args?.baseUrl as string));
+        return Promise.resolve(routesFor(args?.baseUrl as string, args?.provider as ForgeProvider));
       case "forge_set_app_id": {
         const url = args?.baseUrl as string;
         const id = (args?.appId as string).trim();
         const host = new URL(url).host;
         if (id) appIds[host] = id;
         else delete appIds[host];
-        return Promise.resolve(routesFor(url));
+        return Promise.resolve(routesFor(url, args?.provider as ForgeProvider));
+      }
+      case "forge_set_git_credentials": {
+        const host = args?.host as string;
+        const enabled = args?.enabled as boolean;
+        calls.gitCredentials.push([host, enabled]);
+        gitCredentials[host] = enabled;
+        hosts = hosts.map((h) => (h.host === host ? { ...h, gitCredentials: enabled } : h));
+        return Promise.resolve(hosts);
       }
       case "forge_device_start":
         calls.start += 1;
@@ -90,11 +116,13 @@ beforeEach(() => {
   cleanup();
   hosts = [];
   appIds = {};
+  gitCredentials = {};
   devicePolls = [];
   calls.start = 0;
   calls.poll = 0;
   calls.cancel = 0;
   calls.removed = [];
+  calls.gitCredentials = [];
   vi.stubGlobal("open", vi.fn());
 });
 
@@ -120,6 +148,7 @@ describe("the forge accounts settings section", () => {
           account("github-com-skarif2", { kind: "signedIn", login: "skarif2" }, "skarif2"),
           account("github-com-fonn-arif", { kind: "signedIn", login: "fonn-arif" }, "fonn-arif"),
         ],
+        gitCredentials: false,
       },
     ];
     render(() => <ForgeSection />);
@@ -136,6 +165,7 @@ describe("the forge accounts settings section", () => {
       {
         host: "github.com",
         accounts: [account("github-com-skarif2", { kind: "suspect", login: "skarif2" }, "skarif2")],
+        gitCredentials: false,
       },
     ];
     render(() => <ForgeSection />);
@@ -152,6 +182,7 @@ describe("the forge accounts settings section", () => {
       {
         host: "github.com",
         accounts: [account("github-com-skarif2", { kind: "signedIn", login: "skarif2" }, "skarif2")],
+        gitCredentials: false,
       },
     ];
     render(() => <ForgeSection />);
@@ -203,6 +234,56 @@ describe("the forge accounts settings section", () => {
     fireEvent.click(screen.getByText("Save"));
 
     expect(await screen.findByText("Sign in with browser")).toBeTruthy();
+  });
+
+  it("hands git this host's account once the switch is on", async () => {
+    hosts = [
+      {
+        host: "github.com",
+        accounts: [account("github-com-skarif2", { kind: "signedIn", login: "skarif2" }, "skarif2")],
+        gitCredentials: false,
+      },
+    ];
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByLabelText("Use github.com for git push and fetch"));
+    await waitFor(() => expect(calls.gitCredentials).toEqual([["github.com", true]]));
+  });
+
+  it("names the git scope on a GitLab host that answers git", async () => {
+    // `api` alone cannot push, so a token pasted for a host with the switch on
+    // would sign in and then fail on the first push.
+    hosts = [
+      {
+        host: "git.example.com",
+        accounts: [
+          {
+            id: "git-example-com-arif",
+            provider: "gitlab",
+            baseUrl: "https://git.example.com",
+            login: "arif",
+            label: "arif",
+            expiresAt: null,
+            auth: { kind: "signedIn", login: "arif" },
+          },
+        ],
+        gitCredentials: true,
+      },
+    ];
+    gitCredentials["git.example.com"] = true;
+    render(() => <ForgeSection />);
+
+    fireEvent.click(await screen.findByText("Add account"));
+    pointerClick(screen.getByLabelText("Provider"));
+    await screen.findByRole("listbox");
+    pointerClick(screen.getByRole("option", { name: "GitLab" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    fireEvent.input(screen.getByLabelText("Host URL"), {
+      target: { value: "https://git.example.com" },
+    });
+    fireEvent.click(screen.getByText("Continue"));
+
+    expect((await screen.findByTestId("token-scopes")).textContent).toContain("write_repository");
   });
 
   it("shows the code and the page to type it into while a flow is pending", async () => {
