@@ -1,8 +1,9 @@
 import { createSignal, createUniqueId, For, onCleanup, Show, type JSX } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowDown, ArrowUp, Check, CircleAlert, CornerDownLeft } from "lucide-solid";
+import { ArrowDown, ArrowUp, Check, CircleAlert, CornerDownLeft, Plus } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
+import IconButton from "../../../../components/IconButton/IconButton";
 import { GitHubLogo, GitLabLogo } from "../../../../components/Icon/gitMarks";
 import RadioGroup from "../../../../components/RadioGroup/RadioGroup";
 import Select from "../../../../components/Select/Select";
@@ -523,6 +524,13 @@ export default function ForgeSection() {
       <div class={styles.sectionTitle}>
         <span>Hosts</span>
         <span class={styles.sectionRule} />
+        <IconButton
+          size="sm"
+          icon={<Icon icon={Plus} />}
+          tooltip="Connect a host"
+          onClick={openPicker}
+          disabled={!!flow()}
+        />
       </div>
 
       <div class={cards.stack}>
@@ -983,14 +991,6 @@ export default function ForgeSection() {
           </div>
         </Show>
       </div>
-
-      <Show when={hosts().length > 0 && !flow()}>
-        <div class={cards.more}>
-          <Button variant="ghost" onClick={openPicker}>
-            Connect another host...
-          </Button>
-        </div>
-      </Show>
 
       <Show when={error()}>
         <div class={styles.note} data-testid="forge-error">
