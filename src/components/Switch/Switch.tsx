@@ -5,7 +5,7 @@ import styles from "./Switch.module.css";
 
 /**
  * A setting that takes effect the instant it flips: Kobalte's switch behind
- * Sway's chrome and Sway's API.
+ * Tori's chrome and Tori's API.
  *
  * **Switch or Checkbox is a semantic choice, not a visual one** (#107). This is
  * for a boolean whose flip *is* the action - every Settings toggle, and the
@@ -33,7 +33,7 @@ export default function Switch(props: {
    * it lands nowhere near the switch. That trade costs the keyboard path, so
    * this is a mouse affordance only and a call site passing it still has to
    * name the control with `aria-label` - which is the rule for a tooltip
-   * anywhere in Sway, since a tooltip is a description and never a name.
+   * anywhere in Tori, since a tooltip is a description and never a name.
    *
    * Absent renders the bare track with none of Kobalte's tooltip machinery
    * around it, so the switches that want no tooltip pay for none.

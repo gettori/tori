@@ -109,7 +109,7 @@ export function isFeatureKey(ws: string | null | undefined): boolean {
   return !!ws && ws.startsWith(FEATURE_KEY_PREFIX);
 }
 
-/** The one workspace key for Sway's own command tabs, the group the dock draws.
+/** The one workspace key for Tori's own command tabs, the group the dock draws.
  *  Synthetic like a Feature's, so no branch unit's strip can ever be keyed on it
  *  (adr_jobs_leave_the_tab_model). */
 export const SHELLS_KEY = "shells:";
@@ -198,12 +198,12 @@ export function workspaceFolders(ws: string, sel: Selection | null | undefined):
 }
 
 /** Does `folder` own a cwd for attribution: at or under it, but never under
- *  the folder's own `.sway/worktrees/`, where its Feature worktrees live and
+ *  the folder's own `.tori/worktrees/`, where its Feature worktrees live and
  *  which the member folder claims by prefix instead. The same rule as the
  *  backend's `sessions::owned_by_listing`. */
 export function ownsCwd(cwd: string, folder: string): boolean {
   const f = folder.replace(/\/+$/, "");
-  return isUnderPath(cwd, f) && !cwd.replace(/\/+$/, "").startsWith(`${f}/.sway/worktrees/`);
+  return isUnderPath(cwd, f) && !cwd.replace(/\/+$/, "").startsWith(`${f}/.tori/worktrees/`);
 }
 
 /** Whether a live tab counts as running under a Spaces folder: a unit tab by

@@ -28,7 +28,7 @@ base_args = []
 # like everything here.
 yolo_args = ["--allow-all-tools"]
 # Empty: the UI reads this as "this agent's sessions can't be resumed" rather
-# than mis-resuming. See opencode.toml for why an ACP row's id is Sway's own.
+# than mis-resuming. See opencode.toml for why an ACP row's id is Tori's own.
 resume_args = []
 
 # No [discovery], [parser] or [running]: a protocol-backed adapter reaches its

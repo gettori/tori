@@ -2,7 +2,7 @@
 # YAML extension. Installed by `pnpm lsp:install`. See LSP-SERVERS.md.
 #
 # This server brings its own SchemaStore support, so unlike the JSON one it
-# needs no catalog from Sway - only for `[settings]` below to reach it. Which is
+# needs no catalog from Tori - only for `[settings]` below to reach it. Which is
 # less obvious than it sounds: it answers `workspace/didChangeConfiguration` by
 # *pulling* its configuration back with `workspace/configuration`, and it is
 # that answer, not the push, that carries these values.

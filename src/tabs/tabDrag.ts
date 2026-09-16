@@ -12,7 +12,7 @@
 import { createSignal } from "solid-js";
 
 /** DataTransfer MIME marking a drag that moves a tab between panes. */
-export const TAB_MOVE_MIME = "application/x-sway-tab";
+export const TAB_MOVE_MIME = "application/x-tori-tab";
 
 export type DragTab = {
   id: string;

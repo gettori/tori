@@ -8,11 +8,11 @@
 // the transport's event stream for a chat (both via `sessionDot`) - and the
 // backend cannot see either.
 //
-// Two tiers, because Sway's certainty differs between them:
+// Two tiers, because Tori's certainty differs between them:
 //   - a session *known* to be mid-turn blocks hard, with no override. That is
 //     a live agent tab reporting Executing, and also a chat session, whose own
 //     event stream says exactly when a turn is running;
-//   - a session Sway does not host (found by the pgrep tier, no tab of ours)
+//   - a session Tori does not host (found by the pgrep tier, no tab of ours)
 //     reports no more than "running", so whether it is mid-turn is unknowable.
 //     "Cannot verify" blocks by default, but the user can override it
 //     explicitly, since such a session is often just an idle shell someone left
@@ -33,7 +33,7 @@ export type RevertCandidate = {
   sessionName: string;
   folderPath: string;
   status: SessionStatus;
-  /** Does Sway host this session in a tab of its own (a PTY agent tab or a chat
+  /** Does Tori host this session in a tab of its own (a PTY agent tab or a chat
    *  tab)? Detached sessions, found only by the pgrep probe, are false and
    *  their status tops out at "running". */
   hasLiveTab: boolean;
@@ -115,7 +115,7 @@ export function revertGuard(
       allow: false,
       overridable: true,
       blockers,
-      reason: `${nameList(detached)} ${detached.length === 1 ? "is" : "are"} running outside Sway, so we can't tell whether ${detached.length === 1 ? "it's" : "they're"} mid-turn. Reverting could overwrite work in progress.`,
+      reason: `${nameList(detached)} ${detached.length === 1 ? "is" : "are"} running outside Tori, so we can't tell whether ${detached.length === 1 ? "it's" : "they're"} mid-turn. Reverting could overwrite work in progress.`,
     };
   }
   return { allow: true, blockers };

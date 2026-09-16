@@ -7,7 +7,7 @@
   flex: 1;
   min-height: 0;
   background: var(--canvas-card);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .toolbar {
@@ -27,7 +27,7 @@
   color: var(--fg-muted);
   cursor: pointer;
   font: inherit;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 .toggle:hover {
   background: var(--neutral-hover);
@@ -95,7 +95,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 
 /* A symbol that already appears above it in this branch. Marked rather than
@@ -103,5 +103,5 @@
 .cycle {
   flex: none;
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }

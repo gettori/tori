@@ -25,9 +25,9 @@ export type { UserTheme } from "./userThemes";
 // v1. That is what keeps the first boot after the upgrade correct: `kind` sets
 // data-theme, the token layer paints the right block, and the discarded map
 // costs nothing because tokens.css already carries those values.
-const LS_TOKENS = "sway.theme.v2"; // resolved { --var: value }, for FOUC-free boot
-const LS_SELECTED = "sway.theme.selected.v2";
-const LS_LEGACY = ["sway.theme.v1", "sway.theme.selected.v1"] as const;
+const LS_TOKENS = "tori.theme.v2"; // resolved { --var: value }, for FOUC-free boot
+const LS_SELECTED = "tori.theme.selected.v2";
+const LS_LEGACY = ["tori.theme.v1", "tori.theme.selected.v1"] as const;
 
 type Selected = { kind: Appearance | null; bundledId?: string };
 

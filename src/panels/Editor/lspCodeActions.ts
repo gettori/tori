@@ -11,10 +11,10 @@
 
 import { lspTargetFor } from "./lspClient";
 import { diagnosticsIn, type LspRange } from "./lspDiagnosticContext";
-import { pathToUri } from "./swayWorkspace";
+import { pathToUri } from "./toriWorkspace";
 import type { WorkspaceEdit } from "./workspaceEdit";
 
-/** The action kinds Sway asks for, and the order the menu groups them in.
+/** The action kinds Tori asks for, and the order the menu groups them in.
  *
  *  A server may answer with kinds outside this list (`refactor.move`,
  *  `source.removeUnused`); the valueSet is what the client *understands*, not a
@@ -104,7 +104,7 @@ export type CodeAction = {
  * `command` being a string rather than an object, and becomes an action whose
  * only step is to run it.
  *
- * A `disabled` action is dropped: Sway declares no `disabledSupport`, so a
+ * A `disabled` action is dropped: Tori declares no `disabledSupport`, so a
  * conformant server never sends one, and offering a row that refuses when
  * picked is worse than a shorter menu.
  */
@@ -193,7 +193,7 @@ export async function requestCodeActions(
         diagnostics: diagnosticsIn(uri, range),
         // 1 is Invoked: a person asked. The other value is Automatic, which
         // licenses a server to answer more cheaply and skip the expensive
-        // refactors, and every request Sway makes is the result of a keystroke
+        // refactors, and every request Tori makes is the result of a keystroke
         // or a caret move the user made.
         triggerKind: 1,
       },
@@ -338,7 +338,7 @@ export type RunOutcome =
  *
  * A refused edit stops there. The command half is the server's follow-up to an
  * edit that happened, so running it anyway would tell the server a change
- * landed that Sway declined to make.
+ * landed that Tori declined to make.
  */
 export async function runCodeAction(
   path: string,
@@ -359,7 +359,7 @@ export async function runCodeAction(
     return { kind: "done" };
   }
   // Neither half, even after resolving. A server that offers a title and then
-  // has nothing to do is not something Sway can report as success.
+  // has nothing to do is not something Tori can report as success.
   return full.edit ? { kind: "done" } : { kind: "nothing" };
 }
 

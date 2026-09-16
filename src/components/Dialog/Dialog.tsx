@@ -35,7 +35,7 @@ export interface DialogProps {
 }
 
 /**
- * The one modal surface: Kobalte's dialog behind Sway's chrome and Sway's API.
+ * The one modal surface: Kobalte's dialog behind Tori's chrome and Tori's API.
  * Every dialog in the app composes this, so the Portal, the backdrop, Escape,
  * the focus trap and focus restore are written once instead of fourteen times.
  *
@@ -43,11 +43,11 @@ export interface DialogProps {
  *
  * **`aria-modal` is ours.** `DialogContent` sets `role="dialog"` and wires
  * `aria-labelledby`/`aria-describedby`, but modality is expressed by
- * aria-hiding everything else, not by the attribute. Sway asserts the attribute
+ * aria-hiding everything else, not by the attribute. Tori asserts the attribute
  * in its own tests, so it is passed explicitly.
  *
  * **Focus restore is ours.** In modal mode Kobalte's close handler calls
- * `preventDefault()` and then focuses its `Trigger`. Sway's dialogs are opened
+ * `preventDefault()` and then focuses its `Trigger`. Tori's dialogs are opened
  * from app state (`askConfirm`, a hotkey, an `askpass://prompt` event) and have
  * no trigger element, so that restore is a no-op and the default one has
  * already been suppressed: focus would land nowhere and the next keystroke

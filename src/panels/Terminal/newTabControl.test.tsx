@@ -202,8 +202,8 @@ const featureSelection = {
   ...branchSelection,
   kind: "feature",
   featureId: "f1",
-  activeRoot: `${REPO}/.sway/worktrees/f1`,
-  roots: [`${REPO}/.sway/worktrees/f1`],
+  activeRoot: `${REPO}/.tori/worktrees/f1`,
+  roots: [`${REPO}/.tori/worktrees/f1`],
 };
 
 /** Open the launch menu and pick one of its rows by name. */
@@ -285,7 +285,7 @@ describe("the launch control", () => {
   });
 
   // An agent tab runs as an account exactly the way a chat does. One row would
-  // start whichever login Sway inherited while the menu said only "Claude".
+  // start whichever login Tori inherited while the menu said only "Claude".
   it("offers the agent terminal once per account", async () => {
     bridge.profiles = [
       { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
@@ -514,7 +514,7 @@ describe("where a project's memory is kept", () => {
 
     await screen.findByTestId("draft");
     expect(bridge.prefsAsked).toContain("feature:f1");
-    expect(bridge.prefsAsked).not.toContain(`${REPO}/.sway/worktrees/f1`);
+    expect(bridge.prefsAsked).not.toContain(`${REPO}/.tori/worktrees/f1`);
   });
 
   it("writes an agent tab's under the same key", async () => {

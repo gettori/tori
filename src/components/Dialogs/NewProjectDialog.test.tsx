@@ -99,16 +99,16 @@ describe("NewProjectDialog", () => {
       const { onConfirm, mode, name, url } = open();
 
       fireEvent.click(mode("Clone"));
-      fireEvent.input(url(), { target: { value: "https://github.com/skarif2/sway.git" } });
+      fireEvent.input(url(), { target: { value: "https://github.com/skarif2/tori.git" } });
 
-      expect(name().value).toBe("sway");
+      expect(name().value).toBe("tori");
 
       fireEvent.click(create());
 
       expect(onConfirm).toHaveBeenCalledWith({
         mode: "clone",
-        name: "sway",
-        url: "https://github.com/skarif2/sway.git",
+        name: "tori",
+        url: "https://github.com/skarif2/tori.git",
       });
     });
 
@@ -117,7 +117,7 @@ describe("NewProjectDialog", () => {
 
       fireEvent.click(mode("Clone"));
       fireEvent.input(name(), { target: { value: "my-copy" } });
-      fireEvent.input(url(), { target: { value: "https://github.com/skarif2/sway.git" } });
+      fireEvent.input(url(), { target: { value: "https://github.com/skarif2/tori.git" } });
 
       expect(name().value).toBe("my-copy");
     });
@@ -136,7 +136,7 @@ describe("NewProjectDialog", () => {
       const { onConfirm, mode, name } = open();
 
       fireEvent.click(mode("Clone"));
-      fireEvent.input(name(), { target: { value: "sway" } });
+      fireEvent.input(name(), { target: { value: "tori" } });
 
       expect(create().disabled).toBe(true);
 

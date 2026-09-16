@@ -25,16 +25,16 @@ function shown(src: ProjectIconSource): { img?: string; glyph?: string } {
 }
 
 describe("ProjectIcon", () => {
-  const seed = "/Users/me/Projects/personal/sway";
+  const seed = "/Users/me/Projects/personal/tori";
 
   it("prefers an uploaded image over everything else", () => {
     const { img } = shown({
       seed,
-      iconFile: "/store/sway-abc.png",
+      iconFile: "/store/tori-abc.png",
       icon: "Rocket",
       favicon: "/p/public/favicon.svg",
     });
-    expect(img).toBe("asset:///store/sway-abc.png");
+    expect(img).toBe("asset:///store/tori-abc.png");
   });
 
   it("prefers a chosen glyph over the project's own favicon", () => {

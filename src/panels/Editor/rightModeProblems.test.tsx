@@ -11,8 +11,8 @@ import { installAnimationFrame } from "../../test/frames";
 installResizeObserver();
 installAnimationFrame();
 
-const A = "/r/a/.sway/worktrees/auth";
-const B = "/r/b/.sway/worktrees/auth";
+const A = "/r/a/.tori/worktrees/auth";
+const B = "/r/b/.tori/worktrees/auth";
 
 const FEATURE = {
   id: "f1",

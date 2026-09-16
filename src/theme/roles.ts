@@ -279,7 +279,7 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "neutral.subtle": alpha(p.fillTint, v({ dark: 0.12, light: 0.06 })),
 
     // The `.fg` stop is read AS text on the canvas; the `.emphasis` stop is a
-    // fill that carries `fg.onEmphasis`. One value cannot do both: Sway Dark's
+    // fill that carries `fg.onEmphasis`. One value cannot do both: Tori Dark's
     // danger reads at 5.6 on the canvas and 3.2 under a white label.
     "danger.fg": p.danger,
     "danger.emphasis": p.dangerStrong,
@@ -316,7 +316,7 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     "brand.default": p.brand,
     "brand.strong": p.brandStrong,
     // brandTint is its own primitive rather than a reuse of the brand stop, and
-    // in Sway Dark it is deliberately NOT --sway-gold-500: the wash it replaces
+    // in Tori Dark it is deliberately NOT --tori-gold-500: the wash it replaces
     // was rgba(201, 150, 83, ...) while gold-500 is #c19653, i.e. 193. That
     // 8-point gap in red predates this migration and is preserved on purpose, so
     // the pill fill and focus ring render exactly as before. Change it only as a
@@ -325,7 +325,7 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     // The faintest brand-tinted *surface*, for a fill that should read as warm
     // rather than as gold. `brand.subtle` is a wash meant to be seen as brand
     // colour; this is a card that merely remembers the brand, and at these
-    // amounts the result is a near-neutral (Sway Dark lands on #272628).
+    // amounts the result is a near-neutral (Tori Dark lands on #272628).
     //
     // Mixed into `card`, not layered over the canvas, and opaque for two
     // reasons. It has to stay a surface: a translucent brand wash on the
@@ -359,7 +359,7 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
     // Every step off `card` moves the surface toward the text drawn on it, and
     // the card is full of recessive labels (a hint, a preview, "from a
     // subagent"). Measured across all five bundled palettes: past 0.04 dark,
-    // `fg.subtle` falls under its 3.0 floor on Sway Dark, and past 0.07 light,
+    // `fg.subtle` falls under its 3.0 floor on Tori Dark, and past 0.07 light,
     // `fg.muted` falls under 4.5 on Rose Pine Dawn. So the fill yields and the
     // hierarchy inside the card stays. The gate holds the line from here:
     // `fg.default`, `fg.muted` and `fg.subtle` all name this surface now, which

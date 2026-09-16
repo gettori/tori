@@ -1,6 +1,6 @@
 # Language servers
 
-Sway's editor gets completion, hover, diagnostics and navigation from language
+Tori's editor gets completion, hover, diagnostics and navigation from language
 servers. Which servers exist is **data, not code**: each one is a TOML file, so
 adding a language is a config file rather than a branch in `src-tauri/src/lsp.rs`.
 
@@ -14,11 +14,11 @@ Three ship bundled, one is expected on your PATH:
 | id | Server | Launch | Notes |
 |---|---|---|---|
 | `typescript` | `typescript-language-server` | `bundled_node` | Ships inside the app; run `pnpm lsp:install` in a dev tree. |
-| `json` | `vscode-json-languageserver` | `bundled_node` | The server behind VS Code's own JSON support. Schemas come from SchemaStore, fed in by Sway. |
+| `json` | `vscode-json-languageserver` | `bundled_node` | The server behind VS Code's own JSON support. Schemas come from SchemaStore, fed in by Tori. |
 | `yaml` | `yaml-language-server` | `bundled_node` | The server behind Red Hat's VS Code YAML extension. Brings its own SchemaStore support. |
 | `rust` | `rust-analyzer` | `path` | Not bundled: rustup already manages it, and a stale bundled copy would fight the toolchain the project builds with. |
 
-A language with no server is a supported state, not a broken one. Sway has
+A language with no server is a supported state, not a broken one. Tori has
 grammars for several languages it has no server for (Python, CSS, HTML); those
 files open, edit, highlight and save exactly as before, they just get no
 language intelligence.
@@ -32,10 +32,10 @@ schema URLs.
 
 They get there differently, and the difference is not cosmetic:
 
-- **YAML** has catalog support built in. Sway's only job is to make sure its
+- **YAML** has catalog support built in. Tori's only job is to make sure its
   configuration actually arrives, which is what `[settings]` in `yaml.toml` does.
-- **JSON** has none. VS Code feeds it the associations, so Sway does the same:
-  it fetches the catalog once, caches it under `~/.config/sway/cache/` for a
+- **JSON** has none. VS Code feeds it the associations, so Tori does the same:
+  it fetches the catalog once, caches it under `~/.config/tori/cache/` for a
   day, and sends the associations as `json/schemaAssociations`.
 
 **Offline, both degrade to no validation, never to a broken editor.** A catalog
@@ -46,7 +46,7 @@ YAML files still open, edit, highlight and save.
 ## File location and loading
 
 Bundled configs live in `src-tauri/lsp/*.toml` and are embedded at compile time.
-User configs live in `~/.config/sway/lsp/*.toml`.
+User configs live in `~/.config/tori/lsp/*.toml`.
 
 Loading is bundled-first, then every `*.toml` in the user directory:
 
@@ -56,7 +56,7 @@ Loading is bundled-first, then every `*.toml` in the user directory:
 - A user file that fails validation is **never silently swallowed**: the error
   is logged naming the problem, and the id it would have overridden keeps its
   previous entry. One broken file can't make a language lose its server.
-- Files are read once at startup. Editing one means restarting Sway, the same as
+- Files are read once at startup. Editing one means restarting Tori, the same as
   every other loaded-at-startup config.
 
 ## Schema
@@ -130,12 +130,12 @@ the push by *pulling its configuration back*, so for that one it is the second
 route that carries the values. A config author should not have to know which.
 
 An unrecognized top-level field is warned about and ignored, so a config written
-for a newer Sway still loads. A missing **required** field is an error, and the
+for a newer Tori still loads. A missing **required** field is an error, and the
 message names every missing field at once rather than just the first.
 
 ### Launch kinds
 
-`launch.kind` is a **closed set**. A config naming a kind Sway does not
+`launch.kind` is a **closed set**. A config naming a kind Tori does not
 implement is a load error, not a warning: a server that never spawns looks
 exactly like a language with no support at all, which is the wrong thing to
 leave someone debugging.
@@ -143,7 +143,7 @@ leave someone debugging.
 | kind | Fields | Behaviour |
 |---|---|---|
 | `path` | `program`, `args` | Resolves `program` on the **login-shell** PATH, never the GUI process PATH. A server installed via rustup, mise, asdf or nvm is invisible to a naive lookup from a Finder-launched app. |
-| `bundled_node` | `entry`, `args` | Runs `entry` (relative to the app's resource dir, with a dev-tree fallback) using the user's system `node`. For servers Sway ships. |
+| `bundled_node` | `entry`, `args` | Runs `entry` (relative to the app's resource dir, with a dev-tree fallback) using the user's system `node`. For servers Tori ships. |
 
 For a `bundled_node` server the binary that has to exist on the user's machine
 is `node`, so that is what the health card probes.
@@ -171,8 +171,8 @@ A file with no marker anywhere above it falls back to the project directory.
 
 ## Example: a from-scratch third-party server
 
-A complete config for Python via `pyright`, which Sway does not ship. Drop this
-at `~/.config/sway/lsp/python.toml` and restart:
+A complete config for Python via `pyright`, which Tori does not ship. Drop this
+at `~/.config/tori/lsp/python.toml` and restart:
 
 ```toml
 schema_version = 1
@@ -196,11 +196,11 @@ whether `pyright-langserver` resolves on your PATH.
 
 ## Whole-replacing a bundled server
 
-Use the bundled server's `id`. To point Sway at your own
+Use the bundled server's `id`. To point Tori at your own
 `typescript-language-server` instead of the one it ships:
 
 ```toml
-# ~/.config/sway/lsp/typescript.toml
+# ~/.config/tori/lsp/typescript.toml
 schema_version = 1
 id = "typescript"
 label = "TypeScript (mine)"

@@ -113,8 +113,8 @@ pub fn capture(repo: &Path, path: &str) -> BeforeState {
 
 /// Store a before-state that arrived as **text** rather than as a file.
 ///
-/// The counterpart to [`capture`], for a agent that hands Sway the prior
-/// content instead of leaving Sway to read it off disk first. An ACP agent does
+/// The counterpart to [`capture`], for a agent that hands Tori the prior
+/// content instead of leaving Tori to read it off disk first. An ACP agent does
 /// exactly that: `codex-acp` 1.2.0 sends a `tool_call` diff block carrying
 /// `oldText` and `newText`, so the before-state is already in hand by the time
 /// the write is announced and there is nothing to race.
@@ -520,7 +520,7 @@ mod tests {
     use serde_json::json;
 
     fn temp_repo(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("sway-snap-{}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-snap-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let ok = Command::new("git").current_dir(&dir).args(["init", "-q"]).status().unwrap();
@@ -555,7 +555,7 @@ mod tests {
     /// one behaves the same whichever agent is behind it.
     #[test]
     fn text_with_nowhere_to_go_degrades_rather_than_failing() {
-        let dir = std::env::temp_dir().join(format!("sway-snap-{}-norepo", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-snap-{}-norepo", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(store_text(&dir, "anything"), BeforeState::Unavailable);
@@ -843,7 +843,7 @@ mod tests {
     #[test]
     fn a_path_outside_the_workspace_is_refused() {
         let repo = temp_repo("revert-outside");
-        let outside = std::env::temp_dir().join(format!("sway-outside-{}.txt", std::process::id()));
+        let outside = std::env::temp_dir().join(format!("tori-outside-{}.txt", std::process::id()));
         std::fs::write(&outside, "one\ntwo\n").unwrap();
         let path = outside.to_string_lossy().into_owned();
         let before = capture(&repo, &path);
@@ -912,7 +912,7 @@ mod tests {
     /// A folder with no object store falls back rather than failing the turn.
     #[test]
     fn a_non_git_folder_degrades_to_unavailable_rather_than_failing() {
-        let dir = std::env::temp_dir().join(format!("sway-snap-plain-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-snap-plain-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("a.rs");

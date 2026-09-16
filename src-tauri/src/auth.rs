@@ -69,7 +69,7 @@ pub struct Whoami {
     /// reports `apiKeySource: "ANTHROPIC_API_KEY"` and blanks `email`,
     /// `orgName` and `subscriptionType`. That is the agent's own statement
     /// about which credential it will bill against, which is a far better source
-    /// for the warning than Sway reading its own environment and guessing which
+    /// for the warning than Tori reading its own environment and guessing which
     /// variables matter to which agent.
     pub api_key_source: Option<String>,
 }
@@ -142,7 +142,7 @@ fn first_json_object(text: &str) -> Option<serde_json::Map<String, serde_json::V
 /// false positive [`WhoamiKind`] exists to prevent.
 ///
 /// A count of zero is a real signed-out answer; *no* count line at all is
-/// unknown, since a reworded table is Sway failing to read rather than the user
+/// unknown, since a reworded table is Tori failing to read rather than the user
 /// failing to sign in.
 fn parse_opencode_credentials(stdout: &str) -> Whoami {
     let count = stdout.lines().find_map(|line| {
@@ -235,7 +235,7 @@ pub fn whoami(
 ///
 /// `Err` carries whatever the agent said, because the removal flow reports a
 /// failed logout rather than deleting the profile behind it: a profile forgotten
-/// while its tokens are still live is a credential Sway has abandoned rather
+/// while its tokens are still live is a credential Tori has abandoned rather
 /// than revoked.
 ///
 /// An adapter with no `logout_args` never reaches this - that case is a question
@@ -279,14 +279,14 @@ pub enum LoginRoute {
     /// `setup-token` is interactive too, so this rung is a terminal or nothing:
     /// a captured login would hang rather than fail.
     Terminal { program: String, args: Vec<String>, home: Option<(String, String)> },
-    /// The agent states its own method, in its own words, and Sway relays it.
+    /// The agent states its own method, in its own words, and Tori relays it.
     ///
     /// Not a stub: this is already what happens. An ACP agent refusing
     /// `session/new` with `AuthRequired` carries its `authMethods`, and
     /// `chat::acp_transport::describe_session_failure` puts their description
     /// text in front of the user. Both measured agents put a literal command
     /// there ("Run `opencode auth login` in the terminal"), so relaying it beats
-    /// anything Sway could invent.
+    /// anything Tori could invent.
     AgentStates,
     /// Nothing declared, nothing to relay. The link goes to what an adapter has
     /// to declare, because "no sign-in button" is a fact about the adapter file
@@ -301,7 +301,7 @@ pub enum LoginRoute {
 /// *and* declares `auth login`. Its own `authMethods` description says to run
 /// that very command in a terminal, so preferring the ACP rung would replace a
 /// button that signs the user in with a sentence telling them to do it
-/// themselves. The ACP rung is the fallback for an agent Sway has no login
+/// themselves. The ACP rung is the fallback for an agent Tori has no login
 /// command for, which is what it was always doing.
 pub fn login_route(
     adapter: &crate::agents::AgentAdapter,
@@ -401,7 +401,7 @@ mod tests {
     }
 
     /// The billing-override warning's actual producer. The agent names the
-    /// variable itself, so the warning does not depend on Sway knowing which
+    /// variable itself, so the warning does not depend on Tori knowing which
     /// environment variables matter to which agent.
     #[test]
     fn an_inherited_api_key_is_reported_by_the_agent_not_guessed() {
@@ -595,7 +595,7 @@ mod tests {
     #[test]
     fn a_probe_whose_binary_is_missing_is_unknown() {
         let cfg = config(Some(WhoamiKind::ExitCode));
-        let answer = whoami(std::path::Path::new("/nonexistent/sway-probe"), &cfg, None);
+        let answer = whoami(std::path::Path::new("/nonexistent/tori-probe"), &cfg, None);
         assert_eq!(answer.state, SignIn::Unknown);
     }
 
@@ -628,7 +628,7 @@ mod tests {
     /// On darwin `claude` keeps its tokens in the login Keychain under
     /// `"Claude Code-credentials-" + sha256($CLAUDE_CONFIG_DIR)[:8]`, so
     /// inspecting a profile home proves nothing: it holds no credentials to find.
-    /// What can be asserted is that Sway never goes near the place that does.
+    /// What can be asserted is that Tori never goes near the place that does.
     // --- the login ladder ---
 
     fn bundled(id: &str) -> crate::agents::AgentAdapter {
@@ -686,7 +686,7 @@ mod tests {
     /// Built rather than taken from the bundled four, none of which lands here:
     /// all four declare `[chat]`, so the ACP rung catches gemini. The shape that
     /// does land here is the minimal adapter ADAPTERS.md documents, which is
-    /// what a user dropping a four-line TOML into `~/.config/sway/agents/`
+    /// what a user dropping a four-line TOML into `~/.config/tori/agents/`
     /// writes, so the rung has a real producer even though nothing bundled is
     /// one.
     #[test]
@@ -722,7 +722,7 @@ mod tests {
     ///
     /// The file needles are the other half, kept for the agents whose tokens
     /// really are on disk: OpenCode's live in `auth.json` under its data dir,
-    /// where the Keychain finding says nothing. Sway reads neither.
+    /// where the Keychain finding says nothing. Tori reads neither.
     ///
     /// Every needle is assembled by `concat!` so that none of them appears as a
     /// contiguous literal in this file. Otherwise the test would have to exempt
@@ -796,12 +796,12 @@ mod tests {
     }
 
     #[test]
-    fn sway_never_reaches_into_the_keychain() {
+    fn tori_never_reaches_into_the_keychain() {
         let files = rust_sources();
         let offenders = keychain_offenders(files.iter().map(|(p, t)| (p.clone(), t.as_str())));
         assert!(
             offenders.is_empty(),
-            "Sway must never read the agent's credentials: {offenders:?}"
+            "Tori must never read the agent's credentials: {offenders:?}"
         );
     }
 

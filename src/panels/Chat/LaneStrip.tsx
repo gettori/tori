@@ -8,7 +8,7 @@ const FOLD_AFTER = 2;
 
 /** The row above the composer: `main`, then the subagents, live ones first and
  *  finished ones after, folded behind one chip once there are enough of them.
- *  It switches what you read, never what you type: Sway has no channel to a
+ *  It switches what you read, never what you type: Tori has no channel to a
  *  subagent, so rebinding the composer would promise one. */
 export default function LaneStrip(props: {
   lanes: readonly Lane[];
@@ -26,7 +26,7 @@ export default function LaneStrip(props: {
    *  so its state is the only one the strip has to be told. */
   busy: boolean;
   /** Which provider mark this chat wears, for the tint the main chip takes
-   *  while it works. Null for a session whose provider Sway cannot name, which
+   *  while it works. Null for a session whose provider Tori cannot name, which
    *  keeps the neutral accent rather than borrowing a logo's colour. */
   mark: string | null;
   /** Whether this chat is the one on screen. The `Opt+N` binding is only armed

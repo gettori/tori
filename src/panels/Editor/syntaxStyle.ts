@@ -48,7 +48,7 @@ const TABLE: Entry[] = [
 
 const roleOf = (entry: Entry) => /--syntax-([a-z]+)/.exec(entry.color)![1];
 
-export const swayHighlight = HighlightStyle.define(TABLE);
+export const toriHighlight = HighlightStyle.define(TABLE);
 
 export const SYNTAX_CLASS_PREFIX = "sy-";
 
@@ -63,5 +63,5 @@ export const SYNTAX_ROLES: readonly string[] = [...new Set(TABLE.map(roleOf))];
  *  suffix names no language. */
 export async function syntaxFor(path: string): Promise<Extension> {
   const language = await languageForPath(path);
-  return language ? [language, syntaxHighlighting(swayHighlight)] : [];
+  return language ? [language, syntaxHighlighting(toriHighlight)] : [];
 }

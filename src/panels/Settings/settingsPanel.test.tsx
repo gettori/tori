@@ -416,12 +416,12 @@ describe("the six panes", () => {
     // setup?", and the note points at the cards under it.
     render(() => <Settings onClose={() => {}} welcome />);
     expect(activeTab()).toBe("Agents");
-    expect(screen.getByText(/Welcome to Sway/)).toBeTruthy();
+    expect(screen.getByText(/Welcome to Tori/)).toBeTruthy();
   });
 
   // The greeting branches on whether anything is installed. Telling a user with
   // no CLI to "check which ones it found below" points them at a list of misses
-  // and reads as Sway being broken rather than as a step they have not taken.
+  // and reads as Tori being broken rather than as a step they have not taken.
   const withOnboarding = (content: unknown) =>
     async (cmd: string, args: Record<string, unknown>) => {
       if (cmd === "onboarding_content") return content;
@@ -491,7 +491,7 @@ describe("the rows backed by localStorage rather than by settings.json", () => {
     fireEvent.change(numberFor("Zoom"), { target: { value: "150" } });
     expect(zoom()).toBe(1.5);
     // Persisted, so it survives a restart the way ⌘= already did.
-    expect(localStorage.getItem("sway.zoom")).toBe("1.5");
+    expect(localStorage.getItem("tori.zoom")).toBe("1.5");
   });
 
   it("clamps a zoom the store would refuse rather than showing a value it is not at", () => {
@@ -553,11 +553,11 @@ describe("the rows backed by localStorage rather than by settings.json", () => {
 
     fireEvent.click(boxFor("Git blame"));
     expect(blameOn()).toBe(true);
-    expect(localStorage.getItem("sway.editor.blame")).toBe("1");
+    expect(localStorage.getItem("tori.editor.blame")).toBe("1");
 
     fireEvent.click(boxFor("Side-by-side diffs"));
     expect(sideBySideOn()).toBe(true);
-    expect(localStorage.getItem("sway.review.sideBySide")).toBe("1");
+    expect(localStorage.getItem("tori.review.sideBySide")).toBe("1");
   });
 
   it("follows a change made anywhere else, live", () => {

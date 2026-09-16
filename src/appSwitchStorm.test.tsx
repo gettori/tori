@@ -125,12 +125,12 @@ beforeEach(() => {
   // Two worktrees, split exactly the same way: the case a switch should be able
   // to render without rebuilding anything.
   storeTwoPanes(WS_A);
-  const stored = JSON.parse(localStorage.getItem("sway.panes.v1")!);
+  const stored = JSON.parse(localStorage.getItem("tori.panes.v1")!);
   localStorage.setItem(
-    "sway.panes.v1",
+    "tori.panes.v1",
     JSON.stringify({ ...stored, [WS_B]: JSON.parse(JSON.stringify(stored[WS_A])) }),
   );
-  localStorage.setItem("sway.selection.v1", JSON.stringify(selectionFor(WS_A)));
+  localStorage.setItem("tori.selection.v1", JSON.stringify(selectionFor(WS_A)));
   invoke.mockReset();
   invoke.mockImplementation(async (cmd: string) => {
     if (cmd === "get_settings") return DEFAULT_SETTINGS;

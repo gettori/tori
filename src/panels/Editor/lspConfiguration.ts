@@ -17,7 +17,7 @@
 // that a configuration arriving triggers. Send nothing and it keeps a default
 // it never applies.
 //
-// So Sway does both, from one table, and a config author does not have to know
+// So Tori does both, from one table, and a config author does not have to know
 // which server is which.
 
 /** One entry of a `workspace/configuration` request. */
@@ -48,10 +48,10 @@ function sectionValue(settings: Record<string, unknown>, section: string): unkno
  *
  * A section this config says nothing about is answered `null`, not omitted.
  * That is the honest answer and the one servers expect - `yaml-language-server`
- * asks for `http`, `editor` and `files` alongside `yaml`, and Sway has an
+ * asks for `http`, `editor` and `files` alongside `yaml`, and Tori has an
  * opinion about none of them.
  *
- * `scopeUri` is ignored. Sway's settings are per server, not per folder, and
+ * `scopeUri` is ignored. Tori's settings are per server, not per folder, and
  * answering the same value for every scope is exactly right until they are not.
  */
 export function configurationFor(settings: Record<string, unknown> | null, params: unknown): unknown[] {
@@ -67,7 +67,7 @@ export function configurationFor(settings: Record<string, unknown> | null, param
 /**
  * `workspace.configuration`, and the notification's own block.
  *
- * `configuration` is a promise Sway now keeps: a client that declares it and
+ * `configuration` is a promise Tori now keeps: a client that declares it and
  * then answers `-32601` tells a conformant server it lied, and the server's
  * reasonable response is to stop asking. The library declares neither, which is
  * why this is a capability block rather than a line in an existing one.

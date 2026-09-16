@@ -1,6 +1,6 @@
 // The kind-tagged union over the terminal and editor tab models (plan phase 4).
 // A derived view, not a third store: the panel stores stay the truth and ids
-// pass through verbatim (`sh:`/`chat:` terminal ids, file paths and `sway://`
+// pass through verbatim (`sh:`/`chat:` terminal ids, file paths and `tori://`
 // synthetics), so nothing listening on those ids can tell the union exists.
 import { createMemo, onCleanup } from "solid-js";
 import { open, type OpenTerm, type TabKind as TerminalTabKind } from "../panels/Terminal/terminalTabStore";

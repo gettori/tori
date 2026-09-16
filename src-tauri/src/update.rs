@@ -1,6 +1,6 @@
 // Update check: is there a newer release than the running build?
 //
-// Check-only, by design. Sway ships unsigned, so replacing the bundle in place
+// Check-only, by design. Tori ships unsigned, so replacing the bundle in place
 // would re-trigger quarantine and the user would have to walk the Gatekeeper
 // steps again anyway - an auto-updater would buy nothing and could leave a
 // half-replaced app. So this fetches a tag, compares it, and at most shows a
@@ -91,7 +91,7 @@ struct Throttle {
 }
 
 fn throttle_path() -> std::path::PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/update-check.json")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/update-check.json")
 }
 
 fn now_secs() -> u64 {
@@ -118,7 +118,7 @@ struct GithubRelease {
 
 fn fetch_latest_tag() -> Option<String> {
     let response = ureq::get(RELEASES_API)
-        .set("User-Agent", "sway-update-check")
+        .set("User-Agent", "tori-update-check")
         .set("Accept", "application/vnd.github+json")
         .timeout(std::time::Duration::from_secs(10))
         .call()

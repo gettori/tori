@@ -17,7 +17,7 @@
 // this becoming shared; renaming it would silently reset everyone.
 import { createSignal } from "solid-js";
 
-export const SIDE_BY_SIDE_KEY = "sway.review.sideBySide";
+export const SIDE_BY_SIDE_KEY = "tori.review.sideBySide";
 
 /** Below this the two columns are too narrow to read, so side-by-side falls
  *  back to inline regardless of the persisted preference. */

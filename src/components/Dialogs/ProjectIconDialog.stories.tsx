@@ -24,8 +24,8 @@ const meta = {
     busy: { control: "boolean" },
   },
   args: {
-    projectName: "sway",
-    seed: "/Users/you/Projects/sway",
+    projectName: "tori",
+    seed: "/Users/you/Projects/tori",
     icon: null,
     iconFile: null,
     favicon: null,

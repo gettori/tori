@@ -196,7 +196,7 @@ describe("the sign-in state on an agent page", () => {
   });
 
   // The agent's own statement about which credential it will bill against,
-  // rather than Sway reading its environment and guessing which variables
+  // rather than Tori reading its environment and guessing which variables
   // matter to which agent. A notice, never a block.
   it("warns when an inherited key overrides subscription billing", async () => {
     const { container } = await open(mount({
@@ -242,7 +242,7 @@ describe("the accounts list", () => {
   });
 
   // There is nothing stored to remove, and "removing" it could only mean
-  // signing the user out of the login they had before Sway existed.
+  // signing the user out of the login they had before Tori existed.
   // Signing out is the control; removing rides its dialog. Where the adapter
   // declares no logout there is nothing to sign out of, so the control is the
   // removal itself.
@@ -296,7 +296,7 @@ describe("the accounts list", () => {
     expect(queryByRole("button", { name: /Add account/ })).toBeNull();
   });
 
-  // "Sway has nothing true to say about this agent's accounts" is not the
+  // "Tori has nothing true to say about this agent's accounts" is not the
   // same claim as "nobody is signed in", so it renders no controls at all.
   it("renders nothing for an adapter that declares no accounts table", async () => {
     const { container } = await open(mount({ accounts: { declared: false, profiles: [] } }));
@@ -687,11 +687,11 @@ describe("the quota on an account card", () => {
 
   // An agent whose adapter declares no ladder gets no chips and no threshold,
   // because there would be nothing behind them.
-  it("says so plainly for an agent Sway can read no quota for", async () => {
+  it("says so plainly for an agent Tori can read no quota for", async () => {
     const { container, queryByRole } = await expand(
       await open(mount({ health: { id: "codex", label: "Codex", program: "codex" } }), "Codex"),
     );
-    await waitFor(() => expect(container.textContent).toContain("Sway reads no quota for Codex"));
+    await waitFor(() => expect(container.textContent).toContain("Tori reads no quota for Codex"));
     expect(queryByRole("button", { name: /^5H$/ })).toBeNull();
   });
 });
@@ -717,7 +717,7 @@ describe("renaming an account", () => {
         (args as { label?: string })?.label === label,
     );
 
-  it("sends the new name for an account Sway added", async () => {
+  it("sends the new name for an account Tori added", async () => {
     const { container, getByRole } = await open(
       mount({
         accounts: {

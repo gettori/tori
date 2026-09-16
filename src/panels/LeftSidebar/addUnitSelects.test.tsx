@@ -26,7 +26,7 @@ const bridge = vi.hoisted(() => ({
 }));
 
 const config = () => ({
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -168,7 +168,7 @@ describe("creating a branch-unit from the project menu", () => {
     selections.length = 0;
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
   });
 
   it("moves the selection onto the worktree it just made", async () => {

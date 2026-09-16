@@ -135,7 +135,7 @@ describe("DiffBufferView", () => {
     expect(tops("new")).toHaveLength(1);
     expect(old[0]).toBeLessThan(old[1]);
     expect(old[1]).toBeGreaterThan(50);
-    expect(container.querySelector(".cm-sway-minimap")).toBeNull();
+    expect(container.querySelector(".cm-tori-minimap")).toBeNull();
   });
 
   it("carries the vim layer when vim is on", () => {

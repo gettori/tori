@@ -1,8 +1,8 @@
 {
-  "name": "sway-lsp",
+  "name": "tori-lsp",
   "version": "0.0.0",
   "private": true,
-  "description": "Bundled TS/JS language server, spawned by Sway via the user's system node.",
+  "description": "Bundled TS/JS language server, spawned by Tori via the user's system node.",
   "dependencies": {
     "typescript": "^5",
     "typescript-language-server": "^4",

@@ -140,11 +140,11 @@ describe("chatTypes mirrors the Rust chat model", () => {
           break;
         case "hookFired":
           // The measured shape: `name` reports the tool, not the configured
-          // matcher, which is exactly why `swayOwned` cannot be derived from it.
+          // matcher, which is exactly why `toriOwned` cannot be derived from it.
           expect(ev.name).toBe("PreToolUse:Bash");
           expect(ev.event).toBe("PreToolUse");
           expect(ev.phase).toBe("finished");
-          expect(ev.swayOwned).toBe(false);
+          expect(ev.toriOwned).toBe(false);
           expect(ev.exitCode).toBe(0);
           break;
         case "compacted":

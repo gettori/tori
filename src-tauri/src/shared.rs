@@ -65,7 +65,7 @@ fn checked_name(name: &str) -> Result<&str, String> {
 }
 
 /// The container's worktrees as folders on disk. Filtered rather than pruned:
-/// git keeps listing a folder deleted outside Sway, and reading a page must not
+/// git keeps listing a folder deleted outside Tori, and reading a page must not
 /// rewrite the repo's admin files.
 fn live_worktrees(container: &str) -> Vec<PathBuf> {
     crate::worktree::list_worktrees_body(container.to_string())
@@ -141,10 +141,10 @@ fn exclude_file(worktree: &Path) -> Option<PathBuf> {
     Some(dir.join("info").join("exclude"))
 }
 
-/// The block Sway owns inside the exclude file. Everything after it to the next
+/// The block Tori owns inside the exclude file. Everything after it to the next
 /// comment (or the end) is ours to add to and take from; anything above it is
 /// the user's and is never rewritten.
-const EXCLUDE_HEADER: &str = "# Shared in worktrees (managed by Sway)";
+const EXCLUDE_HEADER: &str = "# Shared in worktrees (managed by Tori)";
 
 /// Split the exclude file into the lines before our block, our names, and the
 /// lines after it.
@@ -493,7 +493,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway-shared-test-{n}-{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori-shared-test-{n}-{seq}"));
         fs::create_dir_all(&dir).unwrap();
         dir
     }

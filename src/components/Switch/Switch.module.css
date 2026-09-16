@@ -29,14 +29,14 @@
   width: calc(26px * var(--ui-scale));
   height: calc(15px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale));
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--neutral-hover);
   transition:
-    background var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+    background var(--tori-duration-fast) ease,
+    box-shadow var(--tori-duration-fast) ease;
 }
 
-/* Sway's own colour, not the link/selection blue: an on switch is the app
+/* Tori's own colour, not the link/selection blue: an on switch is the app
    saying yes, which is the same thing the brand rail and the palette's check
    mark say, and three different affirmatives in one panel read as three
    different meanings. */
@@ -60,10 +60,10 @@
 .thumb {
   width: calc(11px * var(--ui-scale));
   height: calc(11px * var(--ui-scale));
-  border-radius: var(--sway-radius-pill);
-  background: var(--sway-white);
+  border-radius: var(--tori-radius-pill);
+  background: var(--tori-white);
   box-shadow: var(--shadow-sm);
-  transition: transform var(--sway-duration-fast) var(--sway-ease);
+  transition: transform var(--tori-duration-fast) var(--tori-ease);
 }
 
 .thumb[data-checked] {
@@ -75,7 +75,7 @@
 .label {
   color: inherit;
   font-size: inherit;
-  line-height: var(--sway-line-normal);
+  line-height: var(--tori-line-normal);
   cursor: default;
 }
 

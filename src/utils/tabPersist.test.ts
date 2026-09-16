@@ -401,7 +401,7 @@ describe("parseStore", () => {
           tab({
             id: `chat:${n}`,
             kind: "chat",
-            title: chatTabLabel("sway", acc.map((t) => t.title)),
+            title: chatTabLabel("tori", acc.map((t) => t.title)),
             program: "claude",
             sessionId: `s${n}`,
           }),
@@ -412,7 +412,7 @@ describe("parseStore", () => {
       100,
     );
     const back = parseStore(JSON.stringify(written));
-    expect(back["/w/a"].tabs.map((t) => t.title)).toEqual(["sway chat", "sway chat 2", "sway chat 3"]);
+    expect(back["/w/a"].tabs.map((t) => t.title)).toEqual(["tori chat", "tori chat 2", "tori chat 3"]);
     expect(back["/w/a"].tabs.map((t) => t.sessionId)).toEqual(["s0", "s1", "s2"]);
     expect(back["/w/a"].active).toBe(1);
   });

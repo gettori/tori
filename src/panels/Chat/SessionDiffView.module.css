@@ -5,7 +5,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--sway-space-2) 0;
+  padding: var(--tori-space-2) 0;
   background: var(--canvas-default);
 }
 
@@ -14,23 +14,23 @@
 .viewBar {
   display: flex;
   justify-content: flex-end;
-  padding: 0 calc(8px * var(--ui-scale)) var(--sway-space-1);
+  padding: 0 calc(8px * var(--ui-scale)) var(--tori-space-1);
 }
 
 .empty {
-  padding: var(--sway-space-3);
+  padding: var(--tori-space-3);
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .file {
-  margin-bottom: var(--sway-space-3);
+  margin-bottom: var(--tori-space-3);
 }
 
 .fileHeader {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-2);
+  gap: var(--tori-space-2);
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-block: 1px solid var(--border-default);
   background: var(--canvas-card);
@@ -41,22 +41,22 @@
 
 .filePath {
   font-weight: 600;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--fg-default);
 }
 
 .badge {
-  padding: 0 var(--sway-space-1);
-  border-radius: var(--sway-radius-sm);
+  padding: 0 var(--tori-space-1);
+  border-radius: var(--tori-radius-sm);
   background: var(--attention-subtle, var(--neutral-hover));
   color: var(--attention-fg);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
 }
 
 .callCount {
   margin-left: auto;
   color: var(--fg-muted);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
 }
 
 /* The hunk header carries the "why" control, the same way the Changes panel's
@@ -64,7 +64,7 @@
 .hunkHeader {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-2);
+  gap: var(--tori-space-2);
 }
 
 .whyToggle {
@@ -73,7 +73,7 @@
   background: none;
   padding: 0;
   color: var(--fg-muted);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   cursor: pointer;
 }
 .whyToggle:hover {
@@ -83,23 +83,23 @@
 /* Files this session did not write. Set below the diffs and visibly quieter:
    they are context for the work, not the work. */
 .foreign {
-  margin-top: var(--sway-space-3);
+  margin-top: var(--tori-space-3);
   border-top: 1px solid var(--border-default);
-  padding-top: var(--sway-space-2);
+  padding-top: var(--tori-space-2);
 }
 
 .foreignHeading {
-  padding: 0 calc(8px * var(--ui-scale)) var(--sway-space-1);
+  padding: 0 calc(8px * var(--ui-scale)) var(--tori-space-1);
   color: var(--fg-muted);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
 }
 
 .foreignRow {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-2);
+  gap: var(--tori-space-2);
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* The model's own words, set apart from the code so the two never read as one
@@ -110,5 +110,5 @@
   border-left: 2px solid var(--border-default);
   margin: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }

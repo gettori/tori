@@ -44,7 +44,7 @@ const DOT = " \u00b7 ";
 
 /** A plan as a reader would write it. The wire sends enum tokens (`plus`,
  *  `self_serve_business_prolite`), and an unknown one is reshaped rather than
- *  dropped: a plan Sway has not heard of is still this account's plan. */
+ *  dropped: a plan Tori has not heard of is still this account's plan. */
 function planLabel(planType: string | null): string | null {
   if (!planType || planType === "unknown") return null;
   const words = planType.replace(/_/g, " ");
@@ -108,7 +108,7 @@ function windowLine(w: WindowReading, warnAt: number, now: number) {
 }
 
 /**
- * Every window Sway has a reading for, whatever the chips say.
+ * Every window Tori has a reading for, whatever the chips say.
  *
  * The chips decide what the titlebar carries, and only that. This card is the
  * place you come to for the whole picture, so a window switched off the strip is
@@ -362,8 +362,8 @@ export default function UsageCard(props: {
         {/* No footer. The notify switch lived here and moved to the account's
             settings card with the rest of the quota controls, and no breakdown
             link ever will: a 7-day view was built and taken out again, since
-            the snapshot ring is Sway's record of what *Sway* read, and a stretch
-            with Sway shut has no samples in it while the level went on moving.
+            the snapshot ring is Tori's record of what *Tori* read, and a stretch
+            with Tori shut has no samples in it while the level went on moving.
             What answers the question is above: the level now, and when it
             resets. */}
       </div>

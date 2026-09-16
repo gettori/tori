@@ -125,11 +125,11 @@ export default function ChatPane(props: PaneProps) {
           {...props}
           id="show-hooks"
           label="Show every hook event"
-          hint="Off, the transcript shows a hook only when it fails; a hook that ran as configured is not news. On reveals every execution, Sway's own per-tool-call approval hook included."
+          hint="Off, the transcript shows a hook only when it fails; a hook that ran as configured is not news. On reveals every execution, Tori's own per-tool-call approval hook included."
         >
           <Switch
-            checked={settings.chatDefaults.showSwayHooks}
-            onChange={(showSwayHooks) => setChatDefaults({ showSwayHooks })}
+            checked={settings.chatDefaults.showToriHooks}
+            onChange={(showToriHooks) => setChatDefaults({ showToriHooks })}
             aria-label="Show every hook event"
           />
         </Row>
@@ -181,7 +181,7 @@ export default function ChatPane(props: PaneProps) {
           {...props}
           id="max-concurrent-chats"
           label="Warn above"
-          hint="Live chats at once before Sway says so. Each one is an agent process with its own token spend, and a chat left open in a background tab goes on costing whether or not it is being read. A warning, not a refusal: 0 turns it off."
+          hint="Live chats at once before Tori says so. Each one is an agent process with its own token spend, and a chat left open in a background tab goes on costing whether or not it is being read. A warning, not a refusal: 0 turns it off."
         >
           <Stepper
             aria-label="Warn above"
@@ -257,7 +257,7 @@ export default function ChatPane(props: PaneProps) {
           {...props}
           id="warn-at"
           label="Warn at"
-          hint="How full a limit gets before Sway says so. Governs the ceilings above, and is the default for each account's quota windows until that account sets its own under Agents. At 100% nothing is warned about; a limit actually reached is always shown."
+          hint="How full a limit gets before Tori says so. Governs the ceilings above, and is the default for each account's quota windows until that account sets its own under Agents. At 100% nothing is warned about; a limit actually reached is always shown."
         >
           <div class={styles.control}>
             <Slider

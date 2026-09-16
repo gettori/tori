@@ -1,4 +1,4 @@
-// The shared status vocabulary: the four states Sway can detect, what to call
+// The shared status vocabulary: the four states Tori can detect, what to call
 // them, and the rollup arithmetic over a set of them. Pure and stateless.
 //
 // The composed list itself belongs to `sessionActivity`, which owns the probe,

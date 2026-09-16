@@ -8,7 +8,7 @@
 //
 // The tier's rule is that **a value names what shipped, never what the feature
 // is called**. A declaration reading `rewind: yes` or `steer: yes` would promise
-// a second adapter's user something Sway only measured against one CLI version,
+// a second adapter's user something Tori only measured against one CLI version,
 // so every value here is the measured outcome, and a surface reads the value
 // rather than the presence of the key. Keyed on `ChatTransport` rather than on
 // the agent id, because the transport is what the behaviour belongs to: a user
@@ -63,18 +63,18 @@ export type SteerCost = {
 /**
  * Who asks the user before a tool runs.
  *
- * `in-protocol` means the agent asks in its own protocol and Sway renders the
- * question; `sway-hook` means Sway asked instead, from a hook that ran ahead of
+ * `in-protocol` means the agent asks in its own protocol and Tori renders the
+ * question; `tori-hook` means Tori asked instead, from a hook that ran ahead of
  * the agent's own permission chain. The distinction is not cosmetic: under
  * `in-protocol` the agent's permission modes are the ones in force, so a mode
  * named after bypassing permissions really does bypass them.
  */
-export type ApprovalTier = "none" | "sway-hook" | "in-protocol";
+export type ApprovalTier = "none" | "tori-hook" | "in-protocol";
 
 /**
  * Where a tool card's before-and-after comes from.
  *
- * `before-state` is Sway reading the file just ahead of the write, from the
+ * `before-state` is Tori reading the file just ahead of the write, from the
  * capture hook: it happens for every write on that agent, so the card can
  * always show one. `agent-supplied` is the agent sending the prior text with the
  * call, which is exact when it happens and happens only for agents that do it.
@@ -87,7 +87,7 @@ export type ApprovalTier = "none" | "sway-hook" | "in-protocol";
  * hook produces and arguably a better one - it is what the agent is about to
  * write rather than what happened to be on disk when a helper got there. But
  * `opencode acp` 1.18.3 sends none, so `true` would be as wrong as `false` was.
- * The value names which of the two Sway gets, which is the thing a user's
+ * The value names which of the two Tori gets, which is the thing a user's
  * expectation actually turns on.
  */
 export type DiffTier = "none" | "agent-supplied" | "before-state";
@@ -102,10 +102,10 @@ export type SubagentTier = "none" | "observable" | "addressable";
 /**
  * Where a reopened session's earlier turns come from.
  *
- * `transcript`: the agent wrote a file Sway reads, so history lands through
+ * `transcript`: the agent wrote a file Tori reads, so history lands through
  * `chat_history` before the child says anything.
  *
- * `session-replay`: the agent has no file Sway can read (`transcript_path`
+ * `session-replay`: the agent has no file Tori can read (`transcript_path`
  * returns `None` for every ACP adapter) and re-sends the conversation as
  * ordinary `session/update` notifications while it opens the session. That
  * history therefore arrives on the *live* channel, and a consumer that does not
@@ -127,8 +127,8 @@ export type ChatTier = {
    * the ceiling moved to a boundary that needs no hook at all - so a single flag
    * would have to answer three questions with different answers.
    *
-   * A fourth, `swayRules`, went with the gate itself: no agent has a
-   * Sway-owned rule store to publish, so there is no longer a question to ask.
+   * A fourth, `toriRules`, went with the gate itself: no agent has a
+   * Tori-owned rule store to publish, so there is no longer a question to ask.
    */
   approvals: ApprovalTier;
   /** Where a tool card's before-and-after comes from, or `none` when it has
@@ -139,14 +139,14 @@ export type ChatTier = {
    *  forever. See [`HistorySource`]. */
   historySource: HistorySource;
   /** A spend ceiling can stop this chat. Needs nothing from the agent: it is
-   *  Sway declining to open the next turn. */
+   *  Tori declining to open the next turn. */
   spendCeilings: boolean;
   /** Whether this chat can show what a subagent is doing, and whether it could
    *  ever talk to one. See [`SubagentTier`]. */
   subagents: SubagentTier;
   /**
    * What the agent can open when handed a path it already has (a tree drag,
-   * an `@` mention), and when handed bytes Sway wrote under its own app data
+   * an `@` mention), and when handed bytes Tori wrote under its own app data
    * for it (a paste, a Finder drop). Two keys because they can differ: a
    * transport can carry a path as text and still have no measured way to read
    * one outside its cwd, and one published key with a gap is what the tests
@@ -167,7 +167,7 @@ export type ChatTier = {
    *
    * Authored next to the values it explains, never derived from them, because
    * the reason is the part that differs. Two transports can both lack a spend
-   * ceiling - one because its turns are not Sway's to open, one because it
+   * ceiling - one because its turns are not Tori's to open, one because it
    * reports no cost - and telling the user the wrong reason sends them to fix
    * the wrong thing. `everyGapIsExplained` in the tests is what stops a new
    * transport lacking something silently.
@@ -192,7 +192,7 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     steer: "consumed-before-next-tool",
     steerCost: { minMs: 1468, maxMs: 5365, trials: 3, measuredAgainst: "claude 2.1.220" },
     // Measured on claude 2.1.231: `--permission-prompt-tool stdio` raises a
-    // `can_use_tool` control request, which is the question Sway now renders.
+    // `can_use_tool` control request, which is the question Tori now renders.
     approvals: "in-protocol",
     diffs: "before-state",
     // The CLI writes a per-session `.jsonl` and `chat_history` reads it, so
@@ -215,10 +215,10 @@ const TIERS: Record<ChatTransport, ChatTier> = {
   // advertised on its handshake and arrives as `ChatCapabilities`, which
   // `publishedCapabilities` folds in - see `capabilityNotes`.
   acp: {
-    // Sway's rewind is a fork plus a tree snapshot, and the ACP transport
+    // Tori's rewind is a fork plus a tree snapshot, and the ACP transport
     // implements no fork verb: `fork_args` is empty for every ACP adapter
     // because ACP has no command line to put it on. Both measured agents do
-    // advertise `sessionCapabilities.fork`, so this is Sway's gap rather than
+    // advertise `sessionCapabilities.fork`, so this is Tori's gap rather than
     // the protocol's - and publishing the agent's advertisement would offer a
     // rewind that fails when clicked.
     rewind: "none",
@@ -228,14 +228,14 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     steer: "none",
     steerCost: null,
     // Measured live against `@agentclientprotocol/claude-agent-acp` 0.67.0: the
-    // agent blocks on `session/request_permission`, Sway renders the agent's own
+    // agent blocks on `session/request_permission`, Tori renders the agent's own
     // options, and the answer goes back in its own vocabulary. This is the one
     // tier value ACP earns outright rather than lacking.
     approvals: "in-protocol",
     // **Corrected in Phase 8, and it was wrong for the reason it gave.** This
     // read `false`, on the grounds that a before-state comes from the
     // Claude-only capture hook. It does not have to: `codex-acp` 1.2.0 sends the
-    // file's prior text with the tool call, which Sway stores in the same object
+    // file's prior text with the tool call, which Tori stores in the same object
     // store the hook writes to, so the card is the same card. `opencode acp`
     // sends none, which is why this is not `before-state` either - an ACP
     // session gets an exact diff exactly when its agent supplies one.
@@ -257,20 +257,20 @@ const TIERS: Record<ChatTransport, ChatTier> = {
     // A mention is text the agent already receives, so a source file costs
     // nothing new. Whether an ACP agent would read an image or a PDF off a
     // path is unmeasured, and so is whether it can reach outside its cwd at
-    // all, which is what an upload under Sway's app data needs.
+    // all, which is what an upload under Tori's app data needs.
     attachmentMentions: ["file"],
     attachmentUploads: [],
     gaps: {
       attachmentUploads:
-        "A pasted or dropped file would be written under Sway's own folder, and nothing has measured whether this agent can read outside its project. Drag a file from the tree instead, or mention it with @.",
+        "A pasted or dropped file would be written under Tori's own folder, and nothing has measured whether this agent can read outside its project. Drag a file from the tree instead, or mention it with @.",
       rewind:
-        "Rewinding needs Sway to fork the conversation, and it has no way to ask an ACP agent to. Turn checkpoints still restore your files from the Changes panel.",
+        "Rewinding needs Tori to fork the conversation, and it has no way to ask an ACP agent to. Turn checkpoints still restore your files from the Changes panel.",
       steer:
-        "A message typed during a turn waits for the next one: this protocol has no way to deliver it mid-turn, so Sway holds it rather than claiming it landed.",
+        "A message typed during a turn waits for the next one: this protocol has no way to deliver it mid-turn, so Tori holds it rather than claiming it landed.",
       budgets:
         "A spend ceiling needs the agent to report what a turn cost, and this one reports how full the context is instead. Nothing would ever trip the limit, so it is not offered.",
       subagents:
-        "If this agent splits work across helpers, it says so nowhere Sway can hear: the protocol has no message for one starting, working or finishing. Their tool calls arrive as the session's own, so the transcript reads as one agent doing everything.",
+        "If this agent splits work across helpers, it says so nowhere Tori can hear: the protocol has no message for one starting, working or finishing. Their tool calls arrive as the session's own, so the transcript reads as one agent doing everything.",
     },
   },
 };
@@ -287,7 +287,7 @@ export const NO_CHAT_TIER: ChatTier = {
   // No chat channel to replay onto, so the transcript reader is the only way in
   // and the answer is the same one it gives for an agent with no file: nothing.
   historySource: "transcript",
-  // A PTY tab's turns are not Sway's to open, so there is no boundary to hold.
+  // A PTY tab's turns are not Tori's to open, so there is no boundary to hold.
   spendCeilings: false,
   subagents: "none",
   attachmentMentions: [],

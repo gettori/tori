@@ -3,7 +3,7 @@ import { Fill, Label, Root, Thumb, Track } from "@kobalte/core/slider";
 /**
  * Kobalte's slider, and the only door it comes through.
  *
- * The same seam `dialog.ts` documents: `src/lib/` is the whole of Sway's
+ * The same seam `dialog.ts` documents: `src/lib/` is the whole of Tori's
  * contact surface with `@kobalte/core`, `boundary.test.ts` fails the suite if
  * anything outside this folder names the package, and the styled wrapper in
  * `src/components/Slider/` is what the app composes.
@@ -17,7 +17,7 @@ import { Fill, Label, Root, Thumb, Track } from "@kobalte/core/slider";
  * renders an `<input type="range">` for form submission, which carries the
  * `slider` role itself, so composing it inside the thumb puts one slider inside
  * another - axe fails it as `nested-interactive` and `getByRole("slider")`
- * matches two elements. Nothing in Sway submits a form, and the thumb already
+ * matches two elements. Nothing in Tori submits a form, and the thumb already
  * carries the value and the label association.
  */
 export const Slider = {

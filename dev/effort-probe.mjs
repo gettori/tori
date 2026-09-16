@@ -15,7 +15,7 @@
 // THE OBSERVABLE, and why it is the validator rather than behaviour
 //
 // `--help` advertises five levels. `[[chat.effort_extras]]` in claude.toml
-// claims one more, and a claim Sway makes about a CLI has to be re-checkable or
+// claims one more, and a claim Tori makes about a CLI has to be re-checkable or
 // it rots. The trap to avoid is the one `--permission-mode auto` set: that flag
 // is accepted on a model that does not support it, exits 0, and silently runs
 // something else, with nothing anywhere to contradict it. Mere acceptance is
@@ -50,7 +50,7 @@
 //                 `[[chat.effort_extras]]` and render as a pickable level.
 //   * `refused` - the validator does not. Recorded so the day this CLI gains the
 //                 word fails here rather than going unnoticed, and it ships
-//                 nothing: a greyed-out level claude never had would be Sway
+//                 nothing: a greyed-out level claude never had would be Tori
 //                 inventing vocabulary, which is the whole trap.
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -59,7 +59,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const FIXTURE = join(ROOT, "dev", "fixtures", "claude", "effort-levels.json");
-const CLAUDE = process.env.SWAY_CLAUDE_BIN || join(process.env.HOME, ".local", "bin", "claude");
+const CLAUDE = process.env.TORI_CLAUDE_BIN || join(process.env.HOME, ".local", "bin", "claude");
 
 const WRITE = process.argv.slice(2).includes("--write");
 
@@ -85,7 +85,7 @@ async function validate(level) {
 
 async function main() {
   if (!existsSync(CLAUDE)) {
-    console.error(`claude not found at ${CLAUDE} (set SWAY_CLAUDE_BIN)`);
+    console.error(`claude not found at ${CLAUDE} (set TORI_CLAUDE_BIN)`);
     process.exit(2);
   }
   const version = (await run(CLAUDE, ["--version"])).stdout.trim();

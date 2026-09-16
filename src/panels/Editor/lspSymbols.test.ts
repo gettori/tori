@@ -5,7 +5,7 @@ import { symbolClientCapabilities } from "../../utils/symbols";
 // Two separate claims, and both have to hold or the outline is empty against a
 // *correct* server:
 //
-//   1. the capabilities Sway adds survive the library's own merge, so the
+//   1. the capabilities Tori adds survive the library's own merge, so the
 //      `initialize` that actually goes out asks for symbols;
 //   2. the request layer asks the right server, and answers "no outline" rather
 //      than throwing when there is none.
@@ -110,7 +110,7 @@ describe("the initialize payload", () => {
 
   it("keeps everything the library already advertised", async () => {
     // `mergeCapabilities` is a deep merge, but a shallow one would silently drop
-    // the library's whole `textDocument` block the moment Sway added a key to
+    // the library's whole `textDocument` block the moment Tori added a key to
     // it - and every one of those is a feature that would just stop working.
     const { init, client } = connectAndReadInit();
     const td = init.params.capabilities.textDocument;

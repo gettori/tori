@@ -9,7 +9,7 @@ import {
   type MaterialisedFile,
   type RenameDeps,
 } from "./lspRename";
-import { pathToUri } from "./swayWorkspace";
+import { pathToUri } from "./toriWorkspace";
 
 // A cross-file rename is the most destructive thing the editor does on its own:
 // it rewrites files the user is not looking at, some of which hold unsaved
@@ -313,7 +313,7 @@ describe("renameAcross refuses rather than half-applying", () => {
   });
 
   it("refuses a multi-file rename in a folder with no undo path", async () => {
-    // Sway opens plain folders. Rewriting several files there with nothing to
+    // Tori opens plain folders. Rewriting several files there with nothing to
     // restore from is not something to do quietly.
     const h = agent({ backstopAvailable: () => Promise.resolve(false) });
     const out = await renameAcross(h.deps, "after");

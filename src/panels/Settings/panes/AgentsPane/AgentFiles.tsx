@@ -176,7 +176,7 @@ function FileRow(props: {
   };
 
   // The path plus a line naming the entry, never a sent message. The user reads
-  // the draft and decides; Sway only opens the chat with the target attached.
+  // the draft and decides; Tori only opens the chat with the target attached.
   const draft = () => {
     if (!rooted()) return;
     emitWith<ComposeDraft>(COMPOSE_DRAFT, {

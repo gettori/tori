@@ -5,7 +5,7 @@
 // launch binary against the login-shell PATH and caches the sweep, so asking
 // twice is cheap; the store exists so the answer is *the same* in both places,
 // not to save the call. A picker that offered a agent the Agents panel was
-// simultaneously calling "not installed" would be Sway disagreeing with itself.
+// simultaneously calling "not installed" would be Tori disagreeing with itself.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { agents } from "./agents";
@@ -104,12 +104,12 @@ export function refreshAgentHealth(): Promise<AgentHealth[] | null> {
  * costs one clear spawn failure while a wrong no makes a working agent
  * unreachable with nothing on screen explaining why.
  *
- * Drift is ready on purpose: a version Sway has not measured against usually
+ * Drift is ready on purpose: a version Tori has not measured against usually
  * works, so it is a notice, never a gate. See `keepsDriftAWarning` below.
  *
  * A agent the CLI itself says nobody is signed in to is **not** ready. That is
  * the one place the rule above is stricter, and it earns it: `signedOut` is the
- * agent's own answer rather than Sway's inference, and starting the session
+ * agent's own answer rather than Tori's inference, and starting the session
  * anyway produces a tab that asks for a login the chat surface cannot give. Only
  * a definite `signedOut` counts; `unknown` stays ready like everything else.
  */

@@ -126,7 +126,7 @@ describe("the initialize payload", () => {
 
   it("keeps what the library and the symbol block already advertised", async () => {
     // `mergeCapabilities` is a deep merge, but a shallow one would drop the
-    // whole `textDocument` block the moment a second Sway extension added a key
+    // whole `textDocument` block the moment a second Tori extension added a key
     // to it - and this is the second one.
     const { init, client } = connectAndReadInit();
     const caps = init.params.capabilities;

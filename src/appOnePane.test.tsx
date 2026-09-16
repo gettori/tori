@@ -107,7 +107,7 @@ const chord = (code: string) =>
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem(
-    "sway.selection.v1",
+    "tori.selection.v1",
     JSON.stringify({
       spaceName: "space",
       projectName: "proj",
@@ -176,7 +176,7 @@ describe("a layout stored by an earlier build", () => {
     // its version is the migration: the workspace re-seeds, and the tabs whose
     // panes are gone fall back to the pin rule.
     localStorage.setItem(
-      "sway.panes.v1",
+      "tori.panes.v1",
       JSON.stringify({
         [REPO]: {
           version: 1,
@@ -195,7 +195,7 @@ describe("a layout stored by an earlier build", () => {
       }),
     );
     localStorage.setItem(
-      "sway.tabpanes.v1",
+      "tori.tabpanes.v1",
       JSON.stringify({ [REPO]: { tabs: { "sh:1": "left", [A]: "right" }, kinds: {}, active: {}, locks: {}, order: {}, seq: 0 } }),
     );
     render(() => <App />);
@@ -224,7 +224,7 @@ describe("the editor chrome", () => {
 describe("the sidebar's width", () => {
   it("is squeezed by a narrow window without losing the width the user picked", async () => {
     localStorage.setItem(
-      "sway.layout.v1",
+      "tori.layout.v1",
       JSON.stringify({ sidebar: 900, editor: 640, showSidebar: true, showTerminal: true, showEditor: true }),
     );
     render(() => <App />);
@@ -238,7 +238,7 @@ describe("the sidebar's width", () => {
     // so widening the window later hands the 900 back.
     emit(TOGGLE_SIDEBAR);
     await waitFor(() =>
-      expect(JSON.parse(localStorage.getItem("sway.layout.v1")!).sidebar).toBe(900),
+      expect(JSON.parse(localStorage.getItem("tori.layout.v1")!).sidebar).toBe(900),
     );
   });
 });

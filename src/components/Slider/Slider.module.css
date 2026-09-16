@@ -12,14 +12,14 @@
 .label {
   color: inherit;
   font-size: inherit;
-  line-height: var(--sway-line-normal);
+  line-height: var(--tori-line-normal);
 }
 
 .track {
   position: relative;
   height: calc(4px * var(--ui-scale));
   width: 100%;
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--neutral-hover);
 }
 
@@ -27,7 +27,7 @@
 .fill {
   position: absolute;
   height: 100%;
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--accent-fg);
 }
 
@@ -40,11 +40,11 @@
   width: calc(14px * var(--ui-scale));
   height: calc(14px * var(--ui-scale));
   margin-left: calc(-7px * var(--ui-scale));
-  border-radius: var(--sway-radius-pill);
-  background: var(--sway-white);
+  border-radius: var(--tori-radius-pill);
+  background: var(--tori-white);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-sm);
-  transition: box-shadow var(--sway-duration-fast) ease;
+  transition: box-shadow var(--tori-duration-fast) ease;
 }
 
 /* The thumb is focusable itself (role="slider"), so unlike the checkbox and

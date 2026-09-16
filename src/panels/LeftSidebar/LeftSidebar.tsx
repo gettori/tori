@@ -295,9 +295,9 @@ export type Selection = {
 // rollups (the truncation row reports for what it hides).
 const BRANCH_CAP = 6;
 
-const LS_EXPANDED = "sway.expanded.v1";
-const LS_ACTIVE_SPACE = "sway.active-space.v1";
-const LS_MODE = "sway.sidebar-mode.v1";
+const LS_EXPANDED = "tori.expanded.v1";
+const LS_ACTIVE_SPACE = "tori.active-space.v1";
+const LS_MODE = "tori.sidebar-mode.v1";
 
 // What the column shows: the Spaces tree or the Feature list. The filter field,
 // the dialogs and the selection are shared; the tree and the space rail are
@@ -714,7 +714,7 @@ export default function LeftSidebar(props: {
   // this count is what destructive confirms are worded from.
   //
   // Inclusive on purpose, unlike the tree's own attribution: a Feature agent
-  // running in this repo's `.sway/worktrees/` belongs to the Feature, but
+  // running in this repo's `.tori/worktrees/` belongs to the Feature, but
   // removing the repo still kills it, so the confirm has to count it.
   async function countRunningAgents(path: string): Promise<number> {
     const tabs = (props.liveTabs ?? []).filter(
@@ -1302,7 +1302,7 @@ export default function LeftSidebar(props: {
       })();
       // Same shape for the fan-out groups: every git project is asked, since the
       // answer is normally an empty list and the call reconciles the map against
-      // git, which is what keeps a group whose worktree was removed outside Sway
+      // git, which is what keeps a group whose worktree was removed outside Tori
       // from rendering at all.
       void (async () => {
         const map: Record<string, AttemptRecord[]> = {};
@@ -1513,7 +1513,7 @@ export default function LeftSidebar(props: {
       return setError(`"${name.trim()}" already exists`);
     }
     setError("");
-    // Sway is creating this folder: adopt the target path so a clone/bootstrap
+    // Tori is creating this folder: adopt the target path so a clone/bootstrap
     // onto a path that once held sessions is not flagged historical.
     invoke("adopt_path", { path: target }).catch(() => {});
     emitWith<OpenJob>(OPEN_JOB, {
@@ -1559,7 +1559,7 @@ export default function LeftSidebar(props: {
     if (opts.mode === "clone") {
       await runInTab(g, opts.name, "clone", "git", ["clone", opts.url, opts.name]);
     } else {
-      await runInTab(g, opts.name, "bootstrap", "sh", ["-c", BOOTSTRAP_SCRIPT, "sway", opts.url, opts.name]);
+      await runInTab(g, opts.name, "bootstrap", "sh", ["-c", BOOTSTRAP_SCRIPT, "tori", opts.url, opts.name]);
     }
   }
 
@@ -2039,7 +2039,7 @@ export default function LeftSidebar(props: {
   // Confirmed branch removal. Delete the remote branch first (while the local
   // branch's tracking config still resolves it; a failure there is reported but
   // does not abort). Then either delete the local branch (git branch -D + prune the
-  // store) or, when local is unchecked, just detach it (drop it from Sway's list,
+  // store) or, when local is unchecked, just detach it (drop it from Tori's list,
   // git branch kept). Its sessions re-home onto the current checkout either way.
   async function confirmRemoveBranch(opts: { deleteLocal: boolean; deleteRemote: boolean }) {
     const req = brReq();
@@ -2087,15 +2087,15 @@ export default function LeftSidebar(props: {
   async function deleteSession(s: SessionMeta) {
     // A session with no transcript is a different act wearing the same button:
     // its conversation lives wherever its agent keeps it, no protocol verb
-    // removes one, and all that happens here is that Sway stops listing it.
-    // Saying "its history is removed" there would promise something Sway cannot
+    // removes one, and all that happens here is that Tori stops listing it.
+    // Saying "its history is removed" there would promise something Tori cannot
     // do, and the promise would be believed.
     const hasTranscript = findAdapter(s.agent ?? "claude").parser_kind != null;
     const ok = await askConfirm({
       title: hasTranscript ? "Delete this session’s transcript?" : "Forget this session?",
       message: hasTranscript
         ? "Its history is removed and cannot be undone."
-        : "Sway stops listing it. The agent keeps the conversation, and Sway cannot delete its copy.",
+        : "Tori stops listing it. The agent keeps the conversation, and Tori cannot delete its copy.",
       confirmLabel: hasTranscript ? "Delete" : "Forget",
       danger: true,
     });
@@ -2271,13 +2271,13 @@ export default function LeftSidebar(props: {
   }
 
   // The detached tier: every session a scan turned up that no live tab and no
-  // chat is hosting. Without this a session started outside Sway stays invisible
+  // chat is hosting. Without this a session started outside Tori stays invisible
   // until someone clicks its row, because nothing else ever probes it.
   function sweepDetached(scans: readonly FolderScan[]) {
     const hosted = new Set<string>(liveChatIds());
     // Only a live tab hosts anything. An inert tab naming a session would keep
     // this sweep from ever probing it, which is exactly the session the sweep
-    // exists to find: one running with nothing in Sway driving it.
+    // exists to find: one running with nothing in Tori driving it.
     for (const t of props.liveTabs ?? []) if (t.sessionId && t.state === "live") hosted.add(t.sessionId);
     const want: { id: string; agent: string }[] = [];
     const seen = new Set<string>();
@@ -3223,7 +3223,7 @@ export default function LeftSidebar(props: {
                 </>
               }
             >
-              <p>Welcome to Sway. Add a base folder to discover your projects.</p>
+              <p>Welcome to Tori. Add a base folder to discover your projects.</p>
               <Button onClick={addBaseFolder}>Add base folder</Button>
             </Show>
           </div>

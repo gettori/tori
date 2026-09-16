@@ -179,7 +179,7 @@ function HookRow(props: { item: Extract<ChatItem, { kind: "hook" }> }) {
             failure would cost the one thing it is there to carry. */}
         <Icon icon={Webhook} size={14} class={styles.noticeIcon} aria-hidden="true" />
         <span>
-          {props.item.swayOwned ? "Sway's before-state hook" : props.item.name} ({detail()})
+          {props.item.toriOwned ? "Tori's before-state hook" : props.item.name} ({detail()})
         </span>
       </span>
       <Show when={failed() && props.item.stderr}>{(err) => <div>{err()}</div>}</Show>

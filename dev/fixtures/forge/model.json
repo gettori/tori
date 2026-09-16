@@ -82,7 +82,7 @@
     "number": 42,
     "state": "open",
     "title": "Let a conflict be handed to the agent",
-    "url": "https://github.com/skarif2/sway/pull/42"
+    "url": "https://github.com/skarif2/tori/pull/42"
   },
   "rateSnapshot": {
     "limit": 5000,
@@ -91,7 +91,7 @@
   },
   "repoRef": {
     "owner": "skarif2",
-    "repo": "sway"
+    "repo": "tori"
   },
   "reviewDecision": "changesRequested",
   "reviewThread": {
@@ -123,7 +123,7 @@
     "scopes": [
       "repo"
     ],
-    "tokenUrl": "https://github.com/settings/tokens/new?scopes=repo&description=Sway"
+    "tokenUrl": "https://github.com/settings/tokens/new?scopes=repo&description=Tori"
   },
   "statusReport": {
     "rate": {
@@ -150,7 +150,7 @@
           "number": 42,
           "state": "open",
           "title": "Let a conflict be handed to the agent",
-          "url": "https://github.com/skarif2/sway/pull/42"
+          "url": "https://github.com/skarif2/tori/pull/42"
         },
         "reviewDecision": "changesRequested"
       }
@@ -175,7 +175,7 @@
       "number": 42,
       "state": "open",
       "title": "Let a conflict be handed to the agent",
-      "url": "https://github.com/skarif2/sway/pull/42"
+      "url": "https://github.com/skarif2/tori/pull/42"
     },
     "reviewDecision": "changesRequested"
   },

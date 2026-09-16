@@ -4040,42 +4040,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
-name = "sway"
-version = "26.914.2-alpha"
-dependencies = [
- "agent-client-protocol",
- "apple-native-keyring-store",
- "async-io",
- "async-process",
- "dirs 5.0.1",
- "futures",
- "globset",
- "json5",
- "keyring-core",
- "notify",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "portable-pty",
- "regex",
- "rusqlite",
- "serde",
- "serde_json",
- "sha1",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "toml 0.8.2",
- "toml_edit 0.20.2",
- "trash",
- "ureq",
- "xattr",
-]
-
-[[package]]
 name = "swift-rs"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4793,6 +4757,42 @@ name = "toml_writer"
 version = "1.1.1+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
+
+[[package]]
+name = "tori"
+version = "26.914.2-alpha"
+dependencies = [
+ "agent-client-protocol",
+ "apple-native-keyring-store",
+ "async-io",
+ "async-process",
+ "dirs 5.0.1",
+ "futures",
+ "globset",
+ "json5",
+ "keyring-core",
+ "notify",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "portable-pty",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "toml 0.8.2",
+ "toml_edit 0.20.2",
+ "trash",
+ "ureq",
+ "xattr",
+]
 
 [[package]]
 name = "tower"

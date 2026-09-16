@@ -11,13 +11,13 @@
   padding: 0;
   background: transparent;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-muted);
   cursor: pointer;
   transition:
-    color var(--sway-duration-fast) ease,
-    border-color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease;
+    color var(--tori-duration-fast) ease,
+    border-color var(--tori-duration-fast) ease,
+    background var(--tori-duration-fast) ease;
 }
 
 .iconBtn svg {

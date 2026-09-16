@@ -69,7 +69,7 @@ export const selectedFrame = selected;
  *  as what was stepped through. */
 const fetched = new Map<string, string>();
 
-/** The text behind a `sway://dapsource` tab, or null if it was never fetched. */
+/** The text behind a `tori://dapsource` tab, or null if it was never fetched. */
 export function debugSourceText(id: string): string | null {
   return fetched.get(id) ?? null;
 }
@@ -333,7 +333,7 @@ function wire(session: DapSession): void {
 
   session.conn.on("stopped", (body) => {
     const stop = (body ?? {}) as { reason?: string; threadId?: number };
-    // Sway asked for the entry pause itself and continues straight through it;
+    // Tori asked for the entry pause itself and continues straight through it;
     // building a stack for it would flash a frame nobody asked to see.
     if (stop.reason === "entry" || typeof stop.threadId !== "number") return;
     void recordStop(session, stop.threadId, stop.reason ?? "pause");

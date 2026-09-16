@@ -14,7 +14,7 @@ describe("synthetic tab ids", () => {
     expect(isSyntheticId(syntheticId("log", WS))).toBe(true);
     expect(isSyntheticId(`${WS}/src/a.ts`)).toBe(false);
     // A file that merely mentions the scheme is still a file.
-    expect(isSyntheticId(`${WS}/sway://log`)).toBe(false);
+    expect(isSyntheticId(`${WS}/tori://log`)).toBe(false);
   });
 
   it("round-trips the kind, the argument and the workspace", () => {
@@ -37,18 +37,18 @@ describe("synthetic tab ids", () => {
 
   it("refuses anything that is not one of ours", () => {
     expect(parseSyntheticId(`${WS}/src/a.ts`)).toBeNull();
-    expect(parseSyntheticId("sway://log")).toBeNull();
-    expect(parseSyntheticId("sway://?ws=/x")).toBeNull();
-    expect(parseSyntheticId("sway://log?ws=")).toBeNull();
+    expect(parseSyntheticId("tori://log")).toBeNull();
+    expect(parseSyntheticId("tori://?ws=/x")).toBeNull();
+    expect(parseSyntheticId("tori://log?ws=")).toBeNull();
     // A malformed escape is unparseable, not a throw.
-    expect(parseSyntheticId("sway://log?ws=%")).toBeNull();
+    expect(parseSyntheticId("tori://log?ws=%")).toBeNull();
   });
 
   it("scopes a view to its workspace and a file to itself", () => {
     expect(tabScopePath(syntheticId("log", WS))).toBe(WS);
     expect(tabScopePath(`${WS}/src/a.ts`)).toBe(`${WS}/src/a.ts`);
     // Unparseable: scoped to nothing, so a folder sweep leaves it alone.
-    expect(tabScopePath("sway://log")).toBe("sway://log");
+    expect(tabScopePath("tori://log")).toBe("tori://log");
   });
 
   it("names a view for the tab strip", () => {

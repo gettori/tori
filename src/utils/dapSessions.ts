@@ -270,7 +270,7 @@ function wireSession(session: DapSession): void {
   // js-debug has resolved its source map, so the breakpoint never binds, and
   // four variants of `outFiles` / `resolveSourceMapLocations` changed nothing.
   // Pausing at entry is what creates the window the map resolves in. It is
-  // Sway's own pause, so nothing must surface it: `debugStore` ignores this
+  // Tori's own pause, so nothing must surface it: `debugStore` ignores this
   // reason too, and the pane never shows a stop nobody asked for.
   conn.on("stopped", (body) => {
     const stop = (body ?? {}) as { reason?: string; threadId?: number };

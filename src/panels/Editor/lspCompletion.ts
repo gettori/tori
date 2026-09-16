@@ -1,4 +1,4 @@
-// Sway's own language-server completion source, and the reason the client's
+// Tori's own language-server completion source, and the reason the client's
 // extension list is built by hand instead of spread from
 // `languageServerExtensions()`.
 //
@@ -77,7 +77,7 @@ type CompletionListReply = {
  * `resolveSupport` is a licence, not a request: it tells the server which
  * properties it may leave out of the first reply because the client will come
  * back for them. Declaring `documentation` or `detail` here would license a
- * server to drop the docs from every item in the list, and Sway resolves only
+ * server to drop the docs from every item in the list, and Tori resolves only
  * on commit - so the popup would show nothing for anything the user had not
  * already accepted, which is backwards.
  */
@@ -420,13 +420,13 @@ function renderDocInfo(plugin: LSPPlugin, doc: unknown): HTMLElement {
 // ------------------------------------------- the source
 
 /**
- * The completion source Sway installs in place of `serverCompletionSource`.
+ * The completion source Tori installs in place of `serverCompletionSource`.
  *
  * Everything except the resolve is the library's behaviour, deliberately: the
  * point of owning this is one added round trip, not a different completion
  * experience.
  */
-export const swayCompletionSource: CompletionSource = (context) => {
+export const toriCompletionSource: CompletionSource = (context) => {
   const plugin = context.view && LSPPlugin.get(context.view);
   if (!plugin) return null;
   const triggerChar = context.state.sliceDoc(context.pos - 1, context.pos);
@@ -528,7 +528,7 @@ export const swayCompletionSource: CompletionSource = (context) => {
 };
 
 /** What replaces `serverCompletion()` in the client's extension list. */
-export function swayCompletion(): Extension {
-  const data = [{ autocomplete: swayCompletionSource }];
+export function toriCompletion(): Extension {
+  const data = [{ autocomplete: toriCompletionSource }];
   return [autocompletion(), EditorState.languageData.of(() => data)];
 }

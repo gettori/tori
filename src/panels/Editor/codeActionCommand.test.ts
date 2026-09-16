@@ -52,7 +52,7 @@ const client = {
   }),
 };
 
-// Partial: `swayWorkspace` extends the library's `Workspace` further down the
+// Partial: `toriWorkspace` extends the library's `Workspace` further down the
 // import graph, so replacing the whole module would leave it with no base class.
 vi.mock("@codemirror/lsp-client", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -258,7 +258,7 @@ describe("running a code action's command", () => {
 
   it("does not run the command when the edit before it was refused", async () => {
     // The command is the server's follow-up to changes that were made, so
-    // running it anyway would report a change Sway declined to make.
+    // running it anyway would report a change Tori declined to make.
     backstopOk = false;
 
     await applyCodeAction(
@@ -272,9 +272,9 @@ describe("running a code action's command", () => {
   });
 });
 
-describe("when there is no Sway workspace behind the view", () => {
+describe("when there is no Tori workspace behind the view", () => {
   it("says so instead of dying inside a promise", async () => {
-    // Every client Sway builds is given one, so this is a should-not-happen
+    // Every client Tori builds is given one, so this is a should-not-happen
     // that has to be legible rather than a TypeError nobody sees.
     plugin = { client: { workspace: {} } };
     const h = io();
@@ -282,7 +282,7 @@ describe("when there is no Sway workspace behind the view", () => {
     const out = await applyCodeAction(view, A, { title: "Add import", edit: editOver([A]) }, h.io);
 
     expect(out.kind).toBe("refused");
-    expect(h.said[0].message).toContain("no Sway workspace");
+    expect(h.said[0].message).toContain("no Tori workspace");
   });
 
   it("hands back no runner at all, so nothing tries to apply through it", () => {

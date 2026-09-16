@@ -30,7 +30,7 @@ export const Default: Story = {
  *  accent, and both have to hold in light and dark. */
 export const States: Story = {
   render: (args) => (
-    <div style={{ display: "flex", "flex-direction": "column", gap: "var(--sway-space-3)" }}>
+    <div style={{ display: "flex", "flex-direction": "column", gap: "var(--tori-space-3)" }}>
       <Checkbox {...args} checked={false} label="Unchecked" />
       <Checkbox {...args} checked label="Checked" />
       <Checkbox {...args} checked={false} label="Disabled" disabled />
@@ -46,7 +46,7 @@ export const Group: Story = {
     const [local, setLocal] = createSignal(true);
     const [remote, setRemote] = createSignal(false);
     return (
-      <div style={{ display: "flex", "flex-direction": "column", gap: "var(--sway-space-3)" }}>
+      <div style={{ display: "flex", "flex-direction": "column", gap: "var(--tori-space-3)" }}>
         <Checkbox
           checked={local()}
           onChange={setLocal}

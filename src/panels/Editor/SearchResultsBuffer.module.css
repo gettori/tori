@@ -17,7 +17,7 @@
   gap: calc(6px * var(--ui-scale));
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .queryRow {
@@ -41,7 +41,7 @@
   align-items: center;
   height: calc(28px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   overflow: hidden;
 }
 
@@ -57,7 +57,7 @@
   border: none;
   color: var(--fg-muted);
   font: inherit;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1;
   cursor: pointer;
 }
@@ -80,7 +80,7 @@
   border: none;
   color: var(--fg-default);
   font-family: inherit;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-align: center;
   outline: none;
   appearance: textfield;
@@ -125,7 +125,7 @@
   flex: 1;
   padding: calc(12px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .editorHost :global(.cm-editor) {
@@ -134,7 +134,7 @@
 
 .editorHost :global(.cm-scroller) {
   overflow: auto;
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
 }
 
 .editorHost :global(.sr-note),

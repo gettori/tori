@@ -12,8 +12,8 @@
   min-width: calc(20px * var(--ui-scale));
   height: calc(18px * var(--ui-scale));
   padding-inline: calc(4px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm, 4px);
-  font-size: var(--sway-text-2xs);
+  border-radius: var(--tori-radius-sm, 4px);
+  font-size: var(--tori-text-2xs);
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--chip-hue);
@@ -28,8 +28,8 @@
   min-width: calc(32px * var(--ui-scale));
   height: calc(20px * var(--ui-scale));
   padding-inline: calc(6px * var(--ui-scale));
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-xs);
   letter-spacing: 0.04em;
 }
 

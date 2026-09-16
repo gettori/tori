@@ -18,7 +18,7 @@ export const HISTORY_TABS: { id: HistoryTab; label: string }[] = [
  *  named sections that no longer exist. The tab ids stay in the id set for one
  *  field only, `hidden`: a tab the ... menu unticks leaves the strip. */
 export const changesLayout = createSectionLayout<ChangesSection | HistoryTab>({
-  key: "sway.changes.sections.v2",
+  key: "tori.changes.sections.v2",
   ids: ["changes", "history", "graph", "stashes", "checkpoints"],
   pinned: "changes",
 });
@@ -26,7 +26,7 @@ export const changesLayout = createSectionLayout<ChangesSection | HistoryTab>({
 export const tabShown = changesLayout.shown;
 export const setTabShown = changesLayout.setShown;
 
-const TAB_KEY = "sway.changes.historyTab";
+const TAB_KEY = "tori.changes.historyTab";
 
 function loadTab(): HistoryTab {
   const raw = localStorage.getItem(TAB_KEY);

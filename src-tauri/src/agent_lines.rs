@@ -24,7 +24,7 @@
 //! that is attributed to nobody.
 //!
 //! Sessions come from the caller, not from the checkpoint refs. A bare repo's
-//! worktrees share one ref store, so `refs/sway/checkpoint/*` lists sessions
+//! worktrees share one ref store, so `refs/tori/checkpoint/*` lists sessions
 //! from *other* worktrees, whose trees describe an entirely different set of
 //! files. The chat panel knows which sessions are in this worktree; git does not.
 
@@ -72,7 +72,7 @@ pub struct Step {
 /// **newest** turns, because the question this answers is about lines that are
 /// not committed yet, and those are overwhelmingly recent. What it costs is
 /// stated rather than hidden: a line whose turn falls off the front reads as
-/// written by nobody, the same as a line written through a path Sway cannot
+/// written by nobody, the same as a line written through a path Tori cannot
 /// see. It is never credited to the wrong turn.
 const MAX_TURNS: usize = 40;
 
@@ -228,7 +228,7 @@ pub fn resolve_lines(repo: &str, file: &str, plan: &[Step]) -> Vec<i32> {
 /// would make every snapshot a full re-hash.
 fn live_index_path(repo: &str) -> PathBuf {
     let slug: String = repo.chars().map(|c| if c == '/' || c == '\\' { '_' } else { c }).collect();
-    dirs::home_dir().unwrap_or_default().join(".config/sway/agent-lines-index").join(slug)
+    dirs::home_dir().unwrap_or_default().join(".config/tori/agent-lines-index").join(slug)
 }
 
 /// Which agent turn wrote each line of `file`, for the chat sessions the caller
@@ -449,7 +449,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_agent_lines_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_agent_lines_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -460,10 +460,10 @@ mod tests {
         std::fs::remove_dir_all(dir).ok();
         std::fs::remove_file(live_index_path(&dir.to_string_lossy())).ok();
         let touched =
-            dirs::home_dir().unwrap_or_default().join(".config/sway/checkpoint-touched").join(session);
+            dirs::home_dir().unwrap_or_default().join(".config/tori/checkpoint-touched").join(session);
         std::fs::remove_dir_all(touched).ok();
         std::fs::remove_file(
-            dirs::home_dir().unwrap_or_default().join(".config/sway/checkpoint-index").join(session),
+            dirs::home_dir().unwrap_or_default().join(".config/tori/checkpoint-index").join(session),
         )
         .ok();
     }

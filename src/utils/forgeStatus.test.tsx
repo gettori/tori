@@ -468,7 +468,7 @@ describe("backing off", () => {
 
   it("recovers on the normal interval after an offline stretch", async () => {
     // No backoff for a transport failure: the request never left the machine, so
-    // there is nothing to pace, and sulking would leave Sway quiet for minutes
+    // there is nothing to pace, and sulking would leave Tori quiet for minutes
     // after the network came back.
     signedInWith([project("/a", ["main"])]);
     answers = [forgeError("transport")];
@@ -508,7 +508,7 @@ describe("the background schedule", () => {
   });
 
   it("ticks when the window comes back to the front", async () => {
-    // Coming back to Sway after a build finished is exactly when the chips are
+    // Coming back to Tori after a build finished is exactly when the chips are
     // stale, and waiting out the rest of the interval to notice it is the
     // difference between a live surface and a stale one.
     signedInWith([project("/a", ["main"])]);

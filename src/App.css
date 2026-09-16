@@ -14,7 +14,7 @@
   align-items: center;
   justify-content: center;
   width: calc(16px * var(--ui-scale));
-  font-size: var(--sway-text-4xl);
+  font-size: var(--tori-text-4xl);
   line-height: 1;
   font-family: "seti";
   color: inherit;
@@ -203,7 +203,7 @@ html {
 .detail-err {
   margin: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
   padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--danger-fg);
   background: var(--canvas-input);
   border-radius: 4px;
@@ -218,7 +218,7 @@ html {
   gap: calc(8px * var(--ui-scale));
   align-items: flex-start;
   color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .tree-empty p {
@@ -240,17 +240,17 @@ html {
   align-items: center;
   justify-content: center;
   color: var(--fg-muted);
-  font-size: var(--sway-text-2xl);
+  font-size: var(--tori-text-2xl);
 }
 
 .detail-head h2 {
   margin: 0 0 calc(4px * var(--ui-scale));
-  font-size: var(--sway-text-4xl);
+  font-size: var(--tori-text-4xl);
   font-weight: 600;
 }
 
 .detail .sub {
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
@@ -263,12 +263,12 @@ html {
 .detail .path {
   margin-top: calc(4px * var(--ui-scale));
   font-family: Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .arch-pill {
   color: var(--attention-fg);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   border: 1px solid var(--attention-fg);
   border-radius: 3px;
   padding: 0 calc(5px * var(--ui-scale));
@@ -278,7 +278,7 @@ html {
   display: flex;
   gap: calc(18px * var(--ui-scale));
   margin: calc(16px * var(--ui-scale)) 0;
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   color: var(--fg-muted);
 }
 
@@ -288,7 +288,7 @@ html {
 
 .stats .model {
   font-family: Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .actions {
@@ -304,7 +304,7 @@ html {
 }
 
 .section-title {
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -313,7 +313,7 @@ html {
 }
 
 .sm.dim {
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-muted);
 }
 
@@ -341,7 +341,7 @@ html {
   min-height: 0;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
+  border-radius: var(--tori-radius-xl);
   box-shadow: var(--shell-card-shadow);
   /* clip for the same reason as .pane: the card must clip its rounded corners
      but may never scroll, whoever asks. */
@@ -437,12 +437,12 @@ html {
   border: none;
   font: inherit;
   color: var(--fg-muted);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: calc(2px * var(--ui-scale));
   cursor: pointer;
   transition:
-    background var(--sway-duration-fast) ease,
-    color var(--sway-duration-fast) ease;
+    background var(--tori-duration-fast) ease,
+    color var(--tori-duration-fast) ease;
 }
 
 /* CSS-sized close glyph (the numeric Lucide size is dropped) so it tracks
@@ -526,17 +526,17 @@ html {
   flex: none;
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-muted);
   background: transparent;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   cursor: pointer;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   transition:
-    color var(--sway-duration-fast) ease,
-    border-color var(--sway-duration-fast) ease;
+    color var(--tori-duration-fast) ease,
+    border-color var(--tori-duration-fast) ease;
 }
 .tab-overflow-count:hover,
 .tab-overflow-count.active {
@@ -562,7 +562,7 @@ html {
   width: calc(12px * var(--ui-scale));
   padding: 0;
   cursor: pointer;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   line-height: 1;
   text-align: center;
 }
@@ -662,16 +662,16 @@ html {
 
 .cm-result-slot-label {
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .cm-result-slot-button {
   padding: 0 calc(6px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--canvas-card);
   color: var(--fg-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   cursor: pointer;
 }
 
@@ -813,7 +813,7 @@ html {
   display: flex;
   gap: calc(10px * var(--ui-scale));
   padding: 0 calc(4px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .cm-conflict-action {
@@ -940,17 +940,17 @@ html {
    rules, which reach three (`.ͼx .cm-minimap-overlay-container
    .cm-minimap-overlay`). Equal specificity would leave the winner decided by
    stylesheet order, which is a bundling detail, not a decision. */
-.cm-sway-minimap {
+.cm-tori-minimap {
   border-left: 1px solid var(--border-default);
 }
 
-.cm-sway-minimap.cm-minimap-gutter .cm-minimap-overlay-container .cm-minimap-overlay {
+.cm-tori-minimap.cm-minimap-gutter .cm-minimap-overlay-container .cm-minimap-overlay {
   /* The package applies its own opacity on top, so this is the tint rather than
      the finished colour: light over a dark canvas, dark over a light one. */
   background: var(--fg-default);
 }
 
-.cm-sway-minimap.cm-minimap-gutter .cm-minimap-box-shadow {
+.cm-tori-minimap.cm-minimap-gutter .cm-minimap-box-shadow {
   box-shadow: var(--shadow-lg);
 }
 
@@ -1022,7 +1022,7 @@ html {
 .cm-tooltip.cm-tooltip-lint {
   background: var(--canvas-head);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-default);
 }
 .cm-tooltip .cm-diagnostic {
@@ -1048,7 +1048,7 @@ html {
   min-height: 0;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
+  border-radius: var(--tori-radius-xl);
   box-shadow: var(--shell-card-shadow);
   overflow: clip;
 }

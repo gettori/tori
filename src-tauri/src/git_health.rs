@@ -68,7 +68,7 @@ fn check() -> GitHealth {
     )
 }
 
-// Only a working git is remembered, so an install made outside Sway counts on
+// Only a working git is remembered, so an install made outside Tori counts on
 // the very next op instead of after a restart.
 static READY: Mutex<Option<GitHealth>> = Mutex::new(None);
 

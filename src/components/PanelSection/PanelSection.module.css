@@ -63,7 +63,7 @@
   border: none;
   color: var(--fg-muted);
   font: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   text-align: left;
   cursor: pointer;
 }

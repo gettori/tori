@@ -35,7 +35,7 @@ export const Playground: Story = {};
  *  in a single glance rather than one story at a time. */
 export const Variants: Story = {
   render: () => (
-    <div style={{ display: "flex", gap: "var(--sway-space-4)", "flex-wrap": "wrap" }}>
+    <div style={{ display: "flex", gap: "var(--tori-space-4)", "flex-wrap": "wrap" }}>
       <For each={VARIANTS}>
         {(variant) => <Button variant={variant}>{variant}</Button>}
       </For>
@@ -47,10 +47,10 @@ export const Variants: Story = {
  *  that stopped folding --ui-scale, which reads as one row sitting wrong. */
 export const Sizes: Story = {
   render: () => (
-    <div style={{ display: "grid", gap: "var(--sway-space-4)" }}>
+    <div style={{ display: "grid", gap: "var(--tori-space-4)" }}>
       <For each={SIZES}>
         {(size) => (
-          <div style={{ display: "flex", gap: "var(--sway-space-4)", "align-items": "center" }}>
+          <div style={{ display: "flex", gap: "var(--tori-space-4)", "align-items": "center" }}>
             <For each={VARIANTS}>
               {(variant) => (
                 <Button variant={variant} size={size}>
@@ -70,7 +70,7 @@ export const Sizes: Story = {
  *  contract this story exists to hold. */
 export const WithIcons: Story = {
   render: () => (
-    <div style={{ display: "flex", gap: "var(--sway-space-4)", "align-items": "center" }}>
+    <div style={{ display: "flex", gap: "var(--tori-space-4)", "align-items": "center" }}>
       <Button icon={<Icon icon={Settings} />}>Settings</Button>
       <Button iconRight={<Icon icon={Settings} />}>Settings</Button>
       <Button icon={<Icon icon={Settings} />} aria-label="Settings" />

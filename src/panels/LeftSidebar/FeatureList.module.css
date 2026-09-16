@@ -18,6 +18,6 @@
 
 .error {
   margin: 0 0 calc(6px * var(--ui-scale));
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   color: var(--danger-fg);
 }

@@ -5,7 +5,7 @@ import Dialog from "../Dialog/Dialog";
 import Checkbox from "../Checkbox/Checkbox";
 
 // The removal confirmation for a plain-repo branch (mirrors WorktreeRemoveDialog).
-// The base action removes the branch from Sway's list; the checkboxes escalate that
+// The base action removes the branch from Tori's list; the checkboxes escalate that
 // to deleting the local branch (git branch -D, default on) and/or the remote branch
 // (git push --delete, default off, shown only when it tracks one). Unchecking local
 // leaves the git branch alone, a plain detach.
@@ -99,7 +99,7 @@ export default function BranchRemoveDialog(props: {
 
       <Show when={!deleteLocal()}>
         <div class={styles.msg}>
-          The branch stays in git; it is only removed from Sway’s list (detach).
+          The branch stays in git; it is only removed from Tori’s list (detach).
         </div>
       </Show>
     </Dialog>

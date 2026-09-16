@@ -33,7 +33,7 @@ describe("the Kobalte dialog, through src/lib", () => {
     expect(document.body.contains(dialog)).toBe(true);
     expect(screen.getByTestId("overlay")).toBeTruthy();
 
-    // The behaviour Sway adopted Kobalte *for*: the title and description are
+    // The behaviour Tori adopted Kobalte *for*: the title and description are
     // wired to the dialog by id, not merely rendered next to it, and the
     // content is fenced by focus-trap sentinels - the ShortcutSheet pattern,
     // generalized.

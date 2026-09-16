@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { isScratchPath, defaultSaveName, resolveSavePath } from "./scratch";
 
-const DIR = "/Users/me/.config/sway/scratch";
+const DIR = "/Users/me/.config/tori/scratch";
 
 describe("telling a scratch from any other file", () => {
   it("recognises a file in the scratch directory", () => {
@@ -11,7 +11,7 @@ describe("telling a scratch from any other file", () => {
   it("does not claim a sibling directory that starts the same way", () => {
     // The two rules reading this both delete something, so a prefix match on
     // the bare string would trash a file in `…/scratchpad/`.
-    expect(isScratchPath("/Users/me/.config/sway/scratchpad/notes.md", DIR)).toBe(false);
+    expect(isScratchPath("/Users/me/.config/tori/scratchpad/notes.md", DIR)).toBe(false);
   });
 
   it("does not claim the directory itself", () => {

@@ -1,26 +1,26 @@
-//! Which accounts Sway knows about per agent, and where each one's profile
+//! Which accounts Tori knows about per agent, and where each one's profile
 //! home lives.
 //!
 //! **State is split by sensitivity, not by feature.** Two stores, in two places,
 //! for two different reasons:
 //!
-//!   * `~/.config/sway/accounts.json` holds labels and email addresses. It is
+//!   * `~/.config/tori/accounts.json` holds labels and email addresses. It is
 //!     ordinary config and sits beside `settings.json` and `agents/`, because
 //!     that is what it is: a list of names the user chose.
 //!   * Profile homes live under the platform data dir (macOS: `~/Library/
-//!     Application Support/sway/profiles`), created `0700`. They are *not* in
-//!     `~/.config/sway` because that path is commonly a dotfile repo, and a
+//!     Application Support/tori/profiles`), created `0700`. They are *not* in
+//!     `~/.config/tori` because that path is commonly a dotfile repo, and a
 //!     profile home accumulates the agent's own session transcripts. Copying
 //!     a machine's whole conversation history into a git remote is not a thing
 //!     a user should be able to do by accident.
 //!
-//! **Sway stores no credentials, and on macOS the profile home holds none
+//! **Tori stores no credentials, and on macOS the profile home holds none
 //! either.** Measured in Phase 0: `claude` keeps its tokens in the login
 //! Keychain, under a service name it derives from the config dir
 //! (`"Claude Code-credentials-" + sha256($CLAUDE_CONFIG_DIR)[:8]`, the default
 //! home taking the unsuffixed name). Nothing under an isolated home is a
 //! secret. So "credential home" would be the wrong name for this directory and
-//! the wrong claim about what Sway is holding; it is a *profile* home.
+//! the wrong claim about what Tori is holding; it is a *profile* home.
 //!
 //! Per [[lesson_pure_core_for_global_stores]] the rules here are pure functions
 //! over an explicit [`AccountsFile`], and the thin wrappers at the bottom do
@@ -44,7 +44,7 @@ use std::path::{Path, PathBuf};
 /// refuses the id outright.
 ///
 /// Its **label** is a different question and is storable ([`default_labels`]):
-/// the label is Sway's own name for an account, which the agent never sees, so
+/// the label is Tori's own name for an account, which the agent never sees, so
 /// calling the user's existing login "Personal" changes a word on screen and
 /// nothing else.
 ///
@@ -63,7 +63,7 @@ fn default_file_version() -> u32 {
 /// One account of one agent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Profile {
-    /// Stable, Sway-minted, and never shown. The label is what the user sees,
+    /// Stable, Tori-minted, and never shown. The label is what the user sees,
     /// so renaming must not invalidate anything pointing at the profile.
     pub id: String,
     pub label: String,
@@ -76,11 +76,11 @@ pub struct Profile {
     ///
     /// `None` exactly for [`DEFAULT_PROFILE_ID`], which is the whole mechanism
     /// of the default profile: the variable is left unset, so the agent
-    /// resolves the login the user already had before Sway existed.
+    /// resolves the login the user already had before Tori existed.
     #[serde(default)]
     pub home: Option<String>,
     /// Missing reads as `true`: every profile stored before this field was one
-    /// Sway created.
+    /// Tori created.
     #[serde(default = "managed_by_default")]
     pub managed: bool,
 }
@@ -131,7 +131,7 @@ pub struct AccountsFile {
     #[serde(default)]
     pub adapters: BTreeMap<String, Vec<Profile>>,
     /// The user's own name for the **default** account, per adapter, where they
-    /// have given it one. Kept out of `adapters`, which holds the profiles Sway
+    /// have given it one. Kept out of `adapters`, which holds the profiles Tori
     /// added and every one of which has a home: a default profile stored there
     /// would be listed twice by `profiles_for` and offered for removal.
     ///
@@ -184,7 +184,7 @@ pub fn profile(file: &AccountsFile, adapter_id: &str, profile_id: &str) -> Optio
 ///
 /// Counts alone, and only for adapters that declare `[accounts]`: an adapter
 /// with no table gets no row here rather than a default "1", because that
-/// would claim an account Sway has nothing true to say about. The default
+/// would claim an account Tori has nothing true to say about. The default
 /// profile is in every count, the same way it is in every profile list.
 pub fn account_counts(file: &AccountsFile) -> BTreeMap<String, usize> {
     crate::agents::registry()
@@ -197,7 +197,7 @@ pub fn account_counts(file: &AccountsFile) -> BTreeMap<String, usize> {
 /// Add a profile.
 ///
 /// Rejects a duplicate id and rejects reusing [`DEFAULT_PROFILE_ID`], which
-/// would otherwise shadow the user's real login with a Sway-managed home and
+/// would otherwise shadow the user's real login with a Tori-managed home and
 /// make it unreachable.
 pub fn add_profile(
     file: &mut AccountsFile,
@@ -205,7 +205,7 @@ pub fn add_profile(
     profile: Profile,
 ) -> Result<(), String> {
     if profile.id == DEFAULT_PROFILE_ID {
-        return Err(format!("`{DEFAULT_PROFILE_ID}` is the user's existing login and is not a profile Sway adds"));
+        return Err(format!("`{DEFAULT_PROFILE_ID}` is the user's existing login and is not a profile Tori adds"));
     }
     if profile.home.is_none() {
         return Err(format!(
@@ -224,7 +224,7 @@ pub fn add_profile(
 /// Remove a profile, returning it so the caller can clean up its home.
 ///
 /// Refuses the default: there is nothing stored to remove, and "removing" it
-/// could only mean signing the user out of the login they had before Sway.
+/// could only mean signing the user out of the login they had before Tori.
 pub fn remove_profile(
     file: &mut AccountsFile,
     adapter_id: &str,
@@ -248,7 +248,7 @@ pub fn remove_profile(
     Ok(removed)
 }
 
-/// Relabel a profile, including the default one: the label is Sway's own name
+/// Relabel a profile, including the default one: the label is Tori's own name
 /// for an account and the agent never sees it, so renaming touches a word on
 /// screen and nothing about the login behind it.
 pub fn rename_profile(
@@ -386,16 +386,16 @@ pub fn can_add_account(accounts: &crate::agents::AccountsConfig) -> bool {
 
 // --- paths and homes: the thin filesystem layer ---
 
-/// `~/.config/sway/accounts.json`, beside `settings.json` and `agents/`.
+/// `~/.config/tori/accounts.json`, beside `settings.json` and `agents/`.
 pub fn accounts_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/accounts.json")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/accounts.json")
 }
 
-/// Where profile homes live: the platform data dir, never `~/.config/sway`.
+/// Where profile homes live: the platform data dir, never `~/.config/tori`.
 ///
-/// macOS resolves this to `~/Library/Application Support/sway/profiles`.
+/// macOS resolves this to `~/Library/Application Support/tori/profiles`.
 pub fn profile_home_root() -> PathBuf {
-    dirs::data_dir().unwrap_or_default().join("sway/profiles")
+    dirs::data_dir().unwrap_or_default().join("tori/profiles")
 }
 
 /// Whether the default profile exists: the adapter's `home_default` is on disk.
@@ -422,7 +422,7 @@ fn absent_default_home(adapter: &crate::agents::AgentAdapter) -> Option<&Path> {
 /// Relative paths and symlinked homes fail the same way. Canonicalizing once,
 /// at the boundary, is what keeps one directory to one identity.
 ///
-/// Requires the path to exist, which it does: Sway creates a profile home
+/// Requires the path to exist, which it does: Tori creates a profile home
 /// before it stores one.
 pub fn canonicalize_home(path: &Path) -> Result<String, String> {
     let resolved = std::fs::canonicalize(path)
@@ -450,7 +450,7 @@ pub fn adopted_home(
         .ok_or_else(|| format!("`{}` declares no accounts", adapter.id))?;
     if accounts.home_markers.is_empty() {
         return Err(format!(
-            "Sway cannot tell a {} folder from any other, so leave the field empty.",
+            "Tori cannot tell a {} folder from any other, so leave the field empty.",
             adapter.label
         ));
     }
@@ -470,7 +470,7 @@ pub fn adopted_home(
     let home = canonicalize_home(&path)?;
     let default_home = accounts.home_default.as_deref().and_then(|d| canonicalize_home(d).ok());
     if default_home.as_deref() == Some(home.as_str()) {
-        return Err(format!("{home} is {}'s default account, which Sway already lists.", adapter.label));
+        return Err(format!("{home} is {}'s default account, which Tori already lists.", adapter.label));
     }
     let mut stored = file.adapters.get(&adapter.id).into_iter().flatten();
     if let Some(taken) = stored.find(|p| p.home.as_deref() == Some(home.as_str())) {
@@ -498,7 +498,7 @@ pub fn create_profile_home(adapter_id: &str, profile_id: &str) -> Result<String,
 
 /// Create a profile home under an explicit root and return its canonical path.
 ///
-/// `0700` on every directory Sway creates here, not just the leaf: the agent
+/// `0700` on every directory Tori creates here, not just the leaf: the agent
 /// writes its own session transcripts inside, and on a shared machine those are
 /// nobody else's business. The adapter level in the middle matters too, since a
 /// world-readable one leaks the profile names above the transcripts. Created
@@ -532,7 +532,7 @@ fn restrict_to_owner(path: &Path) -> Result<(), String> {
 
 /// Reduce an id to a bare path segment, for the same reason
 /// [`crate::owned_state`] does: the result is concatenated into a path, and an
-/// adapter id comes from a TOML Sway does not control.
+/// adapter id comes from a TOML Tori does not control.
 pub fn sanitize_segment(value: &str) -> String {
     value
         .chars()
@@ -545,7 +545,7 @@ pub fn sanitize_segment(value: &str) -> String {
 /// Read `accounts.json`, or an empty store.
 ///
 /// An unreadable or unparseable file reads as empty rather than as an error,
-/// matching every other Sway store: the alternative is a broken JSON file
+/// matching every other Tori store: the alternative is a broken JSON file
 /// making the app unusable rather than making one list short.
 pub fn load() -> AccountsFile {
     std::fs::read_to_string(accounts_path())
@@ -616,7 +616,7 @@ pub struct AccountsView {
     pub can_sign_out: bool,
     pub default_present: bool,
     pub default_home: Option<String>,
-    /// Where the default account really runs when Sway's own environment sets
+    /// Where the default account really runs when Tori's own environment sets
     /// the adapter's `home_env`; see [`inherited_home`]. `None` is the normal
     /// case, the variable unset.
     pub inherited_home: Option<String>,
@@ -687,10 +687,10 @@ pub enum RemovalStep {
 /// than eight lines of straight-line code in a command nothing calls in a test.
 ///
 /// The order is the whole point. Deleting the profile before signing out would
-/// leave a credential Sway had abandoned rather than revoked, with nothing left
+/// leave a credential Tori had abandoned rather than revoked, with nothing left
 /// in the UI to try again from.
 ///
-/// `revoke` is whether the login goes with the account: always for a home Sway
+/// `revoke` is whether the login goes with the account: always for a home Tori
 /// made, and for a folder the user already had only when they ask for it.
 pub fn removal_plan(revoke: bool, has_logout: bool, confirmed_without_logout: bool) -> RemovalStep {
     if !revoke {
@@ -711,7 +711,7 @@ pub fn removal_plan(revoke: bool, has_logout: bool, confirmed_without_logout: bo
 /// for, and the reason is the one adapter that reaches this branch. OpenCode's
 /// credentials are per *provider* (the measured install held GitHub Copilot),
 /// so there is no single page that revokes "the OpenCode account": whose page
-/// it would be depends on which provider, and Sway does not know which. A URL
+/// it would be depends on which provider, and Tori does not know which. A URL
 /// field on `[accounts]` would therefore ship empty on every bundled adapter
 /// and be a guess on any other.
 ///
@@ -831,7 +831,7 @@ pub async fn agent_accounts(adapter_id: String) -> Result<AccountsView, String> 
     })
 }
 
-/// The home the default account really runs in when Sway's own environment
+/// The home the default account really runs in when Tori's own environment
 /// sets the adapter's `home_env`: every default-profile child inherits it, so
 /// "the variable left unset" is then a different account than the user's own
 /// login. Measured today: a dev build started from a shell that had exported
@@ -1024,7 +1024,7 @@ pub enum RemovalOutcome {
 ///
 /// The order is load-bearing. Logout runs **first**, and a failure stops the
 /// removal: deleting the profile behind a live token would leave a credential
-/// Sway had abandoned rather than revoked, with nothing left in the UI to try
+/// Tori had abandoned rather than revoked, with nothing left in the UI to try
 /// again from.
 ///
 /// `confirmed_without_logout` is the caller having told the user what an adapter
@@ -1033,7 +1033,7 @@ pub enum RemovalOutcome {
 /// quietly become a delete for adapters that never had a logout.
 ///
 /// `sign_out` is the user asking for the login to go as well, which matters only
-/// for a folder they already had: a home Sway made is always signed out.
+/// for a folder they already had: a home Tori made is always signed out.
 #[tauri::command]
 pub async fn remove_agent_account(
     chat: tauri::State<'_, crate::chat::host::ChatState>,
@@ -1139,7 +1139,7 @@ pub async fn sign_out_agent_account(adapter_id: String, profile_id: String) -> R
         .map_err(|e| format!("{} would not sign out: {e}", adapter.label))
 }
 
-/// Set the home's first-run flag after a sign-in Sway started has exited clean.
+/// Set the home's first-run flag after a sign-in Tori started has exited clean.
 ///
 /// `Ok(false)` when there was nothing to do: the adapter declares no flag, the
 /// state file is not there (the login wrote nothing, so there is no home to
@@ -1223,7 +1223,7 @@ mod tests {
     }
 
     /// Renaming it is a different question from removing it: the label is
-    /// Sway's own name for the account and the agent never sees it, so this
+    /// Tori's own name for the account and the agent never sees it, so this
     /// changes a word on screen and leaves the account itself alone.
     #[test]
     fn the_default_profile_can_be_renamed_and_stays_the_unset_variable() {
@@ -1246,7 +1246,7 @@ mod tests {
     }
 
     /// Shadowing the default would point the user's existing login at a
-    /// Sway-managed home and make the real one unreachable from the UI.
+    /// Tori-managed home and make the real one unreachable from the UI.
     #[test]
     fn a_stored_profile_cannot_claim_the_default_id() {
         let mut file = AccountsFile::default();
@@ -1322,7 +1322,7 @@ mod tests {
 
     #[test]
     fn the_default_is_present_exactly_when_its_declared_home_exists() {
-        let root = std::env::temp_dir().join(format!("sway-default-home-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("tori-default-home-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let declaring = |home: PathBuf| {
             let mut a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
@@ -1343,7 +1343,7 @@ mod tests {
     /// the default is refused by name rather than spawned.
     #[test]
     fn an_absent_default_home_refuses_the_default_profile() {
-        let missing = std::env::temp_dir().join(format!("sway-no-default-{}", std::process::id()));
+        let missing = std::env::temp_dir().join(format!("tori-no-default-{}", std::process::id()));
         let mut a = adapter_with(Some("CLAUDE_CONFIG_DIR"), true);
         a.accounts.as_mut().unwrap().home_default = Some(missing.clone());
         let mut file = AccountsFile::default();
@@ -1526,7 +1526,7 @@ mod tests {
     // --- paths: the two filesystem facts worth pinning ---
 
     /// The split-by-sensitivity rule, asserted structurally so it cannot drift
-    /// back: `~/.config/sway` is commonly a dotfile repo, and a profile home
+    /// back: `~/.config/tori` is commonly a dotfile repo, and a profile home
     /// fills up with the agent's own transcripts.
     #[test]
     fn no_profile_home_is_created_under_the_config_dir() {
@@ -1549,7 +1549,7 @@ mod tests {
     /// to be created.
     #[test]
     fn a_profile_home_is_created_private_to_its_owner() {
-        let root = std::env::temp_dir().join(format!("sway-homes-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("tori-homes-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
 
         let home = create_profile_home_in(&root, "claude", "work").unwrap();
@@ -1573,11 +1573,11 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
     }
 
-    /// An adapter id comes from a TOML Sway does not control, and the result is
+    /// An adapter id comes from a TOML Tori does not control, and the result is
     /// concatenated into a path.
     #[test]
     fn a_traversing_id_cannot_escape_the_profile_root() {
-        let root = std::env::temp_dir().join(format!("sway-escape-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("tori-escape-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         std::fs::create_dir_all(&root).unwrap();
         let canonical_root = std::fs::canonicalize(&root).unwrap();
@@ -1744,7 +1744,7 @@ mod tests {
     }
 
     /// The order is the rule. Signing out after forgetting the profile would
-    /// leave a credential Sway had abandoned rather than revoked, with nothing
+    /// leave a credential Tori had abandoned rather than revoked, with nothing
     /// left in the UI to try again from.
     #[test]
     fn a_agent_with_a_logout_command_signs_out_before_forgetting_anything() {
@@ -1786,7 +1786,7 @@ mod tests {
         assert_eq!(std::fs::read_to_string(root.join("adopted/.claude.json")).unwrap(), "{}");
 
         discard_home(&added("made", root.join("made").to_str().unwrap())).unwrap();
-        assert!(!root.join("made").exists(), "a home Sway made goes with its account");
+        assert!(!root.join("made").exists(), "a home Tori made goes with its account");
 
         std::fs::remove_dir_all(&root).ok();
     }
@@ -1895,7 +1895,7 @@ mod tests {
     /// logins and a profile reports signed-out for no visible reason.
     #[test]
     fn every_spelling_of_one_directory_canonicalizes_to_one_path() {
-        let base = std::env::temp_dir().join(format!("sway-accounts-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("tori-accounts-{}", std::process::id()));
         let real = base.join("real");
         std::fs::create_dir_all(&real).unwrap();
 
@@ -1929,7 +1929,7 @@ mod tests {
     }
 
     fn scratch(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("sway-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("tori-{name}-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         std::fs::create_dir_all(&root).unwrap();
         root

@@ -23,7 +23,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: var(--sway-space-3);
+  padding: var(--tori-space-3);
   border-right: 1px solid var(--border-rail);
 }
 
@@ -31,7 +31,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: var(--sway-space-3);
+  padding: var(--tori-space-3);
 }
 
 /* The scrolling half of each column. `OverlayScroll` draws its own bar over the
@@ -64,9 +64,9 @@
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: var(--sway-border-thick);
+  width: var(--tori-border-thick);
   height: calc(15px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--brand-bar);
 }
 
@@ -84,15 +84,15 @@
   display: flex;
   flex-direction: column;
   gap: calc(2px * var(--ui-scale));
-  padding: var(--sway-space-2) var(--sway-space-4) var(--sway-space-4);
+  padding: var(--tori-space-2) var(--tori-space-4) var(--tori-space-4);
 }
 
 .headAgent {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-4);
+  gap: var(--tori-space-4);
   color: var(--fg-subtle);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   font-weight: 500;
 }
 
@@ -105,15 +105,15 @@
 
 .headVersion {
   color: var(--fg-subtle);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   font-weight: 400;
 }
 
 .headTitle {
   flex: none;
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-2xs);
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -128,8 +128,8 @@
 
 .headFact {
   flex: none;
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   color: var(--fg-subtle);
 }
 
@@ -138,11 +138,11 @@
 .recheck {
   display: inline-flex;
   flex: none;
-  padding: var(--sway-space-1);
-  margin: calc(-1 * var(--sway-space-1));
+  padding: var(--tori-space-1);
+  margin: calc(-1 * var(--tori-space-1));
   background: none;
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-subtle);
   cursor: pointer;
 }
@@ -186,8 +186,8 @@
 .filterBar {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-3);
-  padding: var(--sway-space-4) var(--sway-space-4);
+  gap: var(--tori-space-3);
+  padding: var(--tori-space-4) var(--tori-space-4);
   border-bottom: 1px solid var(--border-rail);
   color: var(--fg-subtle);
 }
@@ -200,7 +200,7 @@
   outline: none;
   color: var(--fg-default);
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .filterInput::placeholder {
@@ -208,11 +208,11 @@
 }
 
 .escKey {
-  padding: 0 var(--sway-space-1);
+  padding: 0 var(--tori-space-1);
   border: 1px solid var(--border-rail);
-  border-radius: var(--sway-radius-sm);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  border-radius: var(--tori-radius-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 .row {
@@ -220,11 +220,11 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sway-space-4);
-  padding: var(--sway-space-4) var(--sway-space-4);
-  border-radius: var(--sway-radius-md);
+  gap: var(--tori-space-4);
+  padding: var(--tori-space-4) var(--tori-space-4);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   cursor: pointer;
 }
 
@@ -246,9 +246,9 @@
    vertical padding than the agent rows, since the second line already spends
    the height. */
 .modelRow {
-  gap: var(--sway-space-2);
-  padding-block: var(--sway-space-3);
-  font-size: var(--sway-text-lg);
+  gap: var(--tori-space-2);
+  padding-block: var(--tori-space-3);
+  font-size: var(--tori-text-lg);
 }
 
 .rowText {
@@ -276,7 +276,7 @@
 .rowTitle {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-4);
+  gap: var(--tori-space-4);
   min-width: 0;
 }
 
@@ -299,13 +299,13 @@
 }
 
 .rowId {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
 }
 
 .rowDesc {
   min-width: 0;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--fg-watermark);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -316,8 +316,8 @@
    id in the panel, so a description and an identifier never read as the same
    kind of thing. */
 .rowDescId {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 /* A split name's route: the provider chain, then the bare id, separated by the
@@ -326,7 +326,7 @@
 .rowRoute {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-2);
+  gap: var(--tori-space-2);
 }
 
 .rowRoute > span {
@@ -383,7 +383,7 @@
 }
 
 .rowMeta {
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   color: var(--fg-subtle);
   font-variant-numeric: tabular-nums;
 }
@@ -391,14 +391,14 @@
 .fix {
   display: inline-flex;
   align-items: center;
-  gap: var(--sway-space-1);
-  padding: 0 var(--sway-space-2);
+  gap: var(--tori-space-1);
+  padding: 0 var(--tori-space-2);
   background: none;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--danger-fg);
   font-family: inherit;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   cursor: pointer;
 }
 
@@ -407,8 +407,8 @@
 }
 
 .empty {
-  padding: var(--sway-space-3) var(--sway-space-4);
-  font-size: var(--sway-text-md);
+  padding: var(--tori-space-3) var(--tori-space-4);
+  font-size: var(--tori-text-md);
   color: var(--fg-subtle);
 }
 
@@ -418,8 +418,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sway-space-3);
-  padding: var(--sway-space-3) var(--sway-space-3);
+  gap: var(--tori-space-3);
+  padding: var(--tori-space-3) var(--tori-space-3);
   border-top: 1px solid var(--border-rail);
 }
 
@@ -427,17 +427,17 @@
 .settings {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-3);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  gap: var(--tori-space-3);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   color: var(--fg-subtle);
 }
 
 .settings {
-  padding: var(--sway-space-1) var(--sway-space-2);
+  padding: var(--tori-space-1) var(--tori-space-2);
   background: none;
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   cursor: pointer;
 }
 
@@ -449,7 +449,7 @@
 .keys span {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-1);
+  gap: var(--tori-space-1);
 }
 
 /* A keycap holds a glyph now rather than a word, so it is sized as a square and
@@ -462,9 +462,9 @@
   justify-content: center;
   min-width: calc(18px * var(--ui-scale));
   height: calc(18px * var(--ui-scale));
-  padding: 0 var(--sway-space-1);
+  padding: 0 var(--tori-space-1);
   border: 1px solid var(--border-rail);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   font-family: inherit;
   font-size: inherit;
 }

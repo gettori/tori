@@ -19,7 +19,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 /* Which operation left the tree like this. Not decoration: it is the reason
@@ -27,10 +27,10 @@
 .op {
   flex: none;
   padding: 0 calc(6px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--neutral-hover);
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -48,7 +48,7 @@
 .counter {
   flex: none;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* The decision row: what the reader is choosing between, in the words the
@@ -63,19 +63,19 @@
 
 .choiceLabel {
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .resolved {
   padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
   color: var(--success-fg);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .error {
   padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
   color: var(--danger-fg);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* The base for the region under discussion. Capped rather than scrolling with
@@ -93,14 +93,14 @@
 .baseLabel {
   flex: none;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .baseEmpty {
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   font-style: italic;
 }
 
@@ -119,7 +119,7 @@
   border-bottom: 1px solid var(--border-default);
   background: var(--canvas-card);
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .sideRef {

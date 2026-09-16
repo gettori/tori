@@ -158,7 +158,7 @@ type ViewCtx = {
 // to mention it would be indistinguishable from dropping it to move it, and the
 // ambiguity resolves as a filesystem move nobody asked for. So the tree marks
 // its own drags, and only a marked drag can land on a folder.
-const TREE_MOVE_MIME = "application/x-sway-tree-move";
+const TREE_MOVE_MIME = "application/x-tori-tree-move";
 
 /** A request to walk the tree to `path`. `nonce` distinguishes two requests for
  *  the same file, which a bare string could not. */
@@ -1082,7 +1082,7 @@ export default function FileTree(props: {
   const editable = () => !!props.editable && !!props.askText && !!props.askConfirm;
 
   // Only a real file under this root can be revealed: `activePath` can also be
-  // a synthetic `sway://` tab, which has no row to scroll to.
+  // a synthetic `tori://` tab, which has no row to scroll to.
   const revealable = () => {
     const p = props.activePath;
     const r = props.root;

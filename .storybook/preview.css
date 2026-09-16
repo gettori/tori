@@ -3,12 +3,12 @@
    story look broken and would hide a genuinely broken light theme. Reading the
    roles instead means the canvas follows whatever the theme toolbar selects. */
 #storybook-root {
-  padding: var(--sway-space-6);
+  padding: var(--tori-space-6);
 }
 
 body.sb-show-main {
   background: var(--canvas-default);
   color: var(--fg-default);
-  font-family: var(--sway-font-ui);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-ui);
+  font-size: var(--tori-text-md);
 }

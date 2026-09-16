@@ -40,7 +40,7 @@ export type DebugNode = {
  * its vendor, not program output, and showing it would put noise nobody asked
  * for in the middle of a program's stdout.
  *
- * `repl` is Sway's own voice, for what was typed into the console and what came
+ * `repl` is Tori's own voice, for what was typed into the console and what came
  * back. It is not in `SHOWN_CATEGORIES`, so an adapter claiming it on an
  * `output` event is dropped rather than allowed to forge a prompt.
  */
@@ -94,7 +94,7 @@ const wired = new Set<string>();
 let nextLineId = 1;
 
 /**
- * Strip the control bytes out of text Sway did not author.
+ * Strip the control bytes out of text Tori did not author.
  *
  * Program output is written by whatever is being debugged, which is exactly the
  * class of text [[lesson_sanitize_text_you_did_not_author]] is about. Newlines
@@ -160,7 +160,7 @@ function append(session: DapSession, category: OutputCategory, text: string): vo
 }
 
 /**
- * Append a line Sway wrote itself, which is the REPL and nothing else.
+ * Append a line Tori wrote itself, which is the REPL and nothing else.
  *
  * It joins the same transcript rather than a list of its own, because the order
  * is the point: what you asked, and what the program printed while answering,
@@ -168,7 +168,7 @@ function append(session: DapSession, category: OutputCategory, text: string): vo
  * session name occupies for program output.
  */
 export function noteConsoleLine(origin: string, category: OutputCategory, text: string): void {
-  push("sway", origin, category, text);
+  push("tori", origin, category, text);
 }
 
 function push(session: string, sessionName: string, category: OutputCategory, text: string): void {

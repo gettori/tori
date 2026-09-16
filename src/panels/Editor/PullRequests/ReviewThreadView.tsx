@@ -17,7 +17,7 @@ import type { ReviewThread } from "../../../utils/forgeTypes";
 import Button from "../../../components/Button/Button";
 import styles from "./ReviewThreadView.module.css";
 
-/** The anchor as a reader scans it. A thread can span lines, since Sway itself
+/** The anchor as a reader scans it. A thread can span lines, since Tori itself
  *  sends ranges, and a head showing only `line` would name the last line of a
  *  remark whose message to the agent says the whole span. */
 function anchor(thread: ReviewThread): string {

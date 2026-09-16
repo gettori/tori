@@ -7,7 +7,7 @@
 //     through a keymap**, and when it consumes one it calls `stopPropagation()`
 //     as well as `preventDefault()` (`dist/index.cjs:1480-1527`). So a key vim
 //     claims is dead everywhere: not just in CodeMirror's other keymaps, but in
-//     Sway's window-level hotkey dispatcher too. What saves the app's own
+//     Tori's window-level hotkey dispatcher too. What saves the app's own
 //     bindings is that `vimKeyFromEvent` turns Cmd into `M-` and vim binds
 //     nothing with it, so ⌘S, ⌘⌥D and the rest are never claimed in the first
 //     place. `vimMode.test.tsx` asserts that rather than trusting it.

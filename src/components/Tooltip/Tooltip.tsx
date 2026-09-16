@@ -12,7 +12,7 @@ import { useDialogSurface } from "../Dialog/surface";
 import styles from "./Tooltip.module.css";
 
 /** Which side of the control the tooltip sits on. Kobalte accepts twelve
- *  placements (each side plus `-start`/`-end`); these four are what Sway uses,
+ *  placements (each side plus `-start`/`-end`); these four are what Tori uses,
  *  and keeping the union local is what lets this file expose a placement type
  *  without the app importing one from the primitives package - which
  *  `boundary.test.ts` would fail it for, this file included. */
@@ -62,7 +62,7 @@ export type TooltipProps<
   Omit<P, "as" | "children"> & {
   /** Narrower than the native attribute, which Solid still types with the
    *  long-dead `"menu"` value. Kobalte's trigger accepts the three real ones,
-   *  and nothing in Sway passes the fourth. */
+   *  and nothing in Tori passes the fourth. */
   type?: "submit" | "reset" | "button";
   /** The tooltip text. Rendered as the control's *description*
    *  (`aria-describedby`), never as its name - see the module comment.
@@ -118,7 +118,7 @@ export type TooltipProps<
    *  whose props then have to be passed here too.
    *
    *  Whichever it is, the trigger has to *be* the control (see the module
-   *  comment), so this is a host to render, never a child to wrap. Sway's own
+   *  comment), so this is a host to render, never a child to wrap. Tori's own
    *  controls still compose this from the inside rather than passing themselves
    *  in; the component form exists for the case they cannot cover, a control
    *  that is itself a headless primitive's part. `IconGrid`'s tiles are the
@@ -148,7 +148,7 @@ export type TooltipProps<
 };
 
 /**
- * The one tooltip surface: Kobalte's tooltip behind Sway's chrome and Sway's
+ * The one tooltip surface: Kobalte's tooltip behind Tori's chrome and Tori's
  * API. Everything not listed below is a native attribute and lands on the
  * trigger, so a call site reads as the control it already was plus a `label`.
  *

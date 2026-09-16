@@ -13,7 +13,7 @@ const LABELS = Array.from({ length: 10 }, (_, i) => `wt-${String(i + 1).padStart
 const folderOf = (label: string) => `${BIG}/${label}`;
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -112,7 +112,7 @@ type Selection = Parameters<typeof LeftSidebar>[0]["selected"];
 
 /** Mounted with the project already open, since truncation only exists there. */
 const mount = (selected: Selection = null) => {
-  localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/big"]));
+  localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/big"]));
   return render(() => (
     <LeftSidebar selected={selected} onSelect={() => {}} liveTabs={liveTabs} />
   ));
@@ -133,7 +133,7 @@ describe("a project card truncates a long branch list", () => {
     bridge.handlers = {};
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
   });
 
   it("shows the first six branches and counts the rest", async () => {

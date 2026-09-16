@@ -248,7 +248,7 @@ export default function SessionInfo(props: {
                       <li>
                         <strong>{e.name}</strong> · {e.scope}
                         {/* Only a `.mcp.json` server can be pending, and it is
-                            not connected to until approved. Sway deliberately
+                            not connected to until approved. Tori deliberately
                             does not force-enable it: the approval lives in
                             Claude's own state file, which we never write. */}
                         <Show when={e.approval === "pending"}>
@@ -257,7 +257,7 @@ export default function SessionInfo(props: {
                         <Show when={e.approval === "disabled"}>
                           <span class={styles.sessionInfoBad}> · disabled</span>
                         </Show>
-                        {/* Only project servers live in the file Sway writes. */}
+                        {/* Only project servers live in the file Tori writes. */}
                         <Show when={e.scope === "project"}>
                           <Button size="xs" variant="ghost" onClick={() => void removeServer(e.name)}>
                             Remove

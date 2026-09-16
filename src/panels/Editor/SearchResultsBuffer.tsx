@@ -226,7 +226,7 @@ const HELD = "Edits not applied yet. Apply them, or press Enter to search again 
 
 /**
  * VS Code's Search Editor: a tab with its own query, toggles, globs and context
- * lines over every hit as one buffer, plus Sway's write-back of edited lines.
+ * lines over every hit as one buffer, plus Tori's write-back of edited lines.
  *
  * Its own CodeMirror instance rather than a buffer inside `CodeEditor`: this
  * document has no file behind it, needs no language server, and lives under

@@ -16,7 +16,7 @@
   color: inherit;
   font-size: inherit;
   font-weight: 500;
-  line-height: var(--sway-line-normal);
+  line-height: var(--tori-line-normal);
 }
 
 .items {
@@ -34,13 +34,13 @@
 .items[data-orientation="horizontal"] {
   flex-direction: row;
   flex-wrap: wrap;
-  column-gap: var(--sway-space-4);
+  column-gap: var(--tori-space-4);
 }
 
 .item {
   display: flex;
   align-items: flex-start;
-  gap: var(--sway-space-4);
+  gap: var(--tori-space-4);
 }
 
 /* On the whole option, so the reason a click does nothing is visible before the
@@ -82,13 +82,13 @@
   flex: none;
   width: calc(16px * var(--ui-scale));
   height: calc(16px * var(--ui-scale));
-  margin-top: calc((1em * var(--sway-line-normal) - 16px * var(--ui-scale)) / 2);
+  margin-top: calc((1em * var(--tori-line-normal) - 16px * var(--ui-scale)) / 2);
   border: 1px solid var(--fg-muted);
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--canvas-input);
   transition:
-    border-color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    background var(--tori-duration-fast) ease;
 }
 
 /* The ring and the dot take the brand; the fill does not. solid-ui keeps the
@@ -116,7 +116,7 @@
 .indicator {
   width: calc(8px * var(--ui-scale));
   height: calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--brand-default);
 }
 
@@ -135,7 +135,7 @@
 .label {
   color: inherit;
   font-size: inherit;
-  line-height: var(--sway-line-normal);
+  line-height: var(--tori-line-normal);
   cursor: default;
 }
 
@@ -144,8 +144,8 @@
    line at the label's size stops reading as subordinate to it. */
 .description {
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
-  line-height: var(--sway-line-normal);
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
   cursor: default;
 }
 

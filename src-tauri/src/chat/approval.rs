@@ -15,18 +15,18 @@
 //! short-circuits the rest of the chain, so a hook that answers every tool means
 //! the agent is never reached and never asks (measured three ways in
 //! `dev/protocol-probe.mjs`). So the hook stopped answering, and now it is gone:
-//! Sway decides no tool call, in any mode, for any agent.
+//! Tori decides no tool call, in any mode, for any agent.
 //!
 //! **What is left is a capture, and only a capture.** The helper matches the
 //! write tools, exits 0 emitting **no** decision at all - which lets the chain
 //! continue to the agent while the hook still runs - and the one thing it does
-//! on the way is hand Sway the file's prior contents, synchronously, before the
+//! on the way is hand Tori the file's prior contents, synchronously, before the
 //! write lands. A before-state captured after the write is not a before-state,
 //! which is the whole reason a socket is involved rather than a fire-and-forget.
 //!
 //! **It is fail-open, deliberately.** Whatever goes wrong - no socket, wrong
 //! token, a dead server - the agent is still going to ask, and denying here
-//! would be Sway gating again by the back door on the one path built to have
+//! would be Tori gating again by the back door on the one path built to have
 //! stopped. The cost of a failure is a tool card with no diff.
 //!
 //! **The shape is [[concept_askpass_bridge]]'s, reused rather than reinvented**:
@@ -52,8 +52,8 @@ use crate::owned_state::now_ms;
 
 /// Env markers the helper reads. Set inline on the hook command string rather
 /// than inherited, so only the hook process ever sees them.
-pub const ENV_SOCK: &str = "SWAY_CHAT_HOOK_SOCK";
-pub const ENV_TOKEN: &str = "SWAY_CHAT_HOOK_TOKEN";
+pub const ENV_SOCK: &str = "TORI_CHAT_HOOK_SOCK";
+pub const ENV_TOKEN: &str = "TORI_CHAT_HOOK_TOKEN";
 
 /// The `matcher` the capture hook ships.
 ///
@@ -70,7 +70,7 @@ fn matcher() -> String {
 /// How long a agent may leave an in-protocol permission question unanswered.
 ///
 /// Must stay **strictly below** [`HOOK_TIMEOUT_SECS`], which is what the CLI is
-/// told. Sway owning the deadline is the point: if the CLI's timeout fired
+/// told. Tori owning the deadline is the point: if the CLI's timeout fired
 /// first, the outcome would be the CLI's default rather than a denial we can
 /// explain, and the user would see a tool blocked with no reason.
 pub const DECIDE_TIMEOUT_SECS: u64 = 110;
@@ -103,18 +103,18 @@ pub struct CaptureAck {
     pub captured: bool,
 }
 
-/// The marker that makes Sway's own hook identifiable in the in-band
+/// The marker that makes Tori's own hook identifiable in the in-band
 /// `hook_response` stream.
 ///
 /// Needed because nothing else distinguishes it. Measured on claude 2.1.220:
-/// `hook_name` reports the **tool**, not the configured matcher, so Sway's
+/// `hook_name` reports the **tool**, not the configured matcher, so Tori's
 /// write-tool hook and a user's `PreToolUse` hook on the same tool both arrive
 /// as `PreToolUse:Write`, and the frames carry no command. Rather than guess
-/// from the shape of the output, Sway stamps its own.
+/// from the shape of the output, Tori stamps its own.
 ///
 /// Verified non-invasive: claude echoes the whole stdout string back in
 /// `hook_response.output` verbatim and ignores keys it does not know.
-pub const SWAY_HOOK_MARKER: &str = "swayApproval";
+pub const TORI_HOOK_MARKER: &str = "toriApproval";
 
 /// The JSON the capture hook writes to stdout: the marker, and nothing else.
 ///
@@ -130,9 +130,9 @@ pub const SWAY_HOOK_MARKER: &str = "swayApproval";
 ///
 /// The marker is not decoration. It is what lets `claude.rs` say *whose* hook a
 /// failed `PreToolUse:Write` row belongs to, which is the one moment the user
-/// needs to know Sway put a hook there at all.
+/// needs to know Tori put a hook there at all.
 pub fn hook_output() -> String {
-    json!({ SWAY_HOOK_MARKER: true }).to_string()
+    json!({ TORI_HOOK_MARKER: true }).to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -149,7 +149,7 @@ pub fn is_helper() -> bool {
 /// Everything the helper reads out of a `PreToolUse` payload.
 ///
 /// **`permission_mode` is deliberately not here**, though the payload carries
-/// it. Nothing in Sway is entitled to branch on it: the mode is the agent's
+/// it. Nothing in Tori is entitled to branch on it: the mode is the agent's
 /// own control, and a helper that read it would be a helper capable of behaving
 /// differently in one mode than another - which is a gate, however small.
 pub struct HookInputs {
@@ -168,7 +168,7 @@ pub fn hook_inputs(parsed: &Value) -> HookInputs {
     }
 }
 
-/// The helper: read the `PreToolUse` payload from stdin, hand Sway the
+/// The helper: read the `PreToolUse` payload from stdin, hand Tori the
 /// before-state if there is one, stamp the marker on stdout. Returns the process
 /// exit code.
 ///
@@ -197,14 +197,14 @@ fn helper_capture(payload: &str, sock: &Path, token: &str) {
     let HookInputs { tool_name, tool_input, session_id, tool_use_id } = hook_inputs(&parsed);
 
     // The matcher should already have kept this tool away from us, but the
-    // matcher is claude's and this is the claim Sway can keep on its own:
+    // matcher is claude's and this is the claim Tori can keep on its own:
     // nothing with no before-state to capture costs a socket.
     if super::snapshot::write_targets(&tool_name, &tool_input).is_empty() {
         return;
     }
     let req = HookRequest { token: token.to_string(), session_id, tool_use_id, tool_name, tool_input };
     // Fail-open: whatever went wrong, the agent is still going to ask, and
-    // refusing here would be Sway gating again by the back door. The round trip
+    // refusing here would be Tori gating again by the back door. The round trip
     // is still synchronous, because a before-state captured after the write is
     // not a before-state.
     let _ = helper_exchange(sock, &req);
@@ -314,7 +314,7 @@ impl CaptureServer {
 pub fn start(observe: Box<dyn Fn(&HookRequest) + Send + Sync>) -> std::io::Result<Arc<CaptureServer>> {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("sway-cha-{}-{}", std::process::id(), seq));
+    let dir = std::env::temp_dir().join(format!("tori-cha-{}-{}", std::process::id(), seq));
     std::fs::create_dir_all(&dir)?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     let sock_path = dir.join("s");
@@ -476,7 +476,7 @@ pub fn settings_path(session_id: &str) -> PathBuf {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect();
-    dirs::home_dir().unwrap_or_default().join(".config/sway/chat-settings").join(format!("{safe}.json"))
+    dirs::home_dir().unwrap_or_default().join(".config/tori/chat-settings").join(format!("{safe}.json"))
 }
 
 #[cfg(test)]
@@ -516,7 +516,7 @@ mod tests {
         .to_string()
     }
 
-    /// The whole reason a socket is involved: the write is held until Sway has
+    /// The whole reason a socket is involved: the write is held until Tori has
     /// the file's prior contents.
     #[test]
     fn a_write_is_captured_before_the_helper_is_released() {
@@ -532,7 +532,7 @@ mod tests {
     }
 
     /// An unauthenticated call must not be observed, or a stranger on the socket
-    /// could drive Sway's snapshot machinery.
+    /// could drive Tori's snapshot machinery.
     #[test]
     fn an_unauthenticated_call_is_never_observed() {
         let (server, observed) = observing_server();
@@ -584,7 +584,7 @@ mod tests {
     /// than a hang.
     #[test]
     fn an_unreachable_socket_errors_rather_than_blocking() {
-        let missing = std::env::temp_dir().join("sway-cha-does-not-exist/s");
+        let missing = std::env::temp_dir().join("tori-cha-does-not-exist/s");
         assert!(helper_exchange(&missing, &request("t", "Write", json!({}))).is_err());
     }
 
@@ -630,11 +630,11 @@ mod tests {
     /// for exactly the write tools this hook is narrowed to.
     ///
     /// It does emit the marker, which carries no decision and is what lets a
-    /// failed hook row be attributed to Sway rather than to the user.
+    /// failed hook row be attributed to Tori rather than to the user.
     #[test]
     fn the_helper_prints_the_marker_and_no_decision() {
         let out: Value = serde_json::from_str(&hook_output()).unwrap();
-        assert_eq!(out[SWAY_HOOK_MARKER], true);
+        assert_eq!(out[TORI_HOOK_MARKER], true);
         assert_eq!(out.as_object().unwrap().len(), 1, "the marker is the whole output: {out}");
         assert!(out.get("hookSpecificOutput").is_none(), "a decision here would short-circuit the agent");
     }
@@ -647,15 +647,15 @@ mod tests {
         assert_eq!(observed.lock().unwrap().len(), 1, "the before-state must have been captured");
     }
 
-    /// Fail-open. A capture that cannot reach Sway has lost a diff; refusing
-    /// instead would be Sway gating by the back door, silently, on the one path
+    /// Fail-open. A capture that cannot reach Tori has lost a diff; refusing
+    /// instead would be Tori gating by the back door, silently, on the one path
     /// that is supposed to have stopped gating.
     #[test]
-    fn a_capture_that_cannot_reach_sway_is_not_a_refusal() {
+    fn a_capture_that_cannot_reach_tori_is_not_a_refusal() {
         // No panic, no error propagated, nothing printed but the marker.
         helper_capture(&payload("Write", json!({"file_path": "/proj/new.rs"})), Path::new("/nonexistent/socket"), "tok");
         let out: Value = serde_json::from_str(&hook_output()).unwrap();
-        assert!(out.get("hookSpecificOutput").is_none(), "an unreachable Sway must not become a denial");
+        assert!(out.get("hookSpecificOutput").is_none(), "an unreachable Tori must not become a denial");
     }
 
     /// A payload that is not JSON at all must be survivable for the same reason.
@@ -710,12 +710,12 @@ mod tests {
     /// Separate from the budget test above and opt-in, because it needs a built
     /// binary that `cargo test` does not produce. It exists because the socket
     /// round trip is the cheap part: the honest per-call cost is dominated by
-    /// `exec`ing Sway, and a budget that measured only the round trip would be
+    /// `exec`ing Tori, and a budget that measured only the round trip would be
     /// measuring the wrong thing.
     #[test]
     #[ignore = "needs a built binary: cargo build, then cargo test -- --ignored"]
     fn the_end_to_end_hook_cost_is_measured_against_the_real_binary() {
-        let exe = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/sway");
+        let exe = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/tori");
         assert!(exe.exists(), "run `cargo build` first: {}", exe.display());
 
         let (server, observed) = observing_server();
@@ -736,7 +736,7 @@ mod tests {
             samples.push(start.elapsed());
 
             let printed: Value = serde_json::from_slice(&out.stdout).expect("the hook should print its marker");
-            assert_eq!(printed[SWAY_HOOK_MARKER], true);
+            assert_eq!(printed[TORI_HOOK_MARKER], true);
             assert!(printed.get("hookSpecificOutput").is_none(), "the shipped helper must never print a decision");
         }
         assert_eq!(observed.lock().unwrap().len(), 20, "every run should have captured");
@@ -754,14 +754,14 @@ mod tests {
 
     // ---- settings injection ----
 
-    /// Sway's deadline for an in-protocol answer must fire strictly before the
+    /// Tori's deadline for an in-protocol answer must fire strictly before the
     /// timeout the CLI is told about, or the outcome would be the CLI's default
-    /// rather than one Sway can explain.
+    /// rather than one Tori can explain.
     #[test]
-    fn sways_deadline_is_strictly_inside_the_one_the_cli_is_told() {
+    fn toris_deadline_is_strictly_inside_the_one_the_cli_is_told() {
         assert!(DECIDE_TIMEOUT_SECS < HOOK_TIMEOUT_SECS);
         let settings: Value =
-            serde_json::from_str(&settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok")).unwrap();
+            serde_json::from_str(&settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok")).unwrap();
         assert_eq!(settings["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"], HOOK_TIMEOUT_SECS);
     }
 
@@ -769,7 +769,7 @@ mod tests {
     /// would strip them, and must never ship.
     #[test]
     fn the_settings_payload_never_disables_the_users_own_sources() {
-        let text = settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok");
+        let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok");
         assert!(!text.contains("setting-sources"), "the payload must not touch setting sources");
         assert!(!text.contains("permissions"), "the payload must not override the user's permissions");
         let parsed: Value = serde_json::from_str(&text).unwrap();
@@ -785,7 +785,7 @@ mod tests {
     #[test]
     fn the_hook_matches_the_write_tools_and_only_those() {
         let parsed: Value =
-            serde_json::from_str(&settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok")).unwrap();
+            serde_json::from_str(&settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok")).unwrap();
         let matcher = parsed["hooks"]["PreToolUse"][0]["matcher"].as_str().unwrap().to_string();
         let named: Vec<&str> = matcher.split('|').collect();
         assert_eq!(named, super::super::snapshot::WRITE_TOOLS.to_vec());
@@ -802,13 +802,13 @@ mod tests {
     /// Paths with spaces survive the shell that runs the hook command.
     #[test]
     fn the_hook_command_quotes_paths_so_a_space_cannot_split_it() {
-        let cmd = hook_command(Path::new("/Applications/My App/sway"), Path::new("/tmp/dir with space/s"), "tok");
-        assert!(cmd.contains("'/Applications/My App/sway'"), "got {cmd}");
+        let cmd = hook_command(Path::new("/Applications/My App/tori"), Path::new("/tmp/dir with space/s"), "tok");
+        assert!(cmd.contains("'/Applications/My App/tori'"), "got {cmd}");
         assert!(cmd.contains("'/tmp/dir with space/s'"), "got {cmd}");
         assert!(cmd.starts_with(ENV_SOCK));
     }
 
-    /// **Sway must never write to `~/.claude/settings.json`.** A hook installed
+    /// **Tori must never write to `~/.claude/settings.json`.** A hook installed
     /// inside one chat pane changing the behaviour of every terminal session and
     /// every other project is not a thing one chat pane should be able to do.
     ///
@@ -825,7 +825,7 @@ mod tests {
         let after = std::fs::read(&user_settings).ok();
         assert_eq!(before, after, "~/.claude/settings.json must be byte-identical before and after");
 
-        // And Sway's own settings file, which claude *is* pointed at, layers only
+        // And Tori's own settings file, which claude *is* pointed at, layers only
         // hooks on top - it is a separate file entirely.
         assert_ne!(settings_path(&session), user_settings);
         assert_eq!(args[1], settings_path(&session).to_string_lossy());
@@ -837,8 +837,8 @@ mod tests {
     /// payload: it declares only a hook and names no source list, so nothing it
     /// contains can displace the user's settings.
     #[test]
-    fn sways_settings_payload_can_only_add_a_hook_never_replace_the_users() {
-        let text = settings_json(Path::new("/bin/sway"), Path::new("/tmp/s"), "tok");
+    fn toris_settings_payload_can_only_add_a_hook_never_replace_the_users() {
+        let text = settings_json(Path::new("/bin/tori"), Path::new("/tmp/s"), "tok");
         let parsed: Value = serde_json::from_str(&text).unwrap();
 
         // One key, one hook event, one entry: there is nothing here that could
@@ -867,7 +867,7 @@ mod tests {
 
     // ---- against the real CLI ----
 
-    /// A user-level `PreToolUse` hook and Sway's must both fire on one tool call.
+    /// A user-level `PreToolUse` hook and Tori's must both fire on one tool call.
     ///
     /// Driven against the real CLI, because this is a claim about how `claude`
     /// layers settings sources, and no amount of inspecting our own payload can
@@ -876,18 +876,18 @@ mod tests {
     /// merge, and writing to the real file is the one thing this whole module
     /// promises never to do.
     ///
-    /// The prompt asks for a *write*, because that is the only tool Sway's own
+    /// The prompt asks for a *write*, because that is the only tool Tori's own
     /// hook is handed now - a `Bash` call would prove only the user's hook fired.
-    /// The hook is pointed at the built `target/debug/sway`, not at
+    /// The hook is pointed at the built `target/debug/tori`, not at
     /// `current_exe()`: under `cargo test` that is the *test* binary, and handing
     /// claude a command that re-runs the suite is not a hook.
     #[test]
     #[ignore = "drives the real claude CLI and needs a built binary: cargo build, then cargo test -- --ignored"]
-    fn a_user_hook_and_sways_hook_both_fire_on_one_tool_call() {
-        let exe = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/sway");
+    fn a_user_hook_and_toris_hook_both_fire_on_one_tool_call() {
+        let exe = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/tori");
         assert!(exe.exists(), "run `cargo build` first: {}", exe.display());
 
-        let cwd = std::env::temp_dir().join(format!("sway-hook-merge-{}", std::process::id()));
+        let cwd = std::env::temp_dir().join(format!("tori-hook-merge-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cwd);
         std::fs::create_dir_all(cwd.join(".claude")).unwrap();
 
@@ -913,7 +913,7 @@ mod tests {
         // `--session-id` requires a UUID, so a readable name will not do.
         let session = crate::chat::claude_transport::tests::uuid_like();
         let (server, observed) = observing_server();
-        let settings_file = cwd.join("sway-settings.json");
+        let settings_file = cwd.join("tori-settings.json");
         std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token())).unwrap();
 
         let adapter = crate::agents::find("claude").unwrap();
@@ -975,12 +975,12 @@ mod tests {
         let _ = stderr.read_to_string(&mut err);
 
         assert!(saw_result, "the turn should have completed; stderr: {err}");
-        assert!(marker.exists(), "the user's own PreToolUse hook must still fire alongside Sway's");
-        // Sway's fired too, and this is the honest form of that claim: the
+        assert!(marker.exists(), "the user's own PreToolUse hook must still fire alongside Tori's");
+        // Tori's fired too, and this is the honest form of that claim: the
         // capture really landed on our socket.
         assert!(
             !observed.lock().unwrap().is_empty(),
-            "Sway's own hook never reached the socket, so the merge did not include it"
+            "Tori's own hook never reached the socket, so the merge did not include it"
         );
 
         let _ = std::fs::remove_dir_all(&cwd);
@@ -994,22 +994,22 @@ mod tests {
     /// Deliberately not a unit test. Every part of the claim belongs to somebody
     /// else: which tools claude gates is claude's, whether the narrowed matcher
     /// selects is claude's, and whether a hook that emits only the marker lets the
-    /// chain continue is claude's. What Sway contributes is the argv, so this uses
+    /// chain continue is claude's. What Tori contributes is the argv, so this uses
     /// `build_args` and `settings_json` rather than a hand-written approximation.
     #[test]
     #[ignore = "drives the real claude CLI and needs a built binary: cargo build, then cargo test -- --ignored"]
     fn reads_raise_no_prompt_while_a_write_still_does() {
-        let exe = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/sway");
+        let exe = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/debug/tori");
         assert!(exe.exists(), "run `cargo build` first: {}", exe.display());
 
-        let cwd = std::env::temp_dir().join(format!("sway-motivating-{}", std::process::id()));
+        let cwd = std::env::temp_dir().join(format!("tori-motivating-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cwd);
         std::fs::create_dir_all(&cwd).unwrap();
         std::fs::write(cwd.join("seed.txt"), "alpha\nbeta\n").unwrap();
 
         let session = crate::chat::claude_transport::tests::uuid_like();
         let (server, observed) = observing_server();
-        let settings_file = cwd.join("sway-settings.json");
+        let settings_file = cwd.join("tori-settings.json");
         std::fs::write(&settings_file, settings_json(&exe, server.sock_path(), server.token())).unwrap();
 
         let adapter = crate::agents::find("claude").unwrap();

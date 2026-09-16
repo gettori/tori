@@ -13,8 +13,8 @@ import { installAnimationFrame } from "../../test/frames";
 installResizeObserver();
 installAnimationFrame();
 
-const A = "/r/a/.sway/worktrees/auth";
-const B = "/r/b/.sway/worktrees/auth";
+const A = "/r/a/.tori/worktrees/auth";
+const B = "/r/b/.tori/worktrees/auth";
 const FILE = `${A}/a.txt`;
 // Neither of these ever got a worktree, so their chips are keyed by the repo.
 // Two broken members, not one, because the repair they are offered differs: a
@@ -121,7 +121,7 @@ const pickMember = (repoPath: string) =>
 
 const rootsOf = (cmd: string) => calls.filter((c) => c.cmd === cmd).map((c) => c.args.projectPath ?? c.args.root);
 const watchSets = () => calls.filter((c) => c.cmd === "fs_watch_set").map((c) => c.args.roots);
-const store = () => JSON.parse(localStorage.getItem("sway.editor.tabs.v1") ?? "{}");
+const store = () => JSON.parse(localStorage.getItem("tori.editor.tabs.v1") ?? "{}");
 
 let mounted: ReturnType<typeof render> | null = null;
 beforeEach(() => {
@@ -137,7 +137,7 @@ afterEach(() => {
 describe("the editor inside a Feature", () => {
   it("keeps the strip under feature:<id> while git and the watcher both span the whole member set", async () => {
     localStorage.setItem(
-      "sway.editor.tabs.v1",
+      "tori.editor.tabs.v1",
       JSON.stringify({ "feature:f1": { paths: [FILE], active: FILE, savedAt: Date.now() } }),
     );
     const [sel, setSel] = createSignal(featureSel(A));
@@ -171,7 +171,7 @@ describe("the editor inside a Feature", () => {
   });
 
   it("re-issues the watch set when a repaired member joins, and leaves a unit on the single-root watcher", async () => {
-    const C = "/r/c/.sway/worktrees/auth";
+    const C = "/r/c/.tori/worktrees/auth";
     const [sel, setSel] = createSignal(featureSel(A));
     mounted = render(() => (
       <>
@@ -275,7 +275,7 @@ describe("the editor inside a Feature", () => {
     expect(calls.some((c) => c.cmd === "relocate_member")).toBe(false);
   });
 
-  // A Feature has no `.sway/settings.json` of its own: the overlay is the active
+  // A Feature has no `.tori/settings.json` of its own: the overlay is the active
   // member's, so moving the active root swaps which project's answers are in
   // force. `feature:<id>` is a workspace key, not a folder, and must never be
   // handed to a loader that reads a file under it.

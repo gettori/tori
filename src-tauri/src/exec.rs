@@ -149,7 +149,7 @@ mod tests {
 
     fn temp_repo(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "sway-exec-{name}-{}",
+            "tori-exec-{name}-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -241,7 +241,7 @@ mod tests {
         handles.push(std::thread::spawn(move || {
             let path = dir.to_str().unwrap().to_string();
             for i in 0..ROUNDS {
-                let refname = format!("refs/sway/test/{i}");
+                let refname = format!("refs/tori/test/{i}");
                 let p = path.clone();
                 let out = tauri::async_runtime::block_on(git_write(
                     "test_ref",

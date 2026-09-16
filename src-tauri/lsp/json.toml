@@ -2,7 +2,7 @@
 # JSON support is built on. Installed by `pnpm lsp:install`. See LSP-SERVERS.md.
 #
 # Schemas are deliberately not listed here. The server has no catalog logic of
-# its own (VS Code feeds it the associations), so Sway fetches SchemaStore's
+# its own (VS Code feeds it the associations), so Tori fetches SchemaStore's
 # catalog, caches it, and sends the result as `json/schemaAssociations`. That is
 # what `schema_associations` below asks for.
 

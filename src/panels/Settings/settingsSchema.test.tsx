@@ -9,14 +9,14 @@
 // and this one second. Both name the file to edit.
 
 import { describe, it, expect } from "vitest";
-import userRaw from "../../../src-tauri/resources/schemas/sway-settings.schema.json?raw";
-import workspaceRaw from "../../../src-tauri/resources/schemas/sway-workspace-settings.schema.json?raw";
+import userRaw from "../../../src-tauri/resources/schemas/tori-settings.schema.json?raw";
+import workspaceRaw from "../../../src-tauri/resources/schemas/tori-workspace-settings.schema.json?raw";
 import { SETTINGS } from "../../utils/settingsCatalog";
-import { SWAY_SETTINGS_FILES } from "../../utils/swaySettingsFiles";
+import { TORI_SETTINGS_FILES } from "../../utils/toriSettingsFiles";
 import { DEFAULT_SETTINGS } from "./settingsStore";
 
-const USER_FILE = "src-tauri/resources/schemas/sway-settings.schema.json";
-const WORKSPACE_FILE = "src-tauri/resources/schemas/sway-workspace-settings.schema.json";
+const USER_FILE = "src-tauri/resources/schemas/tori-settings.schema.json";
+const WORKSPACE_FILE = "src-tauri/resources/schemas/tori-workspace-settings.schema.json";
 
 type Block = {
   type: string;
@@ -116,9 +116,9 @@ describe("the shipped settings schemas", () => {
   it("are the files the associations point at", () => {
     // A schema shipped under a name nothing asks for is a schema that never
     // loads, and the server reports no error for an association it cannot read.
-    expect(SWAY_SETTINGS_FILES.map((f) => f.schema).sort()).toEqual([
-      "sway-settings.schema.json",
-      "sway-workspace-settings.schema.json",
+    expect(TORI_SETTINGS_FILES.map((f) => f.schema).sort()).toEqual([
+      "tori-settings.schema.json",
+      "tori-workspace-settings.schema.json",
     ]);
   });
 });

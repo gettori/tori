@@ -15,7 +15,7 @@ describe("what a mergeability verdict permits", () => {
   it("lets a clean pull request merge with nobody having approved it", () => {
     // The whole reason the gate reads `mergeableState` and not `reviewDecision`.
     // On a single-owner repo the author cannot approve their own pull request,
-    // so a review-derived gate would block every merge Sway ever offers, and the
+    // so a review-derived gate would block every merge Tori ever offers, and the
     // server would have been happy to take all of them.
     expect(mergeGate("clean").block).toBe(false);
   });
@@ -34,7 +34,7 @@ describe("what a mergeability verdict permits", () => {
 
   it("never guesses which rule is blocking", () => {
     // The specifics live in a branch-protection rule this app cannot read.
-    // "Needs one approval" would be a sentence Sway invented; the server's own
+    // "Needs one approval" would be a sentence Tori invented; the server's own
     // wording arrives with the refusal, and that is where it belongs.
     expect(mergeGate("blocked").summary).not.toMatch(/approv|review|check/i);
   });

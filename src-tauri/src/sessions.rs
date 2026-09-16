@@ -1,12 +1,12 @@
 // Session discovery for every registered agent adapter, merged by folder.
 //
-// **Sway keeps three session stores, and only the third is derived.** Naming
+// **Tori keeps three session stores, and only the third is derived.** Naming
 // them is the point of `adr_three_session_stores`, because folding any two
 // together loses something:
 //
-//   1. **The agent's own transcripts are the truth.** Sway reads them and
-//      never writes them. Delete Sway entirely and they are still there.
-//   2. **The rename overlay is Sway-authored** (`set_session_name`,
+//   1. **The agent's own transcripts are the truth.** Tori reads them and
+//      never writes them. Delete Tori entirely and they are still there.
+//   2. **The rename overlay is Tori-authored** (`set_session_name`,
 //      `load_overlay`/`save_overlay`, below). It holds what the user typed,
 //      which nothing on disk records and no rescan can reproduce, so it is
 //      never rebuilt and never rebuildable.
@@ -70,10 +70,10 @@ pub struct SessionMeta {
     /// root that produced a row is the whole of the attribution and a discarded
     /// index rebuilds every tag.
     ///
-    /// `None` for a session Sway cannot attribute rather than one it guesses at:
-    /// an ACP row comes out of Sway's locator store, which records no profile. A
-    /// session started in a terminal under a config dir Sway has no profile for
-    /// is not misattributed either, it is simply never discovered, because Sway
+    /// `None` for a session Tori cannot attribute rather than one it guesses at:
+    /// an ACP row comes out of Tori's locator store, which records no profile. A
+    /// session started in a terminal under a config dir Tori has no profile for
+    /// is not misattributed either, it is simply never discovered, because Tori
     /// only scans the roots it has profiles for.
     pub profile: Option<String>,
     /// The user's own label for that profile, stamped onto a *listing* by
@@ -492,18 +492,18 @@ fn ensure_index(
     all
 }
 
-/// The ACP sessions Sway has locators for, as listing rows.
+/// The ACP sessions Tori has locators for, as listing rows.
 ///
 /// Merged in beside adapter discovery rather than expressed as a `Discovery`
 /// variant, and the distinction is real rather than a dodge: `Discovery` says
 /// where *an adapter* keeps its sessions, and an ACP agent keeps them somewhere
 /// only the protocol reaches. No directory-and-regex could describe it, and a
-/// parser kind would have nothing to parse. What Sway has instead is its own
+/// parser kind would have nothing to parse. What Tori has instead is its own
 /// record of what the protocol told it, which is one store shared by every ACP
 /// adapter rather than a per-adapter one. See `chat::acp_sessions`.
 ///
 /// Only four fields come from the wire, so only four are filled. **`branch` is
-/// empty on purpose**: a listed row carries none, and the folder Sway happens to
+/// empty on purpose**: a listed row carries none, and the folder Tori happens to
 /// be showing is a different session's branch as often as it is this one's.
 /// `created_at` repeats `last_active` because ACP records no creation time; the
 /// frontend uses it to attribute a just-spawned tab, and an invented earlier
@@ -544,13 +544,13 @@ fn cwd_matches(cwd: &str, folder: &str) -> bool {
 }
 
 /// The listing's ownership rule: `cwd_matches`, minus anything under the
-/// folder's own `.sway/worktrees/`. Those are Feature worktrees and the member
+/// folder's own `.tori/worktrees/`. Those are Feature worktrees and the member
 /// folder claims them by prefix, so the repo would otherwise list them as its
 /// own. Teardown (`ids_under`) keeps the plain prefix rule on purpose: removing
 /// the repo must still find every session it physically contained.
 fn owned_by_listing(cwd: &str, folder: &str) -> bool {
     let f = norm(folder);
-    cwd_matches(cwd, folder) && !norm(cwd).starts_with(&format!("{f}/.sway/worktrees/"))
+    cwd_matches(cwd, folder) && !norm(cwd).starts_with(&format!("{f}/.tori/worktrees/"))
 }
 
 /// Filter to sessions under `folder` and sort most-recently-active first.
@@ -649,7 +649,7 @@ fn profile_label(
 // A folder recreated at a path where old sessions still live would otherwise
 // surface those ghosts as if they belonged to it. `adopted_paths` is the set of
 // folders whose sessions are "ours". It is stored SEPARATELY from the watched
-// sway.toml (writing the toml would loop the config watcher). A folder not in the
+// tori.toml (writing the toml would loop the config watcher). A folder not in the
 // set whose sessions predate its own creation is "historical" until adopted.
 
 #[derive(Serialize, Deserialize, Default)]
@@ -664,7 +664,7 @@ struct AdoptedState {
 fn adopted_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/adopted.json")
+        .join(".config/tori/adopted.json")
 }
 
 fn load_adopted() -> AdoptedState {
@@ -735,7 +735,7 @@ fn folder_created(p: &Path) -> u64 {
 }
 
 /// Adopt a folder's sessions (idempotent). Called by the UI "Adopt" action and
-/// whenever Sway itself creates a folder (new folder / worktree / clone / bootstrap).
+/// whenever Tori itself creates a folder (new folder / worktree / clone / bootstrap).
 pub fn adopt(path: &str) -> Result<(), String> {
     let mut state = load_adopted();
     if state.paths.insert(norm(path)) {
@@ -812,7 +812,7 @@ struct Overlay {
 fn overlay_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/sessions.json")
+        .join(".config/tori/sessions.json")
 }
 
 fn load_overlay() -> HashMap<String, Overlay> {
@@ -853,9 +853,9 @@ pub fn set_session_name(app: AppHandle, id: String, name: Option<String>) -> Res
 ///
 /// A session with **no transcript at all** is a different act wearing the same
 /// button. Its conversation lives wherever its agent keeps it, and no protocol
-/// verb removes one, so all that can happen is that Sway drops its own record
+/// verb removes one, so all that can happen is that Tori drops its own record
 /// and stops listing it. That branch goes through `acp_sessions::forget`, which
-/// also refuses a path outside Sway's store, rather than reaching
+/// also refuses a path outside Tori's store, rather than reaching
 /// `remove_file` with an arbitrary path and a protocol-backed agent's name.
 #[tauri::command(async)]
 pub fn delete_session(path: String, agent: String) -> Result<(), String> {
@@ -930,14 +930,14 @@ pub fn session_running(
     Ok(running_by_pattern(&agent, &id))
 }
 
-/// Is a live `agent` process resuming session `id` that **this Sway is not
+/// Is a live `agent` process resuming session `id` that **this Tori is not
 /// driving**?
 ///
 /// The question the two routing gates actually ask, and the one
 /// [`session_running`] answers wrongly for them. A chat session's child belongs
 /// to this process, not to the webview: reload the frontend and every tab is
 /// gone while the child is still there, still carrying the session id on its
-/// command line. The pgrep then finds Sway's own child and reports the session
+/// command line. The pgrep then finds Tori's own child and reports the session
 /// as somebody else's, which routed a reopen onto the PTY surface and got it
 /// refused by the chat claim this same process holds.
 ///
@@ -963,7 +963,7 @@ pub fn session_running_elsewhere(
 /// Split out because the registry asks this question from *inside* a claim, with
 /// no Tauri state to reach the registry through - and asking a registry about
 /// itself mid-claim would be circular anyway. For an agent whose sessions are
-/// not findable by pattern the answer is a flat `false`: "a process outside Sway
+/// not findable by pattern the answer is a flat `false`: "a process outside Tori
 /// is resuming this session" is a claim nothing about an ACP agent can support,
 /// and guessing it from a command line that names no session would contest every
 /// session of that agent at once.
@@ -1247,7 +1247,7 @@ fn detail_of(
     // session with no transcript has no counts, and zeroes are the honest
     // answer: the panel renders empty rather than reporting a conversation that
     // ran as one that never happened. Guarded before the open, because the path
-    // of such a session is Sway's locator, which parses as no lines at all and
+    // of such a session is Tori's locator, which parses as no lines at all and
     // would produce the same zeroes by accident.
     match agents::parser_kind_for(agent) {
         Some(agents::ParserKind::ClaudeJsonl) => {}
@@ -1602,7 +1602,7 @@ fn watch_dirs() -> Vec<PathBuf> {
     discovery_roots(&accounts).into_iter().map(|r| r.dir).collect()
 }
 
-/// A missing root is created only under a home Sway manages. Any other is the
+/// A missing root is created only under a home Tori manages. Any other is the
 /// agent's to create: making `projects/` there would make `~/.claude` with it.
 fn watchable_dirs(roots: Vec<Root<'_>>) -> Result<Vec<PathBuf>, String> {
     let mut dirs = Vec::new();
@@ -1663,7 +1663,7 @@ impl SessionsChanged {
 ///
 /// The index is the only thing that knows a transcript's cwd: the encoding of a
 /// cwd into a directory name belongs to the agent (see `transcript_path`), so
-/// the path alone cannot be decoded. A miss means a file Sway has not parsed
+/// the path alone cannot be decoded. A miss means a file Tori has not parsed
 /// yet, which is exactly the new-session case, so one miss makes the whole
 /// answer "all" rather than a set that quietly omits it.
 fn folders_for(index: &SessionIndex, touched: &HashSet<PathBuf>) -> Option<Vec<String>> {
@@ -1989,7 +1989,7 @@ pub(crate) fn transcript_of(session_id: &str, agent: &str) -> Option<Transcript>
     // SQLite-backed agent is added (no per-session file, read through its own
     // locator instead of a path on disk), this line stops compiling and says
     // so". An ACP agent is that case in a different disguise - the store is
-    // the agent's own and the locator is Sway's - and the answer is that such a
+    // the agent's own and the locator is Tori's - and the answer is that such a
     // session has no transcript path at all. `chat_history` already returns
     // empty for one, so `None` here is the same fact reaching a second caller.
     if !matches!(adapter.discovery, Some(agents::Discovery::File { .. })) {
@@ -2545,7 +2545,7 @@ fn acp_prompt_tail(path: &str) -> PromptTail {
 
 pub(crate) fn session_prompt_tail_body(path: String, agent: String) -> Result<PromptTail, String> {
     use std::io::{Read, Seek, SeekFrom};
-    // An agent that keeps no transcript Sway can read keeps no file to count,
+    // An agent that keeps no transcript Tori can read keeps no file to count,
     // so the count comes off the mirror's sidecar instead. Gated on the adapter
     // through `keeps_a_transcript` rather than on `parser_kind_for`, which
     // answers `ClaudeJsonl` for an agent it has never heard of.
@@ -2614,7 +2614,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_pi_test_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_pi_test_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join(name);
         std::fs::write(&p, contents).unwrap();
@@ -2642,13 +2642,13 @@ mod tests {
     /// A whole machine's worth of layout under one temp dir:
     ///
     ///     <tmp>/default/projects     the adapter's declared discovery dir
-    ///     <tmp>/work                 a profile home Sway created
+    ///     <tmp>/work                 a profile home Tori created
     ///
     /// so a profile's root is `<tmp>/work/projects`, which is the swap Phase 0
     /// measured rather than a shape invented for the test.
     fn tmp_machine(tag: &str) -> PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_profile_{tag}_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_profile_{tag}_{n}"));
         std::fs::create_dir_all(dir.join("default/projects")).unwrap();
         dir
     }
@@ -2758,7 +2758,7 @@ mod tests {
         std::fs::remove_dir_all(&m).ok();
     }
 
-    /// A agent Sway does not sign in still has the one root it always had, so
+    /// A agent Tori does not sign in still has the one root it always had, so
     /// widening discovery to a set did not make an accounts table load-bearing
     /// for finding anything.
     #[test]
@@ -2898,7 +2898,7 @@ mod tests {
     }
 
     /// First run rebuilds rather than migrating. The sources stay the truth, so
-    /// history that predates Sway appears on the first scan and nothing is
+    /// history that predates Tori appears on the first scan and nothing is
     /// written into the agent's own directories to make it appear.
     #[test]
     fn existing_history_appears_with_no_migration_step() {
@@ -2948,8 +2948,8 @@ mod tests {
     // --- a session with no backing file, at each of the six path readers ---
     //
     // `concept_locator_scheme_for_db_backed_sessions` names six functions that
-    // take `SessionMeta.path` and read or stat it directly. Sway has such a
-    // session again, in a different disguise: an ACP row's path is Sway's own
+    // take `SessionMeta.path` and read or stat it directly. Tori has such a
+    // session again, in a different disguise: an ACP row's path is Tori's own
     // locator, which is a real file and not a transcript. Each of the six is
     // answered here rather than left to produce a plausible zero by accident.
     //
@@ -3002,16 +3002,16 @@ mod tests {
     }
 
     /// Deleting a store-less session cannot mean deleting its history: the
-    /// agent has that, and no protocol verb removes it. All Sway can drop is
+    /// agent has that, and no protocol verb removes it. All Tori can drop is
     /// its own record, and it refuses a path that is not one, so naming a
     /// protocol-backed agent is not a way to delete an arbitrary file.
     #[test]
-    fn deleting_a_store_less_session_refuses_a_path_outside_swayss_own_store() {
+    fn deleting_a_store_less_session_refuses_a_path_outside_toriss_own_store() {
         let stranger = tmp_file("not-a-locator.json", "{}\n");
         let path = stranger.to_string_lossy().into_owned();
 
         let err = delete_session(path.clone(), "gemini".into()).unwrap_err();
-        assert!(err.contains("not one of Sway's session records"), "{err}");
+        assert!(err.contains("not one of Tori's session records"), "{err}");
         assert!(stranger.exists(), "the file it refused is still there");
 
         // The transcript branch is unchanged, and is what actually deletes.
@@ -3068,7 +3068,7 @@ mod tests {
         .unwrap();
         assert_eq!(profile_label(&file, "x", Some("work")).as_deref(), Some("Work"));
         assert_eq!(profile_label(&file, "x", Some("default")).as_deref(), Some("Default"));
-        // A row Sway cannot attribute names no account rather than the first one.
+        // A row Tori cannot attribute names no account rather than the first one.
         assert_eq!(profile_label(&file, "x", None), None);
         // And a tag for a profile that has since been removed names nothing.
         assert_eq!(profile_label(&file, "x", Some("gone")), None);
@@ -3202,8 +3202,8 @@ mod tests {
     #[test]
     fn listing_never_claims_a_repos_own_feature_worktrees() {
         let repo = "/p/repo";
-        let member = "/p/repo/.sway/worktrees/auth";
-        let cwd = "/p/repo/.sway/worktrees/auth/sub";
+        let member = "/p/repo/.tori/worktrees/auth";
+        let cwd = "/p/repo/.tori/worktrees/auth/sub";
         // The repo lists its own tree but not the Feature worktrees inside it.
         assert!(owned_by_listing("/p/repo/src", repo));
         assert!(!owned_by_listing(cwd, repo));
@@ -3346,7 +3346,7 @@ mod tests {
             format!(
                 "claude -p --input-format stream-json --output-format stream-json --verbose \
                  --include-partial-messages --include-hook-events --resume {live} \
-                 --settings /Users/dev/.config/sway/chat-settings/{live}.json"
+                 --settings /Users/dev/.config/tori/chat-settings/{live}.json"
             ),
             format!("claude --resume {pty}"),
             // Decoys: neither is an agent driving the session.
@@ -3478,7 +3478,7 @@ mod tests {
     }
 
     /// **Opening a folder must not start a single agent.** Every ACP row in the
-    /// sidebar comes out of a locator Sway wrote during a session the user
+    /// sidebar comes out of a locator Tori wrote during a session the user
     /// opened by hand, so listing is a directory read. The alternative anyone
     /// would reach for, asking each installed agent what it has, would spawn
     /// every ACP agent on the machine to render a list, on every folder open.
@@ -3499,7 +3499,7 @@ mod tests {
 
         // And the reading half really is a read: a locator written to a redirected
         // store comes back with no agent alive anywhere.
-        let dir = std::env::temp_dir().join(format!("sway-locator-read-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-locator-read-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         crate::chat::acp_sessions::use_dir_for_tests(dir.clone());
         crate::chat::acp_sessions::record(&crate::chat::acp_sessions::AcpSession {
@@ -3852,9 +3852,9 @@ mod tests {
 "#;
         let p = tmp_file("claude_stale_block_done.jsonl", body);
         let id = "sess-stale-block-done";
-        std::fs::create_dir_all(dirs::home_dir().unwrap().join(".config/sway/hooks-status")).unwrap();
+        std::fs::create_dir_all(dirs::home_dir().unwrap().join(".config/tori/hooks-status")).unwrap();
         std::fs::write(
-            dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json")),
+            dirs::home_dir().unwrap().join(format!(".config/tori/hooks-status/{id}.json")),
             r#"{"event":"Notification","at":1}"#,
         )
         .unwrap();
@@ -3864,7 +3864,7 @@ mod tests {
             TailState::Done
         );
 
-        std::fs::remove_file(dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json"))).ok();
+        std::fs::remove_file(dirs::home_dir().unwrap().join(format!(".config/tori/hooks-status/{id}.json"))).ok();
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -3879,9 +3879,9 @@ mod tests {
 "#;
         let p = tmp_file("claude_live_block_pending.jsonl", body);
         let id = "sess-live-block-pending";
-        std::fs::create_dir_all(dirs::home_dir().unwrap().join(".config/sway/hooks-status")).unwrap();
+        std::fs::create_dir_all(dirs::home_dir().unwrap().join(".config/tori/hooks-status")).unwrap();
         std::fs::write(
-            dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json")),
+            dirs::home_dir().unwrap().join(format!(".config/tori/hooks-status/{id}.json")),
             r#"{"event":"Notification","at":1}"#,
         )
         .unwrap();
@@ -3891,7 +3891,7 @@ mod tests {
             TailState::BlockedCandidate
         );
 
-        std::fs::remove_file(dirs::home_dir().unwrap().join(format!(".config/sway/hooks-status/{id}.json"))).ok();
+        std::fs::remove_file(dirs::home_dir().unwrap().join(format!(".config/tori/hooks-status/{id}.json"))).ok();
         std::fs::remove_dir_all(p.parent().unwrap()).ok();
     }
 
@@ -4214,7 +4214,7 @@ mod tests {
     /// whole stem, so both stem shapes `transcript_path` accepts have to resolve.
     #[test]
     fn subagent_sidecars_are_found_beside_either_stem_shape() {
-        let root = std::env::temp_dir().join("sway-subagents-dir");
+        let root = std::env::temp_dir().join("tori-subagents-dir");
         let _ = std::fs::remove_dir_all(&root);
         for stem in ["7f3a", "myproject_7f3a"] {
             std::fs::create_dir_all(root.join(stem).join("subagents")).expect("scratch dir");

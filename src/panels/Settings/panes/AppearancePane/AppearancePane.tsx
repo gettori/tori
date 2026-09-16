@@ -36,13 +36,13 @@ export default function AppearancePane(props: PaneProps) {
   const bundledThemes = createMemo(() => themes().filter((t) => t.source === "bundled"));
   const userThemes = createMemo(() => themes().filter((t) => t.source !== "bundled"));
 
-  // Grouped by source so a user theme is visibly not one of Sway's, and a file
+  // Grouped by source so a user theme is visibly not one of Tori's, and a file
   // dropped in the folder is visibly the thing that appeared. The user group is
   // omitted entirely when the folder is empty, rather than shown empty.
   const themeGroups = createMemo<SelectGroup[]>(() => [
     { label: "Bundled", options: bundledThemes().map(asOption) },
     ...(userThemes().length > 0
-      ? [{ label: "From ~/.config/sway/themes", options: userThemes().map(asOption) }]
+      ? [{ label: "From ~/.config/tori/themes", options: userThemes().map(asOption) }]
       : []),
   ]);
 
@@ -132,7 +132,7 @@ export default function AppearancePane(props: PaneProps) {
           label="Terminal font family"
           /* Worth naming: it is the one family here that needs no install, and
              its exact spelling is not guessable. */
-          hint="JetBrainsMono Nerd Font Mono ships with Sway, so its icon glyphs render without a font install. Any family on this machine works too."
+          hint="JetBrainsMono Nerd Font Mono ships with Tori, so its icon glyphs render without a font install. Any family on this machine works too."
         >
           <input
             class={`${styles.input} ${styles.text}`}

@@ -10,7 +10,7 @@ const WT = `${CONTAINER}/wave-3`;
 const OTHER = "/root/work/other/wave-3";
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -111,7 +111,7 @@ describe("removing a Feature member's worktree", () => {
     bridge.calls.length = 0;
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
   });
 
   it("moves the active root to the next present member and keeps the Feature selected", async () => {

@@ -20,7 +20,7 @@ export { SECTION_MIN_H };
  *  layout named sections that no longer exist. The tab ids stay in the id set
  *  for one field only, `hidden`: a tab the ... menu unticks leaves the strip. */
 export const filesLayout = createSectionLayout<FilesSection | FilesTab>({
-  key: "sway.files.sections.v2",
+  key: "tori.files.sections.v2",
   ids: ["folders", "views", "scripts", "outline", "todos"],
   pinned: "folders",
 });
@@ -29,7 +29,7 @@ export const sectionShown = filesLayout.shown;
 export const sectionOpen = filesLayout.open;
 export const setSectionShown = filesLayout.setShown;
 
-const TAB_KEY = "sway.files.viewTab";
+const TAB_KEY = "tori.files.viewTab";
 
 function loadTab(): FilesTab {
   const raw = localStorage.getItem(TAB_KEY);

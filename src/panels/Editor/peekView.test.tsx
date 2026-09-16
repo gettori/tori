@@ -40,7 +40,7 @@ vi.mock("./lspClient", () => ({ lspTargetFor: () => target }));
 
 const { peekField, peekKeymap, peekWindow, hidePeek } = await import("./peekView");
 const { openPeek, selectPeekResult } = await import("./peekCommand");
-const { pathToUri } = await import("./swayWorkspace");
+const { pathToUri } = await import("./toriWorkspace");
 
 const OUTER = ["function caller() {", "  return callee();", "}", ""].join("\n");
 
@@ -138,7 +138,7 @@ describe("opening a peek", () => {
     // neither alone is worth much.
     //
     // Behaviourally: the text came from a plain file read. An earlier version
-    // of this test built a `SwayWorkspace` and asserted its `files` had not
+    // of this test built a `ToriWorkspace` and asserted its `files` had not
     // grown - which passed for a worthless reason, since nothing under test
     // holds a reference to that workspace and no wiring exists by which it
     // could. It would have passed against an implementation that opened files
@@ -151,7 +151,7 @@ describe("opening a peek", () => {
     expect(peekEl()!.textContent).toContain("export function callee()");
 
     // Structurally: no route to the workspace's opening API exists at all.
-    // `SwayWorkspace` tracks what the *server* has been told about, and an
+    // `ToriWorkspace` tracks what the *server* has been told about, and an
     // entry for a peeked file would be the workspace claiming a file with no
     // buffer and no view - the confusion the one-view-per-file gotcha is about.
     // This is what fails if a later change reaches for `displayFile` to get the
@@ -160,7 +160,7 @@ describe("opening a peek", () => {
     // workspace's bookkeeping in prose precisely because not touching it is the
     // point, and a bare-word match would fail on its own explanation.
     for (const [name, source] of Object.entries(SOURCES)) {
-      for (const call of [".displayFile(", ".requestOpen(", ".openFile(", "new SwayWorkspace"]) {
+      for (const call of [".displayFile(", ".requestOpen(", ".openFile(", "new ToriWorkspace"]) {
         expect(source.includes(call), `${name} must not call ${call}`).toBe(false);
       }
     }

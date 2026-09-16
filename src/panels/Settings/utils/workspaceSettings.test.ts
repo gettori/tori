@@ -160,10 +160,10 @@ describe("where a value came from", () => {
 
 // The overlay supersedes `adr_ui_config_system`'s "global-only, no per-project
 // override" clause, and this is the guard that keeps the supersession narrow:
-// preferences live in JSONC, `sway.toml` stays project *discovery* config. A
+// preferences live in JSONC, `tori.toml` stays project *discovery* config. A
 // second place to configure editor behaviour is the failure mode the ADR's split
 // exists to prevent, and it would arrive one key at a time.
-it("leaves sway.toml out of editor behaviour, so there is only one place to set it", () => {
+it("leaves tori.toml out of editor behaviour, so there is only one place to set it", () => {
   const spellings = Object.keys(DEFAULTS).flatMap((key) => [
     key,
     key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`),
@@ -196,7 +196,7 @@ describe("every frontend setting has a field in the struct that persists it", ()
     streaming: true,
     density: "comfortable",
     toolOutputLines: 20,
-    showSwayHooks: false,
+    showToriHooks: false,
     answerQuestionsInline: true,
     attachLongPastes: true,
     maxConcurrentChats: 4,

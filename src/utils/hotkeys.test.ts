@@ -35,7 +35,7 @@ describe("the canonical binding table", () => {
   });
 
   it("covers the canonical binding list", () => {
-    // The list Sway documents. If a binding is added or removed, this test and
+    // The list Tori documents. If a binding is added or removed, this test and
     // the Cmd+/ sheet move together, because both read BINDINGS.
     expect(BINDINGS.map((b) => b.id).sort()).toEqual(
       [
@@ -186,7 +186,7 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     expect(dispatchHotkey(ctrlMinus(false))).toBe(false);
     expect(dispatchWindowHotkey(ctrlMinus(false))).toBe(true);
     expect(dispatchWindowHotkey(ctrlMinus(true))).toBe(true);
-    expect(dispatched.map((e) => e.type)).toEqual(["sway:editor-nav-back", "sway:editor-nav-forward"]);
+    expect(dispatched.map((e) => e.type)).toEqual(["tori:editor-nav-back", "tori:editor-nav-forward"]);
   });
 
   it("does not claim Cmd+S, which the focused editor owns", () => {
@@ -219,20 +219,20 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     } as KeyboardEvent;
     expect(dispatchWindowHotkey(shiftOptF)).toBe(true);
     expect(dispatched.map((e) => e.type)).toEqual([
-      "sway:editor-lsp-definition",
-      "sway:editor-lsp-references",
-      "sway:editor-lsp-rename",
-      "sway:editor-lsp-code-action",
-      "sway:editor-lsp-format",
+      "tori:editor-lsp-definition",
+      "tori:editor-lsp-references",
+      "tori:editor-lsp-rename",
+      "tori:editor-lsp-code-action",
+      "tori:editor-lsp-format",
     ]);
   });
 
   it("leaves ⌘. to stop-chat, which the editor must not take", () => {
-    // Every other editor puts code actions on ⌘., and Sway cannot: ⌘. stops a
+    // Every other editor puts code actions on ⌘., and Tori cannot: ⌘. stops a
     // running agent turn and is global on purpose, so it has to keep working
     // with the editor focused. ⌘⌥A is the chord that exists instead.
     expect(dispatchHotkey(key(".", { meta: true }))).toBe(true);
-    expect(dispatched.map((e) => e.type)).toEqual(["sway:stop-chat"]);
+    expect(dispatched.map((e) => e.type)).toEqual(["tori:stop-chat"]);
   });
 
   it("does not claim Cmd+F, which the focused terminal owns", () => {
@@ -270,9 +270,9 @@ describe("dispatchHotkey (terminal-safe subset)", () => {
     dispatchHotkey(key("k", { meta: true }));
     dispatchHotkey(key("/", { meta: true }));
     expect(dispatched.map((e) => e.type)).toEqual([
-      "sway:open-omnibox",
-      "sway:open-omnibox",
-      "sway:toggle-shortcuts",
+      "tori:open-omnibox",
+      "tori:open-omnibox",
+      "tori:toggle-shortcuts",
     ]);
   });
 

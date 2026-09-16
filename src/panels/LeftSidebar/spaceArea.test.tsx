@@ -7,7 +7,7 @@ import { pointerClick, rightClick } from "../../test/menus";
 const WORK = "/root/work/proj";
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -73,8 +73,8 @@ describe("the space's empty area", () => {
     resetSessionActivityForTests();
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.sidebar-mode.v1", "spaces");
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("opens the space's own menu on a right-click", async () => {
@@ -132,8 +132,8 @@ describe("a space with nothing in it", () => {
     resetSessionActivityForTests();
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "blank");
-    localStorage.setItem("sway.sidebar-mode.v1", "spaces");
+    localStorage.setItem("tori.active-space.v1", "blank");
+    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("says so, and offers the way to fill it", async () => {
@@ -152,7 +152,7 @@ describe("a space with nothing in it", () => {
   });
 
   it("still says nothing matched when it is the filter hiding everything", async () => {
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
     mount();
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Filter" }));

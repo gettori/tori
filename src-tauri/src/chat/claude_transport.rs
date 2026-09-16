@@ -47,14 +47,14 @@ use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 /// first frames; bounded so a chatty child cannot grow this without limit.
 const STDERR_TAIL: usize = 4096;
 
-/// How long a permission question waits for the user before Sway denies it.
+/// How long a permission question waits for the user before Tori denies it.
 ///
-/// **Sway owns this deadline because nobody else does.** Measured on claude
+/// **Tori owns this deadline because nobody else does.** Measured on claude
 /// 2.1.231: a `can_use_tool` control request left unanswered was still
 /// outstanding after seven minutes, with the turn simply parked and no timeout
 /// of the CLI's own (`dev/protocol-probe.mjs`, scenario `permission-deadline`).
 /// So an unanswered prompt is not a race between two timeouts here, the way the
-/// `PreToolUse` bridge's is: it is a hang unless Sway ends it.
+/// `PreToolUse` bridge's is: it is a hang unless Tori ends it.
 ///
 /// Kept equal to the approval bridge's [`super::approval::DECIDE_TIMEOUT_SECS`]
 /// so both routes to a prompt expire alike; a user cannot tell which one asked.
@@ -63,7 +63,7 @@ const DECIDE_TIMEOUT_SECS: u64 = super::approval::DECIDE_TIMEOUT_SECS;
 /// Per-session state the reader thread and the command methods share.
 struct Shared {
     session_id: String,
-    /// Set when Sway writes a user turn, cleared by the `TurnStarted` it causes.
+    /// Set when Tori writes a user turn, cleared by the `TurnStarted` it causes.
     /// Nothing on the wire tells an agent-opened turn from a user-opened one:
     /// the two `system/init` frames are identical bar their `uuid`.
     turn_expected: AtomicBool,
@@ -177,7 +177,7 @@ impl Shared {
     /// Answer a `can_use_tool` request, if it is still outstanding.
     ///
     /// The envelope is pinned by `a_permission_answer_is_the_envelope_the_cli_expects`
-    /// below; it is the CLI's own `control_response` shape, not a Sway one.
+    /// below; it is the CLI's own `control_response` shape, not a Tori one.
     ///
     /// `Ok(false)` means this request was never ours, or was already answered.
     /// Both must not be errors: the first is how the caller learns to try the
@@ -321,7 +321,7 @@ impl ClaudeTransport {
         }
     }
 
-    /// Hand it the levels Sway measured that this CLI never advertises.
+    /// Hand it the levels Tori measured that this CLI never advertises.
     pub fn with_effort_extras(mut self, extras: Vec<ChatEffortExtra>) -> Self {
         self.effort_extras = extras;
         self
@@ -335,7 +335,7 @@ impl ClaudeTransport {
     }
 
     fn next_request_id(&self) -> String {
-        format!("sway-{}", self.request_seq.fetch_add(1, Ordering::SeqCst))
+        format!("tori-{}", self.request_seq.fetch_add(1, Ordering::SeqCst))
     }
 
     /// Write one JSON frame plus its newline. Every stdin write goes through
@@ -405,7 +405,7 @@ pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
 /// The `wait` is not optional either; without it the dead child stays a zombie.
 /// Register something the child is blocked on, and optionally start a clock.
 ///
-/// Returns the wall-clock instant Sway will deny at, which rides out on the
+/// Returns the wall-clock instant Tori will deny at, which rides out on the
 /// event so the prompt can show a countdown that matches what actually happens
 /// rather than one the UI invented. **`None` for `after` means no clock at all**
 /// and returns `None`: nothing is spawned, so nothing can expire, and the only
@@ -415,7 +415,7 @@ pub fn turn_frame(blocks: &[ContentBlock]) -> Value {
 /// imposes no deadline of its own either: an unanswered question stayed
 /// outstanding for 417s with zero frames after the ask. So there is no ceiling
 /// to fit inside and nothing a countdown could honestly count down to, and a
-/// question Sway denied on a timer would answer for the user.
+/// question Tori denied on a timer would answer for the user.
 ///
 /// The timer waits on the `settled` condvar rather than sleeping, so answering a
 /// prompt retires its thread at once instead of leaving it parked for the rest
@@ -452,7 +452,7 @@ fn park(shared: &Arc<Shared>, request_id: String, kind: Parked, after: Option<Du
                 json!({
                     "behavior": "deny",
                     "message": format!(
-                        "Sway denied this automatically: nobody answered within {} seconds. \
+                        "Tori denied this automatically: nobody answered within {} seconds. \
                          Ask again if you still need it.",
                         after.as_secs()
                     ),
@@ -540,8 +540,8 @@ fn permission_response(
 /// mapping it to a destination would persist the very thing the user scoped to
 /// one call. `Project` uses `localSettings`, which is the agent's own
 /// project-local file - the point of this phase is that the agent owns the
-/// permission, so Sway records it where the agent looks rather than in a
-/// Sway-side store the CLI never reads.
+/// permission, so Tori records it where the agent looks rather than in a
+/// Tori-side store the CLI never reads.
 fn grant_destination(scope: PermissionScope) -> Option<&'static str> {
     match scope {
         PermissionScope::Once => None,
@@ -779,7 +779,7 @@ impl AgentTransport for ClaudeTransport {
     /// to a turn the user just abandoned.
     fn interrupt(&mut self) -> Result<(), String> {
         self.shared
-            .withdraw_questions("Sway withdrew this: the user interrupted the turn before answering.");
+            .withdraw_questions("Tori withdrew this: the user interrupted the turn before answering.");
         let request_id = self.next_request_id();
         self.write_frame(&json!({
             "type": "control_request",
@@ -790,20 +790,20 @@ impl AgentTransport for ClaudeTransport {
 
     /// Answer the agent's own `can_use_tool` question.
     ///
-    /// **The scope is delivered as the agent's rule, not as Sway's.** An allow
+    /// **The scope is delivered as the agent's rule, not as Tori's.** An allow
     /// that should outlast this one call rides back as `updatedPermissions`,
     /// which was measured to work: two `Write`s in one turn, the first answered
     /// with a session-scoped `addRules`, and the second never asked
     /// (`dev/protocol-probe.mjs`, scenario `permission-grant`). The rule text
     /// itself is the CLI's own suggestion echoed back rather than composed here,
     /// because the grammar belongs to the agent: a `Bash` rule is a command
-    /// pattern, and Sway guessing at one is how "always allow `touch a.txt`"
+    /// pattern, and Tori guessing at one is how "always allow `touch a.txt`"
     /// quietly becomes "always allow every `touch`". With no suggestion to echo,
     /// the answer degrades to a one-call allow rather than inventing a rule.
     ///
     /// `updatedInput` is deliberately omitted: measured, a bare
     /// `{"behavior":"allow"}` runs the call as the model wrote it, and echoing
-    /// an input Sway never edited only adds a way to corrupt it.
+    /// an input Tori never edited only adds a way to corrupt it.
     fn respond_permission(
         &mut self,
         _tool_use_id: &str,
@@ -863,7 +863,7 @@ impl AgentTransport for ClaudeTransport {
         // tab is the commonest way to abandon a prompt, and a child left waiting
         // on a question nobody will answer is the hang this whole path exists to
         // rule out. Fail-closed: it is a denial, and it says why.
-        self.shared.deny_all_pending("Sway denied this: the chat was closed before anyone answered.");
+        self.shared.deny_all_pending("Tori denied this: the chat was closed before anyone answered.");
         // Dropping stdin is the graceful half; the kill covers a child that is
         // mid-turn and not reading it.
         if let Ok(mut slot) = self.shared.stdin.lock() {
@@ -897,7 +897,7 @@ pub mod tests {
         // Nobody sent anything: the next turn is the agent's own.
         assert!(!shared.turn_expected.swap(false, Ordering::SeqCst));
 
-        // Sway writes a turn, so the one that follows is the user's, and
+        // Tori writes a turn, so the one that follows is the user's, and
         // exactly one is: the flag is consumed, not merely read.
         shared.turn_expected.store(true, Ordering::SeqCst);
         assert!(shared.turn_expected.swap(false, Ordering::SeqCst), "the turn the user sent");
@@ -978,7 +978,7 @@ pub mod tests {
     }
 
     /// Without a suggestion to echo there is no rule to write, so a scoped allow
-    /// degrades to a one-call allow rather than Sway inventing rule text.
+    /// degrades to a one-call allow rather than Tori inventing rule text.
     #[test]
     fn a_scoped_allow_without_a_suggestion_does_not_invent_a_rule() {
         let granted = permission_response(PermissionDecision::Allow, PermissionScope::Session, None, None);
@@ -1048,7 +1048,7 @@ pub mod tests {
     }
 
     /// The deadline rides out on the event so the prompt counts down to the
-    /// moment Sway actually acts, and it stays under the two minutes the
+    /// moment Tori actually acts, and it stays under the two minutes the
     /// injected hook declares, so neither route outlives the other.
     #[test]
     fn arming_a_deadline_registers_the_question_and_returns_when_it_expires() {
@@ -1073,7 +1073,7 @@ pub mod tests {
     /// was measured in the Phase 0 spike rather than waited out here: an
     /// unanswered question held for 417s against claude 2.1.239 with zero frames
     /// after the ask. What a unit test can prove, and what this proves, is that
-    /// Sway arms nothing, by running the same `park` with a deadline short
+    /// Tori arms nothing, by running the same `park` with a deadline short
     /// enough to observe and then with none. A 110s sleep would prove the same
     /// thing 2000 times slower and would still not reach 417s.
     #[test]
@@ -1377,7 +1377,7 @@ pub mod tests {
     #[test]
     fn a_labelled_reference_leads_with_its_label() {
         let frame = turn_frame(&[ContentBlock::FileRef {
-            path: "/home/me/.config/sway/attachments/ab-shot.png".into(),
+            path: "/home/me/.config/tori/attachments/ab-shot.png".into(),
             start_line: None,
             end_line: None,
             text: None,
@@ -1385,7 +1385,7 @@ pub mod tests {
         }]);
         assert_eq!(
             frame["message"]["content"][0]["text"],
-            "[Image 3]: @/home/me/.config/sway/attachments/ab-shot.png"
+            "[Image 3]: @/home/me/.config/tori/attachments/ab-shot.png"
         );
     }
 
@@ -1635,7 +1635,7 @@ pub mod tests {
     #[test]
     #[ignore = "drives the real claude CLI: costs tokens and needs network"]
     fn two_turns_run_on_one_live_child() {
-        let cwd = std::env::temp_dir().join(format!("sway-live-turns-{}", std::process::id()));
+        let cwd = std::env::temp_dir().join(format!("tori-live-turns-{}", std::process::id()));
         std::fs::create_dir_all(&cwd).unwrap();
         let session_id = uuid_like();
         let (mut t, seen) = live_session(&cwd, &session_id);
@@ -1664,7 +1664,7 @@ pub mod tests {
     #[test]
     #[ignore = "drives the real claude CLI: costs tokens and needs network"]
     fn an_interrupt_cancels_the_turn_and_the_session_survives_it() {
-        let cwd = std::env::temp_dir().join(format!("sway-live-interrupt-{}", std::process::id()));
+        let cwd = std::env::temp_dir().join(format!("tori-live-interrupt-{}", std::process::id()));
         std::fs::create_dir_all(&cwd).unwrap();
         let session_id = uuid_like();
         let (mut t, seen) = live_session(&cwd, &session_id);
@@ -1711,16 +1711,16 @@ pub mod tests {
     }
 
     /// The steer reaches the child's stdin *while it is running*, which is the
-    /// half of Phase 2's spike 5 that lives in Sway rather than in the CLI.
+    /// half of Phase 2's spike 5 that lives in Tori rather than in the CLI.
     ///
     /// The spike established that claude acts on a mid-turn `user` frame before
-    /// its next tool call; what it could not establish is that Sway's own
+    /// its next tool call; what it could not establish is that Tori's own
     /// `steer` still writes that frame once it stopped going through `send`.
     /// So the child here is a stand-in that copies stdin to a file, and the
     /// assertion is on the bytes that actually left the pipe.
     #[test]
     fn a_steer_writes_the_user_frame_to_the_live_childs_stdin() {
-        let dir = std::env::temp_dir().join(format!("sway-steer-{}-{}", std::process::id(), uuid_like()));
+        let dir = std::env::temp_dir().join(format!("tori-steer-{}-{}", std::process::id(), uuid_like()));
         std::fs::create_dir_all(&dir).expect("create the scratch dir");
         let log = dir.join("stdin.jsonl");
 

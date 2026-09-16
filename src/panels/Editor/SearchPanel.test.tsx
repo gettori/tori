@@ -813,11 +813,11 @@ describe("handing the results to an editable buffer", () => {
 
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
-    window.addEventListener("sway:open-in-editor", listener);
+    window.addEventListener("tori:open-in-editor", listener);
     try {
       fireEvent.click(button());
     } finally {
-      window.removeEventListener("sway:open-in-editor", listener);
+      window.removeEventListener("tori:open-in-editor", listener);
     }
 
     const { searchBuffer } = await import("./searchResultsStore");
@@ -906,7 +906,7 @@ describe("query history", () => {
     // restore is a query for the project you just left. Carried over, the first
     // arrow press in the new project types someone else's half-finished text.
     localStorage.setItem(
-      "sway.searchHistory",
+      "tori.searchHistory",
       JSON.stringify({ "/other": [{ query: "elsewhere" }] }),
     );
     const [root, setRoot] = createSignal<string | null>("/proj");
@@ -1039,12 +1039,12 @@ describe("saved searches", () => {
     openSavedRow();
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
-    window.addEventListener("sway:open-in-editor", listener);
+    window.addEventListener("tori:open-in-editor", listener);
     try {
       fireEvent.click(screen.getByText("todos"));
       await waitFor(() => expect(opened.length).toBe(1));
     } finally {
-      window.removeEventListener("sway:open-in-editor", listener);
+      window.removeEventListener("tori:open-in-editor", listener);
     }
 
     const { searchBuffer } = await import("./searchResultsStore");
@@ -1074,13 +1074,13 @@ describe("saved searches", () => {
     bridge.respond = () => ok([]);
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
-    window.addEventListener("sway:open-in-editor", listener);
+    window.addEventListener("tori:open-in-editor", listener);
     try {
       fireEvent.click(screen.getByText("todos"));
       await waitFor(() => expect(lastSearch().query).toBe("needle"));
       expect(opened.length).toBe(0);
     } finally {
-      window.removeEventListener("sway:open-in-editor", listener);
+      window.removeEventListener("tori:open-in-editor", listener);
     }
   });
 });
@@ -1297,11 +1297,11 @@ describe("multi-root search", () => {
 
     const opened: { path: string; line?: number }[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent).detail);
-    window.addEventListener("sway:open-in-editor", listener);
+    window.addEventListener("tori:open-in-editor", listener);
     try {
       fireEvent.click(sectionEl(WEB).querySelector(`[data-line]`)!);
     } finally {
-      window.removeEventListener("sway:open-in-editor", listener);
+      window.removeEventListener("tori:open-in-editor", listener);
     }
 
     expect(opened).toEqual([{ path: `${WEB}/src/App.tsx`, line: 12 }]);
@@ -1341,11 +1341,11 @@ describe("multi-root search", () => {
 
     const opened: string[] = [];
     const listener = (e: Event) => opened.push((e as CustomEvent).detail.path);
-    window.addEventListener("sway:open-in-editor", listener);
+    window.addEventListener("tori:open-in-editor", listener);
     try {
       fireEvent.click(open());
     } finally {
-      window.removeEventListener("sway:open-in-editor", listener);
+      window.removeEventListener("tori:open-in-editor", listener);
     }
 
     const { searchBuffer } = await import("./searchResultsStore");
@@ -1608,7 +1608,7 @@ describe("member restriction", () => {
 
   it("re-runs a saved search against the members it was saved with", async () => {
     localStorage.setItem(
-      "sway.savedSearches",
+      "tori.savedSearches",
       JSON.stringify({
         "feature:f1": [
           { name: "web todos", query: "TODO", options: {}, repos: [WEB_REPO] },
@@ -1630,7 +1630,7 @@ describe("member restriction", () => {
     // A saved search whose members have all left should still answer. Searching
     // nothing for a query that used to work reads as broken, not as empty.
     localStorage.setItem(
-      "sway.savedSearches",
+      "tori.savedSearches",
       JSON.stringify({
         "feature:f1": [{ name: "gone", query: "TODO", options: {}, repos: ["/repos/vanished"] }],
       }),

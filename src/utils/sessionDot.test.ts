@@ -185,7 +185,7 @@ describe("dotCertainty", () => {
     expect(dotCertainty({ hasLiveTab: false, running: true })).toBe("inferred");
   });
 
-  // An ended chat is still a chat: Sway measured that it ended rather than
+  // An ended chat is still a chat: Tori measured that it ended rather than
   // failing to find it. Downgrading it to inferred would claim less than it
   // knows, which is the mirror image of the mistake the tiering prevents.
   it("keeps an ended chat on the exact side", () => {

@@ -38,7 +38,7 @@ function origin(p: InstalledPlugin): string {
  *
  * The same shape as the Files group above it: one account at a time, tabs
  * only once there are two, the home path as the card's heading. Read-only,
- * because installing is the agent's own command and Sway runs none of them
+ * because installing is the agent's own command and Tori runs none of them
  * on the user's behalf.
  */
 export default function AgentPlugins(props: {

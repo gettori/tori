@@ -3,7 +3,7 @@ import { CloseButton, List, Region, Root, Title, toaster } from "@kobalte/core/t
 /**
  * Kobalte's toast, and the only door it comes through.
  *
- * The same seam `dialog.ts` documents: `src/lib/` is the whole of Sway's
+ * The same seam `dialog.ts` documents: `src/lib/` is the whole of Tori's
  * contact surface with `@kobalte/core`, `boundary.test.ts` fails the suite if
  * anything outside this folder names the package, and the styled wrapper in
  * `src/components/Toasts/` is what the app composes.

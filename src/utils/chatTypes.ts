@@ -19,7 +19,7 @@
 /// mode is checked against is the adapter's `[[chat.modes]]` declaration, and
 /// beneath that the real CLI; see `capabilitiesFor` in `utils/chatModels.ts`.
 ///
-/// A mode means what the agent says it means. Sway's own hook used to run
+/// A mode means what the agent says it means. Tori's own hook used to run
 /// ahead of every one of them, so a permissive mode was not really permissive;
 /// the hook stopped deciding, so the agent's answer is now the answer.
 export type PermissionMode = string;
@@ -194,7 +194,7 @@ export type ChatModelInfo = {
   /// Empty for a model with no effort control, which hides the control rather
   /// than rendering an inert one.
   supportedEffortLevels: string[];
-  /// The same levels as picker rows, plus any level Sway measured that this
+  /// The same levels as picker rows, plus any level Tori measured that this
   /// agent never advertises.
   ///
   /// Optional, unlike everything else here, because this type is also the shape
@@ -207,7 +207,7 @@ export type ChatModelInfo = {
   /// nothing at runtime would contradict an ungated row.
   supportsAutoMode: boolean;
   /// Whether this model has a fast mode to toggle, **as the CLI publishes it**.
-  /// Sway used to restate the same fact in an adapter table keyed on a spelling
+  /// Tori used to restate the same fact in an adapter table keyed on a spelling
   /// the catalogue does not use, so the lookup never matched anything.
   supportsFastMode: boolean;
   /// Whether this model has an adaptive-thinking lever. Absent on Haiku, which
@@ -221,7 +221,7 @@ export type ChatModelInfo = {
 /// the point. No `args`, because an ACP mode is a request rather than a flag.
 /// No `permissive` and no `default`: an agent publishes an id, a label and a
 /// description, so calling one of its modes dangerous would mean reading danger
-/// out of the words in an id. Sway does not, and such a row renders without the
+/// out of the words in an id. Tori does not, and such a row renders without the
 /// permissive caution instead of with a guessed one.
 export type ChatModeInfo = {
   id: string;
@@ -232,7 +232,7 @@ export type ChatModeInfo = {
 /// One configuration lever the agent published, in the shape a generic control
 /// can render.
 ///
-/// **Sway does not have to recognise an option to show it.** Model, mode and
+/// **Tori does not have to recognise an option to show it.** Model, mode and
 /// thinking level have controls of their own; everything else the agent
 /// publishes reaches the user only through the mirror, which renders by `kind`
 /// and shows the agent's own label and description verbatim.
@@ -262,7 +262,7 @@ export type ChatConfigValue = string | boolean;
 
 /// What a agent said it can do, read off its own handshake.
 ///
-/// **Advertised, not measured.** Sway's per-transport tier records what shipped
+/// **Advertised, not measured.** Tori's per-transport tier records what shipped
 /// against a agent somebody sat down and measured; this records what *this*
 /// agent, at this version, on this machine, claims about itself. One generic
 /// transport carries agents that genuinely differ, so a tier that knew only the
@@ -284,7 +284,7 @@ export type ChatCapabilities = {
 /// No `email`: the response carries one and nothing here reads it, so it is
 /// dropped at the Rust boundary rather than carried into the UI.
 export type ChatAccount = {
-  /// The agent's own wording, e.g. `Claude Pro`. Rendered as-is; a plan Sway
+  /// The agent's own wording, e.g. `Claude Pro`. Rendered as-is; a plan Tori
   /// has never seen should read as itself rather than as "unknown".
   subscriptionType: string;
   organization: string;
@@ -324,7 +324,7 @@ export type PermissionDenial = {
 };
 
 /// One quota window as a source reported it. `kind` is the source's own window
-/// name, not an enum: a harness may invent a window Sway has never seen.
+/// name, not an enum: a harness may invent a window Tori has never seen.
 export type UsageWindow = {
   kind: string;
   utilization: number;
@@ -398,7 +398,7 @@ export type ChatEvent =
       /// arrive a whole turn earlier, and the handshake is the only source.
       account: ChatAccount | null;
       /// What this agent advertised about itself. Null for a agent whose
-      /// capabilities are measured and pinned in Sway's tier rather than asked
+      /// capabilities are measured and pinned in Tori's tier rather than asked
       /// for on the wire, which reads as "the tier is all there is".
       capabilities: ChatCapabilities | null;
     }
@@ -414,7 +414,7 @@ export type ChatEvent =
       type: "hookFired";
       sessionId: string;
       /// Pairs `started` with its `finished`, and is what lets a `started` be
-      /// attributed to Sway retroactively.
+      /// attributed to Tori retroactively.
       hookId: string;
       /// As the agent names it, e.g. `PreToolUse:Bash`. **Reports the tool,
       /// not the configured matcher** (measured, claude 2.1.220), which is why
@@ -423,9 +423,9 @@ export type ChatEvent =
       /// The lifecycle event, e.g. `PreToolUse`, `SessionStart`.
       event: string;
       phase: HookPhase;
-      /// True for Sway's own injected approval hook, identified by the marker it
+      /// True for Tori's own injected approval hook, identified by the marker it
       /// stamps on its own output. Collapsed by default.
-      swayOwned: boolean;
+      toriOwned: boolean;
       outcome?: string | null;
       exitCode?: number | null;
       output?: string | null;
@@ -556,7 +556,7 @@ export type ChatEvent =
   /// which the surface never sees.
   ///
   /// No deadline field: measured, the CLI imposes none on this transport and
-  /// Sway arms none, so an unanswered question ends only by being cancelled.
+  /// Tori arms none, so an unanswered question ends only by being cancelled.
   | {
       type: "questionRequest";
       sessionId: string;
@@ -701,7 +701,7 @@ export type ChatCommand =
   /// Applies from the *next* turn, not the running one.
   | { type: "setMode"; sessionId: string; mode: PermissionMode }
   | { type: "setModel"; sessionId: string; model: string; effort: Effort | null }
-  /// Set one of the agent's own options, by the id it published. Sway knows
+  /// Set one of the agent's own options, by the id it published. Tori knows
   /// nothing about what the option governs, so it forwards the switch and
   /// renders whatever the agent reports afterwards.
   | { type: "setConfigOption"; sessionId: string; configId: string; value: ChatConfigValue }
@@ -785,7 +785,7 @@ export const CHAT_EVENT_KEYS: Record<ChatEventType, { required: string[]; option
     required: ["sessionId", "slashCommands", "models", "modes", "account", "capabilities"],
   },
   hookFired: {
-    required: ["sessionId", "hookId", "name", "event", "phase", "swayOwned", "outcome", "exitCode", "output", "stderr"],
+    required: ["sessionId", "hookId", "name", "event", "phase", "toriOwned", "outcome", "exitCode", "output", "stderr"],
   },
   turnStarted: {
     required: ["sessionId", "turnId", "model", "permissionMode", "agentInitiated"],

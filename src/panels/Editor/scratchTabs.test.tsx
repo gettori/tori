@@ -33,7 +33,7 @@ const FILE = `${REPO}/src/a.ts`;
 // differ in jsdom.
 installAnimationFrame();
 
-const SCRATCH_DIR = "/home/me/.config/sway/scratch";
+const SCRATCH_DIR = "/home/me/.config/tori/scratch";
 const SCRATCH = `${SCRATCH_DIR}/Untitled-1`;
 
 const invokes: { cmd: string; args: Record<string, unknown> }[] = [];
@@ -109,7 +109,7 @@ const {
   EDITOR_CLOSE_PATH,
 } = await import("../../utils/events");
 
-const LS_TABS_KEY = "sway.editor.tabs.v1";
+const LS_TABS_KEY = "tori.editor.tabs.v1";
 const selection = {
   spaceName: "space",
   projectName: "proj",
@@ -219,7 +219,7 @@ describe("opening an untitled buffer", () => {
   });
 
   it("comes back as a tab on the next launch, not just as text", async () => {
-    // What a synthetic `sway://` id could never have done: `toStore` drops those
+    // What a synthetic `tori://` id could never have done: `toStore` drops those
     // on purpose, so an untitled tab built on one would restore as nothing.
     localStorage.setItem(
       LS_TABS_KEY,

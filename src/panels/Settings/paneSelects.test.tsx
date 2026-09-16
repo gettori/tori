@@ -94,7 +94,7 @@ describe("the settings pickers", () => {
       expect(screen.getByLabelText("Transcript density").textContent).toContain("Compact");
     });
 
-    // The one control that governs two mechanisms: Sway's own ceilings and the
+    // The one control that governs two mechanisms: Tori's own ceilings and the
     // agents' quota windows. Its top stop is the off switch, so what it writes
     // there has to be exactly 1 - a 0.999 from a rounding slip would leave the
     // warning on at a threshold nobody could reach.
@@ -131,10 +131,10 @@ describe("the settings pickers", () => {
     it("round-trips a theme choice through the store", async () => {
       render(() => <AppearancePane {...paneProps} />);
 
-      await pick("Theme", "Sway Light");
+      await pick("Theme", "Tori Light");
 
-      expect(settings.appearance.theme).toBe("sway-light");
-      expect(screen.getByLabelText("Theme").textContent).toContain("Sway Light");
+      expect(settings.appearance.theme).toBe("tori-light");
+      expect(screen.getByLabelText("Theme").textContent).toContain("Tori Light");
     });
 
     it("shows the painted theme when settings.json names one that is gone", async () => {
@@ -145,7 +145,7 @@ describe("the settings pickers", () => {
       await setAppearance({ theme: "a-theme-that-was-deleted" });
       render(() => <AppearancePane {...paneProps} />);
 
-      expect(screen.getByLabelText("Theme").textContent).toContain("Sway Dark");
+      expect(screen.getByLabelText("Theme").textContent).toContain("Tori Dark");
     });
 
     it("omits the user group entirely when the themes folder is empty", async () => {
@@ -155,7 +155,7 @@ describe("the settings pickers", () => {
       await screen.findByRole("listbox");
 
       expect(screen.getByText("Bundled")).toBeTruthy();
-      expect(screen.queryByText("From ~/.config/sway/themes")).toBeNull();
+      expect(screen.queryByText("From ~/.config/tori/themes")).toBeNull();
     });
 
   });

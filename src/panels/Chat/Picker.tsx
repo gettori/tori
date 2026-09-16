@@ -264,7 +264,7 @@ export function PillToggle(props: {
   /** Drawn beside the glyph, for a lever whose picture does not say what it is.
    *
    *  A `zap` is fast mode to anyone who has seen it once; a generic toggle
-   *  glyph on an option Sway has never heard of is a control with no name on
+   *  glyph on an option Tori has never heard of is a control with no name on
    *  screen at all. So the text is not a style choice - it is what a caller
    *  falls back to when it has no glyph that means anything. */
   label?: string;

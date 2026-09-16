@@ -12,7 +12,7 @@
 // flattened here, and the fixture asserts the round trip.
 //
 // The message deliberately stops at the code. Replying and resolving are done
-// from Sway, over an authenticated API with an optimistic card behind it; an
+// from Tori, over an authenticated API with an optimistic card behind it; an
 // agent told to "reply on GitHub" would reach for whatever CLI it has and write
 // as the account, outside every guard Phase 10 put on that write.
 
@@ -35,7 +35,7 @@ const flat = sanitizeForSend;
 /// Where in the file the thread sits, in terms the agent can act on.
 ///
 /// Three cases, and only the first is a plain line number. A thread carries
-/// `startLine` because Sway itself sends ranges, so reporting `line` alone would
+/// `startLine` because Tori itself sends ranges, so reporting `line` alone would
 /// narrow a range this app had written. `isOutdated` with a line still set is
 /// the sharp one: the number is real but counts against the commit the comment
 /// was written on, so an agent told the bare number would edit the wrong place
@@ -80,5 +80,5 @@ export function composeThreadAsk(
   const rest = more ? ` (and ${more} more ${more === 1 ? "reply" : "replies"})` : "";
   const tail = quoted.length ? ` Then ${quoted.join("; ")}${rest}.` : "";
 
-  return `${head}${opening}${tail} Make the change here; the reply on GitHub is sent from Sway.`;
+  return `${head}${opening}${tail} Make the change here; the reply on GitHub is sent from Tori.`;
 }

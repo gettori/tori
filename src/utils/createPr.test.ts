@@ -7,7 +7,7 @@ const SIGNED_IN: AuthState = { kind: "signedIn", login: "skarif2" };
 const SIGNED_OUT: AuthState = { kind: "signedOut" };
 const SUSPECT: AuthState = { kind: "suspect", login: "skarif2" };
 
-const GH = "git@github.com:skarif2/sway.git";
+const GH = "git@github.com:skarif2/tori.git";
 const HOSTS: KnownHosts = new Map([["github.com", { provider: "github", baseUrl: "https://github.com" }]]);
 
 describe("prPath", () => {
@@ -22,21 +22,21 @@ describe("prPath", () => {
     expect(prPath(GH, HOSTS, SIGNED_OUT, true)).toBe("compare");
     expect(prPath(GH, HOSTS, SUSPECT, true)).toBe("compare");
     expect(prPath(GH, HOSTS, SIGNED_IN, false)).toBe("compare");
-    expect(prPath("git@gitlab.com:skarif2/sway.git", HOSTS, SIGNED_IN, true)).toBe("compare");
-    expect(prPath("git@bitbucket.org:skarif2/sway.git", HOSTS, SIGNED_IN, true)).toBe("compare");
+    expect(prPath("git@gitlab.com:skarif2/tori.git", HOSTS, SIGNED_IN, true)).toBe("compare");
+    expect(prPath("git@bitbucket.org:skarif2/tori.git", HOSTS, SIGNED_IN, true)).toBe("compare");
   });
 
   it("refuses only when there is no usable origin at all", () => {
     expect(prPath(null, HOSTS, SIGNED_IN, true)).toBe("none");
     expect(prPath("", HOSTS, SIGNED_IN, true)).toBe("none");
-    expect(prPath("git@example.com:skarif2/sway.git", HOSTS, SIGNED_IN, true)).toBe("none");
+    expect(prPath("git@example.com:skarif2/tori.git", HOSTS, SIGNED_IN, true)).toBe("none");
   });
 
   it("opens the form on a self-hosted host only once it has an account", () => {
     // Without one, prUrl's name guess still gives GHE a working compare URL, but
     // a form would submit and come back `unsupportedRemote` after the user had
     // typed a title and body.
-    const ghe = "git@github.mycorp.com:skarif2/sway.git";
+    const ghe = "git@github.mycorp.com:skarif2/tori.git";
     expect(apiCanServe(ghe, HOSTS)).toBe(false);
     expect(prPath(ghe, HOSTS, SIGNED_IN, true)).toBe("compare");
     const registered: KnownHosts = new Map([
@@ -48,10 +48,10 @@ describe("prPath", () => {
 
   it("accepts the https and ssh spellings of the same remote", () => {
     for (const origin of [
-      "https://github.com/skarif2/sway.git",
-      "https://github.com/skarif2/sway",
-      "git@github.com:skarif2/sway.git",
-      "ssh://git@github.com/skarif2/sway.git",
+      "https://github.com/skarif2/tori.git",
+      "https://github.com/skarif2/tori",
+      "git@github.com:skarif2/tori.git",
+      "ssh://git@github.com/skarif2/tori.git",
     ]) {
       expect(prPath(origin, HOSTS, SIGNED_IN, true), origin).toBe("form");
     }

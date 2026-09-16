@@ -386,7 +386,7 @@ describe("reading again", () => {
 
 describe("what the card does not offer", () => {
   // A 7-day view was built and taken out again (Phase 5): the ring records what
-  // Sway read, the window belongs to the account, and a stretch with Sway shut
+  // Tori read, the window belongs to the account, and a stretch with Tori shut
   // has no samples in it while the level goes on moving. Pinned so the link
   // cannot drift back in without the argument being had again.
   it("has no breakdown link, because there is no history worth linking to", async () => {

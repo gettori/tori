@@ -73,7 +73,7 @@ export type ComposerHandle = {
  * `text/plain` as well, and a chip read as a path would attach the same file a
  * second time under a second number.
  */
-export const ATTACHMENT_TOKEN_MIME = "application/x-sway-attachment-token";
+export const ATTACHMENT_TOKEN_MIME = "application/x-tori-attachment-token";
 
 /** What the prose names this attachment by, or null for a chip that is not one
  *  (a selection, a hunk comment: they have no token to insert). */
@@ -239,7 +239,7 @@ export default function Composer(props: {
    *  `ChatView`, and this component only decides where they sit. */
   controls?: JSX.Element;
   /** The subagent lane being read, by name, or null on the main transcript.
-   *  Only the placeholder changes: Sway has no channel to a subagent, so what
+   *  Only the placeholder changes: Tori has no channel to a subagent, so what
    *  is typed goes to the main agent from every lane. */
   watching?: string | null;
 }) {

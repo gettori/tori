@@ -3,7 +3,7 @@
 //
 // Both are mirrors of `catalog_probe.rs`, and both have a case that looks like
 // an edge and is not: an alias-heavy catalogue is the normal one, and a
-// version-less binary is two of the four agents Sway ships adapters for.
+// version-less binary is two of the four agents Tori ships adapters for.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import probeSource from "../../src-tauri/src/catalog_probe.rs?raw";
@@ -58,10 +58,10 @@ describe("counting what a agent offers", () => {
   });
 
   // The fallback is load-bearing, not defensive. A user-configured row carries
-  // an **empty** `resolvedModel` on purpose: Sway passes that string to the CLI
+  // an **empty** `resolvedModel` on purpose: Tori passes that string to the CLI
   // unresolved and claims no resolution for it. Keying on that field alone makes
   // every configured model one model.
-  it("does not collapse rows whose resolution Sway cannot claim", () => {
+  it("does not collapse rows whose resolution Tori cannot claim", () => {
     const catalog = withModels([model("opusplan", ""), model("my-fine-tune", "")]);
     expect(distinctModelCount(catalog)).toBe(2);
   });
@@ -94,9 +94,9 @@ describe("whether a remembered answer still describes the binary", () => {
   });
 
   // The second comparison, and the one no version can stand in for: a cache
-  // missing a field this build reads describes an older *Sway*, and the binary
+  // missing a field this build reads describes an older *Tori*, and the binary
   // on disk need not have moved at all.
-  describe("and whether it still describes what this Sway reads", () => {
+  describe("and whether it still describes what this Tori reads", () => {
     // An unstamped catalogue reads as **1**, not as whatever is current, and
     // that is the whole design: the stamp landed at 1 so the mechanism
     // invalidated nothing the day it shipped, and shape 2 (the model rows'
@@ -119,7 +119,7 @@ describe("whether a remembered answer still describes the binary", () => {
       );
     });
 
-    // A cache from a *newer* Sway carries every field this one reads, so there
+    // A cache from a *newer* Tori carries every field this one reads, so there
     // is nothing to re-probe for. A downgrade is not a reason to spawn a binary.
     it("leaves a catalogue stamped above this build alone", () => {
       const newer = withModels([]);
@@ -139,11 +139,11 @@ describe("whether a remembered answer still describes the binary", () => {
 
   // A measurement is scoped to the binary it names, and a cached row decided
   // `disabled` against the version the probe recorded. On a binary that has
-  // since changed, the rows Sway added come back off and the agent's own
+  // since changed, the rows Tori added come back off and the agent's own
   // published list is what is left. Otherwise a draft opened on an upgraded CLI
   // offers a level nothing measured for the one probe round it takes a fresh
   // answer to land.
-  describe("Sway's own measured effort levels on a stale cache", () => {
+  describe("Tori's own measured effort levels on a stale cache", () => {
     const sonnet = (): CatalogModel => ({
       ...model("sonnet", "claude-sonnet-5"),
       supportsEffort: true,
@@ -179,7 +179,7 @@ describe("whether a remembered answer still describes the binary", () => {
 
     // Told apart by `supportedEffortLevels` rather than by re-running the
     // version comparison: a level the agent published is in that list and one
-    // Sway measured is not.
+    // Tori measured is not.
     it("takes them off once the binary has changed under the cache", async () => {
       expect(await levelsAfterProbe("2.1.240")).toEqual(["low", "max"]);
     });
@@ -302,7 +302,7 @@ describe("the shared store", () => {
 
   // The point of stamping the shape at all: the binary is unchanged, so nothing
   // a version comparison can see has moved, and the answer still has to be
-  // re-asked because this Sway reads a field that cache does not carry.
+  // re-asked because this Tori reads a field that cache does not carry.
   it("re-asks a agent whose cache is the right binary in the wrong shape", async () => {
     invoked.mockImplementation(async (cmd: string) => {
       if (cmd === "model_catalogs") {

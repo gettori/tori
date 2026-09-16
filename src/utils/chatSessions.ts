@@ -1,4 +1,4 @@
-// Every chat session Sway is hosting right now, and what it is doing.
+// Every chat session Tori is hosting right now, and what it is doing.
 //
 // The counterpart of `sessionStatus.ts` for the chat surface: that module is
 // fed by LeftSidebar, which composes a PTY agent tab's status out of a pgrep

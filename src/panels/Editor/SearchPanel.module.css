@@ -7,7 +7,7 @@
   min-height: 0;
   overflow: hidden;
   background: var(--canvas-card);
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
 }
 
 .searchPanel :global(.tree-empty) {
@@ -33,7 +33,7 @@
 .title {
   padding-left: calc(4px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   font-weight: 600;
 }
 
@@ -64,7 +64,7 @@
   flex: none;
   padding: calc(2px * var(--ui-scale)) calc(12px * var(--ui-scale)) calc(4px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .link {
@@ -115,7 +115,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-overflow: ellipsis;
 }
 
@@ -152,7 +152,7 @@
   background: var(--neutral-subtle);
   border-radius: calc(9px * var(--ui-scale));
   color: var(--fg-default);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   font-weight: 400;
   line-height: calc(18px * var(--ui-scale));
   text-align: center;
@@ -182,7 +182,7 @@
 .truncatedNotice {
   padding: calc(2px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* Announced, never drawn: the search box's hint (see SearchPanel.tsx). */
@@ -212,9 +212,9 @@
   padding: 0 calc(6px * var(--ui-scale));
   background: transparent;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   outline: none;
 }
 
@@ -226,7 +226,7 @@
    search-error slot above the results. */
 .savedNotice {
   color: var(--danger-fg);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .savedList {
@@ -251,7 +251,7 @@
   border: none;
   background: none;
   color: var(--fg-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;

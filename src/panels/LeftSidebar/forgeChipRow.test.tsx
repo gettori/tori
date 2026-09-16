@@ -29,7 +29,7 @@ const worktree = (branch: string, folder: string) => ({
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -71,8 +71,8 @@ const config = {
 };
 
 const ORIGINS: Record<string, string | null> = {
-  [GH]: "git@github.com:skarif2/sway.git",
-  [GL]: "git@gitlab.com:skarif2/sway.git",
+  [GH]: "git@github.com:skarif2/tori.git",
+  [GL]: "git@gitlab.com:skarif2/tori.git",
   [SOLO]: null,
 };
 
@@ -93,7 +93,7 @@ const pull = (number: number, over: Record<string, unknown> = {}) => ({
   headRef: "x",
   baseRef: "main",
   headSha: "sha",
-  url: `https://github.com/skarif2/sway/pull/${number}`,
+  url: `https://github.com/skarif2/tori/pull/${number}`,
   mergeableState: "clean",
   ...over,
 });
@@ -203,9 +203,9 @@ describe("the forge chip on a branch row", () => {
     bridge.handlers = {};
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
     localStorage.setItem(
-      "sway.expanded.v1",
+      "tori.expanded.v1",
       JSON.stringify(["p:work/gh", "p:work/gl", "p:work/solo"]),
     );
   });
@@ -351,8 +351,8 @@ describe("a failing check reaching the session that owns the branch", () => {
     bridge.sessions = [session];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/gh"]));
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/gh"]));
   });
 
   it("turns the branch's own row into a needs-you row", async () => {
@@ -392,8 +392,8 @@ describe("clicking a branch's forge chip", () => {
     bridge.handlers = {};
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/gh"]));
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/gh"]));
   });
 
   it("selects the branch and opens the Pull Requests panel", async () => {
@@ -407,10 +407,10 @@ describe("clicking a branch's forge chip", () => {
 
     let detail: unknown = null;
     const handler = (e: Event) => (detail = (e as CustomEvent).detail);
-    window.addEventListener("sway:set-right-mode", handler);
+    window.addEventListener("tori:set-right-mode", handler);
     (shipped.querySelector("button[data-forge-state]") as HTMLButtonElement).click();
     await waitFor(() => expect(detail).toEqual({ mode: "pulls" }));
-    window.removeEventListener("sway:set-right-mode", handler);
+    window.removeEventListener("tori:set-right-mode", handler);
 
     // The panel is workspace-scoped, so the selection has to land first or it
     // opens onto whichever project was already showing.

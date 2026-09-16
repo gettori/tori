@@ -156,7 +156,7 @@ const chatTab = (n: number) => {
 /** A stored workspace, saved just now so nothing prunes it. */
 const storeTabs = (tabs: unknown[], over: Record<string, unknown> = {}) =>
   localStorage.setItem(
-    "sway.terminalTabs",
+    "tori.terminalTabs",
     JSON.stringify({ [REPO]: { tabs, active: 0, savedAt: Date.now(), ...over } }),
   );
 
@@ -186,7 +186,7 @@ describe("restore, per pane", () => {
   it("restores last run's terminals and last run's files, both without asking", async () => {
     const now = Date.now();
     localStorage.setItem(
-      "sway.terminalTabs",
+      "tori.terminalTabs",
       JSON.stringify({
         [REPO]: {
           tabs: [
@@ -199,7 +199,7 @@ describe("restore, per pane", () => {
       }),
     );
     localStorage.setItem(
-      "sway.editor.tabs.v1",
+      "tori.editor.tabs.v1",
       JSON.stringify({
         [REPO]: { paths: [`${REPO}/src/a.ts`], active: `${REPO}/src/a.ts`, savedAt: now },
       }),
@@ -239,7 +239,7 @@ describe("restore, per pane", () => {
   // reach them there.
   it("brings an unsent draft back with its text and its pick, still unstarted", async () => {
     localStorage.setItem(
-      "sway.terminalTabs",
+      "tori.terminalTabs",
       JSON.stringify({
         [REPO]: {
           tabs: [
@@ -317,7 +317,7 @@ describe("restore, per pane", () => {
     await waitFor(() => expect(chat.dataset.started).toBe("true"));
 
     await waitFor(() =>
-      expect(JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0].pick).toEqual({
+      expect(JSON.parse(localStorage.getItem("tori.terminalTabs")!)[REPO].tabs[0].pick).toEqual({
         model: "sonnet",
         mode: "plan",
         effort: "high",
@@ -326,7 +326,7 @@ describe("restore, per pane", () => {
     );
     // And not its text: a running conversation has the composer and the
     // transcript for that.
-    expect("text" in JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0]).toBe(false);
+    expect("text" in JSON.parse(localStorage.getItem("tori.terminalTabs")!)[REPO].tabs[0]).toBe(false);
   });
 
   // A chat that has been opened to read holds unsent text the same way a draft
@@ -344,7 +344,7 @@ describe("restore, per pane", () => {
     // lands on, and the tab is a chat with a session id now - the shape the old
     // rule dropped the text for.
     await waitFor(() =>
-      expect(JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0].text).toBe(
+      expect(JSON.parse(localStorage.getItem("tori.terminalTabs")!)[REPO].tabs[0].text).toBe(
         "where were we",
       ),
     );
@@ -398,7 +398,7 @@ describe("restore brings a tab back on its own account", () => {
 });
 
 // A restored tab comes back as *itself*, under the id it was stored with. That
-// id is what `sway.tabpanes.v1` keys placement on and what the backend's
+// id is what `tori.tabpanes.v1` keys placement on and what the backend's
 // liveness listing answers in, so minting a fresh one on every restore threw
 // both away.
 describe("restore reuses the stored tab id", () => {
@@ -440,7 +440,7 @@ describe("restore reuses the stored tab id", () => {
   // Placement is keyed by tab id and nothing prunes it, so reusing the id is
   // the whole of what puts a hand-moved tab back in the pane it was moved to.
   it("puts a hand-moved tab back in the pane it was moved to", async () => {
-    localStorage.setItem("sway.tabpanes.v1", JSON.stringify({ [REPO]: { tabs: { "sh:moved": "right" } } }));
+    localStorage.setItem("tori.tabpanes.v1", JSON.stringify({ [REPO]: { tabs: { "sh:moved": "right" } } }));
     resetTabPlacement();
     storeTabs([shell({ id: "sh:moved" })]);
 
@@ -525,7 +525,7 @@ describe("a restored tab is inert until it is reached for", () => {
   // anyway would be harmless today and a real bug the moment an id is reused,
   // which restore now does.
   it("kills nothing when an inert tab is closed, and forgets where it sat", async () => {
-    localStorage.setItem("sway.tabpanes.v1", JSON.stringify({ [REPO]: { tabs: { "sh:1": "right" } } }));
+    localStorage.setItem("tori.tabpanes.v1", JSON.stringify({ [REPO]: { tabs: { "sh:1": "right" } } }));
     resetTabPlacement();
     storeTabs([shell({ id: "sh:0", title: "front" }), shell({ id: "sh:1", title: "spare" })], { activeId: "sh:0" });
 
@@ -539,7 +539,7 @@ describe("a restored tab is inert until it is reached for", () => {
     expect(invokes.filter((i) => i.cmd === "pty_kill")).toEqual([]);
     expect(invokes.filter((i) => i.cmd === "chat_close")).toEqual([]);
     flushTabPlacement();
-    expect(JSON.parse(localStorage.getItem("sway.tabpanes.v1")!)[REPO].tabs["sh:1"]).toBeUndefined();
+    expect(JSON.parse(localStorage.getItem("tori.tabpanes.v1")!)[REPO].tabs["sh:1"]).toBeUndefined();
   });
 
   // The live tab is the control: the same close on a tab that was reached for
@@ -732,7 +732,7 @@ describe("stranded processes", () => {
   /** Two workspaces' tabs stored, only one of them ever visited. */
   const twoWorkspaces = () =>
     localStorage.setItem(
-      "sway.terminalTabs",
+      "tori.terminalTabs",
       JSON.stringify({
         [REPO]: { tabs: [shell({ id: "sh:here" })], active: 0, savedAt: Date.now() },
         [OTHER]: { tabs: [shell({ id: "sh:there" })], active: 0, savedAt: Date.now() },
@@ -929,7 +929,7 @@ describe("the title a chat tab is saved under", () => {
     expect(open()[0]!.title).toBe("Hello");
     // And saved that way, so the next launch starts from the right name.
     await waitFor(() =>
-      expect(JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0].title).toBe("Hello"),
+      expect(JSON.parse(localStorage.getItem("tori.terminalTabs")!)[REPO].tabs[0].title).toBe("Hello"),
     );
   });
 
@@ -946,7 +946,7 @@ describe("the title a chat tab is saved under", () => {
     setTabTitles((m) => ({ ...m, "chat:8": "Renamed" }));
 
     await waitFor(() =>
-      expect(JSON.parse(localStorage.getItem("sway.terminalTabs")!)[REPO].tabs[0].title).toBe("Renamed"),
+      expect(JSON.parse(localStorage.getItem("tori.terminalTabs")!)[REPO].tabs[0].title).toBe("Renamed"),
     );
   });
 });

@@ -35,7 +35,7 @@ export function repoint(path: string, from: string, to: string): string | null {
  * per workspace follows the same rewrite, so the focused file stays focused
  * rather than the strip silently jumping elsewhere.
  *
- * Synthetic tabs (`sway://…`) are left alone. Their ids are not filesystem
+ * Synthetic tabs (`tori://…`) are left alone. Their ids are not filesystem
  * paths, so prefix-rewriting one would produce an id addressing nothing.
  *
  * `moved` lists the (from, to) pairs so the caller can carry path-keyed state

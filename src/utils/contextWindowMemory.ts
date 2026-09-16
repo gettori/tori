@@ -17,7 +17,7 @@
 // with no business surviving a reinstall, and it is read from a render path
 // where an IPC round trip would mean a frame with no window and then a frame
 // with one.
-const KEY = "sway.contextWindows.v1";
+const KEY = "tori.contextWindows.v1";
 
 /** Windows by model id, or an empty map when nothing has been measured yet. */
 export function rememberedWindows(): Record<string, number> {

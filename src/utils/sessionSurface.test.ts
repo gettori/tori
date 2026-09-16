@@ -24,7 +24,7 @@ describe("routeSelection", () => {
     expect(routeSelection(inputs({ preference: "agent", hostedHere: true }))).toBe("focus");
   });
 
-  it("falls back to the PTY route for a session running outside Sway", () => {
+  it("falls back to the PTY route for a session running outside Tori", () => {
     // Chat drives a session by resuming it, and resuming one that is already
     // running is the operation measured to corrupt the transcript.
     expect(routeSelection(inputs({ runningElsewhere: true }))).toBe("agent");

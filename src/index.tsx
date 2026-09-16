@@ -7,7 +7,7 @@ import { installTrace } from "./utils/perfTrace";
 // Paint with the last-known theme synchronously, before first render.
 applyCachedTheme();
 
-// Performance tracing, if the backend was launched with SWAY_TRACE. Started
+// Performance tracing, if the backend was launched with TORI_TRACE. Started
 // here rather than in a component so the IPC shim is installed as early as it
 // can be; it is off in every ordinary launch and costs one command to find out.
 void installTrace();

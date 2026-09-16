@@ -77,7 +77,7 @@ function positionOf(range: unknown, fallbackLine: number, fallbackColumn: number
   return { line, column };
 }
 
-/** `file:///a%20b.ts` to `/a b.ts`. Duplicated from `swayWorkspace` rather than
+/** `file:///a%20b.ts` to `/a b.ts`. Duplicated from `toriWorkspace` rather than
  *  imported, because that module pulls CodeMirror and this one must not. */
 function pathOf(uri: unknown): string | null {
   if (typeof uri !== "string" || !uri.startsWith("file://")) return null;

@@ -77,7 +77,7 @@ function fakeServer(): Transport {
 }
 
 vi.mock("./lspClient", async () => {
-  const { pathToUri: toUri } = await import("./swayWorkspace");
+  const { pathToUri: toUri } = await import("./toriWorkspace");
   return {
     claimedByLsp: () => true,
     ensureLspFor: () => Promise.resolve(),
@@ -104,7 +104,7 @@ vi.mock("./lspClient", async () => {
 });
 
 const { default: CodeEditor } = await import("./CodeEditor");
-const { pathToUri } = await import("./swayWorkspace");
+const { pathToUri } = await import("./toriWorkspace");
 const { emit, EDITOR_SAVE } = await import("../../utils/events");
 const { saveSettings, DEFAULT_SETTINGS } = await import("../Settings/settingsStore");
 

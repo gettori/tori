@@ -263,7 +263,7 @@ describe("normalizeCodeActions", () => {
     expect(a.command?.command).toBe("x");
   });
 
-  it("drops a disabled action, since Sway never asked to be told about one", () => {
+  it("drops a disabled action, since Tori never asked to be told about one", () => {
     expect(normalizeCodeActions([{ title: "Nope", disabled: { reason: "not here" } }])).toEqual([]);
   });
 
@@ -603,7 +603,7 @@ describe("groupedCodeActions", () => {
   });
 });
 
-describe("the kinds Sway asks for", () => {
+describe("the kinds Tori asks for", () => {
   it("covers the two the later phases depend on", () => {
     expect(CODE_ACTION_KINDS).toContain("quickfix");
     expect(CODE_ACTION_KINDS).toContain("source.organizeImports");

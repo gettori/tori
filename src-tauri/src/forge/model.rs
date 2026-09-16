@@ -39,7 +39,7 @@ pub enum PrState {
 
 /// GitHub's own mergeability verdict, carried through rather than recomputed.
 ///
-/// Sway cannot see branch protection rules, required status checks it does not
+/// Tori cannot see branch protection rules, required status checks it does not
 /// model, or org policy, so a client-side "looks mergeable to me" is a guess
 /// that renders an enabled button the server will refuse. This enum is the
 /// server's answer; `Unknown` covers the window where GitHub is still computing
@@ -122,7 +122,7 @@ pub enum ReviewDecision {
 pub struct UnitStatus {
     pub head_ref: String,
     /// `None` means no PR exists for this branch, which the UI must render
-    /// differently from "this remote is not a forge Sway can talk to".
+    /// differently from "this remote is not a forge Tori can talk to".
     pub pull_request: Option<PullRequest>,
     pub checks: CheckRollup,
     pub review_decision: ReviewDecision,
@@ -192,7 +192,7 @@ pub struct ReviewThread {
     /// onto a line number that no longer means what it did.
     pub line: Option<u32>,
     /// The first line of a multi-line comment, absent on a single-line one.
-    /// Carried because Sway itself sends ranges (`DraftComment::start_line`), so
+    /// Carried because Tori itself sends ranges (`DraftComment::start_line`), so
     /// a reader that only knew `line` would narrow a range it had just written.
     pub start_line: Option<u32>,
     pub diff_hunk: String,
@@ -222,7 +222,7 @@ pub enum FileStatus {
 ///
 /// The patch is carried through rather than recomputed locally, and that is the
 /// whole point of this type. A review thread anchors to a `diff_hunk` and a
-/// position that GitHub calculated; a diff Sway computed itself would differ in
+/// position that GitHub calculated; a diff Tori computed itself would differ in
 /// context size, in rename detection and in whitespace handling, and every one
 /// of those differences lands a comment on the wrong line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -279,7 +279,7 @@ pub struct DraftComment {
 /// The verdict a submitted review carries.
 ///
 /// `Approve` and `RequestChanges` are rejected with a 422 on a pull request the
-/// viewer authored, which on a single-owner repo is every pull request Sway
+/// viewer authored, which on a single-owner repo is every pull request Tori
 /// opens. They are built and gated rather than omitted, because the gate is
 /// about *this* pull request, not about the app.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -395,7 +395,7 @@ mod tests {
             head_ref: "wave-3".into(),
             base_ref: "main".into(),
             head_sha: "4d95fc3aa0f1b2c3d4e5f60718293a4b5c6d7e8f".into(),
-            url: "https://github.com/skarif2/sway/pull/42".into(),
+            url: "https://github.com/skarif2/tori/pull/42".into(),
             mergeable_state: MergeableState::Clean,
         };
 
@@ -407,7 +407,7 @@ mod tests {
         };
 
         let samples = serde_json::json!({
-            "repoRef": RepoRef { owner: "skarif2".into(), repo: "sway".into() },
+            "repoRef": RepoRef { owner: "skarif2".into(), repo: "tori".into() },
             "pullRequest": pr.clone(),
             "checkRollup": CheckRollup { state: CheckState::Failure, total: 12, failing: 2 },
             "reviewDecision": ReviewDecision::ChangesRequested,
@@ -534,7 +534,7 @@ mod tests {
     ///
     /// Without this the fixture's key order depends on whether anything in the
     /// build graph turned on `serde_json`'s `preserve_order` feature, which is a
-    /// thing Sway does not choose: it arrives transitively (today through
+    /// thing Tori does not choose: it arrives transitively (today through
     /// `serde_with`, via `agent-client-protocol-schema`). With the feature off a
     /// `serde_json::Map` is a `BTreeMap` and sorts itself; with it on it is an
     /// `IndexMap` and keeps insertion order. `json!` turns even the derived

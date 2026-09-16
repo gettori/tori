@@ -18,7 +18,7 @@
 
 import { isSyntheticId } from "./syntheticTabs";
 
-const LS_TABS = "sway.editor.tabs.v1";
+const LS_TABS = "tori.editor.tabs.v1";
 // A workspace nobody has opened in this long is almost certainly finished work.
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 // Editor tabs accumulate from every file-tree click, unlike terminal tabs which
@@ -46,7 +46,7 @@ export type OpenFileTabLike = { path: string; workspace: string };
 // window before a selection has resolved, and a key nothing can ever be
 // selected as is a key nothing can ever restore from.
 //
-// A synthetic tab (`sway://…`, the commit log) is dropped too, and this is the
+// A synthetic tab (`tori://…`, the commit log) is dropped too, and this is the
 // one place that decides it. Restoring one would mean reopening a view the user
 // never asked for a second time, and every path in the store is otherwise a
 // real file the restore probes for existence.

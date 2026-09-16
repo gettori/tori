@@ -46,8 +46,8 @@ export const Placements: Story = {
     <div
       style={{
         display: "flex",
-        gap: "var(--sway-space-6)",
-        padding: "120px var(--sway-space-6)",
+        gap: "var(--tori-space-6)",
+        padding: "120px var(--tori-space-6)",
       }}
     >
       <For each={PLACEMENTS}>
@@ -82,7 +82,7 @@ export const AtAPoint: Story = {
           display: "grid",
           "place-items": "center",
           border: "1px dashed var(--border-default)",
-          "border-radius": "var(--sway-radius-lg)",
+          "border-radius": "var(--tori-radius-lg)",
           color: "var(--fg-muted)",
         }}
         onClick={(e) => setAnchor({ x: e.clientX, y: e.clientY })}

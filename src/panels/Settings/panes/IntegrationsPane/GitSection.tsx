@@ -33,7 +33,7 @@ export default function GitSection() {
       .catch(() => {});
   void probe("git_health");
 
-  // Apple's installer runs in its own window, so coming back to Sway is the
+  // Apple's installer runs in its own window, so coming back to Tori is the
   // moment it may have finished.
   const onFocus = () => {
     if (report()?.health.kind !== "ready") void probe("refresh_git_health");

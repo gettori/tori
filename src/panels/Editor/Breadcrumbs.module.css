@@ -14,7 +14,7 @@
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-card);
   border-bottom: 1px solid var(--border-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   -webkit-user-select: none;
   user-select: none;
   /* A deep path in a narrow pane scrolls rather than wrapping: a second row
@@ -34,7 +34,7 @@
   gap: calc(4px * var(--ui-scale));
   padding: calc(1px * var(--ui-scale)) calc(4px * var(--ui-scale));
   border: 0;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: none;
   color: var(--fg-muted);
   font: inherit;

@@ -5,7 +5,7 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { tab, closeOf } from "../../test/tabs";
 import { pointerClick, rightClick } from "../../test/menus";
 
-// A `sway://` tab is a view, not a file, and the whole point of the convention
+// A `tori://` tab is a view, not a file, and the whole point of the convention
 // is what it is kept *out* of: CodeEditor's buffers (and so the language server),
 // the persisted strip, and the folder it does not lexically live under.
 //
@@ -124,7 +124,7 @@ afterEach(() => {
   mounted = null;
 });
 
-describe("a sway:// tab in the editor pane", () => {
+describe("a tori:// tab in the editor pane", () => {
   it("opens as a tab without mounting the code editor at all", async () => {
     await mountEditor();
     await open(LOG);
@@ -143,8 +143,8 @@ describe("a sway:// tab in the editor pane", () => {
     await waitFor(() => expect(last().activePath).toBeNull());
     // The file beside it still holds its buffer; only the view is absent.
     expect(last().openPaths).toEqual([FILE]);
-    expect(handed.every((h) => h.openPaths.every((p) => !p.startsWith("sway://")))).toBe(true);
-    expect(handed.every((h) => !h.activePath?.startsWith("sway://"))).toBe(true);
+    expect(handed.every((h) => h.openPaths.every((p) => !p.startsWith("tori://")))).toBe(true);
+    expect(handed.every((h) => !h.activePath?.startsWith("tori://"))).toBe(true);
   });
 
   it("is not written to the persisted strip", async () => {
@@ -152,8 +152,8 @@ describe("a sway:// tab in the editor pane", () => {
     await open(FILE);
     await open(LOG);
 
-    await waitFor(() => expect(localStorage.getItem("sway.editor.tabs.v1")).toContain(FILE));
-    expect(localStorage.getItem("sway.editor.tabs.v1")).not.toContain("sway://");
+    await waitFor(() => expect(localStorage.getItem("tori.editor.tabs.v1")).toContain(FILE));
+    expect(localStorage.getItem("tori.editor.tabs.v1")).not.toContain("tori://");
   });
 
   it("takes no preview toggle from a workspace folder that looks like a file", async () => {
@@ -221,7 +221,7 @@ describe("a sway:// tab in the editor pane", () => {
     expect(screen.queryByText("File history")).toBeNull();
   });
 
-  // Written against the hand-rolled menu (skarif2/sway#103, phase 1), now
+  // Written against the hand-rolled menu (gettori/tori#103, phase 1), now
   // running against Kobalte's (phase 4). The test above proves a view is offered
   // no file history; this proves what the tab does with the right-click itself,
   // which is the half a migration can silently lose.
@@ -229,7 +229,7 @@ describe("a sway:// tab in the editor pane", () => {
   // **These need the drawn tab, not the measuring ghost**, which is rendered
   // menu-free and would answer a right-click with nothing. That used to need a
   // second helper; `tab()` reaches the visible row for everyone now
-  // (skarif2/sway#111). Both assertions below fail against the ghost, the first
+  // (gettori/tori#111). Both assertions below fail against the ghost, the first
   // because no menu opens and the second *vacuously*, which is the worse half:
   // a `disabled` mapping that had been dropped entirely would still have
   // passed.
@@ -322,9 +322,9 @@ describe("what a file tab hands a drag", () => {
     await open(FILE);
 
     const payload = carry(tab("a.ts"));
-    expect(payload["application/x-sway-path"]).toBe(FILE);
+    expect(payload["application/x-tori-path"]).toBe(FILE);
     expect(payload["text/plain"]).toBe(FILE);
-    expect(payload["application/x-sway-tab"]).toBe(FILE);
+    expect(payload["application/x-tori-tab"]).toBe(FILE);
   });
 
   it("hands a view no path at all, and still lets it be moved", async () => {
@@ -332,8 +332,8 @@ describe("what a file tab hands a drag", () => {
     await open(LOG);
 
     const payload = carry(tab("Commit log"));
-    expect(payload["application/x-sway-path"]).toBeUndefined();
+    expect(payload["application/x-tori-path"]).toBeUndefined();
     expect(payload["text/plain"]).toBeUndefined();
-    expect(payload["application/x-sway-tab"]).toBe(LOG);
+    expect(payload["application/x-tori-tab"]).toBe(LOG);
   });
 });

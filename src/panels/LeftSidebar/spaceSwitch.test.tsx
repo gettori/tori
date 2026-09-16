@@ -32,7 +32,7 @@ const branchUnit = (label: string, isCurrent = false) => ({
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -113,8 +113,8 @@ describe("switching spaces", () => {
     resetSessionActivityForTests();
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/proj", "p:side/lab"]));
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/proj", "p:side/lab"]));
   });
 
   it("comes back to the unit that space was left on", async () => {
@@ -146,11 +146,11 @@ describe("switching spaces", () => {
     // branches all answer to the same one. Without the branch, coming back lands
     // on whichever branch happens to be listed first, and the row lights up there.
     localStorage.setItem(
-      "sway.expanded.v1",
+      "tori.expanded.v1",
       JSON.stringify(["p:work/proj", "p:side/lab", "p:side/repo"]),
     );
     localStorage.setItem(
-      "sway.selection-memory.v1",
+      "tori.selection-memory.v1",
       JSON.stringify({
         spaces: {
           side: {
@@ -195,12 +195,12 @@ describe("switching spaces", () => {
     // A worktree removed while it was the space's bookmark. The entry is a hint
     // re-read against the tree, so it cannot resurrect a folder that is gone.
     localStorage.setItem(
-      "sway.selection-memory.v1",
+      "tori.selection-memory.v1",
       JSON.stringify({
         spaces: { work: { kind: "unit", spaceName: "work", folderPath: `${WORK}/deleted`, branch: "deleted" } },
       }),
     );
-    localStorage.setItem("sway.active-space.v1", "side");
+    localStorage.setItem("tori.active-space.v1", "side");
     const { sel } = mount();
     await waitFor(() => expect(screen.getByText("trunk")).toBeTruthy());
     click("trunk");

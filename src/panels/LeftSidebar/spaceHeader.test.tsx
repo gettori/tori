@@ -16,7 +16,7 @@ const unit = (label: string, folderPath: string) => ({
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -76,8 +76,8 @@ describe("the active space header", () => {
     resetSessionActivityForTests();
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.sidebar-mode.v1", "spaces");
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("names the space you are in, above the tree", async () => {

@@ -99,7 +99,7 @@ impl DapState {
     /// Called on app exit, and this one is not optional the way it would be for
     /// a language server. An adapter is spawned into *its own process group* so
     /// that stopping it takes its launched debuggee down too, and that same
-    /// detachment means quitting Sway does not: without this, closing the window
+    /// detachment means quitting Tori does not: without this, closing the window
     /// leaves the adapter, the program being debugged and js-debug's watchdog
     /// all running, with nothing on screen left that could name them.
     pub fn shutdown(&self) {
@@ -122,7 +122,7 @@ const SUN_PATH_MAX: usize = 104;
 /// A socket path short enough for `sun_path`.
 ///
 /// The name is short and random and is deliberately **not** derived from the
-/// workspace path: every other store in Sway is path-keyed, and following that
+/// workspace path: every other store in Tori is path-keyed, and following that
 /// habit here would produce a socket that binds on shallow projects and fails
 /// with `ENAMETOOLONG` on deep ones.
 ///
@@ -138,7 +138,7 @@ fn socket_path() -> Result<PathBuf, String> {
 /// mutating `TMPDIR` out from under every other test in the process.
 fn socket_path_in(dir: &std::path::Path) -> Result<PathBuf, String> {
     let unique = format!("{}-{}", std::process::id(), next_id("s"));
-    let path = dir.join(format!("sway-dap-{unique}.sock"));
+    let path = dir.join(format!("tori-dap-{unique}.sock"));
     let len = path.as_os_str().len();
     if len >= SUN_PATH_MAX {
         return Err(format!(
@@ -172,7 +172,7 @@ fn spawn_adapter(entry: &PathBuf, socket: &PathBuf, root: &str) -> Result<Child,
         .current_dir(root)
         // The login-shell PATH, not the GUI process one: the adapter resolves
         // the debuggee's runtime (`node`, `pnpm`) from what it inherits, and a
-        // Finder-launched Sway has almost nothing on PATH.
+        // Finder-launched Tori has almost nothing on PATH.
         .env("PATH", augmented_path())
         // Its own process group, so `stop` can take the debuggee with it.
         .process_group(0)
@@ -264,7 +264,7 @@ fn write_frame(stream: &mut UnixStream, message: &str) -> Result<(), String> {
 ///
 /// The group kill is what takes a launched debuggee down with the adapter. The
 /// `wait` is not optional bookkeeping: `kill` only delivers the signal, so
-/// without reaping every stopped adapter stays a zombie for as long as Sway
+/// without reaping every stopped adapter stays a zombie for as long as Tori
 /// runs.
 fn stop(server: &mut Server) {
     let pid = server.child.id();
@@ -451,7 +451,7 @@ fn root_for_adapter(adapter_id: &str, file_path: &str, project_path: &str) -> Re
 ///
 /// A map rather than a bare PATH string so a second variable later is a new key
 /// rather than a new command. Today it is one entry, and it is the one that
-/// matters: a GUI-launched Sway inherits a minimal PATH, so a debuggee that
+/// matters: a GUI-launched Tori inherits a minimal PATH, so a debuggee that
 /// shells out to `pnpm` fails to find it, which is the trap
 /// `gotchas#gui-launched-processes-inherit-a-minimal-path` records.
 ///
@@ -506,7 +506,7 @@ fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
         (None, _) | (Some(_), Some(_)) => crate::health::BinaryStatus::NotFound,
         // No `verified_against` to compare with: the adapter is a bundle this
         // build pins by sha256, so the only version question is `node`'s, and
-        // js-debug states no floor Sway could check one against.
+        // js-debug states no floor Tori could check one against.
         (Some(_), None) => crate::health::BinaryStatus::VersionUnknown,
     };
 
@@ -525,7 +525,7 @@ fn check(adapter: &DapAdapter, entry_missing: bool) -> DapHealth {
 
 /// Health for every registered adapter. Not memoized, for `lsp_health`'s
 /// reason: the sweep is one subprocess, and somebody who runs `pnpm dap:install`
-/// while Sway is open should see the card change on the next Settings open.
+/// while Tori is open should see the card change on the next Settings open.
 #[tauri::command]
 pub async fn dap_health(app: AppHandle) -> Vec<DapHealth> {
     registry::registry()
@@ -647,7 +647,7 @@ mod tests {
         let len = path.as_os_str().len();
         assert!(len < SUN_PATH_MAX, "{} is {len} bytes, at sun_path's limit", path.display());
 
-        // Two calls never collide, which is what lets one Sway run many sessions.
+        // Two calls never collide, which is what lets one Tori run many sessions.
         assert_ne!(socket_path().unwrap(), socket_path().unwrap());
 
         // And the guard actually rejects, rather than being a check that only
@@ -712,7 +712,7 @@ mod tests {
     /// The attach case, which falls out of the same mechanism rather than
     /// needing a flag: a target the user started is in no process group of
     /// ours, so a group kill cannot reach it. Killing it would destroy a
-    /// process Sway never started.
+    /// process Tori never started.
     #[test]
     fn stopping_a_server_cannot_touch_a_process_it_did_not_start() {
         let mut independent = Command::new("sleep")
@@ -784,7 +784,7 @@ mod tests {
     }
 
     /// `kill` only delivers the signal. Without the `wait`, every stopped
-    /// adapter stays a zombie for as long as Sway runs.
+    /// adapter stays a zombie for as long as Tori runs.
     #[test]
     fn stopping_a_server_reaps_it_rather_than_leaving_a_zombie() {
         let (mut server, _) = group_with_child();
@@ -828,7 +828,7 @@ mod tests {
 
     /// js-debug is a CommonJS bundle and ships no `package.json`, so node
     /// resolves the module system by walking up from the entry script. Inside
-    /// this repo that walk reaches Sway's own `package.json`, finds
+    /// this repo that walk reaches Tori's own `package.json`, finds
     /// `"type": "module"`, loads the adapter as ESM, and it dies on its first
     /// `require()` with "Dynamic require of \"fs\" is not supported".
     ///
@@ -839,7 +839,7 @@ mod tests {
     fn the_adapter_has_a_commonjs_boundary_inside_this_esm_package() {
         let root: serde_json::Value =
             serde_json::from_str(include_str!("../../package.json")).unwrap();
-        // If Sway ever stops being an ESM package this guard is moot, but it is
+        // If Tori ever stops being an ESM package this guard is moot, but it is
         // one today and that is what breaks the adapter.
         assert_eq!(root["type"], "module", "this test exists because the repo is ESM");
 
@@ -890,7 +890,7 @@ mod tests {
 
         write_frame(
             &mut stream,
-            r#"{"seq":1,"type":"request","command":"initialize","arguments":{"adapterID":"js-debug","clientID":"sway","linesStartAt1":true,"columnsStartAt1":true}}"#,
+            r#"{"seq":1,"type":"request","command":"initialize","arguments":{"adapterID":"js-debug","clientID":"tori","linesStartAt1":true,"columnsStartAt1":true}}"#,
         )
         .unwrap();
 
@@ -997,7 +997,7 @@ mod tests {
     #[test]
     fn the_root_command_answers_the_package_not_the_workspace() {
         let tmp = std::env::temp_dir().join(format!(
-            "sway-dap-rootcmd-{}-{}",
+            "tori-dap-rootcmd-{}-{}",
             std::process::id(),
             next_id("t")
         ));

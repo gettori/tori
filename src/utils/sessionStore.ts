@@ -1,4 +1,4 @@
-// Every session transcript Sway knows about, keyed by the branch-unit folder it
+// Every session transcript Tori knows about, keyed by the branch-unit folder it
 // is anchored on.
 //
 // This was a signal inside LeftSidebar, filled only by expanding a row, which
@@ -36,7 +36,7 @@ export type SessionMeta = {
   name: string | null;
   agent?: string;
   // Which account produced the session, derived from the transcript root that
-  // held it. null for a row Sway cannot attribute (an ACP session, whose
+  // held it. null for a row Tori cannot attribute (an ACP session, whose
   // locator records no account) rather than one it guesses at.
   profile?: string | null;
   // The user's label for that account, and only when there is a second account

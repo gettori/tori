@@ -83,7 +83,7 @@ pub enum ForgeError {
     /// exists, a thread is already resolved).
     AlreadyExists { message: String },
     /// The server refused a merge. Carries the server's own wording, because
-    /// GitHub knows about branch protection that Sway cannot see.
+    /// GitHub knows about branch protection that Tori cannot see.
     NotMergeable { message: String },
     /// The host has several accounts and this repo has not picked one.
     AccountPickNeeded { host: String },
@@ -413,7 +413,7 @@ mod tests {
 
         // The batched shape is part of the contract, not an optimisation the
         // GitHub impl happens to make: one call, many branches.
-        let repo = RepoRef { owner: "skarif2".into(), repo: "sway".into() };
+        let repo = RepoRef { owner: "skarif2".into(), repo: "tori".into() };
         let statuses = f
             .unit_statuses(&repo, &["wave-3".to_string(), "wave-4".to_string()])
             .expect("stub cannot fail");

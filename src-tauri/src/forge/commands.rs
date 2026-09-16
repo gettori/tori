@@ -150,7 +150,7 @@ pub fn forge_sign_in_routes(provider: Provider, base_url: String) -> Result<Sign
     Ok(routes_in(&file, provider, &base_url, &host))
 }
 
-// Per host, because only that instance can issue one: gitlab.com's is Sway's
+// Per host, because only that instance can issue one: gitlab.com's is Tori's
 // own, and a company's server has whichever its admin created, or none.
 #[tauri::command(async)]
 pub fn forge_set_app_id(
@@ -198,8 +198,8 @@ fn routes_in(
 
 /// The OAuth application a host's browser sign-in would use.
 ///
-/// Sway's own on github.com. On GitLab it is whichever the user registered on
-/// that instance, falling back to Sway's for gitlab.com once one exists.
+/// Tori's own on github.com. On GitLab it is whichever the user registered on
+/// that instance, falling back to Tori's for gitlab.com once one exists.
 fn client_id_for(file: &AccountsFile, provider: Provider, host: &str) -> Option<String> {
     match provider {
         Provider::Github => (host == accounts::GITHUB_COM && device_flow::is_configured())
@@ -223,7 +223,7 @@ pub fn forge_device_start(
     let file = accounts::load();
     if !routes_in(&file, provider, &base_url, &host).device_flow {
         return Err(ForgeError::Invalid {
-            message: format!("Sway has no browser sign-in for {host}. Paste a token instead."),
+            message: format!("Tori has no browser sign-in for {host}. Paste a token instead."),
         }
         .into());
     }
@@ -524,7 +524,7 @@ pub fn pr_head_ref(project_path: &str, number: u64) -> String {
     head_ref(provider.unwrap_or(Provider::Github), number)
 }
 
-/// Whether git in this checkout should ask Sway for `host`'s credential.
+/// Whether git in this checkout should ask Tori for `host`'s credential.
 pub fn serves_git(project_path: &str, host: &str) -> bool {
     let Ok(remote) = remote_of(project_path) else {
         return false;
@@ -568,7 +568,7 @@ fn git_username(provider: Provider) -> &'static str {
 /// Runs a forge call, renewing the credential once when the host rejects it.
 ///
 /// Inside the call that failed rather than on the next tick: a token that
-/// expired mid-session is one Sway can replace without the user, and making
+/// expired mid-session is one Tori can replace without the user, and making
 /// them watch a cycle fail first is a pause with nothing behind it.
 fn attempt<T>(
     c: &Client,
@@ -996,7 +996,7 @@ pub fn forge_update_branch(project_path: String, number: u64) -> Result<(), Forg
 /// every account's credential.
 ///
 /// Failure is non-fatal and deliberately so: a keychain that will not open
-/// should leave Sway running signed-out, not stop it from starting, the same way
+/// should leave Tori running signed-out, not stop it from starting, the same way
 /// the askpass bridge and the tray icon handle their own failures.
 pub fn restore_at_startup(enabled: bool) {
     if let Err(e) = token::install_store() {
@@ -1066,7 +1066,7 @@ fn learn_login(account_id: &str) -> Result<String, ForgeError> {
 fn log_startup(message: &str) {
     // Matches the prefix every other non-fatal startup failure uses in lib.rs,
     // so one grep finds them all.
-    eprintln!("sway: {message}");
+    eprintln!("tori: {message}");
 }
 
 #[cfg(test)]
@@ -1195,7 +1195,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_forge_repo_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_forge_repo_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         let git = |args: &[&str]| {
             std::process::Command::new("git").arg("-C").arg(&dir).args(args).output().unwrap()
@@ -1225,7 +1225,7 @@ mod tests {
     }
 
     fn create(f: &super::super::github::GitHubForge) -> ForgeError {
-        let repo = RepoRef { owner: "skarif2".into(), repo: "sway".into() };
+        let repo = RepoRef { owner: "skarif2".into(), repo: "tori".into() };
         let req = CreatePr {
             title: "t".into(),
             body: "b".into(),
@@ -1250,7 +1250,7 @@ mod tests {
         let no_remote = repo_at(None);
         assert!(matches!(remote_of(no_remote.to_str().unwrap()), Err(ForgeError::NoRemote)));
 
-        let gitlab = repo_at(Some("git@gitlab.com:skarif2/sway.git"));
+        let gitlab = repo_at(Some("git@gitlab.com:skarif2/tori.git"));
         let remote = remote_of(gitlab.to_str().unwrap()).unwrap();
         match client_in(&AccountsFile::default(), &BTreeMap::new(), remote).err() {
             Some(ForgeError::UnsupportedRemote { host }) => assert_eq!(host, "gitlab.com"),
@@ -1297,7 +1297,7 @@ mod tests {
 
     #[test]
     fn a_worktree_resolves_to_the_same_account_as_its_project() {
-        let project = repo_at(Some("git@github.com:skarif2/sway.git"));
+        let project = repo_at(Some("git@github.com:skarif2/tori.git"));
         let git = |args: &[&str]| {
             std::process::Command::new("git").arg("-C").arg(&project).args(args).output().unwrap()
         };
@@ -1415,7 +1415,7 @@ mod tests {
         // caller forgets. The path handed in is not a repo at all, so a build
         // where the gate is missing fails with a *remote* error instead, which is
         // what makes this assertion discriminating rather than decorative.
-        let not_a_repo = std::env::temp_dir().join("sway_forge_no_repo_here");
+        let not_a_repo = std::env::temp_dir().join("tori_forge_no_repo_here");
         switched_off();
 
         let err = forge_unit_statuses(
@@ -1436,7 +1436,7 @@ mod tests {
         // exactly the caller that would otherwise reach the wire while the
         // scheduler sat paused. The path is not a repo, so a build missing the
         // gate fails with a *remote* error instead.
-        let not_a_repo = std::env::temp_dir().join("sway_forge_no_repo_here");
+        let not_a_repo = std::env::temp_dir().join("tori_forge_no_repo_here");
         switched_off();
 
         let err = forge_list_prs(not_a_repo.to_string_lossy().into_owned()).unwrap_err();
@@ -1450,7 +1450,7 @@ mod tests {
         // Third door onto the wire, same backstop. A PR detail view is opened by
         // a click, so it reaches Rust while the scheduler sits paused, and a
         // "no polling" reading of the toggle would let it straight through.
-        let not_a_repo = std::env::temp_dir().join("sway_forge_no_repo_here");
+        let not_a_repo = std::env::temp_dir().join("tori_forge_no_repo_here");
         switched_off();
 
         let err = forge_pr_files(not_a_repo.to_string_lossy().into_owned(), 12).unwrap_err();

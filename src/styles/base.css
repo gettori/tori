@@ -222,7 +222,7 @@
    to live on App.css :root; it moves here so tokens.css owns the value. */
 @layer base {
   :root {
-    font-family: var(--sway-font-ui);
+    font-family: var(--tori-font-ui);
   }
 }
 
@@ -273,7 +273,7 @@
   background-clip: padding-box;
   border: 3px solid transparent;
   border-radius: 999px;
-  transition: background var(--sway-duration-med) ease;
+  transition: background var(--tori-duration-med) ease;
 }
 :hover::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);

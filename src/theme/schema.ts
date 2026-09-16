@@ -66,7 +66,7 @@ export type PaletteColors = {
   danger: Hex;
   /** Filled danger surface. Separate from `danger` because one stop cannot be
    *  both readable AS text on the canvas and dark enough to carry white text:
-   *  Sway Dark's danger reads at 5.6 on the canvas but only 3.2 under a white
+   *  Tori Dark's danger reads at 5.6 on the canvas but only 3.2 under a white
    *  button label. Same reason `attentionStrong` has always been separate. */
   dangerStrong: Hex;
   attention: Hex;

@@ -78,7 +78,7 @@ const paneId = (id: SettingTab) => `settings-pane-${id}`;
 /** Where an ordinary change lands, named in the rail's footer. Written out
  *  rather than read from the backend: the panel would have to hold a resource
  *  for one line of text, and this path is fixed by `settings.rs`. */
-const SETTINGS_PATH = "~/.config/sway/settings.json";
+const SETTINGS_PATH = "~/.config/tori/settings.json";
 
 /** What the focus trap counts as a stop. `[hidden]` is not excluded by the
  *  selector, so the inactive panes are filtered out by ancestor below: they are
@@ -144,7 +144,7 @@ export default function Settings(props: {
    *  because the user needs any one of them, not all of them. */
   const supportedList = createMemo(() => {
     const names = onboardingContent()?.supported ?? [];
-    if (names.length === 0) return "one of the agent CLIs Sway supports";
+    if (names.length === 0) return "one of the agent CLIs Tori supports";
     if (names.length === 1) return names[0];
     return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
   });
@@ -350,7 +350,7 @@ export default function Settings(props: {
   /**
    * Arrow, Home and End across the rail.
    *
-   * Hand-rolled, and this is the one strip in Sway that is: #93 moved the tab
+   * Hand-rolled, and this is the one strip in Tori that is: #93 moved the tab
    * strips onto Kobalte, but Kobalte's tabs always hold a selection, and this
    * rail holds none while a search is running - it forces a value back and
    * fires `onChange`, which lands here as the query being cleared under the
@@ -430,7 +430,7 @@ export default function Settings(props: {
                 Roving tabindex and arrow wrap come from Kobalte, so the rail
                 carries no keyboard code of its own; `orientation` on the Root
                 is what makes Up and Down the keys that move it. */}
-              {/* Sway's own bar rather than the platform's, the same one the
+              {/* Tori's own bar rather than the platform's, the same one the
                   sidebar and the models list draw: it floats over the items
                   instead of taking a gutter out of a 206px column. */}
               <OverlayScroll class={styles.railScroll}>
@@ -508,21 +508,21 @@ export default function Settings(props: {
             <OverlayScroll class={styles.pane} contentClass={styles.paneInner}>
               {/* Two greetings: telling somebody with no CLI installed to check
                   what was found points them at a list of misses, which reads as
-                  Sway being broken rather than as a step they have not taken. */}
+                  Tori being broken rather than as a step they have not taken. */}
               <Show when={props.welcome}>
                 <Show
                   when={onboardingContent()?.kind === "noAgent"}
                   fallback={
                     <div class={styles.welcome}>
-                      Welcome to Sway. It drives the agent CLIs you already have, so start by
+                      Welcome to Tori. It drives the agent CLIs you already have, so start by
                       checking which ones it found below, then open a folder in the sidebar to
                       begin a session.
                     </div>
                   }
                 >
                   <div class={styles.welcome}>
-                    Welcome to Sway. It drives an agent CLI you install yourself, and it could
-                    not find one yet. Install {supportedList()}, then reopen this tab and Sway
+                    Welcome to Tori. It drives an agent CLI you install yourself, and it could
+                    not find one yet. Install {supportedList()}, then reopen this tab and Tori
                     will pick it up.
                   </div>
                 </Show>

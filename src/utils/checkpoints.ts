@@ -63,7 +63,7 @@ export async function noteCheckpointTicks(live: PromptTick[], chatDriven: Readon
  * tree *before* that turn's edits - which is what makes reverting the turn mean
  * anything.
  *
- * The ref keying is unchanged (`refs/sway/checkpoint/<sessionId>/<promptTs>`,
+ * The ref keying is unchanged (`refs/tori/checkpoint/<sessionId>/<promptTs>`,
  * seconds): the timeline reads refs written by both drivers and would not be
  * able to order them if chat used a different unit.
  */

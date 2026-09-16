@@ -49,10 +49,10 @@ export const Anchored: Story = {
             <div
               style={{
                 width: "280px",
-                padding: "var(--sway-space-4)",
+                padding: "var(--tori-space-4)",
                 display: "flex",
                 "flex-direction": "column",
-                gap: "var(--sway-space-3)",
+                gap: "var(--tori-space-3)",
               }}
             >
               <input
@@ -61,7 +61,7 @@ export const Anchored: Story = {
                 placeholder="Search sessions"
                 aria-label="Search sessions"
               />
-              <div style={{ color: "var(--fg-muted)", "font-size": "var(--sway-text-sm)" }}>
+              <div style={{ color: "var(--fg-muted)", "font-size": "var(--tori-text-sm)" }}>
                 The wrapper draws the surface; this box is the caller's layout.
               </div>
             </div>

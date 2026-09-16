@@ -1,4 +1,4 @@
-// Launch the user's real tools. Sway orchestrates VSCode and Ghostty rather
+// Launch the user's real tools. Tori orchestrates VSCode and Ghostty rather
 // than embedding approximations of them.
 
 use std::path::Path;
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn reveal_refuses_a_path_with_nothing_at_it_and_accepts_a_broken_link() {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_reveal_test_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_reveal_test_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
 
         let gone = dir.join("gone.md");

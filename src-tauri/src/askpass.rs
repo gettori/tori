@@ -2,7 +2,7 @@
 //
 // git and ssh ask for credentials by invoking `$GIT_ASKPASS`/`$SSH_ASKPASS`
 // with the human prompt as argv[1] and reading the answer off the helper's
-// stdout. We point those at Sway's own binary re-exec'd (see [[helper mode]]),
+// stdout. We point those at Tori's own binary re-exec'd (see [[helper mode]]),
 // so a backgrounded `git fetch` never needs a TTY: each prompt round-trips over
 // a private Unix socket into a native in-app dialog and back.
 //
@@ -39,10 +39,10 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-/// Env marker + fields git/ssh see when Sway re-execs itself as the helper.
-pub const ENV_SOCK: &str = "SWAY_ASKPASS_SOCK";
-pub const ENV_TOKEN: &str = "SWAY_ASKPASS_TOKEN";
-pub const ENV_OP: &str = "SWAY_ASKPASS_OP";
+/// Env marker + fields git/ssh see when Tori re-execs itself as the helper.
+pub const ENV_SOCK: &str = "TORI_ASKPASS_SOCK";
+pub const ENV_TOKEN: &str = "TORI_ASKPASS_TOKEN";
+pub const ENV_OP: &str = "TORI_ASKPASS_OP";
 
 /// How long a connection blocks for a resolution before failing closed. A user
 /// staring at the dialog is fine; this only bounds a wedged/abandoned prompt.
@@ -126,7 +126,7 @@ pub fn run_helper() -> i32 {
         }
         Err(e) => {
             // Diagnostics to stderr only; never echo the prompt/answer.
-            eprintln!("sway askpass: {e}");
+            eprintln!("tori askpass: {e}");
             1
         }
     }
@@ -239,7 +239,7 @@ fn start_with(
     static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let base = std::env::temp_dir();
-    let dir = base.join(format!("sway-akp-{}-{}", std::process::id(), seq));
+    let dir = base.join(format!("tori-akp-{}-{}", std::process::id(), seq));
     std::fs::create_dir_all(&dir)?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
     let sock_path = dir.join("s");
@@ -305,7 +305,7 @@ fn handle_request(inner: &Arc<AskpassInner>, stream: &UnixStream) -> Option<Stri
         return None;
     }
     // A credential is answered from the op's own checkout, with no dialog and
-    // no user in the loop. Empty means Sway has nothing for it and git falls
+    // no user in the loop. Empty means Tori has nothing for it and git falls
     // through to the prompts below.
     if req.kind == CREDENTIAL {
         return Some(crate::credential::answer(&req.op_id, &req.host).unwrap_or_default());
@@ -533,7 +533,7 @@ mod tests {
 
     #[test]
     fn helper_exchange_errors_when_no_socket() {
-        let missing = std::env::temp_dir().join("sway-akp-does-not-exist/s");
+        let missing = std::env::temp_dir().join("tori-akp-does-not-exist/s");
         assert!(helper_exchange(&missing, "t", "op", "Password: ").is_err());
     }
 }

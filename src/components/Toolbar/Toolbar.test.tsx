@@ -4,8 +4,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
-const A = "/w/api/.sway/worktrees/auth";
-const B = "/w/web/.sway/worktrees/auth";
+const A = "/w/api/.tori/worktrees/auth";
+const B = "/w/web/.tori/worktrees/auth";
 
 const bridge = vi.hoisted(() => ({ calls: [] as { cmd: string; args: Record<string, unknown> }[] }));
 

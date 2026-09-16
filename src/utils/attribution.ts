@@ -10,6 +10,6 @@
 // unparseable write; the other possibility is a live agent in the same folder,
 // and reverting on the guess destroys work whose bytes the backstop can restore
 // but whose context it cannot. One sentence, shared by every surface that shows
-// such a file, so none of them can drift into implying Sway knows.
+// such a file, so none of them can drift into implying Tori knows.
 export const UNATTRIBUTED_NOTICE =
-  "Nothing recorded which session wrote this: the turn ran shell commands, whose writes Sway cannot see. It may belong to another agent working in this folder.";
+  "Nothing recorded which session wrote this: the turn ran shell commands, whose writes Tori cannot see. It may belong to another agent working in this folder.";

@@ -27,7 +27,7 @@ export function composeHunkComment(target: SessionTarget, filePath: string, star
 // phase 1, task 4). Same relativity rule as composeHunkComment: inside the
 // target's cwd, relative; outside it (a Shared-tree buffer), absolute.
 //
-// A PDF is spelled out by page instead. Inside Sway a PDF's "line" is its page,
+// A PDF is spelled out by page instead. Inside Tori a PDF's "line" is its page,
 // because the chips and the jump list already speak in lines; to the agent it is
 // not, and `#L3` would send it looking for a third line of text in a file it
 // opens by page.

@@ -64,7 +64,7 @@ export type { AgentHealth } from "../../../../utils/agentHealth";
 // The dot answers one question - is this agent installed and usable? - and
 // nothing else. `versionUnknown` is therefore green, not gray: an adapter
 // carrying no `verified_against` says nothing about the
-// user's install, and dimming two of three healthy agents over Sway's own
+// user's install, and dimming two of three healthy agents over Tori's own
 // missing bookkeeping reads as "these are worse off" when they are fine.
 // Version detail belongs in the status text below, where it can be explained.
 const TONE: Record<BinaryStatus, string> = {
@@ -79,7 +79,7 @@ const TONE: Record<BinaryStatus, string> = {
 
 /** Who ships the agent, as the row's quiet fact. Frontend-owned branding, the
  *  same trade `agentMarks` makes: adding it to the TOML schema would buy
- *  nothing but churn for a string only this row reads. An id Sway has never
+ *  nothing but churn for a string only this row reads. An id Tori has never
  *  heard of has no entry and falls back below. */
 const PROVIDER: Record<string, string> = {
   claude: "Anthropic",
@@ -91,7 +91,7 @@ const PROVIDER: Record<string, string> = {
   pi: "Mario Zechner",
 };
 
-/** How Sway drives the agent. "Native" is the first-class adapter with a
+/** How Tori drives the agent. "Native" is the first-class adapter with a
  *  transport of its own; protocol agents say the protocol's name. */
 const TRANSPORT_LABEL: Record<ChatTransport, string> = {
   claude_stream_json: "Native",
@@ -100,7 +100,7 @@ const TRANSPORT_LABEL: Record<ChatTransport, string> = {
 
 /** "GitHub · ACP": provider, then transport. Read off the resolved adapter,
  *  so before `list_agents` lands (the fallback carries no chat table) the note
- *  is the provider alone rather than a wrong claim; an adapter Sway knows
+ *  is the provider alone rather than a wrong claim; an adapter Tori knows
  *  neither fact about shows its program, the one fact the adapter itself
  *  states. */
 function rowNote(id: string, program: string): string {
@@ -190,7 +190,7 @@ function AgentRow(props: {
           <Show when={h()}>{(row) => <span class={`${styles.dot} ${rowTone(row())}`} />}</Show>
         </span>
         <span class={styles.agentName}>{a().label}</span>
-        {/* Standing facts, not status: who ships it and how Sway drives it.
+        {/* Standing facts, not status: who ships it and how Tori drives it.
             Who is signed in, what to install, which key bills - all of that
             lives on the agent's page, where there is room to say it in words;
             here the state cell already carries the verdict. */}
@@ -217,9 +217,9 @@ function AgentRow(props: {
         </Switch>
       </span>
       {/* Stored profiles, counted off the accounts file with no probe: how
-          many logins Sway holds, not whether any of them works. "-" for an
+          many logins Tori holds, not whether any of them works. "-" for an
           adapter that declares no [accounts], because a default "1" would
-          claim an account Sway has nothing true to say about. */}
+          claim an account Tori has nothing true to say about. */}
       <span class={styles.agentCount}>{props.accounts ?? "-"}</span>
       <span class={styles.agentState}>
         <span class={`${styles.statePill} ${state().cls}`}>{state().label}</span>
@@ -237,8 +237,8 @@ function AgentRow(props: {
         class={styles.agentToggle}
         checked={on()}
         disabled={blocked() !== null && !on()}
-        aria-label={`Offer ${a().label} in Sway`}
-        tooltip={blocked() ?? (on() ? "Disable in Sway" : "Enable in Sway")}
+        aria-label={`Offer ${a().label} in Tori`}
+        tooltip={blocked() ?? (on() ? "Disable in Tori" : "Enable in Tori")}
         onChange={(next) => setAgentEnabled(a().id, next)}
       />
     </div>

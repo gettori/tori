@@ -9,13 +9,13 @@ import {
   ratioOn,
 } from "./contrast";
 import { listThemes } from "./bundled";
-import swayDark from "./palettes/sway-dark.json";
-import swayLight from "./palettes/sway-light.json";
+import toriDark from "./palettes/tori-dark.json";
+import toriLight from "./palettes/tori-light.json";
 import { ROLES, buildRoleValues } from "./roles";
 import type { Palette } from "./schema";
 
-const dark = swayDark as Palette;
-const light = swayLight as Palette;
+const dark = toriDark as Palette;
+const light = toriLight as Palette;
 // Every bundled theme, read from the registry rather than listed: a port added
 // without a gate run is exactly what this is here to make impossible.
 const PALETTES: [string, Palette][] = listThemes().map((t) => [t.id, t.palette]);

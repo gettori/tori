@@ -28,7 +28,7 @@ import {
 /**
  * Kobalte's two menus, and the only door they come through.
  *
- * The same seam `dialog.ts` documents: `src/lib/` is the whole of Sway's
+ * The same seam `dialog.ts` documents: `src/lib/` is the whole of Tori's
  * contact surface with `@kobalte/core`, `boundary.test.ts` fails the suite if
  * anything outside this folder names the package, and the styled wrappers in
  * `src/components/Menu/` are what the app composes.
@@ -40,7 +40,7 @@ import {
  * context menu is strictly uncontrolled and places itself at the cursor through
  * its own trigger. `DropdownMenu.Root` accepts both, which is what makes the
  * virtual-anchor case (a menu with no trigger element, e.g. CodeEditor's caret
- * menu) possible at all. Sway's two wrappers exist because of that asymmetry,
+ * menu) possible at all. Tori's two wrappers exist because of that asymmetry,
  * not because the chrome differs - the chrome is shared.
  *
  * Every name here collides with its opposite number, so each import is aliased
@@ -48,7 +48,7 @@ import {
  * primitive" convention from #94 exists to keep out of the app, and this file
  * is the first place two primitives are re-exported side by side.
  *
- * The lists are allow-lists of the parts Sway's menus are actually built from.
+ * The lists are allow-lists of the parts Tori's menus are actually built from.
  * Absent deliberately rather than by oversight: `CheckboxItem`, `RadioItem`,
  * `RadioGroup`, `Icon`, `ItemIndicator`, `ItemLabel`, `ItemDescription` and
  * `Arrow`. Nothing composes them yet, and a re-export nothing composes reads as

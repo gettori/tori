@@ -24,7 +24,7 @@
 
 import { ChangeSet, Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import { uriToPath } from "./swayWorkspace";
+import { uriToPath } from "./toriWorkspace";
 
 /** An LSP position, and the edits an edit comes back as. */
 export type LspPosition = { line: number; character: number };
@@ -84,7 +84,7 @@ export function resourceOperationIn(edit: WorkspaceEdit | null | undefined): Res
 /**
  * Why a resource operation was refused, naming the file and the operation.
  *
- * Sway does not create, rename or delete files on a server's say-so yet. The
+ * Tori does not create, rename or delete files on a server's say-so yet. The
  * refusal is deliberately specific: "this did not work" would send someone
  * looking for a bug, where the honest answer is that the editor understood the
  * request perfectly and declined it.
@@ -94,7 +94,7 @@ export function describeResourceOperation(op: ResourceOperation): string {
   const path = uri ? uriToPath(uri) : null;
   const name = path ? nameOf(path) : (uri ?? "a file");
   const verb = op.kind === "create" ? "create" : op.kind === "delete" ? "delete" : "rename";
-  return `This change asks Sway to ${verb} ${name}, which it cannot do yet, so nothing was changed.`;
+  return `This change asks Tori to ${verb} ${name}, which it cannot do yet, so nothing was changed.`;
 }
 
 /** Flatten either `WorkspaceEdit` shape into one list, dropping files with
@@ -131,9 +131,9 @@ export function list(paths: string[]): string {
 }
 
 export type ApplyDeps = {
-  /** `SwayWorkspace.requestFile`, which reads an open buffer before disk. */
+  /** `ToriWorkspace.requestFile`, which reads an open buffer before disk. */
   requestFile: (uri: string) => Promise<MaterialisedFile | null>;
-  /** `SwayWorkspace.retainMapping`, so nothing is evicted mid-operation. */
+  /** `ToriWorkspace.retainMapping`, so nothing is evicted mid-operation. */
   retainMapping: () => () => void;
   /** `client.workspaceMapping()`. Called only after every file is in. */
   makeMapping: () => Mapping;
@@ -201,11 +201,11 @@ export async function applyWorkspaceEdit(
   for (const target of targets) {
     const path = uriToPath(target.uri);
     if (!path) {
-      return { kind: "aborted", reason: `The server named a file Sway cannot address (${target.uri}), so nothing was changed.` };
+      return { kind: "aborted", reason: `The server named a file Tori cannot address (${target.uri}), so nothing was changed.` };
     }
     const file = await deps.requestFile(target.uri);
     if (!file) {
-      return { kind: "aborted", reason: `Sway could not read ${nameOf(path)}, so nothing was changed.` };
+      return { kind: "aborted", reason: `Tori could not read ${nameOf(path)}, so nothing was changed.` };
     }
     files.push({ target, file, path });
   }
@@ -243,14 +243,14 @@ export async function applyWorkspaceEdit(
         try {
           // `file.uri`, never `target.uri`: the mapping is keyed by the URI the
           // workspace holds, and a server does not have to spell a path the way
-          // Sway does.
+          // Tori does.
           changes = target.edits.map((e) => ({
             from: mapping.mapPosition(file.uri, e.range.start),
             to: mapping.mapPosition(file.uri, e.range.end),
             insert: e.newText,
           }));
         } catch (e) {
-          return { kind: "aborted", reason: `Sway could not place the change inside ${nameOf(path)}, so nothing was changed: ${String(e)}` };
+          return { kind: "aborted", reason: `Tori could not place the change inside ${nameOf(path)}, so nothing was changed: ${String(e)}` };
         }
         const view = file.getView();
         if (view) dispatches.push({ view, path, changes });
