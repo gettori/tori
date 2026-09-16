@@ -910,7 +910,7 @@ export default function ForgeSection() {
                     </Show>
                   </div>
                   <div class={cards.footer}>
-                    <span class={cards.footNote}>
+                    <span class={`${cards.footNote} ${cards.recovery}`}>
                       Closed the page, or the clipboard is blocked?{" "}
                       <Show when={prompt()}>
                         {(p) => (
@@ -921,11 +921,13 @@ export default function ForgeSection() {
                               onClick={(e) => openLink(e, p().verificationUri)}
                             >
                               Reopen {p().verificationUri.replace(/^https?:\/\//, "")}
-                            </a>
-                            {" \u00b7 "}
-                            <button type="button" class={cards.link} onClick={() => void copyAgain()}>
-                              Copy again
-                            </button>
+                            </a>{" "}
+                            <span class={cards.nowrap}>
+                              {"\u00b7 "}
+                              <button type="button" class={cards.link} onClick={() => void copyAgain()}>
+                                Copy again
+                              </button>
+                            </span>
                           </>
                         )}
                       </Show>
