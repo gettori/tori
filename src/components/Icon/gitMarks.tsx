@@ -1,9 +1,10 @@
 import { splitProps, type Component, type JSX } from "solid-js";
+import { brandMark } from "./agentMarks";
 import styles from "./gitMarks.module.css";
 
 /**
- * The two git glyphs a sidebar branch-unit row can wear, drawn here rather than
- * imported from Lucide because they animate: when a session in that unit is
+ * Git's own logo, and the two git glyphs a sidebar branch-unit row can wear.
+ * The row glyphs are drawn here rather than imported from Lucide because they animate: when a session in that unit is
  * mid-turn, a pulse runs the same path the resting glyph draws.
  *
  * The row already carries a status chip that names the state in words, so the
@@ -98,4 +99,12 @@ export const WorktreeMark: Component<GitMarkProps> = (props) => (
       <circle class={styles.nodeFork} cx="13" cy="12" r="2" fill="currentColor" />
     </g>
   </Frame>
+);
+
+/** Git's logo, where the tool itself is named. Jason Long's mark, CC BY 3.0
+ *  (https://git-scm.com/community/logos), as Simple Icons' 24x24 path. Unlike the
+ *  CC0 agent marks it carries that attribution. Monochromed to `currentColor`
+ *  like them, rather than the brand orange. */
+export const GitLogo = brandMark(
+  "M13.09 23.549a1.54 1.54 0 0 1-2.18 0L.451 13.089a1.54 1.54 0 0 1 0-2.179l7.191-7.19 2.733 2.733a1.85 1.85 0 0 0 .964 2.326v6.66a1.849 1.849 0 1 0 1.54 0V8.957l2.508 2.508a1.85 1.85 0 1 0 1.09-1.09l-2.634-2.634a1.85 1.85 0 0 0-2.378-2.377L8.73 2.63 10.91.451a1.54 1.54 0 0 1 2.179 0l10.459 10.46a1.54 1.54 0 0 1 0 2.179z",
 );

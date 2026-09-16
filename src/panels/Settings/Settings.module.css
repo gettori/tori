@@ -1071,7 +1071,7 @@
   }
 
   /* The page's own mark: on a plate, unlike the table rows, because here it is
-     an identity rather than a bullet. Same recipe as `.monogram`. */
+     an identity rather than a bullet. Same recipe as `.connectGlyph`. */
   .detailGlyph {
     display: flex;
     align-items: center;
@@ -1737,19 +1737,14 @@
     border-radius: var(--tori-radius-lg);
     background: var(--neutral-subtle);
   }
-  .monogram {
+  .connectGlyph {
     display: flex;
     align-items: center;
     justify-content: center;
     width: calc(34px * var(--ui-scale));
     height: calc(34px * var(--ui-scale));
     flex: none;
-    border-radius: var(--tori-radius-md);
-    background: var(--neutral-hover);
     color: var(--fg-muted);
-    font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-md);
-    font-weight: 600;
   }
   .connectMain {
     flex: 1;

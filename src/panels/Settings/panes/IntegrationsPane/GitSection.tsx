@@ -2,6 +2,7 @@ import { createSignal, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../../../components/Button/Button";
+import { GitLogo } from "../../../../components/Icon/gitMarks";
 import { OPEN_JOB, emitWith, type OpenJob } from "../../../../utils/events";
 import { gitInstallJob, type GitHealth, type GitReport } from "../../../../utils/gitHealth";
 import styles from "../../Settings.module.css";
@@ -68,8 +69,8 @@ export default function GitSection() {
 
       <Show when={report()}>
         <div class={styles.connect}>
-          <div class={styles.monogram} aria-hidden="true">
-            git
+          <div class={styles.connectGlyph} aria-hidden="true">
+            <GitLogo size="calc(34px * var(--ui-scale))" />
           </div>
           <div class={styles.connectMain}>
             <div class={styles.connectTitle}>
