@@ -299,6 +299,9 @@ const BRANCH_CAP = 6;
 const LS_EXPANDED = "tori.expanded.v1";
 const LS_ACTIVE_SPACE = "tori.active-space.v1";
 const LS_MODE = "tori.sidebar-mode.v1";
+// Bump the suffix when `ResolvedConfig` changes shape: a cached copy from an
+// older build is rendered before the fresh one arrives.
+const LS_CONFIG = "tori.sidebar-config.v1";
 
 // What the column shows: the Spaces tree or the Feature list. The filter field,
 // the dialogs and the selection are shared; the tree and the space rail are
@@ -313,6 +316,15 @@ function loadMode(): SidebarMode {
     return MODE_VALUES.find((m) => m === stored) ?? "spaces";
   } catch {
     return "spaces";
+  }
+}
+
+function loadCachedConfig(): ResolvedConfig | null {
+  try {
+    const cfg = JSON.parse(localStorage.getItem(LS_CONFIG) ?? "null");
+    return Array.isArray(cfg?.spaces) ? cfg : null;
+  } catch {
+    return null;
   }
 }
 
@@ -348,7 +360,10 @@ export default function LeftSidebar(props: {
   onActiveRoot?: (root: string | null) => void;
   liveTabs?: LiveTab[];
 }) {
-  const [config, setConfig] = createSignal<ResolvedConfig | null>(null);
+  // Seeded from the last load so the tree paints at once: a cold `get_config`
+  // probes every project with git. The side effects in `loadConfig` run only on
+  // the fresh result, never on this copy.
+  const [config, setConfig] = createSignal<ResolvedConfig | null>(loadCachedConfig());
   // Every Feature record, for the "in <Feature>" chip on a member unit row.
   // Latest request wins, as in `FeatureList`.
   const [features, setFeatures] = createSignal<Feature[]>([]);
@@ -1255,6 +1270,11 @@ export default function LeftSidebar(props: {
     try {
       const cfg = await invoke<ResolvedConfig>("get_config");
       setConfig(cfg);
+      try {
+        localStorage.setItem(LS_CONFIG, JSON.stringify(cfg));
+      } catch {
+        // ignore quota
+      }
       setError("");
       // (Re)install the shallow root watch so external folder creates surface.
       invoke("roots_watch_start", { roots: cfg.roots }).catch(() => {});
@@ -3217,7 +3237,7 @@ export default function LeftSidebar(props: {
           </Show>
         </Show>
 
-        <Show when={(config()?.spaces ?? []).length === 0}>
+        <Show when={config()?.spaces.length === 0}>
           <div class="tree-empty">
             <Show
               when={(config()?.roots?.length ?? 0) === 0}
