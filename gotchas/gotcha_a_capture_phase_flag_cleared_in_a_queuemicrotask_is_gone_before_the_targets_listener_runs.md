@@ -1,0 +1,10 @@
+---
+summary: a flag set in capture phase and cleared via queueMicrotask is gone before the target's own listener runs
+status: current
+updated: 2026-08-16
+source: "plan \"Revive tab selection, and make an unnamed segment a type error\" (personal/sway, branch `116-optional-accessible`, issue #116); `src/components/OverflowTabBar.tsx`, `src/utils/tabGesture.ts`; regression from commit `74f3e3d`"
+---
+
+# A capture-phase flag cleared in a `queueMicrotask` is gone before the target's listener runs
+
+Do NOT guard anything with a flag set in a capture-phase listener and cleared on a microtask. The intent reads as "covers the synchronous handler chain and nothing after it", and that is not what a browser does: it performs a **microtask checkpoint after every listener callback** of a user-initiated dispatch, because the JS stack is empty between them, so the flag is already cleared one listener later. Solid puts the far end even further away, since it delegates JSX handlers to a single `document` listener (see [[gotcha_solid_delegates_its_jsx_handlers_to_one_document_listener_and_batches_nothing]]), so a library's own handler runs several checkpoints after anything captured upstream. This is what made every tab strip in Sway unclickable while the whole suite stayed green: a scripted dispatch (`fireEvent`, `el.click()`) keeps the JS stack busy, so no checkpoint fires mid-dispatch and jsdom reads the flag as set. **Only real user input reproduces it**, which is also why no jsdom test can be the regression guard - see [[concept_trusted_input_verification]] for the harness that can, and `src/test/tabBarGate.test.ts` for the source guard written because nothing functional would fail. Scope such a flag to the event itself instead: hold the `Event` and read `eventPhase !== Event.NONE`, which has no window to size and nothing to clean up. Shallower sibling: [[gotcha_jsdoms_pointerdown_carries_no_pointertype_so_a_press_vs_click_test_proves_nothing]], where the synthetic event is merely missing a field; here a *correct* synthetic event still cannot reproduce the timing.

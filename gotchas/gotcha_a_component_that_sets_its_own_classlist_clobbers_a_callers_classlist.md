@@ -1,0 +1,10 @@
+---
+summary: a shared component's own classList beats the caller's classList spread in, so selected state silently gets dropped
+status: current
+updated: 2026-08-15
+source: "Button component + migrate all buttons (personal/sway, branch code-mirror-6); `src/components/Button/Button.tsx` (spread then `classList`); left-native widgets in `Editor.tsx`, `NewProjectDialog.tsx`, `LeftSidebar.tsx`, `OverflowTabBar.tsx`, `Terminal.tsx`; resolution for `SegmentedControl` + `LayoutToggles`: branch `108-segmented-control`, issue #108; _2026-07-13, amended 2026-08-15_"
+---
+
+# A component that sets its own classList clobbers a caller's classList
+
+Do NOT expect to pass selected/active state into a shared component via `classList={{ active }}` when that component sets its **own** `classList` internally. Why: Solid compiles `<button {...rest} classList={X}>` so the explicit `classList={X}` binding wins over whatever `classList` arrived through the spread, so the caller's entry is silently dropped. This is the concrete reason [[component_button]] could not absorb the app's stateful widgets (right-panel tabs, Follow toggle, NewProject segmented control, LeftSidebar gear, OverflowTabBar `+N`, terminal split/menu): each drives its look from `classList={{ [styles.active]: … }}`, which a `<Button>` would erase. A shared component can still accept a plain `class` (Button applies `class={local.class}` alongside its own `classList`), so layout-only classes pass through, but stateful class toggles do not. When a control needs a selected/pressed visual, either keep it native or give the component a first-class `pressed`/`selected` prop, do not route it through `classList`. **#108 found the third answer, for the controls that moved to a primitive:** style off an *attribute the primitive owns* (`[data-pressed]` from Kobalte's toggle group) instead of any class. A component's `classList` cannot clobber an attribute, and the attribute selector outranks `.iconBtn` besides, so the result no longer depends on stylesheet order. See [[component_toggle_group]].

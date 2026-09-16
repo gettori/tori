@@ -1,0 +1,11 @@
+---
+summary: the branch rail's elbow lives on row while the rail itself is measured off branchNode, so margin changes desync them
+status: current
+updated: 2026-07-15
+source: git-branch rail (personal/sway, branch code-mirror-6); `src/panels/LeftSidebar/LeftSidebar.module.css` (`.branchNode`, `.row.branch::after`, `.row.branch::before`, `.row.session::before`), `LeftSidebar.tsx` (branch node `.node ${branchNode}`); commits 9b540bf, 2440fdf
+---
+
+# Sidebar branch rail alignment depends on the row margin and last-child structure
+
+The git-branch rail at the branch level is drawn on `.branchNode` from a rail-x measured off the **node's** left edge, but the elbow and the selected-segment pseudo-elements live on `.row` (which carries a `6px·--ui-scale` left margin), so they use a separately derived `--rail-x-row` (rail-x minus that margin) to land on the same x. Two edits silently break it: (1) changing `.row`'s horizontal margin without updating `--rail-x-row` desyncs the elbow from the rail; (2) wrapping the branch `.node`s in a container, or rendering anything after the branch `<For>`, breaks `.branchNode:last-child::before` (which terminates the rail at the final branch) and leaves the rail dangling past the last item. Why: the rail is per-node so it survives an expanded branch's sessions, and termination relies on the last branch node being the project node's last element child. Related: both branch and session rows draw their hover/selection fill from one inset `::before` (never the full-width `.row:hover`, which is suppressed on them), each owning a stacking context (`z-index: 0`) so its `z-index: -1` fill sits above the row background but below the text. Two indents matter: a **session** fill starts at the shared `--branch-label-x`; a **branch** fill starts at `--branch-label-x - 8px` so the branch name (which sits *at* `--branch-label-x`, with no icon) gets normal left padding inside the pill instead of being jammed against its edge. On a selected **branch** that same `::before` is repurposed as the thin gold rail segment (`right: auto; width: 2px`), so any change to the branch hover fill must keep that selected override intact.
+Adding a *level* to this tree is a separate trap with a happier answer: see [[gotcha_the_sidebar_rail_is_a_variable_not_a_copy]].
