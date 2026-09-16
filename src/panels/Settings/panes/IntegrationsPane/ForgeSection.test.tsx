@@ -219,7 +219,7 @@ describe("the forge accounts settings section", () => {
     expect(card.textContent).toContain(
       "Tori has to be running: while it's closed, git on github.com asks you.",
     );
-    expect(screen.getByText("Connect another host...")).toBeTruthy();
+    expect(screen.getByLabelText("Connect a host")).toBeTruthy();
     expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(false);
   });
 
