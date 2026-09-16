@@ -220,10 +220,6 @@
   gap: var(--tori-space-4);
 }
 
-.more {
-  padding-top: var(--tori-space-5);
-}
-
 .global {
   margin-top: var(--tori-space-5);
   border-top: var(--tori-border-thin) solid var(--border-default);
