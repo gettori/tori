@@ -232,6 +232,18 @@ export default function ForgeSection() {
     noteRoutes(r);
   }
 
+  // Rust answers with the whole list, so the row shows what was stored rather
+  // than what the click assumed.
+  async function setGitCredentials(host: string, enabled: boolean) {
+    setError(null);
+    try {
+      const list = await invoke<ForgeHost[]>("forge_set_git_credentials", { host, enabled });
+      if (Array.isArray(list)) setHosts(list);
+    } catch (e) {
+      setError(forgeErrorMessage(e));
+    }
+  }
+
   async function remove(account: ForgeAccount) {
     setError(null);
     try {
@@ -336,6 +348,20 @@ export default function ForgeSection() {
                 </div>
               )}
             </For>
+            <div class={styles.row}>
+              <label class={styles.label}>Use for git push and fetch</label>
+              <div class={styles.control}>
+                <Switch
+                  aria-label={`Use ${host.host} for git push and fetch`}
+                  checked={host.gitCredentials}
+                  onChange={(v) => void setGitCredentials(host.host, v)}
+                />
+              </div>
+              <div class={styles.hint}>
+                Sway answers git with this repo's account over https. Off, git uses whatever
+                credential helper you have.
+              </div>
+            </div>
           </>
         )}
       </For>

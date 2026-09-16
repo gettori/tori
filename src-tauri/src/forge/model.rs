@@ -491,6 +491,7 @@ mod tests {
                 "https://github.com",
                 "github.com",
                 Some(super::super::device_flow::CLIENT_ID),
+                false,
             ),
             // A truncated page, because `truncated: true` is the case the UI
             // must not render as a complete list.
