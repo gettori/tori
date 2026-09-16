@@ -183,6 +183,7 @@ pub fn run() {
                 let _ = emit_handle.emit("askpass://prompt", ev);
             })) {
                 Ok(inner) => {
+                    credential::publish(inner.sock_path(), inner.credential_token());
                     app.manage(askpass::AskpassState(inner));
                 }
                 Err(e) => eprintln!("tori: askpass bridge failed to start: {e}"),

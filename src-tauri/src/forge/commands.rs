@@ -553,18 +553,43 @@ pub fn serves_git(project_path: &str, host: &str) -> bool {
 /// protocol wants it. `None` leaves git to the user's own helpers.
 pub fn git_credential(project_path: &str, host: &str) -> Option<(String, String)> {
     let remote = remote_of(project_path).ok()?;
-    let file = accounts::load();
-    let picks = crate::settings::get_settings().forge.picks;
-    if remote.host != host || !accounts::serves_git(&file, &picks, &remote) {
+    if remote.host != host {
         return None;
     }
-    let Resolution::Account(id) = accounts::resolve(&file, &picks, &remote) else {
+    let file = accounts::load();
+    let id = git_account(&file, &crate::settings::get_settings().forge.picks, &remote)?;
+    git_login(&file, &id)
+}
+
+/// The same from the host and path git hands its helper, for git that runs
+/// outside any checkout Tori registered, a clone included.
+pub fn git_credential_at(host: &str, path: &str) -> Option<(String, String)> {
+    let file = accounts::load();
+    let id = git_account_at(&file, &crate::settings::get_settings().forge.picks, host, path)?;
+    git_login(&file, &id)
+}
+
+fn git_account_at(file: &AccountsFile, picks: &BTreeMap<String, String>, host: &str, path: &str) -> Option<String> {
+    let remote = remote::parse(&format!("https://{host}/{path}")).ok()?;
+    // `parse` drops a port, and a host on another port is another server.
+    if remote.host != remote::canonical_host(host) {
         return None;
-    };
-    let (host, account) = accounts::find(&file, &id)?;
+    }
+    git_account(file, picks, &remote)
+}
+
+fn git_account(file: &AccountsFile, picks: &BTreeMap<String, String>, remote: &Remote) -> Option<String> {
+    match accounts::resolve(file, picks, remote) {
+        Resolution::Account(id) if accounts::git_credentials(file, &remote.host) => Some(id),
+        _ => None,
+    }
+}
+
+fn git_login(file: &AccountsFile, id: &str) -> Option<(String, String)> {
+    let (host, account) = accounts::find(file, id)?;
     // The same renewal every API call goes through, so a push at the end of a
     // long session does not fail on a token that expired an hour into it.
-    let token = fresh_token(&file, host, account)?;
+    let token = fresh_token(file, host, account)?;
     Some((git_username(account.provider).to_string(), token))
 }
 
@@ -1422,6 +1447,26 @@ mod tests {
         let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", None).unwrap();
         let remote = remote::parse("git@ghe.acme.test:acme/widgets.git").unwrap();
         assert_eq!(client_in(&file, &BTreeMap::new(), remote).ok().map(|c| c.account_id), Some(id));
+    }
+
+    #[test]
+    fn a_clone_resolves_its_account_from_the_host_and_path_git_sends() {
+        let mut file = AccountsFile::default();
+        let (base_url, host) = accounts::normalize_base_url("gitlab.com").unwrap();
+        let arif = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "skarif2", None).unwrap();
+        let picks = BTreeMap::new();
+        let path = "skarif2/masterchef.git";
+
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path), None, "the switch is off");
+        accounts::set_git_credentials(&mut file, "gitlab.com", true);
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path), Some(arif));
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com:8443", path), None);
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", ""), None);
+
+        let work = accounts::add_account(&mut file, Provider::Gitlab, &base_url, &host, "fonn-arif", None).unwrap();
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path), None, "two accounts, no pick, no default");
+        let picks = BTreeMap::from([("gitlab.com/skarif2/masterchef".to_string(), work.clone())]);
+        assert_eq!(git_account_at(&file, &picks, "gitlab.com", path), Some(work));
     }
 
     #[test]
