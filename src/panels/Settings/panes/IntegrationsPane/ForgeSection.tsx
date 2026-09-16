@@ -125,6 +125,12 @@ function mmss(ms: number): string {
   return `${pad(Math.floor(secs / 60))}:${pad(secs % 60)}`;
 }
 
+// Through the opener plugin, as `Markdown` does: in the app's webview
+// `window.open` does not reach the default browser.
+function openInBrowser(url: string) {
+  void invoke("plugin:opener|open_url", { url }).catch(() => {});
+}
+
 function asFailure(e: unknown): Failure {
   return isForgeError(e)
     ? { kind: "error", message: e.message, code: e.kind }
@@ -350,7 +356,7 @@ export default function ForgeSection() {
       // On the clipboard before the page opens, so the paste is ready when it loads.
       setClipboardOk(await copyText(p.userCode));
       if (flow() !== state || prompt() !== p) return;
-      window.open(p.verificationUri, "_blank");
+      openInBrowser(p.verificationUri);
       schedule(p.intervalSecs);
       ticker = setInterval(tick, 1000);
     } catch (e) {
@@ -499,7 +505,7 @@ export default function ForgeSection() {
 
   const openLink = (e: MouseEvent, url: string) => {
     e.preventDefault();
-    window.open(url, "_blank");
+    openInBrowser(url);
   };
 
   const connected = () => hosts().length > 0;
@@ -915,10 +921,10 @@ export default function ForgeSection() {
                               onClick={(e) => openLink(e, p().verificationUri)}
                             >
                               Reopen {p().verificationUri.replace(/^https?:\/\//, "")}
-                            </a>{" "}
-                            or{" "}
+                            </a>
+                            {" \u00b7 "}
                             <button type="button" class={cards.link} onClick={() => void copyAgain()}>
-                              copy again
+                              Copy again
                             </button>
                           </>
                         )}
