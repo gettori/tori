@@ -53,6 +53,8 @@ export default function Select(props: {
   value: string;
   onChange: (value: string) => void;
   size?: ControlSize;
+  /** Shown while `value` names no option. */
+  placeholder?: string;
   disabled?: boolean;
   class?: string;
   "aria-label"?: string;
@@ -83,6 +85,7 @@ export default function Select(props: {
         if (option) props.onChange(option.value);
       }}
       disallowEmptySelection
+      placeholder={props.placeholder}
       disabled={props.disabled}
       gutter={TRIGGER_GUTTER}
       sectionComponent={(section) => (

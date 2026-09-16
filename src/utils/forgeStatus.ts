@@ -84,15 +84,19 @@ export function noteForgeAccounts(list: readonly ForgeAccount[]) {
   }
 
   // An account added or removed can change which account any repo resolves
-  // to, so every resolution is asked again by the tick below.
+  // to, so every resolution is asked again.
   const changed = ids(was) !== ids(list);
-  if (changed) {
-    setRepos({});
-    setResolvedAt({});
-  }
+  if (changed) resetForgeResolutions();
   // Becoming usable is itself a trigger, because every tick before it was
   // refused by `mayPoll` and none of them will be retried on their own.
-  if (changed || becameUsable) void pollNow("focus");
+  else if (becameUsable) void pollNow("focus");
+}
+
+/** Every repo asks Rust again which account it acts as, starting now. */
+export function resetForgeResolutions() {
+  setRepos({});
+  setResolvedAt({});
+  void pollNow("focus");
 }
 
 /// Ask Rust who an account's token belongs to and fold it in.
