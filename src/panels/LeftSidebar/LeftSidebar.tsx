@@ -399,14 +399,16 @@ export default function LeftSidebar(props: {
     setQuery("");
     setSearching(false);
   }
-  const [mode, setMode] = createSignal<SidebarMode>(loadMode());
+  const [chosenMode, setMode] = createSignal<SidebarMode>(loadMode());
+  // With no project there is no Features tile to leave Features by.
+  const mode = (): SidebarMode => (featuresReachable() ? chosenMode() : "spaces");
   /** What the filter field is filtering, which is whatever the mode is showing. */
   const filterNoun = () => (mode() === "features" ? "features" : "projects");
   /** What the tree's heading says, which is whatever the strip has lit. */
   const headingName = () => (mode() === "features" ? "Features" : (activeSpace()?.name ?? "Spaces"));
   createEffect(() => {
     try {
-      localStorage.setItem(LS_MODE, mode());
+      localStorage.setItem(LS_MODE, chosenMode());
     } catch {
       // ignore quota
     }
@@ -446,6 +448,11 @@ export default function LeftSidebar(props: {
   // spaces, with a divider rendered between the two groups when both exist.
   const rootSpaces = () => visibleSpaces().filter((g) => !g.external);
   const extSpaces = () => visibleSpaces().filter((g) => g.external);
+  const hasSpaces = () => visibleSpaces().length > 0;
+  const hasProjects = () => visibleSpaces().some((g) => g.projects.length > 0);
+  // Assumed until config loads, so a cold start in Features does not flash the
+  // empty Spaces tree first.
+  const featuresReachable = () => !config() || hasProjects();
 
   // The active space. Persisted by name; falls back to the first space when the
   // stored name is gone (e.g. the active space was deleted), so it self-heals.
@@ -1125,14 +1132,15 @@ export default function LeftSidebar(props: {
   // has to reach for the field when it was already there.
   onCleanup(
     onEvent(FOCUS_SEARCH, () => {
+      if (!hasProjects()) return;
       if (!searching()) return setSearching(true);
       requestAnimationFrame(() => searchEl?.select());
     }),
   );
   onCleanup(
-    onEvent(TOGGLE_SIDEBAR_MODE, () =>
-      switchMode(MODE_VALUES[(MODE_VALUES.indexOf(mode()) + 1) % MODE_VALUES.length]),
-    ),
+    onEvent(TOGGLE_SIDEBAR_MODE, () => {
+      if (featuresReachable()) switchMode(MODE_VALUES[(MODE_VALUES.indexOf(mode()) + 1) % MODE_VALUES.length]);
+    }),
   );
 
   function openDeleteSpace(g: Space) {
@@ -3040,7 +3048,7 @@ export default function LeftSidebar(props: {
         </Show>
         {/* Only while the field is shut: open, the field is the affordance and
             the icon would be a second one beside it, in the space it wants. */}
-        <Show when={!searching()}>
+        <Show when={!searching() && hasProjects()}>
           <Button
             class={styles.searchToggle}
             variant="ghost"
@@ -3244,7 +3252,7 @@ export default function LeftSidebar(props: {
 
       {/* Outside the mode gate: the strip is how you leave a mode, so it has to
           render in every one. */}
-      <Show when={config()}>
+      <Show when={config() && (hasRoot() || hasSpaces())}>
         <div class={styles.spaceBar}>
           {/* Out of flow and never seen: the ruler `measureNames` runs each
               candidate name through, wearing the real lit-tile CSS so what it
@@ -3300,10 +3308,13 @@ export default function LeftSidebar(props: {
             {/* Features, past a rule so the strip reads as spaces first. Outside
                 the scroller, so a long space list cannot carry off the way back
                 out of a mode. */}
-            <div class={styles.spaceDivider} />
-            {modeTile("features", "Features", Waypoints)}
+            <Show when={hasProjects()}>
+              <div class={styles.spaceDivider} />
+              {modeTile("features", "Features", Waypoints)}
+            </Show>
           </div>
 
+          <Show when={hasSpaces()}>
           <Tooltip
             as="button"
             type="button"
@@ -3321,6 +3332,7 @@ export default function LeftSidebar(props: {
               </span>
             </Show>
           </Tooltip>
+          </Show>
         </div>
       </Show>
 
