@@ -1,0 +1,187 @@
+import type { Meta, StoryObj } from "storybook-solidjs-vite";
+import { mockIPC } from "@tauri-apps/api/mocks";
+import { userEvent, within } from "storybook/test";
+import ForgeSection from "./ForgeSection";
+import type { AuthState, ForgeAccount, ForgeHost, ForgeProvider, SignInRoutes } from "../../../../utils/forgeTypes";
+
+const signedIn = (login: string): AuthState => ({ kind: "signedIn", login });
+
+function account(host: string, login: string, auth: AuthState, provider: ForgeProvider = "github"): ForgeAccount {
+  return {
+    id: `${host.replace(/\./g, "-")}-${login}`,
+    provider,
+    baseUrl: `https://${host}`,
+    login,
+    label: login,
+    expiresAt: null,
+    rejectedAt: auth.kind === "suspect" ? Date.UTC(2026, 8, 12, 12) / 1000 : null,
+    scopes: provider === "github" ? ["repo", "workflow"] : null,
+    auth,
+  };
+}
+
+function host(name: string, accounts: ForgeAccount[], extra: Partial<ForgeHost> = {}): ForgeHost {
+  return { host: name, accounts, gitCredentials: false, gitEverywhere: false, defaultAccount: null, ...extra };
+}
+
+function routes(baseUrl: string, provider: ForgeProvider): SignInRoutes {
+  const url = baseUrl.startsWith("https://") ? baseUrl : `https://${baseUrl}`;
+  const name = new URL(url).host;
+  const scopes = provider === "github" ? ["repo", "workflow"] : ["api", "write_repository"];
+  return {
+    host: name,
+    baseUrl: url,
+    deviceFlow: name === "github.com" || name === "gitlab.com",
+    scopes,
+    tokenUrl: `${url}/-/user_settings/personal_access_tokens`,
+    appId: null,
+  };
+}
+
+type Device = "waits" | "expires" | "fails";
+
+function stubHost(hosts: ForgeHost[], device: Device = "waits") {
+  window.open = () => null;
+  mockIPC((cmd, args) => {
+    const a = (args ?? {}) as Record<string, unknown>;
+    switch (cmd) {
+      case "forge_accounts":
+        return hosts;
+      case "forge_sign_in_routes":
+        return routes(a.baseUrl as string, a.provider as ForgeProvider);
+      case "forge_device_start":
+        if (device === "fails") return Promise.reject({ kind: "api", message: "gitlab.com is not answering." });
+        return {
+          userCode: "5BB3-E406",
+          verificationUri: "https://github.com/login/device",
+          expiresInSecs: 900,
+          intervalSecs: 1,
+        };
+      case "forge_device_poll":
+        return device === "expires"
+          ? { kind: "expired", code: "expired_token" }
+          : { kind: "pending", nextIntervalSecs: 60 };
+      case "set_settings":
+        return a.settings;
+      default:
+        return null;
+    }
+  });
+}
+
+const meta = {
+  title: "Settings/ForgeSection",
+  component: ForgeSection,
+  decorators: [
+    (Story) => (
+      <div style={{ width: "720px", padding: "24px", background: "var(--canvas-card)" }}>
+        <Story />
+      </div>
+    ),
+  ],
+} satisfies Meta<typeof ForgeSection>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const State01Empty: Story = {
+  render: () => {
+    stubHost([]);
+    return <ForgeSection />;
+  },
+};
+
+export const State02OneGithubAccount: Story = {
+  render: () => {
+    stubHost([host("github.com", [account("github.com", "octocat", signedIn("octocat"))])]);
+    return <ForgeSection />;
+  },
+};
+
+export const State03TwoHosts: Story = {
+  render: () => {
+    stubHost([
+      host(
+        "github.com",
+        [account("github.com", "octocat", signedIn("octocat")), account("github.com", "octocat-review", signedIn("octocat-review"))],
+        { gitCredentials: true, defaultAccount: "github-com-octocat" },
+      ),
+      host("gitlab.com", [account("gitlab.com", "a.mehta", signedIn("a.mehta"), "gitlab")]),
+    ]);
+    return <ForgeSection />;
+  },
+};
+
+export const State04Rejected: Story = {
+  render: () => {
+    stubHost([
+      host("ghe.example.com", [account("ghe.example.com", "j.okafor", { kind: "suspect", login: "j.okafor" })]),
+    ]);
+    return <ForgeSection />;
+  },
+};
+
+export const State05Picker: Story = {
+  render: () => {
+    stubHost([]);
+    return <ForgeSection />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByText("Another host..."));
+    await canvas.findByText("Connect a host");
+  },
+};
+
+export const State06Waiting: Story = {
+  render: () => {
+    stubHost([]);
+    return <ForgeSection />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByText("Connect github.com"));
+    await canvas.findByText("5BB3");
+  },
+};
+
+export const State07TokenPaste: Story = {
+  render: () => {
+    stubHost([], "fails");
+    return <ForgeSection />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByText("Another host..."));
+    await userEvent.click(await canvas.findByText("gitlab.com"));
+    await userEvent.click(await canvas.findByText("Continue"));
+    await userEvent.click(await canvas.findByText("Paste a token instead"));
+    await userEvent.type(await canvas.findByLabelText("Personal access token"), "glpat-xxxxxxxxxxxxxxxxxxxx");
+  },
+};
+
+export const State08SelfManaged: Story = {
+  render: () => {
+    stubHost([]);
+    return <ForgeSection />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByText("Another host..."));
+    await userEvent.click(await canvas.findByText("GitLab, self-managed"));
+    await userEvent.click(await canvas.findByText("Continue"));
+    await userEvent.type(await canvas.findByLabelText("Host URL"), "https://gitlab.acme.dev");
+  },
+};
+
+export const State09Error: Story = {
+  render: () => {
+    stubHost([], "expires");
+    return <ForgeSection />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByText("Connect github.com"));
+    await canvas.findByText("Start again", {}, { timeout: 5000 });
+  },
+};
