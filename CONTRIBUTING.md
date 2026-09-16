@@ -44,8 +44,8 @@ to the bundled set is welcome.
 ### Run it
 
 ```sh
-git clone https://github.com/skarif2/sway.git
-cd sway
+git clone https://github.com/gettori/tori.git
+cd tori
 pnpm install
 pnpm tauri:dev
 ```
