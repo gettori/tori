@@ -211,6 +211,9 @@ describe("the forge accounts settings section", () => {
     expect(card.textContent).toContain("GitHub");
     expect(card.textContent).toContain("signed in");
     expect(card.textContent).toContain("Use this account for git push and fetch");
+    expect(card.textContent).toContain(
+      "Covers Tori's own git, terminal tabs and agents. Tabs and agents already open need reopening after you turn it on.",
+    );
     expect(screen.getByText("Connect another host...")).toBeTruthy();
     expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(false);
   });

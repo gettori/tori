@@ -620,22 +620,28 @@ export default function ForgeSection() {
                   )}
                 </For>
                 <div class={cards.footer} classList={{ [cards.footerInert]: usable().length === 0 }}>
-                  <div class={cards.footerLabel}>
-                    <Show
-                      when={host.accounts.length > 1}
-                      fallback={<span>Use this account for git push and fetch</span>}
-                    >
-                      <span>Use for git push and fetch</span>
-                      <Select
-                        size="xs"
-                        aria-label={`Account ${host.host} pushes and fetches as`}
-                        placeholder="Choose account"
-                        value={host.defaultAccount ?? ""}
-                        options={usable().map((a) => ({ value: a.id, label: forgeAccountName(a) }))}
-                        disabled={usable().length === 0}
-                        onChange={(id) => void setDefaultAccount(host.host, id)}
-                      />
-                    </Show>
+                  <div class={cards.footerText}>
+                    <div class={cards.footerLabel}>
+                      <Show
+                        when={host.accounts.length > 1}
+                        fallback={<span>Use this account for git push and fetch</span>}
+                      >
+                        <span>Use for git push and fetch</span>
+                        <Select
+                          size="xs"
+                          aria-label={`Account ${host.host} pushes and fetches as`}
+                          placeholder="Choose account"
+                          value={host.defaultAccount ?? ""}
+                          options={usable().map((a) => ({ value: a.id, label: forgeAccountName(a) }))}
+                          disabled={usable().length === 0}
+                          onChange={(id) => void setDefaultAccount(host.host, id)}
+                        />
+                      </Show>
+                    </div>
+                    <div class={cards.footerNote}>
+                      Covers Tori's own git, terminal tabs and agents. Tabs and agents already open need reopening
+                      after you turn it on.
+                    </div>
                   </div>
                   <Switch
                     aria-label={`Use ${host.host} for git push and fetch`}
