@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ArrowDown, ArrowUp, Check, CircleAlert, CornerDownLeft } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
+import { GitHubLogo, GitLabLogo } from "../../../../components/Icon/gitMarks";
 import RadioGroup from "../../../../components/RadioGroup/RadioGroup";
 import Select from "../../../../components/Select/Select";
 import Switch from "../../../../components/Switch/Switch";
@@ -543,6 +544,11 @@ export default function ForgeSection() {
             return (
               <div class={cards.card} data-testid="forge-host">
                 <div class={cards.head}>
+                  <span class={cards.logo} aria-hidden="true">
+                    <Show when={family(host) === "GitLab"} fallback={<GitHubLogo size="calc(16px * var(--ui-scale))" />}>
+                      <GitLabLogo size="calc(16px * var(--ui-scale))" />
+                    </Show>
+                  </span>
                   <span class={cards.host}>{host.host}</span>
                   <span class={cards.tag} data-family={family(host)}>
                     {family(host)}
@@ -551,7 +557,6 @@ export default function ForgeSection() {
                   <Show when={family(host) === "GitLab" && host.host !== "gitlab.com"}>
                     <Button
                       variant="ghost"
-                      size="xs"
                       aria-expanded={appIdHost() === host.host}
                       onClick={() => void toggleAppId(host)}
                     >
@@ -560,7 +565,6 @@ export default function ForgeSection() {
                   </Show>
                   <Button
                     variant="ghost"
-                    size="xs"
                     aria-label={`Add account on ${host.host}`}
                     onClick={() => connectHost(host)}
                   >
