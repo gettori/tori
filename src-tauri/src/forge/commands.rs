@@ -357,9 +357,13 @@ fn add_signed_in(
         }
         Err(e) => return Err(e),
     };
+    let scopes = reported_scopes(provider, forge.as_ref());
     let account_id = accounts::update(|file| {
         let id = accounts::add_account(file, provider, base_url, host, &login, reauth)?;
         accounts::note_expiry(file, &id, expires_at);
+        if let Some(scopes) = scopes.clone() {
+            accounts::note_scopes(file, &id, scopes);
+        }
         auth::sign_in(&id, &secret, Some(login.clone()))?;
         Ok(id)
     })?;
@@ -1027,16 +1031,17 @@ pub fn restore_at_startup(enabled: bool) {
                 })
                 .map(|secret| secret.access_token);
             let rejected = account.rejected_at.is_some();
-            if token.is_some() && (account.login.is_none() || rejected) {
+            let unasked = account.provider == Provider::Github && account.scopes.is_none();
+            if token.is_some() && (account.login.is_none() || rejected || unasked) {
                 probe.push(account.id.clone());
             }
             auth::Restored { id: account.id.clone(), token, login: account.login.clone(), rejected }
         })
         .collect();
     auth::restore(entries, enabled);
-    // Only a migrated account starts without a login, and a rejected one gets
-    // the recovery a restart used to give for free. Off the setup thread, since
-    // each is a request.
+    // A migrated account has no login yet, a rejected one gets the recovery a
+    // restart used to give, and a GitHub account with no recorded scopes is
+    // asked once. Off the setup thread, since each is a request.
     if enabled && !probe.is_empty() {
         std::thread::spawn(move || {
             for id in probe {
@@ -1064,11 +1069,22 @@ fn learn_login(account_id: &str) -> Result<String, ForgeError> {
     auth::note_result(account_id, &result);
     let login = result?.login;
     auth::note_login(account_id, login.clone());
+    let scopes = reported_scopes(account.provider, forge.as_ref());
     accounts::update(|file| {
         accounts::note_login(file, account_id, &login);
+        if let Some(scopes) = scopes {
+            accounts::note_scopes(file, account_id, scopes);
+        }
         Ok(())
     })?;
     Ok(login)
+}
+
+/// What to record after a viewer call answered. GitHub only, and a token that
+/// reports no classic scopes (a fine-grained one) records an empty list, so it
+/// reads as asked and is not asked again at every launch.
+fn reported_scopes(provider: Provider, forge: &dyn Forge) -> Option<Vec<String>> {
+    (provider == Provider::Github).then(|| forge.granted_scopes().unwrap_or_default())
 }
 
 fn log_startup(message: &str) {
@@ -1332,6 +1348,46 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&worktree);
         let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_github_sign_in_records_the_scopes_the_host_reported_and_gitlab_records_none() {
+        use super::super::http::test_support::StubTransport;
+        let stub = |resp| Box::new(StubTransport::new(vec![resp]));
+        let github = github::GitHubForge::new(
+            stub(StubTransport::with_headers(200, &[("X-OAuth-Scopes", "repo, workflow")], r#"{"login":"arif"}"#)),
+            "https://github.com",
+            Some("gho_test".into()),
+            None,
+        );
+        github.viewer().unwrap();
+        let mut file = AccountsFile::default();
+        let (base_url, host) = accounts::normalize_base_url("github.com").unwrap();
+        let id = accounts::add_account(&mut file, Provider::Github, &base_url, &host, "arif", None).unwrap();
+        accounts::note_scopes(&mut file, &id, reported_scopes(Provider::Github, &github).unwrap());
+        let file: AccountsFile = serde_json::from_str(&serde_json::to_string(&file).unwrap()).unwrap();
+        let (_, account) = accounts::find(&file, &id).unwrap();
+        assert_eq!(account.scopes.as_deref(), Some(&["repo".to_string(), "workflow".to_string()][..]));
+
+        // A fine-grained token sends no header. It still counts as asked, so the
+        // startup probe does not ask again at every launch.
+        let fine = github::GitHubForge::new(
+            stub(StubTransport::json(200, r#"{"login":"arif"}"#)),
+            "https://github.com",
+            Some("github_pat_test".into()),
+            None,
+        );
+        fine.viewer().unwrap();
+        assert_eq!(reported_scopes(Provider::Github, &fine), Some(vec![]));
+
+        let gitlab = gitlab::GitLabForge::new(
+            stub(StubTransport::json(200, r#"{"username":"arif"}"#)),
+            "https://gitlab.com",
+            Some("glpat_test".into()),
+            None,
+        );
+        gitlab.viewer().unwrap();
+        assert_eq!(reported_scopes(Provider::Gitlab, &gitlab), None);
     }
 
     #[test]

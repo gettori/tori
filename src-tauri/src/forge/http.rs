@@ -201,6 +201,7 @@ pub struct Recording {
     /// [`super::model::AuthState::Suspect`].
     suspect: std::sync::atomic::AtomicBool,
     rate: std::sync::Mutex<RateSnapshot>,
+    scopes: std::sync::Mutex<Option<Vec<String>>>,
 }
 
 impl Recording {
@@ -209,11 +210,18 @@ impl Recording {
             inner,
             suspect: std::sync::atomic::AtomicBool::new(false),
             rate: std::sync::Mutex::new(RateSnapshot::default()),
+            scopes: std::sync::Mutex::new(None),
         }
     }
 
     pub fn rate(&self) -> RateSnapshot {
         *self.rate.lock().unwrap()
+    }
+
+    /// GitHub's `X-OAuth-Scopes` from the last answer, `None` when it carried
+    /// none: a fine-grained token, or a host that does not send it.
+    pub fn scopes(&self) -> Option<Vec<String>> {
+        self.scopes.lock().unwrap().clone()
     }
 
     pub fn suspect(&self) -> bool {
@@ -225,6 +233,9 @@ impl Transport for Recording {
     fn send(&self, req: HttpRequest) -> Result<HttpResponse, ForgeError> {
         let resp = self.inner.send(req)?;
         *self.rate.lock().unwrap() = rate_snapshot(&resp);
+        *self.scopes.lock().unwrap() = resp.header("X-OAuth-Scopes").map(|s| {
+            s.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
+        });
         match resp.status {
             401 => self.suspect.store(true, std::sync::atomic::Ordering::Relaxed),
             // Any answered call clears the suspicion. A 401 from a proxy, a

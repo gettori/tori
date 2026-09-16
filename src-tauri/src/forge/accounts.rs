@@ -59,6 +59,8 @@ pub struct Account {
     /// comes back suspect instead of signed in.
     #[serde(default)]
     pub rejected_at: Option<u64>,
+    #[serde(default)]
+    pub scopes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -180,6 +182,7 @@ pub fn add_account(
         label: login.to_string(),
         expires_at: None,
         rejected_at: None,
+        scopes: None,
     });
     Ok(id)
 }
@@ -232,6 +235,14 @@ pub fn note_rejection(file: &mut AccountsFile, id: &str, suspect: bool, now: u64
     }
 }
 
+pub fn note_scopes(file: &mut AccountsFile, id: &str, scopes: Vec<String>) {
+    for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
+        if account.id == id {
+            account.scopes = Some(scopes.clone());
+        }
+    }
+}
+
 pub fn note_login(file: &mut AccountsFile, id: &str, login: &str) {
     for account in file.hosts.values_mut().flat_map(|r| r.accounts.iter_mut()) {
         if account.id == id {
@@ -267,6 +278,7 @@ pub fn migrate_legacy(
             label: String::new(),
             expires_at: None,
             rejected_at: None,
+            scopes: None,
         });
     }
     file.legacy_migrated = true;
@@ -404,15 +416,16 @@ pub fn sign_in_routes(
     client_id: Option<&str>,
     git_credentials: bool,
 ) -> SignInRoutes {
-    // GitHub's `repo` already carries push; GitLab splits the API from the git
-    // protocol, so a token that has to serve both says so.
+    // GitHub's `repo` already carries push, and `workflow` is what lets that push
+    // include CI files; GitLab splits the API from the git protocol, so a token
+    // that has to serve both says so.
     let scopes: Vec<&str> = match (provider, git_credentials) {
-        (Provider::Github, _) => vec!["repo"],
+        (Provider::Github, _) => vec!["repo", "workflow"],
         (Provider::Gitlab, false) => vec!["api"],
         (Provider::Gitlab, true) => vec!["api", "write_repository"],
     };
     let token_url = match provider {
-        Provider::Github => format!("{base_url}/settings/tokens/new?scopes=repo&description=Tori"),
+        Provider::Github => format!("{base_url}/settings/tokens/new?scopes={}&description=Tori", scopes.join(",")),
         Provider::Gitlab => format!(
             "{base_url}/-/user_settings/personal_access_tokens?name=Tori&scopes={}",
             scopes.join(",")
@@ -702,7 +715,8 @@ mod tests {
     fn github_com_offers_the_browser_and_any_other_host_only_a_token() {
         let github = sign_in_routes(Provider::Github, GH, GITHUB_COM, Some("Ov23test"), false);
         assert!(github.device_flow);
-        assert_eq!(github.scopes, ["repo"]);
+        assert_eq!(github.scopes, ["repo", "workflow"]);
+        assert!(github.token_url.contains("scopes=repo,workflow"));
         assert!(github.token_url.starts_with("https://github.com/settings/tokens/new"));
 
         // Tori's GitHub application covers github.com alone, so an enterprise
