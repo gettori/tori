@@ -53,11 +53,12 @@ const rejected = (login: string, rejectedAt: number | null) =>
   account(`github-com-${login}`, { kind: "suspect", login }, login, { rejectedAt });
 
 /** Rust's ladder, reduced to the facts these tests branch on: Tori's own
- *  application covers github.com, and a GitLab instance has whichever one was
- *  registered on it. */
+ *  application covers github.com and gitlab.com, and any other GitLab instance
+ *  has whichever one was registered on it. */
 function routesFor(baseUrl: string, provider: ForgeProvider = "github"): SignInRoutes {
   const host = new URL(baseUrl).host;
-  const appId = appIds[host] ?? null;
+  const cloud = host === "github.com" || host === "gitlab.com";
+  const appId = cloud ? null : (appIds[host] ?? null);
   // Rust's other rule: GitHub's `repo` already carries push, while GitLab needs
   // the git scope named separately once the host answers git.
   const scopes =
@@ -65,7 +66,7 @@ function routesFor(baseUrl: string, provider: ForgeProvider = "github"): SignInR
   return {
     host,
     baseUrl,
-    deviceFlow: host === "github.com" || appId !== null,
+    deviceFlow: cloud || appId !== null,
     scopes,
     tokenUrl: `${baseUrl}/settings/tokens/new?scopes=${scopes.join(",")}`,
     appId,
@@ -343,7 +344,8 @@ describe("the forge accounts settings section", () => {
     render(() => <ForgeSection />);
     fireEvent.click(await screen.findByText("Another host..."));
     await waitFor(() => expect(flowCard().getByText("github.com").nextElementSibling?.textContent).toBe("browser"));
-    expect(flowCard().getByText("gitlab.com").nextElementSibling?.textContent).toBe("token");
+    expect(flowCard().getByText("gitlab.com").nextElementSibling?.textContent).toBe("browser");
+    expect(flowCard().getAllByText("No fields. Opens your browser.")).toHaveLength(2);
     expect(flowCard().getByText("GitHub Enterprise").nextElementSibling?.textContent).toBe("token");
   });
 
@@ -359,23 +361,24 @@ describe("the forge accounts settings section", () => {
     expect(flowCard().getByText("GitLab, self-managed")).toBeTruthy();
   });
 
-  it("flips gitlab.com's tile to the browser once an application id is saved on its card", async () => {
-    hosts = [
-      hostOf("gitlab.com", [
-        account("gitlab-com-arif", { kind: "signedIn", login: "arif" }, "arif", {
-          provider: "gitlab",
-          baseUrl: "https://gitlab.com",
-        }),
-      ]),
-    ];
+  it("offers an Application ID only on a self-managed card, and its saved id opens the browser there", async () => {
+    const gitlab = (host: string) =>
+      account(`${host}-arif`, { kind: "signedIn", login: "arif" }, "arif", {
+        provider: "gitlab",
+        baseUrl: `https://${host}`,
+      });
+    hosts = [hostOf("gitlab.com", [gitlab("gitlab.com")]), hostOf("git.example.com", [gitlab("git.example.com")])];
     render(() => <ForgeSection />);
-    fireEvent.click(await screen.findByText("Application ID"));
-    fireEvent.input(await screen.findByLabelText("Application ID for gitlab.com"), { target: { value: "app-123" } });
-    fireEvent.click(screen.getByText("Save"));
-    await waitFor(() => expect(appIds["gitlab.com"]).toBe("app-123"));
+    const [cloud, own] = await screen.findAllByTestId("forge-host");
+    expect(within(cloud).queryByText("Application ID")).toBeNull();
 
-    fireEvent.click(await screen.findByText("Connect another host..."));
-    await waitFor(() => expect(flowCard().getByText("gitlab.com").nextElementSibling?.textContent).toBe("browser"));
+    fireEvent.click(within(own).getByText("Application ID"));
+    fireEvent.input(await screen.findByLabelText("Application ID for git.example.com"), { target: { value: "app-123" } });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(appIds["git.example.com"]).toBe("app-123"));
+
+    fireEvent.click(screen.getByLabelText("Add account on git.example.com"));
+    await waitFor(() => expect(calls.start).toBe(1));
   });
 
   it("asks a self-hosted product for its URL, and says why the browser is not there yet", async () => {
