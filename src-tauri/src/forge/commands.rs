@@ -159,6 +159,12 @@ pub fn forge_set_app_id(
     app_id: String,
 ) -> Result<SignInRoutes, ForgeErrorDto> {
     let (base_url, host) = accounts::normalize_base_url(&base_url)?;
+    if host == accounts::GITLAB_COM {
+        return Err(ForgeError::Invalid {
+            message: "gitlab.com signs in with Tori's own application.".into(),
+        }
+        .into());
+    }
     accounts::update(|file| Ok(accounts::set_app_id(file, &host, &app_id)))?;
     let file = accounts::load();
     Ok(routes_in(&file, provider, &base_url, &host))
@@ -198,16 +204,18 @@ fn routes_in(
 
 /// The OAuth application a host's browser sign-in would use.
 ///
-/// Tori's own on github.com. On GitLab it is whichever the user registered on
-/// that instance, falling back to Tori's for gitlab.com once one exists.
+/// Tori's own on github.com and gitlab.com. On any other GitLab it is whichever
+/// the user registered on that instance.
+///
+/// A stored gitlab.com id is ignored rather than preferred: nothing can clear
+/// it, and gitlab.com tokens renew with Tori's application.
 fn client_id_for(file: &AccountsFile, provider: Provider, host: &str) -> Option<String> {
     match provider {
         Provider::Github => (host == accounts::GITHUB_COM && device_flow::is_configured())
             .then(|| device_flow::CLIENT_ID.to_string()),
-        Provider::Gitlab => accounts::app_id(file, host).or_else(|| {
-            (host == accounts::GITLAB_COM && !device_flow::GITLAB_COM_CLIENT_ID.is_empty())
-                .then(|| device_flow::GITLAB_COM_CLIENT_ID.to_string())
-        }),
+        Provider::Gitlab if host == accounts::GITLAB_COM => (!device_flow::GITLAB_COM_CLIENT_ID.is_empty())
+            .then(|| device_flow::GITLAB_COM_CLIENT_ID.to_string()),
+        Provider::Gitlab => accounts::app_id(file, host),
     }
 }
 
@@ -1324,6 +1332,22 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&worktree);
         let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn gitlab_com_signs_in_with_tori_s_application_even_with_an_id_stored() {
+        // A token renews only with the application that issued it, so an id
+        // left over from before Tori registered one must not win on gitlab.com.
+        let mut file = AccountsFile::default();
+        accounts::set_app_id(&mut file, accounts::GITLAB_COM, "their-own-app");
+        accounts::set_app_id(&mut file, "git.example.com", "company-app");
+
+        assert_eq!(
+            client_id_for(&file, Provider::Gitlab, accounts::GITLAB_COM).as_deref(),
+            Some(device_flow::GITLAB_COM_CLIENT_ID)
+        );
+        assert_eq!(client_id_for(&file, Provider::Gitlab, "git.example.com").as_deref(), Some("company-app"));
+        assert_eq!(client_id_for(&file, Provider::Gitlab, "gitlab.acme.test"), None);
     }
 
     #[test]

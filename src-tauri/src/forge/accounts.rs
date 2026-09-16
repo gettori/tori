@@ -336,8 +336,9 @@ pub struct SignInRoutes {
     pub device_flow: bool,
     pub scopes: Vec<String>,
     pub token_url: String,
-    // GitLab only: GitHub's application is Tori's own, and showing it would
-    // invite editing something the user cannot change.
+    // Self-managed GitLab only: on github.com and gitlab.com the application is
+    // Tori's own, and showing it would invite editing something the user cannot
+    // change.
     pub app_id: Option<String>,
 }
 
@@ -428,8 +429,8 @@ pub fn sign_in_routes(
         scopes: scopes.iter().map(|s| s.to_string()).collect(),
         token_url,
         app_id: match provider {
-            Provider::Gitlab => client_id.map(|id| id.to_string()).filter(|id| !id.is_empty()),
-            Provider::Github => None,
+            Provider::Gitlab if host != GITLAB_COM => client_id.map(|id| id.to_string()).filter(|id| !id.is_empty()),
+            _ => None,
         },
     }
 }
@@ -714,6 +715,16 @@ mod tests {
         let gitlab = sign_in_routes(Provider::Gitlab, "https://gitlab.com", GITLAB_COM, None, false);
         assert!(!gitlab.device_flow);
         assert_eq!(gitlab.scopes, ["api"]);
+    }
+
+    #[test]
+    fn gitlab_com_offers_the_browser_without_exposing_tori_s_application_id() {
+        let gitlab = sign_in_routes(Provider::Gitlab, "https://gitlab.com", GITLAB_COM, Some("tori-app"), false);
+        assert!(gitlab.device_flow);
+        assert_eq!(gitlab.app_id, None, "an id the card would show is an id the user would try to edit");
+
+        let own = sign_in_routes(Provider::Gitlab, "https://git.example.com", "git.example.com", Some("app-123"), false);
+        assert_eq!(own.app_id.as_deref(), Some("app-123"));
     }
 
     #[test]

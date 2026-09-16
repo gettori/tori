@@ -73,7 +73,7 @@ const PICKER: { product: Product; name: string; mono: boolean; note: (route: Rou
     product: "gitlab.com",
     name: "gitlab.com",
     mono: true,
-    note: (route) => (route === "browser" ? "No fields. Opens your browser." : "Browser once an App ID is set."),
+    note: (route) => (route === "browser" ? "No fields. Opens your browser." : "Paste a token."),
   },
   { product: "enterprise", name: "GitHub Enterprise", mono: false, note: () => "Your own server. Host URL, then token." },
   { product: "self-managed", name: "GitLab, self-managed", mono: false, note: () => "Your own instance." },
@@ -528,7 +528,7 @@ export default function ForgeSection() {
                     {family(host)}
                   </span>
                   <span class={cards.spacer} />
-                  <Show when={family(host) === "GitLab"}>
+                  <Show when={family(host) === "GitLab" && host.host !== "gitlab.com"}>
                     <Button
                       variant="ghost"
                       size="xs"
@@ -562,8 +562,8 @@ export default function ForgeSection() {
                       </Button>
                     </div>
                     <div class={cards.hint}>
-                      A public OAuth application on {host.host} with the api scope. Once one is saved, adding
-                      an account here opens the browser.
+                      A public OAuth application on {host.host} with the api scope, and "Device authorization
+                      grant" ticked if the form has it. Once one is saved, adding an account here opens the browser.
                     </div>
                   </div>
                 </Show>
@@ -721,8 +721,9 @@ export default function ForgeSection() {
                   <Show when={state().product === "self-managed" && !appIdLater()}>
                     <div class={cards.footer}>
                       <span class={cards.footNote}>
-                        Browser sign-in for this instance needs its OAuth Application ID. Optional: once one is
-                        saved on the host card, adding an account there opens the browser.
+                        Browser sign-in for this instance needs its OAuth Application ID, from a public app with
+                        the api scope and "Device authorization grant" ticked if the form has it. Optional: once one
+                        is saved on the host card, adding an account there opens the browser.
                       </span>
                       <Button variant="ghost" size="xs" onClick={() => setAppIdLater(true)}>
                         Add later
