@@ -246,6 +246,7 @@ function signInForgeAccount() {
     login: "skarif2",
     label: "skarif2",
     expiresAt: null,
+    rejectedAt: null,
     auth: authState as ForgeAccount["auth"],
   };
   noteForgeAccounts(authState.kind === "signedOut" ? [] : [account]);

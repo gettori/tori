@@ -79,6 +79,7 @@ function account(id: string, auth: AuthState): ForgeAccount {
     login: auth.kind === "signedIn" ? auth.login : null,
     label: id,
     expiresAt: null,
+    rejectedAt: null,
     auth,
   };
 }

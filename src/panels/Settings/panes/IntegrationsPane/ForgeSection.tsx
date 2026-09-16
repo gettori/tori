@@ -24,8 +24,8 @@ import styles from "../../Settings.module.css";
 type PollReport =
   | { kind: "authorized"; accountId: string; login: string }
   | { kind: "pending"; nextIntervalSecs: number }
-  | { kind: "denied" }
-  | { kind: "expired" };
+  | { kind: "denied"; code: string }
+  | { kind: "expired"; code: string };
 
 type DevicePrompt = {
   userCode: string;
