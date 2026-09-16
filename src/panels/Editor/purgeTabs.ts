@@ -30,7 +30,7 @@ export type TabMaps<T extends PathTab> = {
  * or to null when nothing survives. `removed` lists the dropped paths so the
  * caller can clear the state it keys by path (dirty flags, preview choices).
  *
- * A synthetic tab (`sway://…`) is matched on the workspace its id carries, not
+ * A synthetic tab (`tori://…`) is matched on the workspace its id carries, not
  * on the id itself, so a deleted space takes its commit-log tabs with it rather
  * than leaving views onto a folder that is gone.
  *

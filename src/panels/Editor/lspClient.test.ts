@@ -126,7 +126,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@codemirror/lsp-client", () => ({
-  // `SwayWorkspace` extends this, so it has to be a real constructor even
+  // `ToriWorkspace` extends this, so it has to be a real constructor even
   // though nothing here exercises the library's own implementation.
   Workspace: class {
     constructor(readonly client: unknown) {}
@@ -557,7 +557,7 @@ describe("code-action capabilities", () => {
       .find(Boolean);
   };
 
-  it("advertises literal support with the kinds Sway groups by", async () => {
+  it("advertises literal support with the kinds Tori groups by", async () => {
     // Without `codeActionLiteralSupport` a server may answer with bare
     // `Command`s, which carry no kind to group by and no edit to apply.
     const block = await codeActionBlock("/proj/ca");
@@ -716,7 +716,7 @@ describe("workspace/codeLens/refresh", () => {
   const refresh = (id: unknown) => JSON.stringify({ jsonrpc: "2.0", id, method: "workspace/codeLens/refresh" });
 
   it("answers it rather than letting the library reject it", async () => {
-    // Sway declares `workspace.codeLens.refreshSupport`, so a -32601 here is
+    // Tori declares `workspace.codeLens.refreshSupport`, so a -32601 here is
     // the client contradicting its own capabilities. A conformant server reads
     // that as a lie and stops asking, and the lenses would then only ever be as
     // fresh as the next edit to the file they happen to be drawn in - which is
@@ -938,14 +938,14 @@ describe("schema associations", () => {
     expect(frames().map((f) => f.method)).not.toContain("json/schemaAssociations");
   });
 
-  it("describes Sway's own settings files even with no catalog at all", async () => {
+  it("describes Tori's own settings files even with no catalog at all", async () => {
     // The offline half of the phase, and the reason these are gathered
     // separately from the catalog's: they are files this build ships, so they
     // are there whether or not the network was. Folded into the same list, they
     // would have been dropped by the early return above.
     registry = [JSON_SERVER];
     associations = [];
-    schemaDir = "/Applications/Sway.app/Contents/Resources/resources/schemas";
+    schemaDir = "/Applications/Tori.app/Contents/Resources/resources/schemas";
     const m = await freshModule();
     await m.ensureLspFor("/proj/js4/a.json", "/proj/js4");
     await settle();
@@ -954,12 +954,12 @@ describe("schema associations", () => {
     expect(frame?.params).toEqual([
       [
         {
-          uri: `file://${schemaDir}/sway-settings.schema.json`,
-          fileMatch: ["**/.config/sway/settings.json"],
+          uri: `file://${schemaDir}/tori-settings.schema.json`,
+          fileMatch: ["**/.config/tori/settings.json"],
         },
         {
-          uri: `file://${schemaDir}/sway-workspace-settings.schema.json`,
-          fileMatch: ["**/.sway/settings.json"],
+          uri: `file://${schemaDir}/tori-workspace-settings.schema.json`,
+          fileMatch: ["**/.tori/settings.json"],
         },
       ],
     ]);
@@ -977,8 +977,8 @@ describe("schema associations", () => {
       uri: string;
     }[];
     expect(sent.map((a) => a.uri)).toEqual([
-      "file:///res/schemas/sway-settings.schema.json",
-      "file:///res/schemas/sway-workspace-settings.schema.json",
+      "file:///res/schemas/tori-settings.schema.json",
+      "file:///res/schemas/tori-workspace-settings.schema.json",
       "https://json.schemastore.org/package.json",
     ]);
   });

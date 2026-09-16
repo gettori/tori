@@ -14,7 +14,7 @@ export type ButtonSize = "md" | "sm" | "xs";
 export interface ButtonProps
   extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "type" | "title"> {
   /** Narrower than the native attribute, which Solid still types with the
-   *  long-dead `"menu"` value. Nothing in Sway passes it. */
+   *  long-dead `"menu"` value. Nothing in Tori passes it. */
   type?: "submit" | "reset" | "button";
   variant?: ButtonVariant;
   size?: ButtonSize;

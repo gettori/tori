@@ -383,7 +383,7 @@ describe("the project a member's repo was discovered as", () => {
         name: "web",
         path: "/w/web",
         branchUnits: [
-          unit("/w/web/.sway/worktrees/auth", "worktree"),
+          unit("/w/web/.tori/worktrees/auth", "worktree"),
           unit("/w/web", "plain"),
         ],
       },
@@ -394,7 +394,7 @@ describe("the project a member's repo was discovered as", () => {
     // Position says nothing, and matching the *member's* worktree would answer
     // `worktree` here, which would offer a `.shared/` folder that is not there.
     const [m] = tintedMembers(
-      { members: [member("/w/web", "/w/web/.sway/worktrees/auth")] } as never,
+      { members: [member("/w/web", "/w/web/.tori/worktrees/auth")] } as never,
       [PLAIN] as never,
     );
     expect(m.kind).toBe("plain");

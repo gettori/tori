@@ -131,7 +131,7 @@ fn git_ok(repo: &str, args: &[&str]) -> Result<(), String> {
 /// Drop admin entries whose folder is gone. Best-effort: a repo that cannot run
 /// it is one the caller is about to fail on anyway.
 ///
-/// Worth its own name because git keeps listing a worktree deleted outside Sway,
+/// Worth its own name because git keeps listing a worktree deleted outside Tori,
 /// and `list_worktrees_body` does not parse the `prunable` field that would say
 /// so. Every caller that reads the list to decide whether a worktree exists has
 /// to prune first, or it adopts a folder that is not there.
@@ -278,7 +278,7 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
 
     let target = create_worktree_in(&repo_path, &branch, Path::new(&repo_path))?;
     let target_str = target.to_string_lossy().into_owned();
-    // Sway created this folder: adopt it so reusing a path that held old sessions
+    // Tori created this folder: adopt it so reusing a path that held old sessions
     // does not surface them as historical.
     let _ = crate::sessions::adopt(&target_str);
     let _ = app.emit("config://changed", ());
@@ -286,7 +286,7 @@ pub(crate) fn create_worktree_body(app: AppHandle, repo_path: String, branch: St
 }
 
 /// The creation core, parameterised on where the folder goes: `container` is
-/// the bare container itself, or `<repo>/.sway/worktrees` for a plain repo. A
+/// the bare container itself, or `<repo>/.tori/worktrees` for a plain repo. A
 /// branch that already has a worktree yields that worktree's path, except the
 /// main checkout of a plain repo, which is the user's own and never adopted.
 /// No adopt, no emit: the caller decides what the new folder means.
@@ -642,7 +642,7 @@ mod tests {
         // A per-process counter so parallel tests never share a dir (nanos alone
         // can collide between two tests that start in the same instant).
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway-wt-test-{n}-{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori-wt-test-{n}-{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -934,9 +934,9 @@ mod tests {
         git(&repo, &["add", "."]);
         git(&repo, &["commit", "-qm", "init"]);
         let repo_s = repo.to_string_lossy().into_owned();
-        let container = repo.join(".sway/worktrees");
+        let container = repo.join(".tori/worktrees");
         std::fs::create_dir_all(&container).unwrap();
-        crate::git::exclude_from_repo(&repo_s, ".sway");
+        crate::git::exclude_from_repo(&repo_s, ".tori");
 
         let made = create_worktree_in(&repo_s, "feat/x", &container).unwrap();
         assert_eq!(made, container.join("x"));

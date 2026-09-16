@@ -71,7 +71,7 @@ import { deflateSync } from "node:zlib";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const FIXTURES = join(ROOT, "dev", "fixtures", "claude");
-const CLAUDE = process.env.SWAY_CLAUDE_BIN || join(process.env.HOME, ".local", "bin", "claude");
+const CLAUDE = process.env.TORI_CLAUDE_BIN || join(process.env.HOME, ".local", "bin", "claude");
 const TURN_TIMEOUT_MS = 180_000;
 
 const args = process.argv.slice(2);
@@ -518,7 +518,7 @@ function captureHookSettings(scratch, log) {
       // No `permissionDecision`, deliberately: any decision would end the chain
       // here and the harness would never ask. What this scenario measures is
       // that an output carrying *only* an unknown key does not.
-      "  process.stdout.write(JSON.stringify({ swayApproval: true }));",
+      "  process.stdout.write(JSON.stringify({ toriApproval: true }));",
       "});",
     ].join("\n"),
   );
@@ -659,7 +659,7 @@ const SCENARIOS = {
   //
   // Also records what the control protocol will *not* do: move the permission
   // question between surfaces mid-session. `--permission-prompt-tool` and
-  // `--settings` both bind when the child starts, so Sway's escape-hatch setting
+  // `--settings` both bind when the child starts, so Tori's escape-hatch setting
   // can only apply from the next session - which is a limitation to state in the
   // setting's help text rather than one to discover during an incident. Asserted
   // against the CLI so that a version which *does* add a setter fails here
@@ -687,7 +687,7 @@ const SCENARIOS = {
   // tool_use / tool_result framing, on the cheapest tool.
   "bash-call": async ({ scratch }) => {
     const p = new Probe({ cwd: scratch, extraArgs: ["--permission-mode", "bypassPermissions"] });
-    p.sendTurn("Use the Bash tool to run exactly `echo sway-probe`. Then reply with just the output.");
+    p.sendTurn("Use the Bash tool to run exactly `echo tori-probe`. Then reply with just the output.");
     await p.waitForResult();
     await p.close();
     return p;
@@ -807,9 +807,9 @@ const SCENARIOS = {
 
   // --- the in-protocol permission path (`--permission-prompt-tool stdio`) ---
   //
-  // The gate this whole direction rests on: Sway stops deciding permissions and
+  // The gate this whole direction rests on: Tori stops deciding permissions and
   // renders the harness's own question instead. What matters is not that *every*
-  // tool asks, but that every tool Sway would otherwise have gated either asks
+  // tool asks, but that every tool Tori would otherwise have gated either asks
   // or is one the harness deliberately settled itself.
   //
   // Measured 2026-08-14 on claude 2.1.231, one turn per class:
@@ -853,7 +853,7 @@ const SCENARIOS = {
     return p;
   },
 
-  // The two claims Sway's capture hook is built on, measured together because
+  // The two claims Tori's capture hook is built on, measured together because
   // they only matter together: the `matcher` alternation really selects (so the
   // hook is handed Edit and Write and never Read), and a hook that emits no
   // decision lets the permission chain continue (so the harness still asks).
@@ -893,10 +893,10 @@ const SCENARIOS = {
     }
     if (asked.includes("Read")) throw new Error("Read raised can_use_tool, which contradicts the read-only auto-allow");
 
-    // And the marker survived the round trip, which is what lets Sway tell its
+    // And the marker survived the round trip, which is what lets Tori tell its
     // own hook row apart from a user's. `hook_name` cannot: it reports the tool.
     const responses = p.events.filter((e) => e.type === "system" && e.subtype === "hook_response");
-    const echoed = responses.filter((e) => typeof e.output === "string" && e.output.includes("swayApproval"));
+    const echoed = responses.filter((e) => typeof e.output === "string" && e.output.includes("toriApproval"));
     if (!echoed.length) {
       const seen = responses.map((e) => JSON.stringify({ output: e.output, stdout: e.stdout, outcome: e.outcome }));
       throw new Error(`no hook_response carried the marker back; saw: ${seen.join(" | ") || "no hook_response at all"}`);
@@ -1024,7 +1024,7 @@ const SCENARIOS = {
   },
 
   // Task 6's question, answered on the wire: an allow can carry a durable grant,
-  // so "always allow this" is a real affordance rather than one Sway fakes.
+  // so "always allow this" is a real affordance rather than one Tori fakes.
   // Two Writes, the first answered with a session-scoped `addRules` echoing the
   // CLI's own suggestion; the second must not ask.
   "permission-grant": async ({ scratch }) => {
@@ -1042,7 +1042,7 @@ const SCENARIOS = {
             {
               type: "addRules",
               // The harness's own rule text, echoed back. Composing one here
-              // would be Sway inventing the grammar it is trying to defer to.
+              // would be Tori inventing the grammar it is trying to defer to.
               rules: offered?.rules ?? [{ toolName: "Write" }],
               behavior: "allow",
               destination: "session",
@@ -1069,11 +1069,11 @@ const SCENARIOS = {
 
   // Who owns the deadline. Measured: a `can_use_tool` left unanswered was still
   // outstanding after 413s, with no result frame and no timeout of the CLI's
-  // own, so an unanswered prompt is a hang unless Sway ends it. That is why
+  // own, so an unanswered prompt is a hang unless Tori ends it. That is why
   // `claude_transport.rs` arms its own timer rather than racing one.
   //
   // Bounded well under that here: what has to stay true is that the CLI does not
-  // resolve the question before Sway's own DECIDE_TIMEOUT_SECS (110s) would. If
+  // resolve the question before Tori's own DECIDE_TIMEOUT_SECS (110s) would. If
   // the CLI ever gains a shorter timeout, this fails and says so.
   "permission-deadline": async ({ scratch }) => {
     const WAIT_MS = 115_000;
@@ -1093,13 +1093,13 @@ const SCENARIOS = {
     if (resolved) {
       throw new Error(
         `the CLI resolved an unanswered permission request within ${waited}ms, so it now has a deadline of its ` +
-          "own and Sway's 110s auto-deny is no longer the one that fires first",
+          "own and Tori's 110s auto-deny is no longer the one that fires first",
       );
     }
     return p;
   },
 
-  // `AskUserQuestion` is not a permission question, and the whole of Sway's
+  // `AskUserQuestion` is not a permission question, and the whole of Tori's
   // question surface rests on two measurements taken here.
   //
   //   1. **It raises `can_use_tool` in every permission mode**, `acceptEdits`
@@ -1107,7 +1107,7 @@ const SCENARIOS = {
   //      `permission-coverage` measures for every other tool, and it is the
   //      exception the surface depends on: the CLI has no interactive client
   //      on this transport, so it hands the question out rather than deciding
-  //      it. If this ever narrows to `default`, Sway's question form silently
+  //      it. If this ever narrows to `default`, Tori's question form silently
   //      stops appearing for anyone not in that mode.
   //   2. **A deny's `message` is what the model reads**, byte for byte, with
   //      `is_error: true`. That is the only channel a permission answer has for
@@ -1116,7 +1116,7 @@ const SCENARIOS = {
   //      milliseconds with "The user did not answer the questions.", because
   //      allowing the call only lets it run against a client that is not there.
   //
-  // The non-ASCII byte in the probe's message is deliberate. The string Sway
+  // The non-ASCII byte in the probe's message is deliberate. The string Tori
   // sends back quotes the user's own question text, which is arbitrary, so a
   // channel that mangled anything outside ASCII would corrupt real answers.
   "ask-user-question": async ({ scratch }) => {
@@ -1146,7 +1146,7 @@ const SCENARIOS = {
     }
     const answered = p.permissionRequests.find((r) => r.tool_name === "AskUserQuestion");
     // The shape the question form is built against. A fourth key, or a renamed
-    // one, changes what Sway has to render.
+    // one, changes what Tori has to render.
     for (const key of ["question", "header", "options", "multiSelect"]) {
       if (!(key in (answered.input?.questions?.[0] ?? {}))) {
         throw new Error(`a question lost the '${key}' key: ${JSON.stringify(answered.input?.questions?.[0])}`);
@@ -1169,9 +1169,9 @@ const SCENARIOS = {
     // Mode independence, the half that cannot be read off the fixture. Its own
     // child in its own directory, and its events are deliberately not the
     // captured ones: the fixture pins one vocabulary, and this pins that the
-    // question still reaches Sway when the user has stopped being asked about
+    // question still reaches Tori when the user has stopped being asked about
     // anything else.
-    const bypassCwd = mkdtempSync(join(tmpdir(), "sway-probe-ask-bypass-"));
+    const bypassCwd = mkdtempSync(join(tmpdir(), "tori-probe-ask-bypass-"));
     const bypass = new Probe({
       cwd: bypassCwd,
       extraArgs: ["--permission-mode", "bypassPermissions", "--permission-prompt-tool", "stdio"],
@@ -1225,10 +1225,10 @@ const SCENARIOS = {
 
   // A Read outside the cwd under `--add-dir`. Measured without the flag, the
   // same Read raises `can_use_tool` in default mode; with it, nothing asks.
-  // This is what lets Sway write a pasted file under its own app data and
+  // This is what lets Tori write a pasted file under its own app data and
   // hand the agent a path, rather than the bytes ([[adr_attachments_are_labelled_paths]]).
   "read-add-dir": async ({ scratch }) => {
-    const outside = mkdtempSync(join(tmpdir(), "sway-probe-outside-"));
+    const outside = mkdtempSync(join(tmpdir(), "tori-probe-outside-"));
     const target = join(outside, "note.txt");
     writeFileSync(target, "one\ntwo\nthree\n");
     const p = new Probe({
@@ -1253,7 +1253,7 @@ const SCENARIOS = {
 
   // Fast mode is refused over this transport, and the refusal is the fixture's
   // whole point. `/fast` is in the slash-command catalogue describing itself as
-  // "Toggle fast mode (Opus 5)", so it looks like a control Sway could ship;
+  // "Toggle fast mode (Opus 5)", so it looks like a control Tori could ship;
   // sending it on Opus 5 - the model it names - answers "Fast mode is not
   // available in the Agent SDK" and leaves `fast_mode_state: "off"` on both the
   // sending turn's `system/init` and the next one's. Measured identically on
@@ -1262,7 +1262,7 @@ const SCENARIOS = {
   //
   // The vocabulary check cannot see this: a working toggle and a refusal emit
   // the same frame kinds. So the measurement is asserted here instead, and it
-  // fails loudly if a later CLI opts the SDK in - which is the day Sway should
+  // fails loudly if a later CLI opts the SDK in - which is the day Tori should
   // ship the toggle this scenario currently says it must not.
   //
   // OPERATOR NOTE: this is the only scenario that pins a model, so it is the
@@ -1300,7 +1300,7 @@ const SCENARIOS = {
 
 async function main() {
   if (!existsSync(CLAUDE)) {
-    console.error(`claude not found at ${CLAUDE} (set SWAY_CLAUDE_BIN)`);
+    console.error(`claude not found at ${CLAUDE} (set TORI_CLAUDE_BIN)`);
     process.exit(2);
   }
   const version = (await run(CLAUDE, ["--version"])).trim();
@@ -1314,7 +1314,7 @@ async function main() {
       console.error(`unknown scenario: ${name}`);
       process.exit(2);
     }
-    const scratch = mkdtempSync(join(tmpdir(), `sway-probe-${name}-`));
+    const scratch = mkdtempSync(join(tmpdir(), `tori-probe-${name}-`));
     let probe;
     try {
       probe = await scenario({ scratch });

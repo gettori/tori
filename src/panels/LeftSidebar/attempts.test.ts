@@ -18,14 +18,14 @@ describe("groupAttempts", () => {
   it("renders three attempts as one group and leaves an ordinary worktree alone", () => {
     const units = [
       unit("/repo/main", "main"),
-      unit("/repo/.sway-attempts/try-1", "try-1"),
-      unit("/repo/.sway-attempts/try-2", "try-2"),
-      unit("/repo/.sway-attempts/try-3", "try-3"),
+      unit("/repo/.tori-attempts/try-1", "try-1"),
+      unit("/repo/.tori-attempts/try-2", "try-2"),
+      unit("/repo/.tori-attempts/try-3", "try-3"),
     ];
     const attempts = [
-      attempt("/repo/.sway-attempts/try-1", "g1"),
-      attempt("/repo/.sway-attempts/try-2", "g1"),
-      attempt("/repo/.sway-attempts/try-3", "g1"),
+      attempt("/repo/.tori-attempts/try-1", "g1"),
+      attempt("/repo/.tori-attempts/try-2", "g1"),
+      attempt("/repo/.tori-attempts/try-3", "g1"),
     ];
 
     const { units: ordinary, groups } = groupAttempts(units, attempts);
@@ -38,9 +38,9 @@ describe("groupAttempts", () => {
 
   it("keeps two groups apart, in the order they were created", () => {
     const attempts = [
-      attempt("/repo/.sway-attempts/a", "g1", "first question"),
-      attempt("/repo/.sway-attempts/b", "g2", "second question"),
-      attempt("/repo/.sway-attempts/c", "g1", "first question"),
+      attempt("/repo/.tori-attempts/a", "g1", "first question"),
+      attempt("/repo/.tori-attempts/b", "g2", "second question"),
+      attempt("/repo/.tori-attempts/c", "g1", "first question"),
     ];
 
     const { groups } = groupAttempts([], attempts);
@@ -56,7 +56,7 @@ describe("groupAttempts", () => {
   it("groups attempts that have no branch-unit of their own", () => {
     const { units: ordinary, groups } = groupAttempts(
       [unit("/repo", "main")],
-      [attempt("/repo/.sway-attempts/try-1", "g1"), attempt("/repo/.sway-attempts/try-2", "g1")],
+      [attempt("/repo/.tori-attempts/try-1", "g1"), attempt("/repo/.tori-attempts/try-2", "g1")],
     );
 
     expect(ordinary.map((u) => u.label)).toEqual(["main"]);
@@ -76,7 +76,7 @@ describe("groupAttempts", () => {
   });
 
   // git reports a worktree under `$TMPDIR` as `/private/var/...` while the
-  // recorded path came from the root Sway was given, so an unnormalized compare
+  // recorded path came from the root Tori was given, so an unnormalized compare
   // would render every attempt twice: once in its group, once as a worktree.
   it("matches a recorded path against git's /private form", () => {
     expect(samePath("/var/folders/x/repo/a", "/private/var/folders/x/repo/a")).toBe(true);
@@ -84,8 +84,8 @@ describe("groupAttempts", () => {
     expect(samePath("/repo/a", "/repo/b")).toBe(false);
 
     const { units: ordinary, groups } = groupAttempts(
-      [unit("/private/var/repo/.sway-attempts/try-1", "try-1")],
-      [attempt("/var/repo/.sway-attempts/try-1", "g1")],
+      [unit("/private/var/repo/.tori-attempts/try-1", "try-1")],
+      [attempt("/var/repo/.tori-attempts/try-1", "g1")],
     );
     expect(ordinary).toEqual([]);
     expect(groups[0].members[0].unit?.label).toBe("try-1");

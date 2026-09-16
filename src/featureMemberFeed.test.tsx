@@ -12,8 +12,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor, fireEvent } from "@solidjs/testing-library";
 
-const A = "/w/api/.sway/worktrees/auth";
-const B = "/w/web/.sway/worktrees/auth";
+const A = "/w/api/.tori/worktrees/auth";
+const B = "/w/web/.tori/worktrees/auth";
 
 const member = (repoPath: string, displayName: string, worktreePath: string, order: number) => ({
   repoPath,

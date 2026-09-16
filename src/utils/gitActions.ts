@@ -1,4 +1,4 @@
-// The git actions Sway can take, and the status they act on.
+// The git actions Tori can take, and the status they act on.
 //
 // Both live here rather than inside the Changes panel because that panel is
 // unmounted whenever the right pane is showing anything else, and a command
@@ -464,7 +464,7 @@ export async function push(root: string, branch: string): Promise<boolean> {
 }
 
 /**
- * Subscribe the store to the events that change status behind Sway's back.
+ * Subscribe the store to the events that change status behind Tori's back.
  *
  * Watcher bursts included, because the Changes panel is unmounted whenever the
  * right pane shows anything else and the palette still has to know what is

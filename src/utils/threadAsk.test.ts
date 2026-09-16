@@ -96,8 +96,8 @@ describe("composing a review thread for the agent that owns the branch", () => {
     }
   });
 
-  it("names the range Sway itself sent, not just its last line", () => {
-    // A comment Sway wrote through Phase 11 can span lines, so reporting `line`
+  it("names the range Tori itself sent, not just its last line", () => {
+    // A comment Tori wrote through Phase 11 can span lines, so reporting `line`
     // alone would narrow a range this very app had chosen.
     expect(threadWhere(thread({ startLine: 9 }))).toBe("lines 9-12");
     expect(threadWhere(thread())).toBe("line 12");

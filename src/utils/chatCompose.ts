@@ -132,7 +132,7 @@ export function attachmentKind(name: string, mediaType = ""): AttachmentKind | n
 export type AttachCheck = { ok: true; kind: AttachmentKind } | { ok: false; reason: string };
 
 /** Where an attachment comes from decides what may be offered: a *mention* is
- *  a path the agent already has, an *upload* is bytes Sway writes to disk for
+ *  a path the agent already has, an *upload* is bytes Tori writes to disk for
  *  it. `gap` is the tier's own words for a source it refuses outright. */
 export type AttachmentSource = { kinds: readonly AttachmentKind[]; gap: string | null };
 

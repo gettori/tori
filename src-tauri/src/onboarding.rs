@@ -1,5 +1,5 @@
 // First-run onboarding: open Settings on the Agents cards once, for a user who
-// has nothing yet, so their first sight of Sway explains what it needs rather
+// has nothing yet, so their first sight of Tori explains what it needs rather
 // than an empty sidebar.
 //
 // The gate is deliberately two conditions, not one:
@@ -12,7 +12,7 @@
 //    cannot make a populated setup look empty either.
 //
 // 2. A persisted `onboarding_shown` flag, set the moment it displays. So a
-//    fresh user who opens Sway, reads the cards, and creates nothing still
+//    fresh user who opens Tori, reads the cards, and creates nothing still
 //    sees it exactly once rather than on every launch until they happen to
 //    start a session.
 //
@@ -38,7 +38,7 @@ pub struct State {
 }
 
 fn state_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/state.json")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/state.json")
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -63,10 +63,10 @@ fn save_to(path: &Path, state: &State) -> Result<(), String> {
 /// transcripts pays for one directory entry.
 fn has_any_session(adapter: &AgentAdapter) -> bool {
     let Some(discovery) = &adapter.discovery else {
-        // A protocol-backed adapter keeps nothing here to walk. Sway's own
+        // A protocol-backed adapter keeps nothing here to walk. Tori's own
         // record of what its protocol said is the equivalent evidence, and it
         // is the right one to use: a user whose only agent is an ACP one has
-        // still used Sway, and greeting them with onboarding would say
+        // still used Tori, and greeting them with onboarding would say
         // otherwise.
         return crate::chat::acp_sessions::all().iter().any(|s| s.agent == adapter.id);
     };
@@ -105,11 +105,11 @@ fn should_show_with(state: &State, adapters: &[AgentAdapter]) -> bool {
 /// somebody is a question about their sessions, and *what to say* is a question
 /// about their machine. Folding the binary check into the predicate would
 /// change who sees onboarding at all, which is a different feature and a
-/// regression for the user who has Sway working already.
+/// regression for the user who has Tori working already.
 ///
 /// The copy this drives used to be one fixed line telling the user to check
 /// "which ones it found below". On a machine with nothing installed that is
-/// advice to go look at four rows of "not found", which reads as Sway being
+/// advice to go look at four rows of "not found", which reads as Tori being
 /// broken rather than as a step the user has not taken yet.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "kind")]
@@ -117,8 +117,8 @@ pub enum OnboardingContent {
     /// No adapter's binary resolves. Carries the agent names so the greeting
     /// can say what to install rather than only that something is missing.
     NoAgent { supported: Vec<String> },
-    /// At least one agent resolves, so Sway has something to drive and the
-    /// first-run copy is about Sway rather than about installing anything.
+    /// At least one agent resolves, so Tori has something to drive and the
+    /// first-run copy is about Tori rather than about installing anything.
     FirstRun,
 }
 
@@ -186,7 +186,7 @@ mod tests {
 
     fn tmp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir()
-            .join(format!("sway-onboarding-{tag}-{}-{:?}", std::process::id(), std::thread::current().id()));
+            .join(format!("tori-onboarding-{tag}-{}-{:?}", std::process::id(), std::thread::current().id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn missing_state_file_yields_defaults() {
-        let p = std::env::temp_dir().join("sway-state-does-not-exist.json");
+        let p = std::env::temp_dir().join("tori-state-does-not-exist.json");
         let _ = std::fs::remove_file(&p);
         assert!(!load_from(&p).onboarding_shown);
     }
@@ -233,8 +233,8 @@ mod tests {
     //     shows at all ---
 
     /// The case the old fixed copy got wrong: telling somebody to check which
-    /// CLIs Sway found, when it found none, points them at four rows of "not
-    /// found" and reads as Sway being broken.
+    /// CLIs Tori found, when it found none, points them at four rows of "not
+    /// found" and reads as Tori being broken.
     #[test]
     fn a_machine_with_no_agent_is_told_what_to_install() {
         let dir = tmp_dir("content-none");
@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn a_missing_discovery_dir_is_simply_empty() {
-        let dir = std::env::temp_dir().join("sway-onboarding-absent-dir");
+        let dir = std::env::temp_dir().join("tori-onboarding-absent-dir");
         let _ = std::fs::remove_dir_all(&dir);
         assert!(should_show_with(&State::default(), &[adapter_at(&dir)]));
     }

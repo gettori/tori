@@ -7,7 +7,7 @@
 @layer components {
   /* The tinted half, worn by anything that says "this agent is working": the
      tab strip's mark and the chat's own lane strip. Keyed on the mark actually
-     rendered rather than on the adapter id, so a session whose provider Sway
+     rendered rather than on the adapter id, so a session whose provider Tori
      cannot name keeps the neutral accent instead of borrowing a logo's colour.
 
      Shared rather than declared twice. Two surfaces showing the same agent for
@@ -25,7 +25,7 @@
   }
 
   .tint[data-mark="gemini"] {
-    color: var(--sway-agent-gemini);
+    color: var(--tori-agent-gemini);
   }
 
   /* Codex, Copilot, Kimi, OpenCode and Pi are all published as monochrome black

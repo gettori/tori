@@ -15,29 +15,29 @@ function fakeStyle() {
 }
 
 describe("bundled registry", () => {
-  it("offers the two Sway themes and the three ports", () => {
+  it("offers the two Tori themes and the three ports", () => {
     expect(listSelectableBundled().map((t) => t.id)).toEqual([
-      "sway-dark",
-      "sway-light",
+      "tori-dark",
+      "tori-light",
       "catppuccin-mocha",
       "tokyo-night",
       "rose-pine-dawn",
     ]);
-    // Sway's own two lead, so the picker's first entries are the ones the app
+    // Tori's own two lead, so the picker's first entries are the ones the app
     // was designed against.
-    expect(listSelectableBundled().slice(0, 2).map((t) => t.label)).toEqual(["Sway Dark", "Sway Light"]);
+    expect(listSelectableBundled().slice(0, 2).map((t) => t.label)).toEqual(["Tori Dark", "Tori Light"]);
   });
 
-  it("defaults to Sway Dark", () => {
-    expect(getBundledTheme(DEFAULT_THEME_ID)?.id).toBe("sway-dark");
+  it("defaults to Tori Dark", () => {
+    expect(getBundledTheme(DEFAULT_THEME_ID)?.id).toBe("tori-dark");
   });
 
   // Without this an existing Light+ install silently lands on dark the moment
   // the VS Code registry is replaced.
   it.each([
-    ["dark-plus", "sway-dark"],
-    ["light-plus", "sway-light"],
-    ["import", "sway-dark"],
+    ["dark-plus", "tori-dark"],
+    ["light-plus", "tori-light"],
+    ["import", "tori-dark"],
   ])("resolves the legacy id %s to %s", (legacy, canonical) => {
     expect(getBundledTheme(legacy)?.id).toBe(canonical);
   });
@@ -48,8 +48,8 @@ describe("bundled registry", () => {
 });
 
 describe("painting a theme switch", () => {
-  const darkRoles = buildRoles(getBundledTheme("sway-dark")!.palette);
-  const lightRoles = buildRoles(getBundledTheme("sway-light")!.palette);
+  const darkRoles = buildRoles(getBundledTheme("tori-dark")!.palette);
+  const lightRoles = buildRoles(getBundledTheme("tori-light")!.palette);
 
   it("repaints every role when switching themes", () => {
     const { target, props } = fakeStyle();
@@ -110,8 +110,8 @@ describe("the v1 to v2 cache handoff", () => {
   // now, so these are simply historical strings that nothing in the app emits.
   it("keeps the kind from a v1 selection and discards the v1 token map", () => {
     const store = fakeStore({
-      "sway.theme.selected.v1": JSON.stringify({ kind: "light", bundledId: "light-plus" }),
-      "sway.theme.v1": JSON.stringify({
+      "tori.theme.selected.v1": JSON.stringify({ kind: "light", bundledId: "light-plus" }),
+      "tori.theme.v1": JSON.stringify({
         "--text": "#1f2328", // now --fg-default
         "--bg": "#ffffff", // now --canvas-default
       }),
@@ -125,8 +125,8 @@ describe("the v1 to v2 cache handoff", () => {
 
   it("clears both v1 keys, so the next boot reads only v2", () => {
     const store = fakeStore({
-      "sway.theme.selected.v1": JSON.stringify({ kind: "light" }),
-      "sway.theme.v1": "{}",
+      "tori.theme.selected.v1": JSON.stringify({ kind: "light" }),
+      "tori.theme.v1": "{}",
     });
 
     dropLegacy(store);
@@ -139,7 +139,7 @@ describe("the v1 to v2 cache handoff", () => {
   // A key a future build wrote would otherwise be pinned there permanently.
   it("paints only owned keys, dropping anything else the cache holds", () => {
     const store = fakeStore({
-      "sway.theme.v2": JSON.stringify({
+      "tori.theme.v2": JSON.stringify({
         "--fg-default": "#e6e6e6",
         "--ui-line-height": "1.6",
         "--some-future-role": "#ff00ff",
@@ -151,9 +151,9 @@ describe("the v1 to v2 cache handoff", () => {
 
   it("prefers v2 once it exists, under the new names", () => {
     const store = fakeStore({
-      "sway.theme.selected.v2": JSON.stringify({ kind: "dark", bundledId: "sway-dark" }),
-      "sway.theme.selected.v1": JSON.stringify({ kind: "light" }),
-      "sway.theme.v2": JSON.stringify({ "--fg-default": "#e6e6e6" }),
+      "tori.theme.selected.v2": JSON.stringify({ kind: "dark", bundledId: "tori-dark" }),
+      "tori.theme.selected.v1": JSON.stringify({ kind: "light" }),
+      "tori.theme.v2": JSON.stringify({ "--fg-default": "#e6e6e6" }),
     });
 
     const { kind, tokens } = readCache(store);

@@ -9,20 +9,20 @@
    beside it from #103 phase 2 until phase 6 deleted it with `Menu.tsx`.
 
    Values are recorded as a recipe on the Menu component page. Where they came
-   from: the solid-ui reference per adr_solid_ui_reference, snapped to Sway's
-   ramps, with Sway's density winning wherever the two disagree. */
+   from: the solid-ui reference per adr_solid_ui_reference, snapped to Tori's
+   ramps, with Tori's density winning wherever the two disagree. */
 .content {
   z-index: 1000;
   min-width: calc(180px * var(--ui-scale));
   max-width: calc(320px * var(--ui-scale));
   max-height: 60vh;
   overflow-y: auto;
-  padding: var(--sway-space-3);
+  padding: var(--tori-space-3);
   -webkit-user-select: none;
   user-select: none;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
+  border-radius: var(--tori-radius-xl);
   box-shadow: var(--shadow-md);
 }
 .content:focus {
@@ -36,15 +36,15 @@
 .item {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-3);
-  padding: var(--sway-space-3) var(--sway-space-4);
-  font-size: var(--sway-text-lg);
+  gap: var(--tori-space-3);
+  padding: var(--tori-space-3) var(--tori-space-4);
+  font-size: var(--tori-text-lg);
   color: var(--fg-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   cursor: pointer;
   white-space: nowrap;
   outline: none;
-  transition: background var(--sway-duration-fast) ease;
+  transition: background var(--tori-duration-fast) ease;
 }
 
 /* The row in force. The same wash the model palette paints its current row
@@ -137,7 +137,7 @@
 
 .separator {
   height: 1px;
-  margin: var(--sway-space-2) var(--sway-space-3);
+  margin: var(--tori-space-2) var(--tori-space-3);
   border: 0;
   background: var(--border-default);
 }
@@ -149,8 +149,8 @@
    attached to the rows below it rather than as one of them. */
 .heading {
   display: block;
-  padding: var(--sway-space-2) var(--sway-space-4);
-  font-size: var(--sway-text-md);
+  padding: var(--tori-space-2) var(--tori-space-4);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -167,7 +167,7 @@
 }
 
 .note {
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   color: var(--fg-muted);
   white-space: normal;
   max-width: 32ch;

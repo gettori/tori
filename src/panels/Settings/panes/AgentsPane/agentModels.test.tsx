@@ -174,7 +174,7 @@ describe("how many models a agent offers", () => {
   });
 
   // A catalogue names aliases: `default`, `sonnet` and the dated id are three
-  // rows and one model. Counting them separately would be counting Sway's
+  // rows and one model. Counting them separately would be counting Tori's
   // ability to spell.
   it("counts a model once however many names the catalogue gives it", async () => {
     const { container } = mount({}, [
@@ -188,7 +188,7 @@ describe("how many models a agent offers", () => {
   });
 
   // The dedupe key falls back to `value` for exactly this row: a user-configured
-  // model carries an empty `resolvedModel`, because Sway passes the string to
+  // model carries an empty `resolvedModel`, because Tori passes the string to
   // the CLI unresolved. Keying on that field alone collapses every one of them
   // into a single entry.
   it("does not collapse the user's own configured models into one", async () => {
@@ -214,7 +214,7 @@ describe("how many models a agent offers", () => {
     expect(cell(r.container, "gemini")).toBe("-");
 
     // The page drops the Models section entirely during setup rather than
-    // heading a shrug: the steps already say Sway asks once setup finishes,
+    // heading a shrug: the steps already say Tori asks once setup finishes,
     // and nothing anywhere reads as an error.
     const { container } = await open(r, /Gemini/);
     expect(container.textContent).toContain("Ready for chat");
@@ -255,7 +255,7 @@ describe("the model list on a agent page", () => {
     expect(container.textContent).toContain("low · high");
   });
 
-  /** Phase 5's preview: the levers with no control of Sway's own, read from the
+  /** Phase 5's preview: the levers with no control of Tori's own, read from the
    *  same probe rather than only appearing once a chat is open. The three with
    *  bespoke controls are not repeated here - the model list above is already
    *  the model option, rendered properly. */
@@ -482,7 +482,7 @@ describe("the model list on a agent page", () => {
     expect(container.textContent).toContain("Nobody has asked Claude");
   });
 
-  // Sway's sentence names the kind of failure; the agent's own words are
+  // Tori's sentence names the kind of failure; the agent's own words are
   // quoted after it rather than paraphrased.
   it("names the failure and quotes the agent", async () => {
     const { container } = await open(
@@ -493,12 +493,12 @@ describe("the model list on a agent page", () => {
     expect(container.textContent).toContain("run `claude /login`");
   });
 
-  // `unsupported` is a fact about this build of Sway, so it must not read as the
+  // `unsupported` is a fact about this build of Tori, so it must not read as the
   // agent being broken: that would send the user to reinstall something that
   // works.
-  it("blames Sway rather than the binary for a transport it cannot probe", async () => {
+  it("blames Tori rather than the binary for a transport it cannot probe", async () => {
     const { container } = await open(mount({}, [failed("claude", "unsupported")]), /Claude/);
-    expect(container.textContent).toContain("Sway cannot ask this agent yet");
+    expect(container.textContent).toContain("Tori cannot ask this agent yet");
   });
 
   // Ask again re-probes. Reading the cache would leave the button doing nothing

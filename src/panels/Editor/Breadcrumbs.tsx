@@ -45,7 +45,7 @@ async function readDir(path: string): Promise<Entry[] | null> {
  * offers what you could have opened instead: the folder's other entries, or the
  * symbol's siblings.
  *
- * **A crumb is its own menu's trigger.** Every other dropdown in Sway is a
+ * **A crumb is its own menu's trigger.** Every other dropdown in Tori is a
  * `Tooltip`'s element already and needs a wrapper around it; a crumb is a plain
  * button, so it can be the trigger itself, which is also what puts
  * `aria-haspopup` and `aria-expanded` on the thing the keyboard actually

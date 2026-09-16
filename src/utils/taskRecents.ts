@@ -26,7 +26,7 @@ export type TaskRun = {
  *  worktree is not the run you made in another. */
 export type TaskRunStore = Readonly<Record<string, readonly TaskRun[]>>;
 
-const LS_TASK_RUNS = "sway.taskRuns";
+const LS_TASK_RUNS = "tori.taskRuns";
 
 /** How many a workspace keeps. Past this it is a history, and the panel already
  *  lists every task the project defines. */

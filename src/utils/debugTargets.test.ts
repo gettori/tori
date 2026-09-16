@@ -93,7 +93,7 @@ describe("an attach config", () => {
     // `console` is declared on `INodeLaunchConfiguration` and does not exist on
     // `INodeAttachConfiguration`, so sending it is a field with no slot.
     expect("console" in config).toBe(false);
-    // Sway did not start this process, so it has no entry to pause at and no
+    // Tori did not start this process, so it has no entry to pause at and no
     // environment to hand it.
     expect("stopOnEntry" in config).toBe(false);
     expect("env" in config).toBe(false);

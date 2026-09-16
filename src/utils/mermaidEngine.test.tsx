@@ -33,7 +33,7 @@ const TOKENS: Record<string, string> = {
   "--fg-default": "fg-default",
   "--fg-muted": "fg-muted",
   "--fg-subtle": "fg-subtle",
-  "--sway-font-ui": "the-ui-font",
+  "--tori-font-ui": "the-ui-font",
 };
 
 function paint(tokens: Record<string, string> = TOKENS) {

@@ -10,13 +10,13 @@
 
 /* ---- The pieces a dialog's body is built from ---- */
 .note {
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-muted);
   margin-bottom: calc(8px * var(--ui-scale));
   word-break: break-all;
 }
 .msg {
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-muted);
   margin-bottom: calc(12px * var(--ui-scale));
   white-space: pre-wrap;
@@ -29,8 +29,8 @@
    confirmation would delete. Mono and breakable, since it is long and its tail
    is the part that identifies it. */
 .path {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
   word-break: break-all;
   margin-bottom: calc(12px * var(--ui-scale));
@@ -38,13 +38,13 @@
 /* A checkbox and the sentence explaining what ticking it costs, aligned under
    the label rather than the box. */
 .optionHint {
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
   line-height: 1.4;
   margin-top: calc(4px * var(--ui-scale));
   /* The box (16px) plus the root's own gap, so the sentence starts where the
      label does. */
-  padding-left: calc(16px * var(--ui-scale) + var(--sway-space-4));
+  padding-left: calc(16px * var(--ui-scale) + var(--tori-space-4));
 }
 
 /* A control that spans the dialog, and nothing else. Layout only, because
@@ -57,19 +57,19 @@
 .input {
   width: 100%;
   padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-default);
   outline: none;
-  transition: border-color var(--sway-duration-fast) ease;
+  transition: border-color var(--tori-duration-fast) ease;
 }
 .input:focus {
   border-color: var(--brand-default);
 }
 .hint {
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
   margin-top: calc(8px * var(--ui-scale));
   line-height: 1.4;
@@ -101,12 +101,12 @@
 
 /* ---- Delete-space confirmation extras ---- */
 .warning {
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--danger-fg);
   margin-bottom: calc(10px * var(--ui-scale));
 }
 .label {
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-muted);
   margin: calc(12px * var(--ui-scale)) 0 calc(6px * var(--ui-scale));
 }
@@ -126,30 +126,30 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: var(--sway-space-6);
-  font-family: var(--sway-font-ui);
+  gap: var(--tori-space-6);
+  font-family: var(--tori-font-ui);
 }
 .field {
   display: flex;
   flex-direction: column;
 }
 .fieldLabel {
-  margin-bottom: var(--sway-space-4);
-  font-size: var(--sway-text-md);
+  margin-bottom: var(--tori-space-4);
+  font-size: var(--tori-text-md);
   font-weight: 500;
-  line-height: var(--sway-line-tight);
+  line-height: var(--tori-line-tight);
   color: var(--fg-default);
 }
 .fieldHint {
-  padding: var(--sway-space-3) var(--sway-space-2);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  padding: var(--tori-space-3) var(--tori-space-2);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   line-height: 1.3;
   color: var(--fg-subtle);
 }
 .fieldRow {
   display: flex;
-  gap: var(--sway-space-4);
+  gap: var(--tori-space-4);
 }
 .fieldInput {
   width: 100%;
@@ -157,14 +157,14 @@
   padding: 0 calc(10px * var(--ui-scale));
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-default);
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   outline: none;
   transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    box-shadow var(--tori-duration-fast) ease;
 }
 .fieldInput::placeholder {
   color: var(--fg-subtle);
@@ -185,13 +185,13 @@
 
 /* The leading tile's word, in place of a glyph. */
 .iconNone {
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   font-weight: 500;
 }
 /* The automatic swatch shows the derived hue, so it needs a legible mark on top
    of an arbitrary colour rather than beside it. */
 .swatchAuto {
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   font-weight: 600;
   mix-blend-mode: difference;
 }
@@ -223,17 +223,17 @@
   justify-content: flex-start;
   gap: calc(8px * var(--ui-scale));
   padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-muted);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   transition:
-    border-color var(--sway-duration-fast) ease,
-    color var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    color var(--tori-duration-fast) ease;
 }
 .iconMode svg {
   flex: none;
@@ -263,7 +263,7 @@
   display: flex;
   justify-content: space-between;
   gap: calc(12px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
   margin-bottom: calc(8px * var(--ui-scale));
 }
@@ -271,12 +271,12 @@
   max-height: calc(200px * var(--ui-scale));
   overflow-y: auto;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   background: var(--canvas-input);
 }
 .delEmpty {
   padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-muted);
 }
 .delEntry {
@@ -285,7 +285,7 @@
   justify-content: space-between;
   gap: calc(8px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-default);
 }
 .delEntry + .delEntry {
@@ -302,7 +302,7 @@
   flex-shrink: 0;
 }
 .delTag {
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
   border-radius: 3px;
   border: 1px solid var(--border-default);
@@ -318,7 +318,7 @@
 /* ---- Worktree / branch remove dialogs ---- */
 .wtDetail {
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   background: var(--canvas-input);
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   margin-bottom: calc(10px * var(--ui-scale));
@@ -328,7 +328,7 @@
   align-items: center;
   gap: calc(10px * var(--ui-scale));
   padding: calc(3px * var(--ui-scale)) 0;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 .wtDetailKey {
   flex-shrink: 0;
@@ -352,7 +352,7 @@
   display: flex;
   align-items: center;
   gap: calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-default);
   margin: calc(4px * var(--ui-scale)) 0 calc(4px * var(--ui-scale));
   cursor: pointer;
@@ -379,8 +379,8 @@
   gap: calc(12px * var(--ui-scale));
 }
 .slug {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
   margin-top: calc(6px * var(--ui-scale));
   word-break: break-all;
@@ -394,7 +394,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
 .collision[data-adopting] {
@@ -419,11 +419,11 @@
 }
 .sweepError {
   padding: calc(2px * var(--ui-scale)) calc(10px * var(--ui-scale)) 0;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--danger-fg);
 }
 .sweepRunning {
   padding: 0 calc(10px * var(--ui-scale)) calc(2px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }

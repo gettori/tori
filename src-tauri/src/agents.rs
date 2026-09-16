@@ -2,7 +2,7 @@
 // through sessions.rs is now data. One adapter ships bundled
 // (agents/claude.toml, embedded at compile time); a user can add or
 // whole-replace an adapter by dropping a
-// `schema_version = 1` through `= 5` TOML file into `~/.config/sway/agents/`.
+// `schema_version = 1` through `= 5` TOML file into `~/.config/tori/agents/`.
 // See ADAPTERS.md for the schema. Every version so far is purely additive: v2
 // adds the optional `[chat]` table describing how to drive the agent as a
 // structured chat session rather than a PTY, v3 adds the optional
@@ -31,7 +31,7 @@ pub const SCHEMA_VERSION: u32 = 5;
 /// Every schema version this build still loads.
 ///
 /// Old versions stay supported deliberately: a user adapter in
-/// `~/.config/sway/agents/` is somebody's working config, and each version so
+/// `~/.config/tori/agents/` is somebody's working config, and each version so
 /// far adds only an optional table, so there is nothing an older file needs to
 /// say differently. It loads exactly as before, reporting `None` for the tables
 /// it predates.
@@ -55,7 +55,7 @@ const ACCOUNTS_MIN_VERSION: u32 = 3;
 const USAGE_MIN_VERSION: u32 = 4;
 const CONFIG_MIN_VERSION: u32 = 5;
 
-/// How Sway drives an agent as a structured chat session rather than a PTY.
+/// How Tori drives an agent as a structured chat session rather than a PTY.
 ///
 /// A closed enum, not a config string, for the same reason `ParserKind` is: a
 /// transport is a Rust module implementing a wire protocol, so a TOML can only
@@ -69,7 +69,7 @@ pub enum ChatTransport {
     ClaudeStreamJson,
     /// The Agent Client Protocol over a child's stdio, driven by the
     /// `agent-client-protocol` crate. Unlike `ClaudeStreamJson` this is not one
-    /// vendor's wire format: every agent speaking ACP first-party reaches Sway
+    /// vendor's wire format: every agent speaking ACP first-party reaches Tori
     /// through this one transport plus its own TOML.
     Acp,
 }
@@ -182,8 +182,8 @@ impl WhoamiKind {
 }
 
 /// The flag a home's state file carries once the agent's own first-run wizard
-/// has been through it. Sway sets it after a sign-in it started: the wizard
-/// exists to pick a theme and log in, and a home Sway created and signed in
+/// has been through it. Tori sets it after a sign-in it started: the wizard
+/// exists to pick a theme and log in, and a home Tori created and signed in
 /// has had both done, so the next interactive run would only ask again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OnboardedFlag {
@@ -262,9 +262,9 @@ pub struct ChatMode {
     pub requires: Option<String>,
     /// This mode runs tools without asking anybody.
     ///
-    /// A fact about the **agent's** mode, not about Sway, which is what makes
+    /// A fact about the **agent's** mode, not about Tori, which is what makes
     /// it survivable where its predecessor was not: `permissive_caveat` declared
-    /// that Sway asked anyway, and was retired when that stopped being true.
+    /// that Tori asked anyway, and was retired when that stopped being true.
     /// Adapter-declared rather than keyed on `"bypassPermissions"`, because a
     /// agent calling the same thing `yolo` is describing the same thing.
     #[serde(default)]
@@ -272,7 +272,7 @@ pub struct ChatMode {
     /// The mode a session runs when nothing else is chosen, and what an
     /// unresolvable mode downgrades to.
     ///
-    /// Declared rather than assumed: Sway used to fall back to the literal
+    /// Declared rather than assumed: Tori used to fall back to the literal
     /// `"default"`, which is Claude's spelling and nobody else's. Gemini's
     /// permissive-by-omission mode is also called `default`, but Codex's
     /// profiles are named at runtime and need not include that word at all.
@@ -352,7 +352,7 @@ pub struct ChatConfig {
     pub mode_args: Vec<String>,
     /// `{dir}` template, applied once per extra directory.
     pub add_dir_args: Vec<String>,
-    /// Effort levels Sway measured that this agent never advertises. See
+    /// Effort levels Tori measured that this agent never advertises. See
     /// [`ChatEffortExtra`]. Empty for every agent nobody has measured, which is
     /// all of them but claude.
     pub effort_extras: Vec<ChatEffortExtra>,
@@ -405,7 +405,7 @@ impl ChatConfig {
 
     /// Which mode a session will actually run, given what was asked for.
     ///
-    /// **A mode Sway cannot resolve downgrades; it never fails the spawn.** The
+    /// **A mode Tori cannot resolve downgrades; it never fails the spawn.** The
     /// requested id reaches here from a settings file that outlived the adapter
     /// that declared it - a mode removed from the TOML, or a project pinned to
     /// one a different agent offered. Refusing to start would strand that
@@ -439,7 +439,7 @@ impl ChatConfig {
     /// level came from is the check, exactly as it is for a model.
     ///
     /// `None` is an adapter with no template, which is not a dropped flag: an
-    /// ACP agent's levels are a session option it publishes and Sway sets after
+    /// ACP agent's levels are a session option it publishes and Tori sets after
     /// open, so there is no argv for them to ride in the first place.
     pub fn effort_args_for(&self, effort_id: &str) -> Option<Vec<String>> {
         if self.effort_args.is_empty() {
@@ -475,7 +475,7 @@ pub enum UsageRung {
     /// Quota windows carried by the agent's own session events, at no cost and
     /// with no extra process: Claude's `rate_limit_event`.
     Sessions,
-    /// A bounded read through the agent's CLI, run by Sway on a schedule.
+    /// A bounded read through the agent's CLI, run by Tori on a schedule.
     Cli,
     /// The account's own OAuth token, read from the OS credential store. Always
     /// an explicit per-agent opt-in.
@@ -504,14 +504,14 @@ impl UsageRung {
 ///
 /// Declaration order is the ladder's order, and the first entry is what an
 /// agent resolves to when the user has chosen nothing. A rung is declared only
-/// once its read path exists, so this table says what Sway can do today rather
+/// once its read path exists, so this table says what Tori can do today rather
 /// than what the agent could theoretically be asked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UsageConfig {
     pub sources: Vec<UsageRung>,
 }
 
-/// How Sway signs this adapter in, and whether it can hold more than one
+/// How Tori signs this adapter in, and whether it can hold more than one
 /// account at a time.
 ///
 /// Every field is optional because the ladder degrades rather than failing: an
@@ -525,7 +525,7 @@ pub struct AccountsConfig {
     /// The environment variable that points this agent at an isolated profile
     /// home, e.g. `CLAUDE_CONFIG_DIR`. The **default profile is this variable
     /// left unset**, which is what makes it resolve the user's existing login
-    /// rather than a Sway-managed copy of it.
+    /// rather than a Tori-managed copy of it.
     pub home_env: Option<String>,
     /// Where `home_env` points when it is left unset: the agent's own default
     /// home, `~/.claude` for claude.
@@ -607,7 +607,7 @@ impl ConfigKind {
 ///
 /// `path` is **relative to the account home** and validated as such by the
 /// loader: an absolute path or a `..` segment is rejected. That is the whole
-/// safety story of this table. Sway resolves the path against a home it picked
+/// safety story of this table. Tori resolves the path against a home it picked
 /// (`[accounts].home_default`, or a profile's own home), so a row that could
 /// name `/etc` or climb out of the home would turn a settings page into an
 /// arbitrary-file browser, and a `template` into an arbitrary-file writer.
@@ -627,7 +627,7 @@ pub struct ConfigEntry {
     /// creates the row's own path).
     pub new_path: Option<String>,
     /// What a newly created file is seeded with, `{name}` substituted. `None`
-    /// creates an empty file, which is the honest default: Sway does not know
+    /// creates an empty file, which is the honest default: Tori does not know
     /// any agent's frontmatter well enough to invent one.
     pub template: Option<String>,
     /// Placeholder for the "new" name field, e.g. `"skill-name"`.
@@ -674,7 +674,7 @@ pub struct AgentAdapter {
     /// first letter, which is what every adapter looked like before this.
     ///
     /// Optional scalar rather than a version-gated table: the gates exist for
-    /// `[chat]` and `[accounts]`, whose absence changes what Sway can *do*, and
+    /// `[chat]` and `[accounts]`, whose absence changes what Tori can *do*, and
     /// a missing icon changes only what it looks like. The cost of not bumping
     /// is that a v3 file carrying `icon` is rejected by a build that predates
     /// the key, which is the same trade every additive key here has taken.
@@ -726,11 +726,11 @@ pub struct AgentAdapter {
     /// The `[accounts]` table, or `None` for an adapter that declares no
     /// sign-in of its own.
     ///
-    /// `None` is not "signed out": it is "Sway has nothing true to say about
+    /// `None` is not "signed out": it is "Tori has nothing true to say about
     /// this adapter's accounts", which is why it renders no account controls at
     /// all rather than an inert set.
     pub accounts: Option<AccountsConfig>,
-    /// The `[usage]` table, or `None` for an adapter Sway can read no quota
+    /// The `[usage]` table, or `None` for an adapter Tori can read no quota
     /// from. `None` renders as "no usage source", never as a quota of zero.
     pub usage: Option<UsageConfig>,
     /// Why `usage` is `None`, in the words the Usage settings block shows
@@ -1096,7 +1096,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
     if let Some(table) = value.as_table() {
         for key in table.keys() {
             if !KNOWN_TOP_LEVEL.contains(&key.as_str()) {
-                eprintln!("sway: agent adapter {source}: unknown field `{key}`, ignoring");
+                eprintln!("tori: agent adapter {source}: unknown field `{key}`, ignoring");
             }
         }
         let missing: Vec<&str> =
@@ -1112,7 +1112,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
         let supported =
             SUPPORTED_SCHEMA_VERSIONS.map(|v| v.to_string()).join(", ");
         return Err(format!(
-            "{source}: unsupported schema_version {} (sway supports {supported})",
+            "{source}: unsupported schema_version {} (tori supports {supported})",
             raw.schema_version
         ));
     }
@@ -1346,7 +1346,7 @@ fn load_adapter_str(text: &str, source: &str) -> Result<AgentAdapter, String> {
 
     // Every path here is relative to an account home, so the table is refused
     // without one rather than resolved against the process's cwd - which is
-    // Sway's own bundle, and nothing under it belongs to any agent.
+    // Tori's own bundle, and nothing under it belongs to any agent.
     let config = raw
         .config
         .map(|c| -> Result<ConfigFiles, String> {
@@ -1555,7 +1555,7 @@ const BUNDLED: [(&str, &str); 7] = [
 ];
 
 fn user_agents_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/agents")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/agents")
 }
 
 /// Bundled built-ins, then every `*.toml` in `user_dir`. A user file whose id
@@ -1576,7 +1576,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
             Ok(a) => {
                 by_id.insert(a.id.clone(), a);
             }
-            Err(e) => eprintln!("sway: ERROR loading built-in agent adapter {source}: {e}"),
+            Err(e) => eprintln!("tori: ERROR loading built-in agent adapter {source}: {e}"),
         }
     }
 
@@ -1590,7 +1590,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
             let text = match std::fs::read_to_string(&path) {
                 Ok(t) => t,
                 Err(e) => {
-                    eprintln!("sway: ERROR reading agent adapter {source}: {e}");
+                    eprintln!("tori: ERROR reading agent adapter {source}: {e}");
                     continue;
                 }
             };
@@ -1599,7 +1599,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<AgentAdapter> {
                     by_id.insert(a.id.clone(), a);
                 }
                 Err(e) => eprintln!(
-                    "sway: ERROR loading agent adapter {source}: {e} (keeping the previous adapter for this id)"
+                    "tori: ERROR loading agent adapter {source}: {e} (keeping the previous adapter for this id)"
                 ),
             }
         }
@@ -1617,8 +1617,8 @@ fn build_registry() -> Vec<AgentAdapter> {
 static REGISTRY: OnceLock<Vec<AgentAdapter>> = OnceLock::new();
 
 /// The process-wide adapter registry, loaded once on first use (bundled +
-/// `~/.config/sway/agents/*.toml`; not live-watched - restart to pick up
-/// edits, same as any other loaded-at-startup config in Sway today).
+/// `~/.config/tori/agents/*.toml`; not live-watched - restart to pick up
+/// edits, same as any other loaded-at-startup config in Tori today).
 pub fn registry() -> &'static [AgentAdapter] {
     REGISTRY.get_or_init(build_registry)
 }
@@ -1630,7 +1630,7 @@ impl AgentAdapter {
     /// misconfigured".
     ///
     /// `None` for a protocol-backed adapter, which has no such location: its
-    /// sessions live wherever the agent keeps them, which Sway never reads.
+    /// sessions live wherever the agent keeps them, which Tori never reads.
     /// A card showing a path that does not exist would report a
     /// misconfiguration that is really just a different design.
     pub fn discovery_path(&self) -> Option<&Path> {
@@ -1736,7 +1736,7 @@ mod tests {
 
     fn tmp_dir() -> PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_agents_test_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_agents_test_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -1963,7 +1963,7 @@ new_name_hint = "skill-name"
 
     /// Every path in the table is relative to an account home, so a table
     /// without one has nothing to resolve against and is refused rather than
-    /// silently resolved against Sway's own working directory.
+    /// silently resolved against Tori's own working directory.
     #[test]
     fn a_config_table_without_a_home_default_is_rejected() {
         let head = VALID_MINIMAL.replacen("schema_version = 1", "schema_version = 5", 1);
@@ -2528,11 +2528,11 @@ sources = ["sessions", "token"]
         assert!(err.contains("souces"), "error should name the key: {err}");
     }
 
-    /// A rung is declared only once Sway has a read path for it, so this is the
+    /// A rung is declared only once Tori has a read path for it, so this is the
     /// list of what is built, not of what the agents can do. Codex declares no
     /// `sessions` because `codex-acp` forwards none: see its own TOML comment.
     #[test]
-    fn a_bundled_adapter_declares_only_the_rungs_sway_can_climb() {
+    fn a_bundled_adapter_declares_only_the_rungs_tori_can_climb() {
         let declared = |text: &str, source: &str| {
             load_adapter_str(text, source).expect("parses").usage.map(|u| u.sources)
         };
@@ -2656,9 +2656,9 @@ sources = ["sessions", "token"]
         let auto = chat.modes.iter().find(|m| m.id == "auto").expect("auto declared");
         assert_eq!(auto.requires.as_deref(), Some("supportsAutoMode"));
 
-        // No mode carries a caveat any more. There used to be one - Sway's hook
+        // No mode carries a caveat any more. There used to be one - Tori's hook
         // ran ahead of the permission chain, so `bypassPermissions` still
-        // stopped at Sway's gate - and the whole point of retiring that gate is
+        // stopped at Tori's gate - and the whole point of retiring that gate is
         // that the promise in the mode's name is now kept.
         //
         // Checked against the parsed tables rather than the file's text, which
@@ -2670,13 +2670,13 @@ sources = ["sessions", "token"]
         for table in raw["chat"]["modes"].as_array().expect("modes is an array of tables") {
             assert!(
                 table.get("permissive_caveat").is_none(),
-                "a mode declaring a caveat Sway no longer imposes would warn about nothing"
+                "a mode declaring a caveat Tori no longer imposes would warn about nothing"
             );
         }
 
         // What *is* declared is which mode runs tools unasked, which is a fact
-        // about the mode rather than about Sway - and one that matters more now
-        // that Sway is not behind it.
+        // about the mode rather than about Tori - and one that matters more now
+        // that Tori is not behind it.
         let permissive: Vec<&str> = chat.modes.iter().filter(|m| m.permissive).map(|m| m.id.as_str()).collect();
         assert_eq!(permissive, vec!["bypassPermissions"]);
 
@@ -2796,7 +2796,7 @@ sources = ["sessions", "token"]
     /// A agent whose modes are named nothing like Claude's, used wherever a
     /// resolver has to be shown not to have Claude's vocabulary baked in.
     /// These are Gemini's real `--approval-mode` values, and none of them is
-    /// the literal `"default"` that Sway used to fall back to.
+    /// the literal `"default"` that Tori used to fall back to.
     const FOREIGN_MODES: &str = r#"
 [[chat.modes]]
 id = "yolo"
@@ -2905,7 +2905,7 @@ default = true
     /// machine without `claude` still gets a green suite.
     ///
     /// The args come from `mode_args_for` rather than a hardcoded
-    /// `--permission-mode`, so this probes what Sway would really send.
+    /// `--permission-mode`, so this probes what Tori would really send.
     #[test]
     fn every_declared_mode_is_one_the_cli_accepts() {
         let claude = load_adapter_str(BUILTIN_CLAUDE, "bundled:claude").expect("parses");
@@ -3057,7 +3057,7 @@ default = true
 
     /// The doc's ACP example is the load-bearing one now: it is the file a user
     /// writes to add a agent, and it claims to be *complete*. If it stopped
-    /// validating, the shortest path into Sway would be a broken copy-paste.
+    /// validating, the shortest path into Tori would be a broken copy-paste.
     #[test]
     fn adapters_md_acp_example_parses_and_needs_no_session_plumbing() {
         let doc = include_str!("../../ADAPTERS.md");

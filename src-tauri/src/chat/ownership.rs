@@ -19,15 +19,15 @@
 //!     prevent it, so we allow the claim and say plainly what the risk is,
 //!     rather than pretending to a lock we do not hold.
 //!
-//! A crash adds a fourth: a claim on disk whose Sway is gone but whose child is
+//! A crash adds a fourth: a claim on disk whose Tori is gone but whose child is
 //! still running. That is an orphan, and it is *not* the same as an external
 //! session, because we know its pid and can offer to end it.
 //!
 //! **Scope, stated because the name promises more than the file delivers:
-//! nothing here addresses two live Sways.** The claims file is read, edited and
+//! nothing here addresses two live Toris.** The claims file is read, edited and
 //! replaced without a lock across processes, so two running instances race it
 //! and the loser's claim is dropped by last-writer-wins. Every rule below
-//! assumes one Sway plus any number of agent processes it did not start. A
+//! assumes one Tori plus any number of agent processes it did not start. A
 //! second instance is out of scope for this module and for the plan that built
 //! it, not handled and known to be unhandled.
 //!
@@ -65,9 +65,9 @@ pub struct Claim {
     /// agent itself, so its pid would not match the adapter's running pattern.
     #[serde(default)]
     pub child_pid: Option<u32>,
-    /// The Sway process that took the claim. A claim naming a dead pid is a
+    /// The Tori process that took the claim. A claim naming a dead pid is a
     /// crash record, never a live holder.
-    pub sway_pid: u32,
+    pub tori_pid: u32,
     /// Which adapter this session belongs to, so the startup reap can match a
     /// surviving child against *that* adapter's running pattern.
     ///
@@ -100,7 +100,7 @@ fn default_profile() -> String {
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum ClaimOutcome {
     /// The claim is yours. `contested` marks a session we found running outside
-    /// Sway: allowed, because we cannot stop it, but the caller must warn.
+    /// Tori: allowed, because we cannot stop it, but the caller must warn.
     Granted {
         contested: bool,
     },
@@ -114,7 +114,7 @@ pub enum ClaimOutcome {
         surface: Surface,
         tab_id: String,
     },
-    /// A previous Sway died leaving this session's child alive. Unclaimable
+    /// A previous Tori died leaving this session's child alive. Unclaimable
     /// until the user decides what to do with the surviving process.
     Orphaned {
         child_pid: u32,
@@ -153,7 +153,7 @@ pub fn decide(
                 ClaimOutcome::HeldByOther { surface: held.surface, tab_id: held.tab_id.clone() }
             }
         }
-        // A claim whose Sway is gone. If its child outlived it and is still
+        // A claim whose Tori is gone. If its child outlived it and is still
         // running *this* session, that is an orphan we can name and offer to
         // end - materially different from a session the user started by hand,
         // which we can only warn about.
@@ -212,7 +212,7 @@ pub fn release(claims: &mut HashMap<String, Claim>, session_id: &str, tab_id: &s
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Reaped {
-    /// A crashed Sway's child is still running this session. Carries the agent
+    /// A crashed Tori's child is still running this session. Carries the agent
     /// so the terminate call matches the same pattern the classification did.
     Orphan { session_id: String, child_pid: u32, agent: String },
     /// Nothing survived; the record is litter and gets dropped.
@@ -221,7 +221,7 @@ pub enum Reaped {
 
 /// Classify every persisted claim at startup.
 ///
-/// `alive` answers "is this pid a Sway that is still running", and
+/// `alive` answers "is this pid a Tori that is still running", and
 /// `still_running` answers "is this pid still running *this session id*". The
 /// second is deliberately not a bare liveness check: pids are recycled, so a
 /// claim whose recorded child pid now belongs to somebody's editor would
@@ -233,7 +233,7 @@ pub fn classify_persisted(
 ) -> Vec<Reaped> {
     let mut out: Vec<Reaped> = claims
         .iter()
-        .filter(|(_, c)| !alive(c.sway_pid))
+        .filter(|(_, c)| !alive(c.tori_pid))
         .map(|(id, c)| match c.child_pid {
             Some(pid) if still_running(&c.agent, id, pid) => {
                 Reaped::Orphan { session_id: id.clone(), child_pid: pid, agent: c.agent.clone() }
@@ -254,7 +254,7 @@ pub fn classify_persisted(
 // ---------------------------------------------------------------------------
 
 fn claims_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/chat-claims.json")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/chat-claims.json")
 }
 
 /// Parse the on-disk claims file. A malformed or absent file yields an empty
@@ -323,11 +323,11 @@ fn pid_alive(pid: u32) -> bool {
 /// command line is identical for every session it ever runs - the id is minted
 /// inside the protocol and never appears in argv - so matching on it would
 /// report every ACP session of an agent running whenever any one of them was.
-/// What is left is the claim: Sway recorded the child it started, and whether
+/// What is left is the claim: Tori recorded the child it started, and whether
 /// that pid is alive is a question the process table can still answer.
 ///
-/// Deliberately does not also require the claiming Sway to be alive. A child
-/// that outlived its Sway is an orphan, and an orphan is still a running agent;
+/// Deliberately does not also require the claiming Tori to be alive. A child
+/// that outlived its Tori is an orphan, and an orphan is still a running agent;
 /// the reap path is what offers to end it, and reporting it dead here would hide
 /// it from the very sweep that notices it.
 ///
@@ -349,7 +349,7 @@ fn with_live_child(
         .collect()
 }
 
-/// **Tab** ids of `agent`'s `profile` held by a Sway that is still running.
+/// **Tab** ids of `agent`'s `profile` held by a Tori that is still running.
 ///
 /// Tab ids, not session ids, because the caller unions this with the PTY host's
 /// own live table and that one can only answer in tab ids. A resumed PTY agent
@@ -362,9 +362,9 @@ fn with_live_child(
 /// unexplainable reason the button will not work.
 ///
 /// Deliberately the opposite test to [`with_live_child`], which asks about the
-/// *agent* child and ignores whether Sway is alive. Here the question is "would
-/// removing this strand something in flight", and only a live Sway has something
-/// in flight: a claim naming a dead `sway_pid` is a crash record, and refusing a
+/// *agent* child and ignores whether Tori is alive. Here the question is "would
+/// removing this strand something in flight", and only a live Tori has something
+/// in flight: a claim naming a dead `tori_pid` is a crash record, and refusing a
 /// removal because of one would leave a user unable to delete an account until
 /// they had cleaned up after a crash they never saw.
 ///
@@ -378,11 +378,11 @@ fn held_by(
     claims: &HashMap<String, Claim>,
     agent: &str,
     profile: &str,
-    sway_alive: impl Fn(u32) -> bool,
+    tori_alive: impl Fn(u32) -> bool,
 ) -> Vec<String> {
     let mut out: Vec<String> = claims
         .values()
-        .filter(|c| c.agent == agent && c.profile == profile && sway_alive(c.sway_pid))
+        .filter(|c| c.agent == agent && c.profile == profile && tori_alive(c.tori_pid))
         .map(|c| c.tab_id.clone())
         .collect();
     // A `HashMap` has no order, and a message naming tabs must not shuffle
@@ -403,7 +403,7 @@ fn held_by(
 /// deliberately, and it is the one place that trade is worth naming. A
 /// protocol-backed agent puts its session id on no command line, so the pattern
 /// half of the question is unanswerable for it; answering `false` would report
-/// Sway's own live child as gone and hand a running session to the reaper. The
+/// Tori's own live child as gone and hand a running session to the reaper. The
 /// pid-recycling guard is what is given up, which is the same bargain Phase 5
 /// struck for ACP liveness: the recorded child pid being alive is all there is
 /// to go on.
@@ -425,13 +425,13 @@ fn pid_runs_session(agent: &str, session_id: &str, pid: u32) -> bool {
 
 /// The process-wide registry. One per app; `lib.rs` manages it as Tauri state.
 ///
-/// The in-memory table is authoritative for *this* Sway; the file exists only so
+/// The in-memory table is authoritative for *this* Tori; the file exists only so
 /// a crash leaves a record of what was running.
 ///
 /// The store path is a field rather than a call to [`claims_path`] so tests can
 /// point at a temp file. Without it a test run would rewrite the real
 /// `chat-claims.json` and could drop a live session's claim out from under a
-/// running Sway.
+/// running Tori.
 pub struct Registry {
     claims: Mutex<HashMap<String, Claim>>,
     path: PathBuf,
@@ -460,7 +460,7 @@ impl Registry {
         };
         let held = guard.get(session_id).cloned();
         let probe = Probe {
-            holder_alive: held.as_ref().map(|c| pid_alive(c.sway_pid)).unwrap_or(false),
+            holder_alive: held.as_ref().map(|c| pid_alive(c.tori_pid)).unwrap_or(false),
             externally_running: crate::sessions::running_by_pattern(agent, session_id),
             child_still_ours: held
                 .as_ref()
@@ -504,12 +504,12 @@ impl Registry {
         with_live_child(&guard, ids, pid_alive)
     }
 
-    /// Tab ids of one `(agent, profile)` pair that a **live** Sway is holding
+    /// Tab ids of one `(agent, profile)` pair that a **live** Tori is holding
     /// right now.
     ///
     /// One bounded question again, rather than handing out the table: the caller
     /// is the accounts screen asking whether removing this account would strand
-    /// a session in flight. A claim naming a dead `sway_pid` is a crash record,
+    /// a session in flight. A claim naming a dead `tori_pid` is a crash record,
     /// not a holder, so it must not block anything.
     pub fn held_by(&self, agent: &str, profile: &str) -> Vec<String> {
         let guard = match self.claims.lock() {
@@ -620,7 +620,7 @@ fn reap_at(path: &std::path::Path) -> Vec<Reaped> {
     let survivors: HashMap<String, Claim> = persisted
         .into_iter()
         .filter(|(id, c)| {
-            pid_alive(c.sway_pid)
+            pid_alive(c.tori_pid)
                 || found.iter().any(|r| matches!(r, Reaped::Orphan { session_id, .. } if session_id == id))
         })
         .collect();
@@ -652,22 +652,22 @@ mod tests {
     use super::*;
 
     fn claim(surface: Surface, tab: &str) -> Claim {
-        Claim { surface, tab_id: tab.to_string(), child_pid: Some(4242), sway_pid: 1, agent: "claude".into(), profile: "default".into() }
+        Claim { surface, tab_id: tab.to_string(), child_pid: Some(4242), tori_pid: 1, agent: "claude".into(), profile: "default".into() }
     }
 
-    /// A per-test claims store. Never the real one: a test run while Sway is
+    /// A per-test claims store. Never the real one: a test run while Tori is
     /// open would otherwise rewrite `chat-claims.json` and drop a live session's
     /// claim out from under it.
     /// A claims file in a directory of this test's own.
     ///
     /// One directory per test, not one per process. These run in parallel inside
-    /// a single process, so a shared `sway-claims-<pid>` directory means one
+    /// a single process, so a shared `tori-claims-<pid>` directory means one
     /// test's `remove_dir_all` cleanup deletes another test's store while it is
     /// mid-write, and an atomic write's `rename` then fails into a discarded
     /// error in `reap_at`. See the "Rust tests sharing a temp path keyed only on
     /// process id race each other" gotcha.
     fn temp_store(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("sway-claims-{}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-claims-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir.join("claims.json")
     }
@@ -791,7 +791,7 @@ mod tests {
     /// A crash record whose child outlived it. Distinct from the contested case
     /// above because we know the pid and can offer to end it.
     #[test]
-    fn a_dead_sway_with_a_surviving_child_is_an_orphan_not_a_grant() {
+    fn a_dead_tori_with_a_surviving_child_is_an_orphan_not_a_grant() {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
         let probe = Probe { holder_alive: false, externally_running: true, child_still_ours: true };
@@ -803,7 +803,7 @@ mod tests {
 
     /// A crash record with nothing left alive is litter, not an obstacle.
     #[test]
-    fn a_dead_sway_with_no_surviving_child_is_just_a_stale_record() {
+    fn a_dead_tori_with_no_surviving_child_is_just_a_stale_record() {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
         assert_eq!(
@@ -824,7 +824,7 @@ mod tests {
     }
 
     #[test]
-    fn a_crashed_sway_whose_child_still_runs_the_session_is_reported_as_an_orphan() {
+    fn a_crashed_tori_whose_child_still_runs_the_session_is_reported_as_an_orphan() {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
         let found = classify_persisted(&claims, |_| false, |_, _, _| true);
@@ -832,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    fn a_claim_whose_sway_is_alive_is_not_reaped_at_all() {
+    fn a_claim_whose_tori_is_alive_is_not_reaped_at_all() {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
         assert!(classify_persisted(&claims, |_| true, |_, _, _| true).is_empty());
@@ -844,7 +844,7 @@ mod tests {
     fn claims_round_trip_through_the_on_disk_shape() {
         let mut claims = HashMap::new();
         record(&mut claims, "s1", claim(Surface::Chat, "tab-a"));
-        record(&mut claims, "s2", Claim { surface: Surface::PtyAgent, tab_id: "tab-b".into(), child_pid: None, sway_pid: 9, agent: "claude".into(), profile: "default".into() });
+        record(&mut claims, "s2", Claim { surface: Surface::PtyAgent, tab_id: "tab-b".into(), child_pid: None, tori_pid: 9, agent: "claude".into(), profile: "default".into() });
         assert_eq!(parse_claims(&serialize_claims(&claims)), claims);
     }
 
@@ -926,20 +926,20 @@ mod tests {
 
     // --- what a removal would strand ---
 
-    fn held(agent: &str, sway_pid: u32, child_pid: Option<u32>) -> Claim {
-        held_on(agent, DEFAULT_PROFILE, sway_pid, child_pid)
+    fn held(agent: &str, tori_pid: u32, child_pid: Option<u32>) -> Claim {
+        held_on(agent, DEFAULT_PROFILE, tori_pid, child_pid)
     }
 
     const DEFAULT_PROFILE: &str = crate::accounts::DEFAULT_PROFILE_ID;
 
     /// The tab id is derived from the session id so the assertions below can
     /// name what they seeded: `held_by` answers in tab ids, not session ids.
-    fn held_on(agent: &str, profile: &str, sway_pid: u32, child_pid: Option<u32>) -> Claim {
+    fn held_on(agent: &str, profile: &str, tori_pid: u32, child_pid: Option<u32>) -> Claim {
         Claim {
             surface: Surface::Chat,
             tab_id: "tab".into(),
             child_pid,
-            sway_pid,
+            tori_pid,
             agent: agent.into(),
             profile: profile.into(),
         }
@@ -997,7 +997,7 @@ mod tests {
     /// every session in it ran on the login the user already had.
     #[test]
     fn a_claim_stored_before_accounts_reads_as_the_default_profile() {
-        let text = r#"{"s1":{"surface":"chat","tabId":"t","swayPid":1,"agent":"claude"}}"#;
+        let text = r#"{"s1":{"surface":"chat","tabId":"t","toriPid":1,"agent":"claude"}}"#;
         let claims = parse_claims(text);
         assert_eq!(claims["s1"].profile, DEFAULT_PROFILE);
     }
@@ -1005,7 +1005,7 @@ mod tests {
     /// A crash record must not block a removal forever. The user would have no
     /// way to tell why, and nothing they could do about it.
     #[test]
-    fn a_session_held_by_a_dead_sway_blocks_nothing() {
+    fn a_session_held_by_a_dead_tori_blocks_nothing() {
         let mut claims = HashMap::new();
         claims.insert("s1".to_string(), held("claude", 4_000_000, Some(9)));
         assert!(held_by(&claims, "claude", DEFAULT_PROFILE, pid_alive).is_empty());
@@ -1020,11 +1020,11 @@ mod tests {
         assert_eq!(held_by(&claims, "claude", DEFAULT_PROFILE, pid_alive), ["sh:1"]);
     }
 
-    /// A claim naming a dead Sway pid must be recognised as a crash record, not
-    /// trusted as a live holder - otherwise every session a crashed Sway had
+    /// A claim naming a dead Tori pid must be recognised as a crash record, not
+    /// trusted as a live holder - otherwise every session a crashed Tori had
     /// open would stay permanently unclaimable.
     #[test]
-    fn a_claim_naming_a_dead_sway_pid_is_not_trusted() {
+    fn a_claim_naming_a_dead_tori_pid_is_not_trusted() {
         let mut claims = HashMap::new();
         // A pid above the system maximum can never be live, so `pid_alive`
         // really answers here rather than the test asserting against a stub.
@@ -1032,7 +1032,7 @@ mod tests {
         record(
             &mut claims,
             "s1",
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: dead, agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, tori_pid: dead, agent: "claude".into(), profile: "default".into() },
         );
         assert!(!pid_alive(dead));
         assert_eq!(
@@ -1083,13 +1083,13 @@ mod tests {
     /// `kill -0 0` succeeds, because 0 means "my whole process group" rather
     /// than a process. A liveness check that trusted it would report a
     /// zero-valued pid as alive, and a terminate that trusted it would signal
-    /// every process Sway shares a group with.
+    /// every process Tori shares a group with.
     #[test]
     fn pid_zero_and_one_are_never_treated_as_signalable() {
         assert!(!is_signalable_pid(0));
         assert!(!is_signalable_pid(1));
         assert!(!pid_alive(0), "pid 0 is the process group, not a process");
-        assert!(!pid_alive(1), "launchd is never a Sway or an agent child");
+        assert!(!pid_alive(1), "launchd is never a Tori or an agent child");
 
         let registry = Registry::at(temp_store("signal-guard"));
         assert!(terminate_orphan(&registry, "s1", 0, "claude").is_err());
@@ -1105,7 +1105,7 @@ mod tests {
     /// caller has to warn. It must never be reported as an orphan, since we did
     /// not start it and have no business offering to kill it.
     #[test]
-    fn a_session_running_outside_sway_is_contested_and_never_reported_as_an_orphan() {
+    fn a_session_running_outside_tori_is_contested_and_never_reported_as_an_orphan() {
         let id = format!("ext-{}", std::process::id());
         // The shell's own command line contains `claude --resume <id>`, which is
         // what the adapter's running pattern matches on.
@@ -1130,12 +1130,12 @@ mod tests {
         let registry = Registry::at(temp_store("contested"));
         let outcome = registry.claim(
             &id,
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert_eq!(
             outcome,
             ClaimOutcome::Granted { contested: true },
-            "a session running outside Sway is a warning, not a refusal"
+            "a session running outside Tori is a warning, not a refusal"
         );
 
         registry.forget(&id);
@@ -1176,12 +1176,12 @@ mod tests {
     }
 
     /// The crash-recovery path end to end, against a real surviving process and
-    /// a real store file: what a `SIGKILL`ed Sway leaves behind, and what the
+    /// a real store file: what a `SIGKILL`ed Tori leaves behind, and what the
     /// next launch does about it.
     ///
-    /// A killed Sway cannot clean up after itself, which is the whole reason the
+    /// A killed Tori cannot clean up after itself, which is the whole reason the
     /// claim is written to disk. So the leftover is reconstructed exactly as a
-    /// crash would leave it - a record naming a dead Sway pid and a child that is
+    /// crash would leave it - a record naming a dead Tori pid and a child that is
     /// still running - and then the startup reap is run against it. Three things
     /// have to hold together, and any one alone is not enough: the child is
     /// *named* as an orphan (so the user can be offered its termination), the
@@ -1189,7 +1189,7 @@ mod tests {
     /// claim attempt is refused with the same pid rather than silently
     /// proceeding.
     #[test]
-    fn a_crashed_sway_leaves_a_named_orphan_and_the_session_stays_unclaimable() {
+    fn a_crashed_tori_leaves_a_named_orphan_and_the_session_stays_unclaimable() {
         let id = format!("crash-{}", std::process::id());
         let mut child = Command::new("/bin/sh")
             .args(["-c", &format!("claude --resume {id} ; sleep 10")])
@@ -1204,19 +1204,19 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
 
-        // The record a killed Sway leaves: its own pid is gone, its child is not.
+        // The record a killed Tori leaves: its own pid is gone, its child is not.
         let store = temp_store("crash-recovery");
         let mut leftover = HashMap::new();
         record(
             &mut leftover,
             &id,
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: Some(child_pid), sway_pid: 4_000_000, agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: Some(child_pid), tori_pid: 4_000_000, agent: "claude".into(), profile: "default".into() },
         );
         // Plus a record whose child did not survive, which must be swept.
         record(
             &mut leftover,
             "litter",
-            Claim { surface: Surface::Chat, tab_id: "tab-z".into(), child_pid: None, sway_pid: 4_000_000, agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-z".into(), child_pid: None, tori_pid: 4_000_000, agent: "claude".into(), profile: "default".into() },
         );
         save_claims_to(&store, &leftover).unwrap();
 
@@ -1237,7 +1237,7 @@ mod tests {
         assert_eq!(
             registry.claim(
                 &id,
-                Claim { surface: Surface::Chat, tab_id: "tab-new".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+                Claim { surface: Surface::Chat, tab_id: "tab-new".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
             ),
             ClaimOutcome::Orphaned { child_pid }
         );
@@ -1263,7 +1263,7 @@ mod tests {
                 surface: Surface::Chat,
                 tab_id: "t1".into(),
                 child_pid: Some(4242),
-                sway_pid: 4_000_000,
+                tori_pid: 4_000_000,
                 agent: "claude".into(),
                 profile: DEFAULT_PROFILE.into(),
             },
@@ -1275,7 +1275,7 @@ mod tests {
                 surface: Surface::Chat,
                 tab_id: "t2".into(),
                 child_pid: Some(4343),
-                sway_pid: 4_000_000,
+                tori_pid: 4_000_000,
                 agent: "gemini".into(),
                 profile: DEFAULT_PROFILE.into(),
             },
@@ -1306,7 +1306,7 @@ mod tests {
     #[test]
     fn a_claim_file_predating_the_agent_field_still_loads() {
         let parsed = parse_claims(
-            r#"{"s1":{"surface":"chat","tabId":"t","childPid":42,"swayPid":7}}"#,
+            r#"{"s1":{"surface":"chat","tabId":"t","childPid":42,"toriPid":7}}"#,
         );
         assert_eq!(parsed["s1"].agent, "claude");
     }
@@ -1319,7 +1319,7 @@ mod tests {
         record(
             &mut claims,
             "s1",
-            Claim { surface: Surface::PtyAgent, tab_id: "tab-a".into(), child_pid: None, sway_pid: 12345, agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::PtyAgent, tab_id: "tab-a".into(), child_pid: None, tori_pid: 12345, agent: "claude".into(), profile: "default".into() },
         );
         let probe = Probe { holder_alive: false, externally_running: true, child_still_ours: true };
         assert_eq!(

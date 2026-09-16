@@ -20,9 +20,9 @@
     align-self: center;
     display: flex;
     align-items: center;
-    gap: var(--sway-space-4);
-    margin-right: var(--sway-space-4);
-    font-family: var(--sway-font-mono);
+    gap: var(--tori-space-4);
+    margin-right: var(--tori-space-4);
+    font-family: var(--tori-font-mono);
     overflow: hidden;
   }
 
@@ -31,14 +31,14 @@
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: var(--sway-space-4);
+    gap: var(--tori-space-4);
     height: calc(26px * var(--ui-scale));
-    padding: 0 var(--sway-space-3);
+    padding: 0 var(--tori-space-3);
     border: none;
-    border-radius: var(--sway-radius-md);
+    border-radius: var(--tori-radius-md);
     background: none;
     font: inherit;
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     color: var(--fg-muted);
     cursor: pointer;
   }
@@ -46,8 +46,8 @@
     background: var(--neutral-hover);
   }
   .tight {
-    gap: var(--sway-space-3);
-    padding: 0 var(--sway-space-2);
+    gap: var(--tori-space-3);
+    padding: 0 var(--tori-space-2);
   }
 
   /* Between every two rows. Not a border on the cluster: that would also draw
@@ -56,7 +56,7 @@
      taller and stronger, so the glyph after it reads as a new group. */
   .divider {
     flex: none;
-    width: var(--sway-border-thin);
+    width: var(--tori-border-thin);
     height: calc(14px * var(--ui-scale));
     background: var(--border-default);
   }
@@ -74,7 +74,7 @@
   .bar {
     display: flex;
     align-items: center;
-    gap: var(--sway-space-3);
+    gap: var(--tori-space-3);
     white-space: nowrap;
   }
 
@@ -82,7 +82,7 @@
      telling the reader about two different windows rather than one number
      twice. */
   .kind {
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     color: var(--fg-muted);
   }
 
@@ -90,8 +90,8 @@
     display: block;
     width: calc(24px * var(--ui-scale));
     height: calc(4px * var(--ui-scale));
-    margin-right: var(--sway-space-1);
-    border-radius: var(--sway-radius-pill);
+    margin-right: var(--tori-space-1);
+    border-radius: var(--tori-radius-pill);
     background: var(--neutral-subtle);
     overflow: hidden;
   }
@@ -102,14 +102,14 @@
   .fill {
     display: block;
     height: 100%;
-    border-radius: var(--sway-radius-pill);
+    border-radius: var(--tori-radius-pill);
     background: var(--success-fg);
   }
 
   /* The one thing the strip exists to carry, so it is the one thing with weight
      on it. */
   .figure {
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     font-variant-numeric: tabular-nums;
     font-weight: 600;
     color: var(--fg-default);

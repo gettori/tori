@@ -8,7 +8,7 @@
 //!
 //! What is *not* copied is death handling. A PTY tab can leave a dead shell on
 //! screen and that is fine, even useful. A chat session that dies has to say so
-//! and let go of its session id, or the id stays unclaimable until Sway
+//! and let go of its session id, or the id stays unclaimable until Tori
 //! restarts. So the host wraps every caller's emit closure in one of its own,
 //! and a fatal event flowing through that wrapper is what drops the map entry
 //! and releases the ownership claim - one path, whether the child died on its
@@ -52,7 +52,7 @@ struct Entry {
     /// does that); it exists so a late callback from a previous subscription
     /// can be recognised as stale rather than acted on.
     generation: u64,
-    /// The session's own event log, for a transport whose conversation Sway
+    /// The session's own event log, for a transport whose conversation Tori
     /// cannot otherwise read back. `None` for one that writes a transcript of
     /// its own, which is the whole of what such a session pays for this.
     ///
@@ -131,11 +131,11 @@ pub struct OutputCache {
     /// them at all.
     ///
     /// Learned from [`ChatEvent::QuestionRequest`] rather than from a tool
-    /// name: a question's "output" is the answer record Sway itself produced,
+    /// name: a question's "output" is the answer record Tori itself produced,
     /// and it lands on a question row that has no card and therefore no way to
-    /// ask for the rest. Keying on Sway's own event instead of on
+    /// ask for the rest. Keying on Tori's own event instead of on
     /// `AskUserQuestion` keeps the host out of one agent's vocabulary and gives
-    /// any agent that asks a question through Sway the same treatment.
+    /// any agent that asks a question through Tori the same treatment.
     whole: HashSet<String>,
 }
 
@@ -270,7 +270,7 @@ fn ends_session(event: &ChatEvent) -> bool {
 impl ChatHost {
     /// Test-only: a host whose registry persists to `path` rather than the real
     /// `chat-claims.json`, so a test run cannot drop a live session's claim out
-    /// from under a running Sway.
+    /// from under a running Tori.
     #[cfg(test)]
     fn at(path: std::path::PathBuf) -> Self {
         Self {
@@ -365,7 +365,7 @@ impl ChatHost {
     /// Answer a tool call the agent is asking about.
     ///
     /// **Only the transport can take this.** There used to be a second waiter -
-    /// Sway's own `PreToolUse` gate, blocking on a socket with its own request-id
+    /// Tori's own `PreToolUse` gate, blocking on a socket with its own request-id
     /// space - and this routed between them. That gate is gone: the agent is
     /// the only thing that asks, so an id the transport disclaims belongs to
     /// nobody, and saying so is better than resolving it somewhere that would
@@ -846,7 +846,7 @@ mod tests {
     /// A per-test claims store, never the real one.
     fn temp_store() -> std::path::PathBuf {
         std::env::temp_dir()
-            .join(format!("sway-host-claims-{}", std::process::id()))
+            .join(format!("tori-host-claims-{}", std::process::id()))
             .join(format!("{:?}.json", std::thread::current().id()))
     }
 
@@ -964,13 +964,13 @@ mod tests {
     /// **A session whose agent writes its own transcript pays nothing.**
     ///
     /// The decision is the caller's - `chat_spawn` passes a mirror only for a
-    /// transport whose conversation Sway cannot read back - and this pins what
+    /// transport whose conversation Tori cannot read back - and this pins what
     /// that buys: a claude-shaped session leaves no file behind at all, not an
     /// empty one.
     #[test]
     fn a_session_with_no_mirror_writes_no_file() {
         let host = ChatHost::at(temp_store());
-        let dir = std::env::temp_dir().join(format!("sway-host-logs-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-host-logs-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
 
         let mut sinks = Vec::new();
@@ -1117,7 +1117,7 @@ mod tests {
 
     /// A question's output is never cut. It lands on a question row rather than
     /// a tool card, so there is nothing there to ask for the rest with, and the
-    /// exemption is keyed on Sway's own `QuestionRequest` rather than on one
+    /// exemption is keyed on Tori's own `QuestionRequest` rather than on one
     /// agent's tool name.
     #[test]
     fn a_questions_answer_is_never_cut() {
@@ -1317,7 +1317,7 @@ mod tests {
 
         host.registry.claim(
             "s-dies",
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert!(host.registry.snapshot().contains_key("s-dies"));
 
@@ -1468,7 +1468,7 @@ mod tests {
         for (id, tab) in [("s1", "tab-a"), ("s2", "tab-b")] {
             host.registry.claim(
                 id,
-                Claim { surface: Surface::Chat, tab_id: tab.into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+                Claim { surface: Surface::Chat, tab_id: tab.into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
             );
             let closed = closes.clone();
             host.spawn_plain(id, tab, Box::new(|_| {}), spec(id), move || {
@@ -1494,7 +1494,7 @@ mod tests {
         let host = ChatHost::at(temp_store());
         host.registry.claim(
             "s-bad",
-            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::Chat, tab_id: "tab-a".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
 
         struct Broken;
@@ -1576,13 +1576,13 @@ mod tests {
 
         let first = host.registry.claim(
             &id,
-            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert_eq!(first, ClaimOutcome::Granted { contested: false });
 
         let second = host.registry.claim(
             &id,
-            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert_eq!(second, ClaimOutcome::HeldByOther { surface: Surface::PtyAgent, tab_id: "pty-tab".to_string() });
 
@@ -1619,12 +1619,12 @@ mod tests {
         host.spawn_plain(&id, "chat-tab", Box::new(|_| {}), spec(&id), || Box::<Puppet>::default()).unwrap();
         host.registry.claim(
             &id,
-            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::Chat, tab_id: "chat-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
 
         let outcome = host.registry.claim(
             &id,
-            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+            Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
         );
         assert_eq!(outcome, ClaimOutcome::HeldByOther { surface: Surface::Chat, tab_id: "chat-tab".to_string() });
 
@@ -1633,7 +1633,7 @@ mod tests {
         assert_eq!(
             host.registry.claim(
                 &id,
-                Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+                Claim { surface: Surface::PtyAgent, tab_id: "pty-tab".into(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
             ),
             ClaimOutcome::Granted { contested: false }
         );
@@ -1653,7 +1653,7 @@ mod tests {
             let id = format!("s-exit-{}-{n}", std::process::id());
             host.registry.claim(
                 &id,
-                Claim { surface: Surface::Chat, tab_id: id.clone(), child_pid: None, sway_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
+                Claim { surface: Surface::Chat, tab_id: id.clone(), child_pid: None, tori_pid: std::process::id(), agent: "claude".into(), profile: "default".into() },
             );
             let start = StartSpec {
                 session_id: id.clone(),

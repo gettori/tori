@@ -7,15 +7,15 @@
 .search {
   width: 100%;
   padding: calc(7px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-default);
   outline: none;
   transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    box-shadow var(--tori-duration-fast) ease;
 }
 .search:focus {
   border-color: var(--brand-default);
@@ -32,7 +32,7 @@
 .group:focus-visible {
   outline: 2px solid var(--brand-default);
   outline-offset: 2px;
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
 }
 
 /* Shared by both variants: a tile is a centred box with no chrome of its own,
@@ -59,11 +59,11 @@
   aspect-ratio: 1;
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-muted);
   transition:
-    border-color var(--sway-duration-fast) ease,
-    color var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    color var(--tori-duration-fast) ease;
 }
 /* CSS-sized glyph (the numeric Lucide size is dropped) so it tracks --ui-scale. */
 .grid .tile svg {
@@ -98,9 +98,9 @@
   height: calc(22px * var(--ui-scale));
   background: rgb(var(--tile-tint));
   border: 1px solid transparent;
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   color: var(--fg-on-emphasis);
-  transition: box-shadow var(--sway-duration-fast) ease;
+  transition: box-shadow var(--tori-duration-fast) ease;
 }
 .swatch .tile:hover {
   box-shadow: 0 0 0 2px var(--border-strong);

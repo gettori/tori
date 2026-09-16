@@ -13,8 +13,8 @@ import { pointerClick } from "../../test/menus";
 installResizeObserver();
 installAnimationFrame();
 
-const A = "/r/a/.sway/worktrees/auth";
-const B = "/r/b/.sway/worktrees/auth";
+const A = "/r/a/.tori/worktrees/auth";
+const B = "/r/b/.tori/worktrees/auth";
 const FILE_A = `${A}/a.txt`;
 const DEEP_A = `${A}/deep/c.txt`;
 const FILE_B = `${B}/src/b.txt`;
@@ -91,7 +91,7 @@ const unitSel = {
 
 function openTabs(ws: string, paths: string[]) {
   localStorage.setItem(
-    "sway.editor.tabs.v1",
+    "tori.editor.tabs.v1",
     JSON.stringify({ [ws]: { paths, active: paths[0], savedAt: Date.now() } }),
   );
 }

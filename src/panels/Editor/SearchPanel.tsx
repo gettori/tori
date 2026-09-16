@@ -121,7 +121,7 @@ const NUL = "\u0000";
 const GLOBS_ID = "search-globs";
 const SAVED_ID = "search-saved";
 const QUERY_HINT_ID = "search-query-hint";
-const VIEW_KEY = "sway.search.view.v1";
+const VIEW_KEY = "tori.search.view.v1";
 
 const fileKey = (root: string, path: string) => `${root}${NUL}${path}`;
 const matchKey = (root: string, m: SearchMatch) => `${root}${NUL}${m.path}${NUL}${m.line}`;

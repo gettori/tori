@@ -5,11 +5,11 @@
 //
 // `checkpoint.rs` already writes something it calls a backstop, but those are
 // keyed by *session*: they exist because a turn was reverted, and they live
-// under `refs/sway/checkpoint/<sessionId>/`. A discard is something the user
+// under `refs/tori/checkpoint/<sessionId>/`. A discard is something the user
 // does with their own hands. There may be no session at all, and there is
 // certainly no prompt boundary, so a session-keyed ref is the wrong home for it.
 //
-// The hard part here is ownership, not storage. `refs/sway/*` lives in the
+// The hard part here is ownership, not storage. `refs/tori/*` lives in the
 // repository's *common* dir, which every worktree of a bare repo shares (only
 // `refs/worktree/*` is per-worktree), so the ref itself cannot say which
 // worktree took it. Worktree *names* cannot say either, because they are
@@ -18,7 +18,7 @@
 //
 // So the ref stores only the tree, as a gc anchor, and the record that *owns* it
 // lives in a sidecar under the worktree's **own** git dir
-// (`.bare/worktrees/<name>/sway/`), which `git worktree remove` deletes along
+// (`.bare/worktrees/<name>/tori/`), which `git worktree remove` deletes along
 // with everything else in that directory. Listing reads the sidecar and never
 // the refs, so a worktree can only ever see its own backstops, and a recreated
 // worktree of the same name starts with an empty sidecar and a freshly minted id
@@ -71,7 +71,7 @@ fn is_git_worktree(repo: &str) -> bool {
 /// worktree, `<repo>/.git` for the main one. Deliberately *not* the common dir,
 /// which is the whole point of the sidecar.
 fn sidecar_dir(repo: &str) -> Result<PathBuf, String> {
-    Ok(PathBuf::from(git_capture(repo, &["rev-parse", "--absolute-git-dir"])?).join("sway"))
+    Ok(PathBuf::from(git_capture(repo, &["rev-parse", "--absolute-git-dir"])?).join("tori"))
 }
 
 /// The identity token minted the first time this worktree takes a backstop.
@@ -90,7 +90,7 @@ fn worktree_id(dir: &Path) -> Result<String, String> {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    // Creation time plus pid. Two Sway processes racing to mint an id for the
+    // Creation time plus pid. Two Tori processes racing to mint an id for the
     // same worktree would leave one set of refs unclaimed, which `backstop_prune`
     // sweeps; no record is lost, because a record names its tree directly.
     let id = format!("{nanos:x}-{:x}", std::process::id());
@@ -110,7 +110,7 @@ fn index_path(dir: &Path) -> PathBuf {
 }
 
 fn ref_prefix(id: &str) -> String {
-    format!("refs/sway/discard/{id}/")
+    format!("refs/tori/discard/{id}/")
 }
 
 fn ref_name(id: &str, ts: u64) -> String {
@@ -235,7 +235,7 @@ fn find(repo: &str, dir: &Path, ts: u64) -> Found {
     if let Some(rec) = read_records(dir).into_iter().find(|r| r.ts == ts) {
         return Found::Mine(rec);
     }
-    let listed = git_capture(repo, &["for-each-ref", "--format=%(refname)", "refs/sway/discard/"])
+    let listed = git_capture(repo, &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"])
         .unwrap_or_default();
     let suffix = format!("/{ts}");
     if listed.lines().any(|name| name.ends_with(&suffix)) {
@@ -388,7 +388,7 @@ pub(crate) fn backstop_restore_file_body(
     restore_from(&repo_path, &rec.tree, Some(&file))
 }
 
-/// Delete every `refs/sway/discard/` ref whose worktree no longer exists.
+/// Delete every `refs/tori/discard/` ref whose worktree no longer exists.
 ///
 /// The sidecar dies with `git worktree remove`, but the refs live in the shared
 /// common dir and outlive it, so without this sweep a long-lived bare repo would
@@ -415,10 +415,10 @@ pub(crate) fn backstop_prune_body(repo_path: String) -> Result<usize, String> {
         .filter(|id| !id.is_empty())
         .collect();
 
-    let refs = git_capture(&repo_path, &["for-each-ref", "--format=%(refname)", "refs/sway/discard/"])?;
+    let refs = git_capture(&repo_path, &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"])?;
     let mut removed = 0;
     for name in refs.lines() {
-        let Some(rest) = name.strip_prefix("refs/sway/discard/") else { continue };
+        let Some(rest) = name.strip_prefix("refs/tori/discard/") else { continue };
         let Some((id, _)) = rest.rsplit_once('/') else { continue };
         if live.iter().any(|l| l == id) {
             continue;
@@ -454,7 +454,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_backstop_test_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_backstop_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -491,7 +491,7 @@ mod tests {
         );
         assert_eq!(before, "staged.txt");
         // The ref anchors the tree, and the tree holds the unstaged file too.
-        let listed = git_capture(&repo, &["for-each-ref", "--format=%(objectname)", "refs/sway/discard/"]).unwrap();
+        let listed = git_capture(&repo, &["for-each-ref", "--format=%(objectname)", "refs/tori/discard/"]).unwrap();
         assert_eq!(listed, rec.tree);
         let names = git_capture(&repo, &["ls-tree", "--name-only", "-r", &rec.tree]).unwrap();
         assert!(names.contains("loose.txt"), "the snapshot spans the whole tree: {names}");
@@ -631,7 +631,7 @@ mod tests {
         let records = backstop_list(repo.clone()).unwrap();
         assert_eq!(records.len(), RETENTION);
         assert_eq!(records.last().unwrap().label, format!("take {}", RETENTION + 4));
-        let refs = git_capture(&repo, &["for-each-ref", "--format=%(refname)", "refs/sway/discard/"]).unwrap();
+        let refs = git_capture(&repo, &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"]).unwrap();
         assert_eq!(
             refs.lines().count(),
             RETENTION,
@@ -654,7 +654,7 @@ mod tests {
         std::fs::write(wt.join("b.txt"), "side\n").unwrap();
         take(&side, "side's").unwrap();
         let all = |repo: &str| {
-            git_capture(repo, &["for-each-ref", "--format=%(refname)", "refs/sway/discard/"])
+            git_capture(repo, &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"])
                 .unwrap()
                 .lines()
                 .count()
@@ -687,7 +687,7 @@ mod tests {
         let listed = backstop_list(repo.clone()).unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].ts, rec.ts);
-        let refs = git_capture(&repo, &["for-each-ref", "--format=%(refname)", "refs/sway/discard/"]).unwrap();
+        let refs = git_capture(&repo, &["for-each-ref", "--format=%(refname)", "refs/tori/discard/"]).unwrap();
         assert_eq!(refs.lines().count(), 1);
 
         // And it actually restores: the whole point of taking one before a
@@ -701,10 +701,10 @@ mod tests {
 
     #[test]
     fn a_plain_folder_reports_no_backstop_and_refuses_to_take_one() {
-        // Sway opens folders that are not repositories. A caller has to be able
+        // Tori opens folders that are not repositories. A caller has to be able
         // to ask *before* it offers the user an operation it could not undo,
         // rather than finding out from a failed take partway through.
-        let dir = std::env::temp_dir().join(format!("sway_backstop_plain_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori_backstop_plain_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let plain = s(&dir);

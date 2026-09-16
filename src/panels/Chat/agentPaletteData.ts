@@ -32,7 +32,7 @@ export type PaletteProvider = {
   label: string;
   /** The plan the agent named for this account, e.g. `Claude Max`. Null on a
    *  single-account install, where it tells nothing apart, and for a catalogue
-   *  that never carried one. Never a tier Sway inferred. */
+   *  that never carried one. Never a tier Tori inferred. */
   plan: string | null;
   health: ProviderHealth;
   /** Whether a model of this agent can be picked at all. False leaves the row
@@ -109,7 +109,7 @@ export function fixReason(
 export type PaletteAccount = { id: string; label: string };
 
 /**
- * Every chat-capable agent, with the models Sway already has for it.
+ * Every chat-capable agent, with the models Tori already has for it.
  *
  * Cache only: this is what a draft offers before anything has been spawned, so
  * the models come from the last probe rather than from a handshake nobody has

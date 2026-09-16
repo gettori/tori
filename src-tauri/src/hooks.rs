@@ -8,9 +8,9 @@
 // Injection mechanism (verified phase 1, empirically confirmed
 // non-invasive): `claude --settings <path>` layers an *additional* settings
 // source on top of the normal ones (`~/.claude/settings.json` stays
-// byte-identical); this is Sway-launched-only - an externally-launched
+// byte-identical); this is Tori-launched-only - an externally-launched
 // `claude` never sees the flag, so it never sees the hooks either. The value
-// is a **file path** (`~/.config/sway/claude-hooks-settings.json`), not
+// is a **file path** (`~/.config/tori/claude-hooks-settings.json`), not
 // inline JSON - see `write_claude_settings_file`'s doc comment for why an
 // inline blob broke every claude launch (the command is typed into the
 // tab's login shell, and a PTY in canonical mode truncates a single long
@@ -20,8 +20,8 @@
 // it greps only `session_id`/`hook_event_name` out of the raw JSON payload
 // on stdin (POSIX `grep`/`sed`/`printf` only, no jq/node/python dependency)
 // and writes a small `{event, at}` marker to
-// `~/.config/sway/hooks-status/<session id>.json` - same directory
-// convention as `checkpoint.rs`'s `~/.config/sway/checkpoint-index/<id>`.
+// `~/.config/tori/hooks-status/<session id>.json` - same directory
+// convention as `checkpoint.rs`'s `~/.config/tori/checkpoint-index/<id>`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -32,7 +32,7 @@ use serde_json::json;
 use crate::sessions::{SessionMeta, TailState};
 
 fn hooks_status_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/hooks-status")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/hooks-status")
 }
 
 fn status_path(session_id: &str) -> PathBuf {
@@ -157,7 +157,7 @@ fn claude_settings_json() -> String {
 }
 
 fn claude_settings_file_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/claude-hooks-settings.json")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/claude-hooks-settings.json")
 }
 
 /// The `--settings <path>` value (phase 1's verified non-invasive injection
@@ -182,7 +182,7 @@ fn write_claude_settings_file() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// Extra launch args to append to an agent's args (Sway-launched sessions
+/// Extra launch args to append to an agent's args (Tori-launched sessions
 /// only, never editing user config): `["--settings", "<path>"]` for claude,
 /// empty for every other adapter (no verified injection mechanism yet, see
 /// `AgentAdapter::hooks`) or if the settings file can't be written.

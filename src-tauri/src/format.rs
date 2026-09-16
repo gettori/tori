@@ -1,7 +1,7 @@
 // The project's own formatter, found the way the formatter itself finds its
 // config: by walking up from the file.
 //
-// Sway does not ask the user which formatter to use, because the project has
+// Tori does not ask the user which formatter to use, because the project has
 // already answered. A repo with a `biome.json` formats with Biome and a repo
 // with a `.prettierrc` formats with Prettier, and one with neither gets nothing
 // from here at all - the editor falls back to the language server's own
@@ -279,7 +279,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_format_test_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_format_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

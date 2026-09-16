@@ -14,13 +14,13 @@
     calc(24px * var(--ui-scale));
   background: none;
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-default);
   font: inherit;
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
-  transition: background var(--sway-duration-fast) ease;
+  transition: background var(--tori-duration-fast) ease;
 }
 
 .row:hover {
@@ -42,7 +42,7 @@
   min-width: 0;
   color: var(--fg-muted);
   direction: rtl;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-align: left;
   text-overflow: ellipsis;
 }
@@ -52,7 +52,7 @@
   width: calc(18px * var(--ui-scale));
   color: var(--diff-modified);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-align: center;
 }
 
@@ -68,5 +68,5 @@
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(2px * var(--ui-scale))
     calc(24px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }

@@ -25,7 +25,7 @@ const pr = (n: number, over: Partial<PullRequest> = {}): PullRequest => ({
   headRef: `branch-${n}`,
   baseRef: "main",
   headSha: `sha${n}`,
-  url: `https://github.com/skarif2/sway/pull/${n}`,
+  url: `https://github.com/skarif2/tori/pull/${n}`,
   mergeableState: "clean",
   ...over,
 });
@@ -252,7 +252,7 @@ describe("the pull request list", () => {
 
     bridge.items = [pr(31)];
     window.dispatchEvent(
-      new CustomEvent("sway:pr-opened", { detail: { projectPath: ROOT } }),
+      new CustomEvent("tori:pr-opened", { detail: { projectPath: ROOT } }),
     );
     await waitFor(() => expect(screen.queryByText("pull request 31")).toBeTruthy());
   });
@@ -267,7 +267,7 @@ describe("the pull request list", () => {
 
     const before = bridge.calls.filter((c) => c.cmd === "forge_list_prs").length;
     window.dispatchEvent(
-      new CustomEvent("sway:pr-opened", { detail: { projectPath: "/root/work/other" } }),
+      new CustomEvent("tori:pr-opened", { detail: { projectPath: "/root/work/other" } }),
     );
     await Promise.resolve();
     expect(bridge.calls.filter((c) => c.cmd === "forge_list_prs")).toHaveLength(before);
@@ -322,9 +322,9 @@ describe("the ways into the panel", () => {
 
     let detail: unknown = null;
     const handler = (e: Event) => (detail = (e as CustomEvent).detail);
-    window.addEventListener("sway:set-right-mode", handler);
+    window.addEventListener("tori:set-right-mode", handler);
     cmd!.run!({} as never);
-    window.removeEventListener("sway:set-right-mode", handler);
+    window.removeEventListener("tori:set-right-mode", handler);
 
     expect(detail).toEqual({ mode: "pulls" });
   });

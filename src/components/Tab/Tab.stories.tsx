@@ -29,7 +29,7 @@ const FILES = [
  *  `role="tab"`.
  *
  *  Keyboard is the automatic-activation pattern, one model across all four of
- *  Sway's strips: Tab enters the strip on the selected pill and leaves it in one
+ *  Tori's strips: Tab enters the strip on the selected pill and leaves it in one
  *  press, and arrows move *and* select as they go. */
 export const Default: Story = {
   render: () => {

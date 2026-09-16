@@ -6,13 +6,13 @@
 // everything else and go-to-definition into an unopened file is a silent no-op.
 // See [[gotchas#lsp-client-assumes-one-editor-view-per-file]].
 //
-// Sway has three kinds of file, and the whole class is shaped by the third:
+// Tori has three kinds of file, and the whole class is shaped by the third:
 //
 //   1. **view-backed** - the one tab on screen. Its changes reach the server the
 //      library's way, through the plugin's `unsyncedChanges`.
 //   2. **headless** - materialised by `requestFile` because the server asked
 //      about a file the user never opened. It has a document and no view.
-//   3. **background buffers** - a Sway tab that is open but not shown. It has no
+//   3. **background buffers** - a Tori tab that is open but not shown. It has no
 //      view either (one `EditorView`, many `EditorState`s), it can be *dirty*,
 //      and its unsaved text exists on no disk. Reading such a file from disk
 //      would answer with text the user cannot see, so `requestFile` asks the
@@ -59,7 +59,7 @@ export function uriToPath(uri: string): string | null {
   }
 }
 
-class SwayFile implements WorkspaceFile {
+class ToriFile implements WorkspaceFile {
   /** The live view, or null when this file is headless. */
   view: EditorView | null = null;
   /** A change the server has not been told about yet, reported by the next
@@ -105,10 +105,10 @@ export const DEFAULT_MAX_HEADLESS = 100;
  *  than a promise nobody ever settles. */
 export const DEFAULT_DISPLAY_TIMEOUT_MS = 5000;
 
-export class SwayWorkspace extends Workspace {
-  files: SwayFile[] = [];
+export class ToriWorkspace extends Workspace {
+  files: ToriFile[] = [];
 
-  private byPath = new Map<string, SwayFile>();
+  private byPath = new Map<string, ToriFile>();
   private versions = new Map<string, number>();
   /** Headless paths, least recently used first. */
   private headless: string[] = [];
@@ -213,7 +213,7 @@ export class SwayWorkspace extends Workspace {
     const existing = this.byPath.get(path);
     if (existing) {
       const wasHeadless = !existing.view;
-      // Sway has one `EditorView` and swaps its state, so a second view on one
+      // Tori has one `EditorView` and swaps its state, so a second view on one
       // file cannot happen today; if it ever does, the newest wins rather than
       // throwing the way `DefaultWorkspace` does.
       existing.view = view;
@@ -229,7 +229,7 @@ export class SwayWorkspace extends Workspace {
       this.resolveWaiters(path, view);
       return;
     }
-    const file = new SwayFile(uri, path, languageId, this.nextVersion(path), view.state.doc);
+    const file = new ToriFile(uri, path, languageId, this.nextVersion(path), view.state.doc);
     file.view = view;
     this.add(path, file);
     this.client.didOpen(file);
@@ -238,7 +238,7 @@ export class SwayWorkspace extends Workspace {
 
   /**
    * The view stopped holding this file. It becomes headless rather than closed:
-   * a Sway tab that leaves the screen keeps its buffer, unsaved edits included,
+   * a Tori tab that leaves the screen keeps its buffer, unsaved edits included,
    * and telling the server to forget it would make every later question about
    * it answer from disk instead.
    */
@@ -297,7 +297,7 @@ export class SwayWorkspace extends Workspace {
     // The editor may have opened it while we were reading.
     const now = this.byPath.get(path);
     if (now) return now;
-    const file = new SwayFile(uri, path, languageId, this.nextVersion(path), toDoc(text));
+    const file = new ToriFile(uri, path, languageId, this.nextVersion(path), toDoc(text));
     this.add(path, file);
     this.touchHeadless(path);
     this.client.didOpen(file);
@@ -363,7 +363,7 @@ export class SwayWorkspace extends Workspace {
     };
   }
 
-  private add(path: string, file: SwayFile): void {
+  private add(path: string, file: ToriFile): void {
     this.byPath.set(path, file);
     this.files = [...this.files, file];
     this.joinActiveMappings(file);
@@ -386,7 +386,7 @@ export class SwayWorkspace extends Workspace {
    * guarded: if a future version of the library reshapes them, this quietly
    * does nothing and the panel is no worse off than it is without it.
    */
-  private joinActiveMappings(file: SwayFile): void {
+  private joinActiveMappings(file: ToriFile): void {
     const active = (this.client as unknown as ClientInternals).activeMappings;
     if (!Array.isArray(active)) return;
     for (const mapping of active) {

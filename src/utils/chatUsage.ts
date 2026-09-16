@@ -9,10 +9,10 @@
 //   two-turn capture (`dev/fixtures/claude/two-turns.jsonl`): both result
 //   frames report `num_turns: 1` and identical `input_tokens: 2` /
 //   `output_tokens: 3`, which a session-cumulative figure could not do. So a
-//   session total is the sum of the turns Sway saw, and the newest frame is
+//   session total is the sum of the turns Tori saw, and the newest frame is
 //   only ever the newest *turn*.
 //
-// The consequence of that measurement is the honesty rule below: Sway can only
+// The consequence of that measurement is the honesty rule below: Tori can only
 // total the turns it observed. A chat opened on a session with prior turns has
 // history it never had a `result` frame for, so its session total is a floor,
 // not the truth, and it says so rather than presenting a partial sum as final.
@@ -63,7 +63,7 @@ export type UsageSummary = {
  * which is safe and unhelpful: a chat that started the session and watched every
  * turn of it knows its total exactly, and telling that user their figure might
  * be incomplete trains them to discount a number that was right. So the caveat
- * is dropped only when the turns Sway saw a `result` frame for account for every
+ * is dropped only when the turns Tori saw a `result` frame for account for every
  * prompt in the transcript.
  *
  * Erring towards the caveat on every uncertainty: a transcript that could not be

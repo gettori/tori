@@ -5,7 +5,7 @@
 // the specifier, so a static import from anywhere eager fails the suite.
 import * as pdfjs from "pdfjs-dist";
 
-// Served by `vite.config.ts`'s `sway-pdfjs-data` plugin, in the dev server and
+// Served by `vite.config.ts`'s `tori-pdfjs-data` plugin, in the dev server and
 // in the bundle. Absolute, so the same string resolves under the dev server's
 // http origin and the release build's `tauri://` one; pdf.js needs the trailing
 // slash on the directories and throws without it.

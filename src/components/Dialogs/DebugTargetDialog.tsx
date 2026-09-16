@@ -153,7 +153,7 @@ export default function DebugTargetDialog(props: {
           spellcheck={false}
         />
         <div class={styles.msg}>
-          The target must already be running with <code>--inspect</code>. Sway attaches to it and
+          The target must already be running with <code>--inspect</code>. Tori attaches to it and
           leaves it running when you stop.
         </div>
       </Show>

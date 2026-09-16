@@ -13,7 +13,7 @@
     flex: none;
     width: var(--glyph-size);
     height: var(--glyph-size);
-    border-radius: var(--sway-radius-sm);
+    border-radius: var(--tori-radius-sm);
     /* No plate: the marks sit directly on the row's surface. The box keeps its
        fixed size anyway, so a resolved mark and the letter fallback still line
        up; only the fill behind them is gone. */
@@ -24,7 +24,7 @@
   /* Mono, like every other machine-supplied string in the panel, and sized off
      the box so one rule covers every call site's `size`. */
   .letter {
-    font-family: var(--sway-font-mono);
+    font-family: var(--tori-font-mono);
     font-size: calc(var(--glyph-size) * 0.5);
     font-weight: 600;
     line-height: 1;

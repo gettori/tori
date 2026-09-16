@@ -61,7 +61,7 @@ describe("approaching", () => {
     }
   });
 
-  // One threshold governs two mechanisms that look unrelated on screen: Sway's
+  // One threshold governs two mechanisms that look unrelated on screen: Tori's
   // own ceilings and the agents' quota windows. 1.0 is the "off" stop on the
   // shared control, and off has to mean the same thing on both sides - the
   // heads-up goes, the limit itself is never silenced.
@@ -83,7 +83,7 @@ describe("what the user is told", () => {
 
   // There used to be a second audience: `stopReason`, written for the model as
   // the denied tool call's result, phrased to forbid a retry. Both the denial
-  // and the audience are gone - Sway no longer refuses tool calls, so nothing
+  // and the audience are gone - Tori no longer refuses tool calls, so nothing
   // carries a reason to the model, and its assertions were removed with it
   // rather than left asserting the phrasing of a string nobody reads.
 

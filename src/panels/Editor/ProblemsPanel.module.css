@@ -4,7 +4,7 @@
   overflow-y: auto;
   height: 100%;
   background: var(--canvas-card);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .empty {
@@ -37,9 +37,9 @@
 .count {
   flex: none;
   padding: 0 calc(5px * var(--ui-scale));
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--neutral-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 
 .problemRow {
@@ -66,8 +66,8 @@
 .loc {
   flex: none;
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 .message {

@@ -99,7 +99,7 @@ export function MenuRow(props: {
  *  documents: floating-ui takes numbers, so these never reach CSS and cannot
  *  read `--ui-scale`.
  *
- *  The gutter is the surface's own `--sway-space-3` padding plus the same 4px a
+ *  The gutter is the surface's own `--tori-space-3` padding plus the same 4px a
  *  dropdown clears its button by, since the row it is measured from is inset by
  *  that padding: the flyout clears the parent's *edge* by the gap the eye reads,
  *  not the row's. The shift undoes the padding on the other axis, so the

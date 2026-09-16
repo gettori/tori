@@ -253,7 +253,7 @@ describe("recording where you have been", () => {
   it("never records a synthetic view, which is a thing opened rather than a place", async () => {
     await mountEditor();
     await arrive({ path: `${REPO}/a.ts` });
-    emitWith(OPEN_IN_EDITOR, { path: `sway://commit/abc/${REPO}` });
+    emitWith(OPEN_IN_EDITOR, { path: `tori://commit/abc/${REPO}` });
     await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
 
     // The commit tab is open, but Back has nowhere to go: the only place

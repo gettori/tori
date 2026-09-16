@@ -10,7 +10,7 @@ import type { PrFile, PullRequest, ReviewThread } from "../../../utils/forgeType
 // The two things this view exists to get right, neither of which a
 // working-looking panel would show:
 //
-//   1. **The patch is GitHub's, not one Sway computed.** A local `git diff` of
+//   1. **The patch is GitHub's, not one Tori computed.** A local `git diff` of
 //      the same two commits reads identically and anchors differently, and
 //      Phase 10's review threads are measured against the anchors GitHub used.
 //   2. **The unchanged regions are git's, not the API's.** Expanding a gap is
@@ -37,7 +37,7 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   headRef: "wave-3",
   baseRef: "main",
   headSha: HEAD_SHA,
-  url: "https://github.com/skarif2/sway/pull/42",
+  url: "https://github.com/skarif2/tori/pull/42",
   mergeableState: "clean",
   ...over,
 });
@@ -394,7 +394,7 @@ describe("the pull request detail", () => {
     // The one skip where content is genuinely missing is the one that offers a
     // way to the content.
     const out = screen.getByText(/Read it on github.com/) as HTMLAnchorElement;
-    expect(out.getAttribute("href")).toBe("https://github.com/skarif2/sway/pull/42/files");
+    expect(out.getAttribute("href")).toBe("https://github.com/skarif2/tori/pull/42/files");
 
     fireEvent.click(screen.getByText("logo.png"));
     expect(document.querySelector('[data-file-skip="noText"]')).toBeTruthy();
@@ -418,7 +418,7 @@ describe("the pull request detail", () => {
       expect(screen.queryByText(/more files than the API will describe/)).toBeTruthy(),
     );
     const link = screen.getByText(/See all of them on github.com/) as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe("https://github.com/skarif2/sway/pull/42/files");
+    expect(link.getAttribute("href")).toBe("https://github.com/skarif2/tori/pull/42/files");
   });
 
   it("shows the server's own sentence when the files cannot be fetched", async () => {
@@ -649,7 +649,7 @@ describe("review threads on a pull request's diff", () => {
       expect(screen.queryByText(/more conversations than one read can carry/)).toBeTruthy(),
     );
     const link = screen.getByText(/See them all on github.com/) as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe("https://github.com/skarif2/sway/pull/42");
+    expect(link.getAttribute("href")).toBe("https://github.com/skarif2/tori/pull/42");
   });
 
   it("puts the cursor in the reply box when it opens", async () => {
@@ -995,7 +995,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
     // The whole remark, in one line, with the anchor the agent can open.
     expect(term.seen[0].text).toBe(
       'Review comment on @src/edit.ts line 2 (PR #42). reviewer wrote: "this drops the error". ' +
-        "Make the change here; the reply on GitHub is sent from Sway.",
+        "Make the change here; the reply on GitHub is sent from Tori.",
     );
     const note = document.querySelector("[data-send-note]")!;
     expect(note.textContent).toBe("Sent to title of on-wave.");
@@ -1027,7 +1027,7 @@ describe("handing a review thread to the agent that owns the branch", () => {
   });
 
   it("shows the whole span a multi-line thread covers, not just its last line", async () => {
-    // The card and the message must agree. A comment Sway wrote through Phase 11
+    // The card and the message must agree. A comment Tori wrote through Phase 11
     // can span lines, so a header naming only `line` describes a narrower remark
     // than the one being sent.
     (bridge.threads[0] as { startLine: number | null }).startLine = 1;
@@ -1140,7 +1140,7 @@ describe("landing a pull request", () => {
   it("merges a clean pull request nobody has approved", async () => {
     // The case the whole gate is shaped around. On a single-owner repo the
     // author cannot approve their own pull request, so a review-derived gate
-    // would block every merge Sway will ever offer, and the server would have
+    // would block every merge Tori will ever offer, and the server would have
     // taken all of them.
     await signInAs("skarif2");
     await open(pr({ author: "skarif2" }));
@@ -1197,7 +1197,7 @@ describe("landing a pull request", () => {
     expect(button("Merge").disabled).toBe(true);
     expect(summary()).toContain("rule on the base branch");
     // Never a guess at *which* rule. That lives in a branch-protection setting
-    // this app cannot read, and inventing "needs one approval" would be Sway
+    // this app cannot read, and inventing "needs one approval" would be Tori
     // putting words in the server's mouth.
     expect(summary()).not.toMatch(/approv|review/i);
   });

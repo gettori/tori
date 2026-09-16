@@ -22,7 +22,7 @@ describe("iconRegistry", () => {
   });
 
   it("keeps every icon a space could already be using", () => {
-    // The original 40 names are stored in live `sway.toml` files; dropping one
+    // The original 40 names are stored in live `tori.toml` files; dropping one
     // in the expansion would silently turn that space's tile back into a letter.
     const original = [
       "Rocket", "Anchor", "Atom", "Award", "Book", "Bookmark", "Box", "Briefcase",
@@ -48,7 +48,7 @@ describe("iconRegistry", () => {
   });
 
   it("picks a stable fallback per seed, and spreads across the set", () => {
-    expect(fallbackIcon("/a/b/sway")).toBe(fallbackIcon("/a/b/sway"));
+    expect(fallbackIcon("/a/b/tori")).toBe(fallbackIcon("/a/b/tori"));
     // Different seeds must land on different glyphs often enough to read as
     // varied: 12 sibling project paths must not collapse onto one icon.
     const seeds = Array.from({ length: 12 }, (_, i) => `/Users/me/Projects/p${i}`);

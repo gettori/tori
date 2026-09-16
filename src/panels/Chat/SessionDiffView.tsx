@@ -125,7 +125,7 @@ export default function SessionDiffView(props: {
   }
 
   // Files the worktree changed that this session never wrote. Listed without a
-  // diff, because Sway has no before-state for them: it can say they changed
+  // diff, because Tori has no before-state for them: it can say they changed
   // and who (if anyone) claims them, and reconstructing more would be
   // invention. An empty `sessions` means nobody claims it at all.
   const foreignFiles = createMemo(() => {
@@ -170,7 +170,7 @@ export default function SessionDiffView(props: {
         when={props.live}
         fallback={
           <div class={styles.empty}>
-            This session is not running, so Sway no longer holds the before-states its diff is built from. The
+            This session is not running, so Tori no longer holds the before-states its diff is built from. The
             transcript above still has every turn.
           </div>
         }

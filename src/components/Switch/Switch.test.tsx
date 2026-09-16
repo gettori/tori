@@ -101,7 +101,7 @@ describe("Switch", () => {
   // what says the machinery landed on that element and not on another.
   it("puts a tooltip on the track, and leaves the switch's own name alone", () => {
     const { container } = render(() => (
-      <Switch checked={false} onChange={() => {}} aria-label="Claude" tooltip="Enable in Sway" />
+      <Switch checked={false} onChange={() => {}} aria-label="Claude" tooltip="Enable in Tori" />
     ));
     const track = container.querySelector(`.${styles.control}`)!;
     expect(track.hasAttribute("data-closed")).toBe(true);

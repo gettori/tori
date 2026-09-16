@@ -1,4 +1,4 @@
-//! Which forge accounts Sway holds, per host, and which one a repo acts as.
+//! Which forge accounts Tori holds, per host, and which one a repo acts as.
 //!
 //! Pure rules over an explicit [`AccountsFile`], then thin load -> core -> save
 //! wrappers, like `crate::accounts`. Tokens are not in the file: each account's
@@ -44,7 +44,7 @@ impl Provider {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
-    /// Sway-minted and stable: the keychain entry and every repo pick name it.
+    /// Tori-minted and stable: the keychain entry and every repo pick name it.
     pub id: String,
     pub provider: Provider,
     pub base_url: String,
@@ -119,7 +119,7 @@ pub fn normalize_base_url(input: &str) -> Result<(String, String), ForgeError> {
         None => ("https".to_string(), trimmed),
     };
     if scheme == "http" {
-        return Err(ForgeError::Invalid { message: "Sway signs in to hosts over https only.".into() });
+        return Err(ForgeError::Invalid { message: "Tori signs in to hosts over https only.".into() });
     }
     if scheme != "https" {
         return Err(invalid());
@@ -332,11 +332,11 @@ pub fn drop_picks_for(picks: &mut BTreeMap<String, String>, id: &str) -> bool {
 pub struct SignInRoutes {
     pub host: String,
     pub base_url: String,
-    /// Only where Sway holds an OAuth client id for the host.
+    /// Only where Tori holds an OAuth client id for the host.
     pub device_flow: bool,
     pub scopes: Vec<String>,
     pub token_url: String,
-    // GitLab only: GitHub's application is Sway's own, and showing it would
+    // GitLab only: GitHub's application is Tori's own, and showing it would
     // invite editing something the user cannot change.
     pub app_id: Option<String>,
 }
@@ -369,7 +369,7 @@ pub fn set_app_id(file: &mut AccountsFile, host: &str, app_id: &str) -> bool {
     true
 }
 
-/// Whether git on this host should ask Sway for a credential.
+/// Whether git on this host should ask Tori for a credential.
 ///
 /// An account is part of the answer rather than a separate check: the switch
 /// exists to hand git *an account's* token, so a host with none cannot be on,
@@ -389,7 +389,7 @@ pub fn set_git_credentials(file: &mut AccountsFile, host: &str, on: bool) -> boo
     true
 }
 
-/// Whether git in this checkout should ask Sway: the host's switch is on and
+/// Whether git in this checkout should ask Tori: the host's switch is on and
 /// the repo acts as exactly one account on it. An unanswered pick falls back to
 /// the user's own helpers rather than to a prompt.
 pub fn serves_git(file: &AccountsFile, picks: &BTreeMap<String, String>, remote: &Remote) -> bool {
@@ -411,16 +411,16 @@ pub fn sign_in_routes(
         (Provider::Gitlab, true) => vec!["api", "write_repository"],
     };
     let token_url = match provider {
-        Provider::Github => format!("{base_url}/settings/tokens/new?scopes=repo&description=Sway"),
+        Provider::Github => format!("{base_url}/settings/tokens/new?scopes=repo&description=Tori"),
         Provider::Gitlab => format!(
-            "{base_url}/-/user_settings/personal_access_tokens?name=Sway&scopes={}",
+            "{base_url}/-/user_settings/personal_access_tokens?name=Tori&scopes={}",
             scopes.join(",")
         ),
     };
     SignInRoutes {
         host: host.to_string(),
         base_url: base_url.to_string(),
-        // GitHub's application is Sway's own and covers github.com only, so a
+        // GitHub's application is Tori's own and covers github.com only, so a
         // GitHub Enterprise server has no browser flow. GitLab's is registered
         // per instance, so any host with an id has one.
         device_flow: client_id.is_some_and(|id| !id.trim().is_empty())
@@ -469,10 +469,10 @@ pub fn view(file: &AccountsFile, auth: impl Fn(&str) -> AuthState) -> Vec<HostVi
 }
 
 pub fn accounts_path() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/forge_accounts.json")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/forge_accounts.json")
 }
 
-/// An unreadable file reads as empty, like every other Sway store.
+/// An unreadable file reads as empty, like every other Tori store.
 pub fn load() -> AccountsFile {
     std::fs::read_to_string(accounts_path())
         .ok()
@@ -510,8 +510,8 @@ mod tests {
         add_account(file, Provider::Github, GH, GITHUB_COM, login, None).unwrap()
     }
 
-    fn sway() -> Remote {
-        remote::parse("git@github.com:skarif2/sway.git").unwrap()
+    fn tori() -> Remote {
+        remote::parse("git@github.com:skarif2/tori.git").unwrap()
     }
 
     #[test]
@@ -555,17 +555,17 @@ mod tests {
 
     #[test]
     fn the_legacy_token_becomes_one_github_account_and_stays_for_a_downgrade() {
-        let legacy = mock_entry_in("com.sway.forge.github.migration-test", "oauth");
+        let legacy = mock_entry_in("com.tori.forge.github.migration-test", "oauth");
         token::save_to(&legacy, "gho_legacy").unwrap();
         let store = |id: &str, secret: &Secret| {
-            token::save_secret_to(&mock_entry_in("com.sway.forge.migration-test", id), secret)
+            token::save_secret_to(&mock_entry_in("com.tori.forge.migration-test", id), secret)
         };
         let read_legacy = || token::load_from(&legacy);
 
         let mut file = AccountsFile::default();
         migrate_legacy(&mut file, read_legacy, store).unwrap();
         assert_eq!(file.hosts[GITHUB_COM].accounts.len(), 1);
-        let moved = mock_entry_in("com.sway.forge.migration-test", MIGRATED_GITHUB_ID);
+        let moved = mock_entry_in("com.tori.forge.migration-test", MIGRATED_GITHUB_ID);
         assert_eq!(token::load_secret_from(&moved).unwrap(), Some(Secret::access("gho_legacy".into())));
         let restored = super::super::auth::AuthStore::restored(
             vec![super::super::auth::Restored {
@@ -593,16 +593,16 @@ mod tests {
     fn a_repo_uses_the_only_account_and_asks_when_there_are_two() {
         let mut file = AccountsFile::default();
         let mut picks = BTreeMap::new();
-        assert_eq!(resolve(&file, &picks, &sway()), Resolution::NoAccount);
+        assert_eq!(resolve(&file, &picks, &tori()), Resolution::NoAccount);
 
         let personal = signed_in(&mut file, "skarif2");
-        assert_eq!(resolve(&file, &picks, &sway()), Resolution::Account(personal.clone()));
+        assert_eq!(resolve(&file, &picks, &tori()), Resolution::Account(personal.clone()));
 
         let work = signed_in(&mut file, "fonn-arif");
-        assert!(matches!(resolve(&file, &picks, &sway()), Resolution::Pick { candidates } if candidates.len() == 2));
+        assert!(matches!(resolve(&file, &picks, &tori()), Resolution::Pick { candidates } if candidates.len() == 2));
 
-        picks.insert(sway().key(), work.clone());
-        let https = remote::parse("https://github.com/skarif2/sway").unwrap();
+        picks.insert(tori().key(), work.clone());
+        let https = remote::parse("https://github.com/skarif2/tori").unwrap();
         assert_eq!(resolve(&file, &picks, &https), Resolution::Account(work), "ssh to https keeps the pick");
     }
 
@@ -612,11 +612,11 @@ mod tests {
         signed_in(&mut file, "a");
         signed_in(&mut file, "b");
         let picked = signed_in(&mut file, "c");
-        let mut picks = BTreeMap::from([(sway().key(), picked.clone())]);
+        let mut picks = BTreeMap::from([(tori().key(), picked.clone())]);
 
         remove_account(&mut file, &picked);
         assert!(drop_picks_for(&mut picks, &picked));
-        assert!(matches!(resolve(&file, &picks, &sway()), Resolution::Pick { candidates } if candidates.len() == 2));
+        assert!(matches!(resolve(&file, &picks, &tori()), Resolution::Pick { candidates } if candidates.len() == 2));
     }
 
     #[test]
@@ -625,19 +625,19 @@ mod tests {
         let personal = signed_in(&mut file, "skarif2");
         let work = signed_in(&mut file, "fonn-arif");
         let mut picks = BTreeMap::new();
-        assert!(matches!(resolve(&file, &picks, &sway()), Resolution::Pick { .. }));
+        assert!(matches!(resolve(&file, &picks, &tori()), Resolution::Pick { .. }));
 
         assert_eq!(set_default_account(&mut file, GITHUB_COM, Some(&work)), Ok(true));
-        assert_eq!(resolve(&file, &picks, &sway()), Resolution::Account(work.clone()));
+        assert_eq!(resolve(&file, &picks, &tori()), Resolution::Account(work.clone()));
 
-        picks.insert(sway().key(), personal.clone());
-        assert_eq!(resolve(&file, &picks, &sway()), Resolution::Account(personal.clone()));
+        picks.insert(tori().key(), personal.clone());
+        assert_eq!(resolve(&file, &picks, &tori()), Resolution::Account(personal.clone()));
 
         // Removal is the one thing that clears a default, so the only account left answers.
         picks.clear();
         remove_account(&mut file, &work);
         assert_eq!(file.hosts[GITHUB_COM].default_account, None);
-        assert_eq!(resolve(&file, &picks, &sway()), Resolution::Account(personal));
+        assert_eq!(resolve(&file, &picks, &tori()), Resolution::Account(personal));
 
         let text = serde_json::to_string(&file).unwrap();
         assert_eq!(serde_json::from_str::<AccountsFile>(&text).unwrap(), file);
@@ -659,7 +659,7 @@ mod tests {
 
         // A hand-edited file can still name a stranger, and resolution must not act as it.
         file.hosts.get_mut(GITHUB_COM).unwrap().default_account = Some("gone".into());
-        assert!(matches!(resolve(&file, &BTreeMap::new(), &sway()), Resolution::Pick { .. }));
+        assert!(matches!(resolve(&file, &BTreeMap::new(), &tori()), Resolution::Pick { .. }));
     }
 
     #[test]
@@ -669,10 +669,10 @@ mod tests {
         let work = signed_in(&mut file, "fonn-arif");
         set_git_credentials(&mut file, GITHUB_COM, true);
         let picks = BTreeMap::new();
-        assert!(!serves_git(&file, &picks, &sway()));
+        assert!(!serves_git(&file, &picks, &tori()));
 
         set_default_account(&mut file, GITHUB_COM, Some(&work)).unwrap();
-        assert!(serves_git(&file, &picks, &sway()));
+        assert!(serves_git(&file, &picks, &tori()));
     }
 
     #[test]
@@ -704,7 +704,7 @@ mod tests {
         assert_eq!(github.scopes, ["repo"]);
         assert!(github.token_url.starts_with("https://github.com/settings/tokens/new"));
 
-        // Sway's GitHub application covers github.com alone, so an enterprise
+        // Tori's GitHub application covers github.com alone, so an enterprise
         // server has no browser flow even with an id in hand.
         let ghe =
             sign_in_routes(Provider::Github, "https://ghe.example.com", "ghe.example.com", Some("Ov23test"), false);

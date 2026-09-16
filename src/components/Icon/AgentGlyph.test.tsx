@@ -8,7 +8,7 @@ const svgIn = (el: HTMLElement) => el.querySelector("svg");
 const textIn = (el: HTMLElement) => el.textContent?.trim();
 
 describe("AgentGlyph", () => {
-  it("draws the mark for an agent Sway has a logo for", () => {
+  it("draws the mark for an agent Tori has a logo for", () => {
     const { container } = render(() => <AgentGlyph id="claude" label="Claude" />);
     expect(svgIn(container)).toBeTruthy();
     expect(textIn(container)).toBe("");

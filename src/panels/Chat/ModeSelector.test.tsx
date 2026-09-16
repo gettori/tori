@@ -107,8 +107,8 @@ describe("ModeSelector", () => {
 });
 
 describe("a permissive mode", () => {
-  // There was a caveat here - "Sway still asks", shown for any mode the adapter
-  // flagged - because Sway's hook ran ahead of the permission chain and a mode
+  // There was a caveat here - "Tori still asks", shown for any mode the adapter
+  // flagged - because Tori's hook ran ahead of the permission chain and a mode
   // named after bypassing permissions did not bypass them. The hook stopped
   // deciding, so the sentence stopped being true and was removed rather than
   // reworded. What the control shows now is the mode's own hint, which is the
@@ -120,7 +120,7 @@ describe("a permissive mode", () => {
     ));
     const menu = openMenu(getByLabelText);
     expect(menu.textContent).toContain("Runs without asking.");
-    expect(document.body.textContent).not.toContain("Sway still asks");
+    expect(document.body.textContent).not.toContain("Tori still asks");
   });
 
   // The chip outlived the sentence, and had to: a mode that runs tools unasked

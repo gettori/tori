@@ -10,7 +10,7 @@ export type SessionUsage = {
   /** Null until some turn reported a cost, so a agent that reports no money
    *  reads as unknown rather than as free. */
   costUsd: number | null;
-  /** Turns Sway watched finish, which the two figures above are the sum of. */
+  /** Turns Tori watched finish, which the two figures above are the sum of. */
   turns: number;
 };
 

@@ -114,7 +114,7 @@ pub trait AgentTransport: Send {
     /// blocked on it.
     ///
     /// **Returns whether the request was ours.** A prompt can reach the user
-    /// from two places - the agent asking in-protocol, and Sway's own
+    /// from two places - the agent asking in-protocol, and Tori's own
     /// `PreToolUse` bridge blocking on a socket - and the answer must go back to
     /// whichever one is waiting. `Ok(false)` means "not mine, try the other
     /// route"; answering the wrong one would leave the real waiter hanging until
@@ -156,8 +156,8 @@ pub trait AgentTransport: Send {
     /// published for it.
     ///
     /// Separate from [`Self::set_model`] and [`Self::set_mode`] because those
-    /// two have Sway-side state behind them (a pending pick, a permission
-    /// story) and this one has none: Sway does not know what the option
+    /// two have Tori-side state behind them (a pending pick, a permission
+    /// story) and this one has none: Tori does not know what the option
     /// governs, so it forwards the switch and renders whatever the agent says
     /// afterwards.
     ///
@@ -301,8 +301,8 @@ mod tests {
             session_id: "s1".to_string(),
             cwd: String::new(),
             program: "/bin/sh".to_string(),
-            args: vec!["-c".to_string(), "printf '%s' \"$SWAY_CHAT_TEST\"".to_string()],
-            env: HashMap::from([("SWAY_CHAT_TEST".to_string(), "reached".to_string())]),
+            args: vec!["-c".to_string(), "printf '%s' \"$TORI_CHAT_TEST\"".to_string()],
+            env: HashMap::from([("TORI_CHAT_TEST".to_string(), "reached".to_string())]),
         };
         let mut child = build_command(&spec)
             .stdout(std::process::Stdio::piped())

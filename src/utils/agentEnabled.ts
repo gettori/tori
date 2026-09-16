@@ -39,9 +39,9 @@ export function agentChosen(id: string): boolean {
  * `signedOut` is the CLI's own answer and only that. Four of the seven bundled
  * agents declare no `whoami` probe at all and report `unknown` forever; reading
  * that as "not signed in" would make them permanently un-offerable over
- * bookkeeping Sway does not have.
+ * bookkeeping Tori does not have.
  *
- * Version drift is not in here. A binary older than the one Sway measured
+ * Version drift is not in here. A binary older than the one Tori measured
  * against still runs, so it is a notice on the row and never a gate - the same
  * stance `agentReady` takes and the Agents table's "Outdated" pill restates.
  */

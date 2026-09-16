@@ -1,4 +1,4 @@
-// The server-initiated requests Sway answers itself.
+// The server-initiated requests Tori answers itself.
 //
 // `LSPClient.receiveMessage` replies to every server-initiated *request* with
 // `-32601 MethodNotFound` (`lsp-client/dist/index.js:684-690`) and offers an

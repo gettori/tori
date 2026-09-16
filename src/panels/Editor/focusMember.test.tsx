@@ -18,8 +18,8 @@ globalThis.ResizeObserver ??= class {
 
 installAnimationFrame();
 
-const A = "/r/a/.sway/worktrees/auth";
-const B = "/r/b/.sway/worktrees/auth";
+const A = "/r/a/.tori/worktrees/auth";
+const B = "/r/b/.tori/worktrees/auth";
 
 const FEATURE = {
   id: "f1",
@@ -287,11 +287,11 @@ describe("starting a run inside a Feature", () => {
     // is up. The dialog is handed its scripts, so Start arrives with them.
     fireEvent.click(await screen.findByText("Start"));
     await waitFor(() =>
-      expect(JSON.parse(localStorage.getItem("sway.debugLastTarget") ?? "{}")).toHaveProperty(A),
+      expect(JSON.parse(localStorage.getItem("tori.debugLastTarget") ?? "{}")).toHaveProperty(A),
     );
     // Under the member's own folder, not under `feature:f1`: two members of one
     // Feature debug two different programs.
-    const stored = JSON.parse(localStorage.getItem("sway.debugLastTarget") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("tori.debugLastTarget") ?? "{}");
     expect(stored).not.toHaveProperty("feature:f1");
     expect(stored).not.toHaveProperty(B);
   });
@@ -310,10 +310,10 @@ describe("what the Debug pane writes", () => {
     fireEvent.submit(input.closest("form")!);
 
     await waitFor(() => {
-      const stored = JSON.parse(localStorage.getItem("sway.watches") ?? "{}");
+      const stored = JSON.parse(localStorage.getItem("tori.watches") ?? "{}");
       expect(stored[B]).toEqual(["req.body"]);
     });
-    const stored = JSON.parse(localStorage.getItem("sway.watches") ?? "{}");
+    const stored = JSON.parse(localStorage.getItem("tori.watches") ?? "{}");
     expect(stored).not.toHaveProperty(A);
     expect(stored).not.toHaveProperty("feature:f1");
   });
@@ -325,7 +325,7 @@ describe("moving the active member", () => {
     // tree stopped the debuggee and blanked the transcript. Inside a Feature the
     // run belongs to the Feature.
     await mountEditor();
-    store.noteConsoleLine("sway", "console", "server listening");
+    store.noteConsoleLine("tori", "console", "server listening");
     const stop = vi.spyOn(dap, "stopAllDap");
 
     setSel!(featureSel(B));

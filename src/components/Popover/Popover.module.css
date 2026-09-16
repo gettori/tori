@@ -11,7 +11,7 @@
   z-index: 900;
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
+  border-radius: var(--tori-radius-xl);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   -webkit-user-select: none;

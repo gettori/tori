@@ -1,6 +1,6 @@
 // A PATH that includes the user's common bin dirs. A GUI-launched process
 // inherits a minimal PATH that often lacks ~/.local/bin, ~/.cargo/bin,
-// ~/.volta/bin (where node/claude live), and Homebrew. Every subprocess Sway
+// ~/.volta/bin (where node/claude live), and Homebrew. Every subprocess Tori
 // spawns (PTY, external editors, the language server) uses this so binaries
 // resolve the same way they do in the user's shell.
 
@@ -207,7 +207,7 @@ mod tests {
         // never heard of, so only the captured login PATH can resolve it.
         use std::os::unix::fs::PermissionsExt;
         let nvm_like =
-            std::env::temp_dir().join(format!("sway-nvm-test-{}/bin", std::process::id()));
+            std::env::temp_dir().join(format!("tori-nvm-test-{}/bin", std::process::id()));
         std::fs::create_dir_all(&nvm_like).unwrap();
         let agent = nvm_like.join("some-agent-cli");
         std::fs::write(&agent, "#!/bin/sh\n").unwrap();
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn is_executable_rejects_dirs_and_plain_files() {
-        let file = std::env::temp_dir().join(format!("sway-env-test-{}", std::process::id()));
+        let file = std::env::temp_dir().join(format!("tori-env-test-{}", std::process::id()));
         std::fs::write(&file, "not executable").unwrap();
         assert!(!is_executable(&file));
         assert!(!is_executable(&std::env::temp_dir()));

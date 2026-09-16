@@ -60,7 +60,7 @@ fi
 notes=$(mktemp)
 .github/scripts/changelog-section.sh "$version" > "$notes"
 
-printf 'Releasing Sway %s (tag %s, was %s). Continue? [y/N] ' "$version" "$tag" "$current"
+printf 'Releasing Tori %s (tag %s, was %s). Continue? [y/N] ' "$version" "$tag" "$current"
 read -r answer
 [ "$answer" = y ] || { echo "aborted"; exit 1; }
 
@@ -69,10 +69,10 @@ read -r answer
 sed -i '' "s/\"version\": \"$current\"/\"version\": \"$version\"/" \
   package.json src-tauri/tauri.conf.json
 sed -i '' "s/^version = \"$current\"/version = \"$version\"/" src-tauri/Cargo.toml
-(cd src-tauri && cargo update -q --package sway)
+(cd src-tauri && cargo update -q --package tori)
 
 git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
-git commit -m "Sway $version"
+git commit -m "Tori $version"
 git push
 
 # --- Build and verify ------------------------------------------------------
@@ -81,7 +81,7 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 pnpm install --frozen-lockfile
 pnpm tauri build --target universal-apple-darwin
 
-app="src-tauri/target/universal-apple-darwin/release/bundle/macos/Sway.app"
+app="src-tauri/target/universal-apple-darwin/release/bundle/macos/Tori.app"
 .github/scripts/check-universal.sh "$app"
 
 # Matched on the version, not on *.dmg: the bundle dir keeps every DMG a
@@ -109,7 +109,7 @@ case "$version" in *-*) flags+=(--prerelease) ;; esac
 gh release create "$tag" \
   --repo "$RELEASES_REPO" \
   "${flags[@]}" \
-  --title "Sway $tag" \
+  --title "Tori $tag" \
   --notes-file "$notes" \
   "$dmg"
 
@@ -128,34 +128,34 @@ mkdir -p "$tap/Casks"
 # The literal version becomes Ruby's #{version} so the url stanza
 # interpolates, keeping a manual bump to two lines.
 pattern=$(printf '%s' "$asset" | sed "s/$version/#{version}/")
-cat > "$tap/Casks/sway.rb" <<EOF
-cask "sway" do
+cat > "$tap/Casks/tori.rb" <<EOF
+cask "tori" do
   version "$version"
   sha256 "$sha"
 
   url "https://github.com/${RELEASES_REPO}/releases/download/v#{version}/$pattern"
-  name "Sway"
+  name "Tori"
   desc "Dev workflow manager: session tree + Claude terminal + editor"
   homepage "https://github.com/${RELEASES_REPO}"
 
-  app "Sway.app"
+  app "Tori.app"
 
   # Homebrew 6 removed --no-quarantine, and the app is unsigned, so without
   # this Gatekeeper reports it as damaged. Legacy postflight blocks still run
   # in third-party taps; drop this once builds are signed and notarized.
   postflight do
     system_command "/usr/bin/xattr",
-                   args: ["-cr", "#{appdir}/Sway.app"]
+                   args: ["-cr", "#{appdir}/Tori.app"]
   end
 end
 EOF
-git -C "$tap" add Casks/sway.rb
-git -C "$tap" commit -m "sway $version"
+git -C "$tap" add Casks/tori.rb
+git -C "$tap" commit -m "tori $version"
 git -C "$tap" push
 rm -rf "$tap" "$notes"
 
 echo
-echo "Released Sway $version:"
+echo "Released Tori $version:"
 echo "  https://github.com/${RELEASES_REPO}/releases/tag/$tag"
 echo "  brew tap gettori/tap https://github.com/${TAP_REPO}"
-echo "  brew install --cask gettori/tap/sway"
+echo "  brew install --cask gettori/tap/tori"

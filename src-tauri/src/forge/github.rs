@@ -52,7 +52,7 @@ const API_BASE: &str = "https://api.github.com";
 const GRAPHQL_URL: &str = "https://api.github.com/graphql";
 /// Sent on every request. GitHub rejects an API call with no User-Agent, and
 /// `update.rs` already sets one for the same reason.
-const USER_AGENT: &str = "sway";
+const USER_AGENT: &str = "tori";
 
 pub struct GitHubForge {
     transport: std::sync::Arc<Recording>,
@@ -221,7 +221,7 @@ fn file_from_rest(v: &Value) -> Result<PrFile, ForgeError> {
         Some("unchanged") => FileStatus::Unchanged,
         Some("changed") => FileStatus::Changed,
         // Includes GitHub's own "modified" and anything it adds later. A file
-        // Sway cannot classify still renders its patch, which is the part the
+        // Tori cannot classify still renders its patch, which is the part the
         // reader came for.
         _ => FileStatus::Modified,
     };
@@ -734,7 +734,7 @@ mutation($threadId:ID!,$body:String!){
     fn mergeability(&self, repo: &RepoRef, number: u64) -> Result<MergeableState, ForgeError> {
         self.require_token()?;
         // Asked, not computed. GitHub accounts for branch protection and
-        // required checks that Sway cannot see, so a local verdict would render
+        // required checks that Tori cannot see, so a local verdict would render
         // an enabled button the server then refuses.
         let path = format!("/repos/{}/{}/pulls/{number}", repo.owner, repo.repo);
         let v = self.send(self.rest("GET", &path, None))?;
@@ -771,7 +771,7 @@ mod tests {
     use super::*;
 
     fn repo() -> RepoRef {
-        RepoRef { owner: "skarif2".into(), repo: "sway".into() }
+        RepoRef { owner: "skarif2".into(), repo: "tori".into() }
     }
 
     /// A signed-in client over a scripted transport, plus a handle on that
@@ -848,7 +848,7 @@ mod tests {
         // directly, so anything recorded only in `GitHubForge::send` would be
         // skipped by every paged call. Page one succeeds here specifically so
         // the failure happens somewhere `send` never sees.
-        let link = "<https://api.test/repos/skarif2/sway/pulls?page=2>; rel=\"next\"";
+        let link = "<https://api.test/repos/skarif2/tori/pulls?page=2>; rel=\"next\"";
         let (f, _stub) = forge(vec![
             StubTransport::with_headers(
                 200,
@@ -934,7 +934,7 @@ mod tests {
         let (f, _stub) = forge(vec![StubTransport::json(
             200,
             r#"[{"number":42,"title":"Wave 3","body":"hi","state":"open","draft":true,
-                "merged_at":null,"html_url":"https://github.com/skarif2/sway/pull/42",
+                "merged_at":null,"html_url":"https://github.com/skarif2/tori/pull/42",
                 "mergeable_state":"blocked",
                 "user":{"login":"skarif2"},
                 "head":{"ref":"wave-3","sha":"abc123"},
@@ -1232,7 +1232,7 @@ mod tests {
 
     #[test]
     fn a_merge_refusal_carries_the_servers_own_reason() {
-        // GitHub knows about branch protection Sway cannot see, so its wording
+        // GitHub knows about branch protection Tori cannot see, so its wording
         // is the only useful thing to show.
         let (f, _stub) = forge(vec![StubTransport::json(
             405,
@@ -1257,7 +1257,7 @@ mod tests {
         f.update_branch(&repo(), 42).unwrap();
         let sent = stub.requests();
         assert_eq!(sent[0].method, "PUT");
-        assert!(sent[0].url.ends_with("/repos/skarif2/sway/pulls/42/update-branch"), "got {}", sent[0].url);
+        assert!(sent[0].url.ends_with("/repos/skarif2/tori/pulls/42/update-branch"), "got {}", sent[0].url);
     }
 
     #[test]
@@ -1292,7 +1292,7 @@ mod tests {
 
     #[test]
     fn the_pr_list_pages_to_exhaustion() {
-        let link = "<https://api.test/repos/skarif2/sway/pulls?page=2>; rel=\"next\"";
+        let link = "<https://api.test/repos/skarif2/tori/pulls?page=2>; rel=\"next\"";
         let pr = |n: u32| {
             format!(
                 r#"{{"number":{n},"state":"open","user":{{"login":"me"}},
@@ -1353,7 +1353,7 @@ mod tests {
             format!("[{}]", items.join(","))
         };
         let next = |p: u32| {
-            format!("<https://api.test/repos/skarif2/sway/pulls/1/files?page={p}>; rel=\"next\"")
+            format!("<https://api.test/repos/skarif2/tori/pulls/1/files?page={p}>; rel=\"next\"")
         };
         let (f, stub) = forge(vec![
             StubTransport::with_headers(200, &[("Link", &next(2))], &page(0)),

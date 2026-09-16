@@ -429,7 +429,7 @@ export default function ChatView(props: {
   // probe, and the load-earlier check), so an accessor would re-filter the
   // whole transcript three times for every streaming delta.
   const shownItems = createMemo(() =>
-    visibleItems(state.items, settings.chatDefaults.showSwayHooks, state.selectedLane),
+    visibleItems(state.items, settings.chatDefaults.showToriHooks, state.selectedLane),
   );
 
   /** The lane being read, by name, for the composer's placeholder. */
@@ -516,13 +516,13 @@ export default function ChatView(props: {
       })
       .catch(() => {});
     // Where this agent's earlier turns come from. `session-replay` means the
-    // agent hands them back on the live channel and Sway's log is only a cache
+    // agent hands them back on the live channel and Tori's log is only a cache
     // of that, which is what the reset, the notice and the prompt-count re-read
     // all key on. Declared here rather than beside `tier` far below, because a
     // `const` does not hoist and everything above reads it from a callback.
     const historySource = () => chatTier(findAdapter(props.agentId).chat?.transport).historySource;
 
-    // Re-read as well as read: for an agent Sway counts from its own sidecar,
+    // Re-read as well as read: for an agent Tori counts from its own sidecar,
     // the figure taken here predates the session/load that is about to rewrite
     // it. One definition, called at open and again once the replay has landed.
     function refreshPromptCount() {
@@ -640,7 +640,7 @@ export default function ChatView(props: {
         const pending = parked.splice(0, parked.length);
         backfilled = true;
         for (const ev of pending) handleLive(ev);
-        // A turn Sway still believed was open when it last went away. Read
+        // A turn Tori still believed was open when it last went away. Read
         // *after* the backfill so the notice lands at the end of the replayed
         // history, where that turn actually is. Consumed as it is read, so it
         // is announced once rather than on every reopen.
@@ -654,7 +654,7 @@ export default function ChatView(props: {
                 type: "sessionError",
                 sessionId: props.sessionId,
                 message:
-                  "This turn was interrupted when Sway last closed. Its partial output is above; send again to continue.",
+                  "This turn was interrupted when Tori last closed. Its partial output is above; send again to continue.",
                 fatal: false,
               }),
             );
@@ -671,7 +671,7 @@ export default function ChatView(props: {
       // belong to work happening now.
       const fold = replayFold(ev, replaying);
       replaying = fold.replaying;
-      // The session has just re-read its own conversation, so anything Sway
+      // The session has just re-read its own conversation, so anything Tori
       // counts off that conversation was counted before it landed.
       if (ev.type === "sessionStarted" && historySource() === "session-replay") {
         refreshPromptCount();
@@ -690,7 +690,7 @@ export default function ChatView(props: {
       if (fold.as !== "live") {
         edit((s) => {
           dropNotice(s);
-          // The backfill above drew Sway's own log of this conversation. The
+          // The backfill above drew Tori's own log of this conversation. The
           // agent owns the conversation, so its replay is the authority and
           // replaces that drawing rather than being folded on top of it. Keyed
           // on the first *conversation* frame, so a replay bringing only
@@ -766,7 +766,7 @@ export default function ChatView(props: {
       if (ev.type === "turnCompleted") {
         void recordSpend(ev.usage ? turnTokens(ev.usage) : 0, ev.costUsd);
       }
-      // Sway's own record of whether a turn is in flight. A killed app leaves
+      // Tori's own record of whether a turn is in flight. A killed app leaves
       // this set, which is the only way to tell a turn that was interrupted
       // from one that ended: the transcript just stops either way.
       if (ev.type === "turnStarted" || ev.type === "turnCompleted") {
@@ -789,7 +789,7 @@ export default function ChatView(props: {
       // turn's own checkpoint timestamp so the two line up.
       //
       // Reported per tool call and not per write, because a call that wrote
-      // nothing Sway could see is exactly the case attribution must know about:
+      // nothing Tori could see is exactly the case attribution must know about:
       // an unrecorded `Bash` call leaves a turn looking like a PTY turn, which
       // takes the unfiltered branch and claims another session's edits.
       if (turnTs !== null && (ev.type === "toolCallCompleted" || ev.type === "fileEdit")) {
@@ -868,7 +868,7 @@ export default function ChatView(props: {
             forkFrom: opts.reconnect ? null : (props.forkFrom ?? null),
             // The draft's pick, as argv. A reconnect re-attaches to a session
             // that already has these in force, so re-asserting them would be
-            // Sway overriding whatever the conversation switched to since.
+            // Tori overriding whatever the conversation switched to since.
             model: opts.reconnect ? null : opening.model,
             mode: opts.reconnect ? null : opening.mode,
             effort: opts.reconnect ? null : opening.effort,
@@ -1284,7 +1284,7 @@ export default function ChatView(props: {
       markAutoSend(composerKey(), text);
       return;
     }
-    // The ceiling, enforced where Sway actually decides: the turn boundary. The
+    // The ceiling, enforced where Tori actually decides: the turn boundary. The
     // message is queued rather than refused, so raising the limit sends what was
     // already typed instead of asking for it again - and it is *said*, because a
     // send that silently did nothing is the worst of the three outcomes.
@@ -1322,7 +1322,7 @@ export default function ChatView(props: {
     // `toolCallCompleted`.
     edit((s) => resolveApproval(s, card.toolUseId));
     // The scope travels with the answer and is recorded by the agent, in the
-    // agent's own grammar. Sway keeps no rule store of its own to update.
+    // agent's own grammar. Tori keeps no rule store of its own to update.
     void invoke("chat_respond_permission", {
       sessionId: props.sessionId,
       requestId: approval.requestId,
@@ -1475,8 +1475,8 @@ export default function ChatView(props: {
   /** Arm or clear the stop, and warn once on the way up. */
   async function applyBudget() {
     // The tier still gates this, but on a different thing than it used to: not
-    // "does this agent have a hook Sway can refuse a call from", which is no
-    // longer how the ceiling works, but "are this chat's turns Sway's to open".
+    // "does this agent have a hook Tori can refuse a call from", which is no
+    // longer how the ceiling works, but "are this chat's turns Tori's to open".
     // A PTY-only agent's are not. Reporting a ceiling as armed where it is not
     // is the one failure a spend ceiling must not have.
     if (!tier().spendCeilings) return;
@@ -2234,7 +2234,7 @@ export default function ChatView(props: {
               disabled={refused() || state.ended}
               onSelect={onSelectMode}
             />
-            {/* Last, after the three Sway has controls of its own for: these
+            {/* Last, after the three Tori has controls of its own for: these
                 are the agent's, in the agent's own words, and their order is
                 the order it published them in. */}
             <ConfigMirror

@@ -1,4 +1,4 @@
-// The guard for the two test idioms skarif2/sway issue 103 had to sweep, so
+// The guard for the two test idioms gettori/tori issue 103 had to sweep, so
 // they stay swept.
 //
 // Both exist because the menus moved from hand-rolled DOM onto Kobalte, and

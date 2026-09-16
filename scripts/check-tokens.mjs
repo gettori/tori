@@ -5,7 +5,7 @@
 //      both themes, which is how a "light mode" ships half-dark).
 //   2. Every bundled palette produces every declared role, and the generated
 //      region of tokens.css agrees with what the generator emits today.
-//   3. Every var(--x) in src/ resolves to a role, a --sway-* primitive, or a
+//   3. Every var(--x) in src/ resolves to a role, a --tori-* primitive, or a
 //      locally declared property.
 //   4. Every name TerminalView.termColors() reads is a declared role.
 //   5. Every token the theme workbench names as a literal resolves.
@@ -60,7 +60,7 @@ const ALLOWLIST = new Map([
   ["src/theme/registry.test.ts", "test fixtures asserting a theme switch repaints specific role values"],
   ["src/theme/contrast.test.ts", "the WCAG reference pairs and the historic misses the gate must keep catching, e.g. Light+'s ANSI green at 2.56 on white"],
   ["src/dev/Styleguide.tsx", "the theme workbench: its swatch labels ARE token names, and its terminal and syntax samples name roles to render them"],
-  ["src/utils/spaceTint.ts", "the space swatches: a space's colour is user data stored in sway.toml beside its name and icon, not part of the UI's palette. It must read the same in every theme - a swatch that changed meaning on a theme switch would make the setting meaningless - so it cannot be a role, which is exactly what a role is for"],
+  ["src/utils/spaceTint.ts", "the space swatches: a space's colour is user data stored in tori.toml beside its name and icon, not part of the UI's palette. It must read the same in every theme - a swatch that changed meaning on a theme switch would make the setting meaningless - so it cannot be a role, which is exactly what a role is for"],
   ["src/utils/spaceTint.test.ts", "test fixtures pinning the hex -> channel-triple conversion. A named input and its expected three numbers are the only way to catch a red/blue swap, which every wash in the app would then render in the wrong hue"],
   ["src/panels/Editor/editorFeatures.test.tsx", "buffer contents, not UI styling: the CSS colour-swatch test has to put a colour literal in the document, because a swatch appearing beside one is the whole feature. The literal is the input under test and never reaches a stylesheet"],
 ]);
@@ -307,7 +307,7 @@ const DYNAMIC_VARS = new Map([
   [
     "src/dev/Styleguide.tsx",
     {
-      prefixes: ["--shadow-", "--sway-text-", "--sway-space-", "--sway-radius-"],
+      prefixes: ["--shadow-", "--tori-text-", "--tori-space-", "--tori-radius-"],
       reason: "the gallery renders each scale over its own list of stop names, e.g. var(--shadow-${s})",
     },
   ],
@@ -385,7 +385,7 @@ if (unresolved.length > 0) {
     console.error(`    ${u.text}`);
   }
   console.error("\nA var() naming an undeclared property is dropped silently and the element inherits instead.");
-  console.error("Use a role cssVar from src/theme/roles.ts, a --sway-* primitive, or declare it locally.");
+  console.error("Use a role cssVar from src/theme/roles.ts, a --tori-* primitive, or declare it locally.");
   console.error("A name built at runtime needs an entry in DYNAMIC_VARS in this script, with a reason.");
   process.exit(1);
 }

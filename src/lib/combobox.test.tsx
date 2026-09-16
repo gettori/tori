@@ -7,7 +7,7 @@ import { Combobox } from "./combobox";
 // `vitest.config.ts`, and neither half of that config is visible until a part is
 // actually mounted.
 //
-// The composition here is the one Sway actually ships, which is the unusual
+// The composition here is the one Tori actually ships, which is the unusual
 // part and worth pinning at this level: no `Content` and no `Portal`. Those are
 // where a Kobalte combobox normally puts its list, and skipping them is what
 // lets the list render inline inside a surface that already owns dismissal and
@@ -46,7 +46,7 @@ describe("the Kobalte combobox, through src/lib", () => {
     expect(document.body.contains(listbox)).toBe(true);
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["alpha", "beta"]);
 
-    // The wiring Sway adopted Kobalte *for*: the input names the list it drives
+    // The wiring Tori adopted Kobalte *for*: the input names the list it drives
     // rather than merely sitting above it.
     expect(input.getAttribute("aria-controls")).toBe(listbox.id);
     expect(input.getAttribute("aria-expanded")).toBe("true");

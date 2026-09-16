@@ -183,7 +183,7 @@ describe("SessionInfo", () => {
 
   it("writes a new server to the project config through Claude's own shape", async () => {
     // The command/args split is what `claude mcp add <name> -- <cmd> <args>`
-    // produces, so the file Sway writes is one Claude already understands.
+    // produces, so the file Tori writes is one Claude already understands.
     invoked.mockResolvedValue([]);
     const { container, getByPlaceholderText, getByText } = render(() => (
       <SessionInfo {...props({ cwd: "/repo" })} />
@@ -217,7 +217,7 @@ describe("SessionInfo", () => {
 
   it("says a project server is pending approval rather than pretending it is live", async () => {
     // Measured against claude 2.1.220: a freshly written .mcp.json server is
-    // loaded as pending and not connected to. Sway reports that instead of
+    // loaded as pending and not connected to. Tori reports that instead of
     // force-enabling it, because the approval lives in Claude's own state file.
     invoked.mockResolvedValue([
       { name: "everything", scope: "project", approval: "pending", config: {} },
@@ -227,7 +227,7 @@ describe("SessionInfo", () => {
     await waitFor(() => expect(container.textContent).toContain("pending approval"));
   });
 
-  it("offers Remove only for the project scope Sway actually writes", async () => {
+  it("offers Remove only for the project scope Tori actually writes", async () => {
     invoked.mockResolvedValue([
       { name: "mine", scope: "project", approval: "approved", config: {} },
       { name: "theirs", scope: "user", approval: "notApplicable", config: {} },
@@ -236,7 +236,7 @@ describe("SessionInfo", () => {
     open(container);
     await waitFor(() => expect(container.textContent).toContain("theirs"));
     // One button, for the project-scoped server only: a user-scoped server
-    // lives in a file Sway deliberately never writes.
+    // lives in a file Tori deliberately never writes.
     expect(getAllByText("Remove")).toHaveLength(1);
   });
 

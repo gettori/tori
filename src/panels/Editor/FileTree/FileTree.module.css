@@ -9,7 +9,7 @@
 .fileTree {
   flex: 1;
   background: var(--canvas-card);
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -35,11 +35,11 @@
   gap: calc(4px * var(--ui-scale));
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   cursor: pointer;
   color: var(--fg-default);
   white-space: nowrap;
-  transition: background var(--sway-duration-fast) ease;
+  transition: background var(--tori-duration-fast) ease;
 }
 
 .treeRow:hover {
@@ -84,13 +84,13 @@
   padding: 0 calc(8px * var(--ui-scale));
   background: transparent;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-default);
   caret-color: var(--brand-default);
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   outline: none;
-  transition: border-color var(--sway-duration-fast) ease;
+  transition: border-color var(--tori-duration-fast) ease;
 }
 
 .filterBox::placeholder {
@@ -133,7 +133,7 @@
   margin-left: auto;
   padding-left: calc(4px * var(--ui-scale));
   color: var(--activity-touched);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
   line-height: 1;
 }
 

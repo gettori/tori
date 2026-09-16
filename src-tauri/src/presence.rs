@@ -37,11 +37,11 @@ pub fn update_tray(
     let tray = state.0.lock().map_err(|e| e.to_string())?;
 
     let tooltip = if needs_you > 0 {
-        format!("Sway - {running} running, {needs_you} need you")
+        format!("Tori - {running} running, {needs_you} need you")
     } else if running > 0 {
-        format!("Sway - {running} running")
+        format!("Tori - {running} running")
     } else {
-        "Sway".to_string()
+        "Tori".to_string()
     };
     tray.set_tooltip(Some(&tooltip)).map_err(|e| e.to_string())?;
 

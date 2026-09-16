@@ -39,7 +39,7 @@
   }
   .groupTitle {
     margin: 0 0 calc(4px * var(--ui-scale));
-    font-size: var(--sway-text-sm);
+    font-size: var(--tori-text-sm);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -54,25 +54,25 @@
     padding: calc(4px * var(--ui-scale)) 0;
   }
   .label {
-    font-size: var(--sway-text-lg);
+    font-size: var(--tori-text-lg);
     color: var(--fg-default);
   }
 
   .keys {
     display: flex;
-    gap: var(--sway-space-1);
+    gap: var(--tori-space-1);
     flex: 0 0 auto;
   }
   .key {
     min-width: calc(18px * var(--ui-scale));
     padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
-    font-family: var(--sway-font-ui);
-    font-size: var(--sway-text-md);
+    font-family: var(--tori-font-ui);
+    font-size: var(--tori-text-md);
     line-height: 1.5;
     text-align: center;
     color: var(--fg-muted);
     background: var(--canvas-input);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-sm);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-sm);
   }
 }

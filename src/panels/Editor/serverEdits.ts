@@ -1,4 +1,4 @@
-// What Sway does with a `WorkspaceEdit` a server pushes at it unasked.
+// What Tori does with a `WorkspaceEdit` a server pushes at it unasked.
 //
 // `workspace/applyEdit` is a **request**: the server is blocked until it gets an
 // answer, and it usually sends one in the middle of executing a command the
@@ -56,13 +56,13 @@ export const workspaceEditClientCapabilities = {
  * How long a server is made to wait for its answer.
  *
  * Deliberately **not** the session's `request_timeout_ms`. That one is how long
- * *Sway* waits for a *server*, and it is sized for a cold rust-analyzer
+ * *Tori* waits for a *server*, and it is sized for a cold rust-analyzer
  * indexing a cargo project (90s). This is how long a person waits for their
  * editor, which is a different question with a much smaller answer.
  */
 export const APPLY_EDIT_TIMEOUT_MS = 2000;
 
-const TOO_SLOW = "Sway took too long to apply this change, so nothing was changed.";
+const TOO_SLOW = "Tori took too long to apply this change, so nothing was changed.";
 
 /**
  * The policy half: refuse where the interactive path would ask.
@@ -75,7 +75,7 @@ export function serverEditPolicy(expired: () => boolean): ApplyPolicy {
   return {
     onDirty: (dirty) =>
       Promise.resolve(
-        `${list(dirty)} ${dirty.length === 1 ? "has" : "have"} unsaved changes, and Sway will not save ${
+        `${list(dirty)} ${dirty.length === 1 ? "has" : "have"} unsaved changes, and Tori will not save ${
           dirty.length === 1 ? "it" : "them"
         } on a language server's say-so, so nothing was changed.`,
       ),
@@ -115,7 +115,7 @@ async function applyWithin(
       // Caught rather than left to reject: an unanswered request is the one
       // outcome this whole module exists to prevent.
       applyWorkspaceEdit(edit, deps, serverEditPolicy(() => expired)).catch(
-        (e: unknown): ApplyOutcome => ({ kind: "aborted", reason: `Sway could not apply this change: ${String(e)}` }),
+        (e: unknown): ApplyOutcome => ({ kind: "aborted", reason: `Tori could not apply this change: ${String(e)}` }),
       ),
       deadline,
     ]);
@@ -137,7 +137,7 @@ export async function answerApplyEdit(
   timeoutMs: number = APPLY_EDIT_TIMEOUT_MS,
 ): Promise<ApplyEditResponse> {
   if (!deps) {
-    const failureReason = "Sway has no editor session for this change, so nothing was changed.";
+    const failureReason = "Tori has no editor session for this change, so nothing was changed.";
     notify(failureReason);
     return { applied: false, failureReason };
   }

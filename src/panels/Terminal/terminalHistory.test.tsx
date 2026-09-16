@@ -13,7 +13,7 @@ const bridge = vi.hoisted(() => ({
   tail: "done" as string,
   surface: "chat" as "chat" | "agent",
   // Sessions with a live process of any kind, and the subset of those whose
-  // driver is not this Sway. They are separate answers because a chat child
+  // driver is not this Tori. They are separate answers because a chat child
   // outlives the webview that opened it: after a reload the first is true and
   // the second is false, which is the case the routing gate gets wrong.
   liveHere: [] as string[],
@@ -183,7 +183,7 @@ describe("the History button on the tab bar", () => {
     expect((historyBtn() as HTMLButtonElement).disabled).toBe(true);
   });
 
-  // A claude started in a terminal outside Sway. Nothing hosts it, so with the
+  // A claude started in a terminal outside Tori. Nothing hosts it, so with the
   // panel shut this badge is the only thing that says it is there at all.
   it("badges a session running here with no tab, and clears on the next probe", async () => {
     bridge.listing = [session("outsider")];
@@ -205,9 +205,9 @@ describe("the History button on the tab bar", () => {
   // What a webview reload leaves: the chat child is still running, so the
   // session's process is alive, but it is *ours* - the frontend lost the tab,
   // not the session. Routing on bare liveness sent it to the PTY surface, where
-  // the chat claim this same Sway holds refused it with "this session is already
+  // the chat claim this same Tori holds refused it with "this session is already
   // open in a chat" and named a tab the reload had destroyed.
-  it("reopens a session whose only live process is Sway's own chat child, as a chat", async () => {
+  it("reopens a session whose only live process is Tori's own chat child, as a chat", async () => {
     bridge.listing = [session("s1")];
     bridge.liveHere = ["s1"];
     bridge.elsewhere = [];

@@ -40,14 +40,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   font-weight: 600;
   color: var(--fg-default);
 }
 
 .count {
   flex: 0 0 auto;
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -56,6 +56,6 @@
    the only spoken account of why its section is empty. */
 .badge {
   flex: 0 0 auto;
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
   color: var(--fg-muted);
 }

@@ -2,7 +2,7 @@
 
 JetBrainsMono Nerd Font **Mono**, shipped so a prompt built out of Nerd Font
 glyphs (powerline separators, devicons, file-type marks) renders the same on
-every machine Sway runs on, whether or not the user has patched fonts installed.
+every machine Tori runs on, whether or not the user has patched fonts installed.
 
 | | |
 |---|---|

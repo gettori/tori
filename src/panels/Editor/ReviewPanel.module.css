@@ -7,7 +7,7 @@
   flex-direction: column;
   min-height: 0;
   background: var(--canvas-card);
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   user-select: none;
 }
 
@@ -27,7 +27,7 @@
 .title {
   padding-left: calc(4px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   font-weight: 600;
 }
 
@@ -62,7 +62,7 @@
 .branchName {
   overflow: hidden;
   color: var(--fg-default);
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -75,10 +75,10 @@
   padding: calc(1px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--brand-subtle);
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--brand-default);
   font: inherit;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   font-weight: 600;
   cursor: pointer;
 }
@@ -178,10 +178,10 @@
   padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: none;
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-muted);
   font: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -210,11 +210,11 @@
   padding: 0 calc(6px * var(--ui-scale));
   background: none;
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-muted);
   font: inherit;
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   cursor: pointer;
 }
 
@@ -261,9 +261,9 @@
   min-width: calc(16px * var(--ui-scale));
   padding: 0 calc(5px * var(--ui-scale));
   background: var(--neutral-subtle);
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   color: var(--fg-muted);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   font-weight: 600;
   text-align: center;
 }
@@ -314,7 +314,7 @@
 .untrackedBox {
   flex: none;
   color: var(--fg-muted);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
 }
 
 /* One member's band inside a Feature. Nothing on a branch unit, which has one
@@ -331,7 +331,7 @@
   gap: calc(4px * var(--ui-scale));
   padding: 0 0 calc(4px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .reviewPanel :global(.tree-empty) {
@@ -345,7 +345,7 @@
   margin: calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale)) calc(2px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -358,11 +358,11 @@
   gap: calc(4px * var(--ui-scale));
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-default);
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--sway-duration-fast) ease;
+  transition: background var(--tori-duration-fast) ease;
 }
 
 .reviewRow:hover {
@@ -384,7 +384,7 @@
   width: calc(18px * var(--ui-scale));
   text-align: center;
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .reviewStatus.added {
@@ -459,7 +459,7 @@
   min-width: 0;
   color: var(--fg-muted);
   direction: rtl;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-align: left;
   text-overflow: ellipsis;
 }
@@ -499,7 +499,7 @@
   gap: calc(4px * var(--ui-scale));
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -535,7 +535,7 @@
 .stashMeta {
   flex: none;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* The composer as one card: the message box's own border and background,
@@ -547,8 +547,8 @@
   margin: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  transition: border-color var(--sway-duration-fast) ease;
+  border-radius: var(--tori-radius-md);
+  transition: border-color var(--tori-duration-fast) ease;
 }
 
 .commitCard:focus-within {
@@ -596,7 +596,7 @@
   min-width: min-content;
   color: var(--fg-muted);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -1,13 +1,13 @@
-// Per-workspace preference overlay: `<workspace>/.sway/settings.json`.
+// Per-workspace preference overlay: `<workspace>/.tori/settings.json`.
 //
-// The third layer under the built-in defaults and `~/.config/sway/settings.json`
+// The third layer under the built-in defaults and `~/.config/tori/settings.json`
 // (see `settings.rs`). Same file format for the same reason: JSONC in, pretty
 // JSON out, so a hand edit with comments in it survives a write from the panel.
 //
 // **Local to the machine, never committed.** On the first write the directory is
 // added to the repo's own `.git/info/exclude`, so it is invisible to git from
 // the moment it exists rather than showing up in the Changes panel as a file
-// nobody asked for, and a teammate who never runs Sway sees nothing. The cost of
+// nobody asked for, and a teammate who never runs Tori sees nothing. The cost of
 // that choice is that these settings cannot be shared with a team; the global
 // file is where a preference meant to travel belongs.
 //
@@ -23,10 +23,10 @@ use serde_json::{Map, Value};
 use crate::git::exclude_from_repo;
 
 /// The workspace-local directory. Excluded from the repo on first write.
-pub const SWAY_DIR: &str = ".sway";
+pub const TORI_DIR: &str = ".tori";
 
 fn overlay_path(root: &str) -> PathBuf {
-    Path::new(root).join(SWAY_DIR).join("settings.json")
+    Path::new(root).join(TORI_DIR).join("settings.json")
 }
 
 fn empty() -> Value {
@@ -63,7 +63,7 @@ pub fn set_workspace_settings(root: String, settings: Value) -> Result<Value, St
     // Excluded *before* the file is written, so there is no window in which git
     // would report it. Doing this the other way round is what would put an
     // unexplained untracked file in the Changes panel, however briefly.
-    exclude_from_repo(&root, SWAY_DIR);
+    exclude_from_repo(&root, TORI_DIR);
     let path = overlay_path(&root);
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("Creating {} failed: {e}", dir.display()))?;
@@ -83,7 +83,7 @@ mod tests {
     /// concurrently in one binary, and a shared path means one test's cleanup
     /// deletes the directory another is still writing to.
     fn repo(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("sway-ws-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-ws-{name}-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
         Command::new("git").arg("-C").arg(&dir).arg("init").output().unwrap();
@@ -124,7 +124,7 @@ mod tests {
             .output()
             .unwrap();
         let status = String::from_utf8_lossy(&out.stdout);
-        assert!(!status.contains(SWAY_DIR), "git reported the overlay: {status:?}");
+        assert!(!status.contains(TORI_DIR), "git reported the overlay: {status:?}");
 
         // And nothing tracked was touched to achieve it.
         assert!(!dir.join(".gitignore").exists());
@@ -152,7 +152,7 @@ mod tests {
         set_workspace_settings(root, serde_json::json!({ "editor": { "minimap": true } })).unwrap();
 
         let exclude = std::fs::read_to_string(dir.join(".git/info/exclude")).unwrap();
-        assert_eq!(exclude.lines().filter(|l| l.trim() == format!("{SWAY_DIR}/")).count(), 1);
+        assert_eq!(exclude.lines().filter(|l| l.trim() == format!("{TORI_DIR}/")).count(), 1);
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -160,7 +160,7 @@ mod tests {
     fn a_folder_that_is_not_a_repo_still_takes_an_override() {
         // A `.shared/` folder is a real folder outside any git repo; the
         // exclude simply has nowhere to go, and that must not refuse the write.
-        let dir = std::env::temp_dir().join(format!("sway-ws-plain-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-ws-plain-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         std::fs::create_dir_all(&dir).unwrap();
         let root = dir.to_string_lossy().into_owned();

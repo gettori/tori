@@ -155,7 +155,7 @@ const ACP_MODES = [
   { id: "agent", label: "Agent", hint: "" },
 ];
 
-/** Claude publishes no options at all, so Sway assembles them per model row.
+/** Claude publishes no options at all, so Tori assembles them per model row.
  *  Only the annotated one has anything to say, which is what makes a model
  *  switch re-cut the set rather than leave it. */
 const FAST_MODE = {
@@ -670,7 +670,7 @@ describe("a chat draft's mode", () => {
   });
 });
 
-// The levers the agent published that Sway has no control of its own for. A
+// The levers the agent published that Tori has no control of its own for. A
 // draft reads them from the probe cache, since there is no session to ask.
 describe("a chat draft's mirrored options", () => {
   it("shows the agent's own levers from the cache, with nothing spawned", async () => {

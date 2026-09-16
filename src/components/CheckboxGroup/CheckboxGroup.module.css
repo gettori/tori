@@ -15,7 +15,7 @@
   color: inherit;
   font-size: inherit;
   font-weight: 500;
-  line-height: var(--sway-line-normal);
+  line-height: var(--tori-line-normal);
 }
 
 .items {
@@ -44,9 +44,9 @@
    token rather than restating 8px, so a change to Checkbox's rhythm drags this
    with it instead of leaving the indent a step behind. */
 .description {
-  margin-left: calc(16px * var(--ui-scale) + var(--sway-space-4));
+  margin-left: calc(16px * var(--ui-scale) + var(--tori-space-4));
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
-  line-height: var(--sway-line-normal);
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
   cursor: default;
 }

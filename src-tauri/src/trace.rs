@@ -1,9 +1,9 @@
 //! File-based performance tracing, for a release build that has no devtools.
 //!
-//! Two files under `~/.config/sway/trace/`, both JSON-lines: `backend.jsonl`
+//! Two files under `~/.config/tori/trace/`, both JSON-lines: `backend.jsonl`
 //! written here, `frontend.jsonl` written by the web layer through
 //! `trace_write`. They are joined after the fact on `id`, which the frontend
-//! mints and smuggles into every invoke's argument map as `__swayTrace` (Tauri
+//! mints and smuggles into every invoke's argument map as `__toriTrace` (Tauri
 //! looks each declared argument up by name, so an extra key is ignored by every
 //! command). Queue wait is then `backend.enter - frontend.call`, measured
 //! rather than inferred.
@@ -13,7 +13,7 @@
 //! one machine makes wall clock accurate enough for the tens of milliseconds
 //! this is chasing.
 //!
-//! Off unless `SWAY_TRACE` is set to something other than `0` at launch, and
+//! Off unless `TORI_TRACE` is set to something other than `0` at launch, and
 //! read exactly once, so the disabled path is one relaxed atomic load.
 
 use std::fs::{File, OpenOptions};
@@ -27,12 +27,12 @@ static ENABLED: AtomicBool = AtomicBool::new(false);
 static BACKEND: OnceLock<Mutex<Option<File>>> = OnceLock::new();
 static FRONTEND: OnceLock<Mutex<Option<File>>> = OnceLock::new();
 
-/// Where both trace files live. `~/.config/sway/` is where every other Sway
+/// Where both trace files live. `~/.config/tori/` is where every other Tori
 /// store already is; Tauri's app-data dir is unused in this codebase.
 pub fn dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/trace")
+        .join(".config/tori/trace")
 }
 
 pub fn enabled() -> bool {
@@ -48,11 +48,11 @@ pub fn now_ms() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// Read `SWAY_TRACE` and, if set, truncate both trace files so a run's numbers
+/// Read `TORI_TRACE` and, if set, truncate both trace files so a run's numbers
 /// are never read against the previous run's. Called before the Tauri builder,
 /// so `trace_config` can answer the frontend the moment it asks.
 pub fn init() {
-    let on = std::env::var("SWAY_TRACE")
+    let on = std::env::var("TORI_TRACE")
         .map(|v| !v.is_empty() && v != "0")
         .unwrap_or(false);
     if !on {
@@ -148,7 +148,7 @@ fn json_string(s: &str) -> String {
 /// installed) simply has none.
 pub fn trace_id_of(body: &tauri::ipc::InvokeBody) -> Option<u64> {
     match body {
-        tauri::ipc::InvokeBody::Json(v) => v.get("__swayTrace")?.as_u64(),
+        tauri::ipc::InvokeBody::Json(v) => v.get("__toriTrace")?.as_u64(),
         tauri::ipc::InvokeBody::Raw(_) => None,
     }
 }
@@ -177,7 +177,7 @@ pub fn traced<R: tauri::Runtime>(
 pub struct TraceConfig {
     pub enabled: bool,
     pub dir: String,
-    /// `SWAY_RECIPE` verbatim, for the scripted degradation run. Empty means
+    /// `TORI_RECIPE` verbatim, for the scripted degradation run. Empty means
     /// "trace whatever the user does" rather than "drive the app yourself".
     pub recipe: String,
 }
@@ -190,7 +190,7 @@ pub fn trace_config() -> TraceConfig {
         enabled: enabled(),
         dir: dir().to_string_lossy().into_owned(),
         recipe: if enabled() {
-            std::env::var("SWAY_RECIPE").unwrap_or_default()
+            std::env::var("TORI_RECIPE").unwrap_or_default()
         } else {
             String::new()
         },

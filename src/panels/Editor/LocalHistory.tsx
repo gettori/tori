@@ -143,7 +143,7 @@ export default function LocalHistory(props: { workspace: string; file: string })
       <Show when={!error()} fallback={<div class="tree-empty">{error()}</div>}>
         <Show when={loading() || entries().length} fallback={
           <div class="tree-empty">
-            No saved versions yet. Sway keeps one each time you save this file, whether or not it
+            No saved versions yet. Tori keeps one each time you save this file, whether or not it
             is committed.
           </div>
         }>

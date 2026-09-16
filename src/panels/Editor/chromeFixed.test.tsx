@@ -109,8 +109,8 @@ describe("the editor chrome across tab moves", () => {
     expect(document.querySelector('[class*="editorMain"]')).toBe(main);
   });
 
-  it("still reads its width from sway.editor.rightw.v1", async () => {
-    localStorage.setItem("sway.editor.rightw.v1", "231");
+  it("still reads its width from tori.editor.rightw.v1", async () => {
+    localStorage.setItem("tori.editor.rightw.v1", "231");
     mounted = render(() => (
       <>
         <Editor selected={selection as never} />

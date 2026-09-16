@@ -35,11 +35,11 @@ export const Stack: Story = {
   },
 };
 
-/** Pushed on demand, which is how the app uses it: every toast in Sway arrives
+/** Pushed on demand, which is how the app uses it: every toast in Tori arrives
  *  through `pushToast` or the TOAST event, never as a prop. */
 export const Interactive: Story = {
   render: () => (
-    <div style={{ display: "flex", gap: "var(--sway-space-3)", padding: "48px" }}>
+    <div style={{ display: "flex", gap: "var(--tori-space-3)", padding: "48px" }}>
       <Button variant="danger" onClick={() => pushToast("Push rejected: the remote moved.", "error")}>
         Raise an error
       </Button>

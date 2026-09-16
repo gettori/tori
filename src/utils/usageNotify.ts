@@ -1,4 +1,4 @@
-// Telling you a quota moved when you are not looking at Sway.
+// Telling you a quota moved when you are not looking at Tori.
 //
 // The needs-you rule, applied to a fact about a login rather than a session:
 // **nothing while the window is focused.** A focused window is already showing
@@ -22,7 +22,7 @@ import { accountsWithReadings, shouldAnnounce, splitAccountKey, windowsFor } fro
 export type QuotaNotification = { title: string; body: string };
 
 /**
- * Whether Sway has the focus, from the DOM rather than from a signal.
+ * Whether Tori has the focus, from the DOM rather than from a signal.
  *
  * `sessionActivity` keeps one for the needs-you path, and importing it from here
  * would be wrong twice: it is fed by the sidebar (so it is a *session* surface's
@@ -40,7 +40,7 @@ const focusedNow = () => (typeof document === "undefined" ? false : document.has
  * reads back. Marking has to happen here or a reload would repeat everything.
  *
  * **Focus is checked after the mark, not before.** A window that crossed while
- * you were looking at Sway has been delivered, by the strip; firing it later
+ * you were looking at Tori has been delivered, by the strip; firing it later
  * when you tab away would be news about something you already saw.
  */
 export function collectQuotaNotifications(

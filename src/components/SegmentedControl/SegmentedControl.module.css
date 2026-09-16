@@ -6,7 +6,7 @@
   display: inline-flex;
   height: var(--control-height);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   overflow: hidden;
 }
 
@@ -21,12 +21,12 @@
   border: none;
   color: var(--fg-muted);
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   line-height: 1.4;
   cursor: pointer;
   transition:
-    color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease;
+    color var(--tori-duration-fast) ease,
+    background var(--tori-duration-fast) ease;
 }
 
 /* Hairline between segments (never before the first). */
@@ -71,7 +71,7 @@
 
 .plain .segment {
   padding: 0 calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--tab-inactive-fg);
 }
 
@@ -97,7 +97,7 @@
 }
 .sm .segment,
 .xs .segment {
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 .xs {
   height: var(--control-height-xs);

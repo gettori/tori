@@ -1,4 +1,4 @@
-//! Where Sway's own per-project state lives, and how it is written.
+//! Where Tori's own per-project state lives, and how it is written.
 //!
 //! Small plumbing shared by every owned store: attempts, chat usage, session
 //! locators, ownership claims, and the search index's scratch writes. It says
@@ -8,7 +8,7 @@
 //! **Why it is a module of its own.** All of this used to live in
 //! `chat/rules.rs`, next to the permission-rule engine, because that engine was
 //! the first thing to need a durable per-project store. Five other callers
-//! followed it there. When the rule engine was deleted (Sway no longer decides
+//! followed it there. When the rule engine was deleted (Tori no longer decides
 //! tool calls; the agent does) the plumbing had to survive it, and a shared
 //! helper reached through `chat::rules::` would have been a module named after
 //! the one job it no longer does.
@@ -31,7 +31,7 @@ pub fn project_state_path(kind: &str, cwd: &str) -> PathBuf {
         .unwrap_or_default();
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway")
+        .join(".config/tori")
         .join(kind)
         .join(format!("{}-{:016x}.json", sanitize_segment(&base), path_hash(cwd)))
 }
@@ -100,13 +100,13 @@ mod tests {
 
     #[test]
     fn two_checkouts_sharing_a_basename_get_separate_stores() {
-        let a = project_state_path("usage", "/Users/x/Projects/sway/main");
-        let b = project_state_path("usage", "/Users/x/Projects/sway-fork/main");
+        let a = project_state_path("usage", "/Users/x/Projects/tori/main");
+        let b = project_state_path("usage", "/Users/x/Projects/tori-fork/main");
         assert_ne!(a, b, "the hash is what keeps two checkouts of one repo apart");
         assert_eq!(a.parent(), b.parent(), "and they still live under the same kind");
     }
 
-    /// The file name is built from a basename Sway does not choose, so nothing
+    /// The file name is built from a basename Tori does not choose, so nothing
     /// in it may be able to point the file somewhere else.
     ///
     /// Two facts, and the first is the one that does the work: `Path::file_name`
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn a_replaced_file_is_never_seen_half_written() {
-        let dir = std::env::temp_dir().join(format!("sway-owned-state-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-owned-state-{}", std::process::id()));
         let path = dir.join("nested").join("state.json");
         write_atomically(&path, "{\"a\":1}").unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "{\"a\":1}");

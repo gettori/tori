@@ -8,7 +8,7 @@
 # only, and the app would fail on Intel Macs in a way `lipo` on the main binary
 # never reveals. This sweeps everything in the bundle.
 #
-#   .github/scripts/check-universal.sh path/to/Sway.app
+#   .github/scripts/check-universal.sh path/to/Tori.app
 set -euo pipefail
 
 APP="${1:?usage: check-universal.sh <path to .app>}"

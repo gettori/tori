@@ -24,7 +24,7 @@ export type PrState = "open" | "closed" | "merged";
 /// GitHub's own mergeability verdict, carried through rather than recomputed.
 ///
 /// `unknown` covers both "still being computed" and any state string the server
-/// adds later. It means *ask again*, never a green light: Sway cannot see branch
+/// adds later. It means *ask again*, never a green light: Tori cannot see branch
 /// protection or required checks it does not model, so a locally-derived verdict
 /// would render an enabled button the server then refuses.
 export type MergeableState =
@@ -73,7 +73,7 @@ export type ReviewDecision = "approved" | "changesRequested" | "reviewRequired" 
 export type UnitStatus = {
   headRef: string;
   /// `null` is "no PR for this branch", which the UI must render differently
-  /// from "this remote is not a forge Sway can talk to".
+  /// from "this remote is not a forge Tori can talk to".
   pullRequest: PullRequest | null;
   checks: CheckRollup;
   reviewDecision: ReviewDecision;
@@ -121,7 +121,7 @@ export type ReviewThread = {
   /// Absent once the thread goes outdated. A null line is what routes a thread
   /// into the outdated group rather than onto a line that has moved.
   line: number | null;
-  /// The first line of a multi-line comment, null on a single-line one. Sway
+  /// The first line of a multi-line comment, null on a single-line one. Tori
   /// itself sends ranges, so a reader that only knew `line` would narrow a
   /// range it had just written.
   startLine: number | null;
@@ -191,7 +191,7 @@ export type DraftComment = {
 /// The verdict a submitted review carries.
 ///
 /// `approve` and `requestChanges` are rejected with a 422 on a pull request the
-/// viewer authored, which on a single-owner repo is every pull request Sway
+/// viewer authored, which on a single-owner repo is every pull request Tori
 /// opens. Both are built and gated rather than omitted: the gate is about this
 /// pull request, not about the app.
 export type ReviewEvent = "approve" | "comment" | "requestChanges";
@@ -241,7 +241,7 @@ export type AuthState =
 
 export type ForgeProvider = "github" | "gitlab";
 
-/// One account Sway holds on a forge host, with its credential state.
+/// One account Tori holds on a forge host, with its credential state.
 export type ForgeAccount = {
   id: string;
   provider: ForgeProvider;

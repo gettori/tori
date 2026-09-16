@@ -124,7 +124,7 @@ describe("a Preferences toggle from the palette", () => {
 describe("a Preferences row for a setting nothing can toggle", () => {
   it("opens the panel at it instead of guessing at a value", () => {
     const emitted: string[] = [];
-    const stop = onWith<{ query?: string }>("sway:open-settings", ({ query }) => emitted.push(query ?? ""));
+    const stop = onWith<{ query?: string }>("tori:open-settings", ({ query }) => emitted.push(query ?? ""));
     runCommand("prefs:line-height");
     stop();
 

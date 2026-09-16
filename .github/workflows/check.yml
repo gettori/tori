@@ -1,7 +1,7 @@
 # The frontend gate: type-check and the vitest suite, on every push and PR.
 #
 # It exists because a guard nothing runs is only a suggestion. `src/lib/` holds
-# the whole of Sway's contact surface with its headless-primitives library, and
+# the whole of Tori's contact surface with its headless-primitives library, and
 # `src/lib/boundary.test.ts` is what keeps it that way - but a boundary test
 # that only runs when someone remembers to run it will be breached by the first
 # contributor who does not.

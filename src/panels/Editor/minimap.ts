@@ -22,7 +22,7 @@ import { showMinimap } from "@replit/codemirror-minimap";
 import type { Extension } from "@codemirror/state";
 
 /** Styled in `App.css`, beside the other classes handed to CodeMirror. */
-export const MINIMAP_CLASS = "cm-sway-minimap";
+export const MINIMAP_CLASS = "cm-tori-minimap";
 
 /**
  * A scaled render of the file, in the editor's right gutter.

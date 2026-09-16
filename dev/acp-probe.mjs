@@ -37,7 +37,7 @@
 // 2.0.0 while both agents measured in Phase 4 advertise
 // `sessionCapabilities.fork`. An advertised capability is also not a promise of
 // data - `opencode acp` 1.18.3 advertises `list` and can return zero rows. So
-// every claim Sway makes about an agent starts here.
+// every claim Tori makes about an agent starts here.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -152,7 +152,7 @@ async function probe(name, spec, cwd) {
   const out = { agent: name, launch: `${spec.program} ${spec.args.join(" ")}` };
   try {
     // Mirrors `initialize_request` in chat/acp_transport.rs: protocol version 1,
-    // and fs/terminal declined, because that is the configuration Sway ships.
+    // and fs/terminal declined, because that is the configuration Tori ships.
     const init = await call("initialize", {
       protocolVersion: 1,
       clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
@@ -191,7 +191,7 @@ async function probe(name, spec, cwd) {
 /**
  * THE RELOAD QUESTION: can a session hand its conversation over twice?
  *
- * Sway's webview reload leaves the agent process and the session alive, so the
+ * Tori's webview reload leaves the agent process and the session alive, so the
  * transport rewires instead of spawning - and `session/load`, which is the only
  * way an ACP conversation ever reaches the UI, never runs again. The panel comes
  * back empty. Re-issuing `session/load` on the connection that already has that
@@ -205,7 +205,7 @@ async function probe(name, spec, cwd) {
  * Reading the result: `updatesAfterLoad` at or above `updatesDuringTurn` with
  * the same kinds means the conversation came back and the transport can simply
  * re-ask. Zero means the agent accepted the request and replayed nothing, which
- * is a refusal wearing a success, and Sway has to keep its own log instead.
+ * is a refusal wearing a success, and Tori has to keep its own log instead.
  */
 async function measureReload(call, session, cwd, frames) {
   const out = {};
@@ -235,7 +235,7 @@ async function measureReload(call, session, cwd, frames) {
     out.loadReturnedConfigOptions = Array.isArray(loaded?.configOptions);
   } catch (e) {
     // An error here is the cleanest possible answer: the agent says no, and
-    // Sway keeps its own log rather than guessing.
+    // Tori keeps its own log rather than guessing.
     out.loadError = String(e.message ?? e);
     return out;
   }
@@ -263,7 +263,7 @@ function allowOption(params) {
 /**
  * THE TOOL-CALL QUESTION: does a tool call arrive whole, or in instalments?
  *
- * Sway's cards are built from `kind` (which body renders), `locations` (which
+ * Tori's cards are built from `kind` (which body renders), `locations` (which
  * paths the row lists) and `content` (what the body shows). ACP lets all three
  * arrive on the opening `tool_call` *or* on any later `tool_call_update`, and
  * the client cannot tell which agent does what without asking. If they arrive
@@ -291,7 +291,7 @@ async function measureToolCall(call, session, frames) {
   // Two turns, because one kind cannot answer both questions. The read is the
   // case that should carry all three fields: a `read` kind, a location, and the
   // file's content. The shell run is the only place an exit status could
-  // possibly ride, and Sway's `ToolSummary::Execute` has a field waiting to
+  // possibly ride, and Tori's `ToolSummary::Execute` has a field waiting to
   // find out. An agent that reaches for the wrong tool is itself the finding,
   // and the report says which kind it actually got.
   const turns = [
@@ -353,13 +353,13 @@ async function measureToolCall(call, session, frames) {
     row.stillOnTheLastFrame = ["kind", "locations", "content", "rawOutput"].filter(
       (f) => last[f] !== undefined && last[f] !== null,
     );
-    // The two values, not just their presence: `kind` is the vocabulary Sway
+    // The two values, not just their presence: `kind` is the vocabulary Tori
     // is about to adopt, and a location is only useful if it is a path the
     // editor can open. Both are short enough to print.
     const merged = Object.assign({}, ...updates);
     row.kindValue = merged.kind ?? null;
     row.locationValues = (merged.locations ?? []).map((l) => l?.path ?? JSON.stringify(l));
-    // `rawOutput`'s KEYS, not its values. It is the agent's own JSON and Sway
+    // `rawOutput`'s KEYS, not its values. It is the agent's own JSON and Tori
     // reads nothing out of it today; what a summariser needs to know first is
     // whether there is a field to read at all - an exit status on an `execute`
     // above all, which is the one `ToolSummary::Execute` has been carrying an
@@ -430,7 +430,7 @@ function reloadReport(rl) {
   lines.push(`    one turn produced ${rl.updatesDuringTurn} updates [${rl.kindsDuringTurn.join(", ") || "none"}]`);
   if (rl.loadError) {
     lines.push(`    a second session/load was REFUSED: ${rl.loadError}`);
-    lines.push("    -> Sway must keep its own log; re-asking is not available.");
+    lines.push("    -> Tori must keep its own log; re-asking is not available.");
     return lines;
   }
   lines.push(`    a second session/load resolved, and replayed ${rl.updatesAfterLoad} updates` +

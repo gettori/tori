@@ -340,7 +340,7 @@ describe("what a History row can do", () => {
   });
 });
 
-// The invariants of skarif2/sway#104: how the panel opens, closes, and hands
+// The invariants of gettori/tori#104: how the panel opens, closes, and hands
 // focus around must survive the move onto Kobalte exactly as pinned here.
 // Dismissal fires the pointerdown/mousedown pair a real pointer sends (see
 // test/menuIdioms.test.ts) and yields a macrotask after mounting, because the
@@ -415,7 +415,7 @@ describe("how the panel opens, closes, and hands focus", () => {
     await expectNoAxeViolations(document.body);
   });
 
-  // The dismissal semantics of the move onto Kobalte (skarif2/sway#104), pinned
+  // The dismissal semantics of the move onto Kobalte (gettori/tori#104), pinned
   // as measured rather than assumed. One changed, one did not.
 
   // Did NOT change: the old dismissable={!menuOpen()} behavior survives, now by

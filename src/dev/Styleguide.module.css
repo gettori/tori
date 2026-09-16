@@ -7,8 +7,8 @@
   overflow: auto;
   background: var(--canvas-default);
   color: var(--fg-default);
-  font-family: var(--sway-font-ui);
-  font-size: var(--sway-text-xl);
+  font-family: var(--tori-font-ui);
+  font-size: var(--tori-text-xl);
 }
 
 .bar {
@@ -31,7 +31,7 @@
   align-items: center;
   gap: calc(8px * var(--ui-scale));
   color: var(--brand-default);
-  font-size: var(--sway-text-3xl);
+  font-size: var(--tori-text-3xl);
 }
 
 .controls {
@@ -44,7 +44,7 @@
 .seg {
   display: inline-flex;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   overflow: hidden;
 }
 .seg button {
@@ -65,7 +65,7 @@
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .body {
@@ -78,7 +78,7 @@
 
 .body h2 {
   margin: 0 0 calc(12px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -97,21 +97,21 @@
   padding: calc(12px * var(--ui-scale));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-lg);
+  border-radius: var(--tori-radius-lg);
   box-shadow: var(--shadow-sm);
 }
 .chip {
   height: calc(44px * var(--ui-scale));
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   border: 1px solid var(--border-default);
 }
 .swatch code {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
 }
 .note {
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 .brandText {
   margin: calc(4px * var(--ui-scale)) 0 0;
@@ -129,7 +129,7 @@
   padding: calc(6px * var(--ui-scale)) calc(12px * var(--ui-scale));
   background: var(--brand-subtle);
   color: var(--brand-default);
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   font-weight: 500;
 }
 .barItem {
@@ -142,7 +142,7 @@
   background: var(--canvas-input);
   color: var(--fg-default);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   box-shadow: 0 0 0 3px var(--brand-ring);
   cursor: pointer;
 }
@@ -160,10 +160,10 @@
   width: calc(140px * var(--ui-scale));
   height: calc(90px * var(--ui-scale));
   background: var(--canvas-card);
-  border-radius: var(--sway-radius-lg);
+  border-radius: var(--tori-radius-lg);
   box-shadow: var(--shadow-sm);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
 
@@ -188,8 +188,8 @@
 }
 .menuRow {
   padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
-  font-size: var(--sway-text-lg);
+  border-radius: var(--tori-radius-sm);
+  font-size: var(--tori-text-lg);
   color: var(--fg-default);
 }
 .menuRow:hover {
@@ -209,11 +209,11 @@
 .spaceBar {
   height: calc(16px * var(--ui-scale));
   background: var(--brand-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
 }
 .spaceItem code {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
 
@@ -231,7 +231,7 @@
   height: calc(64px * var(--ui-scale));
   background: var(--neutral-hover);
   border: 1px solid var(--border-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
 
@@ -262,10 +262,10 @@
 }
 .gateFail {
   color: var(--danger-fg);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 .gateFail code {
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
 }
 
 /* A role the gate rejected is outlined wherever it is rendered, so a failure is
@@ -286,13 +286,13 @@
   gap: calc(4px * var(--ui-scale));
 }
 .ansiCell code {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   color: var(--fg-muted);
 }
 .ansiChip {
   height: calc(32px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   border: 1px solid var(--border-default);
 }
 
@@ -302,9 +302,9 @@
   padding: calc(12px * var(--ui-scale));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-lg);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-lg);
+  border-radius: var(--tori-radius-lg);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-lg);
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -320,17 +320,17 @@
   gap: calc(8px * var(--ui-scale));
 }
 .iconCell code {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
 }
 
 .groupHead {
   margin: calc(16px * var(--ui-scale)) 0 calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   font-weight: 600;
   color: var(--fg-subtle);
-  font-family: var(--sway-font-mono);
+  font-family: var(--tori-font-mono);
 }
 .roleGrid {
   display: grid;
@@ -343,8 +343,8 @@
   gap: calc(8px * var(--ui-scale));
 }
 .roleCell code {
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-md);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-md);
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -353,6 +353,6 @@
   flex: none;
   width: calc(28px * var(--ui-scale));
   height: calc(20px * var(--ui-scale));
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   border: 1px solid var(--border-default);
 }

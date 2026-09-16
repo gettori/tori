@@ -58,7 +58,7 @@ function modeLabel(mode: PermissionMode): string {
  * Five answers, which are three decisions crossed with how far they reach:
  * allow this call, allow it for this session, allow it for this project, deny,
  * or deny with a typed reason. The reach travels back to the agent in its own
- * answer and is recorded in the agent's own grammar; Sway keeps no rule store
+ * answer and is recorded in the agent's own grammar; Tori keeps no rule store
  * of its own and writes nothing to `~/.claude/settings.json`. The reason is not
  * cosmetic - it reaches the model as the tool result, so "not that file, use the
  * fixture" redirects the turn instead of just stopping it.
@@ -180,7 +180,7 @@ export default function PermissionPrompt(props: {
           <Button size="sm" variant="ghost" onClick={() => setFeedback("")}>
             Deny with feedback
           </Button>
-          {/* The agent's own offers, after Sway's. A mode switch answers a
+          {/* The agent's own offers, after Tori's. A mode switch answers a
               different question from this one call ("stop asking about edits"),
               so it reads as an aside rather than a fourth way to say yes. */}
           <For each={modeOffers()}>

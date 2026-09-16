@@ -5,9 +5,9 @@
   margin: calc(4px * var(--ui-scale)) 0;
   padding: calc(6px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--canvas-card);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 .thread[data-resolved="yes"] {
   opacity: 0.7;
@@ -27,7 +27,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 
 .tag {
@@ -36,7 +36,7 @@
   border: 1px solid currentColor;
   border-radius: 999px;
   color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 
 /* The anchor as GitHub recorded it. For an outdated thread it is the only thing
@@ -45,11 +45,11 @@
   margin: calc(4px * var(--ui-scale)) 0;
   padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   overflow-x: auto;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--canvas-sunken, var(--canvas-card));
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono, monospace);
-  font-size: var(--sway-text-2xs);
+  font-family: var(--tori-font-mono, monospace);
+  font-size: var(--tori-text-2xs);
   white-space: pre;
 }
 
@@ -71,7 +71,7 @@
 
 .author {
   color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 
 .body {
@@ -90,7 +90,7 @@
   width: 100%;
   padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--canvas-default, var(--canvas-card));
   color: var(--fg-default);
   font: inherit;
@@ -117,7 +117,7 @@
 
 .sendTarget {
   color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -127,7 +127,7 @@
    makes "it did not go" read as "it went". */
 .sendNote {
   color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 .sendNote[data-send-note="error"] {
   color: var(--danger-fg);

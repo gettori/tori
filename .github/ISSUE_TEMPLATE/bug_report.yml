@@ -1,13 +1,13 @@
 name: Bug report
-description: Something in Sway behaves incorrectly
+description: Something in Tori behaves incorrectly
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
         Thanks for the report. The version fields matter more than usual here:
-        Sway reads each agent CLI's own transcript format, so a CLI update can
-        change behaviour without Sway changing at all.
+        Tori reads each agent CLI's own transcript format, so a CLI update can
+        change behaviour without Tori changing at all.
 
   - type: textarea
     id: what-happened
@@ -22,11 +22,11 @@ body:
       required: true
 
   - type: input
-    id: sway-version
+    id: tori-version
     attributes:
-      label: Sway version
+      label: Tori version
       description: >
-        Sway does not display its own version yet. Take it from the DMG
+        Tori does not display its own version yet. Take it from the DMG
         filename or the release you downloaded, or say "built from source" plus
         the commit.
       placeholder: "0.1.0"

@@ -512,7 +512,7 @@
     "name": "PreToolUse:Bash",
     "event": "PreToolUse",
     "phase": "finished",
-    "swayOwned": false,
+    "toriOwned": false,
     "outcome": "success",
     "exitCode": 0,
     "output": "{\"hookSpecificOutput\":{}}",

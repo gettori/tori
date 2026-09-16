@@ -59,10 +59,10 @@
 }
 
 .backdrop[data-expanded] {
-  animation: dialogBackdropIn var(--sway-duration-med) var(--sway-ease);
+  animation: dialogBackdropIn var(--tori-duration-med) var(--tori-ease);
 }
 .backdrop[data-closed] {
-  animation: dialogBackdropOut var(--sway-duration-fast) var(--sway-ease);
+  animation: dialogBackdropOut var(--tori-duration-fast) var(--tori-ease);
 }
 
 .panel {
@@ -76,7 +76,7 @@
   max-height: var(--dialog-max-height, min(85vh, calc(720px * var(--ui-scale))));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-xl);
+  border-radius: var(--tori-radius-xl);
   box-shadow: var(--shadow-lg);
 }
 .panel:focus {
@@ -86,10 +86,10 @@
   outline: none;
 }
 .panel[data-expanded] {
-  animation: dialogPanelIn var(--sway-duration-med) var(--sway-ease);
+  animation: dialogPanelIn var(--tori-duration-med) var(--tori-ease);
 }
 .panel[data-closed] {
-  animation: dialogPanelOut var(--sway-duration-fast) var(--sway-ease);
+  animation: dialogPanelOut var(--tori-duration-fast) var(--tori-ease);
 }
 
 /* Reduced motion removes the animation, not the dialog. `solid-presence` reads
@@ -133,15 +133,15 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--sway-space-3);
-  padding: var(--sway-space-6);
+  gap: var(--tori-space-3);
+  padding: var(--tori-space-6);
 }
 .headHidden {
   display: contents;
 }
 .title {
-  font-size: var(--sway-text-2xl);
-  line-height: var(--sway-line-tight);
+  font-size: var(--tori-text-2xl);
+  line-height: var(--tori-line-tight);
   font-weight: 600;
   color: var(--fg-default);
   white-space: pre-wrap;
@@ -156,14 +156,14 @@
   clip-path: inset(50%);
 }
 .description {
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-muted);
   white-space: pre-wrap;
   margin: 0;
 }
 .body {
   flex: 1 1 auto;
-  padding: var(--sway-space-4) var(--sway-space-6) var(--sway-space-7);
+  padding: var(--tori-space-4) var(--tori-space-6) var(--tori-space-7);
   min-height: 0;
   overflow-y: auto;
 }
@@ -179,7 +179,7 @@
   flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
-  gap: var(--sway-space-4);
-  padding: var(--sway-space-4);
+  gap: var(--tori-space-4);
+  padding: var(--tori-space-4);
   border-top: 1px solid var(--border-default);
 }

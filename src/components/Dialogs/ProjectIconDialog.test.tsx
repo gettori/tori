@@ -45,8 +45,8 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   const onPickFile = vi.fn(() => Promise.resolve<string | null>("/tmp/logo.png"));
   render(() => (
     <ProjectIconDialog
-      projectName="sway"
-      seed="/Users/x/Projects/sway"
+      projectName="tori"
+      seed="/Users/x/Projects/tori"
       icon={null}
       iconFile={null}
       favicon={null}
@@ -75,7 +75,7 @@ describe("ProjectIconDialog", () => {
     it("names the project it is dressing", () => {
       open();
 
-      expect(screen.getByText("Icon for “sway”")).toBeTruthy();
+      expect(screen.getByText("Icon for “tori”")).toBeTruthy();
     });
 
     it("calls the automatic option what it will actually show", () => {

@@ -1,4 +1,4 @@
-// Echo suppression for Sway's own file writes. When the editor saves a file the
+// Echo suppression for Tori's own file writes. When the editor saves a file the
 // Phase-1 watcher fires `fs://changed` for that same path ~250ms later (its
 // debounce). Without this, the fs://changed consumers (the Phase-4 gutter
 // refresh, the Phase-5 reload/follow-mode) would treat the save as an external
@@ -14,7 +14,7 @@ export function markSelfWrite(path: string) {
   recent.set(path, Date.now());
 }
 
-/** True if `path` was written by Sway within the TTL (non-consuming peek). */
+/** True if `path` was written by Tori within the TTL (non-consuming peek). */
 export function isSelfWrite(path: string): boolean {
   const at = recent.get(path);
   if (at === undefined) return false;

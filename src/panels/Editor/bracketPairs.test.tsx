@@ -10,8 +10,8 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { forceParsing } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
-import swayDark from "../../theme/palettes/sway-dark.json";
-import swayLight from "../../theme/palettes/sway-light.json";
+import toriDark from "../../theme/palettes/tori-dark.json";
+import toriLight from "../../theme/palettes/tori-light.json";
 import catppuccin from "../../theme/palettes/catppuccin-mocha.json";
 import rosePine from "../../theme/palettes/rose-pine-dawn.json";
 import tokyoNight from "../../theme/palettes/tokyo-night.json";
@@ -43,7 +43,7 @@ afterEach(() => views.splice(0).forEach((v) => v.destroy()));
  * with `Date.now` stubbed to run fast: the tree for the 4000-line document
  * below comes back **9 characters** long, `visiblePairs` finds nothing over a
  * window at character 1069, and the assertion fails as `expected 0 to be
- * greater than 0` - on CI, never here. That is skarif2/sway#121's red run and
+ * greater than 0` - on CI, never here. That is gettori/tori#121's red run and
  * two red runs on main before it.
  *
  * A view is what fixes it: it owns the background parse worker, and
@@ -189,8 +189,8 @@ describe("the guide lines", () => {
 
 describe("the depth ramp", () => {
   const PALETTES: [string, Palette][] = [
-    ["sway-dark", swayDark as Palette],
-    ["sway-light", swayLight as Palette],
+    ["tori-dark", toriDark as Palette],
+    ["tori-light", toriLight as Palette],
     ["catppuccin-mocha", catppuccin as Palette],
     ["rose-pine-dawn", rosePine as Palette],
     ["tokyo-night", tokyoNight as Palette],
@@ -200,7 +200,7 @@ describe("the depth ramp", () => {
   const roleOf = (color: string) => color.replace(/^var\(|\)$/g, "");
 
   it("names roles the theme actually declares", () => {
-    const built = buildRoles(swayDark as Palette);
+    const built = buildRoles(toriDark as Palette);
     for (const color of DEPTH_COLORS) expect(built, color).toHaveProperty(roleOf(color));
   });
 

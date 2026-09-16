@@ -11,14 +11,14 @@ import { CURSOR_LAYER, vimExtension } from "./vimMode";
 // The risk this file exists for is not "does vim work" - that is the package's
 // problem. It is that `@replit/codemirror-vim` intercepts keys through a DOM
 // handler and calls `stopPropagation()` on anything it claims, so a key vim
-// takes is dead in CodeMirror's other keymaps *and* in Sway's window-level
+// takes is dead in CodeMirror's other keymaps *and* in Tori's window-level
 // hotkey dispatcher. Every binding this app has had to reach the editor before
 // now has to survive that.
 
 const held: EditorView[] = [];
 
 /** An editor arranged the way `CodeEditor` arranges one: vim in a compartment
- *  ahead of Sway's own keymap, which is itself ahead of `defaultKeymap`. */
+ *  ahead of Tori's own keymap, which is itself ahead of `defaultKeymap`. */
 function mount(opts: { vim: boolean; doc?: string }) {
   const conf = new Compartment();
   const fired: string[] = [];
@@ -49,7 +49,7 @@ function mount(opts: { vim: boolean; doc?: string }) {
   return { view, conf, fired };
 }
 
-/** What reached `window`, i.e. what Sway's own hotkey dispatcher would see.
+/** What reached `window`, i.e. what Tori's own hotkey dispatcher would see.
  *  A key vim claims never gets here, which is the whole reason to check. */
 function watchWindow(): string[] {
   const seen: string[] = [];
@@ -110,7 +110,7 @@ describe("with vim on", () => {
     expect(view.state.doc.toString()).toBe("lpha\nbeta\ngamma\n");
   });
 
-  it("leaves Sway's own shortcuts alone", () => {
+  it("leaves Tori's own shortcuts alone", () => {
     // `vimKeyFromEvent` turns Cmd into `M-`, and vim binds nothing with it, so
     // these are never claimed and never stopped. If that ever changed, ⌘S would
     // stop saving with no error anywhere.
@@ -122,7 +122,7 @@ describe("with vim on", () => {
 
   it("leaves the language commands' function keys alone", () => {
     // Rename, go-to-definition, find-references and format, on the bindings the
-    // library and Sway's F2 override put in the editor's own keymaps.
+    // library and Tori's F2 override put in the editor's own keymaps.
     const { view, fired } = mount({ vim: true });
     press(view, "F2");
     press(view, "F12");
@@ -224,7 +224,7 @@ describe("with vim off", () => {
     expect(seen).toEqual(["x"]);
   });
 
-  it("still has Sway's shortcuts", () => {
+  it("still has Tori's shortcuts", () => {
     const { view, fired } = mount({ vim: false });
     press(view, "s", { metaKey: true });
     expect(fired).toEqual(["save"]);

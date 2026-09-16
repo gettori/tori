@@ -97,7 +97,7 @@ describe("the envelope store", () => {
 
   it("falls back to the seed when the stored envelope is malformed", () => {
     localStorage.setItem(
-      "sway.panes.v1",
+      "tori.panes.v1",
       JSON.stringify({ "/w/a": { version: 1, layout: { type: "grid" } } }),
     );
     relaunch();

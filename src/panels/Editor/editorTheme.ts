@@ -1,7 +1,7 @@
 import { EditorView } from "@codemirror/view";
 
 /** The file tab's colours and fonts, for every buffer that should read like one. */
-export const swayTheme = EditorView.theme(
+export const toriTheme = EditorView.theme(
   {
     "&": { backgroundColor: "var(--canvas-card)", color: "var(--fg-default)", height: "100%" },
     ".cm-content": {

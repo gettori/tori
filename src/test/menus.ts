@@ -1,7 +1,7 @@
 // Helpers for the right-click surfaces, shared across the panels that have one
 // (the file tree, the sidebar's three levels, the editor's tab strip).
 //
-// These exist because of skarif2/sway#103, which moves every menu onto Kobalte:
+// These exist because of gettori/tori#103, which moves every menu onto Kobalte:
 // the tests that pin today's behaviour and the tests that will assert the
 // migrated behaviour have to ask the same questions, or the migration is
 // guarded by assertions that quietly changed meaning along with the code.

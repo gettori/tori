@@ -90,7 +90,7 @@ describe("composeSelectionMention", () => {
     expect(composeSelectionMention(target, "/repo/.shared/notes.md", 2, 2)).toBe("@/repo/.shared/notes.md#L2-L2");
   });
 
-  // Inside Sway a PDF's line is its page, because the chips and the jump list
+  // Inside Tori a PDF's line is its page, because the chips and the jump list
   // already speak in lines. To the agent it is not: it opens the file with a PDF
   // reader, where `#L3` names a third line of text that does not exist.
   it("spells a PDF out by page, singular or plural", () => {

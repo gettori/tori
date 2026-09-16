@@ -16,7 +16,7 @@ export type RadioOption = {
 
 /**
  * One choice out of a small fixed set, all of them visible at once: Kobalte's
- * radio group behind Sway's chrome and Sway's API.
+ * radio group behind Tori's chrome and Tori's API.
  *
  * **Radio or Select is a density choice.** This is for a handful of options the
  * user should be able to compare side by side without opening anything, which

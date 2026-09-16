@@ -7,9 +7,9 @@
 //
 // **The stop lands at the turn boundary, and only the user is told.** It used to
 // land at the next tool call, as a `PreToolUse` denial carrying a reason written
-// to be un-arguable, because Sway's hook saw every call and could refuse one.
-// Sway no longer decides tool calls at all: the agent asks in its own protocol
-// and the hook only captures before-states. What Sway still owns outright is
+// to be un-arguable, because Tori's hook saw every call and could refuse one.
+// Tori no longer decides tool calls at all: the agent asks in its own protocol
+// and the hook only captures before-states. What Tori still owns outright is
 // whether a *new turn* starts, so that is where the ceiling now sits.
 //
 // The consequence is deliberate and worth stating: a turn already running is

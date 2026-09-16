@@ -92,10 +92,10 @@ describe("the chat tier", () => {
     // These three were one `hooks: true` while they rode one mechanism. They no
     // longer do, and the split is the point: the agent asks, the hook does
     // nothing but capture, and the ceiling needs no hook at all. A fourth,
-    // `swayRules`, went with the gate: there is no Sway-owned rule store left
+    // `toriRules`, went with the gate: there is no Tori-owned rule store left
     // for any agent to publish.
     expect(tier.approvals).toBe("in-protocol");
-    expect(tier).not.toHaveProperty("swayRules");
+    expect(tier).not.toHaveProperty("toriRules");
     expect(tier.diffs).toBe("before-state");
     expect(tier.spendCeilings).toBe(true);
   });
@@ -133,7 +133,7 @@ describe("the chat tier", () => {
   });
 
   // The one that would have been hidden by the old single flag: a agent whose
-  // permission question Sway renders, but which Sway cannot gate itself and
+  // permission question Tori renders, but which Tori cannot gate itself and
   // whose writes it cannot diff. Under `hooks: boolean` that had to be answered
   // yes or no for all four.
   it("publishes the four former hook features independently", () => {
@@ -236,7 +236,7 @@ describe("subagent lanes, as published", () => {
 
 describe("what each agent can be handed", () => {
   // Two keys rather than one with a gap, because ACP is half-way: a source
-  // file it already receives as text, bytes under Sway's app data it has no
+  // file it already receives as text, bytes under Tori's app data it has no
   // measured way to reach. One key would have to be both published and
   // explained away, which the test above forbids.
   it("pins the kinds per transport and per source", () => {
@@ -269,7 +269,7 @@ describe("the ACP tier", () => {
     const tier = chatTier("acp");
     const keys = publishedCapabilities(tier).map((c) => c.key);
 
-    // The one thing ACP earns outright: the agent asks, Sway renders.
+    // The one thing ACP earns outright: the agent asks, Tori renders.
     expect(tier.approvals).toBe("in-protocol");
     expect(publishedCapabilities(tier)).toContainEqual({
       key: "approvals",
@@ -284,7 +284,7 @@ describe("the ACP tier", () => {
     expect(tier.rewind).toBe("none");
     expect(keys).not.toContain("budgets");
     expect(keys).not.toContain("rewind");
-    // And Sway's own rule store, which only the Claude hook reads.
+    // And Tori's own rule store, which only the Claude hook reads.
     expect(keys).not.toContain("rules");
 
     // **Diffs left that list in Phase 8.** The plan said ACP agents cannot
@@ -315,7 +315,7 @@ describe("the ACP tier", () => {
 
   it("offers no rewind timestamp, so revert is unavailable rather than failing when clicked", () => {
     // ChatView gates on `rewind === "fork"`. Both measured agents advertise
-    // `sessionCapabilities.fork`, but Sway's fork is `fork_args` plus a tree
+    // `sessionCapabilities.fork`, but Tori's fork is `fork_args` plus a tree
     // snapshot and the ACP transport implements no fork verb, so the honest
     // answer is that the control does not appear.
     expect(chatTier("acp").rewind).not.toBe("fork");
@@ -337,7 +337,7 @@ describe("the ACP tier", () => {
     expect(by("budgets")).not.toContain("hook");
     // And what the user still has instead, where there is something.
     expect(by("rewind")).toContain("Changes panel");
-    // There is no `rules` gap to explain any more: no agent has a Sway-owned
+    // There is no `rules` gap to explain any more: no agent has a Tori-owned
     // rule store, so its absence is not a thing this transport lacks.
     expect(by("rules")).toBe("");
 

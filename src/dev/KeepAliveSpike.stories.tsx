@@ -741,8 +741,8 @@ export const PaneMoveCycle: Story = {
     let cm: EditorView | undefined;
     const cmWidth = () => cm?.contentDOM.clientWidth ?? 0;
 
-    localStorage.removeItem("sway.panes.v1");
-    localStorage.removeItem("sway.tabpanes.v1");
+    localStorage.removeItem("tori.panes.v1");
+    localStorage.removeItem("tori.tabpanes.v1");
     resetPaneLayoutModel();
     resetTabPlacement();
     setOpen([term1, term2]);
@@ -868,8 +868,8 @@ export const TabDragCycle: Story = {
     const mk = (id: string) => ({ id, title: id, cwd: "/tmp", workspace: P10_WS, kind: "shell" as const, program: "", args: [], profile: null });
     let live: ReturnType<typeof makeTerm> | undefined;
 
-    localStorage.removeItem("sway.panes.v1");
-    localStorage.removeItem("sway.tabpanes.v1");
+    localStorage.removeItem("tori.panes.v1");
+    localStorage.removeItem("tori.tabpanes.v1");
     resetPaneLayoutModel();
     resetTabPlacement();
     setOpen([mk("sh:1"), mk("sh:2")]);

@@ -12,7 +12,7 @@ import BranchRemoveDialog from "./BranchRemoveDialog";
 // The behavior worth pinning is that this dialog means three different things
 // depending on its checkboxes, and only one of them is destructive in git:
 // with local delete off it is a *detach*, the branch stays in git and only
-// leaves Sway's list. That is the assertion a careless migration would lose,
+// leaves Tori's list. That is the assertion a careless migration would lose,
 // because it lives in a `Show` that renders nothing until the box is cleared.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
@@ -97,13 +97,13 @@ describe("BranchRemoveDialog", () => {
       open();
 
       expect(
-        screen.queryByText("The branch stays in git; it is only removed from Sway’s list (detach)."),
+        screen.queryByText("The branch stays in git; it is only removed from Tori’s list (detach)."),
       ).toBeNull();
 
       fireEvent.click(check(LOCAL));
 
       expect(
-        screen.getByText("The branch stays in git; it is only removed from Sway’s list (detach)."),
+        screen.getByText("The branch stays in git; it is only removed from Tori’s list (detach)."),
       ).toBeTruthy();
     });
 

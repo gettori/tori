@@ -1,4 +1,4 @@
-// Themes the user dropped into ~/.config/sway/themes/.
+// Themes the user dropped into ~/.config/tori/themes/.
 //
 // Rust (themes.rs) reads the directory and hands over whatever is structurally
 // valid; this module runs the same `admit()` a bundled theme runs, so the two
@@ -53,7 +53,7 @@ export function admitLoaded(payload: UserThemesPayload): {
 
   for (const { palette, source } of payload.themes) {
     // A user file may not shadow a bundled theme. Allowing it would make
-    // "Sway Dark" mean different things on two machines, and the picker groups
+    // "Tori Dark" mean different things on two machines, and the picker groups
     // by source precisely so a user can tell them apart.
     if (bundledIds.has(palette.id)) {
       problems.push(`${source}: id "${palette.id}" is a bundled theme; rename it`);

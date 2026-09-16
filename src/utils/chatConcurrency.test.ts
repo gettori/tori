@@ -26,15 +26,15 @@ describe("shouldNotice", () => {
 describe("chatTabLabel", () => {
   it("gives three chats on one branch three distinguishable labels", () => {
     const labels: string[] = [];
-    for (let i = 0; i < 3; i++) labels.push(chatTabLabel("sway", labels));
-    expect(labels).toEqual(["sway chat", "sway chat 2", "sway chat 3"]);
+    for (let i = 0; i < 3; i++) labels.push(chatTabLabel("tori", labels));
+    expect(labels).toEqual(["tori chat", "tori chat 2", "tori chat 3"]);
   });
 
   it("does not hand out a number a still-open chat already has", () => {
-    // Closing the first of three and opening another used to reuse "sway chat 2"
+    // Closing the first of three and opening another used to reuse "tori chat 2"
     // while the real one was still on screen.
-    expect(chatTabLabel("sway", ["sway chat 2", "sway chat 3"])).toBe("sway chat");
-    expect(chatTabLabel("sway", ["sway chat", "sway chat 3"])).toBe("sway chat 2");
+    expect(chatTabLabel("tori", ["tori chat 2", "tori chat 3"])).toBe("tori chat");
+    expect(chatTabLabel("tori", ["tori chat", "tori chat 3"])).toBe("tori chat 2");
   });
 });
 

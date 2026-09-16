@@ -3,7 +3,7 @@ import { Content, List, Root, Trigger } from "@kobalte/core/tabs";
 /**
  * Kobalte's tabs, and the only door they come through.
  *
- * The same seam `dialog.ts` documents: `src/lib/` is the whole of Sway's
+ * The same seam `dialog.ts` documents: `src/lib/` is the whole of Tori's
  * contact surface with `@kobalte/core`, `boundary.test.ts` fails the suite if
  * anything outside this folder names the package, and the styled wrapper in
  * `src/components/Tab/` is what the app composes.
@@ -13,7 +13,7 @@ import { Content, List, Root, Trigger } from "@kobalte/core/tabs";
  * `Content` and `Trigger` identically here and in several other primitives,
  * and `Tab` composes this with the tooltip in one file.
  *
- * `Indicator` is withheld deliberately rather than by oversight: no Sway strip
+ * `Indicator` is withheld deliberately rather than by oversight: no Tori strip
  * draws a sliding underline, and it is the one part that measures its selected
  * trigger on every resize. A re-export nothing composes reads as a supported
  * part of the surface.

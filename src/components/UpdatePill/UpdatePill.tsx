@@ -6,7 +6,7 @@ import Tooltip from "../Tooltip/Tooltip";
 import styles from "./UpdatePill.module.css";
 
 // A dismissible "new version" notice in the topbar. Deliberately the smallest
-// thing that does the job: Sway ships unsigned, so it can never install an
+// thing that does the job: Tori ships unsigned, so it can never install an
 // update for you (replacing the bundle re-triggers quarantine anyway). All it
 // can honestly offer is "there is a newer one, here is where it lives".
 //
@@ -23,7 +23,7 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
   );
 
   // Suppressed rather than unmounted while onboarding is open: a first-run user
-  // meeting Sway for the first time should not be handed a version notice about
+  // meeting Tori for the first time should not be handed a version notice about
   // the app they have not used yet. It reappears once they close Settings.
   const visible = () => !props.suppressed && !dismissed() && !!update();
 
@@ -34,7 +34,7 @@ export default function UpdatePill(props: { suppressed?: boolean }) {
           as="button"
           type="button"
           class={styles.link}
-          label={`Sway ${update()!.version} is available - opens the releases page`}
+          label={`Tori ${update()!.version} is available - opens the releases page`}
           onClick={() => invoke("open_releases_page").catch(() => {})}
         >
           Update available

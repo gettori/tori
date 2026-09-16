@@ -148,7 +148,7 @@ describe("reopening the tab you just closed", () => {
   it("does not offer a synthetic view, which names a tab rather than a file", async () => {
     await mountEditor();
     await open(`${REPO}/a.ts`);
-    emitWith(OPEN_IN_EDITOR, { path: `sway://commit/abc/${REPO}` });
+    emitWith(OPEN_IN_EDITOR, { path: `tori://commit/abc/${REPO}` });
     await waitFor(() => expect(code?.openPaths.length).toBe(1));
     await closeActive(); // closes the commit view
 
@@ -208,7 +208,7 @@ describe("what the pickers rank by", () => {
 
   it("never records a synthetic view, which no picker could offer", async () => {
     await mountEditor();
-    emitWith(OPEN_IN_EDITOR, { path: `sway://commit/abc/${REPO}` });
+    emitWith(OPEN_IN_EDITOR, { path: `tori://commit/abc/${REPO}` });
     await waitFor(() => expect(screen.queryByText(/Open a file from the tree/)).toBeNull());
 
     expect(statsFor()).toEqual({});

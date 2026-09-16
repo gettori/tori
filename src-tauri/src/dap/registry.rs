@@ -31,7 +31,7 @@ struct ManifestExpect {
     readiness: String,
 }
 
-/// A debug adapter Sway can start.
+/// A debug adapter Tori can start.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DapAdapter {
@@ -62,7 +62,7 @@ fn manifest() -> &'static Manifest {
     })
 }
 
-/// Every adapter Sway knows how to start.
+/// Every adapter Tori knows how to start.
 pub fn registry() -> &'static [DapAdapter] {
     static REGISTRY: OnceLock<Vec<DapAdapter>> = OnceLock::new();
     REGISTRY.get_or_init(|| {
@@ -153,7 +153,7 @@ mod tests {
         static SEQ: AtomicU32 = AtomicU32::new(0);
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("sway-dap-{label}-{}-{nanos}-{seq}", std::process::id()))
+        std::env::temp_dir().join(format!("tori-dap-{label}-{}-{nanos}-{seq}", std::process::id()))
     }
 
     #[test]

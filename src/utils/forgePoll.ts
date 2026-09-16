@@ -35,7 +35,7 @@ export const RATE_FLOOR = 200;
 
 /// How long to wait out a primary limit that named no deadline.
 ///
-/// The primary budget resets on a wall-clock hour boundary Sway does not know
+/// The primary budget resets on a wall-clock hour boundary Tori does not know
 /// unless the last answered call happened to carry it, so this is a re-probe
 /// interval rather than a guess at the reset: four wasted requests an hour.
 export const PRIMARY_BACKOFF_MS = 15 * 60_000;
@@ -123,7 +123,7 @@ export type Backoff = { scope: "account" | "project"; untilMs: number };
 ///
 /// A transport failure deliberately returns null: an offline laptop retrying on
 /// the normal interval costs nothing (the request never leaves the machine), and
-/// backing off would leave Sway quiet for minutes after the network came back.
+/// backing off would leave Tori quiet for minutes after the network came back.
 export function backoffAfter(err: unknown, now: number): Backoff | null {
   if (!isForgeError(err)) return null;
   const dto: ForgeErrorDto = err;

@@ -15,7 +15,7 @@ export type WorkspaceWatches = readonly string[];
 /** Every workspace's watches, keyed by branch-unit folder. */
 export type WatchStore = Readonly<Record<string, WorkspaceWatches>>;
 
-const LS_WATCHES = "sway.watches";
+const LS_WATCHES = "tori.watches";
 
 /**
  * How many expressions one workspace keeps.

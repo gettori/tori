@@ -1,4 +1,4 @@
-// The editor command behind Sway's cross-file rename: the name prompt, the
+// The editor command behind Tori's cross-file rename: the name prompt, the
 // wiring to the running client, and reporting the result.
 //
 // Split from `lspRename.ts` so that module stays free of Tauri and CodeMirror
@@ -25,7 +25,7 @@ export type RenameIo = {
 };
 
 // The workspace the client was built with. Typed structurally rather than
-// imported as `SwayWorkspace`, because what this needs from it is exactly these
+// imported as `ToriWorkspace`, because what this needs from it is exactly these
 // three methods and nothing more.
 type RenameWorkspace = {
   requestFile: (uri: string) => Promise<MaterialisedFile | null>;
@@ -39,7 +39,7 @@ type RenameWorkspace = {
  * library's own F2 binding: that one runs `doRename`, which silently skips
  * every file the user has not already opened.
  */
-export function swayRenameSymbol(view: EditorView, io: RenameIo): boolean {
+export function toriRenameSymbol(view: EditorView, io: RenameIo): boolean {
   const word = view.state.wordAt(view.state.selection.main.head);
   const plugin = LSPPlugin.get(view);
   if (!word || !plugin) return false;
@@ -52,7 +52,7 @@ export function swayRenameSymbol(view: EditorView, io: RenameIo): boolean {
 
   // A second press while the panel is open re-selects it rather than stacking a
   // second one, matching the library's behaviour.
-  const open = getDialog(view, "cm-sway-rename-panel");
+  const open = getDialog(view, "cm-tori-rename-panel");
   if (open) {
     const input = open.dom.querySelector("[name=name]") as HTMLInputElement | null;
     input?.select();
@@ -64,7 +64,7 @@ export function swayRenameSymbol(view: EditorView, io: RenameIo): boolean {
     input: { name: "name", value: current },
     focus: true,
     submitLabel: "Rename",
-    class: "cm-sway-rename-panel",
+    class: "cm-tori-rename-panel",
   });
   void result.then((form) => {
     view.dispatch({ effects: close });
@@ -86,12 +86,12 @@ async function run(
 ): Promise<void> {
   const client = plugin.client;
   const workspace = client.workspace as unknown as Partial<RenameWorkspace>;
-  // Every client Sway builds is given a `SwayWorkspace`, so this holds. If that
+  // Every client Tori builds is given a `ToriWorkspace`, so this holds. If that
   // ever stops being true, the rename says so instead of dying as a TypeError
   // inside a promise, where it would look like nothing happened at all.
   if (typeof workspace?.requestFile !== "function" || typeof workspace.retainMapping !== "function") {
     io.report(
-      { kind: "aborted", reason: "This editor's language client has no Sway workspace, so a cross-file rename cannot run." },
+      { kind: "aborted", reason: "This editor's language client has no Tori workspace, so a cross-file rename cannot run." },
       null,
     );
     return;

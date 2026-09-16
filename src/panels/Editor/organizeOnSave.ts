@@ -29,7 +29,7 @@ import type { LspTextEdit } from "./workspaceEdit";
  * How long a save waits for the server.
  *
  * Deliberately **not** the session's `request_timeout_ms`, which is how long
- * Sway waits for a server at all and is sized for a cold rust-analyzer. This is
+ * Tori waits for a server at all and is sized for a cold rust-analyzer. This is
  * how long somebody waits for ⌘S, and it is also what a quit waits for: hot
  * exit saves every dirty buffer, so a hung server would otherwise hold the
  * window open one full server timeout per file.
@@ -132,7 +132,7 @@ function applyEdits(text: string, edits: LspTextEdit[]): string | null {
 
 function offsetOf(doc: Text, pos: { line: number; character: number }): number | null {
   // A server counts lines from zero; `Text` counts from one. A position past
-  // the end is a server answering about a document Sway no longer has, which is
+  // the end is a server answering about a document Tori no longer has, which is
   // the case this whole module's identity guard exists for - but the guard only
   // covers *local* edits, and a stale server answer can arrive for a file that
   // changed on disk too.

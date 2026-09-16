@@ -1,4 +1,4 @@
-// The guard for the `title=` sweep (skarif2/sway issue 102), and for the `tooltip`
+// The guard for the `title=` sweep (gettori/tori issue 102), and for the `tooltip`
 // prop that replaces it.
 //
 // ## Why this flags everything rather than looking for buttons
@@ -28,7 +28,7 @@
 // ## What is left, and the rule that keeps it
 //
 // The sweep is finished: `Button`, `IconButton`, `Tab` and `Tooltip` reject the
-// native `title` at the type level now, so no interactive control in Sway can
+// native `title` at the type level now, so no interactive control in Tori can
 // take one without going around them. What survives is listed in `KEPT`, and it
 // is three kinds of thing:
 //

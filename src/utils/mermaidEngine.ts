@@ -29,7 +29,7 @@ function readTokens(): { vars: Record<string, string>; font: string | undefined 
     const value = cs.getPropertyValue(token).trim();
     if (value) vars[key] = value;
   }
-  return { vars, font: cs.getPropertyValue("--sway-font-ui").trim() || undefined };
+  return { vars, font: cs.getPropertyValue("--tori-font-ui").trim() || undefined };
 }
 
 /** Re-seed mermaid from the token layer. Called before every render rather than
@@ -59,7 +59,7 @@ let seq = 0;
 export async function render(code: string): Promise<string | null> {
   try {
     if (!(await mermaid.parse(code, { suppressErrors: true }))) return null;
-    const { svg } = await mermaid.render(`sway-mermaid-${seq++}`, code);
+    const { svg } = await mermaid.render(`tori-mermaid-${seq++}`, code);
     return svg;
   } catch {
     return null;

@@ -107,7 +107,7 @@ export default function ScriptsSection(props: { root: string | null }) {
       <Show when={!error()} fallback={<div class={tree.empty}>{error()}</div>}>
         <Show
           when={tasks().length}
-          fallback={<div class={tree.empty}>No scripts here. Sway reads package.json, Makefile and justfile.</div>}
+          fallback={<div class={tree.empty}>No scripts here. Tori reads package.json, Makefile and justfile.</div>}
         >
           <For each={groupByFile(tasks())}>
             {(g) => (

@@ -80,7 +80,7 @@ pub struct Store {
 
 impl Store {
     pub fn default_location() -> Self {
-        Self::at(dirs::home_dir().unwrap_or_default().join(".config/sway/features.json"))
+        Self::at(dirs::home_dir().unwrap_or_default().join(".config/tori/features.json"))
     }
 
     pub fn at(path: impl Into<PathBuf>) -> Self {
@@ -281,7 +281,7 @@ pub fn rename_feature(store: &Store, feature_id: &str, name: &str) -> Result<(),
 /// changes it. Three steps, in this order, and the order is the point.
 ///
 ///   1. **Re-point the worktree when it travelled.** A worktree inside the repo
-///      folder (both layouts put one there: `.sway/worktrees/<slug>` for a plain
+///      folder (both layouts put one there: `.tori/worktrees/<slug>` for a plain
 ///      repo, `<container>/<slug>` for a bare one) moved with it, so its recorded
 ///      path is stale in exactly the same way. One that sits elsewhere did not
 ///      move and is left alone.
@@ -391,10 +391,10 @@ pub fn delete_feature(store: &Store, feature_id: &str) -> Result<(), String> {
 
 /// Where a member's worktree goes. A bare container takes it directly, the
 /// way every other worktree there is laid out; a plain repo gets it under
-/// `.sway/worktrees`, kept out of the repo by `.git/info/exclude`.
+/// `.tori/worktrees`, kept out of the repo by `.git/info/exclude`.
 pub(crate) fn feature_container(repo: &str) -> Result<PathBuf, String> {
     // A vanished repo lists as empty, which would read as "plain" and create
-    // `.sway/worktrees` at a path that no longer holds a repository.
+    // `.tori/worktrees` at a path that no longer holds a repository.
     if !crate::worktree::repo_readable(repo) {
         return Err(format!("{repo} is not a git repository"));
     }
@@ -402,9 +402,9 @@ pub(crate) fn feature_container(repo: &str) -> Result<PathBuf, String> {
     if is_container {
         return Ok(PathBuf::from(repo));
     }
-    crate::git::exclude_from_repo(repo, crate::workspace_settings::SWAY_DIR);
-    let (sway, worktrees) = crate::fs::FEATURE_WORKTREES;
-    let dir = Path::new(repo).join(sway).join(worktrees);
+    crate::git::exclude_from_repo(repo, crate::workspace_settings::TORI_DIR);
+    let (tori, worktrees) = crate::fs::FEATURE_WORKTREES;
+    let dir = Path::new(repo).join(tori).join(worktrees);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     Ok(dir)
 }
@@ -440,7 +440,7 @@ fn pending_member(repo: &str, order: u32) -> Member {
 /// checked out in the repo's own working tree is the user's and fails instead.
 ///
 /// The prune and the `is_dir` filter are what make Recreate converge. Git keeps
-/// listing a worktree whose folder was deleted outside Sway, so adopting the
+/// listing a worktree whose folder was deleted outside Tori, so adopting the
 /// entry as it stands would flip the member `Present` and `reconcile_member`
 /// (which checks the disk separately, `features.rs:189`) would put it straight
 /// back to `WorktreeMissing` on the next read. Both, not either: prune skips a
@@ -756,7 +756,7 @@ mod tests {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway-features-{}-{seq}", now_ms()));
+        let dir = std::env::temp_dir().join(format!("tori-features-{}-{seq}", now_ms()));
         std::fs::create_dir_all(&dir).unwrap();
         // git reports resolved paths, and macOS resolves `/var` to `/private/var`.
         std::fs::canonicalize(dir).unwrap()
@@ -816,7 +816,7 @@ mod tests {
         let full = feature(
             "auth",
             vec![
-                member("/r/a", Some("/r/a/.sway/worktrees/auth"), MemberState::Present),
+                member("/r/a", Some("/r/a/.tori/worktrees/auth"), MemberState::Present),
                 member("/r/b", None, MemberState::Failed { reason: "pending".into() }),
             ],
         );
@@ -950,7 +950,7 @@ mod tests {
     }
 
     #[test]
-    fn feature_container_is_the_bare_container_or_an_excluded_sway_dir() {
+    fn feature_container_is_the_bare_container_or_an_excluded_tori_dir() {
         let tmp = unique_tmp();
         let src = tmp.join("src");
         repo(&src);
@@ -967,12 +967,12 @@ mod tests {
 
         let plain = tmp.join("plain");
         let plain_s = repo(&plain);
-        assert_eq!(feature_container(&plain_s).unwrap(), plain.join(".sway/worktrees"));
-        assert!(plain.join(".sway/worktrees").is_dir());
+        assert_eq!(feature_container(&plain_s).unwrap(), plain.join(".tori/worktrees"));
+        assert!(plain.join(".tori/worktrees").is_dir());
         let exclude = || std::fs::read_to_string(plain.join(".git/info/exclude")).unwrap_or_default();
-        assert_eq!(exclude().lines().filter(|l| *l == ".sway/").count(), 1);
+        assert_eq!(exclude().lines().filter(|l| *l == ".tori/").count(), 1);
         feature_container(&plain_s).unwrap();
-        assert_eq!(exclude().lines().filter(|l| *l == ".sway/").count(), 1, "idempotent");
+        assert_eq!(exclude().lines().filter(|l| *l == ".tori/").count(), 1, "idempotent");
 
         let gone = tmp.join("gone");
         let gone_s = repo(&gone);
@@ -989,8 +989,8 @@ mod tests {
         let b = repo(&tmp.join("b"));
         let c = repo(&tmp.join("c"));
         // Both folder names the picker would try are taken in b.
-        std::fs::create_dir_all(tmp.join("b/.sway/worktrees/x")).unwrap();
-        std::fs::create_dir_all(tmp.join("b/.sway/worktrees/feat-x")).unwrap();
+        std::fs::create_dir_all(tmp.join("b/.tori/worktrees/x")).unwrap();
+        std::fs::create_dir_all(tmp.join("b/.tori/worktrees/feat-x")).unwrap();
         let store = Store::at(tmp.join("features.json"));
 
         let f = create_feature(&store, "X", &[a.clone(), b.clone(), c.clone()], &|_| {}).unwrap();
@@ -1003,7 +1003,7 @@ mod tests {
         assert_eq!(f.members.iter().map(|m| m.order).collect::<Vec<_>>(), [0, 1, 2]);
         assert_eq!(f.members[0].display_name, "a");
         let wt_a = PathBuf::from(f.members[0].worktree_path.as_deref().unwrap());
-        assert_eq!(wt_a, tmp.join("a/.sway/worktrees/x"));
+        assert_eq!(wt_a, tmp.join("a/.tori/worktrees/x"));
         assert!(wt_a.join("a.txt").is_file());
         assert_eq!(f.members[1].worktree_path, None);
 
@@ -1015,10 +1015,10 @@ mod tests {
         let status = Command::new("git").arg("-C").arg(&a).args(["status", "--porcelain"]).output().unwrap();
         assert_eq!(String::from_utf8_lossy(&status.stdout).trim(), "");
         let files = crate::fs::list_project_files_body(a.clone()).unwrap();
-        assert!(files.iter().all(|p| !p.contains(".sway/worktrees")), "{files:?}");
+        assert!(files.iter().all(|p| !p.contains(".tori/worktrees")), "{files:?}");
         let hits = crate::search::grep_project(a.clone(), "one".into(), crate::search::SearchOptions::default(), 50).unwrap();
         assert!(!hits.matches.is_empty());
-        assert!(hits.matches.iter().all(|m| !m.path.contains(".sway/worktrees")));
+        assert!(hits.matches.iter().all(|m| !m.path.contains(".tori/worktrees")));
 
         // Guards: same slug, same repo twice, a worktree of a member is the member.
         assert!(create_feature(&store, "x", std::slice::from_ref(&a), &|_| {}).unwrap_err().contains("already uses feat/x"));
@@ -1029,11 +1029,11 @@ mod tests {
         assert_eq!(store.load().features.len(), 1, "a rejected create leaves no record");
 
         // Retry flips the failed member once the collision is gone.
-        std::fs::remove_dir_all(tmp.join("b/.sway/worktrees/x")).unwrap();
-        std::fs::remove_dir_all(tmp.join("b/.sway/worktrees/feat-x")).unwrap();
+        std::fs::remove_dir_all(tmp.join("b/.tori/worktrees/x")).unwrap();
+        std::fs::remove_dir_all(tmp.join("b/.tori/worktrees/feat-x")).unwrap();
         let f = retry_member(&store, &f.id, &b).unwrap();
         assert_eq!(f.members[1].state, MemberState::Present);
-        assert_eq!(f.members[1].worktree_path.as_deref(), Some(tmp.join("b/.sway/worktrees/x").to_str().unwrap()));
+        assert_eq!(f.members[1].worktree_path.as_deref(), Some(tmp.join("b/.tori/worktrees/x").to_str().unwrap()));
         assert!(retry_member(&store, &f.id, &c).is_ok(), "a present member re-resolves");
         assert!(retry_member(&store, &f.id, "/nope").is_err());
 
@@ -1043,7 +1043,7 @@ mod tests {
         assert_eq!(f.members.len(), 4);
         assert_eq!(f.members[3].order, 3);
         assert_eq!(f.members[3].state, MemberState::Present);
-        assert!(tmp.join("d/.sway/worktrees/x/a.txt").is_file());
+        assert!(tmp.join("d/.tori/worktrees/x/a.txt").is_file());
         assert!(add_member(&store, &f.id, &d, &|_| {}).unwrap_err().contains("already a member"));
 
         let probe = probe_feature_branch(&d, "x");
@@ -1069,7 +1069,7 @@ mod tests {
         let f = create_feature(&store, "X", &[a_s.clone(), b_s.clone()], &|_| {}).unwrap();
         assert_eq!(f.members[0].state, MemberState::Present);
         assert_eq!(f.members[0].worktree_path.as_deref(), Some(wt_s.as_str()));
-        assert!(!a.join(".sway/worktrees").exists(), "adopting creates no container");
+        assert!(!a.join(".tori/worktrees").exists(), "adopting creates no container");
         let listed = list_worktrees_body(a_s.clone()).unwrap();
         assert_eq!(listed.len(), 2, "no new worktree");
         assert_eq!(f.members[1].state, MemberState::Failed { reason: "feat/x is checked out in place".into() });
@@ -1163,7 +1163,7 @@ mod tests {
 
     #[test]
     fn relocate_lands_a_moved_plain_repo_on_present_in_one_step() {
-        // What Locate is for. The whole repo folder was renamed outside Sway, so
+        // What Locate is for. The whole repo folder was renamed outside Tori, so
         // the member reads RepoMissing and its worktree, which travelled inside
         // the folder, is at a path nobody recorded and has a gitdir pointer to a
         // directory that is gone.
@@ -1184,7 +1184,7 @@ mod tests {
         assert_eq!(fixed.members[0].repo_path, new_s);
         assert_eq!(
             fixed.members[0].worktree_path.as_deref(),
-            Some(format!("{new_s}/.sway/worktrees/x").as_str())
+            Some(format!("{new_s}/.tori/worktrees/x").as_str())
         );
         assert_eq!(fixed.members[0].state, MemberState::Present, "one step, no Recreate");
         assert_eq!(list_features(&store)[0].members[0].state, MemberState::Present);

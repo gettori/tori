@@ -91,11 +91,11 @@ describe("reading the protocol's shapes", () => {
 
   it("decodes a file URI the same way the workspace bridge does", async () => {
     // `utils/callHierarchy.ts` carries its own copy of this, because importing
-    // `swayWorkspace` would pull CodeMirror into the eager bundle that decides
+    // `toriWorkspace` would pull CodeMirror into the eager bundle that decides
     // whether the Calls tab exists. The copy is deliberate; the two silently
     // disagreeing about escaping is not, and a path decoded differently is a
     // row that jumps nowhere.
-    const { uriToPath } = await import("./swayWorkspace");
+    const { uriToPath } = await import("./toriWorkspace");
     for (const path of ["/repo/a.ts", "/repo/my project/a b.ts", "/repo/ünïcode.ts", "/repo/100%.ts"]) {
       const uri = "file://" + path.split("/").map(encodeURIComponent).join("/");
       const [item] = normalizeCallItems([{ ...ITEM, uri }]);

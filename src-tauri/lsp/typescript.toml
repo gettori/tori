@@ -1,4 +1,4 @@
-# Bundled TypeScript/JavaScript server. Sway ships this one (see
+# Bundled TypeScript/JavaScript server. Tori ships this one (see
 # `pnpm lsp:install`), so it is the only config using the `bundled_node`
 # launch kind. See LSP-SERVERS.md for the schema.
 
@@ -37,7 +37,7 @@ args = ["--stdio"]
 # *workspace configuration* before producing anything (`cli.mjs:21364`), and a
 # preference nobody sent reads as off. Verified both ways against the bundled
 # 4.4.1: no table, 0 lenses; this table, 3 lenses on a file with three exported
-# symbols. So Sway's own `codeLens` setting would have drawn nothing for
+# symbols. So Tori's own `codeLens` setting would have drawn nothing for
 # TypeScript without it.
 #
 # Read out of the *workspace* configuration and not out of
@@ -47,8 +47,8 @@ args = ["--stdio"]
 # happens to reach no server at all today (wave 7 Phase 5), so the mechanism
 # that does work is the one used here.
 #
-# Enabling it here costs nothing while Sway's setting is off, because the
-# expense is in the request and Sway does not make one: `provideCodeLenses`
+# Enabling it here costs nothing while Tori's setting is off, because the
+# expense is in the request and Tori does not make one: `provideCodeLenses`
 # runs per request, and the reference counting is in `codeLens/resolve`.
 #
 # `showOnAllFunctions` is deliberately not set. On it, every inner helper gets a

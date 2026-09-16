@@ -16,7 +16,7 @@ import {
   type CallItem,
 } from "../../utils/callHierarchy";
 import { lspTargetFor } from "./lspClient";
-import { pathToUri } from "./swayWorkspace";
+import { pathToUri } from "./toriWorkspace";
 
 /**
  * Root the hierarchy at `position` in `path`.

@@ -24,7 +24,7 @@ yolo_args = ["--auto"]
 # resumed" (see ADAPTERS.md) and says so rather than mis-resuming.
 #
 # opencode *does* accept `--session <id>`, so this is not a missing capability
-# of the CLI. It is that the id Sway holds for an ACP row is **Sway's own**: the
+# of the CLI. It is that the id Tori holds for an ACP row is **Tori's own**: the
 # agent's id lives in the locator store (chat/acp_sessions.rs) and only the chat
 # path reads it. Substituting `{id}` here would hand opencode an id it never
 # minted, and it would start a fresh session while claiming to resume one.
@@ -36,7 +36,7 @@ resume_args = []
 # not: the id is minted inside `session/new`, the conversation is reached with
 # `session/load`, and every session of one agent shares the command line
 # `opencode acp`, so a pgrep pattern would report all of them running whenever
-# any one was. Sway records what the protocol told it in its own locator store
+# any one was. Tori records what the protocol told it in its own locator store
 # instead, which sessions.rs merges in beside adapter discovery. Omitting the
 # three is what the loader requires of a protocol-backed transport; declaring
 # plausible values would be worse than declaring none.
@@ -45,7 +45,7 @@ resume_args = []
 pty_quiet_ms = 2000
 # The quiet-PTY x pending-tool_use join is Claude-shaped and has not been
 # measured against opencode's TUI, so it is not claimed. A chat tab does not
-# need it: over ACP the agent asks in-protocol and Sway renders the question.
+# need it: over ACP the agent asks in-protocol and Tori renders the question.
 needs_you = false
 hooks = false
 
@@ -57,7 +57,7 @@ hooks = false
 # the reason `whoami_kind` exists at all: read the exit code, as the obvious
 # generic reader would, and OpenCode reports itself signed in while holding no
 # credentials. What actually differs is the last line of its own table, `1
-# credentials` against `0 credentials`, so that count is what Sway reads.
+# credentials` against `0 credentials`, so that count is what Tori reads.
 #
 # A count, not an identity. OpenCode's credentials are per *provider* (the
 # measured install held one, GitHub Copilot), so "signed in" here means at least
@@ -86,7 +86,7 @@ transport = "acp"
 # "github-copilot/claude-sonnet-4.6"; measured on opencode acp 1.18.3).
 # Lets the picker split them for display; the wire id is never rewritten.
 split_model_names = true
-# The whole launch. `opencode acp` speaks ACP over stdio, and Sway spawns the
+# The whole launch. `opencode acp` speaks ACP over stdio, and Tori spawns the
 # child itself (transport::build_command, so PATH comes from a login shell)
 # rather than letting the SDK spawn it.
 base_args = ["acp"]
@@ -126,5 +126,5 @@ add_dir_args = []
 [chat.acp]
 # The two per-agent departures from a spec-correct client. Both are at their
 # defaults here, which is the shape measured to work against this agent: it does
-# its own file I/O and is not told about Sway's MCP servers.
+# its own file I/O and is not told about Tori's MCP servers.
 serve_client_fs = false

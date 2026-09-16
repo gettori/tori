@@ -1,5 +1,5 @@
 [package]
-name = "sway"
+name = "tori"
 version = "26.914.2-alpha"
 description = "Dev workflow manager: session tree + Claude terminal + editor"
 authors = ["skarif"]
@@ -11,7 +11,7 @@ edition = "2021"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "sway_lib"
+name = "tori_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -55,13 +55,13 @@ futures = "0.3"
 async-process = "2"
 # The handshake deadline. `[[concept_acp_agent_quirks]]` records that an agent
 # which never answers `initialize` leaves a client waiting forever, so the
-# deadline is Sway's to own - the same finding Phase 1 made about the Claude CLI.
+# deadline is Tori's to own - the same finding Phase 1 made about the Claude CLI.
 async-io = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # `keychain` is the login keychain (the one a desktop app shares with every
 # other credential the user has); `protected` is the data-protection keychain,
-# which needs an app-group entitlement Sway does not have.
+# which needs an app-group entitlement Tori does not have.
 apple-native-keyring-store = { version = "1", features = ["keychain"] }
 # The Keychain service name `claude` derives for a non-default CLAUDE_CONFIG_DIR
 # is `sha256(dir)[:8]`, so the token rung has to compute one. Already in the

@@ -5,7 +5,7 @@
 // surfaces: vendors ship weekly, so a binary newer than `verified_against` is
 // the steady condition of a healthy install. Being *behind* it is different in
 // kind, not degree - the measured version exists, so a newer release provably
-// does, and "update available" is a claim Sway can stand behind.
+// does, and "update available" is a claim Tori can stand behind.
 
 /** The dotted-number core of a version string, as numeric segments.
  *  Null when there is none: absence of evidence must compare as ignorance. */

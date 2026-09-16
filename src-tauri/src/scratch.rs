@@ -1,11 +1,11 @@
 // Scratch buffers: the untitled tabs Cmd+N opens, kept in
-// `~/.config/sway/scratch/`.
+// `~/.config/tori/scratch/`.
 //
 // **A scratch is a file, not a new kind of tab.** That is the whole design, and
 // everything else follows from it: the frontend's tab strip, its per-workspace
 // restore (`editorTabPersist.ts`), its hot-exit stash and its read/write path
 // all key on an absolute path, so a scratch that has one needs no branch in any
-// of them. The alternative - a synthetic `sway://scratch/...` id like the commit
+// of them. The alternative - a synthetic `tori://scratch/...` id like the commit
 // log's - would have cost a special case in each, and `toStore` drops those
 // deliberately, so an untitled tab could never have survived a relaunch.
 //
@@ -27,7 +27,7 @@ const MAX_TRIES: usize = 64;
 fn scratch_root() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/scratch")
+        .join(".config/tori/scratch")
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -119,7 +119,7 @@ mod tests {
 
     fn tmp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "sway-scratch-test-{tag}-{}",
+            "tori-scratch-test-{tag}-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
@@ -173,7 +173,7 @@ mod tests {
 
         // A file beside the scratch folder, and a file nested under it, are
         // both outside what this may touch.
-        let outside = dir.parent().unwrap().join(format!("sway-scratch-outside-{}", std::process::id()));
+        let outside = dir.parent().unwrap().join(format!("tori-scratch-outside-{}", std::process::id()));
         std::fs::write(&outside, "keep").unwrap();
         assert!(remove_in(&dir, &outside).is_err());
         assert!(outside.exists());

@@ -167,7 +167,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "agents",
     section: "agents",
     label: "Agents",
-    hint: "Which agent CLIs Sway found on your PATH, their versions, and the drift from what its adapters were built against.",
+    hint: "Which agent CLIs Tori found on your PATH, their versions, and the drift from what its adapters were built against.",
   },
   // The usage controls live on an account's own card, on the agent's detail
   // page, because what they answer is per account: a quota window belongs to a
@@ -178,19 +178,19 @@ export const SETTINGS: SettingEntry[] = [
     id: "titlebar-preview",
     section: "agents",
     label: "Titlebar preview",
-    hint: "Which of an account's quota windows the titlebar carries, and how deep Sway reads for it. Nothing lit means nothing read. Set per account on the agent's page.",
+    hint: "Which of an account's quota windows the titlebar carries, and how deep Tori reads for it. Nothing lit means nothing read. Set per account on the agent's page.",
   },
   {
     id: "usage-warn-at",
     section: "agents",
     label: "Warn at",
-    hint: "How full one account's quota gets before Sway says so. Follows the shared threshold in Chat until you move it. Set per account on the agent's page.",
+    hint: "How full one account's quota gets before Tori says so. Follows the shared threshold in Chat until you move it. Set per account on the agent's page.",
   },
   {
     id: "usage-notify",
     section: "agents",
     label: "Usage notifications",
-    hint: "Whether a quota window approaching or reached is worth an OS notification. Never sent while Sway has focus. Set per account on the agent's page.",
+    hint: "Whether a quota window approaching or reached is worth an OS notification. Never sent while Tori has focus. Set per account on the agent's page.",
   },
   // The Files rows sit on the agent's own page too, and for a sharper version of
   // the same reason: what they list is per account *and* per adapter, so there
@@ -225,7 +225,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "agent-settings-file",
     section: "agents",
     label: "Settings and hooks",
-    hint: "The agent's own settings file, where its hooks and permissions live. Sway lists it and never edits it for you; open it on the agent's page.",
+    hint: "The agent's own settings file, where its hooks and permissions live. Tori lists it and never edits it for you; open it on the agent's page.",
   },
   {
     id: "language-servers",
@@ -304,7 +304,7 @@ export const SETTINGS: SettingEntry[] = [
     section: "editor",
     label: "Vim keybindings",
     toggles: "vimMode",
-    hint: "Modal editing in the code editor, with a status line showing pending commands. Sway's own shortcuts keep working: ⌘S still saves, and the language commands still fire from normal mode.",
+    hint: "Modal editing in the code editor, with a status line showing pending commands. Tori's own shortcuts keep working: ⌘S still saves, and the language commands still fire from normal mode.",
   },
 
   // The editing-comfort toggles, in the order they read as a list rather than in
@@ -328,7 +328,7 @@ export const SETTINGS: SettingEntry[] = [
     section: "editing",
     label: "Sticky scroll",
     toggles: "stickyScroll",
-    hint: "Pins the class and function headers of whatever is at the top of the screen over it, so a long body still says what it belongs to. Needs a language whose grammar Sway parses.",
+    hint: "Pins the class and function headers of whatever is at the top of the screen over it, so a long body still says what it belongs to. Needs a language whose grammar Tori parses.",
   },
   {
     id: "word-completion",
@@ -366,7 +366,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "side-by-side-diff",
     section: "editing",
     label: "Side-by-side diffs",
-    hint: "Two columns instead of one for every diff Sway renders: commits, pull requests, review and chat. Narrow panes fall back to inline regardless.",
+    hint: "Two columns instead of one for every diff Tori renders: commits, pull requests, review and chat. Narrow panes fall back to inline regardless.",
   },
   {
     // No `toggles`: a list of tags has no other value to flip to, so it is
@@ -422,7 +422,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "max-concurrent-chats",
     section: "chat",
     label: "Warn above",
-    hint: "Live chats before Sway says the cost is adding up. It warns rather than refusing. 0 for no limit.",
+    hint: "Live chats before Tori says the cost is adding up. It warns rather than refusing. 0 for no limit.",
   },
   {
     id: "session-budget",
@@ -446,7 +446,7 @@ export const SETTINGS: SettingEntry[] = [
     id: "warn-at",
     section: "chat",
     label: "Warn at",
-    hint: "How full a limit gets before Sway says so. Governs the ceilings above, and is the default for each account's quota windows until that account sets its own under Agents. 100% turns the warning off; a limit actually reached is always shown.",
+    hint: "How full a limit gets before Tori says so. Governs the ceilings above, and is the default for each account's quota windows until that account sets its own under Agents. 100% turns the warning off; a limit actually reached is always shown.",
   },
   {
     id: "show-hooks",

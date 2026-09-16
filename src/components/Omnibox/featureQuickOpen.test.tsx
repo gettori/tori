@@ -8,12 +8,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 
-const A = "/r/api/.sway/worktrees/auth";
-const B = "/r/web/.sway/worktrees/auth";
+const A = "/r/api/.tori/worktrees/auth";
+const B = "/r/web/.tori/worktrees/auth";
 
 /** The eight-member Feature, for the caps. Twenty-six files each is the
  *  smallest fixture that puts the whole list past `MAX_RESULTS`. */
-const WIDE = Array.from({ length: 8 }, (_, i) => `/r/m${i}/.sway/worktrees/auth`);
+const WIDE = Array.from({ length: 8 }, (_, i) => `/r/m${i}/.tori/worktrees/auth`);
 const PER_MEMBER = 26;
 
 const bridge = vi.hoisted(() => ({

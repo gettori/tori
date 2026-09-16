@@ -16,7 +16,7 @@ let chain: Promise<unknown> = Promise.resolve();
  *  `refreshCatalogIfDue` is the whole of the policy: it re-asks an agent that
  *  never answered, one whose binary changed, and one whose last probe failed for
  *  a reason a retry could fix - and refuses one that is already in flight or that
- *  Sway cannot probe at all. */
+ *  Tori cannot probe at all. */
 export function probeAgent(agentId: string, profile: string | null = null) {
   chain = chain.then(() => refreshCatalogIfDue(agentId, profile)).catch(() => null);
 }
@@ -24,7 +24,7 @@ export function probeAgent(agentId: string, profile: string | null = null) {
 /** Ask again because a human pressed the button, not because anything is due.
  *
  *  `refreshCatalog` rather than `refreshCatalogIfDue`: the button exists for the
- *  case where Sway believes the answer is current and the reader knows better -
+ *  case where Tori believes the answer is current and the reader knows better -
  *  a model added to the account since the last probe, a login that happened in
  *  another window. Chained like every other probe, so pressing it while one is
  *  in flight queues rather than running a second binary. */

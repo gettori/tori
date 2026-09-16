@@ -265,7 +265,7 @@ describe("ModelPicker", () => {
 
   /** The capitalisation is display only, and this is the assertion that keeps it
    *  that way: an agent's own spelling is what a switch has to send, and only
-   *  the first letter is touched, so `xhigh` reads `Xhigh` rather than Sway's
+   *  the first letter is touched, so `xhigh` reads `Xhigh` rather than Tori's
    *  guess at `XHigh`. */
   it("capitalises a level for the menu and sends the agent's own spelling", () => {
     const s = setup({ value: "sonnet" });
@@ -275,7 +275,7 @@ describe("ModelPicker", () => {
     expect(s.onSelectEffort).toHaveBeenCalledWith("xhigh");
   });
 
-  // A level Sway measured but this binary was not measured against. It renders
+  // A level Tori measured but this binary was not measured against. It renders
   // rather than vanishing, because a level that quietly disappears on a CLI
   // upgrade tells nobody anything, and a row that says why says what to do.
   it("offers a refused level as a row that says why, and refuses to send it", async () => {
@@ -316,13 +316,13 @@ describe("ModelPicker", () => {
    * **"No level sent" is a state, and it is the one every chat starts in.**
    *
    * Nothing on the wire reports effort back and no catalogue names a default
-   * among its levels, so Sway cannot say which one the CLI runs. What it can
+   * among its levels, so Tori cannot say which one the CLI runs. What it can
    * say is that it has sent none, which is exactly what the pill has always
    * read. The menu used to have no row for it, so nothing was ticked while the
    * pill said "Default" - and once a level was picked there was no way back.
    *
    * The row sends `null`, which is what `chat_set_model` already takes for "no
-   * `--effort` flag". Naming a level as the default instead would be Sway
+   * `--effort` flag". Naming a level as the default instead would be Tori
    * asserting something the handshake never told it.
    */
   it("offers the CLI's own default as a row, ticked until a level is picked", () => {

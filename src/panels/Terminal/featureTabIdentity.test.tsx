@@ -6,8 +6,8 @@ import { render, screen, waitFor } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 import { setTabBarWidth } from "../../test/tabLayout";
 
-const A = "/r/a/.sway/worktrees/auth";
-const B = "/r/b/.sway/worktrees/auth";
+const A = "/r/a/.tori/worktrees/auth";
+const B = "/r/b/.tori/worktrees/auth";
 
 const FEATURE = {
   id: "f1",
@@ -91,7 +91,7 @@ beforeEach(() => {
   resetSessionActivityForTests();
   resetTerminalTabModel();
   localStorage.setItem(
-    "sway.terminalTabs",
+    "tori.terminalTabs",
     JSON.stringify({
       "feature:f1": {
         tabs: [

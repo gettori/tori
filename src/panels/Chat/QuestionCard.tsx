@@ -55,7 +55,7 @@ function recoveredPicks(record: string, question: ChatQuestion): string[] | null
  * work above it, and a modal would cover the one thing that explains it.
  *
  * **No countdown, because there is no deadline.** Measured: the CLI imposes
- * none on this transport (417s held, zero frames after the ask) and Sway arms
+ * none on this transport (417s held, zero frames after the ask) and Tori arms
  * none either. The only things that end an unanswered question are the user and
  * an explicit withdrawal, so a timer here would be an invention.
  *

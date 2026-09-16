@@ -25,7 +25,7 @@ const TOKENS_PATH = join(ROOT, "src/styles/tokens.css");
 const BEGIN = "/* ---- BEGIN GENERATED ROLE TOKENS. Run scripts/gen-tokens.mjs; do not edit by hand. ---- */";
 const END = "/* ---- END GENERATED ROLE TOKENS ---- */";
 
-const PALETTES = ["sway-dark", "sway-light"].map((id) =>
+const PALETTES = ["tori-dark", "tori-light"].map((id) =>
   JSON.parse(readFileSync(join(ROOT, `src/theme/palettes/${id}.json`), "utf8")),
 );
 

@@ -68,8 +68,8 @@ export function wholeFileRange(view: EditorView): LspRange {
 /**
  * The apply-and-run half, built from the client the view is attached to.
  *
- * Null when there is no client, or when its workspace is not Sway's. Every
- * client Sway builds is given a `SwayWorkspace`, so the second case is a
+ * Null when there is no client, or when its workspace is not Tori's. Every
+ * client Tori builds is given a `ToriWorkspace`, so the second case is a
  * should-not-happen that says so rather than dying as a TypeError inside a
  * promise, where it would look like nothing happened at all.
  */
@@ -104,7 +104,7 @@ export function codeActionRunner(view: EditorView, path: string, io: CodeActionI
           if (fileCount <= 1) return null;
           const ok = root ? await invoke<boolean>("backstop_available", { repoPath: root }) : false;
           if (ok) return null;
-          return `This folder is not a git repository, so Sway cannot take a snapshot it could undo a ${fileCount}-file change from. A fix inside a single file still works.`;
+          return `This folder is not a git repository, so Tori cannot take a snapshot it could undo a ${fileCount}-file change from. A fix inside a single file still works.`;
         },
         onDirty: async (dirty, fileCount) => {
           const ok = await io.confirm({
@@ -120,7 +120,7 @@ export function codeActionRunner(view: EditorView, path: string, io: CodeActionI
             await invoke<{ ts: number }>("backstop_take", { repoPath: root, label: title });
             return null;
           } catch (e) {
-            return `Sway could not take a snapshot to undo this from, so nothing was changed: ${String(e)}`;
+            return `Tori could not take a snapshot to undo this from, so nothing was changed: ${String(e)}`;
           }
         },
       });
@@ -178,7 +178,7 @@ export async function applyCodeAction(
 ): Promise<RunOutcome> {
   const runner = codeActionRunner(view, path, io);
   if (!runner) {
-    const reason = "This editor's language client has no Sway workspace, so a code action cannot run.";
+    const reason = "This editor's language client has no Tori workspace, so a code action cannot run.";
     io.notify(reason, "error");
     return { kind: "refused", reason };
   }

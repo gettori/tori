@@ -58,7 +58,7 @@ export const Sizes: Story = {
   render: () => {
     const [pane, setPane] = createSignal("files");
     return (
-      <div style={{ display: "flex", "align-items": "center", gap: "var(--sway-space-4)" }}>
+      <div style={{ display: "flex", "align-items": "center", gap: "var(--tori-space-4)" }}>
         {SIZES.map((size) => (
           <SegmentedControl
             size={size}
@@ -81,7 +81,7 @@ export const WithIcons: Story = {
     const [view, setView] = createSignal("list");
     const [density, setDensity] = createSignal("comfortable");
     return (
-      <div style={{ display: "flex", "align-items": "center", gap: "var(--sway-space-4)" }}>
+      <div style={{ display: "flex", "align-items": "center", gap: "var(--tori-space-4)" }}>
         <SegmentedControl
           options={[
             { value: "list", label: "List", icon: <Icon icon={List} /> },

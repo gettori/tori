@@ -17,7 +17,7 @@
 .chevron .chev {
   display: inline-flex;
   line-height: 1;
-  transition: transform var(--sway-duration-fast) ease;
+  transition: transform var(--tori-duration-fast) ease;
 }
 .chevron .chev.open {
   transform: rotate(90deg);

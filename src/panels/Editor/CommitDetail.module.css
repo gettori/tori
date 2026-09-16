@@ -6,7 +6,7 @@
   overflow: auto;
   background: var(--canvas-card);
   padding-bottom: calc(8px * var(--ui-scale));
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
 }
 
 .header {
@@ -38,9 +38,9 @@
   flex: none;
   padding: 0 calc(5px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 
 .meta {
@@ -49,7 +49,7 @@
   gap: calc(8px * var(--ui-scale));
   margin-top: calc(2px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .sha {
@@ -66,7 +66,7 @@
   margin: calc(6px * var(--ui-scale)) 0 0;
   color: var(--fg-default);
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   white-space: pre-wrap;
 }
 
@@ -78,7 +78,7 @@
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: none;
   color: inherit;
   font: inherit;
@@ -96,7 +96,7 @@
   flex: none;
   min-width: calc(72px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .status[data-status="A"] {

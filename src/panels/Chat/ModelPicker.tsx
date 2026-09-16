@@ -31,8 +31,8 @@ import type { PickableModel } from "../../utils/chatModels";
  * **Display only, and only the first letter.** The value that travels is
  * untouched (`onSelectEffort` still sends `level`), and the rest of the word is
  * left exactly as the agent wrote it, so `xhigh` becomes `Xhigh` rather than
- * Sway's guess at `XHigh`. Rewriting more than the first character would be
- * Sway restyling another program's vocabulary, which is what
+ * Tori's guess at `XHigh`. Rewriting more than the first character would be
+ * Tori restyling another program's vocabulary, which is what
  * `concept_acp_config_options` says not to do.
  */
 function titleCase(value: string | null): string | null {
@@ -100,7 +100,7 @@ export default function ModelPicker(props: {
   disabled: boolean;
   onSelectModel: (agentId: string, profile: string | null, model: PickableModel) => void;
   /** `null` picks the CLI's own default, which is a choice rather than the
-   *  absence of one: it is what runs when Sway sends no level at all. */
+   *  absence of one: it is what runs when Tori sends no level at all. */
   onSelectEffort: (effort: string | null) => void;
   /** A row moved under the cursor, for a caller that probes on highlight. */
   onHighlightAgent?: (agentId: string, profile: string | null) => void;
@@ -183,7 +183,7 @@ export default function ModelPicker(props: {
              which is the whole reason a pill has one, and the words were a
              third of the bar's width spent restating an icon. */
           /* Nothing on the wire reports effort back, so before a pick the level
-             in force is the CLI's own default and Sway does not know which it
+             in force is the CLI's own default and Tori does not know which it
              is. Saying "Default" is honest; naming a level would not be. */
           value={titleCase(props.effort) ?? "Default"}
           ariaLabel="Thinking effort"
@@ -194,17 +194,17 @@ export default function ModelPicker(props: {
           {/* **The state the pill has always shown, finally pickable.**
               Nothing on the wire reports effort back and no catalogue names a
               default level, so "no level sent, whatever the CLI runs" is a real
-              state Sway can be in - and it is the state every new chat starts
+              state Tori can be in - and it is the state every new chat starts
               in. Without a row for it the menu had nothing ticked while the
               pill read "Default", which reads as a broken control rather than
               as an honest one, and there was no way back to it after a pick.
 
               A row rather than guessing which level is the default: the handshake
               publishes `supportedEffortLevels` and no default among them, so
-              naming one would be Sway asserting something it was never told. */}
+              naming one would be Tori asserting something it was never told. */}
           <PickerOption
             label="Default"
-            description="Whatever this CLI runs when Sway sends no level"
+            description="Whatever this CLI runs when Tori sends no level"
             selected={props.effort === null}
             onSelect={() => props.onSelectEffort(null)}
           />

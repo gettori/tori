@@ -32,7 +32,7 @@ use serde_json::Value;
 use sha1::{Digest, Sha1};
 use std::collections::BTreeMap;
 
-const USER_AGENT: &str = "sway";
+const USER_AGENT: &str = "tori";
 
 /// How many merge requests one status tick will ask the approval endpoint
 /// about.

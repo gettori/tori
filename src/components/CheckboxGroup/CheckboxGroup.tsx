@@ -37,7 +37,7 @@ export type CheckboxOption = {
  * than a mutually exclusive one does. Add the prop when something asks for it.
  *
  * **The group is a `role="group"`, not a fieldset.** A native `<fieldset>`
- * brings layout and legend behaviour that fights the rest of Sway's chrome, and
+ * brings layout and legend behaviour that fights the rest of Tori's chrome, and
  * an ARIA group with `aria-labelledby` gives the same announcement without it.
  */
 export default function CheckboxGroup(props: {

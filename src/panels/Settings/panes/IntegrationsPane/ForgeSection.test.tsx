@@ -52,7 +52,7 @@ const on = (login: string) => account(`github-com-${login}`, { kind: "signedIn",
 const rejected = (login: string, rejectedAt: number | null) =>
   account(`github-com-${login}`, { kind: "suspect", login }, login, { rejectedAt });
 
-/** Rust's ladder, reduced to the facts these tests branch on: Sway's own
+/** Rust's ladder, reduced to the facts these tests branch on: Tori's own
  *  application covers github.com, and a GitLab instance has whichever one was
  *  registered on it. */
 function routesFor(baseUrl: string, provider: ForgeProvider = "github"): SignInRoutes {
@@ -255,7 +255,7 @@ describe("the forge accounts settings section", () => {
     expect(screen.queryByText("No hosts connected")).toBeNull();
   });
 
-  it("leaves the date out of the rejection when Sway never recorded one", async () => {
+  it("leaves the date out of the rejection when Tori never recorded one", async () => {
     hosts = [hostOf("github.com", [rejected("skarif2", null)])];
     render(() => <ForgeSection />);
     expect((await screen.findByTestId("suspect-notice")).textContent).toBe(

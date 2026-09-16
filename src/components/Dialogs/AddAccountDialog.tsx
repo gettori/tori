@@ -64,7 +64,7 @@ export default function AddAccountDialog(props: {
             value={label()}
             onInput={(e) => setLabel(e.currentTarget.value)}
           />
-          <div class={styles.fieldHint}>Sway's own label for it. The agent never sees this.</div>
+          <div class={styles.fieldHint}>Tori's own label for it. The agent never sees this.</div>
         </div>
 
         <div class={styles.field}>
@@ -76,7 +76,7 @@ export default function AddAccountDialog(props: {
               class={styles.fieldInput}
               aria-labelledby={FOLDER_LABEL}
               value={folder()}
-              placeholder="Leave empty for a folder Sway manages"
+              placeholder="Leave empty for a folder Tori manages"
               onInput={(e) => setFolder(e.currentTarget.value)}
               autocapitalize="off"
               autocorrect="off"

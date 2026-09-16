@@ -1,7 +1,7 @@
-//! Stores Sway used to write and no longer does, and the one-time sweep that
+//! Stores Tori used to write and no longer does, and the one-time sweep that
 //! clears them off disk.
 //!
-//! **Why a sweep and not a silent leftover.** `~/.config/sway/chat-rules` held
+//! **Why a sweep and not a silent leftover.** `~/.config/tori/chat-rules` held
 //! three things: a compiled file per session, a durable file per project, and a
 //! tally of hand-approvals per project. All three were read by the `PreToolUse`
 //! gate. Nothing reads them now - the agent decides its own tool calls and
@@ -33,13 +33,13 @@ pub struct RetiredRuleStore {
     /// can say something happened even when nothing was deliberately written.
     pub files: usize,
     /// Rules the user actually wrote, project-scoped, summed across projects.
-    /// The number worth acting on: session files and tallies were Sway's own
+    /// The number worth acting on: session files and tallies were Tori's own
     /// bookkeeping, and nobody misses those.
     pub project_rules: usize,
 }
 
 fn store_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/chat-rules")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/chat-rules")
 }
 
 /// Remove the retired rule store, reporting what went.
@@ -101,7 +101,7 @@ mod tests {
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("sway-retired-{}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-retired-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }

@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     invokes.push({ cmd, args });
     switch (cmd) {
       case "scratch_new":
-        return scratchBroken ? Promise.reject(new Error("no dir")) : Promise.resolve("/home/me/.config/sway/scratch/Untitled-4");
+        return scratchBroken ? Promise.reject(new Error("no dir")) : Promise.resolve("/home/me/.config/tori/scratch/Untitled-4");
       default:
         return Promise.resolve(null);
     }
@@ -20,7 +20,7 @@ const { draftFor, setDraft, linkedScratchFor } = await import("../../utils/chatC
 const { onWith, OPEN_IN_EDITOR, EDITOR_CLOSE_PATH } = await import("../../utils/events");
 const { setBufferAccess } = await import("../Editor/liveBuffers");
 
-const SCRATCH = "/home/me/.config/sway/scratch/Untitled-4";
+const SCRATCH = "/home/me/.config/tori/scratch/Untitled-4";
 const argsFor = (cmd: string) => invokes.filter((i) => i.cmd === cmd).map((i) => i.args);
 
 /** Every payload an event carried while the test ran. */

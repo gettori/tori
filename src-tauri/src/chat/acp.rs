@@ -8,7 +8,7 @@
 //! needs a live agent; mapping an update needs a struct literal.
 //!
 //! The load-bearing claim of this module is that **ACP needs no new
-//! [`ChatEvent`] variant**. Sway's event model was built from Claude's wire
+//! [`ChatEvent`] variant**. Tori's event model was built from Claude's wire
 //! format, so a second protocol fitting it without widening it is what makes
 //! [[concept_transport_neutral_event_model]] true rather than aspirational. Every
 //! mapping below lands on a variant that already existed.
@@ -49,7 +49,7 @@ use super::snapshot;
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AcpOverrides {
-    /// Send Sway's MCP servers on `session/new`.
+    /// Send Tori's MCP servers on `session/new`.
     ///
     /// **Defaults to off**, which is the safe direction: an adapter that does
     /// not itself speak MCP can fail `session/new` outright when the array is
@@ -58,7 +58,7 @@ pub struct AcpOverrides {
     /// array is a value and an absent key is a protocol error.
     ///
     /// **Not settable from an adapter TOML**, alone among these, and the reason
-    /// is worth stating: Sway does not yet forward its MCP configuration over
+    /// is worth stating: Tori does not yet forward its MCP configuration over
     /// ACP at all, so the array is empty whichever way this is set. A `[chat.acp]`
     /// key for it would be a published setting that changes nothing on the wire.
     /// It stays here as the shape the quirk needs, and becomes a TOML key in the
@@ -117,7 +117,7 @@ fn select_entries(select: &SessionConfigSelect) -> Vec<&SessionConfigSelectOptio
 /// the honest outcome is a picker with nothing to switch to rather than one
 /// offering models this agent never mentioned.
 ///
-/// Every field Sway cannot learn from ACP is left at its empty value rather than
+/// Every field Tori cannot learn from ACP is left at its empty value rather than
 /// guessed: `resolved_model` repeats the value because the agent reports no
 /// separate resolution. Measured on `opencode acp` 1.18.3: 15 provider-qualified
 /// ids (`github-copilot/claude-sonnet-4.6`, `opencode/big-pickle`, ...), the
@@ -145,7 +145,7 @@ pub fn model_catalogue(options: &[SessionConfigOption]) -> Vec<ChatModelInfo> {
             supports_effort: !levels.is_empty(),
             supported_effort_levels: levels.clone(),
             // Every one of them enabled: an ACP agent's levels are its own
-            // answer about itself, so there is nothing here for Sway to
+            // answer about itself, so there is nothing here for Tori to
             // annotate and nothing to refuse.
             effort_levels: levels
                 .iter()
@@ -177,7 +177,7 @@ pub fn current_model(options: &[SessionConfigOption]) -> Option<String> {
 /// Kept rather than re-derived at switch time because the options arrive once,
 /// with the session, and the request needs the agent's own id for them. `None`
 /// is an agent with no model selector, and a switch on one of those is refused
-/// rather than sent to an id Sway made up.
+/// rather than sent to an id Tori made up.
 pub fn model_config_id(options: &[SessionConfigOption]) -> Option<String> {
     let (option, _) = select_of(options, SessionConfigOptionCategory::Model)?;
     Some(option.id.0.to_string())
@@ -243,7 +243,7 @@ pub fn mode_config_id(options: &[SessionConfigOption]) -> Option<String> {
 /// it, so offering the sixth would have been a picker row `set_model` could not
 /// carry. A level is a plain string now, so the level goes out exactly as the
 /// agent spelled it and the drop has nothing left to protect against: filtering
-/// a published level against a list Sway keeps would be Sway deciding which of
+/// a published level against a list Tori keeps would be Tori deciding which of
 /// the agent's own words it approves of.
 pub fn effort_levels(options: &[SessionConfigOption]) -> Vec<String> {
     let Some((_, select)) = select_of(options, SessionConfigOptionCategory::ThoughtLevel) else {
@@ -260,7 +260,7 @@ pub fn current_effort(options: &[SessionConfigOption]) -> Option<String> {
 
 /// The config id an effort switch has to name. `None` for an agent that
 /// published no thought-level selector, and a switch on one of those is refused
-/// rather than sent to an id Sway made up.
+/// rather than sent to an id Tori made up.
 pub fn effort_config_id(options: &[SessionConfigOption]) -> Option<String> {
     let (option, _) = select_of(options, SessionConfigOptionCategory::ThoughtLevel)?;
     Some(option.id.0.to_string())
@@ -270,7 +270,7 @@ pub fn effort_config_id(options: &[SessionConfigOption]) -> Option<String> {
 /// uncategorized.
 ///
 /// A future variant of the spec's `#[non_exhaustive]` enum also reads as empty,
-/// which is the honest answer rather than a wrong one: an option Sway cannot
+/// which is the honest answer rather than a wrong one: an option Tori cannot
 /// categorize is an option no bespoke control claims, and the mirror renders it
 /// generically. Naming it something specific would hand it to a control written
 /// for a different lever.
@@ -288,16 +288,16 @@ fn category_word(category: Option<&SessionConfigOptionCategory>) -> String {
 
 /// Every option the agent published, in the neutral shape the mirror renders.
 ///
-/// **The whole set, not the three categories Sway has controls for.** This
+/// **The whole set, not the three categories Tori has controls for.** This
 /// module's other readers each pick out one category and drop the rest, which
 /// was fine while the rest was nothing; it is not fine now that
 /// `session/set_config_option` is the only way to reach whatever else an agent
-/// exposes. What Sway does not recognise is carried across with the agent's own
+/// exposes. What Tori does not recognise is carried across with the agent's own
 /// label, id and description, and the surface decides what to do with it.
 ///
 /// An option whose kind this build cannot represent is **skipped and logged**,
 /// never rendered as an inert control: `SessionConfigKind` is
-/// `#[non_exhaustive]`, so a protocol revision may add a shape with no Sway
+/// `#[non_exhaustive]`, so a protocol revision may add a shape with no Tori
 /// control at all, and a mirror that crashed or drew a dead widget for it would
 /// be a worse answer than one row fewer.
 pub fn config_options(options: &[SessionConfigOption]) -> Vec<ChatConfigOption> {
@@ -321,7 +321,7 @@ pub fn config_options(options: &[SessionConfigOption]) -> Vec<ChatConfigOption> 
                 }
                 other => {
                     eprintln!(
-                        "sway: ignoring config option `{}`, this build has no control for {other:?}",
+                        "tori: ignoring config option `{}`, this build has no control for {other:?}",
                         option.id.0
                     );
                     return None;
@@ -363,10 +363,10 @@ pub fn capabilities(init: &InitializeResponse) -> ChatCapabilities {
     }
 }
 
-/// Sway's turn identity for an ACP turn.
+/// Tori's turn identity for an ACP turn.
 ///
 /// ACP has no turn id: a turn is the span from one `session/prompt` to its
-/// `StopReason`, and every update in between belongs to it implicitly. Sway's
+/// `StopReason`, and every update in between belongs to it implicitly. Tori's
 /// event model keys almost everything on `turn_id`, so the transport mints one
 /// per prompt and stamps it on the way through. Deriving it from a counter
 /// rather than from a protocol field is deliberate - there is no field to
@@ -376,7 +376,7 @@ pub fn turn_id(seq: u64) -> String {
     format!("acp-turn-{seq}")
 }
 
-/// Name a content block Sway has no variant for, so it renders as *something*.
+/// Name a content block Tori has no variant for, so it renders as *something*.
 ///
 /// Dropping it instead would read as the agent having said nothing, which is a
 /// worse lie than naming the thing that arrived.
@@ -392,7 +392,7 @@ fn describe_foreign_block(block: &AcpContentBlock) -> String {
     }
 }
 
-/// The text of a streaming chunk, which is all Sway's delta events carry.
+/// The text of a streaming chunk, which is all Tori's delta events carry.
 fn chunk_text(chunk: &ContentChunk) -> String {
     match &chunk.content {
         AcpContentBlock::Text(t) => t.text.clone(),
@@ -486,10 +486,10 @@ fn raw_output_summary(kind: model::ToolKind, raw: Option<&serde_json::Value>) ->
     })
 }
 
-/// Map one `session/update` onto Sway's event model.
+/// Map one `session/update` onto Tori's event model.
 ///
 /// Returns a `Vec` rather than an `Option` because the relationship is not
-/// one-to-one: an update Sway has no use for yields nothing, and one carrying
+/// one-to-one: an update Tori has no use for yields nothing, and one carrying
 /// two independent facts yields two events. An empty result is a normal outcome,
 /// never an error - `SessionUpdate` is `#[non_exhaustive]`, so a protocol
 /// revision must be able to add an update this build silently ignores instead of
@@ -524,9 +524,9 @@ pub fn map_update(
         }],
 
         // A replayed user turn. The live composer pushes its own, so this
-        // matters for the turns Sway did not send: everything `session/load`
+        // matters for the turns Tori did not send: everything `session/load`
         // replays into a reopened tab. Read back through the same grammar
-        // `history.rs` uses, since this transport keeps no transcript Sway can
+        // `history.rs` uses, since this transport keeps no transcript Tori can
         // read and a chunk is all a reopened chat has to learn its labels from.
         SessionUpdate::UserMessageChunk(chunk) => vec![ChatEvent::UserMessage {
             session_id: session_id.to_string(),
@@ -646,7 +646,7 @@ pub fn map_update(
 
 /// Carry one plan entry across, dropping any whose status this build does not
 /// know. `PlanEntryStatus` is `#[non_exhaustive]`, and a status invented after
-/// this was written has no honest Sway counterpart - showing it as `Pending`
+/// this was written has no honest Tori counterpart - showing it as `Pending`
 /// would claim the agent had not started work it may well have finished.
 fn plan_item(entry: &agent_client_protocol::schema::v1::PlanEntry) -> Option<PlanItem> {
     use agent_client_protocol::schema::v1::PlanEntryStatus;
@@ -661,7 +661,7 @@ fn plan_item(entry: &agent_client_protocol::schema::v1::PlanEntry) -> Option<Pla
 
 /// The file edits a tool call's content blocks describe.
 ///
-/// **This is the claim the ACP tier used to deny.** Sway's decision that "ACP
+/// **This is the claim the ACP tier used to deny.** Tori's decision that "ACP
 /// agents cannot produce exact before-state diffs" was written from Claude's
 /// shape, where a before-state exists only because a hook reads the file just
 /// ahead of the write. Measured 2026-08-14 on `@agentclientprotocol/codex-acp`
@@ -720,7 +720,7 @@ fn file_edits(
         .collect()
 }
 
-/// ACP's `ToolKind` in Sway's spelling.
+/// ACP's `ToolKind` in Tori's spelling.
 ///
 /// A total match rather than a serde re-parse, so a variant added to the crate
 /// fails to compile here instead of silently arriving as `Other`. `ToolKind` is
@@ -920,7 +920,7 @@ fn describe_tool_call(
     }]
 }
 
-/// Turn a `session/request_permission` into Sway's prompt event.
+/// Turn a `session/request_permission` into Tori's prompt event.
 ///
 /// The agent's own options are carried through as suggestions rather than being
 /// collapsed into Allow/Deny. Per [[concept_acp_agent_quirks]] the permission
@@ -961,7 +961,7 @@ pub fn map_permission_request(
 /// Carry one agent-offered permission option across as a suggestion.
 /// The agent's `optionId` rides in `destination`, because that is the field the
 /// answer path echoes back. ACP has no rule grammar to fill `rules` with: an
-/// option is an opaque id the agent already knows the meaning of, so Sway
+/// option is an opaque id the agent already knows the meaning of, so Tori
 /// carries the id and stays out of the semantics.
 fn option_as_suggestion(option: &PermissionOption) -> PermissionSuggestion {
     use agent_client_protocol::schema::v1::PermissionOptionKind;
@@ -977,7 +977,7 @@ fn option_as_suggestion(option: &PermissionOption) -> PermissionSuggestion {
     }
 }
 
-/// Map a turn's `StopReason` onto Sway's turn outcome.
+/// Map a turn's `StopReason` onto Tori's turn outcome.
 ///
 /// `Refusal` is the one that costs something to get wrong: the spec says the
 /// user prompt *and everything after it* are dropped from the next prompt, so a
@@ -1011,7 +1011,7 @@ pub fn map_stop_reason(session_id: &str, turn_id: &str, reason: StopReason) -> C
 }
 
 /// The protocol's own spelling, so the UI reports the agent's reason rather
-/// than a Sway paraphrase of it.
+/// than a Tori paraphrase of it.
 fn stop_reason_wire(reason: StopReason) -> &'static str {
     match reason {
         StopReason::EndTurn => "end_turn",
@@ -1193,7 +1193,7 @@ mod tests {
         ]
     }
 
-    /// One boolean toggle, the shape an agent publishes for a lever Sway has no
+    /// One boolean toggle, the shape an agent publishes for a lever Tori has no
     /// category for.
     fn toggle(id: &str, name: &str, description: &str, on: bool) -> SessionConfigOption {
         use agent_client_protocol::schema::v1::SessionConfigId;
@@ -1208,7 +1208,7 @@ mod tests {
         option
     }
 
-    /// **The mirror carries the option Sway has no control for**, which is the
+    /// **The mirror carries the option Tori has no control for**, which is the
     /// whole reason it exists: the three category readers above would each drop
     /// this row, and dropping it is how a lever the agent published becomes one
     /// nobody can reach.
@@ -1286,7 +1286,7 @@ mod tests {
     /// **`ultra` came back, and that is the finding.** It was dropped while a
     /// level travelled as an `Effort` variant and there was no variant for it.
     /// A level is a string now, so the sixth goes out exactly as codex spelled
-    /// it and nothing here decides which of the agent's words Sway approves of.
+    /// it and nothing here decides which of the agent's words Tori approves of.
     #[test]
     fn every_level_the_agent_published_is_offered() {
         let levels = effort_levels(&codex_options());
@@ -1692,7 +1692,7 @@ mod tests {
     /// A repo to hash into, so a before-state has somewhere to land.
     fn tmp_repo(tag: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir()
-            .join(format!("sway-acp-diff-{}-{tag}", std::process::id()));
+            .join(format!("tori-acp-diff-{}-{tag}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::process::Command::new("git")
             .current_dir(&dir)
@@ -1850,7 +1850,7 @@ mod tests {
     /// update this build has no mapping for must produce nothing rather than
     /// panicking or being forced into a turn event it does not belong to.
     #[test]
-    fn an_update_with_no_sway_counterpart_maps_to_no_events() {
+    fn an_update_with_no_tori_counterpart_maps_to_no_events() {
         use agent_client_protocol::schema::v1::{CurrentModeUpdate, SessionModeId};
         let update =
             SessionUpdate::CurrentModeUpdate(CurrentModeUpdate::new(SessionModeId::new("plan")));
@@ -1882,7 +1882,7 @@ mod tests {
     }
 
     /// The agent owns the permission vocabulary. Every option it offered has to
-    /// survive into the prompt, or Sway silently narrows what the user may
+    /// survive into the prompt, or Tori silently narrows what the user may
     /// choose.
     #[test]
     fn every_option_the_agent_offered_reaches_the_prompt() {

@@ -170,14 +170,14 @@ describe("NewFeatureDialog", () => {
   });
 
   it("stays open with the message when the backend refuses", async () => {
-    bridge.createError = "refusing to overwrite /w/api/.sway";
+    bridge.createError = "refusing to overwrite /w/api/.tori";
     const { onDone } = open();
     fireEvent.input(name(), { target: { value: "x" } });
     fireEvent.click(box("api"));
     await waitFor(() => expect(done().disabled).toBe(false));
     fireEvent.click(done());
 
-    expect((await screen.findByRole("alert")).textContent).toContain("refusing to overwrite /w/api/.sway");
+    expect((await screen.findByRole("alert")).textContent).toContain("refusing to overwrite /w/api/.tori");
     expect(screen.getByRole("dialog", { name: "New Feature" })).toBeTruthy();
     expect(onDone).not.toHaveBeenCalled();
     expect(done().disabled).toBe(false);

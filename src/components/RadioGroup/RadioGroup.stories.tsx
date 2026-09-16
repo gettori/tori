@@ -35,7 +35,7 @@ export const Default: Story = {
  *  and both have to hold in light and dark. */
 export const States: Story = {
   render: (args) => (
-    <div style={{ display: "flex", "flex-direction": "column", gap: "var(--sway-space-5)" }}>
+    <div style={{ display: "flex", "flex-direction": "column", gap: "var(--tori-space-5)" }}>
       <RadioGroup {...args} label="Nothing chosen" value={null} />
       <RadioGroup {...args} label="Chosen" value="modal" />
       <RadioGroup {...args} label="One option disabled" value="inline"

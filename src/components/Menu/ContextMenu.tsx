@@ -41,8 +41,8 @@ export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement>
 }
 
 /**
- * The right-click surface: Kobalte's context menu behind Sway's chrome and
- * Sway's API. Everything not listed above is a native attribute and lands on the
+ * The right-click surface: Kobalte's context menu behind Tori's chrome and
+ * Tori's API. Everything not listed above is a native attribute and lands on the
  * trigger, so a call site reads as the row it already was plus an `items`.
  *
  * **The trigger is the row, and it is per-row.** A context menu owns its own
@@ -50,7 +50,7 @@ export interface ContextMenuProps<T extends HTMLElement = HTMLDivElement>
  * `Omit<MenuRootOptions, "open" | "defaultOpen" | "getAnchorRect">`, so there is
  * no controlled mode and no anchor to hand it - which means every row that wants
  * a menu wraps itself in one of these. That is affordable here because nothing
- * in Sway's trees is virtualized and every row already computes its own items in
+ * in Tori's trees is virtualized and every row already computes its own items in
  * its own handler. A surface that needs one menu driven from state instead wants
  * `Dropdown`'s anchor mode.
  *
@@ -113,7 +113,7 @@ export default function ContextMenu<T extends HTMLElement = HTMLDivElement>(
           <Primitive.Content
             class={styles.content}
             // A right-click *inside* an open menu would otherwise open the
-            // browser's menu on top of Sway's. The hand-rolled Menu did the same.
+            // browser's menu on top of Tori's. The hand-rolled Menu did the same.
             onContextMenu={(e: MouseEvent) => e.preventDefault()}
           >
             {local.menu ?? <MenuRows items={local.items ?? []} />}

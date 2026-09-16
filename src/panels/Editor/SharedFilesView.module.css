@@ -32,7 +32,7 @@
 .title {
   flex: none;
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   font-weight: 600;
 }
 
@@ -42,7 +42,7 @@
   color: var(--fg-muted);
   direction: rtl;
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -56,7 +56,7 @@
   flex: none;
   padding: calc(6px * var(--ui-scale)) calc(16px * var(--ui-scale));
   color: var(--danger-fg);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .body {
@@ -92,20 +92,20 @@
 
 .total {
   color: var(--fg-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   font-weight: 600;
 }
 
 .warn {
   color: var(--scale-orange);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* Linking runs at creation. Said once, at the top of the list it explains. */
 .lede {
   margin: calc(6px * var(--ui-scale)) 0 0;
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.45;
 }
 
@@ -118,7 +118,7 @@
   margin: 0;
   padding: calc(4px * var(--ui-scale)) calc(14px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .item {
@@ -130,11 +130,11 @@
   padding: calc(7px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: none;
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background var(--sway-duration-fast) ease;
+  transition: background var(--tori-duration-fast) ease;
 }
 
 .item:hover {
@@ -164,7 +164,7 @@
   overflow: hidden;
   color: var(--fg-default);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -173,10 +173,10 @@
   flex: none;
   padding: 0 calc(6px * var(--ui-scale));
   background: var(--neutral-subtle);
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   color: var(--scale-orange);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
 }
 
 .itemFoot {
@@ -189,7 +189,7 @@
 .tally {
   overflow: hidden;
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -206,7 +206,7 @@
   margin: 0;
   padding: calc(16px * var(--ui-scale)) calc(20px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.5;
 }
 
@@ -235,7 +235,7 @@
   min-width: 0;
   color: var(--fg-default);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -244,23 +244,23 @@
   flex: none;
   padding: 0 calc(6px * var(--ui-scale));
   background: var(--neutral-subtle);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
 }
 
 .path {
   margin: calc(6px * var(--ui-scale)) 0 0;
   color: var(--fg-subtle);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   overflow-wrap: anywhere;
 }
 
 .note {
   margin: calc(4px * var(--ui-scale)) 0 0;
   color: var(--scale-orange);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .rows {
@@ -274,7 +274,7 @@
   padding: calc(10px * var(--ui-scale)) calc(20px * var(--ui-scale))
     calc(6px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -323,7 +323,7 @@
 .wtName {
   overflow: hidden;
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -350,7 +350,7 @@
 .stateWord {
   overflow: hidden;
   color: var(--fg-default);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -359,7 +359,7 @@
   overflow: hidden;
   color: var(--fg-subtle);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -413,7 +413,7 @@
   flex: 1 1 calc(240px * var(--ui-scale));
   margin: 0;
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   line-height: 1.45;
 }
 
@@ -424,14 +424,14 @@
   align-items: center;
   gap: calc(8px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .pick select {
   padding: calc(3px * var(--ui-scale)) calc(6px * var(--ui-scale));
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-default);
   font: inherit;
 }

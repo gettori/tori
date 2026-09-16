@@ -63,7 +63,7 @@ const pane = (root: HTMLElement, which: "terminal" | "editor") =>
 beforeEach(() => {
   localStorage.clear();
   storeTwoPanes("");
-  localStorage.setItem("sway.layout.v1", JSON.stringify(LEGACY));
+  localStorage.setItem("tori.layout.v1", JSON.stringify(LEGACY));
   invoke.mockReset();
   invoke.mockImplementation(async (cmd: string) => {
     if (cmd === "get_settings") return DEFAULT_SETTINGS;
@@ -92,7 +92,7 @@ describe("the two-pane shell", () => {
   it("renders a pane hidden in the stored envelope hidden after relaunch", () => {
     const env = seedTwoPane({ rightShare: 40, showLeft: true, showRight: true });
     env.layout = setPaneHidden(env.layout, "right", true)!;
-    localStorage.setItem("sway.panes.v1", JSON.stringify({ "": env }));
+    localStorage.setItem("tori.panes.v1", JSON.stringify({ "": env }));
     const { container } = render(() => <App />);
     expect(pane(container, "editor").classList.contains("hidden")).toBe(true);
     expect(pane(container, "terminal").classList.contains("hidden")).toBe(false);
@@ -121,7 +121,7 @@ describe("the pane toggles", () => {
     // the stores are empty), so Cmd+Alt+E resolves by pin rule alone.
     const env = seedTwoPane({ rightShare: 40, showLeft: true, showRight: true });
     env.layout = setPaneHidden(env.layout, "right", true)!;
-    localStorage.setItem("sway.panes.v1", JSON.stringify({ "": env }));
+    localStorage.setItem("tori.panes.v1", JSON.stringify({ "": env }));
     const { container } = render(() => <App />);
     expect(pane(container, "editor").classList.contains("hidden")).toBe(true);
     chord("KeyE");

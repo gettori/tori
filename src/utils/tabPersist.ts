@@ -8,7 +8,7 @@
 // restore offer can be made per workspace on first visit.
 //
 // Tab ids ARE persisted, so a restored tab can come back as *itself*: its pane
-// placement (`sway.tabpanes.v1`) is keyed by tab id, and a reload matches its
+// placement (`tori.tabpanes.v1`) is keyed by tab id, and a reload matches its
 // tabs against what the backend still holds. The focused tab is recorded twice,
 // as an id and as an index into the stored order. The index is not redundant:
 // it is what a build older than this one reads, so a rollback still lands on
@@ -17,7 +17,7 @@
 import { hasOptionPick, hasPick, type DraftPick } from "./chatDraftPick";
 import type { ChatConfigValue } from "./chatTypes";
 
-const LS_TABS = "sway.terminalTabs";
+const LS_TABS = "tori.terminalTabs";
 // A workspace nobody has opened in this long is almost certainly finished work;
 // its stored tabs are dropped rather than offered forever.
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;

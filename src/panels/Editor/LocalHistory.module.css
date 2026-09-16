@@ -20,7 +20,7 @@
 
 .title {
   color: var(--fg-default);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 /* Takes the slack and truncates from the left of its box, so a deep path still
@@ -30,8 +30,8 @@
   min-width: 0;
   overflow: hidden;
   color: var(--fg-muted);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
   direction: rtl;
@@ -64,8 +64,8 @@
   flex: none;
   min-width: calc(96px * var(--ui-scale));
   color: var(--fg-default);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -75,13 +75,13 @@
   flex: 1;
   min-width: 0;
   color: var(--accent-fg);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .size {
   flex: none;
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -101,8 +101,8 @@
 .diff {
   padding: calc(4px * var(--ui-scale)) 0;
   background: var(--canvas-default);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   overflow-x: auto;
 }
 

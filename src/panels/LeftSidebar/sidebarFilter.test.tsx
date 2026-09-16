@@ -8,7 +8,7 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 const WORK = "/root/work/proj";
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -73,8 +73,8 @@ describe("the sidebar filter", () => {
     resetSessionActivityForTests();
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.sidebar-mode.v1", "spaces");
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.sidebar-mode.v1", "spaces");
   });
 
   it("costs the header nothing until it is asked for", async () => {

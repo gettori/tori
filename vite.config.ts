@@ -47,7 +47,7 @@ function pdfjsFile(rel: string): string | null {
  * `public/` would commit it, so this reads it out of node_modules instead.
  */
 const pdfjsData = (): Plugin => ({
-  name: "sway-pdfjs-data",
+  name: "tori-pdfjs-data",
   configureServer(server) {
     // Connect strips the mount prefix, so `req.url` is `/cmaps/78-H.bcmap`.
     server.middlewares.use(PDFJS_BASE, (req, res, next) => {
@@ -85,7 +85,7 @@ const pdfjsData = (): Plugin => ({
  * exactly what they always did.
  */
 const traceCoreImports = () => ({
-  name: "sway-trace-core",
+  name: "tori-trace-core",
   enforce: "pre" as const,
   async resolveId(source: string, importer: string | undefined, options: Record<string, unknown>) {
     if (source !== "@tauri-apps/api/core") return null;

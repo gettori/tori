@@ -3,7 +3,7 @@
 //
 // **Read, never decided.** `mergeableState` is the server's answer and it
 // accounts for branch protection, required reviewers and required checks that
-// Sway cannot see. A local "looks fine to me" would render an enabled button the
+// Tori cannot see. A local "looks fine to me" would render an enabled button the
 // server then refuses, which is strictly worse than no button: the user finds
 // out it will not merge only after asking it to.
 //
@@ -37,7 +37,7 @@ const GATE: Record<MergeableState, MergeGate> = {
   clean: { block: false, canUpdate: false, summary: "Ready to merge." },
   unstable: {
     // GitHub allows this merge: the checks that are failing are not required
-    // ones. Blocking it here would be Sway overruling the server in the
+    // ones. Blocking it here would be Tori overruling the server in the
     // direction that looks safe and is simply wrong.
     block: false,
     canUpdate: false,
@@ -46,7 +46,7 @@ const GATE: Record<MergeableState, MergeGate> = {
   blocked: {
     // Deliberately vague, because the specifics live in a branch-protection rule
     // this app cannot read. Guessing at "needs one approval" would be a sentence
-    // Sway invented; the server's own wording arrives if the merge is attempted,
+    // Tori invented; the server's own wording arrives if the merge is attempted,
     // and that is where it gets shown.
     block: true,
     canUpdate: false,

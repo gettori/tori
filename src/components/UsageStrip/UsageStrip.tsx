@@ -236,8 +236,8 @@ type Opened = { agentId: string; profile: string; anchor: HTMLElement; pinned: b
  * The topbar's quota strip.
  *
  * Renders nothing at all until some account has a reading, which is the honest
- * empty state: an agent Sway has never seen a quota frame from has no quota of
- * zero, it has no quota Sway knows about.
+ * empty state: an agent Tori has never seen a quota frame from has no quota of
+ * zero, it has no quota Tori knows about.
  */
 export default function UsageStrip() {
   let el: HTMLDivElement | undefined;

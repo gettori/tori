@@ -53,7 +53,7 @@ function completed(turnId: string, r: { usage: Usage; costUsd: number }): ChatEv
 describe("the captured result frames", () => {
   // The measurement the whole design rests on. If `total_cost_usd` were
   // session-cumulative, summing it would double count; if it were per turn and
-  // Sway read only the last frame, a ten-turn session would report one turn's
+  // Tori read only the last frame, a ten-turn session would report one turn's
   // price as its total. This says which it is, from the capture.
   it("are per turn, not session-cumulative", () => {
     const results = capturedResults();

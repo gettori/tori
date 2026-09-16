@@ -2,7 +2,7 @@
 //!
 //! **Why this has to be persisted at all.** `total_cost_usd` on a `result` frame
 //! is per *turn*, not per session (measured, see `chatUsage.ts`), so a session
-//! total is the sum of the turns Sway watched finish. Held only in the panel's
+//! total is the sum of the turns Tori watched finish. Held only in the panel's
 //! store, that sum resets every time the tab is reopened - which is fine for a
 //! readout and useless for a ceiling, because a budget that forgets itself on
 //! restart is not a budget.
@@ -44,7 +44,7 @@ pub struct SessionUsage {
     /// agent reports no money reads as "unknown" rather than as free.
     #[serde(default)]
     pub cost_usd: Option<f64>,
-    /// Turns Sway watched finish, which is what the two figures above are the
+    /// Turns Tori watched finish, which is what the two figures above are the
     /// sum of.
     pub turns: u32,
 }
@@ -108,7 +108,7 @@ mod tests {
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("sway-usage-{}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-usage-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir.join("usage.json")
     }
@@ -166,8 +166,8 @@ mod tests {
     /// Two checkouts of one repo are two projects, and must not share a budget.
     #[test]
     fn two_checkouts_sharing_a_basename_get_separate_usage_files() {
-        let a = usage_path("/Users/x/Projects/sway/main");
-        let b = usage_path("/Users/x/Projects/sway-wt/main");
+        let a = usage_path("/Users/x/Projects/tori/main");
+        let b = usage_path("/Users/x/Projects/tori-wt/main");
         assert_ne!(a, b);
         assert_eq!(a.parent(), b.parent());
     }

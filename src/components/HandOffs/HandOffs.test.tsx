@@ -1,4 +1,4 @@
-// The topbar's two ways out of Sway, moved here from the end of the Toolbar's
+// The topbar's two ways out of Tori, moved here from the end of the Toolbar's
 // breadcrumb.
 //
 // What has to hold is that they open the *selected* folder and not the project
@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 
-const ROOT = "/w/web/.sway/worktrees/auth";
+const ROOT = "/w/web/.tori/worktrees/auth";
 
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],

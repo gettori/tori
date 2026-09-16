@@ -1429,19 +1429,19 @@ describe("hook rows", () => {
   const hook = (
     hookId: string,
     phase: "started" | "finished",
-    swayOwned: boolean,
+    toriOwned: boolean,
     over: Record<string, unknown> = {},
   ): ChatEvent =>
     ({
       type: "hookFired",
       sessionId: "s1",
       hookId,
-      // The measured name: the tool, not the matcher. Sway's hook and the
+      // The measured name: the tool, not the matcher. Tori's hook and the
       // user's hook on the same tool are indistinguishable by this field.
       name: "PreToolUse:Bash",
       event: "PreToolUse",
       phase,
-      swayOwned,
+      toriOwned,
       outcome: phase === "finished" ? "success" : null,
       exitCode: phase === "finished" ? 0 : null,
       output: null,
@@ -1452,28 +1452,28 @@ describe("hook rows", () => {
   const hookRows = (s: ChatState, show: boolean) => visibleItems(s.items, show, null).filter((i) => i.kind === "hook");
 
   it("adds no visible rows for a 60-tool-call turn, and reveals all 120 when toggled", () => {
-    // The plan's headline figure, measured when Sway's hook ran on every tool
+    // The plan's headline figure, measured when Tori's hook ran on every tool
     // call and contributed two frames each time. It is narrowed to the write
     // tools now, so a turn like this one produces fewer - but the user's own
     // hooks are not, and the collapse exists for the volume either way.
     const s = initialChat("s1");
     for (let i = 0; i < 60; i++) {
-      applyEvent(s, hook(`sway-${i}`, "started", false));
-      applyEvent(s, hook(`sway-${i}`, "finished", true));
+      applyEvent(s, hook(`tori-${i}`, "started", false));
+      applyEvent(s, hook(`tori-${i}`, "finished", true));
     }
     expect(hookRows(s, false)).toHaveLength(0);
     expect(hookRows(s, true)).toHaveLength(120);
   });
 
   it("settles the started frame retroactively so a pair never splits", () => {
-    // Only the response carries Sway's marker, so the started frame arrives
+    // Only the response carries Tori's marker, so the started frame arrives
     // unattributed. It is quiet anyway (nothing has failed yet), and the
-    // back-propagation is what keeps it folded under the *reveal-all-but-Sway*
+    // back-propagation is what keeps it folded under the *reveal-all-but-Tori*
     // reading a future view might take; the marker must land either way.
     const s = initialChat("s1");
-    applyEvent(s, hook("sway-1", "started", false));
-    applyEvent(s, hook("sway-1", "finished", true));
-    expect(s.items.filter((i) => i.kind === "hook" && i.swayOwned)).toHaveLength(2);
+    applyEvent(s, hook("tori-1", "started", false));
+    applyEvent(s, hook("tori-1", "finished", true));
+    expect(s.items.filter((i) => i.kind === "hook" && i.toriOwned)).toHaveLength(2);
     expect(hookRows(s, false)).toHaveLength(0);
   });
 
@@ -1504,9 +1504,9 @@ describe("hook rows", () => {
     // A hook that succeeded is an answer to a question nobody asked: four
     // SessionStart rows on every resumed tab was the measured complaint.
     const s = initialChat("s1");
-    applyEvent(s, hook("sway-1", "started", false));
+    applyEvent(s, hook("tori-1", "started", false));
     applyEvent(s, hook("user-1", "started", false));
-    applyEvent(s, hook("sway-1", "finished", true));
+    applyEvent(s, hook("tori-1", "finished", true));
     applyEvent(s, hook("user-1", "finished", false));
     expect(hookRows(s, false)).toHaveLength(0);
     expect(hookRows(s, true)).toHaveLength(4);
@@ -1514,8 +1514,8 @@ describe("hook rows", () => {
 
   it("never drops a folded row from the state, so the toggle works mid-session", () => {
     const s = initialChat("s1");
-    applyEvent(s, hook("sway-1", "started", false));
-    applyEvent(s, hook("sway-1", "finished", true));
+    applyEvent(s, hook("tori-1", "started", false));
+    applyEvent(s, hook("tori-1", "finished", true));
     // Folded from the view, still present in the transcript.
     expect(s.items.filter((i) => i.kind === "hook")).toHaveLength(2);
   });
@@ -1755,7 +1755,7 @@ describe("a session that never handshook", () => {
   });
 });
 
-// Sway's log and the agent's own replay describe one conversation, so the panel
+// Tori's log and the agent's own replay describe one conversation, so the panel
 // draws the log first and the replay replaces it. Replacing means the indexes go
 // with the items they point into, or the next tool frame patches a card that is
 // no longer there.
@@ -2347,7 +2347,7 @@ describe("subagent lanes", () => {
     expect(lane.description).toBe("Create sub-made.txt");
     expect(lane.status).toBe("completed");
     expect(lane.lastToolName).toBe("Write");
-    // The CLI's own figures. Sway adds nothing up for a lane: a second
+    // The CLI's own figures. Tori adds nothing up for a lane: a second
     // accumulator would give one subagent two numbers that drift.
     expect(lane.usage?.totalTokens).toBe(10371);
     expect(lane.usage?.toolUses).toBe(1);
@@ -2595,7 +2595,7 @@ describe("subagent lanes", () => {
 
   it("folds a turn the agent opened for itself like any other", () => {
     // The ceiling is checked when a turn completes, and a background subagent
-    // finishing makes the CLI open one Sway never authorised. Skipping it here
+    // finishing makes the CLI open one Tori never authorised. Skipping it here
     // would let that spend land uncounted.
     const s = replay([
       turnStarted("t1"),

@@ -47,20 +47,20 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
     "Puts the files back to a chosen turn and carries the conversation into a fork. The forked agent still remembers the turns you undid.",
   steer: "A message typed during a turn goes into that turn rather than waiting for the next one.",
   approvals:
-    "Where a tool call's permission question comes from. In-protocol means the agent asks and Sway shows it, so the agent's own permission modes are the ones in force.",
-  // Two sources now, which is why the note names both rather than the one Sway
-  // happens to use for Claude: `before-state` is Sway reading the file ahead of
+    "Where a tool call's permission question comes from. In-protocol means the agent asks and Tori shows it, so the agent's own permission modes are the ones in force.",
+  // Two sources now, which is why the note names both rather than the one Tori
+  // happens to use for Claude: `before-state` is Tori reading the file ahead of
   // the write, `agent-supplied` is the agent sending it, and a reader on an ACP
   // agent needs to know theirs depends on which agent they picked.
-  diffs: "A tool card can show what a write changed, either because Sway recorded the file just before it was written or because the agent sent its prior contents. An agent that sends neither gets a card with no diff.",
+  diffs: "A tool card can show what a write changed, either because Tori recorded the file just before it was written or because the agent sent its prior contents. An agent that sends neither gets a card with no diff.",
   budgets: "A spend limit stops the chat at a turn boundary: the running turn finishes, the next one does not start.",
   attachmentMentions:
     "What the agent can open when handed a path it already has: a file dragged from the tree or mentioned with @. Each becomes a labelled path like [Image 1] the message can name.",
   attachmentUploads:
-    "What the agent can open when handed a pasted or dropped file. Sway writes it under its own folder and passes the path, so the agent reads it rather than receiving the bytes.",
+    "What the agent can open when handed a pasted or dropped file. Tori writes it under its own folder and passes the path, so the agent reads it rather than receiving the bytes.",
   history:
     "This agent can reopen a conversation it still holds, so a chat closed and reopened replays its earlier turns.",
-  sessions: "This agent can list its own sessions, including ones started outside Sway.",
+  sessions: "This agent can list its own sessions, including ones started outside Tori.",
   // "Read" and not "talk to": the lane switches what you are reading and never
   // where the composer sends, since only the main agent can reach a helper.
   subagents:
@@ -71,15 +71,15 @@ const CAPABILITY_NOTES: Record<PublishedCapability["key"], string> = {
  * Why a probe produced no catalogue, as a sentence with a next step.
  *
  * `unsupported` is deliberately not phrased as the agent failing: it is a fact
- * about this build of Sway, and blaming the binary would send the user to
+ * about this build of Tori, and blaming the binary would send the user to
  * reinstall something that is working.
  */
 const FAILURE_NOTE: Record<ProbeFailureReason, string> = {
-  spawnFailed: "Sway could not start it, so there was nothing to ask.",
+  spawnFailed: "Tori could not start it, so there was nothing to ask.",
   timedOut: "It did not answer in time.",
   signedOut: "Nobody is signed in, so it would not answer.",
   noAnswer: "It started and said nothing.",
-  unsupported: "Sway cannot ask this agent yet. Its models arrive when a session starts.",
+  unsupported: "Tori cannot ask this agent yet. Its models arrive when a session starts.",
 };
 
 /** A command the user could run themselves, with the one control that keeps
@@ -130,7 +130,7 @@ function ModelsPane(props: {
   const catalog = () => catalogFor(props.agentId, props.profile);
   const catalogue = () => catalog()?.catalogue ?? null;
   const probingThis = () => isProbing(props.agentId, props.profile);
-  /** The agent's own words when it gave any, after Sway's sentence naming the
+  /** The agent's own words when it gave any, after Tori's sentence naming the
    *  kind of failure. Quoted rather than paraphrased, and omitted when empty. */
   const failureNote = () => {
     const failure = catalog()?.lastFailure;
@@ -180,7 +180,7 @@ function ModelsPane(props: {
 
   /** The plan the agent named for this account, as it worded it. Empty for a
    *  catalogue that never carried one, which renders as nothing rather than as
-   *  a tier Sway guessed. */
+   *  a tier Tori guessed. */
   const plan = () => catalogue()?.account?.subscriptionType.trim() ?? "";
   const fact = () =>
     props.account ? [plan(), modelCount()].filter(Boolean).join(", ") : modelCount();
@@ -270,7 +270,7 @@ function ModelsPane(props: {
                           </code>
                           {/* Said out loud, because its provenance differs: the
                               user wrote this id in the agent's own settings and
-                              Sway passes it through unresolved. */}
+                              Tori passes it through unresolved. */}
                           <Show when={m.userConfigured}>
                             <span class={styles.chip}>yours</span>
                           </Show>
@@ -299,7 +299,7 @@ function ModelsPane(props: {
                   dropped by request: the rows are the answer, and Ask again
                   is always one press away. */}
               {/* The rest of what the agent published: the levers with no
-                  control of Sway's own, previewed from the same probe rather
+                  control of Tori's own, previewed from the same probe rather
                   than only appearing once a chat is open. Read-only here, on
                   purpose - they are session state, and there is no session on
                   this page to set them on. */}
@@ -341,7 +341,7 @@ function ModelsPane(props: {
         </Match>
         <Match when={true}>
           <div class={styles.cardMeta}>
-            Nobody has asked {props.agentLabel} what it can run. Ask again and Sway will.
+            Nobody has asked {props.agentLabel} what it can run. Ask again and Tori will.
           </div>
         </Match>
       </Switch>
@@ -402,7 +402,7 @@ export default function AgentDetail(props: {
 
   // All of these are reads of the adapter file, no probe behind any, which is
   // what allows fetching them on every page open. Errors collapse to null: a
-  // route Sway cannot resolve renders as "nothing declared" rather than a
+  // route Tori cannot resolve renders as "nothing declared" rather than a
   // broken step.
   const [installRoute] = createResource(
     () => a().id,
@@ -439,7 +439,7 @@ export default function AgentDetail(props: {
 
   onMount(() => backEl?.focus());
 
-  // Sway never installs, updates, or removes anything itself: each button
+  // Tori never installs, updates, or removes anything itself: each button
   // starts a job running the vendor's own documented command (from the
   // adapter's [install] table) and gets out of the way, the same posture as
   // signing in. When the process exits the job re-probes health, so a finished
@@ -523,10 +523,10 @@ export default function AgentDetail(props: {
           <Toggle
             checked={agentChosen(a().id)}
             disabled={enableBlockedReason(a().id) !== null && !agentChosen(a().id)}
-            aria-label={`Offer ${a().label} in Sway`}
+            aria-label={`Offer ${a().label} in Tori`}
             tooltip={
               enableBlockedReason(a().id) ??
-              (agentChosen(a().id) ? "Disable in Sway" : "Enable in Sway")
+              (agentChosen(a().id) ? "Disable in Tori" : "Enable in Tori")
             }
             onChange={(next) => setAgentEnabled(a().id, next)}
           />
@@ -565,11 +565,11 @@ export default function AgentDetail(props: {
         </div>
       </Show>
       <Show when={installed() && a().status === "versionUnknown" && !a().version}>
-        <div class={styles.hint}>It does not report a version, so Sway cannot check it.</div>
+        <div class={styles.hint}>It does not report a version, so Tori cannot check it.</div>
       </Show>
 
       {/* The agent's own statement about which credential it will bill
-          against, not Sway reading its environment and guessing. */}
+          against, not Tori reading its environment and guessing. */}
       <Show when={a().apiKeySource}>
         {(source) => (
           <div class={styles.hint}>
@@ -584,7 +584,7 @@ export default function AgentDetail(props: {
           <span class={styles.groupTitle}>Setup</span>
           <span class={styles.sectionRule} />
           <span class={styles.groupFact}>{installed() ? "1" : "0"} of 3</span>
-          {/* For an install or login finished outside Sway: the tabs re-probe
+          {/* For an install or login finished outside Tori: the tabs re-probe
               on exit, but a user's own terminal cannot. */}
           <IconButton
             size="sm"
@@ -618,7 +618,7 @@ export default function AgentDetail(props: {
                 </Match>
                 <Match when={installCmd()}>
                   <div class={styles.stepDesc}>
-                    Sway opens a terminal and runs the install for you. Come back here when it
+                    Tori opens a terminal and runs the install for you. Come back here when it
                     finishes.
                   </div>
                 </Match>
@@ -657,7 +657,7 @@ export default function AgentDetail(props: {
                 </Match>
                 <Match when={loginCmd()}>
                   <div class={styles.stepDesc}>
-                    A terminal runs the agent's own login. Sway checks again when it closes.
+                    A terminal runs the agent's own login. Tori checks again when it closes.
                   </div>
                 </Match>
                 {/* No login command declared. The ladder's other rungs are
@@ -685,8 +685,8 @@ export default function AgentDetail(props: {
               <Show when={inheritedHome()}>
                 {(inherited) => (
                   <div class={styles.hint}>
-                    Sway started with the home variable set to <code>{inherited()}</code>, so this
-                    step is about that folder's login, not your own. Start Sway from a shell
+                    Tori started with the home variable set to <code>{inherited()}</code>, so this
+                    step is about that folder's login, not your own. Start Tori from a shell
                     without it to get yours back.
                   </div>
                 )}
@@ -702,7 +702,7 @@ export default function AgentDetail(props: {
               <div class={styles.stepHead}>
                 <span class={styles.stepTitle}>Ready for chat</span>
               </div>
-              <div class={styles.stepDesc}>Sway asks the agent what models it can run.</div>
+              <div class={styles.stepDesc}>Tori asks the agent what models it can run.</div>
             </div>
           </div>
         </div>
@@ -720,7 +720,7 @@ export default function AgentDetail(props: {
         />
       </Show>
 
-      {/* Only for an agent Sway can actually ask, and only once it is set up.
+      {/* Only for an agent Tori can actually ask, and only once it is set up.
           A terminal-only adapter declares no `[chat]` table, so the probe has
           nothing to drive and the backend never returns a row for it. During
           setup the section is dropped whole rather than shown saying
@@ -803,7 +803,7 @@ export default function AgentDetail(props: {
         </For>
       </div>
       <Show when={!capabilities().length}>
-        <div class={styles.cardMeta}>Terminal only. Sway has no chat transport for this agent.</div>
+        <div class={styles.cardMeta}>Terminal only. Tori has no chat transport for this agent.</div>
       </Show>
       {/* The reasons in full rather than behind hover text: they answer "why is
           this control missing", and a tooltip would make finding that the
@@ -837,7 +837,7 @@ export default function AgentDetail(props: {
           </span>
         </Show>
         <Show when={a().needsYou}>
-          <span class={styles.chip} title="Sway can detect when this agent is waiting on you">
+          <span class={styles.chip} title="Tori can detect when this agent is waiting on you">
             needs-you
           </span>
         </Show>

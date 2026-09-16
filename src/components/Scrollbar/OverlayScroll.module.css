@@ -24,7 +24,7 @@
     width: calc(6px * var(--ui-scale));
     opacity: 0;
     pointer-events: none;
-    transition: opacity var(--sway-duration-med) ease;
+    transition: opacity var(--tori-duration-med) ease;
   }
   .shown {
     opacity: 1;

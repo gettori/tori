@@ -124,7 +124,7 @@ import type { LucideIcon } from "lucide-solid";
 
 /** One picker entry: the stored key (Lucide PascalCase name) and its component. */
 export interface PickerIcon {
-  /** The name stored in `sway.toml` and used by `resolveIcon`. */
+  /** The name stored in `tori.toml` and used by `resolveIcon`. */
   name: string;
   icon: LucideIcon;
 }

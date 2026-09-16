@@ -50,7 +50,7 @@ export function loginJob(
     // the keyboard when it opens.
     interactive: true,
     // The whole mechanism of a second account. Without it the agent writes
-    // into the login the user already had, and Sway would show two profiles
+    // into the login the user already had, and Tori would show two profiles
     // that are one account.
     ...(route.home ? { env: { [route.home[0]]: route.home[1] } } : {}),
     // Both outcomes end the process, and both want a re-probe: a finished login
@@ -71,12 +71,12 @@ export function loginNote(agentLabel: string, route: LoginRoute): string | null 
     case "terminal":
       return null;
     // Not a shrug. The agent carries its own `authMethods` on the handshake, and
-    // Sway relays their description text when a chat refuses to open; both
+    // Tori relays their description text when a chat refuses to open; both
     // measured agents put a literal command there. Saying so beforehand beats a
     // button that would have to spawn the agent to find out.
     case "agentStates":
       return `${agentLabel} states how to sign in when you start a chat with it, in its own words.`;
     case "docs":
-      return `Sway has no sign-in command for ${agentLabel}. Its adapter declares none.`;
+      return `Tori has no sign-in command for ${agentLabel}. Its adapter declares none.`;
   }
 }

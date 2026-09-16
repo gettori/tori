@@ -40,7 +40,7 @@ import { dotFromStatus, type SessionStatus } from "./sessionStatus";
 
 export type SessionDot = "solid" | "hollow" | "working" | "needsYou" | "none";
 
-/** How Sway came to know a dot: measured from the session's own event stream,
+/** How Tori came to know a dot: measured from the session's own event stream,
  *  or inferred from a probe plus a transcript tail. Rendered only on the exact
  *  side (see `LeftSidebar`), because marking the inferred side would change how
  *  every pre-chat session renders. */

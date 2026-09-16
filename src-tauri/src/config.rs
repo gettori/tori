@@ -1,4 +1,4 @@
-// Sway config. Projects are DISCOVERED from the filesystem, not declared:
+// Tori config. Projects are DISCOVERED from the filesystem, not declared:
 // the user lists base "roots" (default `~/Projects`); each `<root>/<space>/<project>`
 // folder becomes a project, one space per first-level dir. Extra out-of-root
 // project folders can be added explicitly. A legacy `[[project]]` table is still
@@ -71,7 +71,7 @@ struct ProjectMeta {
     /// A Lucide name from the picker set.
     #[serde(default)]
     icon: Option<String>,
-    /// An image on disk, normally a copy in `~/.config/sway/icons`.
+    /// An image on disk, normally a copy in `~/.config/tori/icons`.
     #[serde(default)]
     icon_file: Option<String>,
 }
@@ -214,7 +214,7 @@ impl ProjectIndex {
 fn config_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/sway.toml")
+        .join(".config/tori/tori.toml")
 }
 
 fn expand_tilde(path: &str) -> String {
@@ -235,7 +235,7 @@ fn basename(p: &Path) -> String {
 // No project is seeded: a fresh config has no roots, which the UI detects as a
 // first run and offers a folder picker (see set_root). Projects are discovered
 // from the roots the user adds; legacy `[[project]]` tables are still honored.
-const SAMPLE: &str = r#"# Sway config. Projects are discovered from your base folders.
+const SAMPLE: &str = r#"# Tori config. Projects are discovered from your base folders.
 # Add a base folder from the app, or declare roots here:
 #
 # [discovery]
@@ -322,7 +322,7 @@ fn parse_worktrees(text: &str) -> Vec<WtEntry> {
 // A plain repo would otherwise surface EVERY local branch as a unit. Instead the
 // user attaches the branches they care about; the visible set is the attached
 // branches PLUS whatever is currently checked out. Stored SEPARATELY from the
-// watched sway.toml (writing the toml loops the config watcher), mirroring
+// watched tori.toml (writing the toml loops the config watcher), mirroring
 // adopted.json (sessions.rs). Keyed by normalized repo path.
 
 fn norm(path: &str) -> String {
@@ -344,7 +344,7 @@ struct AttachedState(HashMap<String, AttachedRepo>);
 fn attached_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/attached.json")
+        .join(".config/tori/attached.json")
 }
 
 fn load_attached() -> AttachedState {
@@ -455,7 +455,7 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
 
 /// A plain repo's secondary worktrees as units, sorted by label. `git worktree
 /// list` always names the main worktree first, so everything after it is one a
-/// `git worktree add` made, Sway's own `.sway/worktrees/` included.
+/// `git worktree add` made, Tori's own `.tori/worktrees/` included.
 ///
 /// Only the ones **inside** the main worktree, which is where `feature_container`
 /// puts a plain repo's Feature worktrees. A linked worktree elsewhere is a
@@ -519,9 +519,9 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
     if !has_bare {
         // A normal repo: branch-units are its attached + current branches, plus
         // one unit per secondary worktree. Without that second half a Feature
-        // worktree in a plain repo is invisible in Sway: `plain_branch_units`
+        // worktree in a plain repo is invisible in Tori: `plain_branch_units`
         // enumerates `git branch` and keeps only the current checkout and the
-        // attached names, and the walkers skip `.sway/worktrees`.
+        // attached names, and the walkers skip `.tori/worktrees`.
         let attached = attached_branches(&load_attached(), path);
         let mut units = plain_branch_units(path, &attached);
         units.extend(secondary_worktree_units(&real, &units));
@@ -1141,7 +1141,7 @@ pub fn attach_remote_branch(
 }
 
 /// Install a watcher on the config file's directory. Emits `config://changed`
-/// whenever sway.toml is written. Idempotent: re-installing replaces the old one.
+/// whenever tori.toml is written. Idempotent: re-installing replaces the old one.
 #[tauri::command(async)]
 pub fn config_watch_start(app: AppHandle, state: State<ConfigWatch>) -> Result<(), String> {
     let path = config_path();
@@ -1473,7 +1473,7 @@ fn write_project_meta(path: &str, icon: Option<&str>, icon_file: Option<&str>) -
 
 /// The image currently stored for `path`, read back before an overwrite so the
 /// superseded copy can be pruned from the icon store. Read failures are silent:
-/// a stale file left in `~/.config/sway/icons` is litter, never a broken icon.
+/// a stale file left in `~/.config/tori/icons` is litter, never a broken icon.
 fn current_icon_file(path: &str) -> Option<String> {
     let raw: RawConfig = toml::from_str(&ensure_config().ok()?).ok()?;
     raw.project_meta
@@ -1626,7 +1626,7 @@ pub fn add_folder(app: AppHandle, space_path: String, name: String) -> Result<St
         return Err(format!("\"{n}\" already exists"));
     }
     std::fs::create_dir(&dir).map_err(|e| e.to_string())?;
-    // Sway created it: adopt so a path reused over old sessions is not historical.
+    // Tori created it: adopt so a path reused over old sessions is not historical.
     let _ = crate::sessions::adopt(&dir.to_string_lossy());
     let _ = app.emit("config://changed", ()); // explicit re-discovery
     Ok(dir.to_string_lossy().into_owned())
@@ -1980,7 +1980,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let p = std::env::temp_dir().join(format!("sway_cfg_test_{n}"));
+        let p = std::env::temp_dir().join(format!("tori_cfg_test_{n}"));
         std::fs::create_dir_all(&p).unwrap();
         p
     }
@@ -2300,14 +2300,14 @@ mod tests {
     }
 
     #[test]
-    fn plain_repo_lists_its_sway_worktrees_as_units() {
-        // What a Feature leaves behind on Keep: a checkout under `.sway/worktrees`
+    fn plain_repo_lists_its_tori_worktrees_as_units() {
+        // What a Feature leaves behind on Keep: a checkout under `.tori/worktrees`
         // that `git branch` names but `plain_branch_units` filters out, and that
-        // the folder walkers skip. Without a unit for it, it is gone from Sway.
+        // the folder walkers skip. Without a unit for it, it is gone from Tori.
         let tmp = unique_tmp();
         let repo = tmp.join("repo");
         init_repo(&repo, "main");
-        let wt = repo.join(".sway/worktrees/x");
+        let wt = repo.join(".tori/worktrees/x");
         git(
             &repo,
             &["worktree", "add", "-q", "-b", "feat/x", wt.to_str().unwrap()],
@@ -2320,7 +2320,7 @@ mod tests {
         assert_eq!(main.folder_path, repo.to_string_lossy());
         let feat = units.iter().find(|u| u.label == "feat/x").unwrap();
         assert_eq!(feat.kind, ProjectKind::Worktree);
-        assert!(feat.folder_path.ends_with(".sway/worktrees/x"));
+        assert!(feat.folder_path.ends_with(".tori/worktrees/x"));
         assert!(!feat.is_current);
 
         std::fs::remove_dir_all(&tmp).ok();
@@ -2624,22 +2624,22 @@ mod tests {
     #[test]
     fn upsert_project_meta_adds_switches_and_prunes() {
         // Add onto an empty config: creates the `[[project_meta]]` entry.
-        let added = upsert_project_meta("", "/p/sway", Some("Rocket"), None).unwrap();
+        let added = upsert_project_meta("", "/p/tori", Some("Rocket"), None).unwrap();
         let c1: RawConfig = toml::from_str(&added).unwrap();
         assert_eq!(c1.project_meta.len(), 1);
-        assert_eq!(c1.project_meta[0].path, "/p/sway");
+        assert_eq!(c1.project_meta[0].path, "/p/tori");
         assert_eq!(c1.project_meta[0].icon.as_deref(), Some("Rocket"));
 
         // Switching to an uploaded image must REMOVE the glyph, not shadow it -
         // a leftover `icon` would resurface the moment the image was cleared.
-        let to_file = upsert_project_meta(&added, "/p/sway", None, Some("/i/a.png")).unwrap();
+        let to_file = upsert_project_meta(&added, "/p/tori", None, Some("/i/a.png")).unwrap();
         let c2: RawConfig = toml::from_str(&to_file).unwrap();
         assert_eq!(c2.project_meta.len(), 1);
         assert_eq!(c2.project_meta[0].icon, None);
         assert_eq!(c2.project_meta[0].icon_file.as_deref(), Some("/i/a.png"));
 
         // And back the other way, in place, still one entry.
-        let back = upsert_project_meta(&to_file, "/p/sway", Some("Anchor"), None).unwrap();
+        let back = upsert_project_meta(&to_file, "/p/tori", Some("Anchor"), None).unwrap();
         let c3: RawConfig = toml::from_str(&back).unwrap();
         assert_eq!(c3.project_meta.len(), 1);
         assert_eq!(c3.project_meta[0].icon.as_deref(), Some("Anchor"));
@@ -2651,7 +2651,7 @@ mod tests {
         assert_eq!(c4.project_meta.len(), 2);
 
         // Both cleared ("automatic") prunes that entry, leaving the other.
-        let cleared = upsert_project_meta(&two, "/p/sway", None, None).unwrap();
+        let cleared = upsert_project_meta(&two, "/p/tori", None, None).unwrap();
         let c5: RawConfig = toml::from_str(&cleared).unwrap();
         assert_eq!(c5.project_meta.len(), 1);
         assert_eq!(c5.project_meta[0].path, "/p/other");
@@ -2952,7 +2952,7 @@ mod tests {
         assert!(do_delete_space(Some(rs), outside.to_str().unwrap()).is_err());
         // No configured root, and a non-existent (e.g. tilde-expanded) root, both err.
         assert!(do_delete_space(None, space_dir.to_str().unwrap()).is_err());
-        assert!(do_delete_space(Some("~/sway_nonexistent_base_xyz"), space_dir.to_str().unwrap()).is_err());
+        assert!(do_delete_space(Some("~/tori_nonexistent_base_xyz"), space_dir.to_str().unwrap()).is_err());
 
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -2978,7 +2978,7 @@ mod tests {
         assert!(do_remove_folder(Some(rs), outside.to_str().unwrap()).is_err());
         // No configured root, and a non-existent root, both err.
         assert!(do_remove_folder(None, folder.to_str().unwrap()).is_err());
-        assert!(do_remove_folder(Some("~/sway_nonexistent_base_xyz"), folder.to_str().unwrap()).is_err());
+        assert!(do_remove_folder(Some("~/tori_nonexistent_base_xyz"), folder.to_str().unwrap()).is_err());
 
         std::fs::remove_dir_all(&tmp).ok();
     }

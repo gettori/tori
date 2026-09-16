@@ -40,7 +40,7 @@ export const Playground: Story = {};
  *  `left` becomes `right` on its own. */
 export const Placements: Story = {
   render: () => (
-    <div style={{ display: "flex", gap: "var(--sway-space-8)", padding: "80px" }}>
+    <div style={{ display: "flex", gap: "var(--tori-space-8)", padding: "80px" }}>
       <For each={PLACEMENTS}>
         {(placement) => (
           <Tooltip label={`Opens on the ${placement}`} placement={placement} as="button">
@@ -64,7 +64,7 @@ export const Placements: Story = {
  *  grouping is a property of the whole app, not of this row. */
 export const DelayAndGrouping: Story = {
   render: () => (
-    <div style={{ display: "flex", gap: "var(--sway-space-2)", padding: "80px" }}>
+    <div style={{ display: "flex", gap: "var(--tori-space-2)", padding: "80px" }}>
       <For each={["Save", "Format", "Run", "Debug", "Split", "Close"]}>
         {(action) => (
           <Button tooltip={`${action} the current file`}>{action}</Button>
@@ -80,7 +80,7 @@ export const DelayAndGrouping: Story = {
  *  having written it twice. */
 export const OnAnIconButton: Story = {
   render: () => (
-    <div style={{ display: "flex", gap: "var(--sway-space-2)", padding: "80px" }}>
+    <div style={{ display: "flex", gap: "var(--tori-space-2)", padding: "80px" }}>
       <For each={["Split right", "Split down", "Close others"]}>
         {(label) => (
           <IconButton
@@ -139,7 +139,7 @@ export const InsideADialog: Story = {
  *  state" is a judgement no check in this repo can make. */
 export const WhenDisabled: Story = {
   render: () => (
-    <div style={{ display: "flex", gap: "var(--sway-space-4)", padding: "80px" }}>
+    <div style={{ display: "flex", gap: "var(--tori-space-4)", padding: "80px" }}>
       <Button disabled tooltip="Nothing staged to commit">
         Commit (plain)
       </Button>

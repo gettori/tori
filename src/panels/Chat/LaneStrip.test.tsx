@@ -178,7 +178,7 @@ describe("the lane strip", () => {
     expect(dots(idle.container)[0]!.getAttribute("data-mark")).toBeNull();
     idle.unmount();
 
-    // And a provider Sway cannot name keeps the neutral accent rather than
+    // And a provider Tori cannot name keeps the neutral accent rather than
     // borrowing a logo's.
     const unnamed = render(() => strip({ busy: true, mark: null }));
     expect(dots(unnamed.container)[0]!.getAttribute("data-mark")).toBeNull();

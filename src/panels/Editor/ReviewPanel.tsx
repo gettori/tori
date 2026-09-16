@@ -408,7 +408,7 @@ export default function ReviewPanel(props: {
         const ok = await askConfirm({
           title: `Discard changes to ${plural(files.length, "file")}?`,
           message:
-            "Every unstaged change in this repo goes back to how it is staged. Anything already staged is kept.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.",
+            "Every unstaged change in this repo goes back to how it is staged. Anything already staged is kept.\n\nTori saves a snapshot first, so you can bring it back from Undo history in the timeline.",
           confirmLabel: "Discard changes",
           danger: true,
         });
@@ -620,7 +620,7 @@ export default function ReviewPanel(props: {
    *  hazard: each rewrites files across the whole worktree, so an agent mid-turn
    *  here can have its work clobbered or clobber the change a moment later. Two
    *  tiers, the same as a tree revert: a session verifiably Executing blocks
-   *  hard, one Sway cannot see inside is overridable. `verb` names the action in
+   *  hard, one Tori cannot see inside is overridable. `verb` names the action in
    *  the override, so the question reads as itself rather than as a revert. */
   async function guarded(verb: string, root: string, action: () => Promise<void>) {
     const ok = await mayRewrite(verb, root, {
@@ -658,8 +658,8 @@ export default function ReviewPanel(props: {
         const ok = await askConfirm({
           title: untracked ? `Delete ${path}?` : `Discard changes to ${path}?`,
           message: untracked
-            ? `1 file is deleted. It was never committed, so git has no copy of it.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`
-            : `1 file goes back to how it is staged. Unstaged changes to it are lost; anything already staged is kept.\n\nSway saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
+            ? `1 file is deleted. It was never committed, so git has no copy of it.\n\nTori saves a snapshot first, so you can bring it back from Undo history in the timeline.`
+            : `1 file goes back to how it is staged. Unstaged changes to it are lost; anything already staged is kept.\n\nTori saves a snapshot first, so you can bring it back from Undo history in the timeline.`,
           confirmLabel: untracked ? "Delete file" : "Discard changes",
           danger: true,
         });

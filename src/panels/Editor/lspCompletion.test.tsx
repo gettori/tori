@@ -1,4 +1,4 @@
-// Sway's completion source, against a real `LSPClient` and a real
+// Tori's completion source, against a real `LSPClient` and a real
 // `EditorView`.
 //
 // The reason this is not a unit test of a pure function: what it replaces is
@@ -30,7 +30,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 
 const { clientExtensions } = await import("./lspClient");
-const { RESOLVE_TIMEOUT_MS, swayCompletionSource, offsetOf, lspToSnippet, prefixRegexp } = await import(
+const { RESOLVE_TIMEOUT_MS, toriCompletionSource, offsetOf, lspToSnippet, prefixRegexp } = await import(
   "./lspCompletion"
 );
 
@@ -109,7 +109,7 @@ async function setup(doc = "", extra: Extension = [], uri = URI) {
 }
 
 async function complete(view: EditorView, pos = view.state.doc.length): Promise<CompletionResult> {
-  const result = await swayCompletionSource(new CompletionContext(view.state, pos, true, view));
+  const result = await toriCompletionSource(new CompletionContext(view.state, pos, true, view));
   expect(result, "the source answered nothing").toBeTruthy();
   return result as CompletionResult;
 }
@@ -158,13 +158,13 @@ afterEach(() => {
 describe("the client's extension list", () => {
   it("installs exactly one completion source, so no option can appear twice", async () => {
     // The failure this pins is not a crash: spreading `languageServerExtensions()`
-    // *and* adding Sway's source leaves both registered, both asking the same
+    // *and* adding Tori's source leaves both registered, both asking the same
     // server the same question, and every option in the popup listed twice.
     const { view } = await setup("const x = 1\n");
     const sources = view.state.languageDataAt<CompletionSource>("autocomplete", 0);
 
     expect(sources).toHaveLength(1);
-    expect(sources[0]).toBe(swayCompletionSource);
+    expect(sources[0]).toBe(toriCompletionSource);
   });
 
   it("binds F12 and ⇧F12, which `commands.ts` advertises as their `sub:` labels", async () => {
@@ -183,7 +183,7 @@ describe("the client's extension list", () => {
     }
   });
 
-  it("leaves ⇧⌥F and F2 alone, because Sway answers both better", async () => {
+  it("leaves ⇧⌥F and F2 alone, because Tori answers both better", async () => {
     // ⇧⌥F: `lsp-format` is on that chord already and tries the project's Biome
     // or Prettier before the server. Binding the library's would take it, and
     // because CodeMirror honours `preventDefault` even when a command declines,
@@ -192,8 +192,8 @@ describe("the client's extension list", () => {
     //
     // F2: `renameSymbol` skips every file the user has not already opened,
     // silently, which is the whole reason `lspRename.ts` exists. `CodeEditor`
-    // binds F2 to Sway's rename at `Prec.highest`; this would be the fallback
-    // underneath it, reachable exactly when Sway's declines.
+    // binds F2 to Tori's rename at `Prec.highest`; this would be the fallback
+    // underneath it, reachable exactly when Tori's declines.
     const { view } = await setup("const x = 1\n");
     const bound = view.state.facet(keymap).flat();
 
@@ -203,7 +203,7 @@ describe("the client's extension list", () => {
 
   it("declares resolveSupport for additionalTextEdits and nothing else", async () => {
     // `resolveSupport` is a licence, not a request. Naming `documentation` here
-    // would let a server drop the docs from every item in the list, and Sway
+    // would let a server drop the docs from every item in the list, and Tori
     // resolves only on commit - so the popup would show nothing for anything
     // the user had not already accepted.
     await setup();
@@ -225,7 +225,7 @@ describe("the client's extension list", () => {
   it("changes nothing in the initialize payload except the completion block", async () => {
     // The verify this phase was written against, done literally: the baseline
     // is the list as it stood before, `languageServerExtensions()` spread with
-    // Sway's capability blocks after it. Rewriting a list by hand is how a
+    // Tori's capability blocks after it. Rewriting a list by hand is how a
     // capability quietly stops being advertised, and a server that was never
     // asked simply offers no provider - so the failure is a feature going
     // silent, not an error anyone sees.
@@ -252,7 +252,7 @@ describe("the client's extension list", () => {
       workspaceEditClientCapabilities,
       codeActionClientCapabilities,
       // Not part of the completion change, but a capability block all the
-      // same: the baseline is "the old extension list plus every block Sway
+      // same: the baseline is "the old extension list plus every block Tori
       // declares", so that what this test measures stays the *completion*
       // delta rather than drifting into a record of everything since.
       configurationClientCapabilities,
@@ -293,7 +293,7 @@ describe("the client's extension list", () => {
     expect(td.callHierarchy).toBeTruthy();
     // Wave 7 Phase 9. Both halves, and the second is a promise rather than a
     // preference: `refreshSupport` tells the server it may push
-    // `workspace/codeLens/refresh` instead of leaving Sway to guess when a
+    // `workspace/codeLens/refresh` instead of leaving Tori to guess when a
     // reference count went stale, and `lspClient`'s router is what makes that
     // true. Declaring it and answering `-32601` would be worse than not
     // declaring it, since a conformant server stops asking.
@@ -368,7 +368,7 @@ describe("the behaviour carried over from serverCompletionSource", () => {
   it("offers no completions when the server advertises no provider", async () => {
     capabilities = {};
     const { view } = await setup("con");
-    const result = await swayCompletionSource(new CompletionContext(view.state, 3, true, view));
+    const result = await toriCompletionSource(new CompletionContext(view.state, 3, true, view));
 
     expect(result).toBeNull();
     expect(asked("textDocument/completion")).toHaveLength(0);
@@ -377,10 +377,10 @@ describe("the behaviour carried over from serverCompletionSource", () => {
   it("asks only on a trigger character or an identifier when it was not invoked", async () => {
     const { view } = await setup("a b.");
     // A space is neither, so an implicit completion there is not a request.
-    expect(await swayCompletionSource(new CompletionContext(view.state, 2, false, view))).toBeNull();
+    expect(await toriCompletionSource(new CompletionContext(view.state, 2, false, view))).toBeNull();
     // The server named "." a trigger character.
     completionReply = { items: [{ label: "x" }] };
-    expect(await swayCompletionSource(new CompletionContext(view.state, 4, false, view))).toBeTruthy();
+    expect(await toriCompletionSource(new CompletionContext(view.state, 4, false, view))).toBeTruthy();
     expect(asked("textDocument/completion")[0].params.context).toEqual({
       triggerKind: 2,
       triggerCharacter: ".",
@@ -567,7 +567,7 @@ describe("auto-import through completionItem/resolve", () => {
     // An inverted range is the malformed case `mapPosition` does *not* catch:
     // both ends map to real offsets. What refuses it is CodeMirror, when the
     // whole set is dispatched as one transaction - which is the reason there is
-    // no bounds check of Sway's own in that loop.
+    // no bounds check of Tori's own in that loop.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { view } = await setup("const a = 1\n");
     completionReply = { items: [{ label: "useMemo" }] };

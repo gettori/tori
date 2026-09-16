@@ -20,7 +20,7 @@ const unit = (folderPath: string, branch: string) => ({
 // Two spaces, so "the tab outlives its space" is a real navigation and not a
 // hypothetical: `other` does not contain MAIN at all.
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -59,7 +59,7 @@ const session = (id: string, cwd: string) => ({
   agent: "claude",
 });
 
-// `live-1` is hosted by a tab; `detached-1` is the session started outside Sway
+// `live-1` is hosted by a tab; `detached-1` is the session started outside Tori
 // that nothing would ever probe without the folder sweep; `chat-1` is a native
 // chat's transcript, on disk like any other.
 const LISTINGS: Record<string, ReturnType<typeof session>[]> = {
@@ -140,7 +140,7 @@ describe("what the sidebar can see without being expanded", () => {
     bridge.handlers = {};
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
   });
   afterEach(() => resetSessionStoreForTests());
 
@@ -166,7 +166,7 @@ describe("what the sidebar can see without being expanded", () => {
   // The undercount lazy restore opened up. The sweep skips every session a tab
   // already names, so an *inert* tab - a restored strip entry with nothing
   // behind it - would hide its own session from the only pass that would have
-  // found it running outside Sway.
+  // found it running outside Tori.
   it("probes a session an inert tab merely names, since nothing is driving it", async () => {
     const inert = liveTabs.map((t) => ({ ...t, state: "inert" as const }));
     render(() => <LeftSidebar selected={null} onSelect={() => {}} liveTabs={inert} />);
@@ -185,7 +185,7 @@ describe("what the sidebar can see without being expanded", () => {
 
   it("lists every branch-unit in the active space with the whole tree collapsed", async () => {
     render(() => <LeftSidebar selected={null} onSelect={() => {}} />);
-    // Nothing is expanded: no `sway.expanded.v1` was written above, so the only
+    // Nothing is expanded: no `tori.expanded.v1` was written above, so the only
     // thing that could have driven these listings is the space's branch-units.
     await waitFor(() => expect(Object.keys(sessions()).sort()).toEqual([FEAT, MAIN]));
   });
@@ -240,7 +240,7 @@ describe("what the sidebar can see without being expanded", () => {
     );
   });
 
-  // Nothing else probes a session Sway is not hosting, so without the sweep an
+  // Nothing else probes a session Tori is not hosting, so without the sweep an
   // agent someone started in a terminal is invisible until something asks after
   // it. Read `sessionStatus` rather than a row: the sidebar lists no sessions
   // any more, and a detached session is deliberately absent from
@@ -273,7 +273,7 @@ describe("what the sidebar can see without being expanded", () => {
     await waitFor(() => expect(sessions()[MAIN]).toBeTruthy());
 
     window.dispatchEvent(
-      new CustomEvent("sway:terminal-tab-focused", { detail: { folderPath: MAIN, sessionId } }),
+      new CustomEvent("tori:terminal-tab-focused", { detail: { folderPath: MAIN, sessionId } }),
     );
 
     const last = () => picked[picked.length - 1];

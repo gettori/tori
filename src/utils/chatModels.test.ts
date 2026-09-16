@@ -165,7 +165,7 @@ describe("pickableModels", () => {
   });
 
   // Fast mode comes off the row the agent published, not off an adapter table.
-  // Sway used to keep one, keyed on `claude-opus-5` while the catalogue resolves
+  // Tori used to keep one, keyed on `claude-opus-5` while the catalogue resolves
   // both Opus rows to `claude-opus-5[1m]`, so the lookup matched nothing.
   it("carries fast mode from the row that declares it and no further", () => {
     const models = live();
@@ -745,7 +745,7 @@ describe("contextWindowFor", () => {
   });
 
   // ACP agents report occupancy and window together, for the session rather
-  // than per model, so an agent Sway drives over ACP has a denominator from its
+  // than per model, so an agent Tori drives over ACP has a denominator from its
   // first usage update - and it is the agent's own, not a catalogue's.
   it("takes the window a session states for itself when no model figure exists", () => {
     expect(contextWindowFor("some-acp-model", {}, 272_000)).toBe(272_000);

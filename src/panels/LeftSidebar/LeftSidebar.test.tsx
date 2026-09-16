@@ -13,9 +13,9 @@ const ROOT = "/root/work/repo";
 const GOAL = "make the parser faster";
 
 const attempts = [
-  { path: `${ROOT}/.sway-attempts/try-1`, groupId: "g1", goal: GOAL },
-  { path: `${ROOT}/.sway-attempts/try-2`, groupId: "g1", goal: GOAL },
-  { path: `${ROOT}/.sway-attempts/try-3`, groupId: "g1", goal: GOAL },
+  { path: `${ROOT}/.tori-attempts/try-1`, groupId: "g1", goal: GOAL },
+  { path: `${ROOT}/.tori-attempts/try-2`, groupId: "g1", goal: GOAL },
+  { path: `${ROOT}/.tori-attempts/try-3`, groupId: "g1", goal: GOAL },
 ];
 
 const unit = (folderPath: string, branch: string) => ({
@@ -27,7 +27,7 @@ const unit = (folderPath: string, branch: string) => ({
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -44,9 +44,9 @@ const config = {
           // half that would otherwise render each attempt twice.
           branchUnits: [
             unit(`${ROOT}/main`, "main"),
-            unit(`${ROOT}/.sway-attempts/try-1`, "try-1"),
-            unit(`${ROOT}/.sway-attempts/try-2`, "try-2"),
-            unit(`${ROOT}/.sway-attempts/try-3`, "try-3"),
+            unit(`${ROOT}/.tori-attempts/try-1`, "try-1"),
+            unit(`${ROOT}/.tori-attempts/try-2`, "try-2"),
+            unit(`${ROOT}/.tori-attempts/try-3`, "try-3"),
           ],
         },
       ],
@@ -111,8 +111,8 @@ describe("fan-out groups in the tree", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     // Open the project, so its branch-units and groups render at all.
-    localStorage.setItem("sway.expanded.v1", JSON.stringify(["p:work/repo"]));
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/repo"]));
+    localStorage.setItem("tori.active-space.v1", "work");
   });
 
   it("renders three attempts as one group and leaves the ordinary worktree alone", async () => {
@@ -190,7 +190,7 @@ describe("fan-out groups in the tree", () => {
   });
 
   it("promotes a winner by its recorded path, and says what did not go", async () => {
-    bridge.promoteProblems = [`${ROOT}/.sway-attempts/try-3: worktree removed, but branch stayed`];
+    bridge.promoteProblems = [`${ROOT}/.tori-attempts/try-3: worktree removed, but branch stayed`];
     render(() => (
       <>
         <LeftSidebar selected={null} onSelect={() => {}} />
@@ -212,7 +212,7 @@ describe("fan-out groups in the tree", () => {
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "promote_attempt")).toBe(true));
     const call = bridge.calls.find((c) => c.cmd === "promote_attempt")!;
     // The recorded path, which is what resolves the group backend-side.
-    expect(call.args).toEqual({ root: ROOT, winnerPath: `${ROOT}/.sway-attempts/try-2` });
+    expect(call.args).toEqual({ root: ROOT, winnerPath: `${ROOT}/.tori-attempts/try-2` });
     // A loser that only half went is surfaced, not swallowed.
     expect(await screen.findByText(/did not fully go/)).toBeTruthy();
   });
@@ -235,7 +235,7 @@ describe("the Spaces | Features mode", () => {
     bridge.calls.length = 0;
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
   });
 
   const sidebar = () => render(() => <LeftSidebar selected={null} onSelect={() => {}} />);
@@ -276,7 +276,7 @@ describe("the Spaces | Features mode", () => {
     await screen.findByText("repo");
     fireEvent.click(segment("Features"));
     await waitFor(() => expect(pressed("Features")).toBe(true));
-    expect(localStorage.getItem("sway.sidebar-mode.v1")).toBe("features");
+    expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("features");
     expect(screen.queryByText("repo")).toBeNull();
     expect(first.container.querySelector("[data-feature-list]")).not.toBeNull();
     await screen.findByText("No Features yet.");

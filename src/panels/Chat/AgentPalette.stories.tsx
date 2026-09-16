@@ -84,7 +84,7 @@ const meta: Meta<typeof AgentPalette> = {
 export default meta;
 type Story = StoryObj<typeof AgentPalette>;
 
-/** What a draft opens: every chat-capable agent, in whatever state Sway last
+/** What a draft opens: every chat-capable agent, in whatever state Tori last
  *  found it, and the models it already knows about. */
 export const Draft: Story = {
   args: {

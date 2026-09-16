@@ -247,9 +247,9 @@ describe("the bundled chat tables", () => {
     const chat = claude.chat as ChatConfig;
     expect(chat.modes.find((m) => m.id === "auto")?.requires).toBe("supportsAutoMode");
     // `permissive_caveat` used to be asserted here, on `bypassPermissions`. The
-    // adapter no longer declares it, because Sway no longer runs ahead of the
+    // adapter no longer declares it, because Tori no longer runs ahead of the
     // mode it warned about. `permissive` replaced it and is not the same claim:
-    // that one was about Sway's gate, this one is about what the mode does.
+    // that one was about Tori's gate, this one is about what the mode does.
     expect(JSON.stringify(chat.modes)).not.toContain("permissive_caveat");
     expect(chat.modes.filter((m) => m.permissive).map((m) => m.id)).toEqual(["bypassPermissions"]);
   });
@@ -336,12 +336,12 @@ describe("mode/effort/model arg resolution", () => {
 
 // Which rungs each bundled adapter declares, read off the same generated
 // fixture the fallback is checked against. A rung is declared only in the phase
-// that builds a read path for it, so this list is what Sway can climb today,
+// that builds a read path for it, so this list is what Tori can climb today,
 // not what the agents are capable of.
 describe("the bundled usage ladders", () => {
   const resolved = bundled as unknown as Adapter[];
 
-  it("gives claude the free rung then the opt-in one, and codex the read Sway schedules", () => {
+  it("gives claude the free rung then the opt-in one, and codex the read Tori schedules", () => {
     const ladders = Object.fromEntries(
       resolved.filter((a) => a.usage).map((a) => [a.id, a.usage!.sources]),
     );

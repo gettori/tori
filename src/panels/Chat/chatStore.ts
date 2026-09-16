@@ -1,6 +1,6 @@
 // The per-session chat state: an ordered item list, a tool-call index, the
 // streaming buffers, the composer queue, and the status a chat reports to the
-// rest of Sway.
+// rest of Tori.
 //
 // Pure core, thin wrapper (see the pure-core-for-global-stores lesson). Every
 // function here mutates a plain `ChatState` draft and touches nothing global,
@@ -175,8 +175,8 @@ export type ToolItem = {
  *  One row per frame rather than one per hook execution: the `started` and
  *  `finished` frames both appear. A hook that ran as configured is folded away
  *  by default, which is what keeps a 60-tool-call turn from adding 120 rows of
- *  plumbing; `swayOwned` names whose hook a surviving row belongs to, since
- *  `name` cannot - it reports the *tool*, so Sway's hook on a `Write` and a
+ *  plumbing; `toriOwned` names whose hook a surviving row belongs to, since
+ *  `name` cannot - it reports the *tool*, so Tori's hook on a `Write` and a
  *  user's hook on the same `Write` are both `PreToolUse:Write`. */
 export type HookItem = {
   kind: "hook";
@@ -185,7 +185,7 @@ export type HookItem = {
   name: string;
   event: string;
   phase: HookPhase;
-  swayOwned: boolean;
+  toriOwned: boolean;
   outcome: string | null;
   exitCode: number | null;
   output: string | null;
@@ -206,7 +206,7 @@ export type HookItem = {
  *  replayed question read only**, rather than a separate flag that could
  *  disagree with it.
  *
- *  There is no deadline field. Measured: neither the CLI nor Sway arms one, so
+ *  There is no deadline field. Measured: neither the CLI nor Tori arms one, so
  *  the only things that end an unanswered question are the user and an explicit
  *  withdrawal. */
 export type QuestionItem = {
@@ -346,12 +346,12 @@ export function toolCallsSeen(s: ChatState): number {
  * **failing** (a non-zero exit), which is the one time it is the most important
  * thing on screen and nothing else explains what happened.
  *
- * **A failure is shown whoever's hook it was.** This used to fold Sway's own
+ * **A failure is shown whoever's hook it was.** This used to fold Tori's own
  * rows away even then, which read as correct only because the marker was never
- * actually landing: Sway's hook decided tool calls, and its verdict already
- * rendered on the tool card it gated. Sway's only hook now captures a
+ * actually landing: Tori's hook decided tool calls, and its verdict already
+ * rendered on the tool card it gated. Tori's only hook now captures a
  * before-state and decides nothing, so its failing is news nothing else
- * carries - the diffs are silently gone. `swayOwned` decides the row's *label*
+ * carries - the diffs are silently gone. `toriOwned` decides the row's *label*
  * rather than whether it appears.
  *
  * The setting reveals everything, and nothing is ever dropped from the state,
@@ -479,7 +479,7 @@ export type ChatState = {
    *  model and the mode, **nothing on the wire reports effort back**, so the
    *  applied value is what was last sent rather than what was confirmed.
    *
-   *  `null` on either is a real state and not an absence: it is the level Sway
+   *  `null` on either is a real state and not an absence: it is the level Tori
    *  has never sent, so whatever the CLI itself runs. That is why the pending
    *  slot has **three** states rather than two - `undefined` for "nothing
    *  picked", `null` for "picked: back to the CLI's own default", a string for
@@ -700,7 +700,7 @@ function nextId(s: ChatState, prefix: string): string {
 /**
  * The notice a running compaction is writing itself into, released from the
  * state as it is handed back. Null when none is running, which is every
- * compaction Sway learns about only from the boundary: a resumed session's
+ * compaction Tori learns about only from the boundary: a resumed session's
  * replayed history, and any agent that reports no start of its own.
  */
 function settleCompaction(s: ChatState): NoticeItem | null {
@@ -1217,25 +1217,25 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
       return;
     }
     case "hookFired": {
-      // Only the response carries Sway's marker, so the `started` frame that
+      // Only the response carries Tori's marker, so the `started` frame that
       // preceded it was pushed as unattributed. Settle it now, or the pair
-      // splits: the row that starts Sway's hook would stay visible while the
+      // splits: the row that starts Tori's hook would stay visible while the
       // row that finishes it folds away.
       //
       // Searched from the end and stopped at the first hit: a `hookId` is
       // unique to one execution and its `started` frame is almost always the
       // row just pushed, so scanning the whole transcript per hook response
       // would be O(items) sixty times over on a tool-heavy turn.
-      if (ev.swayOwned) {
+      if (ev.toriOwned) {
         for (let i = s.items.length - 1; i >= 0; i--) {
           const it = s.items[i];
           if (it.kind === "hook" && it.hookId === ev.hookId) {
-            it.swayOwned = true;
+            it.toriOwned = true;
             break;
           }
         }
       }
-      // Kept as an item even when Sway owns it, rather than dropped here: the
+      // Kept as an item even when Tori owns it, rather than dropped here: the
       // collapse is a *view* decision, so the opt-in toggle can reveal the
       // folded rows without needing the session replayed to recover them.
       s.items.push({
@@ -1245,7 +1245,7 @@ function foldEvent(s: ChatState, ev: ChatEvent) {
         name: ev.name,
         event: ev.event,
         phase: ev.phase,
-        swayOwned: ev.swayOwned,
+        toriOwned: ev.toriOwned,
         outcome: ev.outcome ?? null,
         exitCode: ev.exitCode ?? null,
         output: ev.output ?? null,
@@ -1606,9 +1606,9 @@ export function pushQuestionAnswers(s: ChatState, toolUseId: string, answers: Qu
 }
 
 /**
- * Put a line in the transcript that came from Sway rather than from the wire.
+ * Put a line in the transcript that came from Tori rather than from the wire.
  *
- * A spend ceiling and a quota window are Sway's news, not the agent's, and they
+ * A spend ceiling and a quota window are Tori's news, not the agent's, and they
  * used to reach the transcript as a synthesized `sessionError`: a wire event
  * fabricated locally so it could ride the one door that pushed a notice. That
  * cost more than the door saved. `sessionError` is also what a dead child looks
@@ -1718,7 +1718,7 @@ export function settleBackfill(s: ChatState) {
 /**
  * Throw away the conversation on screen, keeping everything the *session* is.
  *
- * For a transport whose history Sway reads from its own log: the backfill drew
+ * For a transport whose history Tori reads from its own log: the backfill drew
  * that log, and the agent's replay is the same conversation from the authority
  * that owns it. Folding the replay on top would show every turn twice, so the
  * first frame of it clears the cache's drawing first.
@@ -1759,7 +1759,7 @@ export type ReplayFold = {
 /**
  * The replay window, for a transport that delivers history on the live channel.
  *
- * An ACP agent has no transcript Sway can read, so `session/load` re-sends the
+ * An ACP agent has no transcript Tori can read, so `session/load` re-sends the
  * whole conversation as `session/update` notifications - indistinguishable, on
  * arrival, from work happening now. Read as live they open a turn nothing will
  * ever close, and re-announce another session's file writes to the git gutter.
@@ -1999,7 +1999,7 @@ export function pendingQuestions(s: ChatState): QuestionItem[] {
 }
 
 /**
- * What this chat reports to the rest of Sway (the sidebar dot, the revert
+ * What this chat reports to the rest of Tori (the sidebar dot, the revert
  * blast-radius guard). Phase 11 owns the presentation; this is the signal.
  *
  * Blocked wins over "executing": a turn parked on the user is the more
@@ -2031,7 +2031,7 @@ export function chatStatus(s: ChatState): SessionStatus {
  *
  * Derived rather than stored, from the two flags that already say it: the
  * transport emits a fatal `sessionError` the moment the child's stdout hits
- * EOF, which is what sets `ended`. So a child killed from outside Sway shows up
+ * EOF, which is what sets `ended`. So a child killed from outside Tori shows up
  * here as fast as the OS closes the pipe - there is no poll and no timeout to
  * tune, which is the whole reason this reads off the event stream rather than
  * off a liveness probe.

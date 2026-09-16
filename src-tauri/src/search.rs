@@ -25,7 +25,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-/// Same list as `fs::IGNORED_DIRS`, including `.sway-attempts`: an attempt is a
+/// Same list as `fs::IGNORED_DIRS`, including `.tori-attempts`: an attempt is a
 /// second checkout of the same project, so without it every hit in the user's
 /// own code would come back once more per attempt.
 const IGNORED_DIRS: &[&str] =
@@ -437,8 +437,8 @@ fn plain_grep(
     }
     // grep's exclude is by basename only, so the Feature worktree dir is
     // excluded just when the root actually has one, not every `worktrees/`.
-    let (sway, worktrees) = crate::fs::FEATURE_WORKTREES;
-    if Path::new(root).join(sway).join(worktrees).is_dir() {
+    let (tori, worktrees) = crate::fs::FEATURE_WORKTREES;
+    if Path::new(root).join(tori).join(worktrees).is_dir() {
         cmd.arg(format!("--exclude-dir={worktrees}"));
     }
     cmd.arg("-F").arg("-e").arg(literal.unwrap_or("")).arg(".");
@@ -923,7 +923,7 @@ mod tests {
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "sway_search_test_{name}_{}",
+            "tori_search_test_{name}_{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -1346,13 +1346,13 @@ mod tests {
         std::fs::write(dir.join("f.txt"), "needle here\n").unwrap();
         let root = dir.to_string_lossy().into_owned();
 
-        // No `.sway/worktrees`: an unrelated `worktrees/` folder is searched.
+        // No `.tori/worktrees`: an unrelated `worktrees/` folder is searched.
         assert_eq!(plain_grep(&root, Some("needle"), &opts()).unwrap().len(), 2);
 
-        std::fs::create_dir_all(dir.join(".sway/worktrees/x")).unwrap();
-        std::fs::write(dir.join(".sway/worktrees/x/a.txt"), "needle in a feature worktree\n").unwrap();
+        std::fs::create_dir_all(dir.join(".tori/worktrees/x")).unwrap();
+        std::fs::write(dir.join(".tori/worktrees/x/a.txt"), "needle in a feature worktree\n").unwrap();
         let candidates = plain_grep(&root, Some("needle"), &opts()).unwrap();
-        assert!(!candidates.iter().any(|c| c.path.contains(".sway/worktrees")));
+        assert!(!candidates.iter().any(|c| c.path.contains(".tori/worktrees")));
         assert_eq!(candidates.len(), 1);
 
         std::fs::remove_dir_all(&dir).unwrap();

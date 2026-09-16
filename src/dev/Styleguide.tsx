@@ -18,7 +18,7 @@ import { DEFAULT_THEME_ID, listSelectableThemes } from "../theme";
 import styles from "./Styleguide.module.css";
 import patterns from "../styles/patterns.module.css";
 
-/** Dev-only theme workbench. NOT a router route (sway has none): App renders it
+/** Dev-only theme workbench. NOT a router route (tori has none): App renders it
  *  when `import.meta.env.DEV && location.hash === "#styleguide"`. It drives the
  *  real theme registry and the real `--ui-scale` inline prop, so a palette can
  *  be authored here and checked in every surface it touches, at any UI scale.
@@ -67,7 +67,7 @@ const SYNTAX_SAMPLE: [string, string][] = [
   ["syntax.number", "1"], ["syntax.punctuation", ","], ["", " "],
   ["syntax.constant", "STRICT"], ["syntax.punctuation", ");"], ["", "\n"],
   ["syntax.punctuation", "}"], ["", "\n"],
-  ["syntax.regexp", "/\\bsway-[a-z]+\\b/"], ["", "  "],
+  ["syntax.regexp", "/\\btori-[a-z]+\\b/"], ["", "  "],
   ["syntax.string", '"tab\\t"'], ["syntax.escape", "\\n"], ["", "\n"],
   ["syntax.punctuation", "<"], ["syntax.tag", "button"], ["", " "],
   ["syntax.attribute", "disabled"], ["syntax.punctuation", "/>"],
@@ -120,7 +120,7 @@ export default function Styleguide() {
     <div class={styles.page}>
       <header class={styles.bar}>
         <strong class={styles.title}>
-          <Icon icon={Settings} /> sway theme workbench
+          <Icon icon={Settings} /> tori theme workbench
         </strong>
         <div class={styles.controls}>
           <Select
@@ -298,7 +298,7 @@ export default function Styleguide() {
           <p style={{ "font-weight": 700 }}>700 — bold. The quick brown fox jumps over the lazy dog.</p>
           <div class={styles.typeScale}>
             <For each={TYPE}>
-              {(t) => <span style={{ "font-size": `var(--sway-text-${t})` }}>text-{t}</span>}
+              {(t) => <span style={{ "font-size": `var(--tori-text-${t})` }}>text-{t}</span>}
             </For>
           </div>
         </section>
@@ -309,7 +309,7 @@ export default function Styleguide() {
             <For each={SPACE}>
               {(n) => (
                 <div class={styles.spaceItem}>
-                  <div class={styles.spaceBar} style={{ width: `var(--sway-space-${n})` }} />
+                  <div class={styles.spaceBar} style={{ width: `var(--tori-space-${n})` }} />
                   <code>space-{n}</code>
                 </div>
               )}
@@ -318,7 +318,7 @@ export default function Styleguide() {
           <div class={styles.radiiRow}>
             <For each={RADII}>
               {(r) => (
-                <div class={styles.radiusBox} style={{ "border-radius": `var(--sway-radius-${r})` }}>
+                <div class={styles.radiusBox} style={{ "border-radius": `var(--tori-radius-${r})` }}>
                   radius-{r}
                 </div>
               )}

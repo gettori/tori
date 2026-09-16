@@ -3,11 +3,11 @@
  * the slow state is reproducible and the baseline table is a measurement rather
  * than a memory of clicking around.
  *
- * Runs only when the backend was launched with both `SWAY_TRACE` and
- * `SWAY_RECIPE` (App imports `registerRecipeHost` unconditionally, so the
+ * Runs only when the backend was launched with both `TORI_TRACE` and
+ * `TORI_RECIPE` (App imports `registerRecipeHost` unconditionally, so the
  * module is in the main chunk either way; nothing in it runs unasked). The spec
  * is `<worktrees>x<terminals>x<rounds>`, e.g.
- * `SWAY_RECIPE=6x4x3`: visit six worktrees, spawn four terminals in each, then
+ * `TORI_RECIPE=6x4x3`: visit six worktrees, spawn four terminals in each, then
  * flip between two of them three times.
  *
  * Five passes, in this order, because each one leaves the state the next one
@@ -273,7 +273,7 @@ async function clickTabs(count: number): Promise<void> {
 //     a hash of the visible window.
 
 /** The line echoed into the measured terminal, and looked for either side. */
-const SENTINEL = "SWAY-MISMATCH-SENTINEL";
+const SENTINEL = "TORI-MISMATCH-SENTINEL";
 
 /** One newline at the head of the opened file: the smallest edit that gives the
  *  buffer a real undo history to survive the switch, and one this pass can undo

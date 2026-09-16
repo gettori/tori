@@ -1,6 +1,6 @@
 // The three-layer answer to "what is this setting, here?".
 //
-//   built-in default  <  ~/.config/sway/settings.json  <  <workspace>/.sway/settings.json
+//   built-in default  <  ~/.config/tori/settings.json  <  <workspace>/.tori/settings.json
 //
 // Each layer is a complete answer on its own, so a missing or broken overlay is
 // never an error: it costs the user their per-workspace picks and nothing else.

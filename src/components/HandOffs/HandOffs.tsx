@@ -8,7 +8,7 @@ import { pushToast } from "../Toasts/Toasts";
 import { selectionRoot } from "../../utils/features";
 import styles from "./HandOffs.module.css";
 
-// The two ways out of Sway: what you have selected, opened in Ghostty or in
+// The two ways out of Tori: what you have selected, opened in Ghostty or in
 // VS Code.
 //
 // **They sit at the right end of the topbar, not at the end of the breadcrumb

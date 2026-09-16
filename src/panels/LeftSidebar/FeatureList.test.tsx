@@ -21,7 +21,7 @@ function member(repoPath: string, order: number, state: MemberState = { kind: "p
 const wt = (members: Member[], slug: string) =>
   members.map((m) => ({
     ...m,
-    worktreePath: m.state.kind === "present" ? `${m.repoPath}/.sway/worktrees/${slug}` : null,
+    worktreePath: m.state.kind === "present" ? `${m.repoPath}/.tori/worktrees/${slug}` : null,
   }));
 
 const AUTH: Feature = {
@@ -434,8 +434,8 @@ describe("FeatureList", () => {
   // follows offers each worktree, and the two are sequential on purpose: a sweep
   // opened before the delete could be answered for a Feature that stayed.
   describe("deleting a Feature", () => {
-    const AUTH_API = "/w/api/.sway/worktrees/auth";
-    const AUTH_WEB = "/w/web/.sway/worktrees/auth";
+    const AUTH_API = "/w/api/.tori/worktrees/auth";
+    const AUTH_WEB = "/w/web/.tori/worktrees/auth";
     const sweepRow = (repoPath: string) => document.querySelector<HTMLElement>(`[data-sweep="${repoPath}"]`)!;
     const branchBox = (repoPath: string) =>
       sweepRow(repoPath).querySelector<HTMLInputElement>('input[type="checkbox"]')!;

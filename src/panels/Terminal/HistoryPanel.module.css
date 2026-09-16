@@ -23,7 +23,7 @@
      container and inherited by rows for the same reason it is there: a session
      title is a session title whichever surface lists it. Anything that steps
      down from it does so explicitly below. */
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
 }
 
 .head {
@@ -41,7 +41,7 @@
   align-items: center;
   gap: calc(3px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -67,16 +67,16 @@
 .search {
   background: transparent;
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   color: var(--fg-default);
   caret-color: var(--brand-default);
   font: inherit;
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   outline: none;
   transition:
-    border-color var(--sway-duration-fast) ease,
-    box-shadow var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    box-shadow var(--tori-duration-fast) ease;
 }
 .search::placeholder {
   color: var(--fg-watermark);
@@ -104,7 +104,7 @@
   gap: calc(4px * var(--ui-scale));
   padding: calc(14px * var(--ui-scale)) var(--pad-x) calc(5px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -126,7 +126,7 @@
      panel while the label still starts at `--pad-x` like every heading. */
   margin: 0 var(--row-inset);
   padding: calc(7px * var(--ui-scale)) calc(var(--pad-x) - var(--row-inset));
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   cursor: pointer;
   overflow: hidden;
 }
@@ -160,7 +160,7 @@
   flex: 0 0 auto;
   margin-left: calc(8px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* Holds its width so the label is what truncates: with 20 sessions titled `/gg`
@@ -170,7 +170,7 @@
   flex: 0 0 auto;
   margin-left: calc(12px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   font-variant-numeric: tabular-nums;
 }
 

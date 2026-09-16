@@ -6,7 +6,7 @@
   overflow: auto;
   background: var(--canvas-card);
   padding: calc(4px * var(--ui-scale)) 0;
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   user-select: none;
 }
 
@@ -56,7 +56,7 @@
   margin: 0 calc(4px * var(--ui-scale));
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: none;
   color: inherit;
   font: inherit;
@@ -73,7 +73,7 @@
   flex: none;
   color: var(--fg-muted);
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* Takes the slack, so the author and the date sit hard right on every row. */
@@ -89,16 +89,16 @@
   flex: none;
   padding: 0 calc(5px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 
 .author,
 .date {
   flex: none;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .moreRow {

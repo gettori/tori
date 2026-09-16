@@ -94,9 +94,9 @@ const files = (over: Partial<ConfigFilesView> = {}): ConfigFilesView => ({
     {
       profileId: "work",
       label: "Work",
-      home: "/home/me/Library/sway/claude/work",
+      home: "/home/me/Library/tori/claude/work",
       entries: [
-        entry({ path: "/home/me/Library/sway/claude/work/CLAUDE.md", state: "missing" }),
+        entry({ path: "/home/me/Library/tori/claude/work/CLAUDE.md", state: "missing" }),
       ],
     },
   ],
@@ -240,11 +240,11 @@ describe("the Files group", () => {
     fireEvent.click(r.getByRole("button", { name: "Work" }));
     await expand(r, "Instructions");
 
-    expect(r.container.textContent).toContain("/home/me/Library/sway/claude/work");
+    expect(r.container.textContent).toContain("/home/me/Library/tori/claude/work");
     expect(r.container.textContent).toContain("not created");
   });
 
-  // "Sway has nothing true to say about this agent's files" is not the same
+  // "Tori has nothing true to say about this agent's files" is not the same
   // claim as "this agent has none", so it is said in words.
   it("says so plainly for an adapter that declares no files", async () => {
     const { container } = await open(

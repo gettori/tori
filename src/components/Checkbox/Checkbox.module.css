@@ -4,7 +4,7 @@
 .root {
   display: inline-flex;
   align-items: center;
-  gap: var(--sway-space-4);
+  gap: var(--tori-space-4);
 }
 
 /* The whole row, so the reason a click does nothing is visible before the
@@ -37,12 +37,12 @@
   width: calc(16px * var(--ui-scale));
   height: calc(16px * var(--ui-scale));
   border: 1px solid var(--fg-muted);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--canvas-input);
   color: var(--fg-on-emphasis);
   transition:
-    border-color var(--sway-duration-fast) ease,
-    background var(--sway-duration-fast) ease;
+    border-color var(--tori-duration-fast) ease,
+    background var(--tori-duration-fast) ease;
 }
 
 .control[data-checked] {
@@ -76,13 +76,13 @@
 
 /* Typography is inherited, not set here. The box is this component's; the words
    beside it belong to the row the caller built, and those rows disagree on
-   purpose (a dialog's option is --sway-text-lg, a panel's filter is muted and
+   purpose (a dialog's option is --tori-text-lg, a panel's filter is muted and
    smaller). Hard-coding a size here silently restyled every call site that had
    already made that choice. */
 .label {
   color: inherit;
   font-size: inherit;
-  line-height: var(--sway-line-normal);
+  line-height: var(--tori-line-normal);
   cursor: default;
 }
 

@@ -165,7 +165,7 @@ describe("the registry after the omnibox absorbed the two pickers", () => {
     // event deleted there fails here rather than at runtime.
     const names = new Set(
       Object.entries(events)
-        .filter(([, v]) => typeof v === "string" && v.startsWith("sway:"))
+        .filter(([, v]) => typeof v === "string" && v.startsWith("tori:"))
         .map(([, v]) => v as string),
     );
     const emitted = [...commandsSource.matchAll(/emitWith?<?[^(]*\(\s*([A-Z_]+)/g)].map((m) => m[1]);

@@ -67,7 +67,7 @@ const FEATURE_EXTENSIONS: Record<EditorFeature, () => Extension> = {
   // theme is active, including an imported one, instead of picking between two
   // literals; and they land in the same declaration the package writes, so
   // there is no specificity race between its `baseTheme` and a rule of ours
-  // further up the tree. Sway's tokens already switch with the palette, so
+  // further up the tree. Tori's tokens already switch with the palette, so
   // light and dark take the same value here.
   indentGuides: () =>
     indentationMarkers({

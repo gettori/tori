@@ -1,4 +1,4 @@
-//! Whether Sway currently has a usable forge credential, and what to do when
+//! Whether Tori currently has a usable forge credential, and what to do when
 //! the answer changes.
 //!
 //! A pure core ([`AuthCore`] per account, gathered in [`AuthStore`]) plus a thin
@@ -181,7 +181,7 @@ impl AuthStore {
         }
     }
 
-    /// An account Sway holds no credential for reads as signed out.
+    /// An account Tori holds no credential for reads as signed out.
     pub fn state(&self, id: &str) -> AuthState {
         self.accounts.get(id).map_or(AuthState::SignedOut, AuthCore::state)
     }

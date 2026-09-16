@@ -33,9 +33,9 @@
   /* A page is white because the paper is white. Inverting it would turn every
      embedded photograph into a negative, so the chrome is themed and the page
      is not. */
-  background: var(--sway-white);
-  border: var(--sway-border-thin) solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  background: var(--tori-white);
+  border: var(--tori-border-thin) solid var(--border-default);
+  border-radius: var(--tori-radius-sm);
   overflow: hidden;
 }
 
@@ -50,10 +50,10 @@
 
 .failure {
   margin: 0;
-  padding: var(--sway-space-5);
+  padding: var(--tori-space-5);
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
-  line-height: var(--sway-line-normal);
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
 }
 
 /* The selectable text over a rendered page.

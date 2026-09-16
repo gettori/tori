@@ -17,7 +17,7 @@ import { describe, it, expect } from "vitest";
  *
  *  Tests outside `lib/` are scanned like anything else. A test that reached
  *  past the wrappers to drive a raw Kobalte part would be asserting on
- *  behaviour no Sway component actually ships. */
+ *  behaviour no Tori component actually ships. */
 const APP_SOURCES = Object.fromEntries(
   Object.entries(
     import.meta.glob<string>("../**/*.{ts,tsx}", {
@@ -38,9 +38,9 @@ describe("the src/lib boundary", () => {
   });
 
   it("is the only place that names @kobalte/core", () => {
-    // Kobalte is a behaviour library, not Sway's API. Styled components in
+    // Kobalte is a behaviour library, not Tori's API. Styled components in
     // `src/components/` compose the parts re-exported from `src/lib/` and
-    // expose Sway's own props; everything above imports those components. Held
+    // expose Tori's own props; everything above imports those components. Held
     // that way, replacing the primitives library is an edit to `lib/` and a
     // handful of wrappers rather than to the app.
     const offenders = Object.entries(APP_SOURCES)

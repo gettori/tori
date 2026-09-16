@@ -164,8 +164,8 @@ import './App.css';
 // Dev-only styleguide, code-split so it never ships in the production bundle.
 const Styleguide = lazy(() => import('./dev/Styleguide'));
 
-const LS_LAYOUT = 'sway.layout.v1';
-const LS_SELECTION = 'sway.selection.v1';
+const LS_LAYOUT = 'tori.layout.v1';
+const LS_SELECTION = 'tori.selection.v1';
 
 type Layout = {
   sidebar: number;
@@ -401,7 +401,7 @@ function App() {
   };
   // The tree's own dividers write straight to the model (PaneTree measures each
   // split itself); the legacy px width above is only still computed so an older
-  // build reading sway.layout.v1 finds a sane one.
+  // build reading tori.layout.v1 finds a sane one.
   function resizePaneTo(paneId: string, percent: number) {
     updateLayout(wsKey(), (t) => resizePane(t, paneId, percent), {
       persist: false,
@@ -485,7 +485,7 @@ function App() {
       () =>
         new Promise<boolean>((resolve) =>
           setQuitReq({
-            title: 'Quit Sway?',
+            title: 'Quit Tori?',
             message: 'Running sessions and terminals will be stopped.',
             confirmLabel: 'Quit',
             resolve,
@@ -567,7 +567,7 @@ function App() {
 
   // The selection signal and the pane tree are what the scripted perf recipe
   // cannot reach on its own. Registered unconditionally and consulted only by a
-  // run launched with SWAY_RECIPE, which is the only thing that loads the driver
+  // run launched with TORI_RECIPE, which is the only thing that loads the driver
   // at all. `leaves` is read from the model rather than counted in the DOM: the
   // mismatch pass has to prove the split it asked for survived, and a count of
   // rendered panes would answer with what the renderer did instead.
@@ -1020,7 +1020,7 @@ function App() {
       setRailFallback(Math.ceil(content + padX));
     }
     initSettings();
-    // Sway no longer imports VS Code themes. An install that had one has been
+    // Tori no longer imports VS Code themes. An install that had one has been
     // migrated to a bundled palette, so say so once, naming the file, rather
     // than letting the user discover their theme changed on its own. The
     // backend owns the once-ness (a state.json flag), so a repeated call is a
@@ -1029,7 +1029,7 @@ function App() {
       .then((path) => {
         if (!path) return;
         emitWith<ToastEvent>(TOAST, {
-          message: `Imported VS Code themes are no longer supported, so ${path} was dropped. Sway now ships named themes; pick one in Settings.`,
+          message: `Imported VS Code themes are no longer supported, so ${path} was dropped. Tori now ships named themes; pick one in Settings.`,
           kind: 'info',
         });
       })

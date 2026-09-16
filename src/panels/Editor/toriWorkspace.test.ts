@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ChangeSet, Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { LSPClient } from "@codemirror/lsp-client";
-import { SwayWorkspace, pathToUri, uriToPath, type WorkspaceDeps } from "./swayWorkspace";
+import { ToriWorkspace, pathToUri, uriToPath, type WorkspaceDeps } from "./toriWorkspace";
 
 // The workspace is the whole reason a cross-file LSP operation can work, and
 // almost none of what it does is visible from the editor: it decides what text
@@ -87,10 +87,10 @@ describe("file URIs", () => {
   });
 });
 
-describe("SwayWorkspace open and close", () => {
+describe("ToriWorkspace open and close", () => {
   it("opens a file with the server exactly once", () => {
     const { client, opened, closed } = fakeClient();
-    const ws = new SwayWorkspace(client, deps());
+    const ws = new ToriWorkspace(client, deps());
     const view = fakeView("const a = 1");
 
     ws.openFile(pathToUri(A), "typescript", asView(view));
@@ -103,18 +103,18 @@ describe("SwayWorkspace open and close", () => {
 
   it("finds a file the server spelled differently", () => {
     const { client } = fakeClient();
-    const ws = new SwayWorkspace(client, deps());
+    const ws = new ToriWorkspace(client, deps());
     ws.openFile(pathToUri("/repo/a b.ts"), "typescript", asView(fakeView("x")));
 
     expect(ws.getFile("file:///repo/a%20b.ts")).toBeTruthy();
   });
 
   it("keeps a closed tab's text instead of telling the server to forget it", () => {
-    // A Sway tab that leaves the screen keeps its buffer, unsaved edits and
+    // A Tori tab that leaves the screen keeps its buffer, unsaved edits and
     // all. Closing it on the server would send every later question about the
     // file back to whatever is on disk.
     const { client, closed } = fakeClient();
-    const ws = new SwayWorkspace(client, deps());
+    const ws = new ToriWorkspace(client, deps());
     const view = fakeView("const a = 1");
     const uri = pathToUri(A);
 
@@ -131,7 +131,7 @@ describe("SwayWorkspace open and close", () => {
 
   it("ignores a close from a view that no longer holds the file", () => {
     const { client } = fakeClient();
-    const ws = new SwayWorkspace(client, deps());
+    const ws = new ToriWorkspace(client, deps());
     const uri = pathToUri(A);
     const first = fakeView("one");
     const second = fakeView("two");
@@ -144,10 +144,10 @@ describe("SwayWorkspace open and close", () => {
   });
 });
 
-describe("SwayWorkspace syncFiles", () => {
+describe("ToriWorkspace syncFiles", () => {
   it("reports what was typed in the view, once", () => {
     const { client } = fakeClient();
-    const ws = new SwayWorkspace(client, deps());
+    const ws = new ToriWorkspace(client, deps());
     const view = fakeView("const a = 1");
     ws.openFile(pathToUri(A), "typescript", asView(view));
 
@@ -162,13 +162,13 @@ describe("SwayWorkspace syncFiles", () => {
   });
 });
 
-describe("SwayWorkspace requestFile", () => {
+describe("ToriWorkspace requestFile", () => {
   it("prefers a dirty background buffer over the file on disk", async () => {
     // The case the whole class exists for: a viewless tab with unsaved edits.
     // Its text is in no view, on no disk, and in no backstop, so reading the
     // filesystem answers with a copy the user cannot see.
     const { client } = fakeClient();
-    const ws = new SwayWorkspace(
+    const ws = new ToriWorkspace(
       client,
       deps({
         bufferText: (p) => (p === A ? "const a = 2 // unsaved" : null),
@@ -182,7 +182,7 @@ describe("SwayWorkspace requestFile", () => {
 
   it("falls back to disk for a file no buffer holds", async () => {
     const { client, opened } = fakeClient();
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve("on disk") }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("on disk") }));
 
     const file = await ws.requestFile(pathToUri(A));
     expect(file?.doc.toString()).toBe("on disk");
@@ -192,7 +192,7 @@ describe("SwayWorkspace requestFile", () => {
 
   it("returns null rather than materialising a file this server does not claim", async () => {
     const { client, opened } = fakeClient();
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve("x") }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("x") }));
 
     expect(await ws.requestFile(pathToUri("/repo/notes.md"))).toBeNull();
     expect(opened).toEqual([]);
@@ -202,7 +202,7 @@ describe("SwayWorkspace requestFile", () => {
     // An empty document would be a lie the server acts on: every symbol in the
     // file would read as deleted.
     const { client, opened } = fakeClient();
-    const ws = new SwayWorkspace(client, deps());
+    const ws = new ToriWorkspace(client, deps());
     expect(await ws.requestFile(pathToUri(A))).toBeNull();
     expect(opened).toEqual([]);
   });
@@ -215,7 +215,7 @@ describe("SwayWorkspace requestFile", () => {
     // took effect for those files.
     const { client } = fakeClient();
     let claims = false;
-    const ws = new SwayWorkspace(
+    const ws = new ToriWorkspace(
       client,
       deps({
         languageId: () => (claims ? "python" : null),
@@ -232,7 +232,7 @@ describe("SwayWorkspace requestFile", () => {
     // Same shape, and the far more common one: the buffer reader returns text
     // without any await, so nothing after it is deferred either.
     const { client, closed } = fakeClient();
-    const ws = new SwayWorkspace(
+    const ws = new ToriWorkspace(
       client,
       deps({ bufferText: () => "in a buffer", maxHeadless: 1 }),
     );
@@ -249,7 +249,7 @@ describe("SwayWorkspace requestFile", () => {
   it("reads a file once when two references to it arrive together", async () => {
     const { client, opened } = fakeClient();
     let reads = 0;
-    const ws = new SwayWorkspace(
+    const ws = new ToriWorkspace(
       client,
       deps({
         diskText: () => {
@@ -266,11 +266,11 @@ describe("SwayWorkspace requestFile", () => {
   });
 });
 
-describe("SwayWorkspace headless snapshots going stale", () => {
+describe("ToriWorkspace headless snapshots going stale", () => {
   it("reports a change to a file no editor is showing", async () => {
     const { client } = fakeClient();
     let disk = "const a = 1\nconst b = 2";
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve(disk) }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve(disk) }));
     await ws.requestFile(pathToUri(A));
 
     disk = "// header\nconst a = 1\nconst b = 2";
@@ -293,7 +293,7 @@ describe("SwayWorkspace headless snapshots going stale", () => {
     // stopped answering for it by then, so this has to resolve to disk.
     const { client } = fakeClient();
     let inBuffer: string | null = "unsaved edits";
-    const ws = new SwayWorkspace(
+    const ws = new ToriWorkspace(
       client,
       deps({ bufferText: () => inBuffer, diskText: () => Promise.resolve("what is on disk") }),
     );
@@ -311,7 +311,7 @@ describe("SwayWorkspace headless snapshots going stale", () => {
     // one character in half.
     const { client } = fakeClient();
     let disk = "const flag = \u{1F600}";
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve(disk) }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve(disk) }));
     await ws.requestFile(pathToUri(A));
 
     disk = "const flag = \u{1F601}";
@@ -325,7 +325,7 @@ describe("SwayWorkspace headless snapshots going stale", () => {
   it("leaves a file the editor is showing to the editor", async () => {
     // Reporting it here as well would send the same edit to the server twice.
     const { client } = fakeClient();
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve("from disk") }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("from disk") }));
     ws.openFile(pathToUri(A), "typescript", asView(fakeView("in the view")));
 
     await ws.fileChanged(A);
@@ -336,7 +336,7 @@ describe("SwayWorkspace headless snapshots going stale", () => {
   it("drops a snapshot of a file that is gone", async () => {
     const { client, closed } = fakeClient();
     let disk: string | null = "const a = 1";
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve(disk) }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve(disk) }));
     await ws.requestFile(pathToUri(A));
 
     disk = null;
@@ -351,7 +351,7 @@ describe("SwayWorkspace headless snapshots going stale", () => {
     // opened the tab, which already had unsaved edits in it. Without this the
     // editor and the server disagree about a file that is now on screen.
     const { client } = fakeClient();
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve("const a = 1") }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("const a = 1") }));
     await ws.requestFile(pathToUri(A));
 
     ws.openFile(pathToUri(A), "typescript", asView(fakeView("const a = 2")));
@@ -360,7 +360,7 @@ describe("SwayWorkspace headless snapshots going stale", () => {
   });
 });
 
-describe("SwayWorkspace and a mapping that is already running", () => {
+describe("ToriWorkspace and a mapping that is already running", () => {
   it("adds a newly materialised file to a live mapping", async () => {
     // `findReferences` builds its mapping *before* it asks the workspace for a
     // single file, and the reference panel then maps a position in each one. A
@@ -369,7 +369,7 @@ describe("SwayWorkspace and a mapping that is already running", () => {
     // reference in a file that was not already open would do nothing at all and
     // report nothing.
     const { client, activeMappings } = fakeClient();
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve("const dep = 1") }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("const dep = 1") }));
     const live = { mappings: new Map<string, unknown>(), startDocs: new Map<string, Text>() };
     activeMappings.push(live);
 
@@ -381,7 +381,7 @@ describe("SwayWorkspace and a mapping that is already running", () => {
 
   it("leaves a file the mapping already snapshotted alone", async () => {
     const { client, activeMappings } = fakeClient();
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve("new") }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve("new") }));
     const original = docOf("as the mapping first saw it");
     const live = {
       mappings: new Map<string, unknown>([[pathToUri(A), "untouched"]]),
@@ -400,15 +400,15 @@ describe("SwayWorkspace and a mapping that is already running", () => {
     // strictly worse than the panel is today, but a throw here would take
     // opening a file with it.
     const client = { didOpen: () => {}, didClose: () => {}, activeMappings: "not a list" };
-    const ws = new SwayWorkspace(client as unknown as LSPClient, deps());
+    const ws = new ToriWorkspace(client as unknown as LSPClient, deps());
     expect(() => ws.openFile(pathToUri(A), "typescript", asView(fakeView("x")))).not.toThrow();
   });
 });
 
-describe("SwayWorkspace headless lifecycle", () => {
+describe("ToriWorkspace headless lifecycle", () => {
   it("holds a bounded number of snapshots and closes what it drops", async () => {
     const { client, opened, closed } = fakeClient();
-    const ws = new SwayWorkspace(
+    const ws = new ToriWorkspace(
       client,
       deps({ diskText: () => Promise.resolve("x"), maxHeadless: 10 }),
     );
@@ -426,7 +426,7 @@ describe("SwayWorkspace headless lifecycle", () => {
 
   it("never evicts the file the editor is showing", async () => {
     const { client, closed } = fakeClient();
-    const ws = new SwayWorkspace(
+    const ws = new ToriWorkspace(
       client,
       deps({ diskText: () => Promise.resolve("x"), maxHeadless: 2 }),
     );
@@ -443,7 +443,7 @@ describe("SwayWorkspace headless lifecycle", () => {
     // `mapPosition` throws for any URI missing from that snapshot, so evicting
     // mid-operation turns a rename into an exception rather than a smaller one.
     const { client, closed } = fakeClient();
-    const ws = new SwayWorkspace(
+    const ws = new ToriWorkspace(
       client,
       deps({ diskText: () => Promise.resolve("x"), maxHeadless: 2 }),
     );
@@ -464,7 +464,7 @@ describe("SwayWorkspace headless lifecycle", () => {
   it("defers a deleted file's close while a mapping is live", async () => {
     const { client, closed } = fakeClient();
     let disk: string | null = "x";
-    const ws = new SwayWorkspace(client, deps({ diskText: () => Promise.resolve(disk) }));
+    const ws = new ToriWorkspace(client, deps({ diskText: () => Promise.resolve(disk) }));
     await ws.requestFile(pathToUri(A));
 
     const release = ws.retainMapping();
@@ -478,7 +478,7 @@ describe("SwayWorkspace headless lifecycle", () => {
 
   it("releases once however often the release is called", async () => {
     const { client, closed } = fakeClient();
-    const ws = new SwayWorkspace(
+    const ws = new ToriWorkspace(
       client,
       deps({ diskText: () => Promise.resolve("x"), maxHeadless: 1 }),
     );
@@ -496,14 +496,14 @@ describe("SwayWorkspace headless lifecycle", () => {
   });
 });
 
-describe("SwayWorkspace displayFile", () => {
+describe("ToriWorkspace displayFile", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
   it("returns the view straight away for a file already on screen", async () => {
     const { client } = fakeClient();
     const opens: string[] = [];
-    const ws = new SwayWorkspace(client, deps({ requestOpen: (p) => opens.push(p) }));
+    const ws = new ToriWorkspace(client, deps({ requestOpen: (p) => opens.push(p) }));
     const view = fakeView("shown");
     ws.openFile(pathToUri(A), "typescript", asView(view));
 
@@ -514,7 +514,7 @@ describe("SwayWorkspace displayFile", () => {
   it("asks the app to open the file and resolves once it is", async () => {
     const { client } = fakeClient();
     const opens: string[] = [];
-    const ws = new SwayWorkspace(client, deps({ requestOpen: (p) => opens.push(p) }));
+    const ws = new ToriWorkspace(client, deps({ requestOpen: (p) => opens.push(p) }));
 
     const pending = ws.displayFile(pathToUri(B));
     expect(opens).toEqual([B]);
@@ -529,7 +529,7 @@ describe("SwayWorkspace displayFile", () => {
 
   it("gives up rather than hanging when the open never arrives", async () => {
     const { client } = fakeClient();
-    const ws = new SwayWorkspace(client, deps({ displayTimeoutMs: 1000 }));
+    const ws = new ToriWorkspace(client, deps({ displayTimeoutMs: 1000 }));
 
     const pending = ws.displayFile(pathToUri(B));
     vi.advanceTimersByTime(1000);
@@ -538,7 +538,7 @@ describe("SwayWorkspace displayFile", () => {
 
   it("settles its waiters when the client disconnects", async () => {
     const { client } = fakeClient();
-    const ws = new SwayWorkspace(client, deps());
+    const ws = new ToriWorkspace(client, deps());
 
     const pending = ws.displayFile(pathToUri(B));
     ws.disconnected();

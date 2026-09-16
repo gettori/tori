@@ -23,7 +23,7 @@ const worktree = (label: string, isCurrent: boolean) => ({
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -152,7 +152,7 @@ const row = async (label: string) => (await screen.findByText(label)).parentElem
 
 const selections: unknown[] = [];
 const mount = (expandedKeys: string[] = []) => {
-  localStorage.setItem("sway.expanded.v1", JSON.stringify(expandedKeys));
+  localStorage.setItem("tori.expanded.v1", JSON.stringify(expandedKeys));
   return render(() => (
     <LeftSidebar selected={null} onSelect={(s) => selections.push(s)} liveTabs={liveTabs} />
   ));
@@ -173,7 +173,7 @@ describe("the sidebar levels that outlive the session rows", () => {
     selections.length = 0;
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
   });
 
   it("shows one tile per space and renders only the active space's projects", async () => {
@@ -327,7 +327,7 @@ describe("the sidebar levels that outlive the session rows", () => {
     expect(screen.getByText("Remove worktree")).toBeTruthy();
   });
 
-  // Written against the hand-rolled menu (skarif2/sway#103, phase 1), now
+  // Written against the hand-rolled menu (gettori/tori#103, phase 1), now
   // running against Kobalte's (phase 3). What the three menus *contain* is
   // asserted above; this is how they open and close. Where a menu opens is
   // pinned in `ContextMenu.test.tsx`, since no position assertion could span

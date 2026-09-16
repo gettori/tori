@@ -30,7 +30,7 @@ import {
   setHunksBusy,
   type HunkAction,
 } from "./diffBuffer";
-import { swayTheme } from "./editorTheme";
+import { toriTheme } from "./editorTheme";
 import { languageForPath } from "./languages";
 import { syntaxFor } from "./syntaxStyle";
 import { vimExtension } from "./vimMode";
@@ -99,7 +99,7 @@ export default function DiffBufferView(props: {
           EditorState.readOnly.of(true),
           highlightSelectionMatches(),
           syntaxConf.of([]),
-          swayTheme,
+          toriTheme,
           diffOverviewRuler(),
           keymap.of([
             { key: "Alt-F5", run: nextChange },

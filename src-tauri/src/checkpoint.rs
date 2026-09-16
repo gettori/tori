@@ -5,12 +5,12 @@
 // invisible to path-argument parsing" gap (Finding B).
 //
 // Mechanism: `git add -A` against a *persistent per-session* scratch index
-// (`~/.config/sway/checkpoint-index/<sessionId>`, kept warm across snapshots
+// (`~/.config/tori/checkpoint-index/<sessionId>`, kept warm across snapshots
 // for git's stat-cache, same trick the grimoire baseline refs use), then
 // `write-tree`. The resulting tree is never committed and the user's real
 // index/staging is never touched. Snapshots are named by the triggering
 // prompt's transcript timestamp and anchored under
-// `refs/sway/checkpoint/<sessionId>/<promptTs>` so they survive gc; a repeat
+// `refs/tori/checkpoint/<sessionId>/<promptTs>` so they survive gc; a repeat
 // snapshot whose tree is identical to the nearest earlier one is skipped (no
 // new ref), so an idle turn or a duplicate trigger doesn't bloat the ref list.
 //
@@ -33,7 +33,7 @@ pub(crate) const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 fn checkpoint_index_path(session_id: &str) -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/checkpoint-index")
+        .join(".config/tori/checkpoint-index")
         .join(session_id)
 }
 
@@ -67,7 +67,7 @@ fn checkpoint_index_path(session_id: &str) -> PathBuf {
 fn attribution_path(session_id: &str, prompt_ts: u64) -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/checkpoint-touched")
+        .join(".config/tori/checkpoint-touched")
         .join(session_id)
         .join(format!("{prompt_ts}.json"))
 }
@@ -106,7 +106,7 @@ enum StoredTouched {
 ///
 /// An allowlist rather than a denylist, because the fail-safe direction is to
 /// call an unrecognised tool unparseable: an MCP server, a `Task` subagent or a
-/// new built-in can all write files through a path Sway cannot see, and calling
+/// new built-in can all write files through a path Tori cannot see, and calling
 /// such a turn `complete` would reinstate exactly the silent drop this list
 /// exists to prevent.
 const PATH_PARSEABLE_TOOLS: &[&str] = &[
@@ -121,7 +121,7 @@ const PATH_PARSEABLE_TOOLS: &[&str] = &[
 enum AttributionState {
     /// Every tool in the turn reported its own paths, so the list is exhaustive.
     Complete,
-    /// At least one tool wrote through a path Sway cannot parse. The list is a
+    /// At least one tool wrote through a path Tori cannot parse. The list is a
     /// lower bound on what this session wrote.
     Partial,
     /// Nothing was recorded at all: a PTY session, or a turn from before
@@ -198,7 +198,7 @@ struct TouchedIndex {
 fn touched_index_path(session_id: &str) -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/checkpoint-touched")
+        .join(".config/tori/checkpoint-touched")
         .join(session_id)
         .join("index.json")
 }
@@ -417,7 +417,7 @@ pub(crate) fn write_tree_scratch(repo: &str, index_path: &Path) -> Result<String
     // No pathspec, deliberately, and the attempts directory is kept out by its
     // ignore entry alone.
     //
-    // An earlier version excluded it with `-- . :(exclude).sway-attempts`, on
+    // An earlier version excluded it with `-- . :(exclude).tori-attempts`, on
     // the theory that gitignore stops a file entering the index without stopping
     // git walking the tree to discover that. **Measured, and that is not how git
     // behaves**: an ignored *directory* is pruned, not descended. A repo with
@@ -450,7 +450,7 @@ pub(crate) fn write_tree_scratch(repo: &str, index_path: &Path) -> Result<String
 }
 
 fn ref_prefix(session_id: &str) -> String {
-    format!("refs/sway/checkpoint/{session_id}/")
+    format!("refs/tori/checkpoint/{session_id}/")
 }
 
 fn ref_name(session_id: &str, prompt_ts: u64) -> String {
@@ -1208,7 +1208,7 @@ pub(crate) fn checkpoint_revert_tree_body(
 }
 
 /// Remove every checkpoint ref and the scratch index file for a session,
-/// called on session delete/archive so `refs/sway/checkpoint/*` doesn't grow
+/// called on session delete/archive so `refs/tori/checkpoint/*` doesn't grow
 /// unbounded.
 #[tauri::command]
 pub async fn checkpoint_prune(repo_path: String, session_id: String) -> Result<(), String> {
@@ -1267,7 +1267,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_checkpoint_test_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_checkpoint_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q"]);
         git(&dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -1400,7 +1400,7 @@ mod tests {
 
         // File A, rewritten by `Edit`; file B, written by the shell.
         std::fs::write(dir.join("probe.txt"), "alpha\ndelta\ngamma\n").unwrap();
-        std::fs::write(dir.join("from-bash.txt"), "sway-probe\n").unwrap();
+        std::fs::write(dir.join("from-bash.txt"), "tori-probe\n").unwrap();
 
         for (tool, files) in recorded_calls(&["edit-call", "bash-call"]) {
             let abs = files
@@ -1790,7 +1790,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_not_a_repo_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_not_a_repo_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         let sid = format!("sess-plain-{n}-{seq}");
         let repo = dir.to_string_lossy().into_owned();
@@ -1835,7 +1835,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_list_not_a_repo_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_list_not_a_repo_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         let sid = format!("sess-list-plain-{n}-{seq}");
         let repo = dir.to_string_lossy().into_owned();
@@ -2247,7 +2247,7 @@ mod tests {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_revert_not_a_repo_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_revert_not_a_repo_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.txt"), "untouched").unwrap();
         let sid = format!("sess-revert-plain-{n}-{seq}");

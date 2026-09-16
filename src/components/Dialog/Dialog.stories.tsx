@@ -61,7 +61,7 @@ export const Sheet: Story = {
     title: "New project",
     description: "Names may not contain spaces.",
     children: (
-      <label style={{ display: "grid", gap: "var(--sway-space-2)" }}>
+      <label style={{ display: "grid", gap: "var(--tori-space-2)" }}>
         Project name
         <input />
       </label>
@@ -83,7 +83,7 @@ export const Wide: Story = {
         style={{
           display: "grid",
           "grid-template-columns": "repeat(auto-fill, minmax(240px, 1fr))",
-          gap: "var(--sway-space-4)",
+          gap: "var(--tori-space-4)",
         }}
       >
         <For each={Array.from({ length: 12 }, (_, i) => i)}>
@@ -120,7 +120,7 @@ export const Overflowing: Story = {
     title: "Select a debug target",
     description: undefined,
     children: (
-      <ul style={{ margin: 0, "padding-left": "var(--sway-space-6)" }}>
+      <ul style={{ margin: 0, "padding-left": "var(--tori-space-6)" }}>
         <For each={Array.from({ length: 60 }, (_, i) => i)}>
           {(i) => <li>Target {i}</li>}
         </For>

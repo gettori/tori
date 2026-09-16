@@ -3,7 +3,7 @@ import { Text } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { answerApplyEdit, APPLY_EDIT_TIMEOUT_MS } from "./serverEdits";
 import type { ApplyDeps, LspPosition, MaterialisedFile } from "./workspaceEdit";
-import { pathToUri } from "./swayWorkspace";
+import { pathToUri } from "./toriWorkspace";
 
 // A server sends `workspace/applyEdit` in the middle of a command and blocks on
 // the answer. Every case here is about the two ways that goes wrong: an answer

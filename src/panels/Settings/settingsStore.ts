@@ -1,4 +1,4 @@
-// Global user settings store. Loads ~/.config/sway/settings.json via the Rust
+// Global user settings store. Loads ~/.config/tori/settings.json via the Rust
 // backend, applies typography to CSS tokens, and re-applies live when the
 // file changes (hand edit or set_settings) through the settings://changed
 // watcher event. The reactive store backs the settings panel (Phase 4).
@@ -80,7 +80,7 @@ export type ChatDefaults = {
   streaming: boolean;
   density: TranscriptDensity;
   toolOutputLines: number;
-  showSwayHooks: boolean;
+  showToriHooks: boolean;
   /** Render `AskUserQuestion` as an answerable form in the transcript. Off
    *  restores the permission card it used to be, where the only answers are
    *  allow and deny and allowing makes the CLI answer for the user. */
@@ -88,10 +88,10 @@ export type ChatDefaults = {
   /** A paste over 30 lines or 3000 characters becomes a `pasted.txt` chip
    *  rather than text in the box. Off keeps every paste inline. */
   attachLongPastes: boolean;
-  /** How many live chats before Sway says the cost is adding up. **Zero means
+  /** How many live chats before Tori says the cost is adding up. **Zero means
    *  no cap.** It warns rather than refusing: several chats at once is the
    *  point of the surface, and how many is too many is a property of the
-   *  machine and the bill rather than of Sway. */
+   *  machine and the bill rather than of Tori. */
   maxConcurrentChats: number;
 };
 /** Binary overrides. `paths` is per adapter id; `path` is the older global
@@ -273,7 +273,7 @@ export type Settings = {
 export type AgentRow = { agent: string; profile: string };
 
 export const DEFAULT_SETTINGS: Settings = {
-  appearance: { theme: "sway-dark" },
+  appearance: { theme: "tori-dark" },
   forge: { enabled: true, picks: {} },
   typography: {
     uiFontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
@@ -296,7 +296,7 @@ export const DEFAULT_SETTINGS: Settings = {
     streaming: true,
     density: "comfortable",
     toolOutputLines: 20,
-    showSwayHooks: false,
+    showToriHooks: false,
     answerQuestionsInline: true,
     attachLongPastes: true,
     maxConcurrentChats: 4,
@@ -352,7 +352,7 @@ export { settings };
 // sizes in Settings stay untouched; zoom is a reversible overlay (Cmd+0 -> 1).
 // Persisted to localStorage (not the settings JSON) so a rapid Cmd+= burst is
 // instant and never churns the on-disk file or triggers the settings watcher.
-const ZOOM_KEY = "sway.zoom";
+const ZOOM_KEY = "tori.zoom";
 // Exported so the Settings row's bounds are these bounds. A row that allowed a
 // value `clampZoom` then refused would show a number the app is not at.
 export const ZOOM_MIN = 0.5;
@@ -407,7 +407,7 @@ export function resetZoom() {
 export function applySettings(s: Settings) {
   const st = document.documentElement.style;
   const z = zoom();
-  st.setProperty("--sway-font-ui", s.typography.uiFontFamily);
+  st.setProperty("--tori-font-ui", s.typography.uiFontFamily);
   // Chrome sizing flows from one multiplier: every type step (and, in later
   // phases, spacing and control dimensions) is `calc(<base> * var(--ui-scale))`.
   // Scale is the chosen UI font size over the 15px design baseline, times the
@@ -508,7 +508,7 @@ export function rememberChatPrefs(projectPath: string, prefs: ChatPrefs): void {
 
 // ---- The per-workspace overlay ------------------------------------------
 //
-// `<workspace>/.sway/settings.json`, the third layer under the built-in
+// `<workspace>/.tori/settings.json`, the third layer under the built-in
 // defaults and this user's settings file. The rule for which layer wins lives
 // in `workspaceSettings.ts`; what lives here is the one loaded overlay and the
 // workspace it belongs to.

@@ -1,10 +1,10 @@
-// Sway's git credential helper: git asks for a login, Sway answers with the
+// Tori's git credential helper: git asks for a login, Tori answers with the
 // account that repo is signed in as.
 //
 // The askpass bridge cannot do this job. It is git's *last* resort: it runs
 // after every configured `credential.helper`, so an osxkeychain entry for the
 // host wins over the account the user picked, and whatever askpass answers is
-// then stored by that same helper. A helper of Sway's own runs first, and this
+// then stored by that same helper. A helper of Tori's own runs first, and this
 // one stores nothing.
 //
 // The hard part is that git hands a helper only protocol, host and (with
@@ -50,7 +50,7 @@ fn register(op_id: &str, repo: &str) -> Registered {
     Registered(op_id.to_string())
 }
 
-/// Point one git op at Sway's helper, when its remote is an https URL on a host
+/// Point one git op at Tori's helper, when its remote is an https URL on a host
 /// whose switch is on and whose account this repo resolves to.
 ///
 /// `None` leaves git with the user's own helpers, which is where every other op
@@ -74,7 +74,7 @@ pub fn bridge_all(cmd: &mut Command, repo: &str, op_id: &str) -> Option<Register
     bridge(cmd, repo, &lone_remote(repo)?, op_id)
 }
 
-/// Whether a plain `git fetch` here is answered by Sway, which is what the
+/// Whether a plain `git fetch` here is answered by Tori, which is what the
 /// sidebar's "no credential helper" warning is really asking about.
 pub fn answers_fetch(repo: &str) -> bool {
     lone_remote(repo).is_some_and(|remote| serves(repo, &remote))
@@ -134,7 +134,7 @@ pub fn is_helper() -> bool {
 
 /// The helper path: git writes its request on stdin and reads the answer off
 /// stdout. Only `get` is answered. `store` and `erase` are read and dropped,
-/// because the account is Sway's to hold and nothing here belongs in the user's
+/// because the account is Tori's to hold and nothing here belongs in the user's
 /// own credential store.
 pub fn run_helper() -> i32 {
     let mut input = String::new();
@@ -160,7 +160,7 @@ pub fn run_helper() -> i32 {
         }
         Err(e) => {
             // Diagnostics to stderr only; stdout is the answer and nothing else.
-            eprintln!("sway credential: {e}");
+            eprintln!("tori credential: {e}");
             1
         }
     }
@@ -178,7 +178,7 @@ mod tests {
     fn repo_with(remotes: &[(&str, &str)]) -> std::path::PathBuf {
         static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway-cred-{}-{seq}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-cred-{}-{seq}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let git = |args: &[&str]| {
             Command::new("git").arg("-C").arg(&dir).args(args).output().unwrap();
@@ -195,13 +195,13 @@ mod tests {
         let value = helper_config();
         assert!(value.starts_with("!'"), "a shell command, so the path can carry the mode: {value}");
         assert!(value.ends_with(&format!("' {ARG}")), "got {value}");
-        assert_eq!(quoted("/Apps/My App/sway"), "'/Apps/My App/sway'");
+        assert_eq!(quoted("/Apps/My App/tori"), "'/Apps/My App/tori'");
         assert_eq!(quoted("/it's/here"), r"'/it'\''s/here'");
     }
 
     #[test]
     fn a_request_is_read_by_key_and_an_unregistered_op_answers_nothing() {
-        let input = "protocol=https\nhost=github.com\npath=skarif2/sway.git\n\n";
+        let input = "protocol=https\nhost=github.com\npath=skarif2/tori.git\n\n";
         assert_eq!(field(input, "host").as_deref(), Some("github.com"));
         assert_eq!(field(input, "username"), None);
         // The op id is the whole of a helper's authority to be answered, so one
@@ -221,7 +221,7 @@ mod tests {
         Command::new("git")
             .arg("-C")
             .arg(&dir)
-            .args(["remote", "set-url", "origin", "git@github.com:skarif2/sway.git"])
+            .args(["remote", "set-url", "origin", "git@github.com:skarif2/tori.git"])
             .output()
             .unwrap();
         let mut ssh = Command::new("git");
@@ -234,11 +234,11 @@ mod tests {
 
     #[test]
     fn a_fetch_across_two_remotes_is_not_one_remotes_to_answer_for() {
-        let one = repo_with(&[("origin", "https://github.com/skarif2/sway.git")]);
+        let one = repo_with(&[("origin", "https://github.com/skarif2/tori.git")]);
         assert_eq!(lone_remote(&one.to_string_lossy()).as_deref(), Some("origin"));
 
         let two = repo_with(&[
-            ("origin", "https://github.com/skarif2/sway.git"),
+            ("origin", "https://github.com/skarif2/tori.git"),
             ("upstream", "https://gitlab.com/acme/widgets.git"),
         ]);
         let repo = two.to_string_lossy().into_owned();

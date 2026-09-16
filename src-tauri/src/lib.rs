@@ -81,7 +81,7 @@ fn build_tray(app: &tauri::App) -> Result<TrayIcon, Box<dyn std::error::Error>> 
         .icon(icon)
         .icon_as_template(true)
         .menu(&empty_menu)
-        .tooltip("Sway")
+        .tooltip("Tori")
         .on_menu_event(move |_tray, event| {
             presence::handle_tray_menu_event(&tray_app, event.id.as_ref());
         })
@@ -185,7 +185,7 @@ pub fn run() {
                 Ok(inner) => {
                     app.manage(askpass::AskpassState(inner));
                 }
-                Err(e) => eprintln!("sway: askpass bridge failed to start: {e}"),
+                Err(e) => eprintln!("tori: askpass bridge failed to start: {e}"),
             }
 
             // Menu-bar tray (Finding F3/presence): starts empty (no sessions
@@ -199,7 +199,7 @@ pub fn run() {
                 Ok(tray) => {
                     app.manage(TrayState(Mutex::new(tray)));
                 }
-                Err(e) => eprintln!("sway: tray icon failed to start: {e}"),
+                Err(e) => eprintln!("tori: tray icon failed to start: {e}"),
             }
 
             // Sweep leftover claude hook-status files (Phase 3): a stale
@@ -209,7 +209,7 @@ pub fn run() {
             let session_index = app.state::<SessionIndex>();
             hooks::prune_stale(|| sessions::all_sessions(&session_index));
 
-            // Chat claims left by a previous run. A record whose Sway is gone is
+            // Chat claims left by a previous run. A record whose Tori is gone is
             // either litter (dropped here) or an orphan: a `claude` child that
             // outlived the app and is still writing to a transcript. Orphans are
             // announced rather than killed, because ending someone's running
@@ -229,7 +229,7 @@ pub fn run() {
 
             // Install the keychain store and restore the forge credential.
             // Non-fatal like the askpass bridge and the tray above: a keychain
-            // that will not open should leave Sway signed out, not stop it
+            // that will not open should leave Tori signed out, not stop it
             // starting.
             forge::commands::restore_at_startup(settings::get_settings().forge.enabled);
 

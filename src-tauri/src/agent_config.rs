@@ -46,7 +46,7 @@ pub enum EntryState {
 pub struct ChildView {
     pub name: String,
     /// The file to open, or `None` for a child there is no honest answer for: a
-    /// folder whose declared file is not in it. Sway does not pick a different
+    /// folder whose declared file is not in it. Tori does not pick a different
     /// one, because "the first markdown in there" is a guess that opens the
     /// wrong file exactly when the folder is malformed.
     pub path: Option<String>,
@@ -442,7 +442,7 @@ mod tests {
         // nanos and share (then delete) one home without the counter.
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_agent_config_test_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_agent_config_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

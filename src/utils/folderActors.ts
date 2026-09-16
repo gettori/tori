@@ -14,7 +14,7 @@ import type { RevertCandidate } from "./revertGuard";
 
 type SessionMeta = { id: string; agent: string; cwd: string; name?: string; title?: string };
 
-/** Sessions Sway hosts in a tab of its own, whose status it knows rather than
+/** Sessions Tori hosts in a tab of its own, whose status it knows rather than
  *  probes: PTY agent tabs (composed from activity + transcript tail) and chat
  *  tabs (reported by the transport's own event stream). */
 export function liveCandidates(): RevertCandidate[] {
@@ -30,7 +30,7 @@ export function liveCandidates(): RevertCandidate[] {
   }));
 }
 
-/** Every session rooted in this folder that Sway cannot see inside: found by
+/** Every session rooted in this folder that Tori cannot see inside: found by
  *  list_sessions, absent from the live-tab set, and confirmed alive by the
  *  pgrep probe. Their status tops out at "running" - a detached process can
  *  never report Executing.

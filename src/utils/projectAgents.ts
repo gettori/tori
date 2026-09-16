@@ -1,5 +1,5 @@
 // Rules match by path prefix, not through the discovered spaces: those arrive
-// after launch, and a rule must not lose that race. Every worktree Sway makes
+// after launch, and a rule must not lose that race. Every worktree Tori makes
 // inside a repo sits under the repo's path, so it shares the repo's rule.
 import { findAdapter } from "./agents";
 import { agentHealthFor, asProfileId, namedProfiles, profileLabel } from "./agentHealth";

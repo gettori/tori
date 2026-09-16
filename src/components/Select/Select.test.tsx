@@ -139,7 +139,7 @@ describe("Select", () => {
   // list arrives from a folder watcher, so a snapshot taken once would pin
   // whatever themes existed at mount. Swapped while *closed*, which is the real
   // sequence - a new array while the listbox is open resets Kobalte's list
-  // state and closes it, which is its behaviour rather than a Sway choice.
+  // state and closes it, which is its behaviour rather than a Tori choice.
   it("an options list swapped after mount reaches the next open", async () => {
     const [opts, setOpts] = createSignal<SelectOption[]>(FRUIT);
     render(() => (

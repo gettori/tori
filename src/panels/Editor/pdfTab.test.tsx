@@ -6,7 +6,7 @@ import { closeOf } from "../../test/tabs";
 import { pointerClick } from "../../test/menus";
 
 // A PDF is a file the code editor must never read: it is bytes, and CodeEditor
-// reads a file as UTF-8. That exclusion is the same shape as the `sway://` one
+// reads a file as UTF-8. That exclusion is the same shape as the `tori://` one
 // next door - one-liners in `pdfOf` and `editablePathOf` that nothing else
 // notices if they rot - so this suite mounts the real pane and asserts what
 // CodeEditor is actually handed.
@@ -225,7 +225,7 @@ describe("a .pdf tab in the editor pane", () => {
     await open(PDF);
     await pdfShown();
 
-    await waitFor(() => expect(localStorage.getItem("sway.editor.tabs.v1")).toContain(PDF));
+    await waitFor(() => expect(localStorage.getItem("tori.editor.tabs.v1")).toContain(PDF));
   });
 
   it("releases the document when its tab is closed", async () => {

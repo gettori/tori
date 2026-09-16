@@ -124,7 +124,7 @@ beforeEach(() => {
   // This suite is about two panes; the shell seeds one (plan phase 12).
   storeTwoPanes(REPO);
   localStorage.setItem(
-    "sway.selection.v1",
+    "tori.selection.v1",
     JSON.stringify({
       spaceName: "space",
       projectName: "proj",
@@ -239,7 +239,7 @@ describe("moving a tab", () => {
   it("says so rather than nothing when there is nowhere to move to", async () => {
     // One pane in the stored envelope: nothing to step to.
     localStorage.setItem(
-      "sway.panes.v1",
+      "tori.panes.v1",
       JSON.stringify({
         [REPO]: {
           version: 1,

@@ -6,7 +6,7 @@
 // of thought; a peek is a way of *looking* somewhere, which is why nothing here
 // touches the tab bar and why Esc puts everything back.
 //
-// **The peeked file is deliberately not registered with `SwayWorkspace`.** That
+// **The peeked file is deliberately not registered with `ToriWorkspace`.** That
 // class tracks the files the language server has been told about, and its
 // bookkeeping (`files`, `openFile`, the headless sweep) exists to keep the
 // server's idea of the world matching the editor's. A peek shows text; it does

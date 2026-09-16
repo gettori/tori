@@ -101,7 +101,7 @@ export default function MergeBar(props: {
         </div>
       </Show>
 
-      {/* The server's refusal, verbatim. GitHub knows about rules Sway cannot
+      {/* The server's refusal, verbatim. GitHub knows about rules Tori cannot
           read, so its wording is the only thing here that can name one. */}
       <Show when={props.error}>
         <div class={styles.error} data-merge-error>

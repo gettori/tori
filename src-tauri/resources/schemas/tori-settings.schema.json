@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Sway settings",
-  "description": "Sway's global settings, at ~/.config/sway/settings.json. Only the editor block is described here: the rest of the file is written by the Settings panel, and constraining sections this schema does not model would report a newer build's keys as errors.",
+  "title": "Tori settings",
+  "description": "Tori's global settings, at ~/.config/tori/settings.json. Only the editor block is described here: the rest of the file is written by the Settings panel, and constraining sections this schema does not model would report a newer build's keys as errors.",
   "type": "object",
   "properties": {
     "editorDefaults": {
@@ -66,7 +66,7 @@
         },
         "stickyScroll": {
           "type": "boolean",
-          "description": "Sticky scroll. Pins the class and function headers of whatever is at the top of the screen over it. Needs a language whose grammar Sway parses.",
+          "description": "Sticky scroll. Pins the class and function headers of whatever is at the top of the screen over it. Needs a language whose grammar Tori parses.",
           "default": false
         },
         "wordCompletion": {

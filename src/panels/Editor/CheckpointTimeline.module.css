@@ -16,7 +16,7 @@
 .timelineTitle {
   flex: 1;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -26,7 +26,7 @@
   align-items: center;
   gap: calc(4px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   cursor: pointer;
 }
 
@@ -52,10 +52,10 @@
   min-width: calc(44px * var(--ui-scale));
   padding: calc(3px * var(--ui-scale)) calc(5px * var(--ui-scale));
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   background: var(--canvas-default);
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   cursor: pointer;
 }
 
@@ -84,7 +84,7 @@
 .scopeHint {
   padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(4px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.4;
 }
 
@@ -97,7 +97,7 @@
 .timelineEmpty {
   padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .timelineRow {
@@ -117,7 +117,7 @@
   width: calc(14px * var(--ui-scale));
   text-align: center;
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .timelineStatus.added {
@@ -139,7 +139,7 @@
 
 .timelineDiff {
   font-family: "SF Mono", Menlo, Monaco, monospace;
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   line-height: 1.4;
   overflow-x: auto;
   padding: calc(4px * var(--ui-scale)) 0;
@@ -188,16 +188,16 @@
 .backstopTime {
   flex: none;
   color: var(--fg-muted);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 .sharedMarker {
-  margin-left: var(--sway-space-2);
-  padding: 0 var(--sway-space-1);
-  border-radius: var(--sway-radius-sm);
+  margin-left: var(--tori-space-2);
+  padding: 0 var(--tori-space-1);
+  border-radius: var(--tori-radius-sm);
   background: var(--attention-subtle, var(--neutral-hover));
   color: var(--attention-fg);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
 }
 
 /* Announced, never drawn: what the cumulative checkbox compares against, which

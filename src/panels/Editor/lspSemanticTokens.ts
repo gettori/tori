@@ -17,7 +17,7 @@ import {
   type SemanticToken,
 } from "../../utils/semanticTokens";
 import { lspTargetFor } from "./lspClient";
-import { pathToUri } from "./swayWorkspace";
+import { pathToUri } from "./toriWorkspace";
 
 /**
  * This file's semantic tokens, or null when there are none to have.
@@ -25,7 +25,7 @@ import { pathToUri } from "./swayWorkspace";
  * Null covers every reason a file might not get them - no server, no provider,
  * no legend, a refusal, a timeout - because they are the same thing to the
  * caller: this file keeps the colours its grammar gave it, which is what every
- * file in Sway had before this existed.
+ * file in Tori had before this existed.
  */
 export async function requestSemanticTokens(path: string): Promise<SemanticToken[] | null> {
   const target = lspTargetFor(path);

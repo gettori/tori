@@ -51,7 +51,7 @@ needs_you = true
 # without touching ~/.claude/settings.json (see crate::hooks); Notification
 # fires when claude itself decides it needs the user (a permission prompt or
 # an idle nudge), replacing the quiet-PTY x pending-tool_use guess with a
-# ground-truth signal for Sway-launched sessions only.
+# ground-truth signal for Tori-launched sessions only.
 hooks = true
 
 # --- schema v3: accounts ---
@@ -69,18 +69,18 @@ hooks = true
 #
 # The hash is taken over the raw environment string rather than a resolved
 # path, so ".../home" and ".../home/" are two different logins for one
-# directory. Sway canonicalizes before setting `home_env` for exactly that
+# directory. Tori canonicalizes before setting `home_env` for exactly that
 # reason.
 #
 # `login_args` runs in a real PTY and never headlessly: `claude auth login` is
 # browser OAuth with no non-interactive variant, and `setup-token` is
 # interactive too, so a captured login would hang rather than fail.
 #
-# `whoami_args` is the one probe Sway runs captured, and it is safe to: measured
+# `whoami_args` is the one probe Tori runs captured, and it is safe to: measured
 # both ways, `claude auth status` writes JSON to stdout and exits 0 signed in, 1
 # signed out. It also names the account (`email`) and, when one is inherited,
 # the environment variable supplying an API key (`apiKeySource`), which is where
-# the billing-override warning comes from rather than from Sway sniffing its own
+# the billing-override warning comes from rather than from Tori sniffing its own
 # environment.
 #
 # `logout_args` is non-interactive too: measured against an isolated home with
@@ -125,7 +125,7 @@ plugins_kind = "claude_installed_json"
 # window, which no passive frame carries. It reads this account's own OAuth token
 # out of the login Keychain, so it is never a default: the user turns it on
 # knowing macOS will ask. `cli` stays undeclared because claude has no
-# non-interactive usage command; that gap is the CLI's, not a phase Sway owes.
+# non-interactive usage command; that gap is the CLI's, not a phase Tori owes.
 [usage]
 sources = ["sessions", "token"]
 
@@ -231,16 +231,16 @@ base_args = [
   "--output-format", "stream-json",
   "--verbose",
   "--include-partial-messages",
-  # Puts the user's own hooks in the transcript in-band. Sway's injected
+  # Puts the user's own hooks in the transcript in-band. Tori's injected
   # approval hook rides the same stream and is folded away by default (it
   # stamps its own output so it can be told apart; `hook_name` reports the
   # tool, not the matcher, so the name cannot identify it).
   "--include-hook-events",
   # Permission questions come back in-protocol as a `can_use_tool`
-  # control_request that Sway answers with a `control_response`, instead of
-  # Sway deciding for itself in a `PreToolUse` hook. This is what makes the
+  # control_request that Tori answers with a `control_response`, instead of
+  # Tori deciding for itself in a `PreToolUse` hook. This is what makes the
   # agent's own permission modes real: `default` asks, `acceptEdits` and
-  # `bypassPermissions` do not, and Sway renders whatever the CLI decided to
+  # `bypassPermissions` do not, and Tori renders whatever the CLI decided to
   # ask rather than overriding it.
   #
   # Undocumented on purpose, it seems: the flag is absent from `claude --help`
@@ -257,7 +257,7 @@ base_args = [
   # account says. That much is measured and true. What it is not is inert. The
   # CLI's own settings schema reads "When true, fast mode is enabled. When
   # absent or false, fast mode is off", so on any account that *can* serve fast
-  # mode, this turned it on for every chat Sway opened.
+  # mode, this turned it on for every chat Tori opened.
   #
   # It looked harmless only because the machine it was measured on has usage
   # credits disabled, so `fast_mode_state` stayed `off` and the flag appeared to
@@ -271,7 +271,7 @@ session_id_args = ["--session-id", "{id}"]
 resume_args = ["--resume", "{id}"]
 # Forking replays an existing conversation into a **new** session id. Measured:
 # `--resume <old> --fork-session --session-id <new>` honours the id we pass and
-# reports it back, which is what lets Sway claim the fork before starting it -
+# reports it back, which is what lets Tori claim the fork before starting it -
 # a CLI-chosen id would be claimed only after the fact, if at all. `{from}` is
 # the session being forked; `{id}` is the new one, and the template carries both
 # because a fork is the one case where the two differ.
@@ -281,7 +281,7 @@ effort_args = ["--effort", "{effort}"]
 mode_args = ["--permission-mode", "{mode}"]
 add_dir_args = ["--add-dir", "{dir}"]
 
-# No [[chat.models]]. **Sway declares no model this CLI did not name.**
+# No [[chat.models]]. **Tori declares no model this CLI did not name.**
 #
 # There used to be a table of four here, carrying labels, context windows and
 # effort levels. It was the picker's fallback and the meter's pre-first-turn
@@ -303,7 +303,7 @@ add_dir_args = ["--add-dir", "{dir}"]
 # (`claude-opus-5` against a resolved `claude-opus-5[1m]`) and matched nothing.
 
 # The six permission modes `--permission-mode` accepts and honours, and they now
-# mean what they say: Sway's hook no longer decides anything, so nothing runs
+# mean what they say: Tori's hook no longer decides anything, so nothing runs
 # ahead of them and `bypassPermissions` bypasses permissions.
 #
 # `manual` is deliberately absent. The CLI accepts it, but its own help calls it
@@ -359,8 +359,8 @@ label = "Bypass"
 hint = "Bypass all permission checks."
 args = ["--permission-mode", "bypassPermissions"]
 # Runs every tool without asking anyone. Not the retired `permissive_caveat`
-# wearing a new name: that declared a warning about *Sway*, which stopped being
-# true when Sway stopped gating. This declares what the mode itself does, which
+# wearing a new name: that declared a warning about *Tori*, which stopped being
+# true when Tori stopped gating. This declares what the mode itself does, which
 # was always true and matters more now that nothing catches it afterwards. Only
 # this mode: `acceptEdits` still asks about everything that is not an edit, and
 # `dontAsk` denies rather than runs.

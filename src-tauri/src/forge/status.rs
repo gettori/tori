@@ -339,7 +339,7 @@ mod tests {
     use std::cell::Cell;
 
     fn repo() -> RepoRef {
-        RepoRef { owner: "skarif2".into(), repo: "sway".into() }
+        RepoRef { owner: "skarif2".into(), repo: "tori".into() }
     }
 
     fn status(head: &str) -> UnitStatus {
@@ -537,7 +537,7 @@ mod tests {
         let leader = {
             let (flight, calls, in_fetch) = (flight.clone(), calls.clone(), in_fetch.clone());
             std::thread::spawn(move || {
-                flight.run("skarif2/sway\nmain".into(), || {
+                flight.run("skarif2/tori\nmain".into(), || {
                     calls.fetch_add(1, Ordering::SeqCst);
                     in_fetch.wait();
                     // Held open while this thread joins. A sleep rather than a
@@ -551,7 +551,7 @@ mod tests {
         };
 
         in_fetch.wait();
-        let follower = flight.run("skarif2/sway\nmain".into(), || {
+        let follower = flight.run("skarif2/tori\nmain".into(), || {
             calls.fetch_add(1, Ordering::SeqCst);
             Ok((vec![], RateSnapshot::default()))
         });

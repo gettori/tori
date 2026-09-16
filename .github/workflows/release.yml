@@ -94,12 +94,12 @@ jobs:
         run: pnpm tauri build --target universal-apple-darwin
 
       - name: Report the main binary's architectures
-        run: lipo -archs "src-tauri/target/universal-apple-darwin/release/bundle/macos/Sway.app/Contents/MacOS/Sway"
+        run: lipo -archs "src-tauri/target/universal-apple-darwin/release/bundle/macos/Tori.app/Contents/MacOS/Tori"
 
       - name: Verify every bundled Mach-O is universal
         run: |
           .github/scripts/check-universal.sh \
-            "src-tauri/target/universal-apple-darwin/release/bundle/macos/Sway.app"
+            "src-tauri/target/universal-apple-darwin/release/bundle/macos/Tori.app"
 
       # Resolved explicitly rather than passing a glob to `gh`: an unmatched
       # glob reaches it as a literal path and the failure reads as a mangled
@@ -140,7 +140,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --repo gettori/releases \
             "${flags[@]}" \
-            --title "Sway $GITHUB_REF_NAME" \
+            --title "Tori $GITHUB_REF_NAME" \
             --notes-file release-notes.md \
             "${{ steps.dmg.outputs.path }}"
 
@@ -151,6 +151,6 @@ jobs:
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v4
         with:
-          name: sway-rehearsal-dmg
+          name: tori-rehearsal-dmg
           path: ${{ steps.dmg.outputs.path }}
           if-no-files-found: error

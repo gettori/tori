@@ -1,4 +1,4 @@
-// The dock: Sway's own commands in a card under the work card, on screen beside
+// The dock: Tori's own commands in a card under the work card, on screen beside
 // whatever branch is selected. The real shell and terminal panel; the surfaces
 // are stubbed to what a real one does with focus.
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -161,7 +161,7 @@ function mount() {
 beforeEach(() => {
   cleanup();
   localStorage.clear();
-  localStorage.setItem("sway.selection.v1", JSON.stringify(unit));
+  localStorage.setItem("tori.selection.v1", JSON.stringify(unit));
   bridge.listeners.clear();
   bridge.selected = undefined;
   resetCommandStatus();
@@ -289,16 +289,16 @@ describe("the dock", () => {
 
   it("starts with nothing selected from a Shells selection an earlier build stored", async () => {
     localStorage.setItem(
-      "sway.selection.v1",
+      "tori.selection.v1",
       JSON.stringify({ kind: "shells", spaceName: "", projectName: "Shells", projectPath: "", folderPath: "", branch: "" }),
     );
     mount();
     await waitFor(() => expect(bridge.selected).toBeNull());
-    expect(localStorage.getItem("sway.selection.v1")).toBeNull();
+    expect(localStorage.getItem("tori.selection.v1")).toBeNull();
   });
 
   it("keeps the height it was dragged to across a reload", async () => {
-    localStorage.setItem("sway.layout.v1", JSON.stringify({ showDock: true, dock: 300 }));
+    localStorage.setItem("tori.layout.v1", JSON.stringify({ showDock: true, dock: 300 }));
     const first = mount();
     await waitFor(() => expect(dock().style.height).toBe("300px"));
 

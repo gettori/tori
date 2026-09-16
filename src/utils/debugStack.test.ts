@@ -167,7 +167,7 @@ describe("what a pause records", () => {
     event(root!.handle.session, "stopped", { reason: "entry", threadId: 1 });
     await flush();
 
-    // Sway asked for that one itself so a source map has time to resolve, and
+    // Tori asked for that one itself so a source map has time to resolve, and
     // continues straight through it. A stack for it would flash a frame nobody
     // asked to see at the start of every launch.
     expect(stack.debugPaused()).toBe(false);
@@ -356,7 +356,7 @@ describe("a frame with no file on disk", () => {
     // reference and opens read-only.
     expect(commands("source")[0].args).toMatchObject({ sourceReference: 12 });
     expect(opened).toHaveLength(1);
-    expect(opened[0].path).toContain("sway://dapsource/");
+    expect(opened[0].path).toContain("tori://dapsource/");
     expect(opened[0].line).toBe(3);
     expect(stack.debugSourceText(opened[0].path)).toBe(sourceContent);
     // And no line highlight in any buffer: the fetched view draws its own.
@@ -394,7 +394,7 @@ describe("a frame with no file on disk", () => {
     // fetched through the `source` request even when a path is given. Reading
     // the path first opens a tab on a file that cannot be read.
     expect(commands("source")[0].args).toMatchObject({ sourceReference: 720072378 });
-    expect(opened[0].path).toContain("sway://dapsource/");
+    expect(opened[0].path).toContain("tori://dapsource/");
     expect(stack.frameLocation()).toBeNull();
   });
 

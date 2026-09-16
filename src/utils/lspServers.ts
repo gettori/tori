@@ -3,11 +3,11 @@
 // language id does it open as" without hardcoding an extension list.
 //
 // Snake_case field names, matching the Rust struct and `utils/agents.ts`: these
-// registry mirrors are the one place Sway keeps the backend's spelling rather
+// registry mirrors are the one place Tori keeps the backend's spelling rather
 // than camel-casing at the boundary.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { isSwaySettingsFile } from "./swaySettingsFiles";
+import { isToriSettingsFile } from "./toriSettingsFiles";
 
 export type LspLaunch =
   | { kind: "bundled_node"; entry: string; args: string[] }
@@ -40,7 +40,7 @@ export type LspServer = {
 
 // Empty until `lsp_registry` resolves, and empty is a *correct* state rather
 // than a degraded one: no server claims anything, so nothing gets a plugin, so
-// files open and edit exactly as they do for a language Sway has no server for.
+// files open and edit exactly as they do for a language Tori has no server for.
 // The load fires `onLspChange` through its subscriber, which is what makes a
 // file opened during startup attach once the registry lands.
 const [servers, setServers] = createSignal<LspServer[]>([]);
@@ -93,7 +93,7 @@ export function serverForPath(path: string): LspServer | null {
 
 /** The LSP language id to open this path as, for its claiming server.
  *
- *  Sway's own settings files are the one exception to "the extension decides".
+ *  Tori's own settings files are the one exception to "the extension decides".
  *  They end in `.json` but are read with json5, so a comment in one is
  *  supported; the JSON server reports comments as errors under every language
  *  id but `jsonc`. Only offered to a server that declared it speaks `jsonc`,
@@ -106,6 +106,6 @@ export function languageIdFor(server: LspServer, path: string): string | null {
   const ext = extensionOf(path);
   if (!ext) return null;
   const id = server.languages[ext] ?? null;
-  if (id && isSwaySettingsFile(path) && Object.values(server.languages).includes("jsonc")) return "jsonc";
+  if (id && isToriSettingsFile(path) && Object.values(server.languages).includes("jsonc")) return "jsonc";
   return id;
 }

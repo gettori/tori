@@ -18,15 +18,15 @@
 
 .name {
   color: var(--fg-default);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
 }
 
 /* Said once, in the header: without it a reader spends a while wondering why
    typing does nothing. */
 .note {
   color: var(--fg-muted);
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
 }
 
 .empty {
@@ -57,8 +57,8 @@
   flex: none;
   min-width: calc(32px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   text-align: right;
   user-select: none;
 }
@@ -67,7 +67,7 @@
    wrapped line would break the one-row-per-line count the gutter states. */
 .text {
   color: var(--fg-default);
-  font-family: var(--sway-font-mono);
-  font-size: var(--sway-text-sm);
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
   white-space: pre;
 }

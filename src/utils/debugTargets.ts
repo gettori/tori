@@ -29,7 +29,7 @@ export type TargetContext = {
   /** Names in `root`, for the lockfile rule. */
   entries: readonly string[];
   /** Environment for the debuggee. Carries the augmented PATH, because a
-   *  GUI-launched Sway inherits a minimal one and `pnpm` is not on it
+   *  GUI-launched Tori inherits a minimal one and `pnpm` is not on it
    *  (gotchas#gui-launched-processes-inherit-a-minimal-path). */
   env: Record<string, string>;
 };
@@ -98,7 +98,7 @@ export function scriptConfig(ctx: TargetContext, script: string): DebugConfig {
 /**
  * Attach to a process somebody else started.
  *
- * Deliberately none of the launch fields. Sway did not start this process, so
+ * Deliberately none of the launch fields. Tori did not start this process, so
  * it has no environment to hand it and no entry to pause at, and `console` does
  * not exist on `INodeAttachConfiguration` at all.
  */
@@ -164,7 +164,7 @@ export function attachFailureMessage(port: number, error: unknown): string {
 
 // --- the remembered attach port --------------------------------------------
 
-const LS_ATTACH_PORTS = "sway.debugAttachPorts";
+const LS_ATTACH_PORTS = "tori.debugAttachPorts";
 
 /** Every workspace's last-used inspector port, keyed by branch-unit folder. */
 export type AttachPortStore = Readonly<Record<string, number>>;
@@ -223,7 +223,7 @@ export function saveAttachPorts(store: AttachPortStore): void {
 
 // --- the last target, so F5 is a repeat rather than a question --------------
 
-const LS_LAST_TARGET = "sway.debugLastTarget";
+const LS_LAST_TARGET = "tori.debugLastTarget";
 
 /** What each workspace last debugged, keyed by branch-unit folder. */
 export type LastTargetStore = Readonly<Record<string, DebugTarget>>;

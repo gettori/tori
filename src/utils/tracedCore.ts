@@ -1,12 +1,12 @@
 /**
  * Stands in for `@tauri-apps/api/core` in the production build, so every invoke
- * in the app can be timed. The `sway-trace-core` plugin in `vite.config.ts`
+ * in the app can be timed. The `tori-trace-core` plugin in `vite.config.ts`
  * rewrites the import; this module is the only one it lets through to the real
  * package.
  *
  * Everything but `invoke` is re-exported untouched. `invoke` is wrapped, and
  * the wrapper is a straight pass-through until `perfTrace` hands it a recorder,
- * which only happens when the backend was launched with `SWAY_TRACE`.
+ * which only happens when the backend was launched with `TORI_TRACE`.
  */
 
 export * from "@tauri-apps/api/core";

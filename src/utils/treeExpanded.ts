@@ -22,7 +22,7 @@ export type WorkspaceExpanded = { dirs: readonly string[]; closed: readonly stri
 /** Every workspace's, keyed the same way the tab strip is (`wsKey`). */
 export type ExpandedStore = Readonly<Record<string, WorkspaceExpanded>>;
 
-const LS_TREE_EXPANDED = "sway.treeExpanded.v1";
+const LS_TREE_EXPANDED = "tori.treeExpanded.v1";
 
 /** A tree that does not persist gets one of these instead of a workspace key,
  *  so the shared and docs panes still expand for the session while the save

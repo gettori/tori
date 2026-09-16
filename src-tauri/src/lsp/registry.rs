@@ -2,7 +2,7 @@
 // `typescript-language-server` in lsp.rs is now data. Four servers ship bundled
 // (`lsp/{typescript,rust,json,yaml}.toml`, embedded at compile time); a user
 // can add or whole-replace one by dropping a `schema_version = 1` TOML file
-// into `~/.config/sway/lsp/`. See LSP-SERVERS.md for the schema.
+// into `~/.config/tori/lsp/`. See LSP-SERVERS.md for the schema.
 //
 // Modelled on `crate::agents`, deliberately: same bundled-then-user merge, same
 // whole-replace override semantics, same loud-log-keep-previous handling of a
@@ -22,7 +22,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 /// Every schema version this build still loads. Only one exists so far; when a
 /// v2 lands, the older entries stay here so someone's working config in
-/// `~/.config/sway/lsp/` keeps loading, the way `agents.rs` keeps v1.
+/// `~/.config/tori/lsp/` keeps loading, the way `agents.rs` keeps v1.
 const SUPPORTED_SCHEMA_VERSIONS: [u32; 1] = [SCHEMA_VERSION];
 
 /// How a server process is started.
@@ -183,7 +183,7 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
     if let Some(table) = value.as_table() {
         for key in table.keys() {
             if !KNOWN_TOP_LEVEL.contains(&key.as_str()) {
-                eprintln!("sway: lsp server {source}: unknown field `{key}`, ignoring");
+                eprintln!("tori: lsp server {source}: unknown field `{key}`, ignoring");
             }
         }
         let missing: Vec<&str> =
@@ -198,7 +198,7 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
     if !SUPPORTED_SCHEMA_VERSIONS.contains(&raw.schema_version) {
         let supported = SUPPORTED_SCHEMA_VERSIONS.map(|v| v.to_string()).join(", ");
         return Err(format!(
-            "{source}: unsupported schema_version {} (sway supports {supported})",
+            "{source}: unsupported schema_version {} (tori supports {supported})",
             raw.schema_version
         ));
     }
@@ -211,7 +211,7 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
     }
 
     // The closed set. An unimplemented kind is an error rather than a warning:
-    // a server that never spawns is indistinguishable from a language Sway
+    // a server that never spawns is indistinguishable from a language Tori
     // simply does not support, which is the wrong thing to leave a user
     // debugging.
     let launch = match raw.launch.kind.as_str() {
@@ -230,7 +230,7 @@ pub fn load_server_str(text: &str, source: &str) -> Result<LspServer, String> {
         }
         other => {
             return Err(format!(
-                "{source}: unknown launch.kind `{other}` (sway implements: bundled_node, path)"
+                "{source}: unknown launch.kind `{other}` (tori implements: bundled_node, path)"
             ))
         }
     };
@@ -285,7 +285,7 @@ const BUILTIN_JSON: &str = include_str!("../../lsp/json.toml");
 const BUILTIN_YAML: &str = include_str!("../../lsp/yaml.toml");
 
 fn user_lsp_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/lsp")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/lsp")
 }
 
 /// Bundled built-ins, then every `*.toml` in `user_dir`. A user file whose id
@@ -306,7 +306,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
             Ok(s) => {
                 by_id.insert(s.id.clone(), s);
             }
-            Err(e) => eprintln!("sway: ERROR loading built-in lsp server {source}: {e}"),
+            Err(e) => eprintln!("tori: ERROR loading built-in lsp server {source}: {e}"),
         }
     }
 
@@ -320,7 +320,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
             let text = match std::fs::read_to_string(&path) {
                 Ok(t) => t,
                 Err(e) => {
-                    eprintln!("sway: ERROR reading lsp server {source}: {e}");
+                    eprintln!("tori: ERROR reading lsp server {source}: {e}");
                     continue;
                 }
             };
@@ -329,7 +329,7 @@ fn build_registry_from(user_dir: &Path) -> Vec<LspServer> {
                     by_id.insert(s.id.clone(), s);
                 }
                 Err(e) => eprintln!(
-                    "sway: ERROR loading lsp server {source}: {e} (keeping the previous server for this id)"
+                    "tori: ERROR loading lsp server {source}: {e} (keeping the previous server for this id)"
                 ),
             }
         }
@@ -347,8 +347,8 @@ fn build_registry() -> Vec<LspServer> {
 static REGISTRY: OnceLock<Vec<LspServer>> = OnceLock::new();
 
 /// The process-wide server registry, loaded once on first use (bundled +
-/// `~/.config/sway/lsp/*.toml`; not live-watched, restart to pick up edits,
-/// same as every other loaded-at-startup config in Sway).
+/// `~/.config/tori/lsp/*.toml`; not live-watched, restart to pick up edits,
+/// same as every other loaded-at-startup config in Tori).
 pub fn registry() -> &'static [LspServer] {
     REGISTRY.get_or_init(build_registry)
 }
@@ -424,7 +424,7 @@ program = "demo-server"
         static SEQ: AtomicUsize = AtomicUsize::new(0);
         let n = SEQ.fetch_add(1, Ordering::SeqCst);
         let dir = std::env::temp_dir()
-            .join(format!("sway_lsp_registry_{}_{name}_{n}", std::process::id()));
+            .join(format!("tori_lsp_registry_{}_{name}_{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -502,7 +502,7 @@ program = "demo-server"
 
     #[test]
     fn bundled_servers_load_with_no_user_dir() {
-        let list = build_registry_from(Path::new("/nonexistent/sway/lsp"));
+        let list = build_registry_from(Path::new("/nonexistent/tori/lsp"));
         let ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, vec!["json", "rust", "typescript", "yaml"]);
         assert!(list.iter().all(|s| !s.is_override()));
@@ -773,7 +773,7 @@ program = "demo-server"
                     "hover": true,
                     "schemaStore": {
                         "enable": true,
-                        // The same catalog Sway fetches for the JSON server.
+                        // The same catalog Tori fetches for the JSON server.
                         // Two servers reading two different catalogs would be
                         // a difference nobody could see from the outside.
                         "url": crate::lsp::schemastore::CATALOG_URL
@@ -808,7 +808,7 @@ program = "demo-server"
 
     #[test]
     fn the_typescript_config_turns_the_servers_own_code_lens_on() {
-        // Sway's `codeLens` setting decides whether it *asks*;
+        // Tori's `codeLens` setting decides whether it *asks*;
         // `typescript-language-server` decides whether it has anything to
         // answer, and its answer is an empty array until a workspace
         // configuration says otherwise (`cli.mjs:21364`). Verified against the

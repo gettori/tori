@@ -17,7 +17,7 @@
 // decision below is testable without one, the split `lspSemanticTokens.ts` uses.
 
 import { lspTargetFor, type LspTarget } from "./lspClient";
-import { pathToUri } from "./swayWorkspace";
+import { pathToUri } from "./toriWorkspace";
 
 /**
  * The capability block.
@@ -28,7 +28,7 @@ import { pathToUri } from "./swayWorkspace";
  *
  * `workspace.codeLens.refreshSupport` is the half that is *not* empty, and it
  * is a promise rather than a preference: it tells the server it may push
- * `workspace/codeLens/refresh` instead of leaving Sway to guess when its counts
+ * `workspace/codeLens/refresh` instead of leaving Tori to guess when its counts
  * went stale. Declaring it without answering it is worse than not declaring it,
  * so the router entry in `lspClient.ts` is part of this block, not a follow-up.
  */

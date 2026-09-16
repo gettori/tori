@@ -9,7 +9,7 @@ import { agentMark, type MarkProps } from "./agentMarks";
  * A generic "brain" glyph sat in all of them before, and it said nothing the row
  * does not already say - every model is a model. The provider is the fact worth
  * a glyph, because it is the one thing about a session you cannot read off the
- * label: "opus-4.6" is Anthropic's, "gpt-5" is not, and Sway drives more than
+ * label: "opus-4.6" is Anthropic's, "gpt-5" is not, and Tori drives more than
  * one agent.
  *
  * The marks themselves live in `agentMarks.tsx`, which is also where the
@@ -23,7 +23,7 @@ export type { MarkProps };
  *
  *  Families only, never a full id: this answers "whose model is this" and
  *  nothing finer, so a version bump or a new size never touches it. An id no
- *  pattern matches is a model whose vendor Sway cannot name, which is a
+ *  pattern matches is a model whose vendor Tori cannot name, which is a
  *  different answer from a wrong one. */
 const MODEL_VENDORS: [RegExp, string][] = [
   [/claude|anthropic/, "anthropic"],
@@ -62,7 +62,7 @@ function markForModel(id: string): string | undefined {
 
 /**
  * Which mark a session earns, as the key `agentMarks` files them under, or
- * `null` for a session whose provider Sway cannot name.
+ * `null` for a session whose provider Tori cannot name.
  *
  * The key, not the component, because two callers want two different things out
  * of one decision: `providerIcon` wants the glyph, and a caller tinting that

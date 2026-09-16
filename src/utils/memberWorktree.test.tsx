@@ -19,7 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 const { removeMemberWorktree } = await import("./memberWorktree");
 const { PURGE_UNDER_PATH } = await import("./events");
 
-const MEMBER = { repoPath: "/w/api", worktreePath: "/w/api/.sway/worktrees/auth" };
+const MEMBER = { repoPath: "/w/api", worktreePath: "/w/api/.tori/worktrees/auth" };
 
 describe("removeMemberWorktree", () => {
   const purged: unknown[] = [];

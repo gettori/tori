@@ -13,8 +13,8 @@ import { pointerClick } from "../../test/menus";
 
 const REPO_A = "/w/api";
 const REPO_B = "/w/web";
-const WT_A = `${REPO_A}/.sway/worktrees/auth`;
-const WT_B = `${REPO_B}/.sway/worktrees/auth`;
+const WT_A = `${REPO_A}/.tori/worktrees/auth`;
+const WT_B = `${REPO_B}/.tori/worktrees/auth`;
 
 const member = (repoPath: string, displayName: string, worktreePath: string, order: number) => ({
   repoPath,
@@ -25,7 +25,7 @@ const member = (repoPath: string, displayName: string, worktreePath: string, ord
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/w"],
   spaces: [
     {
@@ -146,8 +146,8 @@ describe("Remove repository", () => {
     bridge.members = [member(REPO_A, "api", WT_A, 0), member(REPO_B, "web", WT_B, 1)];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    localStorage.setItem("sway.sidebar-mode.v1", "features");
+    localStorage.setItem("tori.active-space.v1", "work");
+    localStorage.setItem("tori.sidebar-mode.v1", "features");
   });
 
   it("keeps the worktree and leaves it out of the record", async () => {

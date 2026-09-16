@@ -1,14 +1,14 @@
 # Contributing
 
-Thanks for looking. Sway is a small project, so the most useful contributions
+Thanks for looking. Tori is a small project, so the most useful contributions
 are usually the narrow ones: an adapter for an agent it does not support yet, a
 bug report with steps, a fix for something that misbehaves on your machine.
 
 ## Adding an agent is not a code change
 
-If you want Sway to drive an agent it does not know about, **you do not need to
+If you want Tori to drive an agent it does not know about, **you do not need to
 fork it or open a pull request.** Agents are data: a `schema_version = 1` TOML
-file dropped into `~/.config/sway/agents/` describes how to launch the agent,
+file dropped into `~/.config/tori/agents/` describes how to launch the agent,
 where its session transcripts live, how to recognize a live process, and which
 built-in parser reads its transcripts.
 
@@ -23,7 +23,7 @@ Two things worth knowing before you start:
   transcript format does not match any of them, that part *is* a code change,
   and an issue describing the format is the right first step.
 - `verified_against` means *empirically captured against this CLI version*.
-  Leave it out rather than guessing; a wrong value makes Sway's drift warning
+  Leave it out rather than guessing; a wrong value makes Tori's drift warning
   meaningless.
 
 If your adapter works and covers an agent others use, an issue or PR adding it
@@ -33,7 +33,7 @@ to the bundled set is welcome.
 
 ### Prerequisites
 
-- **macOS.** Sway is macOS only today, developed and tested on macOS 15.
+- **macOS.** Tori is macOS only today, developed and tested on macOS 15.
 - **Xcode Command Line Tools**: `xcode-select --install`
 - **Rust (stable)**, via [rustup](https://rustup.rs). Tauri v2 needs no extra
   targets for a local dev build; the release workflow adds
@@ -51,8 +51,8 @@ pnpm tauri:dev
 ```
 
 `pnpm tauri:dev` layers `src-tauri/tauri.dev.conf.json` over the main config:
-the app is named "Sway Dev", wears an orange stripe and a `dev` chip in the
-topbar, and uses its own identifier (`com.skarif.sway.dev`) so it keeps its
+the app is named "Tori Dev", wears an orange stripe and a `dev` chip in the
+topbar, and uses its own identifier (`com.skarif.tori.dev`) so it keeps its
 own data dir and can run beside the installed build. It runs `pnpm lsp:install` first, which installs the bundled
 TypeScript language server into `src-tauri/resources/lsp`. The first Rust build
 takes a while; later ones are incremental.
@@ -78,12 +78,12 @@ add a color, add it to the token layer for **both** themes rather than to the
 allowlist.
 
 Known flake: `hooks::tests::status_for_maps_known_events` fails intermittently
-under the full Rust suite because it writes to the real `~/.config/sway` path.
+under the full Rust suite because it writes to the real `~/.config/tori` path.
 It is not caused by your change.
 
 ## Conventions
 
-- **Colors go through tokens.** See the guard above. Two tiers: `--sway-*`
+- **Colors go through tokens.** See the guard above. Two tiers: `--tori-*`
   primitives that do not follow the theme, and semantic tokens that do.
 - **Blocking work does not go in a sync Tauri command.** Commands without
   `async` run on the main thread, so blocking I/O there freezes the window.
@@ -92,7 +92,7 @@ It is not caused by your change.
 
 ## Reporting things
 
-Use the issue templates: bug reports want the macOS version, the Sway version
+Use the issue templates: bug reports want the macOS version, the Tori version
 (the app does not display it yet, so take it from the DMG filename or the
 release you downloaded), the agent CLI and its version, and what you expected
 instead. Adapter requests want a link to the agent's CLI and, if you can get

@@ -149,9 +149,9 @@ export const RichRows: Story = {
         listLabel="Commands"
         emptyLabel="No matches"
         itemComponent={(option) => (
-          <span style={{ display: "flex", "align-items": "center", gap: "var(--sway-space-3)", flex: 1 }}>
+          <span style={{ display: "flex", "align-items": "center", gap: "var(--tori-space-3)", flex: 1 }}>
             <span style={{ flex: 1 }}>{option.label}</span>
-            <span style={{ color: "var(--fg-subtle)", "font-size": "var(--sway-text-sm)" }}>
+            <span style={{ color: "var(--fg-subtle)", "font-size": "var(--tori-text-sm)" }}>
               {option.disabled ? "unavailable" : "Enter"}
             </span>
           </span>

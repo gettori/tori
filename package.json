@@ -1,5 +1,5 @@
 {
-  "name": "sway",
+  "name": "tori",
   "version": "26.914.2-alpha",
   "description": "Dev workflow manager: session tree + Claude terminal + editor",
   "type": "module",

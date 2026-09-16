@@ -3,11 +3,11 @@ import { Slider as Primitive } from "../../lib/slider";
 import styles from "./Slider.module.css";
 
 /**
- * A continuous value on a track: Kobalte's slider behind Sway's chrome and
- * Sway's API.
+ * A continuous value on a track: Kobalte's slider behind Tori's chrome and
+ * Tori's API.
  *
  * **Scalar, not a range.** Kobalte models every slider as a `number[]` because
- * it supports multi-thumb ranges; Sway's one consumer (the ui-scale preview) is
+ * it supports multi-thumb ranges; Tori's one consumer (the ui-scale preview) is
  * a single value, so the array is unwrapped here rather than at every call
  * site. If a real range ever appears, it gets its own wrapper rather than a
  * union prop on this one.

@@ -5,7 +5,7 @@
 //! [`build_command`], a permission question parked in a map until somebody
 //! answers it, and a teardown that denies whatever is still waiting rather than
 //! leaving the agent blocked. What differs is everything below that, because ACP
-//! is a JSON-RPC peer conversation rather than a line protocol Sway parses
+//! is a JSON-RPC peer conversation rather than a line protocol Tori parses
 //! itself.
 //!
 //! Three shapes here are load-bearing:
@@ -14,8 +14,8 @@
 //!     built on the smol stack, not on tokio, and Tauri's runtime is neither.
 //!     Rather than introduce a second global runtime, each session owns one
 //!     thread that blocks on its own connection future for the life of the
-//!     session. Nothing else in Sway has to know a runtime exists.
-//!   * **The child is spawned by Sway, not by the SDK.** `AcpAgent::from_str`
+//!     session. Nothing else in Tori has to know a runtime exists.
+//!   * **The child is spawned by Tori, not by the SDK.** `AcpAgent::from_str`
 //!     would spawn it for us, but it bypasses [`build_command`] and therefore
 //!     `env::augmented_path()` - the same PATH trap `pty.rs` exists for, since a
 //!     directly-spawned child gets no login shell. Spawning it here also keeps
@@ -54,7 +54,7 @@ use super::model::{
 };
 use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 
-/// How long Sway waits for `initialize` before giving up on an agent.
+/// How long Tori waits for `initialize` before giving up on an agent.
 ///
 /// The client owns this deadline because the protocol gives the agent no
 /// obligation to answer promptly and some do not answer at all. Without it a
@@ -62,7 +62,7 @@ use super::transport::{build_command, emit, AgentTransport, Sink, StartSpec};
 /// error and nothing to retry.
 const HANDSHAKE_TIMEOUT_SECS: u64 = 30;
 
-/// How long an unanswered permission question waits before Sway denies it.
+/// How long an unanswered permission question waits before Tori denies it.
 ///
 /// Kept equal to the Claude transport's own deadline so both routes to a prompt
 /// expire alike; a user cannot tell which protocol asked, so they must not
@@ -81,7 +81,7 @@ enum Command {
     SetMode(PermissionMode),
     /// Switch one session config option, which is how a model switch, a mode
     /// switch and every mirrored control travel alike. Carries the agent's own
-    /// config id rather than a Sway-side name for it, and `what` only so a
+    /// config id rather than a Tori-side name for it, and `what` only so a
     /// failure can say which control the user touched.
     SetConfigOption {
         config_id: String,
@@ -95,7 +95,7 @@ enum Command {
     /// sink - loses it with no way to read it back. Measured on `codex-acp`
     /// 1.2.0: a second `session/load` for the same id on the same connection
     /// replays the whole conversation, `user_message_chunk` included, so asking
-    /// again is cheaper and more honest than Sway keeping a copy.
+    /// again is cheaper and more honest than Tori keeping a copy.
     Reload,
     Close,
 }
@@ -112,9 +112,9 @@ enum ConfigOption {
     Model,
     Mode,
     Effort,
-    /// A control Sway has no bespoke one for, driven by the mirror. It carries
+    /// A control Tori has no bespoke one for, driven by the mirror. It carries
     /// the agent's own id because neither the noun nor the readback can be
-    /// derived from a selector Sway knows nothing about: the three above are
+    /// derived from a selector Tori knows nothing about: the three above are
     /// found by category, and this one is exactly the option no category claims.
     Mirrored { id: String },
 }
@@ -176,7 +176,7 @@ struct Shared {
     /// before the host commits to letting it, or a rewired tab waits for a
     /// replay that is never coming.
     can_reload: AtomicBool,
-    /// Permission questions the agent is blocked on, keyed by the id Sway
+    /// Permission questions the agent is blocked on, keyed by the id Tori
     /// minted for them.
     ///
     /// Holds the responder itself rather than a marker: answering *is* consuming
@@ -198,7 +198,7 @@ struct Shared {
     /// stamp a turn on its updates, so the transport has to supply one, and the
     /// counter cannot: it is shared with minted request ids, so a single
     /// permission question would bump it mid-turn and every later update would
-    /// be stamped with a turn id no turn ever had. Sway's transcript keys on
+    /// be stamped with a turn id no turn ever had. Tori's transcript keys on
     /// `turn_id`, so that split one turn into two.
     current_turn: Mutex<String>,
     /// Monotonic counter behind minted request ids and turn numbering.
@@ -225,7 +225,7 @@ struct Shared {
 /// things and the difference is what the user reads. A chat that has not finished
 /// opening has not asked the agent yet; a chat that has, and got no such
 /// selector, has an answer. Reporting the first as the second blames the agent
-/// for Sway's timing.
+/// for Tori's timing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Switch {
     /// `session/new` has not answered yet, so nothing is known.
@@ -241,7 +241,7 @@ enum Switch {
 /// vocabulary.
 struct Parked {
     responder: Responder<RequestPermissionResponse>,
-    /// `optionId`s the agent supplied, split by what they mean. Sway's UI
+    /// `optionId`s the agent supplied, split by what they mean. Tori's UI
     /// answers Allow or Deny; the agent expects one of *its* ids, so the
     /// translation needs both lists.
     allow_options: Vec<String>,
@@ -269,7 +269,7 @@ impl Shared {
             return Ok(false);
         };
         // The reason is deliberately unused: ACP's outcome carries a chosen
-        // option id and nothing else, so there is no field to put Sway's own
+        // option id and nothing else, so there is no field to put Tori's own
         // explanation in. It still reaches the user through the event that
         // announced the denial.
         let _ = reason;
@@ -308,7 +308,7 @@ impl Shared {
     }
 
     /// Forget it, so the next reload's replayed user turns are not mistaken for
-    /// the echo of a prompt Sway sent.
+    /// the echo of a prompt Tori sent.
     fn forget_echoed(&self) {
         let mut guard = self.echoed_turn.lock().unwrap_or_else(|e| e.into_inner());
         *guard = None;
@@ -342,11 +342,11 @@ impl Shared {
     }
 }
 
-/// Turn Sway's Allow/Deny into one of the agent's own option ids.
+/// Turn Tori's Allow/Deny into one of the agent's own option ids.
 ///
 /// The agent owns the permission vocabulary, so this picks from what it offered
 /// rather than sending a fixed token. An agent that offered nothing usable in
-/// the requested direction gets `cancelled`, which is honest: Sway cannot
+/// the requested direction gets `cancelled`, which is honest: Tori cannot
 /// express the user's answer in that agent's grammar, and inventing an id would
 /// be answered with a protocol error at best.
 ///
@@ -370,7 +370,7 @@ fn outcome_for(
     }
 }
 
-/// Sort an agent's offered options into the two directions Sway's UI can
+/// Sort an agent's offered options into the two directions Tori's UI can
 /// answer in, keyed on the `kind` the agent itself gave each one.
 fn split_options(
     options: &[agent_client_protocol::schema::v1::PermissionOption],
@@ -398,7 +398,7 @@ pub struct AcpTransport {
     commands: Option<mpsc::UnboundedSender<Command>>,
     /// The child's pid, kept for the ownership registry's orphan record. The
     /// SDK's own connection path never hands this back, which is one of the two
-    /// reasons Sway spawns the child itself.
+    /// reasons Tori spawns the child itself.
     pid: Option<u32>,
     /// Per-agent departures from a spec-correct client, from the adapter TOML.
     overrides: AcpOverrides,
@@ -578,7 +578,7 @@ impl AgentTransport for AcpTransport {
     ) -> Result<bool, String> {
         // Scope is dropped on purpose: ACP has no "remember this" grammar of its
         // own. An agent's `allow_always` option is the closest thing, and it is
-        // the agent's to offer, not Sway's to synthesize from a scope the
+        // the agent's to offer, not Tori's to synthesize from a scope the
         // protocol cannot carry.
         self.shared.answer(request_id, decision, reason)
     }
@@ -617,7 +617,7 @@ impl AgentTransport for AcpTransport {
     /// a session has is the agent's own answer rather than a fixed set.
     ///
     /// Refused when this session offered no model selector, rather than sent to
-    /// an id Sway made up. A picker that appears to switch while the session
+    /// an id Tori made up. A picker that appears to switch while the session
     /// keeps running the old model is worse than one that says it cannot. The
     /// pick is pending in the store like any other, and the agent's answer,
     /// re-emitted whole as `ConfigOptions`, is what settles it.
@@ -638,10 +638,10 @@ impl AgentTransport for AcpTransport {
             Switch::Unsupported => {
                 return Err("this agent offers no model to switch to".to_string())
             }
-            // Not the agent's answer, Sway's timing: the options arrive with the
+            // Not the agent's answer, Tori's timing: the options arrive with the
             // session, so a switch attempted before it opens has nothing to name
             // yet. Saying the agent offers no models would be a claim about the
-            // agent made from Sway not having asked.
+            // agent made from Tori not having asked.
             Switch::Unknown => {
                 return Err("this chat is still opening, so its model list has not arrived yet"
                     .to_string())
@@ -670,8 +670,8 @@ impl AgentTransport for AcpTransport {
     ///
     /// **Sent straight away, unlike the mode.** A mode decides whether the agent
     /// asks before it writes, so it waits for a turn boundary; a mirrored option
-    /// is whatever the agent published, Sway knows nothing about what it governs,
-    /// and holding it back would be Sway inventing next-turn semantics for a
+    /// is whatever the agent published, Tori knows nothing about what it governs,
+    /// and holding it back would be Tori inventing next-turn semantics for a
     /// lever it has never seen.
     ///
     /// Nothing is checked against a local list first, on purpose: the ids in the
@@ -681,7 +681,7 @@ impl AgentTransport for AcpTransport {
         self.send_command(Command::SetConfigOption {
             config_id: config_id.to_string(),
             value: value.clone(),
-            // The agent's own id is the noun a failure names. Sway has no
+            // The agent's own id is the noun a failure names. Tori has no
             // friendlier word for a lever it has never seen, and the label is
             // the agent's too, so quoting the id at least names the thing the
             // agent itself refused.
@@ -739,7 +739,7 @@ async fn run_session(
 
     Client
         .builder()
-        .name("sway")
+        .name("tori")
         .on_receive_notification(
             async move |notification: SessionNotification, _cx| {
                 for event in update_events(
@@ -786,9 +786,9 @@ async fn run_session(
 
 /// Park a permission question and show it, rather than answering it here.
 ///
-/// Sway never decides a permission itself: the agent owns permissions and Sway
+/// Tori never decides a permission itself: the agent owns permissions and Tori
 /// only carries the question to the user and the answer back. Auto-answering
-/// anything here - even a deny - would be Sway deciding.
+/// anything here - even a deny - would be Tori deciding.
 fn park_permission_request(
     shared: &Arc<Shared>,
     sink: &Sink,
@@ -854,7 +854,7 @@ fn arm_auto_deny(shared: &Arc<Shared>, request_id: String) {
         let _ = shared.answer(
             &request_id,
             PermissionDecision::Deny,
-            Some("Sway denied this because nobody answered in time."),
+            Some("Tori denied this because nobody answered in time."),
         );
     });
 }
@@ -915,7 +915,7 @@ async fn drive_session(
     if lists_sessions(&init) {
         if let Err(message) = refresh_listing(conn, agent, cwd).await {
             // Non-fatal by design: the session is already open and works whether
-            // or not Sway could enumerate its siblings.
+            // or not Tori could enumerate its siblings.
             emit(
                 sink,
                 ChatEvent::SessionError {
@@ -1089,7 +1089,7 @@ fn run_turn(
     if let Ok(mut current) = shared.current_turn.lock() {
         *current = turn.clone();
     }
-    // **The user's own turn enters the stream from what Sway sent**, not from
+    // **The user's own turn enters the stream from what Tori sent**, not from
     // what the agent hands back: measured 2026-09-08, `codex-acp` 1.2.0 echoes
     // nothing for a live prompt, so a conversation read back later would be the
     // assistant talking to itself. Emitted before the request goes out, so it
@@ -1151,7 +1151,7 @@ fn run_turn(
 /// An adapter opts back in through [`AcpOverrides::serve_client_fs`].
 /// Shared with the catalogue probe rather than copied: a probe that handshook
 /// with different capabilities than a real session would be measuring an agent
-/// Sway never actually runs.
+/// Tori never actually runs.
 pub fn initialize_request(overrides: &AcpOverrides) -> InitializeRequest {
     use agent_client_protocol::schema::v1::{ClientCapabilities, FileSystemCapabilities};
 
@@ -1181,7 +1181,7 @@ pub fn initialize_request(overrides: &AcpOverrides) -> InitializeRequest {
 pub fn new_session_request(cwd: &str, _overrides: &AcpOverrides) -> NewSessionRequest {
     let mut request = NewSessionRequest::new(std::path::PathBuf::from(cwd));
     // Empty either way today, and deliberately not written as a branch on
-    // `send_mcp_servers`: populating this needs Sway's MCP configuration mapped
+    // `send_mcp_servers`: populating this needs Tori's MCP configuration mapped
     // onto ACP's server types, which nothing here does yet. A conditional whose
     // two arms are the same value reads like a setting that works.
     request.mcp_servers = Vec::new();
@@ -1198,7 +1198,7 @@ fn lists_sessions(init: &InitializeResponse) -> bool {
     init.agent_capabilities.session_capabilities.list.is_some()
 }
 
-/// How many pages of `session/list` Sway will walk before it stops asking.
+/// How many pages of `session/list` Tori will walk before it stops asking.
 ///
 /// A bound rather than a full drain: the cursor is the agent's, and an agent
 /// whose `nextCursor` never clears would otherwise loop forever. Ten pages is
@@ -1224,10 +1224,10 @@ const MAX_SESSION_PAGES: usize = 10;
 /// Measured on `codex-acp` 1.2.0: the filter is matched as a string, and a
 /// directory macOS hands out as `/var/...` is recorded by the agent as
 /// `/private/var/...`, so the same directory under its other name listed nothing
-/// at all. The return leg is the same fact from the other side: a row Sway has
+/// at all. The return leg is the same fact from the other side: a row Tori has
 /// never seen would otherwise be filed under the agent's spelling, and the
 /// sidebar's prefix match against the folder the user opened would then hide the
-/// very rows this listing exists to find. `adopt` already keeps Sway's spelling
+/// very rows this listing exists to find. `adopt` already keeps Tori's spelling
 /// for a row it knows; this extends that to a row it is meeting for the first
 /// time, which is the whole of the import case.
 async fn refresh_listing(
@@ -1302,11 +1302,11 @@ fn listed_session(info: &agent_client_protocol::schema::v1::SessionInfo) -> List
     }
 }
 
-/// Attach to the session this tab is for: load the one Sway has a locator for,
+/// Attach to the session this tab is for: load the one Tori has a locator for,
 /// or open a new one.
 ///
 /// **The locator is what makes a reopened chat a reopened chat.** ACP mints its
-/// own session id inside `session/new`, so Sway's id and the agent's are never
+/// own session id inside `session/new`, so Tori's id and the agent's are never
 /// the same string, and nothing in the launch command carries either one. The
 /// locator written after the first `session/new` is the only bridge back, and
 /// `session/load` replays the whole conversation as ordinary `session/update`
@@ -1347,7 +1347,7 @@ fn adopt_session(shared: &Arc<Shared>, sink: &Sink, cwd: &str, config_options: &
     // and `sandbox_mode` from `~/.codex/config.toml` (verified: `config/read`
     // reports them set, and the wrapper writes anyway) and applies its own mode
     // instead, defaulting to `agent`. So without this the agent's permission
-    // prompt is something Sway publishes and no user can reach.
+    // prompt is something Tori publishes and no user can reach.
     *shared.mode_switch.lock().unwrap_or_else(|e| e.into_inner()) = match acp::mode_config_id(config_options) {
         Some(config_id) => Switch::Available(config_id),
         None => Switch::Unsupported,
@@ -1469,13 +1469,13 @@ async fn open_session(
 /// rather than interpreted. Both agents measured in Phases 4 and 5 describe
 /// theirs as a command to run in a terminal (`Run \`opencode auth login\` in the
 /// terminal`, `Run \`claude /login\` in the terminal`), so `authenticate` alone
-/// cannot sign anybody in and Sway does not pretend it can: what it can do is
+/// cannot sign anybody in and Tori does not pretend it can: what it can do is
 /// put the agent's own instruction in front of the user.
 ///
 /// **A third agent was thought to break this and does not.** Phase 8 opened
 /// carrying a finding that `@agentclientprotocol/codex-acp` 1.2.0 reports a
 /// missing account as "a generic `-32000`" that this branch would miss, and that
-/// Sway would therefore show an opaque failure. Measured properly: `-32000` **is**
+/// Tori would therefore show an opaque failure. Measured properly: `-32000` **is**
 /// `ErrorCode::AuthRequired` in ACP's own numbering, so the code branch matches
 /// and the user already gets the agent's own instruction. The finding came from
 /// reading a raw JSON-RPC number off a probe and assuming a named constructor
@@ -1581,7 +1581,7 @@ mod tests {
 
     /// **One user message per turn, whichever agent is behind the session.**
     ///
-    /// Sway emits the prompt itself because `codex-acp` 1.2.0 sends nothing back
+    /// Tori emits the prompt itself because `codex-acp` 1.2.0 sends nothing back
     /// for a live turn - see `what_codex_replays_is_what_the_log_can_hold` - and
     /// without it the log a restored tab reads would be the assistant talking to
     /// itself. An agent that *does* echo must not therefore have the same
@@ -1600,7 +1600,7 @@ mod tests {
             )))
         };
 
-        // What `run_turn` puts in the stream from what Sway sent.
+        // What `run_turn` puts in the stream from what Tori sent.
         let mut stream = vec![ChatEvent::UserMessage {
             session_id: shared.session_id.clone(),
             turn_id: turn.clone(),
@@ -1778,7 +1778,7 @@ mod tests {
         ));
     }
 
-    /// An agent that offered no option in the answered direction leaves Sway
+    /// An agent that offered no option in the answered direction leaves Tori
     /// unable to express the answer at all. `cancelled` is the honest reply;
     /// inventing an option id would be rejected by the agent anyway.
     #[test]
@@ -1787,7 +1787,7 @@ mod tests {
         assert!(matches!(outcome, RequestPermissionOutcome::Cancelled));
     }
 
-    /// A question Sway never parked is not ours to answer. The host reads
+    /// A question Tori never parked is not ours to answer. The host reads
     /// `Ok(false)` as "try the other route", so this must not be an error.
     #[test]
     fn a_question_the_transport_never_parked_is_disclaimed() {
@@ -1800,7 +1800,7 @@ mod tests {
 
     /// The defect this pins: turn ids and permission request ids once came from
     /// the same counter, so a single question asked mid-turn re-stamped every
-    /// later `session/update` with a turn id no turn ever had. Sway's transcript
+    /// later `session/update` with a turn id no turn ever had. Tori's transcript
     /// keys on `turn_id`, so one turn rendered as two.
     #[test]
     fn a_permission_request_does_not_renumber_the_running_turn() {
@@ -1831,9 +1831,9 @@ mod tests {
     /// A refused model switch says **which** refusal it is.
     ///
     /// Both answers are "no", and they are not the same no: one is the agent
-    /// having offered no model selector, the other is Sway not having asked yet
+    /// having offered no model selector, the other is Tori not having asked yet
     /// because the session is still opening. Reporting the second as the first
-    /// blames the agent for Sway's timing, and it is the message a user would act
+    /// blames the agent for Tori's timing, and it is the message a user would act
     /// on by going to look for a setting that is not the problem.
     #[test]
     fn a_model_switch_says_which_refusal_it_is() {
@@ -2071,7 +2071,7 @@ mod tests {
     // Opt-in (`cargo test -- --ignored --test-threads=1`), because they drive a
     // real ACP agent and need whatever that agent needs. Everything above is
     // pure translation; these exist because the properties they assert are the
-    // ones no mock can establish - that a real agent answers Sway's handshake,
+    // ones no mock can establish - that a real agent answers Tori's handshake,
     // opens a session, and streams a turn back through the event model.
     // -----------------------------------------------------------------------
 
@@ -2123,7 +2123,7 @@ mod tests {
         use super::super::transport::new_sink;
 
         let root = std::env::temp_dir()
-            .join(format!("sway-acp-live-{}", std::process::id()))
+            .join(format!("tori-acp-live-{}", std::process::id()))
             .join(dir_tag);
         std::fs::create_dir_all(&root).unwrap();
         for (name, contents) in files {
@@ -2235,13 +2235,13 @@ mod tests {
     /// [[adr_agent_breadth]] rests on and the reason the ACP transport exists
     /// rather than a second typed adapter.
     ///
-    /// **The permission half needed the agent's own config, not Sway's.**
+    /// **The permission half needed the agent's own config, not Tori's.**
     /// `opencode acp` approves edits silently by default, which is why Phases 4
     /// and 5 both recorded the prompt as unproven against it and reached for a
     /// different agent. Measured here: with `permission.edit = "ask"` in the
     /// agent's own `opencode.json`, it asks - offering `once`, `always` and
-    /// `reject`. That whether-to-ask is the agent's setting and not Sway's is
-    /// exactly [[sway-agent-owns-permissions]], so the fix was to configure the
+    /// `reject`. That whether-to-ask is the agent's setting and not Tori's is
+    /// exactly [[tori-agent-owns-permissions]], so the fix was to configure the
     /// agent rather than to add anything here.
     #[test]
     #[ignore = "drives the real `opencode acp` binary: costs tokens"]
@@ -2253,10 +2253,10 @@ mod tests {
         let args =
             crate::chat::commands::build_args(chat, "live-generic", false, None, None, None, None, &[]);
 
-        // The agent's own configuration, so it asks before it writes. Sway
+        // The agent's own configuration, so it asks before it writes. Tori
         // contributes nothing to this decision and could not.
         let root = std::env::temp_dir()
-            .join(format!("sway-acp-live-{}", std::process::id()))
+            .join(format!("tori-acp-live-{}", std::process::id()))
             .join("generic");
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
@@ -2312,9 +2312,9 @@ mod tests {
                 panic!("the agent's own config says ask, so it must ask: {asked:?}")
             });
 
-        // Whatever the agent offered is what is on the prompt: Sway composes no
+        // Whatever the agent offered is what is on the prompt: Tori composes no
         // option of its own, so this is a record of the agent's vocabulary
-        // rather than an assertion about Sway's.
+        // rather than an assertion about Tori's.
         let _ = suggestions;
 
         assert!(
@@ -2373,7 +2373,7 @@ mod tests {
     /// set and the agent writes anyway) and runs its own `agent` mode, which
     /// approves edits inside *and outside* the workspace silently. So without
     /// `session/set_config_option` on the `mode` selector, Codex's permission
-    /// prompt is a capability Sway publishes and no user can reach.
+    /// prompt is a capability Tori publishes and no user can reach.
     #[test]
     #[ignore = "drives the real `npx @agentclientprotocol/codex-acp`: costs tokens"]
     fn codex_is_driven_entirely_from_its_own_adapter_toml() {
@@ -2385,7 +2385,7 @@ mod tests {
             crate::chat::commands::build_args(chat, "live-codex", false, None, None, None, None, &[]);
 
         let root = std::env::temp_dir()
-            .join(format!("sway-acp-live-{}", std::process::id()))
+            .join(format!("tori-acp-live-{}", std::process::id()))
             .join("codex");
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("hello.txt"), "one\ntwo\nthree\n").unwrap();
@@ -2393,7 +2393,7 @@ mod tests {
         // incidental to the test: in a folder with no object store the diff
         // degrades to unavailable, which is the same answer the capture hook
         // gives for the same reason, and asserting the exact diff would then be
-        // asserting something Sway cannot do anywhere.
+        // asserting something Tori cannot do anywhere.
         std::process::Command::new("git")
             .current_dir(&root)
             .args(["init", "-q"])
@@ -2448,7 +2448,7 @@ mod tests {
         let levels = &models[0].supported_effort_levels;
         assert!(models[0].supports_effort, "codex publishes reasoning levels: {models:?}");
         assert!(levels.contains(&"xhigh".to_string()), "{levels:?}");
-        assert!(!levels.contains(&"ultra".to_string()), "a level Sway cannot send: {levels:?}");
+        assert!(!levels.contains(&"ultra".to_string()), "a level Tori cannot send: {levels:?}");
 
         // Into the one mode that makes it ask. Applied with the next prompt, so
         // this is staged rather than sent, which is the trait's contract.
@@ -2533,7 +2533,7 @@ mod tests {
             crate::chat::commands::build_args(chat, "live-quota", false, None, None, None, None, &[]);
 
         let root = std::env::temp_dir()
-            .join(format!("sway-acp-quota-{}", std::process::id()))
+            .join(format!("tori-acp-quota-{}", std::process::id()))
             .join("codex");
         std::fs::create_dir_all(&root).unwrap();
         acp_sessions::use_dir_for_tests(root.join("locators"));
@@ -2596,7 +2596,7 @@ mod tests {
     /// agent that compares paths as strings sees two directories.
     #[test]
     fn two_spellings_of_one_directory_resolve_to_one_path() {
-        let base = std::env::temp_dir().join(format!("sway-samedir-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("tori-samedir-{}", std::process::id()));
         let real = base.join("real");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&real).unwrap();
@@ -2628,15 +2628,15 @@ mod tests {
     ///
     /// The plan this phase belongs to expected Codex history to arrive over
     /// `thread/list`, on a native `codex app-server` transport. That transport
-    /// was dropped with the user after measurement, so Codex reaches Sway as an
+    /// was dropped with the user after measurement, so Codex reaches Tori as an
     /// ACP client and `session/list` is the whole of the route. What was left
     /// unmeasured is whether the wrapper answers it with anything: the registry's
     /// probe records `sessionList: true`, and a published capability is the
-    /// registry's word, not Sway's, and not a promise of rows either way
+    /// registry's word, not Tori's, and not a promise of rows either way
     /// (`opencode acp` 1.18.3 advertises the same and returns nothing).
     ///
     /// So this drives two connections. The first opens a session and says one
-    /// word to make it real; the second is a *different* Sway session in the
+    /// word to make it real; the second is a *different* Tori session in the
     /// same directory, and it must come away holding a locator for the first,
     /// which it can only have learned from the listing.
     #[test]
@@ -2648,7 +2648,7 @@ mod tests {
         let chat = adapter.chat.as_ref().expect("with an ACP chat transport");
 
         let root = std::env::temp_dir()
-            .join(format!("sway-acp-live-{}", std::process::id()))
+            .join(format!("tori-acp-live-{}", std::process::id()))
             .join("codex-listing");
         std::fs::create_dir_all(&root).unwrap();
         acp_sessions::use_dir_for_tests(root.join("locators"));
@@ -2739,7 +2739,7 @@ mod tests {
                 .filter(|s| s.acp_session_id == earlier.acp_session_id)
                 .count(),
             1,
-            "the listing must not add a second row for a session Sway already had"
+            "the listing must not add a second row for a session Tori already had"
         );
         // And it is filed under the folder the user opened, not the one the agent
         // resolved it to. Without this the row imports and the sidebar hides it,
@@ -2750,23 +2750,23 @@ mod tests {
                 .find(|s| s.acp_session_id == earlier.acp_session_id)
                 .map(|s| s.cwd.as_str()),
             Some(cwd.as_str()),
-            "an imported row keeps Sway's spelling of the directory"
+            "an imported row keeps Tori's spelling of the directory"
         );
 
-        // Sway's own name for it is gone with the store, so a row it learns from
+        // Tori's own name for it is gone with the store, so a row it learns from
         // a listing is filed under an id derived from the agent's. That is the
-        // shape a session started outside Sway arrives in.
+        // shape a session started outside Tori arrives in.
         assert_eq!(
             recorded
                 .iter()
                 .find(|s| s.acp_session_id == earlier.acp_session_id)
                 .map(|s| s.id.clone()),
-            Some(acp_sessions::sway_id_for(&earlier.acp_session_id)),
+            Some(acp_sessions::tori_id_for(&earlier.acp_session_id)),
             "a row with no prior locator is filed under an id derived from the agent's"
         );
     }
 
-    /// The capabilities Sway publishes for an ACP session come off the wire.
+    /// The capabilities Tori publishes for an ACP session come off the wire.
     ///
     /// This is what stops one generic transport publishing one answer for every
     /// agent behind it. `opencode acp` 1.18.3 advertises `loadSession` and
@@ -2795,8 +2795,8 @@ mod tests {
     }
 
     /// **The measurement the transport rests on**: a real agent completes
-    /// Sway's handshake and opens a session, so the client is spec-correct
-    /// enough for an implementation that is not Sway's own.
+    /// Tori's handshake and opens a session, so the client is spec-correct
+    /// enough for an implementation that is not Tori's own.
     #[test]
     #[ignore = "drives the real `opencode acp` binary"]
     fn a_live_agent_answers_the_handshake_and_opens_a_session() {
@@ -2905,7 +2905,7 @@ mod tests {
     /// **The whole of the listing and reopening task, measured live.**
     ///
     /// One conversation is had, the tab is closed, and a second transport is
-    /// started under the *same Sway session id* - which is exactly what a chat
+    /// started under the *same Tori session id* - which is exactly what a chat
     /// reopened after an app restart does. The agent replays the conversation as
     /// ordinary `session/update` notifications, so the prior turn arrives back
     /// through the same event model a live turn uses, with no transcript file,
@@ -2913,7 +2913,7 @@ mod tests {
     ///
     /// The bridge between the two runs is the locator: ACP mints its session id
     /// inside `session/new` and puts it in no command line, so without a record
-    /// on Sway's side the second run has no id to load and nothing to replay.
+    /// on Tori's side the second run has no id to load and nothing to replay.
     ///
     /// Measured against `opencode acp` 1.18.3, which advertises both
     /// `loadSession` and `sessionCapabilities.list`.
@@ -2960,7 +2960,7 @@ mod tests {
         );
         // The listing ran on the same connection, so the agent's own row for
         // this session is now recorded beside it - which is what puts a session
-        // started outside Sway into the history list.
+        // started outside Tori into the history list.
         let recorded = acp_sessions::all();
         assert!(
             recorded.iter().any(|s| s.acp_session_id == locator.acp_session_id),
@@ -2972,14 +2972,14 @@ mod tests {
                 .filter(|s| s.acp_session_id == locator.acp_session_id)
                 .count(),
             1,
-            "a listing must not add a second row for a session Sway already had"
+            "a listing must not add a second row for a session Tori already had"
         );
     }
 
     /// **The permission round trip, end to end over the real protocol.**
     ///
     /// The one property no mock establishes: that a real agent blocks on
-    /// `session/request_permission`, that Sway's answer reaches it in the
+    /// `session/request_permission`, that Tori's answer reaches it in the
     /// agent's *own* vocabulary, and that the agent then carries on. If the
     /// answer were sent as a fixed token, or against the wrong request, the
     /// agent would sit blocked until its own deadline and the turn would never
@@ -2989,7 +2989,7 @@ mod tests {
     /// asks before writing a file and offers three options of its own
     /// (`reject`, `allow`, `allow_always`). OpenCode does not ask under its
     /// default configuration, which is why this test names a different agent
-    /// from the others: whether to ask is the agent's decision, not Sway's.
+    /// from the others: whether to ask is the agent's decision, not Tori's.
     #[test]
     #[ignore = "drives the real claude-agent-acp over npx: costs tokens and needs network"]
     fn a_live_permission_prompt_is_answered_in_the_agents_own_vocabulary() {
@@ -3032,7 +3032,7 @@ mod tests {
         );
 
         // Answering must be claimed by *this* transport. `Ok(false)` would mean
-        // Sway went looking for the `PreToolUse` bridge instead, leaving the
+        // Tori went looking for the `PreToolUse` bridge instead, leaving the
         // agent blocked on a question nobody answered.
         let claimed = transport
             .respond_permission(
@@ -3090,7 +3090,7 @@ mod tests {
     }
 
     /// **What `codex-acp` actually hands back**, which is the whole basis for the
-    /// log Sway keeps beside an ACP session: that log is a cache of this replay,
+    /// log Tori keeps beside an ACP session: that log is a cache of this replay,
     /// so a frame kind the replay does not carry is a turn a restored tab can
     /// never show, no matter how the log is written.
     ///
@@ -3101,7 +3101,7 @@ mod tests {
     ///     path is open at all.
     ///   * **a live `send` sends no `user_message_chunk` back.** The whole turn
     ///     was `textDelta` x1, `usage` x1, `turnCompleted` x1 - the agent echoes
-    ///     nothing for the prompt Sway just handed it, which is why the transport
+    ///     nothing for the prompt Tori just handed it, which is why the transport
     ///     emits the `UserMessage` itself rather than waiting for one. See
     ///     [`AcpTransport::send`].
     ///   * **the replay does carry the user's turn**: `userMessage` x1,

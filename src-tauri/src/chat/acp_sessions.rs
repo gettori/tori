@@ -1,6 +1,6 @@
-//! Sway's own record of the ACP sessions it knows about.
+//! Tori's own record of the ACP sessions it knows about.
 //!
-//! Every other agent Sway drives keeps its sessions as files Sway can read:
+//! Every other agent Tori drives keeps its sessions as files Tori can read:
 //! `agents::Discovery` names the directory, `ParserKind` names the format, and
 //! `SessionMeta.path` points at the transcript. An ACP agent keeps its history
 //! privately and hands out an opaque `sessionId`; there is no file to point at
@@ -9,7 +9,7 @@
 //! sessions", and for ACP the honest answer is "somewhere only the protocol can
 //! reach", which no filesystem variant can express.
 //!
-//! What Sway keeps instead is a **locator**: one small JSON file per session,
+//! What Tori keeps instead is a **locator**: one small JSON file per session,
 //! recording the agent's own session id beside the cwd, title and last-active
 //! time a listing reported. It is a real file at a real path, so
 //! `SessionMeta.path` stays non-optional and honest, and it is the only thing
@@ -25,10 +25,10 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-/// One ACP session, as Sway records it.
+/// One ACP session, as Tori records it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcpSession {
-    /// Sway's own id for the session: what the ownership registry claims, what
+    /// Tori's own id for the session: what the ownership registry claims, what
     /// a tab addresses, and what names this locator file.
     pub id: String,
     /// The adapter that produced it, so a listing can say which agent a row
@@ -36,7 +36,7 @@ pub struct AcpSession {
     pub agent: String,
     /// The agent's own session id, which is the only thing `session/load`
     /// accepts. Kept separate from [`Self::id`] because the two are not the
-    /// same string for a session Sway opened: Sway mints its id before the
+    /// same string for a session Tori opened: Tori mints its id before the
     /// child exists, and ACP has no verb for creating a session with a
     /// caller-chosen id.
     pub acp_session_id: String,
@@ -72,7 +72,7 @@ fn dir() -> PathBuf {
             return path.clone();
         }
     }
-    dirs::home_dir().unwrap_or_default().join(".config/sway/acp-sessions")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/acp-sessions")
 }
 
 /// Where one session's locator lives.
@@ -99,14 +99,14 @@ pub fn meta_path(id: &str) -> PathBuf {
     super::mirror::meta_of(&log_path(id))
 }
 
-/// Sway's id for a session the *agent* named.
+/// Tori's id for a session the *agent* named.
 ///
 /// Deterministic, so the same agent session listed on two different days is one
 /// row rather than two. The agent's id is used verbatim when it is safe as a
 /// filename, because a readable id is worth having in every log and claim that
 /// carries it; anything else is hex-encoded, which is injective and so cannot
 /// collapse two distinct sessions into one row the way a hash could.
-pub fn sway_id_for(acp_session_id: &str) -> String {
+pub fn tori_id_for(acp_session_id: &str) -> String {
     let safe = !acp_session_id.is_empty()
         && acp_session_id.len() <= 120
         && acp_session_id
@@ -132,12 +132,12 @@ pub fn record(session: &AcpSession) -> Result<(), String> {
     crate::owned_state::write_atomically(&locator_path(&session.id), &text)
 }
 
-/// Drop Sway's record of one session, given the locator path a listing row
+/// Drop Tori's record of one session, given the locator path a listing row
 /// carried.
 ///
 /// **This deletes nothing of the agent's.** A session with no transcript keeps
 /// its conversation wherever the agent keeps it, and ACP has no verb for
-/// removing one, so the whole of what "delete" can mean here is that Sway stops
+/// removing one, so the whole of what "delete" can mean here is that Tori stops
 /// listing it.
 ///
 /// Refuses a path outside the store rather than removing it. `delete_session`
@@ -147,11 +147,11 @@ pub fn record(session: &AcpSession) -> Result<(), String> {
 pub fn forget(path: &Path) -> Result<(), String> {
     if path.parent() != Some(dir().as_path()) {
         return Err(format!(
-            "{} is not one of Sway's session records, so there is nothing here to forget",
+            "{} is not one of Tori's session records, so there is nothing here to forget",
             path.display()
         ));
     }
-    // The event log and its sidecar go with the locator. They are Sway's own
+    // The event log and its sidecar go with the locator. They are Tori's own
     // derived copy of a conversation, so leaving them behind would keep a chat
     // the user deleted readable, and orphan files nothing will ever clean up.
     if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
@@ -173,13 +173,13 @@ pub fn forget(path: &Path) -> Result<(), String> {
     }
 }
 
-/// Read one session's locator, or `None` when Sway has no record of it.
+/// Read one session's locator, or `None` when Tori has no record of it.
 pub fn read(id: &str) -> Option<AcpSession> {
     let text = std::fs::read_to_string(locator_path(id)).ok()?;
     serde_json::from_str(&text).ok()
 }
 
-/// Every ACP session Sway has a locator for.
+/// Every ACP session Tori has a locator for.
 ///
 /// A file that will not parse is skipped rather than failing the scan: one
 /// corrupt locator must not hide every other session from the sidebar.
@@ -200,7 +200,7 @@ pub fn all() -> Vec<AcpSession> {
 /// Four fields, because four is all the protocol carries: `sessionId`, `cwd`,
 /// `title` and `updatedAt`. There is no branch, no created-at and no agent id in
 /// a listed row, and this struct refuses to pretend otherwise - a shape with a
-/// `branch` field would invite somebody to fill it from the folder Sway happens
+/// `branch` field would invite somebody to fill it from the folder Tori happens
 /// to be looking at, which is a different session's branch as often as not.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListedSession {
@@ -213,17 +213,17 @@ pub struct ListedSession {
     pub updated_at: Option<String>,
 }
 
-/// Turn a listing into the locators to write, given what Sway already knows.
+/// Turn a listing into the locators to write, given what Tori already knows.
 ///
 /// Pure, so the whole of "what a listed row becomes" is testable without a live
 /// agent or a filesystem. Two rules earn their keep here:
 ///
-///   * **A row Sway already has keeps its existing id.** Sway mints an id before
+///   * **A row Tori already has keeps its existing id.** Tori mints an id before
 ///     the child exists and only learns the agent's id afterwards, so the same
-///     session has two names. Matching on the agent's id and reusing Sway's own
-///     is what stops a session Sway opened from also appearing as a second,
+///     session has two names. Matching on the agent's id and reusing Tori's own
+///     is what stops a session Tori opened from also appearing as a second,
 ///     stranger row after the next listing.
-///   * **A row Sway already has also keeps Sway's `cwd`, not the agent's.** An
+///   * **A row Tori already has also keeps Tori's `cwd`, not the agent's.** An
 ///     agent is free to canonicalise the path it was given, and on macOS it
 ///     usually does (`/var/...` comes back as `/private/var/...`). The sidebar
 ///     files a session by prefix-matching its `cwd` against the folder the user
@@ -237,7 +237,7 @@ pub struct ListedSession {
 ///     clock floats every one of that agent's sessions to the top of the history
 ///     list whenever the user opens any chat at all. `now` is therefore for a row
 ///     nobody has seen before, which is the only case with nothing better to use.
-///   * **A row opened by Sway's own catalogue probe is dropped.** Probing an ACP
+///   * **A row opened by Tori's own catalogue probe is dropped.** Probing an ACP
 ///     agent means opening a session, and `session/close` frees resources rather
 ///     than deleting the record, so the agent keeps listing it. It is recognised
 ///     by the directory it was opened in rather than by an id, which is what
@@ -263,7 +263,7 @@ pub fn adopt(
             AcpSession {
                 id: existing
                     .map(|k| k.id.clone())
-                    .unwrap_or_else(|| sway_id_for(&row.acp_session_id)),
+                    .unwrap_or_else(|| tori_id_for(&row.acp_session_id)),
                 agent: agent.to_string(),
                 acp_session_id: row.acp_session_id.clone(),
                 cwd: existing
@@ -366,7 +366,7 @@ mod tests {
     /// streamed; either left behind would keep a deleted conversation readable.
     #[test]
     fn forgetting_a_session_removes_its_log_and_the_scan_never_sees_one() {
-        let dir = std::env::temp_dir().join(format!("sway-acp-log-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("tori-acp-log-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         use_dir_for_tests(dir.clone());
@@ -408,9 +408,9 @@ mod tests {
 
     #[test]
     fn a_filename_safe_agent_id_is_kept_verbatim() {
-        assert_eq!(sway_id_for("ses_8f2a-01"), "ses_8f2a-01");
+        assert_eq!(tori_id_for("ses_8f2a-01"), "ses_8f2a-01");
         assert_eq!(
-            sway_id_for("6d3c1b2a-0000-4000-8000-000000000001"),
+            tori_id_for("6d3c1b2a-0000-4000-8000-000000000001"),
             "6d3c1b2a-0000-4000-8000-000000000001"
         );
     }
@@ -420,11 +420,11 @@ mod tests {
     /// injective, so two different sessions cannot collapse into one row.
     #[test]
     fn an_unsafe_agent_id_is_encoded_rather_than_hashed() {
-        let escaping = sway_id_for("../../etc/passwd");
+        let escaping = tori_id_for("../../etc/passwd");
         assert!(!escaping.contains('/'), "{escaping}");
-        assert_ne!(sway_id_for("a/b"), sway_id_for("a/c"));
-        assert_ne!(sway_id_for(""), "");
-        assert!(!sway_id_for(".hidden").starts_with('.'));
+        assert_ne!(tori_id_for("a/b"), tori_id_for("a/c"));
+        assert_ne!(tori_id_for(""), "");
+        assert!(!tori_id_for(".hidden").starts_with('.'));
     }
 
     fn listed(id: &str, title: Option<&str>, updated: Option<&str>) -> ListedSession {
@@ -447,20 +447,20 @@ mod tests {
         }
     }
 
-    /// The duplicate this prevents: Sway mints its id before the child exists
+    /// The duplicate this prevents: Tori mints its id before the child exists
     /// and only learns the agent's id afterwards, so the same conversation has
     /// two names. A listing that minted a fresh id would show it twice.
     #[test]
-    fn a_row_sway_already_has_keeps_the_id_sway_gave_it() {
+    fn a_row_tori_already_has_keeps_the_id_tori_gave_it() {
         let rows = adopt(
             "opencode",
             &[listed("ses_a", Some("hello"), None)],
-            &[known("a-sway-uuid", "ses_a")],
+            &[known("a-tori-uuid", "ses_a")],
             99,
             &[],
         );
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].id, "a-sway-uuid");
+        assert_eq!(rows[0].id, "a-tori-uuid");
         assert_eq!(rows[0].acp_session_id, "ses_a");
     }
 
@@ -470,17 +470,17 @@ mod tests {
     /// prefix-matching its cwd against the folder the user opened, so adopting
     /// the agent's form would have dropped the row out of its own folder.
     #[test]
-    fn a_row_sway_already_has_keeps_the_path_sway_files_it_under() {
+    fn a_row_tori_already_has_keeps_the_path_tori_files_it_under() {
         let mut row = listed("ses_a", None, None);
         row.cwd = "/private/repo".to_string();
-        let rows = adopt("opencode", &[row], &[known("a-sway-uuid", "ses_a")], 99, &[]);
+        let rows = adopt("opencode", &[row], &[known("a-tori-uuid", "ses_a")], 99, &[]);
         assert_eq!(rows[0].cwd, "/repo");
     }
 
-    /// A row Sway has never seen has only the agent's word for where it lives,
+    /// A row Tori has never seen has only the agent's word for where it lives,
     /// so that is what gets recorded.
     #[test]
-    fn a_row_sway_has_never_seen_takes_the_agents_path() {
+    fn a_row_tori_has_never_seen_takes_the_agents_path() {
         let mut row = listed("ses_new", None, None);
         row.cwd = "/elsewhere".to_string();
         let rows = adopt("opencode", &[row], &[], 99, &[]);
@@ -494,7 +494,7 @@ mod tests {
         let rows = adopt(
             "gemini",
             &[listed("ses_a", None, None)],
-            &[known("a-sway-uuid", "ses_a")],
+            &[known("a-tori-uuid", "ses_a")],
             99,
             &[],
         );
@@ -571,7 +571,7 @@ mod tests {
 
     /// Measured: `opencode acp` 1.18.3 advertises `session/list` and returns
     /// nothing at all. Zero rows is an empty history, not a failure, and must
-    /// not disturb what Sway already recorded.
+    /// not disturb what Tori already recorded.
     #[test]
     fn an_empty_listing_adopts_nothing_rather_than_failing() {
         assert!(adopt("opencode", &[], &[known("u", "ses_a")], 99, &[]).is_empty());
@@ -580,7 +580,7 @@ mod tests {
     /// The phantom the catalogue probe leaves behind. Asking an ACP agent what
     /// it can run means opening a session, and `session/close` frees resources
     /// rather than deleting the record, so the agent keeps listing one session
-    /// per probe. Nothing about the row says it was Sway's own except where it
+    /// per probe. Nothing about the row says it was Tori's own except where it
     /// was opened, which is why that is what the filter reads.
     ///
     /// **Both spellings, because a directory has more than one name.** macOS
@@ -588,14 +588,14 @@ mod tests {
     /// function has no filesystem to resolve either with; the caller passes in
     /// every spelling it could resolve, and each one has to drop the row.
     #[test]
-    fn a_session_sways_own_probe_opened_is_not_adopted_as_history() {
-        let spellings = ["/var/sway/probe".to_string(), "/private/var/sway/probe".to_string()];
+    fn a_session_toris_own_probe_opened_is_not_adopted_as_history() {
+        let spellings = ["/var/tori/probe".to_string(), "/private/var/tori/probe".to_string()];
         for spelling in &spellings {
             let mut row = listed("ses_probe", None, None);
             row.cwd = spelling.clone();
             assert!(
                 adopt("opencode", &[row], &[], 99, &spellings).is_empty(),
-                "a row in {spelling} is Sway's own probe, whichever name it came back under"
+                "a row in {spelling} is Tori's own probe, whichever name it came back under"
             );
         }
     }
@@ -604,9 +604,9 @@ mod tests {
     /// session that merely lives near the probe dir is still the user's.
     #[test]
     fn a_session_that_is_not_the_probes_survives_the_filter() {
-        let probe = ["/var/sway/probe".to_string()];
+        let probe = ["/var/tori/probe".to_string()];
         let mut row = listed("ses_real", None, None);
-        row.cwd = "/var/sway/probe-notes".to_string();
+        row.cwd = "/var/tori/probe-notes".to_string();
         assert_eq!(adopt("opencode", &[row], &[], 99, &probe).len(), 1);
     }
 

@@ -22,7 +22,7 @@ const unit = (folderPath: string, branch: string) => ({
 });
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -121,8 +121,8 @@ describe("a blocked agent reaches every surface from a fully collapsed tree", ()
     bridge.tail = "done";
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
-    // Deliberately no `sway.expanded.v1`: nothing in the tree is open, which is
+    localStorage.setItem("tori.active-space.v1", "work");
+    // Deliberately no `tori.expanded.v1`: nothing in the tree is open, which is
     // the state that used to starve the composition.
   });
   afterEach(() => dropLiveChat("chat-1"));

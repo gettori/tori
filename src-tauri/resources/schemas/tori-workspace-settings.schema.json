@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Sway workspace settings",
-  "description": "One project's editor overrides, at <workspace>/.sway/settings.json. This file holds nothing but the editor block; anything else in it is read by nothing.",
+  "title": "Tori workspace settings",
+  "description": "One project's editor overrides, at <workspace>/.tori/settings.json. This file holds nothing but the editor block; anything else in it is read by nothing.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -67,7 +67,7 @@
         },
         "stickyScroll": {
           "type": "boolean",
-          "description": "Sticky scroll. Pins the class and function headers of whatever is at the top of the screen over it. Needs a language whose grammar Sway parses.",
+          "description": "Sticky scroll. Pins the class and function headers of whatever is at the top of the screen over it. Needs a language whose grammar Tori parses.",
           "default": false
         },
         "wordCompletion": {

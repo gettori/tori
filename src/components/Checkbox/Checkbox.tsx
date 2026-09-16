@@ -5,8 +5,8 @@ import Icon from "../Icon/Icon";
 import styles from "./Checkbox.module.css";
 
 /**
- * A boolean option that scopes an action: Kobalte's checkbox behind Sway's
- * chrome and Sway's API.
+ * A boolean option that scopes an action: Kobalte's checkbox behind Tori's
+ * chrome and Tori's API.
  *
  * **Checkbox or Switch is a semantic choice, not a visual one** (#107). This is
  * for an option the user sets *before* confirming something - the dialog

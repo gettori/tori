@@ -293,7 +293,7 @@ describe("the session tree", () => {
     await flush();
     const id = root!.handle.session;
 
-    // Sway asked for this pause itself, so a source map has time to resolve,
+    // Tori asked for this pause itself, so a source map has time to resolve,
     // and continues straight through it. Showing it would flash a paused state
     // nobody asked for at the start of every launch.
     event(id, "stopped", { reason: "entry", threadId: 0 });

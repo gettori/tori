@@ -16,7 +16,7 @@ import type { ChatAccount, ChatConfigOption, ChatModeInfo, ChatModelInfo, SlashC
 // agent nobody has asked yet, and it renders as no answer rather than as zero.
 export type CatalogState = "neverProbed" | "failed" | "probed";
 
-// Why a probe did not produce a catalogue. `unsupported` is a fact about Sway,
+// Why a probe did not produce a catalogue. `unsupported` is a fact about Tori,
 // not about the binary, so a surface must not render it as the agent failing.
 export type ProbeFailureReason = "spawnFailed" | "timedOut" | "signedOut" | "noAnswer" | "unsupported";
 
@@ -29,14 +29,14 @@ export type ProbeFailure = {
 
 export type CatalogModel = ChatModelInfo & {
   // This row came from the user's own agent configuration rather than the
-  // agent's catalogue. Still not something Sway invented, but not something it
+  // agent's catalogue. Still not something Tori invented, but not something it
   // can confirm either: such a row carries an **empty `resolvedModel`**, because
   // the configured string is passed to the CLI unresolved. Anything deduping by
   // that field has to fall back to `value`, or every user-configured row
   // collapses into one.
   userConfigured?: boolean;
   // The levers this agent has **for this model**, when they depend on it.
-  // Claude's do, because the CLI publishes no options at all and Sway assembles
+  // Claude's do, because the CLI publishes no options at all and Tori assembles
   // them per row. An ACP agent's are per session and live on the catalogue.
   options?: ChatConfigOption[];
 };
@@ -91,7 +91,7 @@ export function cachedModels(catalog: ModelCatalog | undefined): CatalogModel[] 
   return isStale(catalog, installed) ? models.map(withoutMeasuredLevels) : models;
 }
 
-/** One cached row with Sway's own measured effort levels taken back off it.
+/** One cached row with Tori's own measured effort levels taken back off it.
  *
  *  **A measurement is scoped to the binary it names**, and `claude::effort_levels`
  *  applied that scope against the version the probe recorded. On a binary that
@@ -101,7 +101,7 @@ export function cachedModels(catalog: ModelCatalog | undefined): CatalogModel[] 
  *  probe round it takes `refreshCatalogIfDue` to land a fresh answer.
  *
  *  Told apart by `supportedEffortLevels` rather than by re-running the version
- *  comparison: a level the agent published is in that list and one Sway measured
+ *  comparison: a level the agent published is in that list and one Tori measured
  *  is not, so this needs no second copy of the rule that put them there. */
 function withoutMeasuredLevels(model: CatalogModel): CatalogModel {
   if (!model.effortLevels?.length) return model;
@@ -154,10 +154,10 @@ export function cachedOptions(
  *
  *  Deduped by `resolvedModel`, because a catalogue names aliases: `default`,
  *  `sonnet` and `claude-sonnet-5` are three rows and one model, and a card
- *  reading "8 models" for five would be counting Sway's ability to spell.
+ *  reading "8 models" for five would be counting Tori's ability to spell.
  *
  *  **Falling back to `value` is not a nicety.** A user-configured row carries an
- *  empty `resolvedModel` on purpose (Sway passes the string to the CLI
+ *  empty `resolvedModel` on purpose (Tori passes the string to the CLI
  *  unresolved and claims no resolution), so keying on that field alone collapses
  *  every configured model into one. The picker still shows every row; only the
  *  count dedupes. */
@@ -177,7 +177,7 @@ export function distinctModelCount(catalog: ModelCatalog | undefined): number {
  *  Exported for that test alone; nothing else has any business comparing it. */
 export const CACHE_SHAPE = 6;
 
-/** Whether what is remembered no longer describes what this Sway reads.
+/** Whether what is remembered no longer describes what this Tori reads.
  *
  *  Two comparisons, never a TTL. **The binary**, on the same rule as
  *  `ModelCatalog::is_stale` and with **both unknown-version cases answering
@@ -186,7 +186,7 @@ export const CACHE_SHAPE = 6;
  *  Such a agent comes back through Check again.
  *
  *  And **the cache's own shape**, which no version comparison can see: a
- *  catalogue missing a field this build reads describes an older Sway, and the
+ *  catalogue missing a field this build reads describes an older Tori, and the
  *  binary on disk need not have moved at all. An unstamped catalogue reads as
  *  shape 1, so introducing the stamp invalidates nothing; bumping the constant
  *  is the one action that makes anybody re-probe. */
@@ -212,7 +212,7 @@ export { modelCatalogs };
 
 let reading: Promise<ModelCatalog[] | null> | null = null;
 
-/** The catalogue Sway remembers for one account of one agent, or undefined
+/** The catalogue Tori remembers for one account of one agent, or undefined
  *  before the store has an answer at all.
  *
  *  **No fallback to the default account.** An account with no row of its own is
@@ -395,7 +395,7 @@ export async function refreshCatalogIfDue(agentId: string, profile: string | nul
  *  **A failure is not an answer.** Without that clause a agent that was signed
  *  out once reads "Error" forever, because nothing would ever ask it again after
  *  the user signed in. `unsupported` is the exception and the reason this is a
- *  reason check rather than a state check: it says Sway cannot ask this agent
+ *  reason check rather than a state check: it says Tori cannot ask this agent
  *  at all, so a retry is a process spawned to learn the same thing.
  *
  *  In-flight counts as not due, which is what stops a second click from asking

@@ -1,4 +1,4 @@
-// User theme palettes: ~/.config/sway/themes/*.json.
+// User theme palettes: ~/.config/tori/themes/*.json.
 //
 // This module does STRUCTURAL validation only - serde plus `Palette::validate`
 // (schemaVersion, required keys, every value a hex string). It deliberately
@@ -31,7 +31,7 @@ impl Default for ThemesWatch {
 }
 
 fn user_themes_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/themes")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/themes")
 }
 
 /// A validated palette plus the file it came from. The picker shows the path so
@@ -131,12 +131,12 @@ fn load_themes_from(dir: &Path) -> UserThemes {
 pub fn list_user_themes() -> UserThemes {
     let out = load_themes_from(&user_themes_dir());
     for e in &out.errors {
-        eprintln!("sway: ERROR loading user theme {e}");
+        eprintln!("tori: ERROR loading user theme {e}");
     }
     out
 }
 
-/// Watch `~/.config/sway/themes/`; emit `themes://changed` on any write to a
+/// Watch `~/.config/tori/themes/`; emit `themes://changed` on any write to a
 /// `.json` file in it. Idempotent, and mirrors `settings_watch_start`.
 #[tauri::command(async)]
 pub fn themes_watch_start(app: AppHandle, state: State<ThemesWatch>) -> Result<(), String> {
@@ -172,21 +172,21 @@ mod tests {
     /// The one bundled palette Rust can see, used as a known-good fixture. It is
     /// the same file the frontend registry imports, so a schema change that
     /// breaks the loader breaks this test rather than only user installs.
-    const SWAY_DARK: &str = include_str!("../../src/theme/palettes/sway-dark.json");
+    const TORI_DARK: &str = include_str!("../../src/theme/palettes/tori-dark.json");
 
     fn tmp_dir() -> PathBuf {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("sway_themes_test_{n}_{seq}"));
+        let dir = std::env::temp_dir().join(format!("tori_themes_test_{n}_{seq}"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     #[test]
     fn a_bundled_palette_loads_through_the_user_theme_path() {
-        let p = load_theme_str(SWAY_DARK, "test").expect("sway-dark parses");
-        assert_eq!(p.id, "sway-dark");
+        let p = load_theme_str(TORI_DARK, "test").expect("tori-dark parses");
+        assert_eq!(p.id, "tori-dark");
         assert!(p.validate().is_empty());
     }
 
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn a_bad_schema_version_is_rejected() {
-        let text = SWAY_DARK.replacen("\"schemaVersion\": 1", "\"schemaVersion\": 2", 1);
+        let text = TORI_DARK.replacen("\"schemaVersion\": 1", "\"schemaVersion\": 2", 1);
         let err = load_theme_str(&text, "t.json").unwrap_err();
         assert!(err.contains("schemaVersion"), "error should mention schemaVersion: {err}");
     }
@@ -216,14 +216,14 @@ mod tests {
     /// turns that into an error naming the key.
     #[test]
     fn an_unknown_colour_key_is_rejected() {
-        let text = SWAY_DARK.replacen("\"canvas\":", "\"canvasss\":", 1);
+        let text = TORI_DARK.replacen("\"canvas\":", "\"canvasss\":", 1);
         let err = load_theme_str(&text, "t.json").unwrap_err();
         assert!(err.contains("canvasss"), "error should name the unknown key: {err}");
     }
 
     #[test]
     fn a_non_hex_value_is_rejected_naming_the_key() {
-        let text = SWAY_DARK.replacen("\"canvas\": \"", "\"canvas\": \"rebeccapurple", 1);
+        let text = TORI_DARK.replacen("\"canvas\": \"", "\"canvas\": \"rebeccapurple", 1);
         let err = load_theme_str(&text, "t.json").unwrap_err();
         assert!(err.contains("canvas"), "error should name the bad key: {err}");
     }
@@ -233,12 +233,12 @@ mod tests {
     #[test]
     fn a_broken_file_is_reported_and_the_others_still_load() {
         let dir = tmp_dir();
-        std::fs::write(dir.join("good.json"), SWAY_DARK).unwrap();
+        std::fs::write(dir.join("good.json"), TORI_DARK).unwrap();
         std::fs::write(dir.join("bad.json"), "{").unwrap();
 
         let out = load_themes_from(&dir);
         assert_eq!(out.themes.len(), 1);
-        assert_eq!(out.themes[0].palette.id, "sway-dark");
+        assert_eq!(out.themes[0].palette.id, "tori-dark");
         assert_eq!(out.errors.len(), 1);
         assert!(out.errors[0].contains("bad.json"));
 
@@ -248,8 +248,8 @@ mod tests {
     #[test]
     fn a_duplicate_id_is_refused_naming_both_files() {
         let dir = tmp_dir();
-        std::fs::write(dir.join("a.json"), SWAY_DARK).unwrap();
-        std::fs::write(dir.join("b.json"), SWAY_DARK).unwrap();
+        std::fs::write(dir.join("a.json"), TORI_DARK).unwrap();
+        std::fs::write(dir.join("b.json"), TORI_DARK).unwrap();
 
         let out = load_themes_from(&dir);
         assert_eq!(out.themes.len(), 1, "the first file in name order wins");
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn a_missing_directory_yields_nothing_rather_than_an_error() {
-        let dir = std::env::temp_dir().join("sway-themes-does-not-exist");
+        let dir = std::env::temp_dir().join("tori-themes-does-not-exist");
         let _ = std::fs::remove_dir_all(&dir);
         let out = load_themes_from(&dir);
         assert!(out.themes.is_empty());

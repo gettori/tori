@@ -8,7 +8,7 @@
 //
 // Every attachment ends up the same shape: a labelled path the agent reads off
 // disk ([[adr_attachments_are_labelled_paths]]). A dragged path is that already.
-// Pasted bytes are written under Sway's app data first and become a path too.
+// Pasted bytes are written under Tori's app data first and become a path too.
 import { invoke } from "@tauri-apps/api/core";
 import { attachmentSources, type ChatTier } from "../../utils/chatCapabilities";
 import {
@@ -37,7 +37,7 @@ export type ComposerAttachments = {
 };
 
 /** The filename rides in a header because the body is the file itself. */
-export const ATTACHMENT_NAME_HEADER = "x-sway-attachment-name";
+export const ATTACHMENT_NAME_HEADER = "x-tori-attachment-name";
 
 let dirRequest: Promise<string | null> | null = null;
 

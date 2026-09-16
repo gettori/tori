@@ -571,7 +571,7 @@ describe("naming a new attachment in the message", () => {
     const { input, container } = setup({ onAttachPaths: () => ["[File 1]"] });
     type(input, "look here");
     input.setSelectionRange(4, 4);
-    drop(container.firstElementChild!, { data: { "application/x-sway-path": "/repo/src/a.ts" } });
+    drop(container.firstElementChild!, { data: { "application/x-tori-path": "/repo/src/a.ts" } });
     expect(input.value).toBe("look [File 1] here");
   });
 
@@ -892,7 +892,7 @@ describe("under an agent that takes no uploads", () => {
 
   it("still takes a tree-dragged source file, which is a mention", () => {
     const { container, onAttachPaths, onAttachRejected } = setup({ uploads: ACP_UPLOADS });
-    drop(container.firstElementChild!, { data: { "application/x-sway-path": "/repo/src/main.rs" } });
+    drop(container.firstElementChild!, { data: { "application/x-tori-path": "/repo/src/main.rs" } });
     expect(onAttachPaths).toHaveBeenCalledWith(["/repo/src/main.rs"]);
     expect(onAttachRejected).not.toHaveBeenCalled();
   });
@@ -938,7 +938,7 @@ describe("what the composer says it can take", () => {
 describe("dragging a path in", () => {
   it("takes a dragged file path as a mention rather than an upload", () => {
     const { container, onAttachPaths, onAttachUploads } = setup();
-    drop(container.firstElementChild!, { data: { "application/x-sway-path": "/repo/src/a.ts" } });
+    drop(container.firstElementChild!, { data: { "application/x-tori-path": "/repo/src/a.ts" } });
     expect(onAttachPaths).toHaveBeenCalledWith(["/repo/src/a.ts"]);
     expect(onAttachUploads).not.toHaveBeenCalled();
   });
@@ -946,7 +946,7 @@ describe("dragging a path in", () => {
   it("takes every path of a multi-row drag", () => {
     const { container, onAttachPaths } = setup();
     drop(container.firstElementChild!, {
-      data: { "application/x-sway-abspath": "/repo/a.ts\n/repo/b.ts" },
+      data: { "application/x-tori-abspath": "/repo/a.ts\n/repo/b.ts" },
     });
     expect(onAttachPaths).toHaveBeenCalledWith(["/repo/a.ts", "/repo/b.ts"]);
   });
@@ -1090,7 +1090,7 @@ describe("Composer attachments", () => {
   });
 });
 
-// The lane strip switches what you read, never what you type: Sway has no
+// The lane strip switches what you read, never what you type: Tori has no
 // channel to a subagent, so the composer stays bound to the main agent in every
 // lane. The placeholder is the only thing that changes, and it has to say so.
 describe("reading a subagent's lane", () => {

@@ -7,12 +7,12 @@
     align-self: center;
     display: flex;
     align-items: center;
-    gap: var(--sway-space-1);
+    gap: var(--tori-space-1);
     height: calc(20px * var(--ui-scale));
-    padding: 0 var(--sway-space-1) 0 var(--sway-space-3);
-    margin-right: var(--sway-space-3);
-    border: var(--sway-border-thin) solid var(--border-default);
-    border-radius: var(--sway-radius-pill);
+    padding: 0 var(--tori-space-1) 0 var(--tori-space-3);
+    margin-right: var(--tori-space-3);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-pill);
     background: var(--brand-subtle);
   }
 
@@ -21,7 +21,7 @@
     border: none;
     padding: 0;
     font: inherit;
-    font-size: var(--sway-text-xs);
+    font-size: var(--tori-text-xs);
     color: var(--fg-default);
     cursor: pointer;
     white-space: nowrap;
@@ -39,7 +39,7 @@
     padding: 0;
     background: none;
     border: none;
-    border-radius: var(--sway-radius-sm);
+    border-radius: var(--tori-radius-sm);
     color: var(--fg-muted);
     cursor: pointer;
   }

@@ -41,9 +41,9 @@ export const LivePreview: Story = {
         <Slider {...args} value={value()} onChange={setValue} />
         <div
           style={{
-            "margin-top": "var(--sway-space-3)",
+            "margin-top": "var(--tori-space-3)",
             color: "var(--fg-muted)",
-            "font-size": "var(--sway-text-sm)",
+            "font-size": "var(--tori-text-sm)",
           }}
         >
           {value().toFixed(2)}x
@@ -62,7 +62,7 @@ export const States: Story = {
         width: "320px",
         display: "flex",
         "flex-direction": "column",
-        gap: "var(--sway-space-5)",
+        gap: "var(--tori-space-5)",
       }}
     >
       <Slider {...args} value={0.85} label="At minimum" />

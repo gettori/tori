@@ -116,11 +116,11 @@ async function probe(cwd) {
 
   const out = { version: cliVersion(), methods: [] };
   try {
-    // Mirrors what a Sway transport would send: named client, and the
+    // Mirrors what a Tori transport would send: named client, and the
     // experimental opt-in on, since `app-server` is itself marked experimental
     // and half the thread verbs sit behind that flag.
     const init = await call("initialize", {
-      clientInfo: { name: "sway-probe", title: null, version: "0" },
+      clientInfo: { name: "tori-probe", title: null, version: "0" },
       capabilities: { experimentalApi: true, requestAttestation: false },
     });
     if (init.error) {
@@ -186,7 +186,7 @@ function cliVersion() {
  * How much protocol a typed transport would have to carry. Generated into a
  * temp dir rather than committed: the bindings are a *measurement input* here,
  * not a dependency, and committing 6k lines of someone else's generated types
- * would be a maintenance surface Sway does not need to own.
+ * would be a maintenance surface Tori does not need to own.
  */
 function sizeBindings() {
   const out = join(process.env.TMPDIR ?? "/tmp", `codex-bindings-${process.pid}`);

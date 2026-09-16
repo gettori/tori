@@ -1,8 +1,8 @@
 //! The branch to pull-request association, derived rather than stored.
 //!
-//! Sway never persists "branch X has PR #12". The forge already knows, and a
+//! Tori never persists "branch X has PR #12". The forge already knows, and a
 //! stored copy is a second source of truth that goes wrong in the one direction
-//! nobody notices: a PR closed, merged, or recreated elsewhere leaves Sway
+//! nobody notices: a PR closed, merged, or recreated elsewhere leaves Tori
 //! confidently pointing at a number that no longer means what it says. So the
 //! association is a **query** (`?head=owner:branch`), and this module is only a
 //! cache in front of that query, thrown away when the app exits.
@@ -203,7 +203,7 @@ mod tests {
     use std::cell::Cell;
 
     fn repo() -> RepoRef {
-        RepoRef { owner: "skarif2".into(), repo: "sway".into() }
+        RepoRef { owner: "skarif2".into(), repo: "tori".into() }
     }
 
     fn pr(number: u64, head: &str) -> PullRequest {
@@ -217,7 +217,7 @@ mod tests {
             head_ref: head.into(),
             base_ref: "main".into(),
             head_sha: "abc".into(),
-            url: "https://github.com/skarif2/sway/pull/1".into(),
+            url: "https://github.com/skarif2/tori/pull/1".into(),
             mergeable_state: MergeableState::Unknown,
         }
     }
@@ -378,7 +378,7 @@ mod tests {
         use crate::forge::http::test_support::StubTransport;
         use crate::forge::{github::GitHubForge, Forge};
 
-        let found = r#"[{"number":12,"title":"t","state":"open","head":{"ref":"wave-3","sha":"abc"},"base":{"ref":"main"},"user":{"login":"skarif2"},"html_url":"https://github.com/skarif2/sway/pull/12"}]"#;
+        let found = r#"[{"number":12,"title":"t","state":"open","head":{"ref":"wave-3","sha":"abc"},"base":{"ref":"main"},"user":{"login":"skarif2"},"html_url":"https://github.com/skarif2/tori/pull/12"}]"#;
         let stub = std::sync::Arc::new(StubTransport::new(vec![
             StubTransport::json(200, found),
             StubTransport::json(200, "[]"),

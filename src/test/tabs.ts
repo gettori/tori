@@ -5,7 +5,7 @@ import { screen } from "@solidjs/testing-library";
  *
  * This is the visible row: the copy a browser draws, the one carrying the
  * context menu, and the only one that will still be a tab once the strip moves
- * onto Kobalte (skarif2/sway#111). It used to be the measuring ghost, reached
+ * onto Kobalte (gettori/tori#111). It used to be the measuring ghost, reached
  * with `hidden: true`, because jsdom measured every width as 0 and the bar kept
  * exactly one tab on screen. `src/test/tabLayout.ts` gives the bar a real width
  * instead, so the visible row holds what it would hold in a browser.

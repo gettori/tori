@@ -202,7 +202,7 @@ describe("pdfFailureMessage", () => {
   it("says so for a password-protected file", () => {
     const err = Object.assign(new Error("password"), { name: "PasswordException" });
     expect(pdfFailureMessage(A, err)).toBe(
-      "a.pdf is password-protected, and Sway cannot open protected PDFs.",
+      "a.pdf is password-protected, and Tori cannot open protected PDFs.",
     );
   });
 

@@ -89,11 +89,11 @@ describe("LspSection", () => {
   });
 
   it("shows which user file overrode a bundled server", async () => {
-    health = [server({ overridePath: "/home/me/.config/sway/lsp/typescript.toml" })];
+    health = [server({ overridePath: "/home/me/.config/tori/lsp/typescript.toml" })];
     render(() => <LspSection />);
 
     await waitFor(() =>
-      expect(screen.getByText(/\/home\/me\/.config\/sway\/lsp\/typescript.toml/)).toBeTruthy(),
+      expect(screen.getByText(/\/home\/me\/.config\/tori\/lsp\/typescript.toml/)).toBeTruthy(),
     );
   });
 });

@@ -7,9 +7,9 @@ import { MenuRow, MenuSeparator } from "./rows";
  *  Deliberately plain, so what the story shows is the menu rather than the row's
  *  own chrome. */
 const rowStyle = {
-  padding: "var(--sway-space-3) var(--sway-space-4)",
+  padding: "var(--tori-space-3) var(--tori-space-4)",
   border: "1px dashed var(--border-default)",
-  "border-radius": "var(--sway-radius-md)",
+  "border-radius": "var(--tori-radius-md)",
   color: "var(--fg-default)",
   cursor: "default",
 } as const;
@@ -97,7 +97,7 @@ export const CustomRows: Story = {
 
 /** A row with nothing to offer. `disabled` leaves the right-click alone
  *  entirely, so the browser's own menu opens instead of an empty surface - which
- *  is what a `sway://` view tab wants. */
+ *  is what a `tori://` view tab wants. */
 export const Disabled: Story = {
   args: { disabled: true, children: "Right-click me (browser menu)" },
 };
@@ -109,9 +109,9 @@ export const ReportsItsOpenState: Story = {
   render: (args) => {
     const [open, setOpen] = createSignal(false);
     return (
-      <div style={{ display: "grid", gap: "var(--sway-space-4)" }}>
+      <div style={{ display: "grid", gap: "var(--tori-space-4)" }}>
         <ContextMenu {...args} onOpenChange={setOpen} />
-        <span style={{ color: "var(--fg-muted)", "font-size": "var(--sway-text-md)" }}>
+        <span style={{ color: "var(--fg-muted)", "font-size": "var(--tori-text-md)" }}>
           menu is {open() ? "open" : "closed"}
         </span>
       </div>

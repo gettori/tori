@@ -30,7 +30,7 @@ import {
   setRegistryListener,
   type LspServer,
 } from "../../utils/lspServers";
-import { SWAY_SETTINGS_FILES } from "../../utils/swaySettingsFiles";
+import { TORI_SETTINGS_FILES } from "../../utils/toriSettingsFiles";
 import { callHierarchyClientCapabilities } from "../../utils/callHierarchy";
 import { symbolClientCapabilities } from "../../utils/symbols";
 import { semanticTokensClientCapabilities } from "../../utils/semanticTokens";
@@ -38,7 +38,7 @@ import { writeFilesSuppressingEcho } from "./batchWrite";
 import { adoptBufferText, dirtyBuffers, liveBufferText } from "./liveBuffers";
 import { codeActionClientCapabilities } from "./lspCodeActions";
 import { codeLensClientCapabilities } from "./lspCodeLens";
-import { completionClientCapabilities, swayCompletion } from "./lspCompletion";
+import { completionClientCapabilities, toriCompletion } from "./lspCompletion";
 import { configurationClientCapabilities, configurationFor } from "./lspConfiguration";
 import {
   clearDiagnosticContext,
@@ -47,7 +47,7 @@ import {
 } from "./lspDiagnosticContext";
 import { answerApplyEdit, workspaceEditClientCapabilities } from "./serverEdits";
 import { createRequestRouter } from "./serverRequests";
-import { pathToUri, SwayWorkspace } from "./swayWorkspace";
+import { pathToUri, ToriWorkspace } from "./toriWorkspace";
 import { clearWarmRoots, touchWarmRoot, underWarmRoot } from "./lspWarmRoots";
 import type { ApplyDeps, MaterialisedFile, Mapping } from "./workspaceEdit";
 
@@ -58,8 +58,8 @@ type LspHandle = { serverId: string; root: string };
 type Session = {
   handle: LspHandle;
   client: LSPClient;
-  workspace: SwayWorkspace;
-  /** The config this session was started from. Held so the requests Sway
+  workspace: ToriWorkspace;
+  /** The config this session was started from. Held so the requests Tori
    *  answers can read the server's own `[settings]`: a `workspace/configuration`
    *  arrives with nothing but section names, and the answer is this server's,
    *  not whatever the last-started one happened to want. */
@@ -247,7 +247,7 @@ async function startFor(
 
   // Captured out of the factory below, which the client calls synchronously
   // inside its own constructor, so it is set before `connect` returns.
-  let workspace: SwayWorkspace | undefined;
+  let workspace: ToriWorkspace | undefined;
 
   // The server stays silent until it receives `initialize`, which connect()
   // sends, so no messages are missed between lsp_start and subscribing here.
@@ -261,7 +261,7 @@ async function startFor(
     // Without this the library's own workspace answers `displayFile` with the
     // view of a file that is already on screen and null for everything else,
     // which is every cross-file operation there is.
-    workspace: (c) => (workspace = new SwayWorkspace(c, workspaceDeps(server))),
+    workspace: (c) => (workspace = new ToriWorkspace(c, workspaceDeps(server))),
     extensions: clientExtensions(),
   }).connect(transport);
 
@@ -276,19 +276,19 @@ function notifyServer(handle: LspHandle, method: string, params: unknown): void 
 }
 
 /**
- * Associations for Sway's own settings files, or none if this build has no
+ * Associations for Tori's own settings files, or none if this build has no
  * schema directory.
  *
  * The `file:` URI is the point of the exercise: these schemas are on disk
  * beside the app rather than on SchemaStore, and the server reads a `file:`
  * schema itself (`jsonServerMain.js:32-45`). That is safe here for the reason
- * `associations_from_catalog` refuses one: this path is Sway's own resource
+ * `associations_from_catalog` refuses one: this path is Tori's own resource
  * directory, not a URL out of a document written by somebody else.
  */
-async function swaySettingsAssociations(): Promise<{ uri: string; fileMatch: string[] }[]> {
+async function toriSettingsAssociations(): Promise<{ uri: string; fileMatch: string[] }[]> {
   const dir = await invoke<string | null>("lsp_schema_dir").catch(() => null);
   if (!dir) return [];
-  return SWAY_SETTINGS_FILES.map((file) => ({
+  return TORI_SETTINGS_FILES.map((file) => ({
     uri: pathToUri(`${dir}/${file.schema}`),
     fileMatch: [file.fileMatch],
   }));
@@ -322,11 +322,11 @@ async function configureSession(handle: LspHandle, client: LSPClient, server: Ls
     // validation, exactly as they did before this server existed. The backend
     // logs the reason once per process rather than once per session.
     const catalog = await invoke<unknown[]>("lsp_schema_associations").catch(() => []);
-    // Sway's own schemas first, and gathered separately from the catalog's: they
+    // Tori's own schemas first, and gathered separately from the catalog's: they
     // are files this build ships, so they are there whether or not the network
     // was, and folding them in here is what keeps the settings files described
     // on the offline path that returns nothing above.
-    const associations = [...(await swaySettingsAssociations()), ...catalog];
+    const associations = [...(await toriSettingsAssociations()), ...catalog];
     if (!associations.length || sessions.get(key(handle))?.client !== client) return;
     // Wrapped in an array, and that is the whole notification working or not.
     // This server is built on `vscode-jsonrpc`, which reads a JSON-RPC `params`
@@ -348,7 +348,7 @@ async function configureSession(handle: LspHandle, client: LSPClient, server: Ls
  *
  * Written out rather than spread from `languageServerExtensions()`, which is
  * these same four library entries plus `serverCompletion()` where
- * `swayCompletion()` is here. Auto-import needs `completionItem/resolve` sent
+ * `toriCompletion()` is here. Auto-import needs `completionItem/resolve` sent
  * between the pick and the commit, and the library builds each option's `apply`
  * while mapping the reply, with `apply` synchronous - so there is nothing to
  * wrap or configure, only to replace (see `lspCompletion.ts`). The rest are
@@ -368,7 +368,7 @@ export function clientExtensions() {
     // has open, which is the opposite of the set a code action is ever asked
     // about.
     diagnosticContextCapture,
-    swayCompletion(),
+    toriCompletion(),
     hoverTooltips(),
     // Two of the library's four keymaps, and the array around them is not a
     // formatting choice.
@@ -381,10 +381,10 @@ export function clientExtensions() {
     // `commands.ts` advertises the first three as `sub:` labels, so wrapping it
     // is what makes those labels true.
     //
-    // But only for the two Sway has no answer of its own to, because the other
+    // But only for the two Tori has no answer of its own to, because the other
     // two would each be a regression the moment the keymap started working:
     //
-    //   - `formatKeymap` (⇧⌥F) runs the *server's* formatter. Sway's own
+    //   - `formatKeymap` (⇧⌥F) runs the *server's* formatter. Tori's own
     //     `lsp-format` is on that chord already and tries the project's Biome
     //     or Prettier first, which is the better answer; and since CodeMirror
     //     honours `preventDefault` even when a command declines, the library's
@@ -393,7 +393,7 @@ export function clientExtensions() {
     //     only formatter there is.
     //   - `renameKeymap` (F2) runs `renameSymbol`, whose `doRename` skips every
     //     file the user has not already opened, silently. `lspRename.ts` exists
-    //     because of that. `CodeEditor` already binds F2 to Sway's rename at
+    //     because of that. `CodeEditor` already binds F2 to Tori's rename at
     //     `Prec.highest`, so this would only ever be the fallback nobody wants.
     [keymap.of([...jumpToDefinitionKeymap, ...findReferencesKeymap])],
     signatureHelp(),
@@ -422,7 +422,7 @@ function workspaceDeps(server: LspServer) {
   };
 }
 
-// ------------------------------------------- the requests Sway answers
+// ------------------------------------------- the requests Tori answers
 
 const SEMANTIC_REFRESH = "workspace/semanticTokens/refresh";
 const CODE_LENS_REFRESH = "workspace/codeLens/refresh";
@@ -479,7 +479,7 @@ export const setSemanticRefreshListener = semanticRefresh.set;
 export const setCodeLensRefreshListener = codeLensRefresh.set;
 
 /**
- * The server-initiated requests Sway answers, and the whole reason the router
+ * The server-initiated requests Tori answers, and the whole reason the router
  * exists. See `serverRequests.ts` for why the transport is the only seam where
  * this can be done at all.
  *
@@ -491,7 +491,7 @@ const serverRequests = createRequestRouter<LspHandle>({
     semanticRefresh.fire(handle.root);
   },
   // Answered rather than left to the library, which would reply `-32601` to a
-  // request Sway's own capabilities invited. A conformant server reads that as
+  // request Tori's own capabilities invited. A conformant server reads that as
   // the client having lied and stops asking, so the lenses would then only ever
   // be as fresh as the next edit to the file they are drawn in.
   [CODE_LENS_REFRESH]: (_params, handle) => {

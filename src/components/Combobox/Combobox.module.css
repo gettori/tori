@@ -17,13 +17,13 @@
 .control {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-2);
+  gap: var(--tori-space-2);
   height: var(--control-height);
-  padding: 0 var(--sway-space-3) 0 var(--sway-space-4);
+  padding: 0 var(--tori-space-3) 0 var(--tori-space-4);
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
-  transition: border-color var(--sway-duration-fast) ease;
+  border-radius: var(--tori-radius-md);
+  transition: border-color var(--tori-duration-fast) ease;
 }
 
 /* One step of border, no ring: a text field's caret is its focus cue. Keyed
@@ -42,7 +42,7 @@
   padding: 0;
   color: var(--fg-default);
   font-family: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   line-height: 1.4;
 }
 
@@ -61,18 +61,18 @@
 .item {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-3);
-  padding: var(--sway-space-3) var(--sway-space-4);
-  font-size: var(--sway-text-lg);
+  gap: var(--tori-space-3);
+  padding: var(--tori-space-3) var(--tori-space-4);
+  font-size: var(--tori-text-lg);
   color: var(--fg-default);
   /* On the row, so every piece of it inherits: the ellipsis below (and the
      palette's, on its own label span) is inert without this, and a branch name
      or a deep path would wrap and grow the row instead of being cut. */
   white-space: nowrap;
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   cursor: pointer;
   outline: none;
-  transition: background var(--sway-duration-fast) ease;
+  transition: background var(--tori-duration-fast) ease;
 }
 
 /* Pointer and keyboard reach the same state; same call as Menu's and Select's
@@ -110,7 +110,7 @@
 .itemRow {
   display: flex;
   align-items: center;
-  gap: var(--sway-space-3);
+  gap: var(--tori-space-3);
   flex: 1;
   min-width: 0;
 }
@@ -118,15 +118,15 @@
 /* A group's heading row. Not focusable, not selectable; the muted size drop is
    what says "this names the rows below it". */
 .section {
-  padding: var(--sway-space-2) var(--sway-space-4);
-  font-size: var(--sway-text-sm);
+  padding: var(--tori-space-2) var(--tori-space-4);
+  font-size: var(--tori-text-sm);
   color: var(--fg-subtle);
 }
 
 /* Shown where the list would be, when nothing matches. Same muted register as a
    section heading: it is a report about the list, not a row in it. */
 .empty {
-  padding: var(--sway-space-3) var(--sway-space-4);
-  font-size: var(--sway-text-md);
+  padding: var(--tori-space-3) var(--tori-space-4);
+  font-size: var(--tori-text-md);
   color: var(--fg-subtle);
 }

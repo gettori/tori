@@ -211,7 +211,7 @@ mod tests {
 
     fn repo_with_two_authors() -> std::path::PathBuf {
         let n = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("sway_blame_{n}"));
+        let dir = std::env::temp_dir().join(format!("tori_blame_{n}"));
         std::fs::create_dir_all(&dir).unwrap();
         git(&dir, &["init", "-q", "-b", "main"]);
         git(&dir, &["config", "user.email", "ada@t"]);

@@ -41,7 +41,7 @@
   background: transparent;
   border: 1px solid var(--border-default);
   color: var(--fg-muted);
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -64,20 +64,20 @@
    a box and the other as three sides. */
 .termNewMain {
   padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  border-radius: var(--sway-radius-md) 0 0 var(--sway-radius-md);
+  border-radius: var(--tori-radius-md) 0 0 var(--tori-radius-md);
 }
 
 /* A standalone launch button (no caret half): fully rounded, its own margin. */
 .termNewSolo {
   align-self: center;
   padding: calc(5px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   margin-left: calc(2px * var(--ui-scale));
 }
 
 .termNewCaret {
   padding: calc(5px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  border-radius: 0 var(--sway-radius-md) var(--sway-radius-md) 0;
+  border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
   margin-left: -1px;
 }
 
@@ -97,7 +97,7 @@
   align-self: center;
   position: relative;
   padding: calc(5px * var(--ui-scale)) calc(8px * var(--ui-scale));
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   margin-left: calc(4px * var(--ui-scale));
 }
 
@@ -123,10 +123,10 @@
   align-items: center;
   gap: calc(1px * var(--ui-scale));
   padding: 0 calc(2px * var(--ui-scale));
-  border-radius: var(--sway-radius-pill);
+  border-radius: var(--tori-radius-pill);
   background: var(--canvas-card);
   color: var(--status-running);
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   line-height: 1;
 }
 
@@ -141,7 +141,7 @@
   line-height: 1;
   width: calc(14px * var(--ui-scale));
   height: calc(14px * var(--ui-scale));
-  transition: transform var(--sway-duration-fast) ease;
+  transition: transform var(--tori-duration-fast) ease;
 }
 
 /* Kobalte stamps the open state on the trigger, which is the wrapper now, not
@@ -182,9 +182,9 @@
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   background: var(--canvas-card);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   box-shadow: var(--shadow-md);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 .termRestoreText {
@@ -238,19 +238,19 @@
   padding: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
   background: var(--canvas-head);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-md);
+  border-radius: var(--tori-radius-md);
   box-shadow: var(--shadow-md);
 }
 
 .termSearchInput {
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   color: var(--fg-default);
   background: var(--canvas-input);
   border: 1px solid var(--border-default);
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   padding: calc(2px * var(--ui-scale)) calc(6px * var(--ui-scale));
   outline: none;
-  transition: border-color var(--sway-duration-fast) ease;
+  transition: border-color var(--tori-duration-fast) ease;
 }
 .termSearchInput:focus {
   border-color: var(--brand-default);
@@ -282,7 +282,7 @@
   align-items: center;
   justify-content: center;
   color: var(--fg-muted);
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   text-align: center;
   padding: calc(20px * var(--ui-scale));
 }
@@ -295,7 +295,7 @@
 
 .tabVerdict {
   flex: none;
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   font-variant-numeric: tabular-nums;
   color: var(--danger-fg);
 }

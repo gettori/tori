@@ -73,16 +73,16 @@ describe("renameTabsUnder", () => {
   });
 
   it("leaves synthetic tabs alone", () => {
-    // A `sway://` id is not a filesystem path; prefix-rewriting one would make
+    // A `tori://` id is not a filesystem path; prefix-rewriting one would make
     // an id that addresses nothing.
     const maps = {
-      tabs: { w1: [tab("sway://commit-log//p/src"), tab("/p/src/a.ts")] },
-      active: { w1: "sway://commit-log//p/src" },
+      tabs: { w1: [tab("tori://commit-log//p/src"), tab("/p/src/a.ts")] },
+      active: { w1: "tori://commit-log//p/src" },
     };
     const next = renameTabsUnder(maps, "/p/src", "/p/lib");
 
-    expect(next.tabs.w1[0].path).toBe("sway://commit-log//p/src");
-    expect(next.active.w1).toBe("sway://commit-log//p/src");
+    expect(next.tabs.w1[0].path).toBe("tori://commit-log//p/src");
+    expect(next.active.w1).toBe("tori://commit-log//p/src");
     expect(next.moved).toEqual([{ from: "/p/src/a.ts", to: "/p/lib/a.ts" }]);
   });
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "sway-light",
-  "label": "Sway Light",
+  "id": "tori-light",
+  "label": "Tori Light",
   "appearance": "light",
   "colors": {
     "canvas": "#ffffff",

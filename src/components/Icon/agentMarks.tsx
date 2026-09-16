@@ -2,7 +2,7 @@ import { splitProps, type Component, type JSX } from "solid-js";
 import styles from "./agentMarks.module.css";
 
 /**
- * Every agent logo Sway has, in one place.
+ * Every agent logo Tori has, in one place.
  *
  * The marks are keyed by an adapter's `icon` field (`src-tauri/agents/*.toml`),
  * not by its id, so a user's own `claude-yolo` adapter can wear the Claude mark
@@ -26,7 +26,7 @@ import styles from "./agentMarks.module.css";
  *
  * **From the upstream set, never from another app.** The obvious shortcut is to
  * lift all of these from a competitor that already has them; the reason not to
- * is that Paseo, the nearest one, is AGPL-3.0 while Sway is Apache-2.0, so
+ * is that Paseo, the nearest one, is AGPL-3.0 while Tori is Apache-2.0, so
  * copying its components would be a licence conflict rather than a saved
  * afternoon. Its own LICENSE points at the way round: third-party components
  * keep their original licence, so the answer is to go to that original.

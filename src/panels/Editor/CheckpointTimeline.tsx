@@ -32,7 +32,7 @@ type CheckpointFile = {
   // row says rather than resolving in favour of whoever asked.
   shared_with?: string[];
   // Changed during the turn with no session claiming it, on a turn that ran a
-  // tool whose writes Sway cannot see. The likeliest author is this session,
+  // tool whose writes Tori cannot see. The likeliest author is this session,
   // which is not the same as knowing, so a revert leaves it alone.
   unattributed?: boolean;
 };

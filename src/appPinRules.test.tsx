@@ -122,7 +122,7 @@ beforeEach(async () => {
   // This suite is about two panes; the shell seeds one (plan phase 12).
   storeTwoPanes(REPO);
   localStorage.setItem(
-    "sway.selection.v1",
+    "tori.selection.v1",
     JSON.stringify({
       spaceName: "space",
       projectName: "proj",
@@ -225,10 +225,10 @@ describe("a pane locked to one kind", () => {
 describe("a store written by an older build", () => {
   it("produces today's layout with no pane assignments in it at all", async () => {
     // What an install from before phase 8 has: the legacy two-pane key, and no
-    // `sway.tabpanes.v1` whatsoever.
-    localStorage.removeItem("sway.tabpanes.v1");
+    // `tori.tabpanes.v1` whatsoever.
+    localStorage.removeItem("tori.tabpanes.v1");
     localStorage.setItem(
-      "sway.layout.v1",
+      "tori.layout.v1",
       JSON.stringify({ sidebar: 280, editor: 640, showSidebar: true, showTerminal: true, showEditor: true }),
     );
     render(() => <App />);
@@ -242,7 +242,7 @@ describe("a store written by an older build", () => {
     // The same key, one field short. A missing map is an empty one, not a
     // reason to drop the assignments beside it.
     localStorage.setItem(
-      "sway.tabpanes.v1",
+      "tori.tabpanes.v1",
       JSON.stringify({ [REPO]: { tabs: { "sh:2": "right" }, kinds: {}, active: {}, order: {}, seq: 0 } }),
     );
     render(() => <App />);

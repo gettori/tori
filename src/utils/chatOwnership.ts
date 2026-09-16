@@ -44,11 +44,11 @@ export function refusalMessage(refusal: Refusal): string {
         ? "This session is already open in a terminal tab. Two drivers on one transcript corrupt it."
         : "This session is already open in a chat. Two drivers on one transcript corrupt it.";
     case "orphaned":
-      return "A previous Sway left this session running. It has to end before the session can be reopened.";
+      return "A previous Tori left this session running. It has to end before the session can be reopened.";
   }
 }
 
-/** Said when the claim was granted but something outside Sway is resuming the
+/** Said when the claim was granted but something outside Tori is resuming the
  *  same id. We cannot prevent that one, only report it. */
 export const CONTESTED_NOTICE =
-  "This session is also running outside Sway. Two drivers on one transcript will corrupt it.";
+  "This session is also running outside Tori. Two drivers on one transcript will corrupt it.";

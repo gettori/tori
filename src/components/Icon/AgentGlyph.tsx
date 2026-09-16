@@ -5,7 +5,7 @@ import { agentMark } from "./agentMarks";
 import styles from "./AgentGlyph.module.css";
 
 /**
- * One agent's logo, or its initial when Sway has no logo for it.
+ * One agent's logo, or its initial when Tori has no logo for it.
  *
  * The fallback is a letter rather than a generic robot on purpose: four
  * identical robots in a column say less than four different letters, and a

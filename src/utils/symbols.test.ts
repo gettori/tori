@@ -208,7 +208,7 @@ describe("normalizeWorkspaceSymbols", () => {
     expect(normalizeWorkspaceSymbols(res, toPath)[0].path).toBe("/proj/src/thing.ts");
   });
 
-  it("drops a hit Sway cannot address rather than listing a dead row", () => {
+  it("drops a hit Tori cannot address rather than listing a dead row", () => {
     // A server may answer about something with no file behind it at all -
     // `untitled:`, or a jar/zip scheme. Listing it would mean an Enter that
     // does nothing and says nothing.

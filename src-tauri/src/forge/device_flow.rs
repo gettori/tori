@@ -1,4 +1,4 @@
-//! The OAuth device flow: how Sway gets a forge token without a redirect
+//! The OAuth device flow: how Tori gets a forge token without a redirect
 //! server or a client secret.
 //!
 //! Three steps, and the middle one is a loop:
@@ -232,7 +232,7 @@ fn form_post(url: &str, body: String) -> HttpRequest {
             // one parser in this module rather than two.
             ("Accept".into(), "application/json".into()),
             ("Content-Type".into(), "application/x-www-form-urlencoded".into()),
-            ("User-Agent".into(), "sway".into()),
+            ("User-Agent".into(), "tori".into()),
         ],
         body: Some(body),
     }

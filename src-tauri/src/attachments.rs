@@ -7,12 +7,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The filename rides in this header, percent-encoded, because the body is
 /// the file itself.
-const NAME_HEADER: &str = "x-sway-attachment-name";
+const NAME_HEADER: &str = "x-tori-attachment-name";
 
-/// Beside the other things Sway keeps for itself, never under a workspace:
+/// Beside the other things Tori keeps for itself, never under a workspace:
 /// a worktree can be deleted while the transcript naming the file lives on.
 pub fn dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_default().join(".config/sway/attachments")
+    dirs::home_dir().unwrap_or_default().join(".config/tori/attachments")
 }
 
 #[tauri::command]
@@ -69,7 +69,7 @@ fn safe_name(name: &str) -> String {
 /// it is gone nothing can say what it referenced.
 ///
 /// Asked as "which stored file does this text name", never as "which paths does
-/// this text contain": the holder id is Sway's own and always plain, so a
+/// this text contain": the holder id is Tori's own and always plain, so a
 /// filename carrying a quote or a backslash cannot escape its way past the
 /// scan. The trailing separator keeps `<id>/` from matching `<id>0/`.
 pub(crate) fn holders_named_by(transcript: &Path, dir: &Path) -> Vec<PathBuf> {
@@ -164,7 +164,7 @@ mod tests {
 
     fn scratch() -> PathBuf {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        std::env::temp_dir().join(format!("sway-attachments-{nanos:x}-{}", std::process::id()))
+        std::env::temp_dir().join(format!("tori-attachments-{nanos:x}-{}", std::process::id()))
     }
 
     /// The name the user gave it, unchanged: the id is the directory, so the
@@ -248,7 +248,7 @@ mod tests {
     }
 
     /// Only what this session named, and only under the attachments dir: a
-    /// mentioned file is the user's own and was never Sway's to remove.
+    /// mentioned file is the user's own and was never Tori's to remove.
     #[test]
     fn a_file_the_transcript_never_named_is_not_a_candidate() {
         let base = scratch();

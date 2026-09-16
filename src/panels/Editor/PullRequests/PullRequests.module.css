@@ -6,7 +6,7 @@
   flex-direction: column;
   overflow-y: auto;
   background: var(--canvas-card);
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
 }
 
 .head {
@@ -26,7 +26,7 @@
   color: var(--fg-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 
 /* Every reason the list is empty, and every truncation, gets one of these.
@@ -34,7 +34,7 @@
 .notice {
   padding: calc(8px * var(--ui-scale)) calc(12px * var(--ui-scale));
   color: var(--fg-muted);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 .notice.bad {
   color: var(--danger-fg);
@@ -79,7 +79,7 @@
   gap: calc(8px * var(--ui-scale));
   min-width: 0;
   color: var(--fg-muted);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
 }
 
 .state {

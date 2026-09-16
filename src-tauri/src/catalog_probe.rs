@@ -1,6 +1,6 @@
 //! Asking a agent what it can run, and remembering the answer.
 //!
-//! Sway ships no model list. Every model, mode and option a picker offers is
+//! Tori ships no model list. Every model, mode and option a picker offers is
 //! something the agent itself named, either on a live session's handshake or
 //! on the cached answer this module produces. The two are the same shape on
 //! purpose: a picker opened before any session exists reads the cache, and the
@@ -16,7 +16,7 @@
 //! a session. The probe opens exactly one, in [`probe_cwd`] (a directory that is
 //! nobody's project), sends no `session/prompt`, and asks for a close when the
 //! agent advertises one. `session/close` frees resources rather than deleting a
-//! record, so the leftover is filtered out of Sway's own history by where it was
+//! record, so the leftover is filtered out of Tori's own history by where it was
 //! opened; see [`probe_cwd_spellings`].
 //!
 //! Three facts are kept apart because the UI renders them differently:
@@ -122,7 +122,7 @@ pub enum FailureReason {
     /// and the agent does not report being signed out.
     NoAnswer,
     /// This build cannot probe this transport yet. Distinct from every other
-    /// reason because it is a fact about Sway, not about the agent, and the
+    /// reason because it is a fact about Tori, not about the agent, and the
     /// surface should not blame the binary for it.
     Unsupported,
 }
@@ -158,7 +158,7 @@ pub struct CatalogModel {
     /// This row came from the user's own agent configuration, not from the
     /// agent's catalogue.
     ///
-    /// Still not something Sway invented - the user wrote the id - but Sway
+    /// Still not something Tori invented - the user wrote the id - but Tori
     /// cannot confirm it: a configured string is passed to `--model` unresolved,
     /// so such a row carries an empty `resolved_model` and anything deduping by
     /// that field must fall back to `value` rather than collapsing every
@@ -167,7 +167,7 @@ pub struct CatalogModel {
     pub user_configured: bool,
     /// The levers this agent has **for this model**, when they depend on it.
     ///
-    /// Claude's do: the CLI publishes no options at all, so Sway assembles them
+    /// Claude's do: the CLI publishes no options at all, so Tori assembles them
     /// per model row. An ACP agent's are per session rather than per model and
     /// live on the catalogue itself, so its rows leave this empty.
     #[serde(default)]
@@ -179,7 +179,7 @@ pub struct CatalogModel {
 /// Bumped when a field a surface reads is **added** to the cache, so a
 /// catalogue written before that field existed is re-probed rather than
 /// rendering as an agent that publishes nothing. Nothing on the wire carries
-/// it: it describes what Sway asked for and kept, not what the agent said.
+/// it: it describes what Tori asked for and kept, not what the agent said.
 ///
 /// **Written here and compared only in `modelCatalog.ts::isStale`**, the split
 /// [`Catalogue::version`] already lives under. Two staleness rules in two
@@ -195,7 +195,7 @@ pub struct CatalogModel {
 ///   probe session's levels copied onto all of them, so a draft would offer a
 ///   level the picked model refuses.
 /// - **6**: an *ACP* agent's commands are in it too. Shape 5 collected them
-///   from claude's handshake only, and every other agent Sway ships an adapter
+///   from claude's handshake only, and every other agent Tori ships an adapter
 ///   for is ACP - where they arrive on a notification after `session/new`,
 ///   which the probe was not listening for. So a cache at 5 has an empty list
 ///   for those agents, and it is empty for the wrong reason: nobody asked.
@@ -209,7 +209,7 @@ pub struct CatalogModel {
 ///   publishes - a control that cannot be reached by any code path, on a lever
 ///   that was never switchable. The first bump for a field *removed* rather than
 ///   added, which is the same rule read the other way: the cache describes a
-///   shape this Sway no longer reads.
+///   shape this Tori no longer reads.
 pub const CACHE_SHAPE: u32 = 6;
 
 /// How many models one probe switches through to read their own option sets.
@@ -258,7 +258,7 @@ pub struct Catalogue {
     /// than published on the wire, which is claude today.
     #[serde(default)]
     pub modes: Vec<ChatModeInfo>,
-    /// The agent's own config options, including the ones Sway has no bespoke
+    /// The agent's own config options, including the ones Tori has no bespoke
     /// control for. Empty for claude, which publishes none.
     ///
     /// **The same shape the live chat mirrors**, not the raw protocol structs:
@@ -288,7 +288,7 @@ fn account_before_the_field() -> String {
     crate::accounts::DEFAULT_PROFILE_ID.to_string()
 }
 
-/// Everything Sway remembers about one agent's catalogue.
+/// Everything Tori remembers about one agent's catalogue.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalog {
@@ -365,15 +365,15 @@ impl ModelCatalog {
 
 // --- the store: one file per agent, under the data dir ---
 
-/// `~/Library/Application Support/sway/model-catalogs` on macOS.
+/// `~/Library/Application Support/tori/model-catalogs` on macOS.
 ///
-/// The data dir rather than `~/.config/sway`, for the reason `accounts.rs`
-/// chose it: this is state Sway derived, not configuration a user edits, and
+/// The data dir rather than `~/.config/tori`, for the reason `accounts.rs`
+/// chose it: this is state Tori derived, not configuration a user edits, and
 /// `~/.config` commonly lives in a dotfile repo. One file per agent rather
 /// than one map, so deleting a single agent's answer is a `rm` and a corrupt
 /// file costs one agent rather than all of them.
 pub fn catalog_root() -> PathBuf {
-    dirs::data_dir().unwrap_or_default().join("sway/model-catalogs")
+    dirs::data_dir().unwrap_or_default().join("tori/model-catalogs")
 }
 
 /// Reduce an id to a bare path segment. The cache files are named from adapter
@@ -401,7 +401,7 @@ fn catalog_path(root: &Path, agent_id: &str, profile_id: &str) -> PathBuf {
 /// Read one account's remembered catalogue.
 ///
 /// **Every failure is "never probed".** A missing file is the ordinary state of
-/// a agent nobody has asked, and a corrupt one is derived state Sway can
+/// a agent nobody has asked, and a corrupt one is derived state Tori can
 /// simply ask for again; neither is worth an error the caller would have to
 /// render. That is what makes the file safe to delete by hand.
 ///
@@ -625,13 +625,13 @@ fn probe_claude(
 /// exists on `session/new`, so probing an ACP agent creates a session on that
 /// agent's side, and `session/close` is not a delete: the spec says it frees
 /// resources, and both measured agents keep the record and list it afterwards.
-/// So Sway cannot prevent the phantom, only recognise it, and it recognises it
+/// So Tori cannot prevent the phantom, only recognise it, and it recognises it
 /// by *where* it was opened rather than by a growing list of ids to remember.
 /// One path means a probe that crashed before it could record anything, and a
-/// probe from a Sway build that predates the id list that does not exist, are
+/// probe from a Tori build that predates the id list that does not exist, are
 /// both still recognisable. See [`probe_cwd_spellings`].
 pub fn probe_cwd() -> PathBuf {
-    dirs::data_dir().unwrap_or_default().join("sway/probe")
+    dirs::data_dir().unwrap_or_default().join("tori/probe")
 }
 
 /// The probe directory, created if it is not there, in the spelling an agent
@@ -640,7 +640,7 @@ pub fn probe_cwd() -> PathBuf {
 /// Canonicalized through the same helper `accounts.rs` uses, and for a related
 /// reason: a agent told about `/var/...` records `/private/var/...`, so
 /// handing over the resolved form is what makes the recorded path and the one
-/// Sway filters on the same string.
+/// Tori filters on the same string.
 fn probe_cwd_ready() -> Result<String, String> {
     let dir = probe_cwd();
     std::fs::create_dir_all(&dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
@@ -771,7 +771,7 @@ fn acp_catalogue(
             // knows how to turn one option set into rows, and reaching in to fix
             // up two fields would be a second copy of that mapping. Falls back
             // to the opening row if the agent's answer stopped listing this
-            // model, which is a contradiction Sway has no better reply to.
+            // model, which is a contradiction Tori has no better reply to.
             let row = acp::model_catalogue(mine)
                 .into_iter()
                 .find(|m| m.value == info.value)
@@ -805,7 +805,7 @@ fn acp_catalogue(
 ///
 /// Read off the handshake, on the same rule as `acp_transport::lists_sessions`:
 /// an agent that does not advertise it is never sent the method, because a
-/// `method not found` is noise Sway would then have to explain. **Absence is not
+/// `method not found` is noise Tori would then have to explain. **Absence is not
 /// an error and not worth reporting** - the catalogue is already in hand by the
 /// time this is asked, and the probe's real hygiene is the directory it opened
 /// in, not the close.
@@ -838,7 +838,7 @@ fn acp_failure(error: &agent_client_protocol::Error) -> ProbeFailure {
 /// probe can promise instead is that it opens exactly one, in a directory that
 /// is nobody's project, submits no `session/prompt`, and asks for the session to
 /// be closed when the agent says it can be. The phantom that survives that is
-/// filtered out of Sway's own history by [`probe_cwd_spellings`], not left for
+/// filtered out of Tori's own history by [`probe_cwd_spellings`], not left for
 /// the user to notice.
 fn probe_acp(
     spec: &StartSpec,
@@ -884,7 +884,7 @@ fn probe_acp(
     let answer = futures::executor::block_on(async {
         let work = Client
             .builder()
-            .name("sway")
+            .name("tori")
             .on_receive_notification(
                 async move |notification: SessionNotification, _cx| {
                     // Through the same mapper a live session reads, so the
@@ -1017,7 +1017,7 @@ fn probe_spec(
         session_id: String::new(),
         // Inherited for a claude probe, which never opens a session and so has
         // no project for a directory to be attached to. The ACP arm replaces
-        // it, because a `session/new` in whatever directory Sway was launched
+        // it, because a `session/new` in whatever directory Tori was launched
         // from would file a phantom session inside a real project.
         cwd: String::new(),
         program: crate::settings::agent_override(&adapter.id).unwrap_or_else(|| chat.program.clone()),
@@ -1067,7 +1067,7 @@ pub fn probe_with(
                 spec.cwd = cwd;
                 probe_acp(&spec, &chat.acp, version, deadline)
             }
-            // Nothing to blame the agent for: Sway could not make the one
+            // Nothing to blame the agent for: Tori could not make the one
             // directory it is willing to open a phantom session in, so it does
             // not open one anywhere else.
             Err(e) => Err(ProbeFailure::now(FailureReason::Unsupported, e)),
@@ -1142,7 +1142,7 @@ fn is_model_env_key(key: &str) -> bool {
 /// because the provenance differs and the surface should be able to say so.
 ///
 /// **Every failure is silence.** A missing file is the common case, and a
-/// malformed one is a file Sway does not own and must not fail on; either way
+/// malformed one is a file Tori does not own and must not fail on; either way
 /// the answer is no extras, never an error and never a guess at what was meant.
 fn user_configured_models(path: &Path, known: &[CatalogModel]) -> Vec<CatalogModel> {
     let Ok(text) = std::fs::read_to_string(path) else {
@@ -1250,7 +1250,7 @@ async fn versions() -> HashMap<String, Option<String>> {
     crate::health::agent_health().await.into_iter().map(|h| (h.id, h.version)).collect::<HashMap<_, _>>()
 }
 
-/// What Sway remembers, one row per (agent with a chat transport, account).
+/// What Tori remembers, one row per (agent with a chat transport, account).
 ///
 /// Every account in `accounts.json`, including ones nobody has probed: a row in
 /// the never-probed state is what tells the frontend a Fonn catalogue is due,
@@ -1345,7 +1345,7 @@ mod tests {
     use super::*;
 
     fn temp_root(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("sway-catalog-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("tori-catalog-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         root
     }
@@ -1497,7 +1497,7 @@ mod tests {
     /// A agent id reaches the filesystem, and adapter ids come from user TOML.
     #[test]
     fn a_agent_id_cannot_escape_the_catalog_directory() {
-        let root = Path::new("/tmp/sway-catalogs");
+        let root = Path::new("/tmp/tori-catalogs");
         assert_eq!(catalog_path(root, "../../etc/passwd", "default"), root.join("______etc_passwd.json"));
     }
 
@@ -1507,7 +1507,7 @@ mod tests {
     /// written before accounts existed is orphaned; an added one is suffixed.
     #[test]
     fn the_default_account_keeps_the_bare_file_name_and_an_added_one_is_suffixed() {
-        let root = Path::new("/tmp/sway-catalogs");
+        let root = Path::new("/tmp/tori-catalogs");
         assert_eq!(catalog_path(root, "claude", "default"), root.join("claude.json"));
         assert_eq!(catalog_path(root, "claude", "fonn"), root.join("claude__fonn.json"));
     }
@@ -1634,7 +1634,7 @@ mod tests {
         assert!(extras.iter().all(|m| m.user_configured), "provenance rides every extra row");
         assert!(
             extras.iter().all(|m| m.info.resolved_model.is_empty()),
-            "Sway cannot resolve a configured string, so it claims no resolution"
+            "Tori cannot resolve a configured string, so it claims no resolution"
         );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
@@ -1660,16 +1660,16 @@ mod tests {
 
     /// Which account's pinned models these are. An added profile's live inside
     /// its own home; the process's `CLAUDE_CONFIG_DIR` describes the account
-    /// Sway inherited, so it answers for the default one and nobody else.
+    /// Tori inherited, so it answers for the default one and nobody else.
     #[test]
     fn the_configured_models_come_from_the_account_being_probed() {
-        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/sway-homes/claude-fonn".to_string());
+        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/tori-homes/claude-fonn".to_string());
         assert_eq!(
             claude_settings_path(Some(&home)),
-            Path::new("/tmp/sway-homes/claude-fonn/settings.json"),
+            Path::new("/tmp/tori-homes/claude-fonn/settings.json"),
         );
         assert!(claude_settings_path(None).ends_with("settings.json"));
-        assert!(!claude_settings_path(None).starts_with("/tmp/sway-homes"));
+        assert!(!claude_settings_path(None).starts_with("/tmp/tori-homes"));
     }
 
     /// The probe spawns in the account's home, so the answer is that account's.
@@ -1679,10 +1679,10 @@ mod tests {
     fn a_probe_runs_in_the_accounts_own_home() {
         let claude = crate::agents::find("claude").expect("claude is a registered adapter");
         let chat = claude.chat.as_ref().expect("claude has a chat transport");
-        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/sway-homes/claude-fonn".to_string());
+        let home = ("CLAUDE_CONFIG_DIR".to_string(), "/tmp/tori-homes/claude-fonn".to_string());
 
         let scoped = probe_spec(claude, chat, Some(&home));
-        assert_eq!(scoped.env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/tmp/sway-homes/claude-fonn"));
+        assert_eq!(scoped.env.get("CLAUDE_CONFIG_DIR").map(String::as_str), Some("/tmp/tori-homes/claude-fonn"));
         assert!(probe_spec(claude, chat, None).env.is_empty(), "the default account sets nothing");
     }
 
@@ -1853,7 +1853,7 @@ mod tests {
 
     /// Both ways round, because the cost of getting it wrong differs by
     /// direction: skipping the close on an agent that serves it leaves a session
-    /// alive for nothing, and sending it to one that does not is a request Sway
+    /// alive for nothing, and sending it to one that does not is a request Tori
     /// would then have to explain away.
     #[test]
     fn a_session_is_closed_only_when_the_agent_says_it_can_be() {
@@ -1880,7 +1880,7 @@ mod tests {
     /// chat, and a cache that filtered here would be the place a new option gets
     /// lost - before anything downstream could ever see it.
     #[test]
-    fn an_option_sway_has_no_control_for_is_kept_rather_than_dropped() {
+    fn an_option_tori_has_no_control_for_is_kept_rather_than_dropped() {
         let options = vec![
             select_option("model", Some(Category::Model), &[("sonnet", "Sonnet")]),
             select_option("reasoning-depth", None, &[("shallow", "Shallow")]),
@@ -2067,7 +2067,7 @@ mod tests {
     /// property of the agent. **No uncategorized option is sent by this agent**,
     /// so the rule that keeps the whole option set is pinned by a fixture rather
     /// than here; see
-    /// `an_option_sway_has_no_control_for_is_kept_rather_than_dropped`.
+    /// `an_option_tori_has_no_control_for_is_kept_rather_than_dropped`.
     #[test]
     #[ignore = "drives the real `opencode` binary"]
     fn the_real_opencode_answers_a_catalogue_from_one_session() {
@@ -2085,7 +2085,7 @@ mod tests {
     }
 
     /// The same probe against Codex, and **the first live agent to publish an
-    /// option Sway has no control for**.
+    /// option Tori has no control for**.
     ///
     /// Measured on `codex-cli 0.147.0` with `@agentclientprotocol/codex-acp`
     /// 1.2.0, 2026-08-17. Four config options where opencode sends two:
@@ -2096,7 +2096,7 @@ mod tests {
     ///     the model the session opens on and fewer on the others,
     ///   * `collaboration_mode` (default, plan), categorized as itself.
     ///
-    /// That last one is the whole of Phase 5's case, live: Sway has no control
+    /// That last one is the whole of Phase 5's case, live: Tori has no control
     /// for it, its category is the agent's own word, and before the mirror it
     /// was read off the wire and dropped. It is a real lever (Codex's plan mode),
     /// not a curiosity.
@@ -2169,13 +2169,13 @@ mod tests {
     /// project directory is answered with that directory's sessions and nothing
     /// else, so a probe session opened in the probe directory is out of reach
     /// twice over - once by the agent's own scoping, and once by `adopt`'s
-    /// filter, which is the half Sway controls and the half that survives an
+    /// filter, which is the half Tori controls and the half that survives an
     /// agent changing its mind about scoping.
     ///
     /// Which means this test proves the **outcome** against a real Codex, not
     /// the filter: with that scoping in place the row could not appear here
     /// whatever `adopt` did. The filter itself is pinned by
-    /// `acp_sessions::a_session_sways_own_probe_opened_is_not_adopted_as_history`,
+    /// `acp_sessions::a_session_toris_own_probe_opened_is_not_adopted_as_history`,
     /// and what this adds is that Codex answers listings at all, so that filter
     /// is load-bearing rather than theoretical.
     ///
@@ -2192,7 +2192,7 @@ mod tests {
         let codex = crate::agents::find("codex").expect("the bundled codex adapter");
         let chat = codex.chat.as_ref().expect("with an ACP chat transport");
 
-        let root = std::env::temp_dir().join(format!("sway-codex-phantom-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("tori-codex-phantom-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         acp_sessions::use_dir_for_tests(root.join("locators"));
 
@@ -2262,13 +2262,13 @@ mod tests {
 
     /// The hygiene claim, end to end: the probe's session exists on the agent's
     /// side (there is no verb that would delete it), and it is nonetheless not
-    /// in the history Sway would show.
+    /// in the history Tori would show.
     ///
     /// Run with `--test-threads=1`: it redirects the locator store, which is a
     /// process-global for the reason `acp_sessions` documents.
     #[test]
     #[ignore = "drives the real `opencode` binary"]
-    fn a_probe_leaves_nothing_in_the_history_sway_would_adopt() {
+    fn a_probe_leaves_nothing_in_the_history_tori_would_adopt() {
         let opencode = crate::agents::find("opencode").expect("the bundled opencode adapter");
         probe_with(opencode, None, None, PROBE_DEADLINE).expect("opencode should answer");
 

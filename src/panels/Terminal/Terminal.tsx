@@ -348,7 +348,7 @@ export default function Terminal(props: {
 
   // On first visit, per workspace. Suppressed while first-run onboarding is open
   // (and re-evaluated when it closes, since this reads the flag), so someone
-  // meeting Sway does not get last run's tabs drawn behind the welcome.
+  // meeting Tori does not get last run's tabs drawn behind the welcome.
   createEffect(() => {
     if (props.onboarding) return;
     const ws = activeWorkspace();
@@ -362,7 +362,7 @@ export default function Terminal(props: {
   /**
    * Say what the backend is holding that no stored tab can reach.
    *
-   * Measured against the **whole** `sway.terminalTabs` store, not the workspace
+   * Measured against the **whole** `tori.terminalTabs` store, not the workspace
    * being restored. Only one workspace is visited on a reload, so a check
    * scoped to the restored subset would call every other workspace's live
    * session stranded - which is the opposite of true: those come back the
@@ -677,7 +677,7 @@ export default function Terminal(props: {
       .filter((id): id is string => !!id);
 
   // Sessions running in this folder that no tab of ours hosts - an agent someone
-  // started in a terminal outside Sway, or one left behind by a closed tab.
+  // started in a terminal outside Tori, or one left behind by a closed tab.
   // Their whole visibility is this badge, since the panel they live in is shut.
   // A detached session caps at "running" by construction (working and needs-you
   // both need a PTY to observe), so this is a count rather than a rollup.
@@ -902,7 +902,7 @@ export default function Terminal(props: {
   });
   onCleanup(offSessionDeleted);
 
-  // Chat children a crashed Sway left running. The backend refuses to reclaim
+  // Chat children a crashed Tori left running. The backend refuses to reclaim
   // their session ids until they are gone, so without this the refusal would be
   // silent: the session simply would not open, with nothing saying why.
   const [orphans, setOrphans] = createSignal<ChatOrphan[]>([]);
@@ -1057,7 +1057,7 @@ export default function Terminal(props: {
     // an orphan the backend has just ended is not something to report as
     // stranded. Not awaited, so a slow listing does not hold up the rest.
     void reportStranded();
-    // Sway used to decide tool calls from a rule store of its own. It does not,
+    // Tori used to decide tool calls from a rule store of its own. It does not,
     // the store is gone, and this is the once the user is told. Pulled here for
     // the same reason as the reap above: the sweep answers `null` on every run
     // after the first, so there is nothing to keep track of on this side.
@@ -1071,7 +1071,7 @@ export default function Terminal(props: {
           ? `${retired.projectRules} project rule${retired.projectRules === 1 ? "" : "s"} you had saved went with them - your agent's own permission settings are where those live now.`
           : "None of them were rules you wrote.";
         emitWith<ToastEvent>(TOAST, {
-          message: `Sway no longer decides tool calls, so it removed ${retired.files} leftover file${retired.files === 1 ? "" : "s"} from ${retired.path}. ${wrote}`,
+          message: `Tori no longer decides tool calls, so it removed ${retired.files} leftover file${retired.files === 1 ? "" : "s"} from ${retired.path}. ${wrote}`,
           kind: "info",
         });
       })
@@ -1115,7 +1115,7 @@ export default function Terminal(props: {
   }
 
   /**
-   * Sway is running something for you: a clone, a bootstrap, an install, a
+   * Tori is running something for you: a clone, a bootstrap, an install, a
    * sign-in. It opens as a command tab in the dock, in front, and the dock comes
    * up with it; the workspace underneath stays exactly where it was.
    *
@@ -1218,7 +1218,7 @@ export default function Terminal(props: {
   }
 
   // A fresh `+Claude` tab carries no sessionId until its transcript
-  // appears (Sway can't invent the id before the CLI writes it) - the
+  // appears (Tori can't invent the id before the CLI writes it) - the
   // "fresh-session double-open" gap: clicking that session's sidebar row can't
   // find the tab. Attribute it here, but only in the unambiguous case: exactly
   // one unattributed agent tab per workspace (two fresh tabs sharing a folder
@@ -1316,7 +1316,7 @@ export default function Terminal(props: {
     ),
   );
 
-  // Extra launch args a Sway-launched session gets that an externally-typed
+  // Extra launch args a Tori-launched session gets that an externally-typed
   // registered adapter invocation never would (Phase 3): today just
   // claude's injected `--settings <json>` (crate::hooks), which scopes
   // hook-driven status to sessions this function actually spawned/resumed.
@@ -1330,12 +1330,12 @@ export default function Terminal(props: {
    *
    * The liveness probe is taken up front rather than inside the PTY branch,
    * because the route itself depends on it: chat drives a session by resuming
-   * it, which is unsafe against one already running outside Sway.
+   * it, which is unsafe against one already running outside Tori.
    *
    * `session_running_elsewhere`, never `session_running`: a chat child outlives
-   * a webview reload while its tab does not, so the plain probe finds Sway's own
+   * a webview reload while its tab does not, so the plain probe finds Tori's own
    * process and routes the session onto the PTY surface, where the chat claim
-   * this same Sway holds then refuses it.
+   * this same Tori holds then refuses it.
    */
   async function openSelectedSession(sel: ResumeTarget) {
     // Before anything reads `open()`. At launch the selection is delivered
@@ -1534,7 +1534,7 @@ export default function Terminal(props: {
   // A new session starts in the branch-unit folder (already the right checkout).
   // Launch args come from the adapter: base args, plus its yolo args when asked
   // (claude's skip permission prompts; an adapter may declare none),
-  // plus any Sway-launched-only hook args (Phase 3).
+  // plus any Tori-launched-only hook args (Phase 3).
   //
   // `profile` is the account it runs as, and **`undefined` is not `null`**: a
   // caller that names one (a fork, the launch menu's per-account rows) is
@@ -1831,7 +1831,7 @@ export default function Terminal(props: {
   /** The agent-terminal row, one per account once there are two of them.
    *
    *  An agent tab runs as an account exactly the way a chat does, so a single
-   *  row would start whichever login Sway happened to inherit while the menu
+   *  row would start whichever login Tori happened to inherit while the menu
    *  said only "Claude". `namedProfiles` is empty on a single-account install,
    *  which is what keeps that menu exactly as it was. */
   const claudeTerminalItem = (note?: string) => {
@@ -1882,7 +1882,7 @@ export default function Terminal(props: {
    *
    * The session need not have come from a chat tab. A PTY agent tab and an
    * outside `claude` write the same transcript the agent reads back on
-   * `--resume`, and Sway backfills from that same file, so a conversation
+   * `--resume`, and Tori backfills from that same file, so a conversation
    * started in a terminal continues here with its history intact.
    *
    * Focus-or-resume, like the PTY path: a session already open somewhere is
@@ -2384,7 +2384,7 @@ export default function Terminal(props: {
             // Every entry that would start an agent is absent unless that
             // agent is one this install offers: a menu row is a promise, and
             // one that starts something the user turned off in Settings is
-            // Sway going around its own setting.
+            // Tori going around its own setting.
             ...(settings.chatDefaults.defaultSurface === "agent"
               ? [...claudeTerminalItem(), ...newChatItem()]
               : [...newChatItem(), ...claudeTerminalItem("terminal")]),
@@ -2412,7 +2412,7 @@ export default function Terminal(props: {
                     label: "Continue this session in chat",
                     // Disabled rather than absent, and the label says why: the
                     // session exists and the reader can see it, so a row that
-                    // silently vanished would read as Sway losing it.
+                    // silently vanished would read as Tori losing it.
                     disabled: agentOffReason(props.selected.agent ?? "claude", props.selected.profile) !== null,
                     onClick: () => void continueInChat(props.selected!, props.selected!.agent ?? "claude"),
                   },

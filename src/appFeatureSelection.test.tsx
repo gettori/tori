@@ -5,8 +5,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, render, waitFor } from "@solidjs/testing-library";
 import { installAnimationFrame } from "./test/frames";
 
-const A = "/r/a/.sway/worktrees/auth";
-const B = "/r/b/.sway/worktrees/auth";
+const A = "/r/a/.tori/worktrees/auth";
+const B = "/r/b/.tori/worktrees/auth";
 
 const invoke = vi.fn();
 const listeners = vi.hoisted(() => ({ handlers: {} as Record<string, () => void> }));
@@ -65,7 +65,7 @@ const storedFeature = {
 };
 
 let features: unknown[] = [feature([member("/r/a", A, 0)])];
-const storedSelection = () => JSON.parse(localStorage.getItem("sway.selection.v1") ?? "null");
+const storedSelection = () => JSON.parse(localStorage.getItem("tori.selection.v1") ?? "null");
 
 beforeEach(() => {
   localStorage.clear();
@@ -83,14 +83,14 @@ afterEach(cleanup);
 
 describe("a Feature as the selection", () => {
   it("keys the pane envelope on feature:<id>, not on the active member's folder", async () => {
-    localStorage.setItem("sway.selection.v1", JSON.stringify(storedFeature));
+    localStorage.setItem("tori.selection.v1", JSON.stringify(storedFeature));
     render(() => <App />);
-    await waitFor(() => expect(JSON.parse(localStorage.getItem("sway.panes.v1")!)).toHaveProperty("feature:f1"));
-    expect(JSON.parse(localStorage.getItem("sway.panes.v1")!)).not.toHaveProperty(A);
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("feature:f1"));
+    expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).not.toHaveProperty(A);
   });
 
   it("re-resolves the stored snapshot against the record at startup and on config://changed", async () => {
-    localStorage.setItem("sway.selection.v1", JSON.stringify(storedFeature));
+    localStorage.setItem("tori.selection.v1", JSON.stringify(storedFeature));
     features = [feature([member("/r/a", A, 0), member("/r/b", B, 1)])];
     render(() => <App />);
     await waitFor(() => expect(storedSelection().roots).toEqual([A, B]));
@@ -103,7 +103,7 @@ describe("a Feature as the selection", () => {
   });
 
   it("clears the selection when the Feature no longer exists", async () => {
-    localStorage.setItem("sway.selection.v1", JSON.stringify(storedFeature));
+    localStorage.setItem("tori.selection.v1", JSON.stringify(storedFeature));
     features = [];
     render(() => <App />);
     await waitFor(() => expect(storedSelection()).toBeNull());
@@ -111,10 +111,10 @@ describe("a Feature as the selection", () => {
 
   it("loads a selection stored before Features as a unit", async () => {
     const { kind: _k, featureId: _f, ...unitish } = { ...storedFeature, folderPath: "/r/a", projectKind: "plain" };
-    localStorage.setItem("sway.selection.v1", JSON.stringify(unitish));
+    localStorage.setItem("tori.selection.v1", JSON.stringify(unitish));
     render(() => <App />);
     await waitFor(() => expect(storedSelection().kind).toBe("unit"));
-    await waitFor(() => expect(JSON.parse(localStorage.getItem("sway.panes.v1")!)).toHaveProperty("/r/a"));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("/r/a"));
     expect(invoke).not.toHaveBeenCalledWith("list_features");
   });
 });
@@ -122,13 +122,13 @@ describe("a Feature as the selection", () => {
 describe("a deleted Feature", () => {
   it("clears the selection and drops its pane tree and placements", async () => {
     const { PURGE_WORKSPACE, emitWith } = await import("./utils/events");
-    localStorage.setItem("sway.selection.v1", JSON.stringify(storedFeature));
+    localStorage.setItem("tori.selection.v1", JSON.stringify(storedFeature));
     render(() => <App />);
-    await waitFor(() => expect(JSON.parse(localStorage.getItem("sway.panes.v1")!)).toHaveProperty("feature:f1"));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("feature:f1"));
     emitWith(PURGE_WORKSPACE, { workspace: "feature:f1" });
     await waitFor(() => expect(storedSelection()).toBeNull());
     const { flushEnvelopes } = await import("./layout/layoutStore");
     flushEnvelopes();
-    expect(JSON.parse(localStorage.getItem("sway.panes.v1") ?? "{}")).not.toHaveProperty("feature:f1");
+    expect(JSON.parse(localStorage.getItem("tori.panes.v1") ?? "{}")).not.toHaveProperty("feature:f1");
   });
 });

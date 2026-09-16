@@ -261,7 +261,7 @@ function pass(build: (view: EditorView) => DecorationSet) {
  * mark decorations become nested spans, and the *innermost* element is the one
  * whose `color` paints the glyph - an outer element's inline style never enters
  * into it. `@codemirror/language` registers `treeHighlighter` at `Prec.high`,
- * and `swayHighlight` gives `t.bracket`/`t.paren`/`t.brace` the punctuation
+ * and `toriHighlight` gives `t.bracket`/`t.paren`/`t.brace` the punctuation
  * colour, so at default precedence every depth colour is wrapped *around* a
  * grey span and none of it is ever seen.
  *

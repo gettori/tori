@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Sway",
+  "productName": "Tori",
   "version": "26.914.2-alpha",
-  "identifier": "com.skarif.sway",
+  "identifier": "com.gettori.tori",
   "build": {
     "beforeDevCommand": "pnpm lsp:install && pnpm dap:install && pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Sway",
+        "title": "Tori",
         "width": 1400,
         "height": 900,
         "minWidth": 900,
@@ -27,7 +27,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["**", "$HOME/.config/sway/**"]
+        "scope": ["**", "$HOME/.config/tori/**"]
       }
     }
   },

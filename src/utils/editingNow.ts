@@ -24,7 +24,7 @@ export type EditingIndication = { kind: "file"; path: string } | { kind: "anonym
 /** Is the selected session the only thing that could be writing in this folder?
  *  Reuses the revert guard's blast-radius set, so "actor" means exactly what it
  *  means there: a live-tab session mid-turn, or a detached one whose activity
- *  Sway cannot verify. Anything else in the folder is idle and cannot be the
+ *  Tori cannot verify. Anything else in the folder is idle and cannot be the
  *  author of an fs event.
  *
  *  `null` means the actor set is not known yet - the probe is in flight, or it

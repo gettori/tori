@@ -39,7 +39,7 @@ const plainProject = {
 };
 
 const config = {
-  path: "/cfg/sway.toml",
+  path: "/cfg/tori.toml",
   roots: ["/root"],
   spaces: [
     {
@@ -143,7 +143,7 @@ describe("a branch removal raised from the Pull Requests panel", () => {
     bridge.running = [];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
-    localStorage.setItem("sway.active-space.v1", "work");
+    localStorage.setItem("tori.active-space.v1", "work");
   });
 
   it("opens the worktree dialog, which is where the dirty guard lives", async () => {

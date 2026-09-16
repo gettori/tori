@@ -38,7 +38,7 @@ export type OpenTerm = {
   init?: string;
   // The profile's home variable, so the agent reads and writes that account
   // rather than the default one. Derived from `profile` at spawn and on
-  // restore rather than persisted: the home path is Sway's to resolve, and a
+  // restore rather than persisted: the home path is Tori's to resolve, and a
   // stored copy would go stale the moment a profile home moved.
   env?: Record<string, string>;
   // Command tabs: what to re-read once the command reports. A clone that never

@@ -5,7 +5,7 @@ import { followEdits, setFollowEdits } from "../../utils/followPref";
 /**
  * Follow live edits, on the composer's bar.
  *
- * **Sway's own lever, not the agent's**, which is the whole of why it takes no
+ * **Tori's own lever, not the agent's**, which is the whole of why it takes no
  * props. Everything else on that bar is a session's: the model, the mode and
  * whatever the agent published, each of them addressed to a child process and
  * disabled when there is no turn to be had. This one is a setting of the

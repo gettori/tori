@@ -14,7 +14,7 @@ const meta = {
   },
   args: {
     kind: "file",
-    filePath: "/Users/you/Projects/sway/src/index.ts",
+    filePath: "/Users/you/Projects/tori/src/index.ts",
     scripts: ["dev", "build", "test"],
     port: 9229,
     onConfirm: () => {},

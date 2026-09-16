@@ -8,13 +8,13 @@
 // alpha: `App.css` mixes the strength in.
 //
 // The values below are DATA, not palette. A space's colour is a user's choice
-// stored in `sway.toml` beside its name and icon, exactly like its icon name,
+// stored in `tori.toml` beside its name and icon, exactly like its icon name,
 // and it must render identically in every theme - a swatch that changed
 // meaning when you switched theme would make the setting meaningless. That is
 // why this file is allowlisted in `scripts/check-tokens.mjs` rather than
 // pushed into the token layer.
 
-/** One swatch: the key stored in `sway.toml` and the hue it paints. */
+/** One swatch: the key stored in `tori.toml` and the hue it paints. */
 export interface SpaceColor {
   /** The name stored in `[[space]].color` and used by `resolveColor`. */
   name: string;

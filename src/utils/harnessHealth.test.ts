@@ -113,7 +113,7 @@ describe("agentReady once the sweep has landed", () => {
     expect(agentReady("matched")).toBe(true);
   });
 
-  // Drift means Sway has not measured this version, not that it is broken, so
+  // Drift means Tori has not measured this version, not that it is broken, so
   // it stays startable and says so elsewhere.
   it("keeps a drifted agent available", () => {
     expect(agentReady("drifted")).toBe(true);
@@ -130,7 +130,7 @@ describe("agentReady once the sweep has landed", () => {
   });
 
   // Installed and signed in are two facts. This one is the agent's own answer
-  // about itself, not a Sway inference, and starting the session anyway would
+  // about itself, not a Tori inference, and starting the session anyway would
   // produce a tab asking for a login the chat surface cannot give.
   it("hides an installed agent nobody is signed in to", () => {
     expect(agentReady("signed-out")).toBe(false);

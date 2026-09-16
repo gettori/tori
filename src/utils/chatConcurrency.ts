@@ -20,7 +20,7 @@
 // would.
 import { createSignal } from "solid-js";
 
-const LS_NOTICED = "sway.multiChatNotice";
+const LS_NOTICED = "tori.multiChatNotice";
 
 /** Worktrees whose multi-chat notice has already been shown and dismissed.
  *  Tolerant of anything in storage: junk reads as "nothing dismissed" rather
@@ -94,7 +94,7 @@ export function capNotice(live: number, cap: number): string {
  * A label that tells one chat from the others already open on the same branch.
  *
  * Several chats per branch is the point of the surface, and three tabs all
- * reading "sway chat" would make the tab bar useless. Superseded per tab by the
+ * reading "tori chat" would make the tab bar useless. Superseded per tab by the
  * session's own name once its transcript exists.
  *
  * Taken against the labels actually in use rather than against a count: closing

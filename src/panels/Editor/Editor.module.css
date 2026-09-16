@@ -52,7 +52,7 @@
   align-items: center;
   justify-content: center;
   color: var(--fg-muted);
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
   text-align: center;
   padding: calc(20px * var(--ui-scale));
 }
@@ -60,7 +60,7 @@
 .editorErr {
   padding: calc(10px * var(--ui-scale));
   color: var(--danger-fg);
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
 }
 
 /* Says why the buffer below has conflict markers in it. `flex: none` because
@@ -73,7 +73,7 @@
   padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
   border-bottom: 1px solid var(--border-default);
   color: var(--danger-fg);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
 }
 
 /* The follow / preview / file-tree toggles are now <IconButton>s. The file-tree
@@ -108,7 +108,7 @@
 /* Editor tabs are the shared <Tab> pill now; only the extra markers <Tab> does
    not own (the dirty dot, the agent-touched/editing dot) are styled here. */
 .editorTabs :global(.tab-dirty) {
-  font-size: var(--sway-text-sm);
+  font-size: var(--tori-text-sm);
   color: var(--tab-dirty);
 }
 
@@ -127,7 +127,7 @@
 .tabTouched {
   flex: none;
   color: var(--activity-touched);
-  font-size: var(--sway-text-2xs);
+  font-size: var(--tori-text-2xs);
   line-height: 1;
 }
 
@@ -201,7 +201,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--sway-text-xs);
+  font-size: var(--tori-text-xs);
   font-weight: 600;
   color: var(--fg-default);
 }

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import BranchRemoveDialog from "./BranchRemoveDialog";
 
 // Three dialogs in one component, told apart by the checkboxes: remove from
-// Sway's list, delete the local branch, delete the remote one. The interesting
+// Tori's list, delete the local branch, delete the remote one. The interesting
 // story is `Detach`, where clearing local delete changes what the dialog means.
 const meta = {
   title: "Dialogs/BranchRemoveDialog",
@@ -43,7 +43,7 @@ export const Unpushed: Story = {
 };
 
 /** Clear "Delete local branch" in the controls and the dialog becomes a detach:
- *  the branch stays in git and only leaves Sway's list. */
+ *  the branch stays in git and only leaves Tori's list. */
 export const Detach: Story = {};
 
 /** Mid-removal. */

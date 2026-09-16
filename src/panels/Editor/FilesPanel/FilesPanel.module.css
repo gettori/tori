@@ -91,10 +91,10 @@
   padding: calc(3px * var(--ui-scale)) calc(8px * var(--ui-scale));
   background: none;
   border: none;
-  border-radius: var(--sway-radius-sm);
+  border-radius: var(--tori-radius-sm);
   color: var(--fg-muted);
   font: inherit;
-  font-size: var(--sway-text-lg);
+  font-size: var(--tori-text-lg);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -127,7 +127,7 @@
 /* A section's own scroller, for the bodies that are not already one. */
 .sectionScroll {
   flex: 1;
-  font-size: var(--sway-text-xl);
+  font-size: var(--tori-text-xl);
 }
 
 /* Why the member picked has no tree, and the repair beside it. */
@@ -162,7 +162,7 @@
   overflow: hidden;
   padding-left: calc(8px * var(--ui-scale));
   color: var(--fg-subtle);
-  font-size: var(--sway-text-md);
+  font-size: var(--tori-text-md);
   text-align: right;
   text-overflow: ellipsis;
 }

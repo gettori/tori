@@ -1,4 +1,4 @@
-// Context windows for models Sway has no better source for.
+// Context windows for models Tori has no better source for.
 //
 // This is the **last** step of `contextWindowFor`, and it exists only for
 // non-Claude ids. A Claude session reports its own window on every completed

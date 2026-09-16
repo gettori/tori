@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 fn stash_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".config/sway/hot-exit.json")
+        .join(".config/tori/hot-exit.json")
 }
 
 // --- pure core (explicit path, no globals), unit-tested off-disk ---
@@ -74,7 +74,7 @@ mod tests {
 
     fn tmp_file(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "sway-hot-exit-{tag}-{}-{:?}",
+            "tori-hot-exit-{tag}-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn a_missing_file_is_an_empty_stash_not_an_error() {
-        let p = std::env::temp_dir().join("sway-hot-exit-does-not-exist.json");
+        let p = std::env::temp_dir().join("tori-hot-exit-does-not-exist.json");
         let _ = std::fs::remove_file(&p);
         assert_eq!(load_from(&p), json!({}));
     }

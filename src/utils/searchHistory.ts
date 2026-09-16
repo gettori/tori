@@ -33,7 +33,7 @@ export type WorkspaceHistory = readonly SearchRecall[];
 /** Every workspace's queries, keyed by root. */
 export type SearchHistoryStore = Readonly<Record<string, WorkspaceHistory>>;
 
-const LS_SEARCH_HISTORY = "sway.searchHistory";
+const LS_SEARCH_HISTORY = "tori.searchHistory";
 
 /** Deep enough to reach yesterday's work, shallow enough that the arrows still
  *  get somewhere. Nothing here expires: a query costs a few dozen bytes, and a

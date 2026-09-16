@@ -28,7 +28,7 @@ type WsPlacement = {
 
 export type TabRef = { id: string; kind: string };
 
-const LS_PLACEMENT = "sway.tabpanes.v1";
+const LS_PLACEMENT = "tori.tabpanes.v1";
 
 const empty = (): WsPlacement => ({ tabs: {}, kinds: {}, active: {}, locks: {}, order: {}, seq: 0 });
 

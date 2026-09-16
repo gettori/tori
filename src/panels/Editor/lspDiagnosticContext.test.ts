@@ -109,7 +109,7 @@ describe("which diagnostics a range is asked about", () => {
 });
 
 describe("the dispatch rule this module's placement rests on", () => {
-  // Two claims hold this module up, and both are the library's, not Sway's:
+  // Two claims hold this module up, and both are the library's, not Tori's:
   // `receiveMessage` tries each extension's notification handler in order and
   // **stops at the first that returns true** (`dist/index.js:670-676`). That is
   // why the capture is registered ahead of `languageServerExtensions()` and why
@@ -119,7 +119,7 @@ describe("the dispatch rule this module's placement rests on", () => {
   // What is deliberately *not* asserted here is that `serverDiagnostics()`
   // itself would swallow the publish: it only claims one for a file the
   // workspace has open in a view, which needs a mounted editor. The order in
-  // Sway's own extension list is pinned in `lspClient.test.ts` instead.
+  // Tori's own extension list is pinned in `lspClient.test.ts` instead.
   const probe = (name: string, claim: boolean, seen: string[]) => ({
     notificationHandlers: {
       "textDocument/publishDiagnostics": () => {

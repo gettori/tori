@@ -2,7 +2,7 @@
 // server through a real `LSPClient`, and what comes back becomes a menu.
 //
 // Everything below the event is real - the library's plugin, its request
-// plumbing, Sway's capability blocks and normalising - because each of the
+// plumbing, Tori's capability blocks and normalising - because each of the
 // pieces is already unit-tested apart and what is left to get wrong is the
 // wiring between them. Only the transport is fake, and it answers the way a
 // server does.
@@ -71,12 +71,12 @@ function fakeServer() {
   return transport;
 }
 
-const { pathToUri } = await import("./swayWorkspace");
+const { pathToUri } = await import("./toriWorkspace");
 
 let client: LSPClient;
 
 vi.mock("./lspClient", async () => {
-  const { pathToUri: toUri } = await import("./swayWorkspace");
+  const { pathToUri: toUri } = await import("./toriWorkspace");
   return {
     claimedByLsp: () => true,
     ensureLspFor: () => Promise.resolve(),

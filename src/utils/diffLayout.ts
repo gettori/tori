@@ -3,7 +3,7 @@
 // key at mount disagree the moment one of them is toggled.
 import { createSignal } from "solid-js";
 
-const DIFF_EDITOR_LAYOUT_KEY = "sway.diff.editorLayout";
+const DIFF_EDITOR_LAYOUT_KEY = "tori.diff.editorLayout";
 
 const [diffEditorLayoutOn, setDiffEditorLayoutSignal] = createSignal(
   localStorage.getItem(DIFF_EDITOR_LAYOUT_KEY) === "1",

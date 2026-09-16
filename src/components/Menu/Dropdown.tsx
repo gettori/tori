@@ -6,7 +6,7 @@ import { MenuSurface } from "./surface";
 import styles from "./Menu.module.css";
 
 /** Where the menu sits relative to its anchor. Kobalte accepts twelve
- *  placements; these are the ones Sway's dropdowns use, and keeping the union
+ *  placements; these are the ones Tori's dropdowns use, and keeping the union
  *  local is what lets this file expose a placement type without the app
  *  importing one from the primitives package - which `boundary.test.ts` would
  *  fail it for, this file included. */
@@ -79,7 +79,7 @@ export interface DropdownProps<T extends HTMLElement = HTMLButtonElement>
 }
 
 /**
- * The triggered surface: Kobalte's dropdown menu behind Sway's chrome and Sway's
+ * The triggered surface: Kobalte's dropdown menu behind Tori's chrome and Tori's
  * API. Everything not listed above is a native attribute and lands on the
  * trigger, so a call site reads as the button it already was plus an `items`.
  *
@@ -199,7 +199,7 @@ export default function Dropdown<T extends HTMLElement = HTMLButtonElement>(
             onOpenAutoFocus={onOpenAutoFocus}
             onCloseAutoFocus={onCloseAutoFocus}
             // A right-click inside an open menu would otherwise open the
-            // browser's menu on top of Sway's. The hand-rolled Menu did the same.
+            // browser's menu on top of Tori's. The hand-rolled Menu did the same.
             onContextMenu={(e: MouseEvent) => e.preventDefault()}
           >
             {local.menu ?? <MenuRows items={local.items ?? []} />}

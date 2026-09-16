@@ -22,8 +22,8 @@ export type SelectGroup = { label: string; options: SelectOption[] };
 const TRIGGER_GUTTER = 4;
 
 /**
- * The one select: Kobalte's listbox-behind-a-button behind Sway's chrome and
- * Sway's API. This is for committing one value out of a fixed list; a surface
+ * The one select: Kobalte's listbox-behind-a-button behind Tori's chrome and
+ * Tori's API. This is for committing one value out of a fixed list; a surface
  * whose rows carry actions is a menu (`Menu/`), and a filterable picker is the
  * Omnibox's business.
  *
@@ -79,7 +79,7 @@ export default function Select(props: {
       optionGroupChildren="options"
       value={selected()}
       onChange={(option) => {
-        // Null is Kobalte clearing the selection, a state Sway's selects do not
+        // Null is Kobalte clearing the selection, a state Tori's selects do not
         // have (disallowEmptySelection below); dropping it keeps the caller's
         // signal always naming a real option.
         if (option) props.onChange(option.value);

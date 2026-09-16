@@ -10,7 +10,7 @@ export type ParserKind = "claude_jsonl";
 /** A registered adapter's id, as `list_agents` reports it.
  *
  *  An alias over `string` rather than a union of the ids that ship, because the
- *  registry is open: a user TOML in `~/.config/sway/agents/` adds an id Sway
+ *  registry is open: a user TOML in `~/.config/tori/agents/` adds an id Tori
  *  has never heard of, and this id is what selects that adapter's parser kind
  *  and pgrep pattern on the backend. A closed union here would compile fine and
  *  quietly probe every user adapter with claude's pattern. */
@@ -20,7 +20,7 @@ export type AgentId = string;
 // implementing a wire protocol, so a TOML can only select one that exists.
 export type ChatTransport = "claude_stream_json" | "acp";
 
-// Something Sway knows about a model, keyed by the id the agent names it by.
+// Something Tori knows about a model, keyed by the id the agent names it by.
 //
 export type ChatMode = {
   id: string;
@@ -34,7 +34,7 @@ export type ChatMode = {
   // gate is not a property of the word "auto".
   requires?: string | null;
   // This mode runs tools without asking anybody. A fact about the agent's
-  // mode, unlike the retired `permissive_caveat` which was a fact about Sway's
+  // mode, unlike the retired `permissive_caveat` which was a fact about Tori's
   // gate, so it stays true now that the gate is gone.
   permissive?: boolean;
   // The mode a session runs when nothing is chosen, and what an unresolvable
@@ -71,7 +71,7 @@ export type ChatConfig = {
   effort_args: string[];
   mode_args: string[];
   add_dir_args: string[];
-  // Effort levels Sway measured that this agent never advertises. Empty for
+  // Effort levels Tori measured that this agent never advertises. Empty for
   // every agent nobody has measured, which is all of them but claude.
   effort_extras: ChatEffortExtra[];
   // This agent's model names carry a "Provider/Name" path the picker may split
@@ -149,10 +149,10 @@ export type Adapter = {
   // degraded one: a PTY-only adapter ships without a chat transport.
   chat?: ChatConfig | null;
   // Null for an adapter that declares no sign-in of its own. That is not
-  // "signed out": it means Sway has nothing true to say about this adapter's
+  // "signed out": it means Tori has nothing true to say about this adapter's
   // accounts, so it renders no account controls at all rather than an inert set.
   accounts?: AccountsConfig | null;
-  // Null for an adapter Sway can read no quota from, which renders as "no usage
+  // Null for an adapter Tori can read no quota from, which renders as "no usage
   // source" rather than as a quota of zero.
   usage?: UsageConfig | null;
   // Why `usage` is null, in the words the Usage block shows beside the greyed
@@ -203,7 +203,7 @@ export const FALLBACK_ADAPTERS: Adapter[] = [
     program: "opencode",
     base_args: [],
     yolo_args: ["--auto"],
-    // Empty: an ACP row's id is Sway's own, not one the agent minted, so a PTY
+    // Empty: an ACP row's id is Tori's own, not one the agent minted, so a PTY
     // resume would start a fresh session while claiming to continue one. The UI
     // reads the empty template as "this agent's sessions can't be resumed".
     resume_args: [],
@@ -389,7 +389,7 @@ export function applyTemplate(template: string[], vars: { id?: string; file?: st
 // single quotes close and reopen the quoting the usual way.
 const shQuote = (a: string) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : `'${a.replace(/'/g, `'\\''`)}'`);
 
-// The shell command that resumes a session outside Sway: the adapter's launch
+// The shell command that resumes a session outside Tori: the adapter's launch
 // binary plus its resume template, filled and quoted. Null for a resume-less
 // adapter (empty `resume_args`), whose sessions cannot be resumed at all.
 export function resumeCommand(agent: Adapter, vars: { id: string; file: string }): string | null {
