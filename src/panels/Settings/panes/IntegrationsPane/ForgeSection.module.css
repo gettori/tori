@@ -154,7 +154,7 @@
   justify-content: space-between;
   gap: var(--tori-space-6);
   border-top: var(--tori-border-thin) solid var(--border-default);
-  background: var(--canvas-head);
+  background: var(--canvas-default);
 }
 
 .footerLabel {
@@ -162,7 +162,7 @@
   align-items: center;
   gap: var(--tori-space-4);
   min-width: 0;
-  font-size: var(--tori-text-xs);
+  font-size: var(--tori-text-sm);
   line-height: 1.4;
   color: var(--fg-muted);
 }
@@ -188,7 +188,7 @@
   padding: calc(20px * var(--ui-scale));
   border: var(--tori-border-thin) dashed var(--border-strong);
   border-radius: var(--tori-radius-md);
-  background: var(--canvas-head);
+  background: var(--canvas-default);
   text-align: center;
 }
 
@@ -502,6 +502,8 @@
   background: none;
   font: inherit;
   color: var(--brand-default);
+  text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
 }
 

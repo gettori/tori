@@ -201,7 +201,7 @@ describe("the forge accounts settings section", () => {
     expect(screen.getByText("Connect github.com")).toBeTruthy();
     expect(screen.getByText("Another host...")).toBeTruthy();
     expect(screen.getByText("Available once a host is connected.")).toBeTruthy();
-    expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(true);
+    await waitFor(() => expect((screen.getByLabelText("Show pull requests and checks") as HTMLInputElement).disabled).toBe(true));
   });
 
   it("gives one github.com account a card with its tag, status and one account's switch", async () => {
