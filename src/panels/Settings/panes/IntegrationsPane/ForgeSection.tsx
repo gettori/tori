@@ -494,7 +494,7 @@ export default function ForgeSection() {
   return (
     <section class={styles.section}>
       <div class={styles.sectionTitle}>
-        <span>GitHub and GitLab</span>
+        <span>Hosts</span>
         <span class={styles.sectionRule} />
       </div>
 
