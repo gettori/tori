@@ -24,7 +24,9 @@ import {
 import { stageHost } from "./stageHost";
 import { draggingTab, dropAction, endTabDrag, hitTest, type DropZone } from "./tabDrag";
 import { setPaneActive } from "../layout/tabPlacement";
-import { focusedPaneId } from "../layout/layoutStore";
+import { focusedPaneId, setFocusedPane } from "../layout/layoutStore";
+import { invoke } from "@tauri-apps/api/core";
+import { droppedPaths, isFileDrag } from "../utils/externalDrop";
 import { dockOpen, focusedSurface } from "../layout/dockStore";
 import { isShellsKey } from "../utils/topics";
 import { preserveScrollAndFocus } from "../utils/rowMovePreserve";
@@ -34,9 +36,13 @@ import {
   emitWith,
   MOVE_TAB_TO_PANE,
   type MoveTabToPane,
+  OPEN_IN_EDITOR,
+  type OpenInEditor,
   REFIT_PANES,
   SPLIT_PANE,
   type SplitPane,
+  TOAST,
+  type ToastEvent,
 } from "../utils/events";
 import type { UnifiedTab, UnifiedTabKind } from "./unifiedTabs";
 import styles from "./PaneView.module.css";
@@ -199,6 +205,15 @@ export default function PaneView(props: {
 
   onMount(() => {
     const over = (e: DragEvent) => {
+      if (isFileDrag(e)) {
+        const on = overStrip(e);
+        setFilesOver(on);
+        if (!on) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+        return;
+      }
       const z = zoneAt(e);
       if (!z) return;
       show(z, e);
@@ -207,6 +222,16 @@ export default function PaneView(props: {
       if (z.kind !== "center") e.stopPropagation();
     };
     const dropClaimed = (e: DragEvent) => {
+      if (isFileDrag(e)) {
+        // Anywhere but the strip belongs to whatever is under the pointer: the
+        // tree takes a copy, the composer takes an upload.
+        if (!overStrip(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setFilesOver(false);
+        void openDropped();
+        return;
+      }
       const z = zoneAt(e);
       if (!z || z.kind === "center") return;
       e.preventDefault();
@@ -225,7 +250,9 @@ export default function PaneView(props: {
       endTabDrag();
     };
     const leave = (e: DragEvent) => {
-      if (!root.contains(e.relatedTarget as Node | null)) setZone(null);
+      if (root.contains(e.relatedTarget as Node | null)) return;
+      setZone(null);
+      setFilesOver(false);
     };
     root.addEventListener("dragover", over, true);
     root.addEventListener("drop", dropClaimed, true);
@@ -244,6 +271,42 @@ export default function PaneView(props: {
   createEffect(() => {
     if (!draggingTab()) setZone(null);
   });
+
+  // ---- Files dragged in from outside the app (utils/externalDrop) -----------
+  const [filesOver, setFilesOver] = createSignal(false);
+
+  /** Is the pointer over this pane's strip? The whole pane sees the drag, and the
+   *  strip is the only part of it that means "open this". */
+  function overStrip(e: DragEvent): boolean {
+    const box = strip?.getBoundingClientRect();
+    if (!box) return false;
+    return e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
+  }
+
+  /** Open every dropped file here, whatever it is: the strip is the one target
+   *  that means "show me this", so a kind the editor renders poorly is still a
+   *  better answer than refusing. A folder is not a file and says so. */
+  async function openDropped() {
+    if (props.paneId) setFocusedPane(props.ws ?? "", props.paneId);
+    const paths = await droppedPaths();
+    if (!paths.length) {
+      emitWith<ToastEvent>(TOAST, { message: "That drag held nothing on disk to open." });
+      return;
+    }
+    let folders = false;
+    for (const path of paths) {
+      if (await invoke<boolean>("fs_is_dir", { path }).catch(() => false)) {
+        folders = true;
+        continue;
+      }
+      emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path });
+    }
+    if (folders) {
+      emitWith<ToastEvent>(TOAST, {
+        message: "A folder does not open as a tab. Drop it on the file tree to copy it in.",
+      });
+    }
+  }
 
   return (
     <div class={styles.pane} ref={root}>
@@ -272,6 +335,9 @@ export default function PaneView(props: {
         </Show>
       </div>
       <Show when={zone()}>{(z) => <DropOverlay zone={z()} caret={caret()} refused={refused()} />}</Show>
+      <Show when={filesOver()}>
+        <div class={`${styles.dropZone} ${styles.dropStrip}`} data-drop-zone="strip-files" />
+      </Show>
     </div>
   );
 }
