@@ -3,7 +3,7 @@ import { render, screen, waitFor, fireEvent, within, cleanup } from "@solidjs/te
 import { pointerClick } from "../../test/menus";
 import { expectNoAxeViolations } from "../../test/axe";
 import { Toast } from "../../lib/toast";
-import { LAST_MEMBER, type Feature, type Member, type MemberState } from "../../utils/features";
+import { LAST_MEMBER, type Topic, type Member, type MemberState } from "../../utils/topics";
 
 function member(repoPath: string, order: number, state: MemberState = { kind: "present" }): Member {
   return {
@@ -15,7 +15,7 @@ function member(repoPath: string, order: number, state: MemberState = { kind: "p
   };
 }
 
-// A present member's worktree carries the Feature's slug, so two Features over
+// A present member's worktree carries the Topic's slug, so two Topics over
 // the same repo never share a root. The change count is keyed by root, and a
 // shared one would put Auth's number on the Payments row.
 const wt = (members: Member[], slug: string) =>
@@ -24,14 +24,14 @@ const wt = (members: Member[], slug: string) =>
     worktreePath: m.state.kind === "present" ? `${m.repoPath}/.tori/worktrees/${slug}` : null,
   }));
 
-const AUTH: Feature = {
+const AUTH: Topic = {
   id: "auth-1",
   name: "Auth",
   branch: "feat/auth",
   createdAt: 1,
   members: wt([member("/w/api", 0), member("/w/web", 1)], "auth"),
 };
-const PAY: Feature = {
+const PAY: Topic = {
   id: "pay-1",
   name: "Payments",
   branch: "feat/payments",
@@ -44,8 +44,8 @@ const PAY: Feature = {
 
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
-  features: null as Feature[] | null,
-  created: null as Feature | null,
+  topics: null as Topic[] | null,
+  created: null as Topic | null,
   // What `pick_folder` answers; null is the cancelled picker.
   picked: null as string | null,
   // Whether `delete_topic` refuses, what `worktree_status` answers per worktree
@@ -67,7 +67,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "list_topics") return Promise.resolve(bridge.features);
+    if (cmd === "list_topics") return Promise.resolve(bridge.topics);
     if (cmd === "git_status") return Promise.resolve(bridge.status[String(args?.projectPath)] ?? []);
     if (cmd === "create_topic") return Promise.resolve(bridge.created);
     if (cmd === "worktree_status") {
@@ -109,10 +109,10 @@ vi.mock("@tauri-apps/api/core", () => ({
     // Both repairs answer with the reconciled record: `relocate_member` also
     // rewrites `repoPath`, which is the one field a member's identity is.
     if (cmd === "retry_member" || cmd === "relocate_member") {
-      const at = (bridge.features ?? []).findIndex((f) => f.id === args.topicId);
+      const at = (bridge.topics ?? []).findIndex((f) => f.id === args.topicId);
       if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.topicId}`));
-      const f = bridge.features![at];
-      const next: Feature = {
+      const f = bridge.topics![at];
+      const next: Topic = {
         ...f,
         members: f.members.map((m) =>
           m.repoPath === args.repoPath
@@ -124,16 +124,16 @@ vi.mock("@tauri-apps/api/core", () => ({
             : m,
         ),
       };
-      bridge.features = bridge.features!.map((x, i) => (i === at ? next : x));
+      bridge.topics = bridge.topics!.map((x, i) => (i === at ? next : x));
       return Promise.resolve(next);
     }
-    // The record-only commands answer with the reloaded Feature, the shape the
+    // The record-only commands answer with the reloaded Topic, the shape the
     // backend took on when it started emitting `topics://changed` for them.
     if (RECORD_ONLY.has(cmd)) {
-      const at = (bridge.features ?? []).findIndex((f) => f.id === args.topicId);
+      const at = (bridge.topics ?? []).findIndex((f) => f.id === args.topicId);
       if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.topicId}`));
-      const next = recordOnly(cmd, bridge.features![at], args);
-      bridge.features = bridge.features!.map((f, i) => (i === at ? next : f));
+      const next = recordOnly(cmd, bridge.topics![at], args);
+      bridge.topics = bridge.topics!.map((f, i) => (i === at ? next : f));
       return Promise.resolve(next);
     }
     return Promise.resolve(null);
@@ -142,7 +142,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const RECORD_ONLY = new Set(["rename_topic", "rename_member", "reorder_members", "remove_member"]);
 
-function recordOnly(cmd: string, f: Feature, args: Record<string, unknown>): Feature {
+function recordOnly(cmd: string, f: Topic, args: Record<string, unknown>): Topic {
   if (cmd === "rename_topic") return { ...f, name: String(args.name) };
   if (cmd === "rename_member") {
     return {
@@ -171,11 +171,11 @@ vi.mock("@tauri-apps/api/event", () => ({
   emit: () => Promise.resolve(),
 }));
 
-const { default: FeatureList } = await import("./FeatureList");
+const { default: TopicList } = await import("./TopicList");
 const { default: ToastRegion } = await import("../../components/Toasts/Toasts");
 const { PURGE_WORKSPACE } = await import("../../utils/events");
 const { enterRoots } = await import("../../utils/gitActions");
-const { emit, NEW_FEATURE } = await import("../../utils/events");
+const { emit, NEW_TOPIC } = await import("../../utils/events");
 
 const SPACES = [
   {
@@ -194,11 +194,11 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 const riskRow = (scope: HTMLElement, repoPath: string) =>
   scope.querySelector<HTMLElement>(`[data-member="${repoPath}"]`)!;
 
-describe("FeatureList", () => {
+describe("TopicList", () => {
   beforeEach(() => {
     bridge.calls.length = 0;
     bridge.handlers.clear();
-    bridge.features = [AUTH, PAY];
+    bridge.topics = [AUTH, PAY];
     bridge.created = null;
     bridge.picked = null;
     bridge.wtStatus = {};
@@ -215,7 +215,7 @@ describe("FeatureList", () => {
 
   it("renders one row per Feature and filters by name or member", async () => {
     const [query, setQuery] = (await import("solid-js")).createSignal("");
-    render(() => <FeatureList spaces={SPACES} query={query()} />);
+    render(() => <TopicList spaces={SPACES} query={query()} />);
     await screen.findByText("Auth");
     expect(screen.getByText("Payments")).toBeTruthy();
     setQuery("ledger");
@@ -226,15 +226,15 @@ describe("FeatureList", () => {
   });
 
   it("reads a null answer as no Features and opens the dialog from the empty state", async () => {
-    bridge.features = null;
-    render(() => <FeatureList spaces={SPACES} query="" />);
+    bridge.topics = null;
+    render(() => <TopicList spaces={SPACES} query="" />);
     await screen.findByText("No Features yet.");
     fireEvent.click(screen.getByRole("button", { name: "Create a Feature" }));
     expect(await screen.findByRole("dialog", { name: "New Feature" })).toBeTruthy();
   });
 
   it("applies a topics://changed payload without a refetch", async () => {
-    render(() => <FeatureList spaces={SPACES} query="" />);
+    render(() => <TopicList spaces={SPACES} query="" />);
     await screen.findByText("Payments");
     await waitFor(() => expect(bridge.handlers.has("topics://changed")).toBe(true));
     expect(listCalls()).toBe(1);
@@ -251,7 +251,7 @@ describe("FeatureList", () => {
     await waitFor(() => expect(screen.queryByRole("img", { name: "Failed" })).toBeNull());
     expect(listCalls()).toBe(1);
 
-    const fresh: Feature = {
+    const fresh: Topic = {
       id: "new-1",
       name: "Brand new",
       branch: "feat/brand-new",
@@ -269,7 +269,7 @@ describe("FeatureList", () => {
   // The repair lives on the member row now, so it is reached through the
   // disclosure rather than an actions strip under the chips (#159 phase 3).
   it("wires Retry to retry_member and applies the answer", async () => {
-    render(() => <FeatureList spaces={SPACES} query="" />);
+    render(() => <TopicList spaces={SPACES} query="" />);
     fireEvent.click(await screen.findByRole("button", { name: "Show members of Payments" }));
     fireEvent.click(await screen.findByRole("button", { name: "Retry ledger" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Retry ledger" })).toBeNull());
@@ -286,8 +286,8 @@ describe("FeatureList", () => {
       PAY,
     ];
     async function press(state: MemberState, name: string) {
-      bridge.features = broken(state);
-      render(() => <FeatureList spaces={SPACES} query="" />);
+      bridge.topics = broken(state);
+      render(() => <TopicList spaces={SPACES} query="" />);
       fireEvent.click(await screen.findByRole("button", { name: "Show members of Auth" }));
       fireEvent.click(await screen.findByRole("button", { name }));
     }
@@ -338,7 +338,7 @@ describe("FeatureList", () => {
   });
 
   it("closes the dialog on creation and toasts the member that failed", async () => {
-    bridge.features = [];
+    bridge.topics = [];
     bridge.created = {
       id: "search-1",
       name: "Search",
@@ -349,13 +349,13 @@ describe("FeatureList", () => {
     render(() => (
       <>
         <ToastRegion />
-        <FeatureList spaces={SPACES} query="" />
+        <TopicList spaces={SPACES} query="" />
       </>
     ));
     // The button is the sidebar's now, one component up; this list answers the
     // event it emits, and the listener is up before the first fetch resolves.
     await screen.findByText("No Features yet.");
-    emit(NEW_FEATURE);
+    emit(NEW_TOPIC);
     const dialog = await screen.findByRole("dialog", { name: "New Feature" });
     fireEvent.input(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Search" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "api" }));
@@ -381,9 +381,9 @@ describe("FeatureList", () => {
   });
 
   // The count is the git slot map's, and the editor only enters the open
-  // Feature's roots, so every other row sums to nothing without being told to.
+  // Topic's roots, so every other row sums to nothing without being told to.
   it("renames from the context menu", async () => {
-    render(() => <FeatureList spaces={SPACES} query="" />);
+    render(() => <TopicList spaces={SPACES} query="" />);
     await screen.findByText("Auth");
     fireEvent.contextMenu(row("Auth"));
     pointerClick(await screen.findByText("Rename…"));
@@ -404,7 +404,7 @@ describe("FeatureList", () => {
   });
 
   it("opens Add repository with the members left out", async () => {
-    render(() => <FeatureList spaces={SPACES} query="" />);
+    render(() => <TopicList spaces={SPACES} query="" />);
     await screen.findByText("Payments");
     fireEvent.contextMenu(row("Payments"));
     pointerClick(await screen.findByText("Add repository…"));
@@ -414,7 +414,7 @@ describe("FeatureList", () => {
   });
 
   it("deletes the record after a confirm that lists every member, and never a worktree", async () => {
-    render(() => <FeatureList spaces={SPACES} query="" />);
+    render(() => <TopicList spaces={SPACES} query="" />);
     await screen.findByText("Payments");
     fireEvent.contextMenu(row("Payments"));
     pointerClick(await screen.findByText("Delete…"));
@@ -432,7 +432,7 @@ describe("FeatureList", () => {
 
   // #159 phase 4. The confirm shows the blast radius per member, the sweep that
   // follows offers each worktree, and the two are sequential on purpose: a sweep
-  // opened before the delete could be answered for a Feature that stayed.
+  // opened before the delete could be answered for a Topic that stayed.
   describe("deleting a Feature", () => {
     const AUTH_API = "/w/api/.tori/worktrees/auth";
     const AUTH_WEB = "/w/web/.tori/worktrees/auth";
@@ -443,7 +443,7 @@ describe("FeatureList", () => {
       fireEvent.click(within(sweepRow(repoPath)).getByRole("button", { name: what }));
 
     async function confirmDelete(onDeleted?: () => void) {
-      render(() => <FeatureList spaces={SPACES} query="" onDeleted={onDeleted} />);
+      render(() => <TopicList spaces={SPACES} query="" onDeleted={onDeleted} />);
       await screen.findByText("Auth");
       fireEvent.contextMenu(row("Auth"));
       pointerClick(await screen.findByText("Delete…"));
@@ -484,7 +484,7 @@ describe("FeatureList", () => {
       const order: string[] = [];
       // Recorded from inside the purge, not after the await: the question is
       // what had already happened at that moment, and a sweep already on screen
-      // would be a sweep answered for a Feature the delete had not finished.
+      // would be a sweep answered for a Topic the delete had not finished.
       const onPurge = () => order.push(document.querySelector("[data-sweep]") ? "sweep" : "purge");
       window.addEventListener(PURGE_WORKSPACE, onPurge);
       try {
@@ -496,7 +496,7 @@ describe("FeatureList", () => {
       expect(document.querySelector("[data-sweep]")).toBeTruthy();
 
       cleanup();
-      bridge.features = [AUTH, PAY];
+      bridge.topics = [AUTH, PAY];
       bridge.failDelete = true;
       await confirmDelete();
       fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
@@ -559,7 +559,7 @@ describe("FeatureList", () => {
     // PTYs under the worktree, and only the sweep asks, since only it removes.
     it("says what a removal will stop, per row", async () => {
       bridge.running = { [AUTH_WEB]: 2 };
-      render(() => <FeatureList spaces={SPACES} query="" countRunning={(p) => Promise.resolve(bridge.running[p] ?? 0)} />);
+      render(() => <TopicList spaces={SPACES} query="" countRunning={(p) => Promise.resolve(bridge.running[p] ?? 0)} />);
       await screen.findByText("Auth");
       fireEvent.contextMenu(row("Auth"));
       pointerClick(await screen.findByText("Delete…"));
@@ -607,10 +607,10 @@ describe("FeatureList", () => {
     const memberRow = (repoPath: string) =>
       document.querySelector<HTMLElement>(`li[data-member="${repoPath}"]`)!;
 
-    async function openOn(featureName: string, repoPath: string) {
-      render(() => <FeatureList spaces={SPACES} query="" />);
-      await screen.findByText(featureName);
-      await expand(featureName);
+    async function openOn(topicName: string, repoPath: string) {
+      render(() => <TopicList spaces={SPACES} query="" />);
+      await screen.findByText(topicName);
+      await expand(topicName);
       fireEvent.contextMenu(memberRow(repoPath));
     }
 
@@ -668,7 +668,7 @@ describe("FeatureList", () => {
     // removal that fails; the record detaching is the whole action here.
     it("offers no worktree for a member whose repo is gone", async () => {
       const broken = { ...AUTH.members[1], state: { kind: "repo-missing" } as MemberState };
-      bridge.features = [{ ...AUTH, members: [AUTH.members[0], broken] }, PAY];
+      bridge.topics = [{ ...AUTH, members: [AUTH.members[0], broken] }, PAY];
       await openOn("Auth", "/w/web");
       pointerClick(await screen.findByText("Remove repository"));
 
@@ -678,7 +678,7 @@ describe("FeatureList", () => {
     });
 
     it("refuses to remove the last member and says why on the row", async () => {
-      bridge.features = [{ ...AUTH, members: [AUTH.members[0]] }, PAY];
+      bridge.topics = [{ ...AUTH, members: [AUTH.members[0]] }, PAY];
       await openOn("Auth", "/w/api");
       const remove = (await screen.findByText("Remove repository")).closest<HTMLElement>("[role=menuitem]")!;
 

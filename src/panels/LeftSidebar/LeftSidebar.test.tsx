@@ -267,7 +267,7 @@ describe("the Spaces | Features mode", () => {
     const { container } = sidebar();
     await screen.findByText("repo");
     expect(pressed("work")).toBe(true);
-    expect(container.querySelector("[data-feature-list]")).toBeNull();
+    expect(container.querySelector("[data-topic-list]")).toBeNull();
     await expectNoAxeViolations(container);
   });
 
@@ -278,14 +278,14 @@ describe("the Spaces | Features mode", () => {
     await waitFor(() => expect(pressed("Features")).toBe(true));
     expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("features");
     expect(screen.queryByText("repo")).toBeNull();
-    expect(first.container.querySelector("[data-feature-list]")).not.toBeNull();
+    expect(first.container.querySelector("[data-topic-list]")).not.toBeNull();
     await screen.findByText("No Features yet.");
     await expectNoAxeViolations(first.container);
     first.unmount();
 
     const second = sidebar();
     await waitFor(() => expect(pressed("Features")).toBe(true));
-    expect(second.container.querySelector("[data-feature-list]")).not.toBeNull();
+    expect(second.container.querySelector("[data-topic-list]")).not.toBeNull();
     expect(screen.queryByText("repo")).toBeNull();
   });
 

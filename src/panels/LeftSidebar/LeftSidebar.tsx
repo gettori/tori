@@ -28,7 +28,7 @@ import {
   emitWith,
   FOCUS_SEARCH,
   TOGGLE_SIDEBAR_MODE,
-  NEW_FEATURE,
+  NEW_TOPIC,
   SESSIONS_REFRESH,
   DRAG_ABS_PATH_MIME,
   OPEN_JOB,
@@ -59,7 +59,7 @@ import {
   type ActivateSpace,
 } from "../../utils/events";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
-import { projectUnitKind } from "../../utils/featureMembers";
+import { projectUnitKind } from "../../utils/topicMembers";
 import { traceSwitchStart } from "../../utils/perfTrace";
 import { syntheticId } from "../../utils/syntheticTabs";
 import { onNeedsYouNotificationClick } from "../../utils/presence";
@@ -153,8 +153,8 @@ import {
   type AttemptRecord,
 } from "./attempts";
 import Tooltip from "../../components/Tooltip/Tooltip";
-import FeatureList from "./FeatureList";
-import { featureKey, featureSelection, isShellsKey, tabUnderFolder, type Feature } from "../../utils/features";
+import TopicList from "./TopicList";
+import { topicKey, topicSelection, isShellsKey, tabUnderFolder, type Topic } from "../../utils/topics";
 import { dockOpen } from "../../layout/dockStore";
 import styles from "./LeftSidebar.module.css";
 
@@ -247,7 +247,7 @@ type Space = {
 type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
 
 export type Selection = {
-  // Absent means "unit": a selection persisted before Features carried no kind.
+  // Absent means "unit": a selection persisted before Topics carried no kind.
   kind?: "unit" | "feature";
   featureId?: string;
   featureName?: string;
@@ -290,7 +290,7 @@ const LS_MODE = "tori.sidebar-mode.v1";
 // older build is rendered before the fresh one arrives.
 const LS_CONFIG = "tori.sidebar-config.v1";
 
-// What the column shows: the Spaces tree or the Feature list. The filter field,
+// What the column shows: the Spaces tree or the Topic list. The filter field,
 // the dialogs and the selection are shared; the tree and the space rail are
 // unmounted in the other rather than hidden.
 type SidebarMode = "spaces" | "features";
@@ -343,7 +343,7 @@ function loadExpanded(): Set<string> {
 export default function LeftSidebar(props: {
   selected: Selection | null;
   onSelect: (s: Selection | null) => void;
-  // Moves a Feature's active member; the selection itself stays a Feature.
+  // Moves a Topic's active member; the selection itself stays a Topic.
   onActiveRoot?: (root: string | null) => void;
   liveTabs?: LiveTab[];
 }) {
@@ -351,21 +351,21 @@ export default function LeftSidebar(props: {
   // probes every project with git. The side effects in `loadConfig` run only on
   // the fresh result, never on this copy.
   const [config, setConfig] = createSignal<ResolvedConfig | null>(loadCachedConfig());
-  // Every Feature record, for the "in <Feature>" chip on a member unit row.
-  // Latest request wins, as in `FeatureList`.
-  const [features, setFeatures] = createSignal<Feature[]>([]);
-  let featuresSeq = 0;
-  async function loadFeatures() {
-    const mine = ++featuresSeq;
-    const list = (await invoke<Feature[] | null>("list_topics").catch(() => null)) ?? [];
-    if (mine === featuresSeq) setFeatures(list);
+  // Every Topic record, for the "in <Topic>" chip on a member unit row.
+  // Latest request wins, as in `TopicList`.
+  const [topics, setTopics] = createSignal<Topic[]>([]);
+  let topicsSeq = 0;
+  async function loadTopics() {
+    const mine = ++topicsSeq;
+    const list = (await invoke<Topic[] | null>("list_topics").catch(() => null)) ?? [];
+    if (mine === topicsSeq) setTopics(list);
   }
-  function applyFeature(feature: Feature) {
-    setFeatures((prev) => {
-      const i = prev.findIndex((f) => f.id === feature.id);
-      if (i < 0) return [...prev, feature];
+  function applyTopic(topic: Topic) {
+    setTopics((prev) => {
+      const i = prev.findIndex((f) => f.id === topic.id);
+      if (i < 0) return [...prev, topic];
       const next = prev.slice();
-      next[i] = feature;
+      next[i] = topic;
       return next;
     });
   }
@@ -403,8 +403,8 @@ export default function LeftSidebar(props: {
     setSearching(false);
   }
   const [chosenMode, setMode] = createSignal<SidebarMode>(loadMode());
-  // With no project there is no Features tile to leave Features by.
-  const mode = (): SidebarMode => (featuresReachable() ? chosenMode() : "spaces");
+  // With no project there is no Topics tile to leave Topics by.
+  const mode = (): SidebarMode => (topicsReachable() ? chosenMode() : "spaces");
   /** What the filter field is filtering, which is whatever the mode is showing. */
   const filterNoun = () => (mode() === "features" ? "features" : "projects");
   /** What the tree's heading says, which is whatever the strip has lit. */
@@ -453,9 +453,9 @@ export default function LeftSidebar(props: {
   const extSpaces = () => visibleSpaces().filter((g) => g.external);
   const hasSpaces = () => visibleSpaces().length > 0;
   const hasProjects = () => visibleSpaces().some((g) => g.projects.length > 0);
-  // Assumed until config loads, so a cold start in Features does not flash the
+  // Assumed until config loads, so a cold start in Topics does not flash the
   // empty Spaces tree first.
-  const featuresReachable = () => !config() || hasProjects();
+  const topicsReachable = () => !config() || hasProjects();
 
   // The active space. Persisted by name; falls back to the first space when the
   // stored name is gone (e.g. the active space was deleted), so it self-heals.
@@ -493,7 +493,7 @@ export default function LeftSidebar(props: {
   const addToSpace = (g: Space) => (g.external ? void pinFolder() : openNewProject(g));
 
   // Every selection is also the bookmark for the way back to it: its space, or
-  // the Feature slot.
+  // the Topic slot.
   createEffect(() => rememberSelection(props.selected));
 
   // Which unit of `p` a folder means. A worktree owns its folder, but a plain
@@ -535,14 +535,14 @@ export default function LeftSidebar(props: {
     return true;
   }
 
-  // The last Feature, re-resolved against the live records: the stored copy is
+  // The last Topic, re-resolved against the live records: the stored copy is
   // a snapshot, and its members may have come or gone since.
-  function restoreFeature(): boolean {
+  function restoreTopic(): boolean {
     const back = rememberedFeature();
-    const f = back?.featureId ? features().find((f) => f.id === back.featureId) : null;
+    const f = back?.featureId ? topics().find((f) => f.id === back.featureId) : null;
     if (!f) return false;
     if (props.selected?.kind === "feature" && props.selected.featureId === f.id) return true;
-    selectFeature(f, back!.activeRoot ?? null);
+    selectTopic(f, back!.activeRoot ?? null);
     return true;
   }
 
@@ -568,7 +568,7 @@ export default function LeftSidebar(props: {
   // leaves the selection alone here rather than clearing it.
   function switchMode(next: SidebarMode) {
     setMode(next);
-    if (next === "features") restoreFeature();
+    if (next === "features") restoreTopic();
     else {
       const g = activeSpace();
       if (g) restoreUnit(g);
@@ -723,8 +723,8 @@ export default function LeftSidebar(props: {
   // holding a stored session id hid that session from the probe entirely - and
   // this count is what destructive confirms are worded from.
   //
-  // Inclusive on purpose, unlike the tree's own attribution: a Feature agent
-  // running in this repo's `.tori/worktrees/` belongs to the Feature, but
+  // Inclusive on purpose, unlike the tree's own attribution: a Topic agent
+  // running in this repo's `.tori/worktrees/` belongs to the Topic, but
   // removing the repo still kills it, so the confirm has to count it.
   async function countRunningAgents(path: string): Promise<number> {
     const tabs = (props.liveTabs ?? []).filter(
@@ -1142,7 +1142,7 @@ export default function LeftSidebar(props: {
   );
   onCleanup(
     onEvent(TOGGLE_SIDEBAR_MODE, () => {
-      if (featuresReachable()) switchMode(MODE_VALUES[(MODE_VALUES.indexOf(mode()) + 1) % MODE_VALUES.length]);
+      if (topicsReachable()) switchMode(MODE_VALUES[(MODE_VALUES.indexOf(mode()) + 1) % MODE_VALUES.length]);
     }),
   );
 
@@ -1208,9 +1208,9 @@ export default function LeftSidebar(props: {
     countRunningAgents(p.path).then((n) => forThis((r) => ({ ...r, runningCount: n })));
   }
 
-  // A folder is going away. A unit selection under it clears; a Feature whose
+  // A folder is going away. A unit selection under it clears; a Topic whose
   // active member is under it moves to its next present root and only clears
-  // when none remains, so removing one member never closes the Feature.
+  // when none remains, so removing one member never closes the Topic.
   function dropSelectionUnder(gone: (folder: string) => boolean) {
     const sel = props.selected;
     if (!sel) return;
@@ -2422,25 +2422,25 @@ export default function LeftSidebar(props: {
   // A branch-unit reads as selected when it is the direct selection OR when a
   // session under it is (its sessions carry the unit's folderPath + label), so
   // the branch stays highlighted as the context while a session is open.
-  // A Feature is never a unit, even while its active member is this very
-  // folder: the Feature row is its home, and the chip below points there.
+  // A Topic is never a unit, even while its active member is this very
+  // folder: the Topic row is its home, and the chip below points there.
   function unitSelected(u: BranchUnit) {
     const s = props.selected;
     return s != null && s.kind !== "feature" && s.folderPath === u.folderPath && s.branch === unitLabel(u);
   }
 
-  // The Features this folder is a member of, so a unit row can point back at
-  // its other home. Kept here rather than lifted out of `FeatureList` because
-  // that list mounts only in Features mode and this chip renders in Spaces.
-  function featuresAt(folder: string): Feature[] {
-    return features().filter((f) => f.members.some((m) => !!m.worktreePath && sameCwd(m.worktreePath, folder)));
+  // The Topics this folder is a member of, so a unit row can point back at
+  // its other home. Kept here rather than lifted out of `TopicList` because
+  // that list mounts only in Topics mode and this chip renders in Spaces.
+  function topicsAt(folder: string): Topic[] {
+    return topics().filter((f) => f.members.some((m) => !!m.worktreePath && sameCwd(m.worktreePath, folder)));
   }
 
-  function selectFeature(f: Feature, preferredRoot: string | null) {
+  function selectTopic(f: Topic, preferredRoot: string | null) {
     // Keyed by the workspace key, not the bare id, so the legs the editor
     // reports (which key on the workspace) land on this span.
-    traceSwitchStart("feature", featureKey(f.id));
-    props.onSelect(featureSelection(f, preferredRoot));
+    traceSwitchStart("feature", topicKey(f.id));
+    props.onSelect(topicSelection(f, preferredRoot));
   }
 
   const gkey = (g: Space, p: Project, groupId: string) => `a:${g.name}/${p.name}/${groupId}`;
@@ -2471,16 +2471,16 @@ export default function LeftSidebar(props: {
         >
           <span class={styles.rowIcon}><UnitIcon kind={u.kind} active={rollup().executing > 0} /></span>
           <span class={styles.label}>{unitLabel(u)}</span>
-          <For each={featuresAt(u.folderPath)}>
+          <For each={topicsAt(u.folderPath)}>
             {(f) => (
               <button
                 type="button"
-                class={`${styles.badge} ${styles.featureChip}`}
+                class={`${styles.badge} ${styles.topicChip}`}
                 aria-label={`Open Feature ${f.name}`}
-                data-feature-chip={f.id}
+                data-topic-chip={f.id}
                 onClick={(e) => {
                   e.stopPropagation();
-                  selectFeature(f, u.folderPath);
+                  selectTopic(f, u.folderPath);
                 }}
               >
                 in {f.name}
@@ -2613,7 +2613,7 @@ export default function LeftSidebar(props: {
   let unlistenSessions: UnlistenFn | undefined;
   let unlistenActivity: UnlistenFn | undefined;
   let unlistenTrayFocus: UnlistenFn | undefined;
-  let unlistenFeatures: UnlistenFn | undefined;
+  let unlistenTopics: UnlistenFn | undefined;
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   let offFocus: (() => void) | undefined;
@@ -2623,12 +2623,12 @@ export default function LeftSidebar(props: {
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
     await loadConfig();
-    void loadFeatures();
+    void loadTopics();
     unlistenConfig = await listen("config://changed", () => {
       void loadConfig();
-      void loadFeatures();
+      void loadTopics();
     });
-    unlistenFeatures = await listen<Feature>("topics://changed", (e) => applyFeature(e.payload));
+    unlistenTopics = await listen<Topic>("topics://changed", (e) => applyTopic(e.payload));
     unlistenSessions = await listen<SessionsChanged | null>("sessions://changed", (e) => {
       // No explicit tail re-read: the tail-state effect now triggers on the
       // store as well as on liveTabs, so a refresh that changed something
@@ -2713,7 +2713,7 @@ export default function LeftSidebar(props: {
   });
   onCleanup(() => {
     unlistenConfig?.();
-    unlistenFeatures?.();
+    unlistenTopics?.();
     unlistenSessions?.();
     unlistenActivity?.();
     unlistenTrayFocus?.();
@@ -2852,7 +2852,7 @@ export default function LeftSidebar(props: {
   // right-click on its way up. Nothing is lost positionally either, since a
   // context menu anchors on the cursor and never on its trigger's box.
   const spaceTile = (g: Space) => {
-    // Lit only while the tree is actually showing this space. In Features the
+    // Lit only while the tree is actually showing this space. In Topics the
     // strip has moved on, and a second lit tile would say the sidebar is
     // showing two things.
     const on = () => mode() === "spaces" && activeSpace()?.name === g.name;
@@ -2899,7 +2899,7 @@ export default function LeftSidebar(props: {
 
   const dockTabCount = () => (props.liveTabs ?? []).filter((t) => isShellsKey(t.workspace)).length;
 
-  // Features, as a tile in the same strip and on the same rules as a space: bare
+  // Topics, as a tile in the same strip and on the same rules as a space: bare
   // glyph at rest, name and pill when the tree is showing it.
   const modeTile = (m: SidebarMode, label: string, glyph: LucideIcon) => {
     const on = () => mode() === m;
@@ -2928,7 +2928,7 @@ export default function LeftSidebar(props: {
   // only a project the search filter hid entirely (never rendered, so no row
   // to bubble to) still needs to surface on the tile.
   function spaceBubble(g: Space) {
-    // "Active" here means its tree is on screen. In Features nothing of it is
+    // "Active" here means its tree is on screen. In Topics nothing of it is
     // rendered, so all of its sessions bubble to the tile.
     const isActive = mode() === "spaces" && activeSpace()?.name === g.name;
     const r = isActive
@@ -3013,7 +3013,7 @@ export default function LeftSidebar(props: {
           />
         </Show>
         {/* Before the filter, and only in the mode it means something in: a
-            Feature is the one thing this column makes. It carries the row's
+            Topic is the one thing this column makes. It carries the row's
             auto margin so the pair sits together against the right edge. */}
         <Show when={mode() === "features"}>
           <Button
@@ -3023,7 +3023,7 @@ export default function LeftSidebar(props: {
             aria-label="New Feature"
             tooltip="New Feature"
             icon={<Icon icon={Plus} />}
-            onClick={() => emit(NEW_FEATURE)}
+            onClick={() => emit(NEW_TOPIC)}
           />
         </Show>
         {/* Only while the field is shut: open, the field is the affordance and
@@ -3042,13 +3042,13 @@ export default function LeftSidebar(props: {
       </div>
 
       <Show when={mode() === "features"}>
-        <FeatureList
-          class={styles.featureList}
+        <TopicList
+          class={styles.topicList}
           spaces={visibleSpaces()}
           query={query()}
           activeId={props.selected?.kind === "feature" ? props.selected.featureId : null}
           countRunning={countRunningAgents}
-          onSelect={(f) => selectFeature(f, props.selected?.featureId === f.id ? (props.selected.activeRoot ?? null) : null)}
+          onSelect={(f) => selectTopic(f, props.selected?.featureId === f.id ? (props.selected.activeRoot ?? null) : null)}
           onDeleted={(f) => {
             if (props.selected?.kind === "feature" && props.selected.featureId === f.id) props.onSelect(null);
           }}
@@ -3267,7 +3267,7 @@ export default function LeftSidebar(props: {
               <For each={extSpaces()}>{(g) => spaceTile(g)}</For>
             </div>
 
-            {/* Features, past a rule so the strip reads as spaces first. Outside
+            {/* Topics, past a rule so the strip reads as spaces first. Outside
                 the scroller, so a long space list cannot carry off the way back
                 out of a mode. */}
             <Show when={hasProjects()}>
