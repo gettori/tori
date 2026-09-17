@@ -109,12 +109,16 @@ export default function NewProjectDialog(props: {
             one of these dialogs can be open at a time. */}
         <Show when={needsUrl()}>
           <div class={styles.spaceField}>
-            <div id={URL_LABEL} class={styles.spaceLabel}>
-              Repository URL
+            {/* The id names the words, not the row: see SpaceDialog on why the
+                Required pill must stay out of the field's accessible name. */}
+            <div class={styles.spaceLabel}>
+              <span id={URL_LABEL}>Repository URL</span>
+              <span class={styles.spaceRequired} aria-hidden="true">Required</span>
             </div>
             <input
               class={styles.spaceInput}
               aria-labelledby={URL_LABEL}
+              aria-required={true}
               value={url()}
               placeholder="https://github.com/org/repo.git"
               onInput={(e) => onUrlInput(e.currentTarget.value)}
@@ -126,13 +130,20 @@ export default function NewProjectDialog(props: {
         </Show>
 
         <div class={styles.spaceField}>
-          <div id={NAME_LABEL} class={styles.spaceLabel}>
-            {needsUrl() ? "Folder name" : "Name"}
+          <div class={styles.spaceLabel}>
+            <span id={NAME_LABEL}>{needsUrl() ? "Folder name" : "Name"}</span>
+            {/* Not in the git modes: there the URL is the required one, and a
+                blank folder name is the placeholder's promise that the URL
+                supplies it rather than something left undone. */}
+            <Show when={!needsUrl()}>
+              <span class={styles.spaceRequired} aria-hidden="true">Required</span>
+            </Show>
           </div>
           <input
             ref={first}
             class={styles.spaceInput}
             aria-labelledby={NAME_LABEL}
+            aria-required={!needsUrl()}
             value={name()}
             placeholder={needsUrl() ? "defaults from the URL" : "folder name"}
             onInput={(e) => {
