@@ -1,7 +1,6 @@
 import {
   createEffect,
   createMemo,
-  createResource,
   createSignal,
   on,
   onCleanup,
@@ -11,13 +10,13 @@ import {
   type Component,
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
-import { invoke } from "@tauri-apps/api/core";
 import { Bot, Braces, Columns2, FileCode, MessageSquare, Palette, Plug, X, type LucideIcon } from "lucide-solid";
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
 import { COMPOSE_DRAFT, OPEN_IN_EDITOR, OPEN_JOB, OPEN_TERMINAL, onWith } from "../../utils/events";
 import { debounce } from "../../utils/debounce";
+import { FOCUSABLE } from "../../utils/focusable";
 import Icon from "../../components/Icon/Icon";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import IconButton from "../../components/IconButton/IconButton";
@@ -80,17 +79,11 @@ const paneId = (id: SettingTab) => `settings-pane-${id}`;
  *  for one line of text, and this path is fixed by `settings.rs`. */
 const SETTINGS_PATH = "~/.config/tori/settings.json";
 
-/** What the focus trap counts as a stop. `[hidden]` is not excluded by the
- *  selector, so the inactive panes are filtered out by ancestor below: they are
- *  in the DOM (which is what keeps a pane's scroll position across a category
- *  switch) but must not be reachable by Tab.
- *
- *  Exported so the tests assert against the trap's own list rather than a
- *  hand-copied one: a panel that grows a disabled control at either end - an
- *  agent switch that will not move, say - would otherwise fail a test about
- *  wrapping with a stop no browser makes. */
-export const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+/** `[hidden]` is not excluded by the selector, so the inactive panes are
+ *  filtered out by ancestor below: they are in the DOM (which is what keeps a
+ *  pane's scroll position across a category switch) but must not be reachable
+ *  by Tab. Re-exported so the tests assert against the trap's own list. */
+export { FOCUSABLE };
 
 /** How long the search box has to go quiet before the aggregate is announced.
  *  Long enough to cover typing, short enough that a reader who stops to listen
@@ -107,7 +100,6 @@ const FLASH_MS = 1200;
 // all of them, Escape / backdrop click to close.
 export default function Settings(props: {
   onClose: () => void;
-  welcome?: boolean;
   query?: string;
   /** The catalogue id a `Preferences:` command pointed at, revealed on open and
    *  again whenever a later command names a different one. */
@@ -132,22 +124,6 @@ export default function Settings(props: {
    *  `Preferences:` command arrives carrying a query but pointing at one row, so
    *  it lands on that row's category instead of answering across all six. */
   const [typed, setTyped] = createSignal(false);
-
-  /** Which first-run greeting applies. Fetched only in welcome mode, since it
-   *  is the only mode that renders one, and a failed fetch falls back to the
-   *  ordinary copy rather than blocking the panel. */
-  const [onboardingContent] = createResource(
-    () => (props.welcome ? true : undefined),
-    () => invoke<{ kind: string; supported?: string[] }>("onboarding_content").catch(() => undefined),
-  );
-  /** "Claude, Codex or OpenCode": an Oxford-comma-free list ending in "or",
-   *  because the user needs any one of them, not all of them. */
-  const supportedList = createMemo(() => {
-    const names = onboardingContent()?.supported ?? [];
-    if (names.length === 0) return "one of the agent CLIs Tori supports";
-    if (names.length === 1) return names[0];
-    return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
-  });
 
   const matches = createMemo(() => matchingEntries(query()));
   /** Everything when nothing is typed, only what matched when something is. */
@@ -506,28 +482,6 @@ export default function Settings(props: {
                 thumb floats over the gutter the rows already leave rather than
                 narrowing them. */}
             <OverlayScroll class={styles.pane} contentClass={styles.paneInner}>
-              {/* Two greetings: telling somebody with no CLI installed to check
-                  what was found points them at a list of misses, which reads as
-                  Tori being broken rather than as a step they have not taken. */}
-              <Show when={props.welcome}>
-                <Show
-                  when={onboardingContent()?.kind === "noAgent"}
-                  fallback={
-                    <div class={styles.welcome}>
-                      Welcome to Tori. It drives the agent CLIs you already have, so start by
-                      checking which ones it found below, then open a folder in the sidebar to
-                      begin a session.
-                    </div>
-                  }
-                >
-                  <div class={styles.welcome}>
-                    Welcome to Tori. It drives an agent CLI you install yourself, and it could
-                    not find one yet. Install {supportedList()}, then reopen this tab and Tori
-                    will pick it up.
-                  </div>
-                </Show>
-              </Show>
-
               {/* One nothing, not two: the old "N elsewhere" note existed only
                   because results used to stay inside the tab you were on. */}
               <Show when={nothingMatched()}>

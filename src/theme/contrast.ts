@@ -189,6 +189,7 @@ export const CONTRAST_RULES: Record<string, ContrastRule> = {
 
   "scrim.default": exempt("a scrim exists to dim what is behind it; it carries no foreground of its own"),
   "scrim.soft": exempt("as scrim.default, one step lighter"),
+  "scrim.strong": exempt("as scrim.default, heavy enough that the app behind a first-run modal reads as absent"),
 
   "status.progress": graphic(["canvas.default", "canvas.card", "canvas.head"]),
   "status.needsYou": graphic(["canvas.default", "canvas.card", "canvas.head"]),

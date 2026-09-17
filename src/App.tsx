@@ -41,6 +41,8 @@ import ConfirmDialog, { type ConfirmReq } from './components/Dialogs/ConfirmDial
 import ToastRegion from './components/Toasts/Toasts';
 import type { GitReport } from './utils/gitHealth';
 import Settings from './panels/Settings/Settings';
+import FirstRun from './panels/FirstRun/FirstRun';
+import { ensureFirstRunLoaded, firstRunOpen } from './utils/firstRun';
 import UpdatePill from './components/UpdatePill/UpdatePill';
 import UsageStrip from './components/UsageStrip/UsageStrip';
 import DevBadge from './components/DevBadge/DevBadge';
@@ -462,12 +464,6 @@ function App() {
   // open box put it in `>` mode instead of leaving it wherever it was.
   const [omnibox, setOmnibox] = createSignal<{ prefix: string } | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
-  // First run: Settings opens on the Agents cards with a welcome note. The
-  // backend decides (it scans every adapter's sessions dir and checks a
-  // persisted flag), so there is nothing here to race against the sidebar's
-  // own async load. Cleared as soon as the panel closes, so reopening Settings
-  // by hand is the ordinary panel.
-  const [welcome, setWelcome] = createSignal(false);
 
   // Quitting has no undo, and the red traffic light sits a few pixels from the
   // sidebar toggle, so the app asks first. A close *guard* rather than a second
@@ -876,7 +872,10 @@ function App() {
       requestAnimationFrame(() => emit(REFIT_PANES));
   });
 
+  // Every window hotkey is held while first run is up: the modal cannot be
+  // dismissed, so anything a key opened would land behind it.
   function onKeyDown(e: KeyboardEvent) {
+    if (firstRunOpen()) return;
     if (dispatchWindowHotkey(e)) e.preventDefault();
   }
 
@@ -917,12 +916,14 @@ function App() {
     };
     window.addEventListener('focusin', onFocusIn);
     offFocusIn = () => window.removeEventListener('focusin', onFocusIn);
-    offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ prefix }) =>
-      setOmnibox({ prefix }),
-    );
-    offShortcuts = onEvent(TOGGLE_SHORTCUTS, () =>
-      setShortcutsOpen((open) => !open),
-    );
+    // The same hold for the menu bar's routes to these, which never pass
+    // through the keydown above.
+    offOmnibox = onEventWith<OpenOmnibox>(OPEN_OMNIBOX, ({ prefix }) => {
+      if (!firstRunOpen()) setOmnibox({ prefix });
+    });
+    offShortcuts = onEvent(TOGGLE_SHORTCUTS, () => {
+      if (!firstRunOpen()) setShortcutsOpen((open) => !open);
+    });
     offZoomIn = onEvent(ZOOM_IN, zoomIn);
     offZoomOut = onEvent(ZOOM_OUT, zoomOut);
     offZoomReset = onEvent(ZOOM_RESET, resetZoom);
@@ -960,6 +961,7 @@ function App() {
     offOpenSettings = onEventWith<OpenSettings>(
       OPEN_SETTINGS,
       ({ query, entry }) => {
+        if (firstRunOpen()) return;
         setSettingsQuery(query ?? '');
         setSettingsEntry(entry);
         setSettingsOpen(true);
@@ -1054,19 +1056,7 @@ function App() {
       .catch(() => {
         // Never block startup on a notice.
       });
-    // Mark shown on display, not on dismiss: a user who quits mid-welcome has
-    // still seen it, and showing it again every launch would be the nag this
-    // flag exists to prevent.
-    invoke<boolean>('onboarding_should_show')
-      .then((show) => {
-        if (!show) return;
-        setWelcome(true);
-        setSettingsOpen(true);
-        return invoke('onboarding_mark_shown');
-      })
-      .catch(() => {
-        // A failed check just means no onboarding; never block startup on it.
-      });
+    ensureFirstRunLoaded();
   });
   onCleanup(() => {
     window.removeEventListener('keydown', onKeyDown);
@@ -1108,7 +1098,7 @@ function App() {
         <Toolbar selected={selected()} onActiveRoot={setActiveRoot} />
         <DevBadge />
         <UsageStrip />
-        <UpdatePill suppressed={welcome()} />
+        <UpdatePill suppressed={firstRunOpen()} />
         {/* The right end of the bar is the ways out of what you are looking at:
             open it elsewhere, or open the settings for it. */}
         <HandOffs selected={selected()} />
@@ -1154,7 +1144,7 @@ function App() {
           <Terminal
             selected={selected()}
             onOpenChange={setLiveTabs}
-            onboarding={welcome()}
+            onboarding={firstRunOpen()}
           />
           <Editor
             selected={selected()}
@@ -1207,17 +1197,19 @@ function App() {
 
       <Show when={settingsOpen()}>
         <Settings
-          welcome={welcome()}
           query={settingsQuery()}
           entry={settingsEntry()}
           projectRoot={selectionRoot(selected())}
           onClose={() => (
             setSettingsOpen(false),
-            setWelcome(false),
             setSettingsQuery(''),
             setSettingsEntry(undefined)
           )}
         />
+      </Show>
+
+      <Show when={firstRunOpen()}>
+        <FirstRun />
       </Show>
 
       <Show when={shortcutsOpen()}>
