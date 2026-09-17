@@ -252,21 +252,67 @@
     width: calc(14px * var(--ui-scale));
     height: calc(14px * var(--ui-scale));
   }
-  .topicCard {
-    flex: 1 1 calc(260px * var(--ui-scale));
-    max-width: calc(320px * var(--ui-scale));
+  /* The sidebar's Topics mode, with the values copied from TopicItem.module.css
+     (`.item`, `.item.active`, `.head`, `.name`, `.chips`) for the same reason
+     `.tree` copies: its classes bring hover and a disclosure button. */
+  .topicList {
+    flex: 1 1 calc(240px * var(--ui-scale));
+    max-width: calc(300px * var(--ui-scale));
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: calc(2px * var(--ui-scale));
+    padding: 0 calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale)) calc(8px * var(--ui-scale));
   }
-  .topicName {
-    font-size: var(--tori-text-lg);
-    font-weight: 600;
+  .topicItem {
+    display: flex;
+    flex-direction: column;
+    gap: calc(6px * var(--ui-scale));
+    padding: calc(7px * var(--ui-scale)) calc(8px * var(--ui-scale));
+    border-radius: 0 var(--tori-radius-lg) var(--tori-radius-lg) 0;
+    min-width: 0;
   }
-  .topicTag {
+  .topicActive {
+    background:
+      linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
+        var(--tori-border-thick) 100% no-repeat,
+      linear-gradient(to right, var(--brand-subtle), transparent);
+  }
+  .topicHead {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-2);
+    min-width: 0;
+  }
+  .topicCaret {
+    flex: none;
     display: inline-flex;
-    color: var(--brand-default);
-  }
-  .topicTag :global(svg) {
+    align-items: center;
+    justify-content: center;
     width: calc(16px * var(--ui-scale));
     height: calc(16px * var(--ui-scale));
+    color: var(--fg-muted);
+  }
+  .topicCaret :global(svg) {
+    width: calc(14px * var(--ui-scale));
+    height: calc(14px * var(--ui-scale));
+  }
+  .topicName {
+    flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: var(--tori-text-xl);
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--fg-default);
+  }
+  .topicChips {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: calc(5px * var(--ui-scale));
+    min-width: 0;
   }
   /* The sidebar's Tag chip on a worktree row (`.row .topicChip`). */
   .topicChip {

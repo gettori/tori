@@ -1,11 +1,13 @@
 import { For, Match, Show, Switch, type Component, type JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { Folder, Tag } from "lucide-solid";
+import { ChevronRight, Folder, Tag } from "lucide-solid";
 import Icon from "../../../components/Icon/Icon";
+import MemberChip from "../../../components/MemberChip/MemberChip";
 import AgentGlyph from "../../../components/Icon/AgentGlyph";
 import { GitHubLogo, GitLabLogo, WorktreeMark } from "../../../components/Icon/gitMarks";
 import { CheckMark, QuestionMark, WorkingMark, type StatusMarkProps } from "../../../components/Icon/statusMarks";
 import ProjectIcon from "../../../components/Icon/ProjectIcon";
+import { resolveColor } from "../../../utils/spaceTint";
 import styles from "./Intro.module.css";
 
 type State = "working" | "needsYou" | "done";
@@ -156,36 +158,61 @@ export function LayoutIllustration() {
   );
 }
 
+type TopicRow = { name: string; members: { path: string; color: string }[]; active?: boolean };
+
 export function TopicsIllustration() {
-  const repos = ["api", "web"];
+  const topics: TopicRow[] = [
+    {
+      name: "Webhooks",
+      members: [
+        { path: "~/Projects/work/api", color: "Sky" },
+        { path: "~/Projects/work/web", color: "Sky" },
+      ],
+      active: true,
+    },
+    {
+      name: "Dark mode",
+      members: [
+        { path: "~/Projects/work/web", color: "Sky" },
+        { path: "~/Projects/personal/blog", color: "Emerald" },
+      ],
+    },
+  ];
   const tree: { label: string; path: string; depth: number; level: Level; tagged?: boolean }[] = [
     { label: "api", path: "~/Projects/work/api", depth: 0, level: "project" },
     { label: "main", path: "~/Projects/work/api/main", depth: 1, level: "worktree" },
+    { label: "fix/rate-limit", path: "~/Projects/work/api/fix/rate-limit", depth: 1, level: "worktree" },
     { label: "webhooks", path: "~/Projects/work/api/.tori/worktrees/webhooks", depth: 1, level: "worktree", tagged: true },
     { label: "web", path: "~/Projects/work/web", depth: 0, level: "project" },
     { label: "main", path: "~/Projects/work/web/main", depth: 1, level: "worktree" },
+    { label: "feat/search", path: "~/Projects/work/web/feat/search", depth: 1, level: "worktree" },
     { label: "webhooks", path: "~/Projects/work/web/.tori/worktrees/webhooks", depth: 1, level: "worktree", tagged: true },
+    { label: "dark-mode", path: "~/Projects/work/web/.tori/worktrees/dark-mode", depth: 1, level: "worktree", tagged: true },
+    { label: "blog", path: "~/Projects/personal/blog", depth: 0, level: "project" },
+    { label: "main", path: "~/Projects/personal/blog/main", depth: 1, level: "worktree" },
+    { label: "post/launch", path: "~/Projects/personal/blog/post/launch", depth: 1, level: "worktree" },
+    { label: "dark-mode", path: "~/Projects/personal/blog/.tori/worktrees/dark-mode", depth: 1, level: "worktree", tagged: true },
   ];
   return (
     <div class={styles.split}>
-      <div class={`${styles.card} ${styles.list} ${styles.topicCard}`}>
-        <div class={styles.eyebrow}>Topic</div>
-        <div class={`${styles.listRow} ${styles.topicName}`}>
-          <span class={styles.topicTag}>
-            <Icon icon={Tag} />
-          </span>
-          Webhooks
+      <div class={`${styles.card} ${styles.topicList}`}>
+        <div class={styles.spaceHead}>
+          <span class={styles.spaceName}>Topics</span>
         </div>
-        <div class={styles.listRow}>
-          <span class={styles.muted}>Branch</span>
-          <span class={`${styles.mono} ${styles.stripEnd}`}>webhooks</span>
-        </div>
-        <For each={repos}>
-          {(repo) => (
-            <div class={styles.listRow}>
-              <LevelGlyph level="project" path={`~/Projects/work/${repo}`} />
-              <span>{repo}</span>
-              <span class={`${styles.mono} ${styles.stripEnd}`}>.tori/worktrees/webhooks</span>
+        <For each={topics}>
+          {(t) => (
+            <div class={styles.topicItem} classList={{ [styles.topicActive]: t.active }}>
+              <div class={styles.topicHead}>
+                <span class={styles.topicCaret}>
+                  <Icon icon={ChevronRight} />
+                </span>
+                <span class={styles.topicName}>{t.name}</span>
+              </div>
+              <div class={styles.topicChips}>
+                <For each={t.members}>
+                  {(m) => <MemberChip icon={{ seed: m.path }} tint={resolveColor(m.color)} size="md" decorative />}
+                </For>
+              </div>
             </div>
           )}
         </For>
