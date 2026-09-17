@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import ProblemsPanel from "./ProblemsPanel";
 import { clearDiagnostics, publishDiagnostics, type Problem } from "../../utils/diagnostics";
 import { spaceHue } from "../../utils/spaceTint";
-import type { MemberRoot } from "../../utils/featureMembers";
+import type { MemberRoot } from "../../utils/topicMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 
 const API = "/feat/api";
@@ -76,9 +76,9 @@ export const BranchUnit: Story = {
 };
 
 /** Two members at once, each with its own section. The active member is the API,
- *  yet the Web App's error is still on screen: a Feature's problems are the
- *  Feature's, not the repo you happen to be looking at. */
-export const FeatureMembers: Story = {
+ *  yet the Web App's error is still on screen: a Topic's problems are the
+ *  Topic's, not the repo you happen to be looking at. */
+export const TopicMembers: Story = {
   args: { roots: MEMBERS },
   render: (args) => {
     loadDiagnostics();

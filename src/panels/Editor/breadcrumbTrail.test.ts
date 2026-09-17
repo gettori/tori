@@ -88,7 +88,7 @@ describe("the path half of the trail", () => {
   });
 
   it("keeps the single crumb when the member does not hold the file either", () => {
-    // A Docs-tree file opened while a Feature is selected. Naming a member the
+    // A Docs-tree file opened while a Topic is selected. Naming a member the
     // file is not under would be the one thing worse than saying nothing.
     expect(pathCrumbs(ROOT, "/elsewhere/todo.md", { root: "/space/proj/web", label: "web" })).toEqual([
       { name: "todo.md", path: "/elsewhere/todo.md", isDir: false },

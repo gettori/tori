@@ -858,7 +858,7 @@ describe("the row context menu", () => {
 
     fireEvent.contextMenu(screen.getByText("README.md"));
 
-    // No heading, so no group either: outside a Feature there is nothing to
+    // No heading, so no group either: outside a Topic there is nothing to
     // disambiguate and the menu reads exactly as it always did.
     const m = await screen.findByRole("menu");
     expect(within(m).queryByRole("group")).toBeNull();
@@ -920,7 +920,7 @@ describe("the row context menu", () => {
   });
 });
 
-// Inside a Feature the Files tab shows one member at a time, handing the tree
+// Inside a Topic the Files tab shows one member at a time, handing the tree
 // that member's worktree as its root. A switch is a new root under a live tree,
 // and nothing the last member's mount knew may leak into the next one.
 describe("one member of a Feature at a time", () => {
@@ -988,7 +988,7 @@ describe("one member of a Feature at a time", () => {
     await screen.findByText("README.md");
     bridge.calls = [];
 
-    // Every member of a Feature is watched at once, so bursts tagged with
+    // Every member of a Topic is watched at once, so bursts tagged with
     // another member's root reach this tree too.
     fsChanged(B, [`${B}/package.json`]);
     await new Promise((r) => setTimeout(r, 500));
@@ -1075,7 +1075,7 @@ describe("one member of a Feature at a time", () => {
   });
 });
 
-// What the tree had open, restored. A Feature's members share one workspace
+// What the tree had open, restored. A Topic's members share one workspace
 // key, so what each had open is told apart by its path alone.
 describe("restoring what was open", () => {
   const WS = "feature:f1";

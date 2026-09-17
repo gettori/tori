@@ -72,7 +72,7 @@ import {
 } from "../../utils/searchOptions";
 import { baseName, dirName, filesUnder, folderPaths, folderTree, groupByFile, type FileGroup, type FolderNode } from "../../utils/searchTree";
 import MemberChip from "../../components/MemberChip/MemberChip";
-import { resolveMemberRestriction, type MemberRoot, type TintedMember } from "../../utils/featureMembers";
+import { resolveMemberRestriction, type MemberRoot, type TintedMember } from "../../utils/topicMembers";
 import {
   DRAFT,
   historyFor,
@@ -148,7 +148,7 @@ function RowAction(props: { icon: LucideIcon; label: string; disabled?: boolean;
 
 /** Project-wide Search mode, VS Code's Search view: debounced query ->
  *  `grep_project`, results grouped by member and then by file (or by folder,
- *  as a tree), click opens the file at the matched line. Inside a Feature every
+ *  as a tree), click opens the file at the matched line. Inside a Topic every
  *  member is searched at once: `grep_project` stays single-root and this panel
  *  fans out and merges, because the sections, the per-member truncation and the
  *  per-member replace targets have to exist here whatever the backend returns.
@@ -164,7 +164,7 @@ function RowAction(props: { icon: LucideIcon; label: string; disabled?: boolean;
  *  would not produce. */
 export default function SearchPanel(props: {
   root: string | null;
-  /** The multi-root form, one section per Feature member. A branch unit passes
+  /** The multi-root form, one section per Topic member. A branch unit passes
    *  none and the panel searches `root` alone, headerless, exactly as it did. */
   roots?: MemberRoot[];
   /** The same members with their chip colours, for the member toggles. */
@@ -260,7 +260,7 @@ export default function SearchPanel(props: {
   /** The roots a search actually greps: the sections, minus any member that
    *  cannot be opened. An unusable member is skipped rather than invoked,
    *  because its section path is the *repo* folder and grepping it would search
-   *  the user's own checkout instead of the Feature. */
+   *  the user's own checkout instead of the Topic. */
   const searchRoots = () => sectionRoots().filter((r) => r.state?.usable !== false);
   /** Sections are drawn per member, so the panel is headed only alongside
    *  others; a lone root renders exactly as it always did. Based on the whole
@@ -660,7 +660,7 @@ export default function SearchPanel(props: {
   const anyTruncated = () => sections().some((s) => s.truncated);
   const replacing = () => showReplace();
 
-  /** Why a file was skipped, phrased for the outcome line. Inside a Feature the
+  /** Why a file was skipped, phrased for the outcome line. Inside a Topic the
    *  reason alone is not actionable: two members routinely hold the same
    *  `src/index.ts`, so it has to say which one to go and deal with. */
   const skipReason = (root: string, reason: string) => (headed() ? `${reason} in ${labelFor(root)}` : reason);
@@ -1019,7 +1019,7 @@ export default function SearchPanel(props: {
   }
 
   // Keyed on the member set and the workspace, deliberately not on `props.root`
-  // (inside a Feature that is the *active member*, and clicking a Toolbar chip
+  // (inside a Topic that is the *active member*, and clicking a Toolbar chip
   // to read another member's file must not spend a search that spans all of
   // them) and not on the searched set either, which the restriction moves.
   // A real workspace change moves both of these.
@@ -1029,7 +1029,7 @@ export default function SearchPanel(props: {
       () => {
         setSections([]);
         setError(null);
-        // A restriction names members of the Feature you were in, so it means
+        // A restriction names members of the Topic you were in, so it means
         // nothing in the next one.
         setRestricted([]);
         // Everything below is scoped to a workspace, and none of it means
@@ -1111,7 +1111,7 @@ export default function SearchPanel(props: {
       const changed = e.payload.root;
       // An event names one root, so only that root is re-grepped and its section
       // is merged back over the others. Re-running the whole fan-out would cost
-      // one grep per member per burst, in exactly the Feature that has an agent
+      // one grep per member per burst, in exactly the Topic that has an agent
       // writing in one of them. An event with no root refreshes everything.
       if (!changed) return debouncedRefresh();
       if (!searchRoots().some((r) => r.path === changed)) return;

@@ -57,7 +57,7 @@ const PREVIEWABLE = /\.(md|svg)$/i;
 type EditCtx = {
   root: string;
   noun: string;
-  /** Which repo this root is, inside a Feature. Empty everywhere else, where
+  /** Which repo this root is, inside a Topic. Empty everywhere else, where
    *  there is one root and nothing to disambiguate. Rides here rather than down
    *  the recursion because the row menu exists only where this context does. */
   member?: string;
@@ -929,7 +929,7 @@ function RootBody(props: {
     mounted.set(props.path, reloadRoot);
     props.onApi(mine, true);
     void reloadRoot().then(() => props.onLoaded());
-    // Only this root's bursts. Inside a Feature every member is unmuted at once,
+    // Only this root's bursts. Inside a Topic every member is unmuted at once,
     // so the backend's `root` tag is the only thing separating them.
     const off = await listen<FsChanged>("fs://changed", (e) => {
       if (e.payload.root === props.path) refresh();
@@ -1032,7 +1032,7 @@ export default function FileTree(props: {
   editable?: boolean;
   /** Names the containment boundary in a refusal. Presentation only. */
   noun?: string;
-  /** The Feature member this root is, named at the top of every row menu. */
+  /** The Topic member this root is, named at the top of every row menu. */
   member?: string;
   /** The repo behind the root, which turns on Find in Folder and file history. */
   repoPath?: string;

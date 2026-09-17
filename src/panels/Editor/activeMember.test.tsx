@@ -1,4 +1,4 @@
-// The member chip rows inside a Feature (#160 phase 3). Pull requests wears the
+// The member chip rows inside a Topic (#160 phase 3). Pull requests wears the
 // right panel's row, which moves `activeRoot`; the Files tab wears its own, and
 // its Scripts section is the pane that visibly reloads for the member picked.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -18,7 +18,7 @@ installAnimationFrame();
 /** A bare container: its worktrees sit beside it, and `.shared/` is linked in. */
 const API_REPO = "/w/api";
 const API = `${API_REPO}/auth`;
-/** A plain repo: its Feature worktree sits under `.tori/worktrees`, where no
+/** A plain repo: its Topic worktree sits under `.tori/worktrees`, where no
  *  `.shared/` is linked. */
 const WEB_REPO = "/w/web";
 const WEB = `${WEB_REPO}/.tori/worktrees/auth`;
@@ -31,7 +31,7 @@ const member = (repoPath: string, displayName: string, worktreePath: string | nu
   order,
 });
 
-let FEATURE_MEMBERS: ReturnType<typeof member>[] = [];
+let TOPIC_MEMBERS: ReturnType<typeof member>[] = [];
 
 const SPACES = [
   {
@@ -47,7 +47,7 @@ const SPACES = [
       {
         name: "web",
         path: WEB_REPO,
-        // The Feature worktree is listed first on purpose: #158 made a plain
+        // The Topic worktree is listed first on purpose: #158 made a plain
         // repo report its contained worktrees, so position says nothing.
         branchUnits: [
           { folderPath: WEB, kind: "worktree" },
@@ -75,7 +75,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     switch (cmd) {
       case "list_topics":
         return Promise.resolve([
-          { id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: FEATURE_MEMBERS },
+          { id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: TOPIC_MEMBERS },
         ]);
       case "get_config":
         return Promise.resolve({ spaces: SPACES });
@@ -112,13 +112,13 @@ vi.mock("@tauri-apps/api/core", () => ({
     onmessage: ((m: string) => void) | null = null;
   },
 }));
-// `createFeatureMembers` reads `list_topics` once per generation, module-wide,
+// `createTopicMembers` reads `list_topics` once per generation, module-wide,
 // and only a `topics://changed` bumps the generation. Without the handler a
 // later test would render the first test's member list out of that cache.
-const featureHandlers = vi.hoisted(() => [] as (() => void)[]);
+const topicHandlers = vi.hoisted(() => [] as (() => void)[]);
 vi.mock("@tauri-apps/api/event", () => ({
   listen: (name: string, cb: () => void) => {
-    if (name === "topics://changed") featureHandlers.push(cb);
+    if (name === "topics://changed") topicHandlers.push(cb);
     return Promise.resolve(() => {});
   },
 }));
@@ -140,11 +140,11 @@ vi.mock("./lspClient", () => ({
 const { default: Editor } = await import("./Editor");
 const { emitWith, SET_RIGHT_MODE } = await import("../../utils/events");
 
-const featureSel = (activeRoot: string) => ({
+const topicSel = (activeRoot: string) => ({
   kind: "feature" as const,
   featureId: "f1",
   featureName: "Auth",
-  roots: FEATURE_MEMBERS.map((m) => m.worktreePath).filter(Boolean),
+  roots: TOPIC_MEMBERS.map((m) => m.worktreePath).filter(Boolean),
   activeRoot,
   spaceName: "",
   projectName: "Auth",
@@ -157,12 +157,12 @@ const featureSel = (activeRoot: string) => ({
 /** Mount with the chip row wired to the same handler App gives it, so clicking
  *  a chip really moves the selection. */
 async function mountEditor(initial = API) {
-  for (const bump of featureHandlers) bump();
-  const [sel, set] = createSignal<unknown>(featureSel(initial));
+  for (const bump of topicHandlers) bump();
+  const [sel, set] = createSignal<unknown>(topicSel(initial));
   render(() => (
     <Editor
       selected={sel() as never}
-      onActiveRoot={(root) => set(featureSel(root))}
+      onActiveRoot={(root) => set(topicSel(root))}
     />
   ));
   await waitFor(() => expect(listening.ready).toBe(true));
@@ -180,7 +180,7 @@ beforeEach(() => {
   park = null;
   scripts = {};
   present = new Set<string>();
-  FEATURE_MEMBERS = [member(API_REPO, "api", API, 0), member(WEB_REPO, "web", WEB, 1)];
+  TOPIC_MEMBERS = [member(API_REPO, "api", API, 0), member(WEB_REPO, "web", WEB, 1)];
 });
 
 afterEach(() => {
@@ -221,10 +221,10 @@ describe("the member chip row", () => {
   });
 
   it("wears a broken member's state and refuses to switch to it", async () => {
-    FEATURE_MEMBERS = [member(API_REPO, "api", API, 0), member(WEB_REPO, "web", null, 1)];
+    TOPIC_MEMBERS = [member(API_REPO, "api", API, 0), member(WEB_REPO, "web", null, 1)];
     await mountEditor();
     // The right panel's row: the Files row lets a broken member be picked, to
-    // show its repair (featureRoot.test.tsx).
+    // show its repair (topicRoot.test.tsx).
     showMode("pulls");
     await waitFor(() => expect(chip(WEB_REPO)).toBeTruthy());
     const broken = chip(WEB_REPO) as HTMLButtonElement;
@@ -233,7 +233,7 @@ describe("the member chip row", () => {
   });
 
   it("is absent with only one member, which is not a choice", async () => {
-    FEATURE_MEMBERS = [member(API_REPO, "api", API, 0)];
+    TOPIC_MEMBERS = [member(API_REPO, "api", API, 0)];
     await mountEditor();
     showMode("files");
     await waitFor(() => expect(screen.getByLabelText("Filter files")).toBeTruthy());
@@ -246,7 +246,7 @@ describe("the chip row past its cap", () => {
     Array.from({ length: n }, (_, i) => member(`/w/r${i}`, `r${i}`, `/w/r${i}/auth`, i));
 
   it("caps the row and puts the rest behind +N", async () => {
-    FEATURE_MEMBERS = many(8);
+    TOPIC_MEMBERS = many(8);
     await mountEditor("/w/r0/auth");
     showMode("files");
     await waitFor(() => expect(chipRow()).toBeTruthy());
@@ -257,7 +257,7 @@ describe("the chip row past its cap", () => {
   it("never hides the member the pane is about", async () => {
     // The row's whole job is to say which member is in front. Dropping *that*
     // one for being eighth is the one thing it must not do.
-    FEATURE_MEMBERS = many(8);
+    TOPIC_MEMBERS = many(8);
     await mountEditor("/w/r7/auth");
     showMode("files");
     await waitFor(() => expect(chip("/w/r7")).toBeTruthy());
@@ -268,7 +268,7 @@ describe("the chip row past its cap", () => {
   });
 
   it("switches to a hidden member from the +N menu", async () => {
-    FEATURE_MEMBERS = many(8);
+    TOPIC_MEMBERS = many(8);
     scripts = { "/w/r0/auth": { first: "x" }, "/w/r7/auth": { last: "y" } };
     await mountEditor("/w/r0/auth");
     showScripts();
