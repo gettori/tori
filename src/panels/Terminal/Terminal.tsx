@@ -68,9 +68,9 @@ import {
   asTabProfile,
   ensureAgentHealthLoaded,
   namedProfiles,
-  refreshAgentHealth,
   profileLabel,
 } from "../../utils/agentHealth";
+import { runExitEffects } from "../../utils/jobExit";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import {
   isFeatureKey,
@@ -1195,13 +1195,7 @@ export default function Terminal(props: {
     if (!reportCommandExit(t.id, code)) return;
     // After the verdict is recorded, so anything watching sees the outcome even
     // when the tab is about to go.
-    if (t.rediscoverOnExit) invoke("rediscover").catch(() => {});
-    // Only a clean exit: an abandoned login has no first run to finish.
-    if (t.completeSignInOnExit && code === 0) {
-      const { agentId, profileId } = t.completeSignInOnExit;
-      invoke("complete_sign_in", { adapterId: agentId, profileId }).catch(() => {});
-    }
-    if (t.recheckAgentsOnExit) void refreshAgentHealth();
+    void runExitEffects(t, code);
     const failed = code !== 0;
     emitWith<ToastEvent>(TOAST, {
       message: !failed
