@@ -444,6 +444,7 @@ pub fn run() {
             auth::agent_login_route,
             onboarding::first_run_state,
             onboarding::first_run_mark_intro_seen,
+            onboarding::first_run_forget_intro,
             hot_exit::hot_exit_load,
             hot_exit::hot_exit_save,
             scratch::scratch_dir,

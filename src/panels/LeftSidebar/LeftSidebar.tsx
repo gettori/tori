@@ -120,6 +120,7 @@ import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
 import { rememberSelection, rememberedUnit, rememberedFeature } from "../../utils/selectionMemory";
+import { forgetIntro } from "../../utils/firstRun";
 import {
   FolderCog,
   FolderPlus,
@@ -1360,11 +1361,14 @@ export default function LeftSidebar(props: {
   async function resetRoot() {
     const ok = await askConfirm({
       title: "Forget the base folder?",
-      message: "Nothing on disk is deleted; the tree returns to its first-run state.",
+      message: "Nothing on disk is deleted. Tori shows the intro and setup again.",
       confirmLabel: "Forget",
     });
     if (!ok) return;
     try {
+      // Before the root goes: losing it opens the modal, which reads the flag
+      // once as it mounts.
+      await forgetIntro();
       await invoke("remove_root");
       await loadConfig();
     } catch (e) {

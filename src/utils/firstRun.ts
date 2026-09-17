@@ -124,6 +124,14 @@ export async function markIntroSeen(): Promise<void> {
   });
 }
 
+export async function forgetIntro(): Promise<void> {
+  setIntroSeen(false);
+  await invoke("first_run_forget_intro").catch(() => {
+    // This session shows it either way; a failed write only skips it on the
+    // next launch.
+  });
+}
+
 export function finishFirstRun() {
   setFinished(true);
   setOpened(false);

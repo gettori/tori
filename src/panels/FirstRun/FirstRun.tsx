@@ -50,7 +50,8 @@ export default function FirstRun() {
   const introThisSession = firstRunView() === "intro";
   const [page, setPage] = createSignal<"intro" | "setup">(introThisSession ? "intro" : "setup");
   const [slide, setSlide] = createSignal(0);
-  const first: StepId = firstRunGateLost() ? "base" : "agents";
+  // Replaying the intro replays setup from the start too.
+  const first: StepId = firstRunGateLost() && !introThisSession ? "base" : "agents";
   const [step, setStep] = createSignal<StepId>(first);
   // The furthest step reached, so the rail can go back but never ahead of
   // what the earlier steps have answered.

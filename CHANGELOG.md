@@ -32,7 +32,7 @@ a first project, and ends on a summary before Tori opens.
 - Ready shows what was set up, and for anything skipped, where to finish it.
 - Before a space exists the window cannot be closed. After that, Escape or a
   click outside closes it, like Open Tori. Reset root (forget only) in the
-  sidebar's menu brings it back on the base folder step.
+  sidebar's menu shows the intro and setup again.
 - The sidebar's welcome message and the greeting in Settings are gone.
 
 ### Agents

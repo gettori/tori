@@ -76,9 +76,18 @@ pub fn first_run_state() -> FirstRunState {
 
 #[tauri::command(async)]
 pub fn first_run_mark_intro_seen() -> Result<(), String> {
+    set_intro_seen(true)
+}
+
+#[tauri::command(async)]
+pub fn first_run_forget_intro() -> Result<(), String> {
+    set_intro_seen(false)
+}
+
+fn set_intro_seen(seen: bool) -> Result<(), String> {
     let path = state_path();
     let mut state = load_from(&path);
-    state.intro_seen = true;
+    state.intro_seen = seen;
     save_to(&path, &state)
 }
 
