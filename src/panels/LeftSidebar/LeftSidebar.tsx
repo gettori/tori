@@ -2473,20 +2473,19 @@ export default function LeftSidebar(props: {
           <span class={styles.label}>{unitLabel(u)}</span>
           <For each={topicsAt(u.folderPath)}>
             {(f) => (
-              <Tooltip
-                as="button"
-                type="button"
-                class={`${styles.badge} ${styles.topicChip}`}
-                label={f.name}
+              <IconButton
+                size="xs"
+                class={styles.topicChip}
+                icon={<Icon icon={Tag} />}
                 aria-label={`Open Topic ${f.name}`}
+                tooltip={f.name}
                 data-topic-chip={f.id}
                 onClick={(e: MouseEvent) => {
                   e.stopPropagation();
                   selectTopic(f, u.folderPath);
+                  setMode("topics");
                 }}
-              >
-                <Icon icon={Tag} />
-              </Tooltip>
+              />
             )}
           </For>
           <Show when={u.kind === "incomplete"}>
