@@ -91,9 +91,9 @@ describe("NewTopicDialog", () => {
     vi.useRealTimers();
   });
 
-  it("creates a Feature from a name and two repos", async () => {
+  it("creates a Topic from a name and two repos", async () => {
     const { onDone } = open();
-    expect(screen.getByRole("dialog", { name: "New Feature" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "New Topic" })).toBeTruthy();
     expect(done().disabled).toBe(true);
 
     fireEvent.input(name(), { target: { value: "Search v2" } });
@@ -145,14 +145,14 @@ describe("NewTopicDialog", () => {
     await waitFor(() => expect(done().disabled).toBe(false));
   });
 
-  it("Rename this Feature unchecks the repo and returns to the name", async () => {
+  it("Rename this Topic unchecks the repo and returns to the name", async () => {
     bridge.probes["/w/api@x"] = { valid: true, local: false, remote: true, hasWorktree: false };
     open();
     fireEvent.input(name(), { target: { value: "x" } });
     fireEvent.click(box("api"));
     await screen.findByText("x already exists");
 
-    fireEvent.click(screen.getByRole("button", { name: /Rename this Feature/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Rename this Topic/ }));
     expect(box("api").checked).toBe(false);
     expect(document.activeElement).toBe(name());
     expect(screen.queryByText("x already exists")).toBeNull();
@@ -179,7 +179,7 @@ describe("NewTopicDialog", () => {
     expect(screen.queryByText(/already exists/)).toBeNull();
   });
 
-  it("refuses a branch another Feature already uses", async () => {
+  it("refuses a branch another Topic already uses", async () => {
     open();
     fireEvent.input(name(), { target: { value: "Auth again" } });
     fireEvent.input(branch(), { target: { value: "feat/auth" } });
@@ -198,12 +198,12 @@ describe("NewTopicDialog", () => {
     fireEvent.click(done());
 
     expect((await screen.findByRole("alert")).textContent).toContain("refusing to overwrite /w/api/.tori");
-    expect(screen.getByRole("dialog", { name: "New Feature" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "New Topic" })).toBeTruthy();
     expect(onDone).not.toHaveBeenCalled();
     expect(done().disabled).toBe(false);
   });
 
-  it("adds repositories to an existing Feature one at a time, members excluded", async () => {
+  it("adds repositories to an existing Topic one at a time, members excluded", async () => {
     const { onDone } = open({ topic: EXISTING });
     expect(screen.getByRole("dialog", { name: "Add repository to Auth" })).toBeTruthy();
     expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
@@ -228,7 +228,7 @@ describe("NewTopicDialog", () => {
 
     expect(await screen.findByText("feat/auth already exists")).toBeTruthy();
     expect(done().disabled).toBe(true);
-    expect(screen.queryByRole("button", { name: /Rename this Feature/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Rename this Topic/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Leave out, web" }));
     await waitFor(() => expect(screen.queryByText("feat/auth already exists")).toBeNull());

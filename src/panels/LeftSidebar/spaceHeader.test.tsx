@@ -140,8 +140,8 @@ describe("the active space header", () => {
   it("names the mode instead of the space outside Spaces", async () => {
     mount();
     await waitFor(() => expect(header()).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Features" }));
-    await waitFor(() => expect(header()!.textContent!.trim()).toBe("Features"));
+    fireEvent.click(screen.getByRole("button", { name: "Topics" }));
+    await waitFor(() => expect(header()!.textContent!.trim()).toBe("Topics"));
     expect(screen.queryByRole("button", { name: "Actions for work" })).toBeNull();
   });
 });

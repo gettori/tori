@@ -110,7 +110,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     // rewrites `repoPath`, which is the one field a member's identity is.
     if (cmd === "retry_member" || cmd === "relocate_member") {
       const at = (bridge.topics ?? []).findIndex((f) => f.id === args.topicId);
-      if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.topicId}`));
+      if (at < 0) return Promise.reject(new Error(`No Topic with id ${args.topicId}`));
       const f = bridge.topics![at];
       const next: Topic = {
         ...f,
@@ -131,7 +131,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     // backend took on when it started emitting `topics://changed` for them.
     if (RECORD_ONLY.has(cmd)) {
       const at = (bridge.topics ?? []).findIndex((f) => f.id === args.topicId);
-      if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.topicId}`));
+      if (at < 0) return Promise.reject(new Error(`No Topic with id ${args.topicId}`));
       const next = recordOnly(cmd, bridge.topics![at], args);
       bridge.topics = bridge.topics!.map((f, i) => (i === at ? next : f));
       return Promise.resolve(next);
@@ -213,7 +213,7 @@ describe("TopicList", () => {
   });
   afterEach(() => Toast.toaster.clear());
 
-  it("renders one row per Feature and filters by name or member", async () => {
+  it("renders one row per Topic and filters by name or member", async () => {
     const [query, setQuery] = (await import("solid-js")).createSignal("");
     render(() => <TopicList spaces={SPACES} query={query()} />);
     await screen.findByText("Auth");
@@ -222,15 +222,15 @@ describe("TopicList", () => {
     await waitFor(() => expect(screen.queryByText("Auth")).toBeNull());
     expect(screen.getByText("Payments")).toBeTruthy();
     setQuery("nothing");
-    await screen.findByText("No Feature matches the filter.");
+    await screen.findByText("No Topic matches the filter.");
   });
 
-  it("reads a null answer as no Features and opens the dialog from the empty state", async () => {
+  it("reads a null answer as no Topics and opens the dialog from the empty state", async () => {
     bridge.topics = null;
     render(() => <TopicList spaces={SPACES} query="" />);
-    await screen.findByText("No Features yet.");
-    fireEvent.click(screen.getByRole("button", { name: "Create a Feature" }));
-    expect(await screen.findByRole("dialog", { name: "New Feature" })).toBeTruthy();
+    await screen.findByText("No Topics yet.");
+    fireEvent.click(screen.getByRole("button", { name: "Create a Topic" }));
+    expect(await screen.findByRole("dialog", { name: "New Topic" })).toBeTruthy();
   });
 
   it("applies a topics://changed payload without a refetch", async () => {
@@ -354,9 +354,9 @@ describe("TopicList", () => {
     ));
     // The button is the sidebar's now, one component up; this list answers the
     // event it emits, and the listener is up before the first fetch resolves.
-    await screen.findByText("No Features yet.");
+    await screen.findByText("No Topics yet.");
     emit(NEW_TOPIC);
-    const dialog = await screen.findByRole("dialog", { name: "New Feature" });
+    const dialog = await screen.findByRole("dialog", { name: "New Topic" });
     fireEvent.input(screen.getByRole("textbox", { name: "Name" }), { target: { value: "Search" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "api" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "web" }));
@@ -423,7 +423,7 @@ describe("TopicList", () => {
     // what state it is in instead of a status git could not have answered.
     expect(riskRow(dialog, "/w/api").textContent).toContain("api");
     expect(riskRow(dialog, "/w/ledger").textContent).toContain("Failed");
-    fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
     await waitFor(() => expect(screen.queryByText("Payments")).toBeNull());
     expect(bridge.calls.find((c) => c.cmd === "delete_topic")!.args).toEqual({ topicId: "pay-1" });
     expect(bridge.calls.some((c) => c.cmd === "remove_worktree")).toBe(false);
@@ -433,7 +433,7 @@ describe("TopicList", () => {
   // #159 phase 4. The confirm shows the blast radius per member, the sweep that
   // follows offers each worktree, and the two are sequential on purpose: a sweep
   // opened before the delete could be answered for a Topic that stayed.
-  describe("deleting a Feature", () => {
+  describe("deleting a Topic", () => {
     const AUTH_API = "/w/api/.tori/worktrees/auth";
     const AUTH_WEB = "/w/web/.tori/worktrees/auth";
     const sweepRow = (repoPath: string) => document.querySelector<HTMLElement>(`[data-sweep="${repoPath}"]`)!;
@@ -451,7 +451,7 @@ describe("TopicList", () => {
     }
     async function toSweep(onDeleted?: () => void) {
       await confirmDelete(onDeleted);
-      fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
       return screen.findByRole("dialog", { name: /Its worktrees/ });
     }
 
@@ -499,7 +499,7 @@ describe("TopicList", () => {
       bridge.topics = [AUTH, PAY];
       bridge.failDelete = true;
       await confirmDelete();
-      fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
 
       await screen.findByText(/delete refused/);
       expect(screen.queryByRole("dialog", { name: /Its worktrees/ })).toBeNull();
@@ -528,7 +528,7 @@ describe("TopicList", () => {
 
       // The confirm is gone and the sweep is not there yet: git answering here
       // is the case, and it is the whole duration of `delete_topic` wide.
-      fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       bridge.holdStatus!();
       await tick();
@@ -566,7 +566,7 @@ describe("TopicList", () => {
       await screen.findByRole("dialog", { name: "Delete Auth?" });
       // Not on the confirm: it removes nothing, so it has nothing to stop.
       expect(screen.getByRole("dialog").textContent).not.toContain("terminal tab");
-      fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
 
       await screen.findByRole("dialog", { name: /Its worktrees/ });
       await waitFor(() => expect(sweepRow("/w/web").textContent).toContain("2 terminal tabs running here"));
@@ -647,7 +647,7 @@ describe("TopicList", () => {
       await waitFor(() => expect(memberRow("/w/api").textContent).toContain("Payments API"));
     });
 
-    it("removes a member the Feature can spare", async () => {
+    it("removes a member the Topic can spare", async () => {
       await openOn("Auth", "/w/web");
       pointerClick(await screen.findByText("Remove repository"));
 

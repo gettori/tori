@@ -252,7 +252,7 @@
     width: calc(14px * var(--ui-scale));
     height: calc(14px * var(--ui-scale));
   }
-  /* The sidebar's Feature chip on a branch row (`.row .badge.topicChip`). */
+  /* The sidebar's Topic chip on a branch row (`.row .badge.topicChip`). */
   .topicChip {
     font-family: var(--tori-font-ui);
     font-size: var(--tori-text-2xs);

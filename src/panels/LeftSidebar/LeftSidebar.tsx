@@ -134,7 +134,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  Waypoints,
+  Tag,
   type LucideIcon,
   Plus,
   ChevronsLeftRightEllipsis,
@@ -406,9 +406,9 @@ export default function LeftSidebar(props: {
   // With no project there is no Topics tile to leave Topics by.
   const mode = (): SidebarMode => (topicsReachable() ? chosenMode() : "spaces");
   /** What the filter field is filtering, which is whatever the mode is showing. */
-  const filterNoun = () => (mode() === "topics" ? "features" : "projects");
+  const filterNoun = () => (mode() === "topics" ? "topics" : "projects");
   /** What the tree's heading says, which is whatever the strip has lit. */
-  const headingName = () => (mode() === "topics" ? "Features" : (activeSpace()?.name ?? "Spaces"));
+  const headingName = () => (mode() === "topics" ? "Topics" : (activeSpace()?.name ?? "Spaces"));
   createEffect(() => {
     try {
       localStorage.setItem(LS_MODE, chosenMode());
@@ -2473,18 +2473,20 @@ export default function LeftSidebar(props: {
           <span class={styles.label}>{unitLabel(u)}</span>
           <For each={topicsAt(u.folderPath)}>
             {(f) => (
-              <button
+              <Tooltip
+                as="button"
                 type="button"
                 class={`${styles.badge} ${styles.topicChip}`}
-                aria-label={`Open Feature ${f.name}`}
+                label={f.name}
+                aria-label={`Open Topic ${f.name}`}
                 data-topic-chip={f.id}
-                onClick={(e) => {
+                onClick={(e: MouseEvent) => {
                   e.stopPropagation();
                   selectTopic(f, u.folderPath);
                 }}
               >
-                in {f.name}
-              </button>
+                <Icon icon={Tag} />
+              </Tooltip>
             )}
           </For>
           <Show when={u.kind === "incomplete"}>
@@ -2798,7 +2800,7 @@ export default function LeftSidebar(props: {
   function measureNames() {
     if (!probeEl || !probeNameEl || !probeTextEl) return;
     const each: Record<string, number> = {};
-    for (const name of [...visibleSpaces().map((g) => g.name), "Features"]) {
+    for (const name of [...visibleSpaces().map((g) => g.name), "Topics"]) {
       probeTextEl.textContent = name;
       // Rounded up, with a pixel to spare: a fractional target is a target the
       // text does not quite fit into, and the tile clips its own last letter.
@@ -3020,8 +3022,8 @@ export default function LeftSidebar(props: {
             class={styles.headAdd}
             variant="ghost"
             size="md"
-            aria-label="New Feature"
-            tooltip="New Feature"
+            aria-label="New Topic"
+            tooltip="New Topic"
             icon={<Icon icon={Plus} />}
             onClick={() => emit(NEW_TOPIC)}
           />
@@ -3220,7 +3222,7 @@ export default function LeftSidebar(props: {
               candidate name through, wearing the real lit-tile CSS so what it
               reports is what the row would actually take. */}
           <span class={`${styles.space} ${styles.titled} ${styles.tileProbe}`} aria-hidden="true" ref={probeEl}>
-            <Icon icon={Waypoints} />
+            <Icon icon={Tag} />
             <span class={styles.tileName} ref={probeNameEl}><span class={styles.tileNameText} ref={probeTextEl} /></span>
           </span>
           <div class={styles.gearWrap} ref={gearEl}>
@@ -3272,7 +3274,7 @@ export default function LeftSidebar(props: {
                 out of a mode. */}
             <Show when={hasProjects()}>
               <div class={styles.spaceDivider} />
-              {modeTile("topics", "Features", Waypoints)}
+              {modeTile("topics", "Topics", Tag)}
             </Show>
           </div>
 

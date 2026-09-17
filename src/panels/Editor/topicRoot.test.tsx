@@ -115,7 +115,7 @@ const sectionRoots = () =>
   Array.from(document.querySelectorAll("[data-root]")).map((e) => e.getAttribute("data-root"));
 
 const memberChips = () =>
-  Array.from(document.querySelectorAll<HTMLElement>('[role="group"][aria-label="Feature members"] [data-member]'));
+  Array.from(document.querySelectorAll<HTMLElement>('[role="group"][aria-label="Topic members"] [data-member]'));
 const pickMember = (repoPath: string) =>
   fireEvent.click(memberChips().find((c) => c.dataset.member === repoPath)!);
 
@@ -134,7 +134,7 @@ afterEach(() => {
   mounted = null;
 });
 
-describe("the editor inside a Feature", () => {
+describe("the editor inside a Topic", () => {
   it("keeps the strip under topic:<id> while git and the watcher both span the whole member set", async () => {
     localStorage.setItem(
       "tori.editor.tabs.v1",
@@ -191,7 +191,7 @@ describe("the editor inside a Feature", () => {
     expect(watchSets()).toEqual([[A, B], [A, B, C]]);
   });
 
-  it("opens a Feature with no present member as the empty state, pointing nothing at an empty root", async () => {
+  it("opens a Topic with no present member as the empty state, pointing nothing at an empty root", async () => {
     mounted = render(() => (
       <>
         <Editor selected={topicSel(null, []) as never} />
@@ -295,7 +295,7 @@ describe("the editor inside a Feature", () => {
     expect(calls.some((c) => String(c.args.root ?? "").startsWith("topic:"))).toBe(false);
   });
 
-  it("drops every git slot when the Feature it was showing goes away", async () => {
+  it("drops every git slot when the Topic it was showing goes away", async () => {
     // What a deleted Topic does: App clears the selection, and the store must
     // stop answering about members nobody is in - the palette and the sidebar
     // count both read it with nothing on screen to say whose it was.
@@ -313,7 +313,7 @@ describe("the editor inside a Feature", () => {
     await waitFor(() => expect(changedAcross()).toEqual([]));
   });
 
-  it("leaves a branch unit headerless, with no member chip and no Feature record read", async () => {
+  it("leaves a branch unit headerless, with no member chip and no Topic record read", async () => {
     mounted = render(() => (
       <>
         <Editor selected={unitSel as never} />

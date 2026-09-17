@@ -199,7 +199,7 @@ fn topic_mut<'a>(file: &'a mut TopicFile, topic_id: &str) -> Result<&'a mut Topi
     file.topics
         .iter_mut()
         .find(|f| f.id == topic_id)
-        .ok_or_else(|| format!("No Feature with id {topic_id}"))
+        .ok_or_else(|| format!("No Topic with id {topic_id}"))
 }
 
 fn member_mut<'a>(topic: &'a mut Topic, repo_path: &str) -> Result<&'a mut Member, String> {
@@ -212,7 +212,7 @@ fn member_mut<'a>(topic: &'a mut Topic, repo_path: &str) -> Result<&'a mut Membe
 
 /// What the last-member refusal says, so the row menu can draw the reason on a
 /// refusing Remove rather than waiting for the command to answer with it.
-pub const LAST_MEMBER: &str = "A Feature needs at least one repository. Delete the Feature instead.";
+pub const LAST_MEMBER: &str = "A Topic needs at least one repository. Delete the Topic instead.";
 
 /// Detach the record only. The worktree stays on disk; removing it is the
 /// existing `remove_worktree` flow's job, with its own guards.
@@ -263,7 +263,7 @@ pub fn rename_member(store: &Store, topic_id: &str, repo_path: &str, display_nam
 pub fn rename_topic(store: &Store, topic_id: &str, name: &str) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err("Feature name is empty".into());
+        return Err("Topic name is empty".into());
     }
     store.mutate(|file| {
         topic_mut(file, topic_id)?.name = name.to_string();
@@ -357,7 +357,7 @@ fn reconciled_topic(store: &Store, topic_id: &str) -> Result<Topic, String> {
     list_topics(store)
         .into_iter()
         .find(|f| f.id == topic_id)
-        .ok_or_else(|| format!("No Feature with id {topic_id}"))
+        .ok_or_else(|| format!("No Topic with id {topic_id}"))
 }
 
 /// `path`'s tail below `base`, or None when it is not inside it. String work on
@@ -377,7 +377,7 @@ pub fn delete_topic(store: &Store, topic_id: &str) -> Result<(), String> {
         let before = file.topics.len();
         file.topics.retain(|f| f.id != topic_id);
         if file.topics.len() == before {
-            return Err(format!("No Feature with id {topic_id}"));
+            return Err(format!("No Topic with id {topic_id}"));
         }
         Ok(())
     })
@@ -488,11 +488,11 @@ pub fn create_topic(
 ) -> Result<Topic, String> {
     let name = name.trim();
     if name.is_empty() {
-        return Err("Feature name is empty".into());
+        return Err("Topic name is empty".into());
     }
     let branch = valid_branch(branch)?;
     if repos.is_empty() {
-        return Err("A Feature needs at least one repository".into());
+        return Err("A Topic needs at least one repository".into());
     }
     for (i, repo) in repos.iter().enumerate() {
         if repos[..i].iter().any(|seen| same_repo(seen, repo)) {
@@ -503,7 +503,7 @@ pub fn create_topic(
     let id = new_id(&branch);
     store.mutate(|file| {
         if let Some(taken) = file.topics.iter().find(|f| f.branch == branch) {
-            return Err(format!("Feature \"{}\" already uses {branch}", taken.name));
+            return Err(format!("Topic \"{}\" already uses {branch}", taken.name));
         }
         file.topics.push(Topic {
             id: id.clone(),

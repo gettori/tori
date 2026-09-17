@@ -104,7 +104,7 @@ async function removeWave3(selected: unknown) {
   return { onSelect, onActiveRoot };
 }
 
-describe("removing a Feature member's worktree", () => {
+describe("removing a Topic member's worktree", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
@@ -114,7 +114,7 @@ describe("removing a Feature member's worktree", () => {
     localStorage.setItem("tori.active-space.v1", "work");
   });
 
-  it("moves the active root to the next present member and keeps the Feature selected", async () => {
+  it("moves the active root to the next present member and keeps the Topic selected", async () => {
     const { onSelect, onActiveRoot } = await removeWave3(topicSel([WT, OTHER]));
     await waitFor(() => expect(onActiveRoot).toHaveBeenCalledWith(OTHER));
     expect(onSelect).not.toHaveBeenCalled();

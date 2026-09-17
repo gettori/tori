@@ -1,5 +1,5 @@
 // A Topic worktree listed in Spaces has two homes (#154 phase 3): its unit
-// row wears an "in <Topic>" chip that opens the Topic with that folder
+// row wears a Tag chip that opens the Topic with that folder
 // active, and while a Topic is selected no unit reads as active, not even
 // the member whose folder is the active root.
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -114,7 +114,7 @@ async function mounted(selected: unknown) {
 const chips = () => document.querySelectorAll("[data-topic-chip]");
 const activeUnits = () => document.querySelectorAll('[draggable="true"][aria-current="true"]');
 
-describe("a Feature worktree in Spaces", () => {
+describe("a Topic worktree in Spaces", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
@@ -126,23 +126,28 @@ describe("a Feature worktree in Spaces", () => {
     localStorage.setItem("tori.expanded.v1", JSON.stringify(["p:work/api"]));
   });
 
-  it("wears an in-Feature chip on the member unit only", async () => {
+  it("wears a Tag chip on the member unit only", async () => {
     await mounted(null);
     await waitFor(() => expect(chips().length).toBe(1));
-    const chip = screen.getByRole("button", { name: "Open Feature Auth" });
+    const chip = screen.getByRole("button", { name: "Open Topic Auth" });
+    expect(chip.textContent).toBe("");
+    expect(chip.querySelector("svg")).toBeTruthy();
+    chip.focus();
+    fireEvent.focus(chip);
+    expect(screen.getByRole("tooltip").textContent).toBe("Auth");
     expect(chip.closest('[draggable="true"]')?.textContent).toContain("feat/auth");
     expect(screen.getByText("other").closest('[draggable="true"]')?.querySelector("[data-topic-chip]")).toBeNull();
   });
 
-  it("opens the Feature with the clicked folder active", async () => {
+  it("opens the topic with the clicked folder active when the chip is clicked", async () => {
     const onSelect = await mounted(unitSel);
     await waitFor(() => expect(chips().length).toBe(1));
-    fireEvent.click(screen.getByRole("button", { name: "Open Feature Auth" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Topic Auth" }));
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0][0]).toMatchObject({ kind: "topic", topicId: "f1", activeRoot: MEMBER });
   });
 
-  it("marks no unit active while a Feature is selected", async () => {
+  it("marks no unit active while a Topic is selected", async () => {
     await mounted(topicSel);
     await waitFor(() => expect(chips().length).toBe(1));
     expect(activeUnits().length).toBe(0);
@@ -154,10 +159,10 @@ describe("a Feature worktree in Spaces", () => {
     expect(activeUnits()[0].textContent).toContain("feat/auth");
   });
 
-  // One repo, two Topics. Each Topic's worktree carries its own slug, so
+  // One repo, two Topics. Each Topic's worktree carries its own branch, so
   // the two never share a folder and the unit row for each wears its own chip:
   // a repo belonging to several Topics has several ways back.
-  it("wears one chip per Feature a folder belongs to", async () => {
+  it("wears one chip per Topic a folder belongs to", async () => {
     bridge.topics = [
       AUTH,
       { ...AUTH, id: "f2", name: "Billing", branch: "feat/billing", members: [{ ...AUTH.members[0], worktreePath: SIBLING }] },
@@ -166,10 +171,10 @@ describe("a Feature worktree in Spaces", () => {
 
     await waitFor(() => expect(chips().length).toBe(2));
     const names = Array.from(chips()).map((c) => c.getAttribute("aria-label"));
-    expect(names).toEqual(["Open Feature Auth", "Open Feature Billing"]);
+    expect(names).toEqual(["Open Topic Auth", "Open Topic Billing"]);
     // One each, on the row that actually holds that Topic's worktree.
-    expect(screen.getByRole("button", { name: "Open Feature Auth" }).closest('[draggable="true"]')?.textContent).toContain("feat/auth");
-    expect(screen.getByRole("button", { name: "Open Feature Billing" }).closest('[draggable="true"]')?.textContent).toContain("other");
+    expect(screen.getByRole("button", { name: "Open Topic Auth" }).closest('[draggable="true"]')?.textContent).toContain("feat/auth");
+    expect(screen.getByRole("button", { name: "Open Topic Billing" }).closest('[draggable="true"]')?.textContent).toContain("other");
   });
 
   // The Keep half of Remove repository: the worktree stays where it is, the
@@ -181,7 +186,7 @@ describe("a Feature worktree in Spaces", () => {
     ];
     await mounted(null);
     await waitFor(() => expect(chips().length).toBe(1));
-    const row = screen.getByRole("button", { name: "Open Feature Kept" }).closest('[draggable="true"]');
+    const row = screen.getByRole("button", { name: "Open Topic Kept" }).closest('[draggable="true"]');
     expect(row?.textContent).toContain("feat/kept");
   });
 });

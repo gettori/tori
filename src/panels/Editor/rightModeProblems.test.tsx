@@ -87,7 +87,7 @@ afterEach(() => {
   clearDiagnostics();
 });
 
-describe("the Problems tab inside a Feature", () => {
+describe("the Problems tab inside a Topic", () => {
   it("is offered for a diagnostic in the member you are not looking at", async () => {
     // `activeRoot` is the api member; the error is in web. Scoping the tab to
     // the active member alone would hide the only problems the Topic has.
@@ -107,7 +107,7 @@ describe("the Problems tab inside a Feature", () => {
     expect(web?.textContent).toContain("web broke");
   });
 
-  it("does not offer it for a diagnostic in no member of this Feature", async () => {
+  it("does not offer it for a diagnostic in no member of this Topic", async () => {
     publishDiagnostics("/elsewhere/c.ts", problem(1, "someone else's"));
     mounted = render(() => <Editor selected={topicSel(A) as never} />);
     // Nothing to wait for, so the absence is asserted after the tabs settle.

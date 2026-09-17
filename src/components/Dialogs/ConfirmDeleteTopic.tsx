@@ -67,13 +67,13 @@ export default function ConfirmDeleteTopic(props: {
         <>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
           <Button ref={ok} variant="danger" onClick={() => props.onConfirm()}>
-            Delete Feature
+            Delete Topic
           </Button>
         </>
       }
     >
       <div class={styles.msg}>
-        This deletes the Feature record. {props.branch} stays checked out in every repository, and what
+        This deletes the Topic record. {props.branch} stays checked out in every repository, and what
         happens to each worktree is asked next, one row at a time.
       </div>
 

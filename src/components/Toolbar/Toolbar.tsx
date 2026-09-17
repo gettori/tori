@@ -84,7 +84,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
                 </Show>
                 <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
               </nav>
-              <div class={styles.members} role="group" aria-label="Feature members">
+              <div class={styles.members} role="group" aria-label="Topic members">
                 <For each={members()}>
                   {(m) => {
                     const name = () => (m.state.usable ? m.label : `${m.label}: ${m.state.label}`);

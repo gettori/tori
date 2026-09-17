@@ -508,7 +508,7 @@ describe("what an agent tab remembers", () => {
 // wrong. A chat lock has only the tab's workspace to write under, so that is
 // the key every reader asks.
 describe("where a project's memory is kept", () => {
-  it("reads a Feature's under its workspace key, not its active root", async () => {
+  it("reads a Topic's under its workspace key, not its active root", async () => {
     await mountLoaded(topicSelection);
     fireEvent.click(screen.getByLabelText("New chat in repo"));
 

@@ -1168,7 +1168,7 @@ describe("the agent-drafted PR description", () => {
 // one, the same way the file tree does it. What is asserted here is that every
 // surface below follows the chip, and that a click never reaches the member
 // beside the one showing.
-describe("inside a Feature", () => {
+describe("inside a Topic", () => {
   const A = "/feat/api";
   const B = "/feat/web";
   const READY = { label: "Ready", usable: true, action: null, reason: null };
@@ -1254,10 +1254,10 @@ describe("inside a Feature", () => {
     expect(chip("api").getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("draws no chips row outside a Feature", async () => {
+  it("draws no chips row outside a Topic", async () => {
     await mountPanel();
 
-    expect(screen.queryByRole("group", { name: "Feature members" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Topic members" })).toBeNull();
   });
 
   // A member rename and a member reorder arrive as a new `roots` prop: the
@@ -1383,7 +1383,7 @@ describe("inside a Feature", () => {
 // A Topic is one branch checked out in N repos, so one message lands in every
 // member that has staged work. The chips are how that is narrowed, and amend is
 // the exception that takes exactly one member.
-describe("the members a Feature commits in", () => {
+describe("the members a Topic commits in", () => {
   const A = "/feat/api";
   const B = "/feat/web";
   const READY = { label: "Ready", usable: true, action: null, reason: null };

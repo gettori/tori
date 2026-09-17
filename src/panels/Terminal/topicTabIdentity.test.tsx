@@ -106,7 +106,7 @@ beforeEach(() => {
 });
 afterEach(() => resetTerminalTabModel());
 
-describe("a terminal tab inside a Feature", () => {
+describe("a terminal tab inside a Topic", () => {
   it("wears one chip per member, each on its own Space tint", async () => {
     render(() => (
       <>

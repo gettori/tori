@@ -110,14 +110,14 @@ describe("topicSelection", () => {
 describe("workspaceKey and selectionRoot", () => {
   const unit = { kind: "unit" as const, folderPath: "/r/a", activeRoot: undefined };
 
-  it("keys a Feature by id and a unit by folder", () => {
+  it("keys a Topic by id and a unit by folder", () => {
     expect(workspaceKey(topicSelection(TOPIC, A))).toBe("topic:f1");
     expect(workspaceKey(unit)).toBe("/r/a");
     expect(workspaceKey({ folderPath: "/r/a" })).toBe("/r/a");
     expect(workspaceKey(null)).toBe("");
   });
 
-  it("roots a Feature at its active member, a unit at its folder, and never returns an empty string", () => {
+  it("roots a Topic at its active member, a unit at its folder, and never returns an empty string", () => {
     expect(selectionRoot(topicSelection(TOPIC, B))).toBe(B);
     expect(selectionRoot(unit)).toBe("/r/a");
     expect(selectionRoot({ kind: "unit", folderPath: "" })).toBeNull();
@@ -133,7 +133,7 @@ describe("workspaceKey and selectionRoot", () => {
     expect(isTopicKey(SHELLS_KEY)).toBe(false);
   });
 
-  it("spans the selected Feature's roots and nothing for an unselected one", () => {
+  it("spans the selected Topic's roots and nothing for an unselected one", () => {
     const sel = topicSelection(TOPIC, A);
     expect(workspaceFolders("topic:f1", sel)).toEqual([A, B]);
     expect(workspaceFolders("topic:other", sel)).toEqual([]);
@@ -168,7 +168,7 @@ describe("rootOf", () => {
 describe("tabUnderFolder", () => {
   const topicTab = (cwd: string) => ({ workspace: "topic:f1", cwd });
 
-  it("counts a Feature tab on the member folder it was spawned in", () => {
+  it("counts a Topic tab on the member folder it was spawned in", () => {
     expect(tabUnderFolder(topicTab("/w/api-auth/src"), "/w/api-auth")).toBe(true);
     expect(tabUnderFolder(topicTab("/w/api-auth"), "/w/api-auth/")).toBe(true);
     expect(tabUnderFolder(topicTab("/w/web-auth"), "/w/api-auth")).toBe(false);

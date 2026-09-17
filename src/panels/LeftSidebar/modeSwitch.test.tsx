@@ -86,7 +86,7 @@ function mount() {
 const click = (name: string) => fireEvent.click(screen.getByText(name));
 const segment = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
 
-describe("switching between Spaces and Features", () => {
+describe("switching between Spaces and Topics", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
@@ -104,7 +104,7 @@ describe("switching between Spaces and Features", () => {
     click("wave-3");
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
 
-    segment("Features");
+    segment("Topics");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     click("Auth");
     await waitFor(() => expect(sel()?.kind).toBe("topic"));
@@ -113,7 +113,7 @@ describe("switching between Spaces and Features", () => {
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
     expect(sel()?.kind).toBe("unit");
 
-    segment("Features");
+    segment("Topics");
     await waitFor(() => expect(sel()?.topicId).toBe("f1"));
   });
 
@@ -124,13 +124,13 @@ describe("switching between Spaces and Features", () => {
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
     onSelect.mockClear();
 
-    segment("Features");
+    segment("Topics");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     expect(onSelect).not.toHaveBeenCalled();
     expect(sel()?.folderPath).toBe(WAVE);
   });
 
-  it("leaves the selection alone when the remembered Feature is gone", async () => {
+  it("leaves the selection alone when the remembered Topic is gone", async () => {
     localStorage.setItem(
       "tori.selection-memory.v1",
       JSON.stringify({ spaces: {}, topic: { kind: "topic", topicId: "deleted", folderPath: WAVE } }),
@@ -141,7 +141,7 @@ describe("switching between Spaces and Features", () => {
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
     onSelect.mockClear();
 
-    segment("Features");
+    segment("Topics");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     expect(onSelect).not.toHaveBeenCalled();
   });

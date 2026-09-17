@@ -80,7 +80,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("a Feature as the selection", () => {
+describe("a Topic as the selection", () => {
   it("keys the pane envelope on topic:<id>, not on the active member's folder", async () => {
     localStorage.setItem("tori.selection.v1", JSON.stringify(storedTopic));
     render(() => <App />);
@@ -101,14 +101,14 @@ describe("a Feature as the selection", () => {
     expect(storedSelection().activeRoot).toBe(B);
   });
 
-  it("clears the selection when the Feature no longer exists", async () => {
+  it("clears the selection when the Topic no longer exists", async () => {
     localStorage.setItem("tori.selection.v1", JSON.stringify(storedTopic));
     topics = [];
     render(() => <App />);
     await waitFor(() => expect(storedSelection()).toBeNull());
   });
 
-  it("loads a selection stored before Features as a unit", async () => {
+  it("loads a selection stored before Topics as a unit", async () => {
     const { kind: _k, topicId: _f, ...unitish } = { ...storedTopic, folderPath: "/r/a", projectKind: "plain" };
     localStorage.setItem("tori.selection.v1", JSON.stringify(unitish));
     render(() => <App />);
@@ -118,7 +118,7 @@ describe("a Feature as the selection", () => {
   });
 });
 
-describe("a deleted Feature", () => {
+describe("a deleted Topic", () => {
   it("clears the selection and drops its pane tree and placements", async () => {
     const { PURGE_WORKSPACE, emitWith } = await import("./utils/events");
     localStorage.setItem("tori.selection.v1", JSON.stringify(storedTopic));

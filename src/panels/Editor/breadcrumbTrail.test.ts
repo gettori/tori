@@ -76,7 +76,7 @@ describe("the path half of the trail", () => {
     expect(pathCrumbs(null, null)).toEqual([]);
   });
 
-  it("starts at the member a Feature's file belongs to", () => {
+  it("starts at the member a Topic's file belongs to", () => {
     // The member root, not the active one: the trail for a background member's
     // file has to resolve against the folder that file is actually under.
     const MEMBER = "/space/proj/web";

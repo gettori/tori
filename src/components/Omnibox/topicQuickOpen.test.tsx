@@ -128,7 +128,7 @@ afterEach(() => {
   clearEditorState();
 });
 
-describe("quick-open inside a Feature", () => {
+describe("quick-open inside a Topic", () => {
   it("offers each member's package.json as its own row, named by its repo", async () => {
     open(topicSel("f1", [A, B]));
     // Every present member listed, not only the active one.
@@ -181,7 +181,7 @@ describe("quick-open inside a Feature", () => {
     await waitFor(() => expect(rowLabels()[0]).toBe("web/src/b.ts"));
   });
 
-  it("reads frecency under the Feature key the editor writes", async () => {
+  it("reads frecency under the Topic key the editor writes", async () => {
     // Noted under `topic:f1`, never under a member folder. Read by the old
     // `folderPath` key this record is invisible and there is no block at all.
     saveFrecency(note({}, "topic:f1", `${A}/src/a.ts`, "edit", Date.now()));

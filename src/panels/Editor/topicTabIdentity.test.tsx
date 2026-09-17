@@ -118,7 +118,7 @@ afterEach(() => {
   mounted = null;
 });
 
-describe("a file tab inside a Feature", () => {
+describe("a file tab inside a Topic", () => {
   it("names its member in the accessible name and keeps the file glyph beside the chip", async () => {
     openTabs("topic:f1", [FILE_A]);
     mount(topicSel);

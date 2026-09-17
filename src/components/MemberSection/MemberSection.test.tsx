@@ -93,8 +93,8 @@ describe("a member section", () => {
         <div>stray rows</div>
       </MemberSection>
     ));
-    const head = screen.getByRole("button", { name: /Outside this Feature/ });
-    expect(head.textContent).toBe("Outside this Feature");
+    const head = screen.getByRole("button", { name: /Outside this Topic/ });
+    expect(head.textContent).toBe("Outside this Topic");
     expect(screen.getByText("stray rows")).toBeTruthy();
   });
 });

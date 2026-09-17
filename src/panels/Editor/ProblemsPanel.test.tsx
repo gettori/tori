@@ -65,7 +65,7 @@ describe("a branch unit's problems", () => {
   });
 });
 
-describe("a Feature's problems", () => {
+describe("a Topic's problems", () => {
   const ROOTS = [member("api", API), member("web", WEB)];
 
   it("lists a file under the member it is in", () => {

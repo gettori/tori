@@ -87,7 +87,7 @@ async function mount(onActiveRoot?: (root: string) => void) {
   await waitFor(() => expect(names()).toEqual(["api", "web"]));
 }
 
-describe("the Feature record feed", () => {
+describe("the Topic record feed", () => {
   it("refetches on the emit, so a renamed member reaches the Toolbar chip", async () => {
     await mount();
     const before = reads();

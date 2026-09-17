@@ -1085,7 +1085,7 @@ describe("saved searches", () => {
   });
 });
 
-describe("inside a Feature", () => {
+describe("inside a Topic", () => {
   it("files history and saved searches under the workspace key, not the root it searched", async () => {
     mount({ workspace: "topic:f1" });
     await commit("here");
@@ -1658,7 +1658,7 @@ describe("member restriction", () => {
   it("has no chip row at all for a branch unit", async () => {
     mount();
     await waitFor(() => expect(bridge.calls.length).toBeGreaterThan(0));
-    expect(screen.queryByRole("group", { name: "Feature members" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Topic members" })).toBeNull();
   });
 
   it("has no axe violations", async () => {

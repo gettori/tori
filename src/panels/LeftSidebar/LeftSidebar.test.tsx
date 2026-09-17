@@ -229,7 +229,7 @@ describe("fan-out groups in the tree", () => {
   });
 });
 
-describe("the Spaces | Features mode", () => {
+describe("the Spaces | Topics mode", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     bridge.calls.length = 0;
@@ -271,20 +271,20 @@ describe("the Spaces | Features mode", () => {
     await expectNoAxeViolations(container);
   });
 
-  it("persists Features mode across a remount and unmounts the tree there", async () => {
+  it("persists Topics mode across a remount and unmounts the tree there", async () => {
     const first = sidebar();
     await screen.findByText("repo");
-    fireEvent.click(segment("Features"));
-    await waitFor(() => expect(pressed("Features")).toBe(true));
+    fireEvent.click(segment("Topics"));
+    await waitFor(() => expect(pressed("Topics")).toBe(true));
     expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("topics");
     expect(screen.queryByText("repo")).toBeNull();
     expect(first.container.querySelector("[data-topic-list]")).not.toBeNull();
-    await screen.findByText("No Features yet.");
+    await screen.findByText("No Topics yet.");
     await expectNoAxeViolations(first.container);
     first.unmount();
 
     const second = sidebar();
-    await waitFor(() => expect(pressed("Features")).toBe(true));
+    await waitFor(() => expect(pressed("Topics")).toBe(true));
     expect(second.container.querySelector("[data-topic-list]")).not.toBeNull();
     expect(screen.queryByText("repo")).toBeNull();
   });
@@ -293,7 +293,7 @@ describe("the Spaces | Features mode", () => {
     sidebar();
     await screen.findByText("repo");
     emit(TOGGLE_SIDEBAR_MODE);
-    await waitFor(() => expect(pressed("Features")).toBe(true));
+    await waitFor(() => expect(pressed("Topics")).toBe(true));
     emit(TOGGLE_SIDEBAR_MODE);
     await waitFor(() => expect(pressed("work")).toBe(true));
     await screen.findByText("repo");

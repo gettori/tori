@@ -422,10 +422,10 @@ export default function TopicList(props: {
         when={visible().length > 0}
         fallback={
           <div class="tree-empty">
-            <Show when={topics().length === 0} fallback={<p>No Feature matches the filter.</p>}>
-              <p>No Features yet.</p>
+            <Show when={topics().length === 0} fallback={<p>No Topic matches the filter.</p>}>
+              <p>No Topics yet.</p>
               <Button size="sm" variant="ghost" onClick={() => setDialog({})}>
-                Create a Feature
+                Create a Topic
               </Button>
             </Show>
           </div>
