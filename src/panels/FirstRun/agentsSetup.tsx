@@ -1,6 +1,6 @@
 import { Show, createEffect, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { agentHealth, agentHealthFor, ensureAgentHealthLoaded, refreshAgentHealth } from "../../utils/agentHealth";
+import { agentHealth, agentHealthFor, agentReady, ensureAgentHealthLoaded, refreshAgentHealth } from "../../utils/agentHealth";
 import { agents, ensureAdaptersLoaded } from "../../utils/agents";
 import { copyText } from "../../utils/clipboard";
 import type { OpenJob } from "../../utils/events";
@@ -14,8 +14,8 @@ type TerminalInstall = Extract<InstallRoute, { type: "terminal" }>;
 type TerminalLogin = Extract<LoginRoute, { type: "terminal" }>;
 type AgentJob = { job: OpenJob; agentId: string; verb: "install" | "signIn" };
 
-/** A factory rather than a component, because the modal's footer and rail read
- *  two of its answers: whether a job is running, and how many agents were found. */
+/** A factory rather than a component, because the rest of the modal reads what
+ *  it knows: whether a job is running, and which agents were found. */
 export function createAgentsSetup(opts: { home: () => string; onScreen: () => boolean }) {
   const [installs, setInstalls] = createSignal<Record<string, TerminalInstall>>({});
   const [logins, setLogins] = createSignal<Record<string, TerminalLogin>>({});
@@ -98,10 +98,18 @@ export function createAgentsSetup(opts: { home: () => string; onScreen: () => bo
     }
   }
 
+  const tally = () => {
+    const found = (agentHealth() ?? []).filter((h) => h.status !== "notFound");
+    return {
+      found: found.length,
+      ready: found.filter((h) => agentReady(h.id)).length,
+      signedIn: found.filter((h) => h.signIn === "signedIn").map((h) => h.label),
+    };
+  };
+
   const summary = () => {
-    const health = agentHealth();
-    if (!health) return null;
-    const found = health.filter((h) => h.status !== "notFound").length;
+    if (!agentHealth()) return null;
+    const { found } = tally();
     return found > 0 ? `${found} found` : "none found";
   };
 
@@ -124,5 +132,5 @@ export function createAgentsSetup(opts: { home: () => string; onScreen: () => bo
     />
   );
 
-  return { view, running, summary };
+  return { view, running, summary, tally };
 }

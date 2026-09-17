@@ -13,7 +13,7 @@ import AgentsStep, { AGENTS_LEAD, type Command } from "./steps/AgentsStep";
 import BaseFolderStep, { BASE_FOLDER_LEAD } from "./steps/BaseFolderStep";
 import HostsStep, { HOSTS_LEAD } from "./steps/HostsStep";
 import ProjectStep, { PROJECT_LABEL, PROJECT_LEAD, gitMissing } from "./steps/ProjectStep";
-import ReadyStep, { readyLead } from "./steps/ReadyStep";
+import ReadyStep, { readyLead, type ReadySummary } from "./steps/ReadyStep";
 import SpaceStep, { SPACE_LEAD, type SpaceMode } from "./steps/SpaceStep";
 import styles from "./FirstRun.module.css";
 
@@ -366,14 +366,46 @@ export const ProjectFound: Story = {
   ),
 };
 
-/** The summary before Tori opens. */
-export const Ready: Story = {
-  render: () => {
-    const summary = { root: ROOT, space: { name: "work", created: true } };
-    return (
-      <Shell current="ready" heading="Ready" lead={readyLead(summary)} primary="Open Tori" hint="Nothing was sent anywhere.">
-        <ReadyStep summary={summary} home={HOME} />
-      </Shell>
-    );
-  },
+function ReadyStory(props: { summary: ReadySummary }) {
+  return (
+    <Shell
+      current="ready"
+      heading="Ready"
+      lead={readyLead(props.summary)}
+      primary="Open Tori"
+      hint={props.summary.hosts.length > 0 ? null : "Nothing was sent anywhere."}
+    >
+      <ReadyStep summary={props.summary} home={HOME} />
+    </Shell>
+  );
+}
+
+/** Every optional step was taken. */
+export const ReadyAllDone: Story = {
+  render: () => (
+    <ReadyStory
+      summary={{
+        agents: { found: 3, ready: 2, signedIn: ["Claude", "Codex"] },
+        root: ROOT,
+        space: { name: "work", created: true },
+        hosts: [{ host: "github.com", login: "octocat" }],
+        project: { made: "work/api", count: 1 },
+      }}
+    />
+  ),
+};
+
+/** No agent, and every optional step skipped. */
+export const ReadyAllSkipped: Story = {
+  render: () => (
+    <ReadyStory
+      summary={{
+        agents: { found: 0, ready: 0, signedIn: [] },
+        root: ROOT,
+        space: { name: "work", created: false },
+        hosts: [],
+        project: { made: null, count: 0 },
+      }}
+    />
+  ),
 };

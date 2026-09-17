@@ -1341,7 +1341,7 @@ export default function LeftSidebar(props: {
   }
 
   // Pick a base folder and set it as THE single root (replacing any existing).
-  // Cancel is a no-op (the empty state with this action stays put), never a loop.
+  // Cancel is a no-op, never a loop.
   // loadConfig() re-runs roots_watch_start, tearing down the old watch and
   // reinstalling it for the new root.
   async function addBaseFolder() {
@@ -3193,24 +3193,6 @@ export default function LeftSidebar(props: {
               </div>
             )}
           </Show>
-        </Show>
-
-        <Show when={config()?.spaces.length === 0}>
-          <div class="tree-empty">
-            <Show
-              when={(config()?.roots?.length ?? 0) === 0}
-              fallback={
-                <>
-                  <p>No projects found under your base folders.</p>
-                  <Button onClick={addSpace}>+ Create space</Button>
-                  <Button variant="ghost" onClick={addBaseFolder}>Add another base folder</Button>
-                </>
-              }
-            >
-              <p>Welcome to Tori. Add a base folder to discover your projects.</p>
-              <Button onClick={addBaseFolder}>Add base folder</Button>
-            </Show>
-          </div>
         </Show>
       </OverlayScroll>
 

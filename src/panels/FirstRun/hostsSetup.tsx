@@ -12,6 +12,7 @@ export function createHostsSetup(opts: { onScreen: () => boolean }) {
   const [hosts, setHosts] = createSignal<ForgeHost[]>([]);
   const [waitingFor, setWaitingFor] = createSignal<Cloud | null>(null);
   const [failure, setFailure] = createSignal<{ cloud: Cloud; failure: Failure } | null>(null);
+  const [signInTried, setSignInTried] = createSignal(false);
 
   const device = createDeviceFlow({
     onAuthorized: ({ accountId }) => {
@@ -59,6 +60,7 @@ export function createHostsSetup(opts: { onScreen: () => boolean }) {
   }
 
   function signIn(cloud: Cloud) {
+    setSignInTried(true);
     setFailure(null);
     setWaitingFor(cloud);
     // An account the host stopped accepting is signed in again in place, not
@@ -72,8 +74,13 @@ export function createHostsSetup(opts: { onScreen: () => boolean }) {
     setWaitingFor(null);
   }
 
+  const signedIn = () =>
+    (Object.keys(CLOUDS) as Cloud[]).flatMap((cloud) =>
+      signedInOn(hosts(), cloud).map((a) => ({ host: cloud, login: a.login ?? a.label })),
+    );
+
   const summary = () => {
-    const connected = (Object.keys(CLOUDS) as Cloud[]).filter((c) => signedInOn(hosts(), c).length > 0);
+    const connected = [...new Set(signedIn().map((a) => a.host))];
     return connected.length > 0 ? connected.join(", ") : null;
   };
 
@@ -97,5 +104,5 @@ export function createHostsSetup(opts: { onScreen: () => boolean }) {
     />
   );
 
-  return { view, summary };
+  return { view, summary, signedIn, signInTried };
 }

@@ -56,6 +56,7 @@ const [config, setConfig] = createSignal<FirstRunConfig | null>(null);
 const [introSeen, setIntroSeen] = createSignal<boolean | null>(null);
 const [opened, setOpened] = createSignal(false);
 const [finished, setFinished] = createSignal(false);
+const [metBefore, setMetBefore] = createSignal(false);
 
 export { config as firstRunConfig };
 
@@ -77,11 +78,16 @@ export function firstRunOpen(): boolean {
 
 createRoot(() => {
   createEffect(() => {
-    if (config() === null || gateMet(config())) return;
+    if (config() === null) return;
+    if (gateMet(config())) return void setMetBefore(true);
     setOpened(true);
     setFinished(false);
   });
 });
+
+export function firstRunGateLost(): boolean {
+  return metBefore();
+}
 
 let requested = false;
 

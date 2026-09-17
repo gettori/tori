@@ -3,7 +3,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../components/Button/Button";
 import { ACTIVATE_SPACE, TOAST, emitWith, type ActivateSpace, type ToastEvent } from "../../utils/events";
-import { finishFirstRun, firstRunConfig, firstRunView, markIntroSeen, reloadFirstRunConfig } from "../../utils/firstRun";
+import {
+  finishFirstRun,
+  firstRunConfig,
+  firstRunGateLost,
+  firstRunView,
+  gateMet,
+  markIntroSeen,
+  reloadFirstRunConfig,
+} from "../../utils/firstRun";
 import { badName, shortHome } from "../../utils/names";
 import { createAgentsSetup } from "./agentsSetup";
 import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
@@ -42,10 +50,11 @@ export default function FirstRun() {
   const introThisSession = firstRunView() === "intro";
   const [page, setPage] = createSignal<"intro" | "setup">(introThisSession ? "intro" : "setup");
   const [slide, setSlide] = createSignal(0);
-  const [step, setStep] = createSignal<StepId>("agents");
+  const first: StepId = firstRunGateLost() ? "base" : "agents";
+  const [step, setStep] = createSignal<StepId>(first);
   // The furthest step reached, so the rail can go back but never ahead of
   // what the earlier steps have answered.
-  const [reached, setReached] = createSignal(0);
+  const [reached, setReached] = createSignal(ORDER.indexOf(first));
   const [home, setHome] = createSignal("");
   const [busy, setBusy] = createSignal(false);
   const [spaceMode, setSpaceMode] = createSignal<SpaceMode>("pick");
@@ -81,8 +90,16 @@ export default function FirstRun() {
   const running = () => agentsSetup.running() || projectSetup.running();
   const summary = (): ReadySummary | null => {
     const r = root();
-    const s = spaceName();
-    return r && s ? { root: r, space: { name: s, created: s === created() } } : null;
+    const s = spaces().find((x) => x.name === spaceName());
+    if (!r || !s) return null;
+    const made = projectSetup.made();
+    return {
+      agents: agentsSetup.tally(),
+      root: r,
+      space: { name: s.name, created: s.name === created() },
+      hosts: hostsSetup.signedIn(),
+      project: { made: made ? `${made.space.name}/${made.name}` : null, count: s.projects.length },
+    };
   };
 
   function fail(e: unknown) {
@@ -195,6 +212,8 @@ export default function FirstRun() {
         }
         heading={HEADING[step()]}
         required={step() === "base" || step() === "space"}
+        // Closing mid-job would kill the job with the terminal.
+        onDismiss={gateMet(config()) && !running() ? finishFirstRun : undefined}
         lead={
           <Switch>
             <Match when={step() === "agents"}>{AGENTS_LEAD}</Match>
@@ -220,7 +239,7 @@ export default function FirstRun() {
                 Skip
               </Button>
             </Match>
-            <Match when={step() === "ready"}>Nothing was sent anywhere.</Match>
+            <Match when={step() === "ready" && !hostsSetup.signInTried()}>Nothing was sent anywhere.</Match>
           </Switch>
         }
         footerRight={

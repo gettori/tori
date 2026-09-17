@@ -872,8 +872,8 @@ function App() {
       requestAnimationFrame(() => emit(REFIT_PANES));
   });
 
-  // Every window hotkey is held while first run is up: the modal cannot be
-  // dismissed, so anything a key opened would land behind it.
+  // Every window hotkey is held while first run is up: anything a key opened
+  // would land behind the modal.
   function onKeyDown(e: KeyboardEvent) {
     if (firstRunOpen()) return;
     if (dispatchWindowHotkey(e)) e.preventDefault();
