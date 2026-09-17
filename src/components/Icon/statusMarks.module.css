@@ -1,0 +1,233 @@
+/* The animated half of the status marks. The ink is the chip's own hue, from
+   `currentColor`; what passes through it (the pen's tip, the spark on a hopping
+   dot) is the brighter foreground, the same split the git marks make. */
+@layer components {
+  .mark {
+    --sm-once: 1000ms;
+    --sm-cycle: 2600ms;
+  }
+
+  /* Set outright rather than inherited, for the reason gitMarks gives: the
+     colour must not depend on when a browser resolves an inherited keyword. */
+  .tip,
+  .spark {
+    stroke: var(--fg-default);
+    opacity: 0;
+  }
+
+  .ink {
+    stroke-dasharray: 100 200;
+  }
+  .tip {
+    stroke-dasharray: 15 200;
+  }
+
+  .mark[data-animate="true"] .ink {
+    animation:
+      sm-draw var(--sm-once) cubic-bezier(0.35, 0, 0.25, 1) 1 both,
+      sm-ink var(--sm-once) ease-in-out 1 both;
+  }
+  .mark[data-animate="true"] .tip {
+    animation:
+      sm-trace var(--sm-once) cubic-bezier(0.35, 0, 0.25, 1) 1 both,
+      sm-light var(--sm-once) ease-in-out 1 both;
+  }
+  .mark[data-animate="true"] .point {
+    animation: sm-point var(--sm-once) ease-in-out 1 both;
+  }
+
+  @keyframes sm-draw {
+    from {
+      stroke-dashoffset: 105;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes sm-trace {
+    from {
+      stroke-dashoffset: 20;
+    }
+    to {
+      stroke-dashoffset: -85;
+    }
+  }
+
+  @keyframes sm-ink {
+    0% {
+      opacity: 0;
+    }
+    12% {
+      opacity: 0.7;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes sm-light {
+    0% {
+      opacity: 0;
+    }
+    12%,
+    62% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes sm-point {
+    0%,
+    48% {
+      opacity: 0;
+    }
+    78%,
+    100% {
+      opacity: 1;
+    }
+  }
+
+  .left {
+    transform-origin: 4.5px 12px;
+  }
+  .right {
+    transform-origin: 19.5px 12px;
+  }
+  .dot1 {
+    transform-origin: 8px 12px;
+  }
+  .dot2 {
+    transform-origin: 12px 12px;
+  }
+  .dot3 {
+    transform-origin: 16px 12px;
+  }
+
+  .mark[data-animate="true"] .left {
+    animation: sm-spring-left var(--sm-cycle) cubic-bezier(0.4, 0, 0.2, 1) infinite both;
+  }
+  .mark[data-animate="true"] .right {
+    animation: sm-spring-right var(--sm-cycle) cubic-bezier(0.4, 0, 0.2, 1) infinite both;
+  }
+  .mark[data-animate="true"] .dot {
+    animation:
+      sm-hop var(--sm-cycle) ease-in-out infinite both,
+      sm-hop-ink var(--sm-cycle) ease-in-out infinite both;
+  }
+  .mark[data-animate="true"] .spark {
+    animation:
+      sm-hop var(--sm-cycle) ease-in-out infinite both,
+      sm-hop-spark var(--sm-cycle) ease-in-out infinite both;
+  }
+  .mark[data-animate="true"] .dot2 {
+    animation-delay: 160ms;
+  }
+  .mark[data-animate="true"] .dot3 {
+    animation-delay: 320ms;
+  }
+
+  /* Every stop below is a time over the 2600ms cycle: the motion ends at 1400ms
+     and the remaining 1200ms is the gap. Changing `--sm-cycle` alone rescales
+     the motion with it, so a new gap means recomputing the stops. */
+  @keyframes sm-spring-left {
+    0%,
+    45.69231%,
+    100% {
+      transform: translateX(0) scale(1);
+    }
+    9% {
+      transform: translateX(1.25px) scale(0.78, 0.82);
+    }
+    17.30769% {
+      transform: translateX(-0.3px) scale(1.12, 1.14);
+    }
+    25.61538% {
+      transform: translateX(0.35px) scale(0.95, 0.96);
+    }
+    33.92308% {
+      transform: translateX(-0.1px) scale(1.03, 1.03);
+    }
+  }
+
+  @keyframes sm-spring-right {
+    0%,
+    48.46154%,
+    100% {
+      transform: translateX(0) scale(1);
+    }
+    11.76923% {
+      transform: translateX(-1.25px) scale(0.78, 0.82);
+    }
+    20.07692% {
+      transform: translateX(0.3px) scale(1.12, 1.14);
+    }
+    28.38462% {
+      transform: translateX(-0.35px) scale(0.95, 0.96);
+    }
+    36.69231% {
+      transform: translateX(0.1px) scale(1.03, 1.03);
+    }
+  }
+
+  @keyframes sm-hop {
+    0%,
+    11.07692%,
+    41.53846%,
+    100% {
+      transform: translateY(0) scale(1);
+    }
+    15.92308% {
+      transform: translateY(0.6px) scale(1.15, 0.75);
+    }
+    23.53846% {
+      transform: translateY(-2.5px) scale(1.3);
+    }
+    31.84615% {
+      transform: translateY(0.65px) scale(1.2, 0.8);
+    }
+    36.69231% {
+      transform: translateY(-0.4px) scale(1);
+    }
+  }
+
+  @keyframes sm-hop-ink {
+    0%,
+    11.07692%,
+    41.53846%,
+    100% {
+      opacity: 0.55;
+    }
+    15.92308%,
+    36.69231% {
+      opacity: 0.8;
+    }
+    23.53846%,
+    31.84615% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes sm-hop-spark {
+    0%,
+    15.92308%,
+    36.69231%,
+    100% {
+      opacity: 0;
+    }
+    23.53846% {
+      opacity: 1;
+    }
+    31.84615% {
+      opacity: 0.6;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mark[data-animate="true"] * {
+      animation: none;
+    }
+  }
+}
