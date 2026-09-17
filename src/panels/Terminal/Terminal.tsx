@@ -394,7 +394,7 @@ export default function Terminal(props: {
     });
   }
 
-  // A `feature:<id>` workspace spans its member folders, so a per-folder
+  // A `topic:<id>` workspace spans its member folders, so a per-folder
   // listing is unioned. Only the selected Topic's roots are known here; a
   // Topic that is not selected lists nothing.
   async function listSessionsFor<T>(ws: string): Promise<T[]> {
@@ -702,7 +702,7 @@ export default function Terminal(props: {
     const ws = activeWorkspace() ?? "";
     const sel = props.selected;
     if (sel && workspaceKey(sel) === ws) {
-      if (sel.kind === "feature") return [sel.featureName ?? sel.projectName, sel.branch];
+      if (sel.kind === "topic") return [sel.topicName ?? sel.projectName, sel.branch];
       return [sel.spaceName, sel.projectName, sel.branch];
     }
     return ws.split("/").filter(Boolean).slice(-2);
@@ -1796,7 +1796,7 @@ export default function Terminal(props: {
    * Keyed by the **workspace**, which is what a chat lock writes under
    * (`ChatView` has only the tab's workspace to write with) and what `ChatDraft`
    * reads its remembered model under. For a plain folder the two spellings are
-   * one string; for a Topic they are `feature:<id>` and the active root, so
+   * one string; for a Topic they are `topic:<id>` and the active root, so
    * reading by root here meant a Topic's memory was written where nothing
    * looked for it.
    */
@@ -2163,7 +2163,7 @@ export default function Terminal(props: {
   // The same shared resource the editor reads, not a second one: `list_topics`
   // is fetched once per generation module-wide, so two panels asking cannot end
   // up drawing two different member sets during a refetch.
-  const topicId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
+  const topicId = () => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null);
   const members = createTopicMembers(topicId);
 
   /** Which member a tab's shell is sitting in. A terminal has no file, so the

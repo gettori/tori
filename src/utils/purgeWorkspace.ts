@@ -1,9 +1,9 @@
 // Sweep a workspace key out of every per-workspace store. A Topic's key
-// (`feature:<id>`) is not a path, so the path purge cannot reach it: the
+// (`topic:<id>`) is not a path, so the path purge cannot reach it: the
 // stores that hold their record live drop it on PURGE_WORKSPACE, and the ones
 // that only load at mount are rewritten here so a relaunch does not revive it.
 //
-// A Topic is swept under more than one key. Tabs and breakpoints key on `feature:<id>`, but the three debug stores key on the *member root*
+// A Topic is swept under more than one key. Tabs and breakpoints key on `topic:<id>`, but the three debug stores key on the *member root*
 // (that is what `DebugPanel` passes and what a paused session's `projectPath`
 // is compared against), so those records survive the Topic key going. The
 // roots therefore come in from the caller: `delete_topic` has already run by

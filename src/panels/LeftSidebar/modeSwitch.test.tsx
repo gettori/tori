@@ -107,14 +107,14 @@ describe("switching between Spaces and Features", () => {
     segment("Features");
     await waitFor(() => expect(screen.getByText("Auth")).toBeTruthy());
     click("Auth");
-    await waitFor(() => expect(sel()?.kind).toBe("feature"));
+    await waitFor(() => expect(sel()?.kind).toBe("topic"));
 
     segment("work");
     await waitFor(() => expect(sel()?.folderPath).toBe(WAVE));
     expect(sel()?.kind).toBe("unit");
 
     segment("Features");
-    await waitFor(() => expect(sel()?.featureId).toBe("f1"));
+    await waitFor(() => expect(sel()?.topicId).toBe("f1"));
   });
 
   it("leaves the selection alone when the other mode has nothing remembered", async () => {
@@ -133,7 +133,7 @@ describe("switching between Spaces and Features", () => {
   it("leaves the selection alone when the remembered Feature is gone", async () => {
     localStorage.setItem(
       "tori.selection-memory.v1",
-      JSON.stringify({ spaces: {}, feature: { kind: "feature", featureId: "deleted", folderPath: WAVE } }),
+      JSON.stringify({ spaces: {}, topic: { kind: "topic", topicId: "deleted", folderPath: WAVE } }),
     );
     const { sel, onSelect } = mount();
     await waitFor(() => expect(screen.getByText("wave-3")).toBeTruthy());

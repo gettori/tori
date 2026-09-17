@@ -48,9 +48,9 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}
 const { default: Toolbar } = await import("./Toolbar");
 
 const topicSel = (activeRoot: string) => ({
-  kind: "feature",
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic",
+  topicId: "f1",
+  topicName: "Auth",
   roots: [A, B],
   activeRoot,
   spaceName: "",
@@ -58,7 +58,7 @@ const topicSel = (activeRoot: string) => ({
   projectPath: activeRoot,
   folderPath: activeRoot,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 });
 const unitSel = {
   kind: "unit",
@@ -82,9 +82,9 @@ const sessionSel = {
 };
 
 const brokenSel = {
-  kind: "feature",
-  featureId: "f2",
-  featureName: "Broken",
+  kind: "topic",
+  topicId: "f2",
+  topicName: "Broken",
   roots: [],
   activeRoot: null,
   spaceName: "",
@@ -92,7 +92,7 @@ const brokenSel = {
   projectPath: "",
   folderPath: "",
   branch: "feat/broken",
-  projectKind: "feature",
+  projectKind: "topic",
 };
 
 const chip = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;

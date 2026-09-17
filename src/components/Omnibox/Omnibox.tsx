@@ -194,13 +194,13 @@ export default function Omnibox(props: {
    *  repo that is not the one in front of you. */
   const roots = (): string[] => {
     const sel = props.selected;
-    if (sel?.kind === "feature") return sel.roots ?? [];
+    if (sel?.kind === "topic") return sel.roots ?? [];
     const at = root();
     return at ? [at] : [];
   };
 
   const topicId = () =>
-    props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null;
+    props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null;
   const members = createTopicMembers(topicId);
   // One map rather than a `memberFor` per row: the untyped list draws hundreds,
   // and a member's key is the very root the rows already carry.
@@ -212,7 +212,7 @@ export default function Omnibox(props: {
   // freezing `now` with it keeps the order from drifting under the cursor while
   // someone types.
   //
-  // Keyed the way the editor writes it: `feature:<id>` for a Topic, whose
+  // Keyed the way the editor writes it: `topic:<id>` for a Topic, whose
   // members' files would otherwise be filed under whichever one was in front.
   const openedAt = Date.now();
   const stats = loadFrecency(openedAt)[workspaceKey(props.selected)] ?? {};

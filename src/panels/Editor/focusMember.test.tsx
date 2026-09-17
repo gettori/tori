@@ -126,9 +126,9 @@ const dap = await import("../../utils/dapSessions");
 const store = await import("../../utils/debugStore");
 
 const topicSel = (activeRoot: string) => ({
-  kind: "feature" as const,
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic" as const,
+  topicId: "f1",
+  topicName: "Auth",
   roots: [A, B],
   activeRoot,
   spaceName: "",
@@ -136,7 +136,7 @@ const topicSel = (activeRoot: string) => ({
   projectPath: activeRoot,
   folderPath: activeRoot,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 });
 
 const unitSel = {
@@ -289,10 +289,10 @@ describe("starting a run inside a Feature", () => {
     await waitFor(() =>
       expect(JSON.parse(localStorage.getItem("tori.debugLastTarget") ?? "{}")).toHaveProperty(A),
     );
-    // Under the member's own folder, not under `feature:f1`: two members of one
+    // Under the member's own folder, not under `topic:f1`: two members of one
     // Topic debug two different programs.
     const stored = JSON.parse(localStorage.getItem("tori.debugLastTarget") ?? "{}");
-    expect(stored).not.toHaveProperty("feature:f1");
+    expect(stored).not.toHaveProperty("topic:f1");
     expect(stored).not.toHaveProperty(B);
   });
 });
@@ -301,7 +301,7 @@ describe("what the Debug pane writes", () => {
   it("files a watch under the member the file in front is in", async () => {
     // The watch store keys on the member root, and a paused session's own
     // `projectPath` is compared against it: keeping a Topic's members apart
-    // is the whole reason it is not keyed on `feature:<id>`.
+    // is the whole reason it is not keyed on `topic:<id>`.
     await mountEditor();
     await openFile(`${B}/src/b.ts`);
     showMode("debug");
@@ -315,7 +315,7 @@ describe("what the Debug pane writes", () => {
     });
     const stored = JSON.parse(localStorage.getItem("tori.watches") ?? "{}");
     expect(stored).not.toHaveProperty(A);
-    expect(stored).not.toHaveProperty("feature:f1");
+    expect(stored).not.toHaveProperty("topic:f1");
   });
 });
 

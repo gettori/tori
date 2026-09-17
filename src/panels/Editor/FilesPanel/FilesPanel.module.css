@@ -1,4 +1,4 @@
-/* The Files tab: the filter row (member chips first, inside a Feature), then
+/* The Files tab: the filter row (member chips first, inside a Topic), then
    the stacked sections, VS Code Explorer style. */
 .filesPanel {
   flex: 1;

@@ -66,9 +66,9 @@ const { default: Editor } = await import("./Editor");
 const { default: PaneView } = await import("../../tabs/PaneView");
 
 const topicSel = {
-  kind: "feature" as const,
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic" as const,
+  topicId: "f1",
+  topicName: "Auth",
   roots: [A],
   activeRoot: A,
   spaceName: "",
@@ -76,7 +76,7 @@ const topicSel = {
   projectPath: A,
   folderPath: A,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 };
 
 const unitSel = {
@@ -120,7 +120,7 @@ afterEach(() => {
 
 describe("a file tab inside a Feature", () => {
   it("names its member in the accessible name and keeps the file glyph beside the chip", async () => {
-    openTabs("feature:f1", [FILE_A]);
+    openTabs("topic:f1", [FILE_A]);
     mount(topicSel);
     const tab = await screen.findByRole("tab", { name: NAMED("api", "a.txt") });
     // Composed, not substituted: the chip says which repo, the seti glyph still
@@ -132,7 +132,7 @@ describe("a file tab inside a Feature", () => {
   });
 
   it("keeps the chip on a member whose worktree is gone, and wears the state", async () => {
-    openTabs("feature:f1", [FILE_B]);
+    openTabs("topic:f1", [FILE_B]);
     mount(topicSel);
     const tab = await screen.findByRole("tab", { name: NAMED("web", "b.txt") });
     expect(tab.querySelector("[data-chip]")?.getAttribute("data-state")).toBe("worktree-missing");
@@ -143,7 +143,7 @@ describe("a file tab inside a Feature", () => {
     // handed to it, and this is the one line that says where that member comes
     // from. The file is in the background member, so a trail resolved against
     // `activeRoot` would collapse to the basename.
-    openTabs("feature:f1", [FILE_B]);
+    openTabs("topic:f1", [FILE_B]);
     mount(topicSel);
     const crumbs = within(await screen.findByRole("navigation", { name: "Breadcrumbs" }));
     await waitFor(() => expect(crumbs.getByRole("button", { name: "web" })).toBeTruthy());
@@ -168,7 +168,7 @@ describe("a file tab inside a Feature", () => {
   it("spells out <repo> / <rel path> on every overflow row", async () => {
     // 150px fits one 120px tab once the +N button is reserved, so two collapse.
     setTabBarWidth(150);
-    openTabs("feature:f1", [FILE_A, FILE_B, DEEP_A]);
+    openTabs("topic:f1", [FILE_A, FILE_B, DEEP_A]);
     mount(topicSel);
     pointerClick(await screen.findByRole("button", { name: "2 more" }));
     const menu = await waitFor(() => screen.getByRole("menu"));

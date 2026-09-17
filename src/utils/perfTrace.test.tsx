@@ -30,13 +30,13 @@ beforeEach(() => {
 
 describe("traceSettle", () => {
   it("closes a Feature span once both legs land", () => {
-    traceSwitchStart("feature", "feature:f1");
+    traceSwitchStart("topic", "topic:f1");
     tracePaint();
-    traceSettle("tree", "feature:f1");
-    traceSettle("git", "feature:f1");
+    traceSettle("tree", "topic:f1");
+    traceSettle("git", "topic:f1");
     traceFlush();
     const [row] = rows();
-    expect(row.kind).toBe("feature");
+    expect(row.kind).toBe("topic");
     expect(typeof row.paint).toBe("number");
     expect(typeof row.settled).toBe("number");
   });

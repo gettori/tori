@@ -116,14 +116,14 @@ export function LayoutIllustration() {
     { label: "Project", level: "project" },
     { label: "Branch or worktree", level: "worktree" },
   ];
-  const tree: { label: string; path: string; depth: number; level: Level; feature?: string }[] = [
+  const tree: { label: string; path: string; depth: number; level: Level; topic?: string }[] = [
     { label: "~/Projects", path: "~/Projects", depth: 0, level: "folder" },
     { label: "work", path: "~/Projects/work", depth: 1, level: "folder" },
     { label: "api", path: "~/Projects/work/api", depth: 2, level: "project" },
     { label: "main", path: "~/Projects/work/api/main", depth: 3, level: "worktree" },
-    { label: "feat/webhooks", path: "~/Projects/work/api/feat/webhooks", depth: 3, level: "worktree", feature: "webhooks" },
+    { label: "feat/webhooks", path: "~/Projects/work/api/feat/webhooks", depth: 3, level: "worktree", topic: "webhooks" },
     { label: "web", path: "~/Projects/work/web", depth: 2, level: "project" },
-    { label: "feat/webhooks", path: "~/Projects/work/web/feat/webhooks", depth: 3, level: "worktree", feature: "webhooks" },
+    { label: "feat/webhooks", path: "~/Projects/work/web/feat/webhooks", depth: 3, level: "worktree", topic: "webhooks" },
     { label: "personal", path: "~/Projects/personal", depth: 1, level: "folder" },
     { label: "blog", path: "~/Projects/personal/blog", depth: 2, level: "project" },
     { label: "main", path: "~/Projects/personal/blog/main", depth: 3, level: "worktree" },
@@ -146,7 +146,7 @@ export function LayoutIllustration() {
             <div class={styles.pathRow} data-level={n.level} style={{ "--depth": n.depth }}>
               <LevelGlyph level={n.level} path={n.path} />
               {n.label}
-              <Show when={n.feature}>{(f) => <span class={styles.featureChip}>in {f()}</span>}</Show>
+              <Show when={n.topic}>{(f) => <span class={styles.topicChip}>in {f()}</span>}</Show>
             </div>
           )}
         </For>

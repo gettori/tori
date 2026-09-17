@@ -15,7 +15,7 @@ export type LiveTab = {
   // "3 tabs are running here" must include the build somebody kicked off, or a
   // checkout confirm undercounts what it is about to disturb.
   kind: "shell" | "agent" | "command" | "chat" | "task";
-  // Where the tab was spawned. A Topic tab's `workspace` is `feature:<id>`,
+  // Where the tab was spawned. A Topic tab's `workspace` is `topic:<id>`,
   // not a folder, so the cwd is the only path a Spaces row can count it by.
   cwd?: string;
   sessionId?: string;
