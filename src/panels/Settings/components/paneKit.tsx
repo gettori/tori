@@ -141,6 +141,10 @@ export type PaneProps = {
    *  Topic. Read by the Agents pane, whose file actions open an editor
    *  tab and so need a workspace to open it in. */
   projectRoot?: string | null;
+  /** Shut the panel. For an action whose result is the workspace itself
+   *  changing, where staying open leaves a modal over a screen the user has
+   *  just replaced. Only Advanced uses it. */
+  onClose?: () => void;
 };
 
 /** The DOM id of a setting's row, so a palette deep link can find it. Derived
