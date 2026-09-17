@@ -25,6 +25,25 @@ export function randomAppearance(): Appearance {
   };
 }
 
+/** How many icons the picker rests on.
+ *
+ *  All of them at once is a wall you scroll past rather than a set you read,
+ *  and it is the tallest thing in a dialog whose only required field is the
+ *  name. A short shelf says what an icon here looks like; the field beside it
+ *  is how you reach a particular one, which is the only way anyone finds one
+ *  in a set this size anyway. */
+const SHELF = 20;
+
+/** `count` icons drawn from the set without repeats. */
+function shelfOf(count: number): typeof PICKER_ICONS {
+  const pool = [...PICKER_ICONS];
+  const out: typeof PICKER_ICONS = [];
+  while (out.length < count && pool.length) {
+    out.push(...pool.splice(Math.floor(Math.random() * pool.length), 1));
+  }
+  return out;
+}
+
 type Picker = "" | "color" | "icon";
 
 /**
@@ -50,6 +69,12 @@ export default function SpaceAppearance(props: {
   onChange: (next: Appearance) => void;
 }) {
   const [open, setOpen] = createSignal<Picker>("");
+  // Mirrors the grid's own query, which it does not publish otherwise, so the
+  // "+N more" line can go when a search is what is on screen.
+  const [iconQuery, setIconQuery] = createSignal("");
+  // Drawn once for the life of the dialog. Per keystroke, or per render, would
+  // reshuffle the shelf under the pointer on the way to a tile.
+  const shelf = shelfOf(SHELF);
   let colorChip: HTMLButtonElement | undefined;
   let iconChip: HTMLButtonElement | undefined;
   let colorPanel: HTMLElement | undefined;
@@ -68,7 +93,24 @@ export default function SpaceAppearance(props: {
   const glyph = () => resolveIcon(props.value.icon);
   const mark = () => spaceInitials(props.name);
 
-  const toggle = (which: Picker) => setOpen((now) => (now === which ? "" : which));
+  // What the grid shows at rest, which is the shelf with the chosen icon forced
+  // into it: a reroll lands anywhere in the set, and a picker showing nothing
+  // selected reads as having lost the choice rather than as not showing it.
+  const resting = () => {
+    const chosen = props.value.icon;
+    if (!chosen || shelf.some((e) => e.name === chosen)) return shelf;
+    const entry = PICKER_ICONS.find((e) => e.name === chosen);
+    return entry ? [entry, ...shelf.slice(0, SHELF - 1)] : shelf;
+  };
+  const hidden = () => PICKER_ICONS.length - resting().length;
+
+  // The query resets with the panel, because the grid is a fresh component each
+  // time it opens; this mirror outlives it and would otherwise reopen claiming
+  // a search that is no longer in the field.
+  const toggle = (which: Picker) => {
+    setIconQuery("");
+    setOpen((now) => (now === which ? "" : which));
+  };
   const set = (patch: Partial<Appearance>) => {
     props.onChange({ ...props.value, ...patch });
     setOpen("");
@@ -192,7 +234,7 @@ export default function SpaceAppearance(props: {
                 content: <span class={styles.iconNone}>{mark()}</span>,
               }}
               tiles={(query) =>
-                searchIcons(query).map((entry) => ({
+                (query.trim() ? searchIcons(query) : resting()).map((entry) => ({
                   value: entry.name,
                   label: entry.name,
                   content: <Icon icon={entry.icon} />,
@@ -202,8 +244,14 @@ export default function SpaceAppearance(props: {
                 label: "Search icons",
                 placeholder: "Search icons",
                 ref: (el) => (iconSearch = el),
+                onQuery: setIconQuery,
               }}
             />
+            {/* Only at rest. During a search the grid is showing every match,
+                so there is no remainder to name. */}
+            <Show when={!iconQuery().trim() && hidden() > 0}>
+              <div class={styles.pickerMore}>+{hidden()} more, search to reach them</div>
+            </Show>
           </div>
         </Popover>
       </Show>

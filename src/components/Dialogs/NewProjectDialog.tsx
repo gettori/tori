@@ -94,6 +94,7 @@ export default function NewProjectDialog(props: {
       <div class={styles.spaceForm} onKeyDown={onKeyDown}>
         <div>
           <SegmentedControl
+            class={styles.modeSeg}
             aria-label="What to create"
             options={segs}
             value={mode()}
