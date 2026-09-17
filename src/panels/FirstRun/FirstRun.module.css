@@ -76,7 +76,8 @@
     align-items: flex-start;
     gap: var(--tori-space-4);
     width: 100%;
-    padding: var(--tori-space-4);
+    padding: var(--tori-space-4) var(--tori-space-4) var(--tori-space-4) var(--tori-space-5);
+    margin-bottom: 1px;
     border: 0;
     border-radius: var(--tori-radius-md);
     background: transparent;
@@ -90,16 +91,24 @@
     cursor: pointer;
   }
   .step:not(:disabled):hover {
-    background: var(--neutral-subtle);
+    background: linear-gradient(to right, var(--neutral-hover), transparent);
+    border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
   }
   .step:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px var(--brand-ring);
   }
+  /* The sidebar's selected-row recipe, as the Settings rail wears it
+     (`.railItemActive`), so all three mark "here" the same way. */
   .stepCurrent,
   .stepCurrent:not(:disabled):hover {
-    background: var(--neutral-hover);
+    background:
+      linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
+        var(--tori-border-thick) 100% no-repeat,
+      linear-gradient(to right, var(--brand-subtle), transparent);
+    border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
     color: var(--fg-default);
+    font-weight: 500;
   }
 
   .num {

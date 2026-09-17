@@ -324,7 +324,7 @@
     align-items: baseline;
     gap: var(--tori-space-4);
     width: 100%;
-    padding: var(--tori-space-4);
+    padding: var(--tori-space-4) var(--tori-space-4) var(--tori-space-4) var(--tori-space-5);
     border: 0;
     border-radius: var(--tori-radius-md);
     background: transparent;
@@ -336,16 +336,23 @@
     cursor: pointer;
   }
   .slide:hover {
-    background: var(--neutral-subtle);
+    background: linear-gradient(to right, var(--neutral-hover), transparent);
+    border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
   }
   .slide:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px var(--brand-ring);
   }
+  /* Same selected-row recipe as the setup steps and the Settings rail. */
   .slideOn,
   .slideOn:hover {
-    background: var(--neutral-hover);
+    background:
+      linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
+        var(--tori-border-thick) 100% no-repeat,
+      linear-gradient(to right, var(--brand-subtle), transparent);
+    border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
     color: var(--fg-default);
+    font-weight: 500;
   }
   .slideNum {
     flex: none;
