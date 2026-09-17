@@ -1,14 +1,16 @@
-import { Match, Switch, createMemo, createSignal, onMount } from "solid-js";
+import { Match, Show, Switch, createMemo, createSignal, onMount } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import Button from "../../components/Button/Button";
 import { ACTIVATE_SPACE, TOAST, emitWith, type ActivateSpace, type ToastEvent } from "../../utils/events";
-import { finishFirstRun, firstRunConfig, reloadFirstRunConfig } from "../../utils/firstRun";
+import { finishFirstRun, firstRunConfig, firstRunView, markIntroSeen, reloadFirstRunConfig } from "../../utils/firstRun";
 import { badName, shortHome } from "../../utils/names";
-import FirstRunShell, { type RailStep } from "./FirstRunShell";
+import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
 import BaseFolderStep, { BASE_FOLDER_LEAD, rootSpaces } from "./steps/BaseFolderStep";
 import ReadyStep, { readyLead, type ReadySummary } from "./steps/ReadyStep";
 import SpaceStep, { SPACE_LEAD, type SpaceMode } from "./steps/SpaceStep";
+import Intro, { SLIDES } from "./intro/Intro";
+import styles from "./FirstRun.module.css";
 
 type StepId = "base" | "space" | "ready";
 const ORDER: StepId[] = ["base", "space", "ready"];
@@ -23,6 +25,9 @@ const ORDER: StepId[] = ["base", "space", "ready"];
  * the modal is already current by the time Open Tori is pressed.
  */
 export default function FirstRun() {
+  const introThisSession = firstRunView() === "intro";
+  const [page, setPage] = createSignal<"intro" | "setup">(introThisSession ? "intro" : "setup");
+  const [slide, setSlide] = createSignal(0);
   const [step, setStep] = createSignal<StepId>("base");
   // The furthest step reached, so the rail can go back but never ahead of
   // what the earlier steps have answered.
@@ -119,6 +124,16 @@ export default function FirstRun() {
     go("ready");
   }
 
+  function endIntro() {
+    void markIntroSeen();
+    setPage("setup");
+  }
+
+  function backToIntro() {
+    setSlide(SLIDES.length - 1);
+    setPage("intro");
+  }
+
   const steps = (): RailStep[] => [
     {
       id: "base",
@@ -136,78 +151,87 @@ export default function FirstRun() {
   );
 
   return (
-    <FirstRunShell
-      title="Set up Tori"
-      steps={steps()}
-      current={step()}
-      reachable={(id) => ORDER.indexOf(id as StepId) <= reached()}
-      onJump={(id) => setStep(id as StepId)}
-      railFooter="Base folder and space show on every launch until a space exists."
-      heading={step() === "base" ? "Base folder" : step() === "space" ? "Space" : "Ready"}
-      required={step() !== "ready"}
-      lead={
-        <Switch>
-          <Match when={step() === "base"}>{BASE_FOLDER_LEAD}</Match>
-          <Match when={step() === "space"}>{SPACE_LEAD}</Match>
-          <Match when={summary()}>{(s) => readyLead(s())}</Match>
-        </Switch>
-      }
-      footerLeft={
-        <Switch>
-          <Match when={step() === "base"}>Required. You can change it later in Settings.</Match>
-          <Match when={step() === "space"}>Required. This is the last step before Tori can open.</Match>
-          <Match when={step() === "ready"}>Nothing was sent anywhere.</Match>
-        </Switch>
-      }
-      footerRight={
+    <Show when={page() === "setup"} fallback={<Intro slide={slide()} onSlide={setSlide} onDone={endIntro} />}>
+      <FirstRunShell
+        title="Set up Tori"
+        rail={
+          <StepRail
+            steps={steps()}
+            current={step()}
+            reachable={(id) => ORDER.indexOf(id as StepId) <= reached()}
+            onJump={(id) => setStep(id as StepId)}
+          />
+        }
+        railFooter={<span class={styles.railNote}>Base folder and space show on every launch until a space exists.</span>}
+        heading={step() === "base" ? "Base folder" : step() === "space" ? "Space" : "Ready"}
+        required={step() !== "ready"}
+        lead={
+          <Switch>
+            <Match when={step() === "base"}>{BASE_FOLDER_LEAD}</Match>
+            <Match when={step() === "space"}>{SPACE_LEAD}</Match>
+            <Match when={summary()}>{(s) => readyLead(s())}</Match>
+          </Switch>
+        }
+        footerLeft={
+          <Switch>
+            <Match when={step() === "base"}>Required. You can change it later in Settings.</Match>
+            <Match when={step() === "space"}>Required. This is the last step before Tori can open.</Match>
+            <Match when={step() === "ready"}>Nothing was sent anywhere.</Match>
+          </Switch>
+        }
+        footerRight={
+          <Switch>
+            <Match when={step() === "base"}>
+              <Show when={introThisSession}>
+                <Button onClick={backToIntro}>Back</Button>
+              </Show>
+              <Button variant="primary" disabled={!root() || busy()} onClick={() => go("space")}>
+                Continue
+              </Button>
+            </Match>
+            <Match when={step() === "space"}>
+              {back()}
+              <Button
+                variant="primary"
+                disabled={creating() ? !canCreate() : !spaceName() || busy()}
+                onClick={() => (creating() ? void createSpace() : continueFromSpace())}
+              >
+                {creating() ? "Create space" : "Continue"}
+              </Button>
+            </Match>
+            <Match when={step() === "ready"}>
+              {back()}
+              <Button variant="primary" onClick={() => finishFirstRun()}>
+                Open Tori
+              </Button>
+            </Match>
+          </Switch>
+        }
+      >
         <Switch>
           <Match when={step() === "base"}>
-            <Button variant="primary" disabled={!root() || busy()} onClick={() => go("space")}>
-              Continue
-            </Button>
+            <BaseFolderStep root={root()} spaces={config()?.spaces ?? []} home={home()} busy={busy()} onChoose={() => void chooseFolder()} />
           </Match>
-          <Match when={step() === "space"}>
-            {back()}
-            <Button
-              variant="primary"
-              disabled={creating() ? !canCreate() : !spaceName() || busy()}
-              onClick={() => (creating() ? void createSpace() : continueFromSpace())}
-            >
-              {creating() ? "Create space" : "Continue"}
-            </Button>
+          <Match when={step() === "space" && root()}>
+            {(r) => (
+              <SpaceStep
+                root={r()}
+                spaces={spaces()}
+                home={home()}
+                mode={spaceMode()}
+                onMode={setSpaceMode}
+                selected={spaceName()}
+                onSelect={setPicked}
+                name={newName()}
+                onName={setNewName}
+                busy={busy()}
+                onSubmit={() => void createSpace()}
+              />
+            )}
           </Match>
-          <Match when={step() === "ready"}>
-            {back()}
-            <Button variant="primary" onClick={() => finishFirstRun()}>
-              Open Tori
-            </Button>
-          </Match>
+          <Match when={step() === "ready" && summary()}>{(s) => <ReadyStep summary={s()} home={home()} />}</Match>
         </Switch>
-      }
-    >
-      <Switch>
-        <Match when={step() === "base"}>
-          <BaseFolderStep root={root()} spaces={config()?.spaces ?? []} home={home()} busy={busy()} onChoose={() => void chooseFolder()} />
-        </Match>
-        <Match when={step() === "space" && root()}>
-          {(r) => (
-            <SpaceStep
-              root={r()}
-              spaces={spaces()}
-              home={home()}
-              mode={spaceMode()}
-              onMode={setSpaceMode}
-              selected={spaceName()}
-              onSelect={setPicked}
-              name={newName()}
-              onName={setNewName}
-              busy={busy()}
-              onSubmit={() => void createSpace()}
-            />
-          )}
-        </Match>
-        <Match when={step() === "ready" && summary()}>{(s) => <ReadyStep summary={s()} home={home()} />}</Match>
-      </Switch>
-    </FirstRunShell>
+      </FirstRunShell>
+    </Show>
   );
 }

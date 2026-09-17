@@ -28,7 +28,7 @@ export default function SpaceStep(props: {
 }) {
   const plural = (n: number) => `${n} project${n === 1 ? "" : "s"}`;
   const error = () => (props.name.trim() === "" ? null : badName(props.name));
-  const preview = () => shortHome(`${props.root}/${props.name.trim() || "…"}`, props.home);
+  const preview = () => shortHome(`${props.root}/${props.name.trim() || "..."}`, props.home);
   let field: HTMLInputElement | undefined;
 
   return (
