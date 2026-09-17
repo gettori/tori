@@ -56,7 +56,11 @@
 
   .state {
     display: inline-flex;
+    align-items: center;
+    gap: calc(2px * var(--ui-scale));
     flex: none;
+    font-size: var(--tori-text-md);
+    font-variant-numeric: tabular-nums;
   }
   .working {
     color: var(--status-progress);
@@ -68,27 +72,104 @@
     color: var(--status-idle);
   }
 
+  /* The sidebar's space header and rows, with the values copied from
+     LeftSidebar.module.css (`.spaceHeader`, `.row.project`, `.branchNode`,
+     `.row.branch.sel`) rather than its classes, which bring hover, cursor and
+     drag rules a picture has no use for. */
   .tree {
+    --row-h: calc(34px * var(--ui-scale));
+    --rail-x: calc(16px * var(--ui-scale));
+    --branch-label-x: calc(28px * var(--ui-scale));
     flex: 1 1 calc(260px * var(--ui-scale));
     max-width: calc(300px * var(--ui-scale));
+    padding: 0 var(--tori-space-3) var(--tori-space-4) calc(8px * var(--ui-scale));
+    font-size: var(--tori-text-xl);
   }
-  .treeBody {
-    padding: var(--tori-space-3);
+  .spaceHead {
+    display: flex;
+    align-items: baseline;
+    gap: calc(6px * var(--ui-scale));
+    padding: calc(10px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  }
+  .spaceName {
+    font-size: var(--tori-text-3xl);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-transform: capitalize;
+    color: var(--fg-default);
+  }
+  .spaceKind {
+    font-size: var(--tori-text-lg);
+    color: var(--fg-subtle);
   }
   .treeRow {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: var(--tori-space-4);
-    padding: var(--tori-space-2) var(--tori-space-4);
-    border-radius: var(--tori-radius-md);
-    font-family: var(--tori-font-mono);
-    font-size: var(--tori-text-xs);
+    gap: var(--tori-space-3);
+    padding: 0 calc(8px * var(--ui-scale));
+    white-space: nowrap;
   }
-  .child {
-    padding-left: calc(26px * var(--ui-scale));
+  .projectRow {
+    height: var(--row-h);
   }
-  .selected {
-    background: var(--neutral-hover);
+  .projectRow .treeLabel {
+    color: var(--fg-default);
+    font-weight: 600;
+  }
+  .branchNode {
+    position: relative;
+  }
+  .branchNode::before {
+    content: "";
+    position: absolute;
+    left: var(--rail-x);
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--border-rail);
+  }
+  .project:has(.branchNode) {
+    margin-bottom: calc(8px * var(--ui-scale));
+  }
+  .branchRow {
+    padding-block: calc(7px * var(--ui-scale));
+    padding-left: var(--branch-label-x);
+    z-index: 1;
+  }
+  .branchRow .treeLabel {
+    color: var(--fg-muted);
+  }
+  .selected::before {
+    content: "";
+    position: absolute;
+    left: var(--rail-x);
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: -1;
+    border-radius: 0 var(--tori-radius-md) var(--tori-radius-md) 0;
+    background:
+      linear-gradient(var(--brand-bar), var(--brand-bar)) left center /
+        var(--tori-border-thick) 100% no-repeat,
+      linear-gradient(to right, var(--brand-subtle), transparent);
+  }
+  .selected .treeLabel {
+    color: var(--fg-default);
+    font-weight: 600;
+  }
+  .rowIcon {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(16px * var(--ui-scale));
+    height: calc(16px * var(--ui-scale));
+    color: var(--fg-muted);
+  }
+  .rowIcon :global(svg) {
+    width: calc(16px * var(--ui-scale));
+    height: calc(16px * var(--ui-scale));
   }
   .treeLabel {
     flex: 1;

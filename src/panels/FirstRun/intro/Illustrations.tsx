@@ -1,8 +1,9 @@
-import { For, type JSX } from "solid-js";
+import { For, Show, type JSX } from "solid-js";
 import { Check, ChevronsLeftRightEllipsis, Folder, MessageCircleQuestion, type LucideIcon } from "lucide-solid";
 import Icon from "../../../components/Icon/Icon";
 import AgentGlyph from "../../../components/Icon/AgentGlyph";
-import { GitHubLogo, GitLabLogo } from "../../../components/Icon/gitMarks";
+import { GitHubLogo, GitLabLogo, WorktreeMark } from "../../../components/Icon/gitMarks";
+import ProjectIcon from "../../../components/Icon/ProjectIcon";
 import styles from "./Intro.module.css";
 
 type State = "working" | "needsYou" | "done";
@@ -13,44 +14,67 @@ const STATE: Record<State, { icon: LucideIcon; label: string; class: string }> =
   done: { icon: Check, label: "Done", class: styles.done },
 };
 
-function StateGlyph(props: { state: State }) {
+function StateGlyph(props: { state: State; count?: number }) {
   return (
     <span class={`${styles.state} ${STATE[props.state].class}`}>
       <Icon icon={STATE[props.state].icon} size={14} />
+      <Show when={(props.count ?? 0) > 1}>{props.count}</Show>
     </span>
   );
 }
 
+type Branch = { label: string; state: State; selected?: boolean };
+type Project = { name: string; branches: Branch[] } | { name: string; rollup: { state: State; count: number } };
+
 export function SessionsIllustration() {
-  const rows: { label: string; depth: 0 | 1; state: State; selected?: boolean; dim?: boolean }[] = [
-    { label: "api", depth: 0, state: "working" },
-    { label: "fix/rate-limit", depth: 1, state: "working", selected: true },
-    { label: "feat/webhooks", depth: 1, state: "needsYou", dim: true },
-    { label: "web", depth: 0, state: "done" },
-    { label: "main", depth: 1, state: "done", dim: true },
+  const projects: Project[] = [
+    {
+      name: "api",
+      branches: [
+        { label: "fix/rate-limit", state: "working", selected: true },
+        { label: "feat/webhooks", state: "needsYou" },
+      ],
+    },
+    { name: "web", rollup: { state: "done", count: 2 } },
   ];
   const legend: { state: State; count: number }[] = [
-    { state: "working", count: 2 },
+    { state: "working", count: 1 },
     { state: "needsYou", count: 1 },
-    { state: "done", count: 4 },
+    { state: "done", count: 2 },
   ];
   return (
     <div class={styles.split}>
       <div class={`${styles.card} ${styles.tree}`}>
-        <div class={styles.cardHead}>work</div>
-        <div class={styles.treeBody}>
-          <For each={rows}>
-            {(r) => (
-              <div
-                class={styles.treeRow}
-                classList={{ [styles.child]: r.depth === 1, [styles.selected]: r.selected, [styles.muted]: r.dim }}
-              >
-                <span class={styles.treeLabel}>{r.label}</span>
-                <StateGlyph state={r.state} />
-              </div>
-            )}
-          </For>
+        <div class={styles.spaceHead}>
+          <span class={styles.spaceName}>work</span>
+          <span class={styles.spaceKind}>{"\u00b7 Spaces"}</span>
         </div>
+        <For each={projects}>
+          {(p) => (
+            <div class={styles.project}>
+              <div class={`${styles.treeRow} ${styles.projectRow}`}>
+                <span class={styles.rowIcon}>
+                  <ProjectIcon seed={`~/Projects/work/${p.name}`} />
+                </span>
+                <span class={styles.treeLabel}>{p.name}</span>
+                <Show when={"rollup" in p && p.rollup}>{(r) => <StateGlyph state={r().state} count={r().count} />}</Show>
+              </div>
+              <For each={"branches" in p ? p.branches : []}>
+                {(b) => (
+                  <div class={styles.branchNode}>
+                    <div class={`${styles.treeRow} ${styles.branchRow}`} classList={{ [styles.selected]: b.selected }}>
+                      <span class={styles.rowIcon}>
+                        <WorktreeMark />
+                      </span>
+                      <span class={styles.treeLabel}>{b.label}</span>
+                      <StateGlyph state={b.state} />
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
+          )}
+        </For>
       </div>
       <div class={styles.legend}>
         <For each={legend}>
