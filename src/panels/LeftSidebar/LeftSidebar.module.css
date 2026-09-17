@@ -676,24 +676,22 @@
   background: var(--neutral-subtle);
 }
 
-/* The Tag chip on a member unit: a real button, since it moves the selection
-   to the Topic, drawn as the badge so the row keeps one rhythm. */
-.row .badge.topicChip {
+/* The Tag chip on a member unit: an IconButton with its border cleared, so the
+   row reads a glyph rather than a control until the pointer finds it. */
+.row .topicChip,
+.row .topicChip:hover:not(:disabled) {
+  flex: none;
   margin-left: calc(4px * var(--ui-scale));
-  display: inline-flex;
-  align-items: center;
-  appearance: none;
-  border: 0;
-  padding: calc(2px * var(--ui-scale));
-  cursor: pointer;
+  border-color: transparent;
+  color: var(--brand-default);
 }
-/* CSS-sized (the numeric Lucide size is dropped) so it tracks --ui-scale. */
-.row .badge.topicChip :global(svg) {
+.row .topicChip:hover:not(:disabled) {
+  color: var(--brand-strong);
+}
+/* CSS-sized so it tracks --ui-scale, smaller than the control icon. */
+.row .topicChip :global(svg) {
   width: calc(12px * var(--ui-scale));
   height: calc(12px * var(--ui-scale));
-}
-.row .badge.topicChip:hover {
-  background: var(--brand-muted, var(--brand-subtle));
 }
 
 /* The bar itself does not clip, so the gear menu can open upward past its top
