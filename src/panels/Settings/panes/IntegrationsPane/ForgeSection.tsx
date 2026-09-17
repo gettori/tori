@@ -1,6 +1,6 @@
-import { createSignal, createUniqueId, For, onCleanup, Show, type JSX } from "solid-js";
+import { createSignal, createUniqueId, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowDown, ArrowUp, Check, CircleAlert, CornerDownLeft, Plus } from "lucide-solid";
+import { ArrowDown, ArrowUp, CircleAlert, CornerDownLeft, Plus } from "lucide-solid";
 import Button from "../../../../components/Button/Button";
 import Icon from "../../../../components/Icon/Icon";
 import IconButton from "../../../../components/IconButton/IconButton";
@@ -9,12 +9,10 @@ import RadioGroup from "../../../../components/RadioGroup/RadioGroup";
 import Select from "../../../../components/Select/Select";
 import Switch from "../../../../components/Switch/Switch";
 import ConfirmDialog, { type ConfirmOpts, type ConfirmReq } from "../../../../components/Dialogs/ConfirmDialog";
-import { copyText } from "../../../../utils/clipboard";
 import { settings, saveSettings } from "../../settingsStore";
 import {
   forgeAccountName,
   forgeErrorMessage,
-  isForgeError,
   type AuthState,
   type ForgeAccount,
   type ForgeHost,
@@ -33,30 +31,18 @@ import {
   startAgain,
   type AddFlow,
   type Cloud,
-  type Failure,
   type Product,
   type Route,
   type Target,
 } from "./forgeAddFlow";
+import { asFailure, createDeviceFlow, failureText, openInBrowser } from "./deviceFlow";
+import DeviceWaitCard from "./DeviceWaitCard";
 import styles from "../../Settings.module.css";
 import cards from "./ForgeSection.module.css";
 
 // A rejected account is **suspect**, not signed out: its token is still stored,
 // so its action is "sign in again", and rendering it as signed out would imply
 // Tori discarded a credential it deliberately kept.
-
-type PollReport =
-  | { kind: "authorized"; accountId: string; login: string }
-  | { kind: "pending"; nextIntervalSecs: number }
-  | { kind: "denied"; code: string }
-  | { kind: "expired"; code: string };
-
-type DevicePrompt = {
-  userCode: string;
-  verificationUri: string;
-  expiresInSecs: number;
-  intervalSecs: number;
-};
 
 const STATUS_WORD: Record<AuthState["kind"], string> = {
   signedIn: "signed in",
@@ -114,58 +100,6 @@ function rejection(host: string, rejectedAt: number | null): string {
 
 const signedIn = (host: ForgeHost) => host.accounts.filter((a) => a.auth.kind === "signedIn");
 
-function codeGroups(code: string): [string, string] {
-  const chars = code.replace(/[^0-9A-Za-z]/g, "");
-  const half = Math.ceil(chars.length / 2);
-  return [chars.slice(0, half), chars.slice(half)];
-}
-
-function mmss(ms: number): string {
-  const secs = Math.max(0, Math.ceil(ms / 1000));
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(Math.floor(secs / 60))}:${pad(secs % 60)}`;
-}
-
-// Through the opener plugin, as `Markdown` does: in the app's webview
-// `window.open` does not reach the default browser.
-function openInBrowser(url: string) {
-  void invoke("plugin:opener|open_url", { url }).catch(() => {});
-}
-
-function asFailure(e: unknown): Failure {
-  return isForgeError(e)
-    ? { kind: "error", message: e.message, code: e.kind }
-    : { kind: "error", message: String(e), code: null };
-}
-
-function failureText(host: string, failure: Failure, lifetimeSecs: number | null): JSX.Element {
-  const minutes = Math.round((lifetimeSecs ?? 0) / 60);
-  switch (failure.kind) {
-    case "denied":
-      return (
-        <>
-          {host} says the sign-in was denied: <code>{failure.code}</code>. Nothing was stored, and starting
-          again issues a fresh code.
-        </>
-      );
-    case "expired":
-      return (
-        <>
-          {host} expired the code before it was entered: <code>{failure.code}</code>.
-          {minutes > 0 ? ` Codes last about ${minutes} minute${minutes === 1 ? "" : "s"}.` : ""} Starting again
-          issues a fresh one.
-        </>
-      );
-    case "error":
-      return (
-        <>
-          {failure.message}
-          {failure.code === null ? "" : <> <code>{failure.code}</code></>}
-        </>
-      );
-  }
-}
-
 export default function ForgeSection() {
   const [hosts, setHosts] = createSignal<ForgeHost[]>([]);
   const [loaded, setLoaded] = createSignal(false);
@@ -177,11 +111,6 @@ export default function ForgeSection() {
   const [urlError, setUrlError] = createSignal<string | null>(null);
   const [appIdLater, setAppIdLater] = createSignal(false);
   const [token, setToken] = createSignal("");
-  const [prompt, setPrompt] = createSignal<DevicePrompt | null>(null);
-  const [lifetimeSecs, setLifetimeSecs] = createSignal<number | null>(null);
-  const [deadline, setDeadline] = createSignal(0);
-  const [now, setNow] = createSignal(Date.now());
-  const [clipboardOk, setClipboardOk] = createSignal(true);
   const [appIdHost, setAppIdHost] = createSignal<string | null>(null);
   const [appId, setAppId] = createSignal("");
   const [error, setError] = createSignal<string | null>(null);
@@ -198,26 +127,6 @@ export default function ForgeSection() {
   const tokenId = createUniqueId();
   let flowEl: HTMLDivElement | undefined;
 
-  // The poll timer is the one piece of state that must not outlive the panel: a
-  // device flow left running would keep hitting the host after the user closed
-  // Settings, and on a `slow_down` that is exactly how a throttle becomes a
-  // block.
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let ticker: ReturnType<typeof setInterval> | undefined;
-  const stopTimers = () => {
-    clearTimeout(timer);
-    clearInterval(ticker);
-    timer = undefined;
-    ticker = undefined;
-  };
-  const endDeviceFlow = () => {
-    stopTimers();
-    if (!prompt()) return;
-    setPrompt(null);
-    void invoke("forge_device_cancel");
-  };
-  onCleanup(endDeviceFlow);
-
   // Accounts change here and nowhere else, so this is the one place that knows
   // the moment they do. Telling the poll store directly is what makes the chips
   // appear on sign-in and vanish on removal, not at the next focus.
@@ -229,6 +138,17 @@ export default function ForgeSection() {
     noteForgeAccounts(list.flatMap((h) => h.accounts));
   };
   void refresh();
+
+  const device = createDeviceFlow({
+    onAuthorized: async () => {
+      await enter(null);
+      await refresh();
+    },
+    onFailed: (failure) => {
+      const state = flow();
+      if (state) void enter(failed(state, failure));
+    },
+  });
 
   const routesFor = (provider: ForgeProvider, baseUrl: string) =>
     invoke<SignInRoutes>("forge_sign_in_routes", { provider, baseUrl });
@@ -251,7 +171,7 @@ export default function ForgeSection() {
   };
 
   async function enter(next: AddFlow | null) {
-    endDeviceFlow();
+    device.cancel();
     setError(null);
     setFlow(next);
     // Keyboard focus follows the card, so Escape lands on it and not on the panel.
@@ -273,7 +193,7 @@ export default function ForgeSection() {
         setRoutes(await routesFor(next.target.provider, next.target.baseUrl).catch(() => null));
         return;
       case "waiting":
-        return startBrowser(next);
+        return device.start(next.target);
     }
   }
 
@@ -343,75 +263,6 @@ export default function ForgeSection() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function startBrowser(state: Extract<AddFlow, { step: "waiting" }>) {
-    const { provider, baseUrl, accountId } = state.target;
-    try {
-      const p = await invoke<DevicePrompt>("forge_device_start", { provider, baseUrl, accountId });
-      if (flow() !== state) return void invoke("forge_device_cancel");
-      setPrompt(p);
-      setLifetimeSecs(p.expiresInSecs);
-      setDeadline(Date.now() + p.expiresInSecs * 1000);
-      setNow(Date.now());
-      // On the clipboard before the page opens, so the paste is ready when it loads.
-      setClipboardOk(await copyText(p.userCode));
-      if (flow() !== state || prompt() !== p) return;
-      openInBrowser(p.verificationUri);
-      schedule(p.intervalSecs);
-      ticker = setInterval(tick, 1000);
-    } catch (e) {
-      if (flow() === state) void enter(failed(state, asFailure(e)));
-    }
-  }
-
-  // At zero the host is asked rather than told: its own `expired_token` is what
-  // the error card quotes, and a clock that runs ahead of the host's is not.
-  function tick() {
-    setNow(Date.now());
-    if (Date.now() < deadline()) return;
-    stopTimers();
-    void pollOnce();
-  }
-
-  // The interval comes from the server on every turn, so a `slow_down` actually
-  // slows this caller down instead of being noted and ignored.
-  function schedule(seconds: number) {
-    clearTimeout(timer);
-    timer = setTimeout(() => void pollOnce(), seconds * 1000);
-  }
-
-  async function pollOnce() {
-    const state = waitingStep();
-    if (!state) return;
-    let report: PollReport;
-    try {
-      report = await invoke<PollReport>("forge_device_poll");
-    } catch (e) {
-      if (flow() === state) void enter(failed(state, asFailure(e)));
-      return;
-    }
-    if (flow() !== state) return;
-    switch (report.kind) {
-      case "authorized":
-        setPrompt(null);
-        await enter(null);
-        await refresh();
-        return;
-      case "pending":
-        schedule(report.nextIntervalSecs);
-        return;
-      case "denied":
-      case "expired":
-        setPrompt(null);
-        void enter(failed(state, { kind: report.kind, code: report.code }));
-        return;
-    }
-  }
-
-  async function copyAgain() {
-    const p = prompt();
-    if (p) setClipboardOk(await copyText(p.userCode));
   }
 
   const onFlowKeyDown = (e: KeyboardEvent) => {
@@ -870,81 +721,14 @@ export default function ForgeSection() {
 
             <Show when={waitingStep()}>
               {(state) => (
-                <div class={cards.card} data-tone="brand">
-                  <div class={cards.band} data-tone="brand">
-                    <span class={cards.pulse} aria-hidden="true" />
-                    <span class={cards.bandTitle}>Waiting for {hostOf(state().target.baseUrl)}</span>
-                    <span class={cards.spacer} />
-                    <Show when={prompt()}>
-                      <span class={cards.meta} data-testid="expires">
-                        expires in {mmss(deadline() - now())}
-                      </span>
-                    </Show>
-                  </div>
-                  <div class={cards.wait}>
-                    <Show
-                      when={prompt()}
-                      fallback={<div class={cards.lead}>Asking {hostOf(state().target.baseUrl)} for a code...</div>}
-                    >
-                      {(p) => (
-                        <>
-                          <div class={cards.lead}>The page is open in your browser. Paste this, then come back.</div>
-                          <div class={cards.code} data-testid="device-code">
-                            <span>{codeGroups(p().userCode)[0]}</span>
-                            <span class={cards.codeBar} aria-hidden="true" />
-                            <span>{codeGroups(p().userCode)[1]}</span>
-                          </div>
-                          <Show
-                            when={clipboardOk()}
-                            fallback={
-                              <div class={cards.copied}>
-                                <Button variant="primary" size="xs" onClick={() => void copyAgain()}>
-                                  Copy the code
-                                </Button>
-                              </div>
-                            }
-                          >
-                            <div class={cards.copied} data-testid="clipboard-confirmation">
-                              <span class={cards.check} aria-hidden="true">
-                                <Icon icon={Check} size={10} strokeWidth={2.5} />
-                              </span>
-                              <span>
-                                <span class={cards.copiedWord}>Already on your clipboard</span>, Cmd+V is all you need
-                              </span>
-                            </div>
-                          </Show>
-                        </>
-                      )}
-                    </Show>
-                  </div>
-                  <div class={cards.footer}>
-                    <span class={`${cards.footNote} ${cards.recovery}`}>
-                      Closed the page, or the clipboard is blocked?{" "}
-                      <Show when={prompt()}>
-                        {(p) => (
-                          <>
-                            <a
-                              class={cards.link}
-                              href={p().verificationUri}
-                              onClick={(e) => openLink(e, p().verificationUri)}
-                            >
-                              Reopen {p().verificationUri.replace(/^https?:\/\//, "")}
-                            </a>{" "}
-                            <span class={cards.nowrap}>
-                              {"\u00b7 "}
-                              <button type="button" class={cards.link} onClick={() => void copyAgain()}>
-                                Copy again
-                              </button>
-                            </span>
-                          </>
-                        )}
-                      </Show>
-                    </span>
-                    <Button variant="ghost" size="xs" onClick={() => void enter(null)}>
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
+                <DeviceWaitCard
+                  host={hostOf(state().target.baseUrl)}
+                  prompt={device.prompt()}
+                  remainingMs={device.remainingMs()}
+                  clipboardOk={device.clipboardOk()}
+                  onCopyAgain={() => void device.copyAgain()}
+                  onCancel={() => void enter(null)}
+                />
               )}
             </Show>
 
@@ -963,7 +747,7 @@ export default function ForgeSection() {
                     <div class={cards.failure}>
                       <Icon icon={CircleAlert} size={15} class={cards.failureIcon} aria-hidden="true" />
                       <div class={cards.failureText} data-testid="flow-error">
-                        {failureText(hostOf(state().target.baseUrl), state().failure, lifetimeSecs())}
+                        {failureText(hostOf(state().target.baseUrl), state().failure, device.lifetimeSecs())}
                       </div>
                     </div>
                     <div class={cards.actions} data-align="start">
