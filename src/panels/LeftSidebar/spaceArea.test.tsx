@@ -13,20 +13,17 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
         {
           name: "proj",
           path: WORK,
-          external: false,
           branchUnits: [
             { label: "main", folderPath: `${WORK}/main`, branch: "main", kind: "worktree", isCurrent: true },
           ],
         },
       ],
     },
-    { name: "blank", path: "/root/blank", external: false, projects: [] },
-    { name: "Other", path: "", external: true, projects: [] },
+    { name: "blank", path: "/root/blank", projects: [] },
   ],
 };
 
@@ -142,13 +139,6 @@ describe("a space with nothing in it", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     // The same dialog the space menu's "New…" opens.
     expect(await screen.findByText(/New in .blank./)).toBeTruthy();
-  });
-
-  it("adds by pinning in the pinned space, which is what it can do there", async () => {
-    mount();
-    await waitFor(() => expect(screen.getByText(/no projects yet/)).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Other (pinned)" }));
-    await waitFor(() => expect(screen.getByText(/Nothing is pinned here yet/)).toBeTruthy());
   });
 
   it("still says nothing matched when it is the filter hiding everything", async () => {

@@ -124,7 +124,6 @@ import { forgetIntro } from "../../utils/firstRun";
 import {
   FolderCog,
   FolderPlus,
-  Pin,
   FolderOpen,
   RotateCcw,
   Folder,
@@ -229,7 +228,6 @@ type Project = {
   name: string;
   path: string;
   branchUnits: BranchUnit[];
-  external: boolean;
   icon?: string;
   iconFile?: string;
   favicon?: string;
@@ -238,7 +236,6 @@ type Space = {
   name: string;
   path: string;
   projects: Project[];
-  external: boolean;
   icon?: string;
   // A swatch name; absent means the hue is derived from `name`.
   color?: string;
@@ -440,16 +437,8 @@ export default function LeftSidebar(props: {
 
   // Spaces are "spaces" (Arc-style): shown as an icon strip at the bottom, one
   // active at a time, and the tree renders only the active space's projects.
-  // Render order: root-discovered spaces first, pinned externals after. This is
-  // the FULL list (never q-filtered) so the space strip is stable while filtering.
-  const visibleSpaces = () => {
-    const gs = config()?.spaces ?? [];
-    return [...gs.filter((g) => !g.external), ...gs.filter((g) => g.external)];
-  };
-  // Split for the space bar: root-discovered spaces, then pinned ("Other")
-  // spaces, with a divider rendered between the two groups when both exist.
-  const rootSpaces = () => visibleSpaces().filter((g) => !g.external);
-  const extSpaces = () => visibleSpaces().filter((g) => g.external);
+  // The FULL list (never q-filtered) so the space strip is stable while filtering.
+  const visibleSpaces = () => config()?.spaces ?? [];
   const hasSpaces = () => visibleSpaces().length > 0;
   const hasProjects = () => visibleSpaces().some((g) => g.projects.length > 0);
   // Assumed until config loads, so a cold start in Topics does not flash the
@@ -486,10 +475,6 @@ export default function LeftSidebar(props: {
     e.preventDefault();
     setSpaceAnchor({ x: e.clientX, y: e.clientY });
   }
-
-  // What "Add" does in an empty space: the same action its own menu offers, so
-  // a pinned space adds by pinning and a root space by creating or cloning.
-  const addToSpace = (g: Space) => (g.external ? void pinFolder() : openNewProject(g));
 
   // Every selection is also the bookmark for the way back to it: its space, or
   // the Topic slot.
@@ -684,7 +669,7 @@ export default function LeftSidebar(props: {
   const [iconReq, setIconReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
   const [agentsReq, setAgentsReq] = createSignal<Project | null>(null);
 
-  // Drag-to-reorder state for the root space tiles (pinned spaces don't reorder).
+  // Drag-to-reorder state for the space tiles.
   // `dragSpace` is the name being dragged; `dropHint` marks the tile the drop
   // would land before/after, for the insertion indicator.
   const [dragSpace, setDragSpace] = createSignal<string | null>(null);
@@ -1397,37 +1382,14 @@ export default function LeftSidebar(props: {
     }
   }
 
-  // Pin an out-of-root folder into the "Other" section. The backend refuses a
-  // path inside the root (it already appears in the tree); the error surfaces.
-  async function pinFolder() {
-    try {
-      const path = await invoke<string | null>("pick_folder");
-      if (!path) return;
-      await invoke("pin_path", { path });
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  // Unpin an external project: removes it from discovery.paths, no disk deletion.
-  async function unpinPath(p: Project) {
-    try {
-      await invoke("unpin_path", { path: p.path });
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
   // Open the create-space dialog (needs a root to mkdir under).
   function addSpace() {
     if (!(config()?.roots ?? []).length) return;
     setSpaceReq({ mode: "new", name: "", icon: null, color: null, busy: false });
   }
 
-  // Open the edit-space dialog, prefilled. Keyed by name, so it works for a root
-  // space and an external pin alike; only the icon is editable.
+  // Open the edit-space dialog, prefilled. Keyed by name; only the icon is
+  // editable.
   function editSpace(g: Space) {
     setSpaceReq({
       mode: "edit",
@@ -1501,10 +1463,9 @@ export default function LeftSidebar(props: {
 
   // Reorder drag lives alongside the tile's existing abs-path drag (which drops a
   // space's project paths into the terminal): the abs-path payload is still set,
-  // and `dragSpace` gates the in-bar reorder. Only root tiles participate, so a
-  // pinned space is never a drag source or a drop target.
+  // and `dragSpace` gates the in-bar reorder.
   function onSpaceDragOver(e: DragEvent, g: Space) {
-    if (g.external || !dragSpace() || dragSpace() === g.name) return;
+    if (!dragSpace() || dragSpace() === g.name) return;
     e.preventDefault(); // mark this tile a valid drop target
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -1516,11 +1477,11 @@ export default function LeftSidebar(props: {
     const hint = dropHint();
     setDragSpace(null);
     setDropHint(null);
-    if (g.external || !from || from === g.name) return;
+    if (!from || from === g.name) return;
     e.preventDefault();
     const after = hint?.name === g.name ? hint.after : false;
-    // Full new order of root-space names (persisted so the next reload keeps it).
-    const next = rootSpaces()
+    // Full new order of space names (persisted so the next reload keeps it).
+    const next = visibleSpaces()
       .map((s) => s.name)
       .filter((n) => n !== from);
     let at = next.indexOf(g.name);
@@ -2130,29 +2091,22 @@ export default function LeftSidebar(props: {
 
   // --- per-node context menus ---
 
-  // Create/clone/bootstrap target the root tree; an external ("Other") space is
-  // just a pin's parent dir, so it gets no create/delete actions (unpin is per
-  // project, in projectMenu). Both kinds can edit their icon (keyed by name).
-  const spaceMenu = (g: Space): MenuItem[] =>
-    g.external
-      ? [{ label: "Edit space…", onClick: () => editSpace(g) }]
-      : [
-          { label: "New…", onClick: () => openNewProject(g) },
-          { separator: true },
-          { label: "Edit space…", onClick: () => editSpace(g) },
-          { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
-        ];
+  const spaceMenu = (g: Space): MenuItem[] => [
+    { label: "New…", onClick: () => openNewProject(g) },
+    { separator: true },
+    { label: "Edit space…", onClick: () => editSpace(g) },
+    { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
+  ];
 
   // A project with a working tree git can branch from: a plain repo or a
   // worktree container. Not a non-git folder, and not a bare stub, which has no
   // checkout to attempt anything against.
   const gitProject = (p: Project) => projectUnitKind(p) === "plain" || projectUnitKind(p) === "worktree";
 
-  // "Change icon…" is appended to every project menu, external and every git
-  // kind alike: the icon is a property of the row, not of what git is doing
-  // underneath it, so a pinned folder and a worktree container get it equally.
-  // Placed last, after its own separator, so it sits below the kind-specific
-  // git actions and above nothing destructive.
+  // "Change icon…" is appended to every project menu, whatever git is doing
+  // underneath it: the icon is a property of the row. Placed last, after its own
+  // separator, so it sits below the kind-specific git actions and above nothing
+  // destructive.
   const projectMenu = (g: Space, p: Project): MenuItem[] => {
     const kind = kindMenu(g, p);
     return [
@@ -2166,11 +2120,9 @@ export default function LeftSidebar(props: {
     ];
   };
 
-  // External (pinned) projects can be unpinned. Otherwise the menu is keyed by
-  // git kind: a worktree container spawns worktrees, a plain-dir initializes git,
-  // a plain repo commits / sets a remote / pushes.
+  // Keyed by git kind: a worktree container spawns worktrees, a plain-dir
+  // initializes git, a plain repo commits / sets a remote / pushes.
   const kindMenu = (g: Space, p: Project): MenuItem[] => {
-    if (p.external) return [{ label: "Unpin", onClick: () => unpinPath(p) }];
     switch (projectUnitKind(p)) {
       case "worktree":
         return [
@@ -2892,14 +2844,14 @@ export default function LeftSidebar(props: {
           [styles.dropBefore]: dropHint()?.name === g.name && !dropHint()!.after,
           [styles.dropAfter]: dropHint()?.name === g.name && dropHint()!.after,
         }}
-        label={g.external ? `${g.name} (pinned)` : g.name}
-        aria-label={g.external ? `${g.name} (pinned)` : g.name}
+        label={g.name}
+        aria-label={g.name}
         aria-pressed={on()}
         onClick={() => openSpace(g)}
         draggable={true}
         onDragStart={(e) => {
           startAbsDrag(e, g.projects.map((p) => p.path));
-          if (!g.external) setDragSpace(g.name);
+          setDragSpace(g.name);
         }}
         onDragOver={(e) => onSpaceDragOver(e, g)}
         onDrop={(e) => onSpaceDrop(e, g)}
@@ -3209,12 +3161,8 @@ export default function LeftSidebar(props: {
           >
             {(g) => (
               <div class="tree-empty">
-                <p>
-                  {g().external
-                    ? "Nothing is pinned here yet. Press Add to pin a folder to this space."
-                    : "This space has no projects yet. Press Add to create, clone or add one."}
-                </p>
-                <Button icon={<Icon icon={Plus} />} onClick={() => addToSpace(g())}>
+                <p>This space has no projects yet. Press Add to create, clone or add one.</p>
+                <Button icon={<Icon icon={Plus} />} onClick={() => openNewProject(g())}>
                   Add
                 </Button>
               </div>
@@ -3264,11 +3212,8 @@ export default function LeftSidebar(props: {
                   <div class={styles.gearItem} onClick={() => gearAction(addSpace)}>
                     <Icon icon={FolderPlus} />New space
                   </div>
+                  <div class={styles.gearDivider} />
                 </Show>
-                <div class={styles.gearItem} onClick={() => gearAction(pinFolder)}>
-                  <Icon icon={Pin} />Pin folder to "Other"
-                </div>
-                <div class={styles.gearDivider} />
                 <div class={styles.gearItem} onClick={() => gearAction(addBaseFolder)}>
                   <Icon icon={FolderOpen} />Add/Update root
                 </div>
@@ -3283,11 +3228,7 @@ export default function LeftSidebar(props: {
 
           <div class={styles.stripNav}>
             <div class={styles.spaceScroll}>
-              <For each={rootSpaces()}>{(g) => spaceTile(g)}</For>
-              <Show when={rootSpaces().length > 0 && extSpaces().length > 0}>
-                <div class={styles.spaceDivider} />
-              </Show>
-              <For each={extSpaces()}>{(g) => spaceTile(g)}</For>
+              <For each={visibleSpaces()}>{(g) => spaceTile(g)}</For>
             </div>
 
             {/* Topics, past a rule so the strip reads as spaces first. Outside

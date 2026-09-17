@@ -19,12 +19,10 @@ const config = {
     {
       name: "work",
       path: WORK,
-      external: false,
       projects: [
         {
           name: "big",
           path: BIG,
-          external: false,
           branchUnits: LABELS.map((label, i) => ({
             label,
             folderPath: folderOf(label),

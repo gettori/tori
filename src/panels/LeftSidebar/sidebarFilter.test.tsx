@@ -14,12 +14,10 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
         {
           name: "proj",
           path: WORK,
-          external: false,
           branchUnits: [
             { label: "main", folderPath: `${WORK}/main`, branch: "main", kind: "worktree", isCurrent: true },
           ],

@@ -38,12 +38,10 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
         {
           name: "proj",
           path: WORK,
-          external: false,
           branchUnits: [unit("main", MAIN), unit("wave-3", WAVE)],
         },
       ],
@@ -51,13 +49,11 @@ const config = {
     {
       name: "side",
       path: "/root/side",
-      external: false,
       projects: [
-        { name: "lab", path: SIDE, external: false, branchUnits: [unit("trunk", TRUNK)] },
+        { name: "lab", path: SIDE, branchUnits: [unit("trunk", TRUNK)] },
         {
           name: "repo",
           path: REPO,
-          external: false,
           branchUnits: [branchUnit("main", true), branchUnit("feat"), branchUnit("old")],
         },
       ],

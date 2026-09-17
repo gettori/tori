@@ -16,12 +16,10 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
         {
           name: "proj",
           path: CONTAINER,
-          external: false,
           branchUnits: [
             { label: "main", folderPath: `${CONTAINER}/main`, branch: "main", kind: "worktree", isCurrent: true },
             { label: "wave-3", folderPath: WT, branch: "wave-3", kind: "worktree", isCurrent: false },

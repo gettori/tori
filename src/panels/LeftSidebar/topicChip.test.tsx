@@ -19,12 +19,10 @@ const config = {
     {
       name: "work",
       path: "/w",
-      external: false,
       projects: [
         {
           name: "api",
           path: REPO,
-          external: false,
           branchUnits: [
             { label: "main", folderPath: REPO, branch: "main", kind: "plain", isCurrent: true },
             { label: "feat/auth", folderPath: MEMBER, branch: "feat/auth", kind: "worktree", isCurrent: false },

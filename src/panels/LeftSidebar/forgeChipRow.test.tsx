@@ -35,12 +35,10 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
         {
           name: "gh",
           path: GH,
-          external: false,
           branchUnits: [
             worktree("shipped", `${GH}/shipped`),
             worktree("drafting", `${GH}/drafting`),
@@ -48,17 +46,15 @@ const config = {
             worktree("fresh", `${GH}/fresh`),
           ],
         },
-        { name: "gl", path: GL, external: false, branchUnits: [worktree("gl-main", `${GL}/main`)] },
+        { name: "gl", path: GL, branchUnits: [worktree("gl-main", `${GL}/main`)] },
         {
           name: "solo",
           path: SOLO,
-          external: false,
           branchUnits: [worktree("solo-main", `${SOLO}/main`)],
         },
         {
           name: "notes",
           path: NOTES,
-          external: false,
           // A plain-dir project: one unit, no branch, and its project row IS the
           // unit row.
           branchUnits: [

@@ -22,7 +22,6 @@ const ROOT = `${HOME}/Projects`;
 const space = (name: string, n: number): FirstRunSpace => ({
   name,
   path: `${ROOT}/${name}`,
-  external: false,
   projects: Array.from({ length: n }, (_, i) => ({ name: `p${i}`, path: `${ROOT}/${name}/p${i}` })),
 });
 const SPACES = [space("work", 6), space("personal", 5), space("acme", 3)];
