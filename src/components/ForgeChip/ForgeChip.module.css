@@ -71,3 +71,16 @@ button.forgeChip:hover,
 button.forgeChip:focus-visible {
   background: var(--neutral-subtle);
 }
+
+/* The add-an-account offer: an IconButton with its border cleared, so it sits
+   at the weight of the other glyphs until the pointer finds it. `button.` to
+   outrank the IconButton's own rules, including its hover. */
+button.connect,
+button.connect:hover:not(:disabled) {
+  flex: none;
+  border-color: transparent;
+}
+button.connect :global(svg) {
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+}
