@@ -128,3 +128,12 @@ add_dir_args = []
 # defaults here, which is the shape measured to work against this agent: it does
 # its own file I/O and is not told about Tori's MCP servers.
 serve_client_fs = false
+
+[install]
+# npm names the package that ships the launch binary, and all three verbs were
+# run on macOS. The binary lands in npm's global bin, which has to be on the
+# login shell's PATH for Tori to find it.
+program = "npm"
+args = ["install", "-g", "opencode-ai"]
+update_args = ["install", "-g", "opencode-ai"]
+uninstall_args = ["uninstall", "-g", "opencode-ai"]

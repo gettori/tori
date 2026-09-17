@@ -98,8 +98,8 @@ mod tests {
         agents::find(id).unwrap_or_else(|| panic!("{id} ships bundled")).clone()
     }
 
-    /// The one bundled adapter with a verified install path today. npm because
-    /// it is the vendor's one documented command that covers every platform.
+    /// npm because it is the vendor's one documented command that covers every
+    /// platform.
     #[test]
     fn copilot_installs_through_the_command_its_vendor_documents() {
         match install_route(&bundled("copilot")) {
@@ -114,8 +114,8 @@ mod tests {
     /// No `[install]` means instructions, never a guessed package manager.
     #[test]
     fn an_adapter_without_the_table_stays_on_instructions() {
-        assert!(bundled("claude").install.is_none(), "claude declares no [install] yet");
-        assert_eq!(install_route(&bundled("claude")), InstallRoute::Undeclared);
+        assert!(bundled("kimi").install.is_none(), "kimi declares no [install] yet");
+        assert_eq!(install_route(&bundled("kimi")), InstallRoute::Undeclared);
     }
 
     /// `npm install -g` is also npm's documented update, and `npm uninstall -g`
