@@ -17,7 +17,6 @@ mod credential;
 mod dap;
 mod env;
 mod exec;
-mod features;
 pub mod forge;
 mod format;
 mod fs;
@@ -46,6 +45,7 @@ mod settings;
 mod shared;
 mod workspace_settings;
 mod themes;
+mod topics;
 mod trace;
 mod update;
 mod usage_probe;
@@ -275,17 +275,17 @@ pub fn run() {
             attempts::create_attempt,
             attempts::promote_attempt,
             attempts::list_project_attempts,
-            features::commands::list_features,
-            features::commands::create_feature,
-            features::commands::retry_member,
-            features::commands::add_member,
-            features::commands::relocate_member,
-            features::commands::remove_member,
-            features::commands::reorder_members,
-            features::commands::rename_member,
-            features::commands::rename_feature,
-            features::commands::delete_feature,
-            features::commands::probe_feature_branch,
+            topics::commands::list_topics,
+            topics::commands::create_topic,
+            topics::commands::retry_member,
+            topics::commands::add_member,
+            topics::commands::relocate_member,
+            topics::commands::remove_member,
+            topics::commands::reorder_members,
+            topics::commands::rename_member,
+            topics::commands::rename_topic,
+            topics::commands::delete_topic,
+            topics::commands::probe_topic_branch,
             chat::commands::chat_send,
             chat::commands::chat_steer,
             chat::commands::chat_interrupt,

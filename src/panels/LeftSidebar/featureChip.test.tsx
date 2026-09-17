@@ -42,7 +42,7 @@ const bridge = vi.hoisted(() => ({ features: [] as unknown[] }));
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_features") return Promise.resolve(bridge.features);
+    if (cmd === "list_topics") return Promise.resolve(bridge.features);
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);

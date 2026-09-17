@@ -1,6 +1,6 @@
-// A Feature as the backend records it (`src-tauri/src/features.rs`), plus the
+// A Feature as the backend records it (`src-tauri/src/topics.rs`), plus the
 // pure helpers the Feature UI needs. Nothing here talks to the backend: the
-// slug rule mirrors `features::feature_slug` so a creation dialog can show the
+// slug rule mirrors `topics::topic_slug` so a creation dialog can show the
 // branch before asking, and the two member helpers exist so a chip and a state
 // badge do not each re-derive them.
 
@@ -92,9 +92,9 @@ export function memberState(state: MemberState): MemberStateSummary {
   }
 }
 
-/** What `features::remove_member` answers when the last member would go. The
+/** What `topics::remove_member` answers when the last member would go. The
  *  row menu draws it on a refusing Remove rather than waiting for the click to
- *  fail; the Rust constant `features::LAST_MEMBER` is the same string. */
+ *  fail; the Rust constant `topics::LAST_MEMBER` is the same string. */
 export const LAST_MEMBER = "A Feature needs at least one repository. Delete the Feature instead.";
 
 /** The workspace key prefix for a Feature: `feature:<id>`. A path never starts

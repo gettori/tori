@@ -275,7 +275,7 @@ function watchFeatureSources(): void {
   if (listening) return;
   listening = true;
   const bump = () => setTick((n) => n + 1);
-  void listen("features://changed", bump);
+  void listen("topics://changed", bump);
   void listen("config://changed", bump);
 }
 
@@ -285,7 +285,7 @@ function readAt(at: number) {
   if (!reads || reads.tick !== at) {
     reads = {
       tick: at,
-      features: invoke<Feature[] | null>("list_features")
+      features: invoke<Feature[] | null>("list_topics")
         .catch(() => null)
         .then((list) => list ?? []),
       spaces: invoke<{ spaces: SpaceTint[] } | null>("get_config")
@@ -298,7 +298,7 @@ function readAt(at: number) {
 
 /** The live form: reads the Feature record and the Space list, and refetches on
  *  the two events that can change either. A null id fetches nothing, which is
- *  what keeps a plain worktree selection off `list_features` entirely. */
+ *  what keeps a plain worktree selection off `list_topics` entirely. */
 export function createFeatureMembers(featureId: () => string | null): () => TintedMember[] {
   watchFeatureSources();
   const [feature] = createResource(

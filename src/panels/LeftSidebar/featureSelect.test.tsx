@@ -34,7 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_features") return Promise.resolve(bridge.features);
+    if (cmd === "list_topics") return Promise.resolve(bridge.features);
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -168,7 +168,7 @@ describe("selecting a Feature", () => {
     pointerClick(await screen.findByText("Delete…"));
     await screen.findByRole("dialog", { name: "Delete Auth?" });
     fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
-    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_feature")).toBe(true));
+    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_topic")).toBe(true));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
     expect(storesHolding("feature:f1")).toEqual([]);
     expect(storesHolding("/w/api").length).toBe(13);
@@ -197,7 +197,7 @@ describe("selecting a Feature", () => {
     pointerClick(await screen.findByText("Delete…"));
     await screen.findByRole("dialog", { name: "Delete Auth?" });
     fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
-    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_feature")).toBe(true));
+    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_topic")).toBe(true));
 
     await waitFor(() => expect(storesHolding("feature:f1")).toEqual([]));
     for (const root of [A, B]) {

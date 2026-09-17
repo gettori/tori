@@ -125,7 +125,7 @@ export const NEW_DOCK_SHELL = "tori:new-dock-shell";
 // Open the New Feature dialog. On the bus because the button that asks now sits
 // in the sidebar's own head row, and the dialog belongs to the Feature list
 // under it; lifting the dialog instead would move its five sibling dialogs too.
-export const NEW_FEATURE = "tori:new-feature";
+export const NEW_FEATURE = "tori:new-topic";
 
 // Make a space the active one, by name. Emitted by the first-run modal when
 // the user picks the space Tori should open on. The sidebar owns the active

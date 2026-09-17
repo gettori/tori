@@ -2160,7 +2160,7 @@ export default function Terminal(props: {
   // it was before panes could split.
   const onScreen = (t: OpenTerm) => visibleInPane(t) ?? visibleId() === t.id;
 
-  // The same shared resource the editor reads, not a second one: `list_features`
+  // The same shared resource the editor reads, not a second one: `list_topics`
   // is fetched once per generation module-wide, so two panels asking cannot end
   // up drawing two different member sets during a refetch.
   const featureId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);

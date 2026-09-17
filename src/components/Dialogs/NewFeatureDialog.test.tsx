@@ -17,13 +17,13 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "probe_feature_branch") {
+    if (cmd === "probe_topic_branch") {
       const key = `${args.repoPath}@${args.slug}`;
       if (key in bridge.probes) return Promise.resolve(bridge.probes[key]);
       if (bridge.hold === null) return Promise.resolve(CLEAR);
       return new Promise<Probe>((resolve) => (bridge.hold = resolve));
     }
-    if (cmd === "create_feature") {
+    if (cmd === "create_topic") {
       if (bridge.createError) return Promise.reject(bridge.createError);
       return Promise.resolve({
         id: "f-1",
@@ -67,7 +67,7 @@ const EXISTING: Feature = {
 const name = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
 const box = (label: string) => screen.getByRole("checkbox", { name: label }) as HTMLInputElement;
 const done = () => screen.getByRole("button", { name: /Done|Working/ }) as HTMLButtonElement;
-const probeCalls = () => bridge.calls.filter((c) => c.cmd === "probe_feature_branch");
+const probeCalls = () => bridge.calls.filter((c) => c.cmd === "probe_topic_branch");
 // Kobalte's focus scope settles from a `setTimeout(0)`; a test that moved focus
 // has to let that run before the render is torn down under it.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -104,7 +104,7 @@ describe("NewFeatureDialog", () => {
 
     fireEvent.click(done());
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    const call = bridge.calls.find((c) => c.cmd === "create_feature")!;
+    const call = bridge.calls.find((c) => c.cmd === "create_topic")!;
     expect(call.args).toEqual({ name: "Search v2", members: ["/w/api", "/w/web"] });
   });
 
@@ -194,7 +194,7 @@ describe("NewFeatureDialog", () => {
     fireEvent.click(done());
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(EXISTING));
     const adds = bridge.calls.filter((c) => c.cmd === "add_member");
-    expect(adds.map((c) => c.args)).toEqual([{ featureId: "auth-1", repoPath: "/w/web" }]);
+    expect(adds.map((c) => c.args)).toEqual([{ topicId: "auth-1", repoPath: "/w/web" }]);
     expect(probeCalls()[0].args).toEqual({ repoPath: "/w/web", slug: "auth" });
   });
 

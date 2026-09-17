@@ -73,7 +73,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     const a = args ?? {};
     calls.push({ cmd, args: a });
     switch (cmd) {
-      case "list_features":
+      case "list_topics":
         return Promise.resolve([
           { id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: FEATURE_MEMBERS },
         ]);
@@ -112,13 +112,13 @@ vi.mock("@tauri-apps/api/core", () => ({
     onmessage: ((m: string) => void) | null = null;
   },
 }));
-// `createFeatureMembers` reads `list_features` once per generation, module-wide,
-// and only a `features://changed` bumps the generation. Without the handler a
+// `createFeatureMembers` reads `list_topics` once per generation, module-wide,
+// and only a `topics://changed` bumps the generation. Without the handler a
 // later test would render the first test's member list out of that cache.
 const featureHandlers = vi.hoisted(() => [] as (() => void)[]);
 vi.mock("@tauri-apps/api/event", () => ({
   listen: (name: string, cb: () => void) => {
-    if (name === "features://changed") featureHandlers.push(cb);
+    if (name === "topics://changed") featureHandlers.push(cb);
     return Promise.resolve(() => {});
   },
 }));

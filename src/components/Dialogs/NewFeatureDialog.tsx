@@ -56,7 +56,7 @@ export default function NewFeatureDialog(props: {
   let lastSlug = slug();
   function probe(repoPath: string, forSlug: string) {
     setProbes((prev) => new Map(prev).set(repoPath, { slug: forSlug, result: null }));
-    invoke<BranchProbe | null>("probe_feature_branch", { repoPath, slug: forSlug })
+    invoke<BranchProbe | null>("probe_topic_branch", { repoPath, slug: forSlug })
       .then((answer) => {
         if (slug() !== forSlug || !checked().includes(repoPath)) return;
         const result = answer ?? CLEAR;
@@ -118,10 +118,10 @@ export default function NewFeatureDialog(props: {
       if (props.feature) {
         feature = props.feature;
         for (const repoPath of checked()) {
-          feature = await invoke<Feature>("add_member", { featureId: props.feature.id, repoPath });
+          feature = await invoke<Feature>("add_member", { topicId: props.feature.id, repoPath });
         }
       } else {
-        feature = await invoke<Feature>("create_feature", { name: name().trim(), members: checked() });
+        feature = await invoke<Feature>("create_topic", { name: name().trim(), members: checked() });
       }
       props.onDone(feature);
     } catch (e) {
