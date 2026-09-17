@@ -69,7 +69,7 @@ export default function BaseFolderStep(props: {
           >
             <div class={styles.note}>
               <span class={styles.found}>Found</span> {plural(found().length, "space")},{" "}
-              {plural(projects(), "project")} · the space step is already answered
+              {plural(projects(), "project")}, so the space step is already answered
             </div>
             <div class={`${styles.card} ${styles.scan}`}>
               <span class={styles.hint}>{shortHome(root(), props.home)}</span>

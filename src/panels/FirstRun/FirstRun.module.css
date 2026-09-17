@@ -35,6 +35,11 @@
     padding: var(--tori-space-4) var(--tori-space-2);
   }
 
+  .railNav {
+    display: flex;
+    flex-direction: column;
+  }
+
   .brand {
     display: flex;
     align-items: center;
@@ -240,7 +245,7 @@
      the rail. */
   @media (max-width: 1000px), (max-height: 680px) {
     .stepSummary,
-    .railCopy {
+    .railNote {
       display: none;
     }
     .paneInner {
