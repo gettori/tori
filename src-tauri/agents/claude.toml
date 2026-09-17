@@ -398,3 +398,12 @@ id = "ultracode"
 label = "Ultracode"
 state = "working"
 measured_on = "2.1.238 (Claude Code)"
+
+[install]
+# npm names the package that ships the launch binary, and all three verbs were
+# run on macOS. The binary lands in npm's global bin, which has to be on the
+# login shell's PATH for Tori to find it.
+program = "npm"
+args = ["install", "-g", "@anthropic-ai/claude-code"]
+update_args = ["install", "-g", "@anthropic-ai/claude-code"]
+uninstall_args = ["uninstall", "-g", "@anthropic-ai/claude-code"]
