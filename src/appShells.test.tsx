@@ -67,7 +67,7 @@ import { installAnimationFrame } from "./test/frames";
 
 const { default: App } = await import("./App");
 const { emit, emitWith, onWith, CLOSE_TAB, OPEN_JOB, TOAST, TOGGLE_DOCK } = await import("./utils/events");
-const { SHELLS_KEY } = await import("./utils/features");
+const { SHELLS_KEY } = await import("./utils/topics");
 const { paneLock } = await import("./layout/tabPlacement");
 const { layoutRoot } = await import("./layout/layoutStore");
 const { activeWorkspace, dockActiveId, focusTab, open, setOpen } = await import(

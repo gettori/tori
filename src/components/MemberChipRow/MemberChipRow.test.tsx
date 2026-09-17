@@ -3,7 +3,7 @@ import { render, screen } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
 import { expectNoAxeViolations } from "../../test/axe";
 import MemberChipRow from "./MemberChipRow";
-import type { TintedMember } from "../../utils/featureMembers";
+import type { TintedMember } from "../../utils/topicMembers";
 
 const member = (name: string, i: number, broken = false): TintedMember =>
   ({

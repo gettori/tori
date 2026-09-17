@@ -32,8 +32,8 @@ import {
   type StopChat,
   type NewSession,
 } from "../../utils/events";
-import { rootOf, workspaceKey } from "../../utils/features";
-import { createFeatureMembers, memberFor } from "../../utils/featureMembers";
+import { rootOf, workspaceKey } from "../../utils/topics";
+import { createTopicMembers, memberFor } from "../../utils/topicMembers";
 import { loadFrecency, rankByFrecency, topFiles } from "../../utils/frecency";
 import { loadTasks, type Task } from "../../utils/tasks";
 import { loadTaskRuns } from "../../utils/taskRecents";
@@ -86,7 +86,7 @@ type Row = {
 };
 
 /** One listed file: which root it came from, and where it sits inside it.
- *  Inside a Feature the rel path alone no longer identifies a file. */
+ *  Inside a Topic the rel path alone no longer identifies a file. */
 type ProjectFile = { root: string; rel: string };
 
 function absOf(f: ProjectFile): string {
@@ -115,7 +115,7 @@ function unmetReason(req: Requirement): string | null {
       return editorState().projectRoot ? null : "Select a branch first";
     case "staged":
       // Scoped to the root the git commands will actually act on, which inside
-      // a Feature is the member owning the file in front, not the workspace.
+      // a Topic is the member owning the file in front, not the workspace.
       return stagedFiles(editorState().projectRoot).length ? null : "Nothing staged";
     case "ahead":
       return canPush(editorState().projectRoot) ? null : "Nothing to push";
@@ -189,7 +189,7 @@ export default function Omnibox(props: {
 
   const root = () => props.selected?.folderPath ?? null;
 
-  /** Every root the box lists files from: inside a Feature that is all its
+  /** Every root the box lists files from: inside a Topic that is all its
    *  present members, since this is the one surface that can reach a file in a
    *  repo that is not the one in front of you. */
   const roots = (): string[] => {
@@ -199,9 +199,9 @@ export default function Omnibox(props: {
     return at ? [at] : [];
   };
 
-  const featureId = () =>
+  const topicId = () =>
     props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null;
-  const members = createFeatureMembers(featureId);
+  const members = createTopicMembers(topicId);
   // One map rather than a `memberFor` per row: the untyped list draws hundreds,
   // and a member's key is the very root the rows already carry.
   const repoNames = createMemo(() => new Map(members().map((m) => [m.key, m.label])));
@@ -212,7 +212,7 @@ export default function Omnibox(props: {
   // freezing `now` with it keeps the order from drifting under the cursor while
   // someone types.
   //
-  // Keyed the way the editor writes it: `feature:<id>` for a Feature, whose
+  // Keyed the way the editor writes it: `feature:<id>` for a Topic, whose
   // members' files would otherwise be filed under whichever one was in front.
   const openedAt = Date.now();
   const stats = loadFrecency(openedAt)[workspaceKey(props.selected)] ?? {};
@@ -305,8 +305,8 @@ export default function Omnibox(props: {
   // --- The modes ------------------------------------------------------------
 
   /** How a file reads in the list: its root-relative path, prefixed by the repo
-   *  inside a Feature. A bare basename makes two `index.ts` rows
-   *  indistinguishable, and inside a Feature so does the rel path alone, since
+   *  inside a Topic. A bare basename makes two `index.ts` rows
+   *  indistinguishable, and inside a Topic so does the rel path alone, since
    *  two members hold the same `package.json`. */
   function fileLabel(f: ProjectFile): string {
     const repo = repoNames().get(f.root);
@@ -414,7 +414,7 @@ export default function Omnibox(props: {
       }
       return [...head, ...rest.map((f) => fileRow(f, head.length ? "Project" : undefined))];
     }
-    // Scored against the label, so inside a Feature the repo name narrows the
+    // Scored against the label, so inside a Topic the repo name narrows the
     // list the same way a folder name does. One cap here: scores are comparable
     // across members, so the best 200 really are the best 200.
     const scored: { f: ProjectFile; score: number }[] = [];

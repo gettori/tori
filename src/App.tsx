@@ -15,11 +15,11 @@ import { forgetWorkspace as forgetLayout } from './layout/layoutStore';
 import { forgetWorkspace as forgetPlacement } from './layout/tabPlacement';
 import LeftSidebar, { type Selection } from './panels/LeftSidebar/LeftSidebar';
 import {
-  featureSelection,
+  topicSelection,
   selectionRoot,
   workspaceKey,
-  type Feature,
-} from './utils/features';
+  type Topic,
+} from './utils/topics';
 import { ensureShellsWorkspace } from './layout/shellsWorkspace';
 import Dock from './layout/Dock';
 import {
@@ -256,7 +256,7 @@ function loadSelection(): Selection | null {
       // Backfill the space name for selections persisted under the old `groupName` key.
       if (s && !s.spaceName)
         s.spaceName = (s as unknown as { groupName?: string }).groupName ?? '';
-      // Backfill the kind for selections persisted before Features existed.
+      // Backfill the kind for selections persisted before Topics existed.
       if (s && !s.kind) s.kind = 'unit';
       return s;
     }
@@ -500,7 +500,7 @@ function App() {
     }
   });
 
-  // Moves a Feature's active member. The mirror fields follow so a consumer
+  // Moves a Topic's active member. The mirror fields follow so a consumer
   // still on `folderPath` sees the same folder the editor and git do.
   function setActiveRoot(root: string | null) {
     setSelected((prev) => {
@@ -509,35 +509,35 @@ function App() {
     });
   }
 
-  // A stored feature Selection is a snapshot; the record is truth. Re-resolved
+  // A stored Topic Selection is a snapshot; the record is truth. Re-resolved
   // at startup and whenever the tree changes, so a member that came or went is
-  // reflected and a deleted Feature no longer keeps an empty workspace open.
+  // reflected and a deleted Topic no longer keeps an empty workspace open.
   // Latest request wins: a burst of config changes must not let an older
   // listing, resolving later, overwrite the newer one.
   let resolveSeq = 0;
-  async function resolveFeatureSelection() {
+  async function resolveTopicSelection() {
     if (selected()?.kind !== 'feature') return;
     const mine = ++resolveSeq;
-    const list = (await invoke<Feature[] | null>('list_topics').catch(() => null)) ?? [];
+    const list = (await invoke<Topic[] | null>('list_topics').catch(() => null)) ?? [];
     const sel = selected();
     if (mine !== resolveSeq || sel?.kind !== 'feature') return;
-    const feature = list.find((f) => f.id === sel.featureId);
-    setSelected(feature ? featureSelection(feature, sel.activeRoot) : null);
+    const topic = list.find((f) => f.id === sel.featureId);
+    setSelected(topic ? topicSelection(topic, sel.activeRoot) : null);
   }
   let unlistenConfig: UnlistenFn | undefined;
   onMount(async () => {
-    void resolveFeatureSelection();
+    void resolveTopicSelection();
     // The quota windows the last run knew, so the strip opens with them rather
     // than blank until the first turn of the day. The fired dedupe keys come
     // back with them, which is what stops a restart inside an already-announced
     // window from announcing it again.
     void loadUsageStore().then(watchQuotaNotifications);
     watchUsageProbe();
-    unlistenConfig = await listen('config://changed', () => void resolveFeatureSelection());
+    unlistenConfig = await listen('config://changed', () => void resolveTopicSelection());
   });
   onCleanup(() => unlistenConfig?.());
 
-  // A deleted Feature: its pane tree and placements go, and if it was what
+  // A deleted Topic: its pane tree and placements go, and if it was what
   // the shell showed, nothing is selected now.
   onCleanup(
     onEventWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => {

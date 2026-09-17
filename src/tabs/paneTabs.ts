@@ -27,7 +27,7 @@ import { maybeKindEntry } from "./registry";
 import { unifiedTabs, type UnifiedTab } from "./unifiedTabs";
 import { activeWorkspace, dockActiveId } from "../panels/Terminal/terminalTabStore";
 import { dockOpen } from "../layout/dockStore";
-import { isShellsKey } from "../utils/features";
+import { isShellsKey } from "../utils/topics";
 
 type PanePlacement = {
   /** This workspace's tabs per pane, in display order. */

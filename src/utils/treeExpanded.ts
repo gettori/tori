@@ -2,7 +2,7 @@
 //
 // The tree never persisted this: every row owned a local `open` signal, so
 // reopening a workspace collapsed everything it had. Lifting the state out of
-// the row is also what lets a Feature's sections restore independently, since
+// the row is also what lets a Topic's sections restore independently, since
 // entries are absolute paths: which member a directory belongs to falls out of
 // its prefix, so the workspace key alone is enough and no compound key is
 // needed.
@@ -159,7 +159,7 @@ export function collapseDirs(ws: string, under?: string): void {
 }
 
 /** Sections start open, so a member that has never been closed is open, and one
- *  that joins a Feature later arrives open rather than hidden. */
+ *  that joins a Topic later arrives open rather than hidden. */
 export function isSectionOpen(ws: string, root: string): boolean {
   return !entryOf(store(), ws).closed.includes(root);
 }
@@ -171,7 +171,7 @@ export function setSectionOpen(ws: string, root: string, open: boolean): void {
   write(withEntry(store(), ws, { ...entry, closed }), persists(ws));
 }
 
-/** The workspace is gone (a Feature was deleted): drop everything filed under
+/** The workspace is gone (a Topic was deleted): drop everything filed under
  *  it, so a relaunch cannot revive it. */
 export function dropWorkspaceExpanded(ws: string): void {
   if (!(ws in store())) return;

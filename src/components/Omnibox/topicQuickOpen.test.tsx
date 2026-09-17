@@ -1,4 +1,4 @@
-// Quick-open across a Feature's members (#158 phase 4): the box lists every
+// Quick-open across a Topic's members (#158 phase 4): the box lists every
 // present member, names each row's repo, and keys its frecency the way the
 // editor writes it.
 //
@@ -11,7 +11,7 @@ import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 const A = "/r/api/.tori/worktrees/auth";
 const B = "/r/web/.tori/worktrees/auth";
 
-/** The eight-member Feature, for the caps. Twenty-six files each is the
+/** The eight-member Topic, for the caps. Twenty-six files each is the
  *  smallest fixture that puts the whole list past `MAX_RESULTS`. */
 const WIDE = Array.from({ length: 8 }, (_, i) => `/r/m${i}/.tori/worktrees/auth`);
 const PER_MEMBER = 26;
@@ -29,7 +29,7 @@ const member = (repo: string, name: string, worktree: string, order: number) => 
   order,
 });
 
-const FEATURES = [
+const TOPICS = [
   {
     id: "f1",
     name: "Auth",
@@ -49,7 +49,7 @@ const FEATURES = [
       { ...member("/r/web", "web", B, 1), state: { kind: "worktree-missing" } },
     ],
   },
-  // A second record rather than a second mock: `featureMembers` reads once per
+  // A second record rather than a second mock: `topicMembers` reads once per
   // generation module-wide, so a swapped payload would be served from the cache.
   {
     id: "f8",
@@ -67,7 +67,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       bridge.listed.push(at);
       return Promise.resolve(bridge.files[at] ?? []);
     }
-    if (cmd === "list_topics") return Promise.resolve(FEATURES);
+    if (cmd === "list_topics") return Promise.resolve(TOPICS);
     if (cmd === "get_config") return Promise.resolve({ spaces: [] });
     return Promise.resolve(null);
   },
@@ -79,10 +79,10 @@ const { publishEditorState, clearEditorState } = await import("../../utils/edito
 const { note, saveFrecency } = await import("../../utils/frecency");
 const { OPEN_IN_EDITOR } = await import("../../utils/events");
 
-const featureSel = (featureId: string, roots: string[]) => ({
+const topicSel = (topicId: string, roots: string[]) => ({
   kind: "feature" as const,
-  featureId,
-  featureName: featureId === "f1" ? "Auth" : "Wide",
+  featureId: topicId,
+  featureName: topicId === "f1" ? "Auth" : "Wide",
   roots,
   activeRoot: roots[0],
   spaceName: "",
@@ -130,7 +130,7 @@ afterEach(() => {
 
 describe("quick-open inside a Feature", () => {
   it("offers each member's package.json as its own row, named by its repo", async () => {
-    open(featureSel("f1", [A, B]));
+    open(topicSel("f1", [A, B]));
     // Every present member listed, not only the active one.
     await waitFor(() => expect(bridge.listed).toEqual([A, B]));
     await waitFor(() =>
@@ -141,7 +141,7 @@ describe("quick-open inside a Feature", () => {
   });
 
   it("opens the row's own member, not the active root", async () => {
-    open(featureSel("f1", [A, B]));
+    open(topicSel("f1", [A, B]));
     await waitFor(() => expect(screen.getByText("web/package.json")).toBeTruthy());
     // The id and the label both carry the root, so the second `package.json` is
     // a row of its own rather than one that collides with the first.
@@ -160,7 +160,7 @@ describe("quick-open inside a Feature", () => {
       recentJumps: [{ path: `${B}/src/b.ts` }],
     });
     saveFrecency(note({}, "feature:f1", `${B}/deep/x.ts`, "edit", Date.now()));
-    open(featureSel("f1", [A, B]));
+    open(topicSel("f1", [A, B]));
 
     await waitFor(() => expect(rowLabels().slice(0, 2)).toEqual(["web/src/b.ts", "web/deep/x.ts"]));
   });
@@ -176,7 +176,7 @@ describe("quick-open inside a Feature", () => {
       projectRoot: A,
       recentJumps: [{ path: `${B}/src/b.ts` }],
     });
-    open(featureSel("f1b", [A]));
+    open(topicSel("f1b", [A]));
 
     await waitFor(() => expect(rowLabels()[0]).toBe("web/src/b.ts"));
   });
@@ -185,7 +185,7 @@ describe("quick-open inside a Feature", () => {
     // Noted under `feature:f1`, never under a member folder. Read by the old
     // `folderPath` key this record is invisible and there is no block at all.
     saveFrecency(note({}, "feature:f1", `${A}/src/a.ts`, "edit", Date.now()));
-    open(featureSel("f1", [A, B]));
+    open(topicSel("f1", [A, B]));
 
     expect(screen.getByText("Recent files")).toBeTruthy();
     // The block renders from storage on the first frame, before `list_topics`
@@ -206,7 +206,7 @@ describe("the result caps across eight members", () => {
   });
 
   it("gives every member rows when nothing is typed, past the shared cap", async () => {
-    open(featureSel("f8", WIDE));
+    open(topicSel("f8", WIDE));
     await waitFor(() => expect(rowLabels()).toHaveLength(WIDE.length * PER_MEMBER));
     // The point of the per-root cap: a single global one would have stopped at
     // 200 and left the last member with nothing, which reads as an empty repo.
@@ -215,7 +215,7 @@ describe("the result caps across eight members", () => {
   });
 
   it("keeps one cap over the whole list once a query scores it", async () => {
-    open(featureSel("f8", WIDE));
+    open(topicSel("f8", WIDE));
     await waitFor(() => expect(rowLabels().length).toBeGreaterThan(200));
 
     fireEvent.input(screen.getByRole("combobox"), { target: { value: "s" } });

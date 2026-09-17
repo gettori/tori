@@ -37,7 +37,7 @@ const unitSel = {
 
 const sessionSel = { ...unitSel, agent: "claude", sessionId: "s1", sessionPath: `${ROOT}/s1.jsonl`, sessionCwd: ROOT };
 
-// A Feature whose members are all gone: a selection, and no folder behind it.
+// A Topic whose members are all gone: a selection, and no folder behind it.
 const rootlessSel = { kind: "feature", featureId: "f1", roots: [], activeRoot: null, spaceName: "", projectName: "Auth", projectPath: "", folderPath: "", branch: "" };
 
 beforeEach(() => {

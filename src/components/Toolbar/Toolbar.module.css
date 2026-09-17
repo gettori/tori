@@ -85,7 +85,7 @@
   font-size: var(--tori-text-md);
 }
 
-/* Feature members: one chip per repo, the active root filled in. */
+/* Topic members: one chip per repo, the active root filled in. */
 .members {
   display: flex;
   align-items: center;

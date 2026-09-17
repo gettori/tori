@@ -26,7 +26,7 @@ import { draggingTab, dropAction, endTabDrag, hitTest, type DropZone } from "./t
 import { setPaneActive } from "../layout/tabPlacement";
 import { focusedPaneId } from "../layout/layoutStore";
 import { dockOpen, focusedSurface } from "../layout/dockStore";
-import { isShellsKey } from "../utils/features";
+import { isShellsKey } from "../utils/topics";
 import { preserveScrollAndFocus } from "../utils/rowMovePreserve";
 import { traceMark } from "../utils/perfTrace";
 import {

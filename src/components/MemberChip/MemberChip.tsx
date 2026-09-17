@@ -1,6 +1,6 @@
 import { createMemo, splitProps, type JSX } from "solid-js";
-import { memberInitials } from "../../utils/features";
-import type { ChipStyle, TintedMember } from "../../utils/featureMembers";
+import { memberInitials } from "../../utils/topics";
+import type { ChipStyle, TintedMember } from "../../utils/topicMembers";
 import styles from "./MemberChip.module.css";
 
 /** What the chip needs to name a repo: the display name it takes initials from,
@@ -15,7 +15,7 @@ export interface MemberChipProps
   /** Hue and rgb together, for callers holding a `TintedMember`. Wins over
    *  `tint`, since it paints both custom properties rather than one. */
   chipStyle?: ChipStyle;
-  /** Squarer box for the sidebar's Feature rows. */
+  /** Squarer box for the sidebar's Topic rows. */
   size?: "sm" | "md";
   /**
    * Hide the chip from assistive tech, for a surface that names the repo in

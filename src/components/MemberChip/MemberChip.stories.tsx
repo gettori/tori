@@ -33,7 +33,7 @@ export const Tints: Story = {
 };
 
 /** The two sizes: `sm` for a tree, search or changes section header, `md` for
- *  the sidebar's Feature rows, which sit on a taller line. */
+ *  the sidebar's Topic rows, which sit on a taller line. */
 export const Sizes: Story = {
   render: () => (
     <Row>

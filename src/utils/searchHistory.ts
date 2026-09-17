@@ -61,7 +61,7 @@ export function historyFor(store: SearchHistoryStore, ws: string): WorkspaceHist
  * when you last cared about it rather than when you first typed it.
  *
  * `repos` travels with the entry for the reason the options do: a query run
- * against one member of a Feature is a different search from the same words run
+ * against one member of a Topic is a different search from the same words run
  * against all of them. An empty list writes no field at all, so an unrestricted
  * search stores exactly what it stored before.
  */

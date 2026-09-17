@@ -1,9 +1,9 @@
 // The shared tinted-members resource (#155 phase 2). Two events can change what
-// a member chip says: the Feature record itself and the Space list it takes its
+// a member chip says: the Topic record itself and the Space list it takes its
 // colour from. Each has to refetch exactly the half it invalidates.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createRoot } from "solid-js";
-import type { TintedMember } from "./featureMembers";
+import type { TintedMember } from "./topicMembers";
 import { isSyntheticId, syntheticId } from "./syntheticTabs";
 
 const bridge = vi.hoisted(() => ({
@@ -38,7 +38,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 const {
-  createFeatureMembers,
+  createTopicMembers,
   focusMemberRoot,
   groupByMemberRoot,
   memberFor,
@@ -46,7 +46,7 @@ const {
   projectUnitKind,
   resolveMemberRestriction,
   tintedMembers,
-} = await import("./featureMembers");
+} = await import("./topicMembers");
 
 const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 const count = (cmd: string) => bridge.calls.filter((c) => c === cmd).length;
@@ -58,7 +58,7 @@ beforeEach(() => {
 describe("createFeatureMembers", () => {
   it("refetches once per event and keeps the members in order, tinted by Space", async () => {
     await createRoot(async (dispose) => {
-      const members = createFeatureMembers(() => "f1");
+      const members = createTopicMembers(() => "f1");
       await settle();
       expect(count("list_topics")).toBe(1);
       expect(count("get_config")).toBe(1);
@@ -86,7 +86,7 @@ describe("createFeatureMembers", () => {
 
   it("reads nothing when no Feature is selected", async () => {
     await createRoot(async (dispose) => {
-      const members = createFeatureMembers(() => null);
+      const members = createTopicMembers(() => null);
       await settle();
       expect(bridge.calls).toEqual([]);
       expect(members()).toEqual([]);
@@ -96,8 +96,8 @@ describe("createFeatureMembers", () => {
 
   it("reads once per generation however many consumers ask", async () => {
     await createRoot(async (dispose) => {
-      const a = createFeatureMembers(() => "f1");
-      const b = createFeatureMembers(() => "f1");
+      const a = createTopicMembers(() => "f1");
+      const b = createTopicMembers(() => "f1");
       await settle();
       bridge.calls.length = 0;
 
@@ -115,8 +115,8 @@ describe("createFeatureMembers", () => {
     // second `list_topics` or a second listener pair: the module shares one
     // read per generation, so neither panel has to own the resource.
     await createRoot(async (dispose) => {
-      createFeatureMembers(() => "f1");
-      createFeatureMembers(() => "f1");
+      createTopicMembers(() => "f1");
+      createTopicMembers(() => "f1");
       await settle();
       expect(listens.filter((n) => n === "topics://changed")).toHaveLength(1);
       expect(listens.filter((n) => n === "config://changed")).toHaveLength(1);
@@ -374,7 +374,7 @@ describe("the project a member's repo was discovered as", () => {
   };
 
   /** A plain repo. Its attached branches all sit at the repo folder, and since
-   *  #158 the Feature worktrees inside it are listed too. */
+   *  #158 the Topic worktrees inside it are listed too. */
   const PLAIN = {
     name: "work",
     color: "Sky",

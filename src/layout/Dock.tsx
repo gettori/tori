@@ -4,7 +4,7 @@ import Icon from "../components/Icon/Icon";
 import IconButton from "../components/IconButton/IconButton";
 import PaneView from "../tabs/PaneView";
 import { tabsIn } from "../panels/Terminal/terminalTabStore";
-import { SHELLS_KEY } from "../utils/features";
+import { SHELLS_KEY } from "../utils/topics";
 import { emit, NEW_DOCK_SHELL } from "../utils/events";
 import { shellsPane } from "./shellsWorkspace";
 
