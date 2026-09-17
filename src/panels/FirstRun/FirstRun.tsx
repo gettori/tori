@@ -7,16 +7,24 @@ import { finishFirstRun, firstRunConfig, firstRunView, markIntroSeen, reloadFirs
 import { badName, shortHome } from "../../utils/names";
 import { createAgentsSetup } from "./agentsSetup";
 import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
+import { createProjectSetup } from "./projectSetup";
 import { AGENTS_LEAD } from "./steps/AgentsStep";
 import BaseFolderStep, { BASE_FOLDER_LEAD, rootSpaces } from "./steps/BaseFolderStep";
+import { PROJECT_LEAD } from "./steps/ProjectStep";
 import ReadyStep, { readyLead, type ReadySummary } from "./steps/ReadyStep";
 import SpaceStep, { SPACE_LEAD, type SpaceMode } from "./steps/SpaceStep";
 import Intro, { SLIDES } from "./intro/Intro";
 import styles from "./FirstRun.module.css";
 
-type StepId = "agents" | "base" | "space" | "ready";
-const ORDER: StepId[] = ["agents", "base", "space", "ready"];
-const HEADING: Record<StepId, string> = { agents: "Agents", base: "Base folder", space: "Space", ready: "Ready" };
+type StepId = "agents" | "base" | "space" | "project" | "ready";
+const ORDER: StepId[] = ["agents", "base", "space", "project", "ready"];
+const HEADING: Record<StepId, string> = {
+  agents: "Agents",
+  base: "Base folder",
+  space: "Space",
+  project: "First project",
+  ready: "Ready",
+};
 
 /**
  * The setup half of first run, wired to the backend: the shell draws it, the
@@ -60,6 +68,13 @@ export default function FirstRun() {
     const chosen = picked();
     return list.some((s) => s.name === chosen) ? chosen : list[0].name;
   };
+  const projectSetup = createProjectSetup({
+    home,
+    space: () => spaces().find((s) => s.name === spaceName()) ?? null,
+    onScreen: () => page() === "setup" && step() === "project",
+    onDone: () => go("ready"),
+  });
+  const running = () => agentsSetup.running() || projectSetup.running();
   const summary = (): ReadySummary | null => {
     const r = root();
     const s = spaceName();
@@ -109,7 +124,7 @@ export default function FirstRun() {
       setNewName("");
       setSpaceMode("pick");
       activate(name);
-      go("ready");
+      go("project");
     } catch (e) {
       fail(e);
     } finally {
@@ -125,7 +140,7 @@ export default function FirstRun() {
     const s = spaceName();
     if (!s) return;
     activate(s);
-    go("ready");
+    go("project");
   }
 
   function endIntro() {
@@ -148,11 +163,14 @@ export default function FirstRun() {
       summary: root() ? shortHome(root()!, home()) : null,
     },
     { id: "space", label: "Space", required: true, group: "setup", summary: spaceName() },
-    { id: "ready", label: "Ready", group: "setup" },
+    { id: "project", label: "First project", group: "once", summary: projectSetup.summary() },
+    { id: "ready", label: "Ready", group: "once" },
   ];
 
   const back = () => (
-    <Button onClick={() => go(ORDER[Math.max(0, ORDER.indexOf(step()) - 1)])}>Back</Button>
+    <Button disabled={running()} onClick={() => go(ORDER[Math.max(0, ORDER.indexOf(step()) - 1)])}>
+      Back
+    </Button>
   );
 
   return (
@@ -163,7 +181,7 @@ export default function FirstRun() {
           <StepRail
             steps={steps()}
             current={step()}
-            reachable={(id) => !agentsSetup.running() && ORDER.indexOf(id as StepId) <= reached()}
+            reachable={(id) => !running() && ORDER.indexOf(id as StepId) <= reached()}
             onJump={(id) => setStep(id as StepId)}
           />
         }
@@ -177,6 +195,7 @@ export default function FirstRun() {
             <Match when={step() === "agents"}>{AGENTS_LEAD}</Match>
             <Match when={step() === "base"}>{BASE_FOLDER_LEAD}</Match>
             <Match when={step() === "space"}>{SPACE_LEAD}</Match>
+            <Match when={step() === "project"}>{PROJECT_LEAD}</Match>
             <Match when={summary()}>{(s) => readyLead(s())}</Match>
           </Switch>
         }
@@ -185,6 +204,11 @@ export default function FirstRun() {
             <Match when={step() === "agents"}>Not required. Tori opens without an agent.</Match>
             <Match when={step() === "base"}>Required. You can change it later in Settings.</Match>
             <Match when={step() === "space"}>Required. This is the last step before Tori can open.</Match>
+            <Match when={step() === "project"}>
+              <Button variant="ghost" disabled={running()} onClick={() => go("ready")}>
+                Skip
+              </Button>
+            </Match>
             <Match when={step() === "ready"}>Nothing was sent anywhere.</Match>
           </Switch>
         }
@@ -214,6 +238,16 @@ export default function FirstRun() {
                 onClick={() => (creating() ? void createSpace() : continueFromSpace())}
               >
                 {creating() ? "Create space" : "Continue"}
+              </Button>
+            </Match>
+            <Match when={step() === "project"}>
+              {back()}
+              <Button
+                variant="primary"
+                disabled={projectSetup.primary().disabled}
+                onClick={() => projectSetup.primary().run()}
+              >
+                {projectSetup.primary().label}
               </Button>
             </Match>
             <Match when={step() === "ready"}>
@@ -249,6 +283,7 @@ export default function FirstRun() {
               />
             )}
           </Match>
+          <Match when={step() === "project"}>{projectSetup.view()}</Match>
           <Match when={step() === "ready" && summary()}>{(s) => <ReadyStep summary={s()} home={home()} />}</Match>
         </Switch>
       </FirstRunShell>
