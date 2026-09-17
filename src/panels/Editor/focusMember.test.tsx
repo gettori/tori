@@ -264,7 +264,7 @@ describe("the member line above the panes that follow the file", () => {
   });
 });
 
-describe("starting a run inside a Feature", () => {
+describe("starting a run inside a Topic", () => {
   it("launches in the active tab's member, not in the active root", async () => {
     await mountEditor();
     await openFile(`${B}/src/b.ts`);

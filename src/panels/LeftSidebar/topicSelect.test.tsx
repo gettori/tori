@@ -103,7 +103,7 @@ async function mounted(selected: unknown) {
 }
 const row = (name: string) => screen.getByText(name).closest("li")!;
 
-describe("selecting a Feature", () => {
+describe("selecting a Topic", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
@@ -115,7 +115,7 @@ describe("selecting a Feature", () => {
     localStorage.setItem("tori.sidebar-mode.v1", "topics");
   });
 
-  it("hands the shell a feature Selection on click, keeping a stored active root", async () => {
+  it("hands the shell a Topic Selection on click, keeping a stored active root", async () => {
     const { onSelect } = await mounted(topicSel);
     fireEvent.click(row("Auth"));
     expect(onSelect).toHaveBeenCalledTimes(1);
@@ -145,7 +145,7 @@ describe("selecting a Feature", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("deleting the selected Feature clears it and sweeps topic:<id> from every store", async () => {
+  it("deleting the selected Topic clears it and sweeps topic:<id> from every store", async () => {
     const seed = (key: string, value: unknown) =>
       localStorage.setItem(key, JSON.stringify({ "topic:f1": value, "/w/api": value }));
     seed("tori.panes.v1", { version: 2 });
@@ -167,7 +167,7 @@ describe("selecting a Feature", () => {
     fireEvent.contextMenu(row("Auth"));
     pointerClick(await screen.findByText("Delete…"));
     await screen.findByRole("dialog", { name: "Delete Auth?" });
-    fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_topic")).toBe(true));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
     expect(storesHolding("topic:f1")).toEqual([]);
@@ -196,7 +196,7 @@ describe("selecting a Feature", () => {
     fireEvent.contextMenu(row("Auth"));
     pointerClick(await screen.findByText("Delete…"));
     await screen.findByRole("dialog", { name: "Delete Auth?" });
-    fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Topic" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_topic")).toBe(true));
 
     await waitFor(() => expect(storesHolding("topic:f1")).toEqual([]));

@@ -21,7 +21,7 @@ export const SLIDES: Slide[] = [
   },
   {
     title: "Organised the way your disk already is",
-    body: "Base folder, then spaces, then projects, then branches and worktrees. Nothing to import: Tori reads the folders you already have. A Feature can span several repos on one branch.",
+    body: "Base folder, then spaces, then projects, then branches and worktrees. Nothing to import: Tori reads the folders you already have. A Topic can span several repos on one branch.",
     art: LayoutIllustration,
   },
   {

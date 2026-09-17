@@ -227,7 +227,7 @@ describe("the shared git store", () => {
     expect(changedFiles("/proj")).toEqual([modified]);
   });
 
-  it("leaves no slot behind when the selection empties, as a deleted Feature's does", async () => {
+  it("leaves no slot behind when the selection empties, as a deleted Topic's does", async () => {
     enterRoots(["/a", "/b"]);
     status = [modified];
     await Promise.all([refreshGit("/a"), refreshGit("/b")]);

@@ -243,7 +243,7 @@ describe("commands the editor answers", () => {
     expect(screen.queryByText("Commit message")).toBeNull();
   });
 
-  it("stages a file in a background member of a Feature, in that member", async () => {
+  it("stages a file in a background member of a Topic, in that member", async () => {
     // The file in front lives in the member that is *not* active. Refusing it
     // ("isn't in this workspace") would be a refusal about a file that plainly
     // is, and staging it in the active member would stage the wrong repo.

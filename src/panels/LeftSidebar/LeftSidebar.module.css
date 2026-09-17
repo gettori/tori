@@ -676,16 +676,21 @@
   background: var(--neutral-subtle);
 }
 
-/* The "in <Topic>" chip on a member unit: a real button, since it moves the
-   selection to the Topic, drawn as the badge so the row keeps one rhythm. */
+/* The Tag chip on a member unit: a real button, since it moves the selection
+   to the Topic, drawn as the badge so the row keeps one rhythm. */
 .row .badge.topicChip {
   margin-left: calc(4px * var(--ui-scale));
+  display: inline-flex;
+  align-items: center;
   appearance: none;
   border: 0;
-  font: inherit;
-  font-size: var(--tori-text-2xs);
-  line-height: inherit;
+  padding: calc(2px * var(--ui-scale));
   cursor: pointer;
+}
+/* CSS-sized (the numeric Lucide size is dropped) so it tracks --ui-scale. */
+.row .badge.topicChip :global(svg) {
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
 }
 .row .badge.topicChip:hover {
   background: var(--brand-muted, var(--brand-subtle));

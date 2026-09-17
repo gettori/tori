@@ -84,7 +84,7 @@ describe("createTopicMembers", () => {
     });
   });
 
-  it("reads nothing when no Feature is selected", async () => {
+  it("reads nothing when no Topic is selected", async () => {
     await createRoot(async (dispose) => {
       const members = createTopicMembers(() => null);
       await settle();
@@ -126,7 +126,7 @@ describe("createTopicMembers", () => {
 });
 
 describe("tintedMembers", () => {
-  it("is empty for no Feature and neutral for a repo outside every Space", () => {
+  it("is empty for no Topic and neutral for a repo outside every Space", () => {
     expect(tintedMembers(null, [])).toEqual([]);
     const [first] = tintedMembers({ members: bridge.members as never }, []);
     expect(first.hue).toBeUndefined();
@@ -390,7 +390,7 @@ describe("the project a member's repo was discovered as", () => {
     ],
   };
 
-  it("reads a plain repo as plain even when a Feature worktree is listed first", () => {
+  it("reads a plain repo as plain even when a Topic worktree is listed first", () => {
     // Position says nothing, and matching the *member's* worktree would answer
     // `worktree` here, which would offer a `.shared/` folder that is not there.
     const [m] = tintedMembers(

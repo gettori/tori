@@ -64,7 +64,7 @@ export default function MemberChipRow(props: {
   };
 
   return (
-    <div class={styles.row} classList={{ [styles.bare]: !!props.bare }} role="group" aria-label="Feature members">
+    <div class={styles.row} classList={{ [styles.bare]: !!props.bare }} role="group" aria-label="Topic members">
       <For each={split().shown}>
         {(m) => (
           <Tooltip

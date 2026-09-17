@@ -103,8 +103,8 @@ beforeEach(() => {
   bridge.calls.length = 0;
 });
 
-describe("Toolbar for a Feature", () => {
-  it("shows the Feature crumb and a chip per member, the active root pressed", async () => {
+describe("Toolbar for a Topic", () => {
+  it("shows the Topic crumb and a chip per member, the active root pressed", async () => {
     const onActiveRoot = vi.fn();
     render(() => <Toolbar selected={topicSel(A) as never} onActiveRoot={onActiveRoot} />);
     expect(screen.getByText("Auth")).toBeTruthy();
@@ -118,7 +118,7 @@ describe("Toolbar for a Feature", () => {
     expect(onActiveRoot).toHaveBeenCalledWith(B);
   });
 
-  it("names the active member between the Feature and its branch", async () => {
+  it("names the active member between the Topic and its branch", async () => {
     // Three crumbs, and the middle one follows the chip row: the crumb says
     // where you are, the chips are what move it (#158).
     const onActiveRoot = vi.fn();
@@ -158,7 +158,7 @@ describe("Toolbar for a Feature", () => {
     expect(screen.queryByRole("button", { name: /VSCode/ })).toBeNull();
   });
 
-  it("keeps the unit crumb as it was and reads no Feature record for it", () => {
+  it("keeps the unit crumb as it was and reads no Topic record for it", () => {
     render(() => <Toolbar selected={unitSel as never} />);
     expect(screen.getByText("work")).toBeTruthy();
     expect(screen.getByText("main")).toBeTruthy();

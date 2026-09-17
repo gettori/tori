@@ -923,7 +923,7 @@ describe("the row context menu", () => {
 // Inside a Topic the Files tab shows one member at a time, handing the tree
 // that member's worktree as its root. A switch is a new root under a live tree,
 // and nothing the last member's mount knew may leak into the next one.
-describe("one member of a Feature at a time", () => {
+describe("one member of a Topic at a time", () => {
   const A = "/feat/api";
   const B = "/feat/web";
 

@@ -119,8 +119,8 @@ beforeEach(() => {
 });
 afterEach(() => resetTerminalTabModel());
 
-describe("the terminal inside a Feature", () => {
-  it("restores the Feature's strip from every member root and keeps it off the member's own unit", async () => {
+describe("the terminal inside a Topic", () => {
+  it("restores the Topic's strip from every member root and keeps it off the member's own unit", async () => {
     bridge.byFolder = { [B]: [session("s-b", B)] };
     const [sel, setSel] = createSignal<Record<string, unknown>>(topicSel(A));
     render(() => (
@@ -142,7 +142,7 @@ describe("the terminal inside a Feature", () => {
     await waitFor(() => expect(stripTitles()).toContain("Auth shell"));
   });
 
-  it("names the Feature on the History crumb", async () => {
+  it("names the Topic on the History crumb", async () => {
     render(() => (
       <>
         <Terminal selected={topicSel(A) as never} />

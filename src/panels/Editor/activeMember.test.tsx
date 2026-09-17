@@ -171,7 +171,7 @@ async function mountEditor(initial = API) {
 const showMode = (mode: string, section?: string) => emitWith(SET_RIGHT_MODE, { mode, section });
 const showScripts = () => showMode("files", "scripts");
 const chip = (repoPath: string) => document.querySelector<HTMLElement>(`[data-member="${repoPath}"]`);
-const chipRow = () => document.querySelector<HTMLElement>('[role="group"][aria-label="Feature members"]');
+const chipRow = () => document.querySelector<HTMLElement>('[role="group"][aria-label="Topic members"]');
 
 beforeEach(() => {
   calls.length = 0;

@@ -287,7 +287,7 @@ export const COMMANDS: Command[] = [
   },
   {
     id: "toggle-sidebar-mode",
-    label: "Toggle Spaces / Features",
+    label: "Toggle Spaces / Topics",
     group: "navigate",
     scope: "global",
     run: () => emit(TOGGLE_SIDEBAR_MODE),
