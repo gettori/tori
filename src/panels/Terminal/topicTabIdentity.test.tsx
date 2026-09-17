@@ -117,7 +117,7 @@ describe("a terminal tab inside a Topic", () => {
     await waitFor(() => expect(stripChips()).toHaveLength(2));
     const chips = stripChips();
     expect(chips.map((c) => c.getAttribute("data-chip"))).toEqual(["/r/a", "/r/b"]);
-    expect(chips.map((c) => c.textContent)).toEqual(["A", "W"]);
+    expect(chips.map((c) => [c.textContent, !!c.querySelector("svg")])).toEqual([["", true], ["", true]]);
     const hues = chips.map((c) => c.style.getPropertyValue("--chip-hue"));
     expect(hues[0]).not.toBe("");
     expect(hues[0]).not.toBe(hues[1]);

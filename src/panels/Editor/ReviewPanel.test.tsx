@@ -1192,6 +1192,7 @@ describe("inside a Topic", () => {
       state: r.state,
       hue: r.tint,
       style: undefined,
+      icon: { seed: r.repoPath },
     }));
 
   const chip = (label: string) => screen.getByRole("button", { name: label });
@@ -1406,6 +1407,7 @@ describe("the members a Topic commits in", () => {
     state: r.state,
     hue: r.tint,
     style: undefined,
+    icon: { seed: r.repoPath },
   }));
 
   /** Two members with staged work unless `only` names one, and a tab open in

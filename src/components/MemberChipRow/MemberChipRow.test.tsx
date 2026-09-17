@@ -23,6 +23,7 @@ const member = (name: string, i: number, broken = false): TintedMember =>
     style: undefined,
     spaceName: "work",
     projectName: name,
+    icon: { seed: `/repos/${name}` },
     kind: "worktree",
   }) as TintedMember;
 
