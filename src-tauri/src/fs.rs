@@ -240,6 +240,14 @@ pub fn file_exists(path: String) -> bool {
     Path::new(&path).exists()
 }
 
+/// Is this a directory? Asked of a path dragged in from another app, which
+/// arrives as a bare string: a tab shows a file, so a folder has to be told apart
+/// before one is opened on it.
+#[tauri::command(async)]
+pub fn fs_is_dir(path: String) -> bool {
+    Path::new(&path).is_dir()
+}
+
 /// When this file was last written, in milliseconds since the epoch, or `None`
 /// for a path that is not there or whose filesystem does not answer.
 ///
