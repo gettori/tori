@@ -3,11 +3,15 @@ import { createSignal, type JSX } from "solid-js";
 import Button from "../../components/Button/Button";
 import type { AgentHealth } from "../../utils/agentHealth";
 import type { FirstRunSpace } from "../../utils/firstRun";
+import type { ForgeHost } from "../../utils/forgeTypes";
 import type { GitReport } from "../../utils/gitHealth";
 import type { NewProjectMode } from "../../utils/newProject";
+import DeviceWaitCard from "../Settings/panes/IntegrationsPane/DeviceWaitCard";
+import type { Cloud, Failure } from "../Settings/panes/IntegrationsPane/forgeAddFlow";
 import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
 import AgentsStep, { AGENTS_LEAD, type Command } from "./steps/AgentsStep";
 import BaseFolderStep, { BASE_FOLDER_LEAD } from "./steps/BaseFolderStep";
+import HostsStep, { HOSTS_LEAD } from "./steps/HostsStep";
 import ProjectStep, { PROJECT_LABEL, PROJECT_LEAD, gitMissing } from "./steps/ProjectStep";
 import ReadyStep, { readyLead } from "./steps/ReadyStep";
 import SpaceStep, { SPACE_LEAD, type SpaceMode } from "./steps/SpaceStep";
@@ -27,6 +31,7 @@ const STEPS: RailStep[] = [
   { id: "agents", label: "Agents", group: "setup", summary: "3 found" },
   { id: "base", label: "Base folder", required: true, group: "setup", summary: "~/Projects" },
   { id: "space", label: "Space", required: true, group: "setup", summary: "work" },
+  { id: "hosts", label: "Git hosts", group: "once" },
   { id: "project", label: "First project", group: "once" },
   { id: "ready", label: "Ready", group: "once" },
 ];
@@ -223,6 +228,80 @@ export const SpaceFound: Story = {
 /** None found: the field is the only way through. */
 export const SpaceCreate: Story = {
   render: () => <SpaceStory spaces={[]} mode="create" />,
+};
+
+const OCTOCAT: ForgeHost = {
+  host: "github.com",
+  accounts: [
+    {
+      id: "github-com-octocat",
+      provider: "github",
+      baseUrl: "https://github.com",
+      login: "octocat",
+      label: "octocat",
+      expiresAt: null,
+      rejectedAt: null,
+      scopes: ["repo", "workflow"],
+      auth: { kind: "signedIn", login: "octocat" },
+    },
+  ],
+  gitCredentials: false,
+  gitEverywhere: false,
+  defaultAccount: null,
+};
+
+function HostsStory(props: {
+  hosts?: ForgeHost[];
+  waitingFor?: Cloud;
+  failure?: { cloud: Cloud; failure: Failure };
+}) {
+  return (
+    <Shell
+      current="hosts"
+      heading="Git hosts"
+      lead={HOSTS_LEAD}
+      primary="Continue"
+      hint={<Button variant="ghost">Later</Button>}
+    >
+      <HostsStep
+        hosts={props.hosts ?? []}
+        waitingFor={props.waitingFor ?? null}
+        failure={props.failure ?? null}
+        lifetimeSecs={900}
+        wait={
+          <DeviceWaitCard
+            host={props.waitingFor ?? ""}
+            prompt={{ userCode: "WDJB-MJHT", verificationUri: "https://github.com/login/device", expiresInSecs: 900, intervalSecs: 5 }}
+            remainingMs={14 * 60 * 1000 + 32 * 1000}
+            clipboardOk
+            onCopyAgain={() => {}}
+            onCancel={() => {}}
+          />
+        }
+        onSignIn={() => {}}
+      />
+    </Shell>
+  );
+}
+
+/** Nothing signed in yet. */
+export const HostsIdle: Story = {
+  render: () => <HostsStory />,
+};
+
+/** The code is out and the browser is open. */
+export const HostsWaiting: Story = {
+  render: () => <HostsStory waitingFor="github.com" />,
+};
+
+/** Signed in to github.com. */
+export const HostsConnected: Story = {
+  render: () => <HostsStory hosts={[OCTOCAT]} />,
+};
+
+/** The host expired the code before it was entered. */
+export const HostsError: Story = {
+  render: () => <HostsStory failure={{ cloud: "github.com", failure: { kind: "expired", code: "expired_token" } }} />,
 };
 
 const GIT_READY: GitReport = { health: { kind: "ready", path: "/usr/bin/git", version: "2.46.0" }, install: { type: "undeclared" } };
