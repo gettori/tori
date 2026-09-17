@@ -18,7 +18,6 @@ import { listen } from "@tauri-apps/api/event";
 export type FirstRunSpace = {
   name: string;
   path: string;
-  external: boolean;
   projects: { name: string; path: string }[];
 };
 export type FirstRunConfig = { roots: string[]; spaces: FirstRunSpace[] };
@@ -39,12 +38,10 @@ export type FirstRunInputs = {
   finished: boolean;
 };
 
-/** A base folder is set and it holds at least one space. Pinned folders do not
- *  count: they make a space without a base folder, which is what the gate
- *  exists to guarantee. */
+/** A base folder is set and it holds at least one space. */
 export function gateMet(config: FirstRunConfig | null): boolean {
   if (!config) return false;
-  return config.roots.length > 0 && config.spaces.some((s) => !s.external);
+  return config.roots.length > 0 && config.spaces.length > 0;
 }
 
 export function deriveView(inputs: FirstRunInputs): FirstRunView {

@@ -21,7 +21,6 @@ const PLAIN = "/root/work/repo";
 const worktreeProject = {
   name: "proj",
   path: CONTAINER,
-  external: false,
   branchUnits: [
     { label: "main", folderPath: `${CONTAINER}/main`, branch: "main", kind: "worktree", isCurrent: true },
     { label: "wave-3", folderPath: WT, branch: "wave-3", kind: "worktree", isCurrent: false },
@@ -31,7 +30,6 @@ const worktreeProject = {
 const plainProject = {
   name: "repo",
   path: PLAIN,
-  external: false,
   branchUnits: [
     { label: "main", folderPath: PLAIN, branch: "main", kind: "plain", isCurrent: true },
     { label: "feat", folderPath: PLAIN, branch: "feat", kind: "plain", isCurrent: false },
@@ -45,7 +43,6 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [worktreeProject, plainProject],
     },
   ],

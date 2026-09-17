@@ -5,7 +5,6 @@ import RepoChecklist from "./RepoChecklist";
 const SPACES = [
   {
     name: "work",
-    external: false,
     projects: [
       { name: "api", path: "/w/api" },
       { name: "web", path: "/w/web" },
@@ -13,12 +12,10 @@ const SPACES = [
   },
   {
     name: "infra",
-    external: false,
     projects: [{ name: "terraform", path: "/i/terraform" }],
   },
   {
-    name: "pinned",
-    external: true,
+    name: "dots",
     projects: [{ name: "dotfiles", path: "/p/dotfiles" }],
   },
 ];
@@ -32,7 +29,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Three Spaces in rail order: the two root ones, then the pinned one. */
+/** Three Spaces, in rail order. */
 export const ThreeSpaces: Story = {
   render: (args) => {
     const [value, setValue] = createSignal<string[]>([]);

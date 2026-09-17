@@ -29,19 +29,16 @@ const config = {
     {
       name: "work",
       path: WORK,
-      external: false,
       projects: [
         {
           name: "repo",
           path: REPO,
-          external: false,
           favicon: `${REPO}/main/public/favicon.svg`,
           branchUnits: [worktree("main", true), worktree("feat", false)],
         },
         {
           name: "notes",
           path: NOTES,
-          external: false,
           icon: "Rocket",
           branchUnits: [
             { label: "notes", folderPath: NOTES, branch: null, kind: "plain-dir", isCurrent: false },
@@ -52,12 +49,10 @@ const config = {
     {
       name: "side",
       path: "/root/side",
-      external: false,
       projects: [
         {
           name: "scratch",
           path: "/root/side/scratch",
-          external: false,
           branchUnits: [
             {
               label: "scratch",
@@ -294,7 +289,7 @@ describe("the sidebar levels that outlive the session rows", () => {
     expect(notes.querySelector('[class*="iconChevron"]')).toBeNull();
   });
 
-  it("offers Change icon… on every project, pinned or not", async () => {
+  it("offers Change icon… on every project, whatever its git kind", async () => {
     mount();
 
     fireEvent.contextMenu(await row("repo"));

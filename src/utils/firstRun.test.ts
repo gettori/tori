@@ -5,18 +5,14 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 
 const { gateMet, deriveView } = await import("./firstRun");
 
-const space = (name: string, external = false) => ({ name, path: `/p/${name}`, external, projects: [] });
+const space = (name: string) => ({ name, path: `/p/${name}`, projects: [] });
 
 describe("the gate", () => {
   it("is unmet with no config, no root, or a root with nothing under it", () => {
     expect(gateMet(null)).toBe(false);
     expect(gateMet({ roots: [], spaces: [] })).toBe(false);
     expect(gateMet({ roots: ["/p"], spaces: [] })).toBe(false);
-  });
-
-  it("does not count a pinned folder as a space", () => {
-    expect(gateMet({ roots: [], spaces: [space("other", true)] })).toBe(false);
-    expect(gateMet({ roots: ["/p"], spaces: [space("other", true)] })).toBe(false);
+    expect(gateMet({ roots: [], spaces: [space("work")] })).toBe(false);
   });
 
   it("is met by a root with one space in it", () => {

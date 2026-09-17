@@ -22,14 +22,12 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
-      projects: [{ name: "proj", path: WORK, external: false, branchUnits: [unit("main", `${WORK}/main`)] }],
+      projects: [{ name: "proj", path: WORK, branchUnits: [unit("main", `${WORK}/main`)] }],
     },
     {
       name: "side",
       path: "/root/side",
-      external: false,
-      projects: [{ name: "lab", path: "/root/side/lab", external: false, branchUnits: [] }],
+      projects: [{ name: "lab", path: "/root/side/lab", branchUnits: [] }],
     },
   ],
 };

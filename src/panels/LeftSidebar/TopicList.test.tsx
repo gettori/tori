@@ -180,7 +180,6 @@ const { emit, NEW_TOPIC } = await import("../../utils/events");
 const SPACES = [
   {
     name: "work",
-    external: false,
     projects: [
       { name: "api", path: "/w/api" },
       { name: "web", path: "/w/web" },

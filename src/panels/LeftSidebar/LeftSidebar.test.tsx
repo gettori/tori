@@ -33,12 +33,10 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
         {
           name: "repo",
           path: ROOT,
-          external: false,
           // A worktree container lists its worktrees, so the attempts arrive
           // here as ordinary units alongside `main`. Lifting them out is the
           // half that would otherwise render each attempt twice.

@@ -31,10 +31,9 @@ const config = {
     {
       name: "work",
       path: "/w",
-      external: false,
       projects: [
-        { name: "api", path: REPO_A, external: false, branchUnits: [] },
-        { name: "web", path: REPO_B, external: false, branchUnits: [] },
+        { name: "api", path: REPO_A, branchUnits: [] },
+        { name: "web", path: REPO_B, branchUnits: [] },
       ],
     },
   ],
