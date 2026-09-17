@@ -47,7 +47,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import TodoPanel from "./TodoPanel";
-import type { MemberRoot } from "../../utils/featureMembers";
+import type { MemberRoot } from "../../utils/topicMembers";
 import { saveSettings, settings, DEFAULT_SETTINGS } from "../Settings/settingsStore";
 import { SEND_TO_SESSION, SEND_TO_SESSION_RESULT, OPEN_IN_EDITOR } from "../../utils/events";
 
@@ -289,7 +289,7 @@ describe("a Feature's members", () => {
   const perRoot = (byRoot: Record<string, ReturnType<typeof hit>[]>, truncated: string[] = []) =>
     (_query: string, root: string) => ok(byRoot[root] ?? [], truncated.includes(root));
 
-  const mountFeature = (roots = ROOTS) =>
+  const mountTopic = (roots = ROOTS) =>
     render(() => <TodoPanel root={API} selected={null} roots={roots} />);
 
   /** Past the panel's own fs debounce, which is deliberately longer than the
@@ -301,7 +301,7 @@ describe("a Feature's members", () => {
       [API]: [hit("src/a.ts", 4, "// TODO in api", [3, 7])],
       [WEB]: [hit("src/b.ts", 9, "// TODO in web", [3, 7])],
     });
-    const { container } = mountFeature();
+    const { container } = mountTopic();
     await waitFor(() => expect(bridge.calls).toHaveLength(2));
     expect(bridge.calls.map((c) => c.root).sort()).toEqual([API, WEB]);
 
@@ -315,7 +315,7 @@ describe("a Feature's members", () => {
 
   it("opens a hit against the member it was found in", async () => {
     bridge.respond = perRoot({ [WEB]: [hit("src/b.ts", 9, "// TODO in web", [3, 7])] });
-    mountFeature();
+    mountTopic();
     await waitFor(() => expect(screen.getByText("// TODO in web")).toBeTruthy());
 
     const opened: { path: string; line?: number }[] = [];
@@ -336,7 +336,7 @@ describe("a Feature's members", () => {
       [API]: [hit("src/a.ts", 4, "// TODO in api", [3, 7])],
       [WEB]: [hit("src/b.ts", 9, "// TODO in web", [3, 7])],
     });
-    mountFeature();
+    mountTopic();
     await waitFor(() => expect(screen.getByText("// TODO in api")).toBeTruthy());
     await waitFor(() => expect(fsHandlers.length).toBeGreaterThan(0));
 
@@ -362,7 +362,7 @@ describe("a Feature's members", () => {
       [API]: [hit("src/a.ts", 4, "// TODO in api", [3, 7])],
       [WEB]: [hit("src/a.ts", 9, "// TODO in web", [3, 7])],
     });
-    mountFeature();
+    mountTopic();
     await waitFor(() => expect(screen.getByText("// TODO in web")).toBeTruthy());
     expect(screen.getByText("2 items in 2 files")).toBeTruthy();
   });
@@ -372,7 +372,7 @@ describe("a Feature's members", () => {
       if (root === WEB) throw new Error("ripgrep exploded");
       return ok([hit("src/a.ts", 4, "// TODO in api", [3, 7])]);
     };
-    mountFeature();
+    mountTopic();
     await waitFor(() => expect(screen.getByText(/ripgrep exploded/)).toBeTruthy());
     // One repo failing says nothing about the hits the other one returned.
     expect(screen.getByText("1 item in 1 file")).toBeTruthy();
@@ -386,12 +386,12 @@ describe("a Feature's members", () => {
       },
       [WEB],
     );
-    const { container } = mountFeature();
+    const { container } = mountTopic();
     await waitFor(() => expect(screen.getByText("// TODO in web")).toBeTruthy());
     const sections = [...container.querySelectorAll("[data-root]")];
     expect(sections[1].textContent).toContain("Capped at");
     expect(sections[0].textContent).not.toContain("Capped at");
-    // The Feature-wide summary makes no cap claim: it is not one repo's number.
+    // The Topic-wide summary makes no cap claim: it is not one repo's number.
     expect(screen.getByText("2 items in 2 files")).toBeTruthy();
   });
 
@@ -400,7 +400,7 @@ describe("a Feature's members", () => {
       if (root === WEB) throw new Error("ripgrep exploded");
       return ok([hit("src/a.ts", 4, "// TODO in api", [3, 7])]);
     };
-    const { container } = mountFeature();
+    const { container } = mountTopic();
     await waitFor(() => expect(screen.getByText(/ripgrep exploded/)).toBeTruthy());
     const sections = [...container.querySelectorAll("[data-root]")];
     expect(sections[0].textContent).toContain("// TODO in api");
@@ -414,7 +414,7 @@ describe("a Feature's members", () => {
       state: { label: "Worktree missing", usable: false, action: "recreate", reason: null },
     };
     bridge.respond = perRoot({ [API]: [hit("src/a.ts", 4, "// TODO in api", [3, 7])] });
-    mountFeature([member("api", API), gone]);
+    mountTopic([member("api", API), gone]);
     await waitFor(() => expect(screen.getByText("// TODO in api")).toBeTruthy());
     expect(bridge.calls.map((c) => c.root)).toEqual([API]);
     expect(screen.getByText("Worktree missing")).toBeTruthy();

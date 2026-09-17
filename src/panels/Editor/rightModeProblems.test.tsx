@@ -1,6 +1,6 @@
-// The Problems tab inside a Feature (#160 phase 1). The store spans every warm
+// The Problems tab inside a Topic (#160 phase 1). The store spans every warm
 // project, so what decides whether the tab exists is the scope the editor gives
-// it: one branch unit's folder, or every member of a Feature at once.
+// it: one branch unit's folder, or every member of a Topic at once.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
@@ -14,7 +14,7 @@ installAnimationFrame();
 const A = "/r/a/.tori/worktrees/auth";
 const B = "/r/b/.tori/worktrees/auth";
 
-const FEATURE = {
+const TOPIC = {
   id: "f1",
   name: "Auth",
   branch: "feat/auth",
@@ -29,7 +29,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     switch (cmd) {
       case "list_topics":
-        return Promise.resolve([FEATURE]);
+        return Promise.resolve([TOPIC]);
       case "get_config":
         return Promise.resolve({ spaces: [] });
       case "git_status":
@@ -56,7 +56,7 @@ vi.mock("./lspClient", () => ({
 const { default: Editor } = await import("./Editor");
 const { clearDiagnostics, publishDiagnostics } = await import("../../utils/diagnostics");
 
-const featureSel = (activeRoot: string) => ({
+const topicSel = (activeRoot: string) => ({
   kind: "feature" as const,
   featureId: "f1",
   featureName: "Auth",
@@ -90,15 +90,15 @@ afterEach(() => {
 describe("the Problems tab inside a Feature", () => {
   it("is offered for a diagnostic in the member you are not looking at", async () => {
     // `activeRoot` is the api member; the error is in web. Scoping the tab to
-    // the active member alone would hide the only problems the Feature has.
+    // the active member alone would hide the only problems the Topic has.
     publishDiagnostics(`${B}/src/b.ts`, problem(9, "web broke"));
-    mounted = render(() => <Editor selected={featureSel(A) as never} />);
+    mounted = render(() => <Editor selected={topicSel(A) as never} />);
     await waitFor(() => expect(problemsTab()).toBeTruthy());
   });
 
   it("lists that member's problems once the tab is opened", async () => {
     publishDiagnostics(`${B}/src/b.ts`, problem(9, "web broke"));
-    mounted = render(() => <Editor selected={featureSel(A) as never} />);
+    mounted = render(() => <Editor selected={topicSel(A) as never} />);
     await waitFor(() => expect(problemsTab()).toBeTruthy());
     fireEvent.click(problemsTab()!);
     await waitFor(() => expect(screen.getByText("web broke")).toBeTruthy());
@@ -109,7 +109,7 @@ describe("the Problems tab inside a Feature", () => {
 
   it("does not offer it for a diagnostic in no member of this Feature", async () => {
     publishDiagnostics("/elsewhere/c.ts", problem(1, "someone else's"));
-    mounted = render(() => <Editor selected={featureSel(A) as never} />);
+    mounted = render(() => <Editor selected={topicSel(A) as never} />);
     // Nothing to wait for, so the absence is asserted after the tabs settle.
     await waitFor(() => expect(screen.getByRole("tab", { name: "Files" })).toBeTruthy());
     expect(problemsTab()).toBeNull();
@@ -117,7 +117,7 @@ describe("the Problems tab inside a Feature", () => {
 
   it("falls the pane back to Files when the last member's diagnostics clear", async () => {
     publishDiagnostics(`${B}/src/b.ts`, problem(9, "web broke"));
-    mounted = render(() => <Editor selected={featureSel(A) as never} />);
+    mounted = render(() => <Editor selected={topicSel(A) as never} />);
     await waitFor(() => expect(problemsTab()).toBeTruthy());
     fireEvent.click(problemsTab()!);
     await waitFor(() => expect(screen.getByText("web broke")).toBeTruthy());
@@ -130,10 +130,10 @@ describe("the Problems tab inside a Feature", () => {
 
   it("keeps the tab while moving the active member between them", async () => {
     publishDiagnostics(`${B}/src/b.ts`, problem(9, "web broke"));
-    const [sel, setSel] = createSignal(featureSel(A));
+    const [sel, setSel] = createSignal(topicSel(A));
     mounted = render(() => <Editor selected={sel() as never} />);
     await waitFor(() => expect(problemsTab()).toBeTruthy());
-    setSel(featureSel(B));
+    setSel(topicSel(B));
     expect(problemsTab()).toBeTruthy();
   });
 });

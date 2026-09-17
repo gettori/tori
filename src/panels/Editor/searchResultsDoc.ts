@@ -45,7 +45,7 @@ export type ResultMatch = {
 export type DocRoot = { root: string; label: string };
 
 /** One file the document has something to say about. A bare relative path is
- *  not an identity here: two members of a Feature routinely hold the same
+ *  not an identity here: two members of a Topic routinely hold the same
  *  `src/index.ts`, and one of them is not the other. */
 export type DocFile = { root: string; file: string };
 
@@ -77,7 +77,7 @@ export type Mark = { state: "applied" | "refused"; note: string };
 
 export type SearchDoc = {
   /** Every member the rows resolve against, in the order they appear. One
-   *  buffer spans a Feature, so this is a list rather than the single root it
+   *  buffer spans a Topic, so this is a list rather than the single root it
    *  was: a row writes into *its own* member, not into the document's. */
   roots: DocRoot[];
   query: string;

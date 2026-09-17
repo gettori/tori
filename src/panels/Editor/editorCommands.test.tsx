@@ -84,11 +84,11 @@ const selection = {
   projectKind: "plain",
 };
 
-// A Feature spanning two members, with the second one not the active member:
+// A Topic spanning two members, with the second one not the active member:
 // the palette's git commands have to reach it anyway, since the file in front
 // is what says which repo the reader means.
 const MEMBER_B = "/space/other/main";
-const featureSelection = {
+const topicSelection = {
   kind: "feature",
   featureId: "f1",
   featureName: "Auth",
@@ -247,7 +247,7 @@ describe("commands the editor answers", () => {
     // The file in front lives in the member that is *not* active. Refusing it
     // ("isn't in this workspace") would be a refusal about a file that plainly
     // is, and staging it in the active member would stage the wrong repo.
-    await mountEditor(featureSelection);
+    await mountEditor(topicSelection);
     await open(`${MEMBER_B}/src/b.ts`);
 
     const toasts: string[] = [];
@@ -264,7 +264,7 @@ describe("commands the editor answers", () => {
 
   it("commits in the member the file in front belongs to", async () => {
     statusRows = [{ status: "M ", path: "src/b.ts", staged: true, unstaged: false }];
-    await mountEditor(featureSelection);
+    await mountEditor(topicSelection);
     await open(`${MEMBER_B}/src/b.ts`);
 
     emitWith(GIT_COMMIT, null);
@@ -280,7 +280,7 @@ describe("commands the editor answers", () => {
   });
 
   it("still refuses a file that is under no member at all", async () => {
-    await mountEditor(featureSelection);
+    await mountEditor(topicSelection);
     await open("/elsewhere/notes.md");
 
     const toasts: string[] = [];

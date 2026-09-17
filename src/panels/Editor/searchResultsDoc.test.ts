@@ -108,13 +108,13 @@ describe("reading edits back out", () => {
   });
 });
 
-// One buffer over a whole Feature. The trap it exists to rule out: two members
+// One buffer over a whole Topic. The trap it exists to rule out: two members
 // hold the same `src/index.ts`, so anything keyed on the relative path alone
 // would lock, re-anchor or write the wrong one of them.
 describe("a document spanning members", () => {
   const API = "/feat/api";
   const WEB = "/feat/web";
-  const FEATURE = [
+  const TOPIC = [
     { root: API, label: "Payments API" },
     { root: WEB, label: "Web App" },
   ];
@@ -122,10 +122,10 @@ describe("a document spanning members", () => {
     { root: API, path: "src/index.ts", line: 3, text: "api needle" },
     { root: WEB, path: "src/index.ts", line: 9, text: "web needle" },
   ];
-  const feature = () => buildSearchDoc(FEATURE, "needle", SHARED);
+  const topic = () => buildSearchDoc(TOPIC, "needle", SHARED);
 
   it("heads each member's files with the member's name", () => {
-    expect(renderLines(feature())).toEqual([
+    expect(renderLines(topic())).toEqual([
       '2 matches in 2 files for "needle"',
       "Edit a result's text, then apply to write it back. Lines cannot be added or removed.",
       "",
@@ -140,7 +140,7 @@ describe("a document spanning members", () => {
   });
 
   it("leaves the other member's copy of the same path editable", () => {
-    const d = feature();
+    const d = topic();
     const lines = renderLines(d);
     const after = settle(d, lines, { written: [hit("src/index.ts", API)], inBuffer: [], refused: [] });
 
@@ -158,7 +158,7 @@ describe("a document spanning members", () => {
 
   it("says which member a refusal belongs to, where the path alone names two", () => {
     expect(
-      describeApply(feature(), {
+      describeApply(topic(), {
         written: [],
         inBuffer: [],
         refused: [{ ...hit("src/index.ts", WEB), reason: "changed since the search" }],
@@ -169,7 +169,7 @@ describe("a document spanning members", () => {
   it("heads nothing when every hit came from one member", () => {
     // The header would name what every row in the document already is, and a
     // reader who has to skip a line to reach the first result is worse off.
-    const one = buildSearchDoc(FEATURE, "needle", [SHARED[0]]);
+    const one = buildSearchDoc(TOPIC, "needle", [SHARED[0]]);
     expect(renderLines(one).some((l) => l.startsWith("["))).toBe(false);
     expect(one.roots).toEqual([{ root: API, label: "Payments API" }]);
   });

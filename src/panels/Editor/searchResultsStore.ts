@@ -87,7 +87,7 @@ export function noteSearchQuery(id: string, query: string) {
 }
 
 /** The absolute roots a tab's rows write into, or null for an id that names no
- *  buffer. For `purgeTabsUnder`: inside a Feature the id's workspace is a key,
+ *  buffer. For `purgeTabsUnder`: inside a Topic the id's workspace is a key,
  *  not a folder, so only the document knows which repos it reaches into. */
 export function searchBufferRoots(id: string): string[] | null {
   const buf = buffers.get(id);

@@ -176,14 +176,14 @@ import {
   type FsChanged,
 } from "../../utils/events";
 import { isUnderPath, mentionPath } from "../../utils/pathScope";
-import { rootOf, selectionRoot, workspaceKey } from "../../utils/features";
+import { rootOf, selectionRoot, workspaceKey } from "../../utils/topics";
 import {
-  createFeatureMembers,
+  createTopicMembers,
   focusMemberRoot,
   memberFor,
   type MemberRoot,
   type TintedMember,
-} from "../../utils/featureMembers";
+} from "../../utils/topicMembers";
 import { revealTab } from "../../utils/filesSections";
 import { dropWorkspaceKey } from "../../utils/purgeWorkspace";
 import { dropWorkspaceBreakpoints } from "../../utils/debugBreakpoints";
@@ -336,7 +336,7 @@ type RightMode =
   | "debug";
 type ModeTab = { mode: RightMode; label: string; icon: LucideIcon };
 /** The modes that answer for the member `activeRoot` points at, rather than for
- *  the whole Feature (Changes, Search, Problems) or for the file in front
+ *  the whole Topic (Changes, Search, Problems) or for the file in front
  *  (Calls, Session, Debug). Pull requests is the one the chip row switches;
  *  Files and Search draw member chips of their own. */
 const ACTIVE_ROOT_MODES: RightMode[] = ["pulls"];
@@ -417,7 +417,7 @@ function tabLabel(t: FileTab) {
 // which is the one thing its label cannot say and the only thing telling two
 // branch-units' log tabs apart. A results buffer answers with the folders it
 // writes into instead: its `ws=` field is a workspace *key*, and inside a
-// Feature that is `feature:<id>`, which names nothing a reader knows.
+// Topic that is `feature:<id>`, which names nothing a reader knows.
 function tabTitle(t: FileTab): string {
   const roots = searchBufferRoots(t.path);
   if (roots?.length) return roots.join("\n");
@@ -446,7 +446,7 @@ export default function Editor(props: {
   liveTabs?: LiveTab[];
   showFiletree?: boolean;
   onToggleFiletree?: () => void;
-  /** Move the Feature's active member, from the right panel's own chip row. The
+  /** Move the Topic's active member, from the right panel's own chip row. The
    *  same handler the Toolbar's crumb chips and the sidebar use, so the three
    *  cannot disagree about which member is in front. */
   onActiveRoot?: (root: string) => void;
@@ -467,7 +467,7 @@ export default function Editor(props: {
       tooltip={shown ? "Hide the file tree (⌘⌥B)" : "Show the file tree (⌘⌥B)"}
     />
   );
-  // The store key, not the folder: a Feature is one workspace over several
+  // The store key, not the folder: a Topic is one workspace over several
   // member folders, so its tabs live under `feature:<id>` while `root()` moves.
   const ws = () => workspaceKey(props.selected);
   const tabs = () => tabsByWs()[ws()] ?? [];
@@ -642,7 +642,7 @@ export default function Editor(props: {
   // This workspace's problems. The store now spans every warm project (the
   // servers stay up across a switch), so what the tab and the panel show has to
   // be scoped here, or one worktree's errors would badge another's tree. Inside
-  // a Feature the scope is every member, not the active one: hiding the tab
+  // a Topic the scope is every member, not the active one: hiding the tab
   // because the repo you happen to be looking at is clean would hide the
   // section that is not.
   const problemsHere = () => {
@@ -849,33 +849,33 @@ export default function Editor(props: {
 
   // The session/branch-unit working folder is the anchor for the editor, file
   // tree, gutter, review surface, fs watcher, and LSP, not the project container.
-  // For a Feature it is the active member, and null (never "") with none present.
+  // For a Topic it is the active member, and null (never "") with none present.
   const root = () => selectionRoot(props.selected);
 
-  // Inside a Feature the file tree draws one section per member, unusable ones
+  // Inside a Topic the file tree draws one section per member, unusable ones
   // included, so a member with no worktree has somewhere to say so and a Retry
-  // to offer. A branch unit reads no Feature record at all.
-  const featureId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
-  const members = createFeatureMembers(featureId);
+  // to offer. A branch unit reads no Topic record at all.
+  const topicId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
+  const members = createTopicMembers(topicId);
 
   // Which member a tab's file sits in, for the surfaces that have to name the
-  // repo. Null outside a Feature, and for a synthetic view, which belongs to
+  // repo. Null outside a Topic, and for a synthetic view, which belongs to
   // the workspace rather than to any one repo in it.
   const tabMember = (path: string | null): TintedMember | null =>
-    path && featureId() && !isSyntheticId(path) ? memberFor(path, members()) : null;
+    path && topicId() && !isSyntheticId(path) ? memberFor(path, members()) : null;
 
   // The repo the surfaces that follow the *file* ask for: Debug launches in it,
   // Session reports it, and the header line above those panes names it. Not
   // `root()`, which is the member you last clicked in the tree, and not the
   // whole member set either: a debuggee runs in one repo.
   const focusRoot = () => focusMemberRoot(activeId(), members(), root());
-  const focusMember = () => (featureId() ? memberFor(focusRoot(), members()) : null);
+  const focusMember = () => (topicId() ? memberFor(focusRoot(), members()) : null);
 
   /** The member the workspace is pointed at, for the panes that follow
    *  `activeRoot` rather than the file in front, Pull requests being the one
-   *  left. Null outside a Feature, where there is only one repo anyway. */
-  const activeMember = () => (featureId() ? memberFor(root(), members()) : null);
-  /** Which repo the pane below is about. Only inside a Feature: with one repo
+   *  left. Null outside a Topic, where there is only one repo anyway. */
+  const activeMember = () => (topicId() ? memberFor(root(), members()) : null);
+  /** Which repo the pane below is about. Only inside a Topic: with one repo
    *  on screen there is nothing to disambiguate, and Outline, Calls, Session and
    *  Debug all otherwise read as answers about the whole workspace. */
   const focusMemberLine = () => (
@@ -896,7 +896,7 @@ export default function Editor(props: {
   };
 
   const treeRoots = (): MemberRoot[] | undefined =>
-    featureId()
+    topicId()
       ? members().map((m) => ({
           path: m.key,
           repoPath: m.member.repoPath,
@@ -914,7 +914,7 @@ export default function Editor(props: {
   // "Locate" call a command that cannot read the repo it is about to fail on,
   // and land the member on `Failed` until the next read reconciled it back.
   async function repairMember(key: string) {
-    const id = featureId();
+    const id = topicId();
     const m = members().find((tm) => tm.key === key);
     if (!id || !m || !m.state.action) return;
     try {
@@ -1082,11 +1082,11 @@ export default function Editor(props: {
   // The `.shared/` folder lives on the worktree container; only a worktree
   // layout has one. Null for plain / plain-dir gates the tree's share action.
   //
-  // Inside a Feature the question is per member, and it is asked of the *repo*,
-  // not of the Feature: `projectKind` is "feature" there. A member's `repoPath`
+  // Inside a Topic the question is per member, and it is asked of the *repo*,
+  // not of the Topic: `projectKind` is "feature" there. A member's `repoPath`
   // is its project path from discovery, so it is already the container, and
   // `kind` says whether that container is a bare one (`create_worktree` links
-  // `.shared/` into each worktree) or a plain repo (whose Feature worktrees sit
+  // `.shared/` into each worktree) or a plain repo (whose Topic worktrees sit
   // under `.tori/worktrees`, where no such folder is linked).
   const sharedContainer = () => {
     const m = activeMember();
@@ -1265,8 +1265,8 @@ export default function Editor(props: {
   // exactly the case where nothing on screen names it any more, so it is swept
   // on the way out rather than only when a new one arrives.
   //
-  // Keyed on the workspace, not on `root`. Inside a Feature the debuggee belongs
-  // to the Feature, and moving the active member is a pointer move: killing the
+  // Keyed on the workspace, not on `root`. Inside a Topic the debuggee belongs
+  // to the Topic, and moving the active member is a pointer move: killing the
   // run because you clicked another repo in the tree is not a sweep, it is a
   // stop nobody asked for. `ws()` is "" with nothing selected, so deselecting
   // still fires.
@@ -1296,7 +1296,7 @@ export default function Editor(props: {
     on(root, (r) => {
       // Which slot the one-repo surfaces read. Only the pointer: the slots
       // themselves follow the member set, below, so moving the active member
-      // inside a Feature costs no read at all.
+      // inside a Topic costs no read at all.
       setActiveRoot(r);
       // The per-workspace settings overlay, for the same reason: this pane is
       // always mounted and is what knows which workspace is selected, and the
@@ -1335,10 +1335,10 @@ export default function Editor(props: {
     }),
   );
 
-  // The watcher is the one thing that follows the whole Feature rather than the
+  // The watcher is the one thing that follows the whole Topic rather than the
   // member in front: a background member's edit still has to reach the tree
   // section showing it. Keyed on the joined list, so moving the active root
-  // inside a Feature re-issues nothing, and repairing a member (which grows the
+  // inside a Topic re-issues nothing, and repairing a member (which grows the
   // list) re-issues rather than leaving the newcomer muted for the session.
   const watchRoots = () => {
     const sel = props.selected;
@@ -1364,8 +1364,8 @@ export default function Editor(props: {
   createEffect(
     on(watchKey, (joined) => {
       const roots = joined ? joined.split("\n") : [];
-      // An empty set still goes out for a Feature: it evicts, where skipping
-      // would leave the last Feature's members watched and unmuted, emitting
+      // An empty set still goes out for a Topic: it evicts, where skipping
+      // would leave the last Topic's members watched and unmuted, emitting
       // bursts for a tree nobody is looking at.
       if (props.selected?.kind === "feature") invoke("fs_watch_set", { roots }).catch(() => {});
       else if (roots.length) invoke("fs_watch_start", { projectPath: roots[0] }).catch(() => {});
@@ -1835,8 +1835,8 @@ export default function Editor(props: {
     for (const p of next.removed) dropStashEntry(p);
   }
 
-  /** What a Feature wrote under a *member root* rather than under its own key.
-   *  Narrower than `purgeWorkspaceKey` on purpose: deleting a Feature offers its
+  /** What a Topic wrote under a *member root* rather than under its own key.
+   *  Narrower than `purgeWorkspaceKey` on purpose: deleting a Topic offers its
    *  worktrees rather than removing them, and a kept one's tabs, terminals and
    *  tree state belong to that folder as a branch unit. */
   function dropMemberDebugState(memberRoot: string) {
@@ -1845,7 +1845,7 @@ export default function Editor(props: {
     dropWorkspaceWatches(memberRoot);
   }
 
-  // A workspace key is gone (a Feature was deleted): every store keyed by it
+  // A workspace key is gone (a Topic was deleted): every store keyed by it
   // drops the key. Marked touched so the persisted tab store drops it too.
   // Dirty text and the stash go only for paths no other workspace still has
   // open: a member's file is usually open under the member's own unit as well.
@@ -2715,7 +2715,7 @@ export default function Editor(props: {
                     <SearchResultsBuffer
                       id={fileId()!}
                       roots={searchRootsHere()}
-                      members={featureId() ? members() : []}
+                      members={topicId() ? members() : []}
                       openPaths={filePaths()}
                       confirm={askConfirm}
                     />
@@ -2977,7 +2977,7 @@ export default function Editor(props: {
             serves each answer for one repo, and one row above all of them is
             one control to learn instead of four. Only alongside other members:
             one member is not a choice. */}
-        <Show when={ACTIVE_ROOT_MODES.includes(rightMode()) && featureId() && members().length > 1}>
+        <Show when={ACTIVE_ROOT_MODES.includes(rightMode()) && topicId() && members().length > 1}>
           <MemberChipRow
             members={members()}
             activeRoot={root()}
@@ -2989,7 +2989,7 @@ export default function Editor(props: {
             <FilesPanel
               root={root()}
               container={sharedContainer()}
-              members={featureId() ? members() : []}
+              members={topicId() ? members() : []}
               activePath={shownFileId()}
               outlinePath={activeId()}
               askText={askText}
@@ -3012,7 +3012,7 @@ export default function Editor(props: {
             <ReviewPanel
               root={root()}
               roots={treeRoots()}
-              members={featureId() ? members() : []}
+              members={topicId() ? members() : []}
               activePath={activeId()}
               selected={props.selected}
               onReverted={handleReverted}
@@ -3026,7 +3026,7 @@ export default function Editor(props: {
             <SearchPanel
               root={root()}
               roots={treeRoots()}
-              members={featureId() ? members() : undefined}
+              members={topicId() ? members() : undefined}
               openPaths={filePaths()}
               workspace={ws()}
               focusNonce={searchFocusNonce()}
