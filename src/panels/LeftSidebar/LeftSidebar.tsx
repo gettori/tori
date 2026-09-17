@@ -135,6 +135,7 @@ import {
   ChevronRight,
   ChevronUp,
   Tag,
+  Tags,
   type LucideIcon,
   Plus,
   ChevronsLeftRightEllipsis,
@@ -3221,7 +3222,7 @@ export default function LeftSidebar(props: {
               candidate name through, wearing the real lit-tile CSS so what it
               reports is what the row would actually take. */}
           <span class={`${styles.space} ${styles.titled} ${styles.tileProbe}`} aria-hidden="true" ref={probeEl}>
-            <Icon icon={Tag} />
+            <Icon icon={Tags} />
             <span class={styles.tileName} ref={probeNameEl}><span class={styles.tileNameText} ref={probeTextEl} /></span>
           </span>
           <div class={styles.gearWrap} ref={gearEl}>
@@ -3273,7 +3274,7 @@ export default function LeftSidebar(props: {
                 out of a mode. */}
             <Show when={hasProjects()}>
               <div class={styles.spaceDivider} />
-              {modeTile("topics", "Topics", Tag)}
+              {modeTile("topics", "Topics", Tags)}
             </Show>
           </div>
 
