@@ -18,7 +18,7 @@ import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
 import { createHostsSetup } from "./hostsSetup";
 import { createProjectSetup } from "./projectSetup";
 import { AGENTS_LEAD } from "./steps/AgentsStep";
-import BaseFolderStep, { BASE_FOLDER_LEAD, rootSpaces } from "./steps/BaseFolderStep";
+import BaseFolderStep, { BASE_FOLDER_LEAD } from "./steps/BaseFolderStep";
 import { HOSTS_LEAD } from "./steps/HostsStep";
 import { PROJECT_LEAD } from "./steps/ProjectStep";
 import ReadyStep, { readyLead, type ReadySummary } from "./steps/ReadyStep";
@@ -74,7 +74,7 @@ export default function FirstRun() {
 
   const config = () => firstRunConfig();
   const root = () => config()?.roots[0] ?? null;
-  const spaces = createMemo(() => rootSpaces(config()?.spaces ?? []));
+  const spaces = createMemo(() => config()?.spaces ?? []);
   const spaceName = (): string | null => {
     const list = spaces();
     if (list.length === 0) return null;

@@ -1,8 +1,6 @@
 // Tori config. Projects are DISCOVERED from the filesystem, not declared:
 // the user lists base "roots" (default `~/Projects`); each `<root>/<space>/<project>`
-// folder becomes a project, one space per first-level dir. Extra out-of-root
-// project folders can be added explicitly. A legacy `[[project]]` table is still
-// honored (folded in as explicit paths) so old configs keep working.
+// folder becomes a project, one space per first-level dir.
 //
 // Per project we probe git once (cached by the project dir's mtime AND its HEAD,
 // so a checkout invalidates it) to classify it and enumerate its branch-units:
@@ -25,24 +23,17 @@ use tauri::{AppHandle, Emitter, State};
 struct RawConfig {
     #[serde(default)]
     discovery: RawDiscovery,
-    // Legacy schema: explicit project declarations. Migrated (non-destructively)
-    // into explicit extra paths so old configs are never silently dropped.
-    #[serde(default)]
-    project: Vec<RawProject>,
     // Per-space metadata overlay (`[[space]]` tables), merged onto discovered
     // spaces by name. Currently just an icon; the filesystem stays the source of
     // truth for which spaces exist.
     #[serde(default)]
     space: Vec<SpaceMeta>,
     // Per-project metadata overlay (`[[project_meta]]` tables), merged onto
-    // discovered projects by path. A separate table from the legacy `[[project]]`
-    // above, whose `space` key is required: an icon-only entry written there
-    // would fail to parse and take the whole config down with it.
+    // discovered projects by path.
     #[serde(default)]
     project_meta: Vec<ProjectMeta>,
     // User-chosen order of root spaces, by name. Listed names sort first in this
     // order; unlisted (e.g. freshly created) spaces keep discovery order after.
-    // Pinned ("Other") spaces are never reordered by this.
     #[serde(default)]
     space_order: Vec<String>,
 }
@@ -84,20 +75,6 @@ struct RawDiscovery {
     /// Folder names skipped during the scan (in addition to dotfiles).
     #[serde(default)]
     ignore: Vec<String>,
-    /// Explicit out-of-root project folders.
-    #[serde(default)]
-    paths: Vec<String>,
-}
-
-// `name` is intentionally omitted: discovery derives the project name from the
-// folder basename, so a legacy entry's declared name is ignored on migration.
-#[derive(Deserialize)]
-struct RawProject {
-    // Accept the historical `group = ...` key so configs written before the
-    // group→space rename still parse.
-    #[serde(alias = "group")]
-    space: String,
-    path: String,
 }
 
 /// How a project folder relates to git. Serialized kebab-case for the frontend.
@@ -129,8 +106,6 @@ pub struct Project {
     pub name: String,
     pub path: String,
     pub branch_units: Vec<BranchUnit>,
-    // True when reached via `[discovery].paths` (a pinned external), not the root.
-    pub external: bool,
     // The three icon sources, in the order the sidebar prefers them. The first
     // two come from the `[[project_meta]]` overlay (what the user chose), the
     // third from the project itself; all three absent means the row falls back
@@ -154,10 +129,6 @@ pub struct Space {
     // The space's directory, so the UI can mkdir a new project folder under it.
     pub path: String,
     pub projects: Vec<Project>,
-    // True for a space assembled from external pins (rendered under "Other"),
-    // false for one discovered under the root. Root and external spaces of the
-    // same name stay distinct, so "Other" never absorbs a root space.
-    pub external: bool,
     // A Lucide icon name (PascalCase) from the `[[space]]` overlay, keyed by name.
     // None means the tile falls back to the name's initial letter.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -234,14 +205,13 @@ fn basename(p: &Path) -> String {
 
 // No project is seeded: a fresh config has no roots, which the UI detects as a
 // first run and offers a folder picker (see set_root). Projects are discovered
-// from the roots the user adds; legacy `[[project]]` tables are still honored.
+// from the roots the user adds.
 const SAMPLE: &str = r#"# Tori config. Projects are discovered from your base folders.
 # Add a base folder from the app, or declare roots here:
 #
 # [discovery]
 # roots  = ["~/Projects"]   # base folders scanned as <root>/<space>/<project>
 # ignore = ["node_modules"] # folder names to skip (dotfiles are always skipped)
-# paths  = []               # explicit out-of-root project folders
 "#;
 
 fn ensure_config() -> Result<String, String> {
@@ -634,31 +604,17 @@ fn probe_flight(path: &Path) -> std::sync::Arc<Mutex<()>> {
 
 // --- discovery ---
 
-/// `(space, path)` for an explicit out-of-root path; space = parent dir name.
-fn extra_space_and_path(raw_path: &str) -> (String, PathBuf) {
-    let p = PathBuf::from(expand_tilde(raw_path));
-    let space = p
-        .parent()
-        .and_then(|x| x.file_name())
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    (space, p)
-}
-
 /// Index of the space named `name` in `spaces`, creating an (initially empty)
 /// entry anchored at `path` when absent. Empty space dirs are surfaced too, so a
 /// freshly created space is selectable before it holds any project.
-fn ensure_space_idx(spaces: &mut Vec<Space>, name: &str, path: &Path, external: bool) -> usize {
-    // Match on name AND origin so a root space and an external pin sharing a name
-    // remain two distinct spaces (root in the main tree, the pin under "Other").
-    if let Some(i) = spaces.iter().position(|g| g.name == name && g.external == external) {
+fn ensure_space_idx(spaces: &mut Vec<Space>, name: &str, path: &Path) -> usize {
+    if let Some(i) = spaces.iter().position(|g| g.name == name) {
         return i;
     }
     spaces.push(Space {
         name: name.to_string(),
         path: path.to_string_lossy().into_owned(),
         projects: Vec::new(),
-        external,
         icon: None,
         color: None,
     });
@@ -683,10 +639,10 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     let mut seen: HashSet<PathBuf> = HashSet::new(); // project dedup (canonical)
     let mut seen_paths: HashSet<PathBuf> = HashSet::new(); // cache eviction (raw)
 
-    let mut add_project = |spaces: &mut Vec<Space>, gi: usize, ppath: PathBuf, external: bool| {
+    let mut add_project = |spaces: &mut Vec<Space>, gi: usize, ppath: PathBuf| {
         let canon = ppath.canonicalize().unwrap_or_else(|_| ppath.clone());
         if !seen.insert(canon) {
-            return; // reachable via several roots/paths: keep the first
+            return; // reachable more than once: keep the first
         }
         seen_paths.insert(ppath.clone());
         let branch_units = cached_probe(index, &ppath);
@@ -695,14 +651,13 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
             path: ppath.to_string_lossy().into_owned(),
             favicon: project_favicon(&ppath, &branch_units),
             branch_units,
-            external,
             icon: None,
             icon_file: None,
         };
         spaces[gi].projects.push(project);
     };
 
-    // 1. Roots scanned as <root>/<space>/<project>; empty space dirs registered.
+    // Roots scanned as <root>/<space>/<project>; empty space dirs registered.
     for root in &roots {
         let root = PathBuf::from(root);
         let Ok(space_dirs) = std::fs::read_dir(&root) else {
@@ -713,37 +668,21 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
             if !gpath.is_dir() || skip(&basename(&gpath)) {
                 continue;
             }
-            let gi = ensure_space_idx(&mut spaces, &basename(&gpath), &gpath, false);
+            let gi = ensure_space_idx(&mut spaces, &basename(&gpath), &gpath);
             if let Ok(projects) = std::fs::read_dir(&gpath) {
                 for p in projects.flatten() {
                     let ppath = p.path();
                     if ppath.is_dir() && !skip(&basename(&ppath)) {
-                        add_project(&mut spaces, gi, ppath, false);
+                        add_project(&mut spaces, gi, ppath);
                     }
                 }
             }
         }
     }
 
-    // 2. Explicit extra paths: discovery.paths (space from parent dir) + legacy
-    // [[project]] entries (keeping their declared space).
-    let mut extra: Vec<(String, PathBuf)> = Vec::new();
-    for p in &raw.discovery.paths {
-        extra.push(extra_space_and_path(p));
-    }
-    for p in &raw.project {
-        extra.push((p.space.clone(), PathBuf::from(expand_tilde(&p.path))));
-    }
-    for (gname, ppath) in extra {
-        let space_path = ppath.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| ppath.clone());
-        let gi = ensure_space_idx(&mut spaces, &gname, &space_path, true);
-        add_project(&mut spaces, gi, ppath, true);
-    }
-
     // Overlay per-space metadata (icon, colour) from `[[space]]` tables, keyed by
-    // name. Keys by name only, so a root space and an external pin sharing a name
-    // both receive it (they share the one entry). Blank values are ignored, which
-    // is how "not chosen" reaches the frontend as None.
+    // name. Blank values are ignored, which is how "not chosen" reaches the
+    // frontend as None.
     for meta in &raw.space {
         let icon = meta.icon.as_deref().map(str::trim).filter(|s| !s.is_empty());
         let color = meta.color.as_deref().map(str::trim).filter(|s| !s.is_empty());
@@ -758,9 +697,9 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
     }
 
     // Overlay per-project metadata (icon) from `[[project_meta]]` tables, keyed
-    // by path. Canonicalized on both sides once (a pin written through a symlink
-    // must still match the discovered project), then matched through one map so
-    // a config with many entries stays linear rather than metas × projects.
+    // by path. Canonicalized on both sides once (an entry written through a
+    // symlink must still match the discovered project), then matched through one
+    // map so a config with many entries stays linear rather than metas × projects.
     if !raw.project_meta.is_empty() {
         let mut by_path: HashMap<PathBuf, (usize, usize)> = HashMap::new();
         for (gi, g) in spaces.iter().enumerate() {
@@ -794,17 +733,10 @@ fn resolve(raw: RawConfig, index: &ProjectIndex) -> ResolvedConfig {
         g.projects.sort_by_cached_key(|p| (p.name.to_lowercase(), p.name.clone()));
     }
 
-    // Apply the user's root-space order (stable): externals sort after all roots
-    // and keep their relative order; a listed root sorts by its index in
-    // `space_order`; an unlisted root keeps discovery order (all share the max
-    // key, and the sort is stable). Only reorders roots, never pinned spaces.
-    spaces.sort_by_key(|g| {
-        if g.external {
-            return (1usize, usize::MAX);
-        }
-        let idx = raw.space_order.iter().position(|n| n == &g.name).unwrap_or(usize::MAX);
-        (0usize, idx)
-    });
+    // Apply the user's space order (stable): a listed space sorts by its index in
+    // `space_order`; an unlisted one keeps discovery order (all share the max key,
+    // and the sort is stable).
+    spaces.sort_by_key(|g| raw.space_order.iter().position(|n| n == &g.name).unwrap_or(usize::MAX));
 
     // Evict cache entries for projects that no longer exist.
     if let Ok(mut cache) = index.0.lock() {
@@ -1198,7 +1130,7 @@ pub fn pick_folder() -> Result<Option<String>, String> {
 }
 
 /// Replace `[discovery].roots` with exactly `[path]` (the single-root model),
-/// preserving other keys (including `paths` and legacy `[[project]]`).
+/// preserving other keys.
 fn replace_root(text: &str, path: &str) -> Result<String, String> {
     let mut doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
     let discovery = doc
@@ -1215,7 +1147,7 @@ fn replace_root(text: &str, path: &str) -> Result<String, String> {
 }
 
 /// Clear `[discovery].roots` to an empty array (forget the root), preserving
-/// other keys (`paths`, legacy `[[project]]`). A no-op when there is no root.
+/// other keys. A no-op when there is no root.
 fn clear_root(text: &str) -> Result<String, String> {
     let mut doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
     if let Some(dt) = doc.get_mut("discovery").and_then(|d| d.as_table_mut()) {
@@ -1242,7 +1174,7 @@ pub fn set_root(app: AppHandle, path: String) -> Result<(), String> {
 }
 
 /// Forget the configured root (no on-disk deletion). Returns to the first-run
-/// state; `paths` pins and legacy `[[project]]` entries are kept.
+/// state.
 #[tauri::command(async)]
 pub fn remove_root(app: AppHandle) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
@@ -1250,83 +1182,6 @@ pub fn remove_root(app: AppHandle) -> Result<(), String> {
     let store = crate::exec::named_lock("config");
     let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let serialized = clear_root(&ensure_config()?)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
-    let _ = app.emit("config://changed", ());
-    Ok(())
-}
-
-/// Append `path` to `[discovery].paths`, preserving other keys. Idempotent.
-fn add_path(text: &str, path: &str) -> Result<String, String> {
-    let mut doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
-    let discovery = doc
-        .entry("discovery")
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
-    let dt = discovery.as_table_mut().ok_or("`discovery` is not a table")?;
-    let paths = dt
-        .entry("paths")
-        .or_insert_with(|| toml::Value::Array(Vec::new()));
-    let arr = paths.as_array_mut().ok_or("`paths` is not an array")?;
-    if !arr.iter().any(|v| v.as_str() == Some(path)) {
-        arr.push(toml::Value::String(path.to_string()));
-    }
-    toml::to_string_pretty(&doc).map_err(|e| e.to_string())
-}
-
-/// Remove `path` from `[discovery].paths`, preserving other keys. No-op if absent.
-fn remove_path(text: &str, path: &str) -> Result<String, String> {
-    let mut doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
-    if let Some(dt) = doc.get_mut("discovery").and_then(|d| d.as_table_mut()) {
-        if let Some(arr) = dt.get_mut("paths").and_then(|p| p.as_array_mut()) {
-            arr.retain(|v| v.as_str() != Some(path));
-        }
-    }
-    toml::to_string_pretty(&doc).map_err(|e| e.to_string())
-}
-
-/// Is `child` the same as, or nested under, `parent`? Canonical when both exist,
-/// else a lexical prefix check on a normalized (trailing-slash-stripped) form.
-fn is_inside(child: &str, parent: &str) -> bool {
-    let c = std::fs::canonicalize(child).unwrap_or_else(|_| PathBuf::from(child));
-    let p = std::fs::canonicalize(parent).unwrap_or_else(|_| PathBuf::from(parent));
-    c == p || c.starts_with(&p)
-}
-
-/// Pin an out-of-root folder into `[discovery].paths` (the "Other" section).
-/// Refuses a path that is the root or nested under it (those belong to the tree),
-/// so the pin is always a genuine external, never a duplicate of a root project.
-#[tauri::command(async)]
-pub fn pin_path(app: AppHandle, path: String) -> Result<(), String> {
-    // Load-modify-save on the config store: serialized behind a named
-    // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let p = path.trim().trim_end_matches('/').to_string();
-    if p.is_empty() {
-        return Err("Empty path".into());
-    }
-    let text = ensure_config()?;
-    let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
-    if let Some(root) = raw.discovery.roots.first() {
-        if is_inside(&p, &expand_tilde(root)) {
-            return Err("That folder is inside your base folder; it already appears in the tree.".into());
-        }
-    }
-    let serialized = add_path(&text, &p)?;
-    std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
-    let _ = app.emit("config://changed", ());
-    Ok(())
-}
-
-/// Unpin an external folder: remove it from `[discovery].paths` (no on-disk
-/// deletion). Other pins and the root are untouched.
-#[tauri::command(async)]
-pub fn unpin_path(app: AppHandle, path: String) -> Result<(), String> {
-    // Load-modify-save on the config store: serialized behind a named
-    // lock now that commands no longer queue on one IPC thread.
-    let store = crate::exec::named_lock("config");
-    let _store = store.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let p = path.trim().trim_end_matches('/').to_string();
-    let serialized = remove_path(&ensure_config()?, &p)?;
     std::fs::write(config_path(), serialized).map_err(|e| e.to_string())?;
     let _ = app.emit("config://changed", ());
     Ok(())
@@ -1567,8 +1422,8 @@ pub fn add_space(
 
 /// Set (or clear) a space's icon, keyed by name. The edit path only: creates no
 /// folder. An empty/whitespace icon normalizes to `None`, pruning the entry.
-/// Mirrors `pin_path`: write store → emit `config://changed` (the sidebar's
-/// listener drives the reload).
+/// Write store → emit `config://changed` (the sidebar's listener drives the
+/// reload).
 #[tauri::command(async)]
 pub fn set_space_meta(
     app: AppHandle,
@@ -1605,8 +1460,7 @@ fn write_space_order(text: &str, names: &[String]) -> Result<String, String> {
     Ok(doc.to_string())
 }
 
-/// Persist the user-chosen order of root spaces (by name). The pinned ("Other")
-/// spaces are never included. Mirrors `pin_path`: write store → emit.
+/// Persist the user-chosen order of spaces (by name). Write store → emit.
 #[tauri::command(async)]
 pub fn set_space_order(app: AppHandle, names: Vec<String>) -> Result<(), String> {
     // Load-modify-save on the config store: serialized behind a named
@@ -2100,20 +1954,12 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
-    fn raw(roots: &[&str], ignore: &[&str], paths: &[&str], legacy: &[(&str, &str)]) -> RawConfig {
+    fn raw(roots: &[&str], ignore: &[&str]) -> RawConfig {
         RawConfig {
             discovery: RawDiscovery {
                 roots: roots.iter().map(|s| s.to_string()).collect(),
                 ignore: ignore.iter().map(|s| s.to_string()).collect(),
-                paths: paths.iter().map(|s| s.to_string()).collect(),
             },
-            project: legacy
-                .iter()
-                .map(|(g, p)| RawProject {
-                    space: g.to_string(),
-                    path: p.to_string(),
-                })
-                .collect(),
             space: Vec::new(),
             project_meta: Vec::new(),
             space_order: Vec::new(),
@@ -2192,25 +2038,11 @@ mod tests {
         );
         std::fs::write(stub.join(".git"), "gitdir: ./.bare\n").unwrap();
 
-        // out-of-root explicit project.
-        let extra_repo = tmp.join("Outside/extra/extrarepo");
-        init_repo(&extra_repo, "main");
-
         let index = ProjectIndex::default();
-        let cfg = resolve(
-            raw(
-                &[root.to_str().unwrap()],
-                &["node_modules"],
-                // extrarepo (out of root) + plainrepo again (duplicate of a discovered one)
-                &[extra_repo.to_str().unwrap(), plain.to_str().unwrap()],
-                &[],
-            ),
-            &index,
-        );
+        let cfg = resolve(raw(&[root.to_str().unwrap()], &["node_modules"]), &index);
 
-        // Spaces: personal + extra; node_modules ignored.
+        // Spaces: personal only; node_modules ignored.
         assert!(space(&cfg, "personal").is_some());
-        assert!(space(&cfg, "extra").is_some());
         assert!(space(&cfg, "node_modules").is_none());
 
         // personal projects: no dotdir, the four real folders only.
@@ -2222,18 +2054,6 @@ mod tests {
             .collect();
         names.sort();
         assert_eq!(names, vec!["plaindir", "plainrepo", "stub", "wtproj"]);
-
-        // Dedup: plainrepo (discovered + explicit) appears exactly once.
-        let plain_count = cfg
-            .spaces
-            .iter()
-            .flat_map(|g| &g.projects)
-            .filter(|p| p.name == "plainrepo")
-            .count();
-        assert_eq!(plain_count, 1);
-
-        // out-of-root explicit path appears once, under its parent-named space.
-        assert_eq!(space(&cfg, "extra").unwrap().projects.len(), 1);
 
         // plain kind: only the current checkout is visible when nothing is attached
         // (feature is checked out; unattached main is absent).
@@ -2462,33 +2282,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_migration_yields_exactly_those_projects() {
-        let tmp = unique_tmp();
-        // Two repos exist, but only one is declared in legacy config.
-        let declared = tmp.join("work/declared");
-        let other = tmp.join("work/other");
-        init_repo(&declared, "main");
-        init_repo(&other, "main");
-
-        // No discovery section at all; just a legacy [[project]].
-        let index = ProjectIndex::default();
-        let cfg = resolve(
-            raw(&[], &[], &[], &[("teamx", declared.to_str().unwrap())]),
-            &index,
-        );
-
-        // Exactly the declared project, under its declared space, nothing else.
-        assert_eq!(cfg.spaces.len(), 1);
-        assert_eq!(cfg.spaces[0].name, "teamx");
-        assert_eq!(cfg.spaces[0].projects.len(), 1);
-        assert_eq!(cfg.spaces[0].projects[0].name, "declared");
-        // The default ~/Projects root must NOT kick in when legacy paths exist.
-        assert!(space(&cfg, "other").is_none());
-
-        std::fs::remove_dir_all(&tmp).ok();
-    }
-
-    #[test]
     fn checkout_invalidates_cached_probe() {
         let tmp = unique_tmp();
         let root = tmp.join("Projects");
@@ -2500,7 +2293,7 @@ mod tests {
         let index = ProjectIndex::default();
         let roots = [root.to_str().unwrap()];
 
-        let cfg1 = resolve(raw(&roots, &[], &[], &[]), &index);
+        let cfg1 = resolve(raw(&roots, &[]), &index);
         let cur1 = project(&cfg1, "personal", "repo")
             .branch_units
             .iter()
@@ -2510,7 +2303,7 @@ mod tests {
 
         // Switch the checkout; HEAD's mtime changes, so the cache must refresh.
         git(&repo, &["checkout", "-q", "main"]);
-        let cfg2 = resolve(raw(&roots, &[], &[], &[]), &index);
+        let cfg2 = resolve(raw(&roots, &[]), &index);
         let cur2 = project(&cfg2, "personal", "repo")
             .branch_units
             .iter()
@@ -2528,7 +2321,7 @@ mod tests {
         // A space folder with no project subdirs (just created from the UI).
         std::fs::create_dir_all(root.join("newspace")).unwrap();
         let index = ProjectIndex::default();
-        let cfg = resolve(raw(&[root.to_str().unwrap()], &[], &[], &[]), &index);
+        let cfg = resolve(raw(&[root.to_str().unwrap()], &[]), &index);
         let g = space(&cfg, "newspace").expect("empty space should appear");
         assert!(g.projects.is_empty());
         assert!(g.path.ends_with("newspace")); // path lets the UI add a folder under it
@@ -2684,7 +2477,7 @@ mod tests {
         let img = tmp.join("stored.png");
         std::fs::write(&img, b"png").unwrap();
 
-        let mut cfg_in = raw(&[root.to_str().unwrap()], &[], &[], &[]);
+        let mut cfg_in = raw(&[root.to_str().unwrap()], &[]);
         cfg_in.project_meta = vec![
             ProjectMeta {
                 path: picked.to_string_lossy().into_owned(),
@@ -2704,7 +2497,7 @@ mod tests {
         assert_eq!(project(&cfg, "personal", "missing").icon_file, None);
 
         // The same entry pointing at a file that IS there is reported as-is.
-        let mut raw2 = raw(&[root.to_str().unwrap()], &[], &[], &[]);
+        let mut raw2 = raw(&[root.to_str().unwrap()], &[]);
         raw2.project_meta = vec![ProjectMeta {
             path: missing.to_string_lossy().into_owned(),
             icon: None,
@@ -2745,7 +2538,7 @@ mod tests {
         std::fs::create_dir_all(cont.join("main/public")).unwrap();
         std::fs::write(cont.join("main/public/favicon.ico"), "ico").unwrap();
 
-        let cfg = resolve(raw(&[root.to_str().unwrap()], &[], &[], &[]), &ProjectIndex::default());
+        let cfg = resolve(raw(&[root.to_str().unwrap()], &[]), &ProjectIndex::default());
         assert!(project(&cfg, "personal", "plain")
             .favicon
             .as_deref()
@@ -2781,37 +2574,20 @@ mod tests {
     }
 
     #[test]
-    fn space_order_reorders_roots_but_not_pins() {
-        // Two root spaces (discovery order alpha, beta) + one pinned space "ext".
+    fn space_order_reorders_spaces() {
+        // Two spaces, discovery order alpha then beta.
         let tmp = unique_tmp();
         let root = tmp.join("Projects");
         std::fs::create_dir_all(root.join("alpha")).unwrap();
         std::fs::create_dir_all(root.join("beta")).unwrap();
-        let ext_proj = tmp.join("ext/proj");
-        std::fs::create_dir_all(&ext_proj).unwrap();
 
-        // Order beta before alpha; the pinned space is untouched by that.
-        let mut raw = raw(
-            &[root.to_str().unwrap()],
-            &[],
-            &[ext_proj.to_str().unwrap()],
-            &[],
-        );
+        let mut raw = raw(&[root.to_str().unwrap()], &[]);
         raw.space_order = vec!["beta".to_string(), "alpha".to_string()];
         let index = ProjectIndex::default();
         let cfg = resolve(raw, &index);
 
-        let roots: Vec<&str> = cfg
-            .spaces
-            .iter()
-            .filter(|g| !g.external)
-            .map(|g| g.name.as_str())
-            .collect();
-        assert_eq!(roots, vec!["beta", "alpha"]); // reordered
-        // The pinned space still appears, after the roots.
-        assert!(cfg.spaces.iter().any(|g| g.external && g.name == "ext"));
-        let last = cfg.spaces.last().unwrap();
-        assert!(last.external, "pinned space sorts after roots");
+        let names: Vec<&str> = cfg.spaces.iter().map(|g| g.name.as_str()).collect();
+        assert_eq!(names, vec!["beta", "alpha"]);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -2820,99 +2596,33 @@ mod tests {
         // Empty config: creates [discovery].roots with the single path.
         let out = replace_root("", "/Users/x/Projects").unwrap();
         assert!(out.contains("/Users/x/Projects"));
-        // A two-root config collapses to exactly the new single root.
-        let two = "[discovery]\nroots = [\"/a\", \"/b\"]\npaths = [\"/p/ext\"]\n";
+        // A two-root config collapses to exactly the new single root, and the
+        // keys the rewrite does not own survive it.
+        let two = "[discovery]\nroots = [\"/a\", \"/b\"]\nignore = [\"node_modules\"]\n";
         let one = replace_root(two, "/c").unwrap();
         let cfg: RawConfig = toml::from_str(&one).unwrap();
         assert_eq!(cfg.discovery.roots, vec!["/c".to_string()]);
-        // `paths` and legacy [[project]] survive the rewrite.
-        assert_eq!(cfg.discovery.paths, vec!["/p/ext".to_string()]);
-        let legacy = "[[project]]\nname = \"a\"\nspace = \"g\"\npath = \"/p/a\"\n[discovery]\nroots = [\"/a\", \"/b\"]\n";
-        let merged = replace_root(legacy, "/r").unwrap();
-        assert!(merged.contains("[[project]]"));
-        assert!(merged.contains("/p/a"));
+        assert_eq!(cfg.discovery.ignore, vec!["node_modules".to_string()]);
+        let meta = "[[space]]\nname = \"g\"\nicon = \"Box\"\n[discovery]\nroots = [\"/a\", \"/b\"]\n";
+        let merged = replace_root(meta, "/r").unwrap();
+        assert!(merged.contains("[[space]]"));
         let mcfg: RawConfig = toml::from_str(&merged).unwrap();
         assert_eq!(mcfg.discovery.roots, vec!["/r".to_string()]);
+        assert_eq!(mcfg.space.len(), 1);
     }
 
     #[test]
     fn clear_root_empties_roots_and_preserves_other_keys() {
-        let two = "[discovery]\nroots = [\"/a\", \"/b\"]\npaths = [\"/p/ext\"]\n\n[[project]]\nname = \"a\"\nspace = \"g\"\npath = \"/p/a\"\n";
+        let two = "[discovery]\nroots = [\"/a\", \"/b\"]\nignore = [\"node_modules\"]\n\n[[space]]\nname = \"g\"\nicon = \"Box\"\n";
         let cleared = clear_root(two).unwrap();
         let cfg: RawConfig = toml::from_str(&cleared).unwrap();
         assert!(cfg.discovery.roots.is_empty());
-        assert_eq!(cfg.discovery.paths, vec!["/p/ext".to_string()]);
-        assert_eq!(cfg.project.len(), 1);
-        assert_eq!(cfg.project[0].path, "/p/a");
+        assert_eq!(cfg.discovery.ignore, vec!["node_modules".to_string()]);
+        assert_eq!(cfg.space.len(), 1);
         // No discovery section at all is a clean no-op (still parses, no roots).
         let none = clear_root("").unwrap();
         let ncfg: RawConfig = toml::from_str(&none).unwrap();
         assert!(ncfg.discovery.roots.is_empty());
-    }
-
-    #[test]
-    fn resolve_tags_root_vs_external_origin() {
-        let tmp = unique_tmp();
-        let root = tmp.join("Projects");
-        init_repo(&root.join("personal/inroot"), "main");
-        // An out-of-root pinned project (space = its parent dir name).
-        let ext = tmp.join("Outside/work/pinned");
-        init_repo(&ext, "main");
-
-        let index = ProjectIndex::default();
-        let cfg = resolve(
-            raw(&[root.to_str().unwrap()], &[], &[ext.to_str().unwrap()], &[]),
-            &index,
-        );
-
-        let root_grp = space(&cfg, "personal").expect("root space");
-        assert!(!root_grp.external);
-        assert!(!root_grp.projects[0].external);
-
-        let other = space(&cfg, "work").expect("external space");
-        assert!(other.external);
-        assert_eq!(other.projects.len(), 1);
-        assert!(other.projects[0].external);
-
-        std::fs::remove_dir_all(&tmp).ok();
-    }
-
-    #[test]
-    fn add_and_remove_path_are_idempotent_and_scoped() {
-        // Empty config: creates [discovery].paths with the entry.
-        let out = add_path("", "/x/ext").unwrap();
-        assert!(out.contains("/x/ext"));
-        // Idempotent append.
-        let again = add_path(&out, "/x/ext").unwrap();
-        assert_eq!(again.matches("/x/ext").count(), 1);
-        // A second distinct pin coexists; removing one keeps the other + roots.
-        let two = add_path(&add_path("[discovery]\nroots = [\"/r\"]\n", "/x/a").unwrap(), "/x/b").unwrap();
-        let cfg2: RawConfig = toml::from_str(&two).unwrap();
-        assert_eq!(cfg2.discovery.paths, vec!["/x/a".to_string(), "/x/b".to_string()]);
-        let removed = remove_path(&two, "/x/a").unwrap();
-        let cfg3: RawConfig = toml::from_str(&removed).unwrap();
-        assert_eq!(cfg3.discovery.paths, vec!["/x/b".to_string()]);
-        assert_eq!(cfg3.discovery.roots, vec!["/r".to_string()]);
-        // Removing an absent path is a clean no-op.
-        let noop = remove_path("[discovery]\npaths = [\"/x/b\"]\n", "/nope").unwrap();
-        let cfg4: RawConfig = toml::from_str(&noop).unwrap();
-        assert_eq!(cfg4.discovery.paths, vec!["/x/b".to_string()]);
-    }
-
-    #[test]
-    fn is_inside_detects_nesting() {
-        let tmp = unique_tmp();
-        let root = tmp.join("root");
-        let inside = root.join("space/proj");
-        let outside = tmp.join("elsewhere/proj");
-        std::fs::create_dir_all(&inside).unwrap();
-        std::fs::create_dir_all(&outside).unwrap();
-
-        assert!(is_inside(inside.to_str().unwrap(), root.to_str().unwrap()));
-        assert!(is_inside(root.to_str().unwrap(), root.to_str().unwrap())); // same dir
-        assert!(!is_inside(outside.to_str().unwrap(), root.to_str().unwrap()));
-
-        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
@@ -2926,7 +2636,7 @@ mod tests {
 
         let index = ProjectIndex::default();
         let cfg = resolve(
-            raw(&[root_a.to_str().unwrap(), root_b.to_str().unwrap()], &[], &[], &[]),
+            raw(&[root_a.to_str().unwrap(), root_b.to_str().unwrap()], &[]),
             &index,
         );
 

@@ -23,12 +23,10 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
         {
           name: "repo",
           path: REPO,
-          external: false,
           // `main` is checked out; the live session recorded `feat`.
           branchUnits: [plain("main", true), plain("feat", false)],
         },

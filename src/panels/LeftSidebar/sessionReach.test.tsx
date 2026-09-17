@@ -26,12 +26,10 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
         {
           name: "repo",
           path: "/root/work/repo",
-          external: false,
           branchUnits: [unit(MAIN, "main"), unit(FEAT, "feat")],
         },
       ],
@@ -39,9 +37,8 @@ const config = {
     {
       name: "other",
       path: "/root/other",
-      external: false,
       projects: [
-        { name: "solo", path: SOLO, external: false, branchUnits: [unit(SOLO, "main")] },
+        { name: "solo", path: SOLO, branchUnits: [unit(SOLO, "main")] },
       ],
     },
   ],

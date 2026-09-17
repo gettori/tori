@@ -49,7 +49,6 @@ const { default: NewTopicDialog } = await import("./NewTopicDialog");
 const SPACES = [
   {
     name: "work",
-    external: false,
     projects: [
       { name: "api", path: "/w/api" },
       { name: "web", path: "/w/web" },

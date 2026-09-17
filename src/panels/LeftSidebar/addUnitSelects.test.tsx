@@ -32,12 +32,10 @@ const config = () => ({
     {
       name: "work",
       path: WORK,
-      external: false,
       projects: [
         {
           name: "proj",
           path: CONTAINER,
-          external: false,
           branchUnits: bridge.worktrees.map((b) => ({
             label: b,
             folderPath: `${CONTAINER}/${b}`,
@@ -49,7 +47,6 @@ const config = () => ({
         {
           name: "repo",
           path: PLAIN,
-          external: false,
           branchUnits: bridge.attached.map((b) => ({
             label: b,
             folderPath: PLAIN,

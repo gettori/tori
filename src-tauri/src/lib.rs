@@ -322,8 +322,6 @@ pub fn run() {
             config::pick_folder,
             config::set_root,
             config::remove_root,
-            config::pin_path,
-            config::unpin_path,
             config::add_space,
             config::set_project_icon,
             config::set_project_icon_file,

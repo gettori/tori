@@ -27,9 +27,8 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
-        { name: "proj", path: WORK, external: false, branchUnits: [unit("main", MAIN), unit("wave-3", WAVE)] },
+        { name: "proj", path: WORK, branchUnits: [unit("main", MAIN), unit("wave-3", WAVE)] },
       ],
     },
   ],

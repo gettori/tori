@@ -6,13 +6,7 @@ import RepoChecklist from "./RepoChecklist";
 
 const SPACES = [
   {
-    name: "pinned",
-    external: true,
-    projects: [{ name: "dotfiles", path: "/p/dotfiles" }],
-  },
-  {
     name: "work",
-    external: false,
     projects: [
       { name: "api", path: "/w/api" },
       { name: "web", path: "/w/web" },
@@ -20,15 +14,18 @@ const SPACES = [
   },
   {
     name: "infra",
-    external: false,
     projects: [{ name: "terraform", path: "/i/terraform" }],
+  },
+  {
+    name: "dots",
+    projects: [{ name: "dotfiles", path: "/p/dotfiles" }],
   },
 ];
 
 const box = (name: string) => screen.getByRole("checkbox", { name }) as HTMLInputElement;
 
 describe("RepoChecklist", () => {
-  it("lists root Spaces before pinned ones and reports picks in that order", async () => {
+  it("lists Spaces in rail order and reports picks in that order", async () => {
     const onChange = vi.fn();
     const [value, setValue] = createSignal<string[]>([]);
     render(() => (
@@ -46,7 +43,7 @@ describe("RepoChecklist", () => {
     const before = (a: HTMLElement, b: HTMLElement) =>
       !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     expect(before(group("work"), group("infra"))).toBe(true);
-    expect(before(group("infra"), group("pinned"))).toBe(true);
+    expect(before(group("infra"), group("dots"))).toBe(true);
 
     fireEvent.click(box("dotfiles"));
     fireEvent.click(box("api"));

@@ -28,12 +28,10 @@ const config = {
     {
       name: "work",
       path: "/root/work",
-      external: false,
       projects: [
         {
           name: "repo",
           path: REPO,
-          external: false,
           branchUnits: [unit(MAIN, "main"), unit(`${REPO}/feat`, "feat")],
         },
       ],

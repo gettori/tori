@@ -762,7 +762,7 @@
   display: none;
 }
 
-/* Vertical rule between root-discovered spaces and pinned ("Other") spaces. */
+/* Vertical rule between the space tiles and the mode tiles. */
 .spaceDivider {
   flex: none;
   align-self: stretch;

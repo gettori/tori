@@ -14,10 +14,6 @@ export const BASE_FOLDER_LEAD = (
   </>
 );
 
-export function rootSpaces(spaces: FirstRunSpace[]): FirstRunSpace[] {
-  return spaces.filter((s) => !s.external);
-}
-
 export default function BaseFolderStep(props: {
   root: string | null;
   spaces: FirstRunSpace[];
@@ -25,7 +21,7 @@ export default function BaseFolderStep(props: {
   busy?: boolean;
   onChoose: () => void;
 }) {
-  const found = () => rootSpaces(props.spaces);
+  const found = () => props.spaces;
   const projects = () => found().reduce((n, s) => n + s.projects.length, 0);
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 

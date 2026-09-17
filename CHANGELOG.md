@@ -55,6 +55,13 @@ a first project, and ends on a summary before Tori opens.
   Hover it for the Topic's name, click it to open the Topic. The Topics tile in
   the sidebar uses the same tag.
 
+### Spaces
+
+- Pinning a folder from outside the base folder is gone: no "Pin folder" in the
+  sidebar's gear menu, no "Unpin" on a pinned project. Spaces now come only from
+  the base folder. A `paths` list or a legacy `[[project]]` table left in the
+  config is ignored rather than read.
+
 ### Fixes
 
 - Bare + worktree from the sidebar now cleans up and shows a failure when the
