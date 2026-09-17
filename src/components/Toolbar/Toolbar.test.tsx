@@ -12,7 +12,7 @@ const bridge = vi.hoisted(() => ({ calls: [] as { cmd: string; args: Record<stri
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "list_features")
+    if (cmd === "list_topics")
       return Promise.resolve([
         {
           id: "f1",
@@ -162,7 +162,7 @@ describe("Toolbar for a Feature", () => {
     render(() => <Toolbar selected={unitSel as never} />);
     expect(screen.getByText("work")).toBeTruthy();
     expect(screen.getByText("main")).toBeTruthy();
-    expect(bridge.calls.some((c) => c.cmd === "list_features")).toBe(false);
+    expect(bridge.calls.some((c) => c.cmd === "list_topics")).toBe(false);
   });
 
   it("ends the crumb at the branch when a chat is focused", () => {

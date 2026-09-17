@@ -58,7 +58,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_features") return Promise.resolve([feature()]);
+    if (cmd === "list_topics") return Promise.resolve([feature()]);
     if (cmd === "remove_member") {
       bridge.members = bridge.members.filter((m) => m.repoPath !== args.repoPath);
       return Promise.resolve(feature());
@@ -102,7 +102,7 @@ const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 
 const changed = () =>
-  (handlers["features://changed"] ?? []).slice().forEach((cb) => cb({ payload: feature() }));
+  (handlers["topics://changed"] ?? []).slice().forEach((cb) => cb({ payload: feature() }));
 const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
 const crumbs = () =>
   Array.from(document.querySelectorAll('nav[aria-label="location"] > span')).map((s) => s.textContent);
@@ -154,7 +154,7 @@ describe("Remove repository", () => {
     const selected = await mount();
     await removeRepo(REPO_B);
 
-    expect(sent("remove_member")[0].args).toEqual({ featureId: "f1", repoPath: REPO_B });
+    expect(sent("remove_member")[0].args).toEqual({ topicId: "f1", repoPath: REPO_B });
     fireEvent.click(screen.getByRole("button", { name: "Keep worktree" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

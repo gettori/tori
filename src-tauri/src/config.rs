@@ -457,8 +457,8 @@ fn plain_branch_units(path: &Path, attached: &HashSet<String>) -> Vec<BranchUnit
 /// the main worktree first, so everything after it is one a `git worktree add`
 /// made, Tori's own `.tori/worktrees/` included.
 ///
-/// Only the ones **inside** the main worktree, which is where `feature_container`
-/// puts a plain repo's Feature worktrees. A linked worktree elsewhere is a
+/// Only the ones **inside** the main worktree, which is where `topic_container`
+/// puts a plain repo's Topic worktrees. A linked worktree elsewhere is a
 /// project in its own right, and listing it here would put a folder outside this
 /// project under it, twice over once the sibling is probed too. The containment
 /// test runs against git's own path for the main worktree rather than the probed
@@ -524,7 +524,7 @@ fn probe_project(path: &Path) -> Vec<BranchUnit> {
 
     if !has_bare {
         // A normal repo: branch-units are its attached + current branches, plus
-        // one unit per secondary worktree. Without that second half a Feature
+        // one unit per secondary worktree. Without that second half a Topic
         // worktree in a plain repo is invisible in Tori: `plain_branch_units`
         // enumerates `git branch` and keeps only the current checkout and the
         // attached names, and the walkers skip `.tori/worktrees`.
@@ -2307,7 +2307,7 @@ mod tests {
 
     #[test]
     fn plain_repo_lists_its_tori_worktrees_as_units() {
-        // What a Feature leaves behind on Keep: a checkout under `.tori/worktrees`
+        // What a Topic leaves behind on Keep: a checkout under `.tori/worktrees`
         // that `git branch` names but `plain_branch_units` filters out, and that
         // the folder walkers skip. Without a unit for it, it is gone from Tori.
         let tmp = unique_tmp();

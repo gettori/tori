@@ -1,4 +1,4 @@
-// A Feature: one shared branch (`feat/<slug>`) checked out as one worktree per
+// A Topic: one shared branch (`feat/<slug>`) checked out as one worktree per
 // member repository, recorded in a sidecar so the group has an order, display
 // names and a state git cannot express. See [[adr_feature_workspace]] and
 // [[concept_feature_workspace]].
@@ -8,9 +8,9 @@
 //   * **A read reconciles state, never membership.** Unlike `attempts.rs`, a
 //     member whose worktree or repo is gone stays in the record with a state
 //     naming what is missing, because the UI owes the user a repair action, not
-//     a smaller Feature.
+//     a smaller Topic.
 //   * **Every access to the file, the reconciling read included, takes the
-//     `features` named lock.** The reconcile is a load-compute-save, and a
+//     `topics` named lock.** The reconcile is a load-compute-save, and a
 //     creation loop flipping members on another thread would otherwise have its
 //     flips overwritten by a stale copy.
 
@@ -54,7 +54,7 @@ pub struct Member {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Feature {
+pub struct Topic {
     pub id: String,
     pub name: String,
     /// `feat/<slug>`, frozen at creation; the name stays free to change.
@@ -67,9 +67,9 @@ pub struct Feature {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct FeatureFile {
+struct TopicFile {
     #[serde(default)]
-    features: Vec<Feature>,
+    topics: Vec<Topic>,
 }
 
 /// The file the records live in. A handle rather than a fixed path so every
@@ -80,7 +80,7 @@ pub struct Store {
 
 impl Store {
     pub fn default_location() -> Self {
-        Self::at(dirs::home_dir().unwrap_or_default().join(".config/tori/features.json"))
+        Self::at(dirs::home_dir().unwrap_or_default().join(".config/tori/topics.json"))
     }
 
     pub fn at(path: impl Into<PathBuf>) -> Self {
@@ -89,21 +89,21 @@ impl Store {
 
     /// Lenient like every other owned store: a missing or corrupt file is an
     /// empty set, never an error.
-    fn load(&self) -> FeatureFile {
+    fn load(&self) -> TopicFile {
         std::fs::read_to_string(&self.path)
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default()
     }
 
-    fn save(&self, file: &FeatureFile) -> Result<(), String> {
+    fn save(&self, file: &TopicFile) -> Result<(), String> {
         let text = serde_json::to_string_pretty(file).map_err(|e| e.to_string())?;
         write_atomically(&self.path, &text)
     }
 
     /// Load, edit, save, under the store's lock.
-    fn mutate<T>(&self, f: impl FnOnce(&mut FeatureFile) -> Result<T, String>) -> Result<T, String> {
-        let lock = named_lock("features");
+    fn mutate<T>(&self, f: impl FnOnce(&mut TopicFile) -> Result<T, String>) -> Result<T, String> {
+        let lock = named_lock("topics");
         let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut file = self.load();
         let out = f(&mut file)?;
@@ -112,9 +112,9 @@ impl Store {
     }
 }
 
-/// The branch slug for a Feature name: `worktree::slugify`'s character rule,
+/// The branch slug for a Topic name: `worktree::slugify`'s character rule,
 /// then lowercased, runs of `-` collapsed, edges trimmed.
-pub fn feature_slug(name: &str) -> Result<String, String> {
+pub fn topic_slug(name: &str) -> Result<String, String> {
     let raw = crate::worktree::slugify(name.trim()).to_ascii_lowercase();
     let mut slug = String::with_capacity(raw.len());
     for c in raw.chars() {
@@ -130,7 +130,7 @@ pub fn feature_slug(name: &str) -> Result<String, String> {
     Ok(slug)
 }
 
-pub fn feature_branch(slug: &str) -> String {
+pub fn topic_branch(slug: &str) -> String {
     format!("feat/{slug}")
 }
 
@@ -150,16 +150,16 @@ fn same_path(a: &str, b: &str) -> bool {
     canon(a) == canon(b)
 }
 
-/// Every Feature, each member's `state` refreshed against git. Membership is
+/// Every Topic, each member's `state` refreshed against git. Membership is
 /// never changed by a read.
-pub fn list_features(store: &Store) -> Vec<Feature> {
-    let lock = named_lock("features");
+pub fn list_topics(store: &Store) -> Vec<Topic> {
+    let lock = named_lock("topics");
     let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut file = store.load();
     let mut changed = false;
-    for feature in &mut file.features {
-        for member in &mut feature.members {
-            let next = reconcile_member(member, &feature.branch);
+    for topic in &mut file.topics {
+        for member in &mut topic.members {
+            let next = reconcile_member(member, &topic.branch);
             if next != member.state {
                 member.state = next;
                 changed = true;
@@ -169,11 +169,11 @@ pub fn list_features(store: &Store) -> Vec<Feature> {
     if changed {
         let _ = store.save(&file);
     }
-    file.features
+    file.topics
 }
 
 /// Three checks, in order: the repo answers git at all, the recorded worktree
-/// is on disk and listed, and the listed checkout is still on the Feature
+/// is on disk and listed, and the listed checkout is still on the Topic
 /// branch. A folder deleted without `git worktree prune` is still listed, which
 /// is why the disk check is separate from the list.
 fn reconcile_member(member: &Member, branch: &str) -> MemberState {
@@ -199,19 +199,19 @@ fn reconcile_member(member: &Member, branch: &str) -> MemberState {
     }
 }
 
-fn feature_mut<'a>(file: &'a mut FeatureFile, feature_id: &str) -> Result<&'a mut Feature, String> {
-    file.features
+fn topic_mut<'a>(file: &'a mut TopicFile, topic_id: &str) -> Result<&'a mut Topic, String> {
+    file.topics
         .iter_mut()
-        .find(|f| f.id == feature_id)
-        .ok_or_else(|| format!("No Feature with id {feature_id}"))
+        .find(|f| f.id == topic_id)
+        .ok_or_else(|| format!("No Feature with id {topic_id}"))
 }
 
-fn member_mut<'a>(feature: &'a mut Feature, repo_path: &str) -> Result<&'a mut Member, String> {
-    feature
+fn member_mut<'a>(topic: &'a mut Topic, repo_path: &str) -> Result<&'a mut Member, String> {
+    topic
         .members
         .iter_mut()
         .find(|m| same_path(&m.repo_path, repo_path))
-        .ok_or_else(|| format!("{repo_path} is not a member of {}", feature.name))
+        .ok_or_else(|| format!("{repo_path} is not a member of {}", topic.name))
 }
 
 /// What the last-member refusal says, so the row menu can draw the reason on a
@@ -220,57 +220,57 @@ pub const LAST_MEMBER: &str = "A Feature needs at least one repository. Delete t
 
 /// Detach the record only. The worktree stays on disk; removing it is the
 /// existing `remove_worktree` flow's job, with its own guards.
-pub fn remove_member(store: &Store, feature_id: &str, repo_path: &str) -> Result<(), String> {
+pub fn remove_member(store: &Store, topic_id: &str, repo_path: &str) -> Result<(), String> {
     store.mutate(|file| {
-        let feature = feature_mut(file, feature_id)?;
-        member_mut(feature, repo_path)?;
-        if feature.members.len() <= 1 {
+        let topic = topic_mut(file, topic_id)?;
+        member_mut(topic, repo_path)?;
+        if topic.members.len() <= 1 {
             return Err(LAST_MEMBER.into());
         }
-        feature.members.retain(|m| !same_path(&m.repo_path, repo_path));
+        topic.members.retain(|m| !same_path(&m.repo_path, repo_path));
         Ok(())
     })
 }
 
 /// `repo_paths` in the wanted order; members it does not name keep their
 /// relative order after the named ones.
-pub fn reorder_members(store: &Store, feature_id: &str, repo_paths: &[String]) -> Result<(), String> {
+pub fn reorder_members(store: &Store, topic_id: &str, repo_paths: &[String]) -> Result<(), String> {
     store.mutate(|file| {
-        let feature = feature_mut(file, feature_id)?;
+        let topic = topic_mut(file, topic_id)?;
         let rank = |m: &Member| {
             repo_paths
                 .iter()
                 .position(|p| same_path(p, &m.repo_path))
                 .unwrap_or(repo_paths.len())
         };
-        feature.members.sort_by_key(|m| (rank(m), m.order));
-        for (i, m) in feature.members.iter_mut().enumerate() {
+        topic.members.sort_by_key(|m| (rank(m), m.order));
+        for (i, m) in topic.members.iter_mut().enumerate() {
             m.order = i as u32;
         }
         Ok(())
     })
 }
 
-pub fn rename_member(store: &Store, feature_id: &str, repo_path: &str, display_name: &str) -> Result<(), String> {
+pub fn rename_member(store: &Store, topic_id: &str, repo_path: &str, display_name: &str) -> Result<(), String> {
     let display_name = display_name.trim();
     if display_name.is_empty() {
         return Err("Display name is empty".into());
     }
     store.mutate(|file| {
-        member_mut(feature_mut(file, feature_id)?, repo_path)?.display_name = display_name.to_string();
+        member_mut(topic_mut(file, topic_id)?, repo_path)?.display_name = display_name.to_string();
         Ok(())
     })
 }
 
 /// The name only. The slug, and with it every member's branch, was frozen at
 /// creation: renaming branches across repos is a git op this store never runs.
-pub fn rename_feature(store: &Store, feature_id: &str, name: &str) -> Result<(), String> {
+pub fn rename_topic(store: &Store, topic_id: &str, name: &str) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() {
         return Err("Feature name is empty".into());
     }
     store.mutate(|file| {
-        feature_mut(file, feature_id)?.name = name.to_string();
+        topic_mut(file, topic_id)?.name = name.to_string();
         Ok(())
     })
 }
@@ -296,29 +296,29 @@ pub fn rename_feature(store: &Store, feature_id: &str, name: &str) -> Result<(),
 /// reconcile that follows is what names the state.
 pub fn relocate_member(
     store: &Store,
-    feature_id: &str,
+    topic_id: &str,
     repo_path: &str,
     new_repo_path: &str,
-) -> Result<Feature, String> {
+) -> Result<Topic, String> {
     if !crate::worktree::repo_readable(new_repo_path) {
         return Err(format!("{new_repo_path} is not a git repository"));
     }
-    let feature = load_feature(store, feature_id)?;
-    let member = feature
+    let topic = load_topic(store, topic_id)?;
+    let member = topic
         .members
         .iter()
         .find(|m| same_path(&m.repo_path, repo_path))
-        .ok_or_else(|| format!("{repo_path} is not a member of {}", feature.name))?;
+        .ok_or_else(|| format!("{repo_path} is not a member of {}", topic.name))?;
     // Every member but this one: re-pointing a member at the repo it already
     // has is a harmless no-op, while landing on another member's repo would
     // check the same branch out twice.
-    if feature
+    if topic
         .members
         .iter()
         .filter(|m| !same_path(&m.repo_path, repo_path))
         .any(|m| same_repo(&m.repo_path, new_repo_path))
     {
-        return Err(format!("{new_repo_path} is already a member of {}", feature.name));
+        return Err(format!("{new_repo_path} is already a member of {}", topic.name));
     }
 
     let worktree_path = member
@@ -345,23 +345,23 @@ pub fn relocate_member(
     }
 
     store.mutate(|file| {
-        let member = member_mut(feature_mut(file, feature_id)?, repo_path)?;
+        let member = member_mut(topic_mut(file, topic_id)?, repo_path)?;
         member.repo_path = new_repo_path.to_string();
         member.worktree_path = worktree_path;
         Ok(())
     })?;
-    reconciled_feature(store, feature_id)
+    reconciled_topic(store, topic_id)
 }
 
 /// The record with every member's state refreshed. What a call that changed the
-/// world on disk has to answer with: `load_feature` returns the stored state,
+/// world on disk has to answer with: `load_topic` returns the stored state,
 /// and the stored state is the one such a call has just invalidated. Callers
 /// that write the state themselves (`build_member`) do not need it.
-fn reconciled_feature(store: &Store, feature_id: &str) -> Result<Feature, String> {
-    list_features(store)
+fn reconciled_topic(store: &Store, topic_id: &str) -> Result<Topic, String> {
+    list_topics(store)
         .into_iter()
-        .find(|f| f.id == feature_id)
-        .ok_or_else(|| format!("No Feature with id {feature_id}"))
+        .find(|f| f.id == topic_id)
+        .ok_or_else(|| format!("No Feature with id {topic_id}"))
 }
 
 /// `path`'s tail below `base`, or None when it is not inside it. String work on
@@ -376,12 +376,12 @@ fn relative_to(path: &str, base: &str) -> Option<String> {
 }
 
 /// The record only. Worktrees and branches stay exactly as they are.
-pub fn delete_feature(store: &Store, feature_id: &str) -> Result<(), String> {
+pub fn delete_topic(store: &Store, topic_id: &str) -> Result<(), String> {
     store.mutate(|file| {
-        let before = file.features.len();
-        file.features.retain(|f| f.id != feature_id);
-        if file.features.len() == before {
-            return Err(format!("No Feature with id {feature_id}"));
+        let before = file.topics.len();
+        file.topics.retain(|f| f.id != topic_id);
+        if file.topics.len() == before {
+            return Err(format!("No Feature with id {topic_id}"));
         }
         Ok(())
     })
@@ -392,7 +392,7 @@ pub fn delete_feature(store: &Store, feature_id: &str) -> Result<(), String> {
 /// Where a member's worktree goes. A bare container takes it directly, the
 /// way every other worktree there is laid out; a plain repo gets it under
 /// `.tori/worktrees`, kept out of the repo by `.git/info/exclude`.
-pub(crate) fn feature_container(repo: &str) -> Result<PathBuf, String> {
+pub(crate) fn topic_container(repo: &str) -> Result<PathBuf, String> {
     // A vanished repo lists as empty, which would read as "plain" and create
     // `.tori/worktrees` at a path that no longer holds a repository.
     if !crate::worktree::repo_readable(repo) {
@@ -403,7 +403,7 @@ pub(crate) fn feature_container(repo: &str) -> Result<PathBuf, String> {
         return Ok(PathBuf::from(repo));
     }
     crate::git::exclude_from_repo(repo, crate::workspace_settings::TORI_DIR);
-    let (tori, worktrees) = crate::fs::FEATURE_WORKTREES;
+    let (tori, worktrees) = crate::fs::TOPIC_WORKTREES;
     let dir = Path::new(repo).join(tori).join(worktrees);
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     Ok(dir)
@@ -442,10 +442,10 @@ fn pending_member(repo: &str, order: u32) -> Member {
 /// The prune and the `is_dir` filter are what make Recreate converge. Git keeps
 /// listing a worktree whose folder was deleted outside Tori, so adopting the
 /// entry as it stands would flip the member `Present` and `reconcile_member`
-/// (which checks the disk separately, `features.rs:189`) would put it straight
+/// (which checks the disk separately, `topics.rs:189`) would put it straight
 /// back to `WorktreeMissing` on the next read. Both, not either: prune skips a
 /// locked entry, and it can fail on a repo git is unhappy with.
-fn build_member(store: &Store, feature_id: &str, repo: &str, branch: &str) -> Result<(), String> {
+fn build_member(store: &Store, topic_id: &str, repo: &str, branch: &str) -> Result<(), String> {
     let outcome = {
         let lock = repo_lock(repo);
         let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -456,11 +456,11 @@ fn build_member(store: &Store, feature_id: &str, repo: &str, branch: &str) -> Re
         match existing {
             Some(w) if w.is_main && !w.is_bare => Err(format!("{branch} is checked out in place")),
             Some(w) => Ok(PathBuf::from(w.path)),
-            None => feature_container(repo).and_then(|c| create_worktree_in(repo, branch, &c)),
+            None => topic_container(repo).and_then(|c| create_worktree_in(repo, branch, &c)),
         }
     };
     store.mutate(|file| {
-        let member = member_mut(feature_mut(file, feature_id)?, repo)?;
+        let member = member_mut(topic_mut(file, topic_id)?, repo)?;
         match outcome {
             Ok(path) => {
                 member.worktree_path = Some(path.to_string_lossy().into_owned());
@@ -472,21 +472,21 @@ fn build_member(store: &Store, feature_id: &str, repo: &str, branch: &str) -> Re
     })
 }
 
-fn load_feature(store: &Store, feature_id: &str) -> Result<Feature, String> {
-    let lock = named_lock("features");
+fn load_topic(store: &Store, topic_id: &str) -> Result<Topic, String> {
+    let lock = named_lock("topics");
     let _g = lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut file = store.load();
-    feature_mut(&mut file, feature_id).map(|f| f.clone())
+    topic_mut(&mut file, topic_id).map(|f| f.clone())
 }
 
 /// Record first, then one worktree per member in order. A member that fails
 /// stays recorded as `Failed` with git's reason and the loop moves on, so the
-/// Feature exists even when one repo has a colliding folder. `on_step` sees
+/// Topic exists even when one repo has a colliding folder. `on_step` sees
 /// the record after the write and after every member, N+1 times for N repos.
-pub fn create_feature(store: &Store, name: &str, repos: &[String], on_step: &dyn Fn(&Feature)) -> Result<Feature, String> {
+pub fn create_topic(store: &Store, name: &str, repos: &[String], on_step: &dyn Fn(&Topic)) -> Result<Topic, String> {
     let name = name.trim();
-    let slug = feature_slug(name)?;
-    let branch = feature_branch(&slug);
+    let slug = topic_slug(name)?;
+    let branch = topic_branch(&slug);
     if repos.is_empty() {
         return Err("A Feature needs at least one repository".into());
     }
@@ -498,10 +498,10 @@ pub fn create_feature(store: &Store, name: &str, repos: &[String], on_step: &dyn
 
     let id = new_id(&slug);
     store.mutate(|file| {
-        if let Some(taken) = file.features.iter().find(|f| f.branch == branch) {
+        if let Some(taken) = file.topics.iter().find(|f| f.branch == branch) {
             return Err(format!("Feature \"{}\" already uses {branch}", taken.name));
         }
-        file.features.push(Feature {
+        file.topics.push(Topic {
             id: id.clone(),
             name: name.to_string(),
             branch: branch.clone(),
@@ -511,43 +511,43 @@ pub fn create_feature(store: &Store, name: &str, repos: &[String], on_step: &dyn
         Ok(())
     })?;
 
-    on_step(&load_feature(store, &id)?);
+    on_step(&load_topic(store, &id)?);
     for repo in repos {
         build_member(store, &id, repo, &branch)?;
-        on_step(&load_feature(store, &id)?);
+        on_step(&load_topic(store, &id)?);
     }
-    load_feature(store, &id)
+    load_topic(store, &id)
 }
 
 /// Re-run one member's creation. A `Present` member simply re-resolves to the
 /// worktree it already has.
-pub fn retry_member(store: &Store, feature_id: &str, repo: &str) -> Result<Feature, String> {
-    let feature = load_feature(store, feature_id)?;
-    if !feature.members.iter().any(|m| same_path(&m.repo_path, repo)) {
-        return Err(format!("{repo} is not a member of {}", feature.name));
+pub fn retry_member(store: &Store, topic_id: &str, repo: &str) -> Result<Topic, String> {
+    let topic = load_topic(store, topic_id)?;
+    if !topic.members.iter().any(|m| same_path(&m.repo_path, repo)) {
+        return Err(format!("{repo} is not a member of {}", topic.name));
     }
-    build_member(store, feature_id, repo, &feature.branch)?;
-    load_feature(store, feature_id)
+    build_member(store, topic_id, repo, &topic.branch)?;
+    load_topic(store, topic_id)
 }
 
 /// Append a pending member, then build it: one call ends with a member the
 /// user can open, or a `Failed` one with the reason. `on_step` sees the
 /// record after the append and after the build.
-pub fn add_member(store: &Store, feature_id: &str, repo: &str, on_step: &dyn Fn(&Feature)) -> Result<Feature, String> {
+pub fn add_member(store: &Store, topic_id: &str, repo: &str, on_step: &dyn Fn(&Topic)) -> Result<Topic, String> {
     let branch = store.mutate(|file| {
-        let feature = feature_mut(file, feature_id)?;
-        if feature.members.iter().any(|m| same_repo(&m.repo_path, repo)) {
-            return Err(format!("{repo} is already a member of {}", feature.name));
+        let topic = topic_mut(file, topic_id)?;
+        if topic.members.iter().any(|m| same_repo(&m.repo_path, repo)) {
+            return Err(format!("{repo} is already a member of {}", topic.name));
         }
-        let order = feature.members.len() as u32;
-        feature.members.push(pending_member(repo, order));
-        Ok(feature.branch.clone())
+        let order = topic.members.len() as u32;
+        topic.members.push(pending_member(repo, order));
+        Ok(topic.branch.clone())
     })?;
-    on_step(&load_feature(store, feature_id)?);
-    build_member(store, feature_id, repo, &branch)?;
-    let feature = load_feature(store, feature_id)?;
-    on_step(&feature);
-    Ok(feature)
+    on_step(&load_topic(store, topic_id)?);
+    build_member(store, topic_id, repo, &branch)?;
+    let topic = load_topic(store, topic_id)?;
+    on_step(&topic);
+    Ok(topic)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -560,8 +560,8 @@ pub struct BranchProbe {
 
 /// What `feat/<slug>` already is in `repo`, so a dialog can say "will reuse"
 /// or "checked out in place" before anything runs.
-pub fn probe_feature_branch(repo: &str, slug: &str) -> BranchProbe {
-    let branch = feature_branch(slug);
+pub fn probe_topic_branch(repo: &str, slug: &str) -> BranchProbe {
+    let branch = topic_branch(slug);
     BranchProbe {
         local: branch_exists(repo, &branch),
         remote: remote_branch_exists(repo, &branch),
@@ -574,22 +574,22 @@ pub mod commands {
 
     use tauri::{AppHandle, Emitter, State};
 
-    use super::{BranchProbe, Feature, MemberState, Store};
+    use super::{BranchProbe, MemberState, Store, Topic};
     use crate::config::ProjectIndex;
     use crate::exec::blocking;
 
-    /// Per-step progress for the Feature list: cheap for the sidebar, unlike
+    /// Per-step progress for the Topic list: cheap for the sidebar, unlike
     /// `config://changed`, which reloads the whole Spaces tree.
-    fn step(app: &AppHandle) -> impl Fn(&Feature) + '_ {
-        move |feature| {
-            let _ = app.emit("features://changed", feature);
+    fn step(app: &AppHandle) -> impl Fn(&Topic) + '_ {
+        move |topic| {
+            let _ = app.emit("topics://changed", topic);
         }
     }
 
     /// After a worktree-creating call: adopt the new folders, drop the cached
     /// probes so discovery sees them, and refresh the tree once.
-    fn settle(app: &AppHandle, index: &ProjectIndex, feature: &Feature) {
-        for m in &feature.members {
+    fn settle(app: &AppHandle, index: &ProjectIndex, topic: &Topic) {
+        for m in &topic.members {
             index.evict(Path::new(&m.repo_path));
             if let (MemberState::Present, Some(path)) = (&m.state, &m.worktree_path) {
                 let _ = crate::sessions::adopt(path);
@@ -599,22 +599,22 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn list_features() -> Result<Vec<Feature>, String> {
-        blocking("list_features", || Ok(super::list_features(&Store::default_location()))).await
+    pub async fn list_topics() -> Result<Vec<Topic>, String> {
+        blocking("list_topics", || Ok(super::list_topics(&Store::default_location()))).await
     }
 
     #[tauri::command]
-    pub async fn create_feature(
+    pub async fn create_topic(
         app: AppHandle,
         index: State<'_, ProjectIndex>,
         name: String,
         members: Vec<String>,
-    ) -> Result<Feature, String> {
+    ) -> Result<Topic, String> {
         let index = index.inner().clone();
-        blocking("create_feature", move || {
-            let feature = super::create_feature(&Store::default_location(), &name, &members, &step(&app))?;
-            settle(&app, &index, &feature);
-            Ok(feature)
+        blocking("create_topic", move || {
+            let topic = super::create_topic(&Store::default_location(), &name, &members, &step(&app))?;
+            settle(&app, &index, &topic);
+            Ok(topic)
         })
         .await
     }
@@ -623,14 +623,14 @@ pub mod commands {
     pub async fn retry_member(
         app: AppHandle,
         index: State<'_, ProjectIndex>,
-        feature_id: String,
+        topic_id: String,
         repo_path: String,
-    ) -> Result<Feature, String> {
+    ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("retry_member", move || {
-            let feature = super::retry_member(&Store::default_location(), &feature_id, &repo_path)?;
-            settle(&app, &index, &feature);
-            Ok(feature)
+            let topic = super::retry_member(&Store::default_location(), &topic_id, &repo_path)?;
+            settle(&app, &index, &topic);
+            Ok(topic)
         })
         .await
     }
@@ -639,14 +639,14 @@ pub mod commands {
     pub async fn add_member(
         app: AppHandle,
         index: State<'_, ProjectIndex>,
-        feature_id: String,
+        topic_id: String,
         repo_path: String,
-    ) -> Result<Feature, String> {
+    ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("add_member", move || {
-            let feature = super::add_member(&Store::default_location(), &feature_id, &repo_path, &step(&app))?;
-            settle(&app, &index, &feature);
-            Ok(feature)
+            let topic = super::add_member(&Store::default_location(), &topic_id, &repo_path, &step(&app))?;
+            settle(&app, &index, &topic);
+            Ok(topic)
         })
         .await
     }
@@ -658,17 +658,17 @@ pub mod commands {
     pub async fn relocate_member(
         app: AppHandle,
         index: State<'_, ProjectIndex>,
-        feature_id: String,
+        topic_id: String,
         repo_path: String,
         new_repo_path: String,
-    ) -> Result<Feature, String> {
+    ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("relocate_member", move || {
             index.evict(Path::new(&repo_path));
-            let feature =
-                super::relocate_member(&Store::default_location(), &feature_id, &repo_path, &new_repo_path)?;
-            settle(&app, &index, &feature);
-            Ok(feature)
+            let topic =
+                super::relocate_member(&Store::default_location(), &topic_id, &repo_path, &new_repo_path)?;
+            settle(&app, &index, &topic);
+            Ok(topic)
         })
         .await
     }
@@ -679,32 +679,32 @@ pub mod commands {
     fn announce(
         app: &AppHandle,
         store: &Store,
-        feature_id: &str,
+        topic_id: &str,
         run: impl FnOnce() -> Result<(), String>,
-    ) -> Result<Feature, String> {
+    ) -> Result<Topic, String> {
         run()?;
-        let feature = super::load_feature(store, feature_id)?;
-        let _ = app.emit("features://changed", &feature);
-        Ok(feature)
+        let topic = super::load_topic(store, topic_id)?;
+        let _ = app.emit("topics://changed", &topic);
+        Ok(topic)
     }
 
     #[tauri::command]
-    pub async fn remove_member(app: AppHandle, feature_id: String, repo_path: String) -> Result<Feature, String> {
+    pub async fn remove_member(app: AppHandle, topic_id: String, repo_path: String) -> Result<Topic, String> {
         blocking("remove_member", move || {
             let store = Store::default_location();
-            announce(&app, &store, &feature_id, || {
-                super::remove_member(&store, &feature_id, &repo_path)
+            announce(&app, &store, &topic_id, || {
+                super::remove_member(&store, &topic_id, &repo_path)
             })
         })
         .await
     }
 
     #[tauri::command]
-    pub async fn reorder_members(app: AppHandle, feature_id: String, repo_paths: Vec<String>) -> Result<Feature, String> {
+    pub async fn reorder_members(app: AppHandle, topic_id: String, repo_paths: Vec<String>) -> Result<Topic, String> {
         blocking("reorder_members", move || {
             let store = Store::default_location();
-            announce(&app, &store, &feature_id, || {
-                super::reorder_members(&store, &feature_id, &repo_paths)
+            announce(&app, &store, &topic_id, || {
+                super::reorder_members(&store, &topic_id, &repo_paths)
             })
         })
         .await
@@ -713,36 +713,36 @@ pub mod commands {
     #[tauri::command]
     pub async fn rename_member(
         app: AppHandle,
-        feature_id: String,
+        topic_id: String,
         repo_path: String,
         display_name: String,
-    ) -> Result<Feature, String> {
+    ) -> Result<Topic, String> {
         blocking("rename_member", move || {
             let store = Store::default_location();
-            announce(&app, &store, &feature_id, || {
-                super::rename_member(&store, &feature_id, &repo_path, &display_name)
+            announce(&app, &store, &topic_id, || {
+                super::rename_member(&store, &topic_id, &repo_path, &display_name)
             })
         })
         .await
     }
 
     #[tauri::command]
-    pub async fn rename_feature(app: AppHandle, feature_id: String, name: String) -> Result<Feature, String> {
-        blocking("rename_feature", move || {
+    pub async fn rename_topic(app: AppHandle, topic_id: String, name: String) -> Result<Topic, String> {
+        blocking("rename_topic", move || {
             let store = Store::default_location();
-            announce(&app, &store, &feature_id, || super::rename_feature(&store, &feature_id, &name))
+            announce(&app, &store, &topic_id, || super::rename_topic(&store, &topic_id, &name))
         })
         .await
     }
 
     #[tauri::command]
-    pub async fn delete_feature(feature_id: String) -> Result<(), String> {
-        blocking("delete_feature", move || super::delete_feature(&Store::default_location(), &feature_id)).await
+    pub async fn delete_topic(topic_id: String) -> Result<(), String> {
+        blocking("delete_topic", move || super::delete_topic(&Store::default_location(), &topic_id)).await
     }
 
     #[tauri::command]
-    pub async fn probe_feature_branch(repo_path: String, slug: String) -> Result<BranchProbe, String> {
-        blocking("probe_feature_branch", move || Ok(super::probe_feature_branch(&repo_path, &slug))).await
+    pub async fn probe_topic_branch(repo_path: String, slug: String) -> Result<BranchProbe, String> {
+        blocking("probe_topic_branch", move || Ok(super::probe_topic_branch(&repo_path, &slug))).await
     }
 }
 
@@ -756,7 +756,7 @@ mod tests {
         use std::sync::atomic::{AtomicU64, Ordering};
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let seq = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("tori-features-{}-{seq}", now_ms()));
+        let dir = std::env::temp_dir().join(format!("tori-topics-{}-{seq}", now_ms()));
         std::fs::create_dir_all(&dir).unwrap();
         // git reports resolved paths, and macOS resolves `/var` to `/private/var`.
         std::fs::canonicalize(dir).unwrap()
@@ -788,47 +788,47 @@ mod tests {
         }
     }
 
-    fn feature(id: &str, members: Vec<Member>) -> Feature {
-        Feature {
+    fn topic(id: &str, members: Vec<Member>) -> Topic {
+        Topic {
             id: id.into(),
             name: id.into(),
-            branch: feature_branch(id),
+            branch: topic_branch(id),
             members,
             created_at: 1,
         }
     }
 
-    fn store_with(tmp: &Path, features: Vec<Feature>) -> Store {
-        let store = Store::at(tmp.join("features.json"));
-        store.save(&FeatureFile { features }).unwrap();
+    fn store_with(tmp: &Path, topics: Vec<Topic>) -> Store {
+        let store = Store::at(tmp.join("topics.json"));
+        store.save(&TopicFile { topics }).unwrap();
         store
     }
 
     #[test]
     fn round_trips_and_tolerates_an_empty_file_and_unknown_fields() {
         let tmp = unique_tmp();
-        let store = Store::at(tmp.join("features.json"));
-        assert!(store.load().features.is_empty(), "a missing file is an empty set");
+        let store = Store::at(tmp.join("topics.json"));
+        assert!(store.load().topics.is_empty(), "a missing file is an empty set");
 
         std::fs::write(&store.path, "").unwrap();
-        assert!(store.load().features.is_empty(), "an empty file is an empty set");
+        assert!(store.load().topics.is_empty(), "an empty file is an empty set");
 
-        let full = feature(
+        let full = topic(
             "auth",
             vec![
                 member("/r/a", Some("/r/a/.tori/worktrees/auth"), MemberState::Present),
                 member("/r/b", None, MemberState::Failed { reason: "pending".into() }),
             ],
         );
-        store.save(&FeatureFile { features: vec![full.clone()] }).unwrap();
-        assert_eq!(store.load().features, vec![full]);
+        store.save(&TopicFile { topics: vec![full.clone()] }).unwrap();
+        assert_eq!(store.load().topics, vec![full]);
 
         std::fs::write(
             &store.path,
-            r#"{"features":[{"id":"x","name":"X","branch":"feat/x","members":[{"repoPath":"/r","mood":"?"}],"future":1}]}"#,
+            r#"{"topics":[{"id":"x","name":"X","branch":"feat/x","members":[{"repoPath":"/r","mood":"?"}],"future":1}]}"#,
         )
         .unwrap();
-        let loaded = store.load().features;
+        let loaded = store.load().topics;
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].members[0].worktree_path, None);
         assert_eq!(loaded[0].members[0].state, MemberState::WorktreeMissing);
@@ -841,12 +841,12 @@ mod tests {
 
     #[test]
     fn slug_lowercases_collapses_and_rejects_empty() {
-        assert_eq!(feature_slug("Auth Flow").unwrap(), "auth-flow");
-        assert_eq!(feature_slug("  Payments!!  v2 ").unwrap(), "payments-v2");
-        assert_eq!(feature_slug("keep_dots.and-dashes").unwrap(), "keep_dots.and-dashes");
-        assert!(feature_slug("!!!").is_err());
-        assert!(feature_slug("").is_err());
-        assert_eq!(feature_branch("auth"), "feat/auth");
+        assert_eq!(topic_slug("Auth Flow").unwrap(), "auth-flow");
+        assert_eq!(topic_slug("  Payments!!  v2 ").unwrap(), "payments-v2");
+        assert_eq!(topic_slug("keep_dots.and-dashes").unwrap(), "keep_dots.and-dashes");
+        assert!(topic_slug("!!!").is_err());
+        assert!(topic_slug("").is_err());
+        assert_eq!(topic_branch("auth"), "feat/auth");
         assert!(new_id("auth").starts_with("auth-"));
     }
 
@@ -857,13 +857,13 @@ mod tests {
         let repo_path = repo(&gone);
         let wt = tmp.join("wt");
         git(&gone, &["worktree", "add", "-q", "-b", "feat/f", &wt.to_string_lossy()]);
-        let store = store_with(&tmp, vec![feature("f", vec![member(&repo_path, Some(&wt.to_string_lossy()), MemberState::Present)])]);
+        let store = store_with(&tmp, vec![topic("f", vec![member(&repo_path, Some(&wt.to_string_lossy()), MemberState::Present)])]);
 
         std::fs::remove_dir_all(&gone).unwrap();
-        let listed = list_features(&store);
+        let listed = list_topics(&store);
         assert_eq!(listed[0].members[0].state, MemberState::RepoMissing);
-        assert_eq!(store.load().features[0].members.len(), 1, "a read never drops a member");
-        assert_eq!(store.load().features[0].members[0].state, MemberState::RepoMissing);
+        assert_eq!(store.load().topics[0].members.len(), 1, "a read never drops a member");
+        assert_eq!(store.load().topics[0].members[0].state, MemberState::RepoMissing);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -875,14 +875,14 @@ mod tests {
         let wt = tmp.join("wt");
         let wt_str = wt.to_string_lossy().into_owned();
         git(&r, &["worktree", "add", "-q", "-b", "feat/f", &wt_str]);
-        let store = store_with(&tmp, vec![feature("f", vec![member(&repo_path, Some(&wt_str), MemberState::WorktreeMissing)])]);
+        let store = store_with(&tmp, vec![topic("f", vec![member(&repo_path, Some(&wt_str), MemberState::WorktreeMissing)])]);
 
-        assert_eq!(list_features(&store)[0].members[0].state, MemberState::Present, "a live worktree on the branch is present");
+        assert_eq!(list_topics(&store)[0].members[0].state, MemberState::Present, "a live worktree on the branch is present");
 
         std::fs::remove_dir_all(&wt).unwrap();
-        assert_eq!(list_features(&store)[0].members[0].state, MemberState::WorktreeMissing);
-        assert_eq!(store.load().features[0].members[0].state, MemberState::WorktreeMissing, "and the file was written back");
-        assert_eq!(store.load().features[0].members[0].worktree_path.as_deref(), Some(wt_str.as_str()), "only state changes");
+        assert_eq!(list_topics(&store)[0].members[0].state, MemberState::WorktreeMissing);
+        assert_eq!(store.load().topics[0].members[0].state, MemberState::WorktreeMissing, "and the file was written back");
+        assert_eq!(store.load().topics[0].members[0].worktree_path.as_deref(), Some(wt_str.as_str()), "only state changes");
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -894,10 +894,10 @@ mod tests {
         let wt = tmp.join("wt");
         let wt_str = wt.to_string_lossy().into_owned();
         git(&r, &["worktree", "add", "-q", "-b", "feat/f", &wt_str]);
-        let store = store_with(&tmp, vec![feature("f", vec![member(&repo_path, Some(&wt_str), MemberState::Present)])]);
+        let store = store_with(&tmp, vec![topic("f", vec![member(&repo_path, Some(&wt_str), MemberState::Present)])]);
 
         git(&wt, &["checkout", "-q", "-b", "other"]);
-        assert_eq!(list_features(&store)[0].members[0].state, MemberState::WorktreeMissing);
+        assert_eq!(list_topics(&store)[0].members[0].state, MemberState::WorktreeMissing);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -906,8 +906,8 @@ mod tests {
         let tmp = unique_tmp();
         let repo_path = repo(&tmp.join("r"));
         let pending = MemberState::Failed { reason: "pending".into() };
-        let store = store_with(&tmp, vec![feature("f", vec![member(&repo_path, None, pending.clone())])]);
-        assert_eq!(list_features(&store)[0].members[0].state, pending);
+        let store = store_with(&tmp, vec![topic("f", vec![member(&repo_path, None, pending.clone())])]);
+        assert_eq!(list_topics(&store)[0].members[0].state, pending);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -921,7 +921,7 @@ mod tests {
         git(&r, &["worktree", "add", "-q", "-b", "feat/f", &wt_str]);
         let store = store_with(
             &tmp,
-            vec![feature(
+            vec![topic(
                 "f",
                 vec![
                     member(&repo_path, Some(&wt_str), MemberState::Present),
@@ -931,7 +931,7 @@ mod tests {
         );
 
         remove_member(&store, "f", &repo_path).unwrap();
-        let members = store.load().features[0].members.clone();
+        let members = store.load().topics[0].members.clone();
         assert_eq!(members.iter().map(|m| m.repo_path.as_str()).collect::<Vec<_>>(), ["/r/b"]);
         assert!(wt.join("a.txt").is_file(), "the worktree is untouched");
         assert!(remove_member(&store, "f", &repo_path).is_err(), "a second removal names the absent member");
@@ -941,16 +941,16 @@ mod tests {
     #[test]
     fn remove_member_refuses_the_last_one_and_points_at_delete() {
         let tmp = unique_tmp();
-        let store = store_with(&tmp, vec![feature("f", vec![member("/r/a", None, MemberState::WorktreeMissing)])]);
+        let store = store_with(&tmp, vec![topic("f", vec![member("/r/a", None, MemberState::WorktreeMissing)])]);
 
         let err = remove_member(&store, "f", "/r/a").expect_err("the last member stays");
         assert_eq!(err, LAST_MEMBER);
-        assert_eq!(store.load().features[0].members.len(), 1, "the record is intact");
+        assert_eq!(store.load().topics[0].members.len(), 1, "the record is intact");
         std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
-    fn feature_container_is_the_bare_container_or_an_excluded_tori_dir() {
+    fn topic_container_is_the_bare_container_or_an_excluded_tori_dir() {
         let tmp = unique_tmp();
         let src = tmp.join("src");
         repo(&src);
@@ -963,27 +963,27 @@ mod tests {
         assert!(out.status.success());
         std::fs::write(cont.join(".git"), "gitdir: ./.bare\n").unwrap();
         let cont_s = cont.to_string_lossy().into_owned();
-        assert_eq!(feature_container(&cont_s).unwrap(), cont);
+        assert_eq!(topic_container(&cont_s).unwrap(), cont);
 
         let plain = tmp.join("plain");
         let plain_s = repo(&plain);
-        assert_eq!(feature_container(&plain_s).unwrap(), plain.join(".tori/worktrees"));
+        assert_eq!(topic_container(&plain_s).unwrap(), plain.join(".tori/worktrees"));
         assert!(plain.join(".tori/worktrees").is_dir());
         let exclude = || std::fs::read_to_string(plain.join(".git/info/exclude")).unwrap_or_default();
         assert_eq!(exclude().lines().filter(|l| *l == ".tori/").count(), 1);
-        feature_container(&plain_s).unwrap();
+        topic_container(&plain_s).unwrap();
         assert_eq!(exclude().lines().filter(|l| *l == ".tori/").count(), 1, "idempotent");
 
         let gone = tmp.join("gone");
         let gone_s = repo(&gone);
         std::fs::remove_dir_all(&gone).unwrap();
-        assert!(feature_container(&gone_s).is_err());
+        assert!(topic_container(&gone_s).is_err());
         assert!(!gone.exists(), "nothing is created where the repo used to be");
         std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
-    fn create_feature_records_first_and_keeps_going_past_a_failed_member() {
+    fn create_topic_records_first_and_keeps_going_past_a_failed_member() {
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
         let b = repo(&tmp.join("b"));
@@ -991,9 +991,9 @@ mod tests {
         // Both folder names the picker would try are taken in b.
         std::fs::create_dir_all(tmp.join("b/.tori/worktrees/x")).unwrap();
         std::fs::create_dir_all(tmp.join("b/.tori/worktrees/feat-x")).unwrap();
-        let store = Store::at(tmp.join("features.json"));
+        let store = Store::at(tmp.join("topics.json"));
 
-        let f = create_feature(&store, "X", &[a.clone(), b.clone(), c.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", &[a.clone(), b.clone(), c.clone()], &|_| {}).unwrap();
         assert_eq!(f.branch, "feat/x");
         assert!(f.id.starts_with("x-"));
         let states: Vec<_> = f.members.iter().map(|m| &m.state).collect();
@@ -1008,7 +1008,7 @@ mod tests {
         assert_eq!(f.members[1].worktree_path, None);
 
         // The record is what a reader sees between members: the reconcile agrees.
-        let listed = list_features(&store);
+        let listed = list_topics(&store);
         assert_eq!(listed[0].members.iter().map(|m| m.state.clone()).collect::<Vec<_>>(), f.members.iter().map(|m| m.state.clone()).collect::<Vec<_>>());
 
         // The plain repo stays clean and its walkers do not see the worktree.
@@ -1021,12 +1021,12 @@ mod tests {
         assert!(hits.matches.iter().all(|m| !m.path.contains(".tori/worktrees")));
 
         // Guards: same slug, same repo twice, a worktree of a member is the member.
-        assert!(create_feature(&store, "x", std::slice::from_ref(&a), &|_| {}).unwrap_err().contains("already uses feat/x"));
-        assert!(create_feature(&store, "Y", &[a.clone(), a.clone()], &|_| {}).unwrap_err().contains("listed twice"));
+        assert!(create_topic(&store, "x", std::slice::from_ref(&a), &|_| {}).unwrap_err().contains("already uses feat/x"));
+        assert!(create_topic(&store, "Y", &[a.clone(), a.clone()], &|_| {}).unwrap_err().contains("listed twice"));
         let wt_a_s = wt_a.to_string_lossy().into_owned();
-        assert!(create_feature(&store, "Y", &[a.clone(), wt_a_s], &|_| {}).unwrap_err().contains("listed twice"));
-        assert!(create_feature(&store, "Z", &[], &|_| {}).is_err());
-        assert_eq!(store.load().features.len(), 1, "a rejected create leaves no record");
+        assert!(create_topic(&store, "Y", &[a.clone(), wt_a_s], &|_| {}).unwrap_err().contains("listed twice"));
+        assert!(create_topic(&store, "Z", &[], &|_| {}).is_err());
+        assert_eq!(store.load().topics.len(), 1, "a rejected create leaves no record");
 
         // Retry flips the failed member once the collision is gone.
         std::fs::remove_dir_all(tmp.join("b/.tori/worktrees/x")).unwrap();
@@ -1046,10 +1046,10 @@ mod tests {
         assert!(tmp.join("d/.tori/worktrees/x/a.txt").is_file());
         assert!(add_member(&store, &f.id, &d, &|_| {}).unwrap_err().contains("already a member"));
 
-        let probe = probe_feature_branch(&d, "x");
+        let probe = probe_topic_branch(&d, "x");
         assert_eq!(probe, BranchProbe { local: true, remote: false, has_worktree: true });
         let fresh = repo(&tmp.join("e"));
-        assert_eq!(probe_feature_branch(&fresh, "x"), BranchProbe { local: false, remote: false, has_worktree: false });
+        assert_eq!(probe_topic_branch(&fresh, "x"), BranchProbe { local: false, remote: false, has_worktree: false });
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -1064,9 +1064,9 @@ mod tests {
         let b = tmp.join("b");
         let b_s = repo(&b);
         git(&b, &["checkout", "-q", "-b", "feat/x"]);
-        let store = Store::at(tmp.join("features.json"));
+        let store = Store::at(tmp.join("topics.json"));
 
-        let f = create_feature(&store, "X", &[a_s.clone(), b_s.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", &[a_s.clone(), b_s.clone()], &|_| {}).unwrap();
         assert_eq!(f.members[0].state, MemberState::Present);
         assert_eq!(f.members[0].worktree_path.as_deref(), Some(wt_s.as_str()));
         assert!(!a.join(".tori/worktrees").exists(), "adopting creates no container");
@@ -1087,8 +1087,8 @@ mod tests {
         let tmp = unique_tmp();
         let a = tmp.join("a");
         let a_s = repo(&a);
-        let store = Store::at(tmp.join("features.json"));
-        let f = create_feature(&store, "X", &[a_s.clone()], &|_| {}).unwrap();
+        let store = Store::at(tmp.join("topics.json"));
+        let f = create_topic(&store, "X", &[a_s.clone()], &|_| {}).unwrap();
         let wt = f.members[0].worktree_path.clone().unwrap();
 
         std::fs::remove_dir_all(&wt).unwrap();
@@ -1097,28 +1097,28 @@ mod tests {
             2,
             "git still lists the deleted folder"
         );
-        assert_eq!(list_features(&store)[0].members[0].state, MemberState::WorktreeMissing);
+        assert_eq!(list_topics(&store)[0].members[0].state, MemberState::WorktreeMissing);
 
         let fixed = retry_member(&store, &f.id, &a_s).unwrap();
         assert_eq!(fixed.members[0].state, MemberState::Present);
         let path = fixed.members[0].worktree_path.clone().unwrap();
         assert!(Path::new(&path).is_dir(), "{path} is not on disk");
         // And it stays: a second read is what the loop used to fail.
-        assert_eq!(list_features(&store)[0].members[0].state, MemberState::Present);
+        assert_eq!(list_topics(&store)[0].members[0].state, MemberState::Present);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
-    fn one_repo_belongs_to_two_features_at_once() {
-        // The refusal is per branch, not per repo: two Features over the same
+    fn one_repo_belongs_to_two_topics_at_once() {
+        // The refusal is per branch, not per repo: two Topics over the same
         // repository get one worktree each, on their own `feat/<slug>`, so the
         // repo's unit row wears a chip pointing back at each of them.
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
-        let store = Store::at(tmp.join("features.json"));
+        let store = Store::at(tmp.join("topics.json"));
 
-        let auth = create_feature(&store, "auth", std::slice::from_ref(&a), &|_| {}).unwrap();
-        let billing = create_feature(&store, "billing", std::slice::from_ref(&a), &|_| {}).unwrap();
+        let auth = create_topic(&store, "auth", std::slice::from_ref(&a), &|_| {}).unwrap();
+        let billing = create_topic(&store, "billing", std::slice::from_ref(&a), &|_| {}).unwrap();
 
         assert_eq!(auth.members[0].state, MemberState::Present);
         assert_eq!(billing.members[0].state, MemberState::Present);
@@ -1128,10 +1128,10 @@ mod tests {
         );
         assert_ne!(wt_a, wt_b, "one worktree each, named by the slug");
         assert!(wt_a.ends_with("auth") && wt_b.ends_with("billing"));
-        assert_eq!(list_features(&store).len(), 2);
+        assert_eq!(list_topics(&store).len(), 2);
         // Only the branch collides, and only with itself.
         assert!(
-            create_feature(&store, "auth", std::slice::from_ref(&a), &|_| {})
+            create_topic(&store, "auth", std::slice::from_ref(&a), &|_| {})
                 .unwrap_err()
                 .contains("already uses feat/auth")
         );
@@ -1143,8 +1143,8 @@ mod tests {
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
         let b = repo(&tmp.join("b"));
-        let store = Store::at(tmp.join("features.json"));
-        let f = create_feature(&store, "X", &[a.clone(), b.clone()], &|_| {}).unwrap();
+        let store = Store::at(tmp.join("topics.json"));
+        let f = create_topic(&store, "X", &[a.clone(), b.clone()], &|_| {}).unwrap();
 
         let plain = tmp.join("not-a-repo");
         std::fs::create_dir_all(&plain).unwrap();
@@ -1155,7 +1155,7 @@ mod tests {
         assert!(err.contains("already a member"), "{err}");
 
         // Neither refusal wrote anything.
-        let now = list_features(&store).remove(0);
+        let now = list_topics(&store).remove(0);
         assert_eq!(now.members[0].repo_path, a);
         assert_eq!(now.members[0].state, MemberState::Present);
         std::fs::remove_dir_all(&tmp).ok();
@@ -1170,15 +1170,15 @@ mod tests {
         let tmp = unique_tmp();
         let old = tmp.join("api");
         let old_s = repo(&old);
-        let store = Store::at(tmp.join("features.json"));
-        let f = create_feature(&store, "X", &[old_s.clone()], &|_| {}).unwrap();
+        let store = Store::at(tmp.join("topics.json"));
+        let f = create_topic(&store, "X", &[old_s.clone()], &|_| {}).unwrap();
         let old_wt = f.members[0].worktree_path.clone().unwrap();
         assert!(old_wt.starts_with(&old_s), "the plain layout puts it inside the repo");
 
         let new = tmp.join("moved-api");
         std::fs::rename(&old, &new).unwrap();
         let new_s = new.to_string_lossy().into_owned();
-        assert_eq!(list_features(&store)[0].members[0].state, MemberState::RepoMissing);
+        assert_eq!(list_topics(&store)[0].members[0].state, MemberState::RepoMissing);
 
         let fixed = relocate_member(&store, &f.id, &old_s, &new_s).unwrap();
         assert_eq!(fixed.members[0].repo_path, new_s);
@@ -1187,7 +1187,7 @@ mod tests {
             Some(format!("{new_s}/.tori/worktrees/x").as_str())
         );
         assert_eq!(fixed.members[0].state, MemberState::Present, "one step, no Recreate");
-        assert_eq!(list_features(&store)[0].members[0].state, MemberState::Present);
+        assert_eq!(list_topics(&store)[0].members[0].state, MemberState::Present);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -1201,8 +1201,8 @@ mod tests {
         let wt = tmp.join("elsewhere");
         let wt_s = wt.to_string_lossy().into_owned();
         git(&old, &["worktree", "add", "-q", "-b", "feat/x", &wt_s]);
-        let store = Store::at(tmp.join("features.json"));
-        let f = create_feature(&store, "X", &[old_s.clone()], &|_| {}).unwrap();
+        let store = Store::at(tmp.join("topics.json"));
+        let f = create_topic(&store, "X", &[old_s.clone()], &|_| {}).unwrap();
         assert_eq!(f.members[0].worktree_path.as_deref(), Some(wt_s.as_str()), "adopted");
 
         let new = tmp.join("moved-api");
@@ -1222,11 +1222,11 @@ mod tests {
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
         let b = repo(&tmp.join("b"));
-        let store = Store::at(tmp.join("features.json"));
+        let store = Store::at(tmp.join("topics.json"));
         let seen = RefCell::new(Vec::<Vec<MemberState>>::new());
-        let record = |f: &Feature| seen.borrow_mut().push(f.members.iter().map(|m| m.state.clone()).collect());
+        let record = |f: &Topic| seen.borrow_mut().push(f.members.iter().map(|m| m.state.clone()).collect());
 
-        let f = create_feature(&store, "X", &[a, b], &record).unwrap();
+        let f = create_topic(&store, "X", &[a, b], &record).unwrap();
         let pending = MemberState::Failed { reason: PENDING.into() };
         assert_eq!(
             *seen.borrow(),
@@ -1251,7 +1251,7 @@ mod tests {
         let tmp = unique_tmp();
         let store = store_with(
             &tmp,
-            vec![feature(
+            vec![topic(
                 "f",
                 vec![
                     Member { order: 0, ..member("/r/a", None, MemberState::WorktreeMissing) },
@@ -1262,22 +1262,22 @@ mod tests {
         );
 
         reorder_members(&store, "f", &["/r/c".to_string()]).unwrap();
-        let members = store.load().features[0].members.clone();
+        let members = store.load().topics[0].members.clone();
         assert_eq!(members.iter().map(|m| m.repo_path.as_str()).collect::<Vec<_>>(), ["/r/c", "/r/a", "/r/b"]);
         assert_eq!(members.iter().map(|m| m.order).collect::<Vec<_>>(), [0, 1, 2]);
 
         rename_member(&store, "f", "/r/a", " Backend ").unwrap();
-        assert_eq!(store.load().features[0].members[1].display_name, "Backend");
+        assert_eq!(store.load().topics[0].members[1].display_name, "Backend");
         assert!(rename_member(&store, "f", "/r/a", "  ").is_err());
 
-        rename_feature(&store, "f", "Auth v2").unwrap();
-        let f = store.load().features[0].clone();
+        rename_topic(&store, "f", "Auth v2").unwrap();
+        let f = store.load().topics[0].clone();
         assert_eq!(f.name, "Auth v2");
         assert_eq!(f.branch, "feat/f", "the branch is frozen");
 
-        assert!(delete_feature(&store, "nope").is_err());
-        delete_feature(&store, "f").unwrap();
-        assert!(store.load().features.is_empty());
+        assert!(delete_topic(&store, "nope").is_err());
+        delete_topic(&store, "f").unwrap();
+        assert!(store.load().topics.is_empty());
         std::fs::remove_dir_all(&tmp).ok();
     }
 }

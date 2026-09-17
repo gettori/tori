@@ -1,12 +1,12 @@
 // The record-only commands emit (#159 phase 1). `remove_member`,
-// `reorder_members`, `rename_member` and `rename_feature` used to answer
+// `reorder_members`, `rename_member` and `rename_topic` used to answer
 // nothing and announce nothing, so every consumer of the shared tinted-members
 // resource - the Toolbar's chips, the editor's tree, the Omnibox - kept showing
 // the name and the order the Feature had when the window opened. The sidebar
 // only looked right because it patched its own signal.
 //
 // What is asserted here is the *feed*, not the sidebar: an emitted
-// `features://changed` refetches (`createFeatureMembers` is invalidation-based
+// `topics://changed` refetches (`createFeatureMembers` is invalidation-based
 // by design, one read per generation) and the chip row follows. The panels that
 // take those members as a prop assert the prop drives them in their own files.
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -31,7 +31,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "list_features")
+    if (cmd === "list_topics")
       return Promise.resolve([
         { id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: bridge.members },
       ]);
@@ -67,8 +67,8 @@ const sel = {
   projectKind: "feature",
 };
 
-const changed = () => (handlers["features://changed"] ?? []).slice().forEach((cb) => cb({ payload: null }));
-const reads = () => bridge.calls.filter((c) => c.cmd === "list_features").length;
+const changed = () => (handlers["topics://changed"] ?? []).slice().forEach((cb) => cb({ payload: null }));
+const reads = () => bridge.calls.filter((c) => c.cmd === "list_topics").length;
 const chips = () => Array.from(document.querySelectorAll<HTMLElement>("[data-member]"));
 const names = () => chips().map((c) => c.getAttribute("aria-label"));
 const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
@@ -120,7 +120,7 @@ describe("the Feature record feed", () => {
     fireEvent.click(api);
 
     await waitFor(() => expect(sent("reorder_members").length).toBe(1));
-    expect(sent("reorder_members")[0].args).toEqual({ featureId: "f1", repoPaths: ["/w/web", "/w/api"] });
+    expect(sent("reorder_members")[0].args).toEqual({ topicId: "f1", repoPaths: ["/w/web", "/w/api"] });
     expect(onActiveRoot).not.toHaveBeenCalled();
   });
 });

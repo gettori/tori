@@ -58,7 +58,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "fs_read_dir_compact":
       case "list_project_files":
         return Promise.resolve([]);
-      case "list_features":
+      case "list_topics":
         return Promise.resolve([FEATURE]);
       case "get_config":
         return Promise.resolve({ spaces: [{ name: "work", color: "Sky", projects: [{ path: "/r/a" }] }] });
@@ -223,7 +223,7 @@ describe("the editor inside a Feature", () => {
     expect(repair.textContent).toBe("Retry");
     repair.click();
     await waitFor(() =>
-      expect(calls.find((c) => c.cmd === "retry_member")?.args).toEqual({ featureId: "f1", repoPath: REPO_B }),
+      expect(calls.find((c) => c.cmd === "retry_member")?.args).toEqual({ topicId: "f1", repoPath: REPO_B }),
     );
   });
 
@@ -249,7 +249,7 @@ describe("the editor inside a Feature", () => {
 
     await waitFor(() =>
       expect(calls.find((c) => c.cmd === "relocate_member")?.args).toEqual({
-        featureId: "f1",
+        topicId: "f1",
         repoPath: REPO_C,
         newRepoPath: "/moved/docs",
       }),
@@ -322,7 +322,7 @@ describe("the editor inside a Feature", () => {
     ));
     await waitFor(() => expect(sectionRoots()).toEqual(["/r/a"]));
     expect(document.querySelectorAll("[data-chip]").length).toBe(0);
-    expect(calls.some((c) => c.cmd === "list_features")).toBe(false);
+    expect(calls.some((c) => c.cmd === "list_topics")).toBe(false);
   });
 });
 

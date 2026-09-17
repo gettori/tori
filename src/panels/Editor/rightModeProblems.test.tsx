@@ -28,7 +28,7 @@ const FEATURE = {
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     switch (cmd) {
-      case "list_features":
+      case "list_topics":
         return Promise.resolve([FEATURE]);
       case "get_config":
         return Promise.resolve({ spaces: [] });

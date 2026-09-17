@@ -19,7 +19,7 @@ import {
 
 // The slug is what every member's branch is named after, so the frontend and
 // backend rules have to agree character for character: these cases mirror
-// `features::tests::slug_lowercases_collapses_and_rejects_empty`.
+// `topics::tests::slug_lowercases_collapses_and_rejects_empty`.
 describe("featureSlug", () => {
   it("matches the backend rule", () => {
     expect(featureSlug("Auth Flow")).toBe("auth-flow");

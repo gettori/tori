@@ -357,7 +357,7 @@ export default function LeftSidebar(props: {
   let featuresSeq = 0;
   async function loadFeatures() {
     const mine = ++featuresSeq;
-    const list = (await invoke<Feature[] | null>("list_features").catch(() => null)) ?? [];
+    const list = (await invoke<Feature[] | null>("list_topics").catch(() => null)) ?? [];
     if (mine === featuresSeq) setFeatures(list);
   }
   function applyFeature(feature: Feature) {
@@ -2628,7 +2628,7 @@ export default function LeftSidebar(props: {
       void loadConfig();
       void loadFeatures();
     });
-    unlistenFeatures = await listen<Feature>("features://changed", (e) => applyFeature(e.payload));
+    unlistenFeatures = await listen<Feature>("topics://changed", (e) => applyFeature(e.payload));
     unlistenSessions = await listen<SessionsChanged | null>("sessions://changed", (e) => {
       // No explicit tail re-read: the tail-state effect now triggers on the
       // store as well as on liveTabs, so a refresh that changed something

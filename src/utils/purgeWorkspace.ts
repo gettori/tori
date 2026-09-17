@@ -6,7 +6,7 @@
 // A Feature is swept under more than one key. Tabs and breakpoints key on `feature:<id>`, but the three debug stores key on the *member root*
 // (that is what `DebugPanel` passes and what a paused session's `projectPath`
 // is compared against), so those records survive the Feature key going. The
-// roots therefore come in from the caller: `delete_feature` has already run by
+// roots therefore come in from the caller: `delete_topic` has already run by
 // the time the sweep is called, so the record they could be re-read from is
 // gone, and the sidebar row that ordered the delete still holds them.
 //

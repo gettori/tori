@@ -67,7 +67,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       bridge.listed.push(at);
       return Promise.resolve(bridge.files[at] ?? []);
     }
-    if (cmd === "list_features") return Promise.resolve(FEATURES);
+    if (cmd === "list_topics") return Promise.resolve(FEATURES);
     if (cmd === "get_config") return Promise.resolve({ spaces: [] });
     return Promise.resolve(null);
   },
@@ -188,7 +188,7 @@ describe("quick-open inside a Feature", () => {
     open(featureSel("f1", [A, B]));
 
     expect(screen.getByText("Recent files")).toBeTruthy();
-    // The block renders from storage on the first frame, before `list_features`
+    // The block renders from storage on the first frame, before `list_topics`
     // has said what the repo is called, so the row gains its prefix a tick
     // later. Its id never changes, so the row itself does not move.
     await waitFor(() => expect(rowLabels()[0]).toBe("api/src/a.ts"));

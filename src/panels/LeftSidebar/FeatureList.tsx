@@ -30,7 +30,7 @@ export type FeatureSpace = SpaceTint & RepoSpace;
  *  Mounted only in that mode, so it owns its own fetch and its own listeners;
  *  the sidebar hands it the Spaces and the shared filter string.
  *
- *  Two feeds keep it current. `features://changed` carries a whole Feature
+ *  Two feeds keep it current. `topics://changed` carries a whole Feature
  *  after every step of a creation, and is applied as is, no refetch, so chips
  *  flip one by one. `config://changed` fires once at the end (and whenever
  *  the tree changes for any other reason), and that one refetches. */
@@ -89,7 +89,7 @@ export default function FeatureList(props: {
   async function load() {
     const mine = ++seq;
     try {
-      const list = (await invoke<Feature[] | null>("list_features")) ?? [];
+      const list = (await invoke<Feature[] | null>("list_topics")) ?? [];
       if (mine !== seq) return;
       setFeatures(list);
       setError(null);
@@ -118,7 +118,7 @@ export default function FeatureList(props: {
   let unlistenConfig: UnlistenFn | undefined;
   onMount(async () => {
     await load();
-    unlistenFeatures = await listen<Feature>("features://changed", (e) => apply(e.payload));
+    unlistenFeatures = await listen<Feature>("topics://changed", (e) => apply(e.payload));
     unlistenConfig = await listen("config://changed", () => load());
   });
   onCleanup(() => {
@@ -129,7 +129,7 @@ export default function FeatureList(props: {
   async function retry(feature: Feature, member: Member) {
     try {
       const next = await invoke<Feature>("retry_member", {
-        featureId: feature.id,
+        topicId: feature.id,
         repoPath: member.repoPath,
       });
       if (next) apply(next);
@@ -147,7 +147,7 @@ export default function FeatureList(props: {
       const newRepoPath = await invoke<string | null>("pick_folder");
       if (!newRepoPath) return;
       const next = await invoke<Feature>("relocate_member", {
-        featureId: feature.id,
+        topicId: feature.id,
         repoPath: member.repoPath,
         newRepoPath,
       });
@@ -173,7 +173,7 @@ export default function FeatureList(props: {
   }
 
   // Every record-only command answers with the reloaded Feature and emits
-  // `features://changed` for the surfaces outside this list; applying the
+  // `topics://changed` for the surfaces outside this list; applying the
   // answer here is only what keeps the row from waiting on the round trip.
   async function mutate(command: string, args: Record<string, unknown>): Promise<Feature | null> {
     try {
@@ -190,24 +190,24 @@ export default function FeatureList(props: {
     setRenameReq(null);
     const trimmed = name.trim();
     if (!trimmed || trimmed === feature.name) return;
-    await mutate("rename_feature", { featureId: feature.id, name: trimmed });
+    await mutate("rename_topic", { topicId: feature.id, name: trimmed });
   }
 
   async function renameMember(feature: Feature, member: Member, name: string) {
     setMemberRenameReq(null);
     const trimmed = name.trim();
     if (!trimmed || trimmed === member.displayName) return;
-    await mutate("rename_member", { featureId: feature.id, repoPath: member.repoPath, displayName: trimmed });
+    await mutate("rename_member", { topicId: feature.id, repoPath: member.repoPath, displayName: trimmed });
   }
 
   const reorder = (feature: Feature, repoPaths: string[]) =>
-    mutate("reorder_members", { featureId: feature.id, repoPaths });
+    mutate("reorder_members", { topicId: feature.id, repoPaths });
 
   // The record detaches first, as the ticket specifies, and only then is the
   // worktree offered: the member has already left the Feature by the time the
   // dialog opens, which is why declining there reads "Keep worktree".
   async function removeMember(feature: Feature, member: Member) {
-    const next = await mutate("remove_member", { featureId: feature.id, repoPath: member.repoPath });
+    const next = await mutate("remove_member", { topicId: feature.id, repoPath: member.repoPath });
     if (!next) return;
     // The Selection still names the departed root. Re-resolving it from the
     // record drops that root and, when it was the active one, moves `activeRoot`
@@ -288,7 +288,7 @@ export default function FeatureList(props: {
       }));
 
   // What git said about each member's worktree, by repo path. Kept beside the two
-  // signals rather than only in them: the confirm closes before `delete_feature`
+  // signals rather than only in them: the confirm closes before `delete_topic`
   // answers and the sweep opens after, so a status resolving in that gap has no
   // dialog to land on and the row would reach the sweep stuck on "checking...".
   let statuses: Record<string, { dirty: boolean; unpushed: boolean }> = {};
@@ -322,14 +322,14 @@ export default function FeatureList(props: {
   async function remove(feature: Feature, members: MemberRisk[]) {
     setDeleteReq(null);
     try {
-      await invoke("delete_feature", { featureId: feature.id });
+      await invoke("delete_topic", { topicId: feature.id });
     } catch (e) {
       setError(String(e));
       return;
     }
     setFeatures((prev) => prev.filter((f) => f.id !== feature.id));
     // The member roots go with the key: the three debug stores key on one, and
-    // `delete_feature` has already taken the record they could be read back
+    // `delete_topic` has already taken the record they could be read back
     // from. Same rule as `tintedMember.key`, so the sweep names the folder the
     // panels wrote under.
     purgeWorkspace(

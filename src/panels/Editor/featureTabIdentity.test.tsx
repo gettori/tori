@@ -44,7 +44,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "fs_read_dir_compact":
       case "list_project_files":
         return Promise.resolve([]);
-      case "list_features":
+      case "list_topics":
         return Promise.resolve([FEATURE]);
       case "get_config":
         return Promise.resolve({ spaces: [{ name: "work", color: "Sky", projects: [{ path: "/r/a" }] }] });

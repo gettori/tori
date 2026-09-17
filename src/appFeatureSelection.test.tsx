@@ -74,7 +74,7 @@ beforeEach(() => {
   invoke.mockImplementation(async (cmd: string) => {
     if (cmd === "get_settings") return DEFAULT_SETTINGS;
     if (cmd === "list_user_themes") return { themes: [], errors: [] };
-    if (cmd === "list_features") return features;
+    if (cmd === "list_topics") return features;
     return null;
   });
 });
@@ -114,7 +114,7 @@ describe("a Feature as the selection", () => {
     render(() => <App />);
     await waitFor(() => expect(storedSelection().kind).toBe("unit"));
     await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("/r/a"));
-    expect(invoke).not.toHaveBeenCalledWith("list_features");
+    expect(invoke).not.toHaveBeenCalledWith("list_topics");
   });
 });
 

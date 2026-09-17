@@ -518,7 +518,7 @@ function App() {
   async function resolveFeatureSelection() {
     if (selected()?.kind !== 'feature') return;
     const mine = ++resolveSeq;
-    const list = (await invoke<Feature[] | null>('list_features').catch(() => null)) ?? [];
+    const list = (await invoke<Feature[] | null>('list_topics').catch(() => null)) ?? [];
     const sel = selected();
     if (mine !== resolveSeq || sel?.kind !== 'feature') return;
     const feature = list.find((f) => f.id === sel.featureId);

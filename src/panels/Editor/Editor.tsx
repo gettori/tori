@@ -922,10 +922,10 @@ export default function Editor(props: {
         const newRepoPath = await invoke<string | null>("pick_folder");
         // A cancelled picker leaves the record exactly as it was.
         if (!newRepoPath) return;
-        await invoke("relocate_member", { featureId: id, repoPath: m.member.repoPath, newRepoPath });
+        await invoke("relocate_member", { topicId: id, repoPath: m.member.repoPath, newRepoPath });
         return;
       }
-      await invoke("retry_member", { featureId: id, repoPath: m.member.repoPath });
+      await invoke("retry_member", { topicId: id, repoPath: m.member.repoPath });
     } catch (e) {
       emitWith<ToastEvent>(TOAST, { message: `${m.label}: ${String(e)}`, kind: "error" });
     }

@@ -29,7 +29,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
 
   // The Selection carries only the present roots; badges need every member, so
   // the record comes from the shared resource, which also owns the tint and the
-  // refetch on `features://changed` / `config://changed`.
+  // refetch on `topics://changed` / `config://changed`.
   const members = createFeatureMembers(featureId);
   const isActive = (m: TintedMember) => !!m.member.worktreePath && m.member.worktreePath === sel()?.activeRoot;
   // Which repo the panels below are showing. Absent for a Feature whose members
@@ -44,7 +44,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
     keys: () => members().map((m) => m.member.repoPath),
     onCommit: (repoPaths) => {
       const id = featureId();
-      if (id) void invoke("reorder_members", { featureId: id, repoPaths }).catch((e) => setErr(String(e)));
+      if (id) void invoke("reorder_members", { topicId: id, repoPaths }).catch((e) => setErr(String(e)));
     },
   });
 

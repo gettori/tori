@@ -19,7 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 // The box reads the Feature's members to name each row's repo, and that resource
-// subscribes to `features://changed` the moment it is created.
+// subscribes to `topics://changed` the moment it is created.
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 
 // The box lists the agents this install offers, and the default is none, so a

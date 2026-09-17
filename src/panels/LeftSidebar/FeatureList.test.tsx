@@ -48,7 +48,7 @@ const bridge = vi.hoisted(() => ({
   created: null as Feature | null,
   // What `pick_folder` answers; null is the cancelled picker.
   picked: null as string | null,
-  // Whether `delete_feature` refuses, what `worktree_status` answers per worktree
+  // Whether `delete_topic` refuses, what `worktree_status` answers per worktree
   // path, and which worktree paths `remove_worktree*` refuses, for the sweep.
   failDelete: false,
   wtStatus: {} as Record<string, { dirty: boolean; unpushed: boolean }>,
@@ -67,9 +67,9 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
-    if (cmd === "list_features") return Promise.resolve(bridge.features);
+    if (cmd === "list_topics") return Promise.resolve(bridge.features);
     if (cmd === "git_status") return Promise.resolve(bridge.status[String(args?.projectPath)] ?? []);
-    if (cmd === "create_feature") return Promise.resolve(bridge.created);
+    if (cmd === "create_topic") return Promise.resolve(bridge.created);
     if (cmd === "worktree_status") {
       const answer = {
         ...(bridge.wtStatus[String(args?.path)] ?? { dirty: false, unpushed: false }),
@@ -98,7 +98,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       });
     }
     if (cmd === "pick_folder") return Promise.resolve(bridge.picked);
-    if (cmd === "delete_feature") {
+    if (cmd === "delete_topic") {
       const settle = () =>
         bridge.failDelete ? Promise.reject(new Error("delete refused")) : Promise.resolve(null);
       if (!bridge.holdDelete) return settle();
@@ -109,8 +109,8 @@ vi.mock("@tauri-apps/api/core", () => ({
     // Both repairs answer with the reconciled record: `relocate_member` also
     // rewrites `repoPath`, which is the one field a member's identity is.
     if (cmd === "retry_member" || cmd === "relocate_member") {
-      const at = (bridge.features ?? []).findIndex((f) => f.id === args.featureId);
-      if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.featureId}`));
+      const at = (bridge.features ?? []).findIndex((f) => f.id === args.topicId);
+      if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.topicId}`));
       const f = bridge.features![at];
       const next: Feature = {
         ...f,
@@ -128,10 +128,10 @@ vi.mock("@tauri-apps/api/core", () => ({
       return Promise.resolve(next);
     }
     // The record-only commands answer with the reloaded Feature, the shape the
-    // backend took on when it started emitting `features://changed` for them.
+    // backend took on when it started emitting `topics://changed` for them.
     if (RECORD_ONLY.has(cmd)) {
-      const at = (bridge.features ?? []).findIndex((f) => f.id === args.featureId);
-      if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.featureId}`));
+      const at = (bridge.features ?? []).findIndex((f) => f.id === args.topicId);
+      if (at < 0) return Promise.reject(new Error(`No Feature with id ${args.topicId}`));
       const next = recordOnly(cmd, bridge.features![at], args);
       bridge.features = bridge.features!.map((f, i) => (i === at ? next : f));
       return Promise.resolve(next);
@@ -140,10 +140,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const RECORD_ONLY = new Set(["rename_feature", "rename_member", "reorder_members", "remove_member"]);
+const RECORD_ONLY = new Set(["rename_topic", "rename_member", "reorder_members", "remove_member"]);
 
 function recordOnly(cmd: string, f: Feature, args: Record<string, unknown>): Feature {
-  if (cmd === "rename_feature") return { ...f, name: String(args.name) };
+  if (cmd === "rename_topic") return { ...f, name: String(args.name) };
   if (cmd === "rename_member") {
     return {
       ...f,
@@ -187,7 +187,7 @@ const SPACES = [
     ],
   },
 ];
-const listCalls = () => bridge.calls.filter((c) => c.cmd === "list_features").length;
+const listCalls = () => bridge.calls.filter((c) => c.cmd === "list_topics").length;
 const row = (name: string) => screen.getByText(name).closest("li")!;
 // One macrotask, which every pending microtask chain has drained by.
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -233,10 +233,10 @@ describe("FeatureList", () => {
     expect(await screen.findByRole("dialog", { name: "New Feature" })).toBeTruthy();
   });
 
-  it("applies a features://changed payload without a refetch", async () => {
+  it("applies a topics://changed payload without a refetch", async () => {
     render(() => <FeatureList spaces={SPACES} query="" />);
     await screen.findByText("Payments");
-    await waitFor(() => expect(bridge.handlers.has("features://changed")).toBe(true));
+    await waitFor(() => expect(bridge.handlers.has("topics://changed")).toBe(true));
     expect(listCalls()).toBe(1);
     expect(screen.getByRole("img", { name: "Failed" })).toBeTruthy();
 
@@ -247,7 +247,7 @@ describe("FeatureList", () => {
         state: { kind: "present" } as MemberState,
       })),
     };
-    bridge.handlers.get("features://changed")!({ payload: flipped });
+    bridge.handlers.get("topics://changed")!({ payload: flipped });
     await waitFor(() => expect(screen.queryByRole("img", { name: "Failed" })).toBeNull());
     expect(listCalls()).toBe(1);
 
@@ -258,7 +258,7 @@ describe("FeatureList", () => {
       createdAt: 3,
       members: [member("/w/api", 0, { kind: "failed", reason: "pending" })],
     };
-    bridge.handlers.get("features://changed")!({ payload: fresh });
+    bridge.handlers.get("topics://changed")!({ payload: fresh });
     await screen.findByText("Brand new");
     expect(listCalls()).toBe(1);
 
@@ -274,7 +274,7 @@ describe("FeatureList", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Retry ledger" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Retry ledger" })).toBeNull());
     const call = bridge.calls.find((c) => c.cmd === "retry_member")!;
-    expect(call.args).toEqual({ featureId: "pay-1", repoPath: "/w/ledger" });
+    expect(call.args).toEqual({ topicId: "pay-1", repoPath: "/w/ledger" });
   });
 
   // One per action `memberState` can return. The row decides which; these pin
@@ -298,7 +298,7 @@ describe("FeatureList", () => {
 
       await gone("Recreate web");
       expect(bridge.calls.find((c) => c.cmd === "retry_member")!.args).toEqual({
-        featureId: "auth-1",
+        topicId: "auth-1",
         repoPath: "/w/web",
       });
     });
@@ -308,7 +308,7 @@ describe("FeatureList", () => {
 
       await gone("Retry web");
       expect(bridge.calls.find((c) => c.cmd === "retry_member")!.args).toEqual({
-        featureId: "auth-1",
+        topicId: "auth-1",
         repoPath: "/w/web",
       });
     });
@@ -320,7 +320,7 @@ describe("FeatureList", () => {
       await gone("Locate web");
       expect(bridge.calls.some((c) => c.cmd === "pick_folder")).toBe(true);
       expect(bridge.calls.find((c) => c.cmd === "relocate_member")!.args).toEqual({
-        featureId: "auth-1",
+        topicId: "auth-1",
         repoPath: "/w/web",
         newRepoPath: "/moved/web",
       });
@@ -375,7 +375,7 @@ describe("FeatureList", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "retry_member")).toBe(true));
     expect(bridge.calls.find((c) => c.cmd === "retry_member")!.args).toEqual({
-      featureId: "search-1",
+      topicId: "search-1",
       repoPath: "/w/web",
     });
   });
@@ -390,9 +390,9 @@ describe("FeatureList", () => {
     const input = await screen.findByRole("textbox", { name: "Rename Auth" });
     fireEvent.input(input, { target: { value: "Auth v2" } });
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
-    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "rename_feature")).toBe(true));
-    expect(bridge.calls.find((c) => c.cmd === "rename_feature")!.args).toEqual({
-      featureId: "auth-1",
+    await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "rename_topic")).toBe(true));
+    expect(bridge.calls.find((c) => c.cmd === "rename_topic")!.args).toEqual({
+      topicId: "auth-1",
       name: "Auth v2",
     });
     await screen.findByText("Auth v2");
@@ -425,7 +425,7 @@ describe("FeatureList", () => {
     expect(riskRow(dialog, "/w/ledger").textContent).toContain("Failed");
     fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
     await waitFor(() => expect(screen.queryByText("Payments")).toBeNull());
-    expect(bridge.calls.find((c) => c.cmd === "delete_feature")!.args).toEqual({ featureId: "pay-1" });
+    expect(bridge.calls.find((c) => c.cmd === "delete_topic")!.args).toEqual({ topicId: "pay-1" });
     expect(bridge.calls.some((c) => c.cmd === "remove_worktree")).toBe(false);
     expect(screen.getByText("Auth")).toBeTruthy();
   });
@@ -516,7 +516,7 @@ describe("FeatureList", () => {
       await expectNoAxeViolations(dialog);
     });
 
-    // The confirm closes before `delete_feature` answers and the sweep opens
+    // The confirm closes before `delete_topic` answers and the sweep opens
     // after, so a status resolving in between has no dialog to land on. It has
     // to be kept anyway, or that row reaches the sweep stuck on "checking...".
     it("carries a status that answered while neither dialog was open", async () => {
@@ -527,7 +527,7 @@ describe("FeatureList", () => {
       expect(screen.getByRole("dialog").textContent).toContain("checking…");
 
       // The confirm is gone and the sweep is not there yet: git answering here
-      // is the case, and it is the whole duration of `delete_feature` wide.
+      // is the case, and it is the whole duration of `delete_topic` wide.
       fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       bridge.holdStatus!();
@@ -620,7 +620,7 @@ describe("FeatureList", () => {
 
       await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "reorder_members")).toBe(true));
       expect(bridge.calls.find((c) => c.cmd === "reorder_members")!.args).toEqual({
-        featureId: "auth-1",
+        topicId: "auth-1",
         repoPaths: ["/w/web", "/w/api"],
       });
       await waitFor(() =>
@@ -640,7 +640,7 @@ describe("FeatureList", () => {
 
       await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "rename_member")).toBe(true));
       expect(bridge.calls.find((c) => c.cmd === "rename_member")!.args).toEqual({
-        featureId: "auth-1",
+        topicId: "auth-1",
         repoPath: "/w/api",
         displayName: "Payments API",
       });
@@ -653,7 +653,7 @@ describe("FeatureList", () => {
 
       await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "remove_member")).toBe(true));
       expect(bridge.calls.find((c) => c.cmd === "remove_member")!.args).toEqual({
-        featureId: "auth-1",
+        topicId: "auth-1",
         repoPath: "/w/web",
       });
       await waitFor(() => expect(memberRow("/w/web")).toBeNull());
