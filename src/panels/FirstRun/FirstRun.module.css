@@ -655,6 +655,115 @@
     font-family: var(--tori-font-ui);
   }
 
+  .hostCards {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: calc(14px * var(--ui-scale));
+    max-width: calc(700px * var(--ui-scale));
+  }
+  .hostCard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-5);
+    flex: 1 1 calc(250px * var(--ui-scale));
+    min-width: calc(232px * var(--ui-scale));
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    padding: var(--tori-space-6);
+  }
+  /* A code and its recovery line need the width a half-row card lacks. */
+  .hostWait {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .hostHead,
+  .hostAccount {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-5);
+  }
+  .hostMark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: calc(30px * var(--ui-scale));
+    height: calc(30px * var(--ui-scale));
+    border-radius: var(--tori-radius-md);
+    background: var(--neutral-hover);
+    color: var(--fg-default);
+  }
+  .hostText {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-1);
+    min-width: 0;
+  }
+  .hostName {
+    font-size: var(--tori-text-lg);
+    font-weight: 500;
+    color: var(--fg-default);
+  }
+  .hostDomain {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-subtle);
+  }
+  .hostButton {
+    width: 100%;
+  }
+  .hostAccount {
+    background: var(--canvas-head);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    padding: calc(10px * var(--ui-scale)) var(--tori-space-5);
+  }
+  .avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: calc(26px * var(--ui-scale));
+    height: calc(26px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: linear-gradient(140deg, var(--brand-strong), var(--brand-default));
+    color: var(--brand-on);
+    font-size: var(--tori-text-2xs);
+    font-weight: 600;
+  }
+  .hostLogin {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-default);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .hostScopes {
+    font-size: var(--tori-text-2xs);
+    color: var(--fg-subtle);
+  }
+  .hostError {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-3);
+    background: color-mix(in srgb, var(--danger-fg) 8%, transparent);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    padding: calc(11px * var(--ui-scale)) calc(13px * var(--ui-scale));
+    font-size: var(--tori-text-xs);
+    line-height: 1.5;
+    color: var(--fg-muted);
+  }
+  .hostError code {
+    font-family: var(--tori-font-mono);
+  }
+  .hostErrorTitle {
+    font-size: var(--tori-text-sm);
+    color: var(--danger-fg);
+  }
+
   .summary {
     display: flex;
     flex-direction: column;
