@@ -27,6 +27,7 @@ const member = (name: string, i: number, broken = false): TintedMember => {
       : { label: "Ready", usable: true, action: null, reason: null },
     hue,
     style: { "--chip-hue": hue, "--chip-rgb": spaceHueRgb(name, color) },
+    icon: { seed: `/repos/${name}` },
     kind: "worktree",
   };
 };

@@ -214,7 +214,7 @@ describe("the editor inside a Topic", () => {
     await waitFor(() => expect(memberChips()).toHaveLength(3));
     // Every member wears a chip, and the ones outside every Space are untinted.
     const chips = memberChips();
-    expect(chips.map((c) => c.textContent)).toEqual(["A", "W", "D"]);
+    expect(chips.map((c) => [c.textContent, !!c.querySelector("svg")])).toEqual([["", true], ["", true], ["", true]]);
     expect(chips[0].style.getPropertyValue("--chip-hue")).not.toBe("");
     expect(chips[1].style.getPropertyValue("--chip-hue")).toBe("");
 

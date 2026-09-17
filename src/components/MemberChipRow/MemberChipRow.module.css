@@ -32,9 +32,18 @@
   border-radius: var(--tori-radius-sm);
   background: rgb(var(--chip-rgb) / 0.12);
   color: var(--chip-hue);
-  font-size: var(--tori-text-xs);
-  font-weight: 600;
   cursor: pointer;
+}
+
+.chip :global(svg),
+.chip img {
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+}
+
+.chip img {
+  object-fit: contain;
+  border-radius: calc(2px * var(--ui-scale));
 }
 
 .chip:hover:not(:disabled) {

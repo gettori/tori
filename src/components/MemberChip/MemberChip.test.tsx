@@ -3,28 +3,27 @@ import { render, screen } from "@solidjs/testing-library";
 import MemberChip from "./MemberChip";
 import { expectNoAxeViolations } from "../../test/axe";
 
-const FE = { displayName: "frontend", repoPath: "/repos/frontend" };
-const NS = { displayName: "notification service", repoPath: "/repos/notification-service" };
+const FE = { seed: "/repos/frontend", icon: "Globe" };
+const NS = { seed: "/repos/notification-service" };
 
 describe("MemberChip", () => {
-  it("takes initials from the display name, two words at most", () => {
-    const { container } = render(() => <MemberChip member={NS} />);
-    expect(container.textContent).toBe("NS");
-  });
-
-  it("falls back to the repo basename when the display name is empty", () => {
+  it("draws the project icon, the derived glyph when none was picked, and no initials", () => {
     const { container } = render(() => (
-      <MemberChip member={{ displayName: "  ", repoPath: "/repos/admin" }} />
+      <>
+        <MemberChip icon={FE} />
+        <MemberChip icon={NS} />
+      </>
     ));
-    expect(container.textContent).toBe("A");
+    expect(container.querySelectorAll("svg")).toHaveLength(2);
+    expect(container.textContent).toBe("");
   });
 
   it("paints the hue alone, or the hue and rgb together", () => {
     const { container } = render(() => (
       <>
-        <MemberChip member={FE} tint="oklch(0.7 0.1 250)" data-testid="one" />
+        <MemberChip icon={FE} tint="oklch(0.7 0.1 250)" data-testid="one" />
         <MemberChip
-          member={NS}
+          icon={NS}
           chipStyle={{ "--chip-hue": "oklch(0.6 0.2 30)", "--chip-rgb": "220 80 40" }}
           data-testid="two"
         />
@@ -43,8 +42,8 @@ describe("MemberChip", () => {
   it("is announced by default and hidden only when asked", () => {
     render(() => (
       <>
-        <MemberChip member={FE} data-testid="said" />
-        <MemberChip member={NS} decorative data-testid="hidden" />
+        <MemberChip icon={FE} data-testid="said" />
+        <MemberChip icon={NS} decorative data-testid="hidden" />
       </>
     ));
     expect(screen.getByTestId("said").getAttribute("aria-hidden")).toBeNull();
@@ -53,7 +52,7 @@ describe("MemberChip", () => {
 
   it("keeps a state badge announced inside an undecorated chip", () => {
     render(() => (
-      <MemberChip member={FE} tint="oklch(0.7 0.1 250)">
+      <MemberChip icon={FE} tint="oklch(0.7 0.1 250)">
         <span role="img" aria-label="Worktree missing" />
       </MemberChip>
     ));
@@ -63,9 +62,9 @@ describe("MemberChip", () => {
   it("passes axe as a plain chip, a decorative one and one carrying a badge", async () => {
     const { container } = render(() => (
       <>
-        <MemberChip member={FE} tint="oklch(0.7 0.1 250)" />
-        <MemberChip member={NS} decorative />
-        <MemberChip member={FE}>
+        <MemberChip icon={FE} tint="oklch(0.7 0.1 250)" />
+        <MemberChip icon={NS} decorative />
+        <MemberChip icon={FE}>
           <span role="img" aria-label="Failed" />
         </MemberChip>
       </>

@@ -58,6 +58,7 @@ import { forgeHosts, forgeRepo, pickForgeAccount, resolveForgeRepo } from "../..
 import { chromeScale, settings } from "../Settings/settingsStore";
 import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/topics";
 import MemberChip from "../../components/MemberChip/MemberChip";
+import type { ProjectIconSource } from "../../components/Icon/ProjectIcon";
 import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import Dropdown from "../../components/Menu/Dropdown";
@@ -135,7 +136,7 @@ type StashOutcome = { restored: string[]; deleted: string[] };
 /** One member's worth of the panel: its own file lists, its own branch, its own
  *  stage / commit / push. A branch unit is the one-section case, and the only
  *  one that draws no header, since there is nothing to say whose it is. */
-type Section = { root: string; label?: string; tint?: string; state?: MemberStateSummary };
+type Section = { root: string; label?: string; tint?: string; icon?: ProjectIconSource; state?: MemberStateSummary };
 
 // Same wording as the file tree's section headers: one member, one vocabulary.
 
@@ -257,7 +258,7 @@ export default function ReviewPanel(props: {
   // them in, so the three surfaces agree about what "second member" means.
   const sections = createMemo<Section[]>(() =>
     props.roots?.length
-      ? props.roots.map((m) => ({ root: m.path, label: m.label, tint: m.tint, state: m.state }))
+      ? props.roots.map((m) => ({ root: m.path, label: m.label, tint: m.tint, icon: m.icon, state: m.state }))
       : props.root
         ? [{ root: props.root }]
         : [],
@@ -1423,7 +1424,7 @@ export default function ReviewPanel(props: {
                     }}
                   >
                     <MemberChip
-                      member={{ displayName: sec()?.label ?? "", repoPath: root }}
+                      icon={sec()?.icon ?? { seed: root }}
                       tint={sec()?.tint}
                       decorative
                     />

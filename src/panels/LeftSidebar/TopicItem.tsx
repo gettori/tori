@@ -102,7 +102,7 @@ export default function TopicItem(props: {
                 };
                 return (
                   <MemberChip
-                    member={m.member}
+                    icon={m.icon}
                     chipStyle={m.style}
                     size="md"
                     // Never `decorative` here: the badge below is the only spoken
@@ -158,7 +158,7 @@ export default function TopicItem(props: {
               >
                 {/* Decorative: the name beside it is the spoken account here,
                     unlike the collapsed chip, which is on its own. */}
-                <MemberChip member={m.member} chipStyle={m.style} size="md" decorative />
+                <MemberChip icon={m.icon} chipStyle={m.style} size="md" decorative />
                 <span class={styles.memberName}>{m.label}</span>
                 <span class={styles.memberState} data-member-state>
                   {m.state.label}

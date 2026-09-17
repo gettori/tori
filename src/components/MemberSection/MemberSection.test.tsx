@@ -86,7 +86,7 @@ describe("a member section", () => {
   });
 
   it("names the trailing bucket instead of chipping it", () => {
-    // Nothing to take initials from, and a neutral box would read as one more
+    // No project icon to draw, and a neutral box would read as one more
     // member of the Topic.
     render(() => (
       <MemberSection root={null} headed>

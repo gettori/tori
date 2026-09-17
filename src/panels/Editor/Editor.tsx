@@ -902,6 +902,7 @@ export default function Editor(props: {
           repoPath: m.member.repoPath,
           label: m.label,
           tint: m.hue,
+          icon: m.icon,
           state: m.state,
         }))
       : undefined;

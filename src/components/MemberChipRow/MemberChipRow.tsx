@@ -1,7 +1,7 @@
 import { createMemo, For, Show } from "solid-js";
 import Dropdown from "../Menu/Dropdown";
 import Tooltip from "../Tooltip/Tooltip";
-import { memberInitials } from "../../utils/topics";
+import ProjectIcon from "../Icon/ProjectIcon";
 import { CHIP_CAP, type TintedMember } from "../../utils/topicMembers";
 import styles from "./MemberChipRow.module.css";
 
@@ -82,7 +82,7 @@ export default function MemberChipRow(props: {
             data-member={m.member.repoPath}
             onClick={() => switchTo(m)}
           >
-            {memberInitials(m.member)}
+            <ProjectIcon {...m.icon} />
           </Tooltip>
         )}
       </For>

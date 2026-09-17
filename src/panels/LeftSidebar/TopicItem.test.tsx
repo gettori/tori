@@ -137,7 +137,7 @@ describe("TopicItem", () => {
       await expand();
 
       const rows = memberRows(container);
-      expect(rows.map((r) => r.textContent)).toEqual(["AapiReady", "WwebWorktree missingRecreate web"]);
+      expect(rows.map((r) => r.textContent)).toEqual(["apiReady", "webWorktree missingRecreate web"]);
       expect(rows[1].getAttribute("data-state")).toBe("worktree-missing");
     });
 

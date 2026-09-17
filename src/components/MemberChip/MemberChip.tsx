@@ -1,15 +1,11 @@
 import { createMemo, splitProps, type JSX } from "solid-js";
-import { memberInitials } from "../../utils/topics";
+import ProjectIcon, { type ProjectIconSource } from "../Icon/ProjectIcon";
 import type { ChipStyle, TintedMember } from "../../utils/topicMembers";
 import styles from "./MemberChip.module.css";
 
-/** What the chip needs to name a repo: the display name it takes initials from,
- *  and the repo path it falls back to when that name is empty. */
-export type ChipMember = { displayName: string; repoPath: string };
-
 export interface MemberChipProps
   extends Omit<JSX.HTMLAttributes<HTMLSpanElement>, "style" | "children"> {
-  member: ChipMember;
+  icon: ProjectIconSource;
   /** The Space hue on its own, for callers holding a `MemberRoot`. */
   tint?: string;
   /** Hue and rgb together, for callers holding a `TintedMember`. Wins over
@@ -29,14 +25,14 @@ export interface MemberChipProps
   children?: JSX.Element;
 }
 
-/** A member's initials on its Space tint.
+/** A member's project icon on its Space tint.
  *
  *  Decorative by request, not by default: a tab needs the chip hidden because
  *  its accessible name carries the repo already, while the sidebar's chip holds
  *  the only spoken account of a broken member. */
 export default function MemberChip(props: MemberChipProps) {
   const [local, rest] = splitProps(props, [
-    "member",
+    "icon",
     "tint",
     "chipStyle",
     "size",
@@ -63,7 +59,7 @@ export default function MemberChip(props: MemberChipProps) {
       }}
       style={style()}
     >
-      {memberInitials(local.member)}
+      <ProjectIcon {...local.icon} />
       {local.children}
     </span>
   );
@@ -76,7 +72,7 @@ export default function MemberChip(props: MemberChipProps) {
 export function TabMemberChip(props: { member: TintedMember }) {
   return (
     <MemberChip
-      member={props.member.member}
+      icon={props.member.icon}
       chipStyle={props.member.style}
       decorative
       data-chip={props.member.member.repoPath}

@@ -1417,7 +1417,7 @@ export default function SearchPanel(props: {
                   >
                     <Chevron open={!isCollapsed(memberKey(member.path))} />
                     <MemberChip
-                      member={{ displayName: member.label, repoPath: member.repoPath }}
+                      icon={member.icon ?? { seed: member.repoPath }}
                       tint={member.tint}
                       decorative
                     />

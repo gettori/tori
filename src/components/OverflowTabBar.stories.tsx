@@ -129,6 +129,7 @@ const member = (displayName: string, hue: string): TintedMember => ({
   state: { label: "Ready", usable: true, action: null, reason: null },
   hue,
   style: { "--chip-hue": hue, "--chip-rgb": "111 176 224" },
+  icon: { seed: `/repos/${displayName}` },
   kind: "worktree",
 });
 

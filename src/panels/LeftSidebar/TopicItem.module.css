@@ -98,7 +98,9 @@
   height: calc(12px * var(--ui-scale));
   padding-inline: 2px;
   border-radius: calc(6px * var(--ui-scale));
+  font-family: var(--tori-font-mono);
   font-size: calc(9px * var(--ui-scale));
+  font-weight: 600;
   line-height: 1;
   color: var(--canvas-default);
   background: var(--fg-muted);

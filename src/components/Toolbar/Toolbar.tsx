@@ -3,8 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
+import ProjectIcon from "../Icon/ProjectIcon";
 import { ChevronRight } from "lucide-solid";
-import { memberInitials } from "../../utils/topics";
 import { createTopicMembers, type TintedMember } from "../../utils/topicMembers";
 import { createDragReorder } from "../../utils/dragReorder";
 import styles from "./Toolbar.module.css";
@@ -113,7 +113,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
                           !drag.fromDrag() && m.member.worktreePath && props.onActiveRoot?.(m.member.worktreePath)
                         }
                       >
-                        {memberInitials(m.member)}
+                        <ProjectIcon {...m.icon} />
                       </Tooltip>
                     );
                   }}

@@ -41,15 +41,6 @@ export function topicSlug(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** One or two letters for a member chip: the first letter of the first two
- *  words of the display name, falling back to the repo basename. */
-export function memberInitials(member: Pick<Member, "displayName" | "repoPath">): string {
-  const source = member.displayName.trim() || member.repoPath.split("/").filter(Boolean).pop() || "";
-  const words = source.split(/[\s_-]+/).filter(Boolean);
-  const letters = words.slice(0, 2).map((w) => w[0]);
-  return letters.join("").toUpperCase();
-}
-
 export type MemberStateSummary = {
   label: string;
   /** Whether the member can be opened as a workspace root right now. */

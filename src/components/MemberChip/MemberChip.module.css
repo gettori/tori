@@ -1,6 +1,6 @@
-/* The repo chip: a member's initials on its Space tint. Five surfaces drew this
-   box separately before, in three copies of one recipe plus a fourth that only
-   differed in size. */
+/* The repo chip: a member's project icon on its Space tint. Five surfaces drew
+   this box separately before, in three copies of one recipe plus a fourth that
+   only differed in size. */
 
 .chip {
   --chip-hue: var(--fg-muted);
@@ -13,24 +13,32 @@
   height: calc(18px * var(--ui-scale));
   padding-inline: calc(4px * var(--ui-scale));
   border-radius: var(--tori-radius-sm, 4px);
-  font-size: var(--tori-text-2xs);
-  font-weight: 600;
-  letter-spacing: 0.02em;
   color: var(--chip-hue);
   background: color-mix(in srgb, var(--chip-hue) 18%, transparent);
 }
 
+.chip :global(svg),
+.chip img {
+  width: calc(12px * var(--ui-scale));
+  height: calc(12px * var(--ui-scale));
+}
+
+.chip img {
+  object-fit: contain;
+  border-radius: calc(2px * var(--ui-scale));
+}
+
 /* The sidebar's Topic rows sit on a taller line and carry a state badge, so
-   the box is bigger there - and monospace, because initials cut from a repo
-   name are a code, not a word, and a proportional font sets `API` and `F` at
-   widths that make the row read as ragged rather than as a set. */
+   the box is bigger there. */
 .md {
-  min-width: calc(32px * var(--ui-scale));
   height: calc(20px * var(--ui-scale));
   padding-inline: calc(6px * var(--ui-scale));
-  font-family: var(--tori-font-mono);
-  font-size: var(--tori-text-xs);
-  letter-spacing: 0.04em;
+}
+
+.md :global(svg),
+.md img {
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
 }
 
 /* A repo in no Space has no hue to mix, so it falls back to a flat neutral

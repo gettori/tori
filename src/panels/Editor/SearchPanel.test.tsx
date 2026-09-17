@@ -1220,9 +1220,7 @@ describe("multi-root search", () => {
 
     await waitFor(() => expect(sectionEl(DOCS).textContent).toContain("ab cd ab"));
     for (const m of MEMBERS) expect(sectionEl(m.path)).toBeTruthy();
-    expect(sectionEl(API).textContent).toContain("PA");
-    expect(sectionEl(WEB).textContent).toContain("WA");
-    expect(sectionEl(DOCS).textContent).toContain("DS");
+    for (const m of MEMBERS) expect(sectionEl(m.path).querySelector('span[aria-hidden="true"] > svg')).toBeTruthy();
 
     // jsdom 30's getComputedStyle throws on an inline calc() holding a var(), which
     // the rows' indent is, so axe errors out of this rule instead of judging it.
@@ -1490,6 +1488,7 @@ describe("member restriction", () => {
       state: r.state ?? { label: "Ready", usable: true, action: null, reason: null },
       hue: undefined,
       style: undefined,
+      icon: { seed: r.repoPath },
       kind: "worktree",
     }) as TintedMember;
 
