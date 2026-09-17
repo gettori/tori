@@ -22,7 +22,7 @@ import type { SymbolNode } from "../../utils/symbols";
  */
 export type PathCrumb = { name: string; path: string; isDir: boolean };
 
-/** The member a trail starts at, inside a Feature: the folder the file actually
+/** The member a trail starts at, inside a Topic: the folder the file actually
  *  sits under, and the name that folder wears in the bar. */
 export type CrumbMember = { root: string; label: string };
 
@@ -50,7 +50,7 @@ export function baseName(path: string): string {
  * trail cannot say where it sits relative to a root it does not share, but it
  * can still offer its own folder, which is the crumb people actually click.
  *
- * Inside a Feature the member is what the file sits under, and it need not be
+ * Inside a Topic the member is what the file sits under, and it need not be
  * the active one: resolving a background member's file against the active root
  * would find no shared prefix and collapse the whole trail to a basename.
  */
@@ -68,7 +68,7 @@ export function pathCrumbs(
   if (under === null) return [{ name: baseName(path), path, isDir: false }];
   const names = under.split("/").filter(Boolean);
   // The member crumb is the one place the trail does name its root: it is what
-  // says which repo, and it is the only root a Feature has more than one of.
+  // says which repo, and it is the only root a Topic has more than one of.
   const out: PathCrumb[] = held ? [{ name: held.label, path: held.root, isDir: true }] : [];
   let at = base!;
   for (let i = 0; i < names.length; i++) {

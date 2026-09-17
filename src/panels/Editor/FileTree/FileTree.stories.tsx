@@ -74,9 +74,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The Files tab's tree for one Feature member: the row menus name the member
+/** The Files tab's tree for one Topic member: the row menus name the member
  *  and offer Find in Folder and file history. */
-export const FeatureMember: Story = {
+export const TopicMember: Story = {
   args: { root: WEB, member: "Web App", repoPath: "/repos/web" },
 };
 

@@ -10,7 +10,7 @@ import IconButton from "../../components/IconButton/IconButton";
 import { markSelfWrite } from "../../utils/selfWrites";
 import { debounce } from "../../utils/debounce";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
-import type { MemberRoot, TintedMember } from "../../utils/featureMembers";
+import type { MemberRoot, TintedMember } from "../../utils/topicMembers";
 import {
   countOccurrences,
   mergeSearchResults,
@@ -236,9 +236,9 @@ const HELD = "Edits not applied yet. Apply them, or press Enter to search again 
  */
 export default function SearchResultsBuffer(props: {
   id: string;
-  /** Every root the workspace searches, one per Feature member. */
+  /** Every root the workspace searches, one per Topic member. */
   roots: MemberRoot[];
-  /** Empty outside a Feature. */
+  /** Empty outside a Topic. */
   members: readonly TintedMember[];
   /** Absolute paths of the files open in editor tabs. */
   openPaths: readonly string[];

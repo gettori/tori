@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import TodoPanel from "./TodoPanel";
-import { memberState } from "../../utils/features";
+import { memberState } from "../../utils/topics";
 import { spaceHue } from "../../utils/spaceTint";
-import type { MemberRoot } from "../../utils/featureMembers";
+import type { MemberRoot } from "../../utils/topicMembers";
 
 const API = "/feat/api";
 const WEB = "/feat/web";
@@ -33,7 +33,7 @@ const HITS: Record<string, ReturnType<typeof hit>[]> = {
 
 /** The workshop runs in a plain browser, so the grep has to be answered here or
  *  every section paints empty. One member is capped and one fails, which is the
- *  whole point of reporting both per member rather than once for the Feature. */
+ *  whole point of reporting both per member rather than once for the Topic. */
 function stubHost() {
   mockIPC((cmd, args) => {
     const a = (args ?? {}) as Record<string, unknown>;
@@ -96,9 +96,9 @@ export const BranchUnit: Story = {};
 /** Three members at once, each grepped separately and reported separately. The
  *  API member hit the cap and says so in its own section; the Docs member's
  *  grep failed and says that in its own section, without blanking the two that
- *  answered. The summary above counts the whole Feature and claims no cap,
+ *  answered. The summary above counts the whole Topic and claims no cap,
  *  because a cap belongs to the repo that hit it. */
-export const FeatureMembers: Story = {
+export const TopicMembers: Story = {
   args: { roots: MEMBERS },
 };
 

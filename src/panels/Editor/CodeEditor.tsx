@@ -261,7 +261,7 @@ export default function CodeEditor(props: {
   openPaths: string[];
   projectRoot: string | null;
   /** Every folder the fs watcher is currently covering: the workspace folder,
-   *  or a Feature's members. A file under none of them gets no `fs://changed`,
+   *  or a Topic's members. A file under none of them gets no `fs://changed`,
    *  which is what the save guard below exists to make up for. */
   watchedRoots?: string[];
   goto: { path: string; line: number; col?: number; nonce: number } | null;
@@ -539,7 +539,7 @@ export default function CodeEditor(props: {
   function outsideWatched(path: string): boolean {
     const roots = props.watchedRoots ?? (props.projectRoot ? [props.projectRoot] : []);
     // An empty set is not "everything is covered", it is "the watcher is
-    // running over nothing" - a Feature with no present member, or the moment
+    // running over nothing" - a Topic with no present member, or the moment
     // before a selection lands. Every path is outside that.
     return !roots.some((r) => path === r || path.startsWith(r.endsWith("/") ? r : `${r}/`));
   }

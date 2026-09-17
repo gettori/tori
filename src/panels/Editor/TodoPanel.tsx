@@ -18,7 +18,7 @@ import {
   type TodoItem,
   type TodoMatch,
 } from "../../utils/todoScan";
-import { memberSectionsHeaded, type MemberRoot } from "../../utils/featureMembers";
+import { memberSectionsHeaded, type MemberRoot } from "../../utils/topicMembers";
 import { editorDefaults } from "../Settings/settingsStore";
 import Button from "../../components/Button/Button";
 import MemberSection from "../../components/MemberSection/MemberSection";
@@ -43,14 +43,14 @@ function basename(path: string): string {
 
 /**
  * Every TODO, FIXME and whatever else this project calls them, over the whole
- * repo, or over every member of a Feature at once.
+ * repo, or over every member of a Topic at once.
  *
  * One `grep_project` for an alternation of the configured tags rather than a
  * search per tag, and the tags come from the three-layer settings resolution
  * (`editorDefaults().todoPatterns`), so a repo that says `NOTE` and `REVIEW`
  * in its `.tori/settings.json` gets those instead of somebody else's.
  *
- * Inside a Feature that becomes one grep per member, run together and kept
+ * Inside a Topic that becomes one grep per member, run together and kept
  * apart: the backend caps each one, so merging them into a single list would
  * let a member full of TODOs report a cap the others never hit. A member that
  * fails reports in its own section rather than blanking the panel, the same way
@@ -64,7 +64,7 @@ function basename(path: string): string {
 export default function TodoPanel(props: {
   root: string | null;
   selected: Selection | null;
-  /** The multi-root form, one section per Feature member. A branch unit passes
+  /** The multi-root form, one section per Topic member. A branch unit passes
    *  none and is scanned as its own single root. */
   roots?: MemberRoot[];
 }) {
@@ -83,7 +83,7 @@ export default function TodoPanel(props: {
   };
   /** The roots a scan actually greps. A member with no worktree has none: its
    *  section path is the repo folder, and grepping that would search a checkout
-   *  this Feature is not on. */
+   *  this Topic is not on. */
   const searchRoots = () => scanRoots().filter((r) => r.state?.usable !== false);
   const headed = () => memberSectionsHeaded(props.roots);
   // The identity of the set, so the rescan effect fires when the members change
@@ -157,7 +157,7 @@ export default function TodoPanel(props: {
 
   const dirtyRoots = new Set<string>();
   const flushDirty = debounce(() => {
-    // Re-checked against the live set: a member can leave the Feature inside the
+    // Re-checked against the live set: a member can leave the Topic inside the
     // debounce window, and grepping a root nothing draws is wasted work whose
     // answer is dropped on the way back in.
     const here = new Set(searchRoots().map((r) => r.path));
@@ -304,7 +304,7 @@ export default function TodoPanel(props: {
                 </Show>
                 {/* The cap belongs to the repo that hit it, so it is said here
                     rather than in the summary above, which is the whole
-                    Feature's count. */}
+                    Topic's count. */}
                 <Show when={headed() && found()?.truncated}>
                   <div class={styles.summary}>
                     Capped at {MAX_RESULTS}, narrow the tags to see the rest.

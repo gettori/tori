@@ -1,6 +1,6 @@
-// The panes that follow the file in front, inside a Feature (#160 phase 2).
+// The panes that follow the file in front, inside a Topic (#160 phase 2).
 //
-// Calls, Session and Debug are about one repo, and inside a Feature the
+// Calls, Session and Debug are about one repo, and inside a Topic the
 // one they are about is the active tab's, not the member you last clicked in the
 // tree. What is asserted here is that they say which repo, that a run launches
 // in it, and that moving the active member no longer kills the run.
@@ -21,7 +21,7 @@ installAnimationFrame();
 const A = "/r/a/.tori/worktrees/auth";
 const B = "/r/b/.tori/worktrees/auth";
 
-const FEATURE = {
+const TOPIC = {
   id: "f1",
   name: "Auth",
   branch: "feat/auth",
@@ -44,7 +44,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     calls.push({ cmd, args: args ?? {} });
     switch (cmd) {
       case "list_topics":
-        return Promise.resolve([FEATURE]);
+        return Promise.resolve([TOPIC]);
       case "get_config":
         return Promise.resolve({ spaces: [] });
       case "git_status":
@@ -125,7 +125,7 @@ const { publishCallRoots } = await import("../../utils/callHierarchy");
 const dap = await import("../../utils/dapSessions");
 const store = await import("../../utils/debugStore");
 
-const featureSel = (activeRoot: string) => ({
+const topicSel = (activeRoot: string) => ({
   kind: "feature" as const,
   featureId: "f1",
   featureName: "Auth",
@@ -159,7 +159,7 @@ const withSession = (sel: Record<string, unknown>) => ({
 
 let setSel: ((s: unknown) => void) | null = null;
 
-async function mountEditor(initial: unknown = featureSel(A)) {
+async function mountEditor(initial: unknown = topicSel(A)) {
   const [sel, set] = createSignal<unknown>(initial);
   setSel = set;
   render(() => (
@@ -226,7 +226,7 @@ describe("the member line above the panes that follow the file", () => {
   });
 
   it("names it above Debug and Session too", async () => {
-    await mountEditor(withSession(featureSel(A)));
+    await mountEditor(withSession(topicSel(A)));
     await openFile(`${B}/src/b.ts`);
 
     showMode("debug");
@@ -290,7 +290,7 @@ describe("starting a run inside a Feature", () => {
       expect(JSON.parse(localStorage.getItem("tori.debugLastTarget") ?? "{}")).toHaveProperty(A),
     );
     // Under the member's own folder, not under `feature:f1`: two members of one
-    // Feature debug two different programs.
+    // Topic debug two different programs.
     const stored = JSON.parse(localStorage.getItem("tori.debugLastTarget") ?? "{}");
     expect(stored).not.toHaveProperty("feature:f1");
     expect(stored).not.toHaveProperty(B);
@@ -300,7 +300,7 @@ describe("starting a run inside a Feature", () => {
 describe("what the Debug pane writes", () => {
   it("files a watch under the member the file in front is in", async () => {
     // The watch store keys on the member root, and a paused session's own
-    // `projectPath` is compared against it: keeping a Feature's members apart
+    // `projectPath` is compared against it: keeping a Topic's members apart
     // is the whole reason it is not keyed on `feature:<id>`.
     await mountEditor();
     await openFile(`${B}/src/b.ts`);
@@ -322,13 +322,13 @@ describe("what the Debug pane writes", () => {
 describe("moving the active member", () => {
   it("leaves a live run alone, and its console with it", async () => {
     // The old sweep keyed on the active member, so clicking another repo in the
-    // tree stopped the debuggee and blanked the transcript. Inside a Feature the
-    // run belongs to the Feature.
+    // tree stopped the debuggee and blanked the transcript. Inside a Topic the
+    // run belongs to the Topic.
     await mountEditor();
     store.noteConsoleLine("tori", "console", "server listening");
     const stop = vi.spyOn(dap, "stopAllDap");
 
-    setSel!(featureSel(B));
+    setSel!(topicSel(B));
     await waitFor(() => expect(screen.queryByText("server listening")).toBeDefined());
 
     expect(stop).not.toHaveBeenCalled();

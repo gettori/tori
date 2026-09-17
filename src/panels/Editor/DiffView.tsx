@@ -44,7 +44,7 @@ import { diffIgnoreWhitespaceOn as ignoreWhitespace, writeDiffIgnoreWhitespace }
 import { copyText } from "../../utils/clipboard";
 import { sendTargetFor } from "../../utils/sendTarget";
 import { parseDiffArg } from "../../utils/syntheticTabs";
-import type { TintedMember } from "../../utils/featureMembers";
+import type { TintedMember } from "../../utils/topicMembers";
 import Breadcrumbs from "./Breadcrumbs";
 import DiffRows, { diffRowClasses } from "./DiffRows";
 import HunkCommentInput from "./HunkCommentInput";
@@ -96,7 +96,7 @@ export default function DiffView(props: {
   /** The tab's arg: the comparison and the repo-relative path. */
   arg: string;
   selected: Selection | null;
-  /** The member holding the file inside a Feature, for the breadcrumb trail. */
+  /** The member holding the file inside a Topic, for the breadcrumb trail. */
   member?: TintedMember | null;
   onReverted?: (outcome: RevertOutcome) => void;
 }) {

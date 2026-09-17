@@ -122,7 +122,7 @@ describe("the commit log tab", () => {
   });
 
   it("shows a background member's own branch while another member is in front", async () => {
-    // Inside a Feature every member is a repo of its own, so a log tab opened
+    // Inside a Topic every member is a repo of its own, so a log tab opened
     // on one must not go blank just because another member is in front - which
     // is what reading a single shared slot did.
     const OTHER = "/other";

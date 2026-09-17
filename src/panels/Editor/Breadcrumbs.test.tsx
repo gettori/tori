@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, fireEvent, waitFor, within } from "@solidjs/testing-library";
 import Breadcrumbs from "./Breadcrumbs";
-import type { TintedMember } from "../../utils/featureMembers";
+import type { TintedMember } from "../../utils/topicMembers";
 import { pointerClick } from "../../test/menus";
 import { publishSymbols, clearSymbols, normalizeDocumentSymbols } from "../../utils/symbols";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
@@ -102,7 +102,7 @@ describe("the path half of the bar", () => {
   });
 });
 
-// Inside a Feature the trail starts one crumb earlier, at the repo the file is
+// Inside a Topic the trail starts one crumb earlier, at the repo the file is
 // in (#158). The pane resolves the member; the bar only has to draw it.
 describe("the member crumb", () => {
   const WEB = "/space/proj/web";
@@ -143,7 +143,7 @@ describe("the member crumb", () => {
   });
 
   it("leaves a file outside every member alone", () => {
-    // A Docs-tree file opened while a Feature is selected: the pane resolves no
+    // A Docs-tree file opened while a Topic is selected: the pane resolves no
     // member for it, and a trail that named one would be naming the wrong repo.
     render(() => <Breadcrumbs root={ROOT} path="/elsewhere/todo.md" member={null} caret={null} />);
     expect(crumbs()).toEqual(["todo.md"]);

@@ -365,13 +365,13 @@ describe("writing edits back", () => {
   });
 });
 
-// One buffer over a whole Feature. `apply_line_edits` takes a single root, so
+// One buffer over a whole Topic. `apply_line_edits` takes a single root, so
 // the interesting part is the split: which rows go to which repo, and whether an
 // absolute path is ever built against the wrong one.
 describe("writing back across members", () => {
   const API = "/feat/api";
   const WEB = "/feat/web";
-  const FEATURE = [
+  const TOPIC = [
     { root: API, label: "Payments API" },
     { root: WEB, label: "Web App" },
   ];
@@ -382,7 +382,7 @@ describe("writing back across members", () => {
   /** Two notes, then blank/member/header/row twice over. */
   const ROWS = { api: 6, web: 10 };
 
-  const mountFeature = () => mount({ matches: SHARED, roots: FEATURE, ws: "feature:f1" });
+  const mountTopic = () => mount({ matches: SHARED, roots: TOPIC, ws: "feature:f1" });
 
   beforeEach(() => {
     disk[`${API}/src/index.ts`] = "api needle";
@@ -390,7 +390,7 @@ describe("writing back across members", () => {
   });
 
   it("sends each member's edits against that member's own root", async () => {
-    const id = await mountFeature();
+    const id = await mountTopic();
     retype(id, ROWS.api, "api pin");
     retype(id, ROWS.web, "web pin");
     fireEvent.click(applyButton());
@@ -409,7 +409,7 @@ describe("writing back across members", () => {
   });
 
   it("marks the write at the absolute path the row's own member gives it", async () => {
-    const id = await mountFeature();
+    const id = await mountTopic();
     retype(id, ROWS.web, "web pin");
     fireEvent.click(applyButton());
 
@@ -419,7 +419,7 @@ describe("writing back across members", () => {
   });
 
   it("names the member when one file refuses and the path alone names two", async () => {
-    const id = await mountFeature();
+    const id = await mountTopic();
     retype(id, ROWS.web, "web pin");
     disk[`${WEB}/src/index.ts`] = "somebody else got here first";
     fireEvent.click(applyButton());

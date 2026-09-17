@@ -3,7 +3,7 @@ import { BookOpen, CaseSensitive, ListFilter, Regex, WholeWord, type LucideIcon 
 import Icon from "../../components/Icon/Icon";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
-import type { TintedMember } from "../../utils/featureMembers";
+import type { TintedMember } from "../../utils/topicMembers";
 import { isUnsupported, unsupportedReason, type SearchOptions, type ToggleKey } from "../../utils/searchOptions";
 import styles from "./SearchFields.module.css";
 

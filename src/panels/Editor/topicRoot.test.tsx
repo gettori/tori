@@ -1,5 +1,5 @@
-// The editor inside a Feature (#154 phase 1): tabs live under `feature:<id>`
-// while git, settings and the watcher follow the active member, and a Feature
+// The editor inside a Topic (#154 phase 1): tabs live under `feature:<id>`
+// while git, settings and the watcher follow the active member, and a Topic
 // with no present member opens empty rather than pointing anything at "".
 // Files shows one member at a time, picked from its chip row, an unusable one
 // as its repair, and a branch unit stays exactly as headerless as it was.
@@ -22,7 +22,7 @@ const FILE = `${A}/a.txt`;
 const REPO_B = "/r/b";
 const REPO_C = "/r/c";
 
-const FEATURE = {
+const TOPIC = {
   id: "f1",
   name: "Auth",
   branch: "feat/auth",
@@ -59,7 +59,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "list_project_files":
         return Promise.resolve([]);
       case "list_topics":
-        return Promise.resolve([FEATURE]);
+        return Promise.resolve([TOPIC]);
       case "get_config":
         return Promise.resolve({ spaces: [{ name: "work", color: "Sky", projects: [{ path: "/r/a" }] }] });
       case "pick_folder":
@@ -85,7 +85,7 @@ const { emitWith, FILE_RENAMED, PURGE_UNDER_PATH } = await import("../../utils/e
 const { isDirOpen, resetExpanded, setDirOpen } = await import("../../utils/treeExpanded");
 const { overlayRoot } = await import("../Settings/settingsStore");
 
-const featureSel = (activeRoot: string | null, roots = [A, B]) => ({
+const topicSel = (activeRoot: string | null, roots = [A, B]) => ({
   kind: "feature" as const,
   featureId: "f1",
   featureName: "Auth",
@@ -140,7 +140,7 @@ describe("the editor inside a Feature", () => {
       "tori.editor.tabs.v1",
       JSON.stringify({ "feature:f1": { paths: [FILE], active: FILE, savedAt: Date.now() } }),
     );
-    const [sel, setSel] = createSignal(featureSel(A));
+    const [sel, setSel] = createSignal(topicSel(A));
     mounted = render(() => (
       <>
         <Editor selected={sel() as never} />
@@ -148,7 +148,7 @@ describe("the editor inside a Feature", () => {
       </>
     ));
     await waitFor(() => expect(screen.queryByText(EMPTY_PANE)).toBeNull());
-    // Every member at once, and not one `fs_watch_start` among them: a Feature
+    // Every member at once, and not one `fs_watch_start` among them: a Topic
     // has no single foreground root for the LRU to name.
     await waitFor(() => expect(watchSets()).toEqual([[A, B]]));
     expect(rootsOf("fs_watch_start")).toEqual([]);
@@ -158,12 +158,12 @@ describe("the editor inside a Feature", () => {
     // which is about the member in front.
     await waitFor(() => expect(rootsOf("git_status")).toEqual([A, B]));
 
-    setSel(featureSel(B));
+    setSel(topicSel(B));
     // The member list did not change, so neither the watcher nor git was
     // re-issued: moving the active member is a pointer move, not a reload.
     expect(watchSets()).toEqual([[A, B]]);
     expect(rootsOf("git_status")).toEqual([A, B]);
-    // The strip is the Feature's, so moving the root neither closes nor rehomes it.
+    // The strip is the Topic's, so moving the root neither closes nor rehomes it.
     expect(screen.queryByText(EMPTY_PANE)).toBeNull();
     await waitFor(() => expect(store()["feature:f1"]?.paths).toEqual([FILE]));
     expect(store()).not.toHaveProperty(A);
@@ -172,7 +172,7 @@ describe("the editor inside a Feature", () => {
 
   it("re-issues the watch set when a repaired member joins, and leaves a unit on the single-root watcher", async () => {
     const C = "/r/c/.tori/worktrees/auth";
-    const [sel, setSel] = createSignal(featureSel(A));
+    const [sel, setSel] = createSignal(topicSel(A));
     mounted = render(() => (
       <>
         <Editor selected={sel() as never} />
@@ -181,7 +181,7 @@ describe("the editor inside a Feature", () => {
     ));
     await waitFor(() => expect(watchSets()).toEqual([[A, B]]));
 
-    setSel(featureSel(A, [A, B, C]));
+    setSel(topicSel(A, [A, B, C]));
     await waitFor(() => expect(watchSets()).toEqual([[A, B], [A, B, C]]));
     // And the newcomer gets a slot of its own rather than joining muted.
     await waitFor(() => expect(rootsOf("git_status")).toContain(C));
@@ -194,7 +194,7 @@ describe("the editor inside a Feature", () => {
   it("opens a Feature with no present member as the empty state, pointing nothing at an empty root", async () => {
     mounted = render(() => (
       <>
-        <Editor selected={featureSel(null, []) as never} />
+        <Editor selected={topicSel(null, []) as never} />
         <PaneView pinKind="file" />
       </>
     ));
@@ -206,7 +206,7 @@ describe("the editor inside a Feature", () => {
   it("draws one member's tree at a time and repairs the one with no worktree", async () => {
     mounted = render(() => (
       <>
-        <Editor selected={featureSel(A, [A]) as never} />
+        <Editor selected={topicSel(A, [A]) as never} />
         <PaneView pinKind="file" />
       </>
     ));
@@ -235,7 +235,7 @@ describe("the editor inside a Feature", () => {
     picked = "/moved/docs";
     mounted = render(() => (
       <>
-        <Editor selected={featureSel(A, [A]) as never} />
+        <Editor selected={topicSel(A, [A]) as never} />
         <PaneView pinKind="file" />
       </>
     ));
@@ -261,7 +261,7 @@ describe("the editor inside a Feature", () => {
     picked = null;
     mounted = render(() => (
       <>
-        <Editor selected={featureSel(A, [A]) as never} />
+        <Editor selected={topicSel(A, [A]) as never} />
         <PaneView pinKind="file" />
       </>
     ));
@@ -275,12 +275,12 @@ describe("the editor inside a Feature", () => {
     expect(calls.some((c) => c.cmd === "relocate_member")).toBe(false);
   });
 
-  // A Feature has no `.tori/settings.json` of its own: the overlay is the active
+  // A Topic has no `.tori/settings.json` of its own: the overlay is the active
   // member's, so moving the active root swaps which project's answers are in
   // force. `feature:<id>` is a workspace key, not a folder, and must never be
   // handed to a loader that reads a file under it.
   it("loads the settings overlay per member, and swaps it with the active root", async () => {
-    const [sel, setSel] = createSignal(featureSel(A));
+    const [sel, setSel] = createSignal(topicSel(A));
     mounted = render(() => (
       <>
         <Editor selected={sel() as never} />
@@ -289,18 +289,18 @@ describe("the editor inside a Feature", () => {
     ));
     await waitFor(() => expect(rootsOf("get_workspace_settings")).toEqual([A]));
 
-    setSel(featureSel(B));
+    setSel(topicSel(B));
     await waitFor(() => expect(rootsOf("get_workspace_settings")).toEqual([A, B]));
     expect(overlayRoot()).toBe(B);
     expect(calls.some((c) => String(c.args.root ?? "").startsWith("feature:"))).toBe(false);
   });
 
   it("drops every git slot when the Feature it was showing goes away", async () => {
-    // What a deleted Feature does: App clears the selection, and the store must
+    // What a deleted Topic does: App clears the selection, and the store must
     // stop answering about members nobody is in - the palette and the sidebar
     // count both read it with nothing on screen to say whose it was.
     gitRows = [{ status: " M", path: "a.txt", staged: false, unstaged: true }];
-    const [sel, setSel] = createSignal<unknown>(featureSel(A));
+    const [sel, setSel] = createSignal<unknown>(topicSel(A));
     mounted = render(() => (
       <>
         <Editor selected={sel() as never} />

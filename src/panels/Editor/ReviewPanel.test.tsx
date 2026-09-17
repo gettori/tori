@@ -78,7 +78,7 @@ const STAGED = { status: "M ", path: "src/a.ts", staged: true, unstaged: false }
 // The index as the backend would report it next. `git_stage` moves it, so a
 // panel that re-read the status shows the file under a different heading.
 let statusRows: FileStatus[] = [UNSTAGED];
-// Per-root answers, for the Feature tests: one store slot per member means one
+// Per-root answers, for the Topic tests: one store slot per member means one
 // `git_status` per member, and a shared answer would prove nothing about which
 // section is reading which slot.
 let statusByRoot: Record<string, FileStatus[]> | null = null;
@@ -1164,7 +1164,7 @@ describe("the agent-drafted PR description", () => {
   });
 });
 
-// The Feature path: one member on screen at a time, picked by the chips in row
+// The Topic path: one member on screen at a time, picked by the chips in row
 // one, the same way the file tree does it. What is asserted here is that every
 // surface below follows the chip, and that a click never reaches the member
 // beside the one showing.
@@ -1199,7 +1199,7 @@ describe("inside a Feature", () => {
   const shownRoot = () => document.querySelector("[data-root]")!.getAttribute("data-root");
 
   /** Mount over two members, each with its own single unstaged file. */
-  async function mountFeature(roots = MEMBERS) {
+  async function mountTopic(roots = MEMBERS) {
     statusByRoot = {
       [A]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
       [B]: [{ status: " M", path: "src/index.ts", staged: false, unstaged: true }],
@@ -1230,7 +1230,7 @@ describe("inside a Feature", () => {
   });
 
   it("draws a chip per member but only one member's changes", async () => {
-    await mountFeature();
+    await mountTopic();
 
     // Both chips, in member order, named so a screen reader can pick one.
     expect(chip("api")).toBeTruthy();
@@ -1245,7 +1245,7 @@ describe("inside a Feature", () => {
   });
 
   it("switches the whole panel when another chip is pressed", async () => {
-    await mountFeature();
+    await mountTopic();
 
     fireEvent.click(chip("web"));
 
@@ -1287,7 +1287,7 @@ describe("inside a Feature", () => {
   });
 
   it("discards in the member on screen, and leaves the other alone", async () => {
-    await mountFeature();
+    await mountTopic();
     fireEvent.click(chip("web"));
     await waitFor(() => expect(shownRoot()).toBe(B));
 
@@ -1300,7 +1300,7 @@ describe("inside a Feature", () => {
   });
 
   it("stages every change in the member on screen, and only that member", async () => {
-    await mountFeature();
+    await mountTopic();
     fireEvent.click(chip("web"));
     await waitFor(() => expect(shownRoot()).toBe(B));
 
@@ -1312,7 +1312,7 @@ describe("inside a Feature", () => {
   });
 
   it("opens the diff tab of the member on screen", async () => {
-    await mountFeature();
+    await mountTopic();
     fireEvent.click(chip("web"));
     await waitFor(() => expect(shownRoot()).toBe(B));
 
@@ -1332,7 +1332,7 @@ describe("inside a Feature", () => {
     aheadBehind = { ahead: 2, behind: 0, has_upstream: true };
     originUrl = "git@github.com:o/r.git";
     defaultBase = "main";
-    await mountFeature();
+    await mountTopic();
 
     // Escaped rather than literal so this file stays ASCII, same as the panel.
     const PILL = "\u21912";
@@ -1371,7 +1371,7 @@ describe("inside a Feature", () => {
   });
 
   it("re-reads every member on window focus, not just the one on screen", async () => {
-    await mountFeature();
+    await mountTopic();
     statusArgs = [];
 
     window.dispatchEvent(new Event("focus"));
@@ -1380,7 +1380,7 @@ describe("inside a Feature", () => {
   });
 });
 
-// A Feature is one branch checked out in N repos, so one message lands in every
+// A Topic is one branch checked out in N repos, so one message lands in every
 // member that has staged work. The chips are how that is narrowed, and amend is
 // the exception that takes exactly one member.
 describe("the members a Feature commits in", () => {

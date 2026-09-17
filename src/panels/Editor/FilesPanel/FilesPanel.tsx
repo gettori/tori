@@ -20,8 +20,8 @@ import Dropdown from "../../../components/Menu/Dropdown";
 import { MenuRow, MenuSeparator } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
 import { gitStateFor } from "../../../utils/gitActions";
-import { REPAIR_LABEL } from "../../../utils/features";
-import type { TintedMember } from "../../../utils/featureMembers";
+import { REPAIR_LABEL } from "../../../utils/topics";
+import type { TintedMember } from "../../../utils/topicMembers";
 import { symbolsSupported } from "../../../utils/symbols";
 import {
   FILES_TABS,
@@ -48,16 +48,16 @@ const basename = (p: string) => p.slice(p.lastIndexOf("/") + 1) || p;
 /**
  * The Files tab, VS Code Explorer style: the filter and a ... menu on top, then
  * the tree under a header naming the branch, then one section at the bottom
- * showing Scripts, Outline or TODOs, one tab at a time. Inside a Feature the
+ * showing Scripts, Outline or TODOs, one tab at a time. Inside a Topic the
  * member chips lead the filter row, one tree per member.
  */
 export default function FilesPanel(props: {
-  /** The folder the workspace points at: the active member inside a Feature. */
+  /** The folder the workspace points at: the active member inside a Topic. */
   root: string | null;
   /** The bare container above the root, when the project is one. Turns on Share
    *  with other worktrees in a row's menu. */
   container?: string | null;
-  /** Empty outside a Feature. */
+  /** Empty outside a Topic. */
   members: readonly TintedMember[];
   /** The file on screen, which the tree highlights and walks to. */
   activePath: string | null;
@@ -79,7 +79,7 @@ export default function FilesPanel(props: {
   // with nothing on disk can be looked at (for its repair) but not pointed at.
   const [picked, setPicked] = createSignal<string | null>(null);
 
-  const featured = () => props.members.length > 1;
+  const multiMember = () => props.members.length > 1;
   const memberOf = (key: string | null) => props.members.find((m) => m.key === key);
   const viewed = (): TintedMember | undefined =>
     memberOf(picked()) ?? props.members.find((m) => m.member.worktreePath === props.root);
@@ -166,7 +166,7 @@ export default function FilesPanel(props: {
   return (
     <div class={styles.filesPanel}>
       <div class={styles.topBar}>
-        <Show when={featured()}>
+        <Show when={multiMember()}>
           <MemberChipRow
             bare
             cap={4}
@@ -250,8 +250,8 @@ export default function FilesPanel(props: {
             <FileTree
               root={treeRoot()}
               editable
-              noun={featured() ? "member folder" : "project folder"}
-              member={featured() ? viewed()?.label : undefined}
+              noun={multiMember() ? "member folder" : "project folder"}
+              member={multiMember() ? viewed()?.label : undefined}
               repoPath={repoPath()}
               container={props.container ?? undefined}
               activePath={props.activePath}

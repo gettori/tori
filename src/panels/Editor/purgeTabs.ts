@@ -35,7 +35,7 @@ export type TabMaps<T extends PathTab> = {
  * than leaving views onto a folder that is gone.
  *
  * `rootsOf` is the one exception, and the reason it is injected: a results
- * buffer's id carries a workspace *key*, which inside a Feature is not a folder
+ * buffer's id carries a workspace *key*, which inside a Topic is not a folder
  * at all, so only the document knows which repos its rows write into. It stays
  * a parameter so this module is still testable without the buffer store.
  */

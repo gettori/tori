@@ -7,7 +7,7 @@ import Dropdown from "../../components/Menu/Dropdown";
 import { MenuRow, MenuSub } from "../../components/Menu/rows";
 import SymbolIcon from "../../components/SymbolIcon/SymbolIcon";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
-import type { TintedMember } from "../../utils/featureMembers";
+import type { TintedMember } from "../../utils/topicMembers";
 import { symbolsFor } from "../../utils/symbols";
 import { pathCrumbs, siblingsAt, symbolTrail, dirOf, type PathCrumb } from "./breadcrumbTrail";
 import styles from "./Breadcrumbs.module.css";
@@ -60,8 +60,8 @@ export default function Breadcrumbs(props: {
    *  (nothing open, or a caret last seen in a file that is no longer shown).
    *  Null renders the path half alone rather than a stale symbol trail. */
   caret: { line: number; column: number } | null;
-  /** The member holding the file, inside a Feature. Resolved by the pane, which
-   *  already reads the member list for the tab strip; null outside a Feature,
+  /** The member holding the file, inside a Topic. Resolved by the pane, which
+   *  already reads the member list for the tab strip; null outside a Topic,
    *  where there is one root and the sidebar has named it. */
   member?: TintedMember | null;
   /** Pinned to the bar's right edge: a control about the file the trail names,
@@ -91,7 +91,7 @@ export default function Breadcrumbs(props: {
   const dirFor = (crumb: PathCrumb) => (crumb.isDir ? crumb.path : dirOf(crumb.path));
 
   // Matched on the path rather than on being first, so a trail that did not
-  // prepend the member (a Docs file open while a Feature is selected) wears no
+  // prepend the member (a Docs file open while a Topic is selected) wears no
   // chip instead of pinning one to whatever crumb happened to lead.
   const chipFor = (crumb: PathCrumb) =>
     props.member && crumb.path === props.member.key ? props.member : null;

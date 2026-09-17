@@ -2,9 +2,9 @@ import { onMount } from "solid-js";
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import SearchPanel from "./SearchPanel";
-import { memberState } from "../../utils/features";
+import { memberState } from "../../utils/topics";
 import { spaceHue } from "../../utils/spaceTint";
-import type { MemberRoot } from "../../utils/featureMembers";
+import type { MemberRoot } from "../../utils/topicMembers";
 
 const API = "/feat/api";
 const WEB = "/feat/web";
@@ -88,7 +88,7 @@ type Story = StoryObj<typeof meta>;
  *
  *  The chip row above the box is unrestricted here, which is the default: All
  *  is pressed and every member is searched. */
-export const FeatureMembers: Story = {
+export const TopicMembers: Story = {
   args: { roots: MEMBERS },
 };
 

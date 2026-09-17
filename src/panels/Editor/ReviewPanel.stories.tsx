@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import ReviewPanel from "./ReviewPanel";
-import { memberState } from "../../utils/features";
+import { memberState } from "../../utils/topics";
 import { enterRoots, refreshGit } from "../../utils/gitActions";
 import { spaceHue } from "../../utils/spaceTint";
-import type { MemberRoot } from "../../utils/featureMembers";
+import type { MemberRoot } from "../../utils/topicMembers";
 
 const API = "/feat/api";
 const WEB = "/feat/web";
@@ -130,8 +130,8 @@ type Story = StoryObj<typeof meta>;
  *  where its branch and its Push live.
  *
  *  Branch, ahead/behind and Push are absent from the top bar here. They are one
- *  repo's answers, and a Feature has several. */
-export const FeatureMembers: Story = {
+ *  repo's answers, and a Topic has several. */
+export const TopicMembers: Story = {
   args: { roots: MEMBERS },
   render: (args) => {
     loadRoots(MEMBERS, API);

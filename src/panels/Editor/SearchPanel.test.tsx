@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import type { MemberRoot, TintedMember } from "../../utils/featureMembers";
+import type { MemberRoot, TintedMember } from "../../utils/topicMembers";
 
 // The Search panel's controls, driven through the real component. Match
 // semantics belong to the backend's one canonical regex, so what is asserted
@@ -1097,7 +1097,7 @@ describe("inside a Feature", () => {
   });
 });
 
-// A Feature searches every member at once. `grep_project` stays single-root, so
+// A Topic searches every member at once. `grep_project` stays single-root, so
 // what is asserted here is strictly the panel's own job: that it fans out once
 // per member, keeps each member's answer (and each member's failure) in its own
 // section, and never lets one member's state speak for another's.
@@ -1119,7 +1119,7 @@ describe("multi-root search", () => {
     reason: null,
   };
 
-  const mountFeature = (extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) =>
+  const mountTopic = (extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) =>
     render(() => (
       <SearchPanel root={API} roots={MEMBERS} workspace="feature:f1" focusNonce={0} {...extra} />
     ));
@@ -1128,7 +1128,7 @@ describe("multi-root search", () => {
   const rootsSearched = () => searches().map((c) => c.root);
 
   it("greps every member once with the same options", async () => {
-    mountFeature();
+    mountTopic();
     await type("needle");
 
     expect(rootsSearched()).toEqual([API, WEB, DOCS]);
@@ -1146,7 +1146,7 @@ describe("multi-root search", () => {
         ? held.then(() => ok([match("slow hit", [[0, 4]])]))
         : ok([match("fast hit", [[0, 4]])]);
 
-    mountFeature();
+    mountTopic();
     await type("slow");
     await type("fast");
     release!();
@@ -1157,7 +1157,7 @@ describe("multi-root search", () => {
   });
 
   it("keeps the results when the active member changes", async () => {
-    // `root` is the Feature's *active member*, the thing a Toolbar chip moves.
+    // `root` is the Topic's *active member*, the thing a Toolbar chip moves.
     // A search that spans every member must not be spent by that click.
     const [active, setActive] = createSignal(API);
     bridge.respond = () => ONE_FILE();
@@ -1189,7 +1189,7 @@ describe("multi-root search", () => {
   it("disables a toggle no member can honour and names that member's backend", async () => {
     bridge.respond = (_q, _o, root) =>
       root === WEB ? ok([], { backend: "plain", unsupported: ["noIgnore"] }) : ok([]);
-    mountFeature();
+    mountTopic();
     openDetails();
 
     const ignored = ignoreToggle;
@@ -1215,7 +1215,7 @@ describe("multi-root search", () => {
 
   it("draws one section per member, with its own chip", async () => {
     bridge.respond = () => ONE_FILE();
-    const { container } = mountFeature();
+    const { container } = mountTopic();
     await type("ab");
 
     await waitFor(() => expect(sectionEl(DOCS).textContent).toContain("ab cd ab"));
@@ -1267,7 +1267,7 @@ describe("multi-root search", () => {
       if (root === WEB) throw new Error("grep: permission denied");
       return ok([match("docs hit", [[0, 4]], 3, "README.md")]);
     };
-    mountFeature();
+    mountTopic();
     await type("ab");
 
     await waitFor(() => expect(sectionEl(API).textContent).toContain("First 500 matching lines"));
@@ -1281,7 +1281,7 @@ describe("multi-root search", () => {
     bridge.respond = () => {
       throw new Error("regex parse error");
     };
-    mountFeature();
+    mountTopic();
     await type("[");
 
     await waitFor(() => expect(screen.getByText(/regex parse error/)).toBeTruthy());
@@ -1290,7 +1290,7 @@ describe("multi-root search", () => {
   it("opens a hit against its own member's root", async () => {
     bridge.respond = (_q, _o, root) =>
       root === WEB ? ok([match("web hit", [[0, 3]], 12, "src/App.tsx")]) : ok([]);
-    mountFeature();
+    mountTopic();
     await type("web");
 
     await waitFor(() => expect(sectionEl(WEB).textContent).toContain("web hit"));
@@ -1309,7 +1309,7 @@ describe("multi-root search", () => {
 
   it("re-greps only the member a change happened under", async () => {
     bridge.respond = () => ONE_FILE();
-    mountFeature();
+    mountTopic();
     await type("ab");
     const before = searches().length;
 
@@ -1321,7 +1321,7 @@ describe("multi-root search", () => {
 
   it("ignores a change under a folder that is not a member", async () => {
     bridge.respond = () => ONE_FILE();
-    mountFeature();
+    mountTopic();
     await type("ab");
     const before = searches().length;
 
@@ -1333,7 +1333,7 @@ describe("multi-root search", () => {
 
   it("hands every member's hits to one buffer, keyed on the workspace", async () => {
     bridge.respond = (_q, _o, root) => ok([match(`${root} ab`, [[0, 2]], 1, "src/index.ts")]);
-    mountFeature();
+    mountTopic();
     await type("ab");
 
     const open = () => screen.getByRole("button", { name: "Open in editor" });
@@ -1369,7 +1369,7 @@ describe("multi-root search", () => {
             files: [{ path: "src/index.ts", digest: "d1" }],
           });
     bridge.previewResult = (_r, spans) => spans.map((s, i) => `p${i}:${s.text}`);
-    mountFeature();
+    mountTopic();
     await type("ab");
     await typeReplacement("X");
 
@@ -1386,9 +1386,9 @@ describe("multi-root search", () => {
 
   it("replaces against the member the row belongs to", async () => {
     // Both members hold the same relative path, which is the ordinary case in a
-    // frontend/backend Feature and the one a bare path cannot tell apart.
+    // frontend/backend Topic and the one a bare path cannot tell apart.
     bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE("src/index.ts"));
-    mountFeature();
+    mountTopic();
     await type("ab");
     await typeReplacement("X");
 
@@ -1402,7 +1402,7 @@ describe("multi-root search", () => {
 
   it("replaces one line against the member its row belongs to", async () => {
     bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE("src/index.ts"));
-    mountFeature();
+    mountTopic();
     await type("ab");
     await typeReplacement("X");
 
@@ -1424,7 +1424,7 @@ describe("multi-root search", () => {
 
   it("replaces all across members, one call per member", async () => {
     bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE());
-    mountFeature({ confirm: async () => true });
+    mountTopic({ confirm: async () => true });
     await type("ab");
     await typeReplacement("X");
 
@@ -1444,14 +1444,14 @@ describe("multi-root search", () => {
         ? { changed: [], skipped: [{ path: "src/index.ts", reason: "changed on disk" }], occurrences: 0 }
         : { changed: ["src/index.ts"], skipped: [], occurrences: 2 };
     };
-    mountFeature({ confirm: async () => true });
+    mountTopic({ confirm: async () => true });
     await type("ab");
     await typeReplacement("X");
 
     fireEvent.click(replaceAllButton());
 
     await waitFor(() => expect(bridge.replaces.length).toBe(2));
-    // "1 skipped (changed on disk)" over a Feature names neither the file you
+    // "1 skipped (changed on disk)" over a Topic names neither the file you
     // can see twice on screen nor the repo to go and deal with it in.
     await screen.findByText(
       "Replaced 2 occurrences in 1 file, 1 skipped (changed on disk in Payments API).",
@@ -1493,7 +1493,7 @@ describe("member restriction", () => {
       kind: "worktree",
     }) as TintedMember;
 
-  const mountFeature = (extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) =>
+  const mountTopic = (extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) =>
     render(() => (
       <SearchPanel
         root={API}
@@ -1510,7 +1510,7 @@ describe("member restriction", () => {
   const sectionEl = (root: string) => document.querySelector(`[data-root="${root}"]`);
 
   it("greps only the members it is narrowed to", async () => {
-    mountFeature();
+    mountTopic();
     await type("needle");
     const before = searches().length;
     expect(before).toBe(3);
@@ -1522,7 +1522,7 @@ describe("member restriction", () => {
   });
 
   it("is multi-select, and lighting every chip again searches every member", async () => {
-    mountFeature();
+    mountTopic();
     await type("needle");
 
     fireEvent.click(chip("Payments API"));
@@ -1543,7 +1543,7 @@ describe("member restriction", () => {
     // A bare header over no hits reads as "searched, nothing here", which is a
     // different answer from "not searched".
     bridge.respond = () => ONE_FILE();
-    mountFeature();
+    mountTopic();
     await type("ab");
     await waitFor(() => expect(sectionEl(API)).toBeTruthy());
 
@@ -1556,7 +1556,7 @@ describe("member restriction", () => {
   it("re-enables a toggle once the member that could not honour it is excluded", async () => {
     bridge.respond = (_q, _o, root) =>
       root === DOCS ? ok([], { backend: "plain", unsupported: ["noIgnore"] }) : ok([]);
-    mountFeature();
+    mountTopic();
     openDetails();
 
     const ignored = ignoreToggle;
@@ -1573,7 +1573,7 @@ describe("member restriction", () => {
   it("retires a replace outcome when the restriction changes", async () => {
     bridge.respond = (_q, _o, root) => (root === DOCS ? ok([]) : ONE_FILE());
     bridge.replaceResult = () => ({ changed: ["src/a.ts"], skipped: [], occurrences: 2 });
-    mountFeature({ confirm: async () => true });
+    mountTopic({ confirm: async () => true });
     await type("ab");
     await typeReplacement("X");
 
@@ -1588,7 +1588,7 @@ describe("member restriction", () => {
   });
 
   it("restores the restriction a recalled query was run with", async () => {
-    mountFeature();
+    mountTopic();
     await type("needle");
     fireEvent.click(chip("Web App"));
     await waitFor(() => expect(pressed(chip("Web App"))).toBe(false));
@@ -1615,7 +1615,7 @@ describe("member restriction", () => {
         ],
       }),
     );
-    mountFeature();
+    mountTopic();
     fireEvent.click(screen.getByLabelText("Saved Searches"));
     const before = searches().length;
     fireEvent.click(screen.getByText("web todos"));
@@ -1635,7 +1635,7 @@ describe("member restriction", () => {
         "feature:f1": [{ name: "gone", query: "TODO", options: {}, repos: ["/repos/vanished"] }],
       }),
     );
-    mountFeature();
+    mountTopic();
     fireEvent.click(screen.getByLabelText("Saved Searches"));
     const before = searches().length;
     fireEvent.click(screen.getByText("gone"));
@@ -1663,7 +1663,7 @@ describe("member restriction", () => {
 
   it("has no axe violations", async () => {
     bridge.respond = () => ONE_FILE();
-    const { container } = mountFeature();
+    const { container } = mountTopic();
     await type("ab");
     fireEvent.click(chip("Payments API"));
     await waitFor(() => expect(pressed(chip("Payments API"))).toBe(false));

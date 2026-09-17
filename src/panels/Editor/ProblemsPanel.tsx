@@ -5,7 +5,7 @@ import { composeDiagnosticWithFixes, requestSend, type SessionTarget } from "../
 import { diagnosticBlocks } from "../../utils/chatCompose";
 import { sendBlockedReason, sendTargetFor } from "../../utils/sendTarget";
 import { isUnderPath } from "../../utils/pathScope";
-import { groupByMemberRoot, memberSectionsHeaded, type MemberRoot } from "../../utils/featureMembers";
+import { groupByMemberRoot, memberSectionsHeaded, type MemberRoot } from "../../utils/topicMembers";
 import Button from "../../components/Button/Button";
 import MemberSection from "../../components/MemberSection/MemberSection";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
@@ -30,8 +30,8 @@ function basename(path: string): string {
  *  Each row can hand its diagnostic to the selected session through safe-send,
  *  insert-only and never auto-submitted, exactly like the hunk-comment path.
  *
- *  Inside a Feature it answers for every member at once, one section each: a
- *  type error in the repo you are not looking at is still one of this Feature's
+ *  Inside a Topic it answers for every member at once, one section each: a
+ *  type error in the repo you are not looking at is still one of this Topic's
  *  problems, and the tab badge counts it whether or not this panel would. */
 export default function ProblemsPanel(props: { selected: Selection | null; roots?: MemberRoot[] }) {
   /** Every root this panel answers for. A branch unit is its own single root, so
@@ -46,7 +46,7 @@ export default function ProblemsPanel(props: { selected: Selection | null; roots
   // Scoped to the selected workspace: the store spans every warm project now
   // (servers survive a switch), and this panel answers for one of them. Nothing
   // outside the scope is listed, because a store this wide cannot tell a
-  // Feature's departed member from another workspace entirely.
+  // Topic's departed member from another workspace entirely.
   const here = () => {
     const roots = scope().map((r) => r.path);
     return Object.entries(diagnostics()).filter(([p]) => roots.some((r) => isUnderPath(p, r)));

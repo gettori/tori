@@ -56,7 +56,7 @@ import {
 } from "../../utils/forgeTypes";
 import { forgeHosts, forgeRepo, pickForgeAccount, resolveForgeRepo } from "../../utils/forgeStatus";
 import { chromeScale, settings } from "../Settings/settingsStore";
-import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/features";
+import { REPAIR_LABEL, rootOf, type MemberStateSummary } from "../../utils/topics";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import MemberChipRow from "../../components/MemberChipRow/MemberChipRow";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
@@ -73,7 +73,7 @@ import {
 } from "../../utils/changesSections";
 import { SECTION_MIN_H } from "../../utils/sectionLayout";
 import Resizer from "../../components/Resizer/Resizer";
-import type { MemberRoot, TintedMember } from "../../utils/featureMembers";
+import type { MemberRoot, TintedMember } from "../../utils/topicMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 import CheckpointTimeline, { type RevertOutcome } from "./CheckpointTimeline";
 import GraphSection from "./GraphSection";
@@ -180,10 +180,10 @@ const DOWN = "\u2193";
  *  branch) is state only a mounted panel has any use for. */
 export default function ReviewPanel(props: {
   root: string | null;
-  /** The Feature's members, in member order. Absent for a branch unit, which is
+  /** The Topic's members, in member order. Absent for a branch unit, which is
    *  the single-section case. Same list the file tree and search panel take. */
   roots?: MemberRoot[];
-  /** The same members as chips can draw them. Empty outside a Feature, which is
+  /** The same members as chips can draw them. Empty outside a Topic, which is
    *  how the tab knows to name itself instead. */
   members?: readonly TintedMember[];
   /** The active editor tab's path, which is what "the member you are working
@@ -252,7 +252,7 @@ export default function ReviewPanel(props: {
   }
   const [includeUntracked, setIncludeUntracked] = createSignal(false);
 
-  // One section per member inside a Feature, one unnamed section for a branch
+  // One section per member inside a Topic, one unnamed section for a branch
   // unit. Member order, which is the order the tree and the search panel draw
   // them in, so the three surfaces agree about what "second member" means.
   const sections = createMemo<Section[]>(() =>
@@ -262,7 +262,7 @@ export default function ReviewPanel(props: {
         ? [{ root: props.root }]
         : [],
   );
-  /** Inside a Feature, where the chips pick which member is on screen. A branch
+  /** Inside a Topic, where the chips pick which member is on screen. A branch
    *  unit has one repo and names itself instead. */
   const headed = () => !!props.roots?.length;
 
@@ -313,7 +313,7 @@ export default function ReviewPanel(props: {
   /**
    * Where Commit lands.
    *
-   * A Feature is one branch across N repos, so a change that touched three of
+   * A Topic is one branch across N repos, so a change that touched three of
    * them is one message in each rather than three trips through the composer.
    * Amend is the exception and takes exactly one member: the composer is
    * prefilled from that member's HEAD, and rewriting several repos' last
@@ -446,7 +446,7 @@ export default function ReviewPanel(props: {
     return n ? plural(n, "file") : "Nothing to commit";
   };
 
-  /** The button says how many repos it is about, because inside a Feature one
+  /** The button says how many repos it is about, because inside a Topic one
    *  click can land in several and the count is the only warning of that. */
   const commitLabel = () => {
     const n = commitRoots().length;
@@ -801,7 +801,7 @@ export default function ReviewPanel(props: {
   );
 
   // Keyed on the member set rather than the member in front: moving between
-  // members inside a Feature leaves every section's numbers standing, so
+  // members inside a Topic leaves every section's numbers standing, so
   // re-reading all of them would be a switch that did not happen. A repaired
   // member joining is a real one.
   createEffect(
@@ -1282,7 +1282,7 @@ export default function ReviewPanel(props: {
   return (
     <div class={styles.reviewPanel}>
       {/* Row one, the shape the Files and Search tabs open with: who this tab
-          is about, then the dots. Inside a Feature the chips pick one member,
+          is about, then the dots. Inside a Topic the chips pick one member,
           the way the file tree's do. */}
       <div class={styles.topBar}>
         <Show when={headed()} fallback={<span class={styles.title}>Source Control</span>}>

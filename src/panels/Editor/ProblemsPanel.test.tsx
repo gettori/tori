@@ -4,12 +4,12 @@ import { expectNoAxeViolations } from "../../test/axe";
 import ProblemsPanel from "./ProblemsPanel";
 import { clearDiagnostics, publishDiagnostics, type Problem } from "../../utils/diagnostics";
 import { onWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
-import type { MemberRoot } from "../../utils/featureMembers";
+import type { MemberRoot } from "../../utils/topicMembers";
 import type { Selection } from "../LeftSidebar/LeftSidebar";
 
 // The store spans every warm project, so what this panel is really about is
 // scope: which of those diagnostics belong to what is selected, and inside a
-// Feature, which member each one belongs to.
+// Topic, which member each one belongs to.
 
 const API = "/w/feat/api";
 const WEB = "/w/feat/web";

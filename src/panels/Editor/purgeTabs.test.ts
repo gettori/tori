@@ -109,7 +109,7 @@ describe("purgeTabsUnder", () => {
   });
 });
 
-// A results buffer spans a Feature's members, and its id carries the workspace
+// A results buffer spans a Topic's members, and its id carries the workspace
 // key, which is not a folder at all. So the only thing that knows which repos
 // the tab reaches into is the document, and the sweep has to ask.
 describe("a results buffer's own roots", () => {
