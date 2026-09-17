@@ -42,13 +42,14 @@
   max-width: calc(280px * var(--ui-scale));
 }
 
-/* Takes the bar's free width rather than sitting at its content size, so a long
-   branch or worktree name has somewhere to go. */
+/* Content width, shrinking only once the bar runs out, so a long branch still
+   gets all the room there is and a Topic's member chips sit right after the
+   trail instead of at the far end of the bar. */
 .tbCrumb {
   display: flex;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
 }
