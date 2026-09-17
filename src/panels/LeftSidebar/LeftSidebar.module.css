@@ -198,20 +198,13 @@
   color: var(--fg-default);
 }
 
-/* ---- Gear dropdown (sidebar actions) ---- */
-.gearWrap {
-  position: relative;
-  flex: none;
-  justify-self: start;
-}
-
 .dockBtn {
   justify-self: end;
 }
 
-/* Strip buttons (this gear, the dock toggle and the tiles) share one bare-icon
-   variant: transparent fill and border so only the glyph shows at rest, hover
-   reveals the brand border, and the lit one drops to a brand-tinted icon. */
+/* Strip buttons (the dock toggle and the tiles) share one bare-icon variant:
+   transparent fill and border so only the glyph shows at rest, hover reveals
+   the brand border, and the lit one drops to a brand-tinted icon. */
 .stripBtn {
   position: relative;
   display: flex;
@@ -236,62 +229,6 @@
    so a hover over it still gets the brand border on top. */
 .stripBtn.active {
   color: var(--brand-default);
-}
-
-/* Opens upward + left-aligned: the gear now lives at the bottom of the sidebar
-   (in the space bar), so the menu grows above it. */
-.gearMenu {
-  position: absolute;
-  bottom: calc(100% + calc(6px * var(--ui-scale)));
-  /* Anchored on the trigger's left edge, which is the sidebar's: opening
-     the other way from here would take the menu off the column. */
-  left: 0;
-  z-index: 1000;
-  min-width: calc(180px * var(--ui-scale));
-  padding: calc(4px * var(--ui-scale));
-  background: var(--canvas-card);
-  border: 1px solid var(--border-default);
-  border-radius: var(--tori-radius-md);
-  box-shadow: var(--shadow-md);
-}
-
-.gearItem {
-  display: flex;
-  align-items: center;
-  gap: calc(8px * var(--ui-scale));
-  padding: calc(6px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--tori-text-lg);
-  color: var(--fg-default);
-  border-radius: var(--tori-radius-sm);
-  cursor: pointer;
-  white-space: nowrap;
-}
-/* Lucide affordance icon in a gear-menu item: dimmed, inherits the row colour.
-   CSS-sized (the numeric Lucide size is dropped) so it tracks --ui-scale. */
-.gearItem :global(svg) {
-  flex: none;
-  width: calc(14px * var(--ui-scale));
-  height: calc(14px * var(--ui-scale));
-  color: var(--fg-muted);
-}
-.gearItem:hover :global(svg) {
-  color: var(--fg-default);
-}
-/* The danger item tints its own text; let its icon follow (not the dim above). */
-.gearItem.danger :global(svg),
-.gearItem.danger:hover :global(svg) {
-  color: inherit;
-}
-.gearItem:hover {
-  background: var(--neutral-hover);
-}
-.gearItem.danger {
-  color: var(--danger-fg);
-}
-.gearDivider {
-  height: 1px;
-  margin: calc(4px * var(--ui-scale)) calc(6px * var(--ui-scale));
-  background: var(--border-default);
 }
 
 /* The frame of an OverlayScroll: the bar is drawn, floats over the content, and
@@ -696,17 +633,17 @@
   height: calc(12px * var(--ui-scale));
 }
 
-/* The bar itself does not clip, so the gear menu can open upward past its top
-   edge. */
 .spaceBar {
   position: relative;
   /* The Topics list is content-height, and without this the strip floats up
      under it. */
   margin-top: auto;
   display: grid;
-  /* Equal outer tracks keep the views on the centre line. A squeeze comes out of
-     the views, since each outer track keeps its button's width. */
-  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  /* The tiles start at the sidebar's own left edge and the dock button keeps
+     the right one. They were centred while the gear held the left track; with
+     nothing there to balance, centring would leave the first space floating in
+     a gap. A squeeze comes out of the tiles, which scroll. */
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: calc(6px * var(--ui-scale));
   /* Right on `--tree-gutter`, like the head and the tree above it, so the dock
@@ -738,8 +675,7 @@
 
 /* The space tiles, packed left and no wider than they need to be. It shrinks
    and scrolls rather than growing, so the mode tiles stay next to the spaces
-   instead of being pushed to the far edge, and only the tiles are clipped,
-   which keeps the gear menu clear. */
+   instead of being pushed to the far edge. */
 .spaceScroll {
   flex: 0 1 auto;
   min-width: 0;

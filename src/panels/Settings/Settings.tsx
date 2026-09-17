@@ -10,7 +10,7 @@ import {
   type Component,
 } from "solid-js";
 import { Dynamic, Portal } from "solid-js/web";
-import { Bot, Braces, Columns2, FileCode, MessageSquare, Palette, Plug, X, type LucideIcon } from "lucide-solid";
+import { Bot, Braces, Columns2, FileCode, FolderCog, MessageSquare, Palette, Plug, X, type LucideIcon } from "lucide-solid";
 import { matchingEntries } from "./utils/settingsSearch";
 import { SETTING_TABS, tabOfEntry, type SettingTab } from "../../utils/settingsCatalog";
 import { agentHealth, ensureAgentHealthLoaded } from "../../utils/agentHealth";
@@ -20,6 +20,7 @@ import { FOCUSABLE } from "../../utils/focusable";
 import Icon from "../../components/Icon/Icon";
 import OverlayScroll from "../../components/Scrollbar/OverlayScroll";
 import IconButton from "../../components/IconButton/IconButton";
+import AdvancedPane from "./panes/AdvancedPane/AdvancedPane";
 import AgentsPane from "./panes/AgentsPane/AgentsPane";
 import AppearancePane from "./panes/AppearancePane/AppearancePane";
 import ChatPane from "./panes/ChatPane/ChatPane";
@@ -52,6 +53,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   palette: Palette,
   plug: Plug,
   "columns-2": Columns2,
+  "folder-cog": FolderCog,
 };
 
 const PANES: Record<SettingTab, Component<PaneProps>> = {
@@ -62,6 +64,7 @@ const PANES: Record<SettingTab, Component<PaneProps>> = {
   appearance: AppearancePane,
   panes: PanesPane,
   integrations: IntegrationsPane,
+  advanced: AdvancedPane,
 };
 
 /** Trigger and panel ids, supplied rather than left to Kobalte.
@@ -527,6 +530,7 @@ export default function Settings(props: {
                       prefix={searching() ? t.label : undefined}
                       openTab={openTab}
                       projectRoot={props.projectRoot ?? null}
+                      onClose={props.onClose}
                     />
                   </div>
                 )}
