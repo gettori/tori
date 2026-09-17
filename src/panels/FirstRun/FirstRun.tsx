@@ -7,21 +7,24 @@ import { finishFirstRun, firstRunConfig, firstRunView, markIntroSeen, reloadFirs
 import { badName, shortHome } from "../../utils/names";
 import { createAgentsSetup } from "./agentsSetup";
 import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
+import { createHostsSetup } from "./hostsSetup";
 import { createProjectSetup } from "./projectSetup";
 import { AGENTS_LEAD } from "./steps/AgentsStep";
 import BaseFolderStep, { BASE_FOLDER_LEAD, rootSpaces } from "./steps/BaseFolderStep";
+import { HOSTS_LEAD } from "./steps/HostsStep";
 import { PROJECT_LEAD } from "./steps/ProjectStep";
 import ReadyStep, { readyLead, type ReadySummary } from "./steps/ReadyStep";
 import SpaceStep, { SPACE_LEAD, type SpaceMode } from "./steps/SpaceStep";
 import Intro, { SLIDES } from "./intro/Intro";
 import styles from "./FirstRun.module.css";
 
-type StepId = "agents" | "base" | "space" | "project" | "ready";
-const ORDER: StepId[] = ["agents", "base", "space", "project", "ready"];
+type StepId = "agents" | "base" | "space" | "hosts" | "project" | "ready";
+const ORDER: StepId[] = ["agents", "base", "space", "hosts", "project", "ready"];
 const HEADING: Record<StepId, string> = {
   agents: "Agents",
   base: "Base folder",
   space: "Space",
+  hosts: "Git hosts",
   project: "First project",
   ready: "Ready",
 };
@@ -68,6 +71,7 @@ export default function FirstRun() {
     const chosen = picked();
     return list.some((s) => s.name === chosen) ? chosen : list[0].name;
   };
+  const hostsSetup = createHostsSetup({ onScreen: () => page() === "setup" && step() === "hosts" });
   const projectSetup = createProjectSetup({
     home,
     space: () => spaces().find((s) => s.name === spaceName()) ?? null,
@@ -124,7 +128,7 @@ export default function FirstRun() {
       setNewName("");
       setSpaceMode("pick");
       activate(name);
-      go("project");
+      go("hosts");
     } catch (e) {
       fail(e);
     } finally {
@@ -140,7 +144,7 @@ export default function FirstRun() {
     const s = spaceName();
     if (!s) return;
     activate(s);
-    go("project");
+    go("hosts");
   }
 
   function endIntro() {
@@ -163,6 +167,7 @@ export default function FirstRun() {
       summary: root() ? shortHome(root()!, home()) : null,
     },
     { id: "space", label: "Space", required: true, group: "setup", summary: spaceName() },
+    { id: "hosts", label: "Git hosts", group: "once", summary: hostsSetup.summary() },
     { id: "project", label: "First project", group: "once", summary: projectSetup.summary() },
     { id: "ready", label: "Ready", group: "once" },
   ];
@@ -195,6 +200,7 @@ export default function FirstRun() {
             <Match when={step() === "agents"}>{AGENTS_LEAD}</Match>
             <Match when={step() === "base"}>{BASE_FOLDER_LEAD}</Match>
             <Match when={step() === "space"}>{SPACE_LEAD}</Match>
+            <Match when={step() === "hosts"}>{HOSTS_LEAD}</Match>
             <Match when={step() === "project"}>{PROJECT_LEAD}</Match>
             <Match when={summary()}>{(s) => readyLead(s())}</Match>
           </Switch>
@@ -204,6 +210,11 @@ export default function FirstRun() {
             <Match when={step() === "agents"}>Not required. Tori opens without an agent.</Match>
             <Match when={step() === "base"}>Required. You can change it later in Settings.</Match>
             <Match when={step() === "space"}>Required. This is the last step before Tori can open.</Match>
+            <Match when={step() === "hosts"}>
+              <Button variant="ghost" onClick={() => go("project")}>
+                Later
+              </Button>
+            </Match>
             <Match when={step() === "project"}>
               <Button variant="ghost" disabled={running()} onClick={() => go("ready")}>
                 Skip
@@ -238,6 +249,12 @@ export default function FirstRun() {
                 onClick={() => (creating() ? void createSpace() : continueFromSpace())}
               >
                 {creating() ? "Create space" : "Continue"}
+              </Button>
+            </Match>
+            <Match when={step() === "hosts"}>
+              {back()}
+              <Button variant="primary" onClick={() => go("project")}>
+                Continue
               </Button>
             </Match>
             <Match when={step() === "project"}>
@@ -283,6 +300,7 @@ export default function FirstRun() {
               />
             )}
           </Match>
+          <Match when={step() === "hosts"}>{hostsSetup.view()}</Match>
           <Match when={step() === "project"}>{projectSetup.view()}</Match>
           <Match when={step() === "ready" && summary()}>{(s) => <ReadyStep summary={s()} home={home()} />}</Match>
         </Switch>
