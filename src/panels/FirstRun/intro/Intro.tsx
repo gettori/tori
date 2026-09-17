@@ -1,4 +1,4 @@
-import { For, type Component } from "solid-js";
+import { For, Show, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import Button from "../../../components/Button/Button";
 import FirstRunShell from "../FirstRunShell";
@@ -96,8 +96,20 @@ export default function Intro(props: {
           Skip intro
         </button>
       }
-      heading={`${current().title}.`}
-      lead={current().body}
+      heading={
+        <Show when={current()} keyed>
+          {(s) => <span class={styles.enter}>{s.title}.</span>}
+        </Show>
+      }
+      lead={
+        <Show when={current()} keyed>
+          {(s) => (
+            <span class={styles.enter} style={{ "--i": 1 }}>
+              {s.body}
+            </span>
+          )}
+        </Show>
+      }
       footerLeft={
         <span class={styles.pager}>
           {pad(props.slide + 1)} / {pad(SLIDES.length)}
