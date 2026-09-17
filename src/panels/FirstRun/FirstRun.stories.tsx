@@ -2,10 +2,11 @@ import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { createSignal, type JSX } from "solid-js";
 import Button from "../../components/Button/Button";
 import type { FirstRunSpace } from "../../utils/firstRun";
-import FirstRunShell, { type RailStep } from "./FirstRunShell";
+import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
 import BaseFolderStep, { BASE_FOLDER_LEAD } from "./steps/BaseFolderStep";
 import ReadyStep, { readyLead } from "./steps/ReadyStep";
 import SpaceStep, { SPACE_LEAD, type SpaceMode } from "./steps/SpaceStep";
+import styles from "./FirstRun.module.css";
 
 const HOME = "/Users/rowan";
 const ROOT = `${HOME}/Projects`;
@@ -36,11 +37,15 @@ function Shell(props: {
   return (
     <FirstRunShell
       title="Set up Tori"
-      steps={STEPS}
-      current={props.current}
-      reachable={(id) => STEPS.findIndex((s) => s.id === id) < STEPS.findIndex((s) => s.id === props.current)}
-      onJump={() => {}}
-      railFooter="Base folder and space show on every launch until a space exists."
+      rail={
+        <StepRail
+          steps={STEPS}
+          current={props.current}
+          reachable={(id) => STEPS.findIndex((s) => s.id === id) < STEPS.findIndex((s) => s.id === props.current)}
+          onJump={() => {}}
+        />
+      }
+      railFooter={<span class={styles.railNote}>Base folder and space show on every launch until a space exists.</span>}
       heading={props.heading}
       required={props.required}
       lead={props.lead}
