@@ -799,6 +799,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .summaryRow[data-done="false"] > svg {
+    color: var(--fg-subtle);
+  }
+  .summaryRow[data-done="false"] .summaryValue {
+    color: var(--fg-muted);
+  }
 }
 
 @keyframes agentSkeleton {

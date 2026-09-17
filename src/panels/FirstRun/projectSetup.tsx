@@ -230,5 +230,5 @@ export function createProjectSetup(opts: {
     </Show>
   );
 
-  return { view, running, summary, primary };
+  return { view, running, summary, primary, made };
 }
