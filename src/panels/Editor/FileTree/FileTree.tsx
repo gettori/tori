@@ -25,6 +25,7 @@ import { FilePlus, FolderPlus, Crosshair, ChevronsDownUp } from "lucide-solid";
 import ContextMenu from "../../../components/Menu/ContextMenu";
 import { type MenuItem } from "../../../components/Menu/rows";
 import { type ConfirmOpts } from "../../../components/Dialogs/ConfirmDialog";
+import { droppedPaths, isFileDrag } from "../../../utils/externalDrop";
 import { isTouched } from "../../../utils/touchedFiles";
 import { traceSettle } from "../../../utils/perfTrace";
 import { debounce } from "../../../utils/debounce";
@@ -439,23 +440,44 @@ async function moveInto(ctx: EditCtx, from: string, dir: string): Promise<boolea
   }
 }
 
-/** Paste what Cut or Copy held into `dir`. A copy may come from another member,
- *  since only the destination is fenced; a cut is a move, which may not. */
-async function pasteInto(ctx: EditCtx, dir: string, reload: () => Promise<void>) {
-  const h = held();
-  if (!h) return;
-  for (const from of h.paths) {
-    if (h.cut) {
-      await moveInto(ctx, from, dir);
-      continue;
-    }
+/** Copy `paths` into the directory `dir`. Only the destination is fenced, so a
+ *  source may sit in another member or outside the workspace entirely, which is
+ *  what lets Finder hand one over. */
+async function copyInto(ctx: EditCtx, paths: readonly string[], dir: string) {
+  for (const from of paths) {
     try {
       await invoke<string>("fs_copy", { root: ctx.root, from, into: dir, noun: ctx.noun });
     } catch (e) {
       emitWith<ToastEvent>(TOAST, { message: String(e) });
     }
   }
-  if (h.cut) setHeld(null);
+}
+
+/** Copy in what another app dropped on `dir`. The paths come from the OS rather
+ *  than from the event (see utils/externalDrop), so a folder arrives as one entry
+ *  and the backend copies it whole. Answers whether anything landed. */
+async function importInto(ctx: EditCtx, dir: string): Promise<boolean> {
+  const paths = await droppedPaths();
+  if (!paths.length) {
+    emitWith<ToastEvent>(TOAST, { message: "That drag held nothing on disk to copy." });
+    return false;
+  }
+  await copyInto(ctx, paths, dir);
+  await reloadDirs(ctx, dir);
+  return true;
+}
+
+/** Paste what Cut or Copy held into `dir`. A cut is a move, which may not come
+ *  from another member. */
+async function pasteInto(ctx: EditCtx, dir: string, reload: () => Promise<void>) {
+  const h = held();
+  if (!h) return;
+  if (h.cut) {
+    for (const from of h.paths) await moveInto(ctx, from, dir);
+    setHeld(null);
+  } else {
+    await copyInto(ctx, h.paths, dir);
+  }
   await reload();
 }
 
@@ -719,6 +741,16 @@ function TreeNode(props: {
           if (e.dataTransfer) e.dataTransfer.effectAllowed = props.ctx ? "copyMove" : "copy";
         }}
         onDragOver={(e) => {
+          // From another app, so a copy into this row's directory. A read-only
+          // tree refuses it the way it refuses a move.
+          if (isFileDrag(e)) {
+            if (!props.ctx) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+            setDropInto(true);
+            return;
+          }
           // Not calling preventDefault is what makes a row *not* a drop target,
           // so an unmarked drag falls through to whatever is underneath.
           if (!acceptsDrop(e)) return;
@@ -729,6 +761,15 @@ function TreeNode(props: {
         }}
         onDragLeave={() => setDropInto(false)}
         onDrop={(e) => {
+          if (isFileDrag(e)) {
+            if (!props.ctx) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setDropInto(false);
+            const into = dropDir();
+            void importInto(props.ctx, into).then((landed) => landed && props.expand.setOpen(into, true));
+            return;
+          }
           if (!acceptsDrop(e)) return;
           e.preventDefault();
           e.stopPropagation();
@@ -1152,7 +1193,14 @@ export default function FileTree(props: {
       // The whole panel background means the root, which is how a file dragged
       // into `src/` gets back out.
       onDragOver={(e) => {
-        if (!api()?.ctx() || !isTreeDrag(e)) return;
+        if (!api()?.ctx()) return;
+        if (isFileDrag(e)) {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+          setDropRoot(true);
+          return;
+        }
+        if (!isTreeDrag(e)) return;
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
         setDropRoot(true);
@@ -1160,7 +1208,14 @@ export default function FileTree(props: {
       onDragLeave={() => setDropRoot(false)}
       onDrop={(e) => {
         const c = api()?.ctx();
-        if (!c || !isTreeDrag(e)) return;
+        if (!c) return;
+        if (isFileDrag(e)) {
+          e.preventDefault();
+          setDropRoot(false);
+          void importInto(c, c.root);
+          return;
+        }
+        if (!isTreeDrag(e)) return;
         e.preventDefault();
         setDropRoot(false);
         const from = e.dataTransfer?.getData(TREE_MOVE_MIME);

@@ -37,6 +37,19 @@
   outline-offset: -1px;
 }
 
+/* Files dragged in from another app, which land as tabs rather than between two
+   of them, so the whole strip lights instead of a caret. Height from .dropCaret,
+   which is the same strip. */
+.dropStrip {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(40px * var(--ui-scale));
+  background: var(--accent-subtle);
+  outline: 1px solid var(--accent-fg);
+  outline-offset: -1px;
+}
+
 /* A drop this pane would refuse (a kind lock): shown while the drag is still in
    the air, so the answer arrives before the tab is let go of. The drop is still
    taken, and the shell replies with the sentence saying why. */
