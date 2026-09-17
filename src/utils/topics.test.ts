@@ -17,11 +17,8 @@ import {
   type MemberState,
 } from "./topics";
 
-// The slug is what every member's branch is named after, so the frontend and
-// backend rules have to agree character for character: these cases mirror
-// `topics::tests::slug_lowercases_collapses_and_rejects_empty`.
 describe("topicSlug", () => {
-  it("matches the backend rule", () => {
+  it("suggests a lowercase branch from a name", () => {
     expect(topicSlug("Auth Flow")).toBe("auth-flow");
     expect(topicSlug("  Payments!!  v2 ")).toBe("payments-v2");
     expect(topicSlug("keep_dots.and-dashes")).toBe("keep_dots.and-dashes");

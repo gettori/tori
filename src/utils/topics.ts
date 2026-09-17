@@ -1,8 +1,7 @@
 // A Topic as the backend records it (`src-tauri/src/topics.rs`), plus the
 // pure helpers the Topic UI needs. Nothing here talks to the backend: the
-// slug rule mirrors `topics::topic_slug` so a creation dialog can show the
-// branch before asking, and the two member helpers exist so a chip and a state
-// badge do not each re-derive them.
+// slug rule suggests a branch for a creation dialog, and the two member
+// helpers exist so a chip and a state badge do not each re-derive them.
 
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
 import { isUnderPath } from "./pathScope";
@@ -24,16 +23,15 @@ export type Member = {
 export type Topic = {
   id: string;
   name: string;
-  /** `feat/<slug>`, frozen at creation. */
+  /** Exactly what the user typed, frozen at creation. */
   branch: string;
   members: Member[];
   createdAt: number;
 };
 
-/** The branch slug for a Topic name, the same rule as the backend: every
- *  character outside `[A-Za-z0-9._-]` becomes `-`, lowercased, runs of `-`
- *  collapsed, edges trimmed. Empty when nothing usable remains, so the dialog
- *  can refuse before the backend does. */
+/** The branch a creation dialog suggests for a Topic name: every character
+ *  outside `[A-Za-z0-9._-]` becomes `-`, lowercased, runs of `-` collapsed,
+ *  edges trimmed. Empty when nothing usable remains. */
 export function topicSlug(name: string): string {
   return name
     .trim()
