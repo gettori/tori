@@ -53,6 +53,14 @@ export function SessionsIllustration() {
       ],
     },
   ];
+  // Each project's first row in the flattened column, so the stagger runs top
+  // to bottom across projects rather than restarting inside each one.
+  let row = 0;
+  const firstRow = projects.map((p) => {
+    const at = row;
+    row += 1 + ("branches" in p ? p.branches.length : 0);
+    return at;
+  });
   const legend: { state: State; count: number }[] = [
     { state: "working", count: 2 },
     { state: "needsYou", count: 1 },
@@ -66,9 +74,9 @@ export function SessionsIllustration() {
           <span class={styles.spaceKind}>{"\u00b7 Spaces"}</span>
         </div>
         <For each={projects}>
-          {(p) => (
+          {(p, k) => (
             <div class={styles.project}>
-              <div class={`${styles.treeRow} ${styles.projectRow}`}>
+              <div class={`${styles.treeRow} ${styles.projectRow} ${styles.rise}`} style={{ "--i": firstRow[k()] }}>
                 <span class={styles.rowIcon}>
                   <ProjectIcon seed={p.path} />
                 </span>
@@ -76,8 +84,8 @@ export function SessionsIllustration() {
                 <Show when={"rollup" in p && p.rollup}>{(r) => <StateGlyph state={r().state} count={r().count} />}</Show>
               </div>
               <For each={"branches" in p ? p.branches : []}>
-                {(b) => (
-                  <div class={styles.branchNode}>
+                {(b, j) => (
+                  <div class={`${styles.branchNode} ${styles.rise}`} style={{ "--i": firstRow[k()] + j() + 1 }}>
                     <div class={`${styles.treeRow} ${styles.branchRow}`} classList={{ [styles.selected]: b.selected }}>
                       <span class={styles.rowIcon}>
                         <WorktreeMark />
@@ -94,8 +102,8 @@ export function SessionsIllustration() {
       </div>
       <div class={styles.legend}>
         <For each={legend}>
-          {(l) => (
-            <div class={`${styles.card} ${styles.legendRow}`}>
+          {(l, i) => (
+            <div class={`${styles.card} ${styles.legendRow} ${styles.rise}`} style={{ "--i": 1 + i() * 2 }}>
               <StateGlyph state={l.state} />
               <span>{STATE[l.state].label}</span>
               <span class={styles.count}>{l.count}</span>
@@ -149,7 +157,11 @@ export function LayoutIllustration() {
       <div class={styles.levels}>
         <For each={levels}>
           {(l, i) => (
-            <div class={styles.level} classList={{ [styles.levelLast]: i() === levels.length - 1 }} style={{ "--depth": i() }}>
+            <div
+              class={`${styles.level} ${styles.slide}`}
+              classList={{ [styles.levelLast]: i() === levels.length - 1 }}
+              style={{ "--depth": i(), "--i": i() * 2 }}
+            >
               <LevelGlyph level={l.level} path="~/Projects/work/api" />
               {l.label}
             </div>
@@ -158,8 +170,8 @@ export function LayoutIllustration() {
       </div>
       <div class={`${styles.card} ${styles.pathTree}`}>
         <For each={tree}>
-          {(n) => (
-            <div class={styles.pathRow} data-level={n.level} style={{ "--depth": n.depth }}>
+          {(n, i) => (
+            <div class={`${styles.pathRow} ${styles.rise}`} data-level={n.level} style={{ "--depth": n.depth, "--i": i() }}>
               <LevelGlyph level={n.level} path={n.path} />
               {n.label}
             </div>
@@ -212,8 +224,8 @@ export function TopicsIllustration() {
           <span class={styles.spaceName}>Topics</span>
         </div>
         <For each={topics}>
-          {(t) => (
-            <div class={styles.topicItem} classList={{ [styles.topicActive]: t.active }}>
+          {(t, k) => (
+            <div class={`${styles.topicItem} ${styles.rise}`} classList={{ [styles.topicActive]: t.active }} style={{ "--i": k() * 2 }}>
               <div class={styles.topicHead}>
                 <span class={styles.topicCaret}>
                   <Icon icon={ChevronRight} />
@@ -222,7 +234,11 @@ export function TopicsIllustration() {
               </div>
               <div class={styles.topicChips}>
                 <For each={t.members}>
-                  {(m) => <MemberChip icon={{ seed: m.path }} tint={resolveColor(m.color)} size="md" decorative />}
+                  {(m, j) => (
+                    <span class={styles.pop} style={{ "--j": j() }}>
+                      <MemberChip icon={{ seed: m.path }} tint={resolveColor(m.color)} size="md" decorative />
+                    </span>
+                  )}
                 </For>
               </div>
             </div>
@@ -231,12 +247,12 @@ export function TopicsIllustration() {
       </div>
       <div class={`${styles.card} ${styles.pathTree}`}>
         <For each={tree}>
-          {(n) => (
-            <div class={styles.pathRow} data-level={n.level} style={{ "--depth": n.depth }}>
+          {(n, i) => (
+            <div class={`${styles.pathRow} ${styles.rise}`} data-level={n.level} style={{ "--depth": n.depth, "--i": i() }}>
               <LevelGlyph level={n.level} path={n.path} />
               {n.label}
               <Show when={n.tagged}>
-                <span class={styles.topicChip}>
+                <span class={`${styles.topicChip} ${styles.pop}`}>
                   <Icon icon={Tag} />
                 </span>
               </Show>
@@ -252,34 +268,37 @@ export function TerminalIllustration() {
   return (
     <div class={`${styles.card} ${styles.wide}`}>
       <div class={styles.tabs}>
-        <span class={`${styles.tab} ${styles.tabOn}`}>
+        <span class={`${styles.tab} ${styles.tabOn} ${styles.rise}`}>
           <StateGlyph state="working" />
           api / fix/rate-limit
         </span>
-        <span class={styles.tab}>
+        <span class={`${styles.tab} ${styles.rise}`} style={{ "--i": 1 }}>
           <StateGlyph state="needsYou" />
           web / feat/webhooks
         </span>
       </div>
       <div class={styles.transcript}>
-        <div class={styles.turn}>
+        <div class={`${styles.turn} ${styles.rise}`} style={{ "--i": 2 }}>
           <span class={styles.turnMark}>#12</span>
           <span>cap the limiter at 100 requests a minute per key</span>
         </div>
-        <div class={styles.turn}>
+        <div class={`${styles.turn} ${styles.rise}`} style={{ "--i": 6 }}>
           <span />
           <span class={styles.muted}>edited src/limiter.ts, added 2 tests</span>
         </div>
-        <div class={styles.turn}>
+        <div class={`${styles.turn} ${styles.rise}`} style={{ "--i": 10 }}>
           <span />
           <span class={styles.added}>18 tests passed</span>
         </div>
-        <div class={styles.turn}>
+        <div class={`${styles.turn} ${styles.rise}`} style={{ "--i": 14 }}>
           <span class={styles.turnMark}>#13</span>
-          <span>now send the Retry-After header</span>
+          <span>
+            now send the Retry-After header
+            <span class={styles.caret} />
+          </span>
         </div>
       </div>
-      <div class={styles.strip}>
+      <div class={`${styles.strip} ${styles.rise}`} style={{ "--i": 16 }}>
         <span class={styles.chip}>Diff turn #12</span>
         <span class={styles.chip}>Revert turn #12</span>
         <span class={styles.stripEnd}>13 checkpoints</span>
@@ -313,13 +332,19 @@ export function ReviewIllustration() {
         <span class={styles.stripEnd}>Stage hunk</span>
       </div>
       <div class={styles.hunkBody}>
-        <For each={lines}>{(l) => <div class={lineClass[l.kind]}>{l.text}</div>}</For>
+        <For each={lines}>
+          {(l, i) => (
+            <div class={`${lineClass[l.kind]} ${styles.slide}`} style={{ "--i": i() }}>
+              {l.text}
+            </div>
+          )}
+        </For>
       </div>
-      <div class={styles.comment}>
+      <div class={`${styles.comment} ${styles.rise}`} style={{ "--i": lines.length + 2 }}>
         <span>Use the reset timestamp, not the window length.</span>
         <span class={styles.send}>Send to session</span>
       </div>
-      <div class={styles.strip}>
+      <div class={`${styles.strip} ${styles.rise}`} style={{ "--i": lines.length + 4 }}>
         <span class={styles.chip}>Commit</span>
         <span class={styles.chip}>Push</span>
         <span class={styles.chip}>Open PR</span>
@@ -335,8 +360,8 @@ export function MachineIllustration() {
     { id: "gemini", label: "Gemini" },
     { id: "opencode", label: "OpenCode" },
   ];
-  const host = (logo: JSX.Element, name: string, state: string) => (
-    <div class={styles.listRow}>
+  const host = (i: number, logo: JSX.Element, name: string, state: string) => (
+    <div class={`${styles.listRow} ${styles.rise}`} style={{ "--i": i }}>
       <span class={styles.logo}>{logo}</span>
       <span>{name}</span>
       <span class={styles.stripEnd}>{state}</span>
@@ -347,8 +372,8 @@ export function MachineIllustration() {
       <div class={`${styles.card} ${styles.list}`}>
         <div class={styles.eyebrow}>Agents</div>
         <For each={agents}>
-          {(a) => (
-            <div class={styles.listRow}>
+          {(a, i) => (
+            <div class={`${styles.listRow} ${styles.rise}`} style={{ "--i": i() }}>
               <span class={styles.logo}>
                 <AgentGlyph id={a.id} label={a.label} size={18} />
               </span>
@@ -356,14 +381,16 @@ export function MachineIllustration() {
             </div>
           )}
         </For>
-        <div class={`${styles.listRow} ${styles.muted}`}>Any other CLI, through a TOML file</div>
+        <div class={`${styles.listRow} ${styles.muted} ${styles.rise}`} style={{ "--i": agents.length }}>
+          Any other CLI, through a TOML file
+        </div>
       </div>
       <div class={`${styles.card} ${styles.list}`}>
         <div class={styles.eyebrow}>Hosts</div>
-        {host(<GitHubLogo size={16} />, "GitHub", "Signed in")}
-        {host(<GitLabLogo size={16} />, "GitLab", "Not connected")}
-        <div class={styles.listRow}>
-          <kbd class={styles.kbd}>{"\u2318K"}</kbd>
+        {host(0, <GitHubLogo size={16} />, "GitHub", "Signed in")}
+        {host(1, <GitLabLogo size={16} />, "GitLab", "Not connected")}
+        <div class={`${styles.listRow} ${styles.rise}`} style={{ "--i": 2 }}>
+          <kbd class={`${styles.kbd} ${styles.press}`}>{"\u2318K"}</kbd>
           <span class={styles.muted}>opens everything</span>
         </div>
       </div>
