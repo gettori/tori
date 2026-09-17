@@ -39,7 +39,9 @@ export type SettingSection =
   | "editing"
   | "checkpoints"
   | "chat"
-  | "panes";
+  | "panes"
+  | "root"
+  | "danger";
 
 /**
  * A tab in the panel's strip, in the order the strip renders them.
@@ -57,7 +59,8 @@ export type SettingTab =
   | "languages"
   | "appearance"
   | "integrations"
-  | "panes";
+  | "panes"
+  | "advanced";
 
 /** Not "Workspace": the panel already uses that word for a folder, and most of
  *  these rows write your global settings. */
@@ -101,6 +104,10 @@ export const SETTING_TABS: SettingTabDef[] = [
   { id: "panes", label: "Panes", group: "Workbench", icon: "columns-2", sections: ["panes"] },
   { id: "appearance", label: "Appearance", group: "Application", icon: "palette", sections: ["appearance", "typography"] },
   { id: "integrations", label: "Integrations", group: "Application", icon: "plug", sections: ["git", "forge"] },
+  // Last in the rail because it is the only tab whose contents are not
+  // settings: the base folder every space sits in, and the two actions that
+  // replace or forget it.
+  { id: "advanced", label: "Advanced", group: "Application", icon: "folder-cog", sections: ["root", "danger"] },
 ];
 
 /** Which tab a section is shown under. Derived from `SETTING_TABS` rather than
@@ -130,6 +137,8 @@ export const SECTION_TITLES: Record<SettingSection, string> = {
   checkpoints: "Checkpoints",
   chat: "Chat",
   panes: "Panes",
+  root: "Base folder",
+  danger: "Danger zone",
 };
 
 export type SettingEntry = {
@@ -459,5 +468,24 @@ export const SETTINGS: SettingEntry[] = [
     section: "chat",
     label: "Attach long pastes as files",
     hint: "A paste over 30 lines or 3000 characters becomes a file chip. Off keeps every paste in the box.",
+  },
+
+  {
+    id: "base-folder",
+    section: "root",
+    label: "Base folder",
+    hint: "The one folder Tori keeps your work in. Every space is a folder inside it, and every project lives inside a space.",
+  },
+  {
+    id: "change-base-folder",
+    section: "danger",
+    label: "Change base folder",
+    hint: "Point Tori at a different folder. Nothing on disk moves; Tori stops showing the spaces under the old folder and shows whatever it finds under the new one.",
+  },
+  {
+    id: "forget-base-folder",
+    section: "danger",
+    label: "Forget base folder",
+    hint: "Drop Tori's record of the base folder and return to first-run setup. Nothing on disk is deleted.",
   },
 ];

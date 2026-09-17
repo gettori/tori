@@ -213,6 +213,14 @@ const KEPT = new Map<string, Kept>([
   ["panels/LeftSidebar/needsYou.test.tsx", { count: 1, reason: FIXTURE }],
   ["panels/LeftSidebar/rollupAttribution.test.tsx", { count: 2, reason: FIXTURE }],
   ["panels/LeftSidebar/sidebarStructure.test.tsx", { count: 4, reason: FIXTURE }],
+  [
+    "panels/Settings/panes/AdvancedPane/AdvancedPane.tsx",
+    {
+      count: 3,
+      reason:
+        "two Settings `Group` section headings plus the `ConfirmDialog` heading the base-folder actions ask through, all rendered as visible text and none of them hover text",
+    },
+  ],
   ["panels/Settings/panes/AgentsPane/AgentAccounts.tsx", { count: 1, reason: HEADING }],
   [
     "panels/Settings/panes/AgentsPane/AgentDetail.tsx",

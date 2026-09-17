@@ -120,12 +120,7 @@ import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
 import { rememberSelection, rememberedUnit, rememberedTopic } from "../../utils/selectionMemory";
-import { forgetIntro } from "../../utils/firstRun";
 import {
-  FolderCog,
-  FolderPlus,
-  FolderOpen,
-  RotateCcw,
   Folder,
   Layers,
   Ellipsis,
@@ -412,28 +407,7 @@ export default function LeftSidebar(props: {
       // ignore quota
     }
   });
-  const [gearOpen, setGearOpen] = createSignal(false);
   let searchEl: HTMLInputElement | undefined;
-  let gearEl: HTMLDivElement | undefined;
-
-  // Close the gear dropdown on any outside click. Bound only while it is open.
-  function onDocClick(e: MouseEvent) {
-    if (gearEl && !gearEl.contains(e.target as Node)) setGearOpen(false);
-  }
-  createEffect(() => {
-    if (gearOpen()) document.addEventListener("mousedown", onDocClick);
-    else document.removeEventListener("mousedown", onDocClick);
-  });
-  onCleanup(() => document.removeEventListener("mousedown", onDocClick));
-
-  // Run a gear-menu action then close the dropdown.
-  function gearAction(fn: () => void) {
-    setGearOpen(false);
-    fn();
-  }
-
-  // Single-root model: a root is present when roots[0] exists.
-  const hasRoot = () => (config()?.roots?.length ?? 0) > 0;
 
   // Spaces are "spaces" (Arc-style): shown as an icon strip at the bottom, one
   // active at a time, and the tree renders only the active space's projects.
@@ -1347,41 +1321,6 @@ export default function LeftSidebar(props: {
     }
   }
 
-  // Pick a base folder and set it as THE single root (replacing any existing).
-  // Cancel is a no-op, never a loop.
-  // loadConfig() re-runs roots_watch_start, tearing down the old watch and
-  // reinstalling it for the new root.
-  async function addBaseFolder() {
-    try {
-      const path = await invoke<string | null>("pick_folder");
-      if (!path) return;
-      await invoke("set_root", { path });
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  // Forget the root with zero on-disk deletion: returns to the first-run state.
-  // loadConfig() reinstalls the (now empty) root watch.
-  async function resetRoot() {
-    const ok = await askConfirm({
-      title: "Forget the base folder?",
-      message: "Nothing on disk is deleted. Tori shows the intro and setup again.",
-      confirmLabel: "Forget",
-    });
-    if (!ok) return;
-    try {
-      // Before the root goes: losing it opens the modal, which reads the flag
-      // once as it mounts.
-      await forgetIntro();
-      await invoke("remove_root");
-      await loadConfig();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
   // Open the create-space dialog (needs a root to mkdir under).
   function addSpace() {
     if (!(config()?.roots ?? []).length) return;
@@ -2091,11 +2030,16 @@ export default function LeftSidebar(props: {
 
   // --- per-node context menus ---
 
+  // Past its own rule at the bottom: the rows above act on the space that was
+  // right-clicked, this one makes a sibling of it. Same menu because the strip
+  // has no other handle now that the gear button which carried it is gone.
   const spaceMenu = (g: Space): MenuItem[] => [
     { label: "New…", onClick: () => openNewProject(g) },
     { separator: true },
     { label: "Edit space…", onClick: () => editSpace(g) },
     { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
+    { separator: true },
+    { label: "Add new space", onClick: () => addSpace() },
   ];
 
   // A project with a working tree git can branch from: a plain repo or a
@@ -3184,8 +3128,11 @@ export default function LeftSidebar(props: {
       </Show>
 
       {/* Outside the mode gate: the strip is how you leave a mode, so it has to
-          render in every one. */}
-      <Show when={config() && (hasRoot() || hasSpaces())}>
+          render in every one. Gated on spaces rather than on a root, because
+          the strip IS the space tiles now that the gear beside them is gone:
+          a configured root with nothing under it has nothing to draw, and that
+          state sits behind the first-run modal regardless. */}
+      <Show when={config() && hasSpaces()}>
         <div class={styles.spaceBar}>
           {/* Out of flow and never seen: the ruler `measureNames` runs each
               candidate name through, wearing the real lit-tile CSS so what it
@@ -3194,38 +3141,6 @@ export default function LeftSidebar(props: {
             <Icon icon={Tags} />
             <span class={styles.tileName} ref={probeNameEl}><span class={styles.tileNameText} ref={probeTextEl} /></span>
           </span>
-          <div class={styles.gearWrap} ref={gearEl}>
-            <Tooltip
-              as="button"
-              type="button"
-              class={styles.stripBtn}
-              classList={{ [styles.active]: gearOpen() }}
-              label="Sidebar actions"
-              aria-label="Sidebar actions"
-              onClick={() => setGearOpen(!gearOpen())}
-            >
-              <Icon icon={FolderCog} />
-            </Tooltip>
-            <Show when={gearOpen()}>
-              <div class={styles.gearMenu} data-no-window-drag>
-                <Show when={hasRoot()}>
-                  <div class={styles.gearItem} onClick={() => gearAction(addSpace)}>
-                    <Icon icon={FolderPlus} />New space
-                  </div>
-                  <div class={styles.gearDivider} />
-                </Show>
-                <div class={styles.gearItem} onClick={() => gearAction(addBaseFolder)}>
-                  <Icon icon={FolderOpen} />Add/Update root
-                </div>
-                <Show when={hasRoot()}>
-                  <div class={`${styles.gearItem} ${styles.danger}`} onClick={() => gearAction(resetRoot)}>
-                    <Icon icon={RotateCcw} />Reset root (forget only)
-                  </div>
-                </Show>
-              </div>
-            </Show>
-          </div>
-
           <div class={styles.stripNav}>
             <div class={styles.spaceScroll}>
               <For each={visibleSpaces()}>{(g) => spaceTile(g)}</For>
@@ -3240,7 +3155,6 @@ export default function LeftSidebar(props: {
             </Show>
           </div>
 
-          <Show when={hasSpaces()}>
           <Tooltip
             as="button"
             type="button"
@@ -3258,7 +3172,6 @@ export default function LeftSidebar(props: {
               </span>
             </Show>
           </Tooltip>
-          </Show>
         </div>
       </Show>
 
