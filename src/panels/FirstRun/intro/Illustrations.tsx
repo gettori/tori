@@ -1,23 +1,25 @@
-import { For, Match, Show, Switch, type JSX } from "solid-js";
-import { Check, ChevronsLeftRightEllipsis, Folder, MessageCircleQuestion, Tag, type LucideIcon } from "lucide-solid";
+import { For, Match, Show, Switch, type Component, type JSX } from "solid-js";
+import { Dynamic } from "solid-js/web";
+import { Folder, Tag } from "lucide-solid";
 import Icon from "../../../components/Icon/Icon";
 import AgentGlyph from "../../../components/Icon/AgentGlyph";
 import { GitHubLogo, GitLabLogo, WorktreeMark } from "../../../components/Icon/gitMarks";
+import { CheckMark, QuestionMark, WorkingMark, type StatusMarkProps } from "../../../components/Icon/statusMarks";
 import ProjectIcon from "../../../components/Icon/ProjectIcon";
 import styles from "./Intro.module.css";
 
 type State = "working" | "needsYou" | "done";
 
-const STATE: Record<State, { icon: LucideIcon; label: string; class: string }> = {
-  working: { icon: ChevronsLeftRightEllipsis, label: "Working", class: styles.working },
-  needsYou: { icon: MessageCircleQuestion, label: "Needs you", class: styles.needsYou },
-  done: { icon: Check, label: "Done", class: styles.done },
+const STATE: Record<State, { mark: Component<StatusMarkProps>; label: string; class: string }> = {
+  working: { mark: WorkingMark, label: "Working", class: styles.working },
+  needsYou: { mark: QuestionMark, label: "Needs you", class: styles.needsYou },
+  done: { mark: CheckMark, label: "Done", class: styles.done },
 };
 
 function StateGlyph(props: { state: State; count?: number }) {
   return (
     <span class={`${styles.state} ${STATE[props.state].class}`}>
-      <Icon icon={STATE[props.state].icon} size={14} />
+      <Dynamic component={STATE[props.state].mark} size={14} />
       <Show when={(props.count ?? 0) > 1}>{props.count}</Show>
     </span>
   );

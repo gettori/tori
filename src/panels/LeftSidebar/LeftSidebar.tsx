@@ -138,14 +138,12 @@ import {
   Tags,
   type LucideIcon,
   Plus,
-  ChevronsLeftRightEllipsis,
-  MessageCircleQuestion,
-  Check,
   CircleDashed,
   SquareTerminal,
   Unlink,
 } from "lucide-solid";
 import { BranchMark, WorktreeMark } from "../../components/Icon/gitMarks";
+import { CheckMark, QuestionMark, WorkingMark } from "../../components/Icon/statusMarks";
 import {
   attemptFolderName,
   groupAttempts,
@@ -879,43 +877,65 @@ export default function LeftSidebar(props: {
   //
   // An approval and a question share the chip, since both say "this one is
   // waiting on you", and only the title tells them apart.
-  function statusBubble(r: Rollup | null) {
-    if (!r) return null;
-    const waiting = () => r.waitingForApproval + r.waitingForAnswer;
+  //
+  // Takes an accessor and reads it inside, so a change of counts updates the
+  // chip in place. Rebuilding it would replay the draw-once marks every time
+  // any session anywhere changed state.
+  //
+  // `tile` is the space tile's corner: a 30px square has room for one state, so
+  // it shows the one that wins and leaves the rest to the title.
+  function statusBubble(get: () => Rollup | null, tile = false) {
+    const r = createMemo(get);
+    const waiting = () => (r()?.waitingForApproval ?? 0) + (r()?.waitingForAnswer ?? 0);
+    const executing = () => r()?.executing ?? 0;
+    const idle = () => r()?.idle ?? 0;
+    const running = () => r()?.running ?? 0;
     const waitingTitle = () =>
-      r.waitingForApproval && r.waitingForAnswer
+      r()?.waitingForApproval && r()?.waitingForAnswer
         ? "Waiting for you"
-        : r.waitingForApproval
+        : r()?.waitingForApproval
           ? "Waiting for approval"
           : "Waiting for an answer";
-    if (!waiting() && !r.executing && !r.idle && !r.running) return null;
+    const counts = () => [waiting(), executing(), idle(), running()];
+    const shown = (at: number) => counts()[at] > 0 && !(tile && counts().slice(0, at).some((n) => n > 0));
+    const tileTitle = () =>
+      ["waiting for you", "executing", "idle", "running"]
+        .map((label, at) => (counts()[at] ? `${counts()[at]} ${label}` : ""))
+        .filter(Boolean)
+        .join(", ");
     return (
-      <span class={styles.statusBubble}>
-        <Show when={waiting()}>
-          <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title={waitingTitle()}>
-            <Icon icon={MessageCircleQuestion} />
-            <Show when={waiting() > 1}>{waiting()}</Show>
-          </span>
-        </Show>
-        <Show when={r.executing}>
-          <span class={`${styles.statusBubbleItem} ${styles.executing}`} title="Executing">
-            <Icon icon={ChevronsLeftRightEllipsis} />
-            <Show when={r.executing > 1}>{r.executing}</Show>
-          </span>
-        </Show>
-        <Show when={r.idle}>
-          <span class={`${styles.statusBubbleItem} ${styles.idle}`} title="Idle">
-            <Icon icon={Check} />
-            <Show when={r.idle > 1}>{r.idle}</Show>
-          </span>
-        </Show>
-        <Show when={r.running}>
-          <span class={`${styles.statusBubbleItem} ${styles.running}`} title="Running">
-            <Icon icon={CircleDashed} />
-            <Show when={r.running > 1}>{r.running}</Show>
-          </span>
-        </Show>
-      </span>
+      <Show when={counts().some((n) => n > 0)}>
+        <span
+          class={styles.statusBubble}
+          classList={{ [styles.spaceBubble]: tile }}
+          title={tile ? tileTitle() : undefined}
+        >
+          <Show when={shown(0)}>
+            <span class={`${styles.statusBubbleItem} ${styles.waitingForApproval}`} title={tile ? undefined : waitingTitle()}>
+              <QuestionMark animate />
+              <Show when={waiting() > 1}>{waiting()}</Show>
+            </span>
+          </Show>
+          <Show when={shown(1)}>
+            <span class={`${styles.statusBubbleItem} ${styles.executing}`} title={tile ? undefined : "Executing"}>
+              <WorkingMark animate />
+              <Show when={executing() > 1}>{executing()}</Show>
+            </span>
+          </Show>
+          <Show when={shown(2)}>
+            <span class={`${styles.statusBubbleItem} ${styles.idle}`} title={tile ? undefined : "Idle"}>
+              <CheckMark animate />
+              <Show when={idle() > 1}>{idle()}</Show>
+            </span>
+          </Show>
+          <Show when={shown(3)}>
+            <span class={`${styles.statusBubbleItem} ${styles.running}`} title={tile ? undefined : "Running"}>
+              <Icon icon={CircleDashed} />
+              <Show when={running() > 1}>{running()}</Show>
+            </span>
+          </Show>
+        </span>
+      </Show>
     );
   }
 
@@ -2496,7 +2516,7 @@ export default function LeftSidebar(props: {
             <span class={styles.dot} title="current checkout">●</span>
           </Show>
           {forgeChipNode(g, p, u)}
-          {statusBubble(rollup())}
+          {statusBubble(rollup)}
         </ContextMenu>
       </div>
     );
@@ -2534,7 +2554,7 @@ export default function LeftSidebar(props: {
               carries the rollup for all of them - the same rule that puts a
               collapsed project's rollup on its project row. Without it a
               running agent on the 20th branch would surface nowhere. */}
-          {statusBubble(open() ? null : bubbleForUnits(p, hidden()))}
+          {statusBubble(() => (open() ? null : bubbleForUnits(p, hidden())))}
         </div>
       </div>
     );
@@ -2589,7 +2609,7 @@ export default function LeftSidebar(props: {
           >
             {grp.members.length === 1 ? "1 attempt" : `${grp.members.length} attempts`}
           </span>
-          {statusBubble(open() ? null : bubbleForUnits(p, units()))}
+          {statusBubble(() => (open() ? null : bubbleForUnits(p, units())))}
           <RowChevron open={open()} />
         </div>
         <Show when={open()}>
@@ -2932,17 +2952,18 @@ export default function LeftSidebar(props: {
   function spaceBubble(g: Space) {
     // "Active" here means its tree is on screen. In Topics nothing of it is
     // rendered, so all of its sessions bubble to the tile.
-    const isActive = mode() === "spaces" && activeSpace()?.name === g.name;
-    const r = isActive
-      ? bubbleFor((s) => {
-          if (s.spaceName !== g.name) return false;
-          const p = g.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
-          return p != null && !projectVisible(p);
-        })
-      : bubbleFor((s) => s.spaceName === g.name);
-    const badge = statusBubble(r);
-    if (!badge) return null;
-    return <span class={styles.spaceBubble}>{badge}</span>;
+    const isActive = () => mode() === "spaces" && activeSpace()?.name === g.name;
+    return statusBubble(
+      () =>
+        isActive()
+          ? bubbleFor((s) => {
+              if (s.spaceName !== g.name) return false;
+              const p = g.projects.find((p) => p.branchUnits.some((u) => u.folderPath === s.folderPath));
+              return p != null && !projectVisible(p);
+            })
+          : bubbleFor((s) => s.spaceName === g.name),
+      true,
+    );
   }
 
   return (
@@ -3154,7 +3175,7 @@ export default function LeftSidebar(props: {
                       />
                     )}
                   </Show>
-                  {statusBubble(
+                  {statusBubble(() =>
                     plainDir()
                       ? bubbleForUnits(p, [folderUnit()])
                       : !popen()

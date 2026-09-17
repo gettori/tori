@@ -639,7 +639,9 @@
 }
 
 /* Space-tile badge: corner-pinned rollup for sessions hidden inside a
-   non-active space (or a search-filtered-out project of the active space). */
+   non-active space (or a search-filtered-out project of the active space).
+   One state only (see `statusBubble`): it grows leftward from the corner, and
+   anything wider than the tile runs under the scroller's clipped left edge. */
 .spaceBubble {
   position: absolute;
   top: calc(-4px * var(--ui-scale));
@@ -745,6 +747,11 @@
   align-items: center;
   gap: calc(3px * var(--ui-scale));
   overflow-x: auto;
+  /* `overflow-x: auto` clips the other axis too, and a tile's bubble hangs 4px
+     off its top right corner. The padding is that overhang, inside the clip
+     box; the margins hand the same room back so the strip does not move. */
+  padding: calc(4px * var(--ui-scale)) calc(4px * var(--ui-scale)) 0 0;
+  margin: calc(-4px * var(--ui-scale)) calc(-4px * var(--ui-scale)) 0 0;
   /* Scrollable but never drawn. Dropping the names buys room first; past that
      there is nothing left to give, and a 30px strip is too short to spend any
      of its height on a bar. */
