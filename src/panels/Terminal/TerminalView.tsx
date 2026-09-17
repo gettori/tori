@@ -110,6 +110,10 @@ export default function TerminalView(props: {
    *  caller declared it non-interactive: a clone opens by itself, and the next
    *  keystroke belongs wherever it was already going. */
   autoFocus?: boolean;
+  /** Route app hotkeys past the focused xterm. Default true. Off inside a
+   *  modal, where every app hotkey is held and would otherwise fire from here
+   *  anyway, since this dispatch never reaches the window listener. */
+  hotkeys?: boolean;
   /** The session id was refused: something else already drives it, so nothing
    *  was spawned. The owner renders the way out, because only it can focus
    *  another tab or open a fresh session. */
@@ -293,7 +297,7 @@ export default function TerminalView(props: {
         openSearch();
         return false;
       }
-      if (dispatchHotkey(e)) {
+      if (props.hotkeys !== false && dispatchHotkey(e)) {
         e.preventDefault();
         e.stopPropagation();
         return false;

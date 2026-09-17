@@ -401,6 +401,11 @@
   .link:hover {
     text-decoration: underline;
   }
+  .link:disabled {
+    color: var(--fg-subtle);
+    text-decoration: none;
+    cursor: default;
+  }
   .link:focus-visible {
     outline: none;
     box-shadow: 0 0 0 2px var(--brand-ring);
@@ -431,6 +436,150 @@
   .error {
     font-size: var(--tori-text-sm);
     color: var(--danger-fg);
+  }
+
+  .agents {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-4);
+    max-width: calc(680px * var(--ui-scale));
+  }
+  .agent {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--tori-space-5);
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    padding: var(--tori-space-5) calc(14px * var(--ui-scale));
+  }
+  .agentPlate {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: calc(28px * var(--ui-scale));
+    height: calc(28px * var(--ui-scale));
+    border-radius: var(--tori-radius-md);
+    background: var(--neutral-hover);
+  }
+  .agentText {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-1);
+    min-width: 0;
+  }
+  .agentName {
+    font-size: var(--tori-text-md);
+    color: var(--fg-default);
+  }
+  .agentLine {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-subtle);
+    overflow-wrap: anywhere;
+  }
+  .agentDrift {
+    color: var(--brand-strong);
+  }
+  .agentEnd {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    flex: none;
+    margin-left: auto;
+  }
+  .signedIn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-muted);
+  }
+  .signedIn::before {
+    content: "";
+    width: calc(6px * var(--ui-scale));
+    height: calc(6px * var(--ui-scale));
+    border-radius: var(--tori-radius-pill);
+    background: var(--success-fg);
+  }
+
+  .skeleton {
+    padding: calc(14px * var(--ui-scale));
+    animation: agentSkeleton 1.4s ease-in-out infinite;
+  }
+  .skeleton:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .skeleton:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+  .bar {
+    --bar: 70;
+    width: calc(var(--bar) * 1px * var(--ui-scale));
+    height: calc(9px * var(--ui-scale));
+    border-radius: var(--tori-radius-sm);
+    background: var(--neutral-hover);
+  }
+  .barEnd {
+    margin-left: auto;
+  }
+  .probing {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-subtle);
+  }
+
+  .others {
+    max-width: calc(680px * var(--ui-scale));
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+  }
+  .othersToggle {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-radius: var(--tori-radius-md);
+    padding: calc(11px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    font: inherit;
+    font-size: var(--tori-text-md);
+    color: var(--fg-muted);
+    text-align: left;
+    cursor: pointer;
+  }
+  .othersToggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--brand-ring);
+  }
+  .othersCount {
+    margin-left: auto;
+    font-size: var(--tori-text-sm);
+    color: var(--fg-subtle);
+  }
+  .othersList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-4);
+    padding: 0 calc(14px * var(--ui-scale)) calc(11px * var(--ui-scale));
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-muted);
+  }
+  .othersRow {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--tori-space-5);
+  }
+  .othersRow > span:last-child,
+  .othersNote {
+    color: var(--fg-subtle);
+  }
+  .othersNote {
+    font-family: var(--tori-font-ui);
   }
 
   .summary {
@@ -467,5 +616,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+@keyframes agentSkeleton {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
   }
 }
