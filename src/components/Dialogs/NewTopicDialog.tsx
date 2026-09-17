@@ -4,9 +4,9 @@ import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import RepoChecklist, { type RepoSpace } from "./RepoChecklist";
-import { featureSlug, type Feature } from "../../utils/features";
+import { topicSlug, type Topic } from "../../utils/topics";
 
-const NAME_LABEL = "feature-name-label";
+const NAME_LABEL = "topic-name-label";
 const PROBE_DEBOUNCE_MS = 250;
 
 export type BranchProbe = { local: boolean; remote: boolean; hasWorktree: boolean };
@@ -14,7 +14,7 @@ export type BranchProbe = { local: boolean; remote: boolean; hasWorktree: boolea
 type Probe = { slug: string; result: BranchProbe | null };
 const CLEAR: BranchProbe = { local: false, remote: false, hasWorktree: false };
 
-/** Create a Feature, or add repositories to one (`feature` set): the same
+/** Create a Topic, or add repositories to one (`topic` set): the same
  *  checklist, the same probe per checked repo, the same collision row. Only
  *  the name field and the command differ.
  *
@@ -25,12 +25,12 @@ const CLEAR: BranchProbe = { local: false, remote: false, hasWorktree: false };
  *  the branch, and a secondary worktree, on its own), the other button
  *  unchecks it. This tightens the #151 design, where Done needed only a name
  *  and a repo, so a collision is never discovered by a failed member. */
-export default function NewFeatureDialog(props: {
+export default function NewTopicDialog(props: {
   spaces: RepoSpace[];
-  features: Feature[];
-  /** When set, the dialog adds repositories to this Feature instead. */
-  feature?: Feature;
-  onDone: (feature: Feature) => void;
+  topics: Topic[];
+  /** When set, the dialog adds repositories to this Topic instead. */
+  topic?: Topic;
+  onDone: (topic: Topic) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = createSignal("");
@@ -41,11 +41,11 @@ export default function NewFeatureDialog(props: {
   const [error, setError] = createSignal<string | null>(null);
   let nameInput: HTMLInputElement | undefined;
 
-  const adding = () => props.feature !== undefined;
-  const slug = () => (props.feature ? props.feature.branch.replace(/^feat\//, "") : featureSlug(name()));
+  const adding = () => props.topic !== undefined;
+  const slug = () => (props.topic ? props.topic.branch.replace(/^feat\//, "") : topicSlug(name()));
   const branch = () => `feat/${slug()}`;
-  const takenBy = () => (adding() ? undefined : props.features.find((f) => f.branch === branch()));
-  const exclude = () => props.feature?.members.map((m) => m.repoPath) ?? [];
+  const takenBy = () => (adding() ? undefined : props.topics.find((f) => f.branch === branch()));
+  const exclude = () => props.topic?.members.map((m) => m.repoPath) ?? [];
 
   const repoName = (path: string) =>
     props.spaces.flatMap((g) => g.projects).find((p) => p.path === path)?.name ?? path.split("/").pop() ?? path;
@@ -114,16 +114,16 @@ export default function NewFeatureDialog(props: {
     setBusy(true);
     setError(null);
     try {
-      let feature: Feature;
-      if (props.feature) {
-        feature = props.feature;
+      let topic: Topic;
+      if (props.topic) {
+        topic = props.topic;
         for (const repoPath of checked()) {
-          feature = await invoke<Feature>("add_member", { topicId: props.feature.id, repoPath });
+          topic = await invoke<Topic>("add_member", { topicId: props.topic.id, repoPath });
         }
       } else {
-        feature = await invoke<Feature>("create_topic", { name: name().trim(), members: checked() });
+        topic = await invoke<Topic>("create_topic", { name: name().trim(), members: checked() });
       }
-      props.onDone(feature);
+      props.onDone(topic);
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -169,7 +169,7 @@ export default function NewFeatureDialog(props: {
   return (
     <Dialog
       open
-      title={props.feature ? `Add repository to ${props.feature.name}` : "New Feature"}
+      title={props.topic ? `Add repository to ${props.topic.name}` : "New Feature"}
       size="sheet"
       onClose={() => props.onCancel()}
       initialFocus={() => nameInput}

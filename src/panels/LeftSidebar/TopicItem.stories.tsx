@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import FeatureItem, { type SpaceTint } from "./FeatureItem";
-import type { Feature, Member, MemberState } from "../../utils/features";
+import TopicItem, { type SpaceTint } from "./TopicItem";
+import type { Topic, Member, MemberState } from "../../utils/topics";
 
 const SPACES: SpaceTint[] = [
   {
@@ -27,7 +27,7 @@ function member(repoPath: string, order: number, state: MemberState = { kind: "p
   };
 }
 
-function feature(name: string, members: Member[]): Feature {
+function topic(name: string, members: Member[]): Topic {
   return {
     id: `${name}-1`,
     name,
@@ -38,8 +38,8 @@ function feature(name: string, members: Member[]): Feature {
 }
 
 const meta = {
-  title: "Panels/LeftSidebar/FeatureItem",
-  component: FeatureItem,
+  title: "Panels/LeftSidebar/TopicItem",
+  component: TopicItem,
   args: {
     spaces: SPACES,
     onRepair: () => {},
@@ -51,7 +51,7 @@ const meta = {
       </ul>
     ),
   ],
-} satisfies Meta<typeof FeatureItem>;
+} satisfies Meta<typeof TopicItem>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -59,16 +59,16 @@ type Story = StoryObj<typeof meta>;
 /** The common case: two repos from one Space, both ready. */
 export const TwoMembers: Story = {
   args: {
-    feature: feature("Auth flow", [member("/w/api", 0), member("/w/web", 1)]),
+    topic: topic("Auth flow", [member("/w/api", 0), member("/w/web", 1)]),
   },
 };
 
-/** The Feature the rest of the window is showing: the brand bar down the left
+/** The Topic the rest of the window is showing: the brand bar down the left
  *  edge over a wash that fades out to the right, the same mark a selected
  *  branch row wears. */
 export const Open: Story = {
   args: {
-    feature: feature("Notifications", [member("/w/api", 0), member("/w/web", 1), member("/s/blog", 2)]),
+    topic: topic("Notifications", [member("/w/api", 0), member("/w/web", 1), member("/s/blog", 2)]),
     active: true,
   },
 };
@@ -78,7 +78,7 @@ export const Open: Story = {
  *  counts chips. */
 export const NineMembers: Story = {
   args: {
-    feature: feature("Payments migration with a name long enough to clip", [
+    topic: topic("Payments migration with a name long enough to clip", [
       member("/w/api", 0),
       member("/w/web", 1),
       member("/w/infra", 2),
@@ -96,7 +96,7 @@ export const NineMembers: Story = {
  *  the chips; one still creating. */
 export const OneFailed: Story = {
   args: {
-    feature: feature("Search", [
+    topic: topic("Search", [
       member("/w/api", 0),
       member("/w/web", 1, {
         kind: "failed",
@@ -110,7 +110,7 @@ export const OneFailed: Story = {
 /** A member whose repo sits in no Space renders the neutral chip. */
 export const OutsideEverySpace: Story = {
   args: {
-    feature: feature("Hotfix", [
+    topic: topic("Hotfix", [
       member("/w/api", 0),
       member("/tmp/scratch", 1),
       member("/s/blog", 2, { kind: "worktree-missing" }),

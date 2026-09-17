@@ -13,7 +13,7 @@ export type RepoSpace = {
 
 /** One checkbox group per Space, root Spaces first and pinned ones after,
  *  reporting the checked repo paths in rail order regardless of click order.
- *  `exclude` drops repos that cannot be picked (a Feature's current members);
+ *  `exclude` drops repos that cannot be picked (a Topic's current members);
  *  `collision` hangs an element under a repo's row, which is where the
  *  creation dialog puts its "already exists" line. */
 export default function RepoChecklist(props: {
