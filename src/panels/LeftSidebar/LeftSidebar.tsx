@@ -12,7 +12,8 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../componen
 import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog";
 import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
-import NewProjectDialog, { type NewProjectMode } from "../../components/Dialogs/NewProjectDialog";
+import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
+import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
 import ProjectIconDialog from "../../components/Dialogs/ProjectIconDialog";
 import ProjectAgentsDialog, { ruleRows } from "../../components/Dialogs/ProjectAgentsDialog";
@@ -209,23 +210,6 @@ function startAbsDrag(e: DragEvent, paths: string | string[]) {
   e.dataTransfer?.setData("text/plain", value);
   if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
 }
-
-// Bare + worktree bootstrap, run as one `set -e` pipeline in a terminal tab.
-// $1 = repo URL, $2 = project folder (passed as args, never interpolated). The
-// trailing `|| rm -rf` cleans up a half-built project on any failure; a killed
-// run leaves a `.bare`-only stub, which discovery flags as `incomplete`.
-const BOOTSTRAP_SCRIPT = `set -e
-url="$1"; proj="$2"
-(
-  set -e
-  git clone --bare "$url" "$proj/.bare"
-  printf 'gitdir: ./.bare\\n' > "$proj/.git"
-  git -C "$proj/.bare" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
-  git -C "$proj" fetch origin
-  def="$(git -C "$proj/.bare" symbolic-ref --short HEAD)"
-  git -C "$proj" worktree add "$def" "$def"
-  echo; echo "Done: '$proj' ready on branch '$def'."
-) || { echo; echo "Bootstrap failed; cleaning up $proj"; rm -rf "$proj"; exit 1; }`;
 
 // A branch-unit: a worktree folder, a branch of a plain repo, a non-git folder
 // (plain-dir), or a cleanable stub (incomplete). All four share `folderPath`,
@@ -1525,38 +1509,11 @@ export default function LeftSidebar(props: {
     }
   }
 
-  function badName(name: string): string | null {
-    const n = name.trim();
-    if (!n) return "Name is empty";
-    if (n.includes("/") || n.includes("\\")) return "Name cannot contain a slash";
-    if (n.startsWith(".")) return "Name cannot start with a dot";
-    return null;
-  }
-
-  // Pre-check the target dir is free, then run the command as a job (native git
-  // progress + ambient auth, no in-app credentials), which re-discovers
-  // projects when it exits.
-  async function runInTab(g: Space, name: string, kind: string, program: string, args: string[]) {
-    const bad = badName(name);
+  async function runInTab(g: Space, mode: "clone" | "bare", name: string, url: string) {
+    const bad = await claimProjectFolder(g.path, name);
     if (bad) return setError(bad);
-    const target = `${g.path}/${name.trim()}`;
-    if (await invoke<boolean>("file_exists", { path: target })) {
-      return setError(`"${name.trim()}" already exists`);
-    }
     setError("");
-    // Tori is creating this folder: adopt the target path so a clone/bootstrap
-    // onto a path that once held sessions is not flagged historical.
-    invoke("adopt_path", { path: target }).catch(() => {});
-    emitWith<OpenJob>(OPEN_JOB, {
-      // A fresh id per press, unlike an install or a login: two clones into two
-      // folders are two clones, and neither should reveal the other.
-      id: `${kind}:${target}:${Date.now()}`,
-      title: `${kind} ${name.trim()}`,
-      cwd: g.path,
-      program,
-      args,
-      rediscoverOnExit: true,
-    });
+    emitWith<OpenJob>(OPEN_JOB, projectJob(mode, g.path, name, url));
   }
 
   // Open the space-level "New…" dialog.
@@ -1587,11 +1544,7 @@ export default function LeftSidebar(props: {
     // clone / bare open a terminal tab; runInTab validates the name and surfaces
     // its own errors, so close the dialog and hand off.
     setNewReq(null);
-    if (opts.mode === "clone") {
-      await runInTab(g, opts.name, "clone", "git", ["clone", opts.url, opts.name]);
-    } else {
-      await runInTab(g, opts.name, "bootstrap", "sh", ["-c", BOOTSTRAP_SCRIPT, "tori", opts.url, opts.name]);
-    }
+    await runInTab(g, opts.mode, opts.name, opts.url);
   }
 
   async function cleanupStub(u: BranchUnit) {
