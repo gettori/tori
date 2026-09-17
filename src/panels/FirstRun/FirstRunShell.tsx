@@ -80,7 +80,7 @@ export default function FirstRunShell(props: {
   title: string;
   rail: JSX.Element;
   railFooter?: JSX.Element;
-  heading: string;
+  heading: JSX.Element;
   required?: boolean;
   lead: JSX.Element;
   footerLeft?: JSX.Element;
