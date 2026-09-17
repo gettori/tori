@@ -15,6 +15,7 @@ import { OPEN_JOB, TOAST, emitWith, type OpenJob, type ToastEvent } from "../../
 import { asProfileId, asTabProfile, refreshAgentHealth, type SignIn } from "../../../../utils/agentHealth";
 import { defaultProfile, setDefaultProfile } from "../../../../utils/agentEnabled";
 import { warnAtLabel } from "../../../../utils/chatBudget";
+import { shortHome } from "../../../../utils/names";
 import {
   OTHER_WEEK_LABEL,
   limitTypeChip,
@@ -154,10 +155,6 @@ const WARN_AT_STEP = 0.05;
 
 function toast(message: string, kind: ToastEvent["kind"]) {
   emitWith<ToastEvent>(TOAST, { message, kind });
-}
-
-function shortHome(path: string, home: string): string {
-  return home.length > 1 && path.startsWith(home) ? `~${path.slice(home.length)}` : path;
 }
 
 /** When the window empties, in the words the reader needs: a countdown while it

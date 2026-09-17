@@ -1761,17 +1761,6 @@
     opacity: 0.55;
   }
 
-  .welcome {
-    font-size: var(--tori-text-sm);
-    line-height: 1.55;
-    color: var(--fg-default);
-    background: var(--canvas-input);
-    border: var(--tori-border-thin) solid var(--border-default);
-    border-radius: var(--tori-radius-md);
-    padding: var(--tori-space-5);
-    margin-bottom: var(--tori-space-6);
-  }
-
   /* --- The Files group: an agent's own config files, per account --- */
 
   .fileList {

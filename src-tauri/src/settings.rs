@@ -873,7 +873,7 @@ fn drop_default_profile(agent: &mut Agent, adapter_id: &str, profile_id: &str) -
 /// silently switched to a bundled palette. Silently is the problem: the user
 /// picked that file, so they are told once, by name, that it is gone. The flag
 /// lives in state.json rather than settings.json for the same reason
-/// `onboarding_shown` does - "have we said this yet" is app state, not a
+/// `intro_seen` does - "have we said this yet" is app state, not a
 /// preference the user should find in their hand-editable config.
 #[tauri::command]
 pub fn take_theme_import_notice() -> Option<String> {

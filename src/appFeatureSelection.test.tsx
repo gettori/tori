@@ -73,7 +73,6 @@ beforeEach(() => {
   invoke.mockReset();
   invoke.mockImplementation(async (cmd: string) => {
     if (cmd === "get_settings") return DEFAULT_SETTINGS;
-    if (cmd === "onboarding_should_show") return false;
     if (cmd === "list_user_themes") return { themes: [], errors: [] };
     if (cmd === "list_features") return features;
     return null;

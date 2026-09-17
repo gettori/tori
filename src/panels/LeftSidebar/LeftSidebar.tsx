@@ -54,6 +54,8 @@ import {
   TOGGLE_DOCK,
   OPEN_SETTINGS,
   type OpenSettings,
+  ACTIVATE_SPACE,
+  type ActivateSpace,
 } from "../../utils/events";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import { projectUnitKind } from "../../utils/featureMembers";
@@ -2658,7 +2660,9 @@ export default function LeftSidebar(props: {
   let unlistenFetchDone: UnlistenFn | undefined;
   let unlistenFetchError: UnlistenFn | undefined;
   let offFocus: (() => void) | undefined;
+  let offActivateSpace: (() => void) | undefined;
   onMount(async () => {
+    offActivateSpace = onWith<ActivateSpace>(ACTIVATE_SPACE, ({ name }) => setActiveSpaceName(name));
     await invoke("config_watch_start").catch(() => {});
     await invoke("sessions_watch_start").catch(() => {});
     await loadConfig();
@@ -2759,6 +2763,7 @@ export default function LeftSidebar(props: {
     unlistenFetchDone?.();
     unlistenFetchError?.();
     offFocus?.();
+    offActivateSpace?.();
   });
 
   // --- forge polling ---------------------------------------------------------

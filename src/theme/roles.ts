@@ -144,6 +144,7 @@ export const ROLES: Role[] = [
 
   { id: "scrim.default", cssVar: "--scrim-default", group: "scrim" },
   { id: "scrim.soft", cssVar: "--scrim-soft", group: "scrim" },
+  { id: "scrim.strong", cssVar: "--scrim-strong", group: "scrim" },
 
   { id: "status.progress", cssVar: "--status-progress", group: "status" },
   { id: "status.needsYou", cssVar: "--status-needs-you", group: "status" },
@@ -307,6 +308,7 @@ export function buildRoleValues(palette: Palette): Record<string, string> {
 
     "scrim.default": alpha(p.scrimTint, v({ dark: 0.45, light: 0.3 })),
     "scrim.soft": alpha(p.scrimTint, v({ dark: 0.35, light: 0.22 })),
+    "scrim.strong": alpha(p.scrimTint, v({ dark: 0.72, light: 0.5 })),
 
     "status.progress": p.statusProgress,
     "status.needsYou": p.statusNeedsYou,
