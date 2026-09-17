@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-solid";
 import Icon from "../Icon/Icon";
+import IconButton from "../IconButton/IconButton";
 import type { BadgeTone, ForgeChip, PrChipState } from "../../utils/forgeChip";
 import styles from "./ForgeChip.module.css";
 
@@ -128,28 +129,49 @@ export default function ForgeChipView(props: {
   return (
     <Show when={anything()}>
       <Show
-        when={props.onActivate}
+        when={props.onActivate && props.chip.connect}
         fallback={
-          <span class={styles.forgeChip} data-forge-state={props.chip.kind}>
-            {body()}
-          </span>
+          <Show
+            when={props.onActivate}
+            fallback={
+              <span class={styles.forgeChip} data-forge-state={props.chip.kind}>
+                {body()}
+              </span>
+            }
+          >
+            <button
+              type="button"
+              class={styles.forgeChip}
+              data-forge-state={props.chip.kind}
+              aria-label={props.label}
+              // The sidebar row around this is a div with its own onClick, so
+              // without this a click on the chip would also select the branch and
+              // the panel would open onto whatever that selection changed to.
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onActivate?.();
+              }}
+            >
+              {body()}
+            </button>
+          </Show>
         }
       >
-        <button
-          type="button"
-          class={styles.forgeChip}
-          data-forge-state={props.chip.kind}
-          aria-label={props.label}
-          // The sidebar row around this is a div with its own onClick, so
-          // without this a click on the chip would also select the branch and
-          // the panel would open onto whatever that selection changed to.
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onActivate?.();
-          }}
-        >
-          {body()}
-        </button>
+        {(c) => (
+          <IconButton
+            size="xs"
+            class={styles.connect}
+            icon={<Icon icon={Plug} />}
+            aria-label={props.label}
+            tooltip={c().title}
+            data-forge-state={props.chip.kind}
+            data-forge-connect
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation();
+              props.onActivate?.();
+            }}
+          />
+        )}
       </Show>
     </Show>
   );
