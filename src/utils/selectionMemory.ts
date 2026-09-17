@@ -5,7 +5,7 @@ import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
 
 const KEY = "tori.selection-memory.v1";
 
-type Memory = { spaces: Record<string, Selection>; feature: Selection | null };
+type Memory = { spaces: Record<string, Selection>; topic: Selection | null };
 
 function sel(v: unknown): Selection | null {
   const s = v as Selection | null;
@@ -13,7 +13,7 @@ function sel(v: unknown): Selection | null {
 }
 
 function read(): Memory {
-  const empty: Memory = { spaces: {}, feature: null };
+  const empty: Memory = { spaces: {}, topic: null };
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return empty;
@@ -24,7 +24,7 @@ function read(): Memory {
       const s = sel(v);
       if (s && s.folderPath) spaces[space] = s;
     }
-    return { spaces, feature: sel(parsed.feature) };
+    return { spaces, topic: sel(parsed.topic) };
   } catch {
     return empty;
   }
@@ -44,9 +44,9 @@ function write(next: Memory) {
 export function rememberSelection(s: Selection | null) {
   if (!s) return;
   const mem = read();
-  if (s.kind === "feature") {
-    if (!s.featureId) return;
-    write({ ...mem, feature: s });
+  if (s.kind === "topic") {
+    if (!s.topicId) return;
+    write({ ...mem, topic: s });
     return;
   }
   if (!s.spaceName || !s.folderPath) return;
@@ -61,5 +61,5 @@ export function rememberedUnit(space: string): Selection | null {
 
 /** The Topic last selected, in either mode. */
 export function rememberedTopic(): Selection | null {
-  return read().feature;
+  return read().topic;
 }

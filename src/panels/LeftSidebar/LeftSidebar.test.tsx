@@ -276,7 +276,7 @@ describe("the Spaces | Features mode", () => {
     await screen.findByText("repo");
     fireEvent.click(segment("Features"));
     await waitFor(() => expect(pressed("Features")).toBe(true));
-    expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("features");
+    expect(localStorage.getItem("tori.sidebar-mode.v1")).toBe("topics");
     expect(screen.queryByText("repo")).toBeNull();
     expect(first.container.querySelector("[data-topic-list]")).not.toBeNull();
     await screen.findByText("No Features yet.");

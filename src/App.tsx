@@ -504,7 +504,7 @@ function App() {
   // still on `folderPath` sees the same folder the editor and git do.
   function setActiveRoot(root: string | null) {
     setSelected((prev) => {
-      if (!prev || prev.kind !== 'feature') return prev;
+      if (!prev || prev.kind !== 'topic') return prev;
       return { ...prev, activeRoot: root, folderPath: root ?? '', projectPath: root ?? '' };
     });
   }
@@ -516,12 +516,12 @@ function App() {
   // listing, resolving later, overwrite the newer one.
   let resolveSeq = 0;
   async function resolveTopicSelection() {
-    if (selected()?.kind !== 'feature') return;
+    if (selected()?.kind !== 'topic') return;
     const mine = ++resolveSeq;
     const list = (await invoke<Topic[] | null>('list_topics').catch(() => null)) ?? [];
     const sel = selected();
-    if (mine !== resolveSeq || sel?.kind !== 'feature') return;
-    const topic = list.find((f) => f.id === sel.featureId);
+    if (mine !== resolveSeq || sel?.kind !== 'topic') return;
+    const topic = list.find((f) => f.id === sel.topicId);
     setSelected(topic ? topicSelection(topic, sel.activeRoot) : null);
   }
   let unlistenConfig: UnlistenFn | undefined;

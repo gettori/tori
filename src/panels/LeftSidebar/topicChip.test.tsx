@@ -83,9 +83,9 @@ const AUTH = {
 };
 
 const topicSel = {
-  kind: "feature",
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic",
+  topicId: "f1",
+  topicName: "Auth",
   roots: [MEMBER, "/w/web-auth"],
   activeRoot: MEMBER,
   spaceName: "",
@@ -93,7 +93,7 @@ const topicSel = {
   projectPath: MEMBER,
   folderPath: MEMBER,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 };
 const unitSel = {
   kind: "unit",
@@ -139,7 +139,7 @@ describe("a Feature worktree in Spaces", () => {
     await waitFor(() => expect(chips().length).toBe(1));
     fireEvent.click(screen.getByRole("button", { name: "Open Feature Auth" }));
     expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect.mock.calls[0][0]).toMatchObject({ kind: "feature", featureId: "f1", activeRoot: MEMBER });
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ kind: "topic", topicId: "f1", activeRoot: MEMBER });
   });
 
   it("marks no unit active while a Feature is selected", async () => {

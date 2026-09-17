@@ -18,7 +18,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { setInvokeRecorder } from "./tracedCore";
 
-type SwitchKind = "worktree" | "feature" | "tab";
+type SwitchKind = "worktree" | "topic" | "tab";
 
 /** What a worktree or Topic switch waits for before it counts as settled. A
  *  tab switch has no data leg: the buffers are already in memory, so it ends at

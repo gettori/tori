@@ -20,7 +20,7 @@ import {
 // The slug is what every member's branch is named after, so the frontend and
 // backend rules have to agree character for character: these cases mirror
 // `topics::tests::slug_lowercases_collapses_and_rejects_empty`.
-describe("featureSlug", () => {
+describe("topicSlug", () => {
   it("matches the backend rule", () => {
     expect(topicSlug("Auth Flow")).toBe("auth-flow");
     expect(topicSlug("  Payments!!  v2 ")).toBe("payments-v2");
@@ -84,11 +84,11 @@ const TOPIC: Topic = {
 const A = "/r/a/.tori/worktrees/auth-flow";
 const B = "/r/b/.tori/worktrees/auth-flow";
 
-describe("featureSelection", () => {
+describe("topicSelection", () => {
   it("keeps a stored root that is still present", () => {
     const sel = topicSelection(TOPIC, B);
-    expect(sel.kind).toBe("feature");
-    expect(sel.featureId).toBe("f1");
+    expect(sel.kind).toBe("topic");
+    expect(sel.topicId).toBe("f1");
     expect(sel.roots).toEqual([A, B]);
     expect(sel.activeRoot).toBe(B);
     expect(sel.folderPath).toBe(B);
@@ -114,7 +114,7 @@ describe("workspaceKey and selectionRoot", () => {
   const unit = { kind: "unit" as const, folderPath: "/r/a", activeRoot: undefined };
 
   it("keys a Feature by id and a unit by folder", () => {
-    expect(workspaceKey(topicSelection(TOPIC, A))).toBe("feature:f1");
+    expect(workspaceKey(topicSelection(TOPIC, A))).toBe("topic:f1");
     expect(workspaceKey(unit)).toBe("/r/a");
     expect(workspaceKey({ folderPath: "/r/a" })).toBe("/r/a");
     expect(workspaceKey(null)).toBe("");
@@ -132,17 +132,17 @@ describe("workspaceKey and selectionRoot", () => {
     // A path or a Topic key never reads as Shells, and the two synthetic
     // key spaces stay apart.
     expect(isShellsKey("/shells:")).toBe(false);
-    expect(isShellsKey("feature:shells:")).toBe(false);
+    expect(isShellsKey("topic:shells:")).toBe(false);
     expect(isTopicKey(SHELLS_KEY)).toBe(false);
   });
 
   it("spans the selected Feature's roots and nothing for an unselected one", () => {
     const sel = topicSelection(TOPIC, A);
-    expect(workspaceFolders("feature:f1", sel)).toEqual([A, B]);
-    expect(workspaceFolders("feature:other", sel)).toEqual([]);
+    expect(workspaceFolders("topic:f1", sel)).toEqual([A, B]);
+    expect(workspaceFolders("topic:other", sel)).toEqual([]);
     expect(workspaceFolders("/r/a", sel)).toEqual(["/r/a"]);
-    expect(isTopicKey("feature:f1")).toBe(true);
-    expect(isTopicKey("/feature:f1")).toBe(false);
+    expect(isTopicKey("topic:f1")).toBe(true);
+    expect(isTopicKey("/topic:f1")).toBe(false);
   });
 });
 
@@ -167,9 +167,9 @@ describe("rootOf", () => {
 
 // A Spaces row counts a Topic tab by its cwd, and a repo never owns the
 // Topic worktrees parked under its own `.tori/worktrees/`: the member
-// folder does. Mirrors `sessions::listing_never_claims_a_repos_own_feature_worktrees`.
+// folder does. Mirrors `sessions::listing_never_claims_a_repos_own_topic_worktrees`.
 describe("tabUnderFolder", () => {
-  const topicTab = (cwd: string) => ({ workspace: "feature:f1", cwd });
+  const topicTab = (cwd: string) => ({ workspace: "topic:f1", cwd });
 
   it("counts a Feature tab on the member folder it was spawned in", () => {
     expect(tabUnderFolder(topicTab("/w/api-auth/src"), "/w/api-auth")).toBe(true);
@@ -181,7 +181,7 @@ describe("tabUnderFolder", () => {
     const cwd = "/w/api/.tori/worktrees/auth/src";
     expect(tabUnderFolder(topicTab(cwd), "/w/api")).toBe(false);
     expect(tabUnderFolder(topicTab(cwd), "/w/api/.tori/worktrees/auth")).toBe(true);
-    expect(tabUnderFolder({ workspace: "feature:f1" }, "/w/api")).toBe(false);
+    expect(tabUnderFolder({ workspace: "topic:f1" }, "/w/api")).toBe(false);
   });
 
   it("keeps the workspace prefix rule for a unit tab", () => {

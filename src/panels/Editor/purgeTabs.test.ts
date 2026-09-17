@@ -113,11 +113,11 @@ describe("purgeTabsUnder", () => {
 // key, which is not a folder at all. So the only thing that knows which repos
 // the tab reaches into is the document, and the sweep has to ask.
 describe("a results buffer's own roots", () => {
-  const search = syntheticId("search", "feature:f1", "needle");
+  const search = syntheticId("search", "topic:f1", "needle");
   const covers = (roots: string[]) => (id: string) => (id === search ? roots : null);
   const input = (): TabMaps<{ path: string; name: string }> => ({
-    tabs: { "feature:f1": [{ path: search, name: "Search: needle" }] },
-    active: { "feature:f1": search },
+    tabs: { "topic:f1": [{ path: search, name: "Search: needle" }] },
+    active: { "topic:f1": search },
   });
 
   it("takes the tab when any one of its members is deleted", () => {
@@ -125,13 +125,13 @@ describe("a results buffer's own roots", () => {
     // half-invalidated document cannot be repaired into an honest one.
     const out = purgeTabsUnder(input(), "/space/one", covers(["/space/one/api", "/space/two/web"]));
     expect(out.removed).toEqual([search]);
-    expect(out.active["feature:f1"]).toBeNull();
+    expect(out.active["topic:f1"]).toBeNull();
   });
 
   it("leaves it alone when the deleted folder is none of them", () => {
     const out = purgeTabsUnder(input(), "/space/three", covers(["/space/one/api", "/space/two/web"]));
     expect(out.removed).toEqual([]);
-    expect(out.tabs["feature:f1"]).toHaveLength(1);
+    expect(out.tabs["topic:f1"]).toHaveLength(1);
   });
 
   it("falls back to the id's own workspace for a buffer that is gone", () => {

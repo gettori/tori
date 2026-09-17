@@ -674,7 +674,7 @@ pub mod commands {
     }
 
     /// A record-only mutation: run it, reload, and announce the result. Every
-    /// consumer of `createFeatureMembers` reads on the event, so a rename or a
+    /// consumer of `createTopicMembers` reads on the event, so a rename or a
     /// reorder that emits nothing is invisible outside the sidebar's own signal.
     fn announce(
         app: &AppHandle,

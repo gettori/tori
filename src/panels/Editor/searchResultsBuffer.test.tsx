@@ -382,7 +382,7 @@ describe("writing back across members", () => {
   /** Two notes, then blank/member/header/row twice over. */
   const ROWS = { api: 6, web: 10 };
 
-  const mountTopic = () => mount({ matches: SHARED, roots: TOPIC, ws: "feature:f1" });
+  const mountTopic = () => mount({ matches: SHARED, roots: TOPIC, ws: "topic:f1" });
 
   beforeEach(() => {
     disk[`${API}/src/index.ts`] = "api needle";

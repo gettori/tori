@@ -147,7 +147,7 @@ describe("Remove repository", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "features");
+    localStorage.setItem("tori.sidebar-mode.v1", "topics");
   });
 
   it("keeps the worktree and leaves it out of the record", async () => {

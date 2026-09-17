@@ -54,9 +54,9 @@ vi.mock("@tauri-apps/api/event", () => ({
 const { default: Toolbar } = await import("./components/Toolbar/Toolbar");
 
 const sel = {
-  kind: "feature",
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic",
+  topicId: "f1",
+  topicName: "Auth",
   roots: [A, B],
   activeRoot: A,
   spaceName: "",
@@ -64,7 +64,7 @@ const sel = {
   projectPath: A,
   folderPath: A,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 };
 
 const changed = () => (handlers["topics://changed"] ?? []).slice().forEach((cb) => cb({ payload: null }));

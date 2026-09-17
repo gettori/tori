@@ -1,5 +1,5 @@
 // A Topic as the selection (#154 phase 1). The shell keys every store on
-// `feature:<id>` rather than a folder, re-resolves a stored Topic against the
+// `topic:<id>` rather than a folder, re-resolves a stored Topic against the
 // live record, and backfills `kind` on a selection persisted before Topics.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, render, waitFor } from "@solidjs/testing-library";
@@ -51,9 +51,9 @@ const topic = (members: unknown[]) => ({
   createdAt: 1,
 });
 const storedTopic = {
-  kind: "feature",
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic",
+  topicId: "f1",
+  topicName: "Auth",
   roots: [A],
   activeRoot: A,
   spaceName: "",
@@ -61,7 +61,7 @@ const storedTopic = {
   projectPath: A,
   folderPath: A,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 };
 
 let topics: unknown[] = [topic([member("/r/a", A, 0)])];
@@ -81,10 +81,10 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("a Feature as the selection", () => {
-  it("keys the pane envelope on feature:<id>, not on the active member's folder", async () => {
+  it("keys the pane envelope on topic:<id>, not on the active member's folder", async () => {
     localStorage.setItem("tori.selection.v1", JSON.stringify(storedTopic));
     render(() => <App />);
-    await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("feature:f1"));
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("topic:f1"));
     expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).not.toHaveProperty(A);
   });
 
@@ -109,7 +109,7 @@ describe("a Feature as the selection", () => {
   });
 
   it("loads a selection stored before Features as a unit", async () => {
-    const { kind: _k, featureId: _f, ...unitish } = { ...storedTopic, folderPath: "/r/a", projectKind: "plain" };
+    const { kind: _k, topicId: _f, ...unitish } = { ...storedTopic, folderPath: "/r/a", projectKind: "plain" };
     localStorage.setItem("tori.selection.v1", JSON.stringify(unitish));
     render(() => <App />);
     await waitFor(() => expect(storedSelection().kind).toBe("unit"));
@@ -123,11 +123,11 @@ describe("a deleted Feature", () => {
     const { PURGE_WORKSPACE, emitWith } = await import("./utils/events");
     localStorage.setItem("tori.selection.v1", JSON.stringify(storedTopic));
     render(() => <App />);
-    await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("feature:f1"));
-    emitWith(PURGE_WORKSPACE, { workspace: "feature:f1" });
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("topic:f1"));
+    emitWith(PURGE_WORKSPACE, { workspace: "topic:f1" });
     await waitFor(() => expect(storedSelection()).toBeNull());
     const { flushEnvelopes } = await import("./layout/layoutStore");
     flushEnvelopes();
-    expect(JSON.parse(localStorage.getItem("tori.panes.v1") ?? "{}")).not.toHaveProperty("feature:f1");
+    expect(JSON.parse(localStorage.getItem("tori.panes.v1") ?? "{}")).not.toHaveProperty("topic:f1");
   });
 });

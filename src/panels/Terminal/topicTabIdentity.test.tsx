@@ -68,9 +68,9 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 
 const topicSel = {
-  kind: "feature",
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic",
+  topicId: "f1",
+  topicName: "Auth",
   roots: [A, B],
   activeRoot: A,
   spaceName: "",
@@ -78,7 +78,7 @@ const topicSel = {
   projectPath: A,
   folderPath: A,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 };
 
 /** The chips on the visible strip; the measuring ghost draws its own copies. */
@@ -93,7 +93,7 @@ beforeEach(() => {
   localStorage.setItem(
     "tori.terminalTabs",
     JSON.stringify({
-      "feature:f1": {
+      "topic:f1": {
         tabs: [
           { title: "api shell", cwd: A, kind: "shell", program: "", args: [] },
           { title: "web shell", cwd: B, kind: "shell", program: "", args: [] },

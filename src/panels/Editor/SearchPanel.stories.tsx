@@ -64,7 +64,7 @@ const meta = {
   args: {
     root: API,
     focusNonce: 0,
-    workspace: "feature:notifications",
+    workspace: "topic:notifications",
   },
   decorators: [
     (Story) => {

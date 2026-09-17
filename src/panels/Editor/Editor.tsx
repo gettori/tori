@@ -417,7 +417,7 @@ function tabLabel(t: FileTab) {
 // which is the one thing its label cannot say and the only thing telling two
 // branch-units' log tabs apart. A results buffer answers with the folders it
 // writes into instead: its `ws=` field is a workspace *key*, and inside a
-// Topic that is `feature:<id>`, which names nothing a reader knows.
+// Topic that is `topic:<id>`, which names nothing a reader knows.
 function tabTitle(t: FileTab): string {
   const roots = searchBufferRoots(t.path);
   if (roots?.length) return roots.join("\n");
@@ -468,7 +468,7 @@ export default function Editor(props: {
     />
   );
   // The store key, not the folder: a Topic is one workspace over several
-  // member folders, so its tabs live under `feature:<id>` while `root()` moves.
+  // member folders, so its tabs live under `topic:<id>` while `root()` moves.
   const ws = () => workspaceKey(props.selected);
   const tabs = () => tabsByWs()[ws()] ?? [];
   // One report for every way a tab can go (close, force close, purge), taken
@@ -855,7 +855,7 @@ export default function Editor(props: {
   // Inside a Topic the file tree draws one section per member, unusable ones
   // included, so a member with no worktree has somewhere to say so and a Retry
   // to offer. A branch unit reads no Topic record at all.
-  const topicId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
+  const topicId = () => (props.selected?.kind === "topic" ? (props.selected.topicId ?? null) : null);
   const members = createTopicMembers(topicId);
 
   // Which member a tab's file sits in, for the surfaces that have to name the
@@ -1083,7 +1083,7 @@ export default function Editor(props: {
   // layout has one. Null for plain / plain-dir gates the tree's share action.
   //
   // Inside a Topic the question is per member, and it is asked of the *repo*,
-  // not of the Topic: `projectKind` is "feature" there. A member's `repoPath`
+  // not of the Topic: `projectKind` is "topic" there. A member's `repoPath`
   // is its project path from discovery, so it is already the container, and
   // `kind` says whether that container is a bare one (`create_worktree` links
   // `.shared/` into each worktree) or a plain repo (whose Topic worktrees sit
@@ -1342,7 +1342,7 @@ export default function Editor(props: {
   // list) re-issues rather than leaving the newcomer muted for the session.
   const watchRoots = () => {
     const sel = props.selected;
-    if (sel?.kind === "feature") return sel.roots ?? [];
+    if (sel?.kind === "topic") return sel.roots ?? [];
     const r = root();
     return r ? [r] : [];
   };
@@ -1367,7 +1367,7 @@ export default function Editor(props: {
       // An empty set still goes out for a Topic: it evicts, where skipping
       // would leave the last Topic's members watched and unmuted, emitting
       // bursts for a tree nobody is looking at.
-      if (props.selected?.kind === "feature") invoke("fs_watch_set", { roots }).catch(() => {});
+      if (props.selected?.kind === "topic") invoke("fs_watch_set", { roots }).catch(() => {});
       else if (roots.length) invoke("fs_watch_start", { projectPath: roots[0] }).catch(() => {});
     }),
   );

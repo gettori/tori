@@ -97,9 +97,9 @@ export function memberState(state: MemberState): MemberStateSummary {
  *  fail; the Rust constant `topics::LAST_MEMBER` is the same string. */
 export const LAST_MEMBER = "A Feature needs at least one repository. Delete the Feature instead.";
 
-/** The workspace key prefix for a Topic: `feature:<id>`. A path never starts
+/** The workspace key prefix for a Topic: `topic:<id>`. A path never starts
  *  with it, so the two key spaces cannot collide. */
-export const TOPIC_KEY_PREFIX = "feature:";
+export const TOPIC_KEY_PREFIX = "topic:";
 
 export function topicKey(id: string): string {
   return TOPIC_KEY_PREFIX + id;
@@ -134,9 +134,9 @@ export function topicSelection(topic: Topic, storedActiveRoot?: string | null): 
   const roots = topicRoots(topic);
   const activeRoot = storedActiveRoot && roots.includes(storedActiveRoot) ? storedActiveRoot : (roots[0] ?? null);
   return {
-    kind: "feature",
-    featureId: topic.id,
-    featureName: topic.name,
+    kind: "topic",
+    topicId: topic.id,
+    topicName: topic.name,
     roots,
     activeRoot,
     spaceName: "",
@@ -144,7 +144,7 @@ export function topicSelection(topic: Topic, storedActiveRoot?: string | null): 
     projectPath: activeRoot ?? "",
     folderPath: activeRoot ?? "",
     branch: topic.branch,
-    projectKind: "feature",
+    projectKind: "topic",
     // No session selected yet, so no account: a Topic is a set of branches,
     // and the profile arrives with the session picked inside it.
     profile: null,
@@ -171,11 +171,11 @@ export function rootOf(
   return best;
 }
 
-/** What every per-workspace store keys on: `feature:<id>` for a Topic, the
+/** What every per-workspace store keys on: `topic:<id>` for a Topic, the
  *  branch-unit folder otherwise, empty for nothing selected. */
-export function workspaceKey(sel: Pick<Selection, "kind" | "featureId" | "folderPath"> | null | undefined): string {
+export function workspaceKey(sel: Pick<Selection, "kind" | "topicId" | "folderPath"> | null | undefined): string {
   if (!sel) return "";
-  if (sel.kind === "feature" && sel.featureId) return topicKey(sel.featureId);
+  if (sel.kind === "topic" && sel.topicId) return topicKey(sel.topicId);
   return sel.folderPath ?? "";
 }
 
@@ -185,11 +185,11 @@ export function selectionRoot(
   sel: Pick<Selection, "kind" | "activeRoot" | "folderPath"> | null | undefined,
 ): string | null {
   if (!sel) return null;
-  if (sel.kind === "feature") return sel.activeRoot ?? null;
+  if (sel.kind === "topic") return sel.activeRoot ?? null;
   return sel.folderPath || null;
 }
 
-/** The folders a `feature:<id>` workspace spans, for a per-folder backend call
+/** The folders a `topic:<id>` workspace spans, for a per-folder backend call
  *  that has to be unioned; a plain workspace is its own single folder. */
 export function workspaceFolders(ws: string, sel: Selection | null | undefined): string[] {
   if (!isTopicKey(ws)) return [ws];

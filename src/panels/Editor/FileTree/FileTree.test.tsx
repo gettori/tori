@@ -1078,7 +1078,7 @@ describe("one member of a Feature at a time", () => {
 // What the tree had open, restored. A Topic's members share one workspace
 // key, so what each had open is told apart by its path alone.
 describe("restoring what was open", () => {
-  const WS = "feature:f1";
+  const WS = "topic:f1";
   const A = "/feat/api";
   const B = "/feat/web";
 

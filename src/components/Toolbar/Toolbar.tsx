@@ -24,8 +24,8 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
   const [err, setErr] = createSignal("");
 
   const sel = () => props.selected;
-  const isTopic = () => sel()?.kind === "feature";
-  const topicId = () => (isTopic() ? (sel()?.featureId ?? null) : null);
+  const isTopic = () => sel()?.kind === "topic";
+  const topicId = () => (isTopic() ? (sel()?.topicId ?? null) : null);
 
   // The Selection carries only the present roots; badges need every member, so
   // the record comes from the shared resource, which also owns the tint and the
@@ -70,7 +70,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
               }
             >
               <nav class={styles.tbCrumb} aria-label="location">
-                <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.featureName ?? sel()!.projectName}</span>
+                <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.topicName ?? sel()!.projectName}</span>
                 <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
                 {/* Named here and switched below: the crumb reads as where you
                     are, the chip row as the control that moves it. */}

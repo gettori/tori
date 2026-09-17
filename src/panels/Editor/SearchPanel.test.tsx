@@ -1087,10 +1087,10 @@ describe("saved searches", () => {
 
 describe("inside a Feature", () => {
   it("files history and saved searches under the workspace key, not the root it searched", async () => {
-    mount({ workspace: "feature:f1" });
+    mount({ workspace: "topic:f1" });
     await commit("here");
     const { historyFor, loadSearchHistory } = await import("../../utils/searchHistory");
-    expect(historyFor(loadSearchHistory(), "feature:f1").map((h) => h.query)).toEqual(["here"]);
+    expect(historyFor(loadSearchHistory(), "topic:f1").map((h) => h.query)).toEqual(["here"]);
     expect(historyFor(loadSearchHistory(), "/proj")).toEqual([]);
     const ran = searches();
     expect(ran[ran.length - 1]?.query).toBe("here");
@@ -1121,7 +1121,7 @@ describe("multi-root search", () => {
 
   const mountTopic = (extra: Partial<Parameters<typeof SearchPanel>[0]> = {}) =>
     render(() => (
-      <SearchPanel root={API} roots={MEMBERS} workspace="feature:f1" focusNonce={0} {...extra} />
+      <SearchPanel root={API} roots={MEMBERS} workspace="topic:f1" focusNonce={0} {...extra} />
     ));
 
   const sectionEl = (root: string) => document.querySelector(`[data-root="${root}"]`) as HTMLElement;
@@ -1162,7 +1162,7 @@ describe("multi-root search", () => {
     const [active, setActive] = createSignal(API);
     bridge.respond = () => ONE_FILE();
     render(() => (
-      <SearchPanel root={active()} roots={MEMBERS} workspace="feature:f1" focusNonce={0} />
+      <SearchPanel root={active()} roots={MEMBERS} workspace="topic:f1" focusNonce={0} />
     ));
     await type("ab");
     await waitFor(() => expect(sectionEl(API).textContent).toContain("ab cd ab"));
@@ -1176,13 +1176,13 @@ describe("multi-root search", () => {
   });
 
   it("clears the results when the workspace itself changes", async () => {
-    const [ws, setWs] = createSignal("feature:f1");
+    const [ws, setWs] = createSignal("topic:f1");
     bridge.respond = () => ONE_FILE();
     render(() => <SearchPanel root={API} roots={MEMBERS} workspace={ws()} focusNonce={0} />);
     await type("ab");
     await waitFor(() => expect(sectionEl(API).textContent).toContain("ab cd ab"));
 
-    setWs("feature:f2");
+    setWs("topic:f2");
     await waitFor(() => expect(sectionEl(API).textContent).not.toContain("ab cd ab"));
   });
 
@@ -1205,7 +1205,7 @@ describe("multi-root search", () => {
   it("skips a member with no usable worktree instead of grepping its repo", async () => {
     const roots = [MEMBERS[0], MEMBERS[1], { ...MEMBERS[2], state: missing }];
     render(() => (
-      <SearchPanel root={API} roots={roots} workspace="feature:f1" focusNonce={0} />
+      <SearchPanel root={API} roots={roots} workspace="topic:f1" focusNonce={0} />
     ));
     await type("needle");
 
@@ -1237,7 +1237,7 @@ describe("multi-root search", () => {
     bridge.respond = () => ONE_FILE();
     const [roots, setRoots] = createSignal(MEMBERS);
     render(() => (
-      <SearchPanel root={API} roots={roots()} workspace="feature:f1" focusNonce={0} />
+      <SearchPanel root={API} roots={roots()} workspace="topic:f1" focusNonce={0} />
     ));
     await type("ab");
     const order = () => Array.from(document.querySelectorAll("[data-root]")).map((s) => s.getAttribute("data-root"));
@@ -1352,7 +1352,7 @@ describe("multi-root search", () => {
     const seed = searchBuffer(opened[0])!.seed!;
     // One tab for the result set on screen, not one per member: N tabs to close
     // is a worse answer than one document with member headers in it.
-    expect(opened[0]).toContain(encodeURIComponent("feature:f1"));
+    expect(opened[0]).toContain(encodeURIComponent("topic:f1"));
     expect(seed.roots).toEqual([
       { root: API, label: "Payments API" },
       { root: WEB, label: "Web App" },
@@ -1499,7 +1499,7 @@ describe("member restriction", () => {
         root={API}
         roots={MEMBERS}
         members={MEMBERS.map(tinted)}
-        workspace="feature:f1"
+        workspace="topic:f1"
         focusNonce={0}
         {...extra}
       />
@@ -1610,7 +1610,7 @@ describe("member restriction", () => {
     localStorage.setItem(
       "tori.savedSearches",
       JSON.stringify({
-        "feature:f1": [
+        "topic:f1": [
           { name: "web todos", query: "TODO", options: {}, repos: [WEB_REPO] },
         ],
       }),
@@ -1632,7 +1632,7 @@ describe("member restriction", () => {
     localStorage.setItem(
       "tori.savedSearches",
       JSON.stringify({
-        "feature:f1": [{ name: "gone", query: "TODO", options: {}, repos: ["/repos/vanished"] }],
+        "topic:f1": [{ name: "gone", query: "TODO", options: {}, repos: ["/repos/vanished"] }],
       }),
     );
     mountTopic();
@@ -1648,7 +1648,7 @@ describe("member restriction", () => {
     const missing = { label: "Worktree missing", usable: false, action: "recreate" as const, reason: null };
     const roots = [MEMBERS[0], MEMBERS[1], { ...MEMBERS[2], state: missing }];
     render(() => (
-      <SearchPanel root={API} roots={roots} members={roots.map(tinted)} workspace="feature:f1" focusNonce={0} />
+      <SearchPanel root={API} roots={roots} members={roots.map(tinted)} workspace="topic:f1" focusNonce={0} />
     ));
 
     await waitFor(() => expect(chip("Docs Site: Worktree missing").disabled).toBe(true));

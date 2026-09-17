@@ -72,9 +72,9 @@ const { resetSessionActivityForTests } = await import("../../utils/sessionActivi
 const { REMOVE_BRANCH_UNIT, emitWith } = await import("../../utils/events");
 
 const topicSel = (roots: string[]) => ({
-  kind: "feature" as const,
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic" as const,
+  topicId: "f1",
+  topicName: "Auth",
   roots,
   activeRoot: WT,
   spaceName: "",
@@ -82,7 +82,7 @@ const topicSel = (roots: string[]) => ({
   projectPath: WT,
   folderPath: WT,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 });
 
 const cmds = () => bridge.calls.map((c) => c.cmd);

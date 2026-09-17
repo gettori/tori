@@ -77,9 +77,9 @@ const AUTH = { id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, member
 const PAY = { id: "f2", name: "Payments", branch: "feat/payments", createdAt: 2, members: [member("/w/api", A, 0)] };
 
 const topicSel = {
-  kind: "feature",
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic",
+  topicId: "f1",
+  topicName: "Auth",
   roots: [A, B],
   activeRoot: B,
   spaceName: "",
@@ -87,7 +87,7 @@ const topicSel = {
   projectPath: B,
   folderPath: B,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 };
 
 async function mounted(selected: unknown) {
@@ -112,7 +112,7 @@ describe("selecting a Feature", () => {
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
-    localStorage.setItem("tori.sidebar-mode.v1", "features");
+    localStorage.setItem("tori.sidebar-mode.v1", "topics");
   });
 
   it("hands the shell a feature Selection on click, keeping a stored active root", async () => {
@@ -120,13 +120,13 @@ describe("selecting a Feature", () => {
     fireEvent.click(row("Auth"));
     expect(onSelect).toHaveBeenCalledTimes(1);
     const sel = onSelect.mock.calls[0][0];
-    expect(sel.kind).toBe("feature");
-    expect(sel.featureId).toBe("f1");
+    expect(sel.kind).toBe("topic");
+    expect(sel.topicId).toBe("f1");
     expect(sel.roots).toEqual([A, B]);
     expect(sel.activeRoot).toBe(B);
 
     fireEvent.click(row("Payments"));
-    expect(onSelect.mock.calls[1][0]).toMatchObject({ kind: "feature", featureId: "f2", activeRoot: A });
+    expect(onSelect.mock.calls[1][0]).toMatchObject({ kind: "topic", topicId: "f2", activeRoot: A });
   });
 
   it("marks exactly the selected row active", async () => {
@@ -145,9 +145,9 @@ describe("selecting a Feature", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("deleting the selected Feature clears it and sweeps feature:<id> from every store", async () => {
+  it("deleting the selected Feature clears it and sweeps topic:<id> from every store", async () => {
     const seed = (key: string, value: unknown) =>
-      localStorage.setItem(key, JSON.stringify({ "feature:f1": value, "/w/api": value }));
+      localStorage.setItem(key, JSON.stringify({ "topic:f1": value, "/w/api": value }));
     seed("tori.panes.v1", { version: 2 });
     seed("tori.tabpanes.v1", {});
     seed("tori.editor.tabs.v1", { paths: [], active: null, savedAt: 1 });
@@ -161,7 +161,7 @@ describe("selecting a Feature", () => {
     seed("tori.searchHistory", []);
     seed("tori.savedSearches", []);
     seed("tori.treeExpanded.v1", { dirs: ["/w/api/src"], closed: [] });
-    expect(storesHolding("feature:f1").length).toBe(13);
+    expect(storesHolding("topic:f1").length).toBe(13);
 
     const { onSelect } = await mounted(topicSel);
     fireEvent.contextMenu(row("Auth"));
@@ -170,18 +170,18 @@ describe("selecting a Feature", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_topic")).toBe(true));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
-    expect(storesHolding("feature:f1")).toEqual([]);
+    expect(storesHolding("topic:f1")).toEqual([]);
     expect(storesHolding("/w/api").length).toBe(13);
   });
 
   it("sweeps the debug stores under each member root, and leaves the rest of that folder alone", async () => {
-    // Three stores key on the member root rather than on `feature:<id>`: what a
+    // Three stores key on the member root rather than on `topic:<id>`: what a
     // run remembered, its attach port and its watches. The Topic key going
     // never reached them.
     const seed = (key: string, value: unknown) =>
       localStorage.setItem(
         key,
-        JSON.stringify({ "feature:f1": value, [A]: value, [B]: value }),
+        JSON.stringify({ "topic:f1": value, [A]: value, [B]: value }),
       );
     seed("tori.watches", ["req.body"]);
     seed("tori.debugAttachPorts", 9229);
@@ -199,7 +199,7 @@ describe("selecting a Feature", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete Feature" }));
     await waitFor(() => expect(bridge.calls.some((c) => c.cmd === "delete_topic")).toBe(true));
 
-    await waitFor(() => expect(storesHolding("feature:f1")).toEqual([]));
+    await waitFor(() => expect(storesHolding("topic:f1")).toEqual([]));
     for (const root of [A, B]) {
       expect(storesHolding(root)).toEqual([
         "tori.editor.tabs.v1",

@@ -141,9 +141,9 @@ const { default: Editor } = await import("./Editor");
 const { emitWith, SET_RIGHT_MODE } = await import("../../utils/events");
 
 const topicSel = (activeRoot: string) => ({
-  kind: "feature" as const,
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic" as const,
+  topicId: "f1",
+  topicName: "Auth",
   roots: TOPIC_MEMBERS.map((m) => m.worktreePath).filter(Boolean),
   activeRoot,
   spaceName: "",
@@ -151,7 +151,7 @@ const topicSel = (activeRoot: string) => ({
   projectPath: activeRoot,
   folderPath: activeRoot,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 });
 
 /** Mount with the chip row wired to the same handler App gives it, so clicking
