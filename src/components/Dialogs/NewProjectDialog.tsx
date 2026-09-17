@@ -3,8 +3,7 @@ import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
 import Dialog from "../Dialog/Dialog";
-
-export type NewProjectMode = "folder" | "clone" | "bare";
+import { nameFromUrl, type NewProjectMode } from "../../utils/newProject";
 
 // Create something under a space, in one dialog. Replaces the separate "New
 // folder", "Clone repo…" and "Bare + worktree…" space-menu items: a segmented
@@ -32,8 +31,6 @@ export default function NewProjectDialog(props: {
   let first: HTMLInputElement | undefined;
 
   const needsUrl = () => mode() !== "folder";
-  const nameFromUrl = (u: string) =>
-    u.replace(/\/+$/, "").split("/").pop()?.replace(/\.git$/, "") ?? "";
 
   function onUrlInput(v: string) {
     setUrl(v);
