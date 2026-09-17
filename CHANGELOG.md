@@ -16,8 +16,9 @@ a first project, and ends on a summary before Tori opens.
 
 ### First run
 
-- The intro is five slides on how Tori works. Finish or skip it and it does not
-  show again. If you already saw the old greeting, you skip it.
+- The intro is six slides on how Tori works, one of them on Topics. Finish or
+  skip it and it does not show again. If you already saw the old greeting, you
+  skip it.
 - Agents lists the agent CLIs found on this machine, with version and sign-in
   state. Install and sign-in run in a terminal inside the window, so a login
   prompt can be answered right there.
@@ -40,6 +41,19 @@ a first project, and ends on a summary before Tori opens.
 - Claude, Codex, Gemini and OpenCode have Install, Update and Uninstall in
   Settings > Agents, through npm. npm's global bin has to be on your login
   shell's PATH for Tori to find them.
+
+### Topics
+
+- Features are called Topics now, in the sidebar, the dialogs, the command
+  palette and the error messages. They are stored under the new name, so
+  Features made before this update do not show up. Their worktrees stay on disk
+  and still appear in Spaces.
+- A Topic's branch is exactly what you type. The New Topic dialog fills Branch
+  from the name until you edit it, with no `feat/` prefix, and holds Done on a
+  branch name git would not accept.
+- A Topic worktree in Spaces wears a small tag instead of the "in <name>" chip.
+  Hover it for the Topic's name, click it to open the Topic. The Topics tile in
+  the sidebar uses the same tag.
 
 ### Fixes
 

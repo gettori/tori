@@ -1,5 +1,5 @@
 import { For, Match, Show, Switch, type JSX } from "solid-js";
-import { Check, ChevronsLeftRightEllipsis, Folder, MessageCircleQuestion, type LucideIcon } from "lucide-solid";
+import { Check, ChevronsLeftRightEllipsis, Folder, MessageCircleQuestion, Tag, type LucideIcon } from "lucide-solid";
 import Icon from "../../../components/Icon/Icon";
 import AgentGlyph from "../../../components/Icon/AgentGlyph";
 import { GitHubLogo, GitLabLogo, WorktreeMark } from "../../../components/Icon/gitMarks";
@@ -116,14 +116,14 @@ export function LayoutIllustration() {
     { label: "Project", level: "project" },
     { label: "Branch or worktree", level: "worktree" },
   ];
-  const tree: { label: string; path: string; depth: number; level: Level; topic?: string }[] = [
+  const tree: { label: string; path: string; depth: number; level: Level }[] = [
     { label: "~/Projects", path: "~/Projects", depth: 0, level: "folder" },
     { label: "work", path: "~/Projects/work", depth: 1, level: "folder" },
     { label: "api", path: "~/Projects/work/api", depth: 2, level: "project" },
     { label: "main", path: "~/Projects/work/api/main", depth: 3, level: "worktree" },
-    { label: "feat/webhooks", path: "~/Projects/work/api/feat/webhooks", depth: 3, level: "worktree", topic: "webhooks" },
+    { label: "feat/webhooks", path: "~/Projects/work/api/feat/webhooks", depth: 3, level: "worktree" },
     { label: "web", path: "~/Projects/work/web", depth: 2, level: "project" },
-    { label: "feat/webhooks", path: "~/Projects/work/web/feat/webhooks", depth: 3, level: "worktree", topic: "webhooks" },
+    { label: "feat/webhooks", path: "~/Projects/work/web/feat/webhooks", depth: 3, level: "worktree" },
     { label: "personal", path: "~/Projects/personal", depth: 1, level: "folder" },
     { label: "blog", path: "~/Projects/personal/blog", depth: 2, level: "project" },
     { label: "main", path: "~/Projects/personal/blog/main", depth: 3, level: "worktree" },
@@ -146,7 +146,59 @@ export function LayoutIllustration() {
             <div class={styles.pathRow} data-level={n.level} style={{ "--depth": n.depth }}>
               <LevelGlyph level={n.level} path={n.path} />
               {n.label}
-              <Show when={n.topic}>{(f) => <span class={styles.topicChip}>in {f()}</span>}</Show>
+            </div>
+          )}
+        </For>
+      </div>
+    </div>
+  );
+}
+
+export function TopicsIllustration() {
+  const repos = ["api", "web"];
+  const tree: { label: string; path: string; depth: number; level: Level; tagged?: boolean }[] = [
+    { label: "api", path: "~/Projects/work/api", depth: 0, level: "project" },
+    { label: "main", path: "~/Projects/work/api/main", depth: 1, level: "worktree" },
+    { label: "webhooks", path: "~/Projects/work/api/.tori/worktrees/webhooks", depth: 1, level: "worktree", tagged: true },
+    { label: "web", path: "~/Projects/work/web", depth: 0, level: "project" },
+    { label: "main", path: "~/Projects/work/web/main", depth: 1, level: "worktree" },
+    { label: "webhooks", path: "~/Projects/work/web/.tori/worktrees/webhooks", depth: 1, level: "worktree", tagged: true },
+  ];
+  return (
+    <div class={styles.split}>
+      <div class={`${styles.card} ${styles.list} ${styles.topicCard}`}>
+        <div class={styles.eyebrow}>Topic</div>
+        <div class={`${styles.listRow} ${styles.topicName}`}>
+          <span class={styles.topicTag}>
+            <Icon icon={Tag} />
+          </span>
+          Webhooks
+        </div>
+        <div class={styles.listRow}>
+          <span class={styles.muted}>Branch</span>
+          <span class={`${styles.mono} ${styles.stripEnd}`}>webhooks</span>
+        </div>
+        <For each={repos}>
+          {(repo) => (
+            <div class={styles.listRow}>
+              <LevelGlyph level="project" path={`~/Projects/work/${repo}`} />
+              <span>{repo}</span>
+              <span class={`${styles.mono} ${styles.stripEnd}`}>.tori/worktrees/webhooks</span>
+            </div>
+          )}
+        </For>
+      </div>
+      <div class={`${styles.card} ${styles.pathTree}`}>
+        <For each={tree}>
+          {(n) => (
+            <div class={styles.pathRow} data-level={n.level} style={{ "--depth": n.depth }}>
+              <LevelGlyph level={n.level} path={n.path} />
+              {n.label}
+              <Show when={n.tagged}>
+                <span class={styles.topicChip}>
+                  <Icon icon={Tag} />
+                </span>
+              </Show>
             </div>
           )}
         </For>

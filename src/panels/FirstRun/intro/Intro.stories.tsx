@@ -19,6 +19,7 @@ type Story = StoryObj;
 
 export const Sessions: Story = { render: () => <IntroAt slide={0} /> };
 export const Layout: Story = { render: () => <IntroAt slide={1} /> };
-export const Terminal: Story = { render: () => <IntroAt slide={2} /> };
-export const Review: Story = { render: () => <IntroAt slide={3} /> };
-export const Machine: Story = { render: () => <IntroAt slide={4} /> };
+export const Topics: Story = { render: () => <IntroAt slide={2} /> };
+export const Terminal: Story = { render: () => <IntroAt slide={3} /> };
+export const Review: Story = { render: () => <IntroAt slide={4} /> };
+export const Machine: Story = { render: () => <IntroAt slide={5} /> };

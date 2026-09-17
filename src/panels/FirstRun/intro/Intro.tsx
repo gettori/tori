@@ -8,6 +8,7 @@ import {
   ReviewIllustration,
   SessionsIllustration,
   TerminalIllustration,
+  TopicsIllustration,
 } from "./Illustrations";
 import styles from "./Intro.module.css";
 
@@ -21,8 +22,13 @@ export const SLIDES: Slide[] = [
   },
   {
     title: "Organised the way your disk already is",
-    body: "Base folder, then spaces, then projects, then branches and worktrees. Nothing to import: Tori reads the folders you already have. A Topic can span several repos on one branch.",
+    body: "Base folder, then spaces, then projects, then branches and worktrees. Nothing to import: Tori reads the folders you already have.",
     art: LayoutIllustration,
+  },
+  {
+    title: "One branch across several repos",
+    body: "A Topic is a name and the branch you type, with a worktree for it in each repo you pick. Files, search and changes cover all of them, and a tag on each worktree row takes you back to the Topic.",
+    art: TopicsIllustration,
   },
   {
     title: "A real terminal for every session",
