@@ -5,15 +5,18 @@ import Button from "../../components/Button/Button";
 import { ACTIVATE_SPACE, TOAST, emitWith, type ActivateSpace, type ToastEvent } from "../../utils/events";
 import { finishFirstRun, firstRunConfig, firstRunView, markIntroSeen, reloadFirstRunConfig } from "../../utils/firstRun";
 import { badName, shortHome } from "../../utils/names";
+import { createAgentsSetup } from "./agentsSetup";
 import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
+import { AGENTS_LEAD } from "./steps/AgentsStep";
 import BaseFolderStep, { BASE_FOLDER_LEAD, rootSpaces } from "./steps/BaseFolderStep";
 import ReadyStep, { readyLead, type ReadySummary } from "./steps/ReadyStep";
 import SpaceStep, { SPACE_LEAD, type SpaceMode } from "./steps/SpaceStep";
 import Intro, { SLIDES } from "./intro/Intro";
 import styles from "./FirstRun.module.css";
 
-type StepId = "base" | "space" | "ready";
-const ORDER: StepId[] = ["base", "space", "ready"];
+type StepId = "agents" | "base" | "space" | "ready";
+const ORDER: StepId[] = ["agents", "base", "space", "ready"];
+const HEADING: Record<StepId, string> = { agents: "Agents", base: "Base folder", space: "Space", ready: "Ready" };
 
 /**
  * The setup half of first run, wired to the backend: the shell draws it, the
@@ -28,7 +31,7 @@ export default function FirstRun() {
   const introThisSession = firstRunView() === "intro";
   const [page, setPage] = createSignal<"intro" | "setup">(introThisSession ? "intro" : "setup");
   const [slide, setSlide] = createSignal(0);
-  const [step, setStep] = createSignal<StepId>("base");
+  const [step, setStep] = createSignal<StepId>("agents");
   // The furthest step reached, so the rail can go back but never ahead of
   // what the earlier steps have answered.
   const [reached, setReached] = createSignal(0);
@@ -38,6 +41,7 @@ export default function FirstRun() {
   const [picked, setPicked] = createSignal<string | null>(null);
   const [newName, setNewName] = createSignal("");
   const [created, setCreated] = createSignal<string | null>(null);
+  const agentsSetup = createAgentsSetup({ home, onScreen: () => page() === "setup" && step() === "agents" });
 
   onMount(() => {
     homeDir()
@@ -135,6 +139,7 @@ export default function FirstRun() {
   }
 
   const steps = (): RailStep[] => [
+    { id: "agents", label: "Agents", group: "setup", summary: agentsSetup.summary() },
     {
       id: "base",
       label: "Base folder",
@@ -158,15 +163,18 @@ export default function FirstRun() {
           <StepRail
             steps={steps()}
             current={step()}
-            reachable={(id) => ORDER.indexOf(id as StepId) <= reached()}
+            reachable={(id) => !agentsSetup.running() && ORDER.indexOf(id as StepId) <= reached()}
             onJump={(id) => setStep(id as StepId)}
           />
         }
-        railFooter={<span class={styles.railNote}>Base folder and space show on every launch until a space exists.</span>}
-        heading={step() === "base" ? "Base folder" : step() === "space" ? "Space" : "Ready"}
-        required={step() !== "ready"}
+        railFooter={
+          <span class={styles.railNote}>Agents, base folder and space show on every launch until a space exists.</span>
+        }
+        heading={HEADING[step()]}
+        required={step() === "base" || step() === "space"}
         lead={
           <Switch>
+            <Match when={step() === "agents"}>{AGENTS_LEAD}</Match>
             <Match when={step() === "base"}>{BASE_FOLDER_LEAD}</Match>
             <Match when={step() === "space"}>{SPACE_LEAD}</Match>
             <Match when={summary()}>{(s) => readyLead(s())}</Match>
@@ -174,6 +182,7 @@ export default function FirstRun() {
         }
         footerLeft={
           <Switch>
+            <Match when={step() === "agents"}>Not required. Tori opens without an agent.</Match>
             <Match when={step() === "base"}>Required. You can change it later in Settings.</Match>
             <Match when={step() === "space"}>Required. This is the last step before Tori can open.</Match>
             <Match when={step() === "ready"}>Nothing was sent anywhere.</Match>
@@ -181,10 +190,18 @@ export default function FirstRun() {
         }
         footerRight={
           <Switch>
-            <Match when={step() === "base"}>
+            <Match when={step() === "agents"}>
               <Show when={introThisSession}>
-                <Button onClick={backToIntro}>Back</Button>
+                <Button disabled={agentsSetup.running()} onClick={backToIntro}>
+                  Back
+                </Button>
               </Show>
+              <Button variant="primary" disabled={agentsSetup.running()} onClick={() => go("base")}>
+                Continue
+              </Button>
+            </Match>
+            <Match when={step() === "base"}>
+              {back()}
               <Button variant="primary" disabled={!root() || busy()} onClick={() => go("space")}>
                 Continue
               </Button>
@@ -209,6 +226,9 @@ export default function FirstRun() {
         }
       >
         <Switch>
+          <Match when={step() === "agents"}>
+            {agentsSetup.view()}
+          </Match>
           <Match when={step() === "base"}>
             <BaseFolderStep root={root()} spaces={config()?.spaces ?? []} home={home()} busy={busy()} onChoose={() => void chooseFolder()} />
           </Match>

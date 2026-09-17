@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { createSignal, type JSX } from "solid-js";
 import Button from "../../components/Button/Button";
+import type { AgentHealth } from "../../utils/agentHealth";
 import type { FirstRunSpace } from "../../utils/firstRun";
 import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
+import AgentsStep, { AGENTS_LEAD, type Command } from "./steps/AgentsStep";
 import BaseFolderStep, { BASE_FOLDER_LEAD } from "./steps/BaseFolderStep";
 import ReadyStep, { readyLead } from "./steps/ReadyStep";
 import SpaceStep, { SPACE_LEAD, type SpaceMode } from "./steps/SpaceStep";
@@ -19,6 +21,7 @@ const space = (name: string, n: number): FirstRunSpace => ({
 const SPACES = [space("work", 6), space("personal", 5), space("acme", 3)];
 
 const STEPS: RailStep[] = [
+  { id: "agents", label: "Agents", group: "setup", summary: "3 found" },
   { id: "base", label: "Base folder", required: true, group: "setup", summary: "~/Projects" },
   { id: "space", label: "Space", required: true, group: "setup", summary: "work" },
   { id: "ready", label: "Ready", group: "setup" },
@@ -45,14 +48,14 @@ function Shell(props: {
           onJump={() => {}}
         />
       }
-      railFooter={<span class={styles.railNote}>Base folder and space show on every launch until a space exists.</span>}
+      railFooter={<span class={styles.railNote}>Agents, base folder and space show on every launch until a space exists.</span>}
       heading={props.heading}
       required={props.required}
       lead={props.lead}
       footerLeft={props.hint}
       footerRight={
         <>
-          {props.current !== "base" && <Button>Back</Button>}
+          {props.current !== "agents" && <Button>Back</Button>}
           <Button variant="primary" disabled={props.primaryDisabled}>
             {props.primary}
           </Button>
@@ -73,6 +76,86 @@ const meta = {
 
 export default meta;
 type Story = StoryObj;
+
+const agent = (id: string, label: string, patch: Partial<AgentHealth>): AgentHealth => ({
+  id,
+  label,
+  program: id,
+  status: "notFound",
+  signIn: "unknown",
+  account: null,
+  apiKeySource: null,
+  path: null,
+  version: null,
+  verifiedAgainst: null,
+  sessionsDir: null,
+  sessionsDirExists: false,
+  hooks: false,
+  needsYou: false,
+  overridePath: null,
+  profiles: [],
+  ...patch,
+});
+
+const npm = (pkg: string): Command => ({ program: "npm", args: ["install", "-g", pkg] });
+const INSTALLS: Record<string, Command> = {
+  claude: npm("@anthropic-ai/claude-code"),
+  codex: npm("@openai/codex"),
+  gemini: npm("@google/gemini-cli"),
+  opencode: npm("opencode-ai"),
+  copilot: npm("@github/copilot"),
+};
+const LOGINS = ["claude", "codex", "opencode", "copilot"];
+
+const NONE = [
+  agent("claude", "Claude", {}),
+  agent("codex", "Codex", {}),
+  agent("gemini", "Gemini", {}),
+  agent("opencode", "OpenCode", {}),
+  agent("copilot", "Copilot", {}),
+  agent("kimi", "Kimi", {}),
+  agent("pi", "Pi", {}),
+];
+
+const FOUND = [
+  agent("claude", "Claude", { status: "versionMatch", version: "2.1.268", verifiedAgainst: "claude 2.1.231", signIn: "signedIn" }),
+  agent("codex", "Codex", { status: "versionMatch", version: "0.147.0", signIn: "signedOut" }),
+  agent("opencode", "OpenCode", { status: "versionDrift", version: "1.17.2", verifiedAgainst: "opencode 1.18.3", signIn: "signedIn" }),
+  ...NONE.filter((h) => !["claude", "codex", "opencode"].includes(h.id)),
+];
+
+const agentsHint = "Not required. Tori opens without an agent.";
+
+function AgentsStory(props: { health: AgentHealth[] | null }) {
+  return (
+    <Shell current="agents" heading="Agents" lead={AGENTS_LEAD} primary="Continue" hint={agentsHint}>
+      <AgentsStep
+        health={props.health}
+        installs={INSTALLS}
+        terminalLogins={LOGINS}
+        onInstall={() => {}}
+        onSignIn={() => {}}
+        onCopy={async () => true}
+        onCheckAgain={() => {}}
+      />
+    </Shell>
+  );
+}
+
+/** Some installed: sign in where the agent says nobody is. */
+export const AgentsFound: Story = {
+  render: () => <AgentsStory health={FOUND} />,
+};
+
+/** Nothing on PATH: every agent with a declared install can run it here. */
+export const AgentsNone: Story = {
+  render: () => <AgentsStory health={NONE} />,
+};
+
+/** The first probe has not answered. */
+export const AgentsChecking: Story = {
+  render: () => <AgentsStory health={null} />,
+};
 
 const baseHint = "Required. You can change it later in Settings.";
 

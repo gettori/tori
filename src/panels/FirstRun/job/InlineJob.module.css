@@ -1,0 +1,173 @@
+@layer components {
+  .frame {
+    --termh: calc(190px * var(--ui-scale));
+    max-width: calc(680px * var(--ui-scale));
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    overflow: hidden;
+  }
+  .frame[data-state="waiting"] {
+    border-color: var(--accent-fg);
+  }
+  .frame[data-state="fail"] {
+    border-color: var(--border-strong);
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-5);
+    padding: calc(9px * var(--ui-scale)) calc(13px * var(--ui-scale));
+    background: var(--canvas-head);
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+  }
+
+  .dot {
+    width: calc(7px * var(--ui-scale));
+    height: calc(7px * var(--ui-scale));
+    flex: none;
+    border-radius: var(--tori-radius-pill);
+    background: var(--accent-fg);
+  }
+  .frame[data-state="running"] .dot {
+    animation: jobPulse 1.2s ease-in-out infinite;
+  }
+  .frame[data-state="ok"] .dot {
+    background: var(--success-fg);
+  }
+  .frame[data-state="fail"] .dot {
+    background: var(--danger-fg);
+  }
+
+  .command {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-default);
+  }
+
+  .extras {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-5);
+    flex: none;
+    margin-left: auto;
+  }
+  .exit {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--danger-fg);
+  }
+  .badge {
+    font-size: var(--tori-text-xs);
+    font-weight: 500;
+    padding: calc(3px * var(--ui-scale)) var(--tori-space-4);
+    border-radius: var(--tori-radius-sm);
+    background: var(--accent-subtle);
+    color: var(--accent-fg);
+  }
+
+  .action {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: var(--tori-text-sm);
+    color: var(--fg-subtle);
+    cursor: pointer;
+  }
+  .action:hover {
+    color: var(--fg-default);
+  }
+  .action:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--brand-ring);
+    border-radius: var(--tori-radius-sm);
+  }
+  .retry,
+  .retry:hover {
+    color: var(--accent-fg);
+  }
+
+  /* xterm paints its own ground in --canvas-card, so the static body wears the
+     same one and a story reads like the live panel. */
+  .output {
+    display: flex;
+    flex-direction: column;
+    height: var(--termh);
+    background: var(--canvas-card);
+  }
+  .output[hidden] {
+    display: none;
+  }
+  .static {
+    flex: 1;
+    overflow-y: auto;
+    padding: calc(11px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    line-height: 1.65;
+    color: var(--fg-muted);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .terminal {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: var(--tori-space-3) 0 0 var(--tori-space-4);
+    background: var(--canvas-card);
+  }
+
+  .strip {
+    padding: calc(9px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    border-top: var(--tori-border-thin) solid var(--border-default);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-5);
+    padding: calc(11px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    font-size: var(--tori-text-md);
+    color: var(--fg-default);
+  }
+  .row > svg {
+    flex: none;
+    color: var(--success-fg);
+  }
+  .rowFoot {
+    border-top: var(--tori-border-thin) solid var(--border-default);
+  }
+  .rowFail > svg {
+    color: var(--danger-fg);
+  }
+  .row .action {
+    margin-left: auto;
+  }
+
+  @media (max-width: 1000px), (max-height: 680px) {
+    .frame {
+      --termh: calc(132px * var(--ui-scale));
+    }
+  }
+}
+
+/* The dim lives only in the keyframes: reduced motion runs this once and the
+   dot settles on its lit base style rather than vanishing. */
+@keyframes jobPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
