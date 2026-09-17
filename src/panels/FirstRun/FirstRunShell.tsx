@@ -86,6 +86,7 @@ export default function FirstRunShell(props: {
   footerLeft?: JSX.Element;
   footerRight: JSX.Element;
   onKeyDown?: (e: KeyboardEvent) => void;
+  onDismiss?: () => void;
   children: JSX.Element;
 }) {
   let panelEl!: HTMLDivElement;
@@ -94,6 +95,13 @@ export default function FirstRunShell(props: {
 
   function onPanelKeyDown(e: KeyboardEvent) {
     props.onKeyDown?.(e);
+    // A terminal in the pane cancels the Escape typed into it, which belongs to
+    // the program there.
+    if (e.key === "Escape" && props.onDismiss && !e.defaultPrevented) {
+      e.preventDefault();
+      props.onDismiss();
+      return;
+    }
     if (e.key !== "Tab" || e.defaultPrevented) return;
     const items = [...panelEl.querySelectorAll<HTMLElement>(FOCUSABLE)];
     if (items.length === 0) return;
@@ -108,7 +116,7 @@ export default function FirstRunShell(props: {
 
   return (
     <Portal>
-      <div class={styles.backdrop}>
+      <div class={styles.backdrop} onMouseDown={(e) => e.target === e.currentTarget && props.onDismiss?.()}>
         <div
           ref={panelEl}
           class={styles.panel}
