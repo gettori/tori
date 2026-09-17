@@ -7,24 +7,25 @@ import RepoChecklist, { type RepoSpace } from "./RepoChecklist";
 import { topicSlug, type Topic } from "../../utils/topics";
 
 const NAME_LABEL = "topic-name-label";
+const BRANCH_LABEL = "topic-branch-label";
 const PROBE_DEBOUNCE_MS = 250;
 
-export type BranchProbe = { local: boolean; remote: boolean; hasWorktree: boolean };
+export type BranchProbe = { valid: boolean; local: boolean; remote: boolean; hasWorktree: boolean };
 
-type Probe = { slug: string; result: BranchProbe | null };
-const CLEAR: BranchProbe = { local: false, remote: false, hasWorktree: false };
+type Probe = { branch: string; result: BranchProbe | null };
+const CLEAR: BranchProbe = { valid: true, local: false, remote: false, hasWorktree: false };
 
 /** Create a Topic, or add repositories to one (`topic` set): the same
  *  checklist, the same probe per checked repo, the same collision row. Only
- *  the name field and the command differ.
+ *  the name and branch fields and the command differ.
  *
- *  A probe answer is keyed on `(repoPath, slug)` and dropped when either has
- *  moved on, so a slow answer for a previous name can never mark the current
- *  one. A hit (the branch exists locally, remotely, or has a worktree) holds
- *  Done until the row is answered: Adopt keeps the repo (the backend reuses
- *  the branch, and a secondary worktree, on its own), the other button
- *  unchecks it. This tightens the #151 design, where Done needed only a name
- *  and a repo, so a collision is never discovered by a failed member. */
+ *  A probe answer is keyed on `(repoPath, branch)` and dropped when either
+ *  has moved on, so a slow answer for a previous branch can never mark the
+ *  current one. A hit (the branch exists locally, remotely, or has a
+ *  worktree) holds Done until the row is answered: Adopt keeps the repo (the
+ *  backend reuses the branch, and a secondary worktree, on its own), the other
+ *  button unchecks it. This tightens the #151 design, where Done needed only a
+ *  name and a repo, so a collision is never discovered by a failed member. */
 export default function NewTopicDialog(props: {
   spaces: RepoSpace[];
   topics: Topic[];
@@ -34,6 +35,7 @@ export default function NewTopicDialog(props: {
   onCancel: () => void;
 }) {
   const [name, setName] = createSignal("");
+  const [typedBranch, setTypedBranch] = createSignal<string | null>(null);
   const [checked, setChecked] = createSignal<string[]>([]);
   const [probes, setProbes] = createSignal<Map<string, Probe>>(new Map());
   const [adopting, setAdopting] = createSignal<Map<string, string>>(new Map());
@@ -42,47 +44,47 @@ export default function NewTopicDialog(props: {
   let nameInput: HTMLInputElement | undefined;
 
   const adding = () => props.topic !== undefined;
-  const slug = () => (props.topic ? props.topic.branch.replace(/^feat\//, "") : topicSlug(name()));
-  const branch = () => `feat/${slug()}`;
+  const branchText = () => typedBranch() ?? topicSlug(name());
+  const branch = () => (props.topic ? props.topic.branch : branchText().trim());
   const takenBy = () => (adding() ? undefined : props.topics.find((f) => f.branch === branch()));
   const exclude = () => props.topic?.members.map((m) => m.repoPath) ?? [];
 
   const repoName = (path: string) =>
     props.spaces.flatMap((g) => g.projects).find((p) => p.path === path)?.name ?? path.split("/").pop() ?? path;
 
-  // One probe per (repo, slug). Name edits are debounced; a check is not,
+  // One probe per (repo, branch). Typing is debounced; a check is not,
   // since the repo is the whole question there.
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let lastSlug = slug();
-  function probe(repoPath: string, forSlug: string) {
-    setProbes((prev) => new Map(prev).set(repoPath, { slug: forSlug, result: null }));
-    invoke<BranchProbe | null>("probe_topic_branch", { repoPath, slug: forSlug })
+  let lastBranch = branch();
+  function probe(repoPath: string, forBranch: string) {
+    setProbes((prev) => new Map(prev).set(repoPath, { branch: forBranch, result: null }));
+    invoke<BranchProbe | null>("probe_topic_branch", { repoPath, branch: forBranch })
       .then((answer) => {
-        if (slug() !== forSlug || !checked().includes(repoPath)) return;
+        if (branch() !== forBranch || !checked().includes(repoPath)) return;
         const result = answer ?? CLEAR;
-        setProbes((prev) => new Map(prev).set(repoPath, { slug: forSlug, result }));
+        setProbes((prev) => new Map(prev).set(repoPath, { branch: forBranch, result }));
       })
       // A probe that cannot answer (the repo is gone, say) must not hold Done
       // hostage: the member will carry the real failure after creation.
       .catch(() => {
-        if (slug() !== forSlug || !checked().includes(repoPath)) return;
-        setProbes((prev) => new Map(prev).set(repoPath, { slug: forSlug, result: CLEAR }));
+        if (branch() !== forBranch || !checked().includes(repoPath)) return;
+        setProbes((prev) => new Map(prev).set(repoPath, { branch: forBranch, result: CLEAR }));
       });
   }
   function probeStale() {
-    const s = slug();
-    if (!s) return;
+    const b = branch();
+    if (!b) return;
     for (const repoPath of checked()) {
       const have = probes().get(repoPath);
-      if (have?.slug !== s) probe(repoPath, s);
+      if (have?.branch !== b) probe(repoPath, b);
     }
   }
   createEffect(
-    on([slug, checked], () => {
+    on([branch, checked], () => {
       clearTimeout(timer);
-      const slugChanged = slug() !== lastSlug;
-      lastSlug = slug();
-      if (slugChanged) timer = setTimeout(probeStale, PROBE_DEBOUNCE_MS);
+      const branchChanged = branch() !== lastBranch;
+      lastBranch = branch();
+      if (branchChanged) timer = setTimeout(probeStale, PROBE_DEBOUNCE_MS);
       else probeStale();
     }),
   );
@@ -90,17 +92,24 @@ export default function NewTopicDialog(props: {
 
   type Row = "clear" | "pending" | "collided" | "adopting";
   const row = (repoPath: string): Row => {
-    if (!slug()) return "pending";
+    if (!branch()) return "pending";
     const p = probes().get(repoPath);
-    if (!p || p.slug !== slug() || !p.result) return "pending";
+    if (!p || p.branch !== branch() || !p.result) return "pending";
     if (!p.result.local && !p.result.remote && !p.result.hasWorktree) return "clear";
-    return adopting().get(repoPath) === slug() ? "adopting" : "collided";
+    return adopting().get(repoPath) === branch() ? "adopting" : "collided";
   };
   const unresolved = () => checked().some((r) => row(r) === "pending" || row(r) === "collided");
-  const canConfirm = () => !busy() && slug() !== "" && checked().length > 0 && !takenBy() && !unresolved();
+  const invalid = () =>
+    checked().some((r) => {
+      const p = probes().get(r);
+      return p?.branch === branch() && p.result?.valid === false;
+    });
+  const named = () => adding() || name().trim() !== "";
+  const canConfirm = () =>
+    !busy() && named() && branch() !== "" && checked().length > 0 && !takenBy() && !invalid() && !unresolved();
 
   function adopt(repoPath: string) {
-    setAdopting((prev) => new Map(prev).set(repoPath, slug()));
+    setAdopting((prev) => new Map(prev).set(repoPath, branch()));
   }
   // Focus moves before the row goes: the button being pressed unmounts with
   // the collision line, and a focus scope asked about a detached node throws.
@@ -121,7 +130,7 @@ export default function NewTopicDialog(props: {
           topic = await invoke<Topic>("add_member", { topicId: props.topic.id, repoPath });
         }
       } else {
-        topic = await invoke<Topic>("create_topic", { name: name().trim(), members: checked() });
+        topic = await invoke<Topic>("create_topic", { name: name().trim(), branch: branch(), members: checked() });
       }
       props.onDone(topic);
     } catch (e) {
@@ -130,7 +139,7 @@ export default function NewTopicDialog(props: {
     }
   }
 
-  function onNameKeyDown(e: KeyboardEvent) {
+  function onEnter(e: KeyboardEvent) {
     if (e.key !== "Enter") return;
     e.preventDefault();
     void confirm();
@@ -206,16 +215,27 @@ export default function NewTopicDialog(props: {
           aria-labelledby={NAME_LABEL}
           value={name()}
           onInput={(e) => setName(e.currentTarget.value)}
-          onKeyDown={onNameKeyDown}
+          onKeyDown={onEnter}
           autocapitalize="off"
           autocorrect="off"
           spellcheck={false}
         />
-        <div class={styles.slug} data-slug-preview>
-          <Show when={slug()} fallback={<span>feat/</span>}>
-            <strong>{branch()}</strong>
-          </Show>
+        <div id={BRANCH_LABEL} class={styles.label}>
+          Branch
         </div>
+        <input
+          class={styles.input}
+          aria-labelledby={BRANCH_LABEL}
+          value={branchText()}
+          onInput={(e) => setTypedBranch(e.currentTarget.value)}
+          onKeyDown={onEnter}
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck={false}
+        />
+        <Show when={invalid()}>
+          <div class={styles.hint}>not a valid branch name</div>
+        </Show>
         <Show when={takenBy()}>{(f) => <div class={styles.hint}>already used by {f().name}</div>}</Show>
       </Show>
       <div class={styles.label}>Repositories</div>

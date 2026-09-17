@@ -1,6 +1,6 @@
-// A Topic: one shared branch (`feat/<slug>`) checked out as one worktree per
-// member repository, recorded in a sidecar so the group has an order, display
-// names and a state git cannot express. See [[adr_feature_workspace]] and
+// A Topic: one shared branch checked out as one worktree per member
+// repository, recorded in a sidecar so the group has an order, display names
+// and a state git cannot express. See [[adr_feature_workspace]] and
 // [[concept_feature_workspace]].
 //
 // Two shapes are load-bearing.
@@ -57,7 +57,7 @@ pub struct Member {
 pub struct Topic {
     pub id: String,
     pub name: String,
-    /// `feat/<slug>`, frozen at creation; the name stays free to change.
+    /// What the user typed, frozen at creation; the name stays free to change.
     pub branch: String,
     #[serde(default)]
     pub members: Vec<Member>,
@@ -112,34 +112,30 @@ impl Store {
     }
 }
 
-/// The branch slug for a Topic name: `worktree::slugify`'s character rule,
-/// then lowercased, runs of `-` collapsed, edges trimmed.
-pub fn topic_slug(name: &str) -> Result<String, String> {
-    let raw = crate::worktree::slugify(name.trim()).to_ascii_lowercase();
-    let mut slug = String::with_capacity(raw.len());
-    for c in raw.chars() {
-        if c == '-' && slug.ends_with('-') {
-            continue;
-        }
-        slug.push(c);
+/// The branch as typed, trimmed, if git accepts it as a branch name. The echo
+/// has to match: inside a repository `--branch` expands `@{-1}` to whatever was
+/// checked out before, which is not the name the user asked for.
+pub fn valid_branch(branch: &str) -> Result<String, String> {
+    let branch = branch.trim();
+    if branch.is_empty() {
+        return Err("Branch name is empty".into());
     }
-    let slug = slug.trim_matches('-').to_string();
-    if slug.is_empty() {
-        return Err("Feature name has no usable characters".into());
+    let out = std::process::Command::new("git")
+        .args(["check-ref-format", "--branch", branch])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() || String::from_utf8_lossy(&out.stdout).trim() != branch {
+        return Err(format!("\"{branch}\" is not a valid branch name"));
     }
-    Ok(slug)
+    Ok(branch.to_string())
 }
 
-pub fn topic_branch(slug: &str) -> String {
-    format!("feat/{slug}")
-}
-
-pub fn new_id(slug: &str) -> String {
+pub fn new_id(branch: &str) -> String {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    format!("{slug}-{nanos:x}")
+    format!("{}-{nanos:x}", crate::worktree::slugify(branch))
 }
 
 fn canon(path: &str) -> PathBuf {
@@ -483,10 +479,18 @@ fn load_topic(store: &Store, topic_id: &str) -> Result<Topic, String> {
 /// stays recorded as `Failed` with git's reason and the loop moves on, so the
 /// Topic exists even when one repo has a colliding folder. `on_step` sees
 /// the record after the write and after every member, N+1 times for N repos.
-pub fn create_topic(store: &Store, name: &str, repos: &[String], on_step: &dyn Fn(&Topic)) -> Result<Topic, String> {
+pub fn create_topic(
+    store: &Store,
+    name: &str,
+    branch: &str,
+    repos: &[String],
+    on_step: &dyn Fn(&Topic),
+) -> Result<Topic, String> {
     let name = name.trim();
-    let slug = topic_slug(name)?;
-    let branch = topic_branch(&slug);
+    if name.is_empty() {
+        return Err("Feature name is empty".into());
+    }
+    let branch = valid_branch(branch)?;
     if repos.is_empty() {
         return Err("A Feature needs at least one repository".into());
     }
@@ -496,7 +500,7 @@ pub fn create_topic(store: &Store, name: &str, repos: &[String], on_step: &dyn F
         }
     }
 
-    let id = new_id(&slug);
+    let id = new_id(&branch);
     store.mutate(|file| {
         if let Some(taken) = file.topics.iter().find(|f| f.branch == branch) {
             return Err(format!("Feature \"{}\" already uses {branch}", taken.name));
@@ -553,19 +557,21 @@ pub fn add_member(store: &Store, topic_id: &str, repo: &str, on_step: &dyn Fn(&T
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchProbe {
+    pub valid: bool,
     pub local: bool,
     pub remote: bool,
     pub has_worktree: bool,
 }
 
-/// What `feat/<slug>` already is in `repo`, so a dialog can say "will reuse"
-/// or "checked out in place" before anything runs.
-pub fn probe_topic_branch(repo: &str, slug: &str) -> BranchProbe {
-    let branch = topic_branch(slug);
+/// Whether git would take `branch`, and what it already is in `repo`, so a
+/// dialog can say "will reuse" or "checked out in place" before anything runs.
+pub fn probe_topic_branch(repo: &str, branch: &str) -> BranchProbe {
+    let branch = branch.trim();
     BranchProbe {
-        local: branch_exists(repo, &branch),
-        remote: remote_branch_exists(repo, &branch),
-        has_worktree: branch_has_worktree(repo, &branch),
+        valid: valid_branch(branch).is_ok(),
+        local: branch_exists(repo, branch),
+        remote: remote_branch_exists(repo, branch),
+        has_worktree: branch_has_worktree(repo, branch),
     }
 }
 
@@ -608,11 +614,12 @@ pub mod commands {
         app: AppHandle,
         index: State<'_, ProjectIndex>,
         name: String,
+        branch: String,
         members: Vec<String>,
     ) -> Result<Topic, String> {
         let index = index.inner().clone();
         blocking("create_topic", move || {
-            let topic = super::create_topic(&Store::default_location(), &name, &members, &step(&app))?;
+            let topic = super::create_topic(&Store::default_location(), &name, &branch, &members, &step(&app))?;
             settle(&app, &index, &topic);
             Ok(topic)
         })
@@ -741,8 +748,8 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn probe_topic_branch(repo_path: String, slug: String) -> Result<BranchProbe, String> {
-        blocking("probe_topic_branch", move || Ok(super::probe_topic_branch(&repo_path, &slug))).await
+    pub async fn probe_topic_branch(repo_path: String, branch: String) -> Result<BranchProbe, String> {
+        blocking("probe_topic_branch", move || Ok(super::probe_topic_branch(&repo_path, &branch))).await
     }
 }
 
@@ -792,7 +799,7 @@ mod tests {
         Topic {
             id: id.into(),
             name: id.into(),
-            branch: topic_branch(id),
+            branch: format!("feat/{id}"),
             members,
             created_at: 1,
         }
@@ -837,17 +844,6 @@ mod tests {
         let text = std::fs::read_to_string(&store.path).unwrap();
         assert!(text.contains("\"repoPath\""), "the wire format is camelCase");
         std::fs::remove_dir_all(&tmp).ok();
-    }
-
-    #[test]
-    fn slug_lowercases_collapses_and_rejects_empty() {
-        assert_eq!(topic_slug("Auth Flow").unwrap(), "auth-flow");
-        assert_eq!(topic_slug("  Payments!!  v2 ").unwrap(), "payments-v2");
-        assert_eq!(topic_slug("keep_dots.and-dashes").unwrap(), "keep_dots.and-dashes");
-        assert!(topic_slug("!!!").is_err());
-        assert!(topic_slug("").is_err());
-        assert_eq!(topic_branch("auth"), "feat/auth");
-        assert!(new_id("auth").starts_with("auth-"));
     }
 
     #[test]
@@ -993,9 +989,9 @@ mod tests {
         std::fs::create_dir_all(tmp.join("b/.tori/worktrees/feat-x")).unwrap();
         let store = Store::at(tmp.join("topics.json"));
 
-        let f = create_topic(&store, "X", &[a.clone(), b.clone(), c.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", "feat/x", &[a.clone(), b.clone(), c.clone()], &|_| {}).unwrap();
         assert_eq!(f.branch, "feat/x");
-        assert!(f.id.starts_with("x-"));
+        assert!(f.id.starts_with("feat-x-"));
         let states: Vec<_> = f.members.iter().map(|m| &m.state).collect();
         assert_eq!(states[0], &MemberState::Present);
         assert!(matches!(states[1], MemberState::Failed { reason } if reason.contains("refusing to overwrite")), "{:?}", states[1]);
@@ -1020,12 +1016,12 @@ mod tests {
         assert!(!hits.matches.is_empty());
         assert!(hits.matches.iter().all(|m| !m.path.contains(".tori/worktrees")));
 
-        // Guards: same slug, same repo twice, a worktree of a member is the member.
-        assert!(create_topic(&store, "x", std::slice::from_ref(&a), &|_| {}).unwrap_err().contains("already uses feat/x"));
-        assert!(create_topic(&store, "Y", &[a.clone(), a.clone()], &|_| {}).unwrap_err().contains("listed twice"));
+        // Guards: same branch, same repo twice, a worktree of a member is the member.
+        assert!(create_topic(&store, "x", "feat/x", std::slice::from_ref(&a), &|_| {}).unwrap_err().contains("already uses feat/x"));
+        assert!(create_topic(&store, "Y", "y", &[a.clone(), a.clone()], &|_| {}).unwrap_err().contains("listed twice"));
         let wt_a_s = wt_a.to_string_lossy().into_owned();
-        assert!(create_topic(&store, "Y", &[a.clone(), wt_a_s], &|_| {}).unwrap_err().contains("listed twice"));
-        assert!(create_topic(&store, "Z", &[], &|_| {}).is_err());
+        assert!(create_topic(&store, "Y", "y", &[a.clone(), wt_a_s], &|_| {}).unwrap_err().contains("listed twice"));
+        assert!(create_topic(&store, "Z", "z", &[], &|_| {}).is_err());
         assert_eq!(store.load().topics.len(), 1, "a rejected create leaves no record");
 
         // Retry flips the failed member once the collision is gone.
@@ -1046,10 +1042,10 @@ mod tests {
         assert!(tmp.join("d/.tori/worktrees/x/a.txt").is_file());
         assert!(add_member(&store, &f.id, &d, &|_| {}).unwrap_err().contains("already a member"));
 
-        let probe = probe_topic_branch(&d, "x");
-        assert_eq!(probe, BranchProbe { local: true, remote: false, has_worktree: true });
+        let probe = probe_topic_branch(&d, "feat/x");
+        assert_eq!(probe, BranchProbe { valid: true, local: true, remote: false, has_worktree: true });
         let fresh = repo(&tmp.join("e"));
-        assert_eq!(probe_topic_branch(&fresh, "x"), BranchProbe { local: false, remote: false, has_worktree: false });
+        assert_eq!(probe_topic_branch(&fresh, "feat/x"), BranchProbe { valid: true, local: false, remote: false, has_worktree: false });
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -1066,7 +1062,7 @@ mod tests {
         git(&b, &["checkout", "-q", "-b", "feat/x"]);
         let store = Store::at(tmp.join("topics.json"));
 
-        let f = create_topic(&store, "X", &[a_s.clone(), b_s.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", "feat/x", &[a_s.clone(), b_s.clone()], &|_| {}).unwrap();
         assert_eq!(f.members[0].state, MemberState::Present);
         assert_eq!(f.members[0].worktree_path.as_deref(), Some(wt_s.as_str()));
         assert!(!a.join(".tori/worktrees").exists(), "adopting creates no container");
@@ -1088,7 +1084,7 @@ mod tests {
         let a = tmp.join("a");
         let a_s = repo(&a);
         let store = Store::at(tmp.join("topics.json"));
-        let f = create_topic(&store, "X", &[a_s.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", "feat/x", &[a_s.clone()], &|_| {}).unwrap();
         let wt = f.members[0].worktree_path.clone().unwrap();
 
         std::fs::remove_dir_all(&wt).unwrap();
@@ -1109,16 +1105,54 @@ mod tests {
     }
 
     #[test]
+    fn create_topic_takes_the_branch_exactly_as_typed() {
+        let tmp = unique_tmp();
+        let a = repo(&tmp.join("a"));
+        let store = Store::at(tmp.join("topics.json"));
+        let head = |wt: &str| {
+            let out = Command::new("git").arg("-C").arg(wt).args(["rev-parse", "--abbrev-ref", "HEAD"]).output().unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+
+        for (name, branch, folder) in [("Webhooks", "webhooks", "webhooks"), ("Login bug", "bug/login", "login"), ("\u{56fd}\u{969b}\u{5316}", "i18n", "i18n")] {
+            let t = create_topic(&store, name, branch, std::slice::from_ref(&a), &|_| {}).unwrap();
+            assert_eq!(t.name, name);
+            assert_eq!(t.branch, branch);
+            assert!(t.id.starts_with(&format!("{}-", crate::worktree::slugify(branch))), "{}", t.id);
+            assert_eq!(t.members[0].state, MemberState::Present, "{branch}");
+            let wt = t.members[0].worktree_path.clone().unwrap();
+            assert_eq!(PathBuf::from(&wt), tmp.join("a/.tori/worktrees").join(folder));
+            assert_eq!(head(&wt), branch);
+        }
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn create_topic_refuses_a_branch_git_would_not_take() {
+        let tmp = unique_tmp();
+        let a = repo(&tmp.join("a"));
+        let store = Store::at(tmp.join("topics.json"));
+
+        for bad in ["bug login", "@{-1}", "-x", "  "] {
+            assert!(create_topic(&store, "X", bad, std::slice::from_ref(&a), &|_| {}).is_err(), "{bad:?}");
+            assert!(!probe_topic_branch(&a, bad).valid, "{bad:?}");
+        }
+        assert!(store.load().topics.is_empty(), "a refused branch leaves no record");
+        assert!(!tmp.join("a/.tori").exists());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
     fn one_repo_belongs_to_two_topics_at_once() {
         // The refusal is per branch, not per repo: two Topics over the same
-        // repository get one worktree each, on their own `feat/<slug>`, so the
+        // repository get one worktree each, on their own branch, so the
         // repo's unit row wears a chip pointing back at each of them.
         let tmp = unique_tmp();
         let a = repo(&tmp.join("a"));
         let store = Store::at(tmp.join("topics.json"));
 
-        let auth = create_topic(&store, "auth", std::slice::from_ref(&a), &|_| {}).unwrap();
-        let billing = create_topic(&store, "billing", std::slice::from_ref(&a), &|_| {}).unwrap();
+        let auth = create_topic(&store, "auth", "auth", std::slice::from_ref(&a), &|_| {}).unwrap();
+        let billing = create_topic(&store, "billing", "billing", std::slice::from_ref(&a), &|_| {}).unwrap();
 
         assert_eq!(auth.members[0].state, MemberState::Present);
         assert_eq!(billing.members[0].state, MemberState::Present);
@@ -1126,14 +1160,14 @@ mod tests {
             auth.members[0].worktree_path.clone().unwrap(),
             billing.members[0].worktree_path.clone().unwrap(),
         );
-        assert_ne!(wt_a, wt_b, "one worktree each, named by the slug");
+        assert_ne!(wt_a, wt_b, "one worktree each, named by the branch");
         assert!(wt_a.ends_with("auth") && wt_b.ends_with("billing"));
         assert_eq!(list_topics(&store).len(), 2);
         // Only the branch collides, and only with itself.
         assert!(
-            create_topic(&store, "auth", std::slice::from_ref(&a), &|_| {})
+            create_topic(&store, "auth", "auth", std::slice::from_ref(&a), &|_| {})
                 .unwrap_err()
-                .contains("already uses feat/auth")
+                .contains("already uses auth")
         );
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -1144,7 +1178,7 @@ mod tests {
         let a = repo(&tmp.join("a"));
         let b = repo(&tmp.join("b"));
         let store = Store::at(tmp.join("topics.json"));
-        let f = create_topic(&store, "X", &[a.clone(), b.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", "feat/x", &[a.clone(), b.clone()], &|_| {}).unwrap();
 
         let plain = tmp.join("not-a-repo");
         std::fs::create_dir_all(&plain).unwrap();
@@ -1171,7 +1205,7 @@ mod tests {
         let old = tmp.join("api");
         let old_s = repo(&old);
         let store = Store::at(tmp.join("topics.json"));
-        let f = create_topic(&store, "X", &[old_s.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", "feat/x", &[old_s.clone()], &|_| {}).unwrap();
         let old_wt = f.members[0].worktree_path.clone().unwrap();
         assert!(old_wt.starts_with(&old_s), "the plain layout puts it inside the repo");
 
@@ -1202,7 +1236,7 @@ mod tests {
         let wt_s = wt.to_string_lossy().into_owned();
         git(&old, &["worktree", "add", "-q", "-b", "feat/x", &wt_s]);
         let store = Store::at(tmp.join("topics.json"));
-        let f = create_topic(&store, "X", &[old_s.clone()], &|_| {}).unwrap();
+        let f = create_topic(&store, "X", "feat/x", &[old_s.clone()], &|_| {}).unwrap();
         assert_eq!(f.members[0].worktree_path.as_deref(), Some(wt_s.as_str()), "adopted");
 
         let new = tmp.join("moved-api");
@@ -1226,7 +1260,7 @@ mod tests {
         let seen = RefCell::new(Vec::<Vec<MemberState>>::new());
         let record = |f: &Topic| seen.borrow_mut().push(f.members.iter().map(|m| m.state.clone()).collect());
 
-        let f = create_topic(&store, "X", &[a, b], &record).unwrap();
+        let f = create_topic(&store, "X", "feat/x", &[a, b], &record).unwrap();
         let pending = MemberState::Failed { reason: PENDING.into() };
         assert_eq!(
             *seen.borrow(),

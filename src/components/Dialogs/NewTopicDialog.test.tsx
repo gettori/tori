@@ -3,8 +3,8 @@ import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
 import type { Topic } from "../../utils/topics";
 
-type Probe = { local: boolean; remote: boolean; hasWorktree: boolean };
-const CLEAR: Probe = { local: false, remote: false, hasWorktree: false };
+type Probe = { valid: boolean; local: boolean; remote: boolean; hasWorktree: boolean };
+const CLEAR: Probe = { valid: true, local: false, remote: false, hasWorktree: false };
 
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
@@ -18,7 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "probe_topic_branch") {
-      const key = `${args.repoPath}@${args.slug}`;
+      const key = `${args.repoPath}@${args.branch}`;
       if (key in bridge.probes) return Promise.resolve(bridge.probes[key]);
       if (bridge.hold === null) return Promise.resolve(CLEAR);
       return new Promise<Probe>((resolve) => (bridge.hold = resolve));
@@ -28,7 +28,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       return Promise.resolve({
         id: "f-1",
         name: String(args.name),
-        branch: "feat/x",
+        branch: String(args.branch),
         createdAt: 1,
         members: (args.members as string[]).map((repoPath, order) => ({
           repoPath,
@@ -65,6 +65,7 @@ const EXISTING: Topic = {
 };
 
 const name = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
+const branch = () => screen.getByRole("textbox", { name: "Branch" }) as HTMLInputElement;
 const box = (label: string) => screen.getByRole("checkbox", { name: label }) as HTMLInputElement;
 const done = () => screen.getByRole("button", { name: /Done|Working/ }) as HTMLButtonElement;
 const probeCalls = () => bridge.calls.filter((c) => c.cmd === "probe_topic_branch");
@@ -96,7 +97,7 @@ describe("NewTopicDialog", () => {
     expect(done().disabled).toBe(true);
 
     fireEvent.input(name(), { target: { value: "Search v2" } });
-    expect(screen.getByText("feat/search-v2")).toBeTruthy();
+    expect(branch().value).toBe("search-v2");
     fireEvent.click(box("api"));
     fireEvent.click(box("web"));
     await waitFor(() => expect(done().disabled).toBe(false));
@@ -105,42 +106,60 @@ describe("NewTopicDialog", () => {
     fireEvent.click(done());
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     const call = bridge.calls.find((c) => c.cmd === "create_topic")!;
-    expect(call.args).toEqual({ name: "Search v2", members: ["/w/api", "/w/web"] });
+    expect(call.args).toEqual({ name: "Search v2", branch: "search-v2", members: ["/w/api", "/w/web"] });
+  });
+
+  it("fills Branch from the name until Branch is edited, then creates on the typed branch", async () => {
+    const { onDone } = open();
+    fireEvent.input(name(), { target: { value: "Login bug" } });
+    expect(branch().value).toBe("login-bug");
+
+    fireEvent.input(branch(), { target: { value: "bug/login" } });
+    fireEvent.input(name(), { target: { value: "Login crash" } });
+    expect(branch().value).toBe("bug/login");
+
+    fireEvent.click(box("api"));
+    await waitFor(() => expect(done().disabled).toBe(false));
+    expect(probeCalls()[probeCalls().length - 1].args).toEqual({ repoPath: "/w/api", branch: "bug/login" });
+    fireEvent.click(done());
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    const call = bridge.calls.find((c) => c.cmd === "create_topic")!;
+    expect(call.args).toEqual({ name: "Login crash", branch: "bug/login", members: ["/w/api"] });
   });
 
   it("shows the collision row for a repo whose branch exists, and Adopt clears it", async () => {
-    bridge.probes["/w/api@x"] = { local: true, remote: false, hasWorktree: false };
+    bridge.probes["/w/api@x"] = { valid: true, local: true, remote: false, hasWorktree: false };
     open();
     fireEvent.input(name(), { target: { value: "x" } });
     box("api").focus();
     fireEvent.click(box("api"));
 
-    expect(await screen.findByText("feat/x already exists")).toBeTruthy();
+    expect(await screen.findByText("x already exists")).toBeTruthy();
     expect(done().disabled).toBe(true);
     // The probe landing must not remount the row the keyboard is on.
     expect(document.activeElement).toBe(box("api"));
 
     fireEvent.click(screen.getByRole("button", { name: "Adopt in api" }));
-    await screen.findByText("Adopting feat/x");
+    await screen.findByText("Adopting x");
     expect(box("api").checked).toBe(true);
     await waitFor(() => expect(done().disabled).toBe(false));
   });
 
   it("Rename this Feature unchecks the repo and returns to the name", async () => {
-    bridge.probes["/w/api@x"] = { local: false, remote: true, hasWorktree: false };
+    bridge.probes["/w/api@x"] = { valid: true, local: false, remote: true, hasWorktree: false };
     open();
     fireEvent.input(name(), { target: { value: "x" } });
     fireEvent.click(box("api"));
-    await screen.findByText("feat/x already exists");
+    await screen.findByText("x already exists");
 
     fireEvent.click(screen.getByRole("button", { name: /Rename this Feature/ }));
     expect(box("api").checked).toBe(false);
     expect(document.activeElement).toBe(name());
-    expect(screen.queryByText("feat/x already exists")).toBeNull();
+    expect(screen.queryByText("x already exists")).toBeNull();
     await macrotask();
   });
 
-  it("ignores a probe answer for a slug the name has moved past", async () => {
+  it("ignores a probe answer for a branch the name has moved past", async () => {
     open();
     fireEvent.click(box("api"));
     await waitFor(() => expect(probeCalls().length).toBe(0));
@@ -148,21 +167,22 @@ describe("NewTopicDialog", () => {
     // The first name's probe is held; the name moves on before it answers.
     bridge.hold = () => {};
     fireEvent.input(name(), { target: { value: "old" } });
-    await waitFor(() => expect(probeCalls().some((c) => c.args.slug === "old")).toBe(true));
+    await waitFor(() => expect(probeCalls().some((c) => c.args.branch === "old")).toBe(true));
     const release = bridge.hold;
     bridge.hold = null;
     bridge.probes["/w/api@new"] = CLEAR;
     fireEvent.input(name(), { target: { value: "new" } });
-    await waitFor(() => expect(probeCalls().some((c) => c.args.slug === "new")).toBe(true));
+    await waitFor(() => expect(probeCalls().some((c) => c.args.branch === "new")).toBe(true));
 
-    release({ local: true, remote: true, hasWorktree: true });
+    release({ valid: true, local: true, remote: true, hasWorktree: true });
     await waitFor(() => expect(done().disabled).toBe(false));
     expect(screen.queryByText(/already exists/)).toBeNull();
   });
 
-  it("refuses a slug another Feature already uses", async () => {
+  it("refuses a branch another Feature already uses", async () => {
     open();
-    fireEvent.input(name(), { target: { value: "Auth" } });
+    fireEvent.input(name(), { target: { value: "Auth again" } });
+    fireEvent.input(branch(), { target: { value: "feat/auth" } });
     fireEvent.click(box("web"));
     expect(await screen.findByText("already used by Auth")).toBeTruthy();
     await waitFor(() => expect(probeCalls().length).toBeGreaterThan(0));
@@ -195,14 +215,14 @@ describe("NewTopicDialog", () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(EXISTING));
     const adds = bridge.calls.filter((c) => c.cmd === "add_member");
     expect(adds.map((c) => c.args)).toEqual([{ topicId: "auth-1", repoPath: "/w/web" }]);
-    expect(probeCalls()[0].args).toEqual({ repoPath: "/w/web", slug: "auth" });
+    expect(probeCalls()[0].args).toEqual({ repoPath: "/w/web", branch: "feat/auth" });
   });
 
   // The same collision machinery in add mode, where the escape hatch differs:
-  // the Topic's slug was frozen at creation, so the offer is to leave this
-  // repo out rather than to rename the Topic around it.
+  // the Topic's branch was frozen at creation, so the offer is to leave this
+  // repo out rather than to change the branch.
   it("offers Leave out rather than a rename when an added repo already has the branch", async () => {
-    bridge.probes["/w/web@auth"] = { local: true, remote: false, hasWorktree: false };
+    bridge.probes["/w/web@feat/auth"] = { valid: true, local: true, remote: false, hasWorktree: false };
     open({ topic: EXISTING });
     fireEvent.click(box("web"));
 
