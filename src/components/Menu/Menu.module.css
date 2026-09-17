@@ -93,6 +93,16 @@
 .item.danger {
   color: var(--danger-fg);
 }
+/* The one row kind that hovers to something other than the neutral wash. A
+   destructive row is usually the last in its menu and the pointer crosses it on
+   the way past, so the wash under it is the last thing said before a click that
+   cannot be taken back. It outranks `.item:hover` on specificity rather than on
+   order, and `[data-disabled]:hover` below ties with it and comes later, so a
+   refused destructive row still washes out rather than red. */
+.item.danger:hover,
+.item.danger[data-highlighted] {
+  background: color-mix(in srgb, var(--danger-fg) 13%, transparent);
+}
 .item.warn {
   color: var(--attention-fg);
 }

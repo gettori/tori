@@ -105,7 +105,15 @@
 .swatch .tile:hover {
   box-shadow: 0 0 0 2px var(--border-strong);
 }
+/* Ringed in its own hue, detached from the tile by a gap of the surface it sits
+   on. Not the brand gold the glyph grid uses: gold is itself one of the twelve
+   swatches, so a gold ring around the chosen one says two colours at once and
+   is unreadable on the gold swatch in particular, where the ring and the tile
+   are the same paint. The hue is already on the tile as `--tile-tint`, set by
+   the component from the swatch table. */
 .swatch .tile[aria-pressed="true"] {
-  box-shadow: 0 0 0 2px var(--brand-ring);
-  border-color: var(--brand-default);
+  box-shadow:
+    0 0 0 2px var(--canvas-card),
+    0 0 0 calc(2px + var(--tori-border-thick)) rgb(var(--tile-tint));
+  border-color: transparent;
 }

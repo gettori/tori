@@ -66,6 +66,12 @@ export interface IconGridProps {
     placeholder: string;
     /** Handed the input, so a dialog can make it the initial focus. */
     ref?: (el: HTMLInputElement) => void;
+    /** The query as it is typed, for a caller that draws something of its own
+     *  against it. `tiles` already sees it, but a caller cannot read it back
+     *  out of a function the grid calls - and what hangs off it is usually
+     *  outside the grid, like the space picker's "+N more" line, which is only
+     *  true while nothing is being searched for. */
+    onQuery?: (query: string) => void;
   };
   class?: string;
 }
@@ -194,7 +200,10 @@ export default function IconGrid(props: IconGridProps) {
             value={query()}
             placeholder={search().placeholder}
             aria-label={search().label}
-            onInput={(e) => setQuery(e.currentTarget.value)}
+            onInput={(e) => {
+              setQuery(e.currentTarget.value);
+              search().onQuery?.(e.currentTarget.value);
+            }}
             autocapitalize="off"
             autocorrect="off"
             spellcheck={false}

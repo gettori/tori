@@ -651,6 +651,14 @@
   line-height: var(--tori-line-normal);
   color: var(--fg-subtle);
 }
+/* What the shelf is not showing. No margin of its own: unlike the colour
+   popover's note it sits in a flex column that already spaces its children, and
+   a margin on top of that gap would read as a second section. */
+.pickerMore {
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
+  color: var(--fg-subtle);
+}
 
 /* ---- Delete space ---- */
 /* Stated in plain ink, not in red: red body copy above a red button competes
@@ -802,4 +810,24 @@
   line-height: var(--tori-line-normal);
   color: var(--fg-subtle);
   text-wrap: pretty;
+}
+/* The mode strip spans the body rather than sitting at its natural width: the
+   three modes are the dialog's top-level choice, and a strip narrower than the
+   fields under it reads as one more field. The last segment takes the extra
+   because its label is the longest of the three by some margin, so equal thirds
+   would crowd it while the other two carry slack. Tag selectors because the
+   segments are `SegmentedControl`'s markup, not this module's. */
+/* `width`, not `display: flex`: the control's own `.group` is `inline-flex` at
+   the same specificity, so declaring display here would leave which one wins to
+   the order the two modules happen to land in. An inline-flex box told to take
+   the full width fills it just the same, and collides with nothing. */
+.modeSeg {
+  width: 100%;
+}
+.modeSeg button {
+  flex: 1;
+  min-width: 0;
+}
+.modeSeg button:last-child {
+  flex: 1.4;
 }
