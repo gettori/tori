@@ -128,7 +128,7 @@ export default function FirstRunShell(props: {
         >
           <div class={styles.rail}>
             <div class={styles.brand}>
-              <span class={styles.brandMark} aria-hidden="true" />
+              <img class={styles.brandMark} src="/favicon.png" alt="" draggable={false} />
               {props.title}
             </div>
             {props.rail}

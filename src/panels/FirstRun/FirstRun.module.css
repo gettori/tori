@@ -45,15 +45,13 @@
     align-items: center;
     gap: var(--tori-space-4);
     padding: var(--tori-space-3) var(--tori-space-4) var(--tori-space-6);
-    font-size: var(--tori-text-xl);
+    font-size: var(--tori-text-3xl);
     font-weight: 600;
     letter-spacing: -0.01em;
   }
   .brandMark {
-    width: calc(20px * var(--ui-scale));
-    height: calc(20px * var(--ui-scale));
-    border-radius: calc(6px * var(--ui-scale));
-    background: linear-gradient(140deg, var(--brand-strong), var(--brand-default));
+    width: calc(28px * var(--ui-scale));
+    height: calc(28px * var(--ui-scale));
     flex: none;
   }
 
