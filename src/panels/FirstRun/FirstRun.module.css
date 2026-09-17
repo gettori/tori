@@ -236,7 +236,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--tori-space-5);
-    padding: var(--tori-space-5) var(--tori-space-5) var(--tori-space-5) calc(48px * var(--ui-scale));
+    padding: var(--tori-space-5);
     border-top: var(--tori-border-thin) solid var(--border-default);
     font-size: var(--tori-text-md);
     color: var(--fg-subtle);
@@ -259,7 +259,7 @@
       padding: var(--tori-space-7) var(--tori-space-7) var(--tori-space-6);
     }
     .footer {
-      padding: var(--tori-space-4) var(--tori-space-4) var(--tori-space-4) var(--tori-space-7);
+      padding: var(--tori-space-4);
     }
     .heading {
       font-size: var(--tori-text-4xl);
