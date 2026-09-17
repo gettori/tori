@@ -1,67 +1,96 @@
 import { createSignal, Show } from "solid-js";
+import { Lock } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 import Icon from "../Icon/Icon";
-import IconGrid from "../IconGrid/IconGrid";
-import { searchIcons } from "../Icon/iconRegistry";
-import { SPACE_COLORS, spaceHueRgb, rgbTriple } from "../../utils/spaceTint";
+import SpaceAppearance, { randomAppearance, type Appearance } from "./SpaceAppearance";
+import { badName } from "../../utils/names";
 
 export type SpaceDialogMode = "new" | "edit";
 
 // The visible "Name" line is also the field's accessible name in both modes,
 // rather than an `aria-label` repeating it (the convention `NewProjectDialog`
-// set in #99). Edit mode is why this matters: its field is disabled with no
-// placeholder, so before this it had no accessible name at all. Static id: only
+// set in #99). Edit mode is why this matters: its name is a static row with no
+// placeholder, so without this it would have no accessible name at all. The
+// help line under it is the field's description, so the collision message is
+// announced with the field rather than only painted beside it. Static ids: only
 // one space dialog can be open at a time.
 const NAME_LABEL = "space-name-label";
+const NAME_HELP = "space-name-help";
 
-// Create or edit a space, centred on an icon picker (a "None" tile + the fixed
-// PICKER_ICONS set, filtered by a search field since the set outgrew one
-// screenful). In "new" mode the Name field is editable with inline validation
-// (UX only; the server's `valid_name` is the real guard) and the name is
-// permanent once created. In "edit" mode the name is read-only (no folder is
-// created), so the icon is the only editable field.
-//
-// The shell is `Dialog`. Enter stays here, through its `onKeyDown`, because the
-// confirm button is `disabled` while the name is invalid and a disabled button
-// is never clicked. Escape does not: Kobalte reports it as `onClose`.
+/** Whether `name` collides with one of `taken`, on the same terms the base
+ *  folder does: trimmed, and case-insensitive because two folders differing
+ *  only in case is a distinction the user did not intend to draw and one macOS
+ *  will not keep anyway. */
+function collides(name: string, taken: string[]): boolean {
+  const t = name.trim().toLowerCase();
+  return !!t && taken.some((n) => n.trim().toLowerCase() === t);
+}
+
+/**
+ * Create or edit a space: a name, and how it looks.
+ *
+ * **The appearance arrives already chosen.** A new space opens on a random
+ * swatch and a random icon, so the dialog is valid the moment a name is typed
+ * and neither picker ever blocks a submit. The row below the name previews that
+ * choice and hands it to two popovers and a die; see `SpaceAppearance`.
+ *
+ * **The help line is one line, replaced rather than stacked.** The default copy
+ * and the collision error occupy the same row, so the group never grows by a
+ * line mid-keystroke and the fields below it never move.
+ *
+ * In "edit" mode the name is a locked row: no folder is created, and the folder
+ * on disk carries the name, so colour and icon are the whole of what changes.
+ *
+ * The shell is `Dialog`. Enter stays here, through its `onKeyDown`, because the
+ * confirm button is `disabled` while the name is invalid and a disabled button
+ * is never clicked. Escape does not: Kobalte reports it as `onClose`.
+ */
 export default function SpaceDialog(props: {
   mode: SpaceDialogMode;
   // "edit": the space's immutable name. "new": the initial value (usually "").
   name: string;
-  // Preselected icon name (a PICKER_ICONS key), or null for "None".
+  // Preselected icon name (a PICKER_ICONS key), or null for "no icon".
   icon: string | null;
   // Preselected swatch name (a SPACE_COLORS key), or null for "derive from the
   // name", which is what an untouched space uses.
   color: string | null;
+  /** Every space already in the base folder, for the collision check. The
+   *  space's own name is harmless in here: "edit" never validates. */
+  spaces: string[];
   busy: boolean;
   onConfirm: (opts: { name: string; icon: string | null; color: string | null }) => void;
   onCancel: () => void;
 }) {
-  const [name, setName] = createSignal(props.name);
-  const [icon, setIcon] = createSignal<string | null>(props.icon);
-  const [color, setColor] = createSignal<string | null>(props.color);
-  let first: HTMLInputElement | undefined;
-
   const isNew = () => props.mode === "new";
 
-  // Inline mirror of the server's `valid_name`, for immediate UX feedback only.
-  function badName(n: string): string | null {
-    const t = n.trim();
-    if (!t) return "Name is empty";
-    if (t.includes("/") || t.includes("\\")) return "Name cannot contain a slash";
-    if (t.startsWith(".")) return "Name cannot start with a dot";
-    return null;
-  }
+  const [name, setName] = createSignal(props.name);
+  const [look, setLook] = createSignal<Appearance>(
+    isNew() ? randomAppearance() : { color: props.color, icon: props.icon },
+  );
+  let first: HTMLInputElement | undefined;
 
-  // Only "new" validates the name (it creates a folder); "edit" never does.
-  const nameError = () => (isNew() ? badName(name()) : null);
-  const canConfirm = () => !isNew() || !nameError();
+  // Only "new" validates: "edit" creates no folder, so there is nothing a name
+  // could be wrong for. An empty name is not an error state - it is where the
+  // dialog starts - so it disables the button and leaves the default help up.
+  const nameError = () => {
+    if (!isNew()) return null;
+    const typed = name().trim();
+    if (!typed) return null;
+    if (collides(typed, props.spaces)) return `A space named ${typed} already exists in this base folder.`;
+    return badName(typed);
+  };
+  const canConfirm = () => !isNew() || (!!name().trim() && !nameError());
 
   const confirm = () => {
     if (props.busy || !canConfirm()) return;
-    props.onConfirm({ name: isNew() ? name().trim() : props.name, icon: icon(), color: color() });
+    const look_ = look();
+    props.onConfirm({
+      name: isNew() ? name().trim() : props.name,
+      icon: look_.icon,
+      color: look_.color,
+    });
   };
 
   function onKeyDown(e: KeyboardEvent) {
@@ -73,6 +102,7 @@ export default function SpaceDialog(props: {
   return (
     <Dialog
       open
+      size="sheet"
       title={isNew() ? "New space" : `Edit “${props.name}”`}
       onClose={() => props.onCancel()}
       onKeyDown={onKeyDown}
@@ -85,83 +115,73 @@ export default function SpaceDialog(props: {
             disabled={props.busy || !canConfirm()}
             onClick={() => confirm()}
           >
-            {props.busy ? "Working…" : isNew() ? "Create" : "Save"}
+            {props.busy ? "Working…" : isNew() ? "Create space" : "Save"}
           </Button>
         </>
       }
     >
-      <div id={NAME_LABEL} class={styles.label}>Name</div>
-      <Show
-        when={isNew()}
-        fallback={
-          <input
-            class={styles.input}
-            aria-labelledby={NAME_LABEL}
-            value={props.name}
-            disabled
-            readonly
-          />
-        }
-      >
-        <input
-          ref={first}
-          class={styles.input}
-          aria-labelledby={NAME_LABEL}
-          value={name()}
-          placeholder="space name"
-          onInput={(e) => setName(e.currentTarget.value)}
-          autocapitalize="off"
-          autocorrect="off"
-          spellcheck={false}
-        />
-        <Show when={nameError()}>{(err) => <div class={styles.hint}>{err()}</div>}</Show>
-        <div class={styles.note}>
-          The name can’t be changed later, but you can always change the icon.
+      <div class={styles.spaceForm}>
+        <div class={styles.spaceField}>
+          <div id={NAME_LABEL} class={styles.spaceLabel}>Name</div>
+          <Show
+            when={isNew()}
+            fallback={
+              // Static text, not a named control: there is nothing here to
+              // operate, so the "Name" line above is read in order rather than
+              // through an `aria-labelledby` - which on a role-less element is
+              // prohibited anyway, and which axe reports as such.
+              <div class={styles.lockedName}>
+                <span>{props.name}</span>
+                <Icon icon={Lock} class={styles.lockedGlyph} aria-hidden="true" />
+              </div>
+            }
+          >
+            <input
+              ref={first}
+              class={styles.spaceInput}
+              classList={{ [styles.invalid]: !!nameError() }}
+              aria-labelledby={NAME_LABEL}
+              aria-describedby={NAME_HELP}
+              aria-invalid={!!nameError()}
+              value={name()}
+              placeholder="space name"
+              onInput={(e) => setName(e.currentTarget.value)}
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck={false}
+            />
+          </Show>
+          <div
+            id={NAME_HELP}
+            class={styles.spaceHelp}
+            classList={{ [styles.helpError]: !!nameError() }}
+          >
+            <Show
+              when={isNew()}
+              fallback="The folder on disk carries this name, so it can’t change here. Colour and icon can."
+            >
+              {nameError() ?? "Becomes a folder in your base folder. Pick something short."}
+            </Show>
+          </div>
         </div>
-      </Show>
 
-      <div class={styles.label}>Colour</div>
-      {/* "Auto" is a state, not a swatch: it hands the hue back to the name,
-          which is what an untouched space already uses. Its own preview shows
-          what that derives to, so the choice is visible rather than a leap. */}
-      <IconGrid
-        variant="swatch"
-        aria-label="Space colour"
-        value={color()}
-        onChange={setColor}
-        leading={{
-          label: "Automatic (from the name)",
-          tint: spaceHueRgb(isNew() ? name() : props.name, null),
-          content: <span class={styles.swatchAuto}>A</span>,
-        }}
-        tiles={() =>
-          SPACE_COLORS.map((entry) => ({
-            value: entry.name,
-            label: entry.name,
-            tint: rgbTriple(entry.hex),
-          }))
-        }
-      />
-      <div class={styles.note}>Tints the window behind this space.</div>
-
-      <div class={styles.label}>Icon</div>
-      {/* "None" is a state, not a search result, so it stays put while the grid
-          filters - otherwise clearing an icon would need the query cleared
-          first. */}
-      <IconGrid
-        aria-label="Space icon"
-        value={icon()}
-        onChange={setIcon}
-        leading={{ label: "No icon", content: <span class={styles.iconNone}>None</span> }}
-        tiles={(query) =>
-          searchIcons(query).map((entry) => ({
-            value: entry.name,
-            label: entry.name,
-            content: <Icon icon={entry.icon} />,
-          }))
-        }
-        search={{ label: "Search icons", placeholder: "Search icons" }}
-      />
+        <div class={styles.spaceField}>
+          <div class={styles.spaceLabel}>Appearance</div>
+          <SpaceAppearance
+            name={isNew() ? name() : props.name}
+            value={look()}
+            onChange={setLook}
+          />
+          {/* Only in "new": the locked-name help above already established that
+              this is where the help for a group sits, and saying it twice in a
+              dialog this short reads as a warning rather than a caption. */}
+          <Show when={isNew()}>
+            <div class={styles.spaceHelp}>
+              Picked for you. Click a chip to choose your own, or reroll both.
+            </div>
+          </Show>
+        </div>
+      </div>
     </Dialog>
   );
 }

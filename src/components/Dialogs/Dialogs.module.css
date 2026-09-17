@@ -259,25 +259,12 @@
   border-color: var(--brand-default);
   box-shadow: 0 0 0 2px var(--brand-ring);
 }
-.delSummary {
-  display: flex;
-  justify-content: space-between;
-  gap: calc(12px * var(--ui-scale));
-  font-size: var(--tori-text-md);
-  color: var(--fg-muted);
-  margin-bottom: calc(8px * var(--ui-scale));
-}
 .delEntries {
   max-height: calc(200px * var(--ui-scale));
   overflow-y: auto;
   border: 1px solid var(--border-default);
   border-radius: var(--tori-radius-md);
   background: var(--canvas-input);
-}
-.delEmpty {
-  padding: calc(8px * var(--ui-scale)) calc(10px * var(--ui-scale));
-  font-size: var(--tori-text-lg);
-  color: var(--fg-muted);
 }
 .delEntry {
   display: flex;
@@ -364,12 +351,6 @@
   margin-top: calc(14px * var(--ui-scale));
 }
 
-/* ---- Segmented mode picker (NewProjectDialog): the shared <SegmentedControl>,
-   with just the dialog's own bottom spacing added here. ---- */
-.newSeg {
-  margin-bottom: calc(10px * var(--ui-scale));
-}
-
 /* ---- Topic creation (NewTopicDialog, RepoChecklist): one checkbox group
    per Space, and under a checked repo whose branch already exists, the
    collision line with its two answers. ---- */
@@ -426,4 +407,399 @@
   padding: 0 calc(10px * var(--ui-scale)) calc(2px * var(--ui-scale));
   font-size: var(--tori-text-md);
   color: var(--fg-muted);
+}
+
+/* ---- The space cluster: New in <space>, New space, Edit <space>, Delete space.
+   One body grammar across the four - a stack of labelled groups, each a label,
+   its control, and at most one line of help under it. `.form` above says almost
+   the same thing but reads its label at 500 weight in `--fg-default`, which
+   here would compete with the dialog's own title two lines up; these labels are
+   muted so the eye lands on the values. ---- */
+.spaceForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-6);
+  font-family: var(--tori-font-ui);
+}
+.spaceField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-4);
+}
+.spaceLabel {
+  font-size: var(--tori-text-md);
+  line-height: var(--tori-line-tight);
+  color: var(--fg-muted);
+}
+.spaceInput {
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 calc(10px * var(--ui-scale));
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--tori-text-md);
+  outline: none;
+  transition:
+    border-color var(--tori-duration-fast) ease,
+    box-shadow var(--tori-duration-fast) ease;
+}
+.spaceInput::placeholder {
+  color: var(--fg-subtle);
+}
+.spaceInput:focus-visible {
+  border-color: var(--brand-ring);
+  box-shadow: 0 0 0 3px var(--brand-subtle);
+}
+/* Declared after :focus-visible so a field that is both focused and refused
+   keeps saying it is refused, which is the state the user has to act on. */
+.spaceInput.invalid,
+.spaceInput.invalid:focus-visible {
+  border-color: var(--danger-fg);
+  box-shadow: none;
+}
+
+/* One line, and the group's only one: the default copy and the error occupy the
+   same row rather than stacking, so a name that collides mid-keystroke does not
+   push the fields below it down a line under the cursor. */
+.spaceHelp {
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
+  color: var(--fg-subtle);
+  text-wrap: pretty;
+}
+.helpError {
+  color: var(--danger-fg);
+}
+
+/* The name in "edit": a field's shape without a field's affordance. Dashed
+   rather than a disabled input, because a disabled input reads as "not yet"
+   and this is "not here" - the folder on disk carries the name. */
+.lockedName {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-4);
+  height: var(--control-height);
+  padding: 0 calc(10px * var(--ui-scale));
+  background: var(--canvas-default);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--tori-radius-md);
+  font-size: var(--tori-text-md);
+  color: var(--fg-muted);
+}
+.lockedGlyph {
+  margin-left: auto;
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-subtle);
+}
+
+/* ---- The appearance row (SpaceAppearance) ---- */
+.appearance {
+  /* Declared so the var always resolves; the component overrides it inline with
+     the space's own hue as a channel triple, which the preview and the chip dot
+     compose their alphas from (see spaceTint.ts for why a triple). */
+  --space-hue-rgb: var(--shell-glow-rgb);
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-5);
+  padding: var(--tori-space-5);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+}
+/* The space as it will look, at the size it is actually worn. The hue arrives
+   as a channel triple so the tile can compose three alphas from it (see
+   spaceTint.ts on why a triple rather than a colour). */
+.preview {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(48px * var(--ui-scale));
+  height: calc(48px * var(--ui-scale));
+  border-radius: var(--tori-radius-xl);
+  background: rgb(var(--space-hue-rgb) / 15%);
+  border: 1px solid rgb(var(--space-hue-rgb) / 35%);
+  color: rgb(var(--space-hue-rgb));
+}
+.preview svg {
+  width: calc(24px * var(--ui-scale));
+  height: calc(24px * var(--ui-scale));
+}
+.previewMark {
+  font-size: var(--tori-text-2xl);
+  font-weight: 600;
+}
+
+/* A choice you can see without opening it: the chip previews its own value, so
+   the picker behind it is for changing the answer rather than for reading it. */
+.chip {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-4);
+  height: var(--control-height);
+  padding: 0 calc(10px * var(--ui-scale));
+  background: var(--canvas-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--tori-radius-md);
+  color: var(--fg-default);
+  font-family: inherit;
+  font-size: var(--tori-text-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--tori-duration-fast) ease;
+}
+.chip:hover,
+.chip[aria-expanded="true"] {
+  border-color: var(--brand-default);
+}
+.chip:focus-visible {
+  outline: none;
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+.chipDot {
+  flex: none;
+  width: calc(14px * var(--ui-scale));
+  height: calc(14px * var(--ui-scale));
+  border-radius: var(--tori-radius-pill);
+  background: rgb(var(--space-hue-rgb));
+}
+.chipGlyph {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-muted);
+}
+.chipCaret {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: var(--fg-subtle);
+}
+
+/* Square, and pushed to the far edge: it acts on both chips at once, so sitting
+   beside either one would read as belonging to that one. */
+.reroll {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  background: var(--canvas-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--tori-radius-md);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition:
+    border-color var(--tori-duration-fast) ease,
+    color var(--tori-duration-fast) ease;
+}
+.reroll:hover {
+  border-color: var(--brand-default);
+  color: var(--brand-default);
+}
+.reroll:focus-visible {
+  outline: none;
+  border-color: var(--brand-default);
+  box-shadow: 0 0 0 3px var(--brand-ring);
+}
+
+/* ---- The two pickers, inside the shared <Popover> ----
+   Width is what sets the layout in both: `IconGrid`'s swatch row wraps, so a
+   width is how many swatches land per row, and 6 is what puts the twelve hues
+   plus "automatic" on three tidy rows. A column count declared here instead
+   would be a second owner of a number the grid already has. */
+.colorPicker {
+  width: calc(190px * var(--ui-scale));
+  padding: var(--tori-space-5);
+}
+.iconPicker {
+  width: calc(320px * var(--ui-scale));
+  padding: var(--tori-space-5);
+}
+/* The field and the grid as one column. A layer of its own rather than the
+   surface's, because it is also where the Enter guard hangs (see
+   SpaceAppearance) and a handler wants an element it owns. */
+.pickerBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tori-space-4);
+}
+/* The surface suppresses selection so a drag across a panel does not paint it
+   blue; the search field is the one thing in there that is text to be edited. */
+.iconPicker input {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.pickerCaps {
+  margin-bottom: var(--tori-space-5);
+  font-size: var(--tori-text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+.pickerNote {
+  margin-top: var(--tori-space-4);
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
+  color: var(--fg-subtle);
+}
+
+/* ---- Delete space ---- */
+/* Stated in plain ink, not in red: red body copy above a red button competes
+   with it, and the button is the thing that has to carry the weight. */
+.consequence {
+  font-size: var(--tori-text-md);
+  line-height: 1.6;
+  color: var(--fg-default);
+  text-wrap: pretty;
+}
+.consequencePath {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-muted);
+  word-break: break-all;
+}
+
+/* The three facts that decide the answer, given equal weight so the eye reads
+   all three rather than the first. */
+.statRow {
+  display: flex;
+  gap: var(--tori-space-4);
+}
+.stat {
+  flex: 1;
+  min-width: 0;
+  padding: var(--tori-space-5);
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+}
+.statLabel {
+  font-size: var(--tori-text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-subtle);
+}
+.statValue {
+  margin-top: var(--tori-space-2);
+  font-size: var(--tori-text-2xl);
+  font-weight: 600;
+  color: var(--fg-default);
+}
+/* The one panel that is allowed to shout, because unpushed work is the only
+   part of the blast radius that cannot be got back. */
+.statAtRisk {
+  background: color-mix(in srgb, var(--danger-fg) 10%, transparent);
+  border-color: color-mix(in srgb, var(--danger-fg) 38%, transparent);
+}
+.statAtRisk .statLabel,
+.statAtRisk .statValue {
+  color: var(--danger-fg);
+}
+
+.contents {
+  max-height: calc(200px * var(--ui-scale));
+  overflow-y: auto;
+  background: var(--canvas-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--tori-radius-md);
+}
+.contentsEmpty {
+  padding: var(--tori-space-4) var(--tori-space-5);
+  font-size: var(--tori-text-md);
+  color: var(--fg-muted);
+}
+.contentsRow {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-5);
+  padding: var(--tori-space-4) var(--tori-space-5);
+}
+.contentsRow + .contentsRow {
+  border-top: 1px solid var(--border-default);
+}
+.rowGlyph,
+.rowGlyphAtRisk {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+}
+.rowGlyph {
+  color: var(--fg-subtle);
+}
+.rowGlyphAtRisk {
+  color: var(--danger-fg);
+}
+.rowName {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowBadges {
+  margin-left: auto;
+  display: flex;
+  flex: none;
+  gap: var(--tori-space-2);
+}
+.badge {
+  padding: 0 var(--tori-space-3);
+  font-size: var(--tori-text-xs);
+  font-weight: 500;
+  line-height: calc(18px * var(--ui-scale));
+  color: var(--danger-fg);
+  border: 1px solid color-mix(in srgb, var(--danger-fg) 45%, transparent);
+  border-radius: var(--tori-radius-sm);
+}
+.rowNote {
+  font-size: var(--tori-text-xs);
+  color: var(--fg-muted);
+}
+.inlineName {
+  font-family: var(--tori-font-mono);
+  font-size: var(--tori-text-sm);
+  color: var(--fg-default);
+}
+/* The gate is typed against a folder name, so it is set in the same face the
+   name is printed in two lines above it. */
+.monoInput {
+  font-family: var(--tori-font-mono);
+}
+.spaceInput.armed,
+.spaceInput.armed:focus-visible {
+  border-color: var(--danger-fg);
+  box-shadow: none;
+}
+/* Beside the button it explains, at the other end of the action row. `auto`
+   rather than `space-between`, so it does not move the two buttons when it
+   goes. */
+.armHint {
+  margin-right: auto;
+  align-self: center;
+  font-size: var(--tori-text-sm);
+  color: var(--fg-subtle);
+}
+
+/* ---- New in <space> ----
+   The floor under the mode note is what keeps the fields still: the three notes
+   run one, two and three lines, and without it every mode switch moves the
+   field the pointer is heading for. Two lines of the note's own type, which is
+   the tallest of the three at this width. */
+.modeNote {
+  margin-top: var(--tori-space-4);
+  min-height: calc(2 * var(--tori-line-normal) * var(--tori-text-sm));
+  font-size: var(--tori-text-sm);
+  line-height: var(--tori-line-normal);
+  color: var(--fg-subtle);
+  text-wrap: pretty;
 }

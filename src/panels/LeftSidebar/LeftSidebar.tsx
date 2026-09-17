@@ -2,6 +2,7 @@ import { createSignal, For, Match, Show, Switch, onMount, onCleanup, createEffec
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { homeDir } from "@tauri-apps/api/path";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import Dropdown from "../../components/Menu/Dropdown";
 import { type MenuItem } from "../../components/Menu/rows";
@@ -119,6 +120,7 @@ import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
+import { shortHome, spaceInitials } from "../../utils/names";
 import { rememberSelection, rememberedUnit, rememberedTopic } from "../../utils/selectionMemory";
 import {
   Folder,
@@ -658,6 +660,14 @@ export default function LeftSidebar(props: {
     runningCount: number;
     sizeBytes: number | null;
   } | null>(null);
+
+  // For folding an absolute path to `~` in the delete confirmation. Read once
+  // and kept, rather than per dialog: it cannot change while the app is running,
+  // and `""` never folds anything, which is the right answer before it lands.
+  const [home, setHome] = createSignal("");
+  void homeDir()
+    .then((h) => setHome(h.replace(/\/$/, "")))
+    .catch(() => {});
 
   // Live tabs grouped under a folder (prefix match on the tab's workspace).
   // A command tab counts by its cwd: a clone into this space is killed by the
@@ -2030,16 +2040,38 @@ export default function LeftSidebar(props: {
 
   // --- per-node context menus ---
 
-  // Past its own rule at the bottom: the rows above act on the space that was
-  // right-clicked, this one makes a sibling of it. Same menu because the strip
-  // has no other handle now that the gear button which carried it is gone.
+  // Which space this menu belongs to, in the space's own glyph and hue. The
+  // strip is a row of near-identical tiles and the menu opens at the cursor, so
+  // without the header the menu is four rows that never say what they act on.
+  const spaceMenuHead = (g: Space) => (
+    <span class={styles.spaceMenuHead} style={{ "--space-hue-rgb": spaceHueRgb(g.name, g.color) }}>
+      <Show
+        when={resolveIcon(g.icon)}
+        fallback={<span class={styles.spaceMenuMark}>{spaceInitials(g.name)}</span>}
+      >
+        {(glyph) => <Icon icon={glyph()} />}
+      </Show>
+      <span class={styles.spaceMenuName}>{g.name}</span>
+    </span>
+  );
+
+  // Three groups, in the order the rows are reached for: the two creation paths
+  // together at the top, the space's own edit under them, and the destructive
+  // row alone at the bottom rather than one row above a benign one.
+  //
+  // Both creation rows name their target, which is the whole of what "New…" and
+  // "Add new space" failed to do while sitting next to each other: one of them
+  // creates inside this space, the other creates a sibling of it, and the old
+  // labels read as near-synonyms.
   const spaceMenu = (g: Space): MenuItem[] => [
-    { label: "New…", onClick: () => openNewProject(g) },
+    { heading: spaceMenuHead(g) },
+    { separator: true },
+    { label: `New in “${g.name}”…`, onClick: () => openNewProject(g) },
+    { label: "New space", onClick: () => addSpace() },
     { separator: true },
     { label: "Edit space…", onClick: () => editSpace(g) },
-    { label: "Delete space", danger: true, onClick: () => openDeleteSpace(g) },
     { separator: true },
-    { label: "Add new space", onClick: () => addSpace() },
+    { label: "Delete space…", danger: true, onClick: () => openDeleteSpace(g) },
   ];
 
   // A project with a working tree git can branch from: a plain repo or a
@@ -3200,6 +3232,7 @@ export default function LeftSidebar(props: {
       <Show when={deleteReq()}>
         <ConfirmDeleteSpace
           spaceName={deleteReq()!.name}
+          path={shortHome(deleteReq()!.path, home())}
           entries={deleteReq()!.entries}
           loading={deleteReq()!.loading}
           runningCount={deleteReq()!.runningCount}
@@ -3314,6 +3347,7 @@ export default function LeftSidebar(props: {
           name={spaceReq()!.name}
           icon={spaceReq()!.icon}
           color={spaceReq()!.color}
+          spaces={(config()?.spaces ?? []).map((s) => s.name)}
           busy={spaceReq()!.busy}
           onConfirm={(opts) => confirmSpace(opts)}
           onCancel={() => setSpaceReq(null)}

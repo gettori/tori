@@ -79,9 +79,9 @@ describe("the space's empty area", () => {
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
 
     expect(rightClick(scroller(container))).toBe(true);
-    expect(await screen.findByText("New…")).toBeTruthy();
+    expect(await screen.findByText("New in “work”…")).toBeTruthy();
     expect(screen.getByText("Edit space…")).toBeTruthy();
-    expect(screen.getByText("Delete space")).toBeTruthy();
+    expect(screen.getByText("Delete space…")).toBeTruthy();
   });
 
   it("leaves a row's own right-click alone", async () => {
@@ -93,7 +93,7 @@ describe("the space's empty area", () => {
 
     rightClick(screen.getByText("proj"));
     expect(await screen.findByText("Change icon…")).toBeTruthy();
-    expect(screen.queryByText("Delete space")).toBeNull();
+    expect(screen.queryByText("Delete space…")).toBeNull();
   });
 
   // A clone into this space is killed by the delete exactly as a shell here is
@@ -113,12 +113,11 @@ describe("the space's empty area", () => {
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
 
     rightClick(scroller(container));
-    pointerClick(await screen.findByText("Delete space"));
-    // The count and its noun are separate text nodes, so this reads the line.
+    pointerClick(await screen.findByText("Delete space…"));
+    // The count is a stat panel now: a caps label and a value on two lines, so
+    // this reads the box rather than one of them.
     await waitFor(() =>
-      expect(
-        [...document.querySelectorAll("span")].some((el) => el.textContent === "1 agent running here"),
-      ).toBe(true),
+      expect(screen.getByText("Agents running").parentElement!.textContent).toContain("1"),
     );
   });
 });
@@ -137,7 +136,7 @@ describe("a space with nothing in it", () => {
     mount();
     await waitFor(() => expect(screen.getByText(/no projects yet/)).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    // The same dialog the space menu's "New…" opens.
+    // The same dialog the space menu's "New in …" row opens.
     expect(await screen.findByText(/New in .blank./)).toBeTruthy();
   });
 

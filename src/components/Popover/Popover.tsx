@@ -1,5 +1,6 @@
 import { onCleanup, onMount, type JSX } from "solid-js";
 import { Popover as Primitive } from "../../lib/popover";
+import { useDialogSurface } from "../Dialog/surface";
 import styles from "./Popover.module.css";
 
 /** Where the surface sits relative to its anchor. Kobalte accepts twelve
@@ -40,6 +41,11 @@ const ANCHOR_GUTTER = 12;
  * it in the same gesture. The exclusion covers focus too: shift-tabbing back
  * onto the anchor is not leaving.
  *
+ * **Inside a dialog it portals into the panel**, the same default `ContextMenu`
+ * takes. A modal dialog expresses modality by aria-hiding every subtree that is
+ * not its panel, so a surface portalled to the body from inside one is painted
+ * and absent from the accessibility tree at once - see `Dialog/surface.ts`.
+ *
  * Chrome is split: this owns the base surface (background, border, shadow,
  * z-index, in `Popover.module.css`), the caller's `class` adds layout.
  */
@@ -59,6 +65,8 @@ export default function Popover(props: {
   ref?: (el: HTMLDivElement) => void;
   children: JSX.Element;
 }) {
+  const dialogSurface = useDialogSurface();
+
   onMount(() => {
     const returnTo = document.activeElement as HTMLElement | null;
     onCleanup(() => returnTo?.focus?.());
@@ -75,7 +83,7 @@ export default function Popover(props: {
         if (!isOpen) props.onClose();
       }}
     >
-      <Primitive.Portal>
+      <Primitive.Portal mount={dialogSurface()}>
         <Primitive.Content
           class={[styles.surface, props.class].filter(Boolean).join(" ")}
           aria-label={props["aria-label"]}

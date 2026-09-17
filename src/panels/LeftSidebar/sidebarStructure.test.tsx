@@ -306,9 +306,9 @@ describe("the sidebar levels that outlive the session rows", () => {
     mount(["p:work/repo"]);
 
     fireEvent.contextMenu(await screen.findByRole("button", { name: "work" }));
-    expect(await screen.findByText("New…")).toBeTruthy();
+    expect(await screen.findByText("New in “work”…")).toBeTruthy();
     expect(screen.getByText("Edit space…")).toBeTruthy();
-    expect(screen.getByText("Delete space")).toBeTruthy();
+    expect(screen.getByText("Delete space…")).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
 
     fireEvent.contextMenu(await row("repo"));

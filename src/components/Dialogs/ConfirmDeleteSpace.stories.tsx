@@ -25,6 +25,7 @@ const meta = {
   },
   args: {
     spaceName: "work",
+    path: "~/code/work",
     entries: ENTRIES,
     loading: false,
     runningCount: 0,
@@ -60,6 +61,7 @@ export const AgentsRunning: Story = {
 export const PlainFolder: Story = {
   args: {
     spaceName: "scratch",
+    path: "~/code/work/scratch",
     title: "Delete folder “scratch”?",
     confirmLabel: "Delete folder",
     entries: [{ name: "old.log", kind: "file", dirty: false, unpushed: false }],

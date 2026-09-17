@@ -7,9 +7,12 @@ import { nameFromUrl, type NewProjectMode } from "../../utils/newProject";
 
 // Create something under a space, in one dialog. Replaces the separate "New
 // folder", "Clone repo…" and "Bare + worktree…" space-menu items: a segmented
-// control picks the mode, a Name field is always shown, and a URL field appears
-// only for clone/bare (auto-filling the name from the URL until it is edited by
-// hand).
+// control picks the mode, and the fields follow it.
+//
+// **The mode note holds its own height.** The three notes are one, two and three
+// lines of copy, so without a floor under the row the fields below it jump every
+// time the mode changes - under the cursor, in the middle of a form. The floor
+// is the tallest of the three.
 //
 // The shell is `Dialog`, which owns the portal, the backdrop, Escape and the
 // focus trap. Enter stays here, on a wrapper around the fields, because it means
@@ -40,18 +43,21 @@ export default function NewProjectDialog(props: {
   const helper = () => {
     switch (mode()) {
       case "folder":
-        return "A plain, non-git folder.";
+        return "A plain folder, no git. Nothing is cloned.";
       case "clone":
-        return "Clone a git repository into a new folder.";
+        return "Clones a git repository into a new folder inside this space.";
       case "bare":
-        return "A .bare repo with one initial worktree; add more branches as their own folders.";
+        return "A .bare repo plus one initial worktree. Add more branches later as their own folders.";
     }
   };
 
-  const canConfirm = () => !!name().trim() && (!needsUrl() || !!url().trim());
+  // The URL is the only required field in the two git modes: a blank folder name
+  // is not missing, it is the placeholder's promise that the URL supplies one.
+  const folderName = () => name().trim() || (needsUrl() ? nameFromUrl(url().trim()) : "");
+  const canConfirm = () => (needsUrl() ? !!url().trim() : !!name().trim());
   const confirm = () => {
     if (!canConfirm()) return;
-    props.onConfirm({ mode: mode(), name: name().trim(), url: url().trim() });
+    props.onConfirm({ mode: mode(), name: folderName(), url: url().trim() });
   };
 
   function onKeyDown(e: KeyboardEvent) {
@@ -85,53 +91,61 @@ export default function NewProjectDialog(props: {
         </>
       }
     >
-      <div onKeyDown={onKeyDown}>
-        <SegmentedControl
-          class={styles.newSeg}
-          aria-label="What to create"
-          options={segs}
-          value={mode()}
-          onChange={setMode}
-        />
-        <div class={styles.msg}>{helper()}</div>
+      <div class={styles.spaceForm} onKeyDown={onKeyDown}>
+        <div>
+          <SegmentedControl
+            aria-label="What to create"
+            options={segs}
+            value={mode()}
+            onChange={setMode}
+          />
+          <div class={styles.modeNote}>{helper()}</div>
+        </div>
 
         {/* Each field is named by the line above it rather than by an
             `aria-label` repeating that line, so the visible text and the
             accessible name cannot drift apart. The ids are static because only
             one of these dialogs can be open at a time. */}
         <Show when={needsUrl()}>
-          <div id={URL_LABEL} class={styles.label}>
-            Repository URL
+          <div class={styles.spaceField}>
+            <div id={URL_LABEL} class={styles.spaceLabel}>
+              Repository URL
+            </div>
+            <input
+              class={styles.spaceInput}
+              aria-labelledby={URL_LABEL}
+              value={url()}
+              placeholder="https://github.com/org/repo.git"
+              onInput={(e) => onUrlInput(e.currentTarget.value)}
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck={false}
+            />
+          </div>
+        </Show>
+
+        <div class={styles.spaceField}>
+          <div id={NAME_LABEL} class={styles.spaceLabel}>
+            {needsUrl() ? "Folder name" : "Name"}
           </div>
           <input
-            class={styles.input}
-            aria-labelledby={URL_LABEL}
-            value={url()}
-            placeholder="https://…"
-            onInput={(e) => onUrlInput(e.currentTarget.value)}
+            ref={first}
+            class={styles.spaceInput}
+            aria-labelledby={NAME_LABEL}
+            value={name()}
+            placeholder={needsUrl() ? "defaults from the URL" : "folder name"}
+            onInput={(e) => {
+              setNameEdited(true);
+              setName(e.currentTarget.value);
+            }}
             autocapitalize="off"
             autocorrect="off"
             spellcheck={false}
           />
-        </Show>
-
-        <div id={NAME_LABEL} class={styles.label}>
-          {needsUrl() ? "Folder name" : "Name"}
+          <Show when={!needsUrl()}>
+            <div class={styles.spaceHelp}>Created directly inside {props.spaceName}.</div>
+          </Show>
         </div>
-        <input
-          ref={first}
-          class={styles.input}
-          aria-labelledby={NAME_LABEL}
-          value={name()}
-          placeholder={needsUrl() ? "defaults from the URL" : "folder name"}
-          onInput={(e) => {
-            setNameEdited(true);
-            setName(e.currentTarget.value);
-          }}
-          autocapitalize="off"
-          autocorrect="off"
-          spellcheck={false}
-        />
       </div>
     </Dialog>
   );

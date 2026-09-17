@@ -36,7 +36,7 @@ function open(props: Partial<Omit<NewProps, "onConfirm" | "onCancel">> = {}) {
   const name = () =>
     (screen.queryByPlaceholderText("folder name") ??
       screen.getByPlaceholderText("defaults from the URL")) as HTMLInputElement;
-  const url = () => screen.getByPlaceholderText("https://…") as HTMLInputElement;
+  const url = () => screen.getByPlaceholderText("https://github.com/org/repo.git") as HTMLInputElement;
   return { onConfirm, onCancel, mode, name, url };
 }
 
@@ -61,8 +61,8 @@ describe("NewProjectDialog", () => {
       const { mode } = open();
 
       expect(mode("Folder").getAttribute("aria-pressed")).toBe("true");
-      expect(screen.queryByPlaceholderText("https://…")).toBeNull();
-      expect(screen.getByText("A plain, non-git folder.")).toBeTruthy();
+      expect(screen.queryByPlaceholderText("https://github.com/org/repo.git")).toBeNull();
+      expect(screen.getByText("A plain folder, no git. Nothing is cloned.")).toBeTruthy();
     });
 
     it("asks for a URL once the mode needs one", () => {
@@ -71,7 +71,7 @@ describe("NewProjectDialog", () => {
       fireEvent.click(mode("Clone"));
 
       expect(url()).toBeTruthy();
-      expect(screen.getByText("Clone a git repository into a new folder.")).toBeTruthy();
+      expect(screen.getByText("Clones a git repository into a new folder inside this space.")).toBeTruthy();
     });
 
     it("describes the bare + worktree layout", () => {
@@ -81,7 +81,7 @@ describe("NewProjectDialog", () => {
 
       expect(
         screen.getByText(
-          "A .bare repo with one initial worktree; add more branches as their own folders.",
+          "A .bare repo plus one initial worktree. Add more branches later as their own folders.",
         ),
       ).toBeTruthy();
     });

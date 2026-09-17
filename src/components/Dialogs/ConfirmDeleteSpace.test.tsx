@@ -35,6 +35,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   render(() => (
     <ConfirmDeleteSpace
       spaceName="work"
+      path="~/code/work"
       entries={[]}
       loading={false}
       runningCount={0}
@@ -48,7 +49,11 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   // the dialog's only textbox either side of the swap, and it stays the only
   // one after phase 2 gives it a real name (see the header).
   const input = () => screen.getByRole("textbox") as HTMLInputElement;
-  return { onConfirm, onCancel, input };
+  // A stat panel by its caps label, read whole: the label and the value are two
+  // lines of one box, and the value alone ("1", "…") is too common a string to
+  // find on its own.
+  const stat = (label: string) => screen.getByText(label).parentElement!.textContent ?? "";
+  return { onConfirm, onCancel, input, stat };
 }
 
 const del = (name = "Delete space") =>
@@ -60,8 +65,11 @@ describe("ConfirmDeleteSpace", () => {
       open();
 
       expect(screen.getByText("Delete space “work”?")).toBeTruthy();
+      // The consequence names the folder, so the sentence is split across the
+      // mono path span and cannot be found as one text node.
+      expect(screen.getByText("~/code/work")).toBeTruthy();
       expect(
-        screen.getByText("This permanently deletes the folder and everything below. It cannot be undone."),
+        screen.getByText(/and everything below it from disk\. It cannot be undone\./),
       ).toBeTruthy();
     });
 
@@ -73,21 +81,34 @@ describe("ConfirmDeleteSpace", () => {
     });
 
     it("counts the agents running under it", () => {
-      open({ runningCount: 1 });
+      const { stat } = open({ runningCount: 1 });
 
-      expect(screen.getByText("1 agent running here")).toBeTruthy();
+      expect(stat("Agents running")).toContain("1");
     });
 
     it("says the size is still being counted", () => {
-      open();
+      const { stat } = open();
 
-      expect(screen.getByText("calculating size…")).toBeTruthy();
+      expect(stat("On disk")).toContain("…");
     });
 
     it("reports the size once it is in", () => {
       open({ sizeBytes: 1024 });
 
       expect(screen.getByText("1 KB")).toBeTruthy();
+    });
+
+    // The only unrecoverable part of the blast radius, so it is counted in its
+    // own panel rather than left to be inferred from the list.
+    it("counts the repos holding unpushed work", () => {
+      const { stat } = open({
+        entries: [
+          { name: "api", kind: "repo", dirty: false, unpushed: true },
+          { name: "web", kind: "repo", dirty: true, unpushed: false },
+        ],
+      });
+
+      expect(stat("Unpushed")).toContain("1 repo");
     });
 
     it("lists the whole blast radius, not only the repos", () => {
@@ -101,8 +122,23 @@ describe("ConfirmDeleteSpace", () => {
 
       expect(screen.getByText("api")).toBeTruthy();
       expect(screen.getByText("uncommitted")).toBeTruthy();
-      expect(screen.getByText("folder")).toBeTruthy();
-      expect(screen.getByText("file")).toBeTruthy();
+      expect(screen.getByText("notes")).toBeTruthy();
+      expect(screen.getByText("todo.md")).toBeTruthy();
+    });
+
+    // What cannot be got back is read first, whatever order the preview
+    // enumerated the folder in.
+    it("sorts the rows holding unpushed work to the top", () => {
+      open({
+        entries: [
+          { name: "api", kind: "repo", dirty: false, unpushed: false },
+          { name: "notes", kind: "folder", dirty: false, unpushed: false },
+          { name: "web", kind: "repo", dirty: false, unpushed: true },
+        ],
+      });
+
+      const names = screen.getAllByText(/^(api|notes|web)$/).map((el) => el.textContent);
+      expect(names[0]).toBe("web");
     });
 
     it("says so when there is nothing below it", () => {
