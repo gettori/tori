@@ -252,15 +252,33 @@
     width: calc(14px * var(--ui-scale));
     height: calc(14px * var(--ui-scale));
   }
-  /* The sidebar's Topic chip on a branch row (`.row .badge.topicChip`). */
+  .topicCard {
+    flex: 1 1 calc(260px * var(--ui-scale));
+    max-width: calc(320px * var(--ui-scale));
+  }
+  .topicName {
+    font-size: var(--tori-text-lg);
+    font-weight: 600;
+  }
+  .topicTag {
+    display: inline-flex;
+    color: var(--brand-default);
+  }
+  .topicTag :global(svg) {
+    width: calc(16px * var(--ui-scale));
+    height: calc(16px * var(--ui-scale));
+  }
+  /* The sidebar's Tag chip on a worktree row (`.row .badge.topicChip`). */
   .topicChip {
-    font-family: var(--tori-font-ui);
-    font-size: var(--tori-text-2xs);
-    font-weight: 400;
-    padding: 0 calc(4px * var(--ui-scale));
+    display: inline-flex;
+    padding: calc(2px * var(--ui-scale));
     border-radius: var(--tori-radius-sm);
     color: var(--brand-default);
     background: var(--brand-subtle);
+  }
+  .topicChip :global(svg) {
+    width: calc(12px * var(--ui-scale));
+    height: calc(12px * var(--ui-scale));
   }
 
   .tabs {
