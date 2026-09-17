@@ -1,7 +1,9 @@
-import { createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
+import { FileText, Folder, FolderGit2 } from "lucide-solid";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
+import Icon from "../Icon/Icon";
 
 // The visible "Type <name> to confirm" line is also the field's accessible name
 // (the `aria-labelledby` convention `NewProjectDialog` set in #99), so the two
@@ -28,18 +30,31 @@ function formatBytes(n: number): string {
   return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-// A GitHub-style destructive confirmation for deleting a space. It shows the full
-// blast radius (every child entry, not just discovered projects), the at-risk
-// flags, running agents, and total size, and only enables Delete once the exact
-// space name is typed.
-//
-// The shell is `Dialog`, at the `sheet` width the old danger-dialog rule spelled
-// out. Enter stays on the **input**, deliberately not on the panel as its
-// siblings in this set do: the gate is a field, and answering the key from
-// anywhere in the dialog would widen it to the whole surface. Escape is
-// Kobalte's, reported as `onClose`.
+const KIND_GLYPH = { repo: FolderGit2, folder: Folder, file: FileText } as const;
+
+/**
+ * The confirmation for an unrecoverable delete, with the facts that decide the
+ * answer rather than a warning that asks for one.
+ *
+ * **The consequence is stated once, in plain ink.** Red body copy above a red
+ * button competes with it, and the button is the thing that needs the colour.
+ * What is red here is what is actually at risk: the unpushed count, and the
+ * rows carrying it.
+ *
+ * **Rows with unpushed work sort to the top**, because that is the only part of
+ * a delete that cannot be got back. Everything else on disk was either pushed
+ * or was never worth keeping.
+ *
+ * The shell is `Dialog`. Enter stays on the **input**, deliberately not on the
+ * panel as its siblings in this set do: the gate is a field, and answering the
+ * key from anywhere in the dialog would widen it to the whole surface. Escape is
+ * Kobalte's, reported as `onClose`.
+ */
 export default function ConfirmDeleteSpace(props: {
   spaceName: string;
+  /** The folder about to go, for display: already folded to `~` by the caller,
+   *  which is the half of this that knows the home directory. */
+  path: string;
   entries: DeleteEntry[];
   loading: boolean;
   runningCount: number;
@@ -54,6 +69,13 @@ export default function ConfirmDeleteSpace(props: {
   const [value, setValue] = createSignal("");
   const matches = () => value() === props.spaceName;
   let input: HTMLInputElement | undefined;
+
+  // At-risk first, then whatever order the preview arrived in (the backend
+  // sorts by name). A stable sort, so the tail keeps that order.
+  const rows = createMemo(() =>
+    [...props.entries].sort((a, b) => Number(b.unpushed) - Number(a.unpushed)),
+  );
+  const unpushedCount = () => props.entries.filter((e) => e.unpushed).length;
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.key !== "Enter") return;
@@ -70,6 +92,12 @@ export default function ConfirmDeleteSpace(props: {
       initialFocus={() => input}
       actions={
         <>
+          {/* Why the button is off, beside the button, rather than a tooltip on
+              a disabled control nothing can hover. It goes once it is armed:
+              the answer to it is on screen by then. */}
+          <Show when={!matches()}>
+            <span class={styles.armHint}>Name must match to continue.</span>
+          </Show>
           <Button onClick={() => props.onCancel()}>Cancel</Button>
           <Button variant="danger" disabled={!matches()} onClick={() => props.onConfirm()}>
             {props.confirmLabel ?? "Delete space"}
@@ -77,59 +105,86 @@ export default function ConfirmDeleteSpace(props: {
         </>
       }
     >
-      <div class={styles.warning}>
-        This permanently deletes the folder and everything below. It cannot be undone.
-      </div>
+      <div class={styles.spaceForm}>
+        <div class={styles.consequence}>
+          This deletes the folder <span class={styles.consequencePath}>{props.path}</span> and
+          everything below it from disk. It cannot be undone.
+        </div>
 
-      <div class={styles.delSummary}>
-        <span>{props.runningCount} agent{props.runningCount === 1 ? "" : "s"} running here</span>
-        <span>
-          {props.sizeBytes === null ? "calculating size…" : formatBytes(props.sizeBytes)}
-        </span>
-      </div>
+        <div class={styles.statRow}>
+          <div class={styles.stat}>
+            <div class={styles.statLabel}>Agents running</div>
+            <div class={styles.statValue}>{props.runningCount}</div>
+          </div>
+          <div class={styles.stat}>
+            <div class={styles.statLabel}>On disk</div>
+            <div class={styles.statValue}>
+              {props.sizeBytes === null ? "…" : formatBytes(props.sizeBytes)}
+            </div>
+          </div>
+          <div class={styles.stat} classList={{ [styles.statAtRisk]: unpushedCount() > 0 }}>
+            <div class={styles.statLabel}>Unpushed</div>
+            <div class={styles.statValue}>
+              <Show when={!props.loading} fallback="…">
+                {unpushedCount()} {unpushedCount() === 1 ? "repo" : "repos"}
+              </Show>
+            </div>
+          </div>
+        </div>
 
-      <div class={styles.delEntries}>
-        <Show
-          when={props.entries.length}
-          fallback={<div class={styles.delEmpty}>No contents (empty space)</div>}
-        >
-          <For each={props.entries}>
-            {(e) => (
-              <div class={styles.delEntry}>
-                <span class={styles.delEntryName}>{e.name}</span>
-                <span class={styles.delEntryTags}>
-                  <Show when={e.kind === "repo"} fallback={<span class={`${styles.delTag} ${styles.muted}`}>{e.kind}</span>}>
-                    <Show when={props.loading}>
-                      <span class={`${styles.delTag} ${styles.muted}`}>checking…</span>
-                    </Show>
-                    <Show when={!props.loading && e.dirty}>
-                      <span class={`${styles.delTag} ${styles.warn}`}>uncommitted</span>
-                    </Show>
-                    <Show when={!props.loading && e.unpushed}>
-                      <span class={`${styles.delTag} ${styles.warn}`}>unpushed</span>
-                    </Show>
-                  </Show>
-                </span>
-              </div>
-            )}
-          </For>
-        </Show>
-      </div>
+        <div class={styles.spaceField}>
+          <div class={styles.spaceLabel}>Contents</div>
+          <div class={styles.contents}>
+            <Show
+              when={rows().length}
+              fallback={<div class={styles.contentsEmpty}>No contents (empty space)</div>}
+            >
+              <For each={rows()}>
+                {(e) => (
+                  <div class={styles.contentsRow}>
+                    <Icon
+                      icon={KIND_GLYPH[e.kind]}
+                      class={e.unpushed ? styles.rowGlyphAtRisk : styles.rowGlyph}
+                      aria-hidden="true"
+                    />
+                    <span class={styles.rowName}>{e.name}</span>
+                    <span class={styles.rowBadges}>
+                      <Show when={e.kind === "repo" && props.loading}>
+                        <span class={styles.rowNote}>checking…</span>
+                      </Show>
+                      <Show when={!props.loading && e.dirty}>
+                        <span class={styles.badge}>uncommitted</span>
+                      </Show>
+                      <Show when={!props.loading && e.unpushed}>
+                        <span class={styles.badge}>unpushed</span>
+                      </Show>
+                    </span>
+                  </div>
+                )}
+              </For>
+            </Show>
+          </div>
+        </div>
 
-      <div id={CONFIRM_LABEL} class={styles.label}>
-        Type <strong>{props.spaceName}</strong> to confirm
+        <div class={styles.spaceField}>
+          <div id={CONFIRM_LABEL} class={styles.spaceLabel}>
+            Type <span class={styles.inlineName}>{props.spaceName}</span> to confirm
+          </div>
+          <input
+            ref={input}
+            class={`${styles.spaceInput} ${styles.monoInput}`}
+            classList={{ [styles.armed]: matches() }}
+            aria-labelledby={CONFIRM_LABEL}
+            value={value()}
+            placeholder={props.spaceName}
+            onInput={(e) => setValue(e.currentTarget.value)}
+            onKeyDown={onKeyDown}
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck={false}
+          />
+        </div>
       </div>
-      <input
-        ref={input}
-        class={styles.input}
-        aria-labelledby={CONFIRM_LABEL}
-        value={value()}
-        onInput={(e) => setValue(e.currentTarget.value)}
-        onKeyDown={onKeyDown}
-        autocapitalize="off"
-        autocorrect="off"
-        spellcheck={false}
-      />
     </Dialog>
   );
 }

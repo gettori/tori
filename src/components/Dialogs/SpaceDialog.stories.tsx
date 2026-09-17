@@ -3,9 +3,11 @@ import SpaceDialog from "./SpaceDialog";
 
 // One component, two dialogs, and the difference is worth clicking through:
 // "new" creates a folder, so the name is validated and permanent, while "edit"
-// creates nothing, so the name is locked and the icon is the only thing left to
-// change. The colour row's first swatch is not a colour but a state - it hands
-// the hue back to the name, and previews what that derives to.
+// creates nothing, so the name is locked and colour and icon are all that is
+// left to change. Both open on an appearance that is already chosen - the chips
+// preview it, the die rerolls it - so neither picker ever gates a submit. The
+// colour popover's first swatch is not a colour but a state: it hands the hue
+// back to the name, and previews what that derives to.
 const meta = {
   title: "Dialogs/SpaceDialog",
   component: SpaceDialog,
@@ -21,6 +23,7 @@ const meta = {
     name: "",
     icon: null,
     color: null,
+    spaces: ["work", "side", "archive"],
     busy: false,
     onConfirm: () => {},
     onCancel: () => {},
@@ -30,13 +33,21 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Empty, which is also the invalid state: Create is disabled and the field says
- *  why. Try a slash or a leading dot to see the other two. */
+/** Empty, where the dialog starts: Create is off and the help line is the
+ *  default copy, not an error. Type `work` for the collision, or a slash or a
+ *  leading dot for the two the server would refuse. */
 export const NewSpace: Story = {};
 
-/** A name that will pass, so the automatic swatch has a hue to derive. */
-export const NewSpaceNamed: Story = {
+/** A name that collides with one already in the base folder: Create stays off,
+ *  the help line becomes the reason, and the field turns red. */
+export const NewSpaceTaken: Story = {
   args: { name: "work" },
+};
+
+/** A name that will pass, so the preview has initials to fall back to and the
+ *  automatic swatch a hue to derive. */
+export const NewSpaceNamed: Story = {
+  args: { name: "side-quest" },
 };
 
 /** Editing an existing space: the name is locked (still named for a screen

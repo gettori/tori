@@ -887,3 +887,36 @@
   box-shadow: inset -2px 0 0 var(--brand-default);
 }
 
+
+/* ---- The space menu's heading: which space the four rows below act on.
+   It sits inside <Menu>'s `.heading`, which supplies the inset and the muted
+   voice; what is added here is the glyph and the name, because a heading that
+   is only a word would repeat what the rows already say. The glyph wears the
+   space's own hue, the one thing that tells two tiles apart at a glance. ---- */
+.spaceMenuHead {
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-4);
+  min-width: 0;
+}
+.spaceMenuHead svg {
+  flex: none;
+  width: var(--control-icon);
+  height: var(--control-icon);
+  color: rgb(var(--space-hue-rgb));
+}
+/* The initials, in the glyph's place and its hue, for a space that has no icon. */
+.spaceMenuMark {
+  flex: none;
+  width: var(--control-icon);
+  text-align: center;
+  font-size: var(--tori-text-xs);
+  font-weight: 600;
+  color: rgb(var(--space-hue-rgb));
+}
+.spaceMenuName {
+  font-weight: 600;
+  color: var(--fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
