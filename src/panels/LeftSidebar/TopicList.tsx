@@ -1,76 +1,76 @@
 import { createSignal, For, Show, onMount, onCleanup, createMemo } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import FeatureItem, { type SpaceTint } from "./FeatureItem";
+import TopicItem, { type SpaceTint } from "./TopicItem";
 import Button from "../../components/Button/Button";
-import NewFeatureDialog from "../../components/Dialogs/NewFeatureDialog";
+import NewTopicDialog from "../../components/Dialogs/NewTopicDialog";
 import PromptModal from "../../components/Dialogs/PromptModal";
-import ConfirmDeleteFeature, { type MemberRisk } from "../../components/Dialogs/ConfirmDeleteFeature";
-import FeatureWorktreeSweepDialog, {
+import ConfirmDeleteTopic, { type MemberRisk } from "../../components/Dialogs/ConfirmDeleteTopic";
+import TopicWorktreeSweepDialog, {
   type SweepChoice,
   type SweepMember,
-} from "../../components/Dialogs/FeatureWorktreeSweepDialog";
+} from "../../components/Dialogs/TopicWorktreeSweepDialog";
 import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog";
 import { pushToast } from "../../components/Toasts/Toasts";
 import type { MenuItem } from "../../components/Menu/rows";
 import type { RepoSpace } from "../../components/Dialogs/RepoChecklist";
-import { memberState, type Feature, type Member, type RepairAction, featureKey, LAST_MEMBER } from "../../utils/features";
+import { memberState, type Topic, type Member, type RepairAction, topicKey, LAST_MEMBER } from "../../utils/topics";
 import { moveKey } from "../../utils/dragReorder";
-import { on as onEvent, NEW_FEATURE } from "../../utils/events";
+import { on as onEvent, NEW_TOPIC } from "../../utils/events";
 import { removeMemberWorktree } from "../../utils/memberWorktree";
 import { purgeWorkspace } from "../../utils/purgeWorkspace";
-import styles from "./FeatureList.module.css";
+import styles from "./TopicList.module.css";
 
 /** What the list needs from a Space: the tint for a chip and the projects for
  *  the creation checklist. The sidebar's own `Space` satisfies it as is. */
-export type FeatureSpace = SpaceTint & RepoSpace;
+export type TopicSpace = SpaceTint & RepoSpace;
 
-/** The sidebar's Features mode: every Feature as a row, the dialogs that make
+/** The sidebar's Topics mode: every Topic as a row, the dialogs that make
  *  or change one, and the toast for a creation that left a member failed.
  *  Mounted only in that mode, so it owns its own fetch and its own listeners;
  *  the sidebar hands it the Spaces and the shared filter string.
  *
- *  Two feeds keep it current. `topics://changed` carries a whole Feature
+ *  Two feeds keep it current. `topics://changed` carries a whole Topic
  *  after every step of a creation, and is applied as is, no refetch, so chips
  *  flip one by one. `config://changed` fires once at the end (and whenever
  *  the tree changes for any other reason), and that one refetches. */
-export default function FeatureList(props: {
-  spaces: FeatureSpace[];
+export default function TopicList(props: {
+  spaces: TopicSpace[];
   query: string;
   class?: string;
-  /** The selected Feature's id, so exactly one row reads as active. */
+  /** The selected Topic's id, so exactly one row reads as active. */
   activeId?: string | null;
-  onSelect?: (feature: Feature) => void;
-  /** The selected Feature was deleted; the shell drops the selection. */
-  onDeleted?: (feature: Feature) => void;
+  onSelect?: (topic: Topic) => void;
+  /** The selected Topic was deleted; the shell drops the selection. */
+  onDeleted?: (topic: Topic) => void;
   /** Live shell/agent tabs under a folder, for the removal confirm's warning.
    *  The sidebar owns the live-tab list, so it answers this rather than the
    *  list holding a second copy of the attribution rule. Absent means zero. */
   countRunning?: (path: string) => Promise<number>;
 }) {
-  const [features, setFeatures] = createSignal<Feature[]>([]);
+  const [topics, setTopics] = createSignal<Topic[]>([]);
   const [error, setError] = createSignal<string | null>(null);
-  const [dialog, setDialog] = createSignal<{ feature?: Feature } | null>(null);
-  const [renameReq, setRenameReq] = createSignal<Feature | null>(null);
+  const [dialog, setDialog] = createSignal<{ topic?: Topic } | null>(null);
+  const [renameReq, setRenameReq] = createSignal<Topic | null>(null);
   // The delete confirm and the sweep that follows it, both carrying the same
   // per-member risk rows: the confirm fetches them, the sweep inherits them
   // rather than asking git the same question twice in a row.
-  const [deleteReq, setDeleteReq] = createSignal<{ feature: Feature; members: MemberRisk[] } | null>(null);
+  const [deleteReq, setDeleteReq] = createSignal<{ topic: Topic; members: MemberRisk[] } | null>(null);
   const [sweepReq, setSweepReq] = createSignal<{
-    feature: Feature;
+    topic: Topic;
     members: SweepMember[];
     busy: boolean;
     failures: Record<string, string>;
     /** Live tabs under each worktree, so a row says what removal stops. */
     running: Record<string, number>;
   } | null>(null);
-  const [memberRenameReq, setMemberRenameReq] = createSignal<{ feature: Feature; member: Member } | null>(null);
+  const [memberRenameReq, setMemberRenameReq] = createSignal<{ topic: Topic; member: Member } | null>(null);
   // The worktree offer that follows a Remove repository. `worktreePath` is held
   // beside the member because the record no longer carries it by the time this
   // opens, and it is what the async fills key on so a second removal started
   // meanwhile cannot land its status on this one.
   const [wtReq, setWtReq] = createSignal<{
-    feature: Feature;
+    topic: Topic;
     member: Member;
     worktreePath: string;
     dirty: boolean | null;
@@ -89,9 +89,9 @@ export default function FeatureList(props: {
   async function load() {
     const mine = ++seq;
     try {
-      const list = (await invoke<Feature[] | null>("list_topics")) ?? [];
+      const list = (await invoke<Topic[] | null>("list_topics")) ?? [];
       if (mine !== seq) return;
-      setFeatures(list);
+      setTopics(list);
       setError(null);
     } catch (e) {
       if (mine !== seq) return;
@@ -99,12 +99,12 @@ export default function FeatureList(props: {
     }
   }
 
-  function apply(feature: Feature) {
-    setFeatures((prev) => {
-      const i = prev.findIndex((f) => f.id === feature.id);
-      if (i < 0) return [...prev, feature];
+  function apply(topic: Topic) {
+    setTopics((prev) => {
+      const i = prev.findIndex((f) => f.id === topic.id);
+      if (i < 0) return [...prev, topic];
       const next = prev.slice();
-      next[i] = feature;
+      next[i] = topic;
       return next;
     });
   }
@@ -112,24 +112,24 @@ export default function FeatureList(props: {
   // The head row's `+` lives in the sidebar, one component up, and this is what
   // it reaches. Registered outside `onMount` so the listener exists before the
   // first fetch resolves.
-  onCleanup(onEvent(NEW_FEATURE, () => setDialog({})));
+  onCleanup(onEvent(NEW_TOPIC, () => setDialog({})));
 
-  let unlistenFeatures: UnlistenFn | undefined;
+  let unlistenTopics: UnlistenFn | undefined;
   let unlistenConfig: UnlistenFn | undefined;
   onMount(async () => {
     await load();
-    unlistenFeatures = await listen<Feature>("topics://changed", (e) => apply(e.payload));
+    unlistenTopics = await listen<Topic>("topics://changed", (e) => apply(e.payload));
     unlistenConfig = await listen("config://changed", () => load());
   });
   onCleanup(() => {
-    unlistenFeatures?.();
+    unlistenTopics?.();
     unlistenConfig?.();
   });
 
-  async function retry(feature: Feature, member: Member) {
+  async function retry(topic: Topic, member: Member) {
     try {
-      const next = await invoke<Feature>("retry_member", {
-        topicId: feature.id,
+      const next = await invoke<Topic>("retry_member", {
+        topicId: topic.id,
         repoPath: member.repoPath,
       });
       if (next) apply(next);
@@ -141,13 +141,13 @@ export default function FeatureList(props: {
   // Which repair a broken member gets is `memberState`'s call, made once in the
   // row; this only routes it. Locate is the one that asks first, and a cancelled
   // picker answers null, which must leave the record exactly as it was.
-  async function repair(feature: Feature, member: Member, action: RepairAction) {
-    if (action !== "locate") return retry(feature, member);
+  async function repair(topic: Topic, member: Member, action: RepairAction) {
+    if (action !== "locate") return retry(topic, member);
     try {
       const newRepoPath = await invoke<string | null>("pick_folder");
       if (!newRepoPath) return;
-      const next = await invoke<Feature>("relocate_member", {
-        topicId: feature.id,
+      const next = await invoke<Topic>("relocate_member", {
+        topicId: topic.id,
         repoPath: member.repoPath,
         newRepoPath,
       });
@@ -160,24 +160,24 @@ export default function FeatureList(props: {
   // The dialog resolves with the settled record. A member the backend could
   // not build stays on the chip as a badge and gets one toast naming it, with
   // Retry running every failed member again.
-  function settled(feature: Feature) {
+  function settled(topic: Topic) {
     setDialog(null);
-    apply(feature);
-    const failed = feature.members.filter((m) => memberState(m.state).action === "retry");
+    apply(topic);
+    const failed = topic.members.filter((m) => memberState(m.state).action === "retry");
     if (failed.length === 0) return;
     const names = failed.map((m) => m.displayName).join(", ");
-    pushToast(`${feature.name}: no worktree for ${names}`, "error", {
+    pushToast(`${topic.name}: no worktree for ${names}`, "error", {
       label: "Retry",
-      run: () => failed.forEach((m) => void retry(feature, m)),
+      run: () => failed.forEach((m) => void retry(topic, m)),
     });
   }
 
-  // Every record-only command answers with the reloaded Feature and emits
+  // Every record-only command answers with the reloaded Topic and emits
   // `topics://changed` for the surfaces outside this list; applying the
   // answer here is only what keeps the row from waiting on the round trip.
-  async function mutate(command: string, args: Record<string, unknown>): Promise<Feature | null> {
+  async function mutate(command: string, args: Record<string, unknown>): Promise<Topic | null> {
     try {
-      const next = await invoke<Feature>(command, args);
+      const next = await invoke<Topic>(command, args);
       if (next) apply(next);
       return next ?? null;
     } catch (e) {
@@ -186,41 +186,41 @@ export default function FeatureList(props: {
     }
   }
 
-  async function rename(feature: Feature, name: string) {
+  async function rename(topic: Topic, name: string) {
     setRenameReq(null);
     const trimmed = name.trim();
-    if (!trimmed || trimmed === feature.name) return;
-    await mutate("rename_topic", { topicId: feature.id, name: trimmed });
+    if (!trimmed || trimmed === topic.name) return;
+    await mutate("rename_topic", { topicId: topic.id, name: trimmed });
   }
 
-  async function renameMember(feature: Feature, member: Member, name: string) {
+  async function renameMember(topic: Topic, member: Member, name: string) {
     setMemberRenameReq(null);
     const trimmed = name.trim();
     if (!trimmed || trimmed === member.displayName) return;
-    await mutate("rename_member", { topicId: feature.id, repoPath: member.repoPath, displayName: trimmed });
+    await mutate("rename_member", { topicId: topic.id, repoPath: member.repoPath, displayName: trimmed });
   }
 
-  const reorder = (feature: Feature, repoPaths: string[]) =>
-    mutate("reorder_members", { topicId: feature.id, repoPaths });
+  const reorder = (topic: Topic, repoPaths: string[]) =>
+    mutate("reorder_members", { topicId: topic.id, repoPaths });
 
   // The record detaches first, as the ticket specifies, and only then is the
-  // worktree offered: the member has already left the Feature by the time the
+  // worktree offered: the member has already left the Topic by the time the
   // dialog opens, which is why declining there reads "Keep worktree".
-  async function removeMember(feature: Feature, member: Member) {
-    const next = await mutate("remove_member", { topicId: feature.id, repoPath: member.repoPath });
+  async function removeMember(topic: Topic, member: Member) {
+    const next = await mutate("remove_member", { topicId: topic.id, repoPath: member.repoPath });
     if (!next) return;
     // The Selection still names the departed root. Re-resolving it from the
     // record drops that root and, when it was the active one, moves `activeRoot`
     // to the first that remains, before anything touches the folder. Only for
-    // the open Feature: a removal elsewhere must not switch the workspace to it.
-    if (props.activeId === feature.id) props.onSelect?.(next);
+    // the open Topic: a removal elsewhere must not switch the workspace to it.
+    if (props.activeId === topic.id) props.onSelect?.(next);
     // Only a usable member is offered its worktree. `reconcile_member` never
     // clears `worktree_path`, so a broken one still carries a folder git cannot
     // reach through its repo, and the dialog would confirm a removal that fails.
     const worktreePath = member.worktreePath;
     if (!worktreePath || !memberState(member.state).usable) return;
     setWtReq({
-      feature: next,
+      topic: next,
       member,
       worktreePath,
       dirty: null,
@@ -245,7 +245,7 @@ export default function FeatureList(props: {
     const req = wtReq();
     if (!req) return;
     setWtReq({ ...req, busy: true });
-    const branch = req.feature.branch;
+    const branch = req.topic.branch;
     if (opts.deleteRemote) {
       try {
         await invoke("delete_remote_branch", { repo: req.member.repoPath, branch });
@@ -265,18 +265,18 @@ export default function FeatureList(props: {
   }
 
   /** Member repo paths in the order the record holds them. */
-  const orderOf = (feature: Feature) =>
-    [...feature.members].sort((a, b) => a.order - b.order).map((m) => m.repoPath);
+  const orderOf = (topic: Topic) =>
+    [...topic.members].sort((a, b) => a.order - b.order).map((m) => m.repoPath);
 
-  function move(feature: Feature, member: Member, by: -1 | 1) {
-    const keys = orderOf(feature);
+  function move(topic: Topic, member: Member, by: -1 | 1) {
+    const keys = orderOf(topic);
     const target = keys[keys.indexOf(member.repoPath) + by];
-    if (target) void reorder(feature, moveKey(keys, member.repoPath, target));
+    if (target) void reorder(topic, moveKey(keys, member.repoPath, target));
   }
 
   /** Every member as the delete flow shows it, before git has answered. */
-  const risks = (feature: Feature): MemberRisk[] =>
-    [...feature.members]
+  const risks = (topic: Topic): MemberRisk[] =>
+    [...topic.members]
       .sort((a, b) => a.order - b.order)
       .map((m) => ({
         repoPath: m.repoPath,
@@ -298,16 +298,16 @@ export default function FeatureList(props: {
   // Open the confirm, then ask git about each member's worktree so the rows can
   // say what is about to be at risk. A member with nothing usable on disk is
   // asked nothing: its row shows its state instead.
-  function openDelete(feature: Feature) {
+  function openDelete(topic: Topic) {
     statuses = {};
-    setDeleteReq({ feature, members: risks(feature) });
+    setDeleteReq({ topic, members: risks(topic) });
     const fold = (repoPath: string, s: { dirty: boolean; unpushed: boolean }) => {
       statuses[repoPath] = s;
-      const same = (r: { feature: Feature } | null) => !!r && r.feature.id === feature.id;
+      const same = (r: { topic: Topic } | null) => !!r && r.topic.id === topic.id;
       setDeleteReq((r) => (same(r) ? { ...r!, members: withStatuses(r!.members) } : r));
       setSweepReq((r) => (same(r) ? { ...r!, members: withStatuses(r!.members) } : r));
     };
-    for (const m of risks(feature)) {
+    for (const m of risks(topic)) {
       if (!m.worktreePath) continue;
       invoke<{ dirty: boolean; unpushed: boolean }>("worktree_status", { path: m.worktreePath })
         .then((s) => fold(m.repoPath, { dirty: s.dirty, unpushed: s.unpushed }))
@@ -318,34 +318,34 @@ export default function FeatureList(props: {
   // The record is gone; so is every store keyed by it, before the selection
   // changes, so nothing persists the key back on the way out. Only then are the
   // worktrees offered: a sweep opened before the delete could be answered for a
-  // Feature the delete then refused to remove.
-  async function remove(feature: Feature, members: MemberRisk[]) {
+  // Topic the delete then refused to remove.
+  async function remove(topic: Topic, members: MemberRisk[]) {
     setDeleteReq(null);
     try {
-      await invoke("delete_topic", { topicId: feature.id });
+      await invoke("delete_topic", { topicId: topic.id });
     } catch (e) {
       setError(String(e));
       return;
     }
-    setFeatures((prev) => prev.filter((f) => f.id !== feature.id));
+    setTopics((prev) => prev.filter((f) => f.id !== topic.id));
     // The member roots go with the key: the three debug stores key on one, and
     // `delete_topic` has already taken the record they could be read back
     // from. Same rule as `tintedMember.key`, so the sweep names the folder the
     // panels wrote under.
     purgeWorkspace(
-      featureKey(feature.id),
-      feature.members.map((m) => m.worktreePath ?? m.repoPath),
+      topicKey(topic.id),
+      topic.members.map((m) => m.worktreePath ?? m.repoPath),
     );
-    props.onDeleted?.(feature);
+    props.onDeleted?.(topic);
     const left = withStatuses(members).filter((m): m is SweepMember => !!m.worktreePath);
     if (!left.length) return;
-    setSweepReq({ feature, members: left, busy: false, failures: {}, running: {} });
+    setSweepReq({ topic, members: left, busy: false, failures: {}, running: {} });
     // Asked once the sweep exists rather than with the confirm: the count is
     // about what a removal stops, and the confirm removes nothing.
     for (const m of left) {
       void props.countRunning?.(m.worktreePath).then((n) =>
         setSweepReq((r) =>
-          r && r.feature.id === feature.id ? { ...r, running: { ...r.running, [m.repoPath]: n } } : r,
+          r && r.topic.id === topic.id ? { ...r, running: { ...r.running, [m.repoPath]: n } } : r,
         ),
       );
     }
@@ -362,7 +362,7 @@ export default function FeatureList(props: {
       choices.map((c) =>
         removeMemberWorktree(
           { repoPath: c.repoPath, worktreePath: c.worktreePath },
-          { branch: req.feature.branch, deleteBranch: c.deleteBranch },
+          { branch: req.topic.branch, deleteBranch: c.deleteBranch },
         ),
       ),
     );
@@ -377,38 +377,38 @@ export default function FeatureList(props: {
     setSweepReq({ ...req, members: stuck, busy: false, failures });
   }
 
-  const menu = (feature: Feature): MenuItem[] => [
-    { label: "Rename…", onClick: () => setRenameReq(feature) },
-    { label: "Add repository…", onClick: () => setDialog({ feature }) },
+  const menu = (topic: Topic): MenuItem[] => [
+    { label: "Rename…", onClick: () => setRenameReq(topic) },
+    { label: "Add repository…", onClick: () => setDialog({ topic }) },
     { separator: true },
-    { label: "Delete…", danger: true, onClick: () => openDelete(feature) },
+    { label: "Delete…", danger: true, onClick: () => openDelete(topic) },
   ];
 
   // Refusing rather than disabled for the last member: the row stays reachable
   // by arrow key, and the reason the backend would answer with is drawn on it
   // here instead of arriving as an error after the click.
-  const memberMenu = (feature: Feature) => (member: Member): MenuItem[] => {
-    const keys = orderOf(feature);
+  const memberMenu = (topic: Topic) => (member: Member): MenuItem[] => {
+    const keys = orderOf(topic);
     const i = keys.indexOf(member.repoPath);
-    const last = feature.members.length <= 1;
+    const last = topic.members.length <= 1;
     return [
-      { label: "Rename…", onClick: () => setMemberRenameReq({ feature, member }) },
-      { label: "Move up", disabled: i <= 0, onClick: () => move(feature, member, -1) },
-      { label: "Move down", disabled: i < 0 || i >= keys.length - 1, onClick: () => move(feature, member, 1) },
+      { label: "Rename…", onClick: () => setMemberRenameReq({ topic, member }) },
+      { label: "Move up", disabled: i <= 0, onClick: () => move(topic, member, -1) },
+      { label: "Move down", disabled: i < 0 || i >= keys.length - 1, onClick: () => move(topic, member, 1) },
       { separator: true },
       {
         label: "Remove repository",
         danger: true,
         refusing: last,
         note: last ? LAST_MEMBER : undefined,
-        onClick: () => void removeMember(feature, member),
+        onClick: () => void removeMember(topic, member),
       },
     ];
   };
 
   const visible = createMemo(() => {
     const q = props.query.trim().toLowerCase();
-    const all = [...features()].sort((a, b) => a.name.localeCompare(b.name));
+    const all = [...topics()].sort((a, b) => a.name.localeCompare(b.name));
     if (!q) return all;
     return all.filter(
       (f) => f.name.toLowerCase().includes(q) || f.members.some((m) => m.displayName.toLowerCase().includes(q)),
@@ -416,13 +416,13 @@ export default function FeatureList(props: {
   });
 
   return (
-    <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} data-feature-list>
+    <div class={styles.list} classList={{ [props.class ?? ""]: !!props.class }} data-topic-list>
       <Show when={error()}>{(msg) => <p class={styles.error}>{msg()}</p>}</Show>
       <Show
         when={visible().length > 0}
         fallback={
           <div class="tree-empty">
-            <Show when={features().length === 0} fallback={<p>No Feature matches the filter.</p>}>
+            <Show when={topics().length === 0} fallback={<p>No Feature matches the filter.</p>}>
               <p>No Features yet.</p>
               <Button size="sm" variant="ghost" onClick={() => setDialog({})}>
                 Create a Feature
@@ -434,8 +434,8 @@ export default function FeatureList(props: {
         <ul class={styles.items} data-no-window-drag>
           <For each={visible()}>
             {(f) => (
-              <FeatureItem
-                feature={f}
+              <TopicItem
+                topic={f}
                 spaces={props.spaces}
                 active={props.activeId === f.id}
                 onSelect={props.onSelect}
@@ -453,10 +453,10 @@ export default function FeatureList(props: {
 
       <Show when={dialog()}>
         {(req) => (
-          <NewFeatureDialog
+          <NewTopicDialog
             spaces={props.spaces}
-            features={features()}
-            feature={req().feature}
+            topics={topics()}
+            topic={req().topic}
             onDone={settled}
             onCancel={() => setDialog(null)}
           />
@@ -483,7 +483,7 @@ export default function FeatureList(props: {
             initial={req().member.displayName}
             note="The repository and its worktree stay as they are; only the name shown here changes."
             okLabel="Rename"
-            onSubmit={(v) => void renameMember(req().feature, req().member, v)}
+            onSubmit={(v) => void renameMember(req().topic, req().member, v)}
             onCancel={() => setMemberRenameReq(null)}
           />
         )}
@@ -494,7 +494,7 @@ export default function FeatureList(props: {
           <WorktreeRemoveDialog
             label={req().member.displayName}
             path={req().worktreePath}
-            branch={req().feature.branch}
+            branch={req().topic.branch}
             dirty={req().dirty}
             unpushed={req().unpushed}
             hasRemote={req().hasRemote}
@@ -509,11 +509,11 @@ export default function FeatureList(props: {
 
       <Show when={deleteReq()}>
         {(req) => (
-          <ConfirmDeleteFeature
-            featureName={req().feature.name}
-            branch={req().feature.branch}
+          <ConfirmDeleteTopic
+            topicName={req().topic.name}
+            branch={req().topic.branch}
             members={req().members}
-            onConfirm={() => void remove(req().feature, req().members)}
+            onConfirm={() => void remove(req().topic, req().members)}
             onCancel={() => setDeleteReq(null)}
           />
         )}
@@ -521,9 +521,9 @@ export default function FeatureList(props: {
 
       <Show when={sweepReq()}>
         {(req) => (
-          <FeatureWorktreeSweepDialog
-            featureName={req().feature.name}
-            branch={req().feature.branch}
+          <TopicWorktreeSweepDialog
+            topicName={req().topic.name}
+            branch={req().topic.branch}
             members={req().members}
             busy={req().busy}
             failures={req().failures}

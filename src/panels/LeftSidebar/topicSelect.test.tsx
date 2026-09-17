@@ -1,6 +1,6 @@
-// Selecting a Feature from the sidebar (#154 phase 2): a row click hands the
-// shell a feature Selection, exactly one row reads as active, toggling the
-// mode leaves the selection alone, and deleting the selected Feature clears
+// Selecting a Topic from the sidebar (#154 phase 2): a row click hands the
+// shell a topic Selection, exactly one row reads as active, toggling the
+// mode leaves the selection alone, and deleting the selected Topic clears
 // it and sweeps its key out of every store.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
@@ -11,7 +11,7 @@ const B = "/w/web/.tori/worktrees/auth";
 
 const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args: Record<string, unknown> }[],
-  features: [] as unknown[],
+  topics: [] as unknown[],
 }));
 
 const config = {
@@ -34,7 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_topics") return Promise.resolve(bridge.features);
+    if (cmd === "list_topics") return Promise.resolve(bridge.topics);
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -76,7 +76,7 @@ const member = (repo: string, wt: string, order: number) => ({
 const AUTH = { id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: [member("/w/api", A, 0), member("/w/web", B, 1)] };
 const PAY = { id: "f2", name: "Payments", branch: "feat/payments", createdAt: 2, members: [member("/w/api", A, 0)] };
 
-const featureSel = {
+const topicSel = {
   kind: "feature",
   featureId: "f1",
   featureName: "Auth",
@@ -108,7 +108,7 @@ describe("selecting a Feature", () => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
     bridge.calls.length = 0;
-    bridge.features = [AUTH, PAY];
+    bridge.topics = [AUTH, PAY];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
@@ -116,7 +116,7 @@ describe("selecting a Feature", () => {
   });
 
   it("hands the shell a feature Selection on click, keeping a stored active root", async () => {
-    const { onSelect } = await mounted(featureSel);
+    const { onSelect } = await mounted(topicSel);
     fireEvent.click(row("Auth"));
     expect(onSelect).toHaveBeenCalledTimes(1);
     const sel = onSelect.mock.calls[0][0];
@@ -130,14 +130,14 @@ describe("selecting a Feature", () => {
   });
 
   it("marks exactly the selected row active", async () => {
-    await mounted(featureSel);
-    const active = document.querySelectorAll('[data-feature][aria-current="true"]');
+    await mounted(topicSel);
+    const active = document.querySelectorAll('[data-topic][aria-current="true"]');
     expect(active.length).toBe(1);
-    expect(active[0].getAttribute("data-feature")).toBe("f1");
+    expect(active[0].getAttribute("data-topic")).toBe("f1");
   });
 
   it("leaves the selection alone across a mode cycle", async () => {
-    const { onSelect } = await mounted(featureSel);
+    const { onSelect } = await mounted(topicSel);
     emit(TOGGLE_SIDEBAR_MODE);
     await waitFor(() => expect(screen.queryByText("Auth")).toBeNull());
     emit(TOGGLE_SIDEBAR_MODE);
@@ -163,7 +163,7 @@ describe("selecting a Feature", () => {
     seed("tori.treeExpanded.v1", { dirs: ["/w/api/src"], closed: [] });
     expect(storesHolding("feature:f1").length).toBe(13);
 
-    const { onSelect } = await mounted(featureSel);
+    const { onSelect } = await mounted(topicSel);
     fireEvent.contextMenu(row("Auth"));
     pointerClick(await screen.findByText("Delete…"));
     await screen.findByRole("dialog", { name: "Delete Auth?" });
@@ -176,7 +176,7 @@ describe("selecting a Feature", () => {
 
   it("sweeps the debug stores under each member root, and leaves the rest of that folder alone", async () => {
     // Three stores key on the member root rather than on `feature:<id>`: what a
-    // run remembered, its attach port and its watches. The Feature key going
+    // run remembered, its attach port and its watches. The Topic key going
     // never reached them.
     const seed = (key: string, value: unknown) =>
       localStorage.setItem(
@@ -186,13 +186,13 @@ describe("selecting a Feature", () => {
     seed("tori.watches", ["req.body"]);
     seed("tori.debugAttachPorts", 9229);
     seed("tori.debugLastTarget", { kind: "attach", port: 9229 });
-    // Not the Feature's: a member you keep can be reopened as a branch unit,
+    // Not the Topic's: a member you keep can be reopened as a branch unit,
     // and these are that unit's.
     seed("tori.editor.tabs.v1", { paths: [`${A}/a.ts`], active: null, savedAt: 1 });
     seed("tori.terminalTabs", { tabs: [], active: 0, savedAt: 1 });
     seed("tori.treeExpanded.v1", { dirs: [`${A}/src`], closed: [] });
 
-    await mounted(featureSel);
+    await mounted(topicSel);
     fireEvent.contextMenu(row("Auth"));
     pointerClick(await screen.findByText("Delete…"));
     await screen.findByRole("dialog", { name: "Delete Auth?" });

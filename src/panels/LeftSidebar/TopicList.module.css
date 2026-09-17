@@ -1,4 +1,4 @@
-/* The Features mode of the sidebar: a plain column of FeatureItem rows. The
+/* The Topics mode of the sidebar: a plain column of TopicItem rows. The
    horizontal insets come from the sidebar through `class`, so the rows line up
    with the filter field above them. */
 .list {

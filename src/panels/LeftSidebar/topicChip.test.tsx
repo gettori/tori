@@ -1,6 +1,6 @@
-// A Feature worktree listed in Spaces has two homes (#154 phase 3): its unit
-// row wears an "in <Feature>" chip that opens the Feature with that folder
-// active, and while a Feature is selected no unit reads as active, not even
+// A Topic worktree listed in Spaces has two homes (#154 phase 3): its unit
+// row wears an "in <Topic>" chip that opens the Topic with that folder
+// active, and while a Topic is selected no unit reads as active, not even
 // the member whose folder is the active root.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
@@ -8,7 +8,7 @@ import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 const REPO = "/w/api";
 const MEMBER = "/w/api-auth";
 const SIBLING = "/w/api-other";
-// What `probe_project` now emits for a plain repo: the checkout a Feature made
+// What `probe_project` now emits for a plain repo: the checkout a Topic made
 // under the repo's own `.tori/worktrees`, which is where a kept worktree lands.
 const NESTED = `${REPO}/.tori/worktrees/kept`;
 
@@ -37,12 +37,12 @@ const config = {
   ],
 };
 
-const bridge = vi.hoisted(() => ({ features: [] as unknown[] }));
+const bridge = vi.hoisted(() => ({ topics: [] as unknown[] }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_topics") return Promise.resolve(bridge.features);
+    if (cmd === "list_topics") return Promise.resolve(bridge.topics);
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -82,7 +82,7 @@ const AUTH = {
   ],
 };
 
-const featureSel = {
+const topicSel = {
   kind: "feature",
   featureId: "f1",
   featureName: "Auth",
@@ -111,14 +111,14 @@ async function mounted(selected: unknown) {
   await waitFor(() => expect(screen.queryByText("other")).toBeTruthy());
   return onSelect;
 }
-const chips = () => document.querySelectorAll("[data-feature-chip]");
+const chips = () => document.querySelectorAll("[data-topic-chip]");
 const activeUnits = () => document.querySelectorAll('[draggable="true"][aria-current="true"]');
 
 describe("a Feature worktree in Spaces", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
-    bridge.features = [AUTH];
+    bridge.topics = [AUTH];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");
@@ -131,7 +131,7 @@ describe("a Feature worktree in Spaces", () => {
     await waitFor(() => expect(chips().length).toBe(1));
     const chip = screen.getByRole("button", { name: "Open Feature Auth" });
     expect(chip.closest('[draggable="true"]')?.textContent).toContain("feat/auth");
-    expect(screen.getByText("other").closest('[draggable="true"]')?.querySelector("[data-feature-chip]")).toBeNull();
+    expect(screen.getByText("other").closest('[draggable="true"]')?.querySelector("[data-topic-chip]")).toBeNull();
   });
 
   it("opens the Feature with the clicked folder active", async () => {
@@ -143,7 +143,7 @@ describe("a Feature worktree in Spaces", () => {
   });
 
   it("marks no unit active while a Feature is selected", async () => {
-    await mounted(featureSel);
+    await mounted(topicSel);
     await waitFor(() => expect(chips().length).toBe(1));
     expect(activeUnits().length).toBe(0);
   });
@@ -154,11 +154,11 @@ describe("a Feature worktree in Spaces", () => {
     expect(activeUnits()[0].textContent).toContain("feat/auth");
   });
 
-  // One repo, two Features. Each Feature's worktree carries its own slug, so
+  // One repo, two Topics. Each Topic's worktree carries its own slug, so
   // the two never share a folder and the unit row for each wears its own chip:
-  // a repo belonging to several Features has several ways back.
+  // a repo belonging to several Topics has several ways back.
   it("wears one chip per Feature a folder belongs to", async () => {
-    bridge.features = [
+    bridge.topics = [
       AUTH,
       { ...AUTH, id: "f2", name: "Billing", branch: "feat/billing", members: [{ ...AUTH.members[0], worktreePath: SIBLING }] },
     ];
@@ -167,7 +167,7 @@ describe("a Feature worktree in Spaces", () => {
     await waitFor(() => expect(chips().length).toBe(2));
     const names = Array.from(chips()).map((c) => c.getAttribute("aria-label"));
     expect(names).toEqual(["Open Feature Auth", "Open Feature Billing"]);
-    // One each, on the row that actually holds that Feature's worktree.
+    // One each, on the row that actually holds that Topic's worktree.
     expect(screen.getByRole("button", { name: "Open Feature Auth" }).closest('[draggable="true"]')?.textContent).toContain("feat/auth");
     expect(screen.getByRole("button", { name: "Open Feature Billing" }).closest('[draggable="true"]')?.textContent).toContain("other");
   });
@@ -176,7 +176,7 @@ describe("a Feature worktree in Spaces", () => {
   // record no longer names it, and Spaces is the only place left to reach it
   // from. A row inside the repo's own `.tori/worktrees` is an ordinary unit.
   it("reaches a worktree nested under its own repo", async () => {
-    bridge.features = [
+    bridge.topics = [
       { ...AUTH, id: "f2", name: "Kept", branch: "feat/kept", members: [{ ...AUTH.members[0], worktreePath: NESTED }] },
     ];
     await mounted(null);

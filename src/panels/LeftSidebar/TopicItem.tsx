@@ -5,10 +5,10 @@ import Icon from "../../components/Icon/Icon";
 import ContextMenu from "../../components/Menu/ContextMenu";
 import type { MenuItem } from "../../components/Menu/rows";
 import MemberChip from "../../components/MemberChip/MemberChip";
-import { REPAIR_LABEL, type Feature, type Member, type RepairAction } from "../../utils/features";
-import { CHIP_CAP, tintedMembers, type SpaceTint } from "../../utils/featureMembers";
+import { REPAIR_LABEL, type Topic, type Member, type RepairAction } from "../../utils/topics";
+import { CHIP_CAP, tintedMembers, type SpaceTint } from "../../utils/topicMembers";
 import { createDragReorder } from "../../utils/dragReorder";
-import styles from "./FeatureItem.module.css";
+import styles from "./TopicItem.module.css";
 
 export type { SpaceTint };
 
@@ -17,18 +17,18 @@ export type { SpaceTint };
  *  row caps to the same number. */
 export { CHIP_CAP };
 
-/** One Feature row: the name on one line, then one chip per member in order,
- *  tinted by the Space its repo sits in. A click selects the Feature; the
+/** One Topic row: the name on one line, then one chip per member in order,
+ *  tinted by the Space its repo sits in. A click selects the Topic; the
  *  disclosure opens the full member list, where the per-member actions live. */
-export default function FeatureItem(props: {
-  feature: Feature;
+export default function TopicItem(props: {
+  topic: Topic;
   spaces: SpaceTint[];
   /** The repair a broken member's row offers. Which one is `memberState`'s
    *  call, not this row's: the same three actions drive the Omnibox and the
    *  toast, and a fourth reading of the state is a fourth chance to disagree. */
   onRepair: (member: Member, action: RepairAction) => void;
-  onSelect?: (feature: Feature) => void;
-  /** The Feature the shell is showing. */
+  onSelect?: (topic: Topic) => void;
+  /** The Topic the shell is showing. */
   active?: boolean;
   /** Right-click rows; none means the row is inert. */
   menu?: MenuItem[];
@@ -47,7 +47,7 @@ export default function FeatureItem(props: {
   const open = () => (props.onExpand ? !!props.expanded : own());
   const toggle = () => (props.onExpand ? props.onExpand(!open()) : setOwn((v) => !v));
   const listId = createUniqueId();
-  const members = createMemo(() => tintedMembers(props.feature, props.spaces));
+  const members = createMemo(() => tintedMembers(props.topic, props.spaces));
   const shown = () => members().slice(0, CHIP_CAP);
   const overflow = () => Math.max(0, members().length - CHIP_CAP);
 
@@ -63,9 +63,9 @@ export default function FeatureItem(props: {
       classList={{ [styles.active]: !!props.active }}
       items={props.menu}
       disabled={!props.menu}
-      data-feature={props.feature.id}
+      data-topic={props.topic.id}
       aria-current={props.active ? "true" : undefined}
-      onClick={() => props.onSelect?.(props.feature)}
+      onClick={() => props.onSelect?.(props.topic)}
     >
       <div class={styles.head}>
         <button
@@ -75,7 +75,7 @@ export default function FeatureItem(props: {
           // Only while the list exists: a dangling `aria-controls` names an
           // element the assistive tech is then asked to go and not find.
           aria-controls={open() ? listId : undefined}
-          aria-label={`${open() ? "Hide" : "Show"} members of ${props.feature.name}`}
+          aria-label={`${open() ? "Hide" : "Show"} members of ${props.topic.name}`}
           data-disclosure
           onClick={(e) => {
             e.stopPropagation();
@@ -84,8 +84,8 @@ export default function FeatureItem(props: {
         >
           <Icon icon={ChevronRight} class={styles.caret} classList={{ [styles.caretOpen]: open() }} />
         </button>
-        <div class={styles.name} data-name title={props.feature.branch}>
-          {props.feature.name}
+        <div class={styles.name} data-name title={props.topic.branch}>
+          {props.topic.name}
         </div>
       </div>
       <Show

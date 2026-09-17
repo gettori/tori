@@ -1,11 +1,11 @@
 // Remove repository, end to end (#159 phase 2). The record detaches first, the
 // worktree is offered second, and Keep is a real outcome rather than an undo:
-// the member has already left the Feature by the time the dialog opens.
+// the member has already left the Topic by the time the dialog opens.
 //
 // Mounted with the Toolbar beside the sidebar because the half worth pinning is
 // the one no unit test reaches: removing the *active* member has to move
 // `activeRoot` onto a member that still exists, before anything touches the
-// folder, or the crumb keeps naming a repo the Feature no longer has.
+// folder, or the crumb keeps naming a repo the Topic no longer has.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
 import { createSignal } from "solid-js";
@@ -46,7 +46,7 @@ const bridge = vi.hoisted(() => ({
   dirty: false,
 }));
 
-const feature = () => ({
+const topic = () => ({
   id: "f1",
   name: "Auth",
   branch: "feat/auth",
@@ -58,10 +58,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
     bridge.calls.push({ cmd, args: args ?? {} });
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_topics") return Promise.resolve([feature()]);
+    if (cmd === "list_topics") return Promise.resolve([topic()]);
     if (cmd === "remove_member") {
       bridge.members = bridge.members.filter((m) => m.repoPath !== args.repoPath);
-      return Promise.resolve(feature());
+      return Promise.resolve(topic());
     }
     if (cmd === "worktree_status")
       return Promise.resolve({ dirty: bridge.dirty, unpushed: false, hasRemote: false });
@@ -96,22 +96,22 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText: () => Promis
 
 const { default: LeftSidebar } = await import("./LeftSidebar");
 const { default: Toolbar } = await import("../../components/Toolbar/Toolbar");
-const { featureSelection } = await import("../../utils/features");
+const { topicSelection } = await import("../../utils/topics");
 const { PURGE_UNDER_PATH } = await import("../../utils/events");
 const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 
 const changed = () =>
-  (handlers["topics://changed"] ?? []).slice().forEach((cb) => cb({ payload: feature() }));
+  (handlers["topics://changed"] ?? []).slice().forEach((cb) => cb({ payload: topic() }));
 const sent = (cmd: string) => bridge.calls.filter((c) => c.cmd === cmd);
 const crumbs = () =>
   Array.from(document.querySelectorAll('nav[aria-label="location"] > span')).map((s) => s.textContent);
 
 // The sidebar owns the selection the Toolbar reads, exactly as the shell wires
-// them: `onSelect` re-resolves the Feature through `featureSelection`, which is
+// them: `onSelect` re-resolves the Topic through `topicSelection`, which is
 // where a departed root drops out of `roots` and off `activeRoot`.
 async function mount() {
-  const [selected, setSelected] = createSignal(featureSelection(feature() as never, WT_A));
+  const [selected, setSelected] = createSignal(topicSelection(topic() as never, WT_A));
   render(() => (
     <>
       <Toolbar selected={selected()} />
@@ -195,7 +195,7 @@ describe("Remove repository", () => {
   });
 
   // The whole reason the record goes first: by the time the worktree is offered
-  // the Feature no longer has that member, so the crumb must already name one
+  // the Topic no longer has that member, so the crumb must already name one
   // it does. A blank middle segment is what an unmoved `activeRoot` looks like.
   it("moves the active root off the member it removed", async () => {
     const selected = await mount();

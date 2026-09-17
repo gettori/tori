@@ -134,9 +134,9 @@ describe("the active space header", () => {
   });
 
   // With the mode tabs gone the heading is the only thing naming the view, so
-  // it follows the strip into Features rather than disappearing with the tree.
+  // it follows the strip into Topics rather than disappearing with the tree.
   // What it drops there is the space's own furniture: the kind label and the
-  // menu belong to a space, and Features is not one.
+  // menu belong to a space, and Topics is not one.
   it("names the mode instead of the space outside Spaces", async () => {
     mount();
     await waitFor(() => expect(header()).toBeTruthy());

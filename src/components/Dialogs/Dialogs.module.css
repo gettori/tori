@@ -370,7 +370,7 @@
   margin-bottom: calc(10px * var(--ui-scale));
 }
 
-/* ---- Feature creation (NewFeatureDialog, RepoChecklist): one checkbox group
+/* ---- Topic creation (NewTopicDialog, RepoChecklist): one checkbox group
    per Space, and under a checked repo whose branch already exists, the
    collision line with its two answers. ---- */
 .repoChecklist {
@@ -401,7 +401,7 @@
   color: var(--fg-default);
 }
 
-/* ---- Feature worktree sweep ---- */
+/* ---- Topic worktree sweep ---- */
 /* One row is two lines: the member and its evidence, then the choice that
    evidence drives. Side by side would put the tags and the checkbox that
    follows them at opposite ends of a wide dialog. */

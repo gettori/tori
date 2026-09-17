@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import type { Feature } from "../../utils/features";
+import type { Topic } from "../../utils/topics";
 
 type Probe = { local: boolean; remote: boolean; hasWorktree: boolean };
 const CLEAR: Probe = { local: false, remote: false, hasWorktree: false };
@@ -44,7 +44,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   },
 }));
 
-const { default: NewFeatureDialog } = await import("./NewFeatureDialog");
+const { default: NewTopicDialog } = await import("./NewTopicDialog");
 
 const SPACES = [
   {
@@ -56,7 +56,7 @@ const SPACES = [
     ],
   },
 ];
-const EXISTING: Feature = {
+const EXISTING: Topic = {
   id: "auth-1",
   name: "Auth",
   branch: "feat/auth",
@@ -72,16 +72,16 @@ const probeCalls = () => bridge.calls.filter((c) => c.cmd === "probe_topic_branc
 // has to let that run before the render is torn down under it.
 const macrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function open(over: Partial<Parameters<typeof NewFeatureDialog>[0]> = {}) {
+function open(over: Partial<Parameters<typeof NewTopicDialog>[0]> = {}) {
   const onDone = vi.fn();
   const onCancel = vi.fn();
   render(() => (
-    <NewFeatureDialog spaces={SPACES} features={[EXISTING]} onDone={onDone} onCancel={onCancel} {...over} />
+    <NewTopicDialog spaces={SPACES} topics={[EXISTING]} onDone={onDone} onCancel={onCancel} {...over} />
   ));
   return { onDone, onCancel };
 }
 
-describe("NewFeatureDialog", () => {
+describe("NewTopicDialog", () => {
   beforeEach(() => {
     bridge.calls.length = 0;
     bridge.probes = {};
@@ -184,7 +184,7 @@ describe("NewFeatureDialog", () => {
   });
 
   it("adds repositories to an existing Feature one at a time, members excluded", async () => {
-    const { onDone } = open({ feature: EXISTING });
+    const { onDone } = open({ topic: EXISTING });
     expect(screen.getByRole("dialog", { name: "Add repository to Auth" })).toBeTruthy();
     expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
     expect(screen.queryByRole("checkbox", { name: "api" })).toBeNull();
@@ -199,11 +199,11 @@ describe("NewFeatureDialog", () => {
   });
 
   // The same collision machinery in add mode, where the escape hatch differs:
-  // the Feature's slug was frozen at creation, so the offer is to leave this
-  // repo out rather than to rename the Feature around it.
+  // the Topic's slug was frozen at creation, so the offer is to leave this
+  // repo out rather than to rename the Topic around it.
   it("offers Leave out rather than a rename when an added repo already has the branch", async () => {
     bridge.probes["/w/web@auth"] = { local: true, remote: false, hasWorktree: false };
-    open({ feature: EXISTING });
+    open({ topic: EXISTING });
     fireEvent.click(box("web"));
 
     expect(await screen.findByText("feat/auth already exists")).toBeTruthy();

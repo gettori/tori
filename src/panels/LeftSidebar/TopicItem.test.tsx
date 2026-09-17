@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import FeatureItem, { CHIP_CAP, type SpaceTint } from "./FeatureItem";
-import type { Feature, Member, MemberState } from "../../utils/features";
-import styles from "./FeatureItem.module.css";
+import TopicItem, { CHIP_CAP, type SpaceTint } from "./TopicItem";
+import type { Topic, Member, MemberState } from "../../utils/topics";
+import styles from "./TopicItem.module.css";
 import chipStyles from "../../components/MemberChip/MemberChip.module.css";
 
 const SPACES: SpaceTint[] = [
@@ -25,7 +25,7 @@ function member(repoPath: string, order: number, state: MemberState = { kind: "p
   };
 }
 
-function feature(members: Member[]): Feature {
+function topic(members: Member[]): Topic {
   return {
     id: "f-1",
     name: "Auth flow",
@@ -35,10 +35,10 @@ function feature(members: Member[]): Feature {
   };
 }
 
-const mount = (f: Feature, onRepair = () => {}, extra: Record<string, unknown> = {}) =>
+const mount = (f: Topic, onRepair = () => {}, extra: Record<string, unknown> = {}) =>
   render(() => (
     <ul>
-      <FeatureItem feature={f} spaces={SPACES} onRepair={onRepair} {...extra} />
+      <TopicItem topic={f} spaces={SPACES} onRepair={onRepair} {...extra} />
     </ul>
   ));
 
@@ -46,10 +46,10 @@ const expand = async () => fireEvent.click(await screen.findByRole("button", { n
 const memberRows = (container: HTMLElement) =>
   Array.from(container.querySelectorAll<HTMLElement>("li[data-member]"));
 
-describe("FeatureItem", () => {
+describe("TopicItem", () => {
   it("caps the chip row at six and counts the rest", () => {
     const members = Array.from({ length: 9 }, (_, i) => member(`/w/repo-${i}`, i));
-    const { container } = mount(feature(members));
+    const { container } = mount(topic(members));
     expect(container.querySelectorAll("[data-chip]").length).toBe(CHIP_CAP);
     expect(screen.getByText("+3")).toBeTruthy();
     const name = container.querySelector("[data-name]")!;
@@ -58,7 +58,7 @@ describe("FeatureItem", () => {
   });
 
   it("tints a chip by its Space and leaves a repo outside every Space neutral", () => {
-    const { container } = mount(feature([member("/w/api", 0), member("/tmp/scratch", 1)]));
+    const { container } = mount(topic([member("/w/api", 0), member("/tmp/scratch", 1)]));
     const [inSpace, outside] = Array.from(container.querySelectorAll<HTMLElement>("[data-chip]"));
     expect(inSpace.style.getPropertyValue("--chip-hue")).not.toBe("");
     expect(outside.style.getPropertyValue("--chip-hue")).toBe("");
@@ -76,7 +76,7 @@ describe("FeatureItem", () => {
       reason: "refusing to overwrite",
     });
     const { container } = mount(
-      feature([member("/w/api", 0), failed, member("/o/dotfiles", 2, { kind: "failed", reason: "pending" })]),
+      topic([member("/w/api", 0), failed, member("/o/dotfiles", 2, { kind: "failed", reason: "pending" })]),
       onRepair,
     );
     const badge = screen.getByRole("img", { name: "Failed" });
@@ -98,7 +98,7 @@ describe("FeatureItem", () => {
     const onRepair = vi.fn();
     const gone = member("/w/web", 1, { kind: "worktree-missing" });
     const moved = member("/o/dotfiles", 2, { kind: "repo-missing" });
-    mount(feature([member("/w/api", 0), gone, moved]), onRepair);
+    mount(topic([member("/w/api", 0), gone, moved]), onRepair);
 
     await expand();
 
@@ -113,7 +113,7 @@ describe("FeatureItem", () => {
   });
 
   describe("the member list", () => {
-    const seven = () => feature(Array.from({ length: 7 }, (_, i) => member(`/w/repo-${i}`, i)));
+    const seven = () => topic(Array.from({ length: 7 }, (_, i) => member(`/w/repo-${i}`, i)));
 
     it("opens one row per member, uncapped, and puts the chip row away", async () => {
       const { container } = mount(seven());
@@ -132,7 +132,7 @@ describe("FeatureItem", () => {
 
     it("names each member and says what state it is in", async () => {
       const { container } = mount(
-        feature([member("/w/api", 0), member("/w/web", 1, { kind: "worktree-missing" })]),
+        topic([member("/w/api", 0), member("/w/web", 1, { kind: "worktree-missing" })]),
       );
       await expand();
 
@@ -146,7 +146,7 @@ describe("FeatureItem", () => {
         { label: "Rename…", onClick: () => {} },
         { label: "Move up", disabled: m.order === 0, onClick: () => {} },
       ];
-      const { container } = mount(feature([member("/w/api", 0), member("/w/web", 1)]), () => {}, {
+      const { container } = mount(topic([member("/w/api", 0), member("/w/web", 1)]), () => {}, {
         memberMenu,
       });
       await expand();
@@ -159,7 +159,7 @@ describe("FeatureItem", () => {
     it("drags a row onto the one above it and commits that order", async () => {
       const onReorder = vi.fn();
       const { container } = mount(
-        feature([member("/w/api", 0), member("/w/web", 1), member("/o/dotfiles", 2)]),
+        topic([member("/w/api", 0), member("/w/web", 1), member("/o/dotfiles", 2)]),
         () => {},
         { onReorder },
       );

@@ -1,5 +1,5 @@
-// Removing a Feature member's worktree from Spaces (#154 phase 1) moves the
-// Feature's active root to its next present member; only losing the last one
+// Removing a Topic member's worktree from Spaces (#154 phase 1) moves the
+// Topic's active root to its next present member; only losing the last one
 // clears the selection. A unit selection under the folder clears as before.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@solidjs/testing-library";
@@ -71,7 +71,7 @@ const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { REMOVE_BRANCH_UNIT, emitWith } = await import("../../utils/events");
 
-const featureSel = (roots: string[]) => ({
+const topicSel = (roots: string[]) => ({
   kind: "feature" as const,
   featureId: "f1",
   featureName: "Auth",
@@ -115,13 +115,13 @@ describe("removing a Feature member's worktree", () => {
   });
 
   it("moves the active root to the next present member and keeps the Feature selected", async () => {
-    const { onSelect, onActiveRoot } = await removeWave3(featureSel([WT, OTHER]));
+    const { onSelect, onActiveRoot } = await removeWave3(topicSel([WT, OTHER]));
     await waitFor(() => expect(onActiveRoot).toHaveBeenCalledWith(OTHER));
     expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("clears the selection only when no root remains", async () => {
-    const { onSelect, onActiveRoot } = await removeWave3(featureSel([WT]));
+    const { onSelect, onActiveRoot } = await removeWave3(topicSel([WT]));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(null));
     expect(onActiveRoot).not.toHaveBeenCalled();
   });

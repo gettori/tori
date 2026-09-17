@@ -1,4 +1,4 @@
-// The Spaces/Features switch is how you browse, not which work is open, so it
+// The Spaces/Topics switch is how you browse, not which work is open, so it
 // restores that mode's last selection and otherwise leaves it alone. A space
 // switch clears instead, because it is a different context, not a different list.
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -10,7 +10,7 @@ const WORK = "/root/work/proj";
 const MAIN = `${WORK}/main`;
 const WAVE = `${WORK}/wave-3`;
 
-const bridge = vi.hoisted(() => ({ features: [] as unknown[] }));
+const bridge = vi.hoisted(() => ({ topics: [] as unknown[] }));
 
 const unit = (label: string, folderPath: string) => ({
   label,
@@ -46,7 +46,7 @@ const AUTH = {
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     if (cmd === "get_config") return Promise.resolve(config);
-    if (cmd === "list_topics") return Promise.resolve(bridge.features);
+    if (cmd === "list_topics") return Promise.resolve(bridge.topics);
     if (cmd === "list_sessions" || cmd === "list_project_attempts" || cmd === "sessions_running")
       return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
@@ -90,7 +90,7 @@ describe("switching between Spaces and Features", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
-    bridge.features = [AUTH];
+    bridge.topics = [AUTH];
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
     localStorage.setItem("tori.active-space.v1", "work");

@@ -4,9 +4,9 @@ import Button from "../Button/Button";
 import Checkbox from "../Checkbox/Checkbox";
 import Dialog from "../Dialog/Dialog";
 import SegmentedControl from "../SegmentedControl/SegmentedControl";
-import { RiskTags, type MemberRisk } from "./ConfirmDeleteFeature";
+import { RiskTags, type MemberRisk } from "./ConfirmDeleteTopic";
 
-// What happens to the worktrees a deleted Feature leaves behind, one row per
+// What happens to the worktrees a deleted Topic leaves behind, one row per
 // repository. `WorktreeRemoveDialog` asks the same question for a single
 // worktree; this is the N-row form, and the difference is not only the count.
 //
@@ -32,8 +32,8 @@ export type SweepChoice = {
 
 type Answer = { remove: boolean; branch: boolean | null };
 
-export default function FeatureWorktreeSweepDialog(props: {
-  featureName: string;
+export default function TopicWorktreeSweepDialog(props: {
+  topicName: string;
   branch: string;
   /** Members that still have a worktree. One with none has nothing to sweep. */
   members: SweepMember[];
@@ -74,7 +74,7 @@ export default function FeatureWorktreeSweepDialog(props: {
     <Dialog
       open
       size="sheet"
-      title={`${props.featureName} is deleted. Its worktrees?`}
+      title={`${props.topicName} is deleted. Its worktrees?`}
       onClose={() => props.onClose()}
       actions={
         <>

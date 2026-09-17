@@ -3,9 +3,9 @@ import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
 
-// The confirm for deleting a Feature. Not `ConfirmDeleteSpace`: nothing here is
+// The confirm for deleting a Topic. Not `ConfirmDeleteSpace`: nothing here is
 // permanent yet, so there is no name to type. Deleting the record is reversible
-// by making the Feature again over the same repos; what is not reversible is the
+// by making the Topic again over the same repos; what is not reversible is the
 // worktree sweep that follows, and that dialog asks per row.
 //
 // What this owes the reader is the blast radius, which is why every member is
@@ -47,8 +47,8 @@ export function RiskTags(props: { member: MemberRisk }) {
   );
 }
 
-export default function ConfirmDeleteFeature(props: {
-  featureName: string;
+export default function ConfirmDeleteTopic(props: {
+  topicName: string;
   branch: string;
   members: MemberRisk[];
   onConfirm: () => void;
@@ -60,7 +60,7 @@ export default function ConfirmDeleteFeature(props: {
     <Dialog
       open
       size="sheet"
-      title={`Delete ${props.featureName}?`}
+      title={`Delete ${props.topicName}?`}
       onClose={() => props.onCancel()}
       initialFocus={() => ok}
       actions={

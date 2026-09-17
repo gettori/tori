@@ -98,10 +98,10 @@
   color: var(--fg-default);
 }
 
-/* The Feature list on the tree's insets, like the cards it replaces, and stood
-   off the title and the strip by block padding of its own: the New Feature
+/* The Topic list on the tree's insets, like the cards it replaces, and stood
+   off the title and the strip by block padding of its own: the New Topic
    button that used to hold the gap at the top has moved into the head row. */
-.featureList {
+.topicList {
   padding-inline: var(--tree-inset) var(--tree-gutter);
   padding-block: calc(8px * var(--ui-scale));
 }
@@ -676,9 +676,9 @@
   background: var(--neutral-subtle);
 }
 
-/* The "in <Feature>" chip on a member unit: a real button, since it moves the
-   selection to the Feature, drawn as the badge so the row keeps one rhythm. */
-.row .badge.featureChip {
+/* The "in <Topic>" chip on a member unit: a real button, since it moves the
+   selection to the Topic, drawn as the badge so the row keeps one rhythm. */
+.row .badge.topicChip {
   margin-left: calc(4px * var(--ui-scale));
   appearance: none;
   border: 0;
@@ -687,7 +687,7 @@
   line-height: inherit;
   cursor: pointer;
 }
-.row .badge.featureChip:hover {
+.row .badge.topicChip:hover {
   background: var(--brand-muted, var(--brand-subtle));
 }
 
@@ -695,7 +695,7 @@
    edge. */
 .spaceBar {
   position: relative;
-  /* The Features list is content-height, and without this the strip floats up
+  /* The Topics list is content-height, and without this the strip floats up
      under it. */
   margin-top: auto;
   display: grid;
@@ -864,7 +864,7 @@
   padding-inline: calc(9px * var(--ui-scale));
 }
 
-/* Features is not a space and has no hue of its own, so when lit it takes the
+/* Topics is not a space and has no hue of its own, so when lit it takes the
    brand rather than a colour it would have to invent. */
 .modeTile.active {
   color: var(--brand-default);

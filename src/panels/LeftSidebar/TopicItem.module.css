@@ -1,6 +1,6 @@
-/* One Feature row in the sidebar's Features mode. The name never wraps and
-   the chip row never wraps either: a Feature with more members than fit shows
-   CHIP_CAP chips and a +N, so the row height is the same for every Feature. */
+/* One Topic row in the sidebar's Topics mode. The name never wraps and
+   the chip row never wraps either: a Topic with more members than fit shows
+   CHIP_CAP chips and a +N, so the row height is the same for every Topic. */
 .item {
   list-style: none;
   display: flex;
@@ -17,9 +17,9 @@
   background: linear-gradient(to right, var(--neutral-hover), transparent);
 }
 
-/* The selected Feature, marked the way a selected branch row is: the brand bar
+/* The selected Topic, marked the way a selected branch row is: the brand bar
    down the left edge over a wash that fades out to the right. Declared after
-   :hover at equal specificity, so hovering the open Feature keeps the gold. */
+   :hover at equal specificity, so hovering the open Topic keeps the gold. */
 .item.active,
 .item.active:hover {
   background:
