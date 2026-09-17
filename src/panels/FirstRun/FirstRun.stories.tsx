@@ -3,9 +3,12 @@ import { createSignal, type JSX } from "solid-js";
 import Button from "../../components/Button/Button";
 import type { AgentHealth } from "../../utils/agentHealth";
 import type { FirstRunSpace } from "../../utils/firstRun";
+import type { GitReport } from "../../utils/gitHealth";
+import type { NewProjectMode } from "../../utils/newProject";
 import FirstRunShell, { StepRail, type RailStep } from "./FirstRunShell";
 import AgentsStep, { AGENTS_LEAD, type Command } from "./steps/AgentsStep";
 import BaseFolderStep, { BASE_FOLDER_LEAD } from "./steps/BaseFolderStep";
+import ProjectStep, { PROJECT_LABEL, PROJECT_LEAD, gitMissing } from "./steps/ProjectStep";
 import ReadyStep, { readyLead } from "./steps/ReadyStep";
 import SpaceStep, { SPACE_LEAD, type SpaceMode } from "./steps/SpaceStep";
 import styles from "./FirstRun.module.css";
@@ -24,7 +27,8 @@ const STEPS: RailStep[] = [
   { id: "agents", label: "Agents", group: "setup", summary: "3 found" },
   { id: "base", label: "Base folder", required: true, group: "setup", summary: "~/Projects" },
   { id: "space", label: "Space", required: true, group: "setup", summary: "work" },
-  { id: "ready", label: "Ready", group: "setup" },
+  { id: "project", label: "First project", group: "once" },
+  { id: "ready", label: "Ready", group: "once" },
 ];
 
 function Shell(props: {
@@ -34,7 +38,7 @@ function Shell(props: {
   lead: JSX.Element;
   primary: string;
   primaryDisabled?: boolean;
-  hint: string;
+  hint: JSX.Element;
   children: JSX.Element;
 }) {
   return (
@@ -219,6 +223,68 @@ export const SpaceFound: Story = {
 /** None found: the field is the only way through. */
 export const SpaceCreate: Story = {
   render: () => <SpaceStory spaces={[]} mode="create" />,
+};
+
+const GIT_READY: GitReport = { health: { kind: "ready", path: "/usr/bin/git", version: "2.46.0" }, install: { type: "undeclared" } };
+const GIT_MISSING: GitReport = {
+  health: { kind: "toolsMissing" },
+  install: { type: "terminal", program: "/usr/bin/xcode-select", args: ["--install"] },
+};
+
+function ProjectStory(props: { space: FirstRunSpace; git: GitReport }) {
+  const [mode, setMode] = createSignal<NewProjectMode>("clone");
+  const [name, setName] = createSignal("");
+  const [url, setUrl] = createSignal("");
+  const nothing = () => !name().trim() && !url().trim();
+  const cont = () => !!gitMissing(mode(), props.git) || (props.space.projects.length > 0 && nothing());
+  return (
+    <Shell
+      current="project"
+      heading="First project"
+      lead={PROJECT_LEAD}
+      primary={cont() ? "Continue" : PROJECT_LABEL[mode()]}
+      primaryDisabled={!cont() && (!name().trim() || (mode() !== "folder" && !url().trim()))}
+      hint={<Button variant="ghost">Skip</Button>}
+    >
+      <ProjectStep
+        space={props.space}
+        home={HOME}
+        mode={mode()}
+        onMode={setMode}
+        name={name()}
+        onName={setName}
+        url={url()}
+        onUrl={setUrl}
+        git={props.git}
+        onSubmit={() => {}}
+        onInstallGit={() => {}}
+        onCheckGit={() => {}}
+      />
+    </Shell>
+  );
+}
+
+/** An empty space: pick how the first project arrives. */
+export const ProjectIdle: Story = {
+  render: () => <ProjectStory space={space("work", 0)} git={GIT_READY} />,
+};
+
+/** Clone and worktrees need git; a new folder does not. */
+export const ProjectNoGit: Story = {
+  render: () => <ProjectStory space={space("work", 0)} git={GIT_MISSING} />,
+};
+
+/** The space already has projects, so there is nothing to make. */
+export const ProjectFound: Story = {
+  render: () => (
+    <ProjectStory
+      space={{
+        ...space("work", 0),
+        projects: ["api", "web", "infra", "docs", "sdk-go", "sdk-ts"].map((n) => ({ name: n, path: `${ROOT}/work/${n}` })),
+      }}
+      git={GIT_READY}
+    />
+  ),
 };
 
 /** The summary before Tori opens. */

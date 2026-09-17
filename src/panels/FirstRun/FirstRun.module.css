@@ -438,6 +438,79 @@
     color: var(--danger-fg);
   }
 
+  /* Only a way to hold the whole form still while a job runs. */
+  .fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-5);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .modes {
+    align-self: flex-start;
+  }
+  .fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--tori-space-5);
+    max-width: calc(620px * var(--ui-scale));
+  }
+  .fieldName {
+    flex: 1 1 calc(180px * var(--ui-scale));
+    min-width: calc(160px * var(--ui-scale));
+  }
+  .fieldUrl {
+    flex: 2 1 calc(260px * var(--ui-scale));
+    min-width: calc(220px * var(--ui-scale));
+    max-width: none;
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--tori-space-4);
+    max-width: calc(620px * var(--ui-scale));
+  }
+  .cardTitle {
+    color: var(--fg-default);
+  }
+  .commandChip {
+    background: var(--canvas-head);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    padding: var(--tori-space-3) var(--tori-space-5);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-default);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--tori-space-4);
+  }
+  .chip {
+    background: var(--neutral-hover);
+    border-radius: var(--tori-radius-sm);
+    padding: var(--tori-space-2) calc(10px * var(--ui-scale));
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-default);
+  }
+  .made {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    font-size: var(--tori-text-md);
+    color: var(--fg-default);
+  }
+  .made > svg {
+    flex: none;
+    color: var(--success-fg);
+  }
+
   .agents {
     display: flex;
     flex-direction: column;
