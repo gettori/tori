@@ -268,13 +268,12 @@
     width: calc(16px * var(--ui-scale));
     height: calc(16px * var(--ui-scale));
   }
-  /* The sidebar's Tag chip on a worktree row (`.row .badge.topicChip`). */
+  /* The sidebar's Tag chip on a worktree row (`.row .topicChip`). */
   .topicChip {
     display: inline-flex;
     padding: calc(2px * var(--ui-scale));
     border-radius: var(--tori-radius-sm);
     color: var(--brand-default);
-    background: var(--brand-subtle);
   }
   .topicChip :global(svg) {
     width: calc(12px * var(--ui-scale));
