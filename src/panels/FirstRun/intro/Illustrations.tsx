@@ -28,23 +28,35 @@ function StateGlyph(props: { state: State; count?: number }) {
 }
 
 type Branch = { label: string; state: State; selected?: boolean };
-type Project = { name: string; branches: Branch[] } | { name: string; rollup: { state: State; count: number } };
+type Project = { name: string; path: string } & (
+  | { branches: Branch[] }
+  | { rollup: { state: State; count: number } }
+);
 
 export function SessionsIllustration() {
   const projects: Project[] = [
     {
       name: "api",
+      path: "~/Projects/work/api",
       branches: [
         { label: "fix/rate-limit", state: "working", selected: true },
         { label: "feat/webhooks", state: "needsYou" },
       ],
     },
-    { name: "web", rollup: { state: "done", count: 2 } },
+    { name: "web", path: "~/Projects/work/web", rollup: { state: "done", count: 2 } },
+    {
+      name: "blog",
+      path: "~/Projects/personal/blog",
+      branches: [
+        { label: "dark-mode", state: "working" },
+        { label: "post/launch", state: "done" },
+      ],
+    },
   ];
   const legend: { state: State; count: number }[] = [
-    { state: "working", count: 1 },
+    { state: "working", count: 2 },
     { state: "needsYou", count: 1 },
-    { state: "done", count: 2 },
+    { state: "done", count: 3 },
   ];
   return (
     <div class={styles.split}>
@@ -58,7 +70,7 @@ export function SessionsIllustration() {
             <div class={styles.project}>
               <div class={`${styles.treeRow} ${styles.projectRow}`}>
                 <span class={styles.rowIcon}>
-                  <ProjectIcon seed={`~/Projects/work/${p.name}`} />
+                  <ProjectIcon seed={p.path} />
                 </span>
                 <span class={styles.treeLabel}>{p.name}</span>
                 <Show when={"rollup" in p && p.rollup}>{(r) => <StateGlyph state={r().state} count={r().count} />}</Show>
