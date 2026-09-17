@@ -410,53 +410,6 @@ describe("the six panes", () => {
     expect(titles.filter((t) => t === "Editor")).toEqual([]);
     expect(new Set(titles).size).toBe(titles.length);
   });
-
-  it("lands on the Agents category in welcome mode", () => {
-    // First run opens here: it is the tab that answers "will this work with my
-    // setup?", and the note points at the cards under it.
-    render(() => <Settings onClose={() => {}} welcome />);
-    expect(activeTab()).toBe("Agents");
-    expect(screen.getByText(/Welcome to Tori/)).toBeTruthy();
-  });
-
-  // The greeting branches on whether anything is installed. Telling a user with
-  // no CLI to "check which ones it found below" points them at a list of misses
-  // and reads as Tori being broken rather than as a step they have not taken.
-  const withOnboarding = (content: unknown) =>
-    async (cmd: string, args: Record<string, unknown>) => {
-      if (cmd === "onboarding_content") return content;
-      return cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS;
-    };
-
-  it("tells a machine with no agent what to install, naming them", async () => {
-    invoke.mockImplementation(
-      withOnboarding({ kind: "noAgent", supported: ["Claude", "Codex", "OpenCode"] }),
-    );
-    render(() => <Settings onClose={() => {}} welcome />);
-    const note = await screen.findByText(/could not find one yet/);
-    expect(note.textContent).toContain("Claude, Codex or OpenCode");
-    expect(screen.queryByText(/checking which ones it found below/)).toBeNull();
-  });
-
-  it("gives the ordinary greeting once one agent resolves", async () => {
-    invoke.mockImplementation(withOnboarding({ kind: "firstRun" }));
-    render(() => <Settings onClose={() => {}} welcome />);
-    expect(await screen.findByText(/checking which ones it found below/)).toBeTruthy();
-    expect(screen.queryByText(/could not find one yet/)).toBeNull();
-  });
-
-  // A backend that cannot answer must not leave the first-run panel with no
-  // greeting at all.
-  it("falls back to the ordinary greeting when the check fails", async () => {
-    invoke.mockImplementation(
-      async (cmd: string, args: Record<string, unknown>) => {
-        if (cmd === "onboarding_content") throw new Error("nope");
-        return cmd === "set_settings" ? args.settings : DEFAULT_SETTINGS;
-      },
-    );
-    render(() => <Settings onClose={() => {}} welcome />);
-    expect(await screen.findByText(/checking which ones it found below/)).toBeTruthy();
-  });
 });
 
 describe("the rows backed by localStorage rather than by settings.json", () => {

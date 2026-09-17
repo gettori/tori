@@ -249,6 +249,7 @@
     /* scrim */
     --scrim-default: rgba(0, 0, 0, 0.45);
     --scrim-soft: rgba(0, 0, 0, 0.35);
+    --scrim-strong: rgba(0, 0, 0, 0.72);
 
     /* status */
     --status-progress: #c084fc;
@@ -417,6 +418,7 @@
     /* scrim */
     --scrim-default: rgba(23, 23, 23, 0.3);
     --scrim-soft: rgba(23, 23, 23, 0.22);
+    --scrim-strong: rgba(23, 23, 23, 0.5);
 
     /* status */
     --status-progress: #7c3aed;

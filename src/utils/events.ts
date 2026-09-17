@@ -127,6 +127,13 @@ export const NEW_DOCK_SHELL = "tori:new-dock-shell";
 // under it; lifting the dialog instead would move its five sibling dialogs too.
 export const NEW_FEATURE = "tori:new-feature";
 
+// Make a space the active one, by name. Emitted by the first-run modal when
+// the user picks the space Tori should open on. The sidebar owns the active
+// space and reads its persisted name once at mount, so writing the storage key
+// from outside would not reach the sidebar already mounted behind the modal.
+export const ACTIVATE_SPACE = "tori:activate-space";
+export type ActivateSpace = { name: string };
+
 // Pane layout edits (plan phase 8), all consumed by App.tsx, which owns the
 // tree. Emitted by the command palette and by a tab's own context menu, so a
 // split made either way runs the same guards.

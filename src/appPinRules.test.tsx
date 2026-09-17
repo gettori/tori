@@ -140,7 +140,6 @@ beforeEach(async () => {
       stored = args.settings as typeof stored;
       return stored;
     }
-    if (cmd === "onboarding_should_show") return false;
     if (cmd === "list_user_themes") return { themes: [], errors: [] };
     return null;
   });

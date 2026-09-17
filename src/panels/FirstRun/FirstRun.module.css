@@ -1,0 +1,466 @@
+@layer components {
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    background: var(--scrim-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--tori-space-8);
+    z-index: 100;
+  }
+
+  .panel {
+    display: flex;
+    width: min(calc(960px * var(--ui-scale)), 100%);
+    height: min(calc(640px * var(--ui-scale)), 100%);
+    background-color: var(--canvas-default);
+    color: var(--fg-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-xl);
+    box-shadow: var(--shadow-lg);
+    font-family: var(--tori-font-ui);
+    padding: calc(10px * var(--ui-scale));
+    gap: calc(10px * var(--ui-scale));
+    overflow: hidden;
+    outline: none;
+  }
+
+  .rail {
+    display: flex;
+    flex-direction: column;
+    width: calc(216px * var(--ui-scale));
+    flex: none;
+    min-height: 0;
+    padding: var(--tori-space-4) var(--tori-space-2);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    padding: var(--tori-space-3) var(--tori-space-4) var(--tori-space-6);
+    font-size: var(--tori-text-xl);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .brandMark {
+    width: calc(20px * var(--ui-scale));
+    height: calc(20px * var(--ui-scale));
+    border-radius: calc(6px * var(--ui-scale));
+    background: linear-gradient(140deg, var(--brand-strong), var(--brand-default));
+    flex: none;
+  }
+
+  /* Uppercase mono, so it names a group rather than reading as pressable.
+     The same recipe as the Settings rail. */
+  .railGroup {
+    padding: var(--tori-space-5) var(--tori-space-4) var(--tori-space-4);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
+  }
+  .railGroup + .railGroup {
+    border-top: var(--tori-border-thin) solid var(--border-default);
+    margin-top: var(--tori-space-4);
+  }
+
+  .step {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--tori-space-4);
+    width: 100%;
+    padding: var(--tori-space-4);
+    border: 0;
+    border-radius: var(--tori-radius-md);
+    background: transparent;
+    color: var(--fg-muted);
+    font: inherit;
+    font-size: var(--tori-text-md);
+    text-align: left;
+    cursor: default;
+  }
+  .step:not(:disabled) {
+    cursor: pointer;
+  }
+  .step:not(:disabled):hover {
+    background: var(--neutral-subtle);
+  }
+  .step:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--brand-ring);
+  }
+  .stepCurrent,
+  .stepCurrent:not(:disabled):hover {
+    background: var(--neutral-hover);
+    color: var(--fg-default);
+  }
+
+  .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(18px * var(--ui-scale));
+    height: calc(18px * var(--ui-scale));
+    flex: none;
+    border-radius: var(--tori-radius-pill);
+    border: var(--tori-border-thin) solid var(--border-strong);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-2xs);
+    font-weight: 600;
+    color: var(--fg-subtle);
+  }
+  .numCurrent {
+    background: var(--brand-default);
+    border-color: var(--brand-default);
+    color: var(--brand-on);
+  }
+  .numDone {
+    border-color: transparent;
+    color: var(--success-fg);
+  }
+
+  .stepText {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-1);
+    min-width: 0;
+  }
+  .stepLabel {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-3);
+    line-height: calc(18px * var(--ui-scale));
+  }
+  .stepSummary {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-xs);
+    color: var(--fg-subtle);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .required {
+    display: inline-block;
+    font-size: var(--tori-text-2xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand-strong);
+    border: var(--tori-border-thin) solid var(--border-strong);
+    border-radius: var(--tori-radius-sm);
+    padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
+    line-height: 1.3;
+  }
+
+  .railSpacer {
+    flex: 1;
+  }
+  .railCopy {
+    padding: var(--tori-space-4);
+    font-size: var(--tori-text-xs);
+    line-height: 1.5;
+    color: var(--fg-subtle);
+  }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    background: var(--canvas-card);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    overflow: hidden;
+  }
+  .paneScroll {
+    flex: 1;
+    min-height: 0;
+  }
+  .paneInner {
+    padding: calc(44px * var(--ui-scale)) calc(48px * var(--ui-scale)) var(--tori-space-7);
+  }
+
+  .heading {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    margin: 0;
+    font-size: calc(26px * var(--ui-scale));
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--fg-default);
+  }
+  .lead {
+    margin: var(--tori-space-4) 0 0;
+    max-width: calc(620px * var(--ui-scale));
+    font-size: var(--tori-text-xl);
+    line-height: 1.6;
+    color: var(--fg-muted);
+    text-wrap: pretty;
+  }
+  .lead code {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-lg);
+    color: var(--fg-default);
+  }
+
+  .content {
+    margin-top: calc(28px * var(--ui-scale));
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-5);
+  }
+
+  .footer {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--tori-space-5);
+    padding: var(--tori-space-5) calc(48px * var(--ui-scale));
+    border-top: var(--tori-border-thin) solid var(--border-default);
+    font-size: var(--tori-text-md);
+    color: var(--fg-subtle);
+  }
+  .footerActions {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+  }
+
+  /* The window's floor is 900x600, and the modal has to fit it with the rail's
+     secondary lines gone and the pane's padding pulled in, not by scrolling
+     the rail. */
+  @media (max-width: 1000px), (max-height: 680px) {
+    .stepSummary,
+    .railCopy {
+      display: none;
+    }
+    .paneInner {
+      padding: var(--tori-space-7) var(--tori-space-7) var(--tori-space-6);
+    }
+    .footer {
+      padding: var(--tori-space-4) var(--tori-space-7);
+    }
+    .heading {
+      font-size: var(--tori-text-4xl);
+    }
+    .lead {
+      font-size: var(--tori-text-lg);
+    }
+    .content {
+      margin-top: var(--tori-space-6);
+    }
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-5);
+  }
+  .hint {
+    font-size: var(--tori-text-md);
+    color: var(--fg-subtle);
+  }
+  .note {
+    font-size: var(--tori-text-md);
+    color: var(--fg-muted);
+  }
+  .mono {
+    font-family: var(--tori-font-mono);
+  }
+  .found {
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+
+  .placeholder {
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) dashed var(--border-strong);
+    border-radius: var(--tori-radius-lg);
+    padding: var(--tori-space-6);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-subtle);
+  }
+
+  .pathField {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
+    flex: 1;
+    min-width: 0;
+    background: var(--canvas-head);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    padding: calc(10px * var(--ui-scale)) calc(14px * var(--ui-scale));
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-lg);
+    color: var(--fg-default);
+  }
+  .pathField > svg {
+    color: var(--brand-strong);
+    flex: none;
+  }
+  .pathText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .card {
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    padding: var(--tori-space-6);
+    max-width: calc(700px * var(--ui-scale));
+    font-size: var(--tori-text-md);
+    line-height: 1.6;
+    color: var(--fg-muted);
+  }
+  .scan {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-3);
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    line-height: 1.4;
+  }
+  .scanRow {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--tori-space-5);
+    padding-left: calc(20px * var(--ui-scale));
+    color: var(--fg-default);
+  }
+  .scanRow > span:last-child {
+    color: var(--fg-subtle);
+  }
+
+  .choices {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-4);
+    max-width: calc(700px * var(--ui-scale));
+  }
+  .choice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--tori-space-5);
+    width: 100%;
+    background: var(--canvas-head);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-md);
+    padding: calc(11px * var(--ui-scale)) calc(15px * var(--ui-scale));
+    font: inherit;
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-md);
+    color: var(--fg-default);
+    text-align: left;
+    cursor: pointer;
+  }
+  .choice:hover {
+    border-color: var(--border-strong);
+  }
+  .choice:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--brand-ring);
+  }
+  .choiceOn,
+  .choiceOn:hover {
+    border-color: var(--brand-default);
+  }
+  .choiceCount {
+    font-family: var(--tori-font-ui);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-subtle);
+  }
+
+  .link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: var(--tori-text-md);
+    color: var(--accent-fg);
+    cursor: pointer;
+  }
+  .link:hover {
+    text-decoration: underline;
+  }
+  .link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--brand-ring);
+    border-radius: var(--tori-radius-sm);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--tori-space-3);
+    max-width: calc(460px * var(--ui-scale));
+  }
+  .fieldLabel {
+    font-size: var(--tori-text-sm);
+    color: var(--fg-muted);
+  }
+  .input {
+    composes: input from "../../styles/patterns.module.css";
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-lg);
+    padding: calc(10px * var(--ui-scale)) calc(14px * var(--ui-scale));
+  }
+  .preview {
+    font-family: var(--tori-font-mono);
+    font-size: var(--tori-text-sm);
+    color: var(--fg-subtle);
+  }
+  .error {
+    font-size: var(--tori-text-sm);
+    color: var(--danger-fg);
+  }
+
+  .summary {
+    display: flex;
+    flex-direction: column;
+    background: var(--canvas-default);
+    border: var(--tori-border-thin) solid var(--border-default);
+    border-radius: var(--tori-radius-lg);
+    padding: 0 var(--tori-space-6);
+    max-width: calc(700px * var(--ui-scale));
+  }
+  .summaryRow {
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-5);
+    padding: var(--tori-space-5) 0;
+    border-bottom: var(--tori-border-thin) solid var(--border-default);
+    font-size: var(--tori-text-md);
+  }
+  .summaryRow:last-child {
+    border-bottom: 0;
+  }
+  .summaryRow > svg {
+    flex: none;
+    color: var(--success-fg);
+  }
+  .summaryLabel {
+    flex: none;
+    width: calc(92px * var(--ui-scale));
+    color: var(--fg-muted);
+  }
+  .summaryValue {
+    color: var(--fg-default);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

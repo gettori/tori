@@ -9,7 +9,6 @@ import { createEffect } from "solid-js";
 // ask it for things before any test has started.
 async function backend(cmd: string): Promise<unknown> {
   if (cmd === "get_settings") return (await import("./panels/Settings/settingsStore")).DEFAULT_SETTINGS;
-  if (cmd === "onboarding_should_show") return false;
   if (cmd === "list_user_themes") return { themes: [], errors: [] };
   if (cmd === "list_sessions" || cmd === "sessions_running" || cmd === "chat_orphans") return [];
   if (cmd === "refresh_agent_health" || cmd === "list_agents") return [];

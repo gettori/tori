@@ -244,7 +244,7 @@ describe("a command that opens the panel at one setting", () => {
     // The prop is watched, not bound. A re-render for any other reason must not
     // yank the box back to what the panel opened with.
     const [unrelated, setUnrelated] = createSignal(0);
-    render(() => <Settings onClose={() => {}} query="Line height" welcome={unrelated() > 0} />);
+    render(() => <Settings onClose={() => {}} query="Line height" projectRoot={unrelated() > 0 ? "/p" : null} />);
     type("Theme");
 
     setUnrelated(1);
