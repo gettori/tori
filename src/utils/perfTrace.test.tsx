@@ -1,6 +1,6 @@
-// The switch span's settle legs (#155 phase 2). A Feature switch waits on the
+// The switch span's settle legs (#155 phase 2). A Topic switch waits on the
 // same tree and git legs a worktree switch does; before this it was admitted as
-// a span and then never closed, so every Feature switch wrote `settled: null`
+// a span and then never closed, so every Topic switch wrote `settled: null`
 // after the 5s timeout.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { installAnimationFrame } from "../test/frames";

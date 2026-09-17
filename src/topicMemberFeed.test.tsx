@@ -2,11 +2,11 @@
 // `reorder_members`, `rename_member` and `rename_topic` used to answer
 // nothing and announce nothing, so every consumer of the shared tinted-members
 // resource - the Toolbar's chips, the editor's tree, the Omnibox - kept showing
-// the name and the order the Feature had when the window opened. The sidebar
+// the name and the order the Topic had when the window opened. The sidebar
 // only looked right because it patched its own signal.
 //
 // What is asserted here is the *feed*, not the sidebar: an emitted
-// `topics://changed` refetches (`createFeatureMembers` is invalidation-based
+// `topics://changed` refetches (`createTopicMembers` is invalidation-based
 // by design, one read per generation) and the chip row follows. The panels that
 // take those members as a prop assert the prop drives them in their own files.
 import { describe, it, expect, vi, beforeEach } from "vitest";

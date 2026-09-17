@@ -1,6 +1,6 @@
-// The terminal inside a Feature (#154 phase 1): tabs group under `feature:<id>`
+// The terminal inside a Topic (#154 phase 1): tabs group under `feature:<id>`
 // (so the same folder selected from Spaces shows none of them), restore lists
-// sessions across every member root, and the History crumb names the Feature.
+// sessions across every member root, and the History crumb names the Topic.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createSignal } from "solid-js";
 import { render, screen, waitFor, fireEvent } from "@solidjs/testing-library";
@@ -53,7 +53,7 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-const featureSel = (activeRoot: string) => ({
+const topicSel = (activeRoot: string) => ({
   kind: "feature",
   featureId: "f1",
   featureName: "Auth",
@@ -122,7 +122,7 @@ afterEach(() => resetTerminalTabModel());
 describe("the terminal inside a Feature", () => {
   it("restores the Feature's strip from every member root and keeps it off the member's own unit", async () => {
     bridge.byFolder = { [B]: [session("s-b", B)] };
-    const [sel, setSel] = createSignal<Record<string, unknown>>(featureSel(A));
+    const [sel, setSel] = createSignal<Record<string, unknown>>(topicSel(A));
     render(() => (
       <>
         <Terminal selected={sel() as never} />
@@ -138,14 +138,14 @@ describe("the terminal inside a Feature", () => {
     await waitFor(() => expect(stripTitles()).not.toContain("Auth shell"));
     expect(stripTitles()).not.toContain("s-b chat");
 
-    setSel(featureSel(B));
+    setSel(topicSel(B));
     await waitFor(() => expect(stripTitles()).toContain("Auth shell"));
   });
 
   it("names the Feature on the History crumb", async () => {
     render(() => (
       <>
-        <Terminal selected={featureSel(A) as never} />
+        <Terminal selected={topicSel(A) as never} />
         <PaneView pinKind="shell" />
       </>
     ));

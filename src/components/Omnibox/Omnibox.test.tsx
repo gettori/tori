@@ -18,7 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     return cmd === "list_project_files" ? Promise.resolve(bridge.files) : Promise.resolve(null);
   },
 }));
-// The box reads the Feature's members to name each row's repo, and that resource
+// The box reads the Topic's members to name each row's repo, and that resource
 // subscribes to `topics://changed` the moment it is created.
 vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}) }));
 

@@ -1,4 +1,4 @@
-// Destroying a Feature member's worktree, in one place.
+// Destroying a Topic member's worktree, in one place.
 //
 // `remove_worktree`'s own doc comment says the backend relies on the UI to tear
 // down the PTYs and editor tabs under the folder first, and every existing call
@@ -8,9 +8,9 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { PURGE_UNDER_PATH, emitWith, type PurgeUnderPath } from "./events";
-import type { Member } from "./features";
+import type { Member } from "./topics";
 
-/** A member whose worktree exists. `branch` is the Feature's, since a member
+/** A member whose worktree exists. `branch` is the Topic's, since a member
  *  never has one of its own. */
 export type WorktreeMember = Pick<Member, "repoPath"> & { worktreePath: string };
 

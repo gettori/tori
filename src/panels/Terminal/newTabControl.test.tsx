@@ -63,7 +63,7 @@ const bridge = vi.hoisted(() => ({
   calls: [] as { cmd: string; args?: Record<string, unknown> }[],
   /** What a spawn wrote back as this project's memory. */
   remembered: [] as { path: string; prefs: Record<string, unknown> }[],
-  /** The keys that memory was looked up under. A Feature spells its workspace
+  /** The keys that memory was looked up under. A Topic spells its workspace
    *  and its active root differently, so which one is asked is the whole of
    *  whether a lock is read back where it was written. */
   prefsAsked: [] as string[],
@@ -196,9 +196,9 @@ function mount(selected: unknown = branchSelection) {
   ));
 }
 
-/** A Feature: the one selection whose workspace key and whose folder are
+/** A Topic: the one selection whose workspace key and whose folder are
  *  different strings. */
-const featureSelection = {
+const topicSelection = {
   ...branchSelection,
   kind: "feature",
   featureId: "f1",
@@ -348,7 +348,7 @@ describe("a draft handed over from Settings", () => {
   it("says so and opens nothing for a selection with no folder", async () => {
     const toasts: string[] = [];
     window.addEventListener(TOAST, (e) => toasts.push((e as CustomEvent<ToastEvent>).detail.message));
-    await mountLoaded({ ...featureSelection, activeRoot: null, roots: [], folderPath: "" });
+    await mountLoaded({ ...topicSelection, activeRoot: null, roots: [], folderPath: "" });
 
     emitWith<ComposeDraft>(COMPOSE_DRAFT, { blocks: [{ type: "text", text: "hi" }] as never });
 
@@ -503,13 +503,13 @@ describe("what an agent tab remembers", () => {
   });
 });
 
-// A Feature is the one workspace whose key and whose folder are different
+// A Topic is the one workspace whose key and whose folder are different
 // strings, so it is the only place "read it back where it was written" can be
 // wrong. A chat lock has only the tab's workspace to write under, so that is
 // the key every reader asks.
 describe("where a project's memory is kept", () => {
   it("reads a Feature's under its workspace key, not its active root", async () => {
-    await mountLoaded(featureSelection);
+    await mountLoaded(topicSelection);
     fireEvent.click(screen.getByLabelText("New chat in repo"));
 
     await screen.findByTestId("draft");
@@ -522,7 +522,7 @@ describe("where a project's memory is kept", () => {
       { id: "default", label: "Default", signIn: "signedIn", account: null, apiKeySource: null },
       { id: "fonn", label: "Fonn", signIn: "signedIn", account: null, apiKeySource: null },
     ];
-    await mountLoaded(featureSelection);
+    await mountLoaded(topicSelection);
     await menuItem("Claude (Fonn, terminal)");
 
     await waitFor(() => expect(bridge.remembered).toHaveLength(1));

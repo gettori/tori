@@ -1,4 +1,4 @@
-// The Toolbar for a Feature (#154 phase 2): its name and branch as the crumb,
+// The Toolbar for a Topic (#154 phase 2): its name and branch as the crumb,
 // then one chip per member. A present chip moves the active root; a member
 // with no worktree is disabled and says why.
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -25,7 +25,7 @@ vi.mock("@tauri-apps/api/core", () => ({
             { repoPath: "/w/ledger", displayName: "ledger", worktreePath: null, state: { kind: "worktree-missing" }, order: 2 },
           ],
         },
-        // A second record rather than a second mock: `featureMembers` reads once
+        // A second record rather than a second mock: `topicMembers` reads once
         // per generation module-wide, so a test that swapped this payload would
         // be served the first one from the cache.
         {
@@ -47,7 +47,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: () => Promise.resolve(() => {}
 
 const { default: Toolbar } = await import("./Toolbar");
 
-const featureSel = (activeRoot: string) => ({
+const topicSel = (activeRoot: string) => ({
   kind: "feature",
   featureId: "f1",
   featureName: "Auth",
@@ -106,7 +106,7 @@ beforeEach(() => {
 describe("Toolbar for a Feature", () => {
   it("shows the Feature crumb and a chip per member, the active root pressed", async () => {
     const onActiveRoot = vi.fn();
-    render(() => <Toolbar selected={featureSel(A) as never} onActiveRoot={onActiveRoot} />);
+    render(() => <Toolbar selected={topicSel(A) as never} onActiveRoot={onActiveRoot} />);
     expect(screen.getByText("Auth")).toBeTruthy();
     expect(screen.getByText("feat/auth")).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole("button", { name: "api" })).toBeTruthy());
@@ -122,7 +122,7 @@ describe("Toolbar for a Feature", () => {
     // Three crumbs, and the middle one follows the chip row: the crumb says
     // where you are, the chips are what move it (#158).
     const onActiveRoot = vi.fn();
-    render(() => <Toolbar selected={featureSel(B) as never} onActiveRoot={onActiveRoot} />);
+    render(() => <Toolbar selected={topicSel(B) as never} onActiveRoot={onActiveRoot} />);
     await waitFor(() => expect(crumbs()).toEqual(["Auth", "web", "feat/auth"]));
 
     fireEvent.click(chip("api"));
@@ -139,7 +139,7 @@ describe("Toolbar for a Feature", () => {
 
   it("disables a member with no worktree and names the state", async () => {
     const onActiveRoot = vi.fn();
-    render(() => <Toolbar selected={featureSel(A) as never} onActiveRoot={onActiveRoot} />);
+    render(() => <Toolbar selected={topicSel(A) as never} onActiveRoot={onActiveRoot} />);
     await waitFor(() => expect(screen.queryByRole("button", { name: "ledger: Worktree missing" })).toBeTruthy());
     expect(chip("ledger: Worktree missing").disabled).toBe(true);
     fireEvent.click(chip("ledger: Worktree missing"));
@@ -151,7 +151,7 @@ describe("Toolbar for a Feature", () => {
   // now. Asserted rather than assumed: a crumb that grew one back would put a
   // second Ghostty button on the bar.
   it("carries no launch buttons, only the crumb and its chips", async () => {
-    render(() => <Toolbar selected={featureSel(B) as never} />);
+    render(() => <Toolbar selected={topicSel(B) as never} />);
     await waitFor(() => expect(chip("web")).toBeTruthy());
 
     expect(screen.queryByRole("button", { name: /Ghostty/ })).toBeNull();

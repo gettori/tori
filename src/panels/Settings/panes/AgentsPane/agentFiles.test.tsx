@@ -310,7 +310,7 @@ describe("opening a file from a row", () => {
     expect(seen).toEqual([]);
   });
 
-  // Shells, and a Feature with no present member, both have a Selection and no
+  // Shells, and a Topic with no present member, both have a Selection and no
   // folder. A tab has to land somewhere, so the row says so instead of opening
   // one nowhere.
   it("offers no working opener with no project selected", async () => {

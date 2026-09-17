@@ -495,7 +495,7 @@ describe("stopping", () => {
     // observe one line of a teardown effect.
     //
     // It used to live in the same effect as the language-server retire, keyed
-    // on `root`. Inside a Feature `root` is the *active member*, and moving it
+    // on `root`. Inside a Topic `root` is the *active member*, and moving it
     // is a pointer move: clicking another repo in the tree stopped the debuggee
     // and blanked the transcript (#160 phase 2). The run belongs to the
     // workspace, so the sweep keys on the workspace.

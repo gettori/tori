@@ -11,14 +11,14 @@
 // the refresh - which is exactly the bug the Changes panel had, where staging
 // from anywhere else left its list stale.
 //
-// One slot per root, not one slot total: inside a Feature every member is a
+// One slot per root, not one slot total: inside a Topic every member is a
 // repo of its own, and the member in front is a pointer into the set rather
 // than the only one whose numbers are true.
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, TOAST, type FsChanged, type ToastEvent } from "./events";
-import { rootOf } from "./features";
+import { rootOf } from "./topics";
 import { mentionPath } from "./pathScope";
 
 /** One porcelain entry. `path` is repo-relative, as every git_* command wants,
@@ -53,7 +53,7 @@ export type GitState = {
   head: string | null;
 };
 
-/** A file with the member it came from, for the reads that span a Feature. */
+/** A file with the member it came from, for the reads that span a Topic. */
 export type RootedFile = FileStatus & { root: string };
 
 // One object for every root with no slot, so a consumer memo comparing `files`
@@ -125,7 +125,7 @@ export function canPush(root?: string | null): boolean {
   return !!ab && (!ab.has_upstream || ab.ahead > 0);
 }
 
-// Per root, not one flag: a Feature draws a Push per member, and one shared
+// Per root, not one flag: a Topic draws a Push per member, and one shared
 // flag would label every one of them "Pushing..." for a push in any one.
 const [pushingRoots, setPushingRoots] = createSignal<ReadonlySet<string>>(new Set());
 

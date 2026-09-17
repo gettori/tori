@@ -73,16 +73,16 @@ import {
 import { runExitEffects } from "../../utils/jobExit";
 import { isUnderPath, sameCwd } from "../../utils/pathScope";
 import {
-  isFeatureKey,
+  isTopicKey,
   isShellsKey,
   selectionRoot,
   SHELLS_KEY,
   workspaceFolders,
   workspaceKey,
-} from "../../utils/features";
+} from "../../utils/topics";
 import { commandStatus, commandVerdict, dropCommandStatus, reportCommandExit } from "./commandStatus";
 import { dropInitRefusal, initRefusal, refuseInit } from "./initRefusal";
-import { createFeatureMembers, memberFor, type TintedMember } from "../../utils/featureMembers";
+import { createTopicMembers, memberFor, type TintedMember } from "../../utils/topicMembers";
 import {
   agents,
   chatCapable,
@@ -282,7 +282,7 @@ export default function Terminal(props: {
   function selectTab(t: OpenTerm) {
     if (isShellsKey(t.workspace)) return focusDockTab(t.id);
     focusTab(t.workspace, t.id);
-    if (isFeatureKey(t.workspace)) return;
+    if (isTopicKey(t.workspace)) return;
     emitWith<TerminalTabFocused>(TERMINAL_TAB_FOCUSED, {
       folderPath: t.workspace,
       sessionId: isSessionTab(t) ? t.sessionId : undefined,
@@ -395,8 +395,8 @@ export default function Terminal(props: {
   }
 
   // A `feature:<id>` workspace spans its member folders, so a per-folder
-  // listing is unioned. Only the selected Feature's roots are known here; a
-  // Feature that is not selected lists nothing.
+  // listing is unioned. Only the selected Topic's roots are known here; a
+  // Topic that is not selected lists nothing.
   async function listSessionsFor<T>(ws: string): Promise<T[]> {
     const lists = await Promise.all(
       workspaceFolders(ws, props.selected).map((folder) =>
@@ -880,7 +880,7 @@ export default function Terminal(props: {
   });
   onCleanup(offPurge);
 
-  // A workspace key is gone (a Feature was deleted): close its tabs, and mark
+  // A workspace key is gone (a Topic was deleted): close its tabs, and mark
   // it touched so the persisted store drops it rather than restoring it later.
   const offPurgeWs = onWith<PurgeWorkspace>(PURGE_WORKSPACE, ({ workspace }) => {
     for (const t of open()) {
@@ -1796,8 +1796,8 @@ export default function Terminal(props: {
    * Keyed by the **workspace**, which is what a chat lock writes under
    * (`ChatView` has only the tab's workspace to write with) and what `ChatDraft`
    * reads its remembered model under. For a plain folder the two spellings are
-   * one string; for a Feature they are `feature:<id>` and the active root, so
-   * reading by root here meant a Feature's memory was written where nothing
+   * one string; for a Topic they are `feature:<id>` and the active root, so
+   * reading by root here meant a Topic's memory was written where nothing
    * looked for it.
    */
   const draftAgent = (workspace: string, folder: string) => draftChatAgent(chatPrefs(workspace).agent, folder);
@@ -2163,13 +2163,13 @@ export default function Terminal(props: {
   // The same shared resource the editor reads, not a second one: `list_topics`
   // is fetched once per generation module-wide, so two panels asking cannot end
   // up drawing two different member sets during a refetch.
-  const featureId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
-  const members = createFeatureMembers(featureId);
+  const topicId = () => (props.selected?.kind === "feature" ? (props.selected.featureId ?? null) : null);
+  const members = createTopicMembers(topicId);
 
   /** Which member a tab's shell is sitting in. A terminal has no file, so the
-   *  cwd is what answers; null outside a Feature. */
+   *  cwd is what answers; null outside a Topic. */
   const tabMember = (cwd: string): TintedMember | null =>
-    featureId() ? memberFor(cwd, members()) : null;
+    topicId() ? memberFor(cwd, members()) : null;
 
   const termMenuItem = (u: UnifiedTab) => {
     const t = asTerm(u);
@@ -2506,7 +2506,7 @@ export default function Terminal(props: {
         />
       ) : undefined;
       const m = tabMember(t.cwd);
-      // Still undefined outside a Feature, so a plain shell keeps the bare label
+      // Still undefined outside a Topic, so a plain shell keeps the bare label
       // the descriptor documents.
       if (!m) return mark;
       return (

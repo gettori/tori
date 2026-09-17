@@ -20,7 +20,7 @@
   background: color-mix(in srgb, var(--chip-hue) 18%, transparent);
 }
 
-/* The sidebar's Feature rows sit on a taller line and carry a state badge, so
+/* The sidebar's Topic rows sit on a taller line and carry a state badge, so
    the box is bigger there - and monospace, because initials cut from a repo
    name are a code, not a word, and a proportional font sets `API` and `F` at
    widths that make the row read as ragged rather than as a set. */

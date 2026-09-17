@@ -6,7 +6,7 @@ import { ensureShellsWorkspace, shellsPane } from "./shellsWorkspace";
 import { layoutRoot, resetPaneLayoutModel } from "./layoutStore";
 import { leaves } from "./paneLayout";
 import { paneLock, placementRefusal, resetTabPlacement, setPaneLock } from "./tabPlacement";
-import { SHELLS_KEY } from "../utils/features";
+import { SHELLS_KEY } from "../utils/topics";
 
 beforeEach(() => {
   localStorage.clear();

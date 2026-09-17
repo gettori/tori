@@ -81,7 +81,7 @@ const { ensureEnvelope, resetPaneLayoutModel, seedOnePane } = await import("../l
 const { resetTabPlacement } = await import("../layout/tabPlacement");
 const { ensureShellsWorkspace, shellsPane } = await import("../layout/shellsWorkspace");
 const { paneTabs } = await import("./paneTabs");
-const { SHELLS_KEY } = await import("../utils/features");
+const { SHELLS_KEY } = await import("../utils/topics");
 type OpenTerm = import("../panels/Terminal/terminalTabStore").OpenTerm;
 type Selection = import("../panels/LeftSidebar/LeftSidebar").Selection;
 

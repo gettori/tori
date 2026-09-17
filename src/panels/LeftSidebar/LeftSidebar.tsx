@@ -119,7 +119,7 @@ import IconButton from "../../components/IconButton/IconButton";
 import ProjectIcon from "../../components/Icon/ProjectIcon";
 import { resolveIcon } from "../../components/Icon/iconRegistry";
 import { spaceHue, spaceHueRgb, applySpaceTint } from "../../utils/spaceTint";
-import { rememberSelection, rememberedUnit, rememberedFeature } from "../../utils/selectionMemory";
+import { rememberSelection, rememberedUnit, rememberedTopic } from "../../utils/selectionMemory";
 import { forgetIntro } from "../../utils/firstRun";
 import {
   FolderCog,
@@ -538,7 +538,7 @@ export default function LeftSidebar(props: {
   // The last Topic, re-resolved against the live records: the stored copy is
   // a snapshot, and its members may have come or gone since.
   function restoreTopic(): boolean {
-    const back = rememberedFeature();
+    const back = rememberedTopic();
     const f = back?.featureId ? topics().find((f) => f.id === back.featureId) : null;
     if (!f) return false;
     if (props.selected?.kind === "feature" && props.selected.featureId === f.id) return true;

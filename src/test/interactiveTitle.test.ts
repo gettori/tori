@@ -391,7 +391,7 @@ describe("the title= guard", () => {
     // had a copy.
     // Down one more: the composer bar's standing note about a remembered model
     // list is gone, and its title with it.
-    // Up one div and three spans: the sidebar's Feature row (#153) shows the
+    // Up one div and three spans: the sidebar's Topic row (#153) shows the
     // branch behind a truncated name, and each member chip, its state badge
     // and the +N overflow carry the full text a 22px chip cannot.
     // Up one more span: the Changes panel's member headers (#157) each show

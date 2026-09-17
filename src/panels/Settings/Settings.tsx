@@ -104,7 +104,7 @@ export default function Settings(props: {
   /** The catalogue id a `Preferences:` command pointed at, revealed on open and
    *  again whenever a later command names a different one. */
   entry?: string;
-  /** The folder the current selection resolves to, or `null` for a Feature
+  /** The folder the current selection resolves to, or `null` for a Topic
    *  with no present member. Settings has no Selection of its own, so
    *  every action that has to open a file somewhere gets handed the root
    *  rather than looking one up. */
