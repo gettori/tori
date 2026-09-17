@@ -89,9 +89,9 @@ const selection = {
 // is what says which repo the reader means.
 const MEMBER_B = "/space/other/main";
 const topicSelection = {
-  kind: "feature",
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic",
+  topicId: "f1",
+  topicName: "Auth",
   roots: [REPO, MEMBER_B],
   activeRoot: REPO,
   spaceName: "",
@@ -99,7 +99,7 @@ const topicSelection = {
   projectPath: REPO,
   folderPath: REPO,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 };
 
 let mounted: ReturnType<typeof render> | null = null;

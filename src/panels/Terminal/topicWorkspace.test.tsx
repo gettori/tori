@@ -1,4 +1,4 @@
-// The terminal inside a Topic (#154 phase 1): tabs group under `feature:<id>`
+// The terminal inside a Topic (#154 phase 1): tabs group under `topic:<id>`
 // (so the same folder selected from Spaces shows none of them), restore lists
 // sessions across every member root, and the History crumb names the Topic.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -54,9 +54,9 @@ globalThis.ResizeObserver ??= class {
 } as unknown as typeof ResizeObserver;
 
 const topicSel = (activeRoot: string) => ({
-  kind: "feature",
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic",
+  topicId: "f1",
+  topicName: "Auth",
   roots: [A, B],
   activeRoot,
   spaceName: "",
@@ -64,7 +64,7 @@ const topicSel = (activeRoot: string) => ({
   projectPath: activeRoot,
   folderPath: activeRoot,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 });
 const unitSel = {
   kind: "unit",
@@ -106,7 +106,7 @@ beforeEach(() => {
   localStorage.setItem(
     "tori.terminalTabs",
     JSON.stringify({
-      "feature:f1": {
+      "topic:f1": {
         tabs: [
           { title: "Auth shell", cwd: A, kind: "shell", program: "", args: [] },
           { title: "old", cwd: B, kind: "chat", program: "claude", args: [], sessionId: "s-b" },

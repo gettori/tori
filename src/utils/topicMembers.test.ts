@@ -55,7 +55,7 @@ beforeEach(() => {
   bridge.calls.length = 0;
 });
 
-describe("createFeatureMembers", () => {
+describe("createTopicMembers", () => {
   it("refetches once per event and keeps the members in order, tinted by Space", async () => {
     await createRoot(async (dispose) => {
       const members = createTopicMembers(() => "f1");

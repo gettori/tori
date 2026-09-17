@@ -200,8 +200,8 @@ function mount(selected: unknown = branchSelection) {
  *  different strings. */
 const topicSelection = {
   ...branchSelection,
-  kind: "feature",
-  featureId: "f1",
+  kind: "topic",
+  topicId: "f1",
   activeRoot: `${REPO}/.tori/worktrees/f1`,
   roots: [`${REPO}/.tori/worktrees/f1`],
 };
@@ -513,7 +513,7 @@ describe("where a project's memory is kept", () => {
     fireEvent.click(screen.getByLabelText("New chat in repo"));
 
     await screen.findByTestId("draft");
-    expect(bridge.prefsAsked).toContain("feature:f1");
+    expect(bridge.prefsAsked).toContain("topic:f1");
     expect(bridge.prefsAsked).not.toContain(`${REPO}/.tori/worktrees/f1`);
   });
 
@@ -526,6 +526,6 @@ describe("where a project's memory is kept", () => {
     await menuItem("Claude (Fonn, terminal)");
 
     await waitFor(() => expect(bridge.remembered).toHaveLength(1));
-    expect(bridge.remembered[0].path).toBe("feature:f1");
+    expect(bridge.remembered[0].path).toBe("topic:f1");
   });
 });

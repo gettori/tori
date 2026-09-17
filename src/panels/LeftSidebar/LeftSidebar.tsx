@@ -248,9 +248,9 @@ type ResolvedConfig = { path: string; roots: string[]; spaces: Space[] };
 
 export type Selection = {
   // Absent means "unit": a selection persisted before Topics carried no kind.
-  kind?: "unit" | "feature";
-  featureId?: string;
-  featureName?: string;
+  kind?: "unit" | "topic";
+  topicId?: string;
+  topicName?: string;
   // Present members' folders in order, and the one the editor, git and a spawn
   // run against. Null when no member is present; `folderPath` then mirrors "".
   roots?: string[];
@@ -293,9 +293,9 @@ const LS_CONFIG = "tori.sidebar-config.v1";
 // What the column shows: the Spaces tree or the Topic list. The filter field,
 // the dialogs and the selection are shared; the tree and the space rail are
 // unmounted in the other rather than hidden.
-type SidebarMode = "spaces" | "features";
+type SidebarMode = "spaces" | "topics";
 // The order the segments sit in, which is also the order the toggle steps through.
-const MODE_VALUES: SidebarMode[] = ["spaces", "features"];
+const MODE_VALUES: SidebarMode[] = ["spaces", "topics"];
 
 function loadMode(): SidebarMode {
   try {
@@ -406,9 +406,9 @@ export default function LeftSidebar(props: {
   // With no project there is no Topics tile to leave Topics by.
   const mode = (): SidebarMode => (topicsReachable() ? chosenMode() : "spaces");
   /** What the filter field is filtering, which is whatever the mode is showing. */
-  const filterNoun = () => (mode() === "features" ? "features" : "projects");
+  const filterNoun = () => (mode() === "topics" ? "features" : "projects");
   /** What the tree's heading says, which is whatever the strip has lit. */
-  const headingName = () => (mode() === "features" ? "Features" : (activeSpace()?.name ?? "Spaces"));
+  const headingName = () => (mode() === "topics" ? "Features" : (activeSpace()?.name ?? "Spaces"));
   createEffect(() => {
     try {
       localStorage.setItem(LS_MODE, chosenMode());
@@ -539,9 +539,9 @@ export default function LeftSidebar(props: {
   // a snapshot, and its members may have come or gone since.
   function restoreTopic(): boolean {
     const back = rememberedTopic();
-    const f = back?.featureId ? topics().find((f) => f.id === back.featureId) : null;
+    const f = back?.topicId ? topics().find((f) => f.id === back.topicId) : null;
     if (!f) return false;
-    if (props.selected?.kind === "feature" && props.selected.featureId === f.id) return true;
+    if (props.selected?.kind === "topic" && props.selected.topicId === f.id) return true;
     selectTopic(f, back!.activeRoot ?? null);
     return true;
   }
@@ -568,7 +568,7 @@ export default function LeftSidebar(props: {
   // leaves the selection alone here rather than clearing it.
   function switchMode(next: SidebarMode) {
     setMode(next);
-    if (next === "features") restoreTopic();
+    if (next === "topics") restoreTopic();
     else {
       const g = activeSpace();
       if (g) restoreUnit(g);
@@ -1214,7 +1214,7 @@ export default function LeftSidebar(props: {
   function dropSelectionUnder(gone: (folder: string) => boolean) {
     const sel = props.selected;
     if (!sel) return;
-    if (sel.kind === "feature") {
+    if (sel.kind === "topic") {
       const roots = (sel.roots ?? []).filter((r) => !gone(r));
       if (sel.activeRoot && !gone(sel.activeRoot)) return;
       if (!roots.length) props.onSelect(null);
@@ -2426,7 +2426,7 @@ export default function LeftSidebar(props: {
   // folder: the Topic row is its home, and the chip below points there.
   function unitSelected(u: BranchUnit) {
     const s = props.selected;
-    return s != null && s.kind !== "feature" && s.folderPath === u.folderPath && s.branch === unitLabel(u);
+    return s != null && s.kind !== "topic" && s.folderPath === u.folderPath && s.branch === unitLabel(u);
   }
 
   // The Topics this folder is a member of, so a unit row can point back at
@@ -2439,7 +2439,7 @@ export default function LeftSidebar(props: {
   function selectTopic(f: Topic, preferredRoot: string | null) {
     // Keyed by the workspace key, not the bare id, so the legs the editor
     // reports (which key on the workspace) land on this span.
-    traceSwitchStart("feature", topicKey(f.id));
+    traceSwitchStart("topic", topicKey(f.id));
     props.onSelect(topicSelection(f, preferredRoot));
   }
 
@@ -3015,7 +3015,7 @@ export default function LeftSidebar(props: {
         {/* Before the filter, and only in the mode it means something in: a
             Topic is the one thing this column makes. It carries the row's
             auto margin so the pair sits together against the right edge. */}
-        <Show when={mode() === "features"}>
+        <Show when={mode() === "topics"}>
           <Button
             class={styles.headAdd}
             variant="ghost"
@@ -3041,16 +3041,16 @@ export default function LeftSidebar(props: {
         </Show>
       </div>
 
-      <Show when={mode() === "features"}>
+      <Show when={mode() === "topics"}>
         <TopicList
           class={styles.topicList}
           spaces={visibleSpaces()}
           query={query()}
-          activeId={props.selected?.kind === "feature" ? props.selected.featureId : null}
+          activeId={props.selected?.kind === "topic" ? props.selected.topicId : null}
           countRunning={countRunningAgents}
-          onSelect={(f) => selectTopic(f, props.selected?.featureId === f.id ? (props.selected.activeRoot ?? null) : null)}
+          onSelect={(f) => selectTopic(f, props.selected?.topicId === f.id ? (props.selected.activeRoot ?? null) : null)}
           onDeleted={(f) => {
-            if (props.selected?.kind === "feature" && props.selected.featureId === f.id) props.onSelect(null);
+            if (props.selected?.kind === "topic" && props.selected.topicId === f.id) props.onSelect(null);
           }}
         />
       </Show>
@@ -3272,7 +3272,7 @@ export default function LeftSidebar(props: {
                 out of a mode. */}
             <Show when={hasProjects()}>
               <div class={styles.spaceDivider} />
-              {modeTile("features", "Features", Waypoints)}
+              {modeTile("topics", "Features", Waypoints)}
             </Show>
           </div>
 

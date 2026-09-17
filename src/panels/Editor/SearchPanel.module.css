@@ -29,7 +29,7 @@
   flex: 1;
 }
 
-/* VS Code's view title. A Feature puts its member chips here instead. */
+/* VS Code's view title. A Topic puts its member chips here instead. */
 .title {
   padding-left: calc(4px * var(--ui-scale));
   color: var(--fg-muted);

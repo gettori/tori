@@ -17,7 +17,7 @@ import {
   type ExpandedStore,
 } from "./treeExpanded";
 
-const WS = "feature:f1";
+const WS = "topic:f1";
 const A = "/feat/api";
 const B = "/feat/web";
 

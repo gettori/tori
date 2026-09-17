@@ -21,7 +21,7 @@
   padding: calc(6px * var(--ui-scale));
 }
 
-/* The tab's name, outside a Feature. Inside one the member chips take this
+/* The tab's name, outside a Topic. Inside one the member chips take this
    spot, the same swap the Search tab makes, so the two tabs open the same way
    and this matches Search's title exactly. */
 .title {
@@ -317,13 +317,13 @@
   font-size: var(--tori-text-xs);
 }
 
-/* One member's band inside a Feature. Nothing on a branch unit, which has one
+/* One member's band inside a Topic. Nothing on a branch unit, which has one
    section and no header to separate it from anything. */
 .memberSection {
   display: block;
 }
 
-/* Which members the message below lands in. Present only inside a Feature, so
+/* Which members the message below lands in. Present only inside a Topic, so
    it is never a row explaining the one repo there is. */
 .commitTarget {
   display: flex;

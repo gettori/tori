@@ -184,7 +184,7 @@
    one's brand bar and wash are the shared Tab's, see Tab.module.css. */
 
 /* Which member the pane below is about, above Outline, Calls, Session and
-   Debug. Only inside a Feature: those four follow the file in front, so without
+   Debug. Only inside a Topic: those four follow the file in front, so without
    this line they read as answers about the whole workspace. */
 .focusMember {
   display: flex;

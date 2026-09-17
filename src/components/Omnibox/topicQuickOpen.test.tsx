@@ -80,9 +80,9 @@ const { note, saveFrecency } = await import("../../utils/frecency");
 const { OPEN_IN_EDITOR } = await import("../../utils/events");
 
 const topicSel = (topicId: string, roots: string[]) => ({
-  kind: "feature" as const,
-  featureId: topicId,
-  featureName: topicId === "f1" ? "Auth" : "Wide",
+  kind: "topic" as const,
+  topicId,
+  topicName: topicId === "f1" ? "Auth" : "Wide",
   roots,
   activeRoot: roots[0],
   spaceName: "",
@@ -90,7 +90,7 @@ const topicSel = (topicId: string, roots: string[]) => ({
   projectPath: roots[0],
   folderPath: roots[0],
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 });
 
 let mounted: ReturnType<typeof render> | null = null;
@@ -159,7 +159,7 @@ describe("quick-open inside a Feature", () => {
       projectRoot: B,
       recentJumps: [{ path: `${B}/src/b.ts` }],
     });
-    saveFrecency(note({}, "feature:f1", `${B}/deep/x.ts`, "edit", Date.now()));
+    saveFrecency(note({}, "topic:f1", `${B}/deep/x.ts`, "edit", Date.now()));
     open(topicSel("f1", [A, B]));
 
     await waitFor(() => expect(rowLabels().slice(0, 2)).toEqual(["web/src/b.ts", "web/deep/x.ts"]));
@@ -182,9 +182,9 @@ describe("quick-open inside a Feature", () => {
   });
 
   it("reads frecency under the Feature key the editor writes", async () => {
-    // Noted under `feature:f1`, never under a member folder. Read by the old
+    // Noted under `topic:f1`, never under a member folder. Read by the old
     // `folderPath` key this record is invisible and there is no block at all.
-    saveFrecency(note({}, "feature:f1", `${A}/src/a.ts`, "edit", Date.now()));
+    saveFrecency(note({}, "topic:f1", `${A}/src/a.ts`, "edit", Date.now()));
     open(topicSel("f1", [A, B]));
 
     expect(screen.getByText("Recent files")).toBeTruthy();

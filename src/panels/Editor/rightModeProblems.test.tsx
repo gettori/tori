@@ -57,9 +57,9 @@ const { default: Editor } = await import("./Editor");
 const { clearDiagnostics, publishDiagnostics } = await import("../../utils/diagnostics");
 
 const topicSel = (activeRoot: string) => ({
-  kind: "feature" as const,
-  featureId: "f1",
-  featureName: "Auth",
+  kind: "topic" as const,
+  topicId: "f1",
+  topicName: "Auth",
   roots: [A, B],
   activeRoot,
   spaceName: "",
@@ -67,7 +67,7 @@ const topicSel = (activeRoot: string) => ({
   projectPath: activeRoot,
   folderPath: activeRoot,
   branch: "feat/auth",
-  projectKind: "feature",
+  projectKind: "topic",
 });
 
 const problem = (line: number, message: string) => [
