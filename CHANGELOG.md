@@ -8,6 +8,46 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
+## Unreleased
+
+A fresh Tori opens a setup window instead of an empty sidebar. It shows a
+short intro once, then goes through agents, base folder, space, git hosts and
+a first project, and ends on a summary before Tori opens.
+
+### First run
+
+- The intro is five slides on how Tori works. Finish or skip it and it does not
+  show again. If you already saw the old greeting, you skip it.
+- Agents lists the agent CLIs found on this machine, with version and sign-in
+  state. Install and sign-in run in a terminal inside the window, so a login
+  prompt can be answered right there.
+- Base folder and space are required. Tori does not open until the base folder
+  has at least one space, and picking a folder that already has spaces is
+  enough.
+- Git hosts signs in to github.com or gitlab.com with a code in the browser,
+  same as Settings > Hosts, and turns on git push and fetch for that account.
+- First project makes a new folder, clones a repo, or sets up a bare repo with
+  a worktree for the default branch. If git is missing it offers to install
+  it.
+- Ready shows what was set up, and for anything skipped, where to finish it.
+- Before a space exists the window cannot be closed. After that, Escape or a
+  click outside closes it, like Open Tori. Reset root (forget only) in the
+  sidebar's menu brings it back on the base folder step.
+- The sidebar's welcome message and the greeting in Settings are gone.
+
+### Agents
+
+- Claude, Codex, Gemini and OpenCode have Install, Update and Uninstall in
+  Settings > Agents, through npm. npm's global bin has to be on your login
+  shell's PATH for Tori to find them.
+
+### Fixes
+
+- Bare + worktree from the sidebar now cleans up and shows a failure when the
+  clone fails. Before, it printed Done and exited as if it worked.
+- A repository URL starting with `-` is no longer read as a git option when
+  cloning.
+
 ## 26.914.2-alpha
 
 - A new Claude account can use an empty folder. Adding an account from a folder
