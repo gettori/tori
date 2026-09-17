@@ -535,7 +535,7 @@ fn walk_files(root: &Path, dir: &Path, out: &mut Vec<String>) {
         if IGNORED_DIRS.contains(&name.to_string_lossy().as_ref()) {
             continue;
         }
-        if name == FEATURE_WORKTREES.1 && dir.file_name().is_some_and(|d| d == FEATURE_WORKTREES.0) {
+        if name == TOPIC_WORKTREES.1 && dir.file_name().is_some_and(|d| d == TOPIC_WORKTREES.0) {
             continue;
         }
         let Ok(ft) = entry.file_type() else { continue };
@@ -595,10 +595,10 @@ fn touch_root(entries: &mut Vec<WatchEntry>, root: &str, cap: usize) -> bool {
     is_new
 }
 
-/// How many roots a Feature may keep watched at once. `MAX_WATCHED_ROOTS` is a
+/// How many roots a Topic may keep watched at once. `MAX_WATCHED_ROOTS` is a
 /// working set of *recently visited* worktrees, which is the wrong shape here:
-/// a Feature's members are all foreground at the same time. Nothing caps how
-/// many repositories a Feature may span, so `max(3, roots.len())` would hand
+/// a Topic's members are all foreground at the same time. Nothing caps how
+/// many repositories a Topic may span, so `max(3, roots.len())` would hand
 /// the bound to the user; members past this one refresh on selection instead.
 const MAX_WATCH_SET_ROOTS: usize = 8;
 
@@ -645,10 +645,10 @@ fn touch_roots(entries: &mut Vec<WatchEntry>, roots: &[String], cap: usize) -> V
 const IGNORED_DIRS: &[&str] =
     &[".git", "node_modules", "dist", "target", crate::attempts::ATTEMPTS_DIR];
 
-/// Feature worktrees of a plain repo live under `.tori/worktrees`: whole
+/// Topic worktrees of a plain repo live under `.tori/worktrees`: whole
 /// checkouts, like `.tori-attempts`. A parent-child pair rather than a name in
 /// `IGNORED_DIRS`, because `.tori` itself holds the settings overlay.
-pub(crate) const FEATURE_WORKTREES: (&str, &str) = (".tori", "worktrees");
+pub(crate) const TOPIC_WORKTREES: (&str, &str) = (".tori", "worktrees");
 
 fn is_ignored(path: &Path) -> bool {
     let mut prev: Option<&str> = None;
@@ -661,7 +661,7 @@ fn is_ignored(path: &Path) -> bool {
         if name.is_some_and(|s| IGNORED_DIRS.contains(&s)) {
             return true;
         }
-        if prev == Some(FEATURE_WORKTREES.0) && name == Some(FEATURE_WORKTREES.1) {
+        if prev == Some(TOPIC_WORKTREES.0) && name == Some(TOPIC_WORKTREES.1) {
             return true;
         }
         prev = name;
@@ -778,9 +778,9 @@ fn install_watcher(
     Ok(watcher)
 }
 
-/// Watch a Feature's whole member set at once: every root in `roots` is
+/// Watch a Topic's whole member set at once: every root in `roots` is
 /// foreground, and anything outside it is evicted. Unlike `fs_watch_start` this
-/// is not an LRU - a Feature has no "the one root in front", so a warm entry
+/// is not an LRU - a Topic has no "the one root in front", so a warm entry
 /// from a previous set is either in this one or gone.
 #[tauri::command]
 pub async fn fs_watch_set(
@@ -803,7 +803,7 @@ fn fs_watch_set_body(app: AppHandle, state: &FsWatch, roots: Vec<String>) -> Res
             continue;
         };
         // One member that cannot be watched loses live refresh; the rest of the
-        // Feature keeps it, which is why this does not `?` out of the loop. Its
+        // Topic keeps it, which is why this does not `?` out of the loop. Its
         // entry goes with it: kept, it would read as warm to the next
         // `touch_roots` and the install would never be retried.
         let Ok(watcher) = install_watcher(&app, Path::new(&root), &root, muted) else {
@@ -857,7 +857,7 @@ mod tests {
         assert!(entries.iter().all(|e| e.muted.load(Ordering::Relaxed) == (e.root != "/d")));
     }
 
-    /// The Feature form: a whole set is foreground at once, a root already warm
+    /// The Topic form: a whole set is foreground at once, a root already warm
     /// is reused rather than rebuilt, the set is bounded, and a single-root
     /// `fs_watch_start` afterwards puts the LRU's one-in-front rule back.
     #[test]
@@ -979,14 +979,14 @@ mod tests {
         assert!(!is_ignored(Path::new("/p/src/App.tsx")));
         // A substring of an ignored name must not match.
         assert!(!is_ignored(Path::new("/p/src/distance.ts")));
-        // Feature worktrees are checkouts too, but `.tori` itself stays visible.
+        // Topic worktrees are checkouts too, but `.tori` itself stays visible.
         assert!(is_ignored(Path::new("/p/.tori/worktrees/x/a.rs")));
         assert!(!is_ignored(Path::new("/p/.tori/settings.json")));
         assert!(!is_ignored(Path::new("/p/worktrees/a.rs")));
     }
 
     #[test]
-    fn walk_files_skips_feature_worktrees_but_not_the_tori_dir() {
+    fn walk_files_skips_topic_worktrees_but_not_the_tori_dir() {
         let root = std::env::temp_dir().join(format!(
             "tori-walk-{}",
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()

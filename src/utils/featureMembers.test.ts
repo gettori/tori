@@ -18,7 +18,7 @@ const bridge = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string) => {
     bridge.calls.push(cmd);
-    if (cmd === "list_features")
+    if (cmd === "list_topics")
       return Promise.resolve([{ id: "f1", name: "Auth", branch: "feat/auth", createdAt: 1, members: bridge.members }]);
     if (cmd === "get_config") return Promise.resolve({ spaces: bridge.spaces });
     return Promise.resolve(null);
@@ -60,7 +60,7 @@ describe("createFeatureMembers", () => {
     await createRoot(async (dispose) => {
       const members = createFeatureMembers(() => "f1");
       await settle();
-      expect(count("list_features")).toBe(1);
+      expect(count("list_topics")).toBe(1);
       expect(count("get_config")).toBe(1);
       // Sorted by `order`, so the scratch member (order 0) leads.
       expect(members().map((m) => m.label)).toEqual(["scratch", "api"]);
@@ -71,14 +71,14 @@ describe("createFeatureMembers", () => {
       expect(members()[1].hue).toBeTruthy();
       expect(members()[1].style?.["--chip-rgb"]).toBeTruthy();
 
-      handlers["features://changed"]();
+      handlers["topics://changed"]();
       await settle();
-      expect(count("list_features")).toBe(2);
+      expect(count("list_topics")).toBe(2);
       expect(count("get_config")).toBe(2);
 
       handlers["config://changed"]();
       await settle();
-      expect(count("list_features")).toBe(3);
+      expect(count("list_topics")).toBe(3);
       expect(count("get_config")).toBe(3);
       dispose();
     });
@@ -101,9 +101,9 @@ describe("createFeatureMembers", () => {
       await settle();
       bridge.calls.length = 0;
 
-      handlers["features://changed"]();
+      handlers["topics://changed"]();
       await settle();
-      expect(count("list_features")).toBe(1);
+      expect(count("list_topics")).toBe(1);
       expect(count("get_config")).toBe(1);
       expect(a().map((m) => m.key)).toEqual(b().map((m) => m.key));
       dispose();
@@ -112,13 +112,13 @@ describe("createFeatureMembers", () => {
 
   it("watches each source once, however many consumers mount", async () => {
     // What lets the Editor and the Terminal both draw member chips without a
-    // second `list_features` or a second listener pair: the module shares one
+    // second `list_topics` or a second listener pair: the module shares one
     // read per generation, so neither panel has to own the resource.
     await createRoot(async (dispose) => {
       createFeatureMembers(() => "f1");
       createFeatureMembers(() => "f1");
       await settle();
-      expect(listens.filter((n) => n === "features://changed")).toHaveLength(1);
+      expect(listens.filter((n) => n === "topics://changed")).toHaveLength(1);
       expect(listens.filter((n) => n === "config://changed")).toHaveLength(1);
       dispose();
     });

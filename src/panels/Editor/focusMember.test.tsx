@@ -43,7 +43,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
     calls.push({ cmd, args: args ?? {} });
     switch (cmd) {
-      case "list_features":
+      case "list_topics":
         return Promise.resolve([FEATURE]);
       case "get_config":
         return Promise.resolve({ spaces: [] });

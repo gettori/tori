@@ -1,6 +1,6 @@
 // A terminal tab inside a Feature names its repo (#158 phase 2). A shell has no
 // file, so the cwd is what answers, and the member set comes from the same
-// module-wide resource the editor reads rather than a second `list_features`.
+// module-wide resource the editor reads rather than a second `list_topics`.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { pointerClick } from "../../test/menus";
@@ -30,7 +30,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "chat_orphans" || cmd === "chat_live_sessions" || cmd === "pty_live_ids") return Promise.resolve([]);
     if (cmd === "agent_hook_launch_args") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
-    if (cmd === "list_features") return Promise.resolve([FEATURE]);
+    if (cmd === "list_topics") return Promise.resolve([FEATURE]);
     if (cmd === "get_config")
       return Promise.resolve({
         spaces: [

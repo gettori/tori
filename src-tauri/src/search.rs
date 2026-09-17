@@ -435,9 +435,9 @@ fn plain_grep(
     for dir in IGNORED_DIRS {
         cmd.arg(format!("--exclude-dir={dir}"));
     }
-    // grep's exclude is by basename only, so the Feature worktree dir is
+    // grep's exclude is by basename only, so the Topic worktree dir is
     // excluded just when the root actually has one, not every `worktrees/`.
-    let (tori, worktrees) = crate::fs::FEATURE_WORKTREES;
+    let (tori, worktrees) = crate::fs::TOPIC_WORKTREES;
     if Path::new(root).join(tori).join(worktrees).is_dir() {
         cmd.arg(format!("--exclude-dir={worktrees}"));
     }
@@ -1339,7 +1339,7 @@ mod tests {
     }
 
     #[test]
-    fn plain_grep_excludes_feature_worktrees_only_when_the_root_has_them() {
+    fn plain_grep_excludes_topic_worktrees_only_when_the_root_has_them() {
         let dir = temp_dir("featwt");
         std::fs::create_dir_all(dir.join("worktrees")).unwrap();
         std::fs::write(dir.join("worktrees/plain.txt"), "needle in a plain dir\n").unwrap();
@@ -1350,7 +1350,7 @@ mod tests {
         assert_eq!(plain_grep(&root, Some("needle"), &opts()).unwrap().len(), 2);
 
         std::fs::create_dir_all(dir.join(".tori/worktrees/x")).unwrap();
-        std::fs::write(dir.join(".tori/worktrees/x/a.txt"), "needle in a feature worktree\n").unwrap();
+        std::fs::write(dir.join(".tori/worktrees/x/a.txt"), "needle in a topic worktree\n").unwrap();
         let candidates = plain_grep(&root, Some("needle"), &opts()).unwrap();
         assert!(!candidates.iter().any(|c| c.path.contains(".tori/worktrees")));
         assert_eq!(candidates.len(), 1);

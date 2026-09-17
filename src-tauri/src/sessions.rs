@@ -544,7 +544,7 @@ fn cwd_matches(cwd: &str, folder: &str) -> bool {
 }
 
 /// The listing's ownership rule: `cwd_matches`, minus anything under the
-/// folder's own `.tori/worktrees/`. Those are Feature worktrees and the member
+/// folder's own `.tori/worktrees/`. Those are Topic worktrees and the member
 /// folder claims them by prefix, so the repo would otherwise list them as its
 /// own. Teardown (`ids_under`) keeps the plain prefix rule on purpose: removing
 /// the repo must still find every session it physically contained.
@@ -555,7 +555,7 @@ fn owned_by_listing(cwd: &str, folder: &str) -> bool {
 
 /// Filter to sessions under `folder` and sort most-recently-active first.
 /// `inclusive` is the teardown rule (plain prefix): a destructive confirm has
-/// to count what removing the folder will kill, Feature worktrees included.
+/// to count what removing the folder will kill, Topic worktrees included.
 fn filter_sort(all: Vec<SessionMeta>, folder: &str, inclusive: bool) -> Vec<SessionMeta> {
     let mut v: Vec<SessionMeta> = all
         .into_iter()
@@ -3200,11 +3200,11 @@ mod tests {
     }
 
     #[test]
-    fn listing_never_claims_a_repos_own_feature_worktrees() {
+    fn listing_never_claims_a_repos_own_topic_worktrees() {
         let repo = "/p/repo";
         let member = "/p/repo/.tori/worktrees/auth";
         let cwd = "/p/repo/.tori/worktrees/auth/sub";
-        // The repo lists its own tree but not the Feature worktrees inside it.
+        // The repo lists its own tree but not the Topic worktrees inside it.
         assert!(owned_by_listing("/p/repo/src", repo));
         assert!(!owned_by_listing(cwd, repo));
         assert!(!owned_by_listing(member, repo));
