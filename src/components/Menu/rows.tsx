@@ -14,7 +14,10 @@ import styles from "./Menu.module.css";
  *  call site migrating in phase 3 or 4 changes its import and nothing else. */
 export type MenuItem =
   | { separator: true }
-  | { heading: string }
+  /** Plain text in every menu but the space menu, whose heading is the space's
+   *  own glyph and name rather than a word - which is the whole of what it adds
+   *  over a label the rows already carry. */
+  | { heading: JSX.Element }
   | {
       label: string;
       onClick: () => void;
