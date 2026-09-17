@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  featureSelection,
-  featureSlug,
-  isFeatureKey,
+  topicSelection,
+  topicSlug,
+  isTopicKey,
   isShellsKey,
   tabUnderFolder,
   memberInitials,
@@ -12,24 +12,24 @@ import {
   SHELLS_KEY,
   workspaceFolders,
   workspaceKey,
-  type Feature,
+  type Topic,
   type Member,
   type MemberState,
-} from "./features";
+} from "./topics";
 
 // The slug is what every member's branch is named after, so the frontend and
 // backend rules have to agree character for character: these cases mirror
 // `topics::tests::slug_lowercases_collapses_and_rejects_empty`.
 describe("featureSlug", () => {
   it("matches the backend rule", () => {
-    expect(featureSlug("Auth Flow")).toBe("auth-flow");
-    expect(featureSlug("  Payments!!  v2 ")).toBe("payments-v2");
-    expect(featureSlug("keep_dots.and-dashes")).toBe("keep_dots.and-dashes");
+    expect(topicSlug("Auth Flow")).toBe("auth-flow");
+    expect(topicSlug("  Payments!!  v2 ")).toBe("payments-v2");
+    expect(topicSlug("keep_dots.and-dashes")).toBe("keep_dots.and-dashes");
   });
 
   it("is empty when nothing usable remains", () => {
-    expect(featureSlug("!!!")).toBe("");
-    expect(featureSlug("")).toBe("");
+    expect(topicSlug("!!!")).toBe("");
+    expect(topicSlug("")).toBe("");
   });
 });
 
@@ -70,7 +70,7 @@ const member = (repo: string, wt: string | null, kind: MemberState["kind"], orde
   state: kind === "failed" ? { kind, reason: "boom" } : ({ kind } as MemberState),
   order,
 });
-const FEATURE: Feature = {
+const TOPIC: Topic = {
   id: "f1",
   name: "Auth Flow",
   branch: "feat/auth-flow",
@@ -86,7 +86,7 @@ const B = "/r/b/.tori/worktrees/auth-flow";
 
 describe("featureSelection", () => {
   it("keeps a stored root that is still present", () => {
-    const sel = featureSelection(FEATURE, B);
+    const sel = topicSelection(TOPIC, B);
     expect(sel.kind).toBe("feature");
     expect(sel.featureId).toBe("f1");
     expect(sel.roots).toEqual([A, B]);
@@ -96,13 +96,13 @@ describe("featureSelection", () => {
   });
 
   it("falls back to the first present member when the stored root is gone", () => {
-    expect(featureSelection(FEATURE, "/r/c/.tori/worktrees/auth-flow").activeRoot).toBe(A);
-    expect(featureSelection(FEATURE).activeRoot).toBe(A);
+    expect(topicSelection(TOPIC, "/r/c/.tori/worktrees/auth-flow").activeRoot).toBe(A);
+    expect(topicSelection(TOPIC).activeRoot).toBe(A);
   });
 
   it("never refuses: no present member opens with a null root and an empty mirror", () => {
-    const none = { ...FEATURE, members: [member("/r/c", null, "repo-missing", 0)] };
-    const sel = featureSelection(none, A);
+    const none = { ...TOPIC, members: [member("/r/c", null, "repo-missing", 0)] };
+    const sel = topicSelection(none, A);
     expect(sel.roots).toEqual([]);
     expect(sel.activeRoot).toBeNull();
     expect(sel.folderPath).toBe("");
@@ -114,14 +114,14 @@ describe("workspaceKey and selectionRoot", () => {
   const unit = { kind: "unit" as const, folderPath: "/r/a", activeRoot: undefined };
 
   it("keys a Feature by id and a unit by folder", () => {
-    expect(workspaceKey(featureSelection(FEATURE, A))).toBe("feature:f1");
+    expect(workspaceKey(topicSelection(TOPIC, A))).toBe("feature:f1");
     expect(workspaceKey(unit)).toBe("/r/a");
     expect(workspaceKey({ folderPath: "/r/a" })).toBe("/r/a");
     expect(workspaceKey(null)).toBe("");
   });
 
   it("roots a Feature at its active member, a unit at its folder, and never returns an empty string", () => {
-    expect(selectionRoot(featureSelection(FEATURE, B))).toBe(B);
+    expect(selectionRoot(topicSelection(TOPIC, B))).toBe(B);
     expect(selectionRoot(unit)).toBe("/r/a");
     expect(selectionRoot({ kind: "unit", folderPath: "" })).toBeNull();
     expect(selectionRoot(null)).toBeNull();
@@ -129,20 +129,20 @@ describe("workspaceKey and selectionRoot", () => {
 
   it("keys the dock's group by its one constant", () => {
     expect(isShellsKey(SHELLS_KEY)).toBe(true);
-    // A path or a Feature key never reads as Shells, and the two synthetic
+    // A path or a Topic key never reads as Shells, and the two synthetic
     // key spaces stay apart.
     expect(isShellsKey("/shells:")).toBe(false);
     expect(isShellsKey("feature:shells:")).toBe(false);
-    expect(isFeatureKey(SHELLS_KEY)).toBe(false);
+    expect(isTopicKey(SHELLS_KEY)).toBe(false);
   });
 
   it("spans the selected Feature's roots and nothing for an unselected one", () => {
-    const sel = featureSelection(FEATURE, A);
+    const sel = topicSelection(TOPIC, A);
     expect(workspaceFolders("feature:f1", sel)).toEqual([A, B]);
     expect(workspaceFolders("feature:other", sel)).toEqual([]);
     expect(workspaceFolders("/r/a", sel)).toEqual(["/r/a"]);
-    expect(isFeatureKey("feature:f1")).toBe(true);
-    expect(isFeatureKey("/feature:f1")).toBe(false);
+    expect(isTopicKey("feature:f1")).toBe(true);
+    expect(isTopicKey("/feature:f1")).toBe(false);
   });
 });
 
@@ -165,22 +165,22 @@ describe("rootOf", () => {
   });
 });
 
-// A Spaces row counts a Feature tab by its cwd, and a repo never owns the
-// Feature worktrees parked under its own `.tori/worktrees/`: the member
+// A Spaces row counts a Topic tab by its cwd, and a repo never owns the
+// Topic worktrees parked under its own `.tori/worktrees/`: the member
 // folder does. Mirrors `sessions::listing_never_claims_a_repos_own_feature_worktrees`.
 describe("tabUnderFolder", () => {
-  const featureTab = (cwd: string) => ({ workspace: "feature:f1", cwd });
+  const topicTab = (cwd: string) => ({ workspace: "feature:f1", cwd });
 
   it("counts a Feature tab on the member folder it was spawned in", () => {
-    expect(tabUnderFolder(featureTab("/w/api-auth/src"), "/w/api-auth")).toBe(true);
-    expect(tabUnderFolder(featureTab("/w/api-auth"), "/w/api-auth/")).toBe(true);
-    expect(tabUnderFolder(featureTab("/w/web-auth"), "/w/api-auth")).toBe(false);
+    expect(tabUnderFolder(topicTab("/w/api-auth/src"), "/w/api-auth")).toBe(true);
+    expect(tabUnderFolder(topicTab("/w/api-auth"), "/w/api-auth/")).toBe(true);
+    expect(tabUnderFolder(topicTab("/w/web-auth"), "/w/api-auth")).toBe(false);
   });
 
   it("never counts it on a repo whose .tori/worktrees holds the member", () => {
     const cwd = "/w/api/.tori/worktrees/auth/src";
-    expect(tabUnderFolder(featureTab(cwd), "/w/api")).toBe(false);
-    expect(tabUnderFolder(featureTab(cwd), "/w/api/.tori/worktrees/auth")).toBe(true);
+    expect(tabUnderFolder(topicTab(cwd), "/w/api")).toBe(false);
+    expect(tabUnderFolder(topicTab(cwd), "/w/api/.tori/worktrees/auth")).toBe(true);
     expect(tabUnderFolder({ workspace: "feature:f1" }, "/w/api")).toBe(false);
   });
 

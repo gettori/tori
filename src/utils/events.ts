@@ -15,7 +15,7 @@ export type LiveTab = {
   // "3 tabs are running here" must include the build somebody kicked off, or a
   // checkout confirm undercounts what it is about to disturb.
   kind: "shell" | "agent" | "command" | "chat" | "task";
-  // Where the tab was spawned. A Feature tab's `workspace` is `feature:<id>`,
+  // Where the tab was spawned. A Topic tab's `workspace` is `feature:<id>`,
   // not a folder, so the cwd is the only path a Spaces row can count it by.
   cwd?: string;
   sessionId?: string;
@@ -122,8 +122,8 @@ export type RevealDock = { tabId: string };
 // the tab model it opens into.
 export const NEW_DOCK_SHELL = "tori:new-dock-shell";
 
-// Open the New Feature dialog. On the bus because the button that asks now sits
-// in the sidebar's own head row, and the dialog belongs to the Feature list
+// Open the New Topic dialog. On the bus because the button that asks now sits
+// in the sidebar's own head row, and the dialog belongs to the Topic list
 // under it; lifting the dialog instead would move its five sibling dialogs too.
 export const NEW_TOPIC = "tori:new-topic";
 
@@ -577,15 +577,15 @@ export type NewChatAt = { folderPath: string; projectName: string };
 export const PURGE_UNDER_PATH = "tori:purge-under-path";
 export type PurgeUnderPath = { path: string };
 
-// A whole workspace key is going away (a Feature was deleted). Unlike a path
+// A whole workspace key is going away (a Topic was deleted). Unlike a path
 // purge nothing on disk is touched: every per-workspace store drops the key so
-// a later Feature reusing nothing of it starts clean. Emitted after the delete.
+// a later Topic reusing nothing of it starts clean. Emitted after the delete.
 //
-// `roots` are the Feature's member folders, and only the debug state keyed on
+// `roots` are the Topic's member folders, and only the debug state keyed on
 // one is dropped for them. Deliberately not the whole per-workspace sweep: the
 // delete *offers* to remove each worktree rather than removing it, so a member
 // the user keeps can still be opened as a branch unit, and its tabs, terminals
-// and tree state are that unit's, not the Feature's.
+// and tree state are that unit's, not the Topic's.
 export const PURGE_WORKSPACE = "tori:purge-workspace";
 export type PurgeWorkspace = { workspace: string; roots?: string[] };
 

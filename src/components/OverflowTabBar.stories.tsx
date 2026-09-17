@@ -6,7 +6,7 @@ import IconButton from "./IconButton/IconButton";
 import OverflowTabBar from "./OverflowTabBar";
 import Tab from "./Tab/Tab";
 import { TabMemberChip } from "./MemberChip/MemberChip";
-import type { TintedMember } from "../utils/featureMembers";
+import type { TintedMember } from "../utils/topicMembers";
 
 type File = { id: string; name: string };
 
@@ -149,7 +149,7 @@ const MEMBER_FILES: MemberFile[] = [
   member: MEMBERS[i < 3 ? 0 : 1],
 }));
 
-/** Inside a Feature, every tab wears its repo. The strip has no room to spell it
+/** Inside a Topic, every tab wears its repo. The strip has no room to spell it
  *  out, so it shows the chip and hides the repo in the tab's accessible name;
  *  the `+N` menu, which is where two members' `package.json` sit next to each
  *  other, spends its width on the whole `<repo> / <rel path>`. */

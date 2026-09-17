@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import MemberChipRow from "./MemberChipRow";
 import { spaceHue, spaceHueRgb } from "../../utils/spaceTint";
-import type { TintedMember } from "../../utils/featureMembers";
+import type { TintedMember } from "../../utils/topicMembers";
 
 /** The right panel's narrowest width (`RIGHT_W_MIN` in Editor.tsx). The row has
  *  to stay readable here, which is what the cap is for. */

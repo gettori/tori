@@ -1,7 +1,7 @@
 import { createSignal, Show, type JSX } from "solid-js";
 import Chevron from "../Chevron/Chevron";
 import MemberChip from "../MemberChip/MemberChip";
-import { OUTSIDE_MEMBERS_LABEL, type MemberRoot } from "../../utils/featureMembers";
+import { OUTSIDE_MEMBERS_LABEL, type MemberRoot } from "../../utils/topicMembers";
 import styles from "./MemberSection.module.css";
 
 /**
@@ -9,7 +9,7 @@ import styles from "./MemberSection.module.css";
  * has one, and whatever the panel draws for it.
  *
  * The Problems and TODO panels each list rows that belong to one repo
- * of a Feature, and each drew the same header to say which. The tree, the Search
+ * of a Topic, and each drew the same header to say which. The tree, the Search
  * panel and the Changes panel keep their own markup for now: their headers carry
  * per-section actions this one has no place for.
  *

@@ -5,7 +5,7 @@ import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import Button from "../Button/Button";
 import Icon from "../Icon/Icon";
 import { pushToast } from "../Toasts/Toasts";
-import { selectionRoot } from "../../utils/features";
+import { selectionRoot } from "../../utils/topics";
 import styles from "./HandOffs.module.css";
 
 // The two ways out of Tori: what you have selected, opened in Ghostty or in

@@ -1,4 +1,4 @@
-// A terminal tab inside a Feature names its repo (#158 phase 2). A shell has no
+// A terminal tab inside a Topic names its repo (#158 phase 2). A shell has no
 // file, so the cwd is what answers, and the member set comes from the same
 // module-wide resource the editor reads rather than a second `list_topics`.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -9,7 +9,7 @@ import { setTabBarWidth } from "../../test/tabLayout";
 const A = "/r/a/.tori/worktrees/auth";
 const B = "/r/b/.tori/worktrees/auth";
 
-const FEATURE = {
+const TOPIC = {
   id: "f1",
   name: "Auth",
   branch: "feat/auth",
@@ -30,7 +30,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "chat_orphans" || cmd === "chat_live_sessions" || cmd === "pty_live_ids") return Promise.resolve([]);
     if (cmd === "agent_hook_launch_args") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
-    if (cmd === "list_topics") return Promise.resolve([FEATURE]);
+    if (cmd === "list_topics") return Promise.resolve([TOPIC]);
     if (cmd === "get_config")
       return Promise.resolve({
         spaces: [
@@ -67,7 +67,7 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-const featureSel = {
+const topicSel = {
   kind: "feature",
   featureId: "f1",
   featureName: "Auth",
@@ -110,7 +110,7 @@ describe("a terminal tab inside a Feature", () => {
   it("wears one chip per member, each on its own Space tint", async () => {
     render(() => (
       <>
-        <Terminal selected={featureSel as never} />
+        <Terminal selected={topicSel as never} />
         <PaneView pinKind="shell" />
       </>
     ));
@@ -130,7 +130,7 @@ describe("a terminal tab inside a Feature", () => {
     setTabBarWidth(150);
     render(() => (
       <>
-        <Terminal selected={featureSel as never} />
+        <Terminal selected={topicSel as never} />
         <PaneView pinKind="shell" />
       </>
     ));

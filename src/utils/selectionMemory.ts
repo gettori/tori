@@ -1,6 +1,6 @@
 // What each way into the sidebar was last left on: a unit per space, and the
-// one Feature. Hints, never truth: the caller re-reads the live tree or the
-// Feature list and drops an entry whose folder or record is gone.
+// one Topic. Hints, never truth: the caller re-reads the live tree or the
+// Topic list and drops an entry whose folder or record is gone.
 import type { Selection } from "../panels/LeftSidebar/LeftSidebar";
 
 const KEY = "tori.selection-memory.v1";
@@ -39,8 +39,8 @@ function write(next: Memory) {
   }
 }
 
-/** Record a selection under the way back to it: its space, or the Feature slot.
- *  A Feature spans members and has no space, so the two never collide. */
+/** Record a selection under the way back to it: its space, or the Topic slot.
+ *  A Topic spans members and has no space, so the two never collide. */
 export function rememberSelection(s: Selection | null) {
   if (!s) return;
   const mem = read();
@@ -59,7 +59,7 @@ export function rememberedUnit(space: string): Selection | null {
   return read().spaces[space] ?? null;
 }
 
-/** The Feature last selected, in either mode. */
-export function rememberedFeature(): Selection | null {
+/** The Topic last selected, in either mode. */
+export function rememberedTopic(): Selection | null {
   return read().feature;
 }

@@ -3,7 +3,7 @@
 // precedent. Terminal.tsx resets it at setup: the lifetime still tracks the panel.
 import { createSignal } from "solid-js";
 import { noteTabFocus } from "../../layout/layoutStore";
-import { isShellsKey, SHELLS_KEY } from "../../utils/features";
+import { isShellsKey, SHELLS_KEY } from "../../utils/topics";
 
 // A `task` tab is a shell tab seeded with the task's command line, kept a kind
 // of its own for one reason: `tabPersist` restores shell tabs, and restoring a

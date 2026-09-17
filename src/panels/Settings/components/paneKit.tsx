@@ -138,7 +138,7 @@ export type PaneProps = {
    *  unfolding its whole runtime contents into a list of search results. */
   openTab?: (tab: SettingTab) => void;
   /** The folder the workspace is currently on, or `null` for an empty
-   *  Feature. Read by the Agents pane, whose file actions open an editor
+   *  Topic. Read by the Agents pane, whose file actions open an editor
    *  tab and so need a workspace to open it in. */
   projectRoot?: string | null;
 };

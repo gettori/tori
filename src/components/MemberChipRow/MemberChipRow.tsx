@@ -1,15 +1,15 @@
 import { createMemo, For, Show } from "solid-js";
 import Dropdown from "../Menu/Dropdown";
 import Tooltip from "../Tooltip/Tooltip";
-import { memberInitials } from "../../utils/features";
-import { CHIP_CAP, type TintedMember } from "../../utils/featureMembers";
+import { memberInitials } from "../../utils/topics";
+import { CHIP_CAP, type TintedMember } from "../../utils/topicMembers";
 import styles from "./MemberChipRow.module.css";
 
 /**
  * Which member the pane below is about, and the control that moves it.
  *
  * The right panel's Pull requests, Tasks, Shared and Docs each answer for one
- * repo, and a Feature has several; without this row the pane silently reports
+ * repo, and a Topic has several; without this row the pane silently reports
  * whichever member was last clicked in the tree. The Toolbar's crumb chips move
  * the same pointer, so the two read alike on purpose.
  *

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { For } from "solid-js";
 import MemberSection from "./MemberSection";
-import { memberSectionsHeaded, type MemberRoot } from "../../utils/featureMembers";
+import { memberSectionsHeaded, type MemberRoot } from "../../utils/topicMembers";
 import { expectNoAxeViolations } from "../../test/axe";
 
 const ready = (label: string, path: string): MemberRoot => ({
@@ -38,7 +38,7 @@ function mountAll(roots: MemberRoot[]) {
 
 describe("a member section", () => {
   it("draws no header for a single member that is ready", () => {
-    // A branch unit, and a one-member Feature, look the same as they always did:
+    // A branch unit, and a one-member Topic, look the same as they always did:
     // a header naming the only repo on screen is noise.
     mountAll([FE]);
     expect(screen.queryByRole("button")).toBeNull();
@@ -87,7 +87,7 @@ describe("a member section", () => {
 
   it("names the trailing bucket instead of chipping it", () => {
     // Nothing to take initials from, and a neutral box would read as one more
-    // member of the Feature.
+    // member of the Topic.
     render(() => (
       <MemberSection root={null} headed>
         <div>stray rows</div>

@@ -10,7 +10,7 @@ import { pointerClick } from "../test/menus";
 import { setTabBarWidth } from "../test/tabLayout";
 import { expectNoAxeViolations } from "../test/axe";
 import { TabMemberChip } from "../components/MemberChip/MemberChip";
-import type { TintedMember } from "../utils/featureMembers";
+import type { TintedMember } from "../utils/topicMembers";
 import UnifiedTabStrip from "./UnifiedTabStrip";
 import { registerKind } from "./registry";
 import type { UnifiedTab } from "./unifiedTabs";
@@ -200,7 +200,7 @@ describe("per-kind affordances", () => {
   });
 });
 
-/** What the panels hand `TabMemberChip` inside a Feature. */
+/** What the panels hand `TabMemberChip` inside a Topic. */
 const tinted = (displayName: string, hue: string): TintedMember => ({
   member: { repoPath: `/r/${displayName}`, displayName, worktreePath: `/w/${displayName}`, state: { kind: "present" }, order: 0 },
   key: `/w/${displayName}`,
@@ -230,7 +230,7 @@ describe("accessibility", () => {
   });
 
   it("stays clean once the tabs wear their member", async () => {
-    // The Feature shape both panels register: a silent chip before the kind's
+    // The Topic shape both panels register: a silent chip before the kind's
     // own glyph, and the repo reaching the name through a hidden span rather
     // than through an `aria-label`, which would replace the label instead.
     const api = tinted("api", "oklch(0.72 0.13 250)");

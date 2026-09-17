@@ -1,6 +1,6 @@
-// A Feature as the selection (#154 phase 1). The shell keys every store on
-// `feature:<id>` rather than a folder, re-resolves a stored Feature against the
-// live record, and backfills `kind` on a selection persisted before Features.
+// A Topic as the selection (#154 phase 1). The shell keys every store on
+// `feature:<id>` rather than a folder, re-resolves a stored Topic against the
+// live record, and backfills `kind` on a selection persisted before Topics.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, render, waitFor } from "@solidjs/testing-library";
 import { installAnimationFrame } from "./test/frames";
@@ -43,14 +43,14 @@ const member = (repo: string, wt: string, order: number) => ({
   state: { kind: "present" },
   order,
 });
-const feature = (members: unknown[]) => ({
+const topic = (members: unknown[]) => ({
   id: "f1",
   name: "Auth",
   branch: "feat/auth",
   members,
   createdAt: 1,
 });
-const storedFeature = {
+const storedTopic = {
   kind: "feature",
   featureId: "f1",
   featureName: "Auth",
@@ -64,17 +64,17 @@ const storedFeature = {
   projectKind: "feature",
 };
 
-let features: unknown[] = [feature([member("/r/a", A, 0)])];
+let topics: unknown[] = [topic([member("/r/a", A, 0)])];
 const storedSelection = () => JSON.parse(localStorage.getItem("tori.selection.v1") ?? "null");
 
 beforeEach(() => {
   localStorage.clear();
-  features = [feature([member("/r/a", A, 0)])];
+  topics = [topic([member("/r/a", A, 0)])];
   invoke.mockReset();
   invoke.mockImplementation(async (cmd: string) => {
     if (cmd === "get_settings") return DEFAULT_SETTINGS;
     if (cmd === "list_user_themes") return { themes: [], errors: [] };
-    if (cmd === "list_topics") return features;
+    if (cmd === "list_topics") return topics;
     return null;
   });
 });
@@ -82,34 +82,34 @@ afterEach(cleanup);
 
 describe("a Feature as the selection", () => {
   it("keys the pane envelope on feature:<id>, not on the active member's folder", async () => {
-    localStorage.setItem("tori.selection.v1", JSON.stringify(storedFeature));
+    localStorage.setItem("tori.selection.v1", JSON.stringify(storedTopic));
     render(() => <App />);
     await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("feature:f1"));
     expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).not.toHaveProperty(A);
   });
 
   it("re-resolves the stored snapshot against the record at startup and on config://changed", async () => {
-    localStorage.setItem("tori.selection.v1", JSON.stringify(storedFeature));
-    features = [feature([member("/r/a", A, 0), member("/r/b", B, 1)])];
+    localStorage.setItem("tori.selection.v1", JSON.stringify(storedTopic));
+    topics = [topic([member("/r/a", A, 0), member("/r/b", B, 1)])];
     render(() => <App />);
     await waitFor(() => expect(storedSelection().roots).toEqual([A, B]));
     expect(storedSelection().activeRoot).toBe(A);
 
-    features = [feature([member("/r/b", B, 1)])];
+    topics = [topic([member("/r/b", B, 1)])];
     listeners.handlers["config://changed"]();
     await waitFor(() => expect(storedSelection().roots).toEqual([B]));
     expect(storedSelection().activeRoot).toBe(B);
   });
 
   it("clears the selection when the Feature no longer exists", async () => {
-    localStorage.setItem("tori.selection.v1", JSON.stringify(storedFeature));
-    features = [];
+    localStorage.setItem("tori.selection.v1", JSON.stringify(storedTopic));
+    topics = [];
     render(() => <App />);
     await waitFor(() => expect(storedSelection()).toBeNull());
   });
 
   it("loads a selection stored before Features as a unit", async () => {
-    const { kind: _k, featureId: _f, ...unitish } = { ...storedFeature, folderPath: "/r/a", projectKind: "plain" };
+    const { kind: _k, featureId: _f, ...unitish } = { ...storedTopic, folderPath: "/r/a", projectKind: "plain" };
     localStorage.setItem("tori.selection.v1", JSON.stringify(unitish));
     render(() => <App />);
     await waitFor(() => expect(storedSelection().kind).toBe("unit"));
@@ -121,7 +121,7 @@ describe("a Feature as the selection", () => {
 describe("a deleted Feature", () => {
   it("clears the selection and drops its pane tree and placements", async () => {
     const { PURGE_WORKSPACE, emitWith } = await import("./utils/events");
-    localStorage.setItem("tori.selection.v1", JSON.stringify(storedFeature));
+    localStorage.setItem("tori.selection.v1", JSON.stringify(storedTopic));
     render(() => <App />);
     await waitFor(() => expect(JSON.parse(localStorage.getItem("tori.panes.v1")!)).toHaveProperty("feature:f1"));
     emitWith(PURGE_WORKSPACE, { workspace: "feature:f1" });

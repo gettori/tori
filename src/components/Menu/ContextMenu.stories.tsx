@@ -53,7 +53,7 @@ export const RowStates: Story = {
 };
 
 /** What the menu is acting on, when the row alone does not say it. Inside a
- *  Feature two members hold the same `package.json`, so the tree's row menu
+ *  Topic two members hold the same `package.json`, so the tree's row menu
  *  leads with the repo. Kobalte's group label: the arrows skip it, and the group
  *  it names is announced before the first row rather than the name being read as
  *  an option. */

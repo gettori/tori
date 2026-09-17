@@ -1,7 +1,7 @@
 // The Shells workspace's layout: one pane, seeded at startup rather than on
 // first visit, because a command tab can open while any workspace is on screen
 // and needs a pane to land in.
-import { SHELLS_KEY } from "../utils/features";
+import { SHELLS_KEY } from "../utils/topics";
 import { ensureEnvelope, envelopeFor, seedOnePane } from "./layoutStore";
 import { leaves } from "./paneLayout";
 import { setPaneLock } from "./tabPlacement";

@@ -4,8 +4,8 @@ import type { Selection } from "../../panels/LeftSidebar/LeftSidebar";
 import Icon from "../Icon/Icon";
 import Tooltip from "../Tooltip/Tooltip";
 import { ChevronRight } from "lucide-solid";
-import { memberInitials } from "../../utils/features";
-import { createFeatureMembers, type TintedMember } from "../../utils/featureMembers";
+import { memberInitials } from "../../utils/topics";
+import { createTopicMembers, type TintedMember } from "../../utils/topicMembers";
 import { createDragReorder } from "../../utils/dragReorder";
 import styles from "./Toolbar.module.css";
 
@@ -18,32 +18,32 @@ import styles from "./Toolbar.module.css";
 // `components/HandOffs` now, at the right end of the topbar: a crumb is elastic
 // and a button pinned to the end of one is never twice in the same place.
 //
-// For a Feature the crumb is its name and branch, followed by one chip per
+// For a Topic the crumb is its name and branch, followed by one chip per
 // member: the present ones switch the active root, the rest wear their state.
 export default function Toolbar(props: { selected: Selection | null; onActiveRoot?: (root: string) => void }) {
   const [err, setErr] = createSignal("");
 
   const sel = () => props.selected;
-  const isFeature = () => sel()?.kind === "feature";
-  const featureId = () => (isFeature() ? (sel()?.featureId ?? null) : null);
+  const isTopic = () => sel()?.kind === "feature";
+  const topicId = () => (isTopic() ? (sel()?.featureId ?? null) : null);
 
   // The Selection carries only the present roots; badges need every member, so
   // the record comes from the shared resource, which also owns the tint and the
   // refetch on `topics://changed` / `config://changed`.
-  const members = createFeatureMembers(featureId);
+  const members = createTopicMembers(topicId);
   const isActive = (m: TintedMember) => !!m.member.worktreePath && m.member.worktreePath === sel()?.activeRoot;
-  // Which repo the panels below are showing. Absent for a Feature whose members
+  // Which repo the panels below are showing. Absent for a Topic whose members
   // are all broken, where the crumb falls back to the two it always had rather
   // than to an empty middle and a separator with nothing after it.
   const activeMember = () => members().find(isActive) ?? null;
 
-  // The chip row reorders the Feature as the sidebar's member list does, through
+  // The chip row reorders the Topic as the sidebar's member list does, through
   // the same helper. The command emits, so `members()` comes back in the new
   // order on its own and nothing here holds a second copy of it.
   const drag = createDragReorder({
     keys: () => members().map((m) => m.member.repoPath),
     onCommit: (repoPaths) => {
-      const id = featureId();
+      const id = topicId();
       if (id) void invoke("reorder_members", { topicId: id, repoPaths }).catch((e) => setErr(String(e)));
     },
   });
@@ -58,7 +58,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
         <div class={styles.tbRow}>
           <div class={styles.tbInfo}>
             <Show
-              when={isFeature()}
+              when={isTopic()}
               fallback={
                 <nav class={styles.tbCrumb} aria-label="location">
                   <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
