@@ -416,6 +416,11 @@
    here would compete with the dialog's own title two lines up; these labels are
    muted so the eye lands on the values. ---- */
 .spaceForm {
+  /* A step taller than the chrome default, the same step `.tallControls` takes
+     and for the same reason: these bodies are forms, and a form's field wants
+     more room than a toolbar's button. One property, so the strip, the fields,
+     the appearance chips and the locked name all follow it at once. */
+  --control-height: calc(32px * var(--ui-scale));
   display: flex;
   flex-direction: column;
   gap: var(--tori-space-6);
@@ -431,34 +436,61 @@
   line-height: var(--tori-line-tight);
   color: var(--fg-muted);
 }
+/* Which fields will not let the dialog finish. The pill `FirstRunShell` marks
+   its required steps with, restated here because a CSS module cannot reach into
+   another one - same recipe, so the word means the same thing in both places.
+   Hidden from the accessibility tree: `aria-required` on the field itself is
+   what announces this, and the label would otherwise read "Name Required". */
+.spaceRequired {
+  display: inline-block;
+  margin-left: var(--tori-space-3);
+  font-size: var(--tori-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-strong);
+  border: var(--tori-border-thin) solid var(--border-strong);
+  border-radius: var(--tori-radius-sm);
+  padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
+  line-height: 1.3;
+}
+/* The app's own field, restated: transparent on the surface it sits on, a
+   hairline border, a brand caret, a watermark placeholder, and a focus that
+   moves the border and nothing else. It is what the sidebar filter, the
+   settings search and the table filters all wear, so a field in a dialog reads
+   as the same object as a field anywhere else. The height is the only part that
+   is ours, and only so the field lines up with the segmented strip above it
+   rather than being sized by its own text. */
 .spaceInput {
   width: 100%;
   height: var(--control-height);
   padding: 0 calc(10px * var(--ui-scale));
-  background: var(--canvas-input);
-  border: 1px solid var(--border-default);
+  background: transparent;
+  border: var(--tori-border-thin) solid var(--border-default);
   border-radius: var(--tori-radius-md);
   color: var(--fg-default);
+  caret-color: var(--brand-default);
   font-family: inherit;
-  font-size: var(--tori-text-md);
+  font-size: var(--tori-text-xl);
   outline: none;
-  transition:
-    border-color var(--tori-duration-fast) ease,
-    box-shadow var(--tori-duration-fast) ease;
+  transition: border-color var(--tori-duration-fast) ease;
 }
+/* Placeholder reads as a faint hint, not real content. */
 .spaceInput::placeholder {
-  color: var(--fg-subtle);
+  color: var(--fg-watermark);
+  opacity: 1;
 }
-.spaceInput:focus-visible {
-  border-color: var(--brand-ring);
-  box-shadow: 0 0 0 3px var(--brand-subtle);
+/* The brand border the rest of the app focuses to, not the sidebar filter's
+   quieter one: that field opens focused every time, so a loud focus state would
+   be its resting state, and none of these do. */
+.spaceInput:focus {
+  border-color: var(--brand-default);
 }
-/* Declared after :focus-visible so a field that is both focused and refused
-   keeps saying it is refused, which is the state the user has to act on. */
+/* Declared after :focus so a field that is both focused and refused keeps
+   saying it is refused, which is the state the user has to act on. */
 .spaceInput.invalid,
-.spaceInput.invalid:focus-visible {
+.spaceInput.invalid:focus {
   border-color: var(--danger-fg);
-  box-shadow: none;
 }
 
 /* One line, and the group's only one: the default copy and the error occupy the

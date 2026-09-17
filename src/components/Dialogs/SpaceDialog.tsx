@@ -9,13 +9,13 @@ import { badName } from "../../utils/names";
 
 export type SpaceDialogMode = "new" | "edit";
 
-// The visible "Name" line is also the field's accessible name in both modes,
-// rather than an `aria-label` repeating it (the convention `NewProjectDialog`
-// set in #99). Edit mode is why this matters: its name is a static row with no
-// placeholder, so without this it would have no accessible name at all. The
-// help line under it is the field's description, so the collision message is
-// announced with the field rather than only painted beside it. Static ids: only
-// one space dialog can be open at a time.
+// The visible "Name" line is the field's accessible name, rather than an
+// `aria-label` repeating it (the convention `NewProjectDialog` set in #99), so
+// the two cannot drift apart. The help line under it is the field's
+// description, so the collision message is announced with the field rather than
+// only painted beside it. "new" only: edit mode has no control to name, its
+// name being static text. Static ids: only one space dialog can be open at a
+// time.
 const NAME_LABEL = "space-name-label";
 const NAME_HELP = "space-name-help";
 
@@ -122,7 +122,18 @@ export default function SpaceDialog(props: {
     >
       <div class={styles.spaceForm}>
         <div class={styles.spaceField}>
-          <div id={NAME_LABEL} class={styles.spaceLabel}>Name</div>
+          {/* The id sits on the word, not on the row: the row also holds the
+              Required pill, and an accessible name is computed from the text of
+              whatever the id names. "Name Required" is not what this field is
+              called, and `aria-required` on it already says the rest. */}
+          <div class={styles.spaceLabel}>
+            <span id={NAME_LABEL}>Name</span>
+            {/* Only where it can still be set: in "edit" the name is already
+                on disk, so nothing about it is outstanding. */}
+            <Show when={isNew()}>
+              <span class={styles.spaceRequired} aria-hidden="true">Required</span>
+            </Show>
+          </div>
           <Show
             when={isNew()}
             fallback={
@@ -142,6 +153,7 @@ export default function SpaceDialog(props: {
               classList={{ [styles.invalid]: !!nameError() }}
               aria-labelledby={NAME_LABEL}
               aria-describedby={NAME_HELP}
+              aria-required={true}
               aria-invalid={!!nameError()}
               value={name()}
               placeholder="space name"
