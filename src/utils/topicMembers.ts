@@ -95,7 +95,7 @@ export type MemberGroup<T> = {
 };
 
 /** What the trailing bucket is called wherever it is drawn. */
-export const OUTSIDE_MEMBERS_LABEL = "Outside this Feature";
+export const OUTSIDE_MEMBERS_LABEL = "Outside this Topic";
 
 /**
  * Rows split into one group per member, in member order, plus a trailing group

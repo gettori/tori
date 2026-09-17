@@ -92,15 +92,15 @@ describe("the sidebar filter", () => {
   // The one thing the column makes, moved out of the Topic list and into the
   // row the filter shares: the list owns the dialog, the head owns the button,
   // and the bus is what joins them.
-  it("offers a New Feature button in Features mode only, before the filter", async () => {
+  it("offers a New Topic button in Topics mode only, before the filter", async () => {
     const asked: number[] = [];
     const off = onEvent(NEW_TOPIC, () => asked.push(1));
     mount();
     await waitFor(() => expect(screen.getByText("proj")).toBeTruthy());
-    expect(screen.queryByRole("button", { name: "New Feature" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New Topic" })).toBeNull();
 
     emit(TOGGLE_SIDEBAR_MODE);
-    const add = await screen.findByRole("button", { name: "New Feature" });
+    const add = await screen.findByRole("button", { name: "New Topic" });
     // Before the filter in the DOM, which is also the order a keyboard reaches
     // them in.
     expect(add.compareDocumentPosition(toggle()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 
 describe("traceSettle", () => {
-  it("closes a Feature span once both legs land", () => {
+  it("closes a Topic span once both legs land", () => {
     traceSwitchStart("topic", "topic:f1");
     tracePaint();
     traceSettle("tree", "topic:f1");

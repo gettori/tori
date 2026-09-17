@@ -93,7 +93,7 @@ export function memberState(state: MemberState): MemberStateSummary {
 /** What `topics::remove_member` answers when the last member would go. The
  *  row menu draws it on a refusing Remove rather than waiting for the click to
  *  fail; the Rust constant `topics::LAST_MEMBER` is the same string. */
-export const LAST_MEMBER = "A Feature needs at least one repository. Delete the Feature instead.";
+export const LAST_MEMBER = "A Topic needs at least one repository. Delete the Topic instead.";
 
 /** The workspace key prefix for a Topic: `topic:<id>`. A path never starts
  *  with it, so the two key spaces cannot collide. */

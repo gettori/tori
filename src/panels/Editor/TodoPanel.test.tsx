@@ -275,7 +275,7 @@ describe("the todo panel, to axe", () => {
 });
 
 
-describe("a Feature's members", () => {
+describe("a Topic's members", () => {
   const API = "/w/api";
   const WEB = "/w/web";
   const member = (label: string, path: string): MemberRoot => ({

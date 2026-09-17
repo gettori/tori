@@ -161,10 +161,10 @@ export default function NewTopicDialog(props: {
               <Button
                 size="xs"
                 variant="ghost"
-                aria-label={`${adding() ? "Leave out" : "Rename this Feature"}, ${repoName(repoPath)}`}
+                aria-label={`${adding() ? "Leave out" : "Rename this Topic"}, ${repoName(repoPath)}`}
                 onClick={() => leaveOut(repoPath)}
               >
-                {adding() ? "Leave out" : "Rename this Feature"}
+                {adding() ? "Leave out" : "Rename this Topic"}
               </Button>
             </>
           }
@@ -178,7 +178,7 @@ export default function NewTopicDialog(props: {
   return (
     <Dialog
       open
-      title={props.topic ? `Add repository to ${props.topic.name}` : "New Feature"}
+      title={props.topic ? `Add repository to ${props.topic.name}` : "New Topic"}
       size="sheet"
       onClose={() => props.onCancel()}
       initialFocus={() => nameInput}
