@@ -1,4 +1,4 @@
-import { For, Show, type JSX } from "solid-js";
+import { For, Match, Show, Switch, type JSX } from "solid-js";
 import { Check, ChevronsLeftRightEllipsis, Folder, MessageCircleQuestion, type LucideIcon } from "lucide-solid";
 import Icon from "../../../components/Icon/Icon";
 import AgentGlyph from "../../../components/Icon/AgentGlyph";
@@ -91,23 +91,51 @@ export function SessionsIllustration() {
   );
 }
 
+type Level = "folder" | "project" | "worktree";
+
+// Seeded like slide 1's rows, so a project keeps the same glyph on both.
+function LevelGlyph(props: { level: Level; path: string }) {
+  return (
+    <span class={styles.levelGlyph}>
+      <Switch fallback={<Icon icon={Folder} />}>
+        <Match when={props.level === "project"}>
+          <ProjectIcon seed={props.path} />
+        </Match>
+        <Match when={props.level === "worktree"}>
+          <WorktreeMark />
+        </Match>
+      </Switch>
+    </span>
+  );
+}
+
 export function LayoutIllustration() {
-  const levels = ["Base folder", "Space", "Project", "Branch or worktree"];
-  const tree: { label: string; depth: number; feature?: boolean; dim?: boolean }[] = [
-    { label: "~/Projects", depth: 0, dim: true },
-    { label: "work", depth: 1, dim: true },
-    { label: "api", depth: 2 },
-    { label: "feat/webhooks", depth: 3, feature: true },
-    { label: "web", depth: 2 },
-    { label: "feat/webhooks", depth: 3, feature: true },
+  const levels: { label: string; level: Level }[] = [
+    { label: "Base folder", level: "folder" },
+    { label: "Space", level: "folder" },
+    { label: "Project", level: "project" },
+    { label: "Branch or worktree", level: "worktree" },
+  ];
+  const tree: { label: string; path: string; depth: number; level: Level; feature?: string }[] = [
+    { label: "~/Projects", path: "~/Projects", depth: 0, level: "folder" },
+    { label: "work", path: "~/Projects/work", depth: 1, level: "folder" },
+    { label: "api", path: "~/Projects/work/api", depth: 2, level: "project" },
+    { label: "main", path: "~/Projects/work/api/main", depth: 3, level: "worktree" },
+    { label: "feat/webhooks", path: "~/Projects/work/api/feat/webhooks", depth: 3, level: "worktree", feature: "webhooks" },
+    { label: "web", path: "~/Projects/work/web", depth: 2, level: "project" },
+    { label: "feat/webhooks", path: "~/Projects/work/web/feat/webhooks", depth: 3, level: "worktree", feature: "webhooks" },
+    { label: "personal", path: "~/Projects/personal", depth: 1, level: "folder" },
+    { label: "blog", path: "~/Projects/personal/blog", depth: 2, level: "project" },
+    { label: "main", path: "~/Projects/personal/blog/main", depth: 3, level: "worktree" },
   ];
   return (
     <div class={styles.split}>
       <div class={styles.levels}>
         <For each={levels}>
-          {(label, i) => (
+          {(l, i) => (
             <div class={styles.level} classList={{ [styles.levelLast]: i() === levels.length - 1 }} style={{ "--depth": i() }}>
-              {label}
+              <LevelGlyph level={l.level} path="~/Projects/work/api" />
+              {l.label}
             </div>
           )}
         </For>
@@ -115,13 +143,13 @@ export function LayoutIllustration() {
       <div class={`${styles.card} ${styles.pathTree}`}>
         <For each={tree}>
           {(n) => (
-            <div class={styles.pathRow} classList={{ [styles.feature]: n.feature, [styles.muted]: n.dim }} style={{ "--depth": n.depth }}>
-              <Icon icon={Folder} size={13} />
+            <div class={styles.pathRow} data-level={n.level} style={{ "--depth": n.depth }}>
+              <LevelGlyph level={n.level} path={n.path} />
               {n.label}
+              <Show when={n.feature}>{(f) => <span class={styles.featureChip}>in {f()}</span>}</Show>
             </div>
           )}
         </For>
-        <div class={styles.note}>One Feature, two repos, one branch</div>
       </div>
     </div>
   );

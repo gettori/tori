@@ -210,6 +210,9 @@
     background: var(--canvas-head);
     border: var(--tori-border-thin) solid var(--border-default);
     border-radius: var(--tori-radius-md);
+    display: flex;
+    align-items: center;
+    gap: var(--tori-space-4);
     padding: var(--tori-space-4) var(--tori-space-5);
     font-size: var(--tori-text-sm);
     color: var(--fg-default);
@@ -233,25 +236,31 @@
     padding-left: calc(var(--depth) * 16px * var(--ui-scale));
     font-family: var(--tori-font-mono);
     font-size: var(--tori-text-xs);
+    color: var(--fg-muted);
+    white-space: nowrap;
   }
-  .pathRow > svg {
+  .pathRow[data-level="project"] {
+    color: var(--fg-default);
+    font-weight: 600;
+  }
+  .levelGlyph {
     flex: none;
+    display: inline-flex;
     color: var(--fg-subtle);
   }
-  .feature {
-    color: var(--brand-strong);
+  .levelGlyph :global(svg) {
+    width: calc(14px * var(--ui-scale));
+    height: calc(14px * var(--ui-scale));
   }
-  .feature > svg {
-    color: var(--brand-strong);
-  }
-  .note {
-    margin-top: var(--tori-space-2);
-    align-self: flex-start;
-    background: var(--canvas-head);
-    border-radius: var(--tori-radius-md);
-    padding: var(--tori-space-3) var(--tori-space-4);
-    font-size: var(--tori-text-xs);
-    color: var(--fg-muted);
+  /* The sidebar's Feature chip on a branch row (`.row .badge.featureChip`). */
+  .featureChip {
+    font-family: var(--tori-font-ui);
+    font-size: var(--tori-text-2xs);
+    font-weight: 400;
+    padding: 0 calc(4px * var(--ui-scale));
+    border-radius: var(--tori-radius-sm);
+    color: var(--brand-default);
+    background: var(--brand-subtle);
   }
 
   .tabs {
