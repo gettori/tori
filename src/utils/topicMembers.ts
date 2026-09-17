@@ -9,11 +9,12 @@ import { listen } from "@tauri-apps/api/event";
 import { memberState, rootOf, type Member, type MemberStateSummary, type Topic } from "./topics";
 import { spaceHue, spaceHueRgb } from "./spaceTint";
 import { isSyntheticId } from "./syntheticTabs";
+import type { ProjectIconSource } from "../components/Icon/ProjectIcon";
 
 /** The slice of a project a member needs: the path that says which repo belongs
- *  to which Space, the name Docs looks its folder up by, and the branch units
- *  that say how this repo's worktrees are laid out. */
-export type SpaceProject = {
+ *  to which Space, the name Docs looks its folder up by, the branch units that
+ *  say how this repo's worktrees are laid out, and the icon its chip wears. */
+export type SpaceProject = Pick<ProjectIconSource, "icon" | "iconFile" | "favicon"> & {
   name?: string;
   path: string;
   /** `kind` is "worktree" | "plain" | "plain-dir" | "incomplete", typed as the
@@ -44,6 +45,9 @@ export type TintedMember = {
   /** The Space hue, absent for a repo outside every Space. */
   hue: string | undefined;
   style: ChipStyle | undefined;
+  /** The project's icon, seeded on the repo path as the sidebar's project row
+   *  is, so a project with no icon of its own derives the same glyph in both. */
+  icon: ProjectIconSource;
   /** How this member's *repo* is laid out, which is what says whether it has a
    *  `.shared/` folder to offer. See `projectUnitKind`. */
   kind: string | undefined;
@@ -65,6 +69,8 @@ export type MemberRoot = {
   label: string;
   /** The member's Space colour, painted on its chip. */
   tint?: string;
+  /** The project's icon. Absent draws the glyph derived from `repoPath`. */
+  icon?: ProjectIconSource;
   state?: MemberStateSummary;
 };
 
@@ -197,6 +203,7 @@ export function projectUnitKind(project: SpaceProject | undefined): string | und
 export function tintedMember(member: Member, spaces: SpaceTint[]): TintedMember {
   const found = projectOfMember(member, spaces);
   const space = found?.space;
+  const project = found?.project;
   const hue = space ? spaceHue(space.name, space.color) : undefined;
   return {
     member,
@@ -205,7 +212,8 @@ export function tintedMember(member: Member, spaces: SpaceTint[]): TintedMember 
     state: memberState(member.state),
     hue,
     style: space && hue ? { "--chip-hue": hue, "--chip-rgb": spaceHueRgb(space.name, space.color) } : undefined,
-    kind: projectUnitKind(found?.project),
+    icon: { seed: member.repoPath, icon: project?.icon, iconFile: project?.iconFile, favicon: project?.favicon },
+    kind: projectUnitKind(project),
   };
 }
 

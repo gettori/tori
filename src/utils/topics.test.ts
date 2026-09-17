@@ -5,7 +5,6 @@ import {
   isTopicKey,
   isShellsKey,
   tabUnderFolder,
-  memberInitials,
   memberState,
   rootOf,
   selectionRoot,
@@ -27,19 +26,6 @@ describe("topicSlug", () => {
   it("is empty when nothing usable remains", () => {
     expect(topicSlug("!!!")).toBe("");
     expect(topicSlug("")).toBe("");
-  });
-});
-
-describe("memberInitials", () => {
-  it("takes the first letters of the first two words", () => {
-    expect(memberInitials({ displayName: "Backend API", repoPath: "/r/x" })).toBe("BA");
-    expect(memberInitials({ displayName: "web", repoPath: "/r/x" })).toBe("W");
-    expect(memberInitials({ displayName: "saga-frontend", repoPath: "/r/x" })).toBe("SF");
-  });
-
-  it("falls back to the repo basename", () => {
-    expect(memberInitials({ displayName: "  ", repoPath: "/Users/a/Projects/net_check" })).toBe("NC");
-    expect(memberInitials({ displayName: "", repoPath: "" })).toBe("");
   });
 });
 

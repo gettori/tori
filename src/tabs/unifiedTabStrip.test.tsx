@@ -208,6 +208,7 @@ const tinted = (displayName: string, hue: string): TintedMember => ({
   state: { label: "Ready", usable: true, action: null, reason: null },
   hue,
   style: { "--chip-hue": hue, "--chip-rgb": "1 2 3" },
+  icon: { seed: `/r/${displayName}` },
   kind: "worktree",
 });
 

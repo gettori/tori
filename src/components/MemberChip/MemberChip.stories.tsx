@@ -5,29 +5,30 @@ import MemberChip from "./MemberChip";
 const meta = {
   title: "Components/MemberChip",
   component: MemberChip,
-  args: { member: { displayName: "frontend", repoPath: "/repos/frontend" } },
+  args: { icon: { seed: "/repos/frontend", icon: "Globe" } },
 } satisfies Meta<typeof MemberChip>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 const MEMBERS = [
-  { displayName: "frontend", repoPath: "/repos/frontend", tint: "oklch(0.72 0.13 250)" },
-  { displayName: "backend", repoPath: "/repos/backend", tint: "oklch(0.74 0.15 145)" },
-  { displayName: "notification service", repoPath: "/repos/notification-service", tint: "oklch(0.7 0.16 30)" },
-  { displayName: "docs", repoPath: "/repos/docs", tint: undefined },
+  { icon: { seed: "/repos/frontend", icon: "Globe" }, tint: "oklch(0.72 0.13 250)" },
+  { icon: { seed: "/repos/backend", icon: "Server" }, tint: "oklch(0.74 0.15 145)" },
+  { icon: { seed: "/repos/notification-service" }, tint: "oklch(0.7 0.16 30)" },
+  { icon: { seed: "/repos/docs", icon: "Book" }, tint: undefined },
 ];
 
 const Row = (props: { children: import("solid-js").JSX.Element }) => (
   <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>{props.children}</div>
 );
 
-/** One chip per member, each on its own Space tint. The last has no Space, so it
- *  falls back to neutral rather than to a grey mix of itself. */
+/** One chip per member, each on its own Space tint. The third picked no icon, so
+ *  it wears the glyph derived from its path. The last has no Space, so it falls
+ *  back to neutral rather than to a grey mix of itself. */
 export const Tints: Story = {
   render: () => (
     <Row>
-      <For each={MEMBERS}>{(m) => <MemberChip member={m} tint={m.tint} />}</For>
+      <For each={MEMBERS}>{(m) => <MemberChip icon={m.icon} tint={m.tint} />}</For>
     </Row>
   ),
 };
@@ -37,8 +38,8 @@ export const Tints: Story = {
 export const Sizes: Story = {
   render: () => (
     <Row>
-      <MemberChip member={MEMBERS[0]} tint={MEMBERS[0].tint} size="sm" />
-      <MemberChip member={MEMBERS[0]} tint={MEMBERS[0].tint} size="md" />
+      <MemberChip icon={MEMBERS[0].icon} tint={MEMBERS[0].tint} size="sm" />
+      <MemberChip icon={MEMBERS[0].icon} tint={MEMBERS[0].tint} size="md" />
     </Row>
   ),
 };
@@ -49,7 +50,7 @@ export const Sizes: Story = {
 export const WithStateBadge: Story = {
   render: () => (
     <Row>
-      <MemberChip member={MEMBERS[1]} tint={MEMBERS[1].tint} size="md">
+      <MemberChip icon={MEMBERS[1].icon} tint={MEMBERS[1].tint} size="md">
         <span
           role="img"
           aria-label="Worktree missing"
@@ -73,7 +74,7 @@ export const WithStateBadge: Story = {
 export const Decorative: Story = {
   render: () => (
     <Row>
-      <MemberChip member={MEMBERS[2]} tint={MEMBERS[2].tint} decorative />
+      <MemberChip icon={MEMBERS[2].icon} tint={MEMBERS[2].tint} decorative />
       <span>notification service</span>
     </Row>
   ),

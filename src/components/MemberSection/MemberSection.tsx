@@ -14,7 +14,7 @@ import styles from "./MemberSection.module.css";
  * per-section actions this one has no place for.
  *
  * `root` is null for the trailing bucket of rows under no member at all, which
- * is named rather than chipped: there is no repo to take initials from.
+ * is named rather than chipped: there is no repo whose icon it could wear.
  */
 export default function MemberSection(props: {
   root: MemberRoot | null;
@@ -68,14 +68,14 @@ export default function MemberSection(props: {
   );
 }
 
-/** No chip for the trailing bucket: it is not a repo, so there are no initials
- *  to take and a neutral box would read as one more member. */
+/** No chip for the trailing bucket: it is not a repo, so there is no project
+ *  icon to draw and a neutral box would read as one more member. */
 function chip(root: MemberRoot | null) {
   return (
     <Show when={root}>
       {(r) => (
         <MemberChip
-          member={{ displayName: r().label, repoPath: r().repoPath }}
+          icon={r().icon ?? { seed: r().repoPath }}
           tint={r().tint}
           decorative
         />
