@@ -450,11 +450,20 @@
     min-height: calc(22px * var(--ui-scale));
     font-size: var(--tori-text-sm);
   }
-  .hostLogo {
+  /* AgentGlyph draws its mark at 70% of the box in the muted colour, so the
+     agent marks are overridden here to match the host logos beside them. */
+  .logo {
     display: inline-flex;
     width: calc(18px * var(--ui-scale));
     justify-content: center;
     color: var(--fg-default);
+  }
+  .logo > * {
+    color: inherit;
+  }
+  .logo :global(svg) {
+    width: calc(16px * var(--ui-scale));
+    height: calc(16px * var(--ui-scale));
   }
   .kbd {
     background: var(--neutral-hover);

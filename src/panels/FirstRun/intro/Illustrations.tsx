@@ -337,7 +337,7 @@ export function MachineIllustration() {
   ];
   const host = (logo: JSX.Element, name: string, state: string) => (
     <div class={styles.listRow}>
-      <span class={styles.hostLogo}>{logo}</span>
+      <span class={styles.logo}>{logo}</span>
       <span>{name}</span>
       <span class={styles.stripEnd}>{state}</span>
     </div>
@@ -349,7 +349,9 @@ export function MachineIllustration() {
         <For each={agents}>
           {(a) => (
             <div class={styles.listRow}>
-              <AgentGlyph id={a.id} label={a.label} size={18} />
+              <span class={styles.logo}>
+                <AgentGlyph id={a.id} label={a.label} size={18} />
+              </span>
               <span>{a.label}</span>
             </div>
           )}
