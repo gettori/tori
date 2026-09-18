@@ -28,6 +28,7 @@ import {
   type UnitStatus,
 } from "./forgeTypes";
 import { canonicalHost, type KnownHosts } from "./prUrl";
+import { orgNotice, type OrgNotice } from "./orgNotice";
 import {
   askOrder,
   backoffAfter,
@@ -166,6 +167,13 @@ const [accountBlocked, setAccountBlocked] = createSignal<Record<string, number>>
  *  remote this forge does not serve). */
 const [projectBlocked, setProjectBlocked] = createSignal<Record<string, number>>({});
 const [lastPollAt, setLastPollAt] = createSignal<Record<string, number>>({});
+/** The organisation standing in front of a checkout, by path. Rust names it on
+ *  the `404`; nothing else in this store keeps a last error, because nothing
+ *  else has an answer to offer for one. */
+const [orgBlocked, setOrgBlocked] = createSignal<Record<string, string>>({});
+/** Whether `gh` is on this machine, read once. It decides which route an
+ *  organisation notice can offer, and a path lookup does not change under us. */
+const [cliInstalled, setCliInstalled] = createSignal(false);
 
 const key = (path: string, branch: string) => `${path}\n${branch}`;
 
@@ -213,6 +221,42 @@ export function uncoveredUnits(path: string): number {
   return uncovered()[path] ?? 0;
 }
 
+/// The notice a checkout's repo row owes the user, or null when nothing is in
+/// the way.
+///
+/// Built here rather than stored, so the route it offers follows the account's
+/// current source: signing in through `gh` changes what the notice should say
+/// next without the poll having to run again.
+export function forgeOrgNotice(path: string | null): OrgNotice | null {
+  const org = path ? orgBlocked()[path] : undefined;
+  // A stopped integration draws no other door either, and a notice that outlives
+  // the switch that silenced everything around it reads as a bug.
+  if (org === undefined || forgePause(path) !== null) return null;
+  const repo = forgeRepo(path);
+  const id = repo?.kind === "account" ? repo.accountId : null;
+  const source = accounts().find((a) => a.id === id)?.source ?? null;
+  return orgNotice(org, source, cliInstalled());
+}
+
+/// The notices an account owes, one per organisation blocking a watched
+/// checkout it acts for.
+///
+/// By account rather than by path, because the sign-in surfaces have no checkout
+/// of their own: a repo the user opened is what put the entry here, and the row
+/// that can do something about it is the account's. Built from the same account
+/// list [`forgeOrgNotice`] reads, so the two surfaces cannot name different
+/// routes out of one refusal.
+export function forgeAccountOrgNotices(accountId: string): OrgNotice[] {
+  const owned = Object.entries(orgBlocked()).filter(([path]) => {
+    const repo = forgeRepo(path);
+    return repo?.kind === "account" && repo.accountId === accountId;
+  });
+  const source = accounts().find((a) => a.id === accountId)?.source ?? null;
+  return [...new Set(owned.map(([, org]) => org))]
+    .sort()
+    .map((org) => orgNotice(org, source, cliInstalled()));
+}
+
 /** Why polling is stopped for this checkout, or null when it is running or
  *  has not resolved yet (Rust is then the one to say). */
 export function forgePause(path: string | null): PauseReason | null {
@@ -250,6 +294,10 @@ function applyReport(path: string, repo: RepoAccount, report: StatusReport, now:
   if (budget && repo.kind === "account") {
     setAccountBlocked((m) => ({ ...m, [repo.accountId]: budget.untilMs }));
   }
+  // The repo answered, so whatever was in front of it is not any more. Left
+  // standing it would outlive the authorization that cleared it, and the row
+  // would keep offering a route the user has already taken.
+  setOrgBlocked(({ [path]: _gone, ...rest }) => rest);
 }
 
 async function noteFailure(path: string, repo: RepoAccount, err: unknown, now: number) {
@@ -259,6 +307,13 @@ async function noteFailure(path: string, repo: RepoAccount, err: unknown, now: n
   }
   if (backoff?.scope === "project") setProjectBlocked((m) => ({ ...m, [path]: backoff.untilMs }));
   if (!isForgeError(err)) return;
+  // The one failure this store keeps per repo. Every other kind is either backed
+  // off, re-resolved, or genuinely nothing the user can act on, and a notice
+  // with no action behind it is noise on a row that has little room for it.
+  const org = err.org;
+  if (err.kind === "orgUnapproved" && org) {
+    setOrgBlocked((m) => ({ ...m, [path]: org }));
+  }
   // Rust has already decided the credential cannot be used: a 401 moved it to
   // suspect, or `may_call` refused before the request was built. Re-reading the
   // state is what turns that into a paused scheduler and a prompt, rather than a
@@ -352,6 +407,9 @@ export function startForgePolling(): () => void {
   // empty list; the first real tick comes from whoever calls
   // `noteWatchedProjects`, which is the moment there is something to ask about.
   void refreshForgeAccounts();
+  // Which route an organisation notice may offer. Read once because it is a path
+  // lookup answering a question about this machine, not about any account.
+  void invoke<boolean>("forge_cli_installed").then(setCliInstalled).catch(() => {});
   const onFocus = () => void pollOnFocus();
   window.addEventListener("focus", onFocus);
   const timer = window.setInterval(() => void pollNow("interval"), POLL_INTERVAL_MS);
@@ -366,6 +424,13 @@ export function startForgePolling(): () => void {
 /// Named for what it is, like `resetSessionActivityForTests`: the store is
 /// process-wide, so one test's rate-limit block would otherwise silence the
 /// next, and nothing in the app should ever call this.
+/// The `gh` lookup, set by hand. A path lookup is the one input here that
+/// describes the machine rather than the account, so a test has to say what it
+/// found instead of asking the machine running the suite.
+export function noteForgeCliInstalled(installed: boolean) {
+  setCliInstalled(installed);
+}
+
 export function resetForgeStatusForTests() {
   setAccounts([]);
   setViewers({});
@@ -378,4 +443,6 @@ export function resetForgeStatusForTests() {
   setAccountBlocked({});
   setProjectBlocked({});
   setLastPollAt({});
+  setOrgBlocked({});
+  setCliInstalled(false);
 }

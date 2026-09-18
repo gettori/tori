@@ -150,6 +150,21 @@
   text-wrap: pretty;
 }
 
+/* The same indent as `.reason`, past the status dot, but laid out as a row: the
+   sentence and one button per organisation sit on one line until they cannot. */
+.orgs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6px * var(--ui-scale));
+  margin-top: calc(6px * var(--ui-scale));
+  padding: 0 calc(13px * var(--ui-scale)) 0 calc(29px * var(--ui-scale));
+  font-size: var(--tori-text-xs);
+  line-height: 1.6;
+  color: var(--fg-muted);
+  text-wrap: pretty;
+}
+
 .nudged {
   padding-bottom: calc(10px * var(--ui-scale));
 }

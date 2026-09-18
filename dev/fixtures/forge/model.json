@@ -45,6 +45,12 @@
     "id": "github-com-skarif2",
     "label": "skarif2",
     "login": "skarif2",
+    "orgAccess": [
+      {
+        "org": "acme",
+        "url": "https://github.com/orgs/acme/sso?authorization_request=AR_kgD"
+      }
+    ],
     "provider": "github",
     "rejectedAt": null,
     "scopes": [
@@ -56,6 +62,7 @@
   "forgeError": {
     "kind": "rateLimited",
     "message": "Secondary rate limit, retry in 60s",
+    "org": null,
     "rateLimitKind": "secondary",
     "resetAtSecs": 1785179400,
     "retryAfterSecs": 60

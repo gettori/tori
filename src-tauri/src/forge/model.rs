@@ -310,6 +310,21 @@ pub struct Viewer {
     pub avatar_url: Option<String>,
 }
 
+/// An organisation standing between an account and a repo, and the page where
+/// the user can let it through.
+///
+/// GitHub's, and only GitHub's: a SAML organisation answers a request for its
+/// repos with a `403` naming itself, and nothing else Tori talks to has an
+/// equivalent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrgAccess {
+    /// The organisation's login, taken from the authorization URL's own path.
+    pub org: String,
+    /// GitHub's authorization page for this account and this organisation.
+    pub url: String,
+}
+
 /// What a host says about the token itself, as opposed to who holds it.
 ///
 /// Both fields are `None` where the provider says nothing, which is not the same
@@ -496,6 +511,10 @@ mod tests {
                     rejected_at: None,
                     scopes: Some(vec!["repo".into(), "workflow".into()]),
                     source: super::super::accounts::Source::Cli,
+                    org_access: vec![OrgAccess {
+                        org: "acme".into(),
+                        url: "https://github.com/orgs/acme/sso?authorization_request=AR_kgD".into(),
+                    }],
                 },
                 auth: AuthState::SignedIn { login: "skarif2".into() },
             },

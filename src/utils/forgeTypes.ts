@@ -245,6 +245,15 @@ export type ForgeProvider = "github" | "gitlab";
 /// host stops accepting it.
 export type ForgeSource = "cli" | "browser" | "token";
 
+/// An organisation standing between an account and a repo, and the page where
+/// the user can let it through. GitHub's, and only GitHub's.
+export type OrgAccess = {
+  /// The organisation's login, taken from the authorization URL's own path.
+  org: string;
+  /// GitHub's authorization page for this account and this organisation.
+  url: string;
+};
+
 /// One account Tori holds on a forge host, with its credential state.
 export type ForgeAccount = {
   id: string;
@@ -258,6 +267,8 @@ export type ForgeAccount = {
   rejectedAt: number | null;
   scopes: string[] | null;
   source: ForgeSource;
+  /// Organisations that refused this account and have not been authorized since.
+  orgAccess: OrgAccess[];
   auth: AuthState;
 };
 
@@ -334,6 +345,8 @@ export type ForgeErrorDto = {
   /// itself, because a refusal is the one response whose rate snapshot never
   /// reaches a caller.
   resetAtSecs: number | null;
+  /// The organisation standing in the way, for the one failure that has one.
+  org: string | null;
 };
 
 export function isForgeError(e: unknown): e is ForgeErrorDto {
@@ -415,6 +428,7 @@ export const FORGE_KEYS = {
     "id",
     "label",
     "login",
+    "orgAccess",
     "provider",
     "rejectedAt",
     "scopes",
@@ -423,7 +437,7 @@ export const FORGE_KEYS = {
   signInRoutes: ["appId", "baseUrl", "deviceFlow", "host", "scopes", "tokenUrl"],
   // Not a domain type, but it crosses the same bridge and the poll scheduler
   // branches on it, so it is checked against Rust the same way.
-  forgeError: ["kind", "message", "rateLimitKind", "resetAtSecs", "retryAfterSecs"],
+  forgeError: ["kind", "message", "org", "rateLimitKind", "resetAtSecs", "retryAfterSecs"],
 } as const satisfies Record<string, readonly string[]>;
 
 /// Every value each closed enum can take, so a variant added in Rust and not
