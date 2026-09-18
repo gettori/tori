@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@solidjs/testing-library";
 import { pointerClick, rightClick } from "../../test/menus";
+import { expectNoAxeViolations } from "../../test/axe";
 
 // What the sidebar is *for* once its session level is gone: spaces, projects,
 // branch-units, the rollup badges that report what is live underneath, and the
@@ -99,6 +100,10 @@ const bridge = vi.hoisted(() => ({
   // The sidebar's errors are toasts, and the stack renders from its own portal
   // outside this tree, so the call is what there is to watch.
   toasts: [] as string[],
+  // `git_branch_sync_many`'s reply, keyed the way the backend keys it. Set per
+  // test; empty is a tree nothing has answered for, which is every test here
+  // that predates the state line.
+  sync: {} as Record<string, unknown>,
 }));
 
 vi.mock("../../components/Toasts/Toasts", async (orig) => ({
@@ -123,6 +128,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       if (args.folder === NOTES) return Promise.resolve([inNotes]);
       return Promise.resolve([]);
     }
+    if (cmd === "git_branch_sync_many") return Promise.resolve(bridge.sync);
     if (cmd === "list_project_attempts") return Promise.resolve([]);
     if (cmd === "folder_historical") return Promise.resolve(false);
     if (cmd === "git_origin") return Promise.resolve(null);
@@ -158,6 +164,7 @@ const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { OPEN_IN_EDITOR } = await import("../../utils/events");
 const { syntheticId } = await import("../../utils/syntheticTabs");
+const { syncUnits } = await import("../../utils/branchSync");
 
 /** The row element carrying `label`, which is that text's own parent. */
 const row = async (label: string) => (await screen.findByText(label)).parentElement!;
@@ -184,6 +191,7 @@ describe("the sidebar levels that outlive the session rows", () => {
     bridge.handlers = {};
     bridge.configReads = 0;
     bridge.toasts.length = 0;
+    bridge.sync = {};
     selections.length = 0;
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
@@ -513,5 +521,126 @@ describe("the sidebar levels that outlive the session rows", () => {
     await waitFor(() => expect(opened).toEqual([syntheticId("graph", `${REPO}/feat`)]));
     expect(selections[selections.length - 1]).toMatchObject({ folderPath: `${REPO}/feat` });
     window.removeEventListener(OPEN_IN_EDITOR, listener);
+  });
+});
+
+/** `BranchSync` as the backend sends it, clean unless told otherwise. */
+const syncOf = (over: Record<string, unknown> = {}) => ({
+  detached: false,
+  dirty: false,
+  head_committed_at: 1_700_000_000,
+  upstream: { ahead: 0, behind: 0, has_upstream: true, rewritten: false },
+  base: null,
+  ...over,
+});
+
+const syncKey = (label: string) => `${REPO}/${label}\u0000${label}`;
+
+/** The branch node for `label`: the row and, when it has one, its state line. */
+const node = async (label: string) => (await screen.findByText(label)).parentElement!.parentElement!;
+
+const stateLine = async (label: string) => (await node(label)).querySelector("[data-state-line]");
+
+describe("the branch row's second line", () => {
+  beforeEach(async () => {
+    // The sync store is module-level and asks only about units it has not seen,
+    // which is what stops `loadConfig` costing a `git` process per row. An
+    // empty tree is how it forgets, and without it the mounts above this file
+    // would have already claimed these rows.
+    await syncUnits([]);
+    resetSessionStoreForTests();
+    resetSessionActivityForTests();
+    bridge.handlers = {};
+    bridge.sync = {};
+    selections.length = 0;
+    Element.prototype.scrollIntoView = () => {};
+    localStorage.clear();
+    localStorage.setItem("tori.active-space.v1", "work");
+  });
+
+  it("stays one line for a clean branch and grows one for a conflicted one", async () => {
+    bridge.sync = {
+      [syncKey("main")]: syncOf(),
+      [syncKey("feat")]: syncOf({
+        base: { name: "main", ahead: 2, behind: 4, conflicts: ["src/a.ts", "src/b.ts"] },
+      }),
+    };
+    mount(["p:work/repo"]);
+
+    const line = await waitFor(async () => {
+      const found = await stateLine("feat");
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    expect(line.textContent).toContain("main: 2 conflicts");
+
+    expect(await stateLine("main")).toBeNull();
+  });
+
+  it("grows one for uncommitted work, and for a base that has moved on", async () => {
+    bridge.sync = {
+      [syncKey("main")]: syncOf({ dirty: true }),
+      [syncKey("feat")]: syncOf({ base: { name: "main", ahead: 1, behind: 14, conflicts: [] } }),
+    };
+    mount(["p:work/repo"]);
+
+    await waitFor(async () => expect(await stateLine("main")).toBeTruthy());
+    expect((await stateLine("main"))!.textContent).toContain("uncommitted");
+    expect((await stateLine("feat"))!.textContent).toContain("main +14");
+  });
+
+  it("puts the counts beside the name, where they cost no height", async () => {
+    bridge.sync = {
+      [syncKey("main")]: syncOf({ upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false } }),
+    };
+    mount(["p:work/repo"]);
+
+    await waitFor(async () => expect(await stateLine("main")).toBeTruthy());
+    expect((await stateLine("main"))!.textContent).toContain("diverged");
+    const counts = (await node("main")).querySelector("[data-sync-counts]");
+    expect(counts?.textContent).toBe("\u21912\u21933");
+  });
+
+  it("hangs the second line off the node the rail is drawn on, not inside the row", async () => {
+    // jsdom has no layout, so the rail's span is pinned structurally: it is
+    // `.branchNode`'s own ::before, top to bottom, so what has to be true is
+    // that the line is inside that node and outside the row.
+    bridge.sync = { [syncKey("feat")]: syncOf({ dirty: true }) };
+    mount(["p:work/repo"]);
+
+    await waitFor(async () => expect(await stateLine("feat")).toBeTruthy());
+    const branchRow = (await screen.findByText("feat")).parentElement!;
+    const line = (await stateLine("feat"))!;
+    expect(line.parentElement).toBe(branchRow.parentElement);
+    expect(branchRow.contains(line)).toBe(false);
+  });
+
+  it("still hands a drag the folder path from a row that grew", async () => {
+    bridge.sync = { [syncKey("feat")]: syncOf({ dirty: true }) };
+    mount(["p:work/repo"]);
+    await waitFor(async () => expect(await stateLine("feat")).toBeTruthy());
+
+    // jsdom has no DataTransfer, and the payload is the whole claim here.
+    const store: Record<string, string> = {};
+    const e = new Event("dragstart", { bubbles: true, cancelable: true });
+    Object.defineProperty(e, "dataTransfer", {
+      value: { effectAllowed: "none", setData: (t: string, v: string) => (store[t] = v) },
+    });
+    (await screen.findByText("feat")).parentElement!.dispatchEvent(e);
+
+    expect(store["application/x-tori-abspath"]).toBe(`${REPO}/feat`);
+  });
+
+  it("passes axe with a tree of rows that have grown", async () => {
+    bridge.sync = {
+      [syncKey("main")]: syncOf({ dirty: true }),
+      [syncKey("feat")]: syncOf({
+        base: { name: "main", ahead: 2, behind: 4, conflicts: ["src/a.ts"] },
+      }),
+    };
+    const { container } = mount(["p:work/repo"]);
+    await waitFor(async () => expect(await stateLine("feat")).toBeTruthy());
+
+    await expectNoAxeViolations(container);
   });
 });

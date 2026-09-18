@@ -9,12 +9,108 @@
 // carries no label on purpose: a row that draws "in sync" on every clean branch
 // spends the reader's attention on the news that there is no news.
 
+import { createStore, produce } from "solid-js/store";
+import { invoke } from "@tauri-apps/api/core";
 import type { BranchSync } from "./gitActions";
 
 // Escaped rather than literal so the source stays ASCII, as the Changes panel's
 // own pills are.
-const UP = "↑";
-const DOWN = "↓";
+const UP = "\u2191";
+const DOWN = "\u2193";
+
+// The store: every sidebar row's answer, keyed the way the rows are.
+//
+// Per `(folderPath, branch)` rather than per folder, because a plain repo lists
+// several of its branches as rows on one path and each answers for itself. The
+// key is the backend's own, so a batch reply lands without a second mapping to
+// get wrong.
+//
+// Recomputed on movement, never on a timer. What moves a branch is a fetch, a
+// commit or a checkout, and all three already arrive as events.
+
+/** A row worth asking about: `plain-dir` and `incomplete` units are not git, so
+ *  they never reach the backend. */
+export type SyncUnit = { folderPath: string; branch: string | null; kind: string };
+
+const ASKABLE = new Set(["worktree", "plain"]);
+
+const keyOf = (folderPath: string, branch: string | null | undefined) => `${folderPath}\u0000${branch ?? ""}`;
+
+const [answers, setAnswers] = createStore<Record<string, BranchSync>>({});
+
+/** The units currently drawn, so a reply that outlived its row is dropped and
+ *  a container refresh knows which branches it covers. */
+let drawn = new Map<string, { path: string; branch: string }>();
+
+/** One row's standing, or null while nothing has answered for it. Null and
+ *  "in sync" are the same to `syncState`, which is what keeps an unanswered row
+ *  from reading as a clean one. */
+export function syncFor(folderPath: string, branch: string | null | undefined): BranchSync | null {
+  return answers[keyOf(folderPath, branch)] ?? null;
+}
+
+/**
+ * Reconcile the store against the units the tree now holds: drop what left,
+ * ask about what arrived, leave the rest alone.
+ *
+ * Additions only, because `loadConfig` runs on every config change and a full
+ * recompute would put a `git` process per row behind a rename. What the
+ * existing rows are waiting for is movement, and movement arrives separately.
+ */
+export function syncUnits(units: readonly SyncUnit[]): Promise<void> {
+  const next = new Map<string, { path: string; branch: string }>();
+  for (const unit of units) {
+    if (!ASKABLE.has(unit.kind)) continue;
+    next.set(keyOf(unit.folderPath, unit.branch), { path: unit.folderPath, branch: unit.branch ?? "" });
+  }
+  const added = [...next].filter(([key]) => !drawn.has(key)).map(([, unit]) => unit);
+  const gone = [...drawn.keys()].filter((key) => !next.has(key));
+  drawn = next;
+  if (gone.length) setAnswers(produce((state) => gone.forEach((key) => delete state[key])));
+  return ask(added);
+}
+
+/** Re-ask for every row on one folder. The backend fans a container's fetch out
+ *  once per folder in it, so one event covers every branch this path lists. */
+export function resyncRoot(root: string | null | undefined): Promise<void> {
+  if (!root) return Promise.resolve();
+  return ask([...drawn.values()].filter((unit) => unit.path === root));
+}
+
+/** Take an answer somebody else already paid for. `refreshMeta` asks
+ *  `git_branch_sync` for the selected root on every event that moves HEAD, and
+ *  that answer is this row's: asking again would be a second process for a
+ *  number already in hand. */
+export function adoptSync(root: string, branch: string | null, sync: BranchSync | null): void {
+  const key = keyOf(root, branch);
+  if (!drawn.has(key)) return;
+  setAnswers(produce((state) => {
+    if (sync) state[key] = sync;
+    else delete state[key];
+  }));
+}
+
+async function ask(units: { path: string; branch: string }[]): Promise<void> {
+  if (!units.length) return;
+  const reply = await invoke<Record<string, BranchSync>>("git_branch_sync_many", { units }).catch(() => null);
+  if (!reply) {
+    // Nothing came back, so these rows were never really claimed. Left in
+    // `drawn` they would stay silent for good, because `syncUnits` only ever
+    // asks about additions.
+    for (const unit of units) drawn.delete(keyOf(unit.path, unit.branch));
+    return;
+  }
+  setAnswers(produce((state) => {
+    for (const unit of units) {
+      const key = keyOf(unit.path, unit.branch);
+      // The row left while the batch ran, or the backend left it out: a path
+      // that stopped being a repo must lose its old answer, not keep it.
+      if (!drawn.has(key)) continue;
+      if (reply[key]) state[key] = reply[key];
+      else delete state[key];
+    }
+  }));
+}
 
 /** The levels, most severe first. The order here is the order `syncState`
  *  resolves them in, so a branch that is both behind its base and diverged from
@@ -45,6 +141,17 @@ export type SyncState = {
 };
 
 const NOTHING: SyncState = { level: "none", tone: "muted", label: "", detail: "", conflicts: [] };
+
+/** The levels whose label is words rather than an arrow, and so wants a line of
+ *  its own on a sidebar row.
+ *
+ *  `ahead` and `behind` draw as counts beside the branch name, where they cost
+ *  no height. `unpushed` is deliberately out: it is the resting state of every
+ *  branch somebody just cut, so a line for it would be a line on most rows the
+ *  day they are made. */
+const OWN_LINE = new Set<SyncLevel>(["conflicts", "diverged", "baseBehind"]);
+
+export const needsOwnLine = (state: SyncState): boolean => OWN_LINE.has(state.level);
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 

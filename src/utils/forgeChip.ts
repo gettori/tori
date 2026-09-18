@@ -5,7 +5,7 @@
 // that draws "no pull request" when the truth is "this remote is not GitHub" is
 // wrong in a way nobody reports, because both look like an absence.
 //
-// ## Seven kinds, and the two that matter
+// ## Eight kinds, and the three that matter
 //
 // The distinction the plan cares about is **inert vs noPr**. `noPr` means the
 // forge answered and there is no PR yet, which is a normal, temporary state of a
@@ -14,6 +14,12 @@
 // does not serve, or no branch at all. Collapsing the two would put a create
 // affordance on a GitLab checkout, which is the exact shape
 // `[[lesson_probe_the_capability_before_building_its_control]]` warns about.
+//
+// `readyForPr` splits `noPr` again along the same seam. Most branches without a
+// pull request are not waiting for one: they are the base itself, or a scratch
+// branch with nothing on it, or work that has never been pushed. The row that
+// is worth a nudge is the one with its own commits, already on the remote, and
+// no PR - and that takes the sync store, not the forge.
 //
 // `hidden` and `unknown` both render nothing, and are separate on purpose:
 // `hidden` is "the poller is not running, so anything drawn would be a claim
@@ -27,7 +33,15 @@ import type { PauseReason } from "./forgePoll";
 import type { KnownHosts } from "./prUrl";
 import type { CheckRollup, ReviewDecision, UnitStatus } from "./forgeTypes";
 
-export type ForgeChipKind = "hidden" | "inert" | "unknown" | "noPr" | "pr" | "pickAccount" | "connect";
+export type ForgeChipKind =
+  | "hidden"
+  | "inert"
+  | "unknown"
+  | "noPr"
+  | "readyForPr"
+  | "pr"
+  | "pickAccount"
+  | "connect";
 
 /// What the PR glyph depicts. `none` is the no-PR marker, which is a state of
 /// the branch rather than of a pull request, hence a value here rather than a
@@ -60,6 +74,12 @@ export function forgeChip(input: {
   firstUnit: boolean;
   paused: PauseReason | null;
   status: UnitStatus | null;
+  /** Commits this branch has that its base does not. Undefined is "the sync
+   *  store has not answered for this row yet", which is not zero: a row that
+   *  claimed "nothing to open" on launch and corrected itself a second later
+   *  would be indistinguishable from the bug it looks like. */
+  offBase?: number;
+  hasUpstream?: boolean;
 }): ForgeChip {
   // A `plain-dir` folder is not a branch and never will be, so this outranks
   // every other question, including whether the origin has been probed.
@@ -82,9 +102,18 @@ export function forgeChip(input: {
 
   const pr = input.status.pullRequest;
   if (pr === null) {
+    // Work of its own and a remote that already has it: the only branch for
+    // which "no pull request" is a thing to do rather than a thing to know.
+    // Unpushed is deliberately not ready - the PR cannot be opened from here,
+    // and a row that says otherwise is pointing at a button that would fail.
+    const ready = (input.offBase ?? 0) > 0 && input.hasUpstream === true;
     return {
-      kind: "noPr",
-      pr: { state: "none", label: "", title: "No pull request for this branch" },
+      kind: ready ? "readyForPr" : "noPr",
+      pr: {
+        state: "none",
+        label: "",
+        title: ready ? "No pull request yet, and this branch is ready for one" : "No pull request for this branch",
+      },
       checks: null,
       review: null,
       connect: null,
@@ -101,6 +130,20 @@ export function forgeChip(input: {
     review: reviewBadge(input.status.reviewDecision),
     connect: null,
   };
+}
+
+/// Whether this descriptor puts anything on screen. The view asks the same
+/// question of its own parts; a caller laying out *around* the chip needs the
+/// answer before the chip exists, and two spellings of "draws nothing" is how a
+/// row ends up with an empty line reserved for an absence.
+export function chipDraws(chip: ForgeChip): boolean {
+  return (
+    chip.kind === "pickAccount" ||
+    chip.connect !== null ||
+    chip.pr !== null ||
+    chip.checks !== null ||
+    chip.review !== null
+  );
 }
 
 /// The checks and verdict badges alone, for a surface listing pull requests the

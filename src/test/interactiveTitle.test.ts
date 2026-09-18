@@ -243,12 +243,13 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/panes/ChatPane/ChatPane.tsx", { count: 3, reason: GROUP_HEADING }],
   ["panels/Settings/panes/EditorPane/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/PanesPane/PanesPane.tsx", { count: 1, reason: GROUP_HEADING }],
+  ["panels/Settings/panes/IntegrationsPane/IntegrationsPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Terminal/TabMark.tsx", { count: 1, reason: TRUNCATION }],
   [
     "panels/LeftSidebar/LeftSidebar.tsx",
     {
-      count: 12,
-      reason: `seven ${TRUNCATION}, one ${ROW_ONCLICK}, and four of ${HEADING}`,
+      count: 13,
+      reason: `eight ${TRUNCATION}, one ${ROW_ONCLICK}, and four of ${HEADING}`,
     },
   ],
   [
@@ -299,7 +300,7 @@ const KEPT = new Map<string, Kept>([
  *  **Up two**: the graph page's two rows, the diff tab's path and an agent
  *  file's link target, less the Changes panel's member header span and the
  *  Search view's file header div, both dropped by their rebuilds. */
-const RAW_ELEMENT_TITLES = 69;
+const RAW_ELEMENT_TITLES = 70;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -418,9 +419,12 @@ describe("the title= guard", () => {
     // Up three spans, down one div: the graph rows, the diff tab's path and an
     // agent file's link target, less the Changes panel's member header; the div
     // is the Search view's file header, which its rebuild dropped.
+    // Up one span: a branch row's name, which now carries the branch's whole
+    // story behind it (last commit, what it is behind, the paths a catch-up
+    // would fight over) rather than only the text a narrow column truncates.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 15,
-      span: 54,
+      span: 55,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
   });

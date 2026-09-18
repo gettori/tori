@@ -99,7 +99,9 @@ import {
   liveSessionStatuses,
 } from "../../utils/sessionActivity";
 import { belongsToUnit } from "../../utils/unitAttribution";
-import { forgeChip } from "../../utils/forgeChip";
+import { chipDraws, forgeChip, type ForgeChip } from "../../utils/forgeChip";
+import { needsOwnLine, resyncRoot, syncFor, syncState, syncUnits } from "../../utils/branchSync";
+import { compactAge } from "../../utils/compactAge";
 import ForgeChipView from "../../components/ForgeChip/ForgeChip";
 import { forgeAccountName, forgeErrorMessage, needsAttention } from "../../utils/forgeTypes";
 import { apiCanServe } from "../../utils/createPr";
@@ -931,19 +933,7 @@ export default function LeftSidebar(props: {
   // all, so nothing in the tree can be clicked into a capability the repo does
   // not have - and, equally, so a sidebar full of GitLab checkouts stays as
   // quiet as it is today.
-  function forgeChipNode(g: Space, p: Project, u: BranchUnit) {
-    // Memoized, not a bare accessor: the component reads it several times per
-    // render and each read would otherwise re-parse the origin URL.
-    const chip = createMemo(() =>
-      forgeChip({
-        origin: origins()[p.path],
-        hosts: forgeHosts(),
-        branch: u.branch,
-        firstUnit: u.branch === p.branchUnits.find((x) => x.branch)?.branch,
-        paused: forgePause(p.path),
-        status: unitStatus(p.path, u.branch),
-      }),
-    );
+  function forgeChipNode(g: Space, p: Project, u: BranchUnit, chip: () => ForgeChip) {
     // A control only when there is a pull request to open a panel *onto*, or a
     // host to add an account for. A branch with no PR yet renders the quiet
     // no-PR mark and stays inert: the panel lists what exists, and a button that
@@ -1269,6 +1259,10 @@ export default function LeftSidebar(props: {
       setError("");
       // (Re)install the shallow root watch so external folder creates surface.
       invoke("roots_watch_start", { roots: cfg.roots }).catch(() => {});
+      // Every row's sync state: the new ones are computed, the departed ones
+      // dropped, and the rest left holding what they had. Fire-and-forget, so a
+      // slow batch never holds the tree back from rendering.
+      void syncUnits(cfg.spaces.flatMap((g) => g.projects.flatMap((p) => p.branchUnits)));
       // Seed the adopted set from the first real discovery (idempotent, and a
       // no-op on empty), so existing folders are never flagged historical.
       const folders = cfg.spaces.flatMap((g) =>
@@ -2420,6 +2414,51 @@ export default function LeftSidebar(props: {
     // One rollup for the row: the glyph's pulse and the status chip are two
     // readings of the same fact, and computing it twice is how they drift.
     const rollup = () => bubbleForUnits(p, [u]);
+    const sync = () => syncFor(u.folderPath, u.branch);
+    const state = createMemo(() => syncState(sync()));
+    // Memoized, not a bare accessor: the row reads it several times and each
+    // read would otherwise re-parse the origin URL.
+    const chip = createMemo(() =>
+      forgeChip({
+        origin: origins()[p.path],
+        hosts: forgeHosts(),
+        branch: u.branch,
+        firstUnit: u.branch === p.branchUnits.find((x) => x.branch)?.branch,
+        paused: forgePause(p.path),
+        status: unitStatus(p.path, u.branch),
+        // Zero once answered, undefined until then: a row cannot be told apart
+        // from "the base itself" any other way, and guessing zero would put a
+        // "ready" mark on every branch for the instant before the batch lands.
+        offBase: sync() ? (sync()!.base?.ahead ?? 0) : undefined,
+        hasUpstream: sync()?.upstream.has_upstream,
+      }),
+    );
+    const dirty = () => !!sync()?.dirty;
+    // The quiet no-PR mark is on every branch of every GitHub repo, so a line
+    // of its own for it would be a second line on almost every row. It stays on
+    // line one, where it costs no height; everything louder moves down.
+    const quietChip = () => chip().kind === "noPr";
+    const pill = () => chipDraws(chip()) && !quietChip();
+    const second = () => needsOwnLine(state()) || dirty() || pill();
+    const ahead = () => sync()?.upstream.ahead ?? 0;
+    const behind = () => sync()?.upstream.behind ?? 0;
+    const countsName = () =>
+      [ahead() > 0 ? `${ahead()} ahead` : "", behind() > 0 ? `${behind()} behind` : ""]
+        .filter(Boolean)
+        .join(", ");
+    // One tooltip for the row rather than one per mark: the marks are small,
+    // none of them is focusable, and the reader wants the branch's story in one
+    // place rather than three hovers to assemble it.
+    const story = () =>
+      [
+        unitLabel(u),
+        sync()?.head_committed_at ? `Last commit ${compactAge(sync()!.head_committed_at)} ago` : "",
+        state().detail,
+        ...state().conflicts,
+        dirty() ? "Uncommitted changes" : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
     return (
       <div
         class={`node ${styles.branchNode}`}
@@ -2436,7 +2475,22 @@ export default function LeftSidebar(props: {
           aria-current={unitSelected(u) ? "true" : undefined}
         >
           <span class={styles.rowIcon}><UnitIcon kind={u.kind} active={rollup().executing > 0} /></span>
-          <span class={styles.label}>{unitLabel(u)}</span>
+          <span class={styles.label} title={story()}>{unitLabel(u)}</span>
+          {/* Counts, not a verdict: both directions can be true at once, and
+              here they cost no height. What needs words goes on line two. */}
+          <Show when={ahead() > 0 || behind() > 0}>
+            {/* The arrows are glyphs: read out they name two characters, not a
+                state, so the name is said once beside them instead. */}
+            <span class={styles.syncCounts} data-sync-counts aria-hidden="true">
+              <Show when={ahead() > 0}>
+                <span>{`\u2191${ahead()}`}</span>
+              </Show>
+              <Show when={behind() > 0}>
+                <span>{`\u2193${behind()}`}</span>
+              </Show>
+            </span>
+            <span class={styles.srOnly}>{countsName()}</span>
+          </Show>
           <For each={topicsAt(u.folderPath)}>
             {(f) => (
               <IconButton
@@ -2460,9 +2514,25 @@ export default function LeftSidebar(props: {
           <Show when={u.isCurrent}>
             <span class={styles.dot} title="current checkout">●</span>
           </Show>
-          {forgeChipNode(g, p, u)}
+          <Show when={quietChip()}>{forgeChipNode(g, p, u, chip)}</Show>
           {statusBubble(rollup)}
         </ContextMenu>
+        {/* A sibling of the row, not a part of it, so the rail, the hover pill
+            and the drag handle stay measured against a row that never grows. It
+            selects the same unit: a dead strip under a live row is worse. */}
+        <Show when={second()}>
+          <div class={styles.stateLine} data-state-line onClick={() => selectUnit(g, p, u)}>
+            <Show when={needsOwnLine(state())}>
+              <span class={`${styles.syncLabel} ${styles[state().tone]}`} data-sync-level={state().level}>
+                {state().label}
+              </span>
+            </Show>
+            <Show when={dirty()}>
+              <span class={styles.dirtyMark} data-sync-dirty>uncommitted</span>
+            </Show>
+            <Show when={pill()}>{forgeChipNode(g, p, u, chip)}</Show>
+          </div>
+        </Show>
       </div>
     );
   }
@@ -2654,6 +2724,10 @@ export default function LeftSidebar(props: {
           forThis((r) => ({ ...r, fetching: false }));
         }
       }
+      // Quiet or not: a fetch is the one thing that moves a branch's standing
+      // without anybody here touching it, and this event already arrives once
+      // per folder in the container.
+      void resyncRoot(e.payload.repo);
       // A manual fetch is one repo you just acted on, so reloading the tree is
       // the point of it. The scheduled sweep is every repo at once, where the
       // same call would be one full rediscovery per container, on a timer.
