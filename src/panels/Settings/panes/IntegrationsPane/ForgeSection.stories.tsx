@@ -32,14 +32,17 @@ function routes(baseUrl: string, provider: ForgeProvider): SignInRoutes {
   return {
     host: name,
     baseUrl: url,
-    deviceFlow: name === "github.com" || name === "gitlab.com",
+    deviceFlow: name === "gitlab.com",
     scopes,
     tokenUrl: `${url}/-/user_settings/personal_access_tokens`,
     appId: null,
   };
 }
 
-type Device = "waits" | "expires" | "fails";
+/** How the browser sign-in ends, for the stories that need it to end badly.
+ *  Both failures come back from the poll: `forge_sign_in_start` is what issues
+ *  the code, so a start that threw would leave no card to fail. */
+type Device = "waits" | "expires" | "denied";
 
 function stubHost(hosts: ForgeHost[], device: Device = "waits") {
   mockIPC((cmd, args) => {
@@ -47,20 +50,29 @@ function stubHost(hosts: ForgeHost[], device: Device = "waits") {
     switch (cmd) {
       case "forge_accounts":
         return hosts;
-      case "forge_sign_in_routes":
-        return routes(a.baseUrl as string, a.provider as ForgeProvider);
-      case "forge_device_start":
-        if (device === "fails") return Promise.reject({ kind: "api", message: "gitlab.com is not answering." });
+      case "forge_sign_in_start": {
+        const r = routes(a.baseUrl as string, a.provider as ForgeProvider);
+        if (!r.deviceFlow) return { kind: "token", routes: r };
         return {
-          userCode: "5BB3-E406",
-          verificationUri: "https://github.com/login/device",
-          expiresInSecs: 900,
-          intervalSecs: 1,
+          kind: "browser",
+          routes: r,
+          prompt: {
+            userCode: "5BB3-E406",
+            verificationUri: "https://gitlab.com/oauth/device",
+            expiresInSecs: 900,
+            intervalSecs: 1,
+          },
         };
+      }
       case "forge_device_poll":
-        return device === "expires"
-          ? { kind: "expired", code: "expired_token" }
-          : { kind: "pending", nextIntervalSecs: 60 };
+        switch (device) {
+          case "expires":
+            return { kind: "expired", code: "expired_token" };
+          case "denied":
+            return { kind: "denied", code: "access_denied" };
+          default:
+            return { kind: "pending", nextIntervalSecs: 60 };
+        }
       case "set_settings":
         return a.settings;
       default:
@@ -121,7 +133,23 @@ export const State04Rejected: Story = {
   },
 };
 
-export const State05Picker: Story = {
+/** Relative, not fixed: the row reads the clock, so a pinned date would drift
+ *  into the past and both rows would render the same state. */
+const inDays = (days: number) => Math.floor(Date.now() / 1000 + days * 86_400);
+
+export const State05TokenExpiry: Story = {
+  render: () => {
+    stubHost([
+      host("github.com", [
+        { ...account("github.com", "octocat", signedIn("octocat")), expiresAt: inDays(4) },
+        { ...account("github.com", "octocat-ci", signedIn("octocat-ci")), expiresAt: inDays(-2) },
+      ]),
+    ]);
+    return <ForgeSection />;
+  },
+};
+
+export const State06Picker: Story = {
   render: () => {
     stubHost([]);
     return <ForgeSection />;
@@ -133,21 +161,23 @@ export const State05Picker: Story = {
   },
 };
 
-export const State06Waiting: Story = {
+export const State07Waiting: Story = {
   render: () => {
     stubHost([]);
     return <ForgeSection />;
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByText("Connect github.com"));
+    await userEvent.click(await canvas.findByText("Another host..."));
+    await userEvent.click(await canvas.findByText("gitlab.com"));
+    await userEvent.click(await canvas.findByText("Continue"));
     await canvas.findByText("5BB3");
   },
 };
 
-export const State07TokenPaste: Story = {
+export const State08TokenPaste: Story = {
   render: () => {
-    stubHost([], "fails");
+    stubHost([], "denied");
     return <ForgeSection />;
   },
   play: async ({ canvasElement }) => {
@@ -160,7 +190,7 @@ export const State07TokenPaste: Story = {
   },
 };
 
-export const State08SelfManaged: Story = {
+export const State09SelfManaged: Story = {
   render: () => {
     stubHost([]);
     return <ForgeSection />;
@@ -174,14 +204,16 @@ export const State08SelfManaged: Story = {
   },
 };
 
-export const State09Error: Story = {
+export const State10Error: Story = {
   render: () => {
     stubHost([], "expires");
     return <ForgeSection />;
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByText("Connect github.com"));
+    await userEvent.click(await canvas.findByText("Another host..."));
+    await userEvent.click(await canvas.findByText("gitlab.com"));
+    await userEvent.click(await canvas.findByText("Continue"));
     await canvas.findByText("Start again", {}, { timeout: 5000 });
   },
 };
