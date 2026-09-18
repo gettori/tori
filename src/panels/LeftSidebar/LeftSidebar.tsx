@@ -126,8 +126,6 @@ import { shortHome, spaceInitials } from "../../utils/names";
 import { rememberSelection, rememberedUnit, rememberedTopic } from "../../utils/selectionMemory";
 import {
   Folder,
-  FolderGit2,
-  FolderTree,
   Layers,
   Ellipsis,
   Search,
@@ -2057,15 +2055,19 @@ export default function LeftSidebar(props: {
   // checkout to attempt anything against.
   const gitProject = (p: Project) => projectUnitKind(p) === "plain" || projectUnitKind(p) === "worktree";
 
-  // What a project's menu is acting on, in the project's own kind: its glyph,
-  // its name, and the kind as a badge. Three menus differ by kind and the rows
-  // alone never said which of the three had opened, nor which row it opened on.
+  // What a project's menu is acting on: the icon its row wears, its name, and
+  // its kind as a badge. The rows alone never said which of the three menus had
+  // opened, nor which row it opened on.
+  //
+  // The project's own icon rather than a glyph for its kind: the badge already
+  // carries the kind, and what the eye is matching against is the row it just
+  // right-clicked. `ProjectIcon` resolves it the same way that row does, so the
+  // two cannot show different things.
   const projectMenuHead = (p: Project) => {
     const kind = projectUnitKind(p);
-    const git = kind !== "plain-dir";
     return (
-      <span class={styles.projectMenuHead} classList={{ [styles.projectMenuGit]: git }}>
-        <Icon icon={kind === "plain-dir" ? Folder : kind === "plain" ? FolderGit2 : FolderTree} />
+      <span class={styles.projectMenuHead}>
+        <ProjectIcon seed={p.path} icon={p.icon} iconFile={p.iconFile} favicon={p.favicon} />
         <span class={styles.projectMenuName}>{p.name}</span>
         <span class={styles.projectMenuBadge}>
           {kind === "plain-dir" ? "Folder" : kind === "plain" ? "Repo" : "Bare"}
