@@ -2818,7 +2818,7 @@ export default function LeftSidebar(props: {
           setDropHint(null);
         }}
       >
-        <Show when={resolveIcon(g.icon)} fallback={g.name.trim().charAt(0).toUpperCase() || "?"}>
+        <Show when={resolveIcon(g.icon)} fallback={spaceInitials(g.name)}>
           {(glyph) => <Icon icon={glyph()} />}
         </Show>
         {/* Always mounted; the 0fr track hides it. See .tileName. */}
