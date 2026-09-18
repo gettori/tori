@@ -615,6 +615,69 @@
   background: var(--neutral-subtle);
 }
 
+/* Two counts rather than one verdict: both at once is the normal shape of a
+   diverged branch, and the verdict that needs words is on the line below. */
+.row .syncCounts {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: calc(3px * var(--ui-scale));
+  color: var(--fg-muted);
+  font-size: var(--tori-text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A sibling of the row, so `.row.branch` keeps its height and the rail (drawn
+   on `.branchNode`, top to bottom) spans the taller node for free. The indent
+   is the label's own x: the row's padding, its 16px icon slot, and its gap. */
+.stateLine {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--tori-space-2);
+  padding: 0 calc(8px * var(--ui-scale)) var(--branch-row-pad)
+    calc(var(--branch-label-x) + 16px * var(--ui-scale) + var(--tori-space-3));
+  font-size: var(--tori-text-2xs);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.syncLabel {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The same four semantic roles the titlebar chip uses, as colour only: a tinted
+   box per row would put a second grid of coloured blocks down a column whose
+   job is names. */
+.syncLabel.danger {
+  color: var(--danger-fg);
+}
+.syncLabel.warn {
+  color: var(--attention-emphasis);
+}
+.syncLabel.attention {
+  color: var(--attention-fg);
+}
+.syncLabel.muted {
+  color: var(--fg-muted);
+}
+
+/* Uncommitted work: a marker beside the severity scale rather than a step on
+   it. Dirty is normal, and toning it would rank "I am mid-edit" against "this
+   will conflict". */
+.srOnly {
+  composes: srOnly from "../../styles/patterns.module.css";
+}
+
+.dirtyMark {
+  flex: 0 0 auto;
+  padding: 0 calc(4px * var(--ui-scale));
+  border-radius: 3px;
+  color: var(--fg-muted);
+  background: var(--neutral-subtle);
+}
+
 /* The Tag chip on a member unit: an IconButton with its border cleared, so the
    row reads a glyph rather than a control until the pointer finds it. */
 .row .topicChip,

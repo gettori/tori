@@ -44,6 +44,23 @@ describe("the states that render nothing", () => {
     expect(chip({ status: status({ pullRequest: null }) }).kind).toBe("noPr");
   });
 
+  it("separates a branch waiting for a pull request from one that is not", () => {
+    const noPr = status({ pullRequest: null });
+    expect(chip({ status: noPr, offBase: 3, hasUpstream: true }).kind).toBe("readyForPr");
+
+    // Nothing of its own to open one about, and nothing on the remote to open
+    // one from: both are `noPr`, which draws the same quiet mark as today.
+    expect(chip({ status: noPr, offBase: 0, hasUpstream: true }).kind).toBe("noPr");
+    expect(chip({ status: noPr, offBase: 3, hasUpstream: false }).kind).toBe("noPr");
+    // Not answered for yet. A row that claims "ready" on launch and takes it
+    // back a second later is the shape of a bug, so silence comes first.
+    expect(chip({ status: noPr }).kind).toBe("noPr");
+
+    // The sync facts never outrank the forge's own answer.
+    expect(chip({ offBase: 3, hasUpstream: true }).kind).toBe("pr");
+    expect(chip({ origin: null, offBase: 3, hasUpstream: true }).kind).toBe("inert");
+  });
+
   it("offers an account for a host with none, once per repo", () => {
     // Before one, a chip promising in-app PR state would be promising a call
     // that comes back `unsupportedRemote`, so the chip offers the account instead.

@@ -2290,6 +2290,9 @@ pub struct UpstreamSync {
 #[derive(Serialize, Debug, PartialEq)]
 pub struct BaseSync {
     name: String,
+    /// Commits this branch has and the base does not: its own work, and the
+    /// answer to whether there is anything here to open a pull request about.
+    ahead: u32,
     behind: u32,
     conflicts: Option<Vec<String>>,
 }
@@ -2306,7 +2309,8 @@ pub struct BranchSync {
     base: Option<BaseSync>,
 }
 
-/// The whole sync story of the checked-out branch, in one round trip.
+/// The whole sync story of one branch, in one round trip. `branch` names it;
+/// None means whichever is checked out.
 ///
 /// Every probe inside degrades to its zero rather than to an `Err`: this
 /// answers for a row that is drawn whether or not the repo cooperates, and a
@@ -2315,41 +2319,110 @@ pub struct BranchSync {
 /// value for "unknown" precisely so the UI can stay silent instead of claiming
 /// a clean merge it did not check.
 #[tauri::command(async)]
-pub fn git_branch_sync(project_path: String) -> Result<BranchSync, String> {
-    Ok(branch_sync(&project_path))
+pub fn git_branch_sync(project_path: String, branch: Option<String>) -> Result<BranchSync, String> {
+    Ok(branch_sync(&project_path, branch.as_deref()))
 }
 
-fn branch_sync(repo: &str) -> BranchSync {
+fn branch_sync(repo: &str, want: Option<&str>) -> BranchSync {
+    branch_sync_at(repo, want).1
+}
+
+/// Whether the branch names a commit, and its standing either way. The batch
+/// drops a row on that flag; the single-row command answers with the zeros
+/// regardless, because a row on screen needs a value rather than an error.
+fn branch_sync_at(repo: &str, want: Option<&str>) -> (bool, BranchSync) {
     // `symbolic-ref` rather than `rev-parse --abbrev-ref HEAD`, which answers
     // the literal string "HEAD" when detached and dies on an unborn branch.
     // This one names a branch before its first commit, and fails only when detached.
-    let branch = git_capture(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
+    let head = git_capture(repo, &["symbolic-ref", "--quiet", "--short", "HEAD"])
         .ok()
         .filter(|name| !name.is_empty());
+    let checked_out = want.is_none() || want == head.as_deref();
+    // `HEAD` wherever it stands for the branch asked about, because the reflog
+    // that carries a rebase is HEAD's, not the branch ref's.
+    let tip = match want {
+        Some(name) if !checked_out => name.to_string(),
+        _ => "HEAD".to_string(),
+    };
+    let branch = want.map(str::to_string).or(head);
     let sync = BranchSync {
         detached: branch.is_none(),
-        dirty: is_dirty(repo),
+        // A branch nobody is standing on cannot have uncommitted work: the
+        // dirt in the worktree belongs to whatever is checked out there.
+        dirty: checked_out && is_dirty(repo),
         head_committed_at: 0,
         upstream: UpstreamSync::default(),
         base: None,
     };
-    if git_capture(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_err() {
-        return sync;
+    if !resolves(repo, &tip) {
+        return (false, sync);
     }
 
     let tracked = branch.as_deref().and_then(|name| upstream_ref(repo, name));
-    BranchSync {
-        head_committed_at: git_capture(repo, &["log", "-1", "--format=%ct"])
+    let answered = BranchSync {
+        head_committed_at: git_capture(repo, &["log", "-1", "--format=%ct", &tip, "--"])
             .ok()
             .and_then(|t| t.parse().ok())
             .unwrap_or(0),
         upstream: match (branch.as_deref(), &tracked) {
-            (Some(name), Some(_)) => upstream_sync(repo, name),
+            (Some(name), Some(_)) => upstream_sync(repo, name, &tip),
             _ => UpstreamSync::default(),
         },
-        base: base_sync(repo, branch.as_deref(), tracked.as_deref()),
+        base: base_sync(repo, &tip, branch.as_deref(), tracked.as_deref()),
         ..sync
-    }
+    };
+    (true, answered)
+}
+
+/// Whether `repo` is a git repo in which `tip` names a commit. False covers an
+/// unborn branch, a branch that does not exist, and a path that is not a repo
+/// at all, which is every reason a row has nothing to be asked about.
+fn resolves(repo: &str, tip: &str) -> bool {
+    git_capture(repo, &["rev-parse", "--verify", "--quiet", tip]).is_ok()
+}
+
+/// One row the sidebar draws: the folder it lives on and the branch it speaks
+/// for. An empty `branch` asks for whichever branch is checked out there,
+/// which is what a worktree row wants.
+#[derive(Deserialize, Clone)]
+pub struct SyncUnit {
+    path: String,
+    branch: String,
+}
+
+/// How wide the batch spreads. Each answer is a handful of short-lived `git`
+/// processes, so the ceiling is there to stop a sidebar of thirty rows starting
+/// thirty of them at once.
+const SYNC_THREADS: usize = 6;
+
+/// Every row's standing in one call, keyed `path\0branch`.
+///
+/// Both halves are in the key because neither is one on its own: a plain repo
+/// lists several branches on a single folder, and a branch name repeats across
+/// worktrees.
+///
+/// A path that is not a repo, and a branch with no commit behind it, are left
+/// out rather than answered or raised. One unreadable row must not cost the
+/// other twenty theirs, and a caller that gets no entry draws no state, which
+/// is the same thing it draws for a row with nothing to say.
+#[tauri::command(async)]
+pub fn git_branch_sync_many(units: Vec<SyncUnit>) -> Result<std::collections::HashMap<String, BranchSync>, String> {
+    let chunk = units.len().div_ceil(SYNC_THREADS).max(1);
+    let handles: Vec<_> = units
+        .chunks(chunk)
+        .map(<[SyncUnit]>::to_vec)
+        .map(|group| thread::spawn(move || group.iter().filter_map(sync_entry).collect::<Vec<_>>()))
+        .collect();
+    Ok(handles
+        .into_iter()
+        .flat_map(|h| h.join().unwrap_or_default())
+        .collect())
+}
+
+fn sync_entry(unit: &SyncUnit) -> Option<(String, BranchSync)> {
+    let want = (!unit.branch.is_empty()).then_some(unit.branch.as_str());
+    let (resolved, sync) = branch_sync_at(&unit.path, want);
+    resolved.then(|| (format!("{}\0{}", unit.path, unit.branch), sync))
 }
 
 /// Anything uncommitted at all, tracked or not. `--no-optional-locks` for the
@@ -2370,7 +2443,7 @@ fn is_dirty(repo: &str) -> bool {
 /// upstream sits now, long ago, does not read as rewritten forever.
 const REFLOG_DEPTH: &str = "-n200";
 
-fn upstream_sync(repo: &str, branch: &str) -> UpstreamSync {
+fn upstream_sync(repo: &str, branch: &str, tip: &str) -> UpstreamSync {
     let range = format!("{branch}...{branch}@{{u}}");
     let counts = git_capture(repo, &["rev-list", "--left-right", "--count", &range]).unwrap_or_default();
     let mut parts = counts.split_whitespace();
@@ -2384,23 +2457,23 @@ fn upstream_sync(repo: &str, branch: &str) -> UpstreamSync {
         ahead,
         behind,
         has_upstream: true,
-        rewritten: diverged && upstream_tip_in_reflog(repo, branch),
+        rewritten: diverged && upstream_tip_in_reflog(repo, branch, tip),
     }
 }
 
 /// Whether the upstream's tip is a commit HEAD has stood on before: an amend or
 /// a rebase leaves the old tip in the reflog, a push by somebody else does not.
 /// A heuristic, not a proof, so the chip says "diverged" either way.
-fn upstream_tip_in_reflog(repo: &str, branch: &str) -> bool {
-    let Ok(tip) = git_capture(repo, &["rev-parse", &format!("{branch}@{{u}}")]) else {
+fn upstream_tip_in_reflog(repo: &str, branch: &str, tip: &str) -> bool {
+    let Ok(upstream) = git_capture(repo, &["rev-parse", &format!("{branch}@{{u}}")]) else {
         return false;
     };
-    git_capture(repo, &["log", "-g", "--format=%H", REFLOG_DEPTH, "HEAD"])
-        .map(|log| log.lines().any(|sha| sha == tip))
+    git_capture(repo, &["log", "-g", "--format=%H", REFLOG_DEPTH, tip, "--"])
+        .map(|log| log.lines().any(|sha| sha == upstream))
         .unwrap_or(false)
 }
 
-fn base_sync(repo: &str, branch: Option<&str>, tracked: Option<&str>) -> Option<BaseSync> {
+fn base_sync(repo: &str, tip: &str, branch: Option<&str>, tracked: Option<&str>) -> Option<BaseSync> {
     let base = git_default_base_branch(repo.to_string()).ok().flatten()?;
     // Two ways the base is already the question the upstream answers: standing
     // on it, or tracking it from somewhere else. Either way a second count of
@@ -2412,11 +2485,18 @@ fn base_sync(repo: &str, branch: Option<&str>, tracked: Option<&str>) -> Option<
     if tracked == Some(base_ref.as_str()) {
         return None;
     }
-    let behind = git_capture(repo, &["rev-list", "--count", &format!("HEAD..refs/remotes/{base_ref}")])
-        .ok()
-        .and_then(|n| n.parse().ok())
-        .unwrap_or(0);
-    Some(BaseSync { name: base, conflicts: base_conflicts(repo, &base_ref, behind), behind })
+    // Both directions out of one process. Unrelated histories have no merge
+    // base and print nothing, which falls through to zero and zero: no work of
+    // its own, nothing to catch up on, and `conflicts` left to say why.
+    let counts = git_capture(
+        repo,
+        &["rev-list", "--left-right", "--count", &format!("{tip}...refs/remotes/{base_ref}"), "--"],
+    )
+    .unwrap_or_default();
+    let mut counts = counts.split_whitespace();
+    let ahead = counts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
+    let behind = counts.next().and_then(|n| n.parse().ok()).unwrap_or(0);
+    Some(BaseSync { name: base, ahead, conflicts: base_conflicts(repo, &base_ref, tip, behind), behind })
 }
 
 /// Everything a merge's outcome turns on and nothing else, so a row redrawn on
@@ -2431,8 +2511,8 @@ static CONFLICTS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap
 /// eviction order to maintain for entries that were about to expire anyway.
 const CONFLICT_CACHE_MAX: usize = 128;
 
-fn base_conflicts(repo: &str, base_ref: &str, behind: u32) -> Option<Vec<String>> {
-    conflicts_with(repo, base_ref, behind, merge_tree_conflicts)
+fn base_conflicts(repo: &str, base_ref: &str, tip: &str, behind: u32) -> Option<Vec<String>> {
+    conflicts_with(repo, base_ref, tip, behind, merge_tree_conflicts)
 }
 
 /// The cache and the two cheap refusals around it, with the merge injected so a
@@ -2440,8 +2520,9 @@ fn base_conflicts(repo: &str, base_ref: &str, behind: u32) -> Option<Vec<String>
 fn conflicts_with(
     repo: &str,
     base_ref: &str,
+    tip: &str,
     behind: u32,
-    merge: impl FnOnce(&str, &str) -> Option<Vec<String>>,
+    merge: impl FnOnce(&str, &str, &str) -> Option<Vec<String>>,
 ) -> Option<Vec<String>> {
     // The base is already an ancestor, so the merge is a no-op: clean, known to
     // be clean, and not worth a process to find out.
@@ -2451,8 +2532,8 @@ fn conflicts_with(
     if !crate::git_health::at_least(2, 38) {
         return None;
     }
-    let Some(key) = conflict_key(repo, base_ref) else {
-        return merge(repo, base_ref);
+    let Some(key) = conflict_key(repo, base_ref, tip) else {
+        return merge(repo, base_ref, tip);
     };
     let cache = CONFLICTS.get_or_init(Default::default);
     if let Some(hit) = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
@@ -2460,7 +2541,7 @@ fn conflicts_with(
     }
     // Outside the lock: merge-tree is the slow part, and holding the map shut
     // for it would serialise every other row's lookup behind one of them.
-    let answer = merge(repo, base_ref);
+    let answer = merge(repo, base_ref, tip);
     let mut map = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if map.len() >= CONFLICT_CACHE_MAX {
         map.clear();
@@ -2471,8 +2552,8 @@ fn conflicts_with(
 
 /// None when either side will not resolve, which is the one case that must not
 /// be cached: an answer keyed on a sha nobody could read is keyed on nothing.
-fn conflict_key(repo: &str, base_ref: &str) -> Option<ConflictKey> {
-    let head = git_capture(repo, &["rev-parse", "HEAD"]).ok()?;
+fn conflict_key(repo: &str, base_ref: &str, tip: &str) -> Option<ConflictKey> {
+    let head = git_capture(repo, &["rev-parse", tip]).ok()?;
     let base = git_capture(repo, &["rev-parse", &format!("refs/remotes/{base_ref}")]).ok()?;
     Some((crate::exec::common_dir(repo), head, base))
 }
@@ -2480,11 +2561,11 @@ fn conflict_key(repo: &str, base_ref: &str) -> Option<ConflictKey> {
 /// The paths a merge of the base into HEAD would conflict on, without touching
 /// the working tree. The 2.38 `--write-tree` exit code is the answer: 0 clean,
 /// 1 conflicted with the paths after the oid, anything else unknown, not clean.
-fn merge_tree_conflicts(repo: &str, base_ref: &str) -> Option<Vec<String>> {
+fn merge_tree_conflicts(repo: &str, base_ref: &str, tip: &str) -> Option<Vec<String>> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
-        .args(["merge-tree", "--write-tree", "--name-only", "--no-messages", base_ref, "HEAD"])
+        .args(["merge-tree", "--write-tree", "--name-only", "--no-messages", base_ref, tip])
         .output()
         .ok()?;
     match out.status.code() {
@@ -3133,7 +3214,11 @@ diff --git a/f b/f
     }
 
     fn sync_of(dir: &Path) -> BranchSync {
-        branch_sync(&dir.to_string_lossy())
+        branch_sync(&dir.to_string_lossy(), None)
+    }
+
+    fn sync_of_branch(dir: &Path, branch: &str) -> BranchSync {
+        branch_sync(&dir.to_string_lossy(), Some(branch))
     }
 
     #[test]
@@ -3152,7 +3237,7 @@ diff --git a/f b/f
         // "level with main" from "there is no main".
         assert_eq!(
             sync.base,
-            Some(BaseSync { name: "main".into(), behind: 0, conflicts: Some(vec![]) })
+            Some(BaseSync { name: "main".into(), ahead: 0, behind: 0, conflicts: Some(vec![]) })
         );
         scrub(&[&local, &remote]);
     }
@@ -3452,7 +3537,7 @@ diff --git a/f b/f
 
         let runs = std::cell::Cell::new(0u32);
         let ask = |dir: &Path| {
-            conflicts_with(&dir.to_string_lossy(), "origin/main", 1, |_, _| {
+            conflicts_with(&dir.to_string_lossy(), "origin/main", "HEAD", 1, |_, _, _| {
                 runs.set(runs.get() + 1);
                 Some(vec!["f.txt".to_string()])
             })
@@ -3463,6 +3548,66 @@ diff --git a/f b/f
         ask(&local);
         ask(&second);
         assert_eq!(runs.get(), 2, "four calls, two distinct HEADs");
+
+        git(&local, &["worktree", "remove", "--force", &second.to_string_lossy()]);
+        scrub(&[&local, &remote, &second]);
+    }
+
+    #[test]
+    fn branch_sync_answers_for_a_branch_nobody_is_standing_on() {
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "a.txt", "ours");
+        move_base(&local, "b.txt", "base moved on");
+        std::fs::write(local.join("scratch.txt"), "uncommitted").unwrap();
+
+        let feat = sync_of_branch(&local, "feat");
+        assert!(feat.dirty, "feat is what the dirty worktree is standing on");
+        assert!(!feat.upstream.has_upstream);
+        assert_eq!(feat.base.as_ref().map(|b| (b.ahead, b.behind)), Some((1, 1)));
+
+        let main = sync_of_branch(&local, "main");
+        assert!(!main.dirty, "the dirt in the worktree is not main's");
+        assert!(!main.detached);
+        assert_eq!(
+            main.upstream,
+            UpstreamSync { ahead: 0, behind: 0, has_upstream: true, rewritten: false }
+        );
+        assert_eq!(main.base, None, "main is the base");
+        assert!(main.head_committed_at > 0);
+
+        scrub(&[&local, &remote]);
+    }
+
+    #[test]
+    fn branch_sync_many_answers_every_row_and_drops_the_ones_it_cannot() {
+        let (local, remote) = repo_on_feature();
+        commit_file(&local, "a.txt", "ours");
+        move_base(&local, "b.txt", "base moved on");
+        let second = local.with_extension("wt");
+        git(&local, &["worktree", "add", "-q", "-b", "other", &second.to_string_lossy(), "main"]);
+
+        let unit = |path: &Path, branch: &str| SyncUnit {
+            path: path.to_string_lossy().into_owned(),
+            branch: branch.to_string(),
+        };
+        let answers = git_branch_sync_many(vec![
+            unit(&second, ""),
+            unit(&local, "feat"),
+            unit(&local, "main"),
+            unit(&local.join("not-a-repo"), ""),
+        ])
+        .unwrap();
+
+        assert_eq!(answers.len(), 3, "the non-repo is absent, not an error");
+        let at = |path: &Path, branch: &str| {
+            answers
+                .get(&format!("{}\0{}", path.to_string_lossy(), branch))
+                .expect("every readable row answers")
+        };
+        assert_eq!(at(&local, "feat").base.as_ref().map(|b| b.behind), Some(1));
+        assert_eq!(at(&local, "main").base, None);
+        // The worktree's own branch, not the one `local` has checked out.
+        assert_eq!(at(&second, "").base.as_ref().map(|b| b.behind), Some(0));
 
         git(&local, &["worktree", "remove", "--force", &second.to_string_lossy()]);
         scrub(&[&local, &remote, &second]);
