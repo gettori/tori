@@ -6,6 +6,7 @@ import IconGrid from "../IconGrid/IconGrid";
 import Popover from "../Popover/Popover";
 import {
   PICKER_ICONS,
+  SHELF,
   drawShelf,
   resolveIcon,
   restingShelf,
@@ -59,8 +60,10 @@ export default function SpaceAppearance(props: {
   // Mirrors the grid's own query, which it does not publish otherwise, so the
   // "+N more" line can go when a search is what is on screen.
   const [iconQuery, setIconQuery] = createSignal("");
-  // Drawn once for the life of the dialog; see `drawShelf` on why.
-  const shelf = drawShelf();
+  // Drawn once for the life of the dialog; see `drawShelf` on why. One short,
+  // because the "no icon" tile below is a tile in this same grid: the shelf is
+  // what fills the rows *after* it, so both pickers come out the same height.
+  const shelf = drawShelf(SHELF - 1);
   let colorChip: HTMLButtonElement | undefined;
   let iconChip: HTMLButtonElement | undefined;
   let colorPanel: HTMLElement | undefined;

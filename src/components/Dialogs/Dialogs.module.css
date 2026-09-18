@@ -495,9 +495,13 @@
   width: calc(24px * var(--ui-scale));
   height: calc(24px * var(--ui-scale));
 }
+/* Set to the glyph beside it rather than to the body text around it: the mark
+   is one character now, and at the text ramp it read as a caption sitting in a
+   48px tile instead of as the thing the tile is showing. */
 .previewMark {
-  font-size: var(--tori-text-2xl);
+  font-size: var(--tori-text-4xl);
   font-weight: 600;
+  line-height: 1;
 }
 
 /* A choice you can see without opening it: the chip previews its own value, so
