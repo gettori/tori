@@ -73,7 +73,9 @@ sed -i '' "s/^version = \"$current\"/version = \"$version\"/" src-tauri/Cargo.to
 
 git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
 git commit -m "Tori $version"
-git push
+# Named rather than bare: a worktree checkout usually has no upstream set, and
+# releasing from one is ordinary here.
+git push origin HEAD
 
 # --- Build and verify ------------------------------------------------------
 
