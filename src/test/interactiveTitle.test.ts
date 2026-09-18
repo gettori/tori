@@ -32,7 +32,7 @@
 // take one without going around them. What survives is listed in `KEPT`, and it
 // is three kinds of thing:
 //
-//   * **A pinned count on a raw `span` or `div`** - the full text behind a
+//   * **A pinned count on a raw `span`, `div` or `li`** - the full text behind a
 //     truncated label, on an element no keyboard can reach. A tooltip per row of
 //     a dense list is the waste this ticket declined to add, and a `title` on
 //     something unfocusable takes nothing away from a keyboard user because
@@ -89,7 +89,7 @@ const HEADING =
 const GROUP_HEADING =
   "the `title` prop of a Settings `Group` - a section heading, rendered as visible text";
 const TRUNCATION =
-  "non-interactive `title` on a span/div: the full text behind a truncated label, on an element no keyboard can reach. issue 102 keeps these deliberately - a tooltip per row of a dense list is the waste the ticket declines to add";
+  "non-interactive `title` on a raw element: the full text behind a truncated label, on an element no keyboard can reach. issue 102 keeps these deliberately - a tooltip per row of a dense list is the waste the ticket declines to add";
 const FIXTURE =
   "a test fixture passing a component's `title` prop, or an attribute selector asserting on one";
 const ROW_ONCLICK =
@@ -208,6 +208,10 @@ const KEPT = new Map<string, Kept>([
     "panels/Editor/SharedFilesView.tsx",
     { count: 2, reason: `one ${TRUNCATION}, and one ${HEADING}` },
   ],
+  ["panels/FirstRun/FirstRun.tsx", { count: 1, reason: `${HEADING} - the setup window's` }],
+  ["panels/FirstRun/FirstRun.stories.tsx", { count: 1, reason: FIXTURE }],
+  ["panels/FirstRun/intro/Intro.tsx", { count: 1, reason: `${HEADING} - the intro's` }],
+  ["panels/FirstRun/job/InlineJob.stories.tsx", { count: 4, reason: FIXTURE }],
   ["panels/LeftSidebar/TopicItem.tsx", { count: 4, reason: TRUNCATION }],
   ["panels/LeftSidebar/TopicList.tsx", { count: 2, reason: HEADING }],
   ["panels/LeftSidebar/branchTruncation.test.tsx", { count: 3, reason: FIXTURE }],
@@ -224,6 +228,13 @@ const KEPT = new Map<string, Kept>([
     },
   ],
   ["panels/Settings/panes/AgentsPane/AgentAccounts.tsx", { count: 1, reason: HEADING }],
+  [
+    "panels/Settings/panes/AgentsPane/AgentPlugins.tsx",
+    {
+      count: 1,
+      reason: `${TRUNCATION}. This one is a plugin's install path, on the row's \`li\``,
+    },
+  ],
   [
     "panels/Settings/panes/AgentsPane/AgentDetail.tsx",
     {
@@ -244,6 +255,10 @@ const KEPT = new Map<string, Kept>([
   ["panels/Settings/panes/EditorPane/EditorPane.tsx", { count: 2, reason: GROUP_HEADING }],
   ["panels/Settings/panes/PanesPane/PanesPane.tsx", { count: 1, reason: GROUP_HEADING }],
   ["panels/Settings/panes/IntegrationsPane/IntegrationsPane.tsx", { count: 1, reason: GROUP_HEADING }],
+  [
+    "panels/Settings/panes/IntegrationsPane/ForgeSection.tsx",
+    { count: 1, reason: `${HEADING} - the one a host's destructive actions ask through` },
+  ],
   ["panels/Terminal/TabMark.tsx", { count: 1, reason: TRUNCATION }],
   [
     "panels/LeftSidebar/LeftSidebar.tsx",
@@ -299,8 +314,11 @@ const KEPT = new Map<string, Kept>([
  *
  *  **Up two**: the graph page's two rows, the diff tab's path and an agent
  *  file's link target, less the Changes panel's member header span and the
- *  Search view's file header div, both dropped by their rebuilds. */
-const RAW_ELEMENT_TITLES = 69;
+ *  Search view's file header div, both dropped by their rebuilds.
+ *
+ *  **Up one**, and the first `li`: a plugin row in Settings > Agents shows the
+ *  plugin's name, and its install path is the line the row has no width for. */
+const RAW_ELEMENT_TITLES = 70;
 /** Of those, the ones on a `div` that also carries an `onClick`. Its own ticket
  *  (see the header); pinned here so the list cannot grow quietly. The Changes
  *  panel's stash row is one: a click expands it to its files. */
@@ -425,8 +443,11 @@ describe("the title= guard", () => {
     // Down two spans: a branch row's name and a Topic's roll-up pill both gave
     // theirs up when the status glyphs moved into one shared run, and that run
     // describes itself through `Tooltip` rather than the native attribute.
+    // Up one, on a tag this census had never seen: a plugin row in Settings >
+    // Agents is an `li`, and its install path sits behind the plugin's name.
     expect(Object.fromEntries([...byTag].sort())).toEqual({
       div: 15,
+      li: 1,
       span: 54,
     });
     expect([...byTag.values()].reduce((a, b) => a + b, 0)).toBe(RAW_ELEMENT_TITLES);
