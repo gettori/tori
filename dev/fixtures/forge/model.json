@@ -130,7 +130,7 @@
   "signInRoutes": {
     "appId": null,
     "baseUrl": "https://github.com",
-    "deviceFlow": true,
+    "deviceFlow": false,
     "host": "github.com",
     "scopes": [
       "repo",

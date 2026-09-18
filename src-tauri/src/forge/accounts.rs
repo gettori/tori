@@ -429,13 +429,12 @@ pub fn drop_picks_for(picks: &mut BTreeMap<String, String>, id: &str) -> bool {
 pub struct SignInRoutes {
     pub host: String,
     pub base_url: String,
-    /// Only where Tori holds an OAuth client id for the host.
+    /// GitLab only, and only where Tori holds an OAuth client id for the host.
     pub device_flow: bool,
     pub scopes: Vec<String>,
     pub token_url: String,
-    // Self-managed GitLab only: on github.com and gitlab.com the application is
-    // Tori's own, and showing it would invite editing something the user cannot
-    // change.
+    // Self-managed GitLab only: on gitlab.com the application is Tori's own,
+    // and showing it would invite editing something the user cannot change.
     pub app_id: Option<String>,
 }
 
@@ -541,11 +540,10 @@ pub fn sign_in_routes(
     SignInRoutes {
         host: host.to_string(),
         base_url: base_url.to_string(),
-        // GitHub's application is Tori's own and covers github.com only, so a
-        // GitHub Enterprise server has no browser flow. GitLab's is registered
-        // per instance, so any host with an id has one.
-        device_flow: client_id.is_some_and(|id| !id.trim().is_empty())
-            && (provider == Provider::Gitlab || host == GITHUB_COM),
+        // GitLab's application is registered per instance, so any host with an
+        // id has a browser flow. Tori has no GitHub application at all, so
+        // every GitHub host signs in through the CLI or a pasted token.
+        device_flow: provider == Provider::Gitlab && client_id.is_some_and(|id| !id.trim().is_empty()),
         scopes: scopes.iter().map(|s| s.to_string()).collect(),
         token_url,
         app_id: match provider {
@@ -907,18 +905,19 @@ mod tests {
     }
 
     #[test]
-    fn github_com_offers_the_browser_and_any_other_host_only_a_token() {
+    fn every_github_host_offers_only_a_token_and_names_the_scopes() {
+        // An id in hand changes nothing on GitHub: there is no application to
+        // use it, so github.com and an enterprise server answer the same way.
         let github = sign_in_routes(Provider::Github, GH, GITHUB_COM, Some("Ov23test"), false);
-        assert!(github.device_flow);
+        assert!(!github.device_flow);
         assert_eq!(github.scopes, ["repo", "workflow"]);
         assert!(github.token_url.contains("scopes=repo,workflow"));
         assert!(github.token_url.starts_with("https://github.com/settings/tokens/new"));
 
-        // Tori's GitHub application covers github.com alone, so an enterprise
-        // server has no browser flow even with an id in hand.
         let ghe =
             sign_in_routes(Provider::Github, "https://ghe.example.com", "ghe.example.com", Some("Ov23test"), false);
         assert!(!ghe.device_flow);
+        assert_eq!(ghe.scopes, ["repo", "workflow"]);
         assert!(ghe.token_url.starts_with("https://ghe.example.com/"));
 
         let gitlab = sign_in_routes(Provider::Gitlab, "https://gitlab.com", GITLAB_COM, None, false);
