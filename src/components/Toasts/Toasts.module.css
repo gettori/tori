@@ -26,9 +26,10 @@
   background:
     linear-gradient(to right, var(--toast-wash), transparent),
     var(--canvas-card);
-  border: 1px solid var(--border-default);
-  /* The bar as a border, not the sidebar's background layer: the other three
-     edges keep their hairline, and a background bar would paint under it. */
+  border: 0;
+  /* The only edge drawn. A hairline on the other three turned the toast into a
+     box with a bar stuck on one side, which is not what a selected row is; the
+     shadow already lifts it off whatever pane it covers. */
   border-left: var(--tori-border-thick) solid var(--toast-accent);
   border-radius: 0 var(--tori-radius-lg) var(--tori-radius-lg) 0;
   box-shadow: var(--shadow-lg);
@@ -51,7 +52,7 @@
   max-height: 40vh;
   overflow-y: auto;
 }
-/* Layout only; the visual treatment now comes from the shared <Button>. */
+/* Layout only; the visual treatment comes from the shared <IconButton>. */
 .toastClose {
   flex: none;
   align-self: start;
