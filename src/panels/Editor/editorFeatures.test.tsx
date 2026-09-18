@@ -25,6 +25,7 @@ const BASE: EditorDefaults = {
   codeLens: false,
   vimMode: false,
   indentGuides: false,
+  activeLineHighlight: "none",
   softWrap: false,
   renderWhitespace: false,
   scrollPastEnd: false,

@@ -34,6 +34,17 @@
           "description": "Indentation guides. Vertical guides at each indent level, the active one highlighted.",
           "default": true
         },
+        "activeLineHighlight": {
+          "type": "string",
+          "enum": [
+            "none",
+            "gutter",
+            "line",
+            "all"
+          ],
+          "description": "Current line highlight. Where the line the caret is on is marked: nowhere, in the gutter beside the line number, across the line itself, or both.",
+          "default": "all"
+        },
         "softWrap": {
           "type": "boolean",
           "description": "Soft wrap long lines. The default for every buffer; the palette's toggle overrides it for one tab.",

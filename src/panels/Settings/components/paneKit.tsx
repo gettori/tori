@@ -32,10 +32,13 @@ import {
   type PanePins,
   type Agent,
   type Typography,
+  type ActiveLineHighlight,
+  type EditorDefaults,
 } from "../settingsStore";
 import styles from "../Settings.module.css";
 import Tooltip from "../../../components/Tooltip/Tooltip";
 import Switch from "../../../components/Switch/Switch";
+import Select, { type SelectOption } from "../../../components/Select/Select";
 
 // Font inputs show only the primary family; the app's fallback stack is kept
 // out of the field and re-attached on save, so a user types "JetBrains Mono"
@@ -122,6 +125,9 @@ export const OWN_ROW_TOGGLES = togglesIn("editor");
  *  the key it edits rather than by its id, so the row and the setting cannot
  *  drift apart the way two strings can. */
 export const TODO_TAGS: SettingEntry = SETTINGS.find((s) => s.edits === "todoPatterns")!;
+
+/** The other one, found the same way. */
+export const ACTIVE_LINE: SettingEntry = SETTINGS.find((s) => s.edits === "activeLineHighlight")!;
 
 /** What a pane needs from the shell: which rows the query left on screen, and
  *  the query itself so a row can mark *why* it is one of them. `shown` answers
@@ -387,21 +393,29 @@ export function CardSection(props: PaneProps & { id: string; children: JSX.Eleme
 }
 
 /**
- * The TODO tags row: a text box where the rest of the group has checkboxes.
+ * The row a setting that is not a switch gets: its own control, wearing the
+ * badge, the "Set here" action and the hint the checkboxes wear.
  *
- * Written out rather than folded into `ToggleRow` because only the control
- * differs; the badge, the "Set here" action and the layer they read are the
- * same, and they are the part that has to stay identical. A setting that showed
- * one layer and wrote another would read as broken here exactly as it would
- * there.
+ * Generic in the key rather than written once per setting. The control is the
+ * only part that differs, and the rest is the part that has to stay identical:
+ * a setting that showed one layer and wrote another reads as broken. Generic
+ * because the "Set here" write has to hand `setWorkspaceOverride` a value of
+ * that key's own type, which a union of keys cannot do.
  */
-export function TodoTagsRow(props: PaneProps) {
-  const fromWorkspace = () => editorOrigin().todoPatterns === "workspace";
+function EditsRow<K extends Exclude<keyof EditorDefaults, EditorToggleKey>>(
+  props: PaneProps & {
+    entry: SettingEntry;
+    setting: K;
+    pin: string;
+    children: JSX.Element;
+  },
+) {
+  const fromWorkspace = () => editorOrigin()[props.setting] === "workspace";
   return (
-    <Show when={props.shown(TODO_TAGS.id)}>
-      <div id={rowDomId(TODO_TAGS.id)} class={styles.row}>
-        <label class={styles.label}>
-          <MarkedLabel query={props.query} text={TODO_TAGS.label} />
+    <Show when={props.shown(props.entry.id)}>
+      <div id={rowDomId(props.entry.id)} class={styles.row}>
+        <label class={styles.label} id={rowLabelId(props.entry.id)}>
+          <MarkedLabel query={props.query} text={props.entry.label} />
         </label>
         <div class={styles.control}>
           <Show when={fromWorkspace()}>
@@ -409,12 +423,7 @@ export function TodoTagsRow(props: PaneProps) {
               workspace
             </span>
           </Show>
-          <input
-            class={`${styles.input} ${styles.text}`}
-            aria-label={TODO_TAGS.label}
-            value={editorDefaults().todoPatterns}
-            onChange={(e) => setEditorDefault("todoPatterns", e.currentTarget.value)}
-          />
+          {props.children}
           <Show when={overlayRoot()}>
             <Tooltip
               as="button"
@@ -422,27 +431,74 @@ export function TodoTagsRow(props: PaneProps) {
               class={styles.originAction}
               onClick={() =>
                 void setWorkspaceOverride(
-                  "todoPatterns",
-                  fromWorkspace() ? undefined : editorDefaults().todoPatterns,
+                  props.setting,
+                  fromWorkspace() ? undefined : editorDefaults()[props.setting],
                 )
               }
               label={
                 fromWorkspace()
                   ? "Stop overriding this here and follow your global setting again"
-                  : "Pin these tags for this workspace only, leaving your global setting alone"
+                  : props.pin
               }
             >
               {fromWorkspace() ? "Clear" : "Set here"}
             </Tooltip>
           </Show>
         </div>
-        <Show when={TODO_TAGS.hint}>
+        <Show when={props.entry.hint}>
           <div class={styles.hint}>
-            <MarkedHint query={props.query} text={TODO_TAGS.hint!} />
+            <MarkedHint query={props.query} text={props.entry.hint!} />
           </div>
         </Show>
       </div>
     </Show>
+  );
+}
+
+/** The TODO tags row: a text box where the rest of the group has checkboxes. */
+export function TodoTagsRow(props: PaneProps) {
+  return (
+    <EditsRow
+      {...props}
+      entry={TODO_TAGS}
+      setting="todoPatterns"
+      pin="Pin these tags for this workspace only, leaving your global setting alone"
+    >
+      <input
+        class={`${styles.input} ${styles.text}`}
+        aria-label={TODO_TAGS.label}
+        value={editorDefaults().todoPatterns}
+        onChange={(e) => setEditorDefault("todoPatterns", e.currentTarget.value)}
+      />
+    </EditsRow>
+  );
+}
+
+/** Where the caret's line is marked: a dropdown, because four answers do not
+ *  fit a checkbox. The labels say the place rather than VS Code's value names,
+ *  which are only legible next to the setting's own title. */
+const ACTIVE_LINE_OPTIONS: SelectOption[] = [
+  { value: "none", label: "Nowhere" },
+  { value: "gutter", label: "Gutter only" },
+  { value: "line", label: "The line" },
+  { value: "all", label: "Gutter and line" },
+];
+
+export function ActiveLineRow(props: PaneProps) {
+  return (
+    <EditsRow
+      {...props}
+      entry={ACTIVE_LINE}
+      setting="activeLineHighlight"
+      pin="Use this in the current workspace only, leaving your global setting alone"
+    >
+      <Select
+        options={ACTIVE_LINE_OPTIONS}
+        value={editorDefaults().activeLineHighlight}
+        onChange={(v) => setEditorDefault("activeLineHighlight", v as ActiveLineHighlight)}
+        aria-labelledby={rowLabelId(ACTIVE_LINE.id)}
+      />
+    </EditsRow>
   );
 }
 

@@ -36,7 +36,14 @@ export const toriTheme = EditorView.theme(
       margin: "0 2px",
       padding: "0 4px",
     },
-    ".cm-activeLine": { backgroundColor: "transparent" },
+    // Translucent, so the line keeps whatever is already under it. An opaque
+    // wash would erase the diff colours on the line being edited and the
+    // paused-frame stripe on the line the debugger stopped at, which are the
+    // two lines most likely to have a caret on them. It reads as `transparent`
+    // until the setting asks for it: `activeLineHighlight` decides whether the
+    // class is ever on a line at all (see editorPrefs.ts), so "none" is the
+    // extension being absent rather than a colour being cleared here.
+    ".cm-activeLine": { backgroundColor: "var(--neutral-subtle)" },
     ".cm-activeLineGutter": { backgroundColor: "var(--neutral-hover)" },
   },
   { dark: true },

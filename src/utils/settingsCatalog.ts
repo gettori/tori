@@ -321,6 +321,15 @@ export const SETTINGS: SettingEntry[] = [
   // editor does for you, then what survives a quit.
   { id: "indent-guides", section: "editing", label: "Indentation guides", toggles: "indentGuides" },
   {
+    // No `toggles`, for the TODO tags row's reason below: four answers, so the
+    // panel gives it a dropdown rather than a checkbox.
+    id: "active-line-highlight",
+    section: "editing",
+    edits: "activeLineHighlight",
+    label: "Current line highlight",
+    hint: "Where the line the caret is on is marked: nowhere, in the gutter beside the line number, across the line itself, or both.",
+  },
+  {
     id: "soft-wrap",
     section: "editing",
     label: "Soft wrap long lines",
