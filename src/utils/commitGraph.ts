@@ -6,7 +6,7 @@
 // lanes) and cannot be read off its parents alone either, so the assignment is
 // a walk with state: which lane is currently waiting for which sha.
 
-import type { LogEntry } from "../panels/Editor/CommitLog";
+import type { LogEntry } from "./gitActions";
 
 /** A line passing through one row, from lane `from` at its top edge to lane
  *  `to` at its bottom edge. A straight line has them equal; a merge or a fork

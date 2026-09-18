@@ -42,7 +42,8 @@ const STATUS_WORD: Record<string, string> = {
 };
 
 /**
- * One commit, opened as an editor tab from a row in the commit log.
+ * One commit, opened as an editor tab from a row in the graph or in a file's
+ * history.
  *
  * Diffs are fetched per file rather than as one patch for the whole commit: a
  * commit can touch hundreds of files, and the reader almost always wants two of

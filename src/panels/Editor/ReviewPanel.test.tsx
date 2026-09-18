@@ -886,8 +886,8 @@ describe("amend", () => {
   });
 });
 
-describe("the commit log entry point", () => {
-  it("asks for a log tab scoped to this workspace", async () => {
+describe("the graph entry point", () => {
+  it("asks for a graph tab scoped to this workspace", async () => {
     branches = [{ name: "main", current: true }];
     await mountPanel();
 
@@ -895,11 +895,11 @@ describe("the commit log entry point", () => {
     const listener = (e: Event) => opened.push((e as CustomEvent<{ path: string }>).detail.path);
     window.addEventListener(OPEN_IN_EDITOR, listener);
     pointerClick(screen.getByRole("button", { name: "More Actions" }));
-    pointerClick(await screen.findByRole("menuitem", { name: "Show Commit Log" }));
+    pointerClick(await screen.findByRole("menuitem", { name: "Open Graph in Editor" }));
 
     // The id carries the workspace, so the same entry in another branch-unit
     // opens a different tab rather than retargeting this one.
-    await waitFor(() => expect(opened).toEqual([syntheticId("log", "/proj")]));
+    await waitFor(() => expect(opened).toEqual([syntheticId("graph", "/proj")]));
     window.removeEventListener(OPEN_IN_EDITOR, listener);
   });
 });

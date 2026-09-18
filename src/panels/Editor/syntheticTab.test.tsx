@@ -87,7 +87,7 @@ const { default: Editor } = await import("./Editor");
 const { emitWith, onWith, OPEN_IN_EDITOR, PURGE_UNDER_PATH } = await import("../../utils/events");
 const { syntheticId, parseSyntheticId } = await import("../../utils/syntheticTabs");
 
-const LOG = syntheticId("log", REPO);
+const GRAPH = syntheticId("graph", REPO);
 const FILE = `${REPO}/src/a.ts`;
 
 const selection = selectionFor(REPO);
@@ -127,7 +127,7 @@ afterEach(() => {
 describe("a tori:// tab in the editor pane", () => {
   it("opens as a tab without mounting the code editor at all", async () => {
     await mountEditor();
-    await open(LOG);
+    await open(GRAPH);
 
     expect(mountedCodeEditor).toBe(0);
     // The kind in the id is what picks the view, so this is also the check that
@@ -138,7 +138,7 @@ describe("a tori:// tab in the editor pane", () => {
   it("hands the code editor no active path and no buffer to keep", async () => {
     await mountEditor();
     await open(FILE);
-    await open(LOG);
+    await open(GRAPH);
 
     await waitFor(() => expect(last().activePath).toBeNull());
     // The file beside it still holds its buffer; only the view is absent.
@@ -150,7 +150,7 @@ describe("a tori:// tab in the editor pane", () => {
   it("is not written to the persisted strip", async () => {
     await mountEditor();
     await open(FILE);
-    await open(LOG);
+    await open(GRAPH);
 
     await waitFor(() => expect(localStorage.getItem("tori.editor.tabs.v1")).toContain(FILE));
     expect(localStorage.getItem("tori.editor.tabs.v1")).not.toContain("tori://");
@@ -159,7 +159,7 @@ describe("a tori:// tab in the editor pane", () => {
   it("takes no preview toggle from a workspace folder that looks like a file", async () => {
     // The suffix tests that pick Markdown/SVG/image read the tab id, and a
     // synthetic id ends in the workspace path. A folder called `notes.md` would
-    // otherwise hand the commit log a source-vs-render toggle.
+    // otherwise hand the graph a source-vs-render toggle.
     const odd = `${REPO}/notes.md`;
     mounted = render(() => (
       <>
@@ -168,7 +168,7 @@ describe("a tori:// tab in the editor pane", () => {
       </>
     ));
     await waitFor(() => expect(listening.ready).toBe(true));
-    await open(syntheticId("log", odd));
+    await open(syntheticId("graph", odd));
 
     expect(screen.queryByLabelText(/Preview: render this/)).toBeNull();
     await waitFor(() => expect(screen.getByText("No commits yet.")).toBeTruthy());
@@ -176,7 +176,7 @@ describe("a tori:// tab in the editor pane", () => {
 
   it("closes with the workspace it names, even though its id is not under it", async () => {
     await mountEditor();
-    await open(LOG);
+    await open(GRAPH);
 
     emitWith(PURGE_UNDER_PATH, { path: REPO });
 
@@ -214,9 +214,9 @@ describe("a tori:// tab in the editor pane", () => {
 
   it("offers no history for a view, which has none", async () => {
     await mountEditor();
-    await open(LOG);
+    await open(GRAPH);
 
-    fireEvent.contextMenu(tab("Commit log"));
+    fireEvent.contextMenu(tab("Graph"));
 
     expect(screen.queryByText("File history")).toBeNull();
   });
@@ -247,9 +247,9 @@ describe("a tori:// tab in the editor pane", () => {
       // to answer with. Since phase 8 every tab has somewhere else it could go,
       // so the menu opens with those rows and without the file-only ones.
       await mountEditor();
-      await open(LOG);
+      await open(GRAPH);
 
-      expect(rightClick(tab("Commit log"))).toBe(true);
+      expect(rightClick(tab("Graph"))).toBe(true);
       expect(await screen.findByRole("menu")).toBeTruthy();
       expect(screen.getByText("Split the pane to the right")).toBeTruthy();
       expect(screen.queryByText("File history")).toBeNull();
@@ -279,7 +279,7 @@ describe("a tori:// tab in the editor pane", () => {
     it("mounts one menu trigger per tab, not one per copy", async () => {
       await mountEditor();
       await open(FILE);
-      await open(LOG);
+      await open(GRAPH);
 
       const strip = document.querySelector('[class*="editorTabs"]')!;
       const ghost = strip.querySelector(".otab-ghost")!;
@@ -329,11 +329,11 @@ describe("what a file tab hands a drag", () => {
 
   it("hands a view no path at all, and still lets it be moved", async () => {
     await mountEditor();
-    await open(LOG);
+    await open(GRAPH);
 
-    const payload = carry(tab("Commit log"));
+    const payload = carry(tab("Graph"));
     expect(payload["application/x-tori-path"]).toBeUndefined();
     expect(payload["text/plain"]).toBeUndefined();
-    expect(payload["application/x-tori-tab"]).toBe(LOG);
+    expect(payload["application/x-tori-tab"]).toBe(GRAPH);
   });
 });

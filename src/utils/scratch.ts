@@ -5,7 +5,7 @@
 // path-keyed already - the tab strip, the dirty map, CodeEditor's buffers, the
 // hot-exit stash, and `editorTabPersist`'s per-workspace restore - so a scratch
 // with an ordinary absolute path needs a branch in none of them. The obvious
-// alternative, a synthetic `tori://scratch/…` id like the commit log's, would
+// alternative, a synthetic `tori://scratch/…` id like the graph's, would
 // have cost a special case in each, and `toStore` drops synthetic ids on
 // purpose, so an untitled tab could never have survived a relaunch at all.
 //

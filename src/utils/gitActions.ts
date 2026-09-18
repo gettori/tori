@@ -38,6 +38,29 @@ export type FileStatus = {
   conflicted?: boolean;
 };
 export type AheadBehind = { ahead: number; behind: number; has_upstream: boolean };
+
+/** One row of `git_log`. Mirrors `LogEntry` in src-tauri/src/git.rs.
+ *
+ *  Here rather than beside a view, because the three that read it (the graph
+ *  tab, the panel's Graph section, the lane layout in `commitGraph.ts`) would
+ *  otherwise all import it from whichever one happened to declare it. */
+export type LogEntry = {
+  sha: string;
+  short: string;
+  subject: string;
+  author: string;
+  relative_date: string;
+  /** Committer time, unix seconds. */
+  committed_at: number;
+  refs: string[];
+  /** Full parent shas: one ordinarily, several for a merge, none for a root. */
+  parents: string[];
+  /** On HEAD but not on its upstream. */
+  unpushed: boolean;
+  /** On a local branch but not on the base branch: the branch's own work. */
+  off_base: boolean;
+};
+
 type BranchInfo = { name: string; current: boolean };
 
 export type GitState = {

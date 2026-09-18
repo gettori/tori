@@ -331,9 +331,9 @@ describe("focusMemberRoot", () => {
   });
 
   it("falls back to the active root for a synthetic view", () => {
-    // A commit log or a history view belongs to the workspace, not to any one
+    // A graph or a history view belongs to the workspace, not to any one
     // repo in it.
-    const id = syntheticId("log", "/w/api");
+    const id = syntheticId("graph", "/w/api");
     expect(isSyntheticId(id)).toBe(true);
     expect(focusMemberRoot(id, MEMBERS, ACTIVE)).toBe(ACTIVE);
   });

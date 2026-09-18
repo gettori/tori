@@ -1,6 +1,6 @@
 import { createSignal, createMemo, createEffect, on, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { gitStateFor } from "../../utils/gitActions";
+import { gitStateFor, type LogEntry } from "../../utils/gitActions";
 import { emitWith, OPEN_IN_EDITOR, type OpenInEditor } from "../../utils/events";
 import { syntheticId } from "../../utils/syntheticTabs";
 import IconButton from "../../components/IconButton/IconButton";
@@ -8,55 +8,35 @@ import Button from "../../components/Button/Button";
 import Tooltip from "../../components/Tooltip/Tooltip";
 import Icon from "../../components/Icon/Icon";
 import { RefreshCw } from "lucide-solid";
-import styles from "./CommitLog.module.css";
-
-/** Mirrors `LogEntry` in src-tauri/src/git.rs. */
-export type LogEntry = {
-  sha: string;
-  short: string;
-  subject: string;
-  author: string;
-  relative_date: string;
-  /** Committer time, unix seconds. */
-  committed_at: number;
-  refs: string[];
-  /** Full parent shas: one ordinarily, several for a merge, none for a root. */
-  parents: string[];
-  /** On HEAD but not on its upstream. */
-  unpushed: boolean;
-  /** On a local branch but not on the base branch: the branch's own work. */
-  off_base: boolean;
-};
+import styles from "./FileHistory.module.css";
 
 /** One backend page. The list grows by this much per "Load more". */
 const PAGE = 100;
 
 /**
- * A commit log, as an editor tab rather than a panel: history is read at reading
- * width, and the right panel is already the narrow column.
+ * One file's commits, as an editor tab: sha, subject, author and date are four
+ * columns, and the right panel is the narrow one.
  *
- * With `file` set it is that one file's history instead of the branch's. One
- * component rather than two, because the difference is a pathspec and a header:
- * splitting them would give a reader two places to look for the same rows and
- * two chances for them to drift.
+ * A list where the branch's own history is a graph (`GraphView`), because a
+ * pathspec makes git simplify the walk: the parents these rows report are
+ * mostly commits the list never shows, so lanes drawn from them would be a
+ * staircase of unconnected dots rather than the shape of the branch.
  *
  * Its workspace comes from the tab id, not from the current selection, so the
- * tab always shows the branch-unit it was opened for. The header's branch and
- * ahead/behind come from the shared git store, which is only the same thing
- * while that unit is selected - and since tabs are per-workspace, it is.
+ * tab always shows the branch-unit it was opened for.
  */
-export default function CommitLog(props: { workspace: string; file?: string }) {
+export default function FileHistory(props: { workspace: string; file: string }) {
   const [entries, setEntries] = createSignal<LogEntry[]>([]);
   const [loading, setLoading] = createSignal(false);
   const [end, setEnd] = createSignal(false);
   const [error, setError] = createSignal("");
 
-  // This workspace's own slot: a log tab open on a background member still
-  // wants that member's branch, not whichever member is in front.
+  // This workspace's own slot: a history tab open on a background member still
+  // follows that member's HEAD, not whichever member is in front.
   const meta = () => gitStateFor(props.workspace);
   // Memos, not plain accessors. The reload effect below reads these, and a
   // plain accessor would make it depend on the *store signal*, which every file
-  // save bumps (`refreshStatus` rewrites `files`) - so the log would refetch on
+  // save bumps (`refreshStatus` rewrites `files`) - so the list would refetch on
   // every watcher burst. A memo only propagates when its own value changes.
   const branch = createMemo(() => meta().branch);
   const aheadBehind = createMemo(() => meta().aheadBehind);
@@ -64,7 +44,7 @@ export default function CommitLog(props: { workspace: string; file?: string }) {
   // Which load is current. A reload *replaces* the list, so a newer one simply
   // supersedes an older one in flight; refusing to start it (the obvious guard)
   // would silently drop the reload a commit landing mid-fetch asks for, and
-  // leave the log stale until the next thing moved HEAD.
+  // leave the list stale until the next thing moved HEAD.
   let current = 0;
 
   async function load(more: boolean) {
@@ -109,40 +89,18 @@ export default function CommitLog(props: { workspace: string; file?: string }) {
   }
 
   return (
-    <div class={styles.commitLog}>
+    <div class={styles.fileHistory}>
       <div class={styles.headerBar}>
-        <Show
-          when={props.file}
-          fallback={
-            <>
-              <span class={styles.branchName} title={branch() ?? ""}>
-                {branch() ?? "Commit log"}
-              </span>
-              <Show when={aheadBehind()} fallback={<span class={styles.meta}>-</span>}>
-                {(ab) => (
-                  <span class={styles.meta}>
-                    {ab().has_upstream ? `↑${ab().ahead} ↓${ab().behind}` : "Unpushed branch"}
-                  </span>
-                )}
-              </Show>
-            </>
-          }
-        >
-          {(f) => (
-            <>
-              <span class={styles.branchName} title={f()}>
-                {f()}
-              </span>
-              {/* Said out loud because it changes what the list means: rows from
-                  before a rename name a path this file no longer has. */}
-              <span class={styles.meta}>following renames</span>
-            </>
-          )}
-        </Show>
+        <span class={styles.fileName} title={props.file}>
+          {props.file}
+        </span>
+        {/* Said out loud because it changes what the list means: rows from
+            before a rename name a path this file no longer has. */}
+        <span class={styles.meta}>following renames</span>
         <IconButton
           size="xs"
           icon={<Icon icon={RefreshCw} />}
-          tooltip="Reload the log"
+          tooltip="Reload the history"
           disabled={loading()}
           onClick={() => void load(false)}
         />
@@ -154,7 +112,7 @@ export default function CommitLog(props: { workspace: string; file?: string }) {
         when={entries().length}
         fallback={
           <Show when={!loading() && !error()}>
-            <div class="tree-empty">{props.file ? "No commits touch this file." : "No commits yet."}</div>
+            <div class="tree-empty">No commits touch this file.</div>
           </Show>
         }
       >
@@ -172,7 +130,7 @@ export default function CommitLog(props: { workspace: string; file?: string }) {
         <Show when={!end()}>
           <div class={styles.moreRow}>
             <Button size="xs" disabled={loading()} onClick={() => void load(true)}>
-              {loading() ? "Loading…" : "Load more"}
+              {loading() ? "Loading" : "Load more"}
             </Button>
           </div>
         </Show>

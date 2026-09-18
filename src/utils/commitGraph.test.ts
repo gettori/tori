@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import { authorInitials, buildGraph, refPill } from "./commitGraph";
-import type { LogEntry } from "../panels/Editor/CommitLog";
+import type { LogEntry } from "./gitActions";
 
 /** A log entry with only the fields the layout reads. */
 const c = (sha: string, parents: string[] = [], unpushed = false): LogEntry => ({

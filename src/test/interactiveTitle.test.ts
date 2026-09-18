@@ -157,7 +157,7 @@ const KEPT = new Map<string, Kept>([
   ["panels/Editor/CommitDetail.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/DiffView.tsx", { count: 2, reason: `one ${TRUNCATION}, one ${HEADING}` }],
   ["panels/Editor/GraphView.tsx", { count: 2, reason: TRUNCATION }],
-  ["panels/Editor/CommitLog.tsx", { count: 2, reason: TRUNCATION }],
+  ["panels/Editor/FileHistory.tsx", { count: 1, reason: TRUNCATION }],
   ["panels/Editor/FileTree/FileTree.tsx", { count: 1, reason: TRUNCATION }],
   [
     "panels/Editor/FilesPanel/FilesPanel.tsx",

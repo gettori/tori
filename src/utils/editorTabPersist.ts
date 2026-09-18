@@ -46,7 +46,7 @@ export type OpenFileTabLike = { path: string; workspace: string };
 // window before a selection has resolved, and a key nothing can ever be
 // selected as is a key nothing can ever restore from.
 //
-// A synthetic tab (`tori://…`, the commit log) is dropped too, and this is the
+// A synthetic tab (`tori://…`, the graph) is dropped too, and this is the
 // one place that decides it. Restoring one would mean reopening a view the user
 // never asked for a second time, and every path in the store is otherwise a
 // real file the restore probes for existence.
