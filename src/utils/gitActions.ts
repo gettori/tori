@@ -39,6 +39,29 @@ export type FileStatus = {
 };
 export type AheadBehind = { ahead: number; behind: number; has_upstream: boolean };
 
+/** Where a branch stands against its upstream. `rewritten` separates the two
+ *  ways a branch diverges, which want opposite advice: history this side
+ *  rewrote needs a force push, a commit somebody else pushed needs a pull.
+ *  Only meaningful while both counts are non-zero; elsewhere it reads false. */
+export type UpstreamSync = { ahead: number; behind: number; has_upstream: boolean; rewritten: boolean };
+
+/** What the base branch has done since this one left it. `conflicts` is
+ *  tri-state: `[]` merges clean, a non-empty list is the paths that would
+ *  fight, and `null` is "not asked" - git below 2.38, or no shared history.
+ *  Reading `null` as clean is what would keep a row quiet in front of the
+ *  rebase that hurts. */
+export type BaseSync = { name: string; behind: number; conflicts: string[] | null };
+
+/** Mirrors `BranchSync` in src-tauri/src/git.rs. */
+export type BranchSync = {
+  detached: boolean;
+  dirty: boolean;
+  /** Committer time of HEAD, unix seconds. Zero on an unborn branch. */
+  head_committed_at: number;
+  upstream: UpstreamSync;
+  base: BaseSync | null;
+};
+
 /** One row of `git_log`. Mirrors `LogEntry` in src-tauri/src/git.rs.
  *
  *  Here rather than beside a view, because the three that read it (the graph
@@ -74,6 +97,11 @@ export type GitState = {
    *  is what everything derived from committed history caches against: blame
    *  cannot change while HEAD stands still, however much you type. */
   head: string | null;
+  /** The branch's whole sync story, or null while nothing has answered for it.
+   *  Beside `aheadBehind` rather than replacing it, which it otherwise could:
+   *  six call sites across the Changes panel, the graph and file history read
+   *  that field, and moving them is not what this is for. */
+  sync: BranchSync | null;
 };
 
 /** A file with the member it came from, for the reads that span a Topic. */
@@ -84,7 +112,7 @@ export type RootedFile = FileStatus & { root: string };
 // slotless read distinguishable from an entered member that has not answered
 // yet: the first knows nothing, the second knows it is clean so far.
 const NO_FILES: FileStatus[] = [];
-const NO_SLOT: GitState = { root: null, files: NO_FILES, branch: null, aheadBehind: null, head: null };
+const NO_SLOT: GitState = { root: null, files: NO_FILES, branch: null, aheadBehind: null, head: null, sync: null };
 
 // The slot map, in the order the roots were entered, which is member order.
 const [slots, setSlots] = createSignal<ReadonlyMap<string, GitState>>(new Map());
@@ -221,7 +249,7 @@ export function enterRoots(roots: readonly string[], active: string | null = roo
       continue;
     }
     epochs.set(root, ++epoch);
-    next.set(root, { root, files: [], branch: null, aheadBehind: null, head: null });
+    next.set(root, { root, files: [], branch: null, aheadBehind: null, head: null, sync: null });
   }
   for (const root of epochs.keys()) if (!next.has(root)) epochs.delete(root);
   setActiveRoot(active && next.has(active) ? active : (roots[0] ?? null));
@@ -256,11 +284,11 @@ export function refreshMeta(root: string | null): Promise<void> {
   const at = root ? epochs.get(root) : undefined;
   if (!root || at === undefined) return Promise.resolve();
   return coalesce(`meta:${root}#${at}`, async () => {
-    // Three independent probes, so three at once: they were serial while there
+    // Independent probes, so all of them at once: they were serial while there
     // were two of them, and a third would have made this refresh visibly slower
     // than the file list it runs beside. Each keeps its own failure, so one
-    // probe going wrong still leaves the other two answered.
-    const [branch, aheadBehind, head] = await Promise.all([
+    // probe going wrong still leaves the rest answered.
+    const [branch, aheadBehind, head, sync] = await Promise.all([
       invoke<BranchInfo[]>("list_branches", { path: root })
         .then((bs) => bs.find((b) => b.current)?.name ?? null)
         .catch(() => null),
@@ -268,9 +296,10 @@ export function refreshMeta(root: string | null): Promise<void> {
       invoke<string>("git_head_sha", { projectPath: root })
         .then((sha) => sha || null)
         .catch(() => null),
+      invoke<BranchSync>("git_branch_sync", { projectPath: root }).catch(() => null),
     ]);
     if (epochs.get(root) !== at) return;
-    writeSlot(root, { branch, aheadBehind, head });
+    writeSlot(root, { branch, aheadBehind, head, sync });
   });
 }
 

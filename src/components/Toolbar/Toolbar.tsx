@@ -7,6 +7,7 @@ import ProjectIcon from "../Icon/ProjectIcon";
 import { ChevronRight } from "lucide-solid";
 import { createTopicMembers, type TintedMember } from "../../utils/topicMembers";
 import { createDragReorder } from "../../utils/dragReorder";
+import SyncChip from "../SyncChip/SyncChip";
 import styles from "./Toolbar.module.css";
 
 // Where you are: the breadcrumb to the selected worktree. The trail ends at the
@@ -37,6 +38,11 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
   // than to an empty middle and a separator with nothing after it.
   const activeMember = () => members().find(isActive) ?? null;
 
+  // The chip speaks for one repo, so inside a Topic it follows the member in
+  // front rather than rolling the set up: the Topic's own roll-up lives on its
+  // sidebar row, where the members are all visible at once.
+  const syncRoot = () => sel()?.activeRoot ?? sel()?.folderPath ?? null;
+
   // The chip row reorders the Topic as the sidebar's member list does, through
   // the same helper. The command emits, so `members()` comes back in the new
   // order on its own and nothing here holds a second copy of it.
@@ -60,13 +66,19 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
             <Show
               when={isTopic()}
               fallback={
-                <nav class={styles.tbCrumb} aria-label="location">
-                  <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
-                  <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                  <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
-                  <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
-                  <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>
-                </nav>
+                <>
+                  <nav class={styles.tbCrumb} aria-label="location">
+                    <span class={`${styles.crumb} dim`}>{sel()!.spaceName}</span>
+                    <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
+                    <span class={`${styles.crumb} dim`}>{sel()!.projectName}</span>
+                    <Icon icon={ChevronRight} class={`${styles.crumbSep} dim`} />
+                    <span class={`${styles.crumb} ${styles.leaf}`}>{sel()!.branch}</span>
+                  </nav>
+                  {/* Outside the nav, which is a list of places: this is a
+                      control, and a landmark that holds one is a landmark that
+                      no longer describes itself. */}
+                  <SyncChip root={syncRoot()} />
+                </>
               }
             >
               <nav class={styles.tbCrumb} aria-label="location">
@@ -84,6 +96,7 @@ export default function Toolbar(props: { selected: Selection | null; onActiveRoo
                 </Show>
                 <span class={`${styles.crumb} dim`}>{sel()!.branch}</span>
               </nav>
+              <SyncChip root={syncRoot()} />
               <div class={styles.members} role="group" aria-label="Topic members">
                 <For each={members()}>
                   {(m) => {

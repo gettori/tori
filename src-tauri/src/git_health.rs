@@ -88,6 +88,20 @@ fn forget() {
     *READY.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
+/// Whether the git that will actually run is at least `major.minor`, for the
+/// callers that reach for a subcommand younger than the git some machines ship.
+///
+/// An unparsed `--version`, or no git at all, reads false. A feature gated on
+/// this has to have somewhere quiet to go, and guessing yes would send it into
+/// a subcommand that answers with a usage error.
+pub(crate) fn at_least(major: u32, minor: u32) -> bool {
+    let GitHealth::Ready { version: Some(version), .. } = current() else {
+        return false;
+    };
+    let mut parts = version.split('.').map(|part| part.parse::<u32>().unwrap_or(0));
+    (parts.next().unwrap_or(0), parts.next().unwrap_or(0)) >= (major, minor)
+}
+
 fn install_route(health: &GitHealth) -> InstallRoute {
     let (program, args) = match health {
         GitHealth::Ready { .. } => return InstallRoute::Undeclared,

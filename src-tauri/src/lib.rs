@@ -404,6 +404,7 @@ pub fn run() {
             git::git_fetch,
             git::git_push,
             git::git_ahead_behind,
+            git::git_branch_sync,
             git::git_default_base_branch,
             git::delete_remote_branch,
             git::git_has_credential_helper,

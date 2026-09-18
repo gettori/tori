@@ -10,6 +10,13 @@ const calls: { cmd: string; args: Record<string, unknown> }[] = [];
 // is visible as a store that still holds the previous answer.
 let status: unknown[] = [];
 let fail: string | null = null;
+const branchSync = {
+  detached: false,
+  dirty: true,
+  head_committed_at: 1700000000,
+  upstream: { ahead: 2, behind: 0, has_upstream: true, rewritten: false },
+  base: { name: "main", behind: 4, conflicts: [] as string[] },
+};
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, unknown>) => {
@@ -22,6 +29,8 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve([{ name: "feature", current: true }]);
       case "git_ahead_behind":
         return Promise.resolve({ ahead: 2, behind: 0, has_upstream: true });
+      case "git_branch_sync":
+        return Promise.resolve(branchSync);
       default:
         return Promise.resolve(null);
     }
@@ -104,6 +113,26 @@ describe("the shared git store", () => {
     expect(changedFiles()).toEqual([modified]);
     expect(gitState().branch).toBe("feature");
     expect(canPush()).toBe(true);
+  });
+
+  it("carries the branch's sync story, and only on the refresh that moves HEAD", async () => {
+    await refreshGit("/proj");
+    expect(gitState().sync).toEqual(branchSync);
+
+    // The file-list refresh runs on every save; asking git to merge the base on
+    // each of them is what this split exists to prevent.
+    calls.length = 0;
+    await refreshStatus("/proj");
+    expect(calls.some((c) => c.cmd === "git_branch_sync")).toBe(false);
+    expect(gitState().sync).toEqual(branchSync);
+  });
+
+  it("leaves sync null when its probe fails, without taking the others down", async () => {
+    fail = "git_branch_sync";
+    await refreshGit("/proj");
+    expect(gitState().sync).toBeNull();
+    expect(gitState().branch).toBe("feature");
+    expect(gitState().aheadBehind).toEqual({ ahead: 2, behind: 0, has_upstream: true });
   });
 
   it("updates after a stage, with nothing mounted", async () => {
