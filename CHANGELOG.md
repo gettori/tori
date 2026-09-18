@@ -8,11 +8,34 @@ publishing an empty one.
 Versions follow the `YY.MDD.patch` calver form with a stage suffix while
 unstable (`## 26.824.0-alpha`); tags carry a `v` prefix (`v26.824.0-alpha`).
 
-## Unreleased
+## 26.918.0-alpha
+
+Sway is Tori. The app, the source, the release builds and the Homebrew cask all
+changed name at once, and the new install shares nothing with the old one.
 
 A fresh Tori opens a setup window instead of an empty sidebar. It shows a
 short intro once, then goes through agents, base folder, space, git hosts and
 a first project, and ends on a summary before Tori opens.
+
+### The rename
+
+- `brew install --cask gettori/tap/tori` installs it. Homebrew knows the old
+  cask's name, so it takes an existing `sway` install over rather than leaving
+  you with two. From a DMG it is the same drag into Applications as before, on
+  `Tori.app` now.
+- Nothing is migrated. Spaces, settings, agent overrides, checkpoints, the
+  layout the window remembered and every signed-in host start empty, and the
+  agents have to be signed in again.
+- Nothing is deleted either. `~/.config/sway`, `~/Library/Application
+  Support/sway`, `~/Library/Caches/sway`, the `com.sway.forge` keychain
+  entries, and `.sway/` and `refs/sway/` inside the repos Sway touched are all
+  still there, only never read. Delete them once Tori is set up the way you
+  want it.
+- `Sway.app` and `Tori.app` are different apps to macOS, so both sit in
+  Applications until you bin the old one. Worktrees Sway made are ordinary git
+  worktrees and stay where they are.
+- Releases before this one still say Sway on the releases page. That is what
+  shipped.
 
 ### First run
 
