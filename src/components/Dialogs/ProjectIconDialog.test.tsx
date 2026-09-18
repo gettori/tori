@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@solidjs/testing-library";
 import { expectNoAxeViolations } from "../../test/axe";
-import styles from "./Dialogs.module.css";
 
 // `convertFileSrc` turns a path into an asset URL the webview can load, and it
 // reads Tauri's injected internals to do it. There is no host here, so it is
@@ -13,24 +12,20 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 const { default: ProjectIconDialog } = await import("./ProjectIconDialog");
 
-// Characterization test for the project icon picker, written against the
-// hand-rolled implementation and kept green across the migration onto
-// `components/Dialog` (#100). Contract / shape split as in
-// `ConfirmDialog.test.tsx`.
+// Characterization test for the project icon picker. Contract / shape split as
+// in `ConfirmDialog.test.tsx`.
 //
-// The behavior that matters is that the three ways to have an icon are one
+// The behaviour that matters is that the three ways to have an icon are one
 // selection, not a stack of fallbacks: automatic, an uploaded image, and a
 // glyph from the picker each un-choose the other two. The payload says which,
 // by which key is present, so the assertions read the payload rather than the
-// highlight wherever they can.
+// highlight wherever they can. That contract is older than the strip the three
+// are now expressed as, and it survived it.
 //
 // The exception worth keeping is the re-upload guard: choosing the image that
 // is already stored resolves through `onCancel`, not `onConfirm`, so the
 // backend never re-copies identical bytes under the same name. It looks like a
 // bug from the outside ("Save cancelled?"), which is exactly why it is pinned.
-//
-// **Accessibility baseline, measured before any migration edit:** zero
-// violations, zero incomplete.
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 // Kobalte installs its outside-pointerdown listener from a `setTimeout(0)`, so a
@@ -62,9 +57,10 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
     Array.from(
       screen.getByRole("group", { name: "Project icon" }).querySelectorAll("button"),
     );
-  const modes = () =>
-    Array.from(document.querySelectorAll<HTMLButtonElement>(`.${styles.iconMode}`));
-  return { onConfirm, onCancel, onPickFile, search, tiles, modes };
+  const mode = (name: string) => screen.getByRole("button", { name });
+  const dropzone = () => screen.getByRole("button", { name: /SVG, PNG or ICO/ });
+  const panel = () => screen.getByRole("dialog");
+  return { onConfirm, onCancel, onPickFile, search, tiles, mode, dropzone, panel };
 }
 
 const save = (label = "Save") =>
@@ -78,50 +74,58 @@ describe("ProjectIconDialog", () => {
       expect(screen.getByText("Icon for “tori”")).toBeTruthy();
     });
 
-    it("calls the automatic option what it will actually show", () => {
+    it("says what the automatic option will actually show", () => {
       open();
 
-      expect(screen.getByText("Automatic")).toBeTruthy();
+      expect(screen.getByText("Derived from the folder")).toBeTruthy();
     });
 
     it("says the automatic option is the favicon when there is one", () => {
       open({ favicon: "/tmp/favicon.ico" });
 
-      expect(screen.getByText("Project favicon")).toBeTruthy();
+      expect(screen.getByText("The project's own favicon")).toBeTruthy();
     });
 
     it("starts on automatic when nothing is stored", () => {
-      const { modes } = open();
+      const { mode } = open();
 
-      expect(modes()[0].getAttribute("aria-pressed")).toBe("true");
+      expect(mode("Automatic").getAttribute("aria-pressed")).toBe("true");
     });
 
     it("starts on the stored glyph", () => {
-      const { tiles } = open({ icon: "Rocket" });
+      const { tiles, mode } = open({ icon: "Rocket" });
 
-      expect(tiles().some((b) => b.getAttribute("aria-label") === "Rocket" && b.getAttribute("aria-pressed") === "true")).toBe(true);
+      expect(mode("Pick an icon").getAttribute("aria-pressed")).toBe("true");
+      expect(
+        tiles().some(
+          (b) =>
+            b.getAttribute("aria-label") === "Rocket" &&
+            b.getAttribute("aria-pressed") === "true",
+        ),
+      ).toBe(true);
     });
 
     it("starts on the stored image, previewing it", () => {
-      const { modes } = open({ iconFile: "/store/icon.png" });
+      const { mode } = open({ iconFile: "/store/icon.png" });
 
-      expect(modes()[1].getAttribute("aria-pressed")).toBe("true");
-      expect(modes()[1].querySelector("img")?.getAttribute("src")).toBe("asset:///store/icon.png");
-      expect(screen.getByText("Change image…")).toBeTruthy();
+      expect(mode("Upload").getAttribute("aria-pressed")).toBe("true");
+      expect(screen.getByText("Uploaded image")).toBeTruthy();
+      expect(document.querySelector("img")?.getAttribute("src")).toBe("asset:///store/icon.png");
     });
 
     it("saves automatic as an empty choice", () => {
-      const { onConfirm } = open({ icon: "Rocket" });
+      const { onConfirm, mode } = open({ icon: "Rocket" });
 
-      fireEvent.click(screen.getByText("Automatic"));
+      fireEvent.click(mode("Automatic"));
       fireEvent.click(save());
 
       expect(onConfirm).toHaveBeenCalledWith({});
     });
 
     it("saves a picked glyph by name", () => {
-      const { onConfirm, tiles } = open();
+      const { onConfirm, tiles, mode } = open();
 
+      fireEvent.click(mode("Pick an icon"));
       fireEvent.click(tiles().find((b) => b.getAttribute("aria-label") === "Rocket")!);
       fireEvent.click(save());
 
@@ -129,22 +133,29 @@ describe("ProjectIconDialog", () => {
     });
 
     it("un-chooses the glyph when an image is uploaded", async () => {
-      const { onConfirm, tiles, modes } = open();
+      const { onConfirm, tiles, mode, dropzone } = open();
 
+      fireEvent.click(mode("Pick an icon"));
       fireEvent.click(tiles().find((b) => b.getAttribute("aria-label") === "Rocket")!);
-      fireEvent.click(modes()[1]);
-      await waitFor(() => expect(screen.getByText("Change image…")).toBeTruthy());
+      fireEvent.click(mode("Upload"));
+      fireEvent.click(dropzone());
+      await waitFor(() => expect(screen.getByText("logo.png")).toBeTruthy());
       fireEvent.click(save());
 
       expect(onConfirm).toHaveBeenCalledWith({ file: "/tmp/logo.png" });
     });
 
-    it("keeps the old choice when the file picker is dismissed", async () => {
+    it("keeps the glyph while a dismissed file picker leaves upload empty", async () => {
       const onPickFile = vi.fn(() => Promise.resolve<string | null>(null));
-      const { onConfirm, modes } = open({ icon: "Rocket", onPickFile });
+      const { onConfirm, mode, dropzone } = open({ icon: "Rocket", onPickFile });
 
-      fireEvent.click(modes()[1]);
+      fireEvent.click(mode("Upload"));
+      fireEvent.click(dropzone());
       await waitFor(() => expect(onPickFile).toHaveBeenCalledTimes(1));
+      // Nothing to save in this mode, and the glyph is still there to go back to.
+      expect(save().disabled).toBe(true);
+
+      fireEvent.click(mode("Pick an icon"));
       fireEvent.click(save());
 
       expect(onConfirm).toHaveBeenCalledWith({ icon: "Rocket" });
@@ -159,25 +170,31 @@ describe("ProjectIconDialog", () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("asks the host for the file, once, however fast the button is hit", async () => {
-      const { onPickFile, modes } = open();
+    it("asks the host for the file, once, however fast the zone is hit", async () => {
+      const { onPickFile, mode, dropzone } = open();
 
-      fireEvent.click(modes()[1]);
-      fireEvent.click(modes()[1]);
-      await waitFor(() => expect(screen.getByText("Change image…")).toBeTruthy());
+      fireEvent.click(mode("Upload"));
+      fireEvent.click(dropzone());
+      fireEvent.click(dropzone());
+      await waitFor(() => expect(screen.getByText("logo.png")).toBeTruthy());
 
       expect(onPickFile).toHaveBeenCalledTimes(1);
     });
 
-    it("states the upload limits rather than failing on them later", () => {
-      open();
+    it("states the upload limits in the zone they apply to", () => {
+      const { mode } = open();
 
-      expect(screen.getByText("SVG, PNG or ICO, up to 2 MB.")).toBeTruthy();
+      expect(screen.queryByText(/SVG, PNG or ICO/)).toBeNull();
+
+      fireEvent.click(mode("Upload"));
+
+      expect(screen.getByText("SVG, PNG or ICO, up to 2 MB, square works best")).toBeTruthy();
     });
 
     it("filters the glyph grid", () => {
-      const { search, tiles } = open();
+      const { search, tiles, mode } = open();
 
+      fireEvent.click(mode("Pick an icon"));
       const all = tiles().length;
       fireEvent.input(search(), { target: { value: "rocket" } });
 
@@ -186,46 +203,55 @@ describe("ProjectIconDialog", () => {
     });
 
     it("confirms on Enter", () => {
-      const { onConfirm, search } = open();
+      const { onConfirm, panel } = open();
 
-      fireEvent.keyDown(search(), { key: "Enter" });
+      fireEvent.keyDown(panel(), { key: "Enter" });
 
       expect(onConfirm).toHaveBeenCalledTimes(1);
     });
 
-    // Added with #109, and a deliberate change of behaviour rather than a
-    // characterization of the old one. Before the picker moved onto `IconGrid`
-    // the dialog's own `onKeyDown` saw every Enter, including one aimed at a
-    // tile: it cancelled the button's activation and saved, so the grid had no
-    // keyboard activation at all. `IconGrid` stops both activation keys at the
-    // group, so Enter on a tile picks that tile and saving needs focus outside
-    // the picker.
+    // `IconGrid` stops both activation keys at the group, so Enter on a tile
+    // picks that tile and saving needs focus outside the picker. Before the
+    // picker moved onto `IconGrid` the dialog's own `onKeyDown` saw every
+    // Enter, including one aimed at a tile: it cancelled the button's
+    // activation and saved, so the grid had no keyboard activation at all.
     it("picks a tile on Enter rather than saving from inside the picker", () => {
-      const { onConfirm, tiles, search } = open();
+      const { onConfirm, tiles, mode, panel } = open();
 
+      fireEvent.click(mode("Pick an icon"));
       fireEvent.keyDown(tiles()[0], { key: "Enter" });
 
       expect(onConfirm).not.toHaveBeenCalled();
       expect(tiles()[0].getAttribute("aria-pressed")).toBe("true");
 
-      // The search field still saves, so the change is scoped to the picker.
-      fireEvent.keyDown(search(), { key: "Enter" });
+      // The panel still saves, so the change is scoped to the picker.
+      fireEvent.keyDown(panel(), { key: "Enter" });
       expect(onConfirm).toHaveBeenCalledTimes(1);
     });
 
-    it("ignores Enter while it is already working", () => {
-      const { onConfirm, search } = open({ busy: true });
+    it("refuses to save a mode that has nothing in it", () => {
+      const { onConfirm, mode, panel } = open();
 
-      fireEvent.keyDown(search(), { key: "Enter" });
+      fireEvent.click(mode("Pick an icon"));
+
+      expect(save().disabled).toBe(true);
+      fireEvent.keyDown(panel(), { key: "Enter" });
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it("ignores Enter while it is already working", () => {
+      const { onConfirm, panel } = open({ busy: true });
+
+      fireEvent.keyDown(panel(), { key: "Enter" });
 
       expect(onConfirm).not.toHaveBeenCalled();
       expect(save("Working…").disabled).toBe(true);
     });
 
     it("cancels on Escape", () => {
-      const { onCancel, search } = open();
+      const { onCancel, panel } = open();
 
-      fireEvent.keyDown(search(), { key: "Escape" });
+      fireEvent.keyDown(panel(), { key: "Escape" });
 
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
@@ -238,8 +264,8 @@ describe("ProjectIconDialog", () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it("focuses the glyph search", async () => {
-      const { search } = open();
+    it("focuses the glyph search when it opens on a picked icon", async () => {
+      const { search } = open({ icon: "Rocket" });
       await frame();
 
       expect(document.activeElement).toBe(search());
@@ -247,6 +273,14 @@ describe("ProjectIconDialog", () => {
 
     it("has no accessibility violations", async () => {
       open({ favicon: "/tmp/favicon.ico" });
+
+      await expectNoAxeViolations(document.body);
+    });
+
+    it("has no accessibility violations in the upload mode", async () => {
+      const { mode } = open();
+
+      fireEvent.click(mode("Upload"));
 
       await expectNoAxeViolations(document.body);
     });

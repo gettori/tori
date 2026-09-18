@@ -2,12 +2,20 @@ import { createSignal } from "solid-js";
 import styles from "./Dialogs.module.css";
 import Button from "../Button/Button";
 import Dialog from "../Dialog/Dialog";
-import Checkbox from "../Checkbox/Checkbox";
+import SegmentedControl from "../SegmentedControl/SegmentedControl";
 
-// Turn a non-git folder into a repo, in one dialog. Replaces the separate
-// "Initialize git repo…" and "Bare + worktree…" menu items: pick the initial
-// branch, optionally set an origin URL, and toggle the layout. Unchecked is a
-// normal `git init`; checked is an in-place `.bare` + worktree container.
+type Layout = "normal" | "bare";
+
+// Turn a non-git folder into a repo, in one dialog.
+//
+// **The layout is two segments, not a checkbox.** As a checkbox it was
+// "Bare + worktree layout", and the line under it read "A normal git repository
+// in this folder." - a description of the *unchecked* state sitting under the
+// checked label. Two segments each describe what they produce, and the note has
+// one subject at a time.
+//
+// Both fields are optional, so the primary is never gated: a blank branch takes
+// git's default and a blank URL adds no origin.
 //
 // The shell is `Dialog`, which owns the portal, the backdrop, Escape and the
 // focus trap. Enter stays here, on a wrapper around the fields, because it means
@@ -22,12 +30,18 @@ export default function InitGitDialog(props: {
   onConfirm: (opts: { branch: string; url: string; bare: boolean }) => void;
   onCancel: () => void;
 }) {
+  const [layout, setLayout] = createSignal<Layout>("normal");
   const [branch, setBranch] = createSignal("");
   const [url, setUrl] = createSignal("");
-  const [bare, setBare] = createSignal(false);
-  const confirm = () =>
-    props.onConfirm({ branch: branch().trim(), url: url().trim(), bare: bare() });
   let first: HTMLInputElement | undefined;
+
+  const note = () =>
+    layout() === "normal"
+      ? "A standard git repository with one working tree in this folder."
+      : "A .bare repo in this folder, with each branch checked out as its own sibling folder.";
+
+  const confirm = () =>
+    props.onConfirm({ branch: branch().trim(), url: url().trim(), bare: layout() === "bare" });
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.key !== "Enter") return;
@@ -38,6 +52,7 @@ export default function InitGitDialog(props: {
   return (
     <Dialog
       open
+      size="sheet"
       title={`Initialize git in “${props.folderName}”`}
       onClose={() => props.onCancel()}
       initialFocus={() => first}
@@ -50,50 +65,61 @@ export default function InitGitDialog(props: {
         </>
       }
     >
-      <div onKeyDown={onKeyDown}>
+      <div class={styles.spaceForm} onKeyDown={onKeyDown}>
+        <div>
+          <SegmentedControl
+            class={styles.modeSeg}
+            aria-label="Repository layout"
+            options={[
+              { value: "normal", label: "Normal repo" },
+              { value: "bare", label: "Bare + worktree" },
+            ]}
+            value={layout()}
+            onChange={setLayout}
+          />
+          <div class={styles.modeNote}>{note()}</div>
+        </div>
+
         {/* Each field is named by the line above it rather than by an
             `aria-label` repeating that line, so the visible text and the
             accessible name cannot drift apart. The ids are static because only
             one of these dialogs can be open at a time. */}
-        <div id={BRANCH_LABEL} class={styles.label}>
-          Initial branch
+        <div class={styles.spaceField}>
+          <div class={styles.spaceLabel}>
+            <span id={BRANCH_LABEL}>Initial branch</span>
+          </div>
+          <input
+            ref={first}
+            class={`${styles.spaceInput} ${styles.monoInput}`}
+            aria-labelledby={BRANCH_LABEL}
+            value={branch()}
+            placeholder="main"
+            onInput={(e) => setBranch(e.currentTarget.value)}
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck={false}
+          />
+          {/* Under the field rather than in it: a placeholder that states a rule
+              cannot be read once anything is typed, which is exactly when a
+              rule about blankness is being decided. */}
+          <div class={styles.spaceHelp}>Leave blank to use your git default.</div>
         </div>
-        <input
-          ref={first}
-          class={styles.input}
-          aria-labelledby={BRANCH_LABEL}
-          value={branch()}
-          placeholder="blank = git default (main)"
-          onInput={(e) => setBranch(e.currentTarget.value)}
-          autocapitalize="off"
-          autocorrect="off"
-          spellcheck={false}
-        />
 
-        <div id={URL_LABEL} class={styles.label}>
-          Remote URL (origin)
-        </div>
-        <input
-          class={styles.input}
-          aria-labelledby={URL_LABEL}
-          value={url()}
-          placeholder="https://… (optional)"
-          onInput={(e) => setUrl(e.currentTarget.value)}
-          autocapitalize="off"
-          autocorrect="off"
-          spellcheck={false}
-        />
-
-        <Checkbox
-          class={`${styles.wtCheck} ${styles.initCheck}`}
-          checked={bare()}
-          onChange={setBare}
-          label="Bare + worktree layout (branches as sibling folders)"
-        />
-        <div class={styles.msg}>
-          {bare()
-            ? "Creates a .bare repo with one initial worktree; add more branches as their own folders."
-            : "A normal git repository in this folder."}
+        <div class={styles.spaceField}>
+          <div class={styles.spaceLabel}>
+            <span id={URL_LABEL}>Remote URL</span>
+            <span class={styles.qualifier}>optional, added as origin</span>
+          </div>
+          <input
+            class={`${styles.spaceInput} ${styles.monoInput}`}
+            aria-labelledby={URL_LABEL}
+            value={url()}
+            placeholder="git@github.com:org/repo.git"
+            onInput={(e) => setUrl(e.currentTarget.value)}
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck={false}
+          />
         </div>
       </div>
     </Dialog>

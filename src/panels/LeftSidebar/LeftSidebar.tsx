@@ -13,6 +13,8 @@ import ConfirmDialog, { type ConfirmReq, type ConfirmOpts } from "../../componen
 import WorktreeRemoveDialog from "../../components/Dialogs/WorktreeRemoveDialog";
 import BranchRemoveDialog from "../../components/Dialogs/BranchRemoveDialog";
 import InitGitDialog from "../../components/Dialogs/InitGitDialog";
+import AddBranchDialog, { type BranchPick } from "../../components/Dialogs/AddBranchDialog";
+import ChangeOriginDialog from "../../components/Dialogs/ChangeOriginDialog";
 import NewProjectDialog from "../../components/Dialogs/NewProjectDialog";
 import { claimProjectFolder, projectJob, type NewProjectMode } from "../../utils/newProject";
 import SpaceDialog, { type SpaceDialogMode } from "../../components/Dialogs/SpaceDialog";
@@ -124,6 +126,8 @@ import { shortHome, spaceInitials } from "../../utils/names";
 import { rememberSelection, rememberedUnit, rememberedTopic } from "../../utils/selectionMemory";
 import {
   Folder,
+  FolderGit2,
+  FolderTree,
   Layers,
   Ellipsis,
   Search,
@@ -371,8 +375,9 @@ export default function LeftSidebar(props: {
     pushToast(msg, kind, action);
   }
   const [expanded, setExpanded] = createSignal<Set<string>>(loadExpanded());
-  // Per-project origin URL, keyed by project path: gates whether Attach Existing
-  // Branch fetches + folds in remote branches, and Add Origin vs Add/set remote.
+  // Per-project origin URL, keyed by project path: gates whether the add-branch
+  // dialog fetches and folds in remote branches, and whether the menu offers to
+  // change an origin or to set a first one.
   //
   // The URL rather than a flag, because the forge chip has to tell a GitHub
   // remote from a GitLab one, and a boolean can only tell it from nothing. A
@@ -567,31 +572,20 @@ export default function LeftSidebar(props: {
 
   // In-app single-select picker (see PickerModal). Mirrors askText: askPick
   // opens the picker over `items` and awaits a choice, resolving with the
-  // selected string or null on cancel.
+  // selected string or null on cancel. Select-only: the attach flows that used
+  // its `creatable` and `reserve` modes have their own dialog now, and what is
+  // left here picks from a fixed list.
   const [pickReq, setPickReq] = createSignal<{
     title: string;
     items: string[];
-    creatable: boolean;
-    reserve: boolean;
     resolve: (v: string | null) => void;
   } | null>(null);
-  // `creatable`: let Ok/Enter commit a typed name that matches no listed item, so
-  // the same dialog attaches a listed branch or creates a new one. `reserve`:
-  // rows are still coming, so the list holds its full height from the start.
-  function askPick(
-    title: string,
-    items: string[],
-    creatable = false,
-    reserve = false,
-  ): Promise<string | null> {
-    return new Promise((resolve) => setPickReq({ title, items, creatable, reserve, resolve }));
+  function askPick(title: string, items: string[]): Promise<string | null> {
+    return new Promise((resolve) => setPickReq({ title, items, resolve }));
   }
   function resolvePick(v: string | null) {
     const req = pickReq();
     setPickReq(null);
-    // The attach flow's picker closed (submit or cancel): stop any pending
-    // background-fetch fold from touching a closed/next picker.
-    attachCtx = null;
     req?.resolve(v);
   }
 
@@ -644,6 +638,28 @@ export default function LeftSidebar(props: {
   // picker showing a state the tree has already moved past.
   const [iconReq, setIconReq] = createSignal<{ p: Project; busy: boolean } | null>(null);
   const [agentsReq, setAgentsReq] = createSignal<Project | null>(null);
+
+  // The origin dialog, for a repo that has one and for a repo that does not:
+  // setting a first origin and replacing an existing one are the same command
+  // and the same question, and the dialog tells them apart by `current`.
+  const [originReq, setOriginReq] = createSignal<{
+    p: Project;
+    current: string | null;
+    busy: boolean;
+  } | null>(null);
+
+  // The add-branch / add-worktree dialog. `remotes` fills in from the background
+  // fetch (see the `git://fetch-done` handler), which is what `fetching` reports
+  // while it is in flight.
+  const [branchReq, setBranchReq] = createSignal<{
+    p: Project;
+    mode: "branch" | "worktree";
+    locals: string[];
+    remotes: string[];
+    taken: string[];
+    fetching: boolean;
+    busy: boolean;
+  } | null>(null);
 
   // Drag-to-reorder state for the space tiles.
   // `dragSpace` is the name being dragged; `dropHint` marks the tile the drop
@@ -1610,40 +1626,34 @@ export default function LeftSidebar(props: {
     }
   }
 
-  async function addRemote(p: Project) {
-    const url = await askText(`Remote URL (origin) for "${p.name}":`);
-    if (!url?.trim()) return;
-    try {
-      await invoke("git_remote_add", { projectPath: p.path, url: url.trim() });
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  // Change an existing origin's URL. Shows the current URL and seeds the input with
-  // it (easy to edit, e.g. ssh↔https or a moved repo). git_remote_add does a
-  // set-url when origin already exists, so the same backend handles it. A no-op or
-  // empty entry cancels. Note: remote-tracking refs (refs/remotes/origin/*) keep
-  // their old state until the next fetch; pointing at a *different* repo leaves
-  // stale tracking branches (and any worktree upstreams) until you fetch.
-  async function changeRemote(p: Project) {
-    let current: string | null = null;
+  // Open the origin dialog, on the URL the repo has *now* rather than on the
+  // cached one: the map is refreshed per config load, and this is the one place
+  // the exact current value is the thing being compared against.
+  async function openOrigin(p: Project) {
+    let current = origins()[p.path] ?? null;
     try {
       current = await invoke<string | null>("git_origin", { projectPath: p.path });
     } catch {
-      /* fall through with no current */
+      /* fall through with whatever the map had */
     }
-    const url = await askText(
-      `Change origin for "${p.name}":`,
-      current ?? "",
-      current ? `Current: ${current}` : undefined,
-    );
-    if (url === null) return; // cancelled
-    const next = url.trim();
-    if (!next || next === current) return; // empty or unchanged: no-op
+    setOriginReq({ p, current, busy: false });
+  }
+
+  // Confirmed: point origin at the new URL. `git_remote_add` does a set-url when
+  // origin already exists, so the same command sets a first one and replaces an
+  // existing one. Note: remote-tracking refs (refs/remotes/origin/*) keep their
+  // old state until the next fetch; pointing at a *different* repo leaves stale
+  // tracking branches (and any worktree upstreams) until you fetch.
+  async function confirmOrigin(url: string) {
+    const req = originReq();
+    if (!req) return;
+    setOriginReq({ ...req, busy: true });
     try {
-      await invoke("git_remote_add", { projectPath: p.path, url: next });
+      await invoke("git_remote_add", { projectPath: req.p.path, url });
+      setOrigins((m) => ({ ...m, [req.p.path]: url }));
+      setOriginReq(null);
     } catch (e) {
+      setOriginReq(null);
       setError(String(e));
     }
   }
@@ -1676,132 +1686,81 @@ export default function LeftSidebar(props: {
     invoke("git_fetch", { repo }).catch((e) => setError(String(e)));
   }
 
-  // Routing context for the in-progress Attach Existing Branch flow. The
-  // label→{kind,branch} map is the single source of truth: kind is carried
-  // out-of-band, never parsed from the display string, so a local branch named
-  // `origin/x` still routes as local. `allLocals` (every local branch name) lets
-  // the fetch-done fold compute remote-only branches; `baseTitle` is the
-  // hint-free picker title restored once the background fetch resolves.
-  type AttachEntry = { kind: "local" | "remote"; branch: string };
-  let attachCtx: {
-    repo: string;
-    map: Map<string, AttachEntry>;
-    allLocals: Set<string>;
-    baseTitle: string;
-  } | null = null;
-
-  // Add a branch to a plain repo (one dialog replacing New Branch + Attach
-  // Existing Branch): list attachable local branches immediately, fold in remote
-  // branches after a background fetch (shared attachCtx + git://fetch-done). A
-  // listed pick attaches (local → attach_branch, remote → tracking
-  // attach_remote_branch); a typed name that matches nothing is created at HEAD
-  // and checked out. An already-local name (listed or typed) just attaches.
-  async function addBranch(p: Project) {
+  // Open the add-branch / add-worktree dialog: list what is already local, then
+  // kick a background fetch so remote-only branches fold into the open list (see
+  // the `git://fetch-done` handler). One dialog for the two menu rows, because
+  // the question is the same and only what is done with the answer differs.
+  async function openBranchDialog(p: Project, mode: "branch" | "worktree") {
     let branches: Branch[];
     try {
       branches = await invoke<Branch[]>("list_branches", { path: p.path });
     } catch (e) {
       return setError(String(e));
     }
-    const allLocals = new Set(branches.map((b) => b.name));
-    const visible = new Set(
-      p.branchUnits.filter((u) => u.kind === "plain" && u.branch).map((u) => u.branch),
-    );
-    const candidates = branches.map((b) => b.name).filter((n) => !visible.has(n));
-
-    // The routing map (label → {kind,branch}) is the source of truth; a returned
-    // value absent from it is a new branch name to create.
-    const map = new Map<string, AttachEntry>();
-    for (const n of candidates) map.set(n, { kind: "local", branch: n });
-    const baseTitle = "Branch Name";
-    attachCtx = { repo: p.path, map, allLocals, baseTitle };
-
-    const pick = askPick(
-      hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle,
-      candidates,
-      true,
-      hasOrigin(p),
-    );
+    // A branch the tree already shows is listed but refused: it is still an
+    // answer to "which branches are there" and not one to "which do you want".
+    const shown = mode === "worktree" ? "worktree" : "plain";
+    setBranchReq({
+      p,
+      mode,
+      locals: branches.map((b) => b.name),
+      remotes: [],
+      taken: p.branchUnits.filter((u) => u.kind === shown && u.branch).map((u) => u.branch as string),
+      fetching: hasOrigin(p),
+      busy: false,
+    });
     if (hasOrigin(p)) beginBackgroundFetch(p.path);
-
-    const value = await pick;
-    if (!value) return; // cancelled
-    const entry = map.get(value);
-    let created: string | null = null;
-    try {
-      if (entry?.kind === "remote") {
-        await invoke("attach_remote_branch", { repo: p.path, branch: entry.branch });
-      } else if (entry?.kind === "local" || allLocals.has(value)) {
-        await invoke("attach_branch", { repo: p.path, branch: entry?.branch ?? value });
-      } else {
-        // Matches nothing: create the branch at HEAD and switch to it.
-        await invoke("new_branch", { repo: p.path, branch: value });
-        await invoke("git_checkout", { repoPath: p.path, branch: value });
-        created = value;
-      }
-      await loadConfig();
-      // Naming a branch that did not exist is asking to work on it, and git is
-      // already on it: land the selection there too. Attaching an existing
-      // branch is not, and selecting it would raise the checkout confirm.
-      if (created) selectUnitIn(p, (u) => u.branch === created);
-    } catch (e) {
-      setError(String(e));
-    }
   }
 
-  // Add a worktree to a bare container (one dialog replacing New worktree… +
-  // Attach worktree…): list branches without a worktree (local, plus remotes
-  // folded in after a background fetch), then create a worktree for the pick or
-  // the typed name. create_worktree DWIMs the target: an existing local checks
-  // out, a remote-only name (origin/<name>) is tracked, a brand-new name starts a
-  // branch off origin's default.
   /** The container's Shared in worktrees page, as an editor tab. The container
    *  the tab's id, so the page reads the right one wherever the tab lands. */
   function openSharedFiles(p: Project) {
     emitWith<OpenInEditor>(OPEN_IN_EDITOR, { path: syntheticId("shared", p.path) });
   }
 
-  async function addWorktree(p: Project) {
-    let branches: Branch[];
+
+  // Confirmed. Where the branch was found is what says how to add it, and the
+  // dialog carries that rather than this re-deriving it from the name: a local
+  // branch attaches, a remote-only one attaches with tracking, and a name that
+  // is neither is created at HEAD and checked out.
+  async function confirmAddBranch(pick: BranchPick) {
+    const req = branchReq();
+    if (!req) return;
+    const { p, mode } = req;
+    setBranchReq({ ...req, busy: true });
     try {
-      branches = await invoke<Branch[]>("list_branches", { path: p.path });
-    } catch (e) {
-      return setError(String(e));
-    }
-    const allLocals = new Set(branches.map((b) => b.name));
-    // A worktree container's branch-units are its worktrees: hide any branch that
-    // already has one.
-    const visible = new Set(
-      p.branchUnits.filter((u) => u.kind === "worktree" && u.branch).map((u) => u.branch),
-    );
-    const candidates = branches.map((b) => b.name).filter((n) => !visible.has(n));
-
-    const map = new Map<string, AttachEntry>();
-    for (const n of candidates) map.set(n, { kind: "local", branch: n });
-    const baseTitle = "Branch Name";
-    attachCtx = { repo: p.path, map, allLocals, baseTitle };
-
-    const pick = askPick(
-      hasOrigin(p) ? `${baseTitle} · fetching…` : baseTitle,
-      candidates,
-      true,
-      hasOrigin(p),
-    );
-    if (hasOrigin(p)) beginBackgroundFetch(p.path);
-
-    const value = await pick;
-    if (!value) return; // cancelled
-    // A remote row's label is `origin/<name>`; the map carries the bare branch.
-    const branch = map.get(value)?.branch ?? value;
-    try {
-      // The command answers the folder it made (or reused), which is the only
-      // thing that tells one worktree row from another: the selection lands on
-      // that unit, the way clicking its row would.
-      const folder = await invoke<string>("create_worktree", { repoPath: p.path, branch });
+      if (mode === "worktree") {
+        // create_worktree DWIMs the target itself (an existing local checks out,
+        // a remote-only name is tracked, a brand-new name starts a branch off
+        // origin's default), so the kind is the dialog's business here and not
+        // this command's. It answers the folder it made, which is the only thing
+        // that tells one worktree row from another.
+        const folder = await invoke<string>("create_worktree", {
+          repoPath: p.path,
+          branch: pick.name,
+        });
+        setBranchReq(null);
+        await loadConfig();
+        const unit = selectUnitIn(p, (u) => samePath(u.folderPath, folder));
+        if (unit) emitWith<NewChatAt>(NEW_CHAT_AT, { folderPath: unit.folderPath, projectName: p.name });
+        return;
+      }
+      if (pick.kind === "remote") {
+        await invoke("attach_remote_branch", { repo: p.path, branch: pick.name });
+      } else if (pick.kind === "local") {
+        await invoke("attach_branch", { repo: p.path, branch: pick.name });
+      } else {
+        await invoke("new_branch", { repo: p.path, branch: pick.name });
+        await invoke("git_checkout", { repoPath: p.path, branch: pick.name });
+      }
+      setBranchReq(null);
       await loadConfig();
-      const unit = selectUnitIn(p, (u) => samePath(u.folderPath, folder));
-      if (unit) emitWith<NewChatAt>(NEW_CHAT_AT, { folderPath: unit.folderPath, projectName: p.name });
+      // Naming a branch that did not exist is asking to work on it, and git is
+      // already on it: land the selection there too. Attaching an existing
+      // branch is not, and selecting it would raise the checkout confirm.
+      if (pick.kind === "new") selectUnitIn(p, (u) => u.branch === pick.name);
     } catch (e) {
+      setBranchReq(null);
       setError(String(e));
     }
   }
@@ -2079,82 +2038,119 @@ export default function LeftSidebar(props: {
   // checkout to attempt anything against.
   const gitProject = (p: Project) => projectUnitKind(p) === "plain" || projectUnitKind(p) === "worktree";
 
-  // "Change icon…" is appended to every project menu, whatever git is doing
-  // underneath it: the icon is a property of the row. Placed last, after its own
-  // separator, so it sits below the kind-specific git actions and above nothing
-  // destructive.
+  // What a project's menu is acting on, in the project's own kind: its glyph,
+  // its name, and the kind as a badge. Three menus differ by kind and the rows
+  // alone never said which of the three had opened, nor which row it opened on.
+  const projectMenuHead = (p: Project) => {
+    const kind = projectUnitKind(p);
+    const git = kind !== "plain-dir";
+    return (
+      <span class={styles.projectMenuHead} classList={{ [styles.projectMenuGit]: git }}>
+        <Icon icon={kind === "plain-dir" ? Folder : kind === "plain" ? FolderGit2 : FolderTree} />
+        <span class={styles.projectMenuName}>{p.name}</span>
+        <span class={styles.projectMenuBadge}>
+          {kind === "plain-dir" ? "Folder" : kind === "plain" ? "Repo" : "Bare"}
+        </span>
+      </span>
+    );
+  };
+
+  // Three groups under the header, in the order the rows are reached for: what
+  // this kind of project can make, then what it can be pointed at and how it is
+  // presented, then the destructive row alone at the bottom.
+  //
+  // **The destructive row is last, and it is this function that puts it there.**
+  // It used to sit mid-list with `Agents…` and `Change icon…` under it, so a
+  // click one row low hit delete. Each kind supplies its own removal as the
+  // `remove` half of its rows rather than pushing it into the middle of them.
   const projectMenu = (g: Space, p: Project): MenuItem[] => {
     const kind = kindMenu(g, p);
     return [
-      ...kind,
+      { heading: projectMenuHead(p) },
+      { separator: true },
+      ...kind.rows,
       // No leading separator on a menu whose kind contributed nothing.
-      ...(kind.length ? [{ separator: true } as MenuItem] : []),
+      ...(kind.rows.length ? [{ separator: true } as MenuItem] : []),
+      // Git kinds only, and one row for both jobs: setting a first origin and
+      // replacing an existing one are the same command asking the same
+      // question, so the label is all that differs. It keeps the warn
+      // treatment it has always had: mutating, but recoverable, which is
+      // neither an ordinary row nor the destructive one.
+      ...(projectUnitKind(p) === "plain-dir"
+        ? []
+        : [
+            {
+              label: hasOrigin(p) ? "Change origin…" : "Set origin…",
+              warn: true,
+              onClick: () => void openOrigin(p),
+            } as MenuItem,
+          ]),
       ...(ruleRows(projectRows(p.path)).length > 1 || projectRows(p.path).length
         ? [{ label: "Agents\u2026", onClick: () => setAgentsReq(p) }]
         : []),
       { label: "Change icon…", onClick: () => setIconReq({ p, busy: false }) },
+      { separator: true },
+      kind.remove,
     ];
   };
 
   // Keyed by git kind: a worktree container spawns worktrees, a plain-dir
-  // initializes git, a plain repo commits / sets a remote / pushes.
-  const kindMenu = (g: Space, p: Project): MenuItem[] => {
+  // initializes git, a plain repo branches. `remove` is handed back separately
+  // rather than appended here, because `projectMenu` owns where it lands.
+  const kindMenu = (g: Space, p: Project): { rows: MenuItem[]; remove: MenuItem } => {
     switch (projectUnitKind(p)) {
       case "worktree":
-        return [
-          { label: "Add Worktree", onClick: () => addWorktree(p) },
-          // Beside Add Worktree on purpose: the menu that makes worktrees is
-          // where you say what they are made with.
-          { label: "Shared in worktrees…", onClick: () => openSharedFiles(p) },
-          { label: "Fan out…", onClick: () => fanOut(p) },
-          ...(hasOrigin(p)
-            ? [{ separator: true } as MenuItem, { label: "Change origin…", warn: true, onClick: () => changeRemote(p) }]
-            : [{ separator: true } as MenuItem, { label: "Add Origin", onClick: () => addRemote(p) }]),
-          { separator: true },
-          { label: "Remove project", danger: true, onClick: () => openRemoveProject(p) },
-        ];
+        return {
+          rows: [
+            { label: "Add worktree…", onClick: () => void openBranchDialog(p, "worktree") },
+            { label: "Fan out…", onClick: () => fanOut(p) },
+            // Beside Add worktree on purpose: the menu that makes worktrees is
+            // where you say what they are made with.
+            { label: "Shared in worktrees…", onClick: () => openSharedFiles(p) },
+          ],
+          remove: { label: "Remove project…", danger: true, onClick: () => openRemoveProject(p) },
+        };
       case "plain-dir": {
         // A non-git folder: it anchors sessions directly (no branch node), so its
         // menu carries the folder-level actions.
         const u = p.branchUnits[0];
-        return [
-          { label: "New session", onClick: () => startSession(g, p, u) },
-          { separator: true },
-          { label: "Initialize git…", onClick: () => openInitGit(p) },
-          { separator: true },
-          { label: "Remove folder", danger: true, onClick: () => openRemoveFolder(p) },
-        ];
+        return {
+          rows: [
+            { label: "New session", onClick: () => startSession(g, p, u) },
+            { separator: true },
+            { label: "Initialize git…", onClick: () => openInitGit(p) },
+          ],
+          remove: { label: "Remove folder…", danger: true, onClick: () => openRemoveFolder(p) },
+        };
       }
-      case "plain": {
-        const items: MenuItem[] = [
-          { label: "Add Branch", onClick: () => addBranch(p) },
-          { label: "Fan out…", onClick: () => fanOut(p) },
-        ];
-        items.push({ separator: true });
-        if (hasOrigin(p)) {
-          items.push({ label: "Change origin…", warn: true, onClick: () => changeRemote(p) });
-        } else {
-          items.push({ label: "Add / set remote…", onClick: () => addRemote(p) });
-        }
-        items.push({ separator: true });
-        items.push({ label: "Remove project", danger: true, onClick: () => openRemoveProject(p) });
-        return items;
-      }
+      case "plain":
+        return {
+          rows: [
+            { label: "Add branch…", onClick: () => void openBranchDialog(p, "branch") },
+            { label: "Fan out…", onClick: () => fanOut(p) },
+          ],
+          remove: { label: "Remove project…", danger: true, onClick: () => openRemoveProject(p) },
+        };
       case "incomplete":
         // A bare container with no worktrees (a killed bootstrap, or all worktrees
         // removed). It is still a valid `.bare`, so offer the worktree-container
         // actions to bring one back, plus stub removal.
-        return [
-          { label: "Add Worktree", onClick: () => addWorktree(p) },
-          { label: "Shared in worktrees…", onClick: () => openSharedFiles(p) },
-          ...(hasOrigin(p)
-            ? [{ separator: true } as MenuItem, { label: "Change origin…", warn: true, onClick: () => changeRemote(p) }]
-            : [{ separator: true } as MenuItem, { label: "Add Origin", onClick: () => addRemote(p) }]),
-          { separator: true },
-          { label: "Remove empty container", danger: true, onClick: () => cleanupStub(p.branchUnits[0]) },
-        ];
+        return {
+          rows: [
+            { label: "Add worktree…", onClick: () => void openBranchDialog(p, "worktree") },
+            { label: "Shared in worktrees…", onClick: () => openSharedFiles(p) },
+          ],
+          remove: {
+            label: "Remove empty container…",
+            danger: true,
+            onClick: () => cleanupStub(p.branchUnits[0]),
+          },
+        };
       default:
-        return [];
+        return {
+          rows: [],
+          remove: { label: "Remove project…", danger: true, onClick: () => openRemoveProject(p) },
+        };
     }
   };
 
@@ -2163,9 +2159,9 @@ export default function LeftSidebar(props: {
     // (its branches live in .bare), so offer that as well as removal.
     if (u.kind === "incomplete") {
       return [
-        { label: "Add Worktree", onClick: () => addWorktree(p) },
+        { label: "Add worktree…", onClick: () => void openBranchDialog(p, "worktree") },
         { separator: true },
-        { label: "Remove empty container", danger: true, onClick: () => cleanupStub(u) },
+        { label: "Remove empty container…", danger: true, onClick: () => cleanupStub(u) },
       ];
     }
     const items: MenuItem[] = [
@@ -2622,29 +2618,19 @@ export default function LeftSidebar(props: {
         void pollOnFocus();
       }
     });
-    // Attach-flow background fetch: fold remote-only branches into the open
-    // picker live. Guarded by attachCtx (right repo) AND an open picker, so a
-    // late/duplicate fetch-done after cancel or reopen can't resurrect or double.
+    // Fold remote-only branches into the open add-branch dialog as they land.
+    // Guarded on the request still being for this repo, so a late or duplicate
+    // fetch-done after a cancel or a reopen cannot resurrect or double a list.
     unlistenFetchDone = await listen<{ repo: string }>("git://fetch-done", async (e) => {
-      const ctx = attachCtx;
-      if (ctx && ctx.repo === e.payload.repo && pickReq()) {
+      const forThis = (fn: (r: NonNullable<ReturnType<typeof branchReq>>) => typeof r) =>
+        setBranchReq((r) => (r && r.p.path === e.payload.repo ? fn(r) : r));
+      if (branchReq()?.p.path === e.payload.repo) {
         try {
-          const remotes = await invoke<string[]>("list_remote_branches", { repo: ctx.repo });
-          const extra: string[] = [];
-          for (const name of remotes) {
-            if (ctx.allLocals.has(name)) continue; // a local branch already covers it
-            const label = `origin/${name}`;
-            if (ctx.map.has(label)) continue; // dedupe (local wins)
-            ctx.map.set(label, { kind: "remote", branch: name });
-            extra.push(label);
-          }
-          // Drop the "fetching…" hint and append any new remote-only entries.
-          setPickReq((prev) =>
-            prev ? { ...prev, title: ctx.baseTitle, items: [...prev.items, ...extra] } : prev,
-          );
+          const remotes = await invoke<string[]>("list_remote_branches", { repo: e.payload.repo });
+          forThis((r) => ({ ...r, remotes, fetching: false }));
         } catch {
-          // Leave the local-only picker usable; just clear the hint.
-          setPickReq((prev) => (prev ? { ...prev, title: ctx.baseTitle } : prev));
+          // Leave the local-only list usable; just stop claiming a fetch.
+          forThis((r) => ({ ...r, fetching: false }));
         }
       }
       loadConfig();
@@ -2653,11 +2639,7 @@ export default function LeftSidebar(props: {
       "git://fetch-error",
       (e) => {
         setError(e.payload.error || "Fetch failed");
-        const ctx = attachCtx;
-        if (ctx && ctx.repo === e.payload.repo) {
-          setPickReq((prev) => (prev ? { ...prev, title: ctx.baseTitle } : prev));
-          attachCtx = null;
-        }
+        setBranchReq((r) => (r && r.p.path === e.payload.repo ? { ...r, fetching: false } : r));
       },
     );
   });
@@ -3221,9 +3203,7 @@ export default function LeftSidebar(props: {
         <PickerModal
           title={pickReq()!.title}
           items={pickReq()!.items}
-          creatable={pickReq()!.creatable}
-          reserve={pickReq()!.reserve}
-          placeholder="Type to filter or name a new branch…"
+          placeholder="Type to filter…"
           onSubmit={(v) => resolvePick(v)}
           onCancel={() => resolvePick(null)}
         />
@@ -3232,6 +3212,7 @@ export default function LeftSidebar(props: {
       <Show when={deleteReq()}>
         <ConfirmDeleteSpace
           spaceName={deleteReq()!.name}
+          kind={deleteReq()!.mode}
           path={shortHome(deleteReq()!.path, home())}
           entries={deleteReq()!.entries}
           loading={deleteReq()!.loading}
@@ -3300,6 +3281,35 @@ export default function LeftSidebar(props: {
           onConfirm={(opts) => confirmInitGit(opts)}
           onCancel={() => setInitReq(null)}
         />
+      </Show>
+
+      <Show when={branchReq()}>
+        {(req) => (
+          <AddBranchDialog
+            mode={req().mode}
+            projectName={req().p.name}
+            projectPath={shortHome(req().p.path, home())}
+            locals={req().locals}
+            remotes={req().remotes}
+            taken={req().taken}
+            fetching={req().fetching}
+            busy={req().busy}
+            onConfirm={(pick) => void confirmAddBranch(pick)}
+            onCancel={() => setBranchReq(null)}
+          />
+        )}
+      </Show>
+
+      <Show when={originReq()}>
+        {(req) => (
+          <ChangeOriginDialog
+            projectName={req().p.name}
+            current={req().current}
+            busy={req().busy}
+            onConfirm={(url) => void confirmOrigin(url)}
+            onCancel={() => setOriginReq(null)}
+          />
+        )}
       </Show>
 
       <Show when={newReq()}>

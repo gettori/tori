@@ -35,6 +35,7 @@ function open(props: Partial<Omit<Props, "onConfirm" | "onCancel">> = {}) {
   render(() => (
     <ConfirmDeleteSpace
       spaceName="work"
+      kind="space"
       path="~/code/work"
       entries={[]}
       loading={false}
@@ -144,7 +145,7 @@ describe("ConfirmDeleteSpace", () => {
     it("says so when there is nothing below it", () => {
       open();
 
-      expect(screen.getByText("No contents (empty space)")).toBeTruthy();
+      expect(screen.getByText("Nothing inside it")).toBeTruthy();
     });
 
     it("holds the repo flags back until they are known", () => {

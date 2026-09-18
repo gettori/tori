@@ -43,9 +43,15 @@ type Story = StoryObj<typeof meta>;
  *  derived from the project's path. */
 export const Automatic: Story = {};
 
-/** A glyph is stored, so the grid shows it selected and automatic is not. */
+/** A glyph is stored, so the dialog opens on Pick with that tile selected. */
 export const StoredGlyph: Story = {
   args: { icon: "Rocket" },
+};
+
+/** A favicon was found inside the project, which is what automatic resolves to
+ *  when there is one. */
+export const ProjectFavicon: Story = {
+  args: { favicon: "/Users/you/Projects/tori/public/favicon.svg" },
 };
 
 /** Mid-save. The confirm button is disabled and says what it is doing. */

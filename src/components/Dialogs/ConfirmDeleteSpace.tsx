@@ -52,6 +52,10 @@ const KIND_GLYPH = { repo: FolderGit2, folder: Folder, file: FileText } as const
  */
 export default function ConfirmDeleteSpace(props: {
   spaceName: string;
+  /** What is being deleted, which decides two things this dialog cannot read off
+   *  the entries: what the list is a listing of, and whether the third stat
+   *  panel has a git state to report at all. */
+  kind: "space" | "folder" | "project";
   /** The folder about to go, for display: already folded to `~` by the caller,
    *  which is the half of this that knows the home directory. */
   path: string;
@@ -76,6 +80,16 @@ export default function ConfirmDeleteSpace(props: {
     [...props.entries].sort((a, b) => Number(b.unpushed) - Number(a.unpushed)),
   );
   const unpushedCount = () => props.entries.filter((e) => e.unpushed).length;
+
+  // A plain folder has no git to be behind on, so the third panel reports the
+  // absence rather than a zero that reads as "checked, and clean".
+  const hasGit = () => props.kind !== "folder";
+  const rootNoun = () =>
+    props.kind === "space"
+      ? "space folder"
+      : props.kind === "project"
+        ? "repository root"
+        : "plain folder";
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.key !== "Enter") return;
@@ -122,47 +136,67 @@ export default function ConfirmDeleteSpace(props: {
               {props.sizeBytes === null ? "…" : formatBytes(props.sizeBytes)}
             </div>
           </div>
-          <div class={styles.stat} classList={{ [styles.statAtRisk]: unpushedCount() > 0 }}>
-            <div class={styles.statLabel}>Unpushed</div>
-            <div class={styles.statValue}>
-              <Show when={!props.loading} fallback="…">
-                {unpushedCount()} {unpushedCount() === 1 ? "repo" : "repos"}
-              </Show>
+          <Show
+            when={hasGit()}
+            fallback={
+              <div class={styles.stat}>
+                <div class={styles.statLabel}>Git</div>
+                <div class={styles.statValue}>None</div>
+              </div>
+            }
+          >
+            <div class={styles.stat} classList={{ [styles.statAtRisk]: unpushedCount() > 0 }}>
+              <div class={styles.statLabel}>Unpushed</div>
+              <div class={styles.statValue}>
+                <Show when={!props.loading} fallback="…">
+                  {unpushedCount()} {unpushedCount() === 1 ? "repo" : "repos"}
+                </Show>
+              </div>
             </div>
-          </div>
+          </Show>
         </div>
 
         <div class={styles.spaceField}>
           <div class={styles.spaceLabel}>Contents</div>
-          <div class={styles.contents}>
-            <Show
-              when={rows().length}
-              fallback={<div class={styles.contentsEmpty}>No contents (empty space)</div>}
-            >
-              <For each={rows()}>
-                {(e) => (
-                  <div class={styles.contentsRow}>
-                    <Icon
-                      icon={KIND_GLYPH[e.kind]}
-                      class={e.unpushed ? styles.rowGlyphAtRisk : styles.rowGlyph}
-                      aria-hidden="true"
-                    />
-                    <span class={styles.rowName}>{e.name}</span>
-                    <span class={styles.rowBadges}>
-                      <Show when={e.kind === "repo" && props.loading}>
-                        <span class={styles.rowNote}>checking…</span>
-                      </Show>
-                      <Show when={!props.loading && e.dirty}>
-                        <span class={styles.badge}>uncommitted</span>
-                      </Show>
-                      <Show when={!props.loading && e.unpushed}>
-                        <span class={styles.badge}>unpushed</span>
-                      </Show>
-                    </span>
-                  </div>
-                )}
-              </For>
-            </Show>
+          <div class={styles.contentsPanel}>
+            {/* Outside the scroller, so what the list is of is still on screen
+                three rows in. */}
+            <div class={styles.contentsHead}>
+              <span>
+                {props.spaceName}, {rootNoun()}
+              </span>
+              <span class={styles.contentsCount}>{props.entries.length} items</span>
+            </div>
+            <div class={styles.contents}>
+              <Show
+                when={rows().length}
+                fallback={<div class={styles.contentsEmpty}>Nothing inside it</div>}
+              >
+                <For each={rows()}>
+                  {(e) => (
+                    <div class={styles.contentsRow}>
+                      <Icon
+                        icon={KIND_GLYPH[e.kind]}
+                        class={e.unpushed ? styles.rowGlyphAtRisk : styles.rowGlyph}
+                        aria-hidden="true"
+                      />
+                      <span class={styles.rowName}>{e.name}</span>
+                      <span class={styles.rowBadges}>
+                        <Show when={e.kind === "repo" && props.loading}>
+                          <span class={styles.rowNote}>checking…</span>
+                        </Show>
+                        <Show when={!props.loading && e.dirty}>
+                          <span class={styles.badge}>uncommitted</span>
+                        </Show>
+                        <Show when={!props.loading && e.unpushed}>
+                          <span class={styles.badge}>unpushed</span>
+                        </Show>
+                      </span>
+                    </div>
+                  )}
+                </For>
+              </Show>
+            </div>
           </div>
         </div>
 

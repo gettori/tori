@@ -145,12 +145,21 @@ async function menu(project: string, item: string) {
   pointerClick(await screen.findByText(item));
 }
 
-/** Type a name into the branch picker and commit it with OK, which is the
- *  create-new path (a name with no row cannot be clicked). */
-async function typeAndOk(name: string) {
-  const input = await screen.findByPlaceholderText(/name a new branch/i);
-  fireEvent.input(input, { target: { value: name } });
-  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+const filter = () => screen.findByPlaceholderText("Filter branches, or type a new name");
+
+/** Type a name no branch has and add it, which is the create path: the typed
+ *  name is the choice while the create row is the only thing answering it. */
+async function typeAndAdd(name: string, noun: "worktree" | "branch") {
+  fireEvent.input(await filter(), { target: { value: name } });
+  fireEvent.click(screen.getByRole("button", { name: `Add ${noun}` }));
+}
+
+/** Pick a listed branch and add it. A name that matches a row exactly is not a
+ *  new name, so the row has to be pressed before the button means anything. */
+async function pickAndAdd(name: string, noun: "worktree" | "branch") {
+  fireEvent.input(await filter(), { target: { value: name } });
+  fireEvent.click(await screen.findByRole("option", { name }));
+  fireEvent.click(screen.getByRole("button", { name: `Add ${noun}` }));
 }
 
 describe("creating a branch-unit from the project menu", () => {
@@ -171,8 +180,8 @@ describe("creating a branch-unit from the project menu", () => {
   it("moves the selection onto the worktree it just made", async () => {
     await mounted();
 
-    await menu("proj", "Add Worktree");
-    await typeAndOk("wave-4");
+    await menu("proj", "Add worktree…");
+    await typeAndAdd("wave-4", "worktree");
 
     await waitFor(() => expect(cmds()).toContain("create_worktree"));
     // The folder the backend answered, not one derived from the branch name here:
@@ -184,8 +193,8 @@ describe("creating a branch-unit from the project menu", () => {
   it("moves the selection onto the branch it just created and checked out", async () => {
     await mounted();
 
-    await menu("repo", "Add Branch");
-    await typeAndOk("feat-2");
+    await menu("repo", "Add branch…");
+    await typeAndAdd("feat-2", "branch");
 
     await waitFor(() => expect(cmds()).toContain("git_checkout"));
     await waitFor(() => expect(last()?.branch).toBe("feat-2"));
@@ -198,8 +207,8 @@ describe("creating a branch-unit from the project menu", () => {
     // raise the working-tree confirm the user never asked for.
     await mounted();
 
-    await menu("repo", "Add Branch");
-    await typeAndOk("old");
+    await menu("repo", "Add branch…");
+    await pickAndAdd("old", "branch");
 
     await waitFor(() => expect(cmds()).toContain("attach_branch"));
     expect(cmds()).not.toContain("git_checkout");

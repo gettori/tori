@@ -75,6 +75,17 @@
   transition: background var(--tori-duration-fast) ease;
 }
 
+/* The choice in force, for the surface whose confirm is a button rather than
+   the click itself (see `picked` in Combobox.tsx). Above the highlight rule on
+   purpose: the two have equal specificity, so source order decides, and the
+   highlight has to win - it is where the pointer or the arrows are *now*, and
+   it must stay readable while crossing the picked row. Same call
+   Menu.module.css makes for `.item.selected`. */
+.item[data-picked] {
+  background: var(--brand-wash);
+  color: var(--fg-default);
+}
+
 /* Pointer and keyboard reach the same state; same call as Menu's and Select's
    `.item`. `data-highlighted` is the active row here, and it is *not*
    `aria-selected`: in a combobox that attribute means the committed value, and
