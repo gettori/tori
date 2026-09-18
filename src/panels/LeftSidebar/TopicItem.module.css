@@ -76,6 +76,47 @@
   color: var(--fg-default);
 }
 
+/* The roll-up, at the trailing end of the name's line. Sized from its own text
+   rather than given a height, so it can never outgrow the name's line box and
+   make a Topic with news taller than one without. */
+.rollup {
+  flex: 0 0 auto;
+  padding: 0 calc(5px * var(--ui-scale));
+  border: 1px solid;
+  border-radius: var(--tori-radius-sm);
+  font-size: var(--tori-text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The titlebar chip's four tones, written out per class: `color-mix()` fed from
+   a `var()` is dropped whole by some engines (see --space-tint-rgb in App.css). */
+.rollup.danger {
+  color: var(--danger-fg);
+  background: color-mix(in srgb, var(--danger-fg) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger-fg) 45%, transparent);
+}
+
+.rollup.warn {
+  color: var(--attention-emphasis);
+  background: color-mix(in srgb, var(--attention-emphasis) 14%, transparent);
+  border-color: color-mix(in srgb, var(--attention-emphasis) 45%, transparent);
+}
+
+.rollup.attention {
+  color: var(--attention-fg);
+  background: color-mix(in srgb, var(--attention-fg) 14%, transparent);
+  border-color: color-mix(in srgb, var(--attention-fg) 45%, transparent);
+}
+
+/* No fill. These are facts about a Topic that is working normally, and a tinted
+   box for each would put one on most rows. */
+.rollup.muted {
+  color: var(--fg-muted);
+  background: none;
+  border-color: transparent;
+}
+
 .chips {
   display: flex;
   flex-wrap: nowrap;
@@ -103,6 +144,45 @@
   font-weight: 600;
   line-height: 1;
   color: var(--canvas-default);
+  background: var(--fg-muted);
+}
+
+/* Opposite bottom corners, clear of `.badge` at the top right. The level dot is
+   toned; the dirty one never is, because uncommitted work sits beside the
+   severity scale rather than on it. */
+.syncDot,
+.dirtyDot {
+  position: absolute;
+  bottom: calc(-2px * var(--ui-scale));
+  width: calc(6px * var(--ui-scale));
+  height: calc(6px * var(--ui-scale));
+  border-radius: 50%;
+  /* Against the chip behind it, so a dot on a same-hue tint still reads. */
+  box-shadow: 0 0 0 calc(1px * var(--ui-scale)) var(--canvas-default);
+}
+
+.syncDot {
+  right: calc(-1px * var(--ui-scale));
+}
+
+.dirtyDot {
+  left: calc(-1px * var(--ui-scale));
+  background: var(--fg-muted);
+}
+
+.syncDot.danger {
+  background: var(--danger-fg);
+}
+
+.syncDot.warn {
+  background: var(--attention-emphasis);
+}
+
+.syncDot.attention {
+  background: var(--attention-fg);
+}
+
+.syncDot.muted {
   background: var(--fg-muted);
 }
 
