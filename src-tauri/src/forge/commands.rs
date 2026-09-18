@@ -258,7 +258,7 @@ pub fn forge_sign_in_start(
     }
     let routes = routes_in(&file, provider, &base_url, &host);
     if routes.device_flow {
-        let prompt = start_device_flow(&state, &file, provider, base_url, host, account_id)?;
+        let prompt = start_gitlab_device_flow(&state, &file, base_url, host, account_id)?;
         return Ok(SignInStart::Browser { prompt, routes });
     }
     Ok(SignInStart::Token { routes })
@@ -429,35 +429,31 @@ fn routes_in(
 
 /// The OAuth application a host's browser sign-in would use.
 ///
-/// Tori's own on github.com and gitlab.com. On any other GitLab it is whichever
-/// the user registered on that instance.
+/// GitLab only, since Tori registers no GitHub application: Tori's own on
+/// gitlab.com, and on any other instance whichever the user registered there.
 ///
 /// A stored gitlab.com id is ignored rather than preferred: nothing can clear
 /// it, and gitlab.com tokens renew with Tori's application.
 fn client_id_for(file: &AccountsFile, provider: Provider, host: &str) -> Option<String> {
     match provider {
-        Provider::Github => (host == accounts::GITHUB_COM && device_flow::is_configured())
-            .then(|| device_flow::CLIENT_ID.to_string()),
+        Provider::Github => None,
         Provider::Gitlab if host == accounts::GITLAB_COM => (!device_flow::GITLAB_COM_CLIENT_ID.is_empty())
             .then(|| device_flow::GITLAB_COM_CLIENT_ID.to_string()),
         Provider::Gitlab => accounts::app_id(file, host),
     }
 }
 
-/// Starts a device flow, holding the secret half in Rust.
-fn start_device_flow(
+/// Starts a GitLab device flow, holding the secret half in Rust.
+fn start_gitlab_device_flow(
     state: &tauri::State<'_, DeviceFlowState>,
     file: &AccountsFile,
-    provider: Provider,
     base_url: String,
     host: String,
     account_id: Option<String>,
 ) -> Result<DevicePrompt, ForgeError> {
-    let client_id = client_id_for(file, provider, &host).unwrap_or_default();
-    let endpoints = match provider {
-        Provider::Github => device_flow::github_endpoints(),
-        Provider::Gitlab => device_flow::gitlab_endpoints(&base_url),
-    };
+    let provider = Provider::Gitlab;
+    let client_id = client_id_for(file, provider, &host).ok_or(ForgeError::NotAuthenticated)?;
+    let endpoints = device_flow::gitlab_endpoints(&base_url);
     let (prompt, flow) =
         device_flow::start_with(&UreqTransport::default(), &client_id, &endpoints)?;
     *state.0.lock().unwrap() = Some(PendingSignIn {
@@ -1043,9 +1039,14 @@ fn fresh_token_with(
     if !refresh::due(deadline(), now_secs()) {
         return current;
     }
-    let Some(refresh_token) = token::load_secret(&id).ok().flatten().and_then(|s| s.refresh_token)
-    else {
-        // A pasted token carries a deadline and nothing that can replace it.
+    let renewable = match account.provider {
+        // Tori registers no GitHub application, so a refresh token left over
+        // from the retired browser flow has nothing to exchange it with.
+        Provider::Github => None,
+        Provider::Gitlab => token::load_secret(&id).ok().flatten().and_then(|s| s.refresh_token),
+    };
+    let Some(refresh_token) = renewable else {
+        // A token nothing can replace carries a deadline and no way past it.
         // Dropping it on that date would sign the account out on Tori's clock,
         // ahead of the host that is the only authority on whether it still
         // works. A rejection is that authority having already answered, so it
@@ -1056,10 +1057,7 @@ fn fresh_token_with(
         };
     };
     let client_id = client_id_for(file, account.provider, host)?;
-    let endpoints = match account.provider {
-        Provider::Github => device_flow::github_endpoints(),
-        Provider::Gitlab => device_flow::gitlab_endpoints(&account.base_url),
-    };
+    let endpoints = device_flow::gitlab_endpoints(&account.base_url);
     let renewal = refresh::Renewal {
         account_id: &id,
         refresh_token: &refresh_token,
@@ -1829,6 +1827,38 @@ mod tests {
             Some(1)
         });
         assert_eq!(token.as_deref(), Some("ghp_lapsed"));
+
+        auth::sign_out(id).unwrap();
+    }
+
+    #[test]
+    fn a_github_account_from_the_retired_browser_flow_still_sends_its_token() {
+        // What `cli-first`'s backfill left behind: a file with no `source`
+        // field, whose `gho_` token reads as a browser sign-in. That route and
+        // its application are gone, so there is nothing left to exchange the
+        // pair against and the account has to keep working until GitHub itself
+        // refuses it.
+        let id = "github-com-retired-browser";
+        let _ = super::super::token::tests::mock_entry_in("com.tori.forge.retired-browser", id);
+
+        let mut file: AccountsFile = serde_json::from_str(&format!(
+            r#"{{"hosts":{{"github.com":{{"accounts":[
+                {{"id":"{id}","provider":"github","baseUrl":"https://github.com",
+                 "login":"arif","label":"arif","expiresAt":1}}
+            ]}}}}}}"#
+        ))
+        .unwrap();
+        accounts::backfill_source(&mut file, |_| Some("gho_from_the_device_flow".into()));
+        assert_eq!(accounts::find(&file, id).unwrap().1.source, Source::Browser);
+
+        // The old flow's pair, refresh half and all.
+        let pair =
+            Secret { access_token: "gho_retired".into(), refresh_token: Some("ghr_retired".into()) };
+        auth::sign_in(id, &pair, Some("arif".into())).unwrap();
+
+        let (_, account) = accounts::find(&file, id).unwrap();
+        let token = fresh_token_with(&file, accounts::GITHUB_COM, account, |_| Some(1));
+        assert_eq!(token.as_deref(), Some("gho_retired"));
 
         auth::sign_out(id).unwrap();
     }

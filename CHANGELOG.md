@@ -25,8 +25,8 @@ a first project, and ends on a summary before Tori opens.
 - Base folder and space are required. Tori does not open until the base folder
   has at least one space, and picking a folder that already has spaces is
   enough.
-- Git hosts signs in to github.com or gitlab.com with a code in the browser,
-  same as Settings > Hosts, and turns on git push and fetch for that account.
+- Git hosts signs in to github.com or gitlab.com the same way Settings > Hosts
+  does, and turns on git push and fetch for that account.
 - First project makes a new folder, clones a repo, or sets up a bare repo with
   a worktree for the default branch. If git is missing it offers to install
   it.
@@ -61,6 +61,15 @@ a first project, and ends on a summary before Tori opens.
   sidebar's gear menu, no "Unpin" on a pinned project. Spaces now come only from
   the base folder. A `paths` list or a legacy `[[project]]` table left in the
   config is ignored rather than read.
+
+### Hosts
+
+- Signing in to a GitHub host no longer goes through the browser. Tori uses the
+  login the GitHub CLI already has where that fits, and asks for a classic
+  token otherwise. GitLab still signs in with a code in the browser.
+- A GitHub account signed in through the browser before this keeps working.
+  Nothing renews it, so if GitHub stops accepting it, sign in again and paste a
+  token.
 
 ### Fixes
 
