@@ -19,6 +19,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { emitWith, TOAST, type FsChanged, type ToastEvent } from "./events";
 import { rootOf } from "./topics";
+import { adoptSync } from "./branchSync";
 import { mentionPath } from "./pathScope";
 
 /** One porcelain entry. `path` is repo-relative, as every git_* command wants,
@@ -53,7 +54,14 @@ export type UpstreamSync = { ahead: number; behind: number; has_upstream: boolea
  *  fight, and `null` is "not asked" - git below 2.38, or no shared history.
  *  Reading `null` as clean is what would keep a row quiet in front of the
  *  rebase that hurts. */
-export type BaseSync = { name: string; behind: number; conflicts: string[] | null };
+export type BaseSync = {
+  name: string;
+  /** Commits this branch has and the base does not: its own work, and what
+   *  says whether there is anything here to open a pull request about. */
+  ahead: number;
+  behind: number;
+  conflicts: string[] | null;
+};
 
 /** The last fetch that touched a root, from the `git://fetch-*` events.
  *
@@ -332,10 +340,14 @@ export function refreshMeta(root: string | null): Promise<void> {
       invoke<string>("git_head_sha", { projectPath: root })
         .then((sha) => sha || null)
         .catch(() => null),
-      invoke<BranchSync>("git_branch_sync", { projectPath: root }).catch(() => null),
+      invoke<BranchSync>("git_branch_sync", { projectPath: root, branch: null }).catch(() => null),
     ]);
     if (epochs.get(root) !== at) return;
     writeSlot(root, { branch, aheadBehind, head, sync });
+    // The sidebar row for this same branch wants exactly this answer, and a
+    // second process for a number already in hand is what it costs not to hand
+    // it over. A no-op when no row is drawn for the pair.
+    adoptSync(root, branch, sync);
   });
 }
 

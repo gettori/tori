@@ -184,7 +184,9 @@ const { resetSessionStoreForTests } = await import("../../utils/sessionStore");
 const { resetSessionActivityForTests } = await import("../../utils/sessionActivity");
 const { resetForgeStatusForTests } = await import("../../utils/forgeStatus");
 
-const row = async (label: string) => (await screen.findByText(label)).parentElement!;
+// Up to the branch node: the louder chips draw on the row's second line, which
+// is a sibling of the row rather than part of it.
+const row = async (label: string) => (await screen.findByText(label)).parentElement!.parentElement!;
 const statusAsks = () =>
   bridge.calls.filter((c) => c.cmd === "forge_unit_statuses").map((c) => c.args.projectPath);
 
@@ -211,6 +213,8 @@ describe("the forge chip on a branch row", () => {
 
     const shipped = await row("shipped");
     await waitFor(() => expect(shipped.querySelector("[data-forge-pr]")).toBeTruthy());
+
+    expect(shipped.querySelector("[data-state-line] [data-forge-pr]")).toBeTruthy();
 
     // Open, all checks green, approved.
     expect(shipped.querySelector('[data-forge-pr="open"]')?.textContent).toContain("#11");
@@ -239,6 +243,9 @@ describe("the forge chip on a branch row", () => {
 
     const fresh = await row("fresh");
     await waitFor(() => expect(fresh.querySelector('[data-forge-state="noPr"]')).toBeTruthy());
+    // A mark on every branch of every GitHub repo, so a line of its own for it
+    // would be a line on almost every row.
+    expect(fresh.querySelector("[data-state-line]")).toBeNull();
     // No number, and no checks or verdict hanging off a PR that does not exist.
     expect(fresh.querySelector('[data-forge-pr="none"]')?.textContent).toBe("");
     expect(fresh.querySelector("[data-forge-checks]")).toBeNull();

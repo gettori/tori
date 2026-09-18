@@ -23,7 +23,7 @@ import {
 } from "lucide-solid";
 import Icon from "../Icon/Icon";
 import IconButton from "../IconButton/IconButton";
-import type { BadgeTone, ForgeChip, PrChipState } from "../../utils/forgeChip";
+import { chipDraws, type BadgeTone, type ForgeChip, type PrChipState } from "../../utils/forgeChip";
 import styles from "./ForgeChip.module.css";
 
 // The glyph for a pull-request state. `none` is the branch with no PR: an
@@ -68,12 +68,7 @@ export default function ForgeChipView(props: {
   // kinds all render nothing must leave no element behind, so an inert unit
   // cannot be hovered, focused, or clicked into a capability it does not have.
   const picking = () => props.chip.kind === "pickAccount";
-  const anything = () =>
-    picking() ||
-    props.chip.connect !== null ||
-    pr() !== null ||
-    props.chip.checks !== null ||
-    props.chip.review !== null;
+  const anything = () => chipDraws(props.chip);
 
   const body = () => (
     <>
