@@ -8,10 +8,13 @@
 // reader's attention on the news that there is no news.
 
 import { createMemo, For, Show } from "solid-js";
+import { CloudOff } from "lucide-solid";
+import Icon from "../Icon/Icon";
+import SyncMarks from "../SyncMarks/SyncMarks";
 import Tooltip from "../Tooltip/Tooltip";
 import { emitWith, SET_RIGHT_MODE, type SetRightMode } from "../../utils/events";
 import { gitStateFor, type LastFetch } from "../../utils/gitActions";
-import { syncState, type SyncLevel } from "../../utils/branchSync";
+import { syncMarks, syncState, type SyncLevel } from "../../utils/branchSync";
 import { fetchRootNow } from "../../utils/remoteSync";
 import styles from "./SyncChip.module.css";
 
@@ -19,9 +22,19 @@ import styles from "./SyncChip.module.css";
  *  out. Past a handful the list is the shape of the problem, not its detail. */
 const PATHS_SHOWN = 6;
 
-/** The control's accessible name. Separate from the label, which is glyphs and
- *  counts ("↓3"), and from the tooltip, which is the sentence behind it:
- *  a screen reader reading an arrow aloud names a character, not a state. */
+/** The levels that get words beside the glyphs. A count needs none: the glyph
+ *  says which direction and the number says how far. These four need a decision
+ *  rather than a routine pull, and this is the one surface with the room to say
+ *  so without a second line or a truncated name. */
+const SAYS: Partial<Record<SyncLevel, true>> = {
+  conflicts: true,
+  diverged: true,
+  baseBehind: true,
+  unpushed: true,
+};
+
+/** The control's accessible name. Separate from the glyphs, which a screen
+ *  reader would otherwise read out as characters rather than as a state. */
 const NAME: Record<Exclude<SyncLevel, "none">, string> = {
   conflicts: "Conflicts with the base branch",
   diverged: "Diverged from the upstream",
@@ -53,6 +66,11 @@ export default function SyncChip(props: { root: string | null }) {
   // one repo Tori cannot reach is the one it says nothing about.
   const staleFetch = () => level() === "none" && !!lastFetch()?.error;
   const shown = () => level() !== "none" || staleFetch();
+  // Every fact, not just the loudest. This surface outlives the sidebar, which
+  // toggles away, so a branch that is ninety-nine behind *and* about to conflict
+  // has to show both: the words are the verdict, the marks are what it owes.
+  const marks = createMemo(() => syncMarks(gitStateFor(props.root).sync));
+  const words = () => (SAYS[level()] ? state().label : "");
 
   return (
     <Show when={shown()}>
@@ -97,7 +115,10 @@ export default function SyncChip(props: { root: string | null }) {
           emitWith<SetRightMode>(SET_RIGHT_MODE, { mode: "changes" });
         }}
       >
-        {staleFetch() ? "stale" : state().label}
+        <Show when={!staleFetch()} fallback={<Icon icon={CloudOff} class={styles.glyph} />}>
+          <SyncMarks marks={marks()} />
+          <Show when={words()}>{words()}</Show>
+        </Show>
       </Tooltip>
     </Show>
   );

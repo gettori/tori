@@ -7,7 +7,8 @@ import type { MenuItem } from "../../components/Menu/rows";
 import MemberChip from "../../components/MemberChip/MemberChip";
 import { REPAIR_LABEL, type Topic, type Member, type RepairAction } from "../../utils/topics";
 import { CHIP_CAP, tintedMembers, type SpaceTint } from "../../utils/topicMembers";
-import { rollupSync, syncState } from "../../utils/branchSync";
+import { markTitle, rollupSync, syncMarks, syncState } from "../../utils/branchSync";
+import SyncMarks from "../../components/SyncMarks/SyncMarks";
 import type { BranchSync } from "../../utils/gitActions";
 import { createDragReorder } from "../../utils/dragReorder";
 import styles from "./TopicItem.module.css";
@@ -63,7 +64,7 @@ export default function TopicItem(props: {
   // Over every member, not the six that fit: a Topic speaks for all of them,
   // and the conflict hiding behind `+3` is the one worth knowing about.
   const rollup = createMemo(() =>
-    rollupSync(members().map((m) => ({ label: m.label, state: stateOf(m.member) }))),
+    rollupSync(members().map((m) => ({ label: m.label, sync: syncOf(m.member) }))),
   );
 
   const drag = createDragReorder({
@@ -103,14 +104,11 @@ export default function TopicItem(props: {
           {props.topic.name}
         </div>
         {/* At the trailing end of line one, so a Topic with news is exactly as
-            tall as one without. */}
-        <Show when={rollup().level !== "none"}>
-          <span
-            class={`${styles.rollup} ${styles[rollup().tone]}`}
-            data-topic-sync={rollup().level}
-            title={rollup().detail}
-          >
-            {rollup().label}
+            tall as one without. The loudest member's own glyphs, not a summary
+            of them: the tooltip is where "which member" belongs. */}
+        <Show when={rollup().state.level !== "none"}>
+          <span class={styles.rollup} data-topic-sync={rollup().state.level}>
+            <SyncMarks marks={rollup().marks} label={rollup().state.detail} />
           </span>
         </Show>
       </div>
@@ -203,6 +201,7 @@ export default function TopicItem(props: {
                     unlike the collapsed chip, which is on its own. */}
                 <MemberChip icon={m.icon} chipStyle={m.style} size="md" decorative />
                 <span class={styles.memberName}>{m.label}</span>
+                <SyncMarks marks={syncMarks(syncOf(m.member))} label={markTitle(syncMarks(syncOf(m.member)))} />
                 <span class={styles.memberState} data-member-state>
                   {m.state.label}
                 </span>
