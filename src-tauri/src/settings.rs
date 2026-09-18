@@ -637,6 +637,27 @@ pub fn wants_token_window(agent: &str, profile_id: &str) -> bool {
         .is_some_and(|w| w.iter().any(|k| k == MODEL_WEEK || k == WEEK_OTHER))
 }
 
+/// How often the scheduled fetch runs, in minutes. Zero is off, and off means
+/// both the timer and the focus fetch: a setting that silently kept one of the
+/// two would be a switch that does not switch.
+fn default_fetch_every_minutes() -> u32 {
+    10
+}
+
+/// Git behaviour Tori decides, as opposed to git's own config.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Git {
+    #[serde(default = "default_fetch_every_minutes")]
+    pub fetch_every_minutes: u32,
+}
+
+impl Default for Git {
+    fn default() -> Self {
+        Self { fetch_every_minutes: default_fetch_every_minutes() }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Settings {
@@ -651,6 +672,8 @@ pub struct Settings {
     /// Read from `github` too, its name before other forges.
     #[serde(default, alias = "github")]
     pub forge: Forge,
+    #[serde(default)]
+    pub git: Git,
     #[serde(default)]
     pub chat_defaults: ChatDefaults,
     #[serde(default)]
@@ -959,6 +982,26 @@ mod tests {
 
         std::fs::write(&p, r#"{"github":{"enabled":false}}"#).unwrap();
         assert!(!load_from(&p).forge.enabled, "the old github key still switches it off");
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[test]
+    fn the_fetch_interval_defaults_to_ten_and_keeps_an_explicit_off() {
+        let p = tmp_file();
+        std::fs::write(&p, r#"{"appearance":{}}"#).unwrap();
+        assert_eq!(
+            load_from(&p).git.fetch_every_minutes,
+            10,
+            "a file predating the block gets the documented default, not zero"
+        );
+
+        // Zero is a real answer, so it has to survive: read back as "absent"
+        // it would re-arm the timer the user switched off, every restart.
+        let mut s = load_from(&p);
+        s.git.fetch_every_minutes = 0;
+        save_to(&p, &s).unwrap();
+        assert_eq!(load_from(&p).git.fetch_every_minutes, 0);
+
         let _ = std::fs::remove_file(&p);
     }
 

@@ -756,7 +756,7 @@ pub async fn get_config(index: State<'_, ProjectIndex>) -> Result<ResolvedConfig
     crate::exec::blocking("get_config", move || get_config_body(&index)).await
 }
 
-fn get_config_body(index: &ProjectIndex) -> Result<ResolvedConfig, String> {
+pub(crate) fn get_config_body(index: &ProjectIndex) -> Result<ResolvedConfig, String> {
     let text = ensure_config()?;
     let raw: RawConfig = toml::from_str(&text).map_err(|e| e.to_string())?;
     Ok(resolve(raw, index))

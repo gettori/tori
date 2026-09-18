@@ -95,12 +95,29 @@ const liveTabs = [tab("tab-1", `${REPO}/feat`, onFeat.id), tab("tab-2", NOTES, i
 
 const bridge = vi.hoisted(() => ({
   handlers: {} as Record<string, (e: { payload: unknown }) => void>,
+  configReads: 0,
+  // The sidebar's errors are toasts, and the stack renders from its own portal
+  // outside this tree, so the call is what there is to watch.
+  toasts: [] as string[],
+}));
+
+vi.mock("../../components/Toasts/Toasts", async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  pushToast: (message: string) => {
+    // The real one drops blank messages, which is still the "clear the banner"
+    // idiom at several call sites. A mock that recorded them would count a
+    // clear as a toast.
+    if (String(message ?? "").trim()) bridge.toasts.push(message);
+  },
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://${p}`,
   invoke: (cmd: string, args: Record<string, unknown>) => {
-    if (cmd === "get_config") return Promise.resolve(config);
+    if (cmd === "get_config") {
+      bridge.configReads += 1;
+      return Promise.resolve(config);
+    }
     if (cmd === "list_sessions") {
       if (args.folder === `${REPO}/feat`) return Promise.resolve([onFeat]);
       if (args.folder === NOTES) return Promise.resolve([inNotes]);
@@ -165,6 +182,8 @@ describe("the sidebar levels that outlive the session rows", () => {
     resetSessionStoreForTests();
     resetSessionActivityForTests();
     bridge.handlers = {};
+    bridge.configReads = 0;
+    bridge.toasts.length = 0;
     selections.length = 0;
     Element.prototype.scrollIntoView = () => {};
     localStorage.clear();
@@ -185,6 +204,43 @@ describe("the sidebar levels that outlive the session rows", () => {
 
     await waitFor(() => expect(screen.getByText("scratch")).toBeTruthy());
     expect(screen.queryByText("repo")).toBeNull();
+  });
+
+  it("reloads the tree for a fetch you asked for, and not for the scheduled sweep", async () => {
+    mount();
+    await screen.findByRole("button", { name: "work" });
+    await waitFor(() => expect(bridge.handlers["git://fetch-done"]).toBeTruthy());
+
+    // A sweep emits one of these per container. Reloading on each would be one
+    // full rediscovery per repo, on a timer.
+    bridge.configReads = 0;
+    bridge.handlers["git://fetch-done"]({ payload: { repo: "/somewhere/else", quiet: true } });
+    await Promise.resolve();
+    expect(bridge.configReads).toBe(0);
+
+    // The manual one is a repo you just acted on, so the tree follows it.
+    bridge.handlers["git://fetch-done"]({ payload: { repo: REPO, quiet: false } });
+    await waitFor(() => expect(bridge.configReads).toBe(1));
+  });
+
+  it("keeps a quiet fetch failure off the sidebar's error line", async () => {
+    mount();
+    await screen.findByRole("button", { name: "work" });
+    await waitFor(() => expect(bridge.handlers["git://fetch-error"]).toBeTruthy());
+
+    // A sweep fails on every repo behind a password prompt it will not show.
+    // That is those repos' resting state, not something to shout about.
+    bridge.handlers["git://fetch-error"]({
+      payload: { repo: REPO, error: "could not read Username", quiet: true },
+    });
+    await Promise.resolve();
+    expect(bridge.toasts).toEqual([]);
+
+    // The manual one still speaks up, so the silence above is a choice.
+    bridge.handlers["git://fetch-error"]({
+      payload: { repo: REPO, error: "host is unreachable", quiet: false },
+    });
+    await waitFor(() => expect(bridge.toasts).toEqual(["host is unreachable"]));
   });
 
   it("expands a git project into its branch-unit rows", async () => {

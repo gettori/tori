@@ -2642,7 +2642,7 @@ export default function LeftSidebar(props: {
     // Fold remote-only branches into the open add-branch dialog as they land.
     // Guarded on the request still being for this repo, so a late or duplicate
     // fetch-done after a cancel or a reopen cannot resurrect or double a list.
-    unlistenFetchDone = await listen<{ repo: string }>("git://fetch-done", async (e) => {
+    unlistenFetchDone = await listen<{ repo: string; quiet?: boolean }>("git://fetch-done", async (e) => {
       const forThis = (fn: (r: NonNullable<ReturnType<typeof branchReq>>) => typeof r) =>
         setBranchReq((r) => (r && r.p.path === e.payload.repo ? fn(r) : r));
       if (branchReq()?.p.path === e.payload.repo) {
@@ -2654,11 +2654,18 @@ export default function LeftSidebar(props: {
           forThis((r) => ({ ...r, fetching: false }));
         }
       }
-      loadConfig();
+      // A manual fetch is one repo you just acted on, so reloading the tree is
+      // the point of it. The scheduled sweep is every repo at once, where the
+      // same call would be one full rediscovery per container, on a timer.
+      if (!e.payload.quiet) loadConfig();
     });
-    unlistenFetchError = await listen<{ repo: string; error: string }>(
+    unlistenFetchError = await listen<{ repo: string; error: string; quiet?: boolean }>(
       "git://fetch-error",
       (e) => {
+        // A sweep fails on every repo behind a password prompt it refuses to
+        // show. That is the expected resting state of those repos, not an error
+        // line across the sidebar.
+        if (e.payload.quiet) return;
         setError(e.payload.error || "Fetch failed");
         setBranchReq((r) => (r && r.p.path === e.payload.repo ? { ...r, fetching: false } : r));
       },
