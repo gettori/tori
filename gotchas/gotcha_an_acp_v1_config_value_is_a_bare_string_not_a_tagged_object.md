@@ -2,7 +2,7 @@
 summary: acp v1's set_config_option wants a bare string not a tagged object, configId on the call is id on the announcement
 status: current
 updated: 2026-08-21
-source: plan "The composer offers every lever the agent published" (phase 3, personal/sway, branch `unified-chat`), `dev/acp-probe.mjs` (`measurePerModel`, `describeOption`), commit 462d734, [[concept_acp_config_options]], _2026-08-21_
+source: plan "The composer offers every lever the agent published" (phase 3, personal/tori, branch `unified-chat`), `dev/acp-probe.mjs` (`measurePerModel`, `describeOption`), commit 462d734, [[concept_acp_config_options]], _2026-08-21_
 ---
 
 # An ACP v1 config value is a bare string, not a tagged object

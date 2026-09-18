@@ -2,7 +2,7 @@
 summary: a rejected control request is not proof a capability is missing, probe the slash command catalogue too
 status: current
 updated: 2026-07-29
-source: Make the session controls tell the truth about the CLI, phase 3 (personal/sway, branch `chat`); `dev/protocol-probe.mjs` (`fast-mode` scenario), `dev/fixtures/claude/fast-mode.jsonl`, `src/panels/Chat/FastModeStatus.tsx`; [[concept_harness_capability_tiers]]
+source: Make the session controls tell the truth about the CLI, phase 3 (personal/tori, branch `chat`); `dev/protocol-probe.mjs` (`fast-mode` scenario), `dev/fixtures/claude/fast-mode.jsonl`, `src/panels/Chat/FastModeStatus.tsx`; [[concept_harness_capability_tiers]]
 ---
 
 # A capability absent from the control-request API can still be in the slash-command catalogue

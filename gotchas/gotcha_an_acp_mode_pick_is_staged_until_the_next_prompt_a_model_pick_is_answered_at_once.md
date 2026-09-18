@@ -2,7 +2,7 @@
 summary: settling a pending ACP mode pick on any configOptions answer can drop it, a model answer landing first reports the old
 status: current
 updated: 2026-09-04
-source: plan "Confirm an ACP mode or model switch from the agent's own answer" (personal/sway, branch `bugfix-260903`, issue 164, commit 1aedc0b), `src/panels/Chat/chatStore.ts` (`confirmMode`, the `configOptions` arm), `src-tauri/src/chat/acp_transport.rs` (`send`, `pending_mode`), [[concept_acp_config_options]], _2026-09-04_
+source: plan "Confirm an ACP mode or model switch from the agent's own answer" (personal/tori, branch `bugfix-260903`, issue 164, commit 1aedc0b), `src/panels/Chat/chatStore.ts` (`confirmMode`, the `configOptions` arm), `src-tauri/src/chat/acp_transport.rs` (`send`, `pending_mode`), [[concept_acp_config_options]], _2026-09-04_
 ---
 
 # An ACP mode pick is staged until the next prompt, a model pick is answered at once

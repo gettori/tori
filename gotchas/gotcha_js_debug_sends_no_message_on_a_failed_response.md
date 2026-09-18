@@ -2,7 +2,7 @@
 summary: a failed js-debug response has no message field at all, only body.error.format, so reading message renders failed
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP), Phase 9 (personal/sway, branch `wave-8`); `src/utils/dapClient.ts:176`; commit 1c1fbf6"
+source: "Editor wave 8: the debugger (DAP), Phase 9 (personal/tori, branch `wave-8`); `src/utils/dapClient.ts:176`; commit 1c1fbf6"
 ---
 
 # js-debug sends no `message` on a failed response

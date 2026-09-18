@@ -2,7 +2,7 @@
 summary: the omnibox draws a jump list row from localStorage first, its member label lands a tick later, assert in waitFor
 status: current
 updated: 2026-08-28
-source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/sway, branch `feature-workspace`, issue #158) - phase 4 - `src/components/Omnibox/Omnibox.tsx:206`, `src/components/Omnibox/featureQuickOpen.test.tsx:184`, `src/components/Omnibox/Omnibox.test.tsx`, commit 809c85b - _2026-08-28_"
+source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/tori, branch `feature-workspace`, issue #158) - phase 4 - `src/components/Omnibox/Omnibox.tsx:206`, `src/components/Omnibox/featureQuickOpen.test.tsx:184`, `src/components/Omnibox/Omnibox.test.tsx`, commit 809c85b - _2026-08-28_"
 ---
 
 # A frecency row renders before `list_features` answers

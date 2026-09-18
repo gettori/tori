@@ -2,7 +2,7 @@
 summary: a hidden window makes every double rAF measurement report null paint, which reads like a catastrophic regression
 status: current
 updated: 2026-08-20
-source: Worktree and tab switching at native speed (personal/sway, branch `unified-tab-bar`), Phases 5 and 7, commits 565dbf9, 267fc4a, `src/utils/perfRecipe.ts`
+source: Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phases 5 and 7, commits 565dbf9, 267fc4a, `src/utils/perfRecipe.ts`
 ---
 
 # An occluded window reports no paint, and it looks exactly like a regression

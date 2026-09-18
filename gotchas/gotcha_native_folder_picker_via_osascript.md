@@ -2,7 +2,7 @@
 summary: osascript choose folder is a zero dependency native macOS folder picker, no Tauri dialog plugin required
 status: current
 updated: 2026-06-30
-source: Worktree-aware tree (personal/sway, branch code-mirror-6); `src-tauri/src/config.rs` (`pick_folder`); commit 3501d59
+source: Worktree-aware tree (personal/tori, branch code-mirror-6); `src-tauri/src/config.rs` (`pick_folder`); commit 3501d59
 ---
 
 # Native folder picker via osascript

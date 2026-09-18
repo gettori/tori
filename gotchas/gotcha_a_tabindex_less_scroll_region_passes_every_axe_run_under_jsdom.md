@@ -2,7 +2,7 @@
 summary: a tabindex less overflow auto region passes every axe run under jsdom, since scrollable region focusable is disabled
 status: current
 updated: 2026-08-12
-source: "plan \"Dialog primitive on Kobalte with stories and behavior tests\" (personal/sway, branch `98-dialog-primitive`, issue #98); `src/test/axe.ts`, `src/components/Dialog/Dialog.tsx:113`, `Dialog.test.tsx:118`"
+source: "plan \"Dialog primitive on Kobalte with stories and behavior tests\" (personal/tori, branch `98-dialog-primitive`, issue #98); `src/test/axe.ts`, `src/components/Dialog/Dialog.tsx:113`, `Dialog.test.tsx:118`"
 ---
 
 # A `tabindex`-less scroll region passes every axe run under jsdom

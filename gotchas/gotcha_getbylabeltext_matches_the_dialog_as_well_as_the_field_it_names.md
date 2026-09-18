@@ -2,7 +2,7 @@
 summary: getByLabelText throws multiple matches since Dialog labels the whole panel by its heading too, narrow with getByRole
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/sway, branch `99-migrate-seven-dialogs`, issue #99); `src/panels/Editor/editorCommands.test.tsx:114`"
+source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/tori, branch `99-migrate-seven-dialogs`, issue #99); `src/panels/Editor/editorCommands.test.tsx:114`"
 ---
 
 # `getByLabelText` matches the dialog as well as the field it names

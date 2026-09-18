@@ -2,7 +2,7 @@
 summary: reading layout in a codemirror view plugin's constructor or update throws, leaving an orphaned overlay on a dead plugin
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 8 (personal/sway, branch `wave-6`); `src/panels/Editor/stickyScroll.ts:158`; commit 2185971"
+source: "Editor Wave 6: the IDE surface, Phase 8 (personal/tori, branch `wave-6`); `src/panels/Editor/stickyScroll.ts:158`; commit 2185971"
 ---
 
 # Reading the editor layout during a CM6 update throws

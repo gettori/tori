@@ -2,7 +2,7 @@
 summary: setting console to integratedTerminal makes js debug issue runInTerminal, a client with no handler loses the session
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP), Phase 1 spike (personal/sway, branch `wave-8`); `src/utils/debugTargets.ts:63`; commit 2a77eac"
+source: "Editor wave 8: the debugger (DAP), Phase 1 spike (personal/tori, branch `wave-8`); `src/utils/debugTargets.ts:63`; commit 2a77eac"
 ---
 
 # `console: "integratedTerminal"` makes js-debug issue `runInTerminal`

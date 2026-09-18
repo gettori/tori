@@ -7,7 +7,7 @@ source: Session navigation moves to a History dropdown; pi and opencode are remo
 
 # Session certainty tiers
 
-Sway knows what a session is doing three different ways, and they are not equally trustworthy. A **chat** session reports its own state over a structured protocol, so its status is *exact*. A **PTY agent tab** is inferred by joining PTY quiet against the transcript tail, so its status is a good guess. A **detached** session, one running outside Sway with no tab at all, is only known to exist because `pgrep` matched a pattern, so it caps at "running" and can say nothing more. Every status surface in the app is downstream of which tier a session is on, and the tiers explain most of what looks like inconsistency between them.
+Tori knows what a session is doing three different ways, and they are not equally trustworthy. A **chat** session reports its own state over a structured protocol, so its status is *exact*. A **PTY agent tab** is inferred by joining PTY quiet against the transcript tail, so its status is a good guess. A **detached** session, one running outside Tori with no tab at all, is only known to exist because `pgrep` matched a pattern, so it caps at "running" and can say nothing more. Every status surface in the app is downstream of which tier a session is on, and the tiers explain most of what looks like inconsistency between them.
 
 ## How it works
 

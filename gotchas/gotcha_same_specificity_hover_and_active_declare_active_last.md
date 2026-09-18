@@ -2,7 +2,7 @@
 summary: an active class and a hover rule tie at the same specificity, whichever is declared later wins, put active after hover
 status: current
 updated: 2026-07-14
-source: Premium Design System for sway (personal/sway, branch code-mirror-6); Phases 3-6; e.g. `LeftSidebar.module.css` `.row.sel` after `.row:hover`, `Editor.module.css` `.editorTabs .tab.active`; see [[concept_design_token_system]]
+source: Premium Design System for tori (personal/tori, branch code-mirror-6); Phases 3-6; e.g. `LeftSidebar.module.css` `.row.sel` after `.row:hover`, `Editor.module.css` `.editorTabs .tab.active`; see [[concept_design_token_system]]
 ---
 
 # Same-specificity :hover and .active: declare active last

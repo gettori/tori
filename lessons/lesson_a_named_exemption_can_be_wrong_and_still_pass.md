@@ -2,7 +2,7 @@
 summary: an exact occurrence count proves quantity not classification, so five files sat under a wrong exemption reason unseen
 status: current
 updated: 2026-08-13
-source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/sway, branch `102-tooltip-primitive`, issue #102), phases 4 and 5; `src/test/interactiveTitle.test.ts`; commits a23d8f4, dbfa12a"
+source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/tori, branch `102-tooltip-primitive`, issue #102), phases 4 and 5; `src/test/interactiveTitle.test.ts`; commits a23d8f4, dbfa12a"
 ---
 
 # Read every exemption's reason at close, not just its count

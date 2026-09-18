@@ -2,7 +2,7 @@
 summary: a settings Row label sits beside its control with no for, point the control at rowLabelId or it stays unnamed
 status: current
 updated: 2026-08-15
-source: "plan \"Select wrapper and native select migration\" (personal/sway, branch `106-select`, issue #106); `src/panels/Settings/paneKit.tsx:130` (`rowLabelId`), `src/panels/Settings/paneSelects.test.tsx`; see [[component_select]]"
+source: "plan \"Select wrapper and native select migration\" (personal/tori, branch `106-select`, issue #106); `src/panels/Settings/paneKit.tsx:130` (`rowLabelId`), `src/panels/Settings/paneSelects.test.tsx`; see [[component_select]]"
 ---
 
 # A settings `Row` label is a sibling, so its control has no name

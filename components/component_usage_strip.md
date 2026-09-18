@@ -1,8 +1,8 @@
 ---
-summary: UsageStrip draws one cluster per account not per chat; UsageCard shows every window Sway read, even ones the chips hide
+summary: UsageStrip draws one cluster per account not per chat; UsageCard shows every window Tori read, even ones the chips hide
 status: current
 updated: 2026-09-06
-source: "Agent usage preview plan (personal/sway, branch `agent-usage`), phase 2, rebuilt to the design after phase 5 . PR #169"
+source: "Agent usage preview plan (personal/tori, branch `agent-usage`), phase 2, rebuilt to the design after phase 5 . PR #169"
 ---
 
 # Usage strip and its card (the titlebar quota preview)
@@ -25,7 +25,7 @@ The titlebar's quota preview: a row per account with a reading, sitting bare on 
 
 **The card.** Header of glyph, agent name and a freshness stamp that ticks every second while the card is open, with a refresh button where a read path exists. Then an account row: the logins as tabs when there are two or more, the email when there is one, then the plan and model count. Then a row per window with its full name, level, reset (a countdown inside a day, a weekday past one) and a full-width bar. Then a boxed sentence about where this is heading, which names the **other** login when that is the one in trouble, because that is the case a strip glance misses.
 
-**The card shows every window Sway has read, whatever the chips say.** The chips decide what the titlebar carries and only that; hiding a bar is not the same as not wanting to know (`readWindows`, `UsageCard.tsx:119`).
+**The card shows every window Tori has read, whatever the chips say.** The chips decide what the titlebar carries and only that; hiding a bar is not the same as not wanting to know (`readWindows`, `UsageCard.tsx:119`).
 
 ## Key files and entry points
 

@@ -2,7 +2,7 @@
 summary: implements the askpass credential bridge, a re-exec'd helper over a Unix socket, so backgrounded git can prompt in app
 status: current
 updated: 2026-07-10
-source: Askpass credential bridge for backgrounded git (personal/sway, branch code-mirror-6); commit 3fff674
+source: Askpass credential bridge for backgrounded git (personal/tori, branch code-mirror-6); commit 3fff674
 ---
 
 # Askpass bridge
@@ -13,9 +13,9 @@ The module that lets a backgrounded git op prompt for credentials in-app. It imp
 
 ## Responsibilities
 
-- **Helper mode** (`askpass.rs`): `is_helper()` (marker = `SWAY_ASKPASS_SOCK` present) and `run_helper()` - read the prompt from `argv[1]`, `helper_exchange()` over the socket, write **only** the answer to stdout, exit 0; any error → nothing on stdout, non-zero. Entered from `run()` in `lib.rs` before Tauri init.
+- **Helper mode** (`askpass.rs`): `is_helper()` (marker = `TORI_ASKPASS_SOCK` present) and `run_helper()` - read the prompt from `argv[1]`, `helper_exchange()` over the socket, write **only** the answer to stdout, exit 0; any error → nothing on stdout, non-zero. Entered from `run()` in `lib.rs` before Tauri init.
 - **Socket server** (`askpass.rs`): `start(emit)` binds a `0700` short-path socket under `$TMPDIR` (fails soft with an `Err` if the path would exceed the 104-byte `sun_path` limit, so the app still runs), mints a `/dev/urandom` token, and spawns an accept loop (thread per connection). `handle_request` authenticates the token, honours the cancel latch, classifies username-vs-secret, emits `askpass://prompt`, and blocks on an mpsc `recv_timeout` (300 s) for the resolution. `resolve(id, value)` answers a prompt; `value: None` latches the op cancelled. `askpass_respond` is the Tauri command the frontend calls. `AskpassState` is the managed handle.
-- **Auth'd git** (`git.rs`): `git_command(repo, op_id, sock, token)` builds a `git -C` Command wired with `GIT_ASKPASS`/`SSH_ASKPASS`=current_exe, `SSH_ASKPASS_REQUIRE=force`, `GIT_TERMINAL_PROMPT=0`, `LC_ALL=C`, `GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new`, the `SWAY_ASKPASS_*` coordinates, and the augmented PATH. `git_fetch(repo, remote?)` runs it on a thread with a fresh `op_id`, emitting `git://fetch-done` / `git://fetch-error`. `git_has_credential_helper(repo)` reports whether caching is configured.
+- **Auth'd git** (`git.rs`): `git_command(repo, op_id, sock, token)` builds a `git -C` Command wired with `GIT_ASKPASS`/`SSH_ASKPASS`=current_exe, `SSH_ASKPASS_REQUIRE=force`, `GIT_TERMINAL_PROMPT=0`, `LC_ALL=C`, `GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=accept-new`, the `TORI_ASKPASS_*` coordinates, and the augmented PATH. `git_fetch(repo, remote?)` runs it on a thread with a fresh `op_id`, emitting `git://fetch-done` / `git://fetch-error`. `git_has_credential_helper(repo)` reports whether caching is configured.
 - **Frontend dialog** (`AskpassDialog.tsx`): listens for `askpass://prompt`, **queues** prompts (concurrent/sequential each show in turn), renders masked input for `kind=password` (plain for username) with a token-not-password hint, and calls `askpass_respond(id, value)` on submit or `askpass_respond(id, null)` on cancel. Mounted once app-wide in `App.tsx`.
 
 ## Key entry points

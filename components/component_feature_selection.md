@@ -2,7 +2,7 @@
 summary: turns a Feature click into a workspace keyed feature id, with a generation cache so a switch costs two calls not four
 status: current
 updated: 2026-08-26
-source: "Features phase 2: Feature selection, the wsKey split and restore (personal/sway, branch `feature-workspace`, issue #154), commits 7ef9670, 282e06f, ccae71d; the shared member list from Features phase 3 (#155, phase 2, commit 4f852b0)"
+source: "Features phase 2: Feature selection, the wsKey split and restore (personal/tori, branch `feature-workspace`, issue #154), commits 7ef9670, 282e06f, ccae71d; the shared member list from Features phase 3 (#155, phase 2, commit 4f852b0)"
 ---
 
 # Feature selection: the code that opens a Feature as one workspace
@@ -21,7 +21,7 @@ Everything between a Feature record ([[component_feature_store]]) and the panels
 - **The live half is deduped at module scope**, one `list_features` and one `get_config` per generation however many consumers ask, through a generation counter and per-generation promise caching. Without it the Toolbar and the Editor each held a live pair and a Feature switch cost four commands where it used to cost two, on exactly the path being instrumented. The trade is two event listeners installed once and never removed.
 - The Toolbar chip row, `Toolbar.tsx:37`: reads the record through `createFeatureMembers` because the Selection only carries present roots and the badges need every member; a present chip calls `onActiveRoot`, the rest are disabled `Tooltip as="button"` wearing their state.
 - Two homes in Spaces, `LeftSidebar.tsx`: the sidebar holds its own `features` signal for the `in <Feature>` chip on a member unit row (`:2152 featuresAt`), the chip opens the Feature with that folder active, `:2144 unitSelected` refuses a feature Selection so no unit reads active, and `:965 dropSelectionUnder` moves a Feature's active root to the next present member when a folder goes away, clearing only when none remains.
-- Attribution, `sessions.rs:550 owned_by_listing` and `features.ts:156 ownsCwd`: a folder never owns cwds under its own `.sway/worktrees/`, the member folder claims them by prefix. Applied in the listing path (`filter_sort`, `folder_historical`) and in the sidebar's live-tab attribution; `ids_under` and the destructive count (`LeftSidebar.tsx:557 countRunningAgents`, `list_sessions { inclusive: true }`) stay on the plain prefix rule.
+- Attribution, `sessions.rs:550 owned_by_listing` and `features.ts:156 ownsCwd`: a folder never owns cwds under its own `.tori/worktrees/`, the member folder claims them by prefix. Applied in the listing path (`filter_sort`, `folder_historical`) and in the sidebar's live-tab attribution; `ids_under` and the destructive count (`LeftSidebar.tsx:557 countRunningAgents`, `list_sessions { inclusive: true }`) stay on the plain prefix rule.
 - Does NOT unify search or changes across members (#156, #157; the explorer landed with #155, see [[component_project_file_tree]]), put chips on tabs (#158), manage members (#159), or give the History panel a Feature view: `sessionStore` is still folder-keyed, so History counts 0 for a Feature (#160). Feature rows have no keyboard path (the unit rows' pattern).
 
 ## Key files & entry points
@@ -48,6 +48,6 @@ Everything between a Feature record ([[component_feature_store]]) and the panels
 - [[component_project_file_tree]] - the third consumer of the tinted member list, one section per member
 - [[lesson_a_display_attribution_rule_leaks_into_a_destructive_count]] - the undercount the attribution rule caused
 - [[gotcha_feature_id_is_a_key_not_a_path_so_purge_under_path_never_reaches_it]] - why purge is its own event
-- [[gotcha_list_sessions_hides_a_repos_own_sway_worktrees_unless_asked_inclusively]] - the flag a teardown count needs
+- [[gotcha_list_sessions_hides_a_repos_own_tori_worktrees_unless_asked_inclusively]] - the flag a teardown count needs
 - [[gotcha_read_selectionroot_never_folderpath_for_git_settings_the_watcher_or_a_spawn]] - the `""` mirror
 - [[gotcha_a_request_bound_to_a_fast_changing_selection_needs_a_latest_request_wins_guard]] - `resolveFeatureSelection`'s counter

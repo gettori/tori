@@ -2,7 +2,7 @@
 summary: a focused terminal consumes keydown before window, so an overlay Esc handler must bind on the capture phase
 status: current
 updated: 2026-07-19
-source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/sway, branch `topbar`); Phase 4; `src/components/ShortcutSheet/ShortcutSheet.tsx:15`; commit 0a0a1d3"
+source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/tori, branch `topbar`); Phase 4; `src/components/ShortcutSheet/ShortcutSheet.tsx:15`; commit 0a0a1d3"
 ---
 
 # A focused xterm swallows keydown before `window`

@@ -2,7 +2,7 @@
 summary: a buffer can be shorter than its file or already discarded, so a destructive decision must ask the file, not the view
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phase 9 (#57, commit 3cbbde1) and Phase 10 (#58, commit de2a19d); `src/panels/Editor/bookmarksPane.test.tsx`, `src/panels/Editor/scratchTabs.test.tsx`"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phase 9 (#57, commit 3cbbde1) and Phase 10 (#58, commit de2a19d); `src/panels/Editor/bookmarksPane.test.tsx`, `src/panels/Editor/scratchTabs.test.tsx`"
 ---
 
 # Ask the file, not the buffer, when the buffer is allowed to be incomplete

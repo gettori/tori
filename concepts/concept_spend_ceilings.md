@@ -7,9 +7,9 @@ source: "\"Defer permissions to the harness, and grow to four harnesses\" (phase
 
 # Spend ceilings
 
-A chat stops when it reaches a cost or context ceiling. The enforcement point is **the turn boundary**: Sway declining to open the next turn. It needs nothing from the harness, which is the property that matters most about it.
+A chat stops when it reaches a cost or context ceiling. The enforcement point is **the turn boundary**: Tori declining to open the next turn. It needs nothing from the harness, which is the property that matters most about it.
 
-**The enforcement point moved, and the old reasoning is worth knowing because it was good reasoning about a world that ended.** Until 2026-08-14 the ceiling was a `stop` field on the Sway-owned rule file that the `PreToolUse` helper read on every tool call, chosen there rather than at the approval socket because a `Read` covered by an allow rule never opened a socket, so a socket-side ceiling was one that any session which had allow-listed its reads walked straight past. That was correct. It stopped being *available* when Sway stopped deciding tool calls at all: with no gate, there is no call to refuse.
+**The enforcement point moved, and the old reasoning is worth knowing because it was good reasoning about a world that ended.** Until 2026-08-14 the ceiling was a `stop` field on the Tori-owned rule file that the `PreToolUse` helper read on every tool call, chosen there rather than at the approval socket because a `Read` covered by an allow rule never opened a socket, so a socket-side ceiling was one that any session which had allow-listed its reads walked straight past. That was correct. It stopped being *available* when Tori stopped deciding tool calls at all: with no gate, there is no call to refuse.
 
 ## How it works
 
@@ -40,4 +40,4 @@ A chat stops when it reaches a cost or context ceiling. The enforcement point is
 - [[component_settings_store]] - where the ceilings are set
 - [[lesson_a_denial_names_the_fix_but_the_retry_may_not_carry_it]] - the measurement that shaped the retired model-facing reason
 - [[gotcha_a_frontend_settings_key_with_no_rust_field_is_dropped_on_save]]
-- [[concept_quota_is_an_account_fact]] - the harness's own limits, which share this vocabulary and come from the account rather than from Sway.
+- [[concept_quota_is_an_account_fact]] - the harness's own limits, which share this vocabulary and come from the account rather than from Tori.

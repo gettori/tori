@@ -2,7 +2,7 @@
 summary: moving preference state to module level turns old localStorage seeding into a no-op, hiding test order dependence
 status: current
 updated: 2026-09-05
-source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/sway, branch `settings`, issue #91); Phase 4; `src/utils/blamePref.ts`, `src/panels/Editor/blameToggle.test.tsx`"
+source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/tori, branch `settings`, issue #91); Phase 4; `src/utils/blamePref.ts`, `src/panels/Editor/blameToggle.test.tsx`"
 ---
 
 # Moving state from per-instance to shared makes its tests order-dependent
@@ -73,4 +73,4 @@ which are now module-level signals for the same reason.
 
 The multi-account work hit the same shape from the other side: `agentHealth` and `modelCatalog` are module-level stores behind a **once-per-run latch** (`requested`, `reading`), so whichever accounts the *first* test in a file mounted with answered for every test after it, and a `beforeEach` that reset the invoke mock changed nothing because the store never re-read. The fix in both files was to re-seed the store per test (`refreshAgentHealth()`, `__resetModelCatalogsForTests()`) rather than to trust the mock reset.
 
-**Source:** plan "Multi-account: pick, lock and default an account per session" (personal/sway, branch `multiaccount`), phases 3 and 4 · `src/panels/Terminal/newTabControl.test.tsx`, `src/panels/Settings/panes/AgentsPane/agentAccounts.test.tsx`
+**Source:** plan "Multi-account: pick, lock and default an account per session" (personal/tori, branch `multiaccount`), phases 3 and 4 · `src/panels/Terminal/newTabControl.test.tsx`, `src/panels/Settings/panes/AgentsPane/agentAccounts.test.tsx`

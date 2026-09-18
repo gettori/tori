@@ -2,7 +2,7 @@
 summary: a DAP scopes container is frozen at the last pause, so re-reading it after a confirmed write shows the old value
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP), Phase 8 (personal/sway, branch `wave-8`); `src/utils/debugVariables.ts:264`; commit 4d396a8"
+source: "Editor wave 8: the debugger (DAP), Phase 8 (personal/tori, branch `wave-8`); `src/utils/debugVariables.ts:264`; commit 4d396a8"
 ---
 
 # A DAP scope reference is a snapshot of its pause

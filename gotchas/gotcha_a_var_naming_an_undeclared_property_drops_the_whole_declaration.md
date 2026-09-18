@@ -2,7 +2,7 @@
 summary: a var referencing an undeclared custom property with no fallback drops the whole CSS declaration silently
 status: current
 updated: 2026-09-06
-source: "plan \"Standalone terminals: Sway's own commands as tabs in a Shells workspace\" (personal/sway, branch `standalone-terminals`, issue #166), Phase 5 (fixing Phase 3); `src/panels/LeftSidebar/LeftSidebar.module.css:818`; commit `d4a59d3`"
+source: "plan \"Standalone terminals: Tori's own commands as tabs in a Shells workspace\" (personal/tori, branch `standalone-terminals`, issue #166), Phase 5 (fixing Phase 3); `src/panels/LeftSidebar/LeftSidebar.module.css:818`; commit `d4a59d3`"
 ---
 
 # A `var()` naming an undeclared property drops the whole declaration

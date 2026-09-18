@@ -7,7 +7,7 @@ source: "Features phase 4: unified search across member roots (#156), branch `fe
 
 # Fanning a single-root command out over a Feature's members
 
-A Feature is several repos selected as one workspace ([[concept_feature_workspace]]), and every backend command Sway owns takes exactly one root. [[adr_feature_workspace]] decided they stay that way: the panel invokes once per member and merges the answers in TypeScript. `SearchPanel` is the first panel to do it end to end, so the shape it landed on is the one Changes (#157), the omnibox (#158) and the Problems/Todos/Bookmarks panels (#160) are meant to copy.
+A Feature is several repos selected as one workspace ([[concept_feature_workspace]]), and every backend command Tori owns takes exactly one root. [[adr_feature_workspace]] decided they stay that way: the panel invokes once per member and merges the answers in TypeScript. `SearchPanel` is the first panel to do it end to end, so the shape it landed on is the one Changes (#157), the omnibox (#158) and the Problems/Todos/Bookmarks panels (#160) are meant to copy.
 
 ## How it works
 

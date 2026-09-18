@@ -2,7 +2,7 @@
 summary: Kobalte's Dialog.Content never sets aria-modal, it expresses modality by hiding other elements, so wrap it in yourself
 status: current
 updated: 2026-08-12
-source: "plan \"Dialog primitive on Kobalte with stories and behavior tests\" (personal/sway, branch `98-dialog-primitive`, issue #98); `@kobalte/core@0.13.13 dist/chunk/V25KEN4T.jsx:177-196`, `src/components/Dialog/Dialog.tsx:91`"
+source: "plan \"Dialog primitive on Kobalte with stories and behavior tests\" (personal/tori, branch `98-dialog-primitive`, issue #98); `@kobalte/core@0.13.13 dist/chunk/V25KEN4T.jsx:177-196`, `src/components/Dialog/Dialog.tsx:91`"
 ---
 
 # Kobalte's dialog never sets `aria-modal`

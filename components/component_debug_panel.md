@@ -2,7 +2,7 @@
 summary: debug panel interleaves every session's console output in arrival order tagged by session, not split per session
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP) (personal/sway, branch `wave-8`); Phases 4, 7-10; epic #69, sub-issues #73/#74/#75; commits d19cf09, a5e1d6c, 4d396a8, 1c1fbf6"
+source: "Editor wave 8: the debugger (DAP) (personal/tori, branch `wave-8`); Phases 4, 7-10; epic #69, sub-issues #73/#74/#75; commits d19cf09, a5e1d6c, 4d396a8, 1c1fbf6"
 ---
 
 # Debug panel: what is running, where it stopped, and what it holds
@@ -17,7 +17,7 @@ The Solid-facing stores are split by question rather than by file size: `debugSt
 
 The session list is a tree because a debug run is one, flattened into a single indented column so a deep tree scrolls as one list. The console **interleaves every session's output in arrival order**, tagged with the session that produced it: splitting it per session would be tidier and would lose the one thing the interleaving shows, which is what happened before what.
 
-Output is sanitized as text Sway did not author ([[lesson_sanitize_text_you_did_not_author]]), keeping newlines because the transcript is line-oriented. The REPL's own echoes use a `repl` category that is **not** in `SHOWN_CATEGORIES`, so an adapter claiming that category on an `output` event is dropped rather than allowed to forge a prompt.
+Output is sanitized as text Tori did not author ([[lesson_sanitize_text_you_did_not_author]]), keeping newlines because the transcript is line-oriented. The REPL's own echoes use a `repl` category that is **not** in `SHOWN_CATEGORIES`, so an adapter claiming that category on an `output` event is dropped rather than allowed to forge a prompt.
 
 ## The stack
 

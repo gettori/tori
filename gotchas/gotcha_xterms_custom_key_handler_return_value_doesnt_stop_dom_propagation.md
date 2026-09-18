@@ -2,7 +2,7 @@
 summary: attachCustomKeyEventHandler returning false only tells xterm to ignore the key, keydown still bubbles unless stopped
 status: current
 updated: 2026-07-19
-source: "v0.1 features: status indicators, search, input layer (personal/sway, branch `topbar`); Phase 3; `src/panels/Terminal/TerminalView.tsx:177`"
+source: "v0.1 features: status indicators, search, input layer (personal/tori, branch `topbar`); Phase 3; `src/panels/Terminal/TerminalView.tsx:177`"
 ---
 
 # xterm's custom-key-handler return value doesn't stop DOM propagation

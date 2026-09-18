@@ -2,7 +2,7 @@
 summary: SSH_ASKPASS only fires with no controlling terminal and REQUIRE force set, and never answers an unknown host key prompt
 status: current
 updated: 2026-07-10
-source: Askpass credential bridge for backgrounded git (personal/sway, branch code-mirror-6); `src-tauri/src/git.rs` (`git_command`); commit 3fff674
+source: Askpass credential bridge for backgrounded git (personal/tori, branch code-mirror-6); `src-tauri/src/git.rs` (`git_command`); commit 3fff674
 ---
 
 # SSH_ASKPASS needs REQUIRE=force and only fires without a TTY

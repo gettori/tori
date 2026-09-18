@@ -1,21 +1,21 @@
 ---
-summary: every ACP option Sway never saw crosses the wire and renders by shape rather than dropped, republished on any change
+summary: every ACP option Tori never saw crosses the wire and renders by shape rather than dropped, republished on any change
 status: current
 updated: 2026-08-17
 source: plan "Model catalogues from the harnesses themselves" (phases 5 and 6, branch `settings-and-chat`); `src/panels/Chat/ConfigMirror.tsx`; `src/utils/chatTypes.ts` (`ChatConfigOption`, `mirroredOptions`); `src-tauri/src/chat/acp.rs` (`config_options`); `src-tauri/src/chat/model.rs` (`ChatConfigOption`, `ChatEvent::ConfigOptions`); measured against `@agentclientprotocol/codex-acp` 1.2.0
 ---
 
-# Mirroring a control Sway has never seen
+# Mirroring a control Tori has never seen
 
-An ACP agent publishes its configuration options on `session/new`. Sway used to read three of them (model, mode, thinking level) and drop the rest, which meant anything else the agent offered was unreachable with nothing saying so. The mirror is the inversion: **everything crosses, and the surface decides what already has a control of its own.**
+An ACP agent publishes its configuration options on `session/new`. Tori used to read three of them (model, mode, thinking level) and drop the rest, which meant anything else the agent offered was unreachable with nothing saying so. The mirror is the inversion: **everything crosses, and the surface decides what already has a control of its own.**
 
-This is not hypothetical breadth. Measured on Codex: four options, and the fourth is `collaboration_mode` (`default`, `plan`) - Codex's plan mode, categorized as itself, claimed by no bespoke control. Before the mirror, Sway read it off the wire and threw it away.
+This is not hypothetical breadth. Measured on Codex: four options, and the fourth is `collaboration_mode` (`default`, `plan`) - Codex's plan mode, categorized as itself, claimed by no bespoke control. Before the mirror, Tori read it off the wire and threw it away.
 
 ## The shape
 
 `ChatConfigOption` is a neutral type in `chat/model.rs`, beside `ChatModelInfo`, not a re-export of the protocol struct: sending `SessionConfigOption` to the frontend would put one protocol's schema in the model that [[concept_transport_neutral_event_model]] exists to keep neutral.
 
-- `id`, `name`, `description` - the agent's own words, rendered verbatim. Sway has no better word for a lever it has never seen.
+- `id`, `name`, `description` - the agent's own words, rendered verbatim. Tori has no better word for a lever it has never seen.
 - `category` - **a string, not an enum**, and empty means the agent published none. The spec's category enum is `#[non_exhaustive]` with an `Other(String)`, and the uncategorized case is exactly the row no bespoke control claims, so normalising it away drops the rows this type exists for. A future variant this build cannot name also reads as empty, which sends it to the generic renderer rather than to a control written for a different lever.
 - `kind` - `select { current, choices }` or `boolean { value }`, flattened onto the object so a renderer switches on one discriminator.
 
@@ -46,7 +46,7 @@ Two details that bite:
 
 ## No pending state, unlike a mode
 
-A mode waits for a turn boundary because it decides whether the agent asks before it writes. A mirrored switch goes out immediately: Sway does not know what the lever governs, so holding it back would be Sway inventing next-turn semantics for an option it has never seen. Nothing moves optimistically either - the control renders what the agent last published, so a refused switch leaves it showing what is actually in force.
+A mode waits for a turn boundary because it decides whether the agent asks before it writes. A mirrored switch goes out immediately: Tori does not know what the lever governs, so holding it back would be Tori inventing next-turn semantics for an option it has never seen. Nothing moves optimistically either - the control renders what the agent last published, so a refused switch leaves it showing what is actually in force.
 
 ## Related
 

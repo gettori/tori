@@ -2,7 +2,7 @@
 summary: cargo test rewrites the model.json fixture with different key ordering every run, revert the pure churn, do not fix it
 status: current
 updated: 2026-08-14
-source: Defer permissions to the harness, and grow to four harnesses, phases 4, 6, 7 and 8 (personal/sway, branch `chat-fix`); `src-tauri/src/forge/model.rs:495`
+source: Defer permissions to the harness, and grow to four harnesses, phases 4, 6, 7 and 8 (personal/tori, branch `chat-fix`); `src-tauri/src/forge/model.rs:495`
 ---
 
 # `cargo test` rewrites `dev/fixtures/forge/model.json` with different key ordering

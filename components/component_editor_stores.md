@@ -2,7 +2,7 @@
 summary: editor-side stores hold one git status slot per Feature member, and a root leaving the set blanks its slot immediately
 status: current
 updated: 2026-08-27
-source: "Editor wave 1: close out the fundamentals (personal/sway, branch `wave-1-4`); Phase 3, issue #15; commit bd9567c, git store rebuilt as one slot per member by Features phase 5: unified changes and the git slot map (#157, branch `feature-workspace`), commits 9658cff, 9687380"
+source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phase 3, issue #15; commit bd9567c, git store rebuilt as one slot per member by Features phase 5: unified changes and the git slot map (#157, branch `feature-workspace`), commits 9658cff, 9687380"
 ---
 
 # Editor-side module stores (git status, editor state)

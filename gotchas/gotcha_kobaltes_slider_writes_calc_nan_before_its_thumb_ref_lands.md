@@ -2,7 +2,7 @@
 summary: a Kobalte slider's first render computes its thumb index from an unassigned ref and writes calc(NaN%)
 status: current
 updated: 2026-08-15
-source: "plan \"Checkbox, Switch and Slider wrappers and control migration\" (personal/sway, branch `107-checkbox-switch-slider`, issue #107); `src/test/domSetup.ts:47`, `@kobalte/core@0.13.13 dist/chunk/WR5BIFYV.js`; commit 121f892"
+source: "plan \"Checkbox, Switch and Slider wrappers and control migration\" (personal/tori, branch `107-checkbox-switch-slider`, issue #107); `src/test/domSetup.ts:47`, `@kobalte/core@0.13.13 dist/chunk/WR5BIFYV.js`; commit 121f892"
 ---
 
 # Kobalte's slider writes `calc(NaN%)` before its thumb ref lands

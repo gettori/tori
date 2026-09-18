@@ -2,7 +2,7 @@
 summary: one COMMANDS table behind the palette and sheet may only import events, keeping everything out of the terminal's chunk
 status: current
 updated: 2026-08-05
-source: "Editor wave 1: close out the fundamentals (personal/sway, branch `wave-1-4`); Phase 3, issue #15; commit bd9567c; `src/utils/commands.ts`, `src/utils/hotkeys.ts:44`"
+source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phase 3, issue #15; commit bd9567c; `src/utils/commands.ts`, `src/utils/hotkeys.ts:44`"
 ---
 
 # One command registry behind the palette, the sheet and the dispatcher

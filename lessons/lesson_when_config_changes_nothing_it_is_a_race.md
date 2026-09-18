@@ -2,7 +2,7 @@
 summary: four source map config variants changed a breakpoint's binding not at all, since js-debug resolves maps after exit
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP) (personal/sway, branch `wave-8`); Phase 1 spike; epic #69; `src/utils/debugTargets.ts:63`; commit 2a77eac"
+source: "Editor wave 8: the debugger (DAP) (personal/tori, branch `wave-8`); Phase 1 spike; epic #69; `src/utils/debugTargets.ts:63`; commit 2a77eac"
 ---
 
 # When four config variants change nothing, stop tuning config

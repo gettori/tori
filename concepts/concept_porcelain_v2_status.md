@@ -2,7 +2,7 @@
 summary: git status reads by porcelain v2 record type with counted fields, since a leading XY scan cannot tell DD from a delete
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phase 2 (commit db98306) and Phase 10 (commit b8bd8b4); `src-tauri/src/git.rs` (`git_status`, `parse_status`)"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 2 (commit db98306) and Phase 10 (commit b8bd8b4); `src-tauri/src/git.rs` (`git_status`, `parse_status`)"
 ---
 
 # Reading git status by record type, not by columns

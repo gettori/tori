@@ -2,7 +2,7 @@
 summary: PdfView keys the parsed pdf by path not mount, so a reading position outlives a tab switch that would kill an img
 status: current
 updated: 2026-09-07
-source: plan "PDF viewer tab" (personal/sway, branch `logo-update-260907`), phases 1 to 3 . commits `28df519`, `bfb58fd`, `2f19355`, `fafd814`, `dc57d79`
+source: plan "PDF viewer tab" (personal/tori, branch `logo-update-260907`), phases 1 to 3 . commits `28df519`, `bfb58fd`, `2f19355`, `fafd814`, `dc57d79`
 ---
 
 # PDF viewer tab
@@ -33,7 +33,7 @@ A `.pdf` opened from the tree, an attachment chip, a tool card or `OPEN_IN_EDITO
 - `src/panels/Editor/PdfView.tsx:115` - `needsText`, the two-range text window.
 - `src/panels/Editor/Editor.tsx:801` - `createEffect(on(allOpenPaths, releasePdfsExcept))`, the release, driven off the open-tab set.
 - `src/panels/Editor/Editor.tsx:990` - `quoteFromPdf`, the send.
-- `vite.config.ts` - the `sway-pdfjs-data` plugin. See [[concept_pdfjs_in_the_webview]].
+- `vite.config.ts` - the `tori-pdfjs-data` plugin. See [[concept_pdfjs_in_the_webview]].
 
 ## How the pieces fit
 

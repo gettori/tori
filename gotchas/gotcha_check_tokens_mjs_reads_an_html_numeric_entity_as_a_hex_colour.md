@@ -2,7 +2,7 @@
 summary: check tokens mjs matches the hex digit run in an html numeric entity and reports a colour literal, failing the suite
 status: current
 updated: 2026-08-16
-source: "plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/sway, branch `111-tab-and-overflow-tab-bar`, issue #111); `src/components/Tab/Tab.test.tsx`, `scripts/check-tokens.mjs`"
+source: "plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/tori, branch `111-tab-and-overflow-tab-bar`, issue #111); `src/components/Tab/Tab.test.tsx`, `scripts/check-tokens.mjs`"
 ---
 
 # `check-tokens.mjs` reads an HTML numeric entity as a hex colour

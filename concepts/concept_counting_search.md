@@ -2,7 +2,7 @@
 summary: Settings search never navigates tabs while typing, only badges each with a match count; Enter or a command jumps
 status: current
 updated: 2026-08-11
-source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/sway, branch `settings`, issue #91); Phases 1, 3; commits 7081a08, fe9a640; `src/panels/Settings/{settingsSearch.ts,searchHighlight.ts}`, `src/panels/Settings/Settings.tsx`"
+source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/tori, branch `settings`, issue #91); Phases 1, 3; commits 7081a08, fe9a640; `src/panels/Settings/{settingsSearch.ts,searchHighlight.ts}`, `src/panels/Settings/Settings.tsx`"
 ---
 
 # A search that counts instead of navigating
@@ -10,7 +10,7 @@ source: "Settings redesign: horizontal tab strip with per-tab search counts (per
 Filtering a tabbed panel has an obvious failure: the thing you searched for is on
 another tab, so either the search moves you (and the panel jumps under your
 hands, mid-word, on every keystroke) or it does not (and you stare at an empty
-pane concluding the search is broken). Sway's Settings search takes neither.
+pane concluding the search is broken). Tori's Settings search takes neither.
 **Typing never navigates. The tabs carry a count instead.**
 
 ## The rule and its one exception

@@ -2,7 +2,7 @@
 summary: a non-keyed Show callback that reads its accessor in the body snapshots it once, later changes never reach the DOM
 status: current
 updated: 2026-08-15
-source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/sway, branch `109-dedupe-icon-and-swatch-grids`, issue #109); `src/components/IconGrid/IconGrid.tsx`, `src/components/Dialogs/SpaceDialog.test.tsx`; commit 8f86c77"
+source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/tori, branch `109-dedupe-icon-and-swatch-grids`, issue #109); `src/components/IconGrid/IconGrid.tsx`, `src/components/Dialogs/SpaceDialog.test.tsx`; commit 8f86c77"
 ---
 
 # A non-keyed `Show` callback read once at mount freezes its value

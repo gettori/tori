@@ -2,7 +2,7 @@
 summary: SegmentedControl, LayoutToggles and IconGrid share one toggle group door; arrows move focus, Space or Enter commits
 status: current
 updated: 2026-08-16
-source: "plan \"SegmentedControl onto Kobalte ToggleGroup, absorb LayoutToggles\" (personal/sway, branch `108-segmented-control`, issue #108, part of #93); `src/lib/toggle-group.ts`, `src/components/SegmentedControl/SegmentedControl.tsx`, `src/components/LayoutToggles/LayoutToggles.tsx`, `src/test/interactiveTitle.test.ts`; extended by plan \"Dedupe icon and swatch grids into one IconGrid\" (branch `109-dedupe-icon-and-swatch-grids`, issue #109); commit cd09a5e; PR #138"
+source: "plan \"SegmentedControl onto Kobalte ToggleGroup, absorb LayoutToggles\" (personal/tori, branch `108-segmented-control`, issue #108, part of #93); `src/lib/toggle-group.ts`, `src/components/SegmentedControl/SegmentedControl.tsx`, `src/components/LayoutToggles/LayoutToggles.tsx`, `src/test/interactiveTitle.test.ts`; extended by plan \"Dedupe icon and swatch grids into one IconGrid\" (branch `109-dedupe-icon-and-swatch-grids`, issue #109); commit cd09a5e; PR #138"
 ---
 
 # Toggle group: `SegmentedControl`, `LayoutToggles` and `IconGrid`

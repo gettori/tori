@@ -2,12 +2,12 @@
 summary: a running list of where real ACP agents disagree with the spec, so the client is built against measured behavior
 status: current
 updated: 2026-08-14
-source: Defer permissions to the harness, and grow to four harnesses, phases 4 to 8 (personal/sway, branch `chat-fix`); spec `agentclientprotocol.com/protocol/*`; crate `agent-client-protocol` 2.0.0; measured against `opencode acp` 1.18.3, `@agentclientprotocol/claude-agent-acp` 0.67.0 (formerly `@zed-industries/claude-code-acp`) and `@agentclientprotocol/codex-acp` 1.2.0
+source: Defer permissions to the harness, and grow to four harnesses, phases 4 to 8 (personal/tori, branch `chat-fix`); spec `agentclientprotocol.com/protocol/*`; crate `agent-client-protocol` 2.0.0; measured against `opencode acp` 1.18.3, `@agentclientprotocol/claude-agent-acp` 0.67.0 (formerly `@zed-industries/claude-code-acp`) and `@agentclientprotocol/codex-acp` 1.2.0
 ---
 
 # ACP agent quirks
 
-ACP is one protocol with several independent implementations, and the gap between what the spec says and what a given agent does is where a generic client either works everywhere or works against exactly one binary. This page is that gap, written down before the client was, so the transport is built against measured behaviour rather than against the happy path. Every entry is marked **measured** (seen on the wire here), **documented** (a MUST/SHOULD in the spec that a naive client would still get wrong), or **reported** (a behaviour another implementation found and worked around, which Sway has not independently reproduced).
+ACP is one protocol with several independent implementations, and the gap between what the spec says and what a given agent does is where a generic client either works everywhere or works against exactly one binary. This page is that gap, written down before the client was, so the transport is built against measured behaviour rather than against the happy path. Every entry is marked **measured** (seen on the wire here), **documented** (a MUST/SHOULD in the spec that a naive client would still get wrong), or **reported** (a behaviour another implementation found and worked around, which Tori has not independently reproduced).
 
 ## How it works
 
@@ -52,7 +52,7 @@ ACP is one protocol with several independent implementations, and the gap betwee
 
 ## Why it's this way
 
-ACP's capability handshake is a *negotiation between peers*, not a feature list a client can trust, and the four measured items above are all instances of that: an agent advertises what it is willing to be asked, which is a weaker claim than what it will actually deliver. The design consequence for Sway is that every ACP affordance is gated twice, once on the advertisement and once on the result being non-empty, and that a gap between the two is reported as absence rather than as failure.
+ACP's capability handshake is a *negotiation between peers*, not a feature list a client can trust, and the four measured items above are all instances of that: an agent advertises what it is willing to be asked, which is a weaker claim than what it will actually deliver. The design consequence for Tori is that every ACP affordance is gated twice, once on the advertisement and once on the result being non-empty, and that a gap between the two is reported as absence rather than as failure.
 
 The two per-agent overrides (`mcpServers` and client capabilities) exist because they are the only places where a *correct* client can still be wrong for a *particular* agent: everything else is either fixed by the spec or discoverable at `initialize`. Keeping them to two, and naming them in the adapter TOML rather than in Rust, is what keeps `[[adr_harness_breadth]]`'s "a new harness is a TOML file" claim true.
 
@@ -62,7 +62,7 @@ The licensing boundary matters here: entries marked *(reported)* were learned fr
 
 - [[concept_harness_capability_tiers]] — where an ACP session's measured tier is published, including the affordances it cannot have
 - [[adr_harness_breadth]] — the decision this list is the maintenance cost of
-- [[concept_mcp_config_scopes]] — what Sway would be putting in `mcpServers` if an agent accepted one
+- [[concept_mcp_config_scopes]] — what Tori would be putting in `mcpServers` if an agent accepted one
 - [[concept_capability_resolution]] — the same advertise-then-verify shape, one layer up
 - [[concept_pretooluse_capture_hook]] — the Claude-only mechanism ACP replaces with in-protocol permissions
 - [[component_acp_transport]] — the client every entry here is a constraint on

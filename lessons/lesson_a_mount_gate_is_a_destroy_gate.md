@@ -2,7 +2,7 @@
 summary: a Show around a component owning destructible state is a destroy control, mount the whole set, hide the part shown
 status: current
 updated: 2026-08-02
-source: "Editor wave 1: close out the fundamentals (personal/sway, branch `wave-1-4`); Phase 2, issue #14; commit 87fcfe7; `src/panels/Editor/Editor.tsx:817`"
+source: "Editor wave 1: close out the fundamentals (personal/tori, branch `wave-1-4`); Phase 2, issue #14; commit 87fcfe7; `src/panels/Editor/Editor.tsx:817`"
 ---
 
 # Mount on the union, hide on the subset

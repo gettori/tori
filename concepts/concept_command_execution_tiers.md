@@ -2,13 +2,13 @@
 summary: every blocking Tauri command runs through exec.rs, which picks the thread and lock, keyed by the resolved git dir
 status: current
 updated: 2026-08-20
-source: Worktree and tab switching at native speed (personal/sway, branch `unified-tab-bar`), Phase 2, commit d8714d0, `src-tauri/src/exec.rs`
+source: Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phase 2, commit d8714d0, `src-tauri/src/exec.rs`
 ---
 
 # Command execution tiers and the `exec.rs` seam
 
 Every Tauri command that can block goes through `exec.rs`, which is the single
-seam where Sway decides *where* a command body runs and *what lock it holds*.
+seam where Tori decides *where* a command body runs and *what lock it holds*.
 It exists because [[adr_no_sync_ipc_commands]] needed one place to enforce its
 three classes, and because the sync backend had been doubling as an implicit
 lock for things nobody had written down.

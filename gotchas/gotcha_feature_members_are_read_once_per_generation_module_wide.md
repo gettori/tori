@@ -2,7 +2,7 @@
 summary: createFeatureMembers caches one read per generation module wide, swapping payloads mid file reuses the first answer
 status: current
 updated: 2026-08-28
-source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/sway, branch `feature-workspace`, issue #158) - phases 3 and 4 - `src/utils/featureMembers.ts:144,162`, commits 12fe232, 809c85b - _2026-08-28_"
+source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/tori, branch `feature-workspace`, issue #158) - phases 3 and 4 - `src/utils/featureMembers.ts:144,162`, commits 12fe232, 809c85b - _2026-08-28_"
 ---
 
 # Feature members are read once per generation, module-wide

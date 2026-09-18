@@ -2,7 +2,7 @@
 summary: clicking a terminal tab writes a fresh Selection even for the worktree already active, re running 8 to 15 effects
 status: current
 updated: 2026-08-20
-source: "plan \"The reveal path: verify the mismatch switch, then decide what it costs\" (phase 4, personal/sway, branch `unified-tab-bar`), `src/panels/LeftSidebar/LeftSidebar.tsx`, commit c2b6526, _2026-08-20_"
+source: "plan \"The reveal path: verify the mismatch switch, then decide what it costs\" (phase 4, personal/tori, branch `unified-tab-bar`), `src/panels/LeftSidebar/LeftSidebar.tsx`, commit c2b6526, _2026-08-20_"
 ---
 
 # Clicking a terminal tab re-selects the workspace it is already in

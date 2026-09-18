@@ -2,7 +2,7 @@
 summary: reduced motion drops a finished animation onto its base style not its last keyframe, keep the lit state as the base
 status: current
 updated: 2026-07-20
-source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/sway, branch `main`); Phase 2; `src/styles/base.css:23`, `src/panels/Editor/FileTree/FileTree.module.css`, `src/panels/Editor/{Editor,SessionPanel}.module.css`; see [[component_session_worklog]]"
+source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/tori, branch `main`); Phase 2; `src/styles/base.css:23`, `src/panels/Editor/FileTree/FileTree.module.css`, `src/panels/Editor/{Editor,SessionPanel}.module.css`; see [[component_session_worklog]]"
 ---
 
 # Reduced motion lands on the base style, not the last keyframe

@@ -2,7 +2,7 @@
 summary: a For over a freshly rebuilt group array remounts every row by identity even when unchanged, use Index to keep focus
 status: current
 updated: 2026-09-06
-source: "Features phase 8: the right panel modes inside a Feature (personal/sway, branch `feature-workspace`, #160 phase 1, commit 6aa93fb); `src/panels/Editor/ProblemsPanel.tsx`, `src/panels/Editor/BookmarksPanel.tsx`; see [[component_member_section]]; _2026-08-28_; also plan \"Standalone terminals: Sway's own commands as tabs in a Shells workspace\" (personal/sway, branch `standalone-terminals`, issue #166); `src/panels/LeftSidebar/LeftSidebar.tsx` (the Shells list); commit `0bbbdcc`"
+source: "Features phase 8: the right panel modes inside a Feature (personal/tori, branch `feature-workspace`, #160 phase 1, commit 6aa93fb); `src/panels/Editor/ProblemsPanel.tsx`, `src/panels/Editor/BookmarksPanel.tsx`; see [[component_member_section]]; _2026-08-28_; also plan \"Standalone terminals: Tori's own commands as tabs in a Shells workspace\" (personal/tori, branch `standalone-terminals`, issue #166); `src/panels/LeftSidebar/LeftSidebar.tsx` (the Shells list); commit `0bbbdcc`"
 ---
 
 # A referentially-keyed For over recomputed groups resets its children

@@ -2,7 +2,7 @@
 summary: sidebar context menu now rides Kobalte, preloading git origin since a synchronous menu build cannot await it
 status: current
 updated: 2026-08-15
-source: Sidebar as Project Manager; Sidebar Context-Menu Redesign; Delete Group; Combine group create actions into one New dialog (personal/sway, branch code-mirror-6); commits afb4cc0, 03849c5, 17a334a, dac1093, e704411, fef06e6
+source: Sidebar as Project Manager; Sidebar Context-Menu Redesign; Delete Group; Combine group create actions into one New dialog (personal/tori, branch code-mirror-6); commits afb4cc0, 03849c5, 17a334a, dac1093, e704411, fef06e6
 ---
 
 # Sidebar context menu

@@ -2,7 +2,7 @@
 summary: file glyphs now resolve one of eleven hue names against the theme instead of 406 hardcoded hex values from VS Code
 status: current
 updated: 2026-07-24
-source: "Seti file-type icons (personal/sway, branch code-mirror-6); retinted: Native theming system: palette + roles generator (branch `terminal-editor-design`) Phase 5, commit 809cbdc"
+source: "Seti file-type icons (personal/tori, branch code-mirror-6); retinted: Native theming system: palette + roles generator (branch `terminal-editor-design`) Phase 5, commit 809cbdc"
 ---
 
 # Seti file-type icons

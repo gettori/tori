@@ -2,7 +2,7 @@
 summary: an axe baseline covers only the props and mode the fixture renders, and a fixture is usually richer than the caller
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven complex dialogs onto Dialog\" (personal/sway, branch `100-migrate-seven-conplex-dialogs`, issue #100, part of #93); `src/components/Dialogs/SpaceDialog.test.tsx`, `PickerModal.test.tsx`; PR #125"
+source: "plan \"Migrate the seven complex dialogs onto Dialog\" (personal/tori, branch `100-migrate-seven-conplex-dialogs`, issue #100, part of #93); `src/components/Dialogs/SpaceDialog.test.tsx`, `PickerModal.test.tsx`; PR #125"
 ---
 
 # A gate only sees the configuration the test builds

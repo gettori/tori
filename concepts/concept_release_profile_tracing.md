@@ -2,21 +2,21 @@
 summary: a shipped build with no devtools is measured by two correlated json lines traces joined by a correlation id per invoke
 status: current
 updated: 2026-08-20
-source: Worktree and tab switching at native speed (personal/sway, branch `unified-tab-bar`), Phase 1, commit 4b8287f, `src-tauri/src/trace.rs`, `src/utils/perfTrace.ts`, `src/utils/tracedCore.ts`
+source: Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phase 1, commit 4b8287f, `src-tauri/src/trace.rs`, `src/utils/perfTrace.ts`, `src/utils/tracedCore.ts`
 ---
 
 # Measuring a release build that has no devtools
 
-Sway's release bundle has no devtools (the `devtools` feature is absent from
+Tori's release bundle has no devtools (the `devtools` feature is absent from
 `src-tauri/Cargo.toml` and `tauri.conf.json`), so any performance claim about
 the shipped app has to be measured without a console. The answer is two
-JSON-lines files under `~/.config/sway/trace/`, written by both sides of the
+JSON-lines files under `~/.config/tori/trace/`, written by both sides of the
 IPC boundary and joined afterwards by a correlation id. This is what made
 "the switch is slow" into a table of numbers with named causes.
 
 ## How it works
 
-- **Toggle.** `SWAY_TRACE=1` read at backend startup and exposed to the
+- **Toggle.** `TORI_TRACE=1` read at backend startup and exposed to the
   frontend via a command. Without it neither file is written, so the
   instrumentation ships in the binary and costs nothing unasked.
 - **Backend.** `trace::traced` wraps `generate_handler!`, stamping IPC arrival,
@@ -24,7 +24,7 @@ IPC boundary and joined afterwards by a correlation id. This is what made
   `exec::blocking` adds a `{"t":"body"}` line for the real work. See
   [[concept_command_execution_tiers]] for why both exist.
 - **Frontend.** Each invoke carries a correlation id in the argument map as
-  `__swayTrace`, so **queue wait is `backend.enter - js.call`**, subtracted
+  `__toriTrace`, so **queue wait is `backend.enter - js.call`**, subtracted
   rather than guessed. That single number is what distinguishes "the command
   was slow" from "the command was waiting".
 - **Both sides use wall-clock epoch ms**, because `Instant` and

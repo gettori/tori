@@ -2,7 +2,7 @@
 summary: jump list, breadcrumbs and sticky scroll answer where am I from the caret, and the trail starts with the file's member
 status: current
 updated: 2026-08-28
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phases 2, 7, 8, issues #49 / #54 / #55; commits ca93f99, c6177fa, 2185971; the member crumb from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, issue #158), Phase 3, commit `12fe232`"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phases 2, 7, 8, issues #49 / #54 / #55; commits ca93f99, c6177fa, 2185971; the member crumb from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, issue #158), Phase 3, commit `12fe232`"
 ---
 
 # Editor navigation surfaces: jump list, caret listeners, breadcrumbs, sticky scroll

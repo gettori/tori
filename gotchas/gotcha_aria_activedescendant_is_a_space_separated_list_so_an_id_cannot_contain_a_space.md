@@ -2,7 +2,7 @@
 summary: aria-activedescendant splits on spaces into multiple ids, so a row key with a space reads as two and announces nothing
 status: current
 updated: 2026-09-05
-source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/sway, branch `multiaccount`), phase 3; `src/panels/Chat/AgentPalette.tsx`; commit `0bac9e3`"
+source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/tori, branch `multiaccount`), phase 3; `src/panels/Chat/AgentPalette.tsx`; commit `0bac9e3`"
 ---
 
 # `aria-activedescendant` is a space-separated list, so an id cannot contain a space

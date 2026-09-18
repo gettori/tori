@@ -2,7 +2,7 @@
 summary: autofocus is honoured at parse time, not when Solid's Show inserts the node, so a revealed input never gets the caret
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 12 (personal/sway, branch `wave-6`); `src/panels/Editor/SearchPanel.tsx`; commit 98b038b"
+source: "Editor Wave 6: the IDE surface, Phase 12 (personal/tori, branch `wave-6`); `src/panels/Editor/SearchPanel.tsx`; commit 98b038b"
 ---
 
 # `autofocus` on an input a `Show` inserts is not honoured

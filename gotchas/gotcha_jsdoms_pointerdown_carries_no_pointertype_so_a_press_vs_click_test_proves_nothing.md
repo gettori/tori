@@ -2,7 +2,7 @@
 summary: jsdom builds pointerdown with pointerType empty, a mouse type branch always falls to click, a press test proves nothing
 status: current
 updated: 2026-08-16
-source: "plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/sway, branch `111-tab-and-overflow-tab-bar`, issue #111); `src/components/OverflowTabBar.test.tsx`, `node_modules/@kobalte/core/dist/chunk/3D6FM2PJ.js`"
+source: "plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/tori, branch `111-tab-and-overflow-tab-bar`, issue #111); `src/components/OverflowTabBar.test.tsx`, `node_modules/@kobalte/core/dist/chunk/3D6FM2PJ.js`"
 ---
 
 # jsdom's `pointerdown` carries no `pointerType`, so a press-vs-click test proves nothing

@@ -2,7 +2,7 @@
 summary: sidebar becomes the project manager rooted at one canonical root, worktree ops native, auth ops in a terminal tab
 status: current
 updated: 2026-07-31
-source: Sidebar as Project Manager (personal/sway, branch code-mirror-6); commits 785b17b, afb4cc0, e49947a, 09ad986, e6f929f, 4f14660
+source: Sidebar as Project Manager (personal/tori, branch code-mirror-6); commits 785b17b, afb4cc0, e49947a, 09ad986, e6f929f, 4f14660
 ---
 
 # ADR: Sidebar as project manager
@@ -18,7 +18,7 @@ The sidebar had grown hover `+` buttons for a few create actions, multiple disco
 - **Per-node context menus on all four node types**, via one portaled primitive; the hover `+` buttons are removed. Space creation for an empty tree and all root ops live in a gear menu. See [[component_context_menu]].
 - **Native Rust for quick metadata ops** (root mutation, pin, `git_init`/`git_remote_add`, worktree create/remove); **a terminal tab for auth/destructive ops** (clone, bootstrap, first-commit, push) for native progress + ambient git auth, re-discovering on tab exit. See [[gotcha_clone_and_bootstrap_run_in_a_terminal_tab]]. **Superseded for auth by [[adr_git_integration_auth]]**: an askpass/editor bridge over system `git` replaces the tab as the auth mechanism (tabs stay optional for live progress).
 - **Worktree folder = branch's last segment** with a slug fallback then a clean failure (never overwrite); `git fetch` before a new branch (base = origin default); the **`.link/` convention** (skip-if-exists, bare-container only) for shared files. See [[component_worktree_lifecycle]].
-- **Recreated-folder sessions** gated by a separately-stored, idempotently-seeded `adopted_paths` set (never the watched toml), with auto-adopt for Sway-created folders. See [[component_session_scanner]].
+- **Recreated-folder sessions** gated by a separately-stored, idempotently-seeded `adopted_paths` set (never the watched toml), with auto-adopt for Tori-created folders. See [[component_session_scanner]].
 
 ## Amendment 2026-07-31: the sidebar stops at branches
 
@@ -56,4 +56,4 @@ the panel with everything else.
 - Governs [[component_project_discovery]], [[component_worktree_lifecycle]], [[component_context_menu]], and the adopted-set half of [[component_session_scanner]].
 - Superseded at the session level by [[component_history_dropdown]] (2026-07-31).
 - Builds on [[concept_filesystem_source_of_truth]] and [[concept_folder_anchored_sessions]].
-- Complements [[adr_stack_choice]] (manual `sway.toml` + discovery).
+- Complements [[adr_stack_choice]] (manual `tori.toml` + discovery).

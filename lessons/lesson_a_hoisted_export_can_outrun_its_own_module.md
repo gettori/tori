@@ -2,7 +2,7 @@
 summary: a dynamic import into a module inside an import cycle can call a hoisted export before the module body has run at all
 status: current
 updated: 2026-08-28
-source: "Feature lifecycle, member management and repair (personal/sway, branch `feature-workspace`, issue #159) - phase 5 - `src/panels/Editor/lspWarmRoots.ts`, `src/panels/Editor/lspClient.ts`, `src/panels/Editor/Editor.tsx` (the `on(root, ...)` effect)"
+source: "Feature lifecycle, member management and repair (personal/tori, branch `feature-workspace`, issue #159) - phase 5 - `src/panels/Editor/lspWarmRoots.ts`, `src/panels/Editor/lspClient.ts`, `src/panels/Editor/Editor.tsx` (the `on(root, ...)` effect)"
 ---
 
 # A hoisted export can outrun its own module

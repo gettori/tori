@@ -2,7 +2,7 @@
 summary: axe runs inside jsdom and fails on incomplete too, because jsdom's blind spots would otherwise report as a clean pass
 status: current
 updated: 2026-08-12
-source: "plan \"axe-core harness in the jsdom vitest project\" (personal/sway, branch `97-axe-core`, issue #97, part of #93); `src/test/axe.ts`, `src/test/axe.test.tsx`, `src/test/axeUsage.test.ts`; commit 0010b81"
+source: "plan \"axe-core harness in the jsdom vitest project\" (personal/tori, branch `97-axe-core`, issue #97, part of #93); `src/test/axe.ts`, `src/test/axe.test.tsx`, `src/test/axeUsage.test.ts`; commit 0010b81"
 ---
 
 # The axe accessibility gate

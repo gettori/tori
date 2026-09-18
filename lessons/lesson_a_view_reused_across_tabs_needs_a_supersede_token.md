@@ -2,14 +2,14 @@
 summary: an unkeyed Show reuses a component across tabs, so a stale fetch can land in a view that has moved to another tab
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phases 6 and 7 (commits fecf42d, b108974); `src/panels/Editor/CommitLog.tsx`, `src/panels/Editor/CommitDetail.tsx`"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phases 6 and 7 (commits fecf42d, b108974); `src/panels/Editor/CommitLog.tsx`, `src/panels/Editor/CommitDetail.tsx`"
 ---
 
 # A view reused across tabs needs a supersede token
 
 ## What happened
 
-The editor pane routes a tab to a view with `<Show>`, which is **unkeyed**. Switching from one `sway://commit/<a>` tab to `sway://commit/<b>` therefore does not remount `CommitDetail`: it changes its props. The in-flight fetch for commit `a` is still running, and when it lands it writes commit `a`'s subject and file list into a component now displaying tab `b`. The reader sees one commit's message over another commit's diff, with nothing anywhere reporting an error.
+The editor pane routes a tab to a view with `<Show>`, which is **unkeyed**. Switching from one `tori://commit/<a>` tab to `tori://commit/<b>` therefore does not remount `CommitDetail`: it changes its props. The in-flight fetch for commit `a` is still running, and when it lands it writes commit `a`'s subject and file list into a component now displaying tab `b`. The reader sees one commit's message over another commit's diff, with nothing anywhere reporting an error.
 
 It was found twice. First in `CommitLog`, where the initial guard was "refuse to start a reload while one is in flight", which drops a legitimately newer request instead. Replacing that with a token fixed it. Then the identical bug appeared in `CommitDetail` in the next phase, which is what made it a lesson rather than a bug.
 

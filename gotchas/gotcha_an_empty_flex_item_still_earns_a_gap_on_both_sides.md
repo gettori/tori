@@ -2,7 +2,7 @@
 summary: a wrapper with only an absolutely positioned child is still a zero height flex item and earns a full gap either side
 status: current
 updated: 2026-08-16
-source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/sway, branch `130-re-audit-dialog-and-tooltip`, issue #130); `src/components/Dialog/Dialog.module.css`, `Dialog.tsx`, `src/components/Omnibox/Omnibox.tsx:649`"
+source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/tori, branch `130-re-audit-dialog-and-tooltip`, issue #130); `src/components/Dialog/Dialog.module.css`, `Dialog.tsx`, `src/components/Omnibox/Omnibox.tsx:649`"
 ---
 
 # An empty flex item still earns a gap on both sides

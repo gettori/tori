@@ -2,7 +2,7 @@
 summary: wrapping an always-mounted For in a Show fallback unmounts the whole list when empty, killing every hidden process
 status: current
 updated: 2026-07-17
-source: Per-workspace terminal sessions (personal/sway, branch `topbar`); `src/panels/Terminal/Terminal.tsx` (`.termStage` `<For>` + overlay `<Show>`); commit 0e671b1; see [[concept_workspace_tab_grouping]]
+source: Per-workspace terminal sessions (personal/tori, branch `topbar`); `src/panels/Terminal/Terminal.tsx` (`.termStage` `<For>` + overlay `<Show>`); commit 0e671b1; see [[concept_workspace_tab_grouping]]
 ---
 
 # An always-mounted For gated behind a Show fallback unmounts every row

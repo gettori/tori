@@ -2,7 +2,7 @@
 summary: the fuzzy single select dialog behind attach branch, where Enter accepts a match but only Ok creates a typed name
 status: current
 updated: 2026-08-16
-source: "Searchable fuzzy branch picker + creatable Add Branch/Add Worktree (personal/sway, branch `code-mirror-6`); rewritten by plan \"Migrate the seven complex dialogs onto Dialog\" (branch `100-migrate-seven-conplex-dialogs`, issue #100, PR #125); `src/components/Dialogs/PickerModal.tsx`, `PickerModal.test.tsx`, `PickerModal.stories.tsx`; commit `97a1eb6`; body moved onto the shared surface by plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); commit `3289a6e`"
+source: "Searchable fuzzy branch picker + creatable Add Branch/Add Worktree (personal/tori, branch `code-mirror-6`); rewritten by plan \"Migrate the seven complex dialogs onto Dialog\" (branch `100-migrate-seven-conplex-dialogs`, issue #100, PR #125); `src/components/Dialogs/PickerModal.tsx`, `PickerModal.test.tsx`, `PickerModal.stories.tsx`; commit `97a1eb6`; body moved onto the shared surface by plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); commit `3289a6e`"
 ---
 
 # Picker modal (filterable single-select)

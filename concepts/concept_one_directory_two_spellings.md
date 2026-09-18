@@ -2,14 +2,14 @@
 summary: macOS symlinks like /var vs /private/var give one directory two spellings, so string comparisons silently miss matches
 status: current
 updated: 2026-09-05
-source: Four sightings across three plans (personal/sway); `src-tauri/src/fs.rs` (`ensure_inside`), `src-tauri/src/worktree.rs`, `src-tauri/src/accounts.rs`, `src-tauri/src/chat/acp_transport.rs` (`refresh_listing`)
+source: Four sightings across three plans (personal/tori); `src-tauri/src/fs.rs` (`ensure_inside`), `src-tauri/src/worktree.rs`, `src-tauri/src/accounts.rs`, `src-tauri/src/chat/acp_transport.rs` (`refresh_listing`)
 ---
 
 # One directory, two spellings
 
 On macOS a directory routinely has two true names. `/var` is a symlink to `/private/var`, so every temp dir has both spellings; a user's project can sit behind a symlink for the same reason. Anything that compares paths **as strings** therefore sees two directories where there is one, and the failure is almost never an error. It is an empty list, a silent miss, or a row filed under a folder nobody opened.
 
-This has now bitten Sway four times in four unrelated subsystems, which is enough to stop treating each one as a surprise.
+This has now bitten Tori four times in four unrelated subsystems, which is enough to stop treating each one as a surprise.
 
 ## The four sightings
 
@@ -18,7 +18,7 @@ This has now bitten Sway four times in four unrelated subsystems, which is enoug
 | Editable `.shared` tree | a containment check | see [[gotcha_ensure_inside_returns_the_callers_unresolved_path]] |
 | Worktree listing | `git worktree list` output | see [[gotcha_git_worktree_list_reports_canonical_paths]] |
 | Claude account isolation | `sha256(CLAUDE_CONFIG_DIR)[:8]` over the **raw** env string | `.../home` and `.../home/` are two Keychain items for one directory, so a profile reports signed-out purely because the path was spelled differently than at login |
-| ACP `session/list` | the agent's `cwd` filter | Sway sent `/var/...`, `codex-acp` had recorded `/private/var/...`, and a directory with a live session listed zero rows |
+| ACP `session/list` | the agent's `cwd` filter | Tori sent `/var/...`, `codex-acp` had recorded `/private/var/...`, and a directory with a live session listed zero rows |
 
 ## The same shape, with no path in it
 
@@ -26,7 +26,7 @@ A fifth sighting, from the multi-account work, and the reason this page is worth
 
 There are exactly two crossings, `asTabProfile` (backend to tab) and `asProfileId` (tab to backend), in `src/utils/agentHealth.ts`. Everything keyed on an account uses one spelling, so `undefined` cannot mean the default account in one map and nothing at all in the next.
 
-The Keychain one is the sharpest, because the *harness* is doing the string comparison and Sway cannot change it. The rule there is not "canonicalize before comparing", it is **canonicalize before storing**, since the stored spelling is what a future login has to reproduce exactly.
+The Keychain one is the sharpest, because the *harness* is doing the string comparison and Tori cannot change it. The rule there is not "canonicalize before comparing", it is **canonicalize before storing**, since the stored spelling is what a future login has to reproduce exactly.
 
 ## The rule
 

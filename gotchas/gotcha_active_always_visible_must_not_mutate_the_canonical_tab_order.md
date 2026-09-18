@@ -2,7 +2,7 @@
 summary: keeping an overflowed active tab visible via onReorder turns a window resize into a permanent unrequested reorder
 status: current
 updated: 2026-06-29
-source: Overflow-tab-bar (personal/sway); `src/components/OverflowTabBar.tsx` (`displayOrder`)
+source: Overflow-tab-bar (personal/tori); `src/components/OverflowTabBar.tsx` (`displayOrder`)
 ---
 
 # Active-always-visible must not mutate the canonical tab order

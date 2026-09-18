@@ -7,7 +7,7 @@ source: "plan \"Jobs: transient command terminals leave the tab model\", branch 
 
 # Jobs leave the tab model
 
-A transient command Sway runs on your behalf (a clone, a bare-worktree bootstrap, an agent install/update/uninstall, a sign-in) is a **Job**, not a tab: it has no workspace, it lives in `src/panels/Jobs/jobStore.ts`, and it shows up as a tray row above the sidebar's mode tabs plus one bottom drawer over `.workspace`. It leaves [[adr_generic_panes_unified_tabs]]'s unified tab model rather than taking a dock inside it, because the tab model groups on a branch unit and these commands have none: a clone creates the folder, so the folder is not a branch unit until after the command that was supposed to be keyed by it.
+A transient command Tori runs on your behalf (a clone, a bare-worktree bootstrap, an agent install/update/uninstall, a sign-in) is a **Job**, not a tab: it has no workspace, it lives in `src/panels/Jobs/jobStore.ts`, and it shows up as a tray row above the sidebar's mode tabs plus one bottom drawer over `.workspace`. It leaves [[adr_generic_panes_unified_tabs]]'s unified tab model rather than taking a dock inside it, because the tab model groups on a branch unit and these commands have none: a clone creates the folder, so the folder is not a branch unit until after the command that was supposed to be keyed by it.
 
 Amended: 2026-09-06 (see the Amendment below)
 
@@ -17,7 +17,7 @@ Amended: 2026-09-06 (see the Amendment below)
 
 What the synthetic key preserves, restated as the test that pins it: a `shells:` tab never joins a branch unit's strip (`paneTabs` is unchanged while one is open) and never hides one (`activeWorkspace` still equals the unit). `interactive` decides whether the window moves at all, because `focusTab` writes `activeWorkspace` and that write is the original bug.
 
-Source: plan "Standalone terminals: Sway's own commands as tabs in a Shells workspace" (personal/sway, branch `standalone-terminals`, issue #166), Phases 1 to 5 · commits `aadacd3`, `30f1ea9`, `cce6db6`, `dd5c029`, `d4a59d3`. The Jobs module was deleted in `d4a59d3`; see [[component_shells]].
+Source: plan "Standalone terminals: Tori's own commands as tabs in a Shells workspace" (personal/tori, branch `standalone-terminals`, issue #166), Phases 1 to 5 · commits `aadacd3`, `30f1ea9`, `cce6db6`, `dd5c029`, `d4a59d3`. The Jobs module was deleted in `d4a59d3`; see [[component_shells]].
 
 ## Considered Options
 

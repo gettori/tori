@@ -2,20 +2,20 @@
 summary: two css tiers, primitives and generated semantic roles, with inline props on html outranking every stylesheet rule
 status: current
 updated: 2026-08-22
-source: "Central configurable UI system (personal/sway, branch code-mirror-6); Phases 1, 5a, 5b; commits 56af1ca, abe9429, 932f8ef; brand rollout: Premium Design System for sway, same branch; completed + enforced: v0.1 release gate (branch `topbar`) Phase 3, commit 3275344; rebuilt on palettes: Native theming system: palette + roles generator (branch `terminal-editor-design`), Phases 1-7, commits 08c2307 through db3abe9"
+source: "Central configurable UI system (personal/tori, branch code-mirror-6); Phases 1, 5a, 5b; commits 56af1ca, abe9429, 932f8ef; brand rollout: Premium Design System for tori, same branch; completed + enforced: v0.1 release gate (branch `topbar`) Phase 3, commit 3275344; rebuilt on palettes: Native theming system: palette + roles generator (branch `terminal-editor-design`), Phases 1-7, commits 08c2307 through db3abe9"
 ---
 
 # Two-tier design-token system
 
 **Location:** `src/styles/{reset,tokens,base}.css`, `src/panels/Settings/settingsStore.ts` (`applySettings`), `index.html` (`data-theme`), `scripts/{gen-tokens,check-tokens}.mjs`
 
-How Sway's styling went from a 2015-line hardcoded `App.css` (only 10 CSS vars, everything else raw hex) to a themeable token layer, without rewriting the component CSS. This is the substrate [[component_theme_engine]] and [[component_settings_store]] paint onto.
+How Tori's styling went from a 2015-line hardcoded `App.css` (only 10 CSS vars, everything else raw hex) to a themeable token layer, without rewriting the component CSS. This is the substrate [[component_theme_engine]] and [[component_settings_store]] paint onto.
 
-> **Since the palette rewrite**, the semantic tier is *generated*: one JSON palette expanded by `roles.ts` into 110 roles, with both `tokens.css` theme blocks emitted from the two Sway palettes. The history below is still how the layer got here, and the naming, layering, and guard sections remain live. What is obsolete is the VS Code runtime-mapping tier and the idea that a colour has to be added to two hand-written blocks.
+> **Since the palette rewrite**, the semantic tier is *generated*: one JSON palette expanded by `roles.ts` into 110 roles, with both `tokens.css` theme blocks emitted from the two Tori palettes. The history below is still how the layer got here, and the naming, layering, and guard sections remain live. What is obsolete is the VS Code runtime-mapping tier and the idea that a colour has to be added to two hand-written blocks.
 
 ## The two tiers
 
-- **Primitives** (`--sway-*`, in `tokens.css :root`): raw, theme-independent values, the neutral ramp (`--sway-gray-50`…`--sway-gray-990`), blues, spacing scale, radii, font-size scale, font-family stacks, border widths, motion durations. The fallback ladder; never consumed directly by chrome that needs to re-theme.
+- **Primitives** (`--tori-*`, in `tokens.css :root`): raw, theme-independent values, the neutral ramp (`--tori-gray-50`…`--tori-gray-990`), blues, spacing scale, radii, font-size scale, font-family stacks, border widths, motion durations. The fallback ladder; never consumed directly by chrome that needs to re-theme.
 - **Semantic** role tokens the UI actually consumes (`--bg`, `--pane-bg`, `--border`, `--text`, `--text-dim`, `--accent`, `--sel`, `--hover`, `--input-bg`, plus status `--danger`/`--warn`/`--warn-strong`/`--success` and `--syn-*`). Defined **twice**, once under `:root, :root[data-theme="dark"]` and once under `:root[data-theme="light"]`, each selecting different primitives. The dark set maps **1:1 to the exact hex** that used to live in `App.css :root`, so dark rendering is byte-identical after the refactor (verified in the built CSS). (`--success`, the green approve color, was added later for [[component_button]]'s `success` variant, dark `#2ea043` = the `var()` fallback so dark stayed byte-identical, light `#1a7f37`.)
 
 Theme switching is a single attribute flip on `<html>` (`data-theme="dark|light"`); no JS is required for the static default because `index.html` ships `data-theme="dark"` (FOUC-free boot).
@@ -28,21 +28,21 @@ Theme switching is a single attribute flip on `<html>` (`data-theme="dark|light"
 
 Two sources write inline props on `<html>`, above the stylesheet:
 
-1. `tokens.css`'s per-`data-theme` blocks, the pre-theme fallback. **Generated** from the two Sway palettes into a marker-delimited region inside `@layer tokens`; hand-editing it fails the guard.
+1. `tokens.css`'s per-`data-theme` blocks, the pre-theme fallback. **Generated** from the two Tori palettes into a marker-delimited region inside `@layer tokens`; hand-editing it fails the guard.
 2. The [[component_theme_engine]] resolver paints the active theme's 110 resolved roles.
-3. [[component_settings_store]]'s `applySettings` paints settings-driven tokens (`--ui-scale`, `--ui-line-height`, `--editor-font-*`, `--sway-font-ui`).
+3. [[component_settings_store]]'s `applySettings` paints settings-driven tokens (`--ui-scale`, `--ui-line-height`, `--editor-font-*`, `--tori-font-ui`).
 
 Because inline props outrank *every* rule in the token layer, 2 and 3 are bound by an explicit **key-ownership contract**: disjoint key sets, only ever overwrite your own keys, never clear the element's style wholesale. That is what keeps `--ui-scale` alive across a theme switch, and it is recorded in [[adr_theme_palette_roles]] rather than left as a convention.
 
-`--ui-scale` is the root of a font-driven scaling layer: one multiplier folds through the type ramp, the `--sway-space-*` scale, and the `--control-*` tokens so the whole chrome zooms uniformly. See [[concept_ui_scaling_system]].
+`--ui-scale` is the root of a font-driven scaling layer: one multiplier folds through the type ramp, the `--tori-space-*` scale, and the `--control-*` tokens so the whole chrome zooms uniformly. See [[concept_ui_scaling_system]].
 
 ## Brand, elevation, motion (what chrome consumes)
 
 The premium redesign ([[adr_premium_design_system]]) added three token groups that chrome binds to, all defined **twice** (dark + light) like the rest:
 
-- **Brand family** `--brand`, `--brand-strong`, `--brand-subtle` (translucent selection fill), `--brand-bar` (the left active-item accent rail + the inset active-tab cap), `--brand-ring` (the focus ring), `--brand-on` (legible text/icon on a filled `--brand`). Fixed champagne-gold, **independent of the accent role** so a ported theme cannot mutate Sway's identity. All five bundled palettes carry the identical brand family, and so must any user theme.
+- **Brand family** `--brand`, `--brand-strong`, `--brand-subtle` (translucent selection fill), `--brand-bar` (the left active-item accent rail + the inset active-tab cap), `--brand-ring` (the focus ring), `--brand-on` (legible text/icon on a filled `--brand`). Fixed champagne-gold, **independent of the accent role** so a ported theme cannot mutate Tori's identity. All five bundled palettes carry the identical brand family, and so must any user theme.
 - **Elevation** `--shadow-sm/md/lg` (soft on dark, softer on light). Floating chrome uses `--shadow-md` (menus, popovers) or `--shadow-lg` (dialogs, quick-open, settings); dense work surfaces use at most `--shadow-sm`.
-- **Motion** primitives `--sway-duration-fast`/`--sway-duration-med` + `--sway-ease` drive every hover/active/focus transition. A single global **`@media (prefers-reduced-motion: reduce)`** reset in `base.css` (outside `@layer`, `!important` on `*`/`::before`/`::after`) neutralises all of them app-wide, so components never guard motion individually.
+- **Motion** primitives `--tori-duration-fast`/`--tori-duration-med` + `--tori-ease` drive every hover/active/focus transition. A single global **`@media (prefers-reduced-motion: reduce)`** reset in `base.css` (outside `@layer`, `!important` on `*`/`::before`/`::after`) neutralises all of them app-wide, so components never guard motion individually.
 
 Recurring recipes: rounded container + `--shadow-lg` + a `--brand-ring` focus ring (`box-shadow: 0 0 0 3px var(--brand-ring)`); active rows are a `--brand-subtle` pill, sub-items add a `--brand-bar` rail. Order the selected rule after `:hover`, see [[gotcha_same_specificity_hover_and_active_declare_active_last]].
 
@@ -74,7 +74,7 @@ Wired into `pnpm test`, because a guard nobody runs is decorative. It lives here
 
 1. **No colour literal outside `tokens.css`**, with an allowlist where every entry carries a stated reason (and a staleness check: an entry naming a deleted file fails, because it reads as a considered exemption while exempting nothing). Covers 3/4/6/8-digit hex, `rgb(`, `rgba(`, `hsl(`, and CSS named colours. Named-colour detection skips words followed by `:` (in CSS a named colour is always a value, so it is never followed by a colon) and words preceded by `.` (a role id like `ansi.black` never is).
 2. **Every bundled palette produces every declared role**, and the generated region of `tokens.css` agrees byte-for-byte with what the generator emits today. Derivations fail as *strings*, not exceptions, so this tests the value for `undefined|NaN|var(` rather than trusting a try/catch.
-3. **Every `var(--x)` in `src/` resolves** to a role, a `--sway-*` primitive, or a locally declared property. `var(--x, fallback)` is exempt on principle: the fallback *is* the handling of absence. Dynamically built names are allowlisted per file **and** per prefix, never skipped wholesale.
+3. **Every `var(--x)` in `src/` resolves** to a role, a `--tori-*` primitive, or a locally declared property. `var(--x, fallback)` is exempt on principle: the fallback *is* the handling of absence. Dynamically built names are allowlisted per file **and** per prefix, never skipped wholesale.
 4. **Every name `TerminalView.termColors()` reads** is a declared role.
 5. **Every token the theme workbench names** as a literal resolves.
 6. **Every hue the generated seti mapping emits** has a `scale.*` role, see [[component_seti_icons]].

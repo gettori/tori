@@ -2,7 +2,7 @@
 summary: a save fires the fs watcher for the same path 250ms later, mark it a self write or the editor reloads its own save
 status: current
 updated: 2026-06-29
-source: CM6 migration (personal/sway); `src/selfWrites.ts`; commits bef939a, 784724b
+source: CM6 migration (personal/tori); `src/selfWrites.ts`; commits bef939a, 784724b
 ---
 
 # Save triggers its own fs-watcher echo

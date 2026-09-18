@@ -2,14 +2,14 @@
 summary: advertise only LSP capabilities you answer, since unhandled requests get -32601 and a conformant server stops asking
 status: current
 updated: 2026-08-11
-source: "Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phase 5 (commit cbc5b0a), Phase 7 (commit 075b5d7); `src/utils/symbols.ts`, `src/utils/semanticTokens.ts`, `src/panels/Editor/lspClient.ts`, extended by Editor wave 7: language intelligence depth (branch `wave-7`); Phases 1-9 (c4750d7 -> d7a6e3e), contrasted by Editor wave 8: the debugger (DAP) (branch `wave-8`), Phases 3, 8"
+source: "Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phase 5 (commit cbc5b0a), Phase 7 (commit 075b5d7); `src/utils/symbols.ts`, `src/utils/semanticTokens.ts`, `src/panels/Editor/lspClient.ts`, extended by Editor wave 7: language intelligence depth (branch `wave-7`); Phases 1-9 (c4750d7 -> d7a6e3e), contrasted by Editor wave 8: the debugger (DAP) (branch `wave-8`), Phases 3, 8"
 ---
 
 # Client capabilities are a contract, not a wish list
 
-Two rules govern what Sway tells a language server it can do, and they pull in opposite directions:
+Two rules govern what Tori tells a language server it can do, and they pull in opposite directions:
 
-1. **A conformant server offers no provider for something the client never asked for.** `@codemirror/lsp-client`'s `clientCapabilities` const advertises completion, hover, formatting, rename, signatureHelp, definition and friends, references, diagnostics and `window.showMessage` — **and nothing else**. Document symbols, workspace symbols and semantic tokens are all absent, so against a *correct* server those features are simply empty until Sway adds them. That is the hardest kind of wrong to notice, because nothing errors.
+1. **A conformant server offers no provider for something the client never asked for.** `@codemirror/lsp-client`'s `clientCapabilities` const advertises completion, hover, formatting, rename, signatureHelp, definition and friends, references, diagnostics and `window.showMessage` — **and nothing else**. Document symbols, workspace symbols and semantic tokens are all absent, so against a *correct* server those features are simply empty until Tori adds them. That is the hardest kind of wrong to notice, because nothing errors.
 
 2. **Anything you advertise, you must answer.** `LSPClient.receiveMessage` replies to every server-initiated **request** with `-32601 MethodNotFound` (`dist/index.js:684-690`) and exposes an extension point for *notifications* only. A `-32601` is not fatal, but it tells a conformant server the client lied in its capabilities, and a server's reasonable response is to stop asking.
 
@@ -17,7 +17,7 @@ So the surface is grown deliberately and minimally, one block per feature, throu
 
 ## What follows from it
 
-- **`didChangeWatchedFiles.dynamicRegistration` stays absent, permanently.** It invites server-initiated registration nothing here answers, and its absence is also what keeps servers doing their own file watching, which is what Sway wants.
+- **`didChangeWatchedFiles.dynamicRegistration` stays absent, permanently.** It invites server-initiated registration nothing here answers, and its absence is also what keeps servers doing their own file watching, which is what Tori wants.
 
 - **`workspace.semanticTokens.refreshSupport` was the first deliberate exception**, and it is only defensible because the request *is* answered. Semantic colour is a property of the resolved program: editing `types.ts` changes what a name in `main.ts` means without changing a character of it, and the refresh notification is the only way a server can say so. Nothing the editor can observe locally would ever prompt the re-request.
 
@@ -33,7 +33,7 @@ So the surface is grown deliberately and minimally, one block per feature, throu
 
 - **The list is now written out by hand**, because auto-import had to replace `serverCompletion()` rather than wrap it ([[concept_resolving_completion]]). A hand-written list is one entry away from silently un-advertising a feature, so `clientExtensions()` is exported and a test rebuilds the *old* list, strips the completion block from both, and asserts deep equality — the delta stays the completion change rather than drifting into a record of everything since. That same hand-writing is how the library's keymap turned out never to have been bound at all ([[gotcha_a_bare_keymap_facetprovider_is_dropped_by_lsp_client]]).
 
-- **The merge is deep, and the test proves it against the real client.** `mergeCapabilities` recurses, but a shallow merge would drop the library's entire `textDocument` block the moment Sway adds a key to it — taking hover, completion, rename and references with it. The assertion connects a real `LSPClient` over a fake transport and reads the `initialize` frame that actually goes out, because a hand-rolled copy of the merge would pass while the real one did not.
+- **The merge is deep, and the test proves it against the real client.** `mergeCapabilities` recurses, but a shallow merge would drop the library's entire `textDocument` block the moment Tori adds a key to it — taking hover, completion, rename and references with it. The assertion connects a real `LSPClient` over a fake transport and reads the `initialize` frame that actually goes out, because a hand-rolled copy of the merge would pass while the real one did not.
 
 ## Reading an answer back
 

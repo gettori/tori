@@ -2,7 +2,7 @@
 summary: one Rust PTY per session streams raw bytes over a swappable per session Channel, and pty commands stay sync by design
 status: current
 updated: 2026-08-20
-source: Sway build plan, commits 3c2cde1 (spike), ed8d189 (multi-session); CM6 migration, commits 0221967 (addons/WebGL), 7dad6fa (Channel transport), 5c8c6d7 (clickable paths), 3813946 (drag-to-`@path`); Per-workspace terminal sessions, shell-hosted agents, and plain shell tabs (branch `topbar`), commits fe02de4 (shell hosting), 3e8acd6 (live-tab surface); Worktree and tab switching at native speed (branch `unified-tab-bar`), phase 5 chunk coalescing (commit 565dbf9), phase 2 concurrency class (commit d8714d0)
+source: Tori build plan, commits 3c2cde1 (spike), ed8d189 (multi-session); CM6 migration, commits 0221967 (addons/WebGL), 7dad6fa (Channel transport), 5c8c6d7 (clickable paths), 3813946 (drag-to-`@path`); Per-workspace terminal sessions, shell-hosted agents, and plain shell tabs (branch `topbar`), commits fe02de4 (shell hosting), 3e8acd6 (live-tab surface); Worktree and tab switching at native speed (branch `unified-tab-bar`), phase 5 chunk coalescing (commit 565dbf9), phase 2 concurrency class (commit d8714d0)
 ---
 
 # PTY host

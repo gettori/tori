@@ -23,7 +23,7 @@ A Tauri command in the invoke handler looks shipped from every angle a backend
 test can see. The tests call the function directly, the compiler is satisfied,
 and the registration list grows. Nothing in the toolchain notices that the arrow
 from the UI to the command was never drawn, and a task's `verify:` phrased as "a
-worktree removed outside Sway leaves no stale entry" is satisfied by a unit test
+worktree removed outside Tori leaves no stale entry" is satisfied by a unit test
 that never renders anything.
 
 The tell is in the verify's own wording. Phase 12's task said "three attempts
@@ -87,7 +87,7 @@ right-panel mode needs four (`RIGHT_MODE_TABS`, `modeOrder`, `SetRightMode`,
 `can_use_tool` question, and `ChatCommand::RespondPermission` had **no caller
 outside tests**. So the in-protocol answer path was unreachable from the UI while
 every unit test around it passed - and the surface did not look broken, because
-the *other* answer path (Sway's own hook, which the phase existed to retire) was
+the *other* answer path (Tori's own hook, which the phase existed to retire) was
 still handling every prompt. The user would have clicked a button that answered
 the wrong mechanism.
 
@@ -102,7 +102,7 @@ path a click actually reaches**, not that both paths pass their own tests.
 - [[concept_fan_out_attempts]] - the phase this held up for a session
 - [[component_acp_transport]] - the second answer path, whose arrival is what made the fourth occurrence invisible
 - The first occurrence was `chat_add_restriction`, in the chat plan's phase 6. Its
-  concept page is deleted: the Sway-owned rule store it described was retired
+  concept page is deleted: the Tori-owned rule store it described was retired
   whole in "Defer permissions to the harness", so the occurrence survives only
   here.
 - [[lesson_verify_after_the_last_edit]] - the sibling failure, one step later in the cycle

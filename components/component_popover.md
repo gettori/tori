@@ -2,7 +2,7 @@
 summary: Popover stays mounted while open under a Show, so Kobalte never sees open to closed and onCloseAutoFocus is dead code
 status: current
 updated: 2026-08-15
-source: "plan \"Popover onto Kobalte Popover\" (personal/sway, branch `104-popover`, issue #104, part of #93); previous hand-rolled surface: branch `navigation`; commit 1235880"
+source: "plan \"Popover onto Kobalte Popover\" (personal/tori, branch `104-popover`, issue #104, part of #93); previous hand-rolled surface: branch `navigation`; commit 1235880"
 ---
 
 # Popover

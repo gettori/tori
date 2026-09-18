@@ -2,7 +2,7 @@
 summary: an unbounded subprocess probe inside a memoized sweep strands the whole cached result when the child hangs
 status: current
 updated: 2026-07-19
-source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/sway, branch `topbar`); Phase 1; `src-tauri/src/env.rs`"
+source: "v0.1 release gate: adapter cards, releases, light mode, polish (personal/tori, branch `topbar`); Phase 1; `src-tauri/src/env.rs`"
 ---
 
 # A subprocess probe inside a memoized sweep must be bounded

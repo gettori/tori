@@ -2,7 +2,7 @@
 summary: axe's rules option is not scoped by runOnly's tag filter, a shallow merge lets a caller re-enable an excluded rule
 status: current
 updated: 2026-08-12
-source: "plan \"axe-core harness in the jsdom vitest project\" (personal/sway, branch `97-axe-core`, issue #97); `src/test/axe.ts:98`, `src/test/axe.test.tsx:88`; commit 0010b81"
+source: "plan \"axe-core harness in the jsdom vitest project\" (personal/tori, branch `97-axe-core`, issue #97); `src/test/axe.ts:98`, `src/test/axe.test.tsx:88`; commit 0010b81"
 ---
 
 # axe's `rules` option enables rules outside the `runOnly` tag filter

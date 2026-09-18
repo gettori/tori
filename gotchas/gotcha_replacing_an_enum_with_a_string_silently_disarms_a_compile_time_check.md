@@ -2,7 +2,7 @@
 summary: swapping an enum for a string to support foreign vocabularies removes a compile time guard, a string accepts anything
 status: current
 updated: 2026-07-29
-source: Make the session controls tell the truth about the CLI, phase 1 (personal/sway, branch `chat`); `src-tauri/src/chat/neutrality_check.rs:542` (`a_foreign_mode_vocabulary_survives_the_model_unchanged`), `src-tauri/src/agents.rs:1346` (`every_declared_mode_is_one_the_cli_accepts`); [[concept_transport_neutral_event_model]]
+source: Make the session controls tell the truth about the CLI, phase 1 (personal/tori, branch `chat`); `src-tauri/src/chat/neutrality_check.rs:542` (`a_foreign_mode_vocabulary_survives_the_model_unchanged`), `src-tauri/src/agents.rs:1346` (`every_declared_mode_is_one_the_cli_accepts`); [[concept_transport_neutral_event_model]]
 ---
 
 # Replacing an enum with a string silently disarms a compile-time check

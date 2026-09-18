@@ -2,7 +2,7 @@
 summary: a new chat tab spawns no harness until first send, beating eager spawn at open and a background spawn hybrid
 status: needs-verification
 updated: 2026-08-20
-source: not recorded; imported from grimoire docs/personal/sway; reverses the stance of commit ddcf047
+source: not recorded; imported from grimoire docs/personal/tori; reverses the stance of commit ddcf047
 ---
 
 # New chats open as drafts: no harness process until first send, then a structural lock
@@ -16,9 +16,9 @@ A new chat tab is pure client state with no spawned harness, any chat-capable ag
 
 ## Consequences
 
-- First messages pay spawn plus handshake (~1.6s Claude, ~1s expected ACP), masked by a pending composer state and a Sway-owned first-send deadline.
+- First messages pay spawn plus handshake (~1.6s Claude, ~1s expected ACP), masked by a pending composer state and a Tori-owned first-send deadline.
 - Drafts hold no ownership claim and every send attempt mints a fresh session id, so pre-spawn conflicts cannot exist and a failed attempt's id is dead.
-- Pre-spawn pickers run entirely on the probe cache; Sway still declares no model the harness did not name.
+- Pre-spawn pickers run entirely on the probe cache; Tori still declares no model the harness did not name.
 
 ## Related
 

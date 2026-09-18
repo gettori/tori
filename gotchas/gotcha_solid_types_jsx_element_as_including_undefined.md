@@ -2,7 +2,7 @@
 summary: Solid's JSX.Element type includes undefined, so a required label prop is satisfied by label={undefined}
 status: current
 updated: 2026-08-16
-source: "plan \"Revive tab selection, and make an unnamed segment a type error\" (personal/sway, branch `116-optional-accessible`, issue #116); `node_modules/solid-js/types/jsx.d.ts:30`, `src/components/SegmentedControl/SegmentedControl.tsx`"
+source: "plan \"Revive tab selection, and make an unnamed segment a type error\" (personal/tori, branch `116-optional-accessible`, issue #116); `node_modules/solid-js/types/jsx.d.ts:30`, `src/components/SegmentedControl/SegmentedControl.tsx`"
 ---
 
 # Solid types `JSX.Element` as including `undefined`

@@ -2,7 +2,7 @@
 summary: keymap.of as a top-level LSPClient extension is a bare FacetProvider, so lsp-client silently drops it
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth, Phase 4 (personal/sway, branch `wave-7`); `src/panels/Editor/lspClient.ts:382`; commit bd8158a"
+source: "Editor wave 7: language intelligence depth, Phase 4 (personal/tori, branch `wave-7`); `src/panels/Editor/lspClient.ts:382`; commit bd8158a"
 ---
 
 # A bare keymap FacetProvider is dropped by lsp-client

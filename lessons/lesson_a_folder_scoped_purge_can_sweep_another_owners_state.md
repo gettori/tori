@@ -9,7 +9,7 @@ source: "Features phase 8: the right panel modes inside a Feature (#160), branch
 
 ## What happened
 
-Deleting a Feature sweeps `feature:<id>` out of the 14 per-workspace stores. Three of them do not hold the Feature under that key at all: `sway.watches`, `sway.debugAttachPorts` and `sway.debugLastTarget` key on the **member root**, because a paused session's own `projectPath` is compared against it and one shared watch list would dissolve the per-member gate. So those three records survived every Feature delete.
+Deleting a Feature sweeps `feature:<id>` out of the 14 per-workspace stores. Three of them do not hold the Feature under that key at all: `tori.watches`, `tori.debugAttachPorts` and `tori.debugLastTarget` key on the **member root**, because a paused session's own `projectPath` is compared against it and one shared watch list would dissolve the per-member gate. So those three records survived every Feature delete.
 
 The obvious fix is to pass the member roots in and sweep them too. Written that way it swept the *whole* store list under each root, and emitted `PURGE_WORKSPACE` once per root so every live owner ran its full teardown for that key.
 

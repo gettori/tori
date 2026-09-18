@@ -2,7 +2,7 @@
 summary: a debug run is always a tree, even node one file.js makes a root plus a child, so no code may assume a single session
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP) (personal/sway, branch `wave-8`); Phases 1, 3; epic #69; `src/utils/dapSessions.ts:145`, `src/utils/debugStack.ts:239`; commit 1e72ae1"
+source: "Editor wave 8: the debugger (DAP) (personal/tori, branch `wave-8`); Phases 1, 3; epic #69; `src/utils/dapSessions.ts:145`, `src/utils/debugStack.ts:239`; commit 1e72ae1"
 ---
 
 # A debug run is a tree of sessions, and always has been
@@ -27,7 +27,7 @@ What the shape forbids:
 
 Because the alternative is not a simplification, it is a bug that only appears when somebody debugs something real. A "start simple, add multi-session later" plan would have shipped a debugger that works on a scratch file and dies on the first package script, and the failure mode is silence rather than an error: the child session is where the breakpoint is, so nothing stops and nothing complains.
 
-It also means the tree's depth is not bounded by anything Sway knows. A package manager spawning a runner spawning a worker is three levels before any user code, so the pane indents to a cap rather than nesting boxes.
+It also means the tree's depth is not bounded by anything Tori knows. A package manager spawning a runner spawning a worker is three levels before any user code, so the pane indents to a cap rather than nesting boxes.
 
 ## Related
 

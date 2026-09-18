@@ -2,12 +2,12 @@
 summary: installing an agent trusts the registry, the sha256 ships beside the same URL it verifies and most entries lack one
 status: current
 updated: 2026-08-15
-source: Make a harness installable, signed in, and discoverable (personal/sway, branch `harness-lifecycle`); Phase 5; `src-tauri/src/install.rs`, `ADAPTERS.md`; registry commit `ec4f9f7c`, measured 2026-08-14
+source: Make a harness installable, signed in, and discoverable (personal/tori, branch `harness-lifecycle`); Phase 5; `src-tauri/src/install.rs`, `ADAPTERS.md`; registry commit `ec4f9f7c`, measured 2026-08-14
 ---
 
 # What installing from the ACP Registry costs you
 
-Sway can download an agent from the ACP Registry's `binary` distribution. The honest headline is the one the consent dialog leads with: **installing an agent is trusting the registry.** Every control below bounds a narrower thing than people assume it does.
+Tori can download an agent from the ACP Registry's `binary` distribution. The honest headline is the one the consent dialog leads with: **installing an agent is trusting the registry.** Every control below bounds a narrower thing than people assume it does.
 
 **The checksum ships in the same `agent.json` as the URL.** So it bounds *transport* tampering: a proxy, a hijacked CDN, a corrupted download. It proves nothing about who published the bytes, because anyone who can change the URL can change the hash printed next to it. It is a transport control wearing the costume of a provenance control.
 
@@ -29,11 +29,11 @@ The last row is the point of making it a choice rather than a step. Clearing `co
 
 **It produces no adapter.** An installed agent is a path plus a manifest; the catalog row still says untested, and reaching a session means a user writing the TOML that names the path. It is never placed on `PATH`. See [[component_acp_catalog]] for how that boundary is asserted structurally rather than by convention.
 
-**Removal deletes only what Sway installed**, refusing a directory with no manifest, so a user-installed binary of the same name is untouched.
+**Removal deletes only what Tori installed**, refusing a directory with no manifest, so a user-installed binary of the same name is untouched.
 
 ## Implementation notes worth keeping
 
-- **Extraction is entry by entry, not a shell out to `bsdtar`.** The containment check and the symlink refusal are properties Sway has to be able to *assert*, and a library that unpacks for you cannot be asked about them.
+- **Extraction is entry by entry, not a shell out to `bsdtar`.** The containment check and the symlink refusal are properties Tori has to be able to *assert*, and a library that unpacks for you cannot be asked about them.
 - Formats are named and refused rather than sniffed: darwin ships 13 `tar.gz`, 3 `zip`, 1 `tar.bz2`, and some entries point at a bare binary with no extension at all, which is why detection refuses rather than guesses.
 - `write_entry` masks the archive's mode with `0o600 | (mode & 0o100)`. It was `0o700 | ...`, which is `0o700` for every entry, so every extracted data file came out executable. A package can carry more than one executable, and only the entry point is chmod'd by name afterwards.
 - The per-platform entry carries an optional `env` (`vtcode` sets `VT_ACP_ENABLED`), so the manifest carries it too. Without it, a TOML written from the manifest would launch an agent that does not speak ACP.

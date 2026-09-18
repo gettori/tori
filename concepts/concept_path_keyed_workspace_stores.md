@@ -2,7 +2,7 @@
 summary: nine per workspace stores split into what you did, which expires, and what you chose, which never does, both get swept
 status: current
 updated: 2026-08-26
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phases 2, 3, 9, 15, issues #49 / #52 / #57 / #51; commits ca93f99, 354ee01, 3cbbde1, b622f33; `src/utils/jumpList.ts`, `src/utils/frecency.ts`, `src/panels/Editor/reopenStack.ts`, `src/utils/bookmarks.ts`, `src-tauri/src/local_history.rs`; joined by Editor wave 8: the debugger (DAP) (branch `wave-8`), Phases 6, 9, 5; `src/utils/breakpoints.ts`, `src/utils/watches.ts`, `src/utils/debugTargets.ts`; ninth member from Features phase 3: unified file explorer across member roots (branch `feature-workspace`, issue #155, phase 4, commit 76b20bd); `src/utils/treeExpanded.ts`"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phases 2, 3, 9, 15, issues #49 / #52 / #57 / #51; commits ca93f99, 354ee01, 3cbbde1, b622f33; `src/utils/jumpList.ts`, `src/utils/frecency.ts`, `src/panels/Editor/reopenStack.ts`, `src/utils/bookmarks.ts`, `src-tauri/src/local_history.rs`; joined by Editor wave 8: the debugger (DAP) (branch `wave-8`), Phases 6, 9, 5; `src/utils/breakpoints.ts`, `src/utils/watches.ts`, `src/utils/debugTargets.ts`; ninth member from Features phase 3: unified file explorer across member roots (branch `feature-workspace`, issue #155, phase 4, commit 76b20bd); `src/utils/treeExpanded.ts`"
 ---
 
 # Path-keyed per-workspace stores, and the sweeps they must join
@@ -43,7 +43,7 @@ The new wrinkle is that **a watch's *answer* has to be keyed by workspace as wel
 
 ## The ninth: what the tree has open
 
-`sway.treeExpanded.v1` (`src/utils/treeExpanded.ts`) records the explorer's
+`tori.treeExpanded.v1` (`src/utils/treeExpanded.ts`) records the explorer's
 expanded directories. It is the first of the family to hold **two lists per
 workspace**, because the two defaults differ: a directory starts shut, so the
 open ones are what gets recorded, and a section header starts open, so only the

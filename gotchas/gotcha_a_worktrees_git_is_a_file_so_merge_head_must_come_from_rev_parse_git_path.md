@@ -2,7 +2,7 @@
 summary: a linked worktree's .git is a file, so find MERGE_HEAD via rev-parse git-path, not by joining .git onto the path
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phase 11; `src-tauri/src/conflict.rs` (`git_conflict_op`); commit 02f5805"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 11; `src-tauri/src/conflict.rs` (`git_conflict_op`); commit 02f5805"
 ---
 
 # A worktree's `.git` is a file, so `MERGE_HEAD` must come from `rev-parse --git-path`

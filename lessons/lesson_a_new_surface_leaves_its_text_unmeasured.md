@@ -9,7 +9,7 @@ source: plan "Answer AskUserQuestion inside the chat panel" (phase 5), branch `c
 
 ## What happened
 
-A blocking tier was added so the permission prompt and the question card would stop being a gold hairline on the pane fill, and its `blocking.surface` lifted the card off `canvas.card` by a mix of the brand tint. The gate passed, all five palettes, first run. It was wrong: `fg.subtle` measured 2.74 on Sway Dark and `fg.muted` measured 4.42 on Rose Pine Dawn against the new surface, both under their floors, and the two cards are full of exactly that text (the hint, the preview, the Other label, the subagent badge).
+A blocking tier was added so the permission prompt and the question card would stop being a gold hairline on the pane fill, and its `blocking.surface` lifted the card off `canvas.card` by a mix of the brand tint. The gate passed, all five palettes, first run. It was wrong: `fg.subtle` measured 2.74 on Tori Dark and `fg.muted` measured 4.42 on Rose Pine Dawn against the new surface, both under their floors, and the two cards are full of exactly that text (the hint, the preview, the Other label, the subagent badge).
 
 ## Why
 

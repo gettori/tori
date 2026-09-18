@@ -2,7 +2,7 @@
 summary: vscode jsonrpc reads a bare array params as positional args and spreads it, a big catalog arrives as one entry
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth, Phase 5 (personal/sway, branch `wave-7`); `src/panels/Editor/lspClient.ts:321`; commit a620384"
+source: "Editor wave 7: language intelligence depth, Phase 5 (personal/tori, branch `wave-7`); `src/panels/Editor/lspClient.ts:321`; commit a620384"
 ---
 
 # `vscode-jsonrpc` spreads a JSON-RPC `params` array

@@ -7,4 +7,4 @@ source: Features phase 0 (#152), branch `feature-workspace`; `src-tauri/src/work
 
 # git worktree list answers empty for a vanished repo
 
-Do not read an empty `list_worktrees_body` as "no worktrees": it returns `Ok(vec![])` on any git failure, a deleted repo dir included, and `config.rs` callers rely on that. Ask `worktree::repo_readable` first, or a vanished repo reconciles as "worktree missing" instead of "repo missing" and placement code creates `.sway/worktrees` at the dead path. Why: the empty Ok cannot be changed to an Err without touching every discovery caller.
+Do not read an empty `list_worktrees_body` as "no worktrees": it returns `Ok(vec![])` on any git failure, a deleted repo dir included, and `config.rs` callers rely on that. Ask `worktree::repo_readable` first, or a vanished repo reconciles as "worktree missing" instead of "repo missing" and placement code creates `.tori/worktrees` at the dead path. Why: the empty Ok cannot be changed to an Err without touching every discovery caller.

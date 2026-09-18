@@ -2,7 +2,7 @@
 summary: Storybook's docgen assigns default.__docgenInfo for an export default function component, esbuild rejects it and hangs
 status: current
 updated: 2026-08-12
-source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/sway, branch `96-storybook`, issue #96); `.storybook/main.ts`; skarif2/sway#96 comment 5259157006"
+source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/tori, branch `96-storybook`, issue #96); `.storybook/main.ts`; gettori/tori#96 comment 5259157006"
 ---
 
 # storybook-solidjs-vite's docgen breaks on an `export default function` component

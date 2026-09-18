@@ -2,7 +2,7 @@
 summary: axe's aria-valid-attr-value flags every trigger with both aria-haspopup and aria-controls even in a real browser
 status: current
 updated: 2026-08-15
-source: "Menu onto Kobalte DropdownMenu and ContextMenu, phase 2 (personal/sway, branch `103-menu`); `src/components/Menu/Dropdown.test.tsx`; [[component_menu]]; _2026-08-15_; confirmed again for the select trigger, which carries both attributes once open; Select wrapper and native select migration (branch `106-select`, issue #106); `src/components/Select/Select.test.tsx`; [[component_select]]"
+source: "Menu onto Kobalte DropdownMenu and ContextMenu, phase 2 (personal/tori, branch `103-menu`); `src/components/Menu/Dropdown.test.tsx`; [[component_menu]]; _2026-08-15_; confirmed again for the select trigger, which carries both attributes once open; Select wrapper and native select migration (branch `106-select`, issue #106); `src/components/Select/Select.test.tsx`; [[component_select]]"
 ---
 
 # axe cannot judge a dropdown trigger, in any browser

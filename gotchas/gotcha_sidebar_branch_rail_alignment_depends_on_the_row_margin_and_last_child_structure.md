@@ -2,7 +2,7 @@
 summary: the branch rail's elbow lives on row while the rail itself is measured off branchNode, so margin changes desync them
 status: current
 updated: 2026-07-15
-source: git-branch rail (personal/sway, branch code-mirror-6); `src/panels/LeftSidebar/LeftSidebar.module.css` (`.branchNode`, `.row.branch::after`, `.row.branch::before`, `.row.session::before`), `LeftSidebar.tsx` (branch node `.node ${branchNode}`); commits 9b540bf, 2440fdf
+source: git-branch rail (personal/tori, branch code-mirror-6); `src/panels/LeftSidebar/LeftSidebar.module.css` (`.branchNode`, `.row.branch::after`, `.row.branch::before`, `.row.session::before`), `LeftSidebar.tsx` (branch node `.node ${branchNode}`); commits 9b540bf, 2440fdf
 ---
 
 # Sidebar branch rail alignment depends on the row margin and last-child structure

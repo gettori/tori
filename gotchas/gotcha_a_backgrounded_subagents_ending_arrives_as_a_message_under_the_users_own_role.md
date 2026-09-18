@@ -2,7 +2,7 @@
 summary: a background subagent's task notification lands as a user turn, so a tag allowlist must cover it too
 status: current
 updated: 2026-09-04
-source: "\"Subagent lanes in the chat panel\" (personal/sway, branch `bugfix-260903`); Phase 4; `src-tauri/src/sessions.rs::task_notification`, `dev/fixtures/sessions/subagent-background.jsonl`; commit d1bdc8f"
+source: "\"Subagent lanes in the chat panel\" (personal/tori, branch `bugfix-260903`); Phase 4; `src-tauri/src/sessions.rs::task_notification`, `dev/fixtures/sessions/subagent-background.jsonl`; commit d1bdc8f"
 ---
 
 # A backgrounded subagent's ending arrives as a message under the user's own role

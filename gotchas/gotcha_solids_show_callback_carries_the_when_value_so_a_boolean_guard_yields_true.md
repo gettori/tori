@@ -2,7 +2,7 @@
 summary: Show's callback receives the resolved when value, so a boolean guard like x !== null renders true, not the number
 status: current
 updated: 2026-07-28
-source: plan "Native Claude chat as the default session surface" (personal/sway, branch `chat`); Phase 12; `src/panels/Chat/SessionInfo.tsx`
+source: plan "Native Claude chat as the default session surface" (personal/tori, branch `chat`); Phase 12; `src/panels/Chat/SessionInfo.tsx`
 ---
 
 # Solid's `<Show>` callback carries the `when` value, so a boolean guard yields `true`

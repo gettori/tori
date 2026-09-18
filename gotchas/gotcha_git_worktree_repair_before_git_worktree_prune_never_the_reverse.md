@@ -2,7 +2,7 @@
 summary: pruning before repairing a moved repo deletes the admin entry for a worktree that still physically exists
 status: current
 updated: 2026-08-28
-source: "Feature lifecycle, member management and repair (personal/sway, branch `feature-workspace`, issue #159) - phase 3 - `src-tauri/src/features.rs` `relocate_member`, commit ede61ff - _2026-08-28_"
+source: "Feature lifecycle, member management and repair (personal/tori, branch `feature-workspace`, issue #159) - phase 3 - `src-tauri/src/features.rs` `relocate_member`, commit ede61ff - _2026-08-28_"
 ---
 
 # `git worktree repair` before `git worktree prune`, never the reverse

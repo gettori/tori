@@ -2,7 +2,7 @@
 summary: a bare Command::new for a network git operation has no askpass bridge and hangs instead of prompting for credentials
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phase 9 self-review; `src-tauri/src/git.rs:250`; commit ce1c941"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 9 self-review; `src-tauri/src/git.rs:250`; commit ce1c941"
 ---
 
 # Every network git op must be built with `git_command`

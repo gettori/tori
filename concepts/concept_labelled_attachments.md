@@ -2,7 +2,7 @@
 summary: every chat attachment becomes a token like Image 1 the sentence names, sent as a block the parser reads back exactly
 status: current
 updated: 2026-09-04
-source: plan "Labelled path attachments in the chat composer" (personal/sway, branch `bugfix-260903`, commits `39ff592`, `51a8e81`, `be14911`), `src/utils/chatCompose.ts:117,211,432,452,468`, `src-tauri/src/chat/model.rs:798`, `src-tauri/src/chat/claude_transport.rs:377`, `src/panels/Chat/Composer.tsx`, `src/panels/Chat/MessageList.tsx`
+source: plan "Labelled path attachments in the chat composer" (personal/tori, branch `bugfix-260903`, commits `39ff592`, `51a8e81`, `be14911`), `src/utils/chatCompose.ts:117,211,432,452,468`, `src-tauri/src/chat/model.rs:798`, `src-tauri/src/chat/claude_transport.rs:377`, `src/panels/Chat/Composer.tsx`, `src/panels/Chat/MessageList.tsx`
 ---
 
 # Labelled path attachments
@@ -13,7 +13,7 @@ Every attachment in a chat is a token the prose can name. Paste a screenshot, dr
 
 **Kind by extension, never by MIME.** `attachmentKind(name, mediaType)` (`chatCompose.ts:117`) decides among `image`, `pdf` and `file` from the extension and consults the MIME only for a name that has none. Three kinds rather than a type per format, because the kinds are what an agent's Read can open, not what a file is. See [[gotcha_file_type_is_not_evidence_for_a_source_file]].
 
-**Two sources, two capability keys.** A *mention* is a path the agent already has (tree drag, `@` completion); an *upload* is bytes Sway writes to disk first (paste, Finder drop). `checkAttachment` (`:141`) is given the source's kinds and refuses by naming what this agent can open. The kinds live per transport on the chat tier, in two keys, for the reason in [[concept_harness_capability_tiers]]. Uploaded bytes go to [[component_attachment_store]].
+**Two sources, two capability keys.** A *mention* is a path the agent already has (tree drag, `@` completion); an *upload* is bytes Tori writes to disk first (paste, Finder drop). `checkAttachment` (`:141`) is given the source's kinds and refuses by naming what this agent can open. The kinds live per transport on the chat tier, in two keys, for the reason in [[concept_harness_capability_tiers]]. Uploaded bytes go to [[component_attachment_store]].
 
 **Numbering is per tab and never reused.** `nextLabel(key, kind)` (`:432`) counts per `ComposerKey`, which is the tab id rather than the session id: a draft tab attaches before any session exists. `relabel(key, from, to)` (`:452`) is the single primitive every collision goes through, and it rewrites the chip, the draft text and any held auto-send text in one step, because the message being renamed may be the very one waiting to go out.
 
@@ -21,7 +21,7 @@ Every attachment in a chat is a token the prose can name. Paste a screenshot, dr
 
 **The wire form is a text block, and the parse is its exact inverse.** `turn_frame` (`claude_transport.rs:377`) and `prompt_blocks` (`acp.rs:1038`) render a labelled ref as `[Image 1]: @/abs/path`. `ContentBlock::from_replayed_text` (`model.rs:798`) reads it back, and both replays use it: `history.rs` for the transcript claude writes, and `acp.rs`'s `UserMessageChunk` for the live channel an ACP agent replays over, which is the only place that transport can learn which labels are spent. The grammar is strict (a known kind, digits, then an absolute one line path) so a user who types `[Image 1]` in a sentence keeps their words, and the `#L2-4` tail is read back as a range rather than left buried inside a path. **Case is not part of it.** A label is minted capitalised (`Image`, `PDF`, `File`, matching how Claude Code spells its own) and read case-insensitively on every path, because the first day's transcripts spell the kinds in lower case and those turns still name real attachments. A replayed turn keeps its own spelling, since that is what its sentence says.
 
-**The surfaces draw the same thing twice.** A chip is a container with two controls: the body inserts its token (click, or drag under the private MIME `application/x-sway-attachment-token`) and the remove button takes the attachment away, with `dropPending` (`:211`) stripping every occurrence of the token from the draft. The prompt bubble renders a token as a chip only when that turn actually carries a ref with the label, draws image kinds off the path through `convertFileSrc`, and appends the token of an attachment the sentence never named so nothing sends invisibly.
+**The surfaces draw the same thing twice.** A chip is a container with two controls: the body inserts its token (click, or drag under the private MIME `application/x-tori-attachment-token`) and the remove button takes the attachment away, with `dropPending` (`:211`) stripping every occurrence of the token from the draft. The prompt bubble renders a token as a chip only when that turn actually carries a ref with the label, draws image kinds off the path through `convertFileSrc`, and appends the token of an attachment the sentence never named so nothing sends invisibly.
 
 ## Why it's this way
 

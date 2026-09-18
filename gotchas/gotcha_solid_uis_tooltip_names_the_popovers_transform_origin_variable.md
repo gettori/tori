@@ -2,7 +2,7 @@
 summary: Kobalte namespaces the transform origin variable per control, copying the popover's name into a tooltip drops the zoom
 status: current
 updated: 2026-08-16
-source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/sway, branch `130-re-audit-dialog-and-tooltip`, issue #130); `@kobalte/core` 0.13.13; `src/components/Tooltip/Tooltip.module.css`, `scripts/check-tokens.mjs` check 3"
+source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/tori, branch `130-re-audit-dialog-and-tooltip`, issue #130); `@kobalte/core` 0.13.13; `src/components/Tooltip/Tooltip.module.css`, `scripts/check-tokens.mjs` check 3"
 ---
 
 # solid-ui's tooltip names the popover's transform-origin variable

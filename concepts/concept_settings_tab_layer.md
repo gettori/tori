@@ -2,7 +2,7 @@
 summary: Settings tabs only group the same eleven sections, derived from one table so grouping and its inverse cannot disagree
 status: current
 updated: 2026-08-11
-source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/sway, branch `settings`, issue #91); Phases 1-2; commits 7081a08, 782c8d2; `src/utils/settingsCatalog.ts`, `src/panels/Settings/{Settings.tsx,paneKit.tsx,panes/}`"
+source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/tori, branch `settings`, issue #91); Phases 1-2; commits 7081a08, 782c8d2; `src/utils/settingsCatalog.ts`, `src/panels/Settings/{Settings.tsx,paneKit.tsx,panes/}`"
 ---
 
 # Settings tabs as a layer over the catalogue

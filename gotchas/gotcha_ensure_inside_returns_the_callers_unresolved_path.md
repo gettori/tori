@@ -2,7 +2,7 @@
 summary: ensure_inside resolves symlinks only to decide containment and returns the unresolved path, breaking on macOS's /var
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 1 (personal/sway, branch `wave-6`); `src-tauri/src/fs.rs`; commit 5386ef8; [[concept_one_directory_two_spellings]]"
+source: "Editor Wave 6: the IDE surface, Phase 1 (personal/tori, branch `wave-6`); `src-tauri/src/fs.rs`; commit 5386ef8; [[concept_one_directory_two_spellings]]"
 ---
 
 # `ensure_inside` returns the caller's unresolved path

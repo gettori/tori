@@ -2,7 +2,7 @@
 summary: git show's default combined diff is empty for a clean merge, use diff-tree with first parent to get real hunks
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phase 7; `src-tauri/src/git.rs` (`git_commit_files`); commit b108974"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phase 7; `src-tauri/src/git.rs` (`git_commit_files`); commit b108974"
 ---
 
 # `git show`'s default combined diff is empty for a clean merge

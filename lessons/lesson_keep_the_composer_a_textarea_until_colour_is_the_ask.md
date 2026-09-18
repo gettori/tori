@@ -2,7 +2,7 @@
 summary: split what a request wants into signal and decoration before swapping an editing surface, only the signal needed a chip
 status: current
 updated: 2026-09-07
-source: "plan \"Chat composer Tier 1: spell check, safe sends, draft tooling\" (personal/sway, branch `composer-260907`, merged into `logo-update-260907`) . `src/panels/Chat/Composer.tsx` . commits `39a05ac`, `face7c4`, `c3eb12f`, `8e8579e`"
+source: "plan \"Chat composer Tier 1: spell check, safe sends, draft tooling\" (personal/tori, branch `composer-260907`, merged into `logo-update-260907`) . `src/panels/Chat/Composer.tsx` . commits `39a05ac`, `face7c4`, `c3eb12f`, `8e8579e`"
 ---
 
 # Separate the signal from the decoration before buying a new editing surface
@@ -25,4 +25,4 @@ Before replacing an input surface, split the request into what carries informati
 
 - [[component_chat_panel]] - what shipped on the textarea instead
 - [[concept_scratch_draft_link]] - the escape hatch for a prompt that really does want an editor
-- [[gotcha_webkits_text_checking_is_a_user_default_and_a_dev_build_writes_under_the_domain_sway]] - the native spell check that made the dependency unnecessary
+- [[gotcha_webkits_text_checking_is_a_user_default_and_a_dev_build_writes_under_the_domain_tori]] - the native spell check that made the dependency unnecessary

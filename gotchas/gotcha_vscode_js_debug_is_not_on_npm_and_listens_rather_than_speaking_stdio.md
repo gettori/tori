@@ -2,7 +2,7 @@
 summary: vscode-js-debug 404s on npm and ships as a github tarball whose server listens on a port, unlike LSP stdio
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP), Phases 1-2 (personal/sway, branch `wave-8`); `src-tauri/src/dap.rs:288`, `scripts/install-dap.mjs`; commit cdb4cd2"
+source: "Editor wave 8: the debugger (DAP), Phases 1-2 (personal/tori, branch `wave-8`); `src-tauri/src/dap.rs:288`, `scripts/install-dap.mjs`; commit cdb4cd2"
 ---
 
 # vscode-js-debug is not on npm and listens rather than speaking stdio

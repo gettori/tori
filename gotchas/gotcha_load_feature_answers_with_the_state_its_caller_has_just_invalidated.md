@@ -2,7 +2,7 @@
 summary: load_feature clones the stale stored record, a command that changed disk state must use reconciled_feature instead
 status: current
 updated: 2026-08-28
-source: "Feature lifecycle, member management and repair (personal/sway, branch `feature-workspace`, issue #159) - phase 3 - `src-tauri/src/features.rs` `reconciled_feature`, commit ede61ff - _2026-08-28_"
+source: "Feature lifecycle, member management and repair (personal/tori, branch `feature-workspace`, issue #159) - phase 3 - `src-tauri/src/features.rs` `reconciled_feature`, commit ede61ff - _2026-08-28_"
 ---
 
 # `load_feature` answers with the state its caller has just invalidated

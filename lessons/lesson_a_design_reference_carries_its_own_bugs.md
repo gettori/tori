@@ -2,7 +2,7 @@
 summary: a copied design reference can name a variable the real library never sets, verify claims against the dependency itself
 status: current
 updated: 2026-08-16
-source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/sway, branch `130-re-audit-dialog-and-tooltip`, issue #130, part of #93); `src/components/Tooltip/Tooltip.module.css`, `@kobalte/core` 0.13.13; adversary pass on the plan draft"
+source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/tori, branch `130-re-audit-dialog-and-tooltip`, issue #130, part of #93); `src/components/Tooltip/Tooltip.module.css`, `@kobalte/core` 0.13.13; adversary pass on the plan draft"
 ---
 
 # A design reference carries its own bugs, so verify it against the substrate

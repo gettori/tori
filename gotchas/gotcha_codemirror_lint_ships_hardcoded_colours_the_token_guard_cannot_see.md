@@ -2,7 +2,7 @@
 summary: check-tokens.mjs only scans src, so codemirror/lint's hardcoded colours render identical in both themes unseen
 status: current
 updated: 2026-07-20
-source: Editor upgrades (personal/sway, phase 3); `src/App.css`, `src/styles/tokens.css` (`--diag-*`)
+source: Editor upgrades (personal/tori, phase 3); `src/App.css`, `src/styles/tokens.css` (`--diag-*`)
 ---
 
 # CodeMirror lint ships hardcoded colours the token guard cannot see

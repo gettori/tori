@@ -2,21 +2,21 @@
 summary: peek view shows a definition in a block widget the editor never registers, invisible to the language workspace
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth (personal/sway, branch `wave-7`); Phase 7 (commit a862bbe); issue #66"
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 7 (commit a862bbe); issue #66"
 ---
 
 # Peek view: a definition shown without going there
 
 **Location:** `src/panels/Editor/` (key files: `peekLocations.ts`, `peekView.ts`, `peekCommand.ts`)
 
-A CM6 **block widget** hosting a read-only nested `EditorView` of a target range, opened on `⌘⌥P` / `⌥F12` from the caret. The definition variant shows one place; the references variant lists every hit and renders the chosen one in the same widget. The peeked file is deliberately unknown to [[concept_lsp_workspace_bridge]]'s `SwayWorkspace`: peeking opens no tab, registers no file, and leaves the workspace's `files` and `openFile` bookkeeping untouched.
+A CM6 **block widget** hosting a read-only nested `EditorView` of a target range, opened on `⌘⌥P` / `⌥F12` from the caret. The definition variant shows one place; the references variant lists every hit and renders the chosen one in the same widget. The peeked file is deliberately unknown to [[concept_lsp_workspace_bridge]]'s `ToriWorkspace`: peeking opens no tab, registers no file, and leaves the workspace's `files` and `openFile` bookkeeping untouched.
 
 ## Responsibilities
 
 - Decide who to ask, what a refusal means, and which reply is still current (`peekLocations.ts`).
 - Render the widget and own its state and keymap (`peekView.ts`).
 - The three-step open, and choosing a result inside an open peek (`peekCommand.ts`).
-- Does **not** register the peeked file with the language workspace, open a tab, or ask `displayFile` for its text. A structural scan in the tests refuses `.displayFile(`, `.requestOpen(`, `.openFile(` and `new SwayWorkspace` in all three modules, matched as *calls* because these files discuss the workspace's bookkeeping in prose precisely to explain why they do not touch it.
+- Does **not** register the peeked file with the language workspace, open a tab, or ask `displayFile` for its text. A structural scan in the tests refuses `.displayFile(`, `.requestOpen(`, `.openFile(` and `new ToriWorkspace` in all three modules, matched as *calls* because these files discuss the workspace's bookkeeping in prose precisely to explain why they do not touch it.
 
 ## Key files & entry points
 

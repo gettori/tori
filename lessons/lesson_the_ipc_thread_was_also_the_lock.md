@@ -2,7 +2,7 @@
 summary: a single threaded backend was quietly providing mutual exclusion and ordering, making commands async removes both
 status: current
 updated: 2026-08-20
-source: Worktree and tab switching at native speed (personal/sway, branch `unified-tab-bar`), Phase 2, commit d8714d0, `src-tauri/src/exec.rs`, `src-tauri/src/pty.rs`
+source: Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phase 2, commit d8714d0, `src-tauri/src/exec.rs`, `src-tauri/src/pty.rs`
 ---
 
 # The single-threaded backend was the lock and the ordering, not just the executor
@@ -25,7 +25,7 @@ were removed. Concretely:
   IPC arrival. Async-ify it and a rapid chunked paste can arrive scrambled.
 - `pty_spawn`'s check-then-insert is only safe single-threaded; concurrent
   execution lets a remount double-spawn the shell.
-- sway.toml, attached.json, settings, the session overlay and touched-file
+- tori.toml, attached.json, settings, the session overlay and touched-file
   attribution were all load-modify-save with no lock of their own.
 - `git status` opportunistically takes `index.lock`, and a concurrent
   `git add` *fails* rather than waits, so even two "reads" were not safe

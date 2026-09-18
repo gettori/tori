@@ -2,7 +2,7 @@
 summary: emitting a result from Tauri's setup is lost since the webview has not loaded and events are never replayed
 status: current
 updated: 2026-07-28
-source: plan "Native Claude chat as the default session surface" (personal/sway, branch `chat`); Phases 3, 5; `src-tauri/src/chat/ownership.rs`
+source: plan "Native Claude chat as the default session surface" (personal/tori, branch `chat`); Phases 3, 5; `src-tauri/src/chat/ownership.rs`
 ---
 
 # Anything produced in Tauri's `setup` must be parked, not emitted

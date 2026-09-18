@@ -2,14 +2,14 @@
 summary: ContextMenu and Dropdown share one row layer, split only because a context menu cannot take a controlled open prop
 status: current
 updated: 2026-08-28
-source: "Menu onto Kobalte DropdownMenu and ContextMenu (personal/sway, branch `103-menu`, skarif2/sway#103), all six phases; commits `b855a3c`, `bfb0014`, `7c610cb`, `a0913d9`, `1827ba1`, `3e0ddc4`; the heading variant from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, #158), phase 5, commit `c422394`"
+source: "Menu onto Kobalte DropdownMenu and ContextMenu (personal/tori, branch `103-menu`, gettori/tori#103), all six phases; commits `b855a3c`, `bfb0014`, `7c610cb`, `a0913d9`, `1827ba1`, `3e0ddc4`; the heading variant from Repository identity on tabs, breadcrumbs, quick-open and menus (branch `feature-workspace`, #158), phase 5, commit `c422394`"
 ---
 
 # Menu wrappers (ContextMenu, Dropdown, rows)
 
 **Location:** `src/components/Menu/` (key files: `ContextMenu.tsx`, `Dropdown.tsx`, `rows.tsx`, `surface.ts`, `Menu.module.css`), `src/lib/menu.ts`
 
-Sway's two menu surfaces on the `lib/` seam, following [[component_dialog]] and the tooltip wrapper: `ContextMenu` for a right-click row, `Dropdown` for a menu hung off a trigger, both rendering the same rows through `rows.tsx` and the same chrome through one stylesheet. They exist as two components rather than one because Kobalte's two roots are not interchangeable, and as *only* two because everything below the root is shared.
+Tori's two menu surfaces on the `lib/` seam, following [[component_dialog]] and the tooltip wrapper: `ContextMenu` for a right-click row, `Dropdown` for a menu hung off a trigger, both rendering the same rows through `rows.tsx` and the same chrome through one stylesheet. They exist as two components rather than one because Kobalte's two roots are not interchangeable, and as *only* two because everything below the root is shared.
 
 Every menu in the app renders through them. The hand-rolled `Menu.tsx` that composed [[component_popover]] for placement is deleted.
 
@@ -60,23 +60,23 @@ Kobalte defaults `modal: true`, and `preventScroll` defaults to `isModal()`. Acc
 
 ## The recipe
 
-Token names only. Values were taken from the reference named in [[adr_solid_ui_reference]], snapped to Sway's ramps, with Sway's density winning where the two disagreed.
+Token names only. Values were taken from the reference named in [[adr_solid_ui_reference]], snapped to Tori's ramps, with Tori's density winning where the two disagreed.
 
 | Part | Property | Token |
 | --- | --- | --- |
-| Surface | padding | `--sway-space-3` |
-| Surface | radius | `--sway-radius-xl` |
+| Surface | padding | `--tori-space-3` |
+| Surface | radius | `--tori-radius-xl` |
 | Surface | elevation | `--shadow-md` on `--canvas-card`, 1px `--border-default` |
-| Row | padding | `--sway-space-3` `--sway-space-4` |
-| Row | gap to a leading glyph | `--sway-space-3` |
-| Row | radius | `--sway-radius-md` |
-| Row | type | `--sway-text-lg` |
+| Row | padding | `--tori-space-3` `--tori-space-4` |
+| Row | gap to a leading glyph | `--tori-space-3` |
+| Row | radius | `--tori-radius-md` |
+| Row | type | `--tori-text-lg` |
 | Row | highlight | `--neutral-hover`, on `:hover` **and** `[data-highlighted]` |
 | Row | danger / warn | `--danger-fg` / `--attention-fg` |
 | Row | disabled | `--fg-muted`, on `[data-disabled]` |
-| Separator | rhythm | `--sway-space-2` vertical, `--sway-space-3` inset |
-| Heading | padding | `--sway-space-2` `--sway-space-4` |
-| Heading | type / role | `--sway-text-md`, `--fg-muted` |
+| Separator | rhythm | `--tori-space-2` vertical, `--tori-space-3` inset |
+| Heading | padding | `--tori-space-2` `--tori-space-4` |
+| Heading | type / role | `--tori-text-md`, `--fg-muted` |
 | Trigger gutter | offset | 4px, a JS number (see below) |
 | Cursor gutter / shift | offset | 2px / 2px, Kobalte's own context-menu values |
 | Flyout | surface | the same `.content` class as its parent |
@@ -86,12 +86,12 @@ Token names only. Values were taken from the reference named in [[adr_solid_ui_r
 
 Two things the table cannot carry:
 
-- **The row's vertical padding moved.** It was a bare `5px`; it is now `--sway-space-3` (6px), which is both on the ramp and the reference's own value. This is the one place the migration changed a shipped proportion, and it was changed because the row stopped being a `div` and became a real menu item.
+- **The row's vertical padding moved.** It was a bare `5px`; it is now `--tori-space-3` (6px), which is both on the ramp and the reference's own value. This is the one place the migration changed a shipped proportion, and it was changed because the row stopped being a `div` and became a real menu item.
 - **Gutters are not tokens and cannot be.** Kobalte hands them to floating-ui as numbers, so they never reach CSS and cannot read `--ui-scale`. Recorded here as literals for that reason. The flyout's two are derived rather than picked: 10 is the surface's own 6px padding plus the 4px a dropdown clears its button by, because the row a flyout is measured from is inset by that padding, and -6 undoes the padding on the other axis so a flyout's first row lines up with the row that opened it. jsdom gives floating-ui no geometry, so these are reviewable and not testable, and the derivation in the comment is the only guard they have.
 
 ## Considered and rejected from the reference
 
-- **A full-bleed separator.** The reference pulls the rule past the surface's own padding so it spans edge to edge. Sway keeps its inset rule: against a `--sway-radius-xl` container, a full-bleed rule runs into the curve.
+- **A full-bleed separator.** The reference pulls the rule past the surface's own padding so it spans edge to edge. Tori keeps its inset rule: against a `--tori-radius-xl` container, a full-bleed rule runs into the curve.
 - **`opacity` for a disabled row.** A role is theme-correct and an opacity is not, so `--fg-muted` instead.
 - **`transform-origin` from Kobalte's popper variable.** Earns its keep only with an open/close animation, and there is none.
 - **The reference's proportions wholesale.** Its item gap and minimum width are web-app airy; [[adr_premium_design_system]]'s dense tier undercuts both.
@@ -119,7 +119,7 @@ Breadcrumbs is the only consumer, and the reason the layer exists: its folder pi
 
 `Dropdown`'s `anchor` mode exists for one surface: CodeEditor's code-action menu, where the caret is not an element. Kobalte builds its context menu exactly this way internally, a `{x, y}` signal handed straight to `getAnchorRect` with `placement: "right-start"`, `gutter: 2`, `shift: 2`, so the wrapper uses those numbers rather than inventing offsets and a caret menu reads like a right-click menu.
 
-Focus restore in that mode is Sway's, for the reason [[component_dialog]]'s is: on close Kobalte focuses its trigger, and here there is none, so its restore is a no-op and focus lands on `<body>`. The element focused at open is captured in `onOpenAutoFocus` and restored in `onCloseAutoFocus`. Trigger mode needs none of it.
+Focus restore in that mode is Tori's, for the reason [[component_dialog]]'s is: on close Kobalte focuses its trigger, and here there is none, so its restore is a no-op and focus lands on `<body>`. The element focused at open is captured in `onOpenAutoFocus` and restored in `onCloseAutoFocus`. Trigger mode needs none of it.
 
 ## Connections
 

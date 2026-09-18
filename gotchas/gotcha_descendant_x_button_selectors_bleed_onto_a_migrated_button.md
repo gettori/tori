@@ -2,7 +2,7 @@
 summary: a leftover descendant button selector at higher specificity overrides a migrated Button component's own class
 status: current
 updated: 2026-07-13
-source: Button component + migrate all buttons (personal/sway, branch code-mirror-6); deleted `.termSearch button` (`Terminal.module.css`), `.reloadBanner button` (`CodeEditor.module.css`); see [[component_button]]
+source: Button component + migrate all buttons (personal/tori, branch code-mirror-6); deleted `.termSearch button` (`Terminal.module.css`), `.reloadBanner button` (`CodeEditor.module.css`); see [[component_button]]
 ---
 
 # Descendant `X button` selectors bleed onto a migrated `<Button>`

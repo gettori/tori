@@ -2,7 +2,7 @@
 summary: multi file replace has no undo, so every file passes containment, a digest, re-verification and overlap or skips whole
 status: current
 updated: 2026-08-01
-source: "Search panel v2: toggles, ignored files, replace-in-files (personal/sway, branch `wave-1-2`); Phase 3; `src-tauri/src/search.rs:628` (`replace_in_files`); PR #81; issue #11"
+source: "Search panel v2: toggles, ignored files, replace-in-files (personal/tori, branch `wave-1-2`); Phase 3; `src-tauri/src/search.rs:628` (`replace_in_files`); PR #81; issue #11"
 ---
 
 # Fail-closed multi-file replace

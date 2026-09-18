@@ -2,7 +2,7 @@
 summary: merges three usage sources into one account keyed store, gating which reads may spawn a process, token stays in memory
 status: current
 updated: 2026-09-06
-source: "Agent usage preview plan (personal/sway, branch `agent-usage`), phases 1 to 5 . PR #169"
+source: "Agent usage preview plan (personal/tori, branch `agent-usage`), phases 1 to 5 . PR #169"
 ---
 
 # Usage pipeline (sources, store, notification)
@@ -16,7 +16,7 @@ Everything between "some source said a number" and "a bar changes colour". Three
 - Merge readings per (agent, account) and per window kind, forward only ([[concept_quota_is_an_account_fact]]).
 - Decide when a read may spawn a process, and refuse otherwise.
 - Keep the account token out of everything it writes: read into memory for one request, never logged, never on disk.
-- Announce a crossing once per window per reset, and never while Sway has focus.
+- Announce a crossing once per window per reset, and never while Tori has focus.
 - **Not** history. There is no ring and no chart; see [[lesson_history_of_what_you_only_sometimes_watch]].
 - **Not** provenance on screen. The store records each reading's source and sample time, and the card shows one freshness stamp built from them rather than a rung and a clock per row.
 

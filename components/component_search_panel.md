@@ -2,7 +2,7 @@
 summary: project search fans backends into one canonical regex and now fans a Feature's members into one merged result set
 status: current
 updated: 2026-08-27
-source: "v0.1 features: status indicators, search, input layer (personal/sway, branch `topbar`); Phase 2; rewritten by Search panel v2 (branch `wave-1-2`), all four phases; PR #81; issue #11; widened over a Feature's members by Features phase 4 (#156), branch `feature-workspace`, phases 1 to 3, commits 92d697f, ec71908, 9c7ce7a"
+source: "v0.1 features: status indicators, search, input layer (personal/tori, branch `topbar`); Phase 2; rewritten by Search panel v2 (branch `wave-1-2`), all four phases; PR #81; issue #11; widened over a Feature's members by Features phase 4 (#156), branch `feature-workspace`, phases 1 to 3, commits 92d697f, ec71908, 9c7ce7a"
 ---
 
 # Search panel (project-wide grep and replace)

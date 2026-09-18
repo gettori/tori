@@ -2,7 +2,7 @@
 summary: let _ = async_fn() drops the future unpolled after a sync-to-async codemod, grep discard sites before trusting build
 status: current
 updated: 2026-08-20
-source: Worktree and tab switching at native speed (personal/sway, branch `unified-tab-bar`), Phase 2, commit d8714d0, `src-tauri/src/exec.rs`
+source: Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phase 2, commit d8714d0, `src-tauri/src/exec.rs`
 ---
 
 # `let _ = converted_command(...)` builds a future and throws it away

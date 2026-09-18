@@ -2,7 +2,7 @@
 summary: solidjs testing library's unmount clears the container without disposing the root, onCleanup never fires, use a toggle
 status: current
 updated: 2026-07-29
-source: Chat surface plan, phase 3 (personal/sway, branch `chat`); `src/panels/Chat/MessageList.test.tsx`
+source: Chat surface plan, phase 3 (personal/tori, branch `chat`); `src/panels/Chat/MessageList.test.tsx`
 ---
 
 # @solidjs/testing-library unmount does not run onCleanup

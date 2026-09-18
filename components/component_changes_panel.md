@@ -2,7 +2,7 @@
 summary: Changes panel is a consumer of shared git state, not its owner, so staging from the palette and the panel is one signal
 status: current
 updated: 2026-08-27
-source: "Review-to-prompt + commit flow (personal/sway, branch `topbar`); commits ad53d40, 315b15b, f8fd1a3, 35bc401; extended by Editor upgrades: diff polish, hunk staging, diagnostics (phases 1-2); commits d1a6844, 01f0196; selective refetch from \"Fix the stale `fs://changed` payload contract in ReviewPanel\" (branch `wave-1-3`, issue #12); git state and actions lifted into a shared store by Editor wave 1: close out the fundamentals (branch `wave-1-4`), Phase 3, issue #15, commit bd9567c, grouped by member for Features by phase 5: unified changes and the git slot map (#157, branch `feature-workspace`), phases 2 and 3, commits 41b8ab3, 9687380"
+source: "Review-to-prompt + commit flow (personal/tori, branch `topbar`); commits ad53d40, 315b15b, f8fd1a3, 35bc401; extended by Editor upgrades: diff polish, hunk staging, diagnostics (phases 1-2); commits d1a6844, 01f0196; selective refetch from \"Fix the stale `fs://changed` payload contract in ReviewPanel\" (branch `wave-1-3`, issue #12); git state and actions lifted into a shared store by Editor wave 1: close out the fundamentals (branch `wave-1-4`), Phase 3, issue #15, commit bd9567c, grouped by member for Features by phase 5: unified changes and the git slot map (#157, branch `feature-workspace`), phases 2 and 3, commits 41b8ab3, 9687380"
 ---
 
 # Changes panel

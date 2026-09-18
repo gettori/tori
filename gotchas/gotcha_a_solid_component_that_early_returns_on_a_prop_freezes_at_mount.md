@@ -2,7 +2,7 @@
 summary: an early return gating a component on a prop freezes that branch at its mount value forever, since the body runs once
 status: current
 updated: 2026-08-14
-source: Chat surface plan, phase 11 (personal/sway, branch `chat`); `src/panels/Chat/RuleList.tsx`, **deleted 2026-08-14** with the rule UI; the Solid behaviour is unchanged
+source: Chat surface plan, phase 11 (personal/tori, branch `chat`); `src/panels/Chat/RuleList.tsx`, **deleted 2026-08-14** with the rule UI; the Solid behaviour is unchanged
 ---
 
 # A Solid component that early-returns on a prop freezes at mount

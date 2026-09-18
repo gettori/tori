@@ -2,7 +2,7 @@
 summary: Kobalte's ariaHideOutside writes aria-hidden from inside a setTimeout plus rAF, so a sync assertion reads too early
 status: current
 updated: 2026-08-13
-source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/sway, branch `102-tooltip-primitive`, issue #102); `src/components/Tooltip/Tooltip.test.tsx`, `src/components/Dialogs/SpaceDialog.test.tsx`; commits `c996ca9`, `dbfa12a`"
+source: "plan \"Tooltip primitive and the `title=` sweep\" (personal/tori, branch `102-tooltip-primitive`, issue #102); `src/components/Tooltip/Tooltip.test.tsx`, `src/components/Dialogs/SpaceDialog.test.tsx`; commits `c996ca9`, `dbfa12a`"
 ---
 
 # Kobalte writes aria-hidden a timeout and a frame after mount

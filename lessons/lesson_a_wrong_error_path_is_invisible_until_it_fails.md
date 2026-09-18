@@ -2,7 +2,7 @@
 summary: an error path stays untested by every passing test, send one deliberate bad request before trusting how failures render
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP) (personal/sway, branch `wave-8`); Phases 3, 9; epic #69; `src/utils/dapClient.ts:176`; commit 1c1fbf6"
+source: "Editor wave 8: the debugger (DAP) (personal/tori, branch `wave-8`); Phases 3, 9; epic #69; `src/utils/dapClient.ts:176`; commit 1c1fbf6"
 ---
 
 # Make something fail on purpose before trusting the error path

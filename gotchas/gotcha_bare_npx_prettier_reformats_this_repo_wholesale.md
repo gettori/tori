@@ -2,7 +2,7 @@
 summary: running bare npx prettier here reformats to its 80 column default against a hand formatted 120 column codebase
 status: current
 updated: 2026-07-20
-source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/sway, branch `main`); Phase 1"
+source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/tori, branch `main`); Phase 1"
 ---
 
 # Bare `npx prettier` reformats this repo wholesale

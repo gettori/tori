@@ -1,19 +1,19 @@
 ---
-summary: SchemaStore plus two bundled schemas attach validation to Sway's own settings, three delivery paths failed silently
+summary: SchemaStore plus two bundled schemas attach validation to Tori's own settings, three delivery paths failed silently
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth (personal/sway, branch `wave-7`); Phase 5 (commit a620384), Phase 6 (506d7e7); `src-tauri/src/lsp/schemastore.rs`, `src-tauri/lsp/json.toml`, `yaml.toml`, `src-tauri/resources/schemas/*.schema.json`, `src/utils/swaySettingsFiles.ts`, `src/panels/Editor/lspClient.ts:262-323`"
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 5 (commit a620384), Phase 6 (506d7e7); `src-tauri/src/lsp/schemastore.rs`, `src-tauri/lsp/json.toml`, `yaml.toml`, `src-tauri/resources/schemas/*.schema.json`, `src/utils/toriSettingsFiles.ts`, `src/panels/Editor/lspClient.ts:262-323`"
 ---
 
-# Schema-backed JSON and YAML, including Sway's own settings
+# Schema-backed JSON and YAML, including Tori's own settings
 
-A JSON file is only as good as the schema someone remembered to attach, so wave 7 bundled two more servers (`vscode-json-languageserver`, `yaml-language-server`) and made the attaching automatic: SchemaStore's catalog for the world's files, and two schemas this build ships for Sway's own `settings.json`. The interesting part is not the schemas, it is that **three separate delivery mechanisms all fail silently**, and each was found by an end-to-end check that reported nothing wrong in a way that could not be true.
+A JSON file is only as good as the schema someone remembered to attach, so wave 7 bundled two more servers (`vscode-json-languageserver`, `yaml-language-server`) and made the attaching automatic: SchemaStore's catalog for the world's files, and two schemas this build ships for Tori's own `settings.json`. The interesting part is not the schemas, it is that **three separate delivery mechanisms all fail silently**, and each was found by an end-to-end check that reported nothing wrong in a way that could not be true.
 
 ## How it works
 
 **The catalog.** `schemastore.rs` splits three ways so the interesting part needs no network: a pure `associations_from_catalog` (catalog JSON in, `json/schemaAssociations` payload out, unit-tested offline), a `catalog_text` cache whose fetch is a *parameter* (so "a cache hit issues no request" is a test that panics if it does), and a process-wide `OnceLock`. Offline falls back to a stale cache in preference to nothing, and to nothing in preference to an error. Non-`http` schema URLs are refused: the server fetches these itself, and a `file:` URL out of a document nobody here wrote is a request to read a local path of someone else's choosing.
 
-**Sway's own two schemas** are bundled resources, resolved through `bundled_entry` (`lsp_schema_dir`) and handed to the server as `file:` associations alongside the catalog's. There are **two** files because `editor` collides: in `~/.config/sway/settings.json` it is the per-project override *map* keyed by project path, and in `<workspace>/.sway/settings.json` it is the override block itself. One schema covering both would misreport whichever it was not written for. A test holds the two editor blocks **identical by value**, which is what keeps [[concept_workspace_settings_overlay]]'s fourth home one home rather than two.
+**Tori's own two schemas** are bundled resources, resolved through `bundled_entry` (`lsp_schema_dir`) and handed to the server as `file:` associations alongside the catalog's. There are **two** files because `editor` collides: in `~/.config/tori/settings.json` it is the per-project override *map* keyed by project path, and in `<workspace>/.tori/settings.json` it is the override block itself. One schema covering both would misreport whichever it was not written for. A test holds the two editor blocks **identical by value**, which is what keeps [[concept_workspace_settings_overlay]]'s fourth home one home rather than two.
 
 The associations are built in **TypeScript**, unlike the catalog's, because the rule that says which files they describe is also the rule that decides their language id (below). Rust does only the part that needs it. They are gathered *separately* from the catalog's and prepended, because the offline path returns early on an empty list: folded in after that check they would be dropped exactly when they are the only ones left.
 
@@ -27,7 +27,7 @@ The associations are built in **TypeScript**, unlike the catalog's, because the 
 
 **Both servers root at `.git` only.** `root_for` returns the first ancestor holding *any* marker, so listing `package.json` would spawn a server per package in a monorepo and buy no correctness, since neither server has per-package configuration to be right about.
 
-**And the language id, not just the schema, is part of the answer.** Sway's own settings files are read with json5 (`settings.rs:2`, `workspace_settings.rs:44`), so comments are supported. The JSON server sets `comments: 'error'` for every language id but `jsonc` (`jsonServer.js:285`). Shipping the server therefore made Sway report every comment in the user's own settings file as an error. `languageIdFor` now returns `jsonc` for those two paths, gated on the server having advertised `jsonc`, and changes only the *id*, never which server is asked.
+**And the language id, not just the schema, is part of the answer.** Tori's own settings files are read with json5 (`settings.rs:2`, `workspace_settings.rs:44`), so comments are supported. The JSON server sets `comments: 'error'` for every language id but `jsonc` (`jsonServer.js:285`). Shipping the server therefore made Tori report every comment in the user's own settings file as an error. `languageIdFor` now returns `jsonc` for those two paths, gated on the server having advertised `jsonc`, and changes only the *id*, never which server is asked.
 
 ## Related
 

@@ -2,7 +2,7 @@
 summary: a new check can look finished and catch nothing, so write its verify as positive detection and break it once on purpose
 status: current
 updated: 2026-08-12
-source: "plan \"axe-core harness in the jsdom vitest project\" (personal/sway, branch `97-axe-core`, issue #97); `src/test/axe.test.tsx`, `src/test/axeUsage.test.ts`, `src/components/SegmentedControl/SegmentedControl.test.tsx`; commit 0010b81"
+source: "plan \"axe-core harness in the jsdom vitest project\" (personal/tori, branch `97-axe-core`, issue #97); `src/test/axe.test.tsx`, `src/test/axeUsage.test.ts`, `src/components/SegmentedControl/SegmentedControl.test.tsx`; commit 0010b81"
 ---
 
 # Make a new gate fail once before you trust it

@@ -2,7 +2,7 @@
 summary: adding an unrelated devDependency can resolve vite-plugin-solid's optional jest-dom peer and silently inject test setup
 status: current
 updated: 2026-08-12
-source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/sway, branch `96-storybook`, issue #96); `package.json`, `vitest.config.ts:78`; skarif2/sway#120"
+source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/tori, branch `96-storybook`, issue #96); `package.json`, `vitest.config.ts:78`; gettori/tori#120"
 ---
 
 # An added devDependency can switch on vite-plugin-solid's jest-dom injection

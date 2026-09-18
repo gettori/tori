@@ -2,7 +2,7 @@
 summary: aria-hidden hides a chip from accessible name and role queries but not from textContent, so a toBe check still sees it
 status: current
 updated: 2026-08-28
-source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/sway, branch `feature-workspace`, issue #158) - phase 2 - `src/components/MemberChip/MemberChip.tsx:76` - _2026-08-28_"
+source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/tori, branch `feature-workspace`, issue #158) - phase 2 - `src/components/MemberChip/MemberChip.tsx:76` - _2026-08-28_"
 ---
 
 # An `aria-hidden` node still shows up in `textContent`

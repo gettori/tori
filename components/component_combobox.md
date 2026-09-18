@@ -2,14 +2,14 @@
 summary: Combobox renders its listbox as a plain sibling with no Content or Portal, since the dialog around it owns dismissal
 status: current
 updated: 2026-08-16
-source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/sway, branch `110-pickermodal-and-chatpicker`, issue #110, part of #93, PR #140); `src/components/Combobox/Combobox.tsx`, `Combobox.test.tsx`, `Combobox.stories.tsx`, `src/lib/combobox.ts`, `src/lib/combobox.test.tsx`; commits `bd86d48` (the seam), `3289a6e` (picker), `9d471b7` (palette)"
+source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, part of #93, PR #140); `src/components/Combobox/Combobox.tsx`, `Combobox.test.tsx`, `Combobox.stories.tsx`, `src/lib/combobox.ts`, `src/lib/combobox.test.tsx`; commits `bd86d48` (the seam), `3289a6e` (picker), `9d471b7` (palette)"
 ---
 
 # Combobox (the one filter-and-pick surface)
 
 **Location:** `src/components/Combobox/Combobox.tsx`, `Combobox.module.css`, `src/lib/combobox.ts`
 
-A text filter over a list that is **already open**. Both of Sway's filter-and-pick surfaces render through it: [[component_picker_modal]]'s body and the [[component_command_palette]]'s input and results. Built on Kobalte's combobox through [[component_lib_boundary]], styled on [[concept_design_token_system]], per [[adr_headless_primitives]].
+A text filter over a list that is **already open**. Both of Tori's filter-and-pick surfaces render through it: [[component_picker_modal]]'s body and the [[component_command_palette]]'s input and results. Built on Kobalte's combobox through [[component_lib_boundary]], styled on [[concept_design_token_system]], per [[adr_headless_primitives]].
 
 It is not a select with a search box. In a select the list is a popup the trigger opens; here the list **is** the surface, and it is inside something the caller already opened (a dialog panel). That one difference decides most of what follows.
 
@@ -73,7 +73,7 @@ String in, string out: Kobalte traffics in the option object, the wrapper keeps 
 
 ## What `src/lib/combobox.ts` does not re-export
 
-`Root, Control, Input, Listbox, Section, Item, ItemLabel`. Deliberately absent: `Content` and `Portal` (see above), `Trigger` and `Icon` (there is no trigger, the list is the surface), `ItemIndicator` (nothing is ever selected while open), `HiddenSelect` (no Sway combobox posts a form), `ItemDescription`, and `Label`/`Description`/`ErrorMessage` (labeling belongs to the call site). `useComboboxContext` is exported alongside for the `Bridge`.
+`Root, Control, Input, Listbox, Section, Item, ItemLabel`. Deliberately absent: `Content` and `Portal` (see above), `Trigger` and `Icon` (there is no trigger, the list is the surface), `ItemIndicator` (nothing is ever selected while open), `HiddenSelect` (no Tori combobox posts a form), `ItemDescription`, and `Label`/`Description`/`ErrorMessage` (labeling belongs to the call site). `useComboboxContext` is exported alongside for the `Bridge`.
 
 ## Connections
 

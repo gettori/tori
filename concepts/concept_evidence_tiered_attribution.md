@@ -2,19 +2,19 @@
 summary: a weak signal must produce a weaker claim, never a confident one, and unknown actors must never read as empty ones
 status: current
 updated: 2026-07-29
-source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/sway, branch `main`); Phases 1 and 2; `src/utils/revertGuard.ts`, `src/utils/editingNow.ts`, `src/utils/folderActors.ts`, `src/panels/Editor/Editor.tsx`; Chat surface plan, phase 1 (branch `chat`); `src-tauri/src/checkpoint.rs`, `src-tauri/src/chat/claude.rs`; commits \"Stop recording a read file as one the session wrote\", \"Grade per-turn attribution instead of asserting it\""
+source: "Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/tori, branch `main`); Phases 1 and 2; `src/utils/revertGuard.ts`, `src/utils/editingNow.ts`, `src/utils/folderActors.ts`, `src/panels/Editor/Editor.tsx`; Chat surface plan, phase 1 (branch `chat`); `src-tauri/src/checkpoint.rs`, `src-tauri/src/chat/claude.rs`; commits \"Stop recording a read file as one the session wrote\", \"Grade per-turn attribution instead of asserting it\""
 ---
 
 # Evidence-tiered attribution (never assert what you cannot verify)
 
-Sway makes claims about other processes it does not own: "this session is mid-turn", "this session wrote that file". Every such claim rests on a signal of a *specific strength*, and the strengths differ enormously. The rule this codebase settled on is that the **certainty of the signal must be visible in the behaviour**: a weak signal produces a weaker claim, never the same confident claim with worse odds behind it. Two features implement the same shape.
+Tori makes claims about other processes it does not own: "this session is mid-turn", "this session wrote that file". Every such claim rests on a signal of a *specific strength*, and the strengths differ enormously. The rule this codebase settled on is that the **certainty of the signal must be visible in the behaviour**: a weak signal produces a weaker claim, never the same confident claim with worse odds behind it. Two features implement the same shape.
 
 ## The two ladders
 
 **The revert guard** ([[component_turn_checkpoints]]'s `checkpoint_revert_tree`) grades *liveness*:
 
-- a live-tab session showing Executing is **known** mid-turn (Sway hosts its PTY and reads its transcript) → hard block, no override;
-- a detached session found only by the pgrep probe **can never report Executing** — Sway has no window into it → block, but overridable with an explicit "revert anyway", because the state is *unverifiable*, not *known-busy*.
+- a live-tab session showing Executing is **known** mid-turn (Tori hosts its PTY and reads its transcript) → hard block, no override;
+- a detached session found only by the pgrep probe **can never report Executing** — Tori has no window into it → block, but overridable with an explicit "revert anyway", because the state is *unverifiable*, not *known-busy*.
 
 "Cannot verify" is deliberately closer to "busy" than to "idle": the cost of a wrong "idle" is clobbering an agent's in-flight work.
 
@@ -62,7 +62,7 @@ and grades itself:
 - **Path-parseability is an allowlist** (`PATH_PARSEABLE_TOOLS`,
   `checkpoint.rs`), not a denylist. An unrecognised tool (an MCP server, `Task`,
   a new built-in) grades the turn `partial`, because any of them can write
-  through a path Sway cannot see and the fail-safe direction is to doubt.
+  through a path Tori cannot see and the fail-safe direction is to doubt.
 - **Both fields carry `#[serde(default)]`**, so a later field addition cannot
   drop a record to `unmeasured`, which is the unfiltered branch this exists to
   close.
@@ -80,5 +80,5 @@ rather than guessing at the result's shape.
 - [[component_turn_checkpoints]] — the revert guard's home; the tree revert this protects.
 - [[component_session_worklog]] — the indicator's surfaces (tree rows, tabs, Session panel).
 - [[concept_needs_you_floor]] — where "Executing" is composed; the reason the guard lives in the frontend and the backend cannot see it.
-- [[concept_fs_change_pipeline]] — the `fs://changed` producer and its self-write echo suppression, which keeps Sway's own saves from making a session look busy.
+- [[concept_fs_change_pipeline]] — the `fs://changed` producer and its self-write echo suppression, which keeps Tori's own saves from making a session look busy.
 - [[concept_diff_as_transcript]] - lists a file it cannot diff rather than inventing one or staying silent.

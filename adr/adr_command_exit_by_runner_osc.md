@@ -2,12 +2,12 @@
 summary: a command tab reports its own exit via a self deleting runner script printing OSC 8791 on the login shell it types into
 status: current
 updated: 2026-09-06
-source: "plan \"Standalone terminals: Sway's own commands as tabs in a Shells workspace\" (personal/sway, branch `standalone-terminals`, issue #166), Phase 1; `src-tauri/src/runner.rs`, `src-tauri/src/pty.rs:384`, `src/panels/Terminal/TerminalView.tsx:318`; commit `aadacd3`"
+source: "plan \"Standalone terminals: Tori's own commands as tabs in a Shells workspace\" (personal/tori, branch `standalone-terminals`, issue #166), Phase 1; `src-tauri/src/runner.rs`, `src-tauri/src/pty.rs:384`, `src/panels/Terminal/TerminalView.tsx:318`; commit `aadacd3`"
 ---
 
 # A command tab's exit comes from a runner script, on OSC 8791
 
-A command tab hosts the user's login shell, so the PTY's own exit is the shell's and not the command's. The command reports for itself instead: `pty_spawn` writes a single-use POSIX script to `~/.config/sway/run/<nonce>.sh`, types ` sh '<path>'` into the shell as that tab's `init`, and the script prints `ESC ] 8791 ; <nonce> ; <code> BEL` before deleting itself. `TerminalView` registers an OSC handler for 8791 before the spawn and refuses any report whose nonce it does not recognise.
+A command tab hosts the user's login shell, so the PTY's own exit is the shell's and not the command's. The command reports for itself instead: `pty_spawn` writes a single-use POSIX script to `~/.config/tori/run/<nonce>.sh`, types ` sh '<path>'` into the shell as that tab's `init`, and the script prints `ESC ] 8791 ; <nonce> ; <code> BEL` before deleting itself. `TerminalView` registers an OSC handler for 8791 before the spawn and refuses any report whose nonce it does not recognise.
 
 ## Considered Options
 

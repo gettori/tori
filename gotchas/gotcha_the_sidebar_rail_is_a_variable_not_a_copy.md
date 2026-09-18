@@ -2,7 +2,7 @@
 summary: the sidebar tree's rail and inset are driven by three custom properties, nest a level by re-anchoring them, not the css
 status: current
 updated: 2026-07-29
-source: Chat surface plan, phase 12 (personal/sway, branch `chat`); `src/panels/LeftSidebar/LeftSidebar.module.css` (`.attemptNode`, `.row.sub1`, `.row.sub2`)
+source: Chat surface plan, phase 12 (personal/tori, branch `chat`); `src/panels/LeftSidebar/LeftSidebar.module.css` (`.attemptNode`, `.row.sub1`, `.row.sub2`)
 ---
 
 # The sidebar rail is a variable, not a copy

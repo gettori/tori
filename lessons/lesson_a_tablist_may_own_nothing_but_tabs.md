@@ -2,7 +2,7 @@
 summary: every shape making a tab close button legal and reachable trips another axe rule, so only the keyboard path stays live
 status: current
 updated: 2026-08-16
-source: "Plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/sway, branch `111-tab-and-overflow-tab-bar`, issue #111, fixing #115); `src/components/Tab/Tab.tsx`, `src/components/Tab/Tab.test.tsx`"
+source: "Plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/tori, branch `111-tab-and-overflow-tab-bar`, issue #111, fixing #115); `src/components/Tab/Tab.tsx`, `src/components/Tab/Tab.test.tsx`"
 ---
 
 # A tablist may own nothing but tabs, so a close button cannot be announced

@@ -2,7 +2,7 @@
 summary: inside a Feature every surface naming a file also names its repo, resolved so a broken worktree still labels its file
 status: current
 updated: 2026-08-28
-source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/sway, branch `feature-workspace`, issue #158, design epic #151, phases 1 to 5) - commits `a7e2797`, `b1ac5f2`, `6183eae`, `12fe232`, `809c85b`, `c422394` - `src/utils/featureMembers.ts:113`"
+source: "Repository identity on tabs, breadcrumbs, quick-open and menus (personal/tori, branch `feature-workspace`, issue #158, design epic #151, phases 1 to 5) - commits `a7e2797`, `b1ac5f2`, `6183eae`, `12fe232`, `809c85b`, `c422394` - `src/utils/featureMembers.ts:113`"
 ---
 
 # Repository identity: every surface that names a file names its repo
@@ -13,7 +13,7 @@ Inside a [[concept_feature_workspace]] one tab strip, one crumb bar, one quick-o
 
 One resolver, one chip, five surfaces.
 
-**`memberFor(path, members)`** (`featureMembers.ts:113`) is the resolver: longest matching worktree wins, built on `rootOf` so a member nested inside another answers with itself and the two can never disagree. It matches over **every** member, present or broken, which is the whole reason it exists rather than a `rootOf(path, sel.roots)` call at each site (see below). `null` for a path under no member, which is how a Docs or `sway://` path stays unlabelled.
+**`memberFor(path, members)`** (`featureMembers.ts:113`) is the resolver: longest matching worktree wins, built on `rootOf` so a member nested inside another answers with itself and the two can never disagree. It matches over **every** member, present or broken, which is the whole reason it exists rather than a `rootOf(path, sel.roots)` call at each site (see below). `null` for a path under no member, which is how a Docs or `tori://` path stays unlabelled.
 
 **[[component_member_chip]]** is the visual token, and `TabMemberChip` its decorative preset.
 
@@ -30,7 +30,7 @@ One resolver, one chip, five surfaces.
 
 **The chip composes before the icon, it does not replace it.** `TabDescriptor.icon` is a single glyph slot already holding `FileIcon` or `TabMark`; filling it with a chip would cost the file-type glyph. Composed, the tab says which repo *and* which kind of file.
 
-**Only three things carry the gate.** A surface shows identity when its selection is a Feature. Two of the five derive that without a flag: `FileTree` synthesises a lone root as `{ label: "" }`, so an empty label already means "not inside a Feature"; the Omnibox asks whether `props.selected.kind === "feature"`. The editor's `tabMember` also excludes synthetic (`sway://`) ids, which belong to no repo.
+**Only three things carry the gate.** A surface shows identity when its selection is a Feature. Two of the five derive that without a flag: `FileTree` synthesises a lone root as `{ label: "" }`, so an empty label already means "not inside a Feature"; the Omnibox asks whether `props.selected.kind === "feature"`. The editor's `tabMember` also excludes synthetic (`tori://`) ids, which belong to no repo.
 
 ## Why it's this way
 

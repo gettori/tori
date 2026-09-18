@@ -2,14 +2,14 @@
 summary: one debounced backend watcher feeds every consumer, with a set command muting an LRU so a Feature's members stay live
 status: current
 updated: 2026-08-26
-source: "CM6 editor migration plan (personal/sway), Phases 1, 3 to 5, commits ccd7337, bef939a, 784724b, d642ab4, payload contract from \"Fix the stale `fs://changed` payload contract in ReviewPanel\" (branch `wave-1-3`, issue #12), watcher LRU and root-scoped payload from \"Worktree and tab switching at native speed\" (branch `unified-tab-bar`, phase 2, commit d8714d0), the watch *set* from Features phase 3: unified file explorer across member roots (branch `feature-workspace`, issue #155, phase 3, commit 7580a41)"
+source: "CM6 editor migration plan (personal/tori), Phases 1, 3 to 5, commits ccd7337, bef939a, 784724b, d642ab4, payload contract from \"Fix the stale `fs://changed` payload contract in ReviewPanel\" (branch `wave-1-3`, issue #12), watcher LRU and root-scoped payload from \"Worktree and tab switching at native speed\" (branch `unified-tab-bar`, phase 2, commit d8714d0), the watch *set* from Features phase 3: unified file explorer across member roots (branch `feature-workspace`, issue #155, phase 3, commit 7580a41)"
 ---
 
 # Filesystem-change pipeline
 
 **Location:** `src-tauri/src/fs.rs` (`fs_watch_start`, `fs_watch_set`), `src/utils/selfWrites.ts`, `src/utils/events.ts`
 
-How Sway reacts to files changing on disk so the editor stays live without polling. One backend watcher feeds many same-origin consumers; Sway's own writes are filtered so a save never looks like an external edit. This is the glue that the agent-first workflow (the terminal edits files while you watch) depends on.
+How Tori reacts to files changing on disk so the editor stays live without polling. One backend watcher feeds many same-origin consumers; Tori's own writes are filtered so a save never looks like an external edit. This is the glue that the agent-first workflow (the terminal edits files while you watch) depends on.
 
 ## The mechanism
 
@@ -70,7 +70,7 @@ A single debounced+filtered backend event with same-origin consumers keeps the e
 - [[component_cm6_editor]] — the main consumer.
 - [[component_changes_panel]] — the consumer whose refetch is scoped to one file, so it is the one that actually depends on the payload being read correctly.
 - [[gotcha_save_triggers_its_own_fs_watcher_echo]] · [[gotcha_the_project_watcher_must_filter_churn_dirs]] · [[gotcha_an_as_cast_on_an_event_payload_opts_out_of_the_contract]]
-- [[concept_filesystem_source_of_truth]] — Sway derives state from disk; this keeps that derivation live.
+- [[concept_filesystem_source_of_truth]] — Tori derives state from disk; this keeps that derivation live.
 - [[adr_no_sync_ipc_commands]] - why the watcher rebuild had to stop being a per-switch cost.
 - [[concept_feature_workspace]] - the workspace that needs N foreground roots at once.
 - [[component_project_file_tree]] - the per-section subscription that reads the payload's `root`.

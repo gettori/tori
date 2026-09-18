@@ -2,12 +2,12 @@
 summary: a conflicted file reads from the index's three stages, never the markers on disk, since the base is missing from them
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phases 10 to 13 (commits b8bd8b4, 02f5805, 167ac63, 9cdbe93); `src-tauri/src/conflict.rs`, `src/utils/conflict.ts`, `src/panels/Editor/ConflictView.tsx`, `src/utils/conflictAsk.ts`"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phases 10 to 13 (commits b8bd8b4, 02f5805, 167ac63, 9cdbe93); `src-tauri/src/conflict.rs`, `src/utils/conflict.ts`, `src/panels/Editor/ConflictView.tsx`, `src/utils/conflictAsk.ts`"
 ---
 
 # Three-way conflicts: read the index, never the markers
 
-A conflicted file on disk is git's *rendering* of a conflict: `<<<<<<<` markers carrying two of the three versions. Sway never reads it. A conflicted path has no stage 0 and instead holds stages 1, 2 and 3 in the index, readable as `git show :N:<path>`, and those three documents are the model's only input. The resolved file is written back from them.
+A conflicted file on disk is git's *rendering* of a conflict: `<<<<<<<` markers carrying two of the three versions. Tori never reads it. A conflicted path has no stage 0 and instead holds stages 1, 2 and 3 in the index, readable as `git show :N:<path>`, and those three documents are the model's only input. The resolved file is written back from them.
 
 ## How it works
 

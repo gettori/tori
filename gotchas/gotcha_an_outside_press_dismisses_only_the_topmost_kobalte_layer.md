@@ -2,7 +2,7 @@
 summary: Kobalte's layer stack sends an outside press only to the topmost layer, so a nested menu closes and the panel survives
 status: current
 updated: 2026-08-15
-source: "plan \"Popover onto Kobalte Popover\" (personal/sway, branch `104-popover`, issue #104); `src/panels/Terminal/HistoryPanel.test.tsx`; see [[component_popover]]"
+source: "plan \"Popover onto Kobalte Popover\" (personal/tori, branch `104-popover`, issue #104); `src/panels/Terminal/HistoryPanel.test.tsx`; see [[component_popover]]"
 ---
 
 # An outside press dismisses only the topmost Kobalte layer

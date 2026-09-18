@@ -2,12 +2,12 @@
 summary: caps always mounted terminals at 8 live WebGL contexts, evicting least recently visible since the browser cap fell back
 status: current
 updated: 2026-08-20
-source: Worktree and tab switching at native speed (personal/sway, branch `unified-tab-bar`), Phase 5, commit 565dbf9, `src/panels/Terminal/webglLru.ts`, `src/panels/Terminal/TerminalView.tsx`
+source: Worktree and tab switching at native speed (personal/tori, branch `unified-tab-bar`), Phase 5, commit 565dbf9, `src/panels/Terminal/webglLru.ts`, `src/panels/Terminal/TerminalView.tsx`
 ---
 
 # WebGL context LRU for always-mounted terminals
 
-Sway keeps every terminal mounted (see [[concept_workspace_tab_grouping]]), so
+Tori keeps every terminal mounted (see [[concept_workspace_tab_grouping]]), so
 without a cap the number of live WebGL contexts grows with every terminal ever
 opened. Browsers cap contexts at roughly 16 and evict silently, which meant a
 long session drifted into a **permanent DOM-renderer fallback**: measurably

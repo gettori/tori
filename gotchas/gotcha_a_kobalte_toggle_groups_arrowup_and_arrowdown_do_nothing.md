@@ -2,7 +2,7 @@
 summary: Kobalte's ToggleGroup skips orientation on its collection, so ArrowUp and ArrowDown are dead in a horizontal group
 status: current
 updated: 2026-08-15
-source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/sway, branch `109-dedupe-icon-and-swatch-grids`, issue #109); `src/components/IconGrid/IconGrid.tsx`; commit 8f86c77"
+source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/tori, branch `109-dedupe-icon-and-swatch-grids`, issue #109); `src/components/IconGrid/IconGrid.tsx`; commit 8f86c77"
 ---
 
 # A Kobalte toggle group's ArrowUp and ArrowDown do nothing

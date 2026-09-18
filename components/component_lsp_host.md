@@ -2,16 +2,16 @@
 summary: a language server is a config file, sessions key by server id and root so a package never borrows a sibling compiler
 status: current
 updated: 2026-08-11
-source: "CM6 editor migration plan; Phase 11; commit 15d039e, rewritten by Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phases 1-2, 5, 7; commits 7bb34d2, 0802a17, cbc5b0a, 075b5d7, extended by Editor wave 7: language intelligence depth (branch `wave-7`); Phases 1, 5, 6, 9; commits c4750d7, a620384, 506d7e7, d7a6e3e"
+source: "CM6 editor migration plan; Phase 11; commit 15d039e, rewritten by Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phases 1-2, 5, 7; commits 7bb34d2, 0802a17, cbc5b0a, 075b5d7, extended by Editor wave 7: language intelligence depth (branch `wave-7`); Phases 1, 5, 6, 9; commits c4750d7, a620384, 506d7e7, d7a6e3e"
 ---
 
 # LSP host: a registry of language servers, one session per root
 
 **Location:** `src-tauri/src/lsp.rs`, `src-tauri/src/lsp/registry.rs`, `src-tauri/src/lsp/schemastore.rs`, `src-tauri/lsp/*.toml`, `src/utils/lspServers.ts`, `src/panels/Editor/lspClient.ts`, `serverRequests.ts`, `LSP-SERVERS.md`
 
-A language server is a **config file, not a branch of code**. Bundled TOML under `src-tauri/lsp/` is merged with `~/.config/sway/lsp/*.toml` overrides into a `OnceLock`, mirroring [[component_agent_adapter_registry]]. Sway ships four — bundled `typescript-language-server`, `vscode-json-languageserver` and `yaml-language-server`, plus rust-analyzer resolved from the login PATH — which is what proves the shape is real; Python and Go become config files with no code change. `LSP-SERVERS.md` documents the schema and a doc test fails if a field is added without documenting it, the way `ADAPTERS.md` does. Governed by [[adr_cm6_editor]].
+A language server is a **config file, not a branch of code**. Bundled TOML under `src-tauri/lsp/` is merged with `~/.config/tori/lsp/*.toml` overrides into a `OnceLock`, mirroring [[component_agent_adapter_registry]]. Tori ships four — bundled `typescript-language-server`, `vscode-json-languageserver` and `yaml-language-server`, plus rust-analyzer resolved from the login PATH — which is what proves the shape is real; Python and Go become config files with no code change. `LSP-SERVERS.md` documents the schema and a doc test fails if a field is added without documenting it, the way `ADAPTERS.md` does. Governed by [[adr_cm6_editor]].
 
-The schema uses a **`[languages]` map** (extension to LSP language id), not parallel lists: the frontend needs the language id *for a given file* to send `didOpen`, and two lists would have to be zipped at every call site and could disagree. Unknown *fields* warn and are ignored so a config written for a newer Sway still loads; unknown *enum kinds* (`launch.kind = "docker"`) are a hard error. Missing required fields are reported all at once.
+The schema uses a **`[languages]` map** (extension to LSP language id), not parallel lists: the frontend needs the language id *for a given file* to send `didOpen`, and two lists would have to be zipped at every call site and could disagree. Unknown *fields* warn and are ignored so a config written for a newer Tori still loads; unknown *enum kinds* (`launch.kind = "docker"`) are a hard error. Missing required fields are reported all at once.
 
 ## Sessions are keyed by `(server_id, root)`
 
@@ -27,7 +27,7 @@ Not by server id. A monorepo's `packages/a` and `packages/b` each resolve their 
 
 ## Capabilities and the transport
 
-The library advertises no symbol and no semantic-token support at all, so Sway adds its own blocks and answers four server-initiated requests. That surface has its own rules — see [[concept_lsp_capability_contract]] for what may be declared and [[concept_server_request_router]] for the seam that answers. `LspTarget` is the narrow view a caller gets: root, `ready`, `supports`, `capability`, `sync`, `request`. A caller holding the `LSPClient` could reconfigure or disconnect the session.
+The library advertises no symbol and no semantic-token support at all, so Tori adds its own blocks and answers four server-initiated requests. That surface has its own rules — see [[concept_lsp_capability_contract]] for what may be declared and [[concept_server_request_router]] for the seam that answers. `LspTarget` is the narrow view a caller gets: root, `ready`, `supports`, `capability`, `sync`, `request`. A caller holding the `LSPClient` could reconfigure or disconnect the session.
 
 Each session gets its own frame-reader thread and `Channel<String>`; `lsp_send` re-frames outgoing JSON onto stdin. The channel handler routes inbound frames through `serverRequests.ts` before fanning out, because `receiveMessage` would answer every server-initiated request `-32601`.
 
@@ -40,7 +40,7 @@ A server config may carry `[settings]`, sent as `workspace/didChangeConfiguratio
 
 Both new servers use `root_markers = [".git"]` with `package.json` **omitted rather than reordered**: `root_for` returns the first ancestor holding *any* marker, so order changes nothing while `package.json` is in the list, and neither server has per-package configuration to be right about. A paired test asserts one root for three packages, and that adding `package.json` back splits them.
 
-`lsp_schema_dir` resolves the bundled `resources/schemas` directory through the same `bundled_entry` fallback the servers use, so Sway's own settings schemas work in a packaged build and under `cargo run` alike. `schemastore.rs` owns the catalog fetch and cache — see [[concept_schema_backed_json]]. A Rust test now parses every `#[tauri::command]` out of `lsp.rs` and asserts each appears in `lib.rs`'s `generate_handler!`, because forgetting that line compiles, the invoke rejects, and the caller's fallback makes it indistinguishable from a build that ships nothing.
+`lsp_schema_dir` resolves the bundled `resources/schemas` directory through the same `bundled_entry` fallback the servers use, so Tori's own settings schemas work in a packaged build and under `cargo run` alike. `schemastore.rs` owns the catalog fetch and cache — see [[concept_schema_backed_json]]. A Rust test now parses every `#[tauri::command]` out of `lsp.rs` and asserts each appears in `lib.rs`'s `generate_handler!`, because forgetting that line compiles, the invoke rejects, and the caller's fallback makes it indistinguishable from a build that ships nothing.
 
 Per-server `request_timeout_ms` replaces the library's 3 s default (20 s TS, 90 s rust-analyzer). The default covers `initialize` too, so 3 s would take the whole client down on a cold cargo project rather than failing one request.
 
@@ -65,13 +65,13 @@ Wave 8 built [[component_dap_host]] from this page deliberately: the same regist
 
 - **A DAP adapter listens, it does not speak stdio.** `dapDebugServer.js` calls `net.createServer().listen()` and the client dials in, so the stdin/stdout pair here has no counterpart there.
 - **One adapter process serves many connections.** Debugging is inherently multi-session ([[concept_dap_session_tree]]), so `dap_connect` exists beside `dap_start`; there is no LSP equivalent.
-- **Termination is target-kind-dependent.** An attached debuggee is a process Sway never started and must never be killed.
+- **Termination is target-kind-dependent.** An attached debuggee is a process Tori never started and must never be killed.
 
 ## Does NOT
 
 Bundle a Node runtime (system `node` via `env::augmented_path`), support languages beyond the shipped configs without a config file, or answer server-initiated requests beyond the four routed ones.
 
-**`initialization_options` is documented, parsed, typed, and reaches no server at all.** The library takes no such config and Sway never injects one, so a user following `LSP-SERVERS.md` gets silence. Pre-existing, found in wave 7 Phase 5, and left unfixed: the fix means injecting into `initialize` at the transport. Anything a server needs before it will answer therefore has to go through `[settings]` today.
+**`initialization_options` is documented, parsed, typed, and reaches no server at all.** The library takes no such config and Tori never injects one, so a user following `LSP-SERVERS.md` gets silence. Pre-existing, found in wave 7 Phase 5, and left unfixed: the fix means injecting into `initialize` at the transport. Anything a server needs before it will answer therefore has to go through `[settings]` today.
 
 **Known caveat, unresolved across all eight phases:** `root_for` compares non-canonicalised paths, so a project path that disagrees on symlinks (`/tmp` vs `/private/tmp`) falls back to the project root instead of walking. Latent only — in production both paths come from the same file-tree source. `format.rs`'s ancestry check inherits it.
 

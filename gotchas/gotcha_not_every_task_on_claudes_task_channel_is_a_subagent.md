@@ -2,7 +2,7 @@
 summary: claude's task_started channel carries backgrounded shell commands too, discriminate on task_type not on one seen value
 status: current
 updated: 2026-09-04
-source: "\"Subagent lanes in the chat panel\" (personal/sway, branch `bugfix-260903`); follow-up after phase 6; `src-tauri/src/chat/claude.rs::map_task_started`, `dev/fixtures/claude/background-shell.jsonl`"
+source: "\"Subagent lanes in the chat panel\" (personal/tori, branch `bugfix-260903`); follow-up after phase 6; `src-tauri/src/chat/claude.rs::map_task_started`, `dev/fixtures/claude/background-shell.jsonl`"
 ---
 
 # Not every task on Claude's task channel is a subagent

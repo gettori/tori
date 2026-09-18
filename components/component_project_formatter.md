@@ -2,7 +2,7 @@
 summary: saving runs the project's own Biome or Prettier over stdin, never the file in place, since it is not yet on disk
 status: current
 updated: 2026-08-03
-source: "Editor wave 4: language intelligence foundations (personal/sway, branch `wave-4`); Phase 6; commit cbb4497; `src-tauri/src/format.rs`, `src/panels/Editor/formatOnSave.ts`, `docDiff.ts`"
+source: "Editor wave 4: language intelligence foundations (personal/tori, branch `wave-4`); Phase 6; commit cbb4497; `src-tauri/src/format.rs`, `src/panels/Editor/formatOnSave.ts`, `docDiff.ts`"
 ---
 
 # Project formatter: the repo decides how its files are written

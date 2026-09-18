@@ -2,7 +2,7 @@
 summary: deleting an empty css module rule breaks a component indexing styles by variant, a missing key emits an undefined class
 status: current
 updated: 2026-07-13
-source: Button component + migrate all buttons (personal/sway, branch code-mirror-6); `src/components/Button/Button.tsx` (`classList`), `Button.module.css` (`.default {}`, `.md {}`)
+source: Button component + migrate all buttons (personal/tori, branch code-mirror-6); `src/components/Button/Button.tsx` (`classList`), `Button.module.css` (`.default {}`, `.md {}`)
 ---
 
 # CSS-Modules empty placeholder rules are load-bearing for dynamic classList keys

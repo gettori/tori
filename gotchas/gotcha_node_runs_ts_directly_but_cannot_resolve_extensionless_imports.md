@@ -2,7 +2,7 @@
 summary: node's type stripping is not module resolution, an extensionless import inside a .ts file works under vite but not node
 status: current
 updated: 2026-07-24
-source: "Native theming system: palette + roles generator (personal/sway, branch `terminal-editor-design`); Phases 1, 6; `scripts/check-tokens.mjs`"
+source: "Native theming system: palette + roles generator (personal/tori, branch `terminal-editor-design`); Phases 1, 6; `scripts/check-tokens.mjs`"
 ---
 
 # node runs `.ts` directly, but cannot resolve extensionless imports

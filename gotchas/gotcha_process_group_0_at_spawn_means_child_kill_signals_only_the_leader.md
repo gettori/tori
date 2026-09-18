@@ -2,7 +2,7 @@
 summary: process_group zero puts a child in its own group, so kill only signals the leader, the real agent keeps running
 status: current
 updated: 2026-08-17
-source: plan "Model catalogues from the harnesses themselves" (phase 3, personal/sway, branch `settings-and-chat`); `src-tauri/src/catalog_probe.rs::abandon_group`; `src-tauri/src/dap.rs::stop`
+source: plan "Model catalogues from the harnesses themselves" (phase 3, personal/tori, branch `settings-and-chat`); `src-tauri/src/catalog_probe.rs::abandon_group`; `src-tauri/src/dap.rs::stop`
 ---
 
 # `process_group(0)` at spawn means `child.kill()` signals only the leader

@@ -2,7 +2,7 @@
 summary: a true async fn Tauri command with State and non-Result return is rejected by the macro, unlike the async attribute
 status: current
 updated: 2026-08-20
-source: plan "Worktree and tab switching at native speed" (phase 2, personal/sway, branch `unified-tab-bar`), `src-tauri/src/exec.rs`, commit d8714d0, [[concept_command_execution_tiers]], _2026-08-20_
+source: plan "Worktree and tab switching at native speed" (phase 2, personal/tori, branch `unified-tab-bar`), `src-tauri/src/exec.rs`, commit d8714d0, [[concept_command_execution_tiers]], _2026-08-20_
 ---
 
 # The command attribute async form compiles where a true async fn does not

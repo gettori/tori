@@ -43,7 +43,7 @@ nothing recorded.
 
 **What could be verified offline, and what could not.** A spike established that
 claude acts on a mid-turn `user` frame before its next tool call; what it could
-not establish is that Sway's own path still writes that frame once it stopped
+not establish is that Tori's own path still writes that frame once it stopped
 going through `send`. So `a_steer_writes_the_user_frame_to_the_live_childs_stdin`
 runs the real transport against a `/bin/sh` stand-in that copies stdin to a file
 and asserts on the bytes that left the pipe. The end-to-end half remains an

@@ -2,7 +2,7 @@
 summary: an adapter running pattern anchored right after the program name misses every chat session, match a run of whole tokens
 status: current
 updated: 2026-07-28
-source: plan "Native Claude chat as the default session surface" (personal/sway, branch `chat`); Phase 12; `src-tauri/agents/claude.toml`, `src-tauri/src/agents.rs`, `src/utils/agents.ts`
+source: plan "Native Claude chat as the default session surface" (personal/tori, branch `chat`); Phase 12; `src-tauri/agents/claude.toml`, `src-tauri/src/agents.rs`, `src/utils/agents.ts`
 ---
 
 # A pgrep `running` pattern must allow for the chat transport's base_args

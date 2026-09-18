@@ -2,7 +2,7 @@
 summary: handing a generic Kobalte part to a Component<P> slot cannot infer P, so it becomes {} and selection collapses
 status: current
 updated: 2026-08-15
-source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/sway, branch `109-dedupe-icon-and-swatch-grids`, issue #109); `src/lib/toggle-group.ts`; commit cd09a5e"
+source: "plan \"Dedupe icon and swatch grids into one IconGrid\" (personal/tori, branch `109-dedupe-icon-and-swatch-grids`, issue #109); `src/lib/toggle-group.ts`; commit cd09a5e"
 ---
 
 # A generic polymorphic component cannot be inferred from

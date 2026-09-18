@@ -2,7 +2,7 @@
 summary: a resume by byte offset cache keyed on size and mtime alone resumes stale forever once a longer file replaces it
 status: current
 updated: 2026-08-20
-source: plan "Worktree and tab switching at native speed" (phase 6, personal/sway, branch `unified-tab-bar`), `src-tauri/src/sessions.rs` (`session_prompt_tail`), commit 267fc4a, _2026-08-20_
+source: plan "Worktree and tab switching at native speed" (phase 6, personal/tori, branch `unified-tab-bar`), `src-tauri/src/sessions.rs` (`session_prompt_tail`), commit 267fc4a, _2026-08-20_
 ---
 
 # Size alone cannot tell an append from a replacement

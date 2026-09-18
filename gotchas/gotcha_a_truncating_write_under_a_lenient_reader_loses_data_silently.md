@@ -2,7 +2,7 @@
 summary: pairing a truncating fs write with a lenient reader turns a mid write crash into silent total data loss
 status: current
 updated: 2026-07-29
-source: Chat surface plan, phase 10 (personal/sway, branch `chat`); `src-tauri/src/chat/ownership.rs:237` (`claims_are_replaced_by_rename_so_a_torn_write_cannot_empty_the_file`)
+source: Chat surface plan, phase 10 (personal/tori, branch `chat`); `src-tauri/src/chat/ownership.rs:237` (`claims_are_replaced_by_rename_so_a_torn_write_cannot_empty_the_file`)
 ---
 
 # A truncating write under a lenient reader loses data silently

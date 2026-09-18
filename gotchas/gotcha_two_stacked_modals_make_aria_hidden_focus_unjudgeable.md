@@ -2,7 +2,7 @@
 summary: two stacked dialogs make aria-hidden-focus land under incomplete since jsdom cannot judge reachability through a stack
 status: current
 updated: 2026-08-12
-source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/sway, branch `99-migrate-seven-dialogs`, issue #99); `src/components/Dialogs/stackedDialogs.test.tsx:134`"
+source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/tori, branch `99-migrate-seven-dialogs`, issue #99); `src/components/Dialogs/stackedDialogs.test.tsx:134`"
 ---
 
 # Two stacked modals make `aria-hidden-focus` unjudgeable

@@ -2,7 +2,7 @@
 summary: pty_spawn delivers init backend once, re-subscribing to the same tab id is a no-op, put the run ordinal in the tab id
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 14 (personal/sway, branch `wave-6`); `src-tauri/src/pty.rs`, `src/utils/tasks.ts:150`; commit 44d8c99"
+source: "Editor Wave 6: the IDE surface, Phase 14 (personal/tori, branch `wave-6`); `src-tauri/src/pty.rs`, `src/utils/tasks.ts:150`; commit 44d8c99"
 ---
 
 # `pty_spawn`'s `init` fires once, so a re-run needs a new tab id

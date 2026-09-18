@@ -2,7 +2,7 @@
 summary: discovers spaces from disk and probes each repo's git kind with a cache keyed on dir and HEAD mtime, or it goes stale
 status: current
 updated: 2026-08-28
-source: "Worktree-aware tree + Sidebar as Project Manager + Sidebar Context-Menu Redesign + Delete Group + Space icons & reordering (personal/sway, branch code-mirror-6); commits 5c5177f, 3501d59, 8ceb6e2, 785b17b, e49947a, e6f929f, 17a334a, e704411, fef06e6, bcd31db, 68920f0; Feature lifecycle, member management and repair (issue #159, branch `feature-workspace`); commit ef3779b"
+source: "Worktree-aware tree + Sidebar as Project Manager + Sidebar Context-Menu Redesign + Delete Group + Space icons & reordering (personal/tori, branch code-mirror-6); commits 5c5177f, 3501d59, 8ceb6e2, 785b17b, e49947a, e6f929f, 17a334a, e704411, fef06e6, bcd31db, 68920f0; Feature lifecycle, member management and repair (issue #159, branch `feature-workspace`); commit ef3779b"
 ---
 
 # Project discovery & setup
@@ -13,7 +13,7 @@ Discovers projects from the filesystem (replacing declared `[[project]]` entries
 
 ## Discovery model
 
-- **A plain repo lists the worktrees it contains (#159).** `probe_project`'s no-bare branch returns `plain_branch_units` **plus** `secondary_worktree_units`, one `ProjectKind::Worktree` unit per `git worktree list` entry after the main worktree that sits **inside** the main worktree's own folder. Without it a Feature worktree kept in a plain repo was invisible in Sway: `plain_branch_units` enumerates `git branch` and keeps only the current checkout and attached names, and the walkers skip `.sway/worktrees` ([[gotcha_a_plain_repo_does_not_list_its_secondary_worktrees_as_branch_units]]). Containment, not merely non-main: a linked worktree beside its repo is a project in its own right and would otherwise list under that repo *and* be probed as itself. The test runs against git's own path for the main worktree, not the probed path, so a symlinked space root cannot make it silently match nothing. A branch a plain unit already names is skipped, so an attached branch checked out elsewhere yields one row, not two.
+- **A plain repo lists the worktrees it contains (#159).** `probe_project`'s no-bare branch returns `plain_branch_units` **plus** `secondary_worktree_units`, one `ProjectKind::Worktree` unit per `git worktree list` entry after the main worktree that sits **inside** the main worktree's own folder. Without it a Feature worktree kept in a plain repo was invisible in Tori: `plain_branch_units` enumerates `git branch` and keeps only the current checkout and attached names, and the walkers skip `.tori/worktrees` ([[gotcha_a_plain_repo_does_not_list_its_secondary_worktrees_as_branch_units]]). Containment, not merely non-main: a linked worktree beside its repo is a project in its own right and would otherwise list under that repo *and* be probed as itself. The test runs against git's own path for the main worktree, not the probed path, so a symlinked space root cannot make it silently match nothing. A branch a plain unit already names is skipped, so an attached branch checked out elsewhere yields one row, not two.
 - **Single canonical root.** `[discovery].roots` collapses to the **first** root **in-memory on load** (`roots.iter().take(1)`), so a legacy multi-root config yields one tree, not two, without rewriting the toml. Scanned as `<root>/<space>/<project>`; dotfiles and `[discovery].ignore` names skipped. **Empty space dirs are surfaced** so a freshly created space is selectable.
 - **Extra paths** (`[discovery].paths`, space = parent dir) + **legacy `[[project]]`** folded in. Migration is **in-memory** - the toml is never rewritten except by explicit mutation, so it is non-destructive and dodges the self-write echo.
 - **Origin tagging.** Spaces/projects carry `external: bool` (root-discovered vs pinned via `paths`). `ensure_space_idx` keys on name **and** origin, so a root space and a pinned space of the same name stay distinct - the UI renders externals under a non-deletable "Other" divider.
@@ -22,7 +22,7 @@ Discovers projects from the filesystem (replacing declared `[[project]]` entries
 
 ## Space metadata overlay & order
 
-Spaces stay **filesystem-derived** (the folder name is the immutable title); `sway.toml` only overlays optional metadata, keyed by name, merged at the end of `resolve` (mirrors the pin overlay + [[concept_filesystem_source_of_truth]]).
+Spaces stay **filesystem-derived** (the folder name is the immutable title); `tori.toml` only overlays optional metadata, keyed by name, merged at the end of `resolve` (mirrors the pin overlay + [[concept_filesystem_source_of_truth]]).
 
 - **Icon.** `[[space]]` tables (`{name, icon?}`, `RawConfig.space`) carry a Lucide icon name (PascalCase, from the frontend `iconRegistry`'s fixed 40). Overlaid by name only, so a root space **and** a same-named external pin share the one entry. Blank icons are ignored. The tile renders `resolveIcon(icon)` when set, else the name's initial letter.
 - **Order.** A flat top-level `space_order = [names…]` (`RawConfig.space_order`) sets the root-space order. `resolve` **stable-sorts** with key `(external, index-in-order)`: externals sort after all roots (key `.0 = 1`) and keep their relative order; a listed root sorts by its `space_order` index; an unlisted/new root shares `usize::MAX` and so keeps discovery order after the listed ones. **Pinned spaces are never reordered.**
@@ -74,7 +74,7 @@ Both run **in a terminal tab** (Sidebar emits `OPEN_TERMINAL` → `TerminalArea`
 - Produces the payload for [[concept_folder_anchored_sessions]].
 - Sibling of [[component_session_scanner]] (projects vs sessions), both implement [[concept_filesystem_source_of_truth]].
 - Mutated from [[component_context_menu]] (per-node actions + gear menu); worktree ops split out to [[component_worktree_lifecycle]].
-- Governed by [[adr_sidebar_project_manager]] and [[adr_attached_branch_model]] (the attached-set discovery model); supersedes the manual-`sway.toml` half of [[adr_stack_choice]].
+- Governed by [[adr_sidebar_project_manager]] and [[adr_attached_branch_model]] (the attached-set discovery model); supersedes the manual-`tori.toml` half of [[adr_stack_choice]].
 
 ## Related
 

@@ -2,7 +2,7 @@
 summary: kobalte's controlled Tabs.Root force selects the first key and fires onChange itself when its held value names no item
 status: current
 updated: 2026-08-16
-source: "plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/sway, branch `111-tab-and-overflow-tab-bar`, issue #111); `src/components/OverflowTabBar.tsx`, `node_modules/@kobalte/core/dist/chunk/7DPKSDZL.js`; close-keystroke half: plan \"Revive tab selection, and make an unnamed segment a type error\" (branch `116-optional-accessible`); `src/utils/tabGesture.ts`"
+source: "plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/tori, branch `111-tab-and-overflow-tab-bar`, issue #111); `src/components/OverflowTabBar.tsx`, `node_modules/@kobalte/core/dist/chunk/7DPKSDZL.js`; close-keystroke half: plan \"Revive tab selection, and make an unnamed segment a type error\" (branch `116-optional-accessible`); `src/utils/tabGesture.ts`"
 ---
 
 # Kobalte's tab root force-selects the first key and calls `onChange` doing it

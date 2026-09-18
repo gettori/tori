@@ -2,7 +2,7 @@
 summary: git_capture trims its result, reading a blob through it shaves leading indentation and a trailing newline off a restore
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 15 (personal/sway, branch `wave-6`); `src-tauri/src/checkpoint.rs:378`, `src-tauri/src/local_history.rs:238`; commit b622f33"
+source: "Editor Wave 6: the IDE surface, Phase 15 (personal/tori, branch `wave-6`); `src-tauri/src/checkpoint.rs:378`, `src-tauri/src/local_history.rs:238`; commit b622f33"
 ---
 
 # `git_capture` trims and `git_output` does not

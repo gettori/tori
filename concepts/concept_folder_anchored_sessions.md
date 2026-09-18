@@ -2,12 +2,12 @@
 summary: a session's recorded cwd is the grouping anchor, never its branch, letting worktrees and two agents share one tree
 status: current
 updated: 2026-08-20
-source: Worktree-aware tree, multi-agent sessions, and project setup (personal/sway, branch code-mirror-6), commits 5c5177f, 84f2930, 9ca87a9, 3f7efe8, incremental tails and scoped fanout from "Worktree and tab switching at native speed" (branch `unified-tab-bar`, phase 6, commit 267fc4a)
+source: Worktree-aware tree, multi-agent sessions, and project setup (personal/tori, branch code-mirror-6), commits 5c5177f, 84f2930, 9ca87a9, 3f7efe8, incremental tails and scoped fanout from "Worktree and tab switching at native speed" (branch `unified-tab-bar`, phase 6, commit 267fc4a)
 ---
 
 # Folder-anchored, multi-agent sessions
 
-How Sway groups, opens, and resumes work. The unifying rule: **a session's recorded `cwd` is the anchor**, not its branch. Branch is a display label, never the grouping key. This is what makes worktrees, branch-switching repos, nested sessions, and two agents (Claude + pi) coexist under one tree. The terminal area groups tabs on the branch-unit `folderPath` derived here — see [[concept_workspace_tab_grouping]] — and hosts each as a shell (see [[concept_shell_hosted_tabs]]).
+How Tori groups, opens, and resumes work. The unifying rule: **a session's recorded `cwd` is the anchor**, not its branch. Branch is a display label, never the grouping key. This is what makes worktrees, branch-switching repos, nested sessions, and two agents (Claude + pi) coexist under one tree. The terminal area groups tabs on the branch-unit `folderPath` derived here — see [[concept_workspace_tab_grouping]] — and hosts each as a shell (see [[concept_shell_hosted_tabs]]).
 
 ## The branch-unit abstraction
 
@@ -59,7 +59,7 @@ paths through the session index to the cwds their sessions are anchored on, and
 invokes to 34-58, in bursts of exactly one folder after the initial listing.
 
 **A miss must mean "all", not "omit it".** Only the index knows a transcript's
-cwd (encoding a cwd into a directory name belongs to the agent), so a file Sway
+cwd (encoding a cwd into a directory name belongs to the agent), so a file Tori
 has not parsed yet cannot be attributed, and that file is precisely the
 brand-new session whose whole point is to make an unlisted folder appear. One
 unresolved path therefore makes the whole payload `None`.

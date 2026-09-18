@@ -2,7 +2,7 @@
 summary: alpha and mix on a missing palette key return an rgba string with undefined channels, so a role renders wrong silently
 status: current
 updated: 2026-07-24
-source: "Native theming system: palette + roles generator (personal/sway, branch `terminal-editor-design`); Phases 3, 7; `scripts/check-tokens.mjs`, `src/theme/admit.ts`; commit ad31d34"
+source: "Native theming system: palette + roles generator (personal/tori, branch `terminal-editor-design`); Phases 3, 7; `scripts/check-tokens.mjs`, `src/theme/admit.ts`; commit ad31d34"
 ---
 
 # `buildRoles` fails as strings, not as exceptions

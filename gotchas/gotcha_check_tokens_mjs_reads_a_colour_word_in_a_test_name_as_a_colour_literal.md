@@ -2,7 +2,7 @@
 summary: the token guard scans src for colour literals without excluding test titles, so a test named turns red fails the build
 status: current
 updated: 2026-09-07
-source: plan "Chat composer Tier 1" (personal/sway, branch `composer-260907`), phase 3 . `scripts/check-tokens.mjs` . `src/panels/Chat/Composer.test.tsx` . commit `c3eb12f` . _2026-09-07_
+source: plan "Chat composer Tier 1" (personal/tori, branch `composer-260907`), phase 3 . `scripts/check-tokens.mjs` . `src/panels/Chat/Composer.test.tsx` . commit `c3eb12f` . _2026-09-07_
 ---
 
 # `check-tokens.mjs` reads a colour word in a test name as a colour literal

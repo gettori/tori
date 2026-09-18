@@ -2,7 +2,7 @@
 summary: DAP host dials into a debug adapter that listens on a socket rather than stdio, and one server serves many connections
 status: current
 updated: 2026-08-11
-source: "Editor wave 8: the debugger (DAP) (personal/sway, branch `wave-8`); Phases 1-2; epic #69, sub-issues #70/#71; commits cdb4cd2, 1e72ae1"
+source: "Editor wave 8: the debugger (DAP) (personal/tori, branch `wave-8`); Phases 1-2; epic #69, sub-issues #70/#71; commits cdb4cd2, 1e72ae1"
 ---
 
 # DAP host: an adapter registry that spawns a server and dials in
@@ -20,7 +20,7 @@ The Rust half of debugging: a registry of debug adapters keyed by id, and a tran
 - **One server, many connections.** `dap_connect` (`:347`) opens a *second* socket to a server already running, which is what serves `startDebugging` (see [[concept_dap_session_tree]]). Each connection is its own session id with its own reader thread and `Channel<String>`.
 - **`root_for_adapter` (`:439`) resolves the debuggee's `cwd` in Rust and nowhere else**, for the reason `(server_id, root)` keying exists on the LSP side: `cwd` decides module resolution *and* source-map location, so a workspace-root default is the same mistake with a wider blast radius.
 - **Install under the second lock, and stop means kill *and* reap**, both carried over from `lsp.rs` rather than re-derived.
-- **Termination is target-kind-dependent.** `terminateDebuggee: true` on an attach would destroy a process Sway never started, so launched debuggees are killed and attached ones never are.
+- **Termination is target-kind-dependent.** `terminateDebuggee: true` on an attach would destroy a process Tori never started, so launched debuggees are killed and attached ones never are.
 
 ## Acquisition: the manifest is tracked, the artifact is not
 

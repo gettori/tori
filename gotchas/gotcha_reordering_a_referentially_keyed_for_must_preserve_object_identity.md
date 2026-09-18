@@ -2,7 +2,7 @@
 summary: rebuilding item objects when reordering a solid For list remounts by identity, killing a pty or resetting an editor
 status: current
 updated: 2026-06-29
-source: Overflow-tab-bar (personal/sway); `src/components/tabOverflow.ts` (`moveIntoView`), `src/components/OverflowTabBar.tsx`
+source: Overflow-tab-bar (personal/tori); `src/components/tabOverflow.ts` (`moveIntoView`), `src/components/OverflowTabBar.tsx`
 ---
 
 # Reordering a referentially-keyed For must preserve object identity

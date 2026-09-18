@@ -2,7 +2,7 @@
 summary: the Calls tab has no tree request, so each level costs a round trip, and rooting waits until the panel is visible
 status: current
 updated: 2026-08-08
-source: "Editor wave 7: language intelligence depth (personal/sway, branch `wave-7`); Phase 8 (commit a1511d7); issue #67"
+source: "Editor wave 7: language intelligence depth (personal/tori, branch `wave-7`); Phase 8 (commit a1511d7); issue #67"
 ---
 
 # Call hierarchy: the Calls tab, one level per round trip
@@ -23,7 +23,7 @@ A right-panel mode, sibling of Problems and Outline, showing who calls the symbo
 - `utils/callHierarchy.ts:65` — `callHierarchyClientCapabilities`, deliberately `callHierarchy: {}`: the spec's only field there is the `dynamicRegistration` this client must not advertise, since it answers server-initiated registration with `-32601`.
 - `utils/callHierarchy.ts:31` — `CallItem`, with `raw: unknown` kept verbatim.
 - `utils/callHierarchy.ts:54` — `MAX_CALLS_PER_LEVEL = 500`, bounded per level rather than per tree, because the depth is the user's choice and the width is not.
-- `utils/callHierarchy.ts:82` — a private `pathOf` duplicating `uriToPath`, because importing `swayWorkspace` would pull CodeMirror into the eager bundle. A test compares the two across spaces, non-ASCII and a literal `%`, so they cannot drift into disagreeing about escaping.
+- `utils/callHierarchy.ts:82` — a private `pathOf` duplicating `uriToPath`, because importing `toriWorkspace` would pull CodeMirror into the eager bundle. A test compares the two across spaces, non-ASCII and a literal `%`, so they cannot drift into disagreeing about escaping.
 - `utils/callHierarchy.ts:224` — `callKey`, position-based rather than name-based: two overloads share a name, and a recursive pair is only a cycle if it returns to the same *place*.
 - `lspCallHierarchy.ts` — `prepareCallHierarchy` (ready → provider → **sync** → request), `callLevel` (**no sync**), `rootCallHierarchy` with a latest-wins token keyed on path, and `noteCallSupport`.
 - `CallsPanel.tsx` — expansion keyed on the **ancestor chain** (`${prefix}>${key}`), an in-flight guard, and a cycle row rendered with no disclosure control.

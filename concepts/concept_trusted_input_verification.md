@@ -2,12 +2,12 @@
 summary: fireEvent.click never triggers the microtask checkpoint, so vitest is blind and only a trusted CDP click catches it
 status: current
 updated: 2026-08-16
-source: "plan \"Revive tab selection, and make an unnamed segment a type error\" (personal/sway, branch `116-optional-accessible`, issue #116); `src/components/OverflowTabBar.tsx`, `src/utils/tabGesture.ts`, `src/components/OverflowTabBar.stories.tsx`; regression from commit `74f3e3d`"
+source: "plan \"Revive tab selection, and make an unnamed segment a type error\" (personal/tori, branch `116-optional-accessible`, issue #116); `src/components/OverflowTabBar.tsx`, `src/utils/tabGesture.ts`, `src/components/OverflowTabBar.stories.tsx`; regression from commit `74f3e3d`"
 ---
 
 # Verifying under trusted input
 
-Some defects exist **only under real user input**, and the whole vitest suite is structurally blind to them. Driving a Storybook story in headless Chrome over CDP is how Sway checks those, and it costs no new test stack: Storybook is already the component workshop ([[adr_headless_primitives]]), and Chrome ships on the machine.
+Some defects exist **only under real user input**, and the whole vitest suite is structurally blind to them. Driving a Storybook story in headless Chrome over CDP is how Tori checks those, and it costs no new test stack: Storybook is already the component workshop ([[adr_headless_primitives]]), and Chrome ships on the machine.
 
 The defect that forced this: every tab strip in the app was unclickable for a whole commit while 279 test files stayed green ([[gotcha_a_capture_phase_flag_cleared_in_a_queuemicrotask_is_gone_before_the_targets_listener_runs]]).
 

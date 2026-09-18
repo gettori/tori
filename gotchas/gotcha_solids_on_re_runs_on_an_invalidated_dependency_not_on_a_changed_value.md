@@ -2,7 +2,7 @@
 summary: Solid's on() reruns when a tracked dependency invalidates even if the recomputed value is identical, wrap it in a memo
 status: current
 updated: 2026-08-28
-source: "Features phase 8: the right panel modes inside a Feature (personal/sway, branch `feature-workspace`, #160 phase 2, commit e01f0cf); `src/panels/Editor/Editor.tsx` (`wsKey`, `watchKey`); see [[concept_right_panel_member_scope]], [[lesson_a_reset_key_must_name_what_changed]]"
+source: "Features phase 8: the right panel modes inside a Feature (personal/tori, branch `feature-workspace`, #160 phase 2, commit e01f0cf); `src/panels/Editor/Editor.tsx` (`wsKey`, `watchKey`); see [[concept_right_panel_member_scope]], [[lesson_a_reset_key_must_name_what_changed]]"
 ---
 
 # Solid's `on()` re-runs on an invalidated dependency, not on a changed value

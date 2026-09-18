@@ -2,7 +2,7 @@
 summary: Session scanner is Claude only now that pi's parser is gone, and sessions_running batches one pgrep per adapter
 status: current
 updated: 2026-07-31
-source: "Sway build plan (personal/sway); commit e121aeb; multi-agent + folder anchoring; commit 84f2930; adopted/historical sessions; commit 4f14660; Session worklog: status dot, touched files, panels (branch `topbar`); Phases 1-3"
+source: "Tori build plan (personal/tori); commit e121aeb; multi-agent + folder anchoring; commit 84f2930; adopted/historical sessions; commit 4f14660; Session worklog: status dot, touched files, panels (branch `topbar`); Phases 1-3"
 ---
 
 # Session scanner
@@ -49,11 +49,11 @@ page stays the Rust half.
 
 ## Adopted paths / Historical sessions
 
-A folder recreated at a path where old sessions still live would surface those ghosts as if they were its own. `adopted_paths` (in a **separate** `~/.config/sway/adopted.json`, never the watched `sway.toml`, which would loop the config watcher) marks folders whose sessions are "ours".
+A folder recreated at a path where old sessions still live would surface those ghosts as if they were its own. `adopted_paths` (in a **separate** `~/.config/tori/adopted.json`, never the watched `tori.toml`, which would loop the config watcher) marks folders whose sessions are "ours".
 
 - **Seed once** (`do_seed`): on the first discovery yielding ≥1 folder, adopt them all (so a fresh install never flags pre-existing folders); **never on empty discovery**. Idempotent via a `seeded` flag; the UI calls `seed_adopted(folders)` after each `get_config`.
 - **Verdict** (pure `folder_verdict`, unit-tested): in the set OR no sessions → Adopted; all sessions **postdate the folder's creation** (btime, mtime fallback) → **AutoAdopt** (persist); a session **predating** creation → **Historical**. `folder_historical(folder)` returns the bool, auto-adopting in passing.
-- **Auto-adopt on Sway-create**: `pub fn adopt` is called by `config::add_folder`, `worktree::create_worktree`, and the clone/bootstrap path (`adopt_path` on the target before it exists), so reusing a path over old sessions is not historical.
+- **Auto-adopt on Tori-create**: `pub fn adopt` is called by `config::add_folder`, `worktree::create_worktree`, and the clone/bootstrap path (`adopt_path` on the target before it exists), so reusing a path over old sessions is not historical.
 - **UI**: a historical folder renders its sessions under a collapsed "Historical (N)" row with an inline **Adopt** button (`adopt_path`, persisted across restart); a single session `<For>` is gated so the normal path is unchanged.
 
 ## Key files & entry points

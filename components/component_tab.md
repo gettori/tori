@@ -2,14 +2,14 @@
 summary: the shared tab pill throws with no Tabs.Root above it, and its close button stays hidden since a tablist owns only tabs
 status: current
 updated: 2026-08-16
-source: "Plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/sway, branch `111-tab-and-overflow-tab-bar`, issue #111, closing #114/#115/#132 and the `Tab` half of #116); `src/components/Tab/Tab.tsx`, `src/lib/tabs.ts`"
+source: "Plan \"Tab and OverflowTabBar onto Kobalte Tabs\" (personal/tori, branch `111-tab-and-overflow-tab-bar`, issue #111, closing #114/#115/#132 and the `Tab` half of #116); `src/components/Tab/Tab.tsx`, `src/lib/tabs.ts`"
 ---
 
 # Tab
 
 **Location:** `src/components/Tab/Tab.tsx` (+ `Tab.module.css`, `Tab.test.tsx`, `Tab.stories.tsx`)
 
-The shared tab pill, used by every strip in the app: the editor's file tabs, the editor's right-pane mode strip, the terminal's session tabs, and the Settings sections. It is a Kobalte tabs trigger wearing Sway's chrome, composed through [[component_lib_boundary]].
+The shared tab pill, used by every strip in the app: the editor's file tabs, the editor's right-pane mode strip, the terminal's session tabs, and the Settings sections. It is a Kobalte tabs trigger wearing Tori's chrome, composed through [[component_lib_boundary]].
 
 ## The two things it is
 

@@ -2,7 +2,7 @@
 summary: a manual poll trigger skips the shared rate floor by design, so a button wired to it can trip the endpoint's 429
 status: current
 updated: 2026-09-06
-source: "Agent usage preview plan (personal/sway, branch `agent-usage`), design pass after phase 5 . `src/utils/usagePoll.ts:70` . `src/utils/usageProbe.ts:169` . PR #169 . _2026-09-06_"
+source: "Agent usage preview plan (personal/tori, branch `agent-usage`), design pass after phase 5 . `src/utils/usagePoll.ts:70` . `src/utils/usageProbe.ts:169` . PR #169 . _2026-09-06_"
 ---
 
 # A trigger that skips the poll floor needs its own guard

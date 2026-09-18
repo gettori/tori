@@ -2,7 +2,7 @@
 summary: a poll floor keyed per agent while the work was per account left a second login refused forever with no error at all
 status: current
 updated: 2026-09-06
-source: "Agent usage preview plan (personal/sway, branch `agent-usage`), design pass after phase 5 . PR #169 . `src/utils/usageProbe.ts:90` . `src/utils/usagePoll.ts:58`"
+source: "Agent usage preview plan (personal/tori, branch `agent-usage`), design pass after phase 5 . PR #169 . `src/utils/usageProbe.ts:90` . `src/utils/usagePoll.ts:58`"
 ---
 
 # Key a rate floor to the unit the work is about

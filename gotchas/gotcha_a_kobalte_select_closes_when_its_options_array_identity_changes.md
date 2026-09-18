@@ -2,7 +2,7 @@
 summary: a fresh options array resets a Kobalte select's list state and closes an open listbox, swap only while closed
 status: current
 updated: 2026-08-15
-source: "plan \"Select wrapper and native select migration\" (personal/sway, branch `106-select`, issue #106); `src/components/Select/Select.tsx`, `Select.test.tsx` (\"an options list swapped after mount reaches the next open\"); `@kobalte/core@0.13.13`; see [[component_select]]"
+source: "plan \"Select wrapper and native select migration\" (personal/tori, branch `106-select`, issue #106); `src/components/Select/Select.tsx`, `Select.test.tsx` (\"an options list swapped after mount reaches the next open\"); `@kobalte/core@0.13.13`; see [[component_select]]"
 ---
 
 # A Kobalte select closes when its options array identity changes

@@ -2,14 +2,14 @@
 summary: transient commands like clone or sign in run as tabs in a synthetic Shells workspace keyed to nobody's branch unit
 status: current
 updated: 2026-09-06
-source: "plan \"Standalone terminals: Sway's own commands as tabs in a Shells workspace\" (personal/sway, branch `standalone-terminals`, issue #166), Phases 1 to 5; commits `aadacd3`, `30f1ea9`, `cce6db6`, `dd5c029`, `d4a59d3`, then the `+` and the selected row in `0bbbdcc`. Replaces the Jobs module (`src/panels/Jobs/`), deleted in `d4a59d3`."
+source: "plan \"Standalone terminals: Tori's own commands as tabs in a Shells workspace\" (personal/tori, branch `standalone-terminals`, issue #166), Phases 1 to 5; commits `aadacd3`, `30f1ea9`, `cce6db6`, `dd5c029`, `d4a59d3`, then the `+` and the selected row in `0bbbdcc`. Replaces the Jobs module (`src/panels/Jobs/`), deleted in `d4a59d3`."
 ---
 
 # Shells
 
 **Location:** `src/layout/shellsWorkspace.ts`, `src/utils/features.ts:114`, `src/panels/Terminal/Terminal.tsx:1045`, `src/panels/Terminal/commandStatus.ts`, `src/panels/LeftSidebar/LeftSidebar.tsx:278`
 
-Runs the transient commands Sway starts on the user's behalf: a clone, a bare-worktree bootstrap, an agent install/update/uninstall, a sign-in. Each one is a `kind: "command"` **tab** again, opened in **Shells**, a synthetic workspace keyed `shells:` that is nobody's branch unit. This is not a reversal of [[adr_jobs_leave_the_tab_model]] but its second implementation: the rule was never "these must leave the tab model", it was "these must not be keyed by a branch unit they do not have", and a synthetic key satisfies that exactly as `feature:<id>` already did.
+Runs the transient commands Tori starts on the user's behalf: a clone, a bare-worktree bootstrap, an agent install/update/uninstall, a sign-in. Each one is a `kind: "command"` **tab** again, opened in **Shells**, a synthetic workspace keyed `shells:` that is nobody's branch unit. This is not a reversal of [[adr_jobs_leave_the_tab_model]] but its second implementation: the rule was never "these must leave the tab model", it was "these must not be keyed by a branch unit they do not have", and a synthetic key satisfies that exactly as `feature:<id>` already did.
 
 ## Responsibilities
 

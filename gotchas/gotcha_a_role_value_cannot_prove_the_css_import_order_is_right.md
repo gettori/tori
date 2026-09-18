@@ -2,7 +2,7 @@
 summary: a role token reads correct regardless of import order since inline html props outrank the token layer, check by swap
 status: current
 updated: 2026-08-12
-source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/sway, branch `96-storybook`, issue #96); `.storybook/preview.tsx`, `src/App.tsx:52`"
+source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/tori, branch `96-storybook`, issue #96); `.storybook/preview.tsx`, `src/App.tsx:52`"
 ---
 
 # A role value cannot prove the CSS import order is right

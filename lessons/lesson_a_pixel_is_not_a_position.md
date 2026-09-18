@@ -2,7 +2,7 @@
 summary: restoring scroll from a raw pixel breaks across a rebuild since rewrap changes geometry, use scrollSnapshot instead
 status: current
 updated: 2026-08-20
-source: "The reveal path: verify the mismatch switch, then decide what it costs (personal/sway, branch `unified-tab-bar`), Phases 1 to 3, commits 6b0867b, be27425, dab0114, `src/panels/Editor/CodeEditor.tsx`, `src/utils/perfRecipe.ts`"
+source: "The reveal path: verify the mismatch switch, then decide what it costs (personal/tori, branch `unified-tab-bar`), Phases 1 to 3, commits 6b0867b, be27425, dab0114, `src/panels/Editor/CodeEditor.tsx`, `src/utils/perfRecipe.ts`"
 ---
 
 # A pixel offset is not a reading position, and CodeMirror will not pretend it is

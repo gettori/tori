@@ -2,7 +2,7 @@
 summary: a session stores the gitBranch it was created on, not the current branch, one started before git init logs under HEAD
 status: current
 updated: 2026-06-28
-source: Sway build plan (personal/sway); `src-tauri/src/sessions.rs`; commit e121aeb
+source: Tori build plan (personal/tori); `src-tauri/src/sessions.rs`; commit e121aeb
 ---
 
 # gitBranch is recorded at session creation

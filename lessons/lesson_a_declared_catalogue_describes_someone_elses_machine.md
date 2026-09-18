@@ -7,7 +7,7 @@ source: plan "Model catalogues from the harnesses themselves" (phases 1, 2 and 6
 
 # A declared catalogue describes someone else's machine
 
-Sway's adapters used to declare the models each harness could run. Four rows for claude, with context windows. The owner's verdict on that table was one sentence: **"it's a lie"**, and every measurement taken since agrees.
+Tori's adapters used to declare the models each harness could run. Four rows for claude, with context windows. The owner's verdict on that table was one sentence: **"it's a lie"**, and every measurement taken since agrees.
 
 ## What the table actually claimed
 

@@ -2,7 +2,7 @@
 summary: File.type is unreliable for source files since WebKit reports .ts as video/mp2t, classify by extension instead
 status: current
 updated: 2026-09-04
-source: "\"Labelled path attachments in the chat composer\" (personal/sway, branch `bugfix-260903`), phase 1, `src/utils/chatCompose.ts:117`, _2026-09-04_"
+source: "\"Labelled path attachments in the chat composer\" (personal/tori, branch `bugfix-260903`), phase 1, `src/utils/chatCompose.ts:117`, _2026-09-04_"
 ---
 
 # `File.type` is not evidence for a source file

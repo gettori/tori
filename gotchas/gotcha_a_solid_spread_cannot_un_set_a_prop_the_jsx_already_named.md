@@ -2,7 +2,7 @@
 summary: spreading undefined cannot remove a prop a test helper hard coded above it in JSX, the earlier attribute wins
 status: current
 updated: 2026-08-15
-source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/sway, branch `99-migrate-seven-dialogs`, issue #99); `src/components/Dialogs/ConfirmDialog.test.tsx:60`; _2026-08-12_; second instance from \"Menu onto Kobalte DropdownMenu and ContextMenu\" phase 6 (branch `103-menu`, issue #103); `src/components/Menu/Dropdown.tsx`"
+source: "plan \"Migrate the seven simple dialogs onto Dialog\" (personal/tori, branch `99-migrate-seven-dialogs`, issue #99); `src/components/Dialogs/ConfirmDialog.test.tsx:60`; _2026-08-12_; second instance from \"Menu onto Kobalte DropdownMenu and ContextMenu\" phase 6 (branch `103-menu`, issue #103); `src/components/Menu/Dropdown.tsx`"
 ---
 
 # A Solid spread cannot un-set a prop the JSX already named

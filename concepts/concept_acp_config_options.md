@@ -9,11 +9,11 @@ source: "\"Defer permissions to the harness, and grow to four harnesses\" (phase
 
 Everything a user can switch mid-session in an ACP chat travels as **one verb**: `session/set_config_option`. Not `session/set_model`, which does not exist in the crate at all, and not `session/set_mode`, which does exist in the spec and which **no measured agent answers**. The agent publishes its selectors at `session/new` and the client picks the one it wants **by category**, never by id.
 
-This is the single most load-bearing protocol fact in Sway's ACP client, and it is easy to get wrong in a way that looks like it works.
+This is the single most load-bearing protocol fact in Tori's ACP client, and it is easy to get wrong in a way that looks like it works.
 
 ## How it works
 
-An agent answers `session/new` with a set of `SessionConfigOption`s. Each carries a `category`, an id, a current value and its options. Sway gives three categories a bespoke control:
+An agent answers `session/new` with a set of `SessionConfigOption`s. Each carries a `category`, an id, a current value and its options. Tori gives three categories a bespoke control:
 
 - `Model` and `ModelConfig` -> the model picker (`acp.rs:129`)
 - `Mode` -> the permission-mode picker (`acp.rs:185`)
@@ -21,7 +21,7 @@ An agent answers `session/new` with a set of `SessionConfigOption`s. Each carrie
 
 **Everything else is kept and rendered generically** rather than ignored, which it used to be; see [[concept_generic_config_mirror]]. The same `config_options` mapping feeds the chat's mirror and the probe cache, so Settings can preview an agent's options before any chat exists.
 
-To switch, Sway sends `session/set_config_option` with that selector's **`configId`** and the chosen value. `acp_transport.rs`'s `ConfigOption` enum names the three so a failure can say which one it was, and `Switch` (`Unknown` / `Unsupported` / `Available(config_id)`) records per session whether the agent published each selector at all.
+To switch, Tori sends `session/set_config_option` with that selector's **`configId`** and the chosen value. `acp_transport.rs`'s `ConfigOption` enum names the three so a failure can say which one it was, and `Switch` (`Unknown` / `Unsupported` / `Available(config_id)`) records per session whether the agent published each selector at all.
 
 **The response is checked, not assumed.** The agent answers with its whole option set, so it says what is *now* selected, which need not be what was asked for. An agent that accepts the request and keeps running the old model is exactly the silent mismatch a picker must not have.
 
@@ -45,13 +45,13 @@ To switch, Sway sends `session/set_config_option` with that selector's **`config
 
 **Measured 2026-08-17, this stopped being a precaution.** Codex's effort selector has the id **`reasoning_effort`** under the category `thought_level`. OpenCode's ids happen to equal its categories, so id-matching works there and would have found no effort control on Codex at all. The same probe found four options where opencode sends two, the fourth being `collaboration_mode` (`default`, `plan`), categorized as itself.
 
-**The v1 schema is asymmetric and it costs a compile cycle if you miss it.** An option *announcement* uses `id`, its entries use `value`, and the *request* uses `configId`. OpenCode sends `id`/`value`, which is v1-correct; reading it with the v2 types would fail to deserialise. Sway is on v1 throughout, so a future move to protocol v2 changes the wire, not just the types.
+**The v1 schema is asymmetric and it costs a compile cycle if you miss it.** An option *announcement* uses `id`, its entries use `value`, and the *request* uses `configId`. OpenCode sends `id`/`value`, which is v1-correct; reading it with the v2 types would fail to deserialise. Tori is on v1 throughout, so a future move to protocol v2 changes the wire, not just the types.
 
 **Wiring modes through this was load-bearing rather than tidy, and the reason is a real safety hole.** Before phase 8, `set_mode` recorded a pending mode and sent `session/set_mode` into the void, so an ACP mode switch was a no-op. Measured: `codex-acp` **ignores the user's own `approval_policy` and `sandbox_mode`** from `~/.codex/config.toml` (verified via `config/read`: both set, the agent writes anyway) and applies its own `agent` mode, which approves edits inside *and outside* the workspace silently. So without this route, Codex's permission prompt was a capability [[concept_harness_capability_tiers]] published and no user could reach.
 
 **Effort is a real ACP concept, against what the transport first asserted.** `ThoughtLevel` is its own category and `codex-acp` publishes six levels under it.
 
-Sway used to publish only the five its `Effort` enum could carry and **dropped `ultra`**, because offering a level `set_model` had no way to send is the picker-that-appears-to-switch failure again. **That enum is gone and nothing is dropped now** (commit 8d67733): a level is a plain string, so it goes out exactly as the agent spelled it. The narrowing existed to protect a closed type, and with the type open there is nothing left for it to protect - filtering a published level against a list Sway keeps would be Sway deciding which of the agent's own words it approves of. Widening the enum instead would have moved one agent's vocabulary into a type two harnesses share, which is the trap `PermissionMode` already records; the day a third harness disagreed was the day it became a string.
+Tori used to publish only the five its `Effort` enum could carry and **dropped `ultra`**, because offering a level `set_model` had no way to send is the picker-that-appears-to-switch failure again. **That enum is gone and nothing is dropped now** (commit 8d67733): a level is a plain string, so it goes out exactly as the agent spelled it. The narrowing existed to protect a closed type, and with the type open there is nothing left for it to protect - filtering a published level against a list Tori keeps would be Tori deciding which of the agent's own words it approves of. Widening the enum instead would have moved one agent's vocabulary into a type two harnesses share, which is the trap `PermissionMode` already records; the day a third harness disagreed was the day it became a string.
 
 **The option set follows the model, measured on both agents.** An agent publishes its options once, on `session/new`, which invites the assumption that the set describes the *session*. It describes the session's **current model**. Measured 2026-08-21 with `dev/acp-probe.mjs --per-model`, which switches model inside one session and diffs the answer:
 
@@ -63,7 +63,7 @@ Sway used to publish only the five its `Effort` enum could carry and **dropped `
 | | `gpt-5.6-luna` | `low, medium, high, xhigh, max` |
 | | `gpt-5.4-mini` | `low, medium, high, xhigh` |
 
-Two consequences. **What varies is a bespoke category, not a mirrored one:** `mirroredOptions` drops `model`, `mode` and `thought_level`, so the control this moves is the *effort picker*, not [[concept_generic_config_mirror]]. And **a cache that copies one session's set onto every model row is wrong for all but one of them** - Sway did exactly that, so a draft on `gpt-5.4-mini` offered `ultra`, a level that model refuses. That is the offer-what-cannot-be-sent failure [[lesson_a_declared_catalogue_describes_someone_elses_machine]] retired the model tables for, reached from the other direction. [[component_catalog_probe]] now switches to each model and caches its own answer.
+Two consequences. **What varies is a bespoke category, not a mirrored one:** `mirroredOptions` drops `model`, `mode` and `thought_level`, so the control this moves is the *effort picker*, not [[concept_generic_config_mirror]]. And **a cache that copies one session's set onto every model row is wrong for all but one of them** - Tori did exactly that, so a draft on `gpt-5.4-mini` offered `ultra`, a level that model refuses. That is the offer-what-cannot-be-sent failure [[lesson_a_declared_catalogue_describes_someone_elses_machine]] retired the model tables for, reached from the other direction. [[component_catalog_probe]] now switches to each model and caches its own answer.
 
 **A live list wins, and never merges.** `SessionStarted`/`SessionReady` carry `models` and `modes`, and `pickableModels`/`pickableModes` take the live list over the adapter's TOML table. So an ACP adapter declaring no models is not a gap: it is what makes the picker show the user's own. The catalogue is **per account** - OpenCode lists the providers that user has authenticated - which is why a bundled `[[chat.models]]` table would be a guess about somebody else's account.
 

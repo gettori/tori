@@ -2,12 +2,12 @@
 summary: every save becomes one git blob ref'd by worktree and hashed path, since a repo relative path is not a legal ref name
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface (personal/sway, branch `wave-6`); Phase 15, issue #51, commit b622f33; `src-tauri/src/local_history.rs`, `src/panels/Editor/LocalHistory.tsx`"
+source: "Editor Wave 6: the IDE surface (personal/tori, branch `wave-6`); Phase 15, issue #51, commit b622f33; `src-tauri/src/local_history.rs`, `src/panels/Editor/LocalHistory.tsx`"
 ---
 
 # Local history: one blob per save, ref'd by worktree and hashed path
 
-Every save the editor makes is recorded as a git blob, ref'd at `refs/sway/localhistory/<worktreeKey>/<pathHash>/<ts>`. It answers the question `git log` never can: not what was committed, but what was *had* - the edit made, saved and replaced ten minutes later without ever being staged. Restoring writes those bytes back to the file and touches nothing else, so whatever was staged survives it.
+Every save the editor makes is recorded as a git blob, ref'd at `refs/tori/localhistory/<worktreeKey>/<pathHash>/<ts>`. It answers the question `git log` never can: not what was committed, but what was *had* - the edit made, saved and replaced ten minutes later without ever being staged. Restoring writes those bytes back to the file and touches nothing else, so whatever was staged survives it.
 
 ## How it works
 
@@ -36,7 +36,7 @@ Every save the editor makes is recorded as a git blob, ref'd at `refs/sway/local
 
 - [[component_turn_checkpoints]] — the whole-tree snapshot family this deliberately does not copy.
 - [[concept_path_keyed_workspace_stores]] — the frontend siblings that follow the same rename and trash.
-- [[concept_synthetic_editor_tabs]] — `sway://localhistory/<path>?ws=` is one of the two kinds this wave added.
+- [[concept_synthetic_editor_tabs]] — `tori://localhistory/<path>?ws=` is one of the two kinds this wave added.
 - [[lesson_a_persisted_key_must_not_depend_on_an_unspecified_hash]] — why FNV-1a is written out.
 - [[gotcha_git_capture_trims_and_git_output_does_not]] — the trap on the read path.
 - [[gotcha_a_repo_relative_path_is_not_a_legal_ref_path]] — why the path is hashed at all.

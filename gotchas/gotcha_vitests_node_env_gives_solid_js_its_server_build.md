@@ -2,7 +2,7 @@
 summary: vitest's node environment resolves solid-js to its server build, importing lucide-solid throws a client only API error
 status: current
 updated: 2026-07-31
-source: Space icons & reordering (personal/sway, branch code-mirror-6); `vitest.config.ts` (inline + conditions), `src/components/Icon/iconRegistry.test.ts`; commit 68920f0; see [[component_project_discovery]]
+source: Space icons & reordering (personal/tori, branch code-mirror-6); `vitest.config.ts` (inline + conditions), `src/components/Icon/iconRegistry.test.ts`; commit 68920f0; see [[component_project_discovery]]
 ---
 
 # vitest's node env gives solid-js its server build

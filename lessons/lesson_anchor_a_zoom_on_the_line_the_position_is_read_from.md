@@ -2,7 +2,7 @@
 summary: keeping a PDF page's height fraction fixed across a zoom is not keeping the page steady, since it reads a fixed line
 status: current
 updated: 2026-09-07
-source: plan "PDF viewer tab" (personal/sway, branch `logo-update-260907`), phase 2 . `src/panels/Editor/PdfView.tsx:229`, `src/panels/Editor/pdfLayout.ts:205` . commit `2f19355`
+source: plan "PDF viewer tab" (personal/tori, branch `logo-update-260907`), phase 2 . `src/panels/Editor/PdfView.tsx:229`, `src/panels/Editor/pdfLayout.ts:205` . commit `2f19355`
 ---
 
 # Re-anchor a zoom on the line the position is read from

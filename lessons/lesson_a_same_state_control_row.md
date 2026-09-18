@@ -2,7 +2,7 @@
 summary: a perf control must run in the same pass and state as the row it controls, a gap seen only across runs is machine noise
 status: current
 updated: 2026-08-20
-source: "The reveal path: verify the mismatch switch, then decide what it costs (personal/sway, branch `unified-tab-bar`), Phases 1 and 3, commits 6b0867b, dab0114, `src/utils/perfRecipe.ts`"
+source: "The reveal path: verify the mismatch switch, then decide what it costs (personal/tori, branch `unified-tab-bar`), Phases 1 and 3, commits 6b0867b, dab0114, `src/utils/perfRecipe.ts`"
 ---
 
 # The control has to be in the same run, and a gap that moves between runs is not a gap

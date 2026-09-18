@@ -2,14 +2,14 @@
 summary: Switch is for a flip that is the action, Checkbox for an unconfirmed option, decided per site rather than by look
 status: current
 updated: 2026-08-15
-source: "plan \"Checkbox, Switch and Slider wrappers and control migration\" (personal/sway, branch `107-checkbox-switch-slider`, issue #107, part of #93); commit 121f892 (wrappers); `src/components/Checkbox/Checkbox.tsx`, `src/components/Switch/Switch.tsx`, `src/components/Slider/Slider.tsx`"
+source: "plan \"Checkbox, Switch and Slider wrappers and control migration\" (personal/tori, branch `107-checkbox-switch-slider`, issue #107, part of #93); commit 121f892 (wrappers); `src/components/Checkbox/Checkbox.tsx`, `src/components/Switch/Switch.tsx`, `src/components/Slider/Slider.tsx`"
 ---
 
 # Checkbox, Switch and Slider
 
 **Location:** `src/components/Checkbox/`, `src/components/Switch/`, `src/components/Slider/` (key files: `Checkbox.tsx`, `Switch.tsx`, `Slider.tsx`, and the `lib/` modules `checkbox.ts`, `switch.ts`, `slider.ts`)
 
-The boolean-and-continuous control family: Kobalte's checkbox, switch and slider behind Sway's chrome and Sway's API. Built as one ticket because they share a shape (a hidden native input, a drawn control, an optional label) and because deciding *which* of them a given site should be is the interesting part. Ends the native `type="checkbox"` and `type="range"` in `src/`: 18 checkboxes and one range input migrated, leaving nothing but the wrappers' own doc comments.
+The boolean-and-continuous control family: Kobalte's checkbox, switch and slider behind Tori's chrome and Tori's API. Built as one ticket because they share a shape (a hidden native input, a drawn control, an optional label) and because deciding *which* of them a given site should be is the interesting part. Ends the native `type="checkbox"` and `type="range"` in `src/`: 18 checkboxes and one range input migrated, leaving nothing but the wrappers' own doc comments.
 
 ## The semantic split (the part worth remembering)
 
@@ -23,7 +23,7 @@ Checkbox or Switch is a **semantic** choice, not a visual one, decided per site:
 
 - **Own the drawn control**: the box and tick, the track and thumb, the fill, the focus ring, and the checked and disabled states, all on [[concept_design_token_system]] tokens and scaled with `--ui-scale`.
 - **Own the accessible wiring**: `aria-describedby` is passed through to the native input (not the root), because the sr-only hints the panels keep have to be announced against the control itself.
-- **Do NOT own the label's typography.** `color` and `font-size` are inherited. The control is the wrapper's; the words beside it belong to the caller's row, and those rows disagree deliberately (a dialog option is `--sway-text-lg`, a panel filter is muted and smaller). Hard-coding them was a real regression, see [[lesson_a_wrapper_default_restyles_its_call_sites]].
+- **Do NOT own the label's typography.** `color` and `font-size` are inherited. The control is the wrapper's; the words beside it belong to the caller's row, and those rows disagree deliberately (a dialog option is `--tori-text-lg`, a panel filter is muted and smaller). Hard-coding them was a real regression, see [[lesson_a_wrapper_default_restyles_its_call_sites]].
 - **Do NOT own layout.** The caller's `class` adds it, the same chrome split [[component_popover]] documents.
 - **Do NOT do multi-thumb ranges.** `Slider` unwraps Kobalte's `number[]` to a scalar at the wrapper rather than at every call site; a real range would get its own wrapper.
 

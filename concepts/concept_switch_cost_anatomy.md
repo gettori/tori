@@ -2,7 +2,7 @@
 summary: a worktree switch is not backend or script time, it is one animation frame paying for panes reparenting stage hosts
 status: current
 updated: 2026-08-20
-source: "The reveal path: verify the mismatch switch, then decide what it costs (personal/sway, branch `unified-tab-bar`), Phases 1 to 3, commits 6b0867b, be27425, dab0114, `src/utils/perfTrace.ts`, `src/utils/perfRecipe.ts`, `scripts/trace-report.mjs`"
+source: "The reveal path: verify the mismatch switch, then decide what it costs (personal/tori, branch `unified-tab-bar`), Phases 1 to 3, commits 6b0867b, be27425, dab0114, `src/utils/perfTrace.ts`, `src/utils/perfRecipe.ts`, `scripts/trace-report.mjs`"
 ---
 
 # What a worktree switch actually spends its time on

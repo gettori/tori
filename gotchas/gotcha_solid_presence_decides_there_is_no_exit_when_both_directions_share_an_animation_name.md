@@ -2,7 +2,7 @@
 summary: reusing one keyframes name for enter and exit makes solid presence see no change and tear the panel down instantly
 status: current
 updated: 2026-08-16
-source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/sway, branch `130-re-audit-dialog-and-tooltip`, issue #130); `node_modules/solid-presence/dist/index.js`, `@kobalte/core` 0.13.13; `src/components/Dialog/Dialog.module.css`"
+source: "plan \"Re-audit Dialog and Tooltip against the solid-ui reference\" (personal/tori, branch `130-re-audit-dialog-and-tooltip`, issue #130); `node_modules/solid-presence/dist/index.js`, `@kobalte/core` 0.13.13; `src/components/Dialog/Dialog.module.css`"
 ---
 
 # `solid-presence` decides there is no exit when both directions share an animation name

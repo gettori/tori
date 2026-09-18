@@ -2,12 +2,12 @@
 summary: project search runs three backends only to narrow lines, while one compiled regex alone decides every match and offset
 status: current
 updated: 2026-08-01
-source: "Search panel v2: toggles, ignored files, replace-in-files (personal/sway, branch `wave-1-2`); all four phases; `src-tauri/src/search.rs:126` (`canonical_pattern`), `:282` (`finalize`), `:585` (`expand_at`); PR #81; issue #11"
+source: "Search panel v2: toggles, ignored files, replace-in-files (personal/tori, branch `wave-1-2`); all four phases; `src-tauri/src/search.rs:126` (`canonical_pattern`), `:282` (`finalize`), `:585` (`expand_at`); PR #81; issue #11"
 ---
 
 # One canonical matcher, three candidate finders
 
-Project search runs on three interchangeable backends (`rg --json`, `git grep`, a plain recursive `grep`), and they do **not** agree about what a match is. Rather than configure each one to imitate the others, Sway inverts the arrangement: a single `regex::Regex` compiled from the user's options is the only thing that decides whether a line matched and where the match sits, and the three backends are demoted to narrowing down which lines are worth showing it.
+Project search runs on three interchangeable backends (`rg --json`, `git grep`, a plain recursive `grep`), and they do **not** agree about what a match is. Rather than configure each one to imitate the others, Tori inverts the arrangement: a single `regex::Regex` compiled from the user's options is the only thing that decides whether a line matched and where the match sits, and the three backends are demoted to narrowing down which lines are worth showing it.
 
 The payoff arrives at replace time. Replace compiles the same pattern from the same `(query, options)` and re-finds the match at the offset the panel is displaying, so the span you approve in a preview and the span that gets written are the same span **by construction**, not by two implementations happening to agree. Parity became a property of the design instead of a matrix to maintain.
 

@@ -2,7 +2,7 @@
 summary: line provenance shows a commit if blame has one, else the turn that wrote it, replayed via git diff -U0 over trees
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phases 8 and 9 (commits ad173e9, 6dc425f); `src-tauri/src/blame.rs`, `src-tauri/src/agent_lines.rs`, `src/utils/blame.ts`, `src/utils/agentLines.ts`, `src/panels/Editor/blameGutter.ts`"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phases 8 and 9 (commits ad173e9, 6dc425f); `src-tauri/src/blame.rs`, `src-tauri/src/agent_lines.rs`, `src/utils/blame.ts`, `src/utils/agentLines.ts`, `src/panels/Editor/blameGutter.ts`"
 ---
 
 # Line provenance: a commit if it has one, otherwise a turn
@@ -26,7 +26,7 @@ Every line in the editor can say where it came from. Two marker layers answer th
 - **The intervals have to tile, and that is the whole correctness story.** A turn that wrote the file through a `Bash` heredoc records no path, so it is not in the plan, but it still moved the lines. The plan therefore carries **unnamed gap steps** between named turns plus a tail step to the live tree.
 - **The reverse index is `{turns: [ts], files: {path: [index]}}`, append-only.** Per-turn records answer "what did turn N write"; a line asks the opposite, and answering it from those records is 200 file reads to find 3. The verify is proven by deleting every per-turn record and asking again.
 - **A turn that named no file is still registered**, so "turn 12" is the session's own numbering rather than a count of the turns that happened to write something.
-- **Sessions come from the caller, not from the refs**, because a bare repo's worktrees share one ref store and `refs/sway/checkpoint/*` lists sessions whose trees describe a different set of files.
+- **Sessions come from the caller, not from the refs**, because a bare repo's worktrees share one ref store and `refs/tori/checkpoint/*` lists sessions whose trees describe a different set of files.
 - The cache is dropped in `flushAgentWrites` **before** the "does this path have a buffer" test, so a file cached while open, closed, then rewritten does not come back stale.
 - The walk is capped at **40 turns, newest kept**, and what the cap costs is stated: a dropped turn's lines read as written by nobody, never as written by the wrong turn.
 

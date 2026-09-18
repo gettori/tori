@@ -2,7 +2,7 @@
 summary: a new test file adding load can push an unrelated test past its timeout, reading as a regression in the wrong suite
 status: current
 updated: 2026-08-15
-source: "plan \"Select wrapper and native select migration\" (personal/sway, branch `106-select`, issue #106); `vitest.config.ts` (dom project `testTimeout`); `src/components/Dialogs/ProjectIconDialog.test.tsx`, `src/components/Dialogs/SpaceDialog.test.tsx`"
+source: "plan \"Select wrapper and native select migration\" (personal/tori, branch `106-select`, issue #106); `vitest.config.ts` (dom project `testTimeout`); `src/components/Dialogs/ProjectIconDialog.test.tsx`, `src/components/Dialogs/SpaceDialog.test.tsx`"
 ---
 
 # An added test file can fail an unrelated one, and the timeout is the bug

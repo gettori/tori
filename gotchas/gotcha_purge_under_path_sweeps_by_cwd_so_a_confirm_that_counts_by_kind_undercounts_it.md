@@ -2,7 +2,7 @@
 summary: PURGE_UNDER_PATH closes every tab under the doomed cwd, but the delete confirm excludes command tabs as transient
 status: current
 updated: 2026-09-06
-source: "plan \"Standalone terminals: Sway's own commands as tabs in a Shells workspace\" (personal/sway, branch `standalone-terminals`, issue #166), Phase 4; `src/panels/Terminal/Terminal.tsx:838`, `src/panels/LeftSidebar/LeftSidebar.tsx:678`; commit `dd5c029`"
+source: "plan \"Standalone terminals: Tori's own commands as tabs in a Shells workspace\" (personal/tori, branch `standalone-terminals`, issue #166), Phase 4; `src/panels/Terminal/Terminal.tsx:838`, `src/panels/LeftSidebar/LeftSidebar.tsx:678`; commit `dd5c029`"
 ---
 
 # `PURGE_UNDER_PATH` sweeps by cwd, so a confirm that counts by kind undercounts it

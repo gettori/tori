@@ -2,7 +2,7 @@
 summary: the CM6 pane keeps one EditorView per open file and now parks views instead of rebuilding them when a pane is re keyed
 status: current
 updated: 2026-08-20
-source: "CM6 editor migration plan + Shared tab (personal/sway, branch code-mirror-6); commits 462b49e->bab6e0a (Phases 2 to 6), _shared-tab_; Session worklog: status dot, touched files, panels (branch `topbar`); Phase 3; Review-to-prompt + commit flow (branch `topbar`); ReviewPanel -> [[component_changes_panel]]; Editor wave-1 opener: multi-cursor, editing polish, language packs (branch `editor-improvements`); PR #80; Editor wave 7: language intelligence depth (branch `wave-7`); issues #63-#68; commits c4750d7 -> d7a6e3e; The reveal path: verify the mismatch switch, then decide what it costs (branch `unified-tab-bar`), Phases 2 and 3, commits be27425, dab0114"
+source: "CM6 editor migration plan + Shared tab (personal/tori, branch code-mirror-6); commits 462b49e->bab6e0a (Phases 2 to 6), _shared-tab_; Session worklog: status dot, touched files, panels (branch `topbar`); Phase 3; Review-to-prompt + commit flow (branch `topbar`); ReviewPanel -> [[component_changes_panel]]; Editor wave-1 opener: multi-cursor, editing polish, language packs (branch `editor-improvements`); PR #80; Editor wave 7: language intelligence depth (branch `wave-7`); issues #63-#68; commits c4750d7 -> d7a6e3e; The reveal path: verify the mismatch switch, then decide what it costs (branch `unified-tab-bar`), Phases 2 and 3, commits be27425, dab0114"
 ---
 
 # CM6 editor pane
@@ -36,10 +36,10 @@ prompt host for command-initiated text input, since it already owns `askText`.
 
 Eight phases turned this from a pane that *shows* code with one hard-coded TS server into one that understands it. The editor-side surface, in order of where it lives:
 
-- **Cross-file navigation and rename.** Go-to-definition, find-references (the library's own panel) and rename all leave the file they started in, through [[concept_lsp_workspace_bridge]]. The rename is Sway's own command, takes a working-tree backstop before the first write, dispatches into the shown buffer while *writing* every other file, and asks before saving a dirty background tab rather than clobbering it.
+- **Cross-file navigation and rename.** Go-to-definition, find-references (the library's own panel) and rename all leave the file they started in, through [[concept_lsp_workspace_bridge]]. The rename is Tori's own command, takes a working-tree backstop before the first write, dispatches into the shown buffer while *writing* every other file, and asks before saving a dirty background tab rather than clobbering it.
 - **Outline tab + palette symbol modes.** A fifth `RightMode`, self-hiding when the server offers no provider, plus `@` (this file) and `#` (every live session) in quick-open. All three read one store — [[component_editor_symbols]].
 - **Format-on-save.** The project's own Biome or Prettier, off by default, applied as a minimal change so the caret does not move — [[component_project_formatter]]. `lsp-format` (⇧⌥F) falls back to the language server where a project has no formatter.
-- **Semantic highlighting.** Server-resolved token colours layered over the grammar's guess; the `t.local(t.variableName)` parameter proxy in `swayHighlight` is gone with it — [[concept_semantic_token_layering]].
+- **Semantic highlighting.** Server-resolved token colours layered over the grammar's guess; the `t.local(t.variableName)` parameter proxy in `toriHighlight` is gone with it — [[concept_semantic_token_layering]].
 - **Vim mode**, off by default, in a compartment so toggling lands where the caret already is. `vimConf.of([])` sits **first** in `commonExtensions`, which is load-bearing: for a key vim and a keymap both claim, whichever is earlier takes it ([[gotcha_a_keymap_extension_that_stoppropagations_kills_window_scope_hotkeys]]). Filled by `syncVim` on every swap, the same arrangement `blameConf` uses.
 - **Four LSP commands in `commands.ts`** at `window` scope, so they reach the palette and the ⌘/ sheet with Mac-reachable combos beside the library's function-row defaults — plus a Cmd-click go-to-definition the library has no equivalent of.
 
@@ -76,7 +76,7 @@ own page; this is the map:
   [[concept_editor_tab_workspaces]].
 
 Two new right-panel modes (`todos`, `tasks`) and two new synthetic tab kinds
-(`sway://search`, `sway://localhistory`) came with them.
+(`tori://search`, `tori://localhistory`) came with them.
 
 ## Language intelligence got deep (2026-08-08, wave 7)
 
@@ -99,7 +99,7 @@ requests. The map:
   the client's extension list is written out by hand.
   [[concept_resolving_completion]]
 - **Schema-validated JSON and YAML (#65)** - two more bundled servers, the
-  SchemaStore catalog, and two schemas for Sway's own settings files.
+  SchemaStore catalog, and two schemas for Tori's own settings files.
   [[concept_schema_backed_json]]
 - **Peek (#66)** - a block widget hosting a read-only nested view, opening no tab
   and unknown to the language workspace. [[component_peek_view]]
@@ -174,7 +174,7 @@ Does NOT: provide a debugger, an extension marketplace, or remote development (t
 
 - `src/panels/Editor/CodeEditor.tsx` — `buffers` map, `swapTo`, `saveActive`, `refreshDiff`, `handleExternalChange`/conflict banner, `applyGoto`, `lspPluginFor` per buffer.
 - `src/panels/Editor/Editor.tsx` — the `Tab` union + `tabId`, tab bar, `gotoTarget`, watcher startup, the Outline/Problems self-hiding right-panel modes, app-close dirty guard. It only *stops* servers on a project switch now; `CodeEditor.swapTo` starts one lazily.
-- `src/panels/Editor/{swayWorkspace,lspRename,lspRenameCommand,lspSymbols,lspSemanticTokens,semanticHighlight,formatOnSave,docDiff,vimMode}.ts` — the wave-4 modules, each split out of `CodeEditor` so its decisions are testable without CodeMirror in jsdom.
+- `src/panels/Editor/{toriWorkspace,lspRename,lspRenameCommand,lspSymbols,lspSemanticTokens,semanticHighlight,formatOnSave,docDiff,vimMode}.ts` — the wave-4 modules, each split out of `CodeEditor` so its decisions are testable without CodeMirror in jsdom.
 - `src/panels/Editor/SessionPanel.tsx`, `src/panels/Editor/TranscriptViewer.tsx` — see [[component_session_worklog]].
 - `src/diffGutter.ts` — gutter extension + `setDiffMarkers`.
 - `src/components/QuickOpen.tsx` — ⌘P fuzzy finder over `list_project_files`.

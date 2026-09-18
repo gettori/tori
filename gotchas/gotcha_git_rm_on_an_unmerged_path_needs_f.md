@@ -2,7 +2,7 @@
 summary: git refuses to rm a path with unmerged entries unless forced, accepting a delete on a delete/modify conflict needs it
 status: current
 updated: 2026-08-02
-source: "Editor wave 2: git depth (personal/sway, branch `wave-2`); Phases 12, 13; `src-tauri/src/conflict.rs` (`git_conflict_resolve`), `src/utils/conflictAsk.ts`; commits 167ac63, 9cdbe93"
+source: "Editor wave 2: git depth (personal/tori, branch `wave-2`); Phases 12, 13; `src-tauri/src/conflict.rs` (`git_conflict_resolve`), `src/utils/conflictAsk.ts`; commits 167ac63, 9cdbe93"
 ---
 
 # `git rm` on an unmerged path needs `-f`

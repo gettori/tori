@@ -2,7 +2,7 @@
 summary: the menu idioms guard flags any lone fireEvent.mouseDown with no nearby pointerDown, since dismissal needs pointerdown
 status: current
 updated: 2026-09-07
-source: plan "Chat composer Tier 1" (personal/sway, branch `composer-260907`), phase 3 . `src/test/menuIdioms.test.ts:77` . `src/panels/Chat/QuoteSelection.test.tsx` . commit `c3eb12f` . _2026-09-07_
+source: plan "Chat composer Tier 1" (personal/tori, branch `composer-260907`), phase 3 . `src/test/menuIdioms.test.ts:77` . `src/panels/Chat/QuoteSelection.test.tsx` . commit `c3eb12f` . _2026-09-07_
 ---
 
 # `menuIdioms.test.ts` flags a lone `fireEvent.mouseDown` in any test file

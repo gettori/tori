@@ -2,7 +2,7 @@
 summary: the Agents settings page keeps its own health resource apart from the shared store, a rename needs onRecheck to refresh
 status: current
 updated: 2026-09-05
-source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/sway, branch `multiaccount`), follow-on; `src/panels/Settings/panes/AgentsPane/AgentsSection.tsx:267`; commit `ae1d87e`"
+source: "plan \"Multi-account: pick, lock and default an account per session\" (personal/tori, branch `multiaccount`), follow-on; `src/panels/Settings/panes/AgentsPane/AgentsSection.tsx:267`; commit `ae1d87e`"
 ---
 
 # The Agents page holds its own copy of the health sweep

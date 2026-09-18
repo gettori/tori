@@ -2,7 +2,7 @@
 summary: a var fallback site renders fine even when the custom property is undefined, the value stays frozen ignoring data theme
 status: current
 updated: 2026-07-13
-source: Central configurable UI system (personal/sway, branch code-mirror-6); `src/styles/tokens.css` (`--danger`/`--warn`/`--warn-strong`); commit 932f8ef
+source: Central configurable UI system (personal/tori, branch code-mirror-6); `src/styles/tokens.css` (`--danger`/`--warn`/`--warn-strong`); commit 932f8ef
 ---
 
 # var-fallback tokens silently hide un-themed values

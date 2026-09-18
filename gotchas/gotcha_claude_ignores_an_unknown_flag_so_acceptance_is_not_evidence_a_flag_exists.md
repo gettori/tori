@@ -2,7 +2,7 @@
 summary: the claude CLI exits 0 on an unknown flag, so acceptance proves nothing, only a validated rejection names real flags
 status: current
 updated: 2026-08-21
-source: plan "The composer offers every lever the agent published" (phase 2, personal/sway, branch `unified-chat`), `src-tauri/src/chat/claude.rs` (`THINKING_MODES`), commit 7b9522b, [[lesson_probe_the_capability_before_building_its_control]], _2026-08-21_
+source: plan "The composer offers every lever the agent published" (phase 2, personal/tori, branch `unified-chat`), `src-tauri/src/chat/claude.rs` (`THINKING_MODES`), commit 7b9522b, [[lesson_probe_the_capability_before_building_its_control]], _2026-08-21_
 ---
 
 # claude ignores an unknown flag, so acceptance is not evidence a flag exists

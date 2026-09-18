@@ -2,7 +2,7 @@
 summary: inferring a picker item's kind by parsing its label misroutes a local branch literally named like a remote one
 status: current
 updated: 2026-07-11
-source: Unified Attach Existing Branch -> Add Branch/Worktree (personal/sway, branch code-mirror-6); `src/components/Sidebar.tsx` (`addBranch`, `addWorktree`)
+source: Unified Attach Existing Branch -> Add Branch/Worktree (personal/tori, branch code-mirror-6); `src/components/Sidebar.tsx` (`addBranch`, `addWorktree`)
 ---
 
 # Don't encode a picker item's kind in its display string

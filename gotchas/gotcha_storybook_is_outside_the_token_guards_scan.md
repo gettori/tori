@@ -2,7 +2,7 @@
 summary: check tokens mjs walks src only, so a typo'd token name in storybook preview css paints nothing and fails silently
 status: current
 updated: 2026-08-12
-source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/sway, branch `96-storybook`, issue #96); `.storybook/preview.css`, `scripts/check-tokens.mjs:42`"
+source: "plan \"Storybook 10 workshop with a11y addon and theme toolbar\" (personal/tori, branch `96-storybook`, issue #96); `.storybook/preview.css`, `scripts/check-tokens.mjs:42`"
 ---
 
 # `.storybook/` is outside the token guard's scan

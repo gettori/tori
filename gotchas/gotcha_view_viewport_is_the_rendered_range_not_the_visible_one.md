@@ -2,7 +2,7 @@
 summary: codemirror's view.viewport is the rendered range plus a margin, for a short file it is the whole document
 status: current
 updated: 2026-08-05
-source: "Editor Wave 6: the IDE surface, Phase 8 (personal/sway, branch `wave-6`); `src/panels/Editor/stickyScroll.ts:158`; commit 2185971"
+source: "Editor Wave 6: the IDE surface, Phase 8 (personal/tori, branch `wave-6`); `src/panels/Editor/stickyScroll.ts:158`; commit 2185971"
 ---
 
 # `view.viewport` is the rendered range, not the visible one

@@ -2,7 +2,7 @@
 summary: a capture phase window keydown listener steals Escape from a modal opened over it, put the handler on the panel instead
 status: current
 updated: 2026-08-11
-source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/sway, branch `settings`, issue #91); Phase 2 self-review; `src/panels/Settings/Settings.tsx` (`onPanelKeyDown`); commit 782c8d2"
+source: "Settings redesign: horizontal tab strip with per-tab search counts (personal/tori, branch `settings`, issue #91); Phase 2 self-review; `src/panels/Settings/Settings.tsx` (`onPanelKeyDown`); commit 782c8d2"
 ---
 
 # A capture-phase `window` listener reaches over a modal opened on top of you

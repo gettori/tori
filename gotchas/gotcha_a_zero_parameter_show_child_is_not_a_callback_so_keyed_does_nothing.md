@@ -2,7 +2,7 @@
 summary: a Show child with no declared parameter is not a render callback, so it memoizes forever and keyed does nothing
 status: current
 updated: 2026-08-16
-source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/sway, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); `src/components/Combobox/Combobox.tsx:190`; commit `9d471b7`"
+source: "plan \"Consolidate the filter-and-pick surfaces onto one Kobalte Combobox\" (personal/tori, branch `110-pickermodal-and-chatpicker`, issue #110, PR #140); `src/components/Combobox/Combobox.tsx:190`; commit `9d471b7`"
 ---
 
 # A zero-parameter `Show` child is not a callback, so `keyed` does nothing

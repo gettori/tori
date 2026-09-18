@@ -2,7 +2,7 @@
 summary: GitHub's update-branch answers 202 before the queued merge runs, so state must be re-read, and a refusal answers 405
 status: current
 updated: 2026-08-03
-source: "Editor Wave 3: GitHub as a first-class surface (personal/sway, branch `wave-3`); Phase 13; `src-tauri/src/forge/github.rs` (`update_branch`); commit 945c1bd"
+source: "Editor Wave 3: GitHub as a first-class surface (personal/tori, branch `wave-3`); Phase 13; `src-tauri/src/forge/github.rs` (`update_branch`); commit 945c1bd"
 ---
 
 # `update-branch` answers 202, and a refused merge answers 405

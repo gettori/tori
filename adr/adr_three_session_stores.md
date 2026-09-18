@@ -1,20 +1,20 @@
 ---
-summary: Sway keeps three session stores, transcripts as truth, a rename overlay that is not rebuildable, a discardable index
+summary: Tori keeps three session stores, transcripts as truth, a rename overlay that is not rebuildable, a discardable index
 status: current
 updated: 2026-08-15
-source: Make a harness installable, signed in, and discoverable (personal/sway, branch `harness-lifecycle`); Phases 0 and 4; `src-tauri/src/sessions.rs` (`set_session_name`, `load_overlay`/`save_overlay`, `stamp_listing`)
+source: Make a harness installable, signed in, and discoverable (personal/tori, branch `harness-lifecycle`); Phases 0 and 4; `src-tauri/src/sessions.rs` (`set_session_name`, `load_overlay`/`save_overlay`, `stamp_listing`)
 ---
 
-# Sway keeps three session stores, and only the third is derived
+# Tori keeps three session stores, and only the third is derived
 
-Supporting several harnesses and several accounts per harness needed a faster, uniform session list than scanning every root on every open, which looked like it would contradict [[concept_filesystem_source_of_truth]]. We resolved it by naming what already exists: Sway keeps **three** session stores, not one. Harness transcripts are the truth, the **rename overlay** is Sway-authored and deliberately not rebuildable, and the new **index is derived and discardable**. `concept_filesystem_source_of_truth` constrains only the third, so a cache that can always be thrown away and rebuilt is not a source of truth and the original property survives intact.
+Supporting several harnesses and several accounts per harness needed a faster, uniform session list than scanning every root on every open, which looked like it would contradict [[concept_filesystem_source_of_truth]]. We resolved it by naming what already exists: Tori keeps **three** session stores, not one. Harness transcripts are the truth, the **rename overlay** is Tori-authored and deliberately not rebuildable, and the new **index is derived and discardable**. `concept_filesystem_source_of_truth` constrains only the third, so a cache that can always be thrown away and rebuilt is not a source of truth and the original property survives intact.
 
 The overlay was not invented here. `set_session_name` has always written user renames to a store outside the watched transcript dirs, keyed by session id, pinned by `an_overlay_written_before_archiving_was_removed_keeps_its_renames`. The plan that preceded this ADR described only two stores and would have let an implementer fold names into the new index, where the first rebuild would have erased every rename.
 
 ## Considered Options
 
-- **A Sway-owned ledger as the authoritative session list** (rejected: it makes Sway's record able to drift from the harnesses', needs a backfill migration that can lose history, and would leave the profile-to-session mapping unrecoverable the moment the file was deleted).
-- **Stay entirely derived, with no Sway-side index** (rejected: listing then requires spawning every installed harness, which is slow and impossible offline; and an ACP `session/list` row carries only `sessionId`, `cwd`, `title` and `updatedAt`, with no branch, which the sidebar shows).
+- **A Tori-owned ledger as the authoritative session list** (rejected: it makes Tori's record able to drift from the harnesses', needs a backfill migration that can lose history, and would leave the profile-to-session mapping unrecoverable the moment the file was deleted).
+- **Stay entirely derived, with no Tori-side index** (rejected: listing then requires spawning every installed harness, which is slow and impossible offline; and an ACP `session/list` row carries only `sessionId`, `cwd`, `title` and `updatedAt`, with no branch, which the sidebar shows).
 
 ## Consequences
 
@@ -23,8 +23,8 @@ The overlay was not invented here. `set_session_name` has always written user re
 - The schema hinge is `accounts.home_default`, two declared paths rather than one declared suffix: a profile's transcript root is `[discovery] dir` with the harness's default home swapped for that profile's home. A `dir` that does not sit under `home_default` yields **no** root rather than a guessed one, and the loader refuses `supports_isolation = true` beside a `[discovery]` table with no `home_default`, because that pair is an account that signs in and then shows an empty history forever.
 - A label is sent only when there is a second account to confuse it with, so a machine that never added one renders exactly the list it always did, with no frontend rule about when to show a badge.
 - An ACP row is **unattributed** rather than defaulted: its locator records no account and no root produced it. Defaulting it to whichever account the user happens to have would be a guess that reads as a fact.
-- Sessions started in a terminal under a config dir Sway has no profile for are simply **never discovered**, which is an honest gap rather than a misattribution: Sway only scans roots it has profiles for.
-- Two profiles holding one session id stay two rows, because the cache is keyed by path and a path belongs to one root. What Sway cannot fix is resume, since `--resume <id>` takes the harness's own id and would be ambiguous to the harness before it was ambiguous to Sway.
+- Sessions started in a terminal under a config dir Tori has no profile for are simply **never discovered**, which is an honest gap rather than a misattribution: Tori only scans roots it has profiles for.
+- Two profiles holding one session id stay two rows, because the cache is keyed by path and a path belongs to one root. What Tori cannot fix is resume, since `--resume <id>` takes the harness's own id and would be ambiguous to the harness before it was ambiguous to Tori.
 
 ## Related
 

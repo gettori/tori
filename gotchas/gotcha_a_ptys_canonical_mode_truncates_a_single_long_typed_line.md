@@ -2,7 +2,7 @@
 summary: macOS PTY canonical mode buffers a typed line and silently truncates past a per-line limit, write long values to a file
 status: current
 updated: 2026-07-18
-source: "Prove the adapter: opencode + claude hooks (personal/sway, branch `topbar`); Phase 3 (post-review live bug report); `src-tauri/src/hooks.rs` (`write_claude_settings_file`)"
+source: "Prove the adapter: opencode + claude hooks (personal/tori, branch `topbar`); Phase 3 (post-review live bug report); `src-tauri/src/hooks.rs` (`write_claude_settings_file`)"
 ---
 
 # A PTY's canonical mode truncates a single long typed line

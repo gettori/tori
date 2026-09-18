@@ -2,7 +2,7 @@
 summary: a probe confirmed liveness dot plus touched file extraction read the full transcript once, apart from the head scanner
 status: current
 updated: 2026-07-31
-source: "Session worklog: status dot, touched files, panels (personal/sway, branch `topbar`); Phases 1-3, `src-tauri/src/sessions.rs`, `src/panels/LeftSidebar/LeftSidebar.tsx`, `src/panels/Editor/{Editor,SessionPanel,TranscriptViewer}.tsx`; Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/sway, branch `main`); Phase 2; `src/utils/{touchedFiles,editingNow,folderActors}.ts`; Compaction-count stat in the toolbar session details (personal/sway, branch `improved-design`); `src-tauri/src/sessions.rs` (`scan_counts`), `src/components/Toolbar/Toolbar.tsx`"
+source: "Session worklog: status dot, touched files, panels (personal/tori, branch `topbar`); Phases 1-3, `src-tauri/src/sessions.rs`, `src/panels/LeftSidebar/LeftSidebar.tsx`, `src/panels/Editor/{Editor,SessionPanel,TranscriptViewer}.tsx`; Status deepening: checkpoint timeline, tree revert, touched markers, live indicator (personal/tori, branch `main`); Phase 2; `src/utils/{touchedFiles,editingNow,folderActors}.ts`; Compaction-count stat in the toolbar session details (personal/tori, branch `improved-design`); `src-tauri/src/sessions.rs` (`scan_counts`), `src/components/Toolbar/Toolbar.tsx`"
 ---
 
 # Session worklog (status dot, touched files, transcript viewer)
