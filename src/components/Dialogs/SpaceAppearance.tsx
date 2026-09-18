@@ -4,7 +4,13 @@ import styles from "./Dialogs.module.css";
 import Icon from "../Icon/Icon";
 import IconGrid from "../IconGrid/IconGrid";
 import Popover from "../Popover/Popover";
-import { PICKER_ICONS, resolveIcon, searchIcons } from "../Icon/iconRegistry";
+import {
+  PICKER_ICONS,
+  drawShelf,
+  resolveIcon,
+  restingShelf,
+  searchIcons,
+} from "../Icon/iconRegistry";
 import { SPACE_COLORS, rgbTriple, spaceHueRgb } from "../../utils/spaceTint";
 import { spaceInitials } from "../../utils/names";
 
@@ -23,25 +29,6 @@ export function randomAppearance(): Appearance {
     color: SPACE_COLORS[Math.floor(Math.random() * SPACE_COLORS.length)].name,
     icon: PICKER_ICONS[Math.floor(Math.random() * PICKER_ICONS.length)].name,
   };
-}
-
-/** How many icons the picker rests on.
- *
- *  All of them at once is a wall you scroll past rather than a set you read,
- *  and it is the tallest thing in a dialog whose only required field is the
- *  name. A short shelf says what an icon here looks like; the field beside it
- *  is how you reach a particular one, which is the only way anyone finds one
- *  in a set this size anyway. */
-const SHELF = 20;
-
-/** `count` icons drawn from the set without repeats. */
-function shelfOf(count: number): typeof PICKER_ICONS {
-  const pool = [...PICKER_ICONS];
-  const out: typeof PICKER_ICONS = [];
-  while (out.length < count && pool.length) {
-    out.push(...pool.splice(Math.floor(Math.random() * pool.length), 1));
-  }
-  return out;
 }
 
 type Picker = "" | "color" | "icon";
@@ -72,9 +59,8 @@ export default function SpaceAppearance(props: {
   // Mirrors the grid's own query, which it does not publish otherwise, so the
   // "+N more" line can go when a search is what is on screen.
   const [iconQuery, setIconQuery] = createSignal("");
-  // Drawn once for the life of the dialog. Per keystroke, or per render, would
-  // reshuffle the shelf under the pointer on the way to a tile.
-  const shelf = shelfOf(SHELF);
+  // Drawn once for the life of the dialog; see `drawShelf` on why.
+  const shelf = drawShelf();
   let colorChip: HTMLButtonElement | undefined;
   let iconChip: HTMLButtonElement | undefined;
   let colorPanel: HTMLElement | undefined;
@@ -93,15 +79,7 @@ export default function SpaceAppearance(props: {
   const glyph = () => resolveIcon(props.value.icon);
   const mark = () => spaceInitials(props.name);
 
-  // What the grid shows at rest, which is the shelf with the chosen icon forced
-  // into it: a reroll lands anywhere in the set, and a picker showing nothing
-  // selected reads as having lost the choice rather than as not showing it.
-  const resting = () => {
-    const chosen = props.value.icon;
-    if (!chosen || shelf.some((e) => e.name === chosen)) return shelf;
-    const entry = PICKER_ICONS.find((e) => e.name === chosen);
-    return entry ? [entry, ...shelf.slice(0, SHELF - 1)] : shelf;
-  };
+  const resting = () => restingShelf(shelf, props.value.icon);
   const hidden = () => PICKER_ICONS.length - resting().length;
 
   // The query resets with the panel, because the grid is a fresh component each

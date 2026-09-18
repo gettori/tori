@@ -589,9 +589,10 @@
   width: calc(320px * var(--ui-scale));
   padding: var(--tori-space-5);
 }
-/* The field and the grid as one column. A layer of its own rather than the
-   surface's, because it is also where the Enter guard hangs (see
-   SpaceAppearance) and a handler wants an element it owns. */
+/* The field, the grid and the "+N more" line as one column. A layer of its own
+   rather than the surface's, because in the space picker it is also where the
+   Enter guard hangs (see SpaceAppearance) and a handler wants an element it
+   owns. */
 .pickerBody {
   display: flex;
   flex-direction: column;
@@ -1159,13 +1160,4 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* The picker's own scroll. Bounded, so the set does not decide how tall the
-   dialog is: four rows is enough to read what an icon here looks like, and the
-   field above it is how anyone finds a particular one in a set this size. */
-.pickGrid {
-  max-height: calc(192px * var(--ui-scale));
-  overflow-y: auto;
-  margin-top: var(--tori-space-4);
 }
