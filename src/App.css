@@ -679,6 +679,60 @@ html {
   background: var(--neutral-hover);
 }
 
+/* The fold column. The chevron is built by src/panels/Editor/folding.ts, which
+   sits behind the lazy editor edge with no Solid to render an <Icon> with, so
+   its class names are literal strings there and global here, like the gutters
+   around it.
+
+   Sized in `em` off the gutters' own font, which editorTheme.ts ties to the
+   editor's: the chevron belongs to the code it folds, so it should grow with the
+   font size of the buffer rather than with the UI chrome.
+
+   Hidden until the pointer is in the gutter, which is VS Code's rule and worth
+   copying. A marker on every foldable line is a second column of punctuation
+   running down the file beside the one that already carries meaning, and the
+   affordance is only useful once the mouse is on its way there anyway. A
+   *folded* line keeps its chevron: with the lines themselves gone, it is the
+   only thing left saying they exist.
+
+   `.cm-fold-hover` is put on the editor's root node by folding.ts rather than
+   being a `:hover` here, for the reason written on `gutterHover` there. */
+.cm-foldGutter {
+  width: 1.4em;
+  padding: 0;
+}
+
+.cm-foldGutter .cm-fold-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0;
+  color: var(--fg-subtle);
+}
+
+.cm-foldGutter .cm-fold-marker:hover {
+  color: var(--fg-default);
+}
+
+.cm-foldGutter .cm-fold-marker svg {
+  width: 1.15em;
+  height: 1.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cm-foldGutter .cm-fold-open {
+  opacity: 0;
+}
+
+.cm-fold-hover .cm-foldGutter .cm-fold-open {
+  opacity: 1;
+}
+
 /* Git diff gutter */
 .cm-diff-gutter {
   width: calc(3px * var(--ui-scale));
