@@ -41,20 +41,21 @@ const calls = {
 };
 
 function account(id: string, auth: AuthState, login: string | null, extra: Partial<ForgeAccount> = {}): ForgeAccount {
-  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, scopes: null, auth, ...extra };
+  return { id, provider: "github", baseUrl: "https://github.com", login, label: login ?? "", expiresAt: null, rejectedAt: null, scopes: null, source: "token", auth, ...extra };
 }
 
 function hostOf(host: string, accounts: ForgeAccount[], extra: Partial<ForgeHost> = {}): ForgeHost {
-  return { host, accounts, gitCredentials: false, gitEverywhere: false, defaultAccount: null, ...extra };
+  return { host, accounts, gitCredentials: false, gitEverywhere: false, defaultAccount: null, appId: null, ...extra };
 }
 
 const on = (login: string) => account(`github-com-${login}`, { kind: "signedIn", login }, login);
 const rejected = (login: string, rejectedAt: number | null) =>
   account(`github-com-${login}`, { kind: "suspect", login }, login, { rejectedAt });
 
-/** Rust's ladder, reduced to the facts these tests branch on: Tori's own
- *  application covers github.com and gitlab.com, and any other GitLab instance
- *  has whichever one was registered on it. */
+/** Rust's ladder, reduced to the facts these tests branch on: a browser route
+ *  exists on GitLab only, on gitlab.com through Tori's own application and on
+ *  any other instance through whichever one was registered there. GitHub has
+ *  none at all, because an organisation can refuse to approve it. */
 function routesFor(baseUrl: string, provider: ForgeProvider = "github"): SignInRoutes {
   const host = new URL(baseUrl).host;
   const cloud = host === "github.com" || host === "gitlab.com";
@@ -66,12 +67,15 @@ function routesFor(baseUrl: string, provider: ForgeProvider = "github"): SignInR
   return {
     host,
     baseUrl,
-    deviceFlow: cloud || appId !== null,
+    deviceFlow: provider === "gitlab" && (host === "gitlab.com" || appId !== null),
     scopes,
     tokenUrl: `${baseUrl}/settings/tokens/new?scopes=${scopes.join(",")}`,
     appId,
   };
 }
+
+/** Whom `gh` is logged in as on this machine, or nobody. */
+let ghLogin: string | null = null;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args?: Record<string, unknown>) => {
@@ -81,8 +85,25 @@ vi.mock("@tauri-apps/api/core", () => ({
         return Promise.resolve();
       case "forge_accounts":
         return Promise.resolve(hosts);
-      case "forge_sign_in_routes":
-        return Promise.resolve(routesFor(args?.baseUrl as string, args?.provider as ForgeProvider));
+      case "forge_sign_in_start": {
+        calls.start += 1;
+        const provider = args?.provider as ForgeProvider;
+        const routes = routesFor(args?.baseUrl as string, provider);
+        if (provider === "github" && ghLogin) {
+          return Promise.resolve({ kind: "signedIn", accountId: `github-com-${ghLogin}`, login: ghLogin });
+        }
+        if (!routes.deviceFlow) return Promise.resolve({ kind: "token", routes });
+        return Promise.resolve({
+          kind: "browser",
+          routes,
+          prompt: {
+            userCode: "WDJB-MJHT",
+            verificationUri: "https://github.com/login/device",
+            expiresInSecs: deviceLifetimeSecs,
+            intervalSecs: 5,
+          },
+        });
+      }
       case "forge_set_app_id": {
         const url = args?.baseUrl as string;
         const id = (args?.appId as string).trim();
@@ -106,14 +127,6 @@ vi.mock("@tauri-apps/api/core", () => ({
         hosts = hosts.map((h) => (h.host === host ? { ...h, defaultAccount: accountId } : h));
         return Promise.resolve(hosts);
       }
-      case "forge_device_start":
-        calls.start += 1;
-        return Promise.resolve({
-          userCode: "WDJB-MJHT",
-          verificationUri: "https://github.com/login/device",
-          expiresInSecs: deviceLifetimeSecs,
-          intervalSecs: 5,
-        });
       case "forge_add_token":
         return tokenRejection ? Promise.reject(tokenRejection) : Promise.resolve({ accountId: "a", login: "a" });
       case "forge_device_poll": {
@@ -169,10 +182,14 @@ beforeEach(() => {
   clipboardWorks = true;
   tokenRejection = null;
   handoff = [];
+  ghLogin = null;
 });
 
+/** The picker, then gitlab.com, which is the one cloud with a browser route. */
 async function startBrowserSignIn() {
-  fireEvent.click(await screen.findByText("Connect github.com"));
+  fireEvent.click(await screen.findByText("Another host..."));
+  pointerClick(await screen.findByRole("radio", { name: /gitlab\.com/ }));
+  fireEvent.click(flowCard().getByText("Continue"));
   await screen.findByTestId("device-code");
 }
 
@@ -342,6 +359,7 @@ describe("the forge accounts settings section", () => {
         gitCredentials: false,
         gitEverywhere: false,
         defaultAccount: null,
+        appId: null,
       },
     ];
     render(() => <ForgeSection />);
@@ -349,13 +367,33 @@ describe("the forge accounts settings section", () => {
     await waitFor(() => expect(calls.gitCredentials).toEqual([["github.com", true]]));
   });
 
-  it("names each tile's route before anything is chosen", async () => {
+  it("says what each host does rather than which route it will take", async () => {
+    // The route is Rust's decision, made once the host is asked, so a badge
+    // here would be a guess the user then has to reconcile with what happened.
     render(() => <ForgeSection />);
     fireEvent.click(await screen.findByText("Another host..."));
-    await waitFor(() => expect(flowCard().getByText("github.com").nextElementSibling?.textContent).toBe("browser"));
-    expect(flowCard().getByText("gitlab.com").nextElementSibling?.textContent).toBe("browser");
-    expect(flowCard().getAllByText("No fields. Opens your browser.")).toHaveLength(2);
-    expect(flowCard().getByText("GitHub Enterprise").nextElementSibling?.textContent).toBe("token");
+    await waitFor(() => expect(flowCard().getByText("github.com")).toBeTruthy());
+    expect(flowCard().getByText("Uses your GitHub CLI login when you have one.")).toBeTruthy();
+    expect(flowCard().getByText("No fields. Opens your browser.")).toBeTruthy();
+    expect(flowCard().queryByText("browser")).toBeNull();
+  });
+
+  it("signs github.com in from the gh login without ever showing a card", async () => {
+    ghLogin = "skarif2";
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByText("Connect github.com"));
+
+    await waitFor(() => expect(calls.start).toBe(1));
+    expect(screen.queryByTestId("add-flow"), "no token field, no device code").toBeNull();
+    expect(screen.queryByLabelText("Personal access token")).toBeNull();
+  });
+
+  it("falls back to a token on github.com when there is no gh login to read", async () => {
+    render(() => <ForgeSection />);
+    fireEvent.click(await screen.findByText("Connect github.com"));
+
+    expect(await screen.findByLabelText("Personal access token")).toBeTruthy();
+    expect(screen.queryByTestId("device-code"), "GitHub has no browser route").toBeNull();
   });
 
   it("walks to self-managed GitLab with the arrow keys and commits with Enter", async () => {
@@ -533,7 +571,7 @@ describe("the forge accounts settings section", () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     const sentence = screen.getByTestId("flow-error").textContent;
-    expect(sentence).toContain("github.com expired the code before it was entered: expired_token.");
+    expect(sentence).toContain("gitlab.com expired the code before it was entered: expired_token.");
     expect(sentence).toContain("Codes last about 2 minutes.");
     expect(flowCard().getByText("Paste a token instead")).toBeTruthy();
     vi.useRealTimers();
@@ -547,18 +585,20 @@ describe("the forge accounts settings section", () => {
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(screen.getByTestId("flow-error").textContent).toContain(
-      "github.com says the sign-in was denied: access_denied.",
+      "gitlab.com says the sign-in was denied: access_denied.",
     );
-    expect(flowCard().getByText("github.com via browser")).toBeTruthy();
+    expect(flowCard().getByText("gitlab.com via browser")).toBeTruthy();
     const pollsAfterDenial = calls.poll;
     await vi.advanceTimersByTimeAsync(30_000);
     expect(calls.poll, "a denied flow must stop polling").toBe(pollsAfterDenial);
     vi.useRealTimers();
   });
 
-  it("offers the browser back after a refused token on a host that has one", async () => {
+  it("never offers the browser back after a refused token, even where the host has one", async () => {
+    // A token is the fallback Rust already chose; offering the browser from
+    // here would put the user back on the route that just failed.
     devicePolls = [{ kind: "denied", code: "access_denied" }];
-    tokenRejection = refused("github.com rejected that token.");
+    tokenRejection = refused("gitlab.com rejected that token.");
     vi.useFakeTimers();
     render(() => <ForgeSection />);
     await startBrowserSignIn();
@@ -566,12 +606,12 @@ describe("the forge accounts settings section", () => {
     vi.useRealTimers();
 
     fireEvent.click(flowCard().getByText("Paste a token instead"));
-    fireEvent.input(await screen.findByLabelText("Personal access token"), { target: { value: "ghp_x" } });
+    fireEvent.input(await screen.findByLabelText("Personal access token"), { target: { value: "glpat_x" } });
     await waitFor(() => expect(screen.getByTestId("token-scopes")).toBeTruthy());
     fireEvent.click(flowCard().getByText("Sign in"));
 
-    expect((await screen.findByTestId("flow-error")).textContent).toBe("github.com rejected that token. invalid");
-    expect(flowCard().getByText("Sign in with browser instead")).toBeTruthy();
+    expect((await screen.findByTestId("flow-error")).textContent).toBe("gitlab.com rejected that token. invalid");
+    expect(flowCard().queryByText("Sign in with browser instead")).toBeNull();
     expect(flowCard().queryByText("Paste a token instead")).toBeNull();
   });
 

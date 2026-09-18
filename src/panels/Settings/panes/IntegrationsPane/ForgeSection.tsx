@@ -18,21 +18,18 @@ import {
   type ForgeHost,
   type ForgeProvider,
   type SignInRoutes,
+  type SignInStart,
 } from "../../../../utils/forgeTypes";
 import { noteForgeAccounts, resetForgeResolutions } from "../../../../utils/forgeStatus";
 import {
-  begin,
-  choose,
+  began,
   CLOUDS,
   failed,
-  hostKnown,
-  otherRoute,
+  isSelfHosted,
+  pasteInstead,
   SELF_HOSTED,
-  startAgain,
   type AddFlow,
-  type Cloud,
   type Product,
-  type Route,
   type Target,
 } from "./forgeAddFlow";
 import { asFailure, createDeviceFlow, failureText, openInBrowser } from "./deviceFlow";
@@ -50,22 +47,21 @@ const STATUS_WORD: Record<AuthState["kind"], string> = {
   signedOut: "signed out",
 };
 
-const PICKER: { product: Product; name: string; mono: boolean; note: (route: Route) => string }[] = [
-  {
-    product: "github.com",
-    name: "github.com",
-    mono: true,
-    note: (route) => (route === "browser" ? "No fields. Opens your browser." : "Paste a token."),
-  },
-  {
-    product: "gitlab.com",
-    name: "gitlab.com",
-    mono: true,
-    note: (route) => (route === "browser" ? "No fields. Opens your browser." : "Paste a token."),
-  },
-  { product: "enterprise", name: "GitHub Enterprise", mono: false, note: () => "Your own server. Host URL, then token." },
-  { product: "self-managed", name: "GitLab, self-managed", mono: false, note: () => "Your own instance." },
+const PICKER: { product: Product; name: string; mono: boolean; note: string }[] = [
+  { product: "github.com", name: "github.com", mono: true, note: "Uses your GitHub CLI login when you have one." },
+  { product: "gitlab.com", name: "gitlab.com", mono: true, note: "No fields. Opens your browser." },
+  { product: "enterprise", name: "GitHub Enterprise", mono: false, note: "Your own server. Host URL first." },
+  { product: "self-managed", name: "GitLab, self-managed", mono: false, note: "Your own instance." },
 ];
+
+/// Where a row's credential came from. Worth a word on the row because it
+/// decides what repairing the account involves: a `gh` account is repaired by
+/// `gh`, and a pasted one by pasting again.
+const SOURCE_WORD: Record<ForgeAccount["source"], string> = {
+  cli: "GitHub CLI",
+  browser: "browser",
+  token: "token",
+};
 
 function familyOf(provider: ForgeProvider, host: string): string {
   if (provider === "gitlab") return "GitLab";
@@ -79,6 +75,14 @@ function needsWorkflow(account: ForgeAccount): boolean {
   const scopes = account.scopes ?? [];
   return account.provider === "github" && scopes.length > 0 && !scopes.includes("workflow");
 }
+
+// `gh`'s own minimum is repo, read:org and gist, so a login made before it asked
+// for `workflow` has to widen the grant rather than make a new credential.
+// Signing in again would only re-read the same narrow token.
+const widenWorkflow = (account: ForgeAccount) =>
+  account.source === "cli"
+    ? "Pushes that change GitHub Actions need a wider grant: run gh auth refresh -s workflow."
+    : "Pushes that change GitHub Actions need a newer sign-in.";
 
 // Every account on a host shares its provider, so the first one names the family.
 const family = (host: ForgeHost) => familyOf(host.accounts[0]?.provider ?? "github", host.host);
@@ -105,7 +109,6 @@ export default function ForgeSection() {
   const [loaded, setLoaded] = createSignal(false);
   const [flow, setFlow] = createSignal<AddFlow | null>(null);
   const [product, setProduct] = createSignal<Product>("github.com");
-  const [cloudRoutes, setCloudRoutes] = createSignal<Partial<Record<Cloud, SignInRoutes>>>({});
   const [routes, setRoutes] = createSignal<SignInRoutes | null>(null);
   const [url, setUrl] = createSignal("");
   const [urlError, setUrlError] = createSignal<string | null>(null);
@@ -141,17 +144,14 @@ export default function ForgeSection() {
 
   const device = createDeviceFlow({
     onAuthorized: async () => {
-      await enter(null);
+      enter(null);
       await refresh();
     },
     onFailed: (failure) => {
       const state = flow();
-      if (state) void enter(failed(state, failure));
+      if (state) enter(failed(state, failure));
     },
   });
-
-  const routesFor = (provider: ForgeProvider, baseUrl: string) =>
-    invoke<SignInRoutes>("forge_sign_in_routes", { provider, baseUrl });
 
   const tokenStep = () => {
     const f = flow();
@@ -170,19 +170,13 @@ export default function ForgeSection() {
     return f?.step === "host-url" ? f : null;
   };
 
-  async function enter(next: AddFlow | null) {
+  function enter(next: AddFlow | null) {
     device.cancel();
     setError(null);
     setFlow(next);
     // Keyboard focus follows the card, so Escape lands on it and not on the panel.
     queueMicrotask(() => (flowEl?.querySelector<HTMLElement>("input:not([type=radio]), input:checked") ?? flowEl)?.focus());
     switch (next?.step) {
-      case "product": {
-        const load = (cloud: Cloud) => routesFor(CLOUDS[cloud].provider, CLOUDS[cloud].baseUrl).catch(() => undefined);
-        const [github, gitlab] = await Promise.all([load("github.com"), load("gitlab.com")]);
-        setCloudRoutes({ "github.com": github, "gitlab.com": gitlab });
-        return;
-      }
       case "host-url":
         setUrl("");
         setUrlError(null);
@@ -190,18 +184,28 @@ export default function ForgeSection() {
         return;
       case "token":
         setToken("");
-        setRoutes(await routesFor(next.target.provider, next.target.baseUrl).catch(() => null));
-        return;
-      case "waiting":
-        return device.start(next.target);
     }
   }
 
-  async function connect(target: Target) {
+  /// Rust picks the route, so this asks for the sign-in rather than for a menu.
+  async function connect(target: Target, onError?: (message: string) => void) {
+    // Before Rust is asked, never after: starting a flow and then cancelling
+    // would drop the pending sign-in that was just created.
+    device.cancel();
     try {
-      const r = await routesFor(target.provider, target.baseUrl);
-      void enter(begin({ ...target, baseUrl: r.baseUrl }, r.deviceFlow));
+      const start = await invoke<SignInStart>("forge_sign_in_start", {
+        provider: target.provider,
+        baseUrl: target.baseUrl,
+        accountId: target.accountId,
+      });
+      if (start.kind !== "signedIn") setRoutes(start.routes);
+      enter(began({ ...target, baseUrl: start.kind === "signedIn" ? target.baseUrl : start.routes.baseUrl }, start));
+      if (start.kind === "browser") return void device.resume(start.prompt);
+      if (start.kind === "signedIn") await refresh();
     } catch (e) {
+      if (onError) return onError(forgeErrorMessage(e));
+      const state = flow();
+      if (state?.step === "token" || state?.step === "waiting") return enter(failed(state, asFailure(e)));
       setError(forgeErrorMessage(e));
     }
   }
@@ -211,13 +215,14 @@ export default function ForgeSection() {
     if (first) void connect({ provider: first.provider, baseUrl: first.baseUrl, accountId });
   };
 
-  const routeOf = (p: Product): Route =>
-    p !== "enterprise" && p !== "self-managed" && cloudRoutes()[p]?.deviceFlow ? "browser" : "token";
+  const continuePicker = () => {
+    const p = product();
+    if (isSelfHosted(p)) return enter({ step: "host-url", product: p });
+    void connect({ ...CLOUDS[p], accountId: null });
+  };
 
-  const continuePicker = () => void enter(choose(product(), routeOf(product()) === "browser"));
-
-  // Built once: fresh option objects would remount the radios, and with them
-  // the focus, when the routes arrive.
+  // Built once: fresh option objects would remount the radios, and with them the
+  // focus, on any re-render.
   const pickerOptions = PICKER.map((p) => ({
     value: p.product,
     label: (
@@ -225,24 +230,16 @@ export default function ForgeSection() {
         <span class={cards.tileName} data-mono={p.mono ? "" : undefined}>
           {p.name}
         </span>
-        <span class={cards.route} data-route={routeOf(p.product)}>
-          {routeOf(p.product)}
-        </span>
       </span>
     ),
-    description: <>{p.note(routeOf(p.product))}</>,
+    description: <>{p.note}</>,
   }));
 
-  async function submitUrl() {
+  function submitUrl() {
     const state = urlStep();
     if (!state) return;
     setUrlError(null);
-    try {
-      const r = await routesFor(SELF_HOSTED[state.product], url());
-      void enter(hostKnown(state.product, r.baseUrl));
-    } catch (e) {
-      setUrlError(forgeErrorMessage(e));
-    }
+    void connect({ provider: SELF_HOSTED[state.product], baseUrl: url(), accountId: null }, setUrlError);
   }
 
   async function submitToken() {
@@ -256,10 +253,10 @@ export default function ForgeSection() {
         token: token(),
         accountId: state.target.accountId,
       });
-      await enter(null);
+      enter(null);
       await refresh();
     } catch (e) {
-      void enter(failed(state, asFailure(e)));
+      enter(failed(state, asFailure(e)));
     } finally {
       setBusy(false);
     }
@@ -270,7 +267,7 @@ export default function ForgeSection() {
     // `Settings.tsx` closes the whole panel on an Escape that reaches it.
     e.stopPropagation();
     e.preventDefault();
-    void enter(null);
+    enter(null);
   };
 
   // Rust answers with the whole list, so the row shows what was stored rather
@@ -314,16 +311,11 @@ export default function ForgeSection() {
     }
   }
 
-  async function toggleAppId(host: ForgeHost) {
-    const first = host.accounts[0];
-    if (!first) return;
+  function toggleAppId(host: ForgeHost) {
+    if (!host.accounts[0]) return;
     if (appIdHost() === host.host) return setAppIdHost(null);
-    try {
-      setAppId((await routesFor(first.provider, first.baseUrl)).appId ?? "");
-      setAppIdHost(host.host);
-    } catch (e) {
-      setError(forgeErrorMessage(e));
-    }
+    setAppId(host.appId ?? "");
+    setAppIdHost(host.host);
   }
 
   async function saveAppId(host: ForgeHost) {
@@ -364,7 +356,7 @@ export default function ForgeSection() {
   const connectGithub = () => void connect({ ...CLOUDS["github.com"], accountId: null });
   const openPicker = () => {
     setProduct("github.com");
-    void enter({ step: "product" });
+    enter({ step: "product" });
   };
 
   const setEnabled = (enabled: boolean) =>
@@ -423,7 +415,7 @@ export default function ForgeSection() {
                     <Button
                       variant="ghost"
                       aria-expanded={appIdHost() === host.host}
-                      onClick={() => void toggleAppId(host)}
+                      onClick={() => toggleAppId(host)}
                     >
                       Application ID
                     </Button>
@@ -472,7 +464,18 @@ export default function ForgeSection() {
                         <span class={cards.word} data-auth={account.auth.kind}>
                           {STATUS_WORD[account.auth.kind]}
                         </span>
-                        <Show when={account.auth.kind !== "signedIn" || needsWorkflow(account)}>
+                        <span class={cards.source} data-testid="account-source">
+                          via {SOURCE_WORD[account.source]}
+                        </span>
+                        {/* A `cli` account nudged only about scopes gets no
+                            button: signing in again re-reads the same `gh`
+                            token, so only widening the grant in `gh` helps. */}
+                        <Show
+                          when={
+                            account.auth.kind !== "signedIn" ||
+                            (needsWorkflow(account) && account.source !== "cli")
+                          }
+                        >
                           <Button variant="primary" size="xs" onClick={() => connectHost(host, account.id)}>
                             Sign in again
                           </Button>
@@ -494,7 +497,7 @@ export default function ForgeSection() {
                       </Show>
                       <Show when={account.auth.kind === "signedIn" && needsWorkflow(account)}>
                         <div class={`${cards.reason} ${cards.nudge}`} data-testid="workflow-notice">
-                          Pushes that change GitHub Actions need a newer sign-in.
+                          {widenWorkflow(account)}
                         </div>
                       </Show>
                     </div>
@@ -590,7 +593,7 @@ export default function ForgeSection() {
                     />
                   </div>
                   <div class={cards.actions}>
-                    <Button variant="ghost" onClick={() => void enter(null)}>
+                    <Button variant="ghost" onClick={() => enter(null)}>
                       Cancel
                     </Button>
                     <Button variant="primary" onClick={continuePicker}>
@@ -630,7 +633,7 @@ export default function ForgeSection() {
                       <Button variant="primary" disabled={!url().trim()} onClick={() => void submitUrl()}>
                         Continue
                       </Button>
-                      <Button variant="ghost" onClick={() => void enter(null)}>
+                      <Button variant="ghost" onClick={() => enter(null)}>
                         Cancel
                       </Button>
                     </div>
@@ -688,7 +691,7 @@ export default function ForgeSection() {
                       >
                         Sign in
                       </Button>
-                      <Button variant="ghost" onClick={() => void enter(null)}>
+                      <Button variant="ghost" onClick={() => enter(null)}>
                         Cancel
                       </Button>
                     </div>
@@ -727,7 +730,7 @@ export default function ForgeSection() {
                   remainingMs={device.remainingMs()}
                   clipboardOk={device.clipboardOk()}
                   onCopyAgain={() => void device.copyAgain()}
-                  onCancel={() => void enter(null)}
+                  onCancel={() => enter(null)}
                 />
               )}
             </Show>
@@ -751,20 +754,15 @@ export default function ForgeSection() {
                       </div>
                     </div>
                     <div class={cards.actions} data-align="start">
-                      <Button variant="primary" onClick={() => void enter(startAgain(state()))}>
+                      <Button variant="primary" onClick={() => void connect(state().target)}>
                         Start again
                       </Button>
                       <Show when={state().route === "browser"}>
-                        <Button variant="ghost" onClick={() => void enter(otherRoute(state(), false))}>
+                        <Button variant="ghost" onClick={() => enter(pasteInstead(state()))}>
                           Paste a token instead
                         </Button>
                       </Show>
-                      <Show when={state().route === "token" && routes()?.deviceFlow}>
-                        <Button variant="ghost" onClick={() => void enter(otherRoute(state(), true))}>
-                          Sign in with browser instead
-                        </Button>
-                      </Show>
-                      <Button variant="ghost" class={cards.quiet} onClick={() => void enter(null)}>
+                      <Button variant="ghost" class={cards.quiet} onClick={() => enter(null)}>
                         Cancel
                       </Button>
                     </div>
