@@ -266,7 +266,7 @@ describe("SpaceDialog", () => {
       // It wears the initials it would fall back to, so what "no icon" means is
       // on the tile rather than only in its name.
       expect(tiles()[0].getAttribute("aria-label")).toBe("No icon - use initials");
-      expect(tiles()[0].textContent).toBe("G2");
+      expect(tiles()[0].textContent).toBe("G");
     });
 
     it("clears the icon back to none", () => {
