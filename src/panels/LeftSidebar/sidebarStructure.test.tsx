@@ -539,9 +539,13 @@ const syncKey = (label: string) => `${REPO}/${label}\u0000${label}`;
 /** The branch node for `label`: the row and, when it has one, its state line. */
 const node = async (label: string) => (await screen.findByText(label)).parentElement!.parentElement!;
 
-const stateLine = async (label: string) => (await node(label)).querySelector("[data-state-line]");
+/** The kinds of mark on a branch row, in drawing order, with counts. */
+const marks = async (label: string) =>
+  Array.from((await node(label)).querySelectorAll("[data-sync-mark]")).map(
+    (el) => `${el.getAttribute("data-sync-mark")}${el.textContent}`,
+  );
 
-describe("the branch row's second line", () => {
+describe("what a branch row says about its remote", () => {
   beforeEach(async () => {
     // The sync store is module-level and asks only about units it has not seen,
     // which is what stops `loadConfig` costing a `git` process per row. An
@@ -558,80 +562,83 @@ describe("the branch row's second line", () => {
     localStorage.setItem("tori.active-space.v1", "work");
   });
 
-  it("stays one line for a clean branch and grows one for a conflicted one", async () => {
+  it("draws what the branch owes the remote, and nothing when it owes nothing", async () => {
     bridge.sync = {
-      [syncKey("main")]: syncOf(),
+      [syncKey("main")]: syncOf({ upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false } }),
+      [syncKey("feat")]: syncOf(),
+    };
+    mount(["p:work/repo"]);
+
+    await waitFor(async () => expect(await marks("main")).toEqual(["push2", "pull3"]));
+    // Silence is the resting state. A row that drew "in sync" would spend the
+    // reader's attention on the news that there is no news.
+    expect(await marks("feat")).toEqual([]);
+  });
+
+  it("marks a branch nobody has pushed without a count to put on it", async () => {
+    bridge.sync = {
+      [syncKey("feat")]: syncOf({ upstream: { ahead: 0, behind: 0, has_upstream: false, rewritten: false } }),
+    };
+    mount(["p:work/repo"]);
+
+    await waitFor(async () => expect(await marks("feat")).toEqual(["push"]));
+  });
+
+  it("marks uncommitted work, and a base that would fight", async () => {
+    bridge.sync = {
+      [syncKey("main")]: syncOf({ dirty: true }),
       [syncKey("feat")]: syncOf({
         base: { name: "main", ahead: 2, behind: 4, conflicts: ["src/a.ts", "src/b.ts"] },
       }),
     };
     mount(["p:work/repo"]);
 
-    const line = await waitFor(async () => {
-      const found = await stateLine("feat");
+    await waitFor(async () => expect(await marks("main")).toEqual(["dirty"]));
+    // The conflict leads, so the one red glyph in a column keeps its place and
+    // never sits against the forge's own marks at the row's other end.
+    expect(await marks("feat")).toEqual(["conflict"]);
+  });
+
+  it("keeps every row to one line, whatever it has to report", async () => {
+    // The row is `--row-h` and the rail, the hover pill and the drag handle are
+    // all measured against it, so the marks have to live inside it. jsdom has
+    // no layout; what pins the height is that the node holds the row and
+    // nothing else.
+    bridge.sync = {
+      [syncKey("main")]: syncOf({ dirty: true, upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false } }),
+      [syncKey("feat")]: syncOf(),
+    };
+    const { container } = mount(["p:work/repo"]);
+
+    await waitFor(async () => expect((await marks("main")).length).toBe(3));
+    for (const label of ["main", "feat"]) {
+      expect((await node(label)).children.length).toBe(1);
+    }
+    expect(container.querySelector("[data-state-line]")).toBeNull();
+  });
+
+  it("hangs one styled tooltip on the run rather than a native one per glyph", async () => {
+    bridge.sync = {
+      [syncKey("main")]: syncOf({ upstream: { ahead: 0, behind: 3, has_upstream: true, rewritten: false } }),
+    };
+    mount(["p:work/repo"]);
+
+    const run = await waitFor(async () => {
+      const found = (await node("main")).querySelector("[data-sync-marks]");
       expect(found).toBeTruthy();
       return found!;
     });
-    expect(line.textContent).toContain("main: 2 conflicts");
+    // Nothing native anywhere in the run: the browser's own tooltip is
+    // unstyled, slow and un-themeable, and four glyphs inside twenty pixels
+    // would be four hover targets for one sentence.
+    expect(run.hasAttribute("title")).toBe(false);
+    expect(run.querySelectorAll("[title]").length).toBe(0);
 
-    expect(await stateLine("main")).toBeNull();
+    fireEvent.pointerEnter(run);
+    expect((await screen.findByRole("tooltip")).textContent).toContain("3 commits to pull");
   });
 
-  it("grows one for uncommitted work, and for a base that has moved on", async () => {
-    bridge.sync = {
-      [syncKey("main")]: syncOf({ dirty: true }),
-      [syncKey("feat")]: syncOf({ base: { name: "main", ahead: 1, behind: 14, conflicts: [] } }),
-    };
-    mount(["p:work/repo"]);
-
-    await waitFor(async () => expect(await stateLine("main")).toBeTruthy());
-    expect((await stateLine("main"))!.textContent).toContain("uncommitted");
-    expect((await stateLine("feat"))!.textContent).toContain("main +14");
-  });
-
-  it("puts the counts beside the name, where they cost no height", async () => {
-    bridge.sync = {
-      [syncKey("main")]: syncOf({ upstream: { ahead: 2, behind: 3, has_upstream: true, rewritten: false } }),
-    };
-    mount(["p:work/repo"]);
-
-    await waitFor(async () => expect(await stateLine("main")).toBeTruthy());
-    expect((await stateLine("main"))!.textContent).toContain("diverged");
-    const counts = (await node("main")).querySelector("[data-sync-counts]");
-    expect(counts?.textContent).toBe("\u21912\u21933");
-  });
-
-  it("hangs the second line off the node the rail is drawn on, not inside the row", async () => {
-    // jsdom has no layout, so the rail's span is pinned structurally: it is
-    // `.branchNode`'s own ::before, top to bottom, so what has to be true is
-    // that the line is inside that node and outside the row.
-    bridge.sync = { [syncKey("feat")]: syncOf({ dirty: true }) };
-    mount(["p:work/repo"]);
-
-    await waitFor(async () => expect(await stateLine("feat")).toBeTruthy());
-    const branchRow = (await screen.findByText("feat")).parentElement!;
-    const line = (await stateLine("feat"))!;
-    expect(line.parentElement).toBe(branchRow.parentElement);
-    expect(branchRow.contains(line)).toBe(false);
-  });
-
-  it("still hands a drag the folder path from a row that grew", async () => {
-    bridge.sync = { [syncKey("feat")]: syncOf({ dirty: true }) };
-    mount(["p:work/repo"]);
-    await waitFor(async () => expect(await stateLine("feat")).toBeTruthy());
-
-    // jsdom has no DataTransfer, and the payload is the whole claim here.
-    const store: Record<string, string> = {};
-    const e = new Event("dragstart", { bubbles: true, cancelable: true });
-    Object.defineProperty(e, "dataTransfer", {
-      value: { effectAllowed: "none", setData: (t: string, v: string) => (store[t] = v) },
-    });
-    (await screen.findByText("feat")).parentElement!.dispatchEvent(e);
-
-    expect(store["application/x-tori-abspath"]).toBe(`${REPO}/feat`);
-  });
-
-  it("passes axe with a tree of rows that have grown", async () => {
+  it("passes axe with a tree of rows that have something to report", async () => {
     bridge.sync = {
       [syncKey("main")]: syncOf({ dirty: true }),
       [syncKey("feat")]: syncOf({
@@ -639,7 +646,7 @@ describe("the branch row's second line", () => {
       }),
     };
     const { container } = mount(["p:work/repo"]);
-    await waitFor(async () => expect(await stateLine("feat")).toBeTruthy());
+    await waitFor(async () => expect((await marks("feat")).length).toBe(1));
 
     await expectNoAxeViolations(container);
   });
