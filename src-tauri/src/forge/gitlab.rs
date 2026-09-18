@@ -23,11 +23,11 @@
 
 use super::http::{classify, paginate_rest, HttpRequest, Recording, Transport, PAGE_CAP};
 use super::model::{
-    AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, MergeableState,
-    Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef, ReviewComment, ReviewDecision,
-    ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus, Grant,
+    MergeableState, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef, ReviewComment,
+    ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
-use super::{CreatePr, Forge, ForgeError, MergeMethod};
+use super::{epoch_secs, CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
 use sha1::{Digest, Sha1};
 use std::collections::BTreeMap;
@@ -445,8 +445,22 @@ impl Forge for GitLabForge {
         self.transport.rate()
     }
 
-    fn granted_scopes(&self) -> Option<Vec<String>> {
-        None
+    /// From the token's own record, which is the only place GitLab says either.
+    ///
+    /// Only a personal access token can read it, and only a personal access
+    /// token needs to: a token the browser flow minted came with its lifetime
+    /// in the exchange. A refusal answers "nothing known" rather than failing a
+    /// sign-in the viewer call has already carried.
+    fn token_grant(&self) -> Grant {
+        let Ok(v) = self.send(self.rest("GET", "/personal_access_tokens/self", None)) else {
+            return Grant::default();
+        };
+        Grant {
+            scopes: v.get("scopes").and_then(|s| s.as_array()).map(|list| {
+                list.iter().filter_map(|s| s.as_str()).map(str::to_string).collect()
+            }),
+            expires_at: opt_str(&v, "expires_at").as_deref().and_then(epoch_secs),
+        }
     }
 
     fn auth_state(&self) -> AuthState {

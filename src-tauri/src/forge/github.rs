@@ -30,8 +30,8 @@ use super::http::{
 };
 use super::model::{
     AuthState, Capabilities, CheckRollup, CheckState, DiffSide, DraftComment, FileStatus,
-    MergeableState, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef, ReviewComment,
-    ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    Grant, MergeableState, Paged, PrFile, PrState, PullRequest, RateSnapshot, RepoRef,
+    ReviewComment, ReviewDecision, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use super::{CreatePr, Forge, ForgeError, MergeMethod};
 use serde_json::Value;
@@ -457,8 +457,8 @@ impl Forge for GitHubForge {
         GitHubForge::rate_snapshot(self)
     }
 
-    fn granted_scopes(&self) -> Option<Vec<String>> {
-        self.transport.scopes()
+    fn token_grant(&self) -> Grant {
+        self.transport.grant()
     }
 
     fn auth_state(&self) -> AuthState {

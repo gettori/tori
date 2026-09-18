@@ -310,6 +310,19 @@ pub struct Viewer {
     pub avatar_url: Option<String>,
 }
 
+/// What a host says about the token itself, as opposed to who holds it.
+///
+/// Both fields are `None` where the provider says nothing, which is not the same
+/// as an empty list or a token that never expires: a caller that overwrites a
+/// known deadline with silence would sign the account out early.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Grant {
+    /// The scopes it holds, where the provider reports them.
+    pub scopes: Option<Vec<String>>,
+    /// Unix seconds when it stops working, where it has a deadline at all.
+    pub expires_at: Option<u64>,
+}
+
 /// A collection that may not be complete.
 ///
 /// Every list endpoint here paginates, and a first-page read that renders as a

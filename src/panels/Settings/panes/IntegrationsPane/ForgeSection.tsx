@@ -25,6 +25,7 @@ import {
   began,
   CLOUDS,
   failed,
+  granted,
   isSelfHosted,
   pasteInstead,
   SELF_HOSTED,
@@ -96,10 +97,46 @@ function hostOf(baseUrl: string): string {
 }
 
 // Day and month apart: newer ICU spells en-GB September "Sept", en-US keeps "Sep".
+function dayMonth(secs: number): string {
+  const at = new Date(secs * 1000);
+  return `${at.getDate()} ${at.toLocaleDateString("en-US", { month: "short" })}`;
+}
+
+// With the year, for a date that is not within days of today: a deadline three
+// months out and one three months past read identically without it.
+const fullDate = (secs: number) => `${dayMonth(secs)} ${new Date(secs * 1000).getFullYear()}`;
+
 function rejection(host: string, rejectedAt: number | null): string {
-  const at = rejectedAt === null ? null : new Date(rejectedAt * 1000);
-  const on = at ? ` on ${at.getDate()} ${at.toLocaleDateString("en-US", { month: "short" })}` : "";
+  const on = rejectedAt === null ? "" : ` on ${dayMonth(rejectedAt)}`;
   return `${host} stopped accepting this token${on}. It is still stored, so signing in again replaces it in place.`;
+}
+
+// Long enough that making a new token is something to schedule rather than an
+// interruption, short enough that the row is not permanently warning.
+const EXPIRY_WARNING_SECS = 7 * 24 * 60 * 60;
+
+/// Where a dated token stands, carrying the date it stands on so nothing
+/// downstream has to reach back for it. `null` covers both a token with days
+/// left and one set to never expire, the two states with nothing to say.
+type Expiry = { state: "soon" | "lapsed"; at: number } | null;
+
+function expiryOf(account: ForgeAccount, now = Date.now() / 1000): Expiry {
+  const at = account.expiresAt;
+  if (at === null) return null;
+  if (at <= now) return { state: "lapsed", at };
+  return at - now <= EXPIRY_WARNING_SECS ? { state: "soon", at } : null;
+}
+
+const expiryText = ({ state, at }: NonNullable<Expiry>) =>
+  `This token ${state === "lapsed" ? "expired" : "expires"} on ${fullDate(at)}. ` +
+  "Signing in again replaces it in place.";
+
+/// Which of the scopes the token step asked for the host did not hand over. A
+/// token reporting none is fine-grained, whose permissions Tori cannot read, so
+/// it is never told it is short of anything.
+function missingScopes(account: ForgeAccount, asked: string[]): string[] {
+  const held = account.scopes ?? [];
+  return held.length === 0 ? [] : asked.filter((scope) => !held.includes(scope));
 }
 
 const signedIn = (host: ForgeHost) => host.accounts.filter((a) => a.auth.kind === "signedIn");
@@ -157,6 +194,16 @@ export default function ForgeSection() {
     const f = flow();
     return f?.step === "token" ? f : null;
   };
+  const grantedStep = () => {
+    const f = flow();
+    return f?.step === "granted" ? f : null;
+  };
+  // Read back from the account list rather than from the paste, so the card
+  // shows what Rust actually recorded for it.
+  const grantedAccount = () => {
+    const id = grantedStep()?.accountId;
+    return id ? (hosts().flatMap((h) => h.accounts).find((a) => a.id === id) ?? null) : null;
+  };
   const waitingStep = () => {
     const f = flow();
     return f?.step === "waiting" ? f : null;
@@ -183,6 +230,7 @@ export default function ForgeSection() {
         setAppIdLater(false);
         return;
       case "token":
+      case "granted":
         setToken("");
     }
   }
@@ -247,14 +295,19 @@ export default function ForgeSection() {
     if (!state) return;
     setBusy(true);
     try {
-      await invoke("forge_add_token", {
+      const signed = await invoke<{ accountId: string }>("forge_add_token", {
         provider: state.target.provider,
         baseUrl: state.target.baseUrl,
         token: token(),
         accountId: state.target.accountId,
       });
-      enter(null);
+      // Before the step moves on, so the card reads the account the host just
+      // described rather than the one this list held a moment ago. A list that
+      // did not come back has nothing to render, so the flow closes as it did
+      // before there was a card.
       await refresh();
+      const known = hosts().some((h) => h.accounts.some((a) => a.id === signed.accountId));
+      enter(known ? granted(state, signed.accountId) : null);
     } catch (e) {
       enter(failed(state, asFailure(e)));
     } finally {
@@ -449,59 +502,79 @@ export default function ForgeSection() {
                   </div>
                 </Show>
                 <For each={host.accounts}>
-                  {(account) => (
-                    <div
-                      class={cards.account}
-                      classList={{
-                        [cards.rejected]: account.auth.kind === "suspect",
-                        [cards.nudged]: account.auth.kind === "signedIn" && needsWorkflow(account),
-                      }}
-                      data-testid="forge-account"
-                    >
-                      <div class={cards.line}>
-                        <span class={cards.dot} data-auth={account.auth.kind} aria-hidden="true" />
-                        <span class={cards.login}>{forgeAccountName(account)}</span>
-                        <span class={cards.word} data-auth={account.auth.kind}>
-                          {STATUS_WORD[account.auth.kind]}
-                        </span>
-                        <span class={cards.source} data-testid="account-source">
-                          via {SOURCE_WORD[account.source]}
-                        </span>
-                        {/* A `cli` account nudged only about scopes gets no
-                            button: signing in again re-reads the same `gh`
-                            token, so only widening the grant in `gh` helps. */}
-                        <Show
-                          when={
-                            account.auth.kind !== "signedIn" ||
-                            (needsWorkflow(account) && account.source !== "cli")
-                          }
-                        >
-                          <Button variant="primary" size="xs" onClick={() => connectHost(host, account.id)}>
-                            Sign in again
+                  {(account) => {
+                    const expiry = () => expiryOf(account);
+                    const nudged = () =>
+                      account.auth.kind === "signedIn" && (needsWorkflow(account) || expiry() !== null);
+                    return (
+                      <div
+                        class={cards.account}
+                        classList={{
+                          [cards.rejected]: account.auth.kind === "suspect" || expiry()?.state === "lapsed",
+                          [cards.nudged]: nudged(),
+                        }}
+                        data-testid="forge-account"
+                      >
+                        <div class={cards.line}>
+                          <span class={cards.dot} data-auth={account.auth.kind} aria-hidden="true" />
+                          <span class={cards.login}>{forgeAccountName(account)}</span>
+                          <span class={cards.word} data-auth={account.auth.kind}>
+                            {STATUS_WORD[account.auth.kind]}
+                          </span>
+                          <span class={cards.source} data-testid="account-source">
+                            via {SOURCE_WORD[account.source]}
+                          </span>
+                          {/* A `cli` account nudged only about scopes gets no
+                              button: signing in again re-reads the same `gh`
+                              token, so only widening the grant in `gh` helps. */}
+                          <Show
+                            when={
+                              account.auth.kind !== "signedIn" ||
+                              expiry() !== null ||
+                              (needsWorkflow(account) && account.source !== "cli")
+                            }
+                          >
+                            <Button variant="primary" size="xs" onClick={() => connectHost(host, account.id)}>
+                              Sign in again
+                            </Button>
+                          </Show>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            class={cards.remove}
+                            aria-label={`Remove ${forgeAccountName(account)}`}
+                            onClick={() => void remove(host.host, account)}
+                          >
+                            Remove
                           </Button>
+                        </div>
+                        <Show when={account.auth.kind === "suspect"}>
+                          <div class={cards.reason} data-testid="suspect-notice">
+                            {rejection(host.host, account.rejectedAt)}
+                          </div>
                         </Show>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          class={cards.remove}
-                          aria-label={`Remove ${forgeAccountName(account)}`}
-                          onClick={() => void remove(host.host, account)}
-                        >
-                          Remove
-                        </Button>
+                        <Show when={account.auth.kind === "signedIn" && needsWorkflow(account)}>
+                          <div class={`${cards.reason} ${cards.nudge}`} data-testid="workflow-notice">
+                            {widenWorkflow(account)}
+                          </div>
+                        </Show>
+                        {/* A lapsed token is Tori's own read of a date, not a
+                            refusal the host made, so it keeps the row's colour
+                            and drops the quiet nudge tone. */}
+                        <Show when={account.auth.kind === "signedIn" && expiry()}>
+                          {(due) => (
+                            <div
+                              class={cards.reason}
+                              classList={{ [cards.nudge]: due().state === "soon" }}
+                              data-testid="expiry-notice"
+                            >
+                              {expiryText(due())}
+                            </div>
+                          )}
+                        </Show>
                       </div>
-                      <Show when={account.auth.kind === "suspect"}>
-                        <div class={cards.reason} data-testid="suspect-notice">
-                          {rejection(host.host, account.rejectedAt)}
-                        </div>
-                      </Show>
-                      <Show when={account.auth.kind === "signedIn" && needsWorkflow(account)}>
-                        <div class={`${cards.reason} ${cards.nudge}`} data-testid="workflow-notice">
-                          {widenWorkflow(account)}
-                        </div>
-                      </Show>
-                    </div>
-                  )}
+                    );
+                  }}
                 </For>
                 <div class={cards.footer} classList={{ [cards.footerInert]: usable().length === 0 }}>
                   <div class={cards.footerText}>
@@ -717,6 +790,68 @@ export default function ForgeSection() {
                         </>
                       )}
                     </Show>
+                  </div>
+                </div>
+              )}
+            </Show>
+
+            <Show when={grantedAccount()}>
+              {(account) => (
+                <div class={cards.card} data-tone="brand">
+                  <div class={cards.band} data-tone="brand">
+                    <span class={cards.dot} data-auth="signedIn" aria-hidden="true" />
+                    <span class={cards.bandTitle}>Signed in</span>
+                    <span class={cards.spacer} />
+                    <span class={cards.meta}>{forgeAccountName(account())}</span>
+                  </div>
+                  <div class={cards.body}>
+                    <Show when={routes()}>
+                      {(r) => (
+                        <>
+                          <div class={cards.scopes} data-testid="granted-scopes">
+                            <span>Granted</span>
+                            <For each={account().scopes ?? []}>
+                              {(scope) => <span class={cards.chip}>{scope}</span>}
+                            </For>
+                            {/* Only GitHub mints a token whose permissions it
+                                will not report. Anywhere else an empty list is
+                                a host that did not answer, not a token that
+                                holds nothing. */}
+                            <Show when={(account().scopes ?? []).length === 0}>
+                              <span>
+                                {account().provider === "github"
+                                  ? "Nothing Tori can read, which is what a fine-grained token reports."
+                                  : `${r().host} did not report this token's scopes, so Tori cannot check them.`}
+                              </span>
+                            </Show>
+                          </div>
+                          <Show when={missingScopes(account(), r().scopes).length > 0}>
+                            <div class={cards.hint} data-testid="missing-scopes">
+                              {r().host} did not grant {missingScopes(account(), r().scopes).join(", ")}. Make a
+                              token with them ticked and paste it here to replace this one.
+                            </div>
+                          </Show>
+                        </>
+                      )}
+                    </Show>
+                    <div class={cards.hint} data-testid="granted-expiry">
+                      <Show
+                        when={account().expiresAt}
+                        fallback="No expiration, so Tori will not ask for this token again."
+                      >
+                        {(at) => (
+                          <>
+                            Expires on {fullDate(at())}, and this row says so a week before. A token set to "No
+                            expiration" never asks again.
+                          </>
+                        )}
+                      </Show>
+                    </div>
+                    <div class={cards.actions}>
+                      <Button variant="primary" onClick={() => enter(null)}>
+                        Done
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}

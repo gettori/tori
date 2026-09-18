@@ -19,6 +19,7 @@ export type AddFlow =
   | { step: "product" }
   | { step: "host-url"; product: SelfHosted }
   | { step: "token"; route: "token"; target: Target }
+  | { step: "granted"; route: "token"; target: Target; accountId: string }
   | { step: "waiting"; route: "browser"; target: Target }
   | { step: "error"; route: Route; target: Target; failure: Failure };
 
@@ -43,6 +44,15 @@ export function began(target: Target, start: SignInStart): AddFlow | null {
     case "token":
       return { step: "token", route: "token", target };
   }
+}
+
+/** A pasted token landed. The step stays open instead of closing, because what
+ *  the host actually granted is only knowable after the paste: a scope it
+ *  withheld and the date it set are both news, and both are cheaper to act on
+ *  while the user is still here than on the first push that fails. */
+export function granted(flow: AddFlow, accountId: string): AddFlow {
+  if (flow.step !== "token") return flow;
+  return { step: "granted", route: "token", target: flow.target, accountId };
 }
 
 export function failed(flow: AddFlow, failure: Failure): AddFlow {

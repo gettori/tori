@@ -29,6 +29,10 @@ let devicePolls: unknown[] = [];
 let deviceLifetimeSecs = 900;
 let clipboardWorks = true;
 let tokenRejection: ForgeErrorDto | null = null;
+/** What Rust files after a paste. The card can only be right if it reads the
+ *  account back, since the scopes and the date come from the host, not the
+ *  paste. `null` keeps the older tests on the bare accountId Rust answers with. */
+let pasted: ForgeAccount | null = null;
 let handoff: string[] = [];
 const calls = {
   start: 0,
@@ -127,8 +131,15 @@ vi.mock("@tauri-apps/api/core", () => ({
         hosts = hosts.map((h) => (h.host === host ? { ...h, defaultAccount: accountId } : h));
         return Promise.resolve(hosts);
       }
-      case "forge_add_token":
-        return tokenRejection ? Promise.reject(tokenRejection) : Promise.resolve({ accountId: "a", login: "a" });
+      case "forge_add_token": {
+        if (tokenRejection) return Promise.reject(tokenRejection);
+        if (!pasted) return Promise.resolve({ accountId: "a", login: "a" });
+        const host = new URL(args?.baseUrl as string).host;
+        hosts = hosts.some((h) => h.host === host)
+          ? hosts.map((h) => (h.host === host ? { ...h, accounts: [...h.accounts, pasted!] } : h))
+          : [...hosts, hostOf(host, [pasted])];
+        return Promise.resolve({ accountId: pasted.id, login: pasted.login });
+      }
       case "forge_device_poll": {
         calls.poll += 1;
         const next = devicePolls.shift();
@@ -181,6 +192,7 @@ beforeEach(() => {
   deviceLifetimeSecs = 900;
   clipboardWorks = true;
   tokenRejection = null;
+  pasted = null;
   handoff = [];
   ghLogin = null;
 });
@@ -471,6 +483,74 @@ describe("the forge accounts settings section", () => {
     expect(within(nudged[0]).getByText("Pushes that change GitHub Actions need a newer sign-in.")).toBeTruthy();
     expect(within(nudged[0]).getByText("Sign in again")).toBeTruthy();
     expect(screen.getAllByText("Sign in again")).toHaveLength(1);
+  });
+
+  it("says what the host granted a pasted token and what it withheld", async () => {
+    // Noon UTC, so the date reads the same in every timezone the suite runs in.
+    pasted = account("ghe-example-com-arif", { kind: "signedIn", login: "arif" }, "arif", {
+      baseUrl: "https://ghe.example.com",
+      scopes: ["repo"],
+      expiresAt: Date.UTC(2027, 0, 3, 12) / 1000,
+    });
+    render(() => <ForgeSection />);
+    await reachEnterpriseToken();
+    fireEvent.input(screen.getByLabelText("Personal access token"), { target: { value: "ghp_narrow" } });
+    fireEvent.click(flowCard().getByText("Sign in"));
+
+    const scopes = await screen.findByTestId("granted-scopes");
+    expect(within(scopes).getByText("repo")).toBeTruthy();
+    expect(within(scopes).queryByText("workflow")).toBeNull();
+    expect(screen.getByTestId("missing-scopes").textContent).toContain(
+      "ghe.example.com did not grant workflow",
+    );
+    expect(screen.getByTestId("granted-expiry").textContent).toContain("Expires on 3 Jan 2027");
+  });
+
+  it("tells a token with no expiration that it will not be asked for again", async () => {
+    pasted = account("ghe-example-com-arif", { kind: "signedIn", login: "arif" }, "arif", {
+      baseUrl: "https://ghe.example.com",
+      scopes: ["repo", "workflow"],
+    });
+    render(() => <ForgeSection />);
+    await reachEnterpriseToken();
+    fireEvent.input(screen.getByLabelText("Personal access token"), { target: { value: "ghp_wide" } });
+    fireEvent.click(flowCard().getByText("Sign in"));
+
+    expect((await screen.findByTestId("granted-expiry")).textContent).toBe(
+      "No expiration, so Tori will not ask for this token again.",
+    );
+    expect(screen.queryByTestId("missing-scopes")).toBeNull();
+    fireEvent.click(flowCard().getByText("Done"));
+    await waitFor(() => expect(screen.queryByTestId("add-flow")).toBeNull());
+  });
+
+  it("counts a token down to its date, then turns the row back into the one button", async () => {
+    // Only Date is faked: the async waits below still need real timers.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.UTC(2026, 8, 19, 12));
+    hosts = [
+      hostOf("github.com", [
+        account("github-com-soon", { kind: "signedIn", login: "soon" }, "soon", {
+          expiresAt: Date.UTC(2026, 8, 23, 12) / 1000,
+        }),
+        account("github-com-lapsed", { kind: "signedIn", login: "lapsed" }, "lapsed", {
+          expiresAt: Date.UTC(2026, 8, 17, 12) / 1000,
+        }),
+        account("github-com-far", { kind: "signedIn", login: "far" }, "far", {
+          expiresAt: Date.UTC(2027, 0, 3, 12) / 1000,
+        }),
+      ]),
+    ];
+    render(() => <ForgeSection />);
+    const rows = await screen.findAllByTestId("forge-account");
+    expect(rows.map((row) => within(row).queryByTestId("expiry-notice")?.textContent ?? null)).toEqual([
+      "This token expires on 23 Sep 2026. Signing in again replaces it in place.",
+      "This token expired on 17 Sep 2026. Signing in again replaces it in place.",
+      // Months out is not news yet, so the row says nothing and offers nothing.
+      null,
+    ]);
+    expect(screen.getAllByText("Sign in again")).toHaveLength(2);
+    vi.useRealTimers();
   });
 
   it("names the git scope on a GitLab host whose push switch is on", async () => {

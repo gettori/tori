@@ -38,8 +38,8 @@ pub mod status;
 pub mod token;
 
 use model::{
-    AuthState, Capabilities, DraftComment, MergeableState, Paged, PrFile, PullRequest, RateSnapshot,
-    RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus, Viewer,
+    AuthState, Capabilities, DraftComment, Grant, MergeableState, Paged, PrFile, PullRequest,
+    RateSnapshot, RepoRef, ReviewComment, ReviewEvent, ReviewThread, UnitStatus, Viewer,
 };
 use serde::{Deserialize, Serialize};
 
@@ -176,9 +176,13 @@ pub trait Forge: Send + Sync {
     /// What the last answered call said about the rate budget.
     fn rate_snapshot(&self) -> RateSnapshot;
 
-    /// The scopes the last answered call said the token holds, where the
-    /// provider reports them at all.
-    fn granted_scopes(&self) -> Option<Vec<String>>;
+    /// What the host says about the token itself: the scopes it holds and the
+    /// deadline it carries, where the provider reports either.
+    ///
+    /// GitHub answers from headers its calls already carried, so it costs
+    /// nothing; GitLab has to ask, which is why this is separate from
+    /// [`Forge::viewer`] and the caller decides when to spend it.
+    fn token_grant(&self) -> Grant;
 
     /// Who the stored token belongs to. Needed before a review can be offered,
     /// because the author of a PR cannot approve or request changes on it.
@@ -291,6 +295,47 @@ pub fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// A plain-text UTC timestamp from a forge, as unix seconds.
+///
+/// `YYYY-MM-DD`, optionally followed by a clock and a `UTC` suffix: GitLab dates
+/// a personal access token to the day, GitHub's expiry header adds the time.
+/// Both are UTC, so there is no zone to read and no calendar crate to carry for
+/// it. Anything else answers `None` rather than a date nobody meant.
+pub fn epoch_secs(text: &str) -> Option<u64> {
+    let text = text.trim();
+    let text = text.strip_suffix("UTC").unwrap_or(text).trim_end();
+    let (date, clock) = text.split_once(' ').unwrap_or((text, ""));
+    let mut ymd = date.split('-');
+    let year: i64 = ymd.next()?.parse().ok()?;
+    let month: i64 = ymd.next()?.parse().ok()?;
+    let day: i64 = ymd.next()?.parse().ok()?;
+    if ymd.next().is_some() || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    // A date with no clock is midnight, which is how GitLab dates a token.
+    let mut hms = clock.split(':');
+    let mut unit = || match hms.next() {
+        None | Some("") => Some(0),
+        Some(field) => field.trim().parse::<i64>().ok(),
+    };
+    let (hour, minute, second) = (unit()?, unit()?, unit()?);
+    let secs = days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second;
+    u64::try_from(secs).ok()
+}
+
+/// Days from 1970-01-01 to a proleptic Gregorian date, by Howard Hinnant's
+/// `days_from_civil`. Shifting the year to start in March is what makes the leap
+/// day the last of it, so no case analysis is needed for February.
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let month_from_march = (month + 9) % 12;
+    let day_of_year = (153 * month_from_march + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,8 +366,8 @@ mod tests {
         fn rate_snapshot(&self) -> RateSnapshot {
             RateSnapshot::default()
         }
-        fn granted_scopes(&self) -> Option<Vec<String>> {
-            None
+        fn token_grant(&self) -> Grant {
+            Grant::default()
         }
         fn viewer(&self) -> Result<Viewer, ForgeError> {
             Err(ForgeError::NotAuthenticated)
